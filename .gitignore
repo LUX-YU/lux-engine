@@ -1,0 +1,9 @@
+.vs
+CMakeSettings.json
+.vscode
+imgui.ini
+__pycache__
+build
+prebuild
+tools_temp
+out

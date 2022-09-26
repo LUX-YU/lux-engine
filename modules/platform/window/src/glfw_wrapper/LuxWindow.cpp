@@ -223,7 +223,7 @@ namespace lux::engine::platform
         );
     }
 
-    void* LuxWindow::lowLayerPointer()
+    GLFWwindow* LuxWindow::lowLayerPointer()
     {
         return _impl->glfw_window;
     }

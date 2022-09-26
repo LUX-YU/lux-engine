@@ -12,6 +12,9 @@ add_executable(
 
     opengl3/light/color.cpp
     opengl3/light/basic_lighting.cpp
+    opengl3/light/materials.cpp
+    opengl3/light/lighting_map.cpp
+    opengl3/light/light_caster.cpp
 
     opengl3/vertex/CubeVertex.cpp
     render_test_entry.cpp
@@ -20,7 +23,6 @@ add_executable(
 target_link_libraries(
     render_test
     PRIVATE
-    lux::engine::platform::gui
     lux::engine::platform::cxx
     lux::engine::platform::media_loaders
     lux::engine::core::math

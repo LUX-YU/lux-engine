@@ -5,5 +5,5 @@ int main(int argc, char* argv[])
 {
     using namespace ::lux::engine::platform;
 
-    return SubProgramRegister::invokeSubProgram("basic_lighting", argc, argv);
+    return SubProgramRegister::invokeSubProgram("light_caster", argc, argv);
 }

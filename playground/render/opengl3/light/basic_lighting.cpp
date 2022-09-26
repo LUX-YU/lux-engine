@@ -9,7 +9,7 @@
 #include <render_helper/CameraHelper.hpp>
 
 #include <graphic_api_wrapper/opengl3/VertexBufferObject.hpp>
-#include <graphic_api_wrapper/opengl3/Shader.hpp>
+#include <graphic_api_wrapper/opengl3/ShaderProgram.hpp>
 
 #include "CubeVertex.hpp"
 
@@ -17,30 +17,58 @@ static const char* predifined_vertex_shader =
 R"(
 #version 330 core
 layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
 
-uniform mat4 mvp;
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+
+out     vec3 Normal;
+out     vec3 FragPos;
 
 void main()
 {
-    gl_Position = mvp * vec4(aPos, 1.0f);
+    gl_Position = projection * view * model * vec4(aPos, 1.0f);
+    FragPos = vec3(model * vec4(aPos, 1.0f));
+    Normal = aNormal;
 }
 )";
 
 static const char* predefined_fragment_shader =
 R"(
 #version 330 core
-out vec4 FragColor;
+out vec4 color;
 
-uniform vec3 objectColor;
+in vec3 Normal;  
+in vec3 FragPos;
+  
+uniform vec3 lightPos; 
 uniform vec3 lightColor;
+uniform vec3 objectColor;
+uniform vec3 viewPos;
 
 void main()
 {
-    float ambientStrength = 0.1;
-    vec3 ambient = ambientStrength * lightColor;
+    // Ambient
+    float ambientStrength   = 0.1f;
+    float specularStrength  = 0.5f;
+    vec3  ambient = ambientStrength * lightColor;
 
-    vec3 result = ambient * objectColor;
-    FragColor = vec4(result, 1.0);
+    // Diffuse 
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = diff * lightColor;
+
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+    vec3 specular = specularStrength * spec * lightColor;
+
+    vec3 result = (ambient + diffuse + specular) * objectColor;
+
+    color = vec4(result, 1.0f);
 }
 )";
 
@@ -72,20 +100,26 @@ static int __main(int argc, char* argv[])
     platform::LuxWindow window(global_width, global_height, "color");
     glad_init();
     
-    platform::ShaderProgram cube_program;
-    platform::ShaderProgram light_program;
+    function::ShaderProgram cube_program;
+    function::ShaderProgram light_program;
     
     {
         std::string info;
-        platform::GlShader* shaders[2];
-        platform::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        platform::GlFragmentShader fragment_shader(&predefined_fragment_shader);
+        function::GlShader* shaders[2];
+        function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
+        function::GlFragmentShader fragment_shader(&predefined_fragment_shader);
         shaders[0] = &vertex_shader;
         shaders[1] = &fragment_shader;
         for(auto shader : shaders)
         {
             bool is_success = shader->compile(info);
-            if(!is_success) {std::cerr << "compile failed!" << std::endl; return -1;};
+            if(!is_success) {
+                std::string error_msg;
+                shader->getCompileMessage(error_msg);
+                std::cerr << "compile failed!" << std::endl;
+                std::cerr << error_msg << std::endl;
+                return -1;
+            };
             cube_program.attachShader(*shader);
         }
         cube_program.link(info);
@@ -93,15 +127,21 @@ static int __main(int argc, char* argv[])
 
     {
         std::string info;
-        platform::GlShader* shaders[2];
-        platform::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        platform::GlFragmentShader fragment_shader(&predefined_light_fragment_shader);
+        function::GlShader* shaders[2];
+        function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
+        function::GlFragmentShader fragment_shader(&predefined_light_fragment_shader);
         shaders[0] = &vertex_shader;
         shaders[1] = &fragment_shader;
         for(auto shader : shaders)
         {
             bool is_success = shader->compile(info);
-            if(!is_success) {std::cerr << "compile failed!" << std::endl; return -1;};
+            if(!is_success) {
+                std::string error_msg;
+                shader->getCompileMessage(error_msg);
+                std::cerr << "compile failed!" << std::endl;
+                std::cerr << error_msg << std::endl;
+                return -1;
+            };
             light_program.attachShader(*shader);
         }
         light_program.link(info);
@@ -112,32 +152,53 @@ static int __main(int argc, char* argv[])
     // vbo set
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertex), cube_vertex, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertex_normal), cube_vertex_normal, GL_STATIC_DRAW);
 
     GLuint cube_vao;
     glGenVertexArrays(1, &cube_vao);
     glBindVertexArray(cube_vao);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Eigen::Vector5f), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Eigen::Vector6f), nullptr);
     glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Eigen::Vector6f), (GLvoid*)(3 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(1);
+    glBindVertexArray(0);
 
     // light vao
     // glBindBuffer(GL_ARRAY_BUFFER, vbo);
     GLuint light_vao;
     glGenVertexArrays(1, &light_vao);
     glBindVertexArray(light_vao);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Eigen::Vector5f), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Eigen::Vector6f), (void*)0);
     glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
 
     glEnable(GL_DEPTH_TEST);
 
+    auto light_position = std::array<float, 3>{120.0f, 100.0f, 200.0f};
+    auto light_color    = std::array<float, 3>{1.0f, 1.0f, 1.0f};
+    auto cube_color     = std::array<float, 3>{1.0f, 0.5f, 0.31f};
     cube_program.use();
-    cube_program.uniformSetVectorUnsafe("objectColor", std::array{1.0f, 0.5f, 0.31f});
-    cube_program.uniformSetVectorUnsafe("lightColor", 1.0f, 1.0f, 1.0f);
-    auto cube_mvp_location = cube_program.uniformFindLocationUnsafe("mvp");
-    auto light_mvp_location= light_program.uniformFindLocationUnsafe("mvp");
+
+    auto location_object_color  = cube_program.uniformFindLocationUnsafe("objectColor");
+    auto location_light_color   = cube_program.uniformFindLocationUnsafe("lightColor");
+    auto location_light_position= cube_program.uniformFindLocationUnsafe("lightPos");
+    auto location_view_position = cube_program.uniformFindLocationUnsafe("viewPos");
+
+    GLint cube_mvp_location[3]{
+        cube_program.uniformFindLocationUnsafe("model"),
+        cube_program.uniformFindLocationUnsafe("view"),
+        cube_program.uniformFindLocationUnsafe("projection")
+    };
+
+    light_program.use();
+    GLint light_mvp_location[3]{
+        light_program.uniformFindLocationUnsafe("model"),
+        light_program.uniformFindLocationUnsafe("view"),
+        light_program.uniformFindLocationUnsafe("projection")
+    };
     
-    float deltaTime = 0.0f; // 当前帧与上一帧的时间差
-    float lastFrame = 0.0f; // 上一帧的时间
+    float deltaTime = 0.0f; // delta time
+    float lastFrame = 0.0f; // last frame time
 
     function::UserControlCamera camera(window);
 
@@ -145,10 +206,10 @@ static int __main(int argc, char* argv[])
     glfwSetInputMode((GLFWwindow*)window.lowLayerPointer(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     // cube position
-    Eigen::Affine3f cube_mode  = core::createTransformMatrix3D(Eigen::Vector3f{0,0,0}, {0,0,0});
+    Eigen::Affine3f cube_mode  = core::createTransform(Eigen::Vector3f{0,0,0}, {0,0,0});
     // light position
-    Eigen::Affine3f light_mode = core::createTransformMatrix3D(Eigen::Vector3f{0,0,0}, {120.0f, 100.0f, 200.0f});
-
+    Eigen::Affine3f light_mode = core::createTransform(Eigen::Vector3f{0,0,0}, light_position);
+    core::createTransform(Eigen::Matrix3f{Eigen::Matrix3f::Identity()}, light_position);
     
     while(!window.shouldClose())
     {
@@ -156,25 +217,31 @@ static int __main(int argc, char* argv[])
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        camera.setCameraSpeed(1000.0f * deltaTime);
+        camera.setCameraSpeed(200.0f * deltaTime);
         camera.updateViewInLoop();
         
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
+        Eigen::Matrix4f projection_transform = 
+            core::perspectiveMatrix(camera.fov() * EIGEN_PI / 180, global_width / (float)global_height, 0.1f, 50000.0f);
+
         cube_program.use();
-        
-        // can be also implement by frustumMatrix
-        Eigen::Matrix4f projection_transform =  core::perspectiveMatrix(camera.fov() * EIGEN_PI/180, global_width / (float)global_height, 0.1f, 50000.0f);
-        auto cube_mvp = projection_transform * camera.viewMatrix() * cube_mode;
-        cube_program.uniformSetMatrix<4, 4>(cube_mvp_location, false, cube_mvp.data());
+        cube_program.uniformSetMatrix<float, 4, 4>(cube_mvp_location[0], false, cube_mode.data());
+        cube_program.uniformSetMatrix(cube_mvp_location[1], false, camera.viewMatrix());
+        cube_program.uniformSetMatrix(cube_mvp_location[2], false, projection_transform);
+        cube_program.uniformSetVector(location_object_color,    cube_color);
+        cube_program.uniformSetVector(location_light_color,     light_color);
+        cube_program.uniformSetVector(location_light_position,  light_position);
+        cube_program.uniformSetVector(location_view_position,   camera.cameraPosition());
 
         glBindVertexArray(cube_vao);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
         light_program.use();
-        auto light_mvp = projection_transform * camera.viewMatrix() * light_mode;
-        light_program.uniformSetMatrix<4, 4>(light_mvp_location, false, light_mvp.data());
+        light_program.uniformSetMatrix(light_mvp_location[0], false, light_mode);
+        light_program.uniformSetMatrix(light_mvp_location[1], false, camera.viewMatrix());
+        light_program.uniformSetMatrix(light_mvp_location[2], false, projection_transform);
         glBindVertexArray(light_vao);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 

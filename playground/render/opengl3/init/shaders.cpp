@@ -4,7 +4,7 @@
 #include <Eigen/Eigen>
 
 #include <graphic_api_wrapper/opengl3/VertexBufferObject.hpp>
-#include <graphic_api_wrapper/opengl3/Shader.hpp>
+#include <graphic_api_wrapper/opengl3/ShaderProgram.hpp>
 
 static const char* predifined_vertex_shader =
 R"(
@@ -52,13 +52,13 @@ static int __main(int argc, char* argv[])
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
 
     using namespace lux::engine;
-    platform::ShaderProgram shader_program;
+    function::ShaderProgram shader_program;
     
     {
         std::string info;
-        lux::engine::platform::GlShader* shaders[2];
-        lux::engine::platform::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        lux::engine::platform::GlFragmentShader fragment_shader(&predefined_fragment_shader);
+        lux::engine::function::GlShader* shaders[2];
+        lux::engine::function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
+        lux::engine::function::GlFragmentShader fragment_shader(&predefined_fragment_shader);
         shaders[0] = &vertex_shader;
         shaders[1] = &fragment_shader;
         for(auto shader : shaders)
@@ -106,7 +106,7 @@ static int __main(int argc, char* argv[])
         glClear(GL_COLOR_BUFFER_BIT);
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
-        float glfwTime = glfwGetTime();
+        float glfwTime   = static_cast<float>(glfwGetTime());
         float greenValue = (sin(glfwTime / 2.0f)) + 0.5f;
         int vertexColorLocation = shader_program.uniformFindLocationUnsafe("triangleColor");
         shader_program.use();

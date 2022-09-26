@@ -9,7 +9,7 @@
 #include <render_helper/CameraHelper.hpp>
 
 #include <graphic_api_wrapper/opengl3/VertexBufferObject.hpp>
-#include <graphic_api_wrapper/opengl3/Shader.hpp>
+#include <graphic_api_wrapper/opengl3/ShaderProgram.hpp>
 
 #include "CubeVertex.hpp"
 
@@ -68,14 +68,14 @@ static int __main(int argc, char* argv[])
     platform::LuxWindow window(global_width, global_height, "color");
     glad_init();
     
-    platform::ShaderProgram cube_program;
-    platform::ShaderProgram light_program;
+    function::ShaderProgram cube_program;
+    function::ShaderProgram light_program;
     
     {
         std::string info;
-        platform::GlShader* shaders[2];
-        platform::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        platform::GlFragmentShader fragment_shader(&predefined_fragment_shader);
+        function::GlShader* shaders[2];
+        function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
+        function::GlFragmentShader fragment_shader(&predefined_fragment_shader);
         shaders[0] = &vertex_shader;
         shaders[1] = &fragment_shader;
         for(auto shader : shaders)
@@ -89,9 +89,9 @@ static int __main(int argc, char* argv[])
 
     {
         std::string info;
-        platform::GlShader* shaders[2];
-        platform::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        platform::GlFragmentShader fragment_shader(&predefined_light_fragment_shader);
+        function::GlShader* shaders[2];
+        function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
+        function::GlFragmentShader fragment_shader(&predefined_light_fragment_shader);
         shaders[0] = &vertex_shader;
         shaders[1] = &fragment_shader;
         for(auto shader : shaders)
@@ -108,7 +108,7 @@ static int __main(int argc, char* argv[])
     // vbo set
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertex), cube_vertex, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertex_texture), cube_vertex_texture, GL_STATIC_DRAW);
 
     GLuint cube_vao;
     glGenVertexArrays(1, &cube_vao);
@@ -141,9 +141,9 @@ static int __main(int argc, char* argv[])
     glfwSetInputMode((GLFWwindow*)window.lowLayerPointer(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     // cube position
-    Eigen::Affine3f cube_mode  = core::createTransformMatrix3D(Eigen::Vector3f{0,0,0}, {0,0,0});
+    Eigen::Affine3f cube_mode  = core::createTransform(Eigen::Vector3f{0,0,0}, {0,0,0});
     // light position
-    Eigen::Affine3f light_mode = core::createTransformMatrix3D(Eigen::Vector3f{0,0,0}, {120.0f, 100.0f, 200.0f});
+    Eigen::Affine3f light_mode = core::createTransform(Eigen::Vector3f{0,0,0}, {120.0f, 100.0f, 200.0f});
 
     
     while(!window.shouldClose())
@@ -162,14 +162,14 @@ static int __main(int argc, char* argv[])
         // can be also implement by frustumMatrix
         Eigen::Matrix4f projection_transform =  core::perspectiveMatrix(camera.fov() * EIGEN_PI/180, global_width / (float)global_height, 0.1f, 50000.0f);
         auto cube_mvp = projection_transform * camera.viewMatrix() * cube_mode;
-        cube_program.uniformSetMatrix<4, 4>(cube_mvp_location, false, cube_mvp.data());
+        cube_program.uniformSetMatrix<float, 4, 4>(cube_mvp_location, false, cube_mvp.data());
 
         glBindVertexArray(cube_vao);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
         light_program.use();
         auto light_mvp = projection_transform * camera.viewMatrix() * light_mode;
-        light_program.uniformSetMatrix<4, 4>(light_mvp_location, false, light_mvp.data());
+        light_program.uniformSetMatrix<float, 4, 4>(light_mvp_location, false, light_mvp.data());
         glBindVertexArray(light_vao);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 

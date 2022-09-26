@@ -13,12 +13,14 @@ namespace lux::engine::function
 
         void setCameraSpeed(float speed);
 
+        const Eigen::Vector3f& cameraPosition();
+
     private:
         ::lux::engine::platform::LuxWindow& _window;
 
         float cameraSpeed = 100.0f;
         Eigen::Vector3f cameraFront{0.0f, 0.0f, -1.0f};
-        Eigen::Vector3f cameraPosition{0.0f, 0.0f,  800};
+        Eigen::Vector3f _camera_position{0.0f, 0.0f,  800};
         Eigen::Vector3f cameraUp{0.0f, 1.0f,  0.0f};
 
         // mouse related variable

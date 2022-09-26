@@ -3,24 +3,6 @@
 
 namespace lux::engine::core
 {
-    Eigen::Affine3f createTransformMatrix3D(const Eigen::Matrix3f &rotation, const Eigen::Vector3f &displacement)
-    {
-        Eigen::Affine3f Trans(Eigen::Affine3f::Identity());
-        Trans.matrix().block<3, 3>(0, 0) = rotation;
-        Trans.matrix().block<3, 1>(0, 3) = displacement;
-        return Eigen::Affine3f(Trans);
-    }
-
-    Eigen::Affine3f createTransformMatrix3D(const Eigen::Vector3f &euler, const Eigen::Vector3f &displacement)
-    {
-        Eigen::Affine3f Trans(Eigen::Affine3f::Identity());
-        Trans.prerotate(Eigen::AngleAxis<float>(euler[2], Eigen::Vector3f::UnitZ()));
-        Trans.prerotate(Eigen::AngleAxis<float>(euler[1], Eigen::Vector3f::UnitY()));
-        Trans.prerotate(Eigen::AngleAxis<float>(euler[0], Eigen::Vector3f::UnitX()));
-        Trans.matrix().block<3, 1>(0, 3) = displacement;
-        return Trans;
-    }
-
     Eigen::Matrix4f viewTransform(const Eigen::Vector3f& camera_position, const Eigen::Matrix3f& rotation)
     {
         Eigen::Matrix4f view_tmp;
@@ -73,7 +55,7 @@ namespace lux::engine::core
         return prespective2ortho_matrix;
     };
 
-    Eigen::Matrix4f perspectiveMatrix(float fovy, float aspect, float zNear,float zFar)
+    Eigen::Matrix4f perspectiveMatrix(float fovy, float aspect, float zNear, float zFar)
     {
         Eigen::Matrix4f mat{Eigen::Matrix4f::Zero()};
 

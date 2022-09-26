@@ -56,26 +56,31 @@ namespace lux::engine::function
     {
         if (_window.queryKey(platform::KeyEnum::KEY_W) == platform::KeyState::PRESS)
         {
-            cameraPosition += cameraSpeed * cameraFront;
+            _camera_position += cameraSpeed * cameraFront;
         }
         if (_window.queryKey(platform::KeyEnum::KEY_S) == platform::KeyState::PRESS)
         {
-            cameraPosition -= cameraSpeed * cameraFront;
+            _camera_position -= cameraSpeed * cameraFront;
         }
         if (_window.queryKey(platform::KeyEnum::KEY_A) == platform::KeyState::PRESS)
         {
-            cameraPosition -= (cameraFront.cross(cameraUp)).normalized() * cameraSpeed;
+            _camera_position -= (cameraFront.cross(cameraUp)).normalized() * cameraSpeed;
         }
         if (_window.queryKey(platform::KeyEnum::KEY_D) == platform::KeyState::PRESS)
         {
-            cameraPosition += (cameraFront.cross(cameraUp)).normalized() * cameraSpeed;
+            _camera_position += (cameraFront.cross(cameraUp)).normalized() * cameraSpeed;
         }
 
-        lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
+        lookAt(_camera_position, _camera_position + cameraFront, cameraUp);
     }
 
     void UserControlCamera::setCameraSpeed(float speed)
     {
         cameraSpeed = speed;
+    }
+
+    const Eigen::Vector3f& UserControlCamera::cameraPosition()
+    {
+        return _camera_position;
     }
 } // namespace lux::engine::function

@@ -9,7 +9,7 @@
 #include <lux-engine/core/math/EigenTools.hpp>
 
 #include <graphic_api_wrapper/opengl3/VertexBufferObject.hpp>
-#include <graphic_api_wrapper/opengl3/Shader.hpp>
+#include <graphic_api_wrapper/opengl3/ShaderProgram.hpp>
 
 #include "CubeVertex.hpp"
 
@@ -81,13 +81,13 @@ static int __main(int argc, char* argv[])
     glad_init();
 
     using namespace lux::engine;
-    platform::ShaderProgram shader_program;
+    function::ShaderProgram shader_program;
     
     {
         std::string info;
-        lux::engine::platform::GlShader* shaders[2];
-        lux::engine::platform::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        lux::engine::platform::GlFragmentShader fragment_shader(&predefined_fragment_shader);
+        lux::engine::function::GlShader* shaders[2];
+        lux::engine::function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
+        lux::engine::function::GlFragmentShader fragment_shader(&predefined_fragment_shader);
         shaders[0] = &vertex_shader;
         shaders[1] = &fragment_shader;
         for(auto shader : shaders)
@@ -127,7 +127,7 @@ static int __main(int argc, char* argv[])
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertex), cube_vertex, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertex_texture), cube_vertex_texture, GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Eigen::Vector5f), (void*)0);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Eigen::Vector5f), (void*)(3 * sizeof(float)));
@@ -162,14 +162,14 @@ static int __main(int argc, char* argv[])
 
         float aspect = global_width / (float)global_height;
         Eigen::Matrix4f projection_transform =  // can be also implement by frustumMatrix
-            lux::engine::core::perspectiveMatrix(EIGEN_PI / 4, aspect, 0.1f, 10000.0f);
+            lux::engine::core::perspectiveMatrix(EIGEN_PI / 4, aspect, 0.1f, (float)10000);
 
         float current_time = (float)glfwGetTime();
 
         for(const auto& position : cubePositions)
         {
             Eigen::Affine3f model_transform = 
-            lux::engine::core::createTransformMatrix3D(
+            lux::engine::core::createTransform(
                 Eigen::Vector3f{current_time,current_time,current_time}, 
                 {position[0], position[1], position[2]}
             );

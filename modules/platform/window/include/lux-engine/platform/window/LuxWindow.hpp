@@ -3,6 +3,8 @@
 #include <functional>
 #include <lux-engine/platform/cxx/visibility_control.h>
 
+struct GLFWwindow;
+
 namespace lux::engine::platform
 {
     // MAP From GLFW
@@ -178,7 +180,7 @@ namespace lux::engine::platform
         LUX_EXPORT void subscribeCursorPositionCallback(CursorPoitionCallback);
         LUX_EXPORT void subscribeScrollCallback(ScrollCallback);
 
-        LUX_EXPORT void* lowLayerPointer();
+        LUX_EXPORT GLFWwindow* lowLayerPointer();
 
         LUX_EXPORT static void  enableVsync(bool enable);
         LUX_EXPORT static void  pollEvents();

@@ -3,7 +3,7 @@
 #include <Eigen/Eigen>
 
 #include <graphic_api_wrapper/opengl3/VertexBufferObject.hpp>
-#include <graphic_api_wrapper/opengl3/Shader.hpp>
+#include <graphic_api_wrapper/opengl3/ShaderProgram.hpp>
 
 #include <thread>
 #include <iostream>
@@ -70,13 +70,13 @@ static int __main(int argc, char* argv[])
     std::cout << glGetString(GL_VERSION) << std::endl;;
     glViewport(0, 0, 1280, 720);
 
-    lux::engine::platform::ShaderProgram    shader_program;
+    lux::engine::function::ShaderProgram    shader_program;
 
     {
         std::string info;
-        lux::engine::platform::GlShader* shaders[2];
-        lux::engine::platform::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        lux::engine::platform::GlFragmentShader fragment_shader(&predefined_fragment_shader);
+        lux::engine::function::GlShader* shaders[2];
+        lux::engine::function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
+        lux::engine::function::GlFragmentShader fragment_shader(&predefined_fragment_shader);
         shaders[0] = &vertex_shader;
         shaders[1] = &fragment_shader;
         for(auto shader : shaders)

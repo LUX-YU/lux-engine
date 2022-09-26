@@ -5,7 +5,7 @@
 
 #include <lux-engine/platform/media_loaders/Image.hpp>
 #include <graphic_api_wrapper/opengl3/VertexBufferObject.hpp>
-#include <graphic_api_wrapper/opengl3/Shader.hpp>
+#include <graphic_api_wrapper/opengl3/ShaderProgram.hpp>
 
 static const char* predifined_vertex_shader =
 R"(
@@ -63,13 +63,13 @@ static int __main(int argc, char* argv[])
     std::cout << "Maximum nr of vertex attributes supported: " << nrAttributes << std::endl;
 
     using namespace lux::engine;
-    platform::ShaderProgram shader_program;
+    function::ShaderProgram shader_program;
     
     {
         std::string info;
-        lux::engine::platform::GlShader* shaders[2];
-        lux::engine::platform::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        lux::engine::platform::GlFragmentShader fragment_shader(&predefined_fragment_shader);
+        lux::engine::function::GlShader* shaders[2];
+        lux::engine::function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
+        lux::engine::function::GlFragmentShader fragment_shader(&predefined_fragment_shader);
         shaders[0] = &vertex_shader;
         shaders[1] = &fragment_shader;
         for(auto shader : shaders)
@@ -104,7 +104,6 @@ static int __main(int argc, char* argv[])
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
 
     lux::engine::platform::Image image("D:/Code/lux-game/playground/render/opengl3/texture/miku.png");
     if(!image.isEnable())

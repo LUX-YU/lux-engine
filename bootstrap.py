@@ -17,7 +17,8 @@ external_library_list = {
     "glfw":     os.path.join(external_install_script_dir,   "glfw.py"),
     "imgui":    os.path.join(external_install_script_dir,   "imgui.py"),
     "eigen3":   os.path.join(external_install_script_dir,   "eigen3.py"),
-    "stb":      os.path.join(external_install_script_dir,   "stb.py")
+    "stb":      os.path.join(external_install_script_dir,   "stb.py"),
+    "freetype": os.path.join(external_install_script_dir,   "freetype.py")
 }
 
 def execute_cmd_list(cmd_dict : dict, enable_list = []):

@@ -9,7 +9,7 @@
 #include <lux-engine/core/math/EigenTools.hpp>
 #include <lux-engine/platform/media_loaders/Image.hpp>
 #include <graphic_api_wrapper/opengl3/VertexBufferObject.hpp>
-#include <graphic_api_wrapper/opengl3/Shader.hpp>
+#include <graphic_api_wrapper/opengl3/ShaderProgram.hpp>
 
 static const char* predifined_vertex_shader =
 R"(
@@ -74,13 +74,13 @@ static int __main(int argc, char* argv[])
     std::cout << "Maximum nr of vertex attributes supported: " << nrAttributes << std::endl;
 
     using namespace lux::engine;
-    platform::ShaderProgram shader_program;
+    function::ShaderProgram shader_program;
     
     {
         std::string info;
-        lux::engine::platform::GlShader* shaders[2];
-        lux::engine::platform::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        lux::engine::platform::GlFragmentShader fragment_shader(&predefined_fragment_shader);
+        lux::engine::function::GlShader* shaders[2];
+        lux::engine::function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
+        lux::engine::function::GlFragmentShader fragment_shader(&predefined_fragment_shader);
         shaders[0] = &vertex_shader;
         shaders[1] = &fragment_shader;
         for(auto shader : shaders)
@@ -156,9 +156,9 @@ static int __main(int argc, char* argv[])
         glClear(GL_COLOR_BUFFER_BIT);
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
-        auto transform_matrix = lux::engine::core::createTransformMatrix3D(Eigen::Vector3f{0, 0, (float)glfwGetTime()}, {0.2,0,0});
+        auto transform_matrix = lux::engine::core::createTransform(Eigen::Vector3f{0, 0, (float)glfwGetTime()}, std::array<float, 3>{0.2f,0,0});
         unsigned int transformLoc = glGetUniformLocation(shader_program.rawProgramObject(), "transform");
-        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, transform_matrix.data());
+        // glUniformMatrix4fv(transformLoc, 1, GL_FALSE, transform_matrix.data());
 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 

@@ -9,7 +9,7 @@
 #include <render_helper/CameraHelper.hpp>
 
 #include <graphic_api_wrapper/opengl3/VertexBufferObject.hpp>
-#include <graphic_api_wrapper/opengl3/Shader.hpp>
+#include <graphic_api_wrapper/opengl3/ShaderProgram.hpp>
 
 #include "CubeVertex.hpp"
 
@@ -61,13 +61,13 @@ static int __main(int argc, char* argv[])
     platform::LuxWindow window(global_width, global_height, "camera");
     glad_init();
     
-    platform::ShaderProgram shader_program;
+    function::ShaderProgram shader_program;
     
     {
         std::string info;
-        platform::GlShader* shaders[2];
-        platform::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        platform::GlFragmentShader fragment_shader(&predefined_fragment_shader);
+        function::GlShader* shaders[2];
+        function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
+        function::GlFragmentShader fragment_shader(&predefined_fragment_shader);
         shaders[0] = &vertex_shader;
         shaders[1] = &fragment_shader;
         for(auto shader : shaders)
@@ -107,7 +107,7 @@ static int __main(int argc, char* argv[])
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertex), cube_vertex, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertex_texture), cube_vertex_texture, GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Eigen::Vector5f), (void*)0);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Eigen::Vector5f), (void*)(3 * sizeof(float)));
@@ -158,14 +158,14 @@ static int __main(int argc, char* argv[])
 
         for(const auto& position : cubePositions)
         {
-            Eigen::Affine3f model_transform = core::createTransformMatrix3D(
+            Eigen::Affine3f model_transform = core::createTransform(
                 Eigen::Vector3f{currentFrame,currentFrame,currentFrame}, 
                 {position[0], position[1], position[2]}
             );
 
-            auto mvp = projection_transform * camera.viewMatrix() * model_transform;
+            Eigen::Projective3f mvp = projection_transform * camera.viewMatrix() * model_transform;
 
-            shader_program.uniformSetMatrix<4,4>(mvp_location, false, mvp.data());
+            shader_program.uniformSetMatrix(mvp_location, false, mvp);
 
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }

@@ -24,7 +24,7 @@ class SourceCodeDescription:
     
 class ResourceDescription:
     def __init__(self) -> None:
-        pass
+        self.available_path = ""
 
     @abstractclassmethod
     def to_source_code(self) -> SourceCodeDescription:
@@ -37,6 +37,9 @@ class ResourceDescription:
         self.available_path = path
 
 class GitResourceDescription(ResourceDescription):
+    def __init__(self) -> None:
+        super().__init__()
+
     def __git_download(self, clone_path) -> bool:
         clone_cmd = [
             "git", 
@@ -49,6 +52,21 @@ class GitResourceDescription(ResourceDescription):
         print("Execute command:", clone_cmd)
         return subprocess.run(clone_cmd).returncode == 0
 
+    def __git_checkout(self, path, version):
+        last_path = os.getcwd()
+        os.chdir(path)
+        if os.getcwd() != path:
+            return False
+        checkout_cmd = [
+            "git",
+            "checkout",
+            version
+        ]
+        print("Execute command:", checkout_cmd)
+        if subprocess.run(checkout_cmd).returncode == 0:
+            os.chdir(last_path)
+            return True
+
     def set_git_repo_uri(self, uri : str):
         self.uri = uri
 
@@ -58,12 +76,18 @@ class GitResourceDescription(ResourceDescription):
     def to_source_code(self) -> SourceCodeDescription:
         global source_dir
         clone_path = os.path.join(source_dir, self.name)
-        if not self.__git_download(clone_path):
-            return None
+        if not os.path.exists(clone_path):
+            if not self.__git_download(clone_path):
+                return None
+        else:
+            self.__git_checkout(clone_path, self.branch)
             
         return SourceCodeDescription(self.name, os.path.join(clone_path, self.available_path))
 
 class PackageResouceDescription(ResourceDescription):
+    def __init__(self) -> None:
+        super().__init__()
+
     def __unpack_package(self, pkg_unpack_dir):
 
         with ZipFile(self.package_path) as _pack_file:
@@ -102,6 +126,7 @@ class Installer:
             _cmd = getattr(self, cmd)
             if _cmd == "":
                 continue
+            print("Execute command:", _cmd)
             if subprocess.run(_cmd).returncode != 0:
                 return False
         

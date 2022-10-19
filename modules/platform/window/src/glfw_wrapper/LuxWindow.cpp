@@ -1,6 +1,8 @@
 #include <lux-engine/platform/window/LuxWindow.hpp>
 #include <thread>
-#define GLFW_EXPOSE_NATIVE_WIN32
+#ifdef __PLATFORM_WIN32__
+#   define GLFW_EXPOSE_NATIVE_WIN32
+#endif
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
@@ -18,10 +20,10 @@ namespace lux::engine::platform
     {
         switch(key)
         {
-        case GLFW_PRESS :
-            return KeyState::PRESS;
         case GLFW_RELEASE :
             return KeyState::RELEASE;
+        case GLFW_PRESS :
+            return KeyState::PRESS;
         case GLFW_REPEAT :
             return KeyState::REPEAT;
         }
@@ -46,12 +48,37 @@ namespace lux::engine::platform
         }
     }
 
+    static MouseButton glfwMouseButtonEnumConvert(int key)
+    {
+        switch (key)
+        {
+        case GLFW_MOUSE_BUTTON_1:
+            return MouseButton::MOUSE_BUTTON_LEFT;
+        case GLFW_MOUSE_BUTTON_2:
+            return MouseButton::MOUSE_BUTTON_RIGHT;
+        case GLFW_MOUSE_BUTTON_3:
+            return MouseButton::MOUSE_BUTTON_MIDDLE;
+        case GLFW_MOUSE_BUTTON_4:
+            return MouseButton::MOUSE_BUTTON_4;
+        case GLFW_MOUSE_BUTTON_5:
+            return MouseButton::MOUSE_BUTTON_5;
+        case GLFW_MOUSE_BUTTON_6:
+            return MouseButton::MOUSE_BUTTON_6;
+        case GLFW_MOUSE_BUTTON_7:
+            return MouseButton::MOUSE_BUTTON_7;
+        case GLFW_MOUSE_BUTTON_8:
+            return MouseButton::MOUSE_BUTTON_8;
+        default:
+            break;
+        }
+    }
 
     struct WindowCallbacks
     {
         LuxWindow::KeyEventCallback        key_callback;
         LuxWindow::CursorPoitionCallback   cursor_position_callback;
         LuxWindow::ScrollCallback          scroll_callback;
+        LuxWindow::MouseButtonCallback     mouse_button_callback;
     };
 
     class LuxWindow::Impl
@@ -149,6 +176,14 @@ namespace lux::engine::platform
         glfwSwapBuffers(_impl->glfw_window);
     }
 
+    void LuxWindow::hideCursor(bool enable)
+    {
+        if(enable)
+            glfwSetInputMode(_impl->glfw_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        else
+            glfwSetInputMode(_impl->glfw_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    }
+
     void LuxWindow::enableVsync(bool enable)
     {
         glfwSwapInterval(enable?1:0);
@@ -174,6 +209,18 @@ namespace lux::engine::platform
         return glfwKeyStateEnumConvert(
             glfwGetKey(_impl->glfw_window, static_cast<int>(key))
         );
+    }
+
+    WindowSize LuxWindow::windowSize()
+    {
+        WindowSize size;
+        glfwGetWindowSize(_impl->glfw_window, &size.width, &size.height);
+        return size;
+    }
+
+    void LuxWindow::windowSize(int* width, int* height)
+    {
+        glfwGetWindowSize(_impl->glfw_window, width, height);
     }
 
     void LuxWindow::subscribeKeyEvent(KeyEventCallback callback)
@@ -212,13 +259,32 @@ namespace lux::engine::platform
     void LuxWindow::subscribeScrollCallback(ScrollCallback callback)
     {
         _impl->callbacks.scroll_callback = std::move(callback);;
-
+        
         glfwSetScrollCallback(
             _impl->glfw_window,
             [](GLFWwindow* window, double xoffset, double yoffset)
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
                 self->_impl->callbacks.scroll_callback(*self, xoffset, yoffset);
+            }
+        );
+    }
+
+    void LuxWindow::subscribeMouseButtonCallback(MouseButtonCallback callback)
+    {
+        _impl->callbacks.mouse_button_callback = std::move(callback);
+
+        glfwSetMouseButtonCallback(
+            _impl->glfw_window,
+            [](GLFWwindow* window, int button, int action, int mods)
+            {
+                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                self->_impl->callbacks.mouse_button_callback(
+                    *self, 
+                    glfwMouseButtonEnumConvert(button),
+                    glfwKeyStateEnumConvert(action),
+                    glfwModifierKeyEnumConvert(mods)
+                );
             }
         );
     }

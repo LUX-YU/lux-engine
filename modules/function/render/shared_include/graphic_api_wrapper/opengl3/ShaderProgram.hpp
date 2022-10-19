@@ -59,13 +59,17 @@ namespace lux::engine::function
 
         ~ShaderProgram();
     
-        ShaderProgram& attachShader(const GlShader& shader);
+        ShaderProgram& attachShader(const GlShaderBase& shader);
 
         bool link(std::string& info);
 
         bool link();
 
         void use();
+
+        void release();
+
+        bool operator==(ShaderProgram other);
 
         void getLinkMessage(std::string& info);
 
@@ -92,18 +96,17 @@ namespace lux::engine::function
          * @param location 
          * @return SetUniformValueEnum 
          */
-        template<class T> inline SetUniformValueEnum uniformFindLocation(T, GLint& location);
-        template<> inline SetUniformValueEnum uniformFindLocation<const std::string&>(const std::string& name, GLint& location)
+        inline SetUniformValueEnum uniformFindLocation(const std::string& name, GLint& location)
         {
             location = glGetUniformLocation(_shader_program_object, name.c_str());
             return location_judge(location);
         }
-        template<> inline SetUniformValueEnum uniformFindLocation<const char*>(const char* name, GLint& location)
+        inline SetUniformValueEnum uniformFindLocation(const char* name, GLint& location)
         {
             location = glGetUniformLocation(_shader_program_object, name);
             return location_judge(location);
         }
-        template<> inline SetUniformValueEnum uniformFindLocation<std::string_view>(std::string_view name, GLint& location)
+        inline SetUniformValueEnum uniformFindLocation(std::string_view name, GLint& location)
         {
             location = glGetUniformLocation(_shader_program_object, name.data());
             return location_judge(location);
@@ -115,16 +118,15 @@ namespace lux::engine::function
          * @tparam T 
          * @return GLint 
          */
-        template<class T> inline GLint uniformFindLocationUnsafe(T);
-        template<> GLint uniformFindLocationUnsafe<const std::string&>(const std::string& name)
+        GLint uniformFindLocationUnsafe(const std::string& name)
         {
             return glGetUniformLocation(_shader_program_object, name.c_str());
         }
-        template<> GLint uniformFindLocationUnsafe<const char*>(const char* name)
+        GLint uniformFindLocationUnsafe(const char* name)
         {
             return glGetUniformLocation(_shader_program_object, name);
         }
-        template<> GLint uniformFindLocationUnsafe<std::string_view>(std::string_view name)
+        GLint uniformFindLocationUnsafe(std::string_view name)
         {
             return glGetUniformLocation(_shader_program_object, name.data());
         }
@@ -135,22 +137,36 @@ namespace lux::engine::function
             GLVectorUniformMap<T, sizeof...(VALUES)>::method(location, std::forward<VALUES>(values)...);
         }
         // std::array and eigen::Matrix support
-        template<class T, auto LEN> void inline
+        template<class T, auto LEN> inline void
         uniformSetVector(GLint location, const std::array<T, LEN>& value)
         {
             GLVectorUniformMap<T, LEN>::vmethod(location, 1, value.data());
         }
-        template<class T, auto LEN> void inline
+        template<class T, auto LEN> inline void
         uniformSetVector(GLint location, const Eigen::Vector<T, LEN>& value)
         {
             GLVectorUniformMap<T, LEN>::vmethod(location, 1, value.data());
         }
         // unsafae uniform vector set
-        template<class STRING_TYPE, class... Values> void inline
+        template<class STRING_TYPE, class... Values> inline void
         uniformSetVectorUnsafe(STRING_TYPE&& name, Values&&... values)
         {
             auto location = uniformFindLocationUnsafe(std::forward<STRING_TYPE>(name));
             uniformSetVector(location, std::forward<Values>(values)...);
+        }
+
+        template<class T> inline std::enable_if_t<!std::is_class_v<T>>
+        uniformSetValue(GLint location, T value)
+        {
+            using ValueType = std::remove_reference_t<std::remove_const_t<T>>;
+            GLVectorUniformMap<ValueType, 1>::method(location, value);
+        }
+        template<class STRING_TYPE, class T> void inline
+        uniformSetValueUnsafe(STRING_TYPE&& name, T value)
+        {
+            using ValueType = std::remove_reference_t<std::remove_const_t<T>>;
+            auto location = uniformFindLocationUnsafe(std::forward<STRING_TYPE>(name));
+            GLVectorUniformMap<ValueType, 1>::method(location, value);
         }
 
         // uniform matrix set

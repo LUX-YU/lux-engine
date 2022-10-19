@@ -1,8 +1,8 @@
-#include "lux-engine/platform/media_loaders/Image.hpp"
+#include <lux-engine/resource/image/Image.hpp>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-namespace lux::engine::platform
+namespace lux::engine::resource
 {
 	Image::Image(std::string path, bool flip_vertically)
 	{
@@ -17,6 +17,7 @@ namespace lux::engine::platform
 
 	void Image::load(const char *path)
 	{
+		if(_data) stbi_image_free(_data);
 		_data = stbi_load(path, &_width, &_height, &_channel, 0);
 	}
 

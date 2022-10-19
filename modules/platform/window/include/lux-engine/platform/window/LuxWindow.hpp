@@ -132,6 +132,18 @@ namespace lux::engine::platform
         KEY_MENU               = 348
     };
 
+    enum class MouseButton : int
+    {
+        MOUSE_BUTTON_LEFT,
+        MOUSE_BUTTON_RIGHT,
+        MOUSE_BUTTON_MIDDLE,
+        MOUSE_BUTTON_4,
+        MOUSE_BUTTON_5,
+        MOUSE_BUTTON_6,
+        MOUSE_BUTTON_7,
+        MOUSE_BUTTON_8
+    };
+
     enum ModifierKey : int
     {   
         KEY_MOD_SHIFT       = 0x0001,
@@ -156,7 +168,12 @@ namespace lux::engine::platform
         REPEAT
     };
 
-    /// @brief The Class Must be invoked in main thread for compatible with glfw(main backend) 
+    struct WindowSize
+    {
+        int width;
+        int height;
+    };
+
     class LuxWindow
     {
     public:
@@ -166,19 +183,27 @@ namespace lux::engine::platform
 
         LUX_EXPORT std::string title();
 
+        LUX_EXPORT WindowSize  windowSize();
+
+        LUX_EXPORT void windowSize(int* width, int* height);
+
         LUX_EXPORT bool shouldClose();
 
         LUX_EXPORT void swapBuffer();
+
+        LUX_EXPORT void hideCursor(bool);
 
         LUX_EXPORT KeyState queryKey(KeyEnum);
 
         using KeyEventCallback      = std::function<void (LuxWindow&, KeyEnum, int, KeyState, ModifierKey)>;
         using CursorPoitionCallback = std::function<void (LuxWindow&, double xpose, double ypose)>;
         using ScrollCallback        = std::function<void (LuxWindow&, double xoffset, double yoffset)>;
+        using MouseButtonCallback   = std::function<void (LuxWindow&, MouseButton button, KeyState action, ModifierKey mods)>;
 
         LUX_EXPORT void subscribeKeyEvent(KeyEventCallback);
         LUX_EXPORT void subscribeCursorPositionCallback(CursorPoitionCallback);
         LUX_EXPORT void subscribeScrollCallback(ScrollCallback);
+        LUX_EXPORT void subscribeMouseButtonCallback(MouseButtonCallback);
 
         LUX_EXPORT GLFWwindow* lowLayerPointer();
 

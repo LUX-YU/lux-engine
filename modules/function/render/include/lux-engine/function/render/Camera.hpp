@@ -26,7 +26,7 @@ namespace lux::engine::function
 
         LUX_EXPORT void lookAt(const Eigen::Vector3f &camera_position, const Eigen::Vector3f &target, const Eigen::Vector3f &up);
 
-    private:
+    protected:
         float _fov; // radius
         Eigen::Matrix4f _view_transform;
     };

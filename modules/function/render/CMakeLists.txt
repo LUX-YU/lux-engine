@@ -47,6 +47,8 @@ add_module(
     PUBLIC_LIBRARIES            lux::engine::core::math
                                 lux::engine::platform::cxx
                                 lux::engine::platform::window
+                                lux::engine::resource::image
+                                lux::engine::resource::model
                                 OpenGL::GL
     PROJECT_SHARED_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/shared_include
                                 ${IMGUI_SOURCE_DIR}

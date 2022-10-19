@@ -4,66 +4,94 @@
 #include <string_view>
 
 #include <fstream>
+#include <sstream>
 #include <streambuf>
 
 namespace lux::engine::function
 {
-    class GlShader
+    enum class ShaderType
+    {
+        VERTEX,
+        FRAGMENT,
+        GEOMETRY
+    };
+
+    template<ShaderType> class GlShader;
+
+    class GlShaderBase
     {
         template<class T> friend class GlShaderTypeHelper;
     protected:
-        GlShader(GLenum type, std::string source);
-
-        GlShader(GLenum type, const char* const* source);
-
-    public:
-        ~GlShader();
+        void createShader(ShaderType type);
 
         void shaderSource(const std::string& source);
 
-        void shaderSource(const char* const* source);
+        void shaderSource(const char* source);
+
+    public:
+        template<typename _CType>
+        GlShaderBase(ShaderType type, _CType&& source)
+        {
+            createShader(type);
+            shaderSource(std::forward<_CType>(source));
+        }
+
+        bool operator==(GlShaderBase other)
+        {
+            return other._shader_object == _shader_object;
+        }
+
+        static GlShaderBase loadFromFile(ShaderType type, const char* path);
+
+        ~GlShaderBase();
+
+        template<ShaderType _Shader_Type>
+        GlShader<_Shader_Type> shaderCast()
+        {
+            
+            return static_cast<GlShader<_Shader_Type>>(*this);
+        }
 
         bool compile(std::string& info);
 
         bool compile();
 
+        bool isCompiled();
+
+        bool isReleased();
+
+        bool released();
+
         void getCompileMessage(std::string& info);
 
-        GLenum shaderType();
+        ShaderType shaderType();
     
     private:
         friend class ShaderProgram;
         GLuint      _shader_object;
     };
 
-    template<class T>
-    class GlShaderTypeHelper
+    // TODO move to platform layer
+    bool is_file_exists(const std::string& file_path);
+
+    template<ShaderType _Shader_TYPE>
+    class GlShader : public GlShaderBase
     {
     public:
-        static T loadFrom(std::string path)
+        template<typename _CType>
+        GlShader(_CType&& shader_src_code)
+        : GlShaderBase(_Shader_TYPE, std::forward<_CType>(shader_src_code)){}
+
+        template<typename _CType>
+        static GlShader<_Shader_TYPE> loadFromFile(_CType&& path)
         {
-            std::ifstream t(std::move(path));
-            return T(std::string(
-                std::istreambuf_iterator<char>(t),
-                std::istreambuf_iterator<char>()
+            std::ifstream t(std::forward<_CType>(path));
+            return GlShader<_Shader_TYPE>(
+                std::string(
+                    std::istreambuf_iterator<char>(t),
+                    std::istreambuf_iterator<char>()
                 )
             );
         }
-    };
-
-    class GlVertexShader : public GlShader, public GlShaderTypeHelper<GlVertexShader>
-    {
-    public:
-        explicit GlVertexShader(const std::string& source);
-
-        explicit GlVertexShader(const char* const* source);
-    };
-
-    class GlFragmentShader : public GlShader, public GlShaderTypeHelper<GlFragmentShader>
-    {
-    public:
-        explicit GlFragmentShader(const std::string& source);
-
-        explicit GlFragmentShader(const char* const* source);
     };
 }

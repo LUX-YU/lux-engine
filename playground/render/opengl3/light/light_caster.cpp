@@ -3,7 +3,7 @@
 #include <iostream>
 #include <functional>
 
-#include <lux-engine/platform/media_loaders/Image.hpp>
+#include <lux-engine/resource/image/Image.hpp>
 #include <lux-engine/platform/window/LuxWindow.hpp>
 #include <lux-engine/core/math/EigenTools.hpp>
 #include <render_helper/CameraHelper.hpp>
@@ -16,6 +16,7 @@
 #include "imgui_impl_opengl3.h"
 
 #include "CubeVertex.hpp"
+#include "render_context.hpp"
 
 static int global_width  = 1920;
 static int global_height = 1080;
@@ -30,62 +31,35 @@ static void glad_init()
 
 static int __main(int argc, char* argv[])
 {
-    using namespace lux::engine;
-    platform::LuxWindow window(global_width, global_height, "color");
+    using namespace lux::engine::platform;
+    using namespace lux::engine::resource;
+    using namespace lux::engine::core;
+    using namespace lux::engine::function;
+    LuxWindow window(global_width, global_height, "color");
     glad_init();
     
-    function::ShaderProgram cube_program;
-    function::ShaderProgram light_program;
+    ShaderProgram cube_program;
+    ShaderProgram light_program;
     
-    const char* shader_path[]{
-        "D:/Code/lux-game/playground/render/opengl3/shaders/vertex_with_normal.vert",
-        "D:/Code/lux-game/playground/render/opengl3/shaders/directional_light.frag",
-        "D:/Code/lux-game/playground/render/opengl3/shaders/common_light.frag"
+    std::string shader_path[]{
+        std::string(opengl_shader_path) + "/vertex_with_normal.vert",
+        std::string(opengl_shader_path) + "/light_caster.frag",
+        std::string(opengl_shader_path) + "/common_light.frag"
     };
+    auto vertex_shader      = GlShader<ShaderType::VERTEX>::loadFromFile(shader_path[0]);
+    auto fragment_shader_1  = GlShader<ShaderType::FRAGMENT>::loadFromFile(shader_path[1]);
+    auto fragment_shader_2  = GlShader<ShaderType::FRAGMENT>::loadFromFile(shader_path[2]);
+    vertex_shader.compile();
+    fragment_shader_1.compile();
+    fragment_shader_2.compile();
 
-    {
-        std::string info;
-        function::GlShader* shaders[2];
-        function::GlVertexShader   vertex_shader   = function::GlVertexShader::loadFrom(shader_path[0]);
-        function::GlFragmentShader fragment_shader = function::GlFragmentShader::loadFrom(shader_path[1]);
-        shaders[0] = &vertex_shader;
-        shaders[1] = &fragment_shader;
-        for(auto shader : shaders)
-        {
-            bool is_success = shader->compile(info);
-            if(!is_success) {
-                std::string error_msg;
-                shader->getCompileMessage(error_msg);
-                std::cerr << "compile failed!" << std::endl; 
-                std::cerr << error_msg << std::endl;
-                return -1;
-            };
-            cube_program.attachShader(*shader);
-        }
-        cube_program.link(info);
-    }
+    cube_program.attachShader(vertex_shader);
+    cube_program.attachShader(fragment_shader_1);
+    cube_program.link();
 
-    {
-        std::string info;
-        function::GlShader* shaders[2];
-        function::GlVertexShader   vertex_shader   = function::GlVertexShader::loadFrom(shader_path[0]);
-        function::GlFragmentShader fragment_shader = function::GlFragmentShader::loadFrom(shader_path[2]);
-        shaders[0] = &vertex_shader;
-        shaders[1] = &fragment_shader;
-        for(auto shader : shaders)
-        {
-            bool is_success = shader->compile(info);
-            if(!is_success) {
-                std::string error_msg;
-                shader->getCompileMessage(error_msg);
-                std::cerr << "compile failed!" << std::endl; 
-                std::cerr << error_msg << std::endl;
-                return -1;
-            };
-            light_program.attachShader(*shader);
-        }
-        light_program.link(info);
-    }
+    light_program.attachShader(vertex_shader);
+    light_program.attachShader(fragment_shader_2);
+    light_program.link();
 
     GLuint vbo;
     // vbo set
@@ -116,9 +90,9 @@ static int __main(int argc, char* argv[])
 
     // textures
     unsigned int textures[2];
-    const char*  paths[]{
-        "D:/Code/lux-game/playground/render/opengl3/texture/container2.png",
-        "D:/Code/lux-game/playground/render/opengl3/texture/container2_specular.png"
+    std::string paths[]{
+        std::string(texture_path) + "/container2.png",
+        std::string(texture_path) + "/container2_specular.png"
     };
     for(uint8_t count = 0; count < 2 ; count ++)
     {
@@ -128,7 +102,8 @@ static int __main(int argc, char* argv[])
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,       GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,   GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,   GL_NEAREST_MIPMAP_NEAREST);
-        lux::engine::platform::Image image(paths[count]);
+        std::cout << "texture loading:" << paths[count] << std::endl;
+        lux::engine::resource::Image image(paths[count]);
         if(!image.isEnable())
         {
             std::cout << "Failed to load texture" << std::endl;
@@ -151,14 +126,22 @@ static int __main(int argc, char* argv[])
     auto light_attr_diffuse     = cube_program.uniformFindLocationUnsafe("light.diffuse");
     auto light_attr_specular    = cube_program.uniformFindLocationUnsafe("light.specular");
     auto light_attr_position    = cube_program.uniformFindLocationUnsafe("light.position");
+    auto light_attr_constant    = cube_program.uniformFindLocationUnsafe("light.constant");
+    auto light_attr_linear      = cube_program.uniformFindLocationUnsafe("light.linear");
+    auto light_attr_quadratic   = cube_program.uniformFindLocationUnsafe("light.quadratic");
 
-    cube_program.uniformSetVector(light_attr_ambient,           0.2f, 0.2f, 0.2);
+    float light_attenuation[3]{1.0f, 0.09f, 0.032f};
+
+    cube_program.uniformSetVector(light_attr_ambient,           0.2f, 0.2f, 0.2f);
     cube_program.uniformSetVector(light_attr_diffuse,           0.5f, 0.5f, 0.5f);
     cube_program.uniformSetVector(light_attr_specular,          1.0f, 1.0f, 1.0f);
     cube_program.uniformSetVector(light_attr_position,          light_position);
-    cube_program.uniformSetVector<int>(material_attr_diffuse,   0);
-    cube_program.uniformSetVector<int>(material_attr_specular,  1);
-    cube_program.uniformSetVector(material_attr_shininess,      64.0f);
+    cube_program.uniformSetValue (light_attr_constant,          light_attenuation[0]);
+    cube_program.uniformSetValue (light_attr_linear,            light_attenuation[1]);
+    cube_program.uniformSetValue (light_attr_quadratic,         light_attenuation[2]);
+    cube_program.uniformSetValue (material_attr_diffuse,        0);
+    cube_program.uniformSetValue (material_attr_specular,       1);
+    cube_program.uniformSetValue (material_attr_shininess,      64.0f);
 
     GLint cube_mvp_location[3]{
         cube_program.uniformFindLocationUnsafe("model"),
@@ -176,14 +159,30 @@ static int __main(int argc, char* argv[])
     float deltaTime = 0.0f; // delta time
     float lastFrame = 0.0f; // last frame time
 
-    function::UserControlCamera camera(window);
+    UserControlCamera camera(window);
+    window.subscribeMouseButtonCallback(
+        [&camera](auto&, auto button, auto action, auto mods)
+        {
+            if(button == lux::engine::platform::MouseButton::MOUSE_BUTTON_LEFT)
+            {
+                if(action == lux::engine::platform::KeyState::PRESS)
+                {
+                    camera.enableMouseControl();
+                }
+                else if(action == lux::engine::platform::KeyState::RELEASE)
+                {
+                    camera.disableMouseControl();
+                }
+            }
+        }
+    );
 
-    window.enableVsync(true);
-    // glfwSetInputMode((GLFWwindow*)window.lowLayerPointer(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    window.enableVsync(false);
+    // window.hideCursor(true);
 
     // light position
-    Eigen::Affine3f light_model = core::createTransform(Eigen::Vector3f{0,0,0}, light_position);
-    core::createTransform(Eigen::Matrix3f{Eigen::Matrix3f::Identity()}, light_position);
+    Eigen::Affine3f light_model = createTransform(Eigen::Vector3f{0,0,0}, light_position);
+    createTransform(Eigen::Matrix3f{Eigen::Matrix3f::Identity()}, light_position);
     
     Eigen::Vector3f cubePositions[] = {
         { 0.0f,    0.0f,    0.0f},
@@ -207,13 +206,13 @@ static int __main(int argc, char* argv[])
     float camera_speed = 200.0f;
     while(!window.shouldClose())
     {
-        platform::LuxWindow::pollEvents();
+        LuxWindow::pollEvents();
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        float currentFrame = platform::LuxWindow::timeAfterFirstInitialization();
+        float currentFrame = LuxWindow::timeAfterFirstInitialization();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
@@ -224,6 +223,8 @@ static int __main(int argc, char* argv[])
             {
                 ImGui::SliderFloat3(std::to_string(count).c_str(), (float*)&cubePositions[count], -1000, 1000, "%.3f", 0);
             }
+            ImGui::SliderFloat3("attenuation", &light_attenuation[0], 0, 5, "%.3f", 0);
+            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
             ImGui::End();
         }
 
@@ -231,7 +232,7 @@ static int __main(int argc, char* argv[])
         camera.updateViewInLoop();
 
         Eigen::Matrix4f projection_transform = 
-            core::perspectiveMatrix(camera.fov() * EIGEN_PI / 180, global_width / (float)global_height, 0.1f, 50000.0f);
+            perspectiveMatrix(camera.fov() * EIGEN_PI / 180, global_width / (float)global_height, 0.1f, 50000.0f);
 
         cube_program.use();
     
@@ -240,9 +241,12 @@ static int __main(int argc, char* argv[])
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, textures[1]);
 
-        cube_program.uniformSetMatrix(cube_mvp_location[1], false, camera.viewMatrix());
-        cube_program.uniformSetMatrix(cube_mvp_location[2], false, projection_transform);
-        cube_program.uniformSetVector(location_view_position,   camera.cameraPosition());
+        cube_program.uniformSetValue (light_attr_constant,          light_attenuation[0]);
+        cube_program.uniformSetValue (light_attr_linear,            light_attenuation[1]);
+        cube_program.uniformSetValue (light_attr_quadratic,         light_attenuation[2]);
+        cube_program.uniformSetMatrix(cube_mvp_location[1], false,  camera.viewMatrix());
+        cube_program.uniformSetMatrix(cube_mvp_location[2], false,  projection_transform);
+        cube_program.uniformSetVector(location_view_position,       camera.cameraPosition());
         
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -250,7 +254,7 @@ static int __main(int argc, char* argv[])
         for(auto& cube_position : cubePositions)
         {
             // cube position
-            auto cube_model  = core::createTransform(Eigen::Vector3f{0,0,0}, cube_position);
+            auto cube_model  = createTransform(Eigen::Vector3f{0,0,0}, cube_position);
             cube_program.uniformSetMatrix(cube_mvp_location[0], false, cube_model);
             glBindVertexArray(cube_vao);
             glDrawArrays(GL_TRIANGLES, 0, 36);

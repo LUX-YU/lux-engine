@@ -3,7 +3,7 @@
 #include <iostream>
 #include <functional>
 
-#include <lux-engine/platform/media_loaders/Image.hpp>
+#include <lux-engine/resource/image/Image.hpp>
 #include <lux-engine/platform/window/LuxWindow.hpp>
 #include <lux-engine/core/math/EigenTools.hpp>
 #include <render_helper/CameraHelper.hpp>
@@ -11,91 +11,12 @@
 #include <graphic_api_wrapper/opengl3/VertexBufferObject.hpp>
 #include <graphic_api_wrapper/opengl3/ShaderProgram.hpp>
 
+#include <imgui.h>
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 #include "CubeVertex.hpp"
-
-static const char* predifined_vertex_shader =
-R"(
-#version 330 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec2 texCoords;
-
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
-
-out     vec3 Normal;
-out     vec3 FragPos;
-out     vec2 TexCoords;
-
-void main()
-{
-    gl_Position = projection * view * model * vec4(aPos, 1.0f);
-    FragPos = vec3(model * vec4(aPos, 1.0f));
-    Normal = aNormal;
-    TexCoords = texCoords;
-}
-)";
-
-static const char* predefined_fragment_shader =
-R"(
-#version 330 core
-struct Material
-{
-    sampler2D   diffuse;
-    sampler2D   specular;
-    float       shininess;
-};
-
-struct Light
-{
-    vec3 position;
-    vec3 ambient;
-    vec3 diffuse;
-    vec3 specular;
-};
-
-out vec4 color;
-
-in  vec3 Normal;
-in  vec3 FragPos;
-in  vec2 TexCoords;
-
-uniform vec3 viewPos;
-uniform Material    material;
-uniform Light       light;
-
-void main()
-{   
-    // ambient light
-    vec3    ambient     = light.ambient * vec3(texture(material.diffuse, TexCoords));
-
-    // diffuse
-    vec3    norm        = normalize(Normal);
-    vec3    lightDir    = normalize(light.position - FragPos);
-    float   diff        = max(dot(norm, lightDir), 0.0);
-    vec3    diffuse     = light.diffuse * (diff * vec3(texture(material.diffuse, TexCoords)));
-
-    // specular
-    vec3    viewDir     = normalize(viewPos - FragPos);
-    vec3    reflectDir  = reflect(-lightDir, norm);
-    float   spec        = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-    vec3    specular    = light.specular * spec * vec3(texture(material.specular, TexCoords));
-
-    color = vec4( ambient + diffuse + specular, 1.0f);
-}
-)";
-
-static const char* predefined_light_fragment_shader =
-R"(
-#version 330 core
-out vec4 FragColor;
-
-void main()
-{
-    FragColor = vec4(1.0);
-}
-)";
+#include "render_context.hpp"
 
 static int global_width  = 1920;
 static int global_height = 1080;
@@ -105,61 +26,39 @@ static void glad_init()
     gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
     int nrAttributes;
     glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &nrAttributes);
-    std::cout << "Maximum nr of vertex attributes supported: " << nrAttributes << std::endl;
 }
 
 static int __main(int argc, char* argv[])
 {
-    using namespace lux::engine;
-    platform::LuxWindow window(global_width, global_height, "color");
+    using namespace lux::engine::platform;
+    using namespace lux::engine::resource;
+    using namespace lux::engine::core;
+    using namespace lux::engine::function;
+    LuxWindow window(global_width, global_height, "color");
     glad_init();
     
-    function::ShaderProgram cube_program;
-    function::ShaderProgram light_program;
-    
-    {
-        std::string info;
-        function::GlShader* shaders[2];
-        function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        function::GlFragmentShader fragment_shader(&predefined_fragment_shader);
-        shaders[0] = &vertex_shader;
-        shaders[1] = &fragment_shader;
-        for(auto shader : shaders)
-        {
-            bool is_success = shader->compile(info);
-            if(!is_success) {
-                std::string error_msg;
-                shader->getCompileMessage(error_msg);
-                std::cerr << "compile failed!" << std::endl; 
-                std::cerr << error_msg << std::endl;
-                return -1;
-            };
-            cube_program.attachShader(*shader);
-        }
-        cube_program.link(info);
-    }
+    ShaderProgram cube_program;
+    ShaderProgram light_program;
 
-    {
-        std::string info;
-        function::GlShader* shaders[2];
-        function::GlVertexShader   vertex_shader(&predifined_vertex_shader);
-        function::GlFragmentShader fragment_shader(&predefined_light_fragment_shader);
-        shaders[0] = &vertex_shader;
-        shaders[1] = &fragment_shader;
-        for(auto shader : shaders)
-        {
-            bool is_success = shader->compile(info);
-            if(!is_success) {
-                std::string error_msg;
-                shader->getCompileMessage(error_msg);
-                std::cerr << "compile failed!" << std::endl; 
-                std::cerr << error_msg << std::endl;
-                return -1;
-            };
-            light_program.attachShader(*shader);
-        }
-        light_program.link(info);
-    }
+    std::string shader_path[]{
+        std::string(opengl_shader_path) + "/vertex_with_normal.vert",
+        std::string(opengl_shader_path) + "/light_caster.frag",
+        std::string(opengl_shader_path) + "/common_light.frag"
+    };
+    auto vertex_shader      = GlShader<ShaderType::VERTEX>::loadFromFile(shader_path[0]);
+    auto fragment_shader_1  = GlShader<ShaderType::FRAGMENT>::loadFromFile(shader_path[1]);
+    auto fragment_shader_2  = GlShader<ShaderType::FRAGMENT>::loadFromFile(shader_path[2]);
+    vertex_shader.compile();
+    fragment_shader_1.compile();
+    fragment_shader_2.compile();
+
+    cube_program.attachShader(vertex_shader);
+    cube_program.attachShader(fragment_shader_1);
+    cube_program.link();
+
+    light_program.attachShader(vertex_shader);
+    light_program.attachShader(fragment_shader_2);
+    light_program.link();
 
     GLuint vbo;
     // vbo set
@@ -190,9 +89,9 @@ static int __main(int argc, char* argv[])
 
     // textures
     unsigned int textures[2];
-    const char*  paths[]{
-        "D:/Code/lux-game/playground/render/opengl3/texture/container2.png",
-        "D:/Code/lux-game/playground/render/opengl3/texture/container2_specular.png"
+    std::string  paths[]{
+        std::string(texture_path) + "/container2.png",
+        std::string(texture_path) + "/container2_specular.png"
     };
     for(uint8_t count = 0; count < 2 ; count ++)
     {
@@ -202,7 +101,7 @@ static int __main(int argc, char* argv[])
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,       GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,   GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,   GL_NEAREST_MIPMAP_NEAREST);
-        lux::engine::platform::Image image(paths[count]);
+        Image image(paths[count]);
         if(!image.isEnable())
         {
             std::cout << "Failed to load texture" << std::endl;
@@ -250,43 +149,83 @@ static int __main(int argc, char* argv[])
     float deltaTime = 0.0f; // delta time
     float lastFrame = 0.0f; // last frame time
 
-    function::UserControlCamera camera(window);
+    UserControlCamera camera(window);
+    window.subscribeMouseButtonCallback(
+        [&camera](auto&, auto button, auto action, auto mods)
+        {
+            if(button == MouseButton::MOUSE_BUTTON_LEFT)
+            {
+                if(action == KeyState::PRESS)
+                {
+                    camera.enableMouseControl();
+                }
+                else if(action == KeyState::RELEASE)
+                {
+                    camera.disableMouseControl();
+                }
+            }
+        }
+    );
 
-    window.enableVsync(true);
-    glfwSetInputMode((GLFWwindow*)window.lowLayerPointer(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    window.enableVsync(false);
 
     // cube position
-    Eigen::Affine3f cube_model  = core::createTransform(Eigen::Vector3f{0,0,0}, {0,0,0});
+    Eigen::Vector3f cube_position{0,0,0};
     // light position
-    Eigen::Affine3f light_model = core::createTransform(Eigen::Vector3f{0,0,0}, light_position);
-    core::createTransform(Eigen::Matrix3f{Eigen::Matrix3f::Identity()}, light_position);
+    Eigen::Affine3f light_model = createTransform(Eigen::Vector3f{0,0,0}, light_position);
+    createTransform(Eigen::Matrix3f{Eigen::Matrix3f::Identity()}, light_position);
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui_ImplGlfw_InitForOpenGL(window.lowLayerPointer(), true);
+    ImGui_ImplOpenGL3_Init("#version 130");
     
+    float camera_speed = 200.0f;
     while(!window.shouldClose())
     {
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        LuxWindow::pollEvents();
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
 
-        float currentFrame = platform::LuxWindow::timeAfterFirstInitialization();
+        float currentFrame = LuxWindow::timeAfterFirstInitialization();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        camera.setCameraSpeed(200.0f * deltaTime);
+        {
+            ImGui::Begin("parameter panel!");
+            ImGui::SliderFloat("camera speed", &camera_speed, 0.0f, 2000.0f);
+            ImGui::SliderFloat3("cube position", (float*)&cube_position, -1000, 1000, "%.3f", 0);
+            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+            ImGui::End();
+        }
+
+        camera.setCameraSpeed(camera_speed * deltaTime);
         camera.updateViewInLoop();
 
         Eigen::Matrix4f projection_transform = 
-            core::perspectiveMatrix(camera.fov() * EIGEN_PI / 180, global_width / (float)global_height, 0.1f, 50000.0f);
+            perspectiveMatrix(camera.fov() * EIGEN_PI / 180, global_width / (float)global_height, 0.1f, 50000.0f);
 
         cube_program.use();
-        cube_program.uniformSetMatrix(cube_mvp_location[0], false, cube_model);
-        cube_program.uniformSetMatrix(cube_mvp_location[1], false, camera.viewMatrix());
-        cube_program.uniformSetMatrix(cube_mvp_location[2], false, projection_transform);
-
-        cube_program.uniformSetVector(location_view_position,   camera.cameraPosition());
         
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textures[0]);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, textures[1]);
+
+        float time = (float)glfwGetTime();
+        auto cube_model  = createTransform(
+            Eigen::Vector3f{time,time,time}, 
+            cube_position
+        );
+        cube_program.uniformSetMatrix(cube_mvp_location[0], false, cube_model);
+        cube_program.uniformSetMatrix(cube_mvp_location[1], false, camera.viewMatrix());
+        cube_program.uniformSetMatrix(cube_mvp_location[2], false, projection_transform);
+        cube_program.uniformSetVector(location_view_position,   camera.cameraPosition());
+        
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
         glBindVertexArray(cube_vao);
         glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -295,11 +234,13 @@ static int __main(int argc, char* argv[])
         light_program.uniformSetMatrix(light_mvp_location[0], false, light_model);
         light_program.uniformSetMatrix(light_mvp_location[1], false, camera.viewMatrix());
         light_program.uniformSetMatrix(light_mvp_location[2], false, projection_transform);
+
+        ImGui::Render();
         glBindVertexArray(light_vao);
         glDrawArrays(GL_TRIANGLES, 0, 36);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         window.swapBuffer();
-        platform::LuxWindow::pollEvents();
     }
 
     return 0;

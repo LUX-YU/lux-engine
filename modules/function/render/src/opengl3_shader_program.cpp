@@ -1,18 +1,21 @@
 #include "graphic_api_wrapper/opengl3/ShaderProgram.hpp"
+#include <filesystem>
 
 namespace lux::engine::function
 {
+    bool is_file_exists(const std::string& file_path)
+    {
+        return std::filesystem::exists(file_path) && std::filesystem::is_regular_file(file_path);
+    }
+
     ShaderProgram::ShaderProgram()
     {
         _shader_program_object = glCreateProgram();
     }
 
-    ShaderProgram::~ShaderProgram()
-    {
-        glDeleteProgram(_shader_program_object);
-    }
+    ShaderProgram::~ShaderProgram() = default;
 
-    ShaderProgram &ShaderProgram::attachShader(const GlShader &shader)
+    ShaderProgram &ShaderProgram::attachShader(const GlShaderBase &shader)
     {
         glAttachShader(_shader_program_object, shader._shader_object);
         return *this;
@@ -25,9 +28,7 @@ namespace lux::engine::function
         glGetProgramiv(_shader_program_object, GL_LINK_STATUS, &success);
         if (!success)
         {
-            char info_buffer[512];
-            glGetProgramInfoLog(_shader_program_object, 512, NULL, info_buffer);
-            info = info_buffer;
+            getLinkMessage(info);
             return false;
         }
         return true;
@@ -44,6 +45,16 @@ namespace lux::engine::function
     void ShaderProgram::use()
     {
         glUseProgram(_shader_program_object);
+    }
+
+    void ShaderProgram::release()
+    {
+        glDeleteProgram(_shader_program_object);
+    }
+
+    bool ShaderProgram::operator==(ShaderProgram other)
+    {
+        return _shader_program_object == other._shader_program_object;
     }
 
     void ShaderProgram::getLinkMessage(std::string &info)

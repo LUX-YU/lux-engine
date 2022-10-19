@@ -12,3 +12,11 @@ add_module(
     PUBLIC_LIBRARIES    glfw
                         lux::engine::platform::cxx
 )
+
+if(WIN32)
+    target_compile_definitions(
+        window
+        PRIVATE
+        __PLATFORM_WIN32__
+    )
+endif()

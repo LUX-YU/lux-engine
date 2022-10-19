@@ -1,4 +1,3 @@
-from ctypes import sizeof
 import os
 import subprocess
 import argparse
@@ -18,7 +17,8 @@ external_library_list = {
     "imgui":    os.path.join(external_install_script_dir,   "imgui.py"),
     "eigen3":   os.path.join(external_install_script_dir,   "eigen3.py"),
     "stb":      os.path.join(external_install_script_dir,   "stb.py"),
-    "freetype": os.path.join(external_install_script_dir,   "freetype.py")
+    "freetype": os.path.join(external_install_script_dir,   "freetype.py"),
+    "assimp":   os.path.join(external_install_script_dir,   "assimp.py")
 }
 
 def execute_cmd_list(cmd_dict : dict, enable_list = []):

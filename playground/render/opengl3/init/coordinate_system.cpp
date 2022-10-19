@@ -5,7 +5,7 @@
 #include <Eigen/Geometry>
 #include <stb_image.h>
 
-#include <lux-engine/platform/media_loaders/Image.hpp>
+#include <lux-engine/resource/loaders/Image.hpp>
 #include <lux-engine/core/math/EigenTools.hpp>
 
 #include <graphic_api_wrapper/opengl3/VertexBufferObject.hpp>
@@ -109,7 +109,7 @@ static int __main(int argc, char* argv[])
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    lux::engine::platform::Image image("D:/Code/lux-game/playground/render/opengl3/texture/miku.png");
+    lux::engine::resource::Image image("D:/Code/lux-game/playground/render/opengl3/texture/miku.png");
     if(!image.isEnable())
     {
         std::cout << "Failed to load texture" << std::endl;

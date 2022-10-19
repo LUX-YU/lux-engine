@@ -3,7 +3,7 @@
 #include <iostream>
 #include <functional>
 
-#include <lux-engine/platform/media_loaders/Image.hpp>
+#include <lux-engine/resource/loaders/Image.hpp>
 #include <lux-engine/platform/window/LuxWindow.hpp>
 #include <lux-engine/core/math/EigenTools.hpp>
 #include <render_helper/CameraHelper.hpp>

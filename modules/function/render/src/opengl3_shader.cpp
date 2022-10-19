@@ -1,40 +1,73 @@
 #include "graphic_api_wrapper/opengl3/Shader.hpp"
 #include <iostream>
+#include <optional>
 
 namespace lux::engine::function
 {
-    GlShader::GlShader(GLenum type, std::string source)
+    
+    static GLuint _forward_convert(ShaderType type)
     {
-        std::cout << "one" << std::endl;
-        _shader_object = glCreateShader(type);
-        shaderSource(std::move(source));
+        switch(type)
+        {
+            case ShaderType::VERTEX:
+                return GL_VERTEX_SHADER;
+            case ShaderType::FRAGMENT:
+                return GL_FRAGMENT_SHADER;
+        };
+        return GL_VERTEX_SHADER;
+    };
+
+    static ShaderType _inverse_convert(GLuint type)
+    {
+        switch(type)
+        {
+            case GL_VERTEX_SHADER:
+                return ShaderType::VERTEX;
+            case GL_FRAGMENT_SHADER:
+                return ShaderType::FRAGMENT;
+        };
+        return ShaderType::VERTEX;
     }
 
-    GlShader::GlShader(GLenum type, const char *const *source)
+    void GlShaderBase::createShader(ShaderType type)
     {
-        std::cout << "one" << std::endl;
-        _shader_object = glCreateShader(type);
-        shaderSource(source);
+        _shader_object = glCreateShader(_forward_convert(type));
     }
 
-    GlShader::~GlShader()
+    GlShaderBase::~GlShaderBase() = default;
+    // {
+    //     GLint status;
+    //     glGetShaderiv(_shader_object, GL_DELETE_STATUS, &status);
+    //     if(status == GL_FALSE)
+    //     {
+    //         glDeleteShader(_shader_object);
+    //     }
+    // }
+
+    bool GlShaderBase::isReleased()
     {
-        std::cout << "two`" << std::endl;
-        glDeleteShader(_shader_object);
+        GLint status;
+        glGetShaderiv(_shader_object, GL_DELETE_STATUS, &status);
+        return status != GL_FALSE;
     }
 
-    void GlShader::shaderSource(const std::string& source)
+    bool GlShaderBase::released()
+    {
+        return isReleased() ? glDeleteShader(_shader_object) , true : false;
+    }
+
+    void GlShaderBase::shaderSource(const std::string& source)
     {
         auto _source_pointer = source.c_str();
         glShaderSource(_shader_object, 1, &_source_pointer, nullptr);
     }
 
-    void GlShader::shaderSource(const char *const *source)
+    void GlShaderBase::shaderSource(const char *source)
     {
-        glShaderSource(_shader_object, 1, source, nullptr);
+        glShaderSource(_shader_object, 1, &source, nullptr);
     }
 
-    bool GlShader::compile(std::string &info)
+    bool GlShaderBase::compile(std::string &info)
     {
         int success;
         glCompileShader(_shader_object);
@@ -42,15 +75,13 @@ namespace lux::engine::function
 
         if (!success)
         {
-            char info_buffer[512];
-            glGetShaderInfoLog(_shader_object, 512, nullptr, info_buffer);
-            info = info_buffer;
+            getCompileMessage(info);
             return false;
         }
         return true;
     }
 
-    bool GlShader::compile()
+    bool GlShaderBase::compile()
     {
         GLint success;
         glCompileShader(_shader_object);
@@ -58,22 +89,26 @@ namespace lux::engine::function
         return success;
     }
 
-    void GlShader::getCompileMessage(std::string &info)
+    bool GlShaderBase::isCompiled()
     {
-        char info_buffer[512];
-        glGetShaderInfoLog(_shader_object, 512, nullptr, info_buffer);
-        info = info_buffer;
+        GLint status;
+        glGetShaderiv(_shader_object, GL_COMPILE_STATUS, &status);
+        return status == GL_TRUE;
     }
 
-    GlVertexShader::GlVertexShader(const std::string& source)
-        : GlShader(GL_VERTEX_SHADER, source) {}
+    void GlShaderBase::getCompileMessage(std::string &info)
+    {
+        GLint info_lenght;
+        glGetShaderiv(_shader_object, GL_INFO_LOG_LENGTH, &info_lenght);
+        info.resize(info_lenght);
+        // std::string is guaranteed to be contiguous since C++11
+        glGetShaderInfoLog(_shader_object, info_lenght, nullptr, info.data());
+    }
 
-    GlVertexShader::GlVertexShader(const char *const *source)
-        : GlShader(GL_VERTEX_SHADER, source) {}
-
-    GlFragmentShader::GlFragmentShader(const std::string& source)
-        : GlShader(GL_FRAGMENT_SHADER, source) {}
-
-    GlFragmentShader::GlFragmentShader(const char *const *source)
-        : GlShader(GL_FRAGMENT_SHADER, source) {}
+    ShaderType GlShaderBase::shaderType()
+    {
+        GLint type;
+        glGetShaderiv(_shader_object, GL_SHADER_TYPE, &type);
+        return _inverse_convert(static_cast<GLuint>(type));
+    }
 }

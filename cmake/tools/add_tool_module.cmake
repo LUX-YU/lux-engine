@@ -10,7 +10,7 @@ function(add_header_only_module)
 endfunction()
 
 function(add_module)
-	set(_options	  			SHARED)	
+	set(_options	  			STATIC)	
 	set(_one_value_arguments	MODULE_NAME NAMESPACE)
 	set(_multi_value_arguments
 		SOURCE_FILES
@@ -48,10 +48,10 @@ function(add_module)
 		message(FATAL_ERROR "Source files didn't detected, use add_header_only_module instead.")
 	endif()
 
-	if(MODULE_ARGS_SHARED)
-		set(LIBRARY_TYPE	SHARED)
-	else()
+	if(MODULE_ARGS_STATIC)
 		set(LIBRARY_TYPE	STATIC)
+	else()
+		set(LIBRARY_TYPE	SHARED)
 	endif()
 
 	add_library(
@@ -61,7 +61,7 @@ function(add_module)
 	)
 
 	# alias
-	set(ALIAS_NAME ${MODULE_ARGS_NAMESPACE}::${MODULE_ARGS_MODULE_NAME})
+	set(ALIAS_NAME lux::engine::${MODULE_ARGS_NAMESPACE}::${MODULE_ARGS_MODULE_NAME})
 	message("---- ALIAS NAME:${ALIAS_NAME}")
 	add_library(
 		${ALIAS_NAME}
@@ -102,19 +102,22 @@ function(add_module)
 		)
 	endforeach()
 
-	target_include_directories(
-		${MODULE_ARGS_MODULE_NAME}
-		PRIVATE
-		${MODULE_ARGS_PRIVATE_INCLUDE_DIRS}
-	)
+	foreach(private_include_dir ${MODULE_ARGS_PROJECT_SHARED_INCLUDE_DIRS})
+		message("---- Module private include dir:${private_include_dir}")
+		target_include_directories(
+			${MODULE_ARGS_MODULE_NAME}
+			PRIVATE
+			${private_include_dir}
+		)
+	endforeach()
 
 	install(
-		DIRECTORY	${MODULE_ARGS_INSTALL_HEADER_DIR}
+		DIRECTORY	${MODULE_ARGS_EXPORT_INCLUDE_DIRS}
 		DESTINATION ${CMAKE_INSTALL_PREFIX}
 	)
 
 	install(
 		TARGETS	${MODULE_ARGS_MODULE_NAME}
-		EXPORT lux::engine
+		EXPORT lux::engine::${MODULE_ARGS_NAMESPACE}
 	)
 endfunction()

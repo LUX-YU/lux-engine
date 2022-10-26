@@ -1,2 +1,0 @@
-static constexpr inline char* texture_path          = "@TEXTURE_PATH@";
-static constexpr inline char* opengl_shader_path    = "@OPENGL_SHADER_PATH@";

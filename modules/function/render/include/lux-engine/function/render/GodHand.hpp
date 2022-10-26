@@ -8,6 +8,9 @@ namespace lux::engine::function
     public:
         LUX_EXPORT GodHand();
 
-        LUX_EXPORT void drawModel(lux::engine::resource::Model);
+        LUX_EXPORT void drawModel(lux::engine::resource::Model& model);
+
+    private:
+        
     };
 } // namespace lux::engine::function

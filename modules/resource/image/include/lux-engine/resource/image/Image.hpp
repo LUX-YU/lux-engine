@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include <lux-engine/platform/cxx/visibility_control.h>
+#include <lux-engine/platform/system/visibility_control.h>
 
 namespace lux::engine::resource
 {

@@ -1,7 +1,8 @@
 #pragma once
-#include <lux-engine/platform/cxx/visibility_control.h>
+#include <lux-engine/platform/system/visibility_control.h>
+#include <lux-engine/platform/system/filesystem.hpp>
+#include <lux-engine/resource/asset/LuxAsset.hpp>
 #include <string>
-#include <string_view>
 #include <memory>
 
 #include "Mesh.hpp"
@@ -13,24 +14,24 @@ namespace lux::engine::resource
     class ModelLoader
     {
     public:
-        Model loadFrom(std::string path);
+        LUX_EXPORT virtual void loadFrom(const std::string& path);
 
     private:
         class Impl;
         std::unique_ptr<Impl> _impl;
     };
 
-    class Model
+    class Model : public LuxAssert
     {
-        friend class ModelLoader;
     public:
-        LUX_EXPORT std::string_view directory();
+        using LuxFSPath = ::lux::engine::platform::cxxstdfs::path;
 
-    protected:
-        Model() = default;
+        LUX_EXPORT LuxFSPath modelPath();
 
+        LUX_EXPORT LuxFSPath modelDirectory();
+         
     private:
-        class ModelImpl;
-        std::unique_ptr<ModelImpl> _impl;
+        struct ModelImpl;
+        ModelImpl* reference;
     };
 }

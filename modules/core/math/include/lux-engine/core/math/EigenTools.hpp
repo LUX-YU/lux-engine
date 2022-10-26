@@ -1,4 +1,5 @@
 #include <Eigen/Eigen>
+#include <lux-engine/platform/system/visibility_control.h>
 
 namespace lux::engine::core
 {
@@ -42,7 +43,7 @@ namespace lux::engine::core
     }
 
     // camera/view transform
-    Eigen::Matrix4f viewTransform(const Eigen::Vector3f& camera_position, const Eigen::Matrix3f& rotation);
+    LUX_EXPORT Eigen::Matrix4f viewTransform(const Eigen::Vector3f& camera_position, const Eigen::Matrix3f& rotation);
 
     // map to cannonical cube
 
@@ -56,7 +57,7 @@ namespace lux::engine::core
         float far;
     };
 
-    Eigen::Matrix4f orthographicProjectionMatrix(const  ProjectionDescription& desc);
-    Eigen::Matrix4f frustumMatrix(const ProjectionDescription& desc);
-    Eigen::Matrix4f perspectiveMatrix(float fovy,float aspect,float zNear,float zFar);
+    LUX_EXPORT Eigen::Matrix4f orthographicProjectionMatrix(const  ProjectionDescription& desc);
+    LUX_EXPORT Eigen::Matrix4f frustumMatrix(const ProjectionDescription& desc);
+    LUX_EXPORT Eigen::Matrix4f perspectiveMatrix(float fovy,float aspect,float zNear,float zFar);
 }

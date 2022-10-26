@@ -14,42 +14,33 @@ set(PROJECT_NAMESPACE lux::engine)
 set(THIRD_PARTY_PKG_DIR			${CMAKE_CURRENT_SOURCE_DIR}/prebuild)
 set(THIRD_PARTY_SOURCE_DIR		${CMAKE_CURRENT_SOURCE_DIR}/prebuild/source)
 set(THIRD_PARTY_PKG_INSTALL_DIR ${THIRD_PARTY_PKG_DIR}/install)
+list(APPEND CMAKE_PREFIX_PATH 	${THIRD_PARTY_PKG_INSTALL_DIR})
 
 include(${CMAKE_TOOL_DIR}/subdirectory_list.cmake)
-add_subdirectory(modules)
+include(${CMAKE_TOOL_DIR}/add_tool_module.cmake)
+include(CMakePackageConfigHelpers)
+set(lux_engine_layers "platform" "core" "resource" "function" "tools")
 
-option(ENABLE_PLAYGROUND ON)
-if(ENABLE_PLAYGROUND)
-	add_subdirectory(playground)
-endif()
+foreach(layer ${lux_engine_layers})
+    set(${layer}_config_targets_file "lux-engine-${layer}-config-targets.cmake")
+    add_subdirectory(modules/${layer})
+endforeach()
 
 # ---------------------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------------------
-include(CMakePackageConfigHelpers)
-
-set(LIB_INSTALL_DIR lib/)
-set(config_targets_file "lux-engine-config-targets.cmake")
-
 set(LUX_ENGINE_VERSION 0.0.1)
 
 configure_package_config_file(
-	${CMAKE_CURRENT_SOURCE_DIR}/cmake/lux-engine-config.cmake.in
-	${CMAKE_CURRENT_BINARY_DIR}/lux-engine-config.cmake
-	INSTALL_DESTINATION ${CMAKE_INSTALL_PREFIX}/share/lux-engine
+	  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/lux-engine-config.cmake.in
+	  ${CMAKE_CURRENT_BINARY_DIR}/lux-engine-config.cmake
+	  INSTALL_DESTINATION ${CMAKE_INSTALL_PREFIX}/share/lux-engine
 )
 
 write_basic_package_version_file(
-  ${CMAKE_CURRENT_BINARY_DIR}/lux-engine-config-version.cmake
-  VERSION ${LUX_ENGINE_VERSION}
-  COMPATIBILITY SameMajorVersion
-)
-
-install(
-	EXPORT		lux::engine
-	DESTINATION ${CMAKE_INSTALL_PREFIX}/share/lux-engine
-	NAMESPACE   ${PROJECT_NAMESPACE}::
-	FILE		${config_targets_file}
+    ${CMAKE_CURRENT_BINARY_DIR}/lux-engine-config-version.cmake
+    VERSION ${LUX_ENGINE_VERSION}
+    COMPATIBILITY SameMajorVersion
 )
 
 install(

@@ -6,3 +6,10 @@ foreach(subdir ${dir_list})
         add_subdirectory(${subdir})
     endif()
 endforeach()
+
+install(
+	EXPORT		lux::engine::function
+	DESTINATION ${CMAKE_INSTALL_PREFIX}/share/lux-engine
+	NAMESPACE   ${PROJECT_NAMESPACE}::function::
+	FILE		${function_config_targets_file}
+)

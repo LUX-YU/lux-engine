@@ -1,7 +1,9 @@
 @PACKAGE_INIT@
 
-set(config_targets_file @config_targets_file@)
+set(lux_engine_layers @lux_engine_layers@)
 
-include("${CMAKE_CURRENT_LIST_DIR}/${config_targets_file}")
+foreach(layer ${lux_engine_layers})
+  include(${CMAKE_CURRENT_LIST_DIR}/lux-engine-${layer}-config-targets.cmake)
+endforeach()
 
 check_required_components(lux-engine)

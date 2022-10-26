@@ -5,9 +5,10 @@ set(RESOURCE_IMAGE_SRCS
 
 add_module(
     MODULE_NAME                 image
-    NAMESPACE                   lux::engine::resource
+    NAMESPACE                   resource
     SOURCE_FILES                ${RESOURCE_IMAGE_SRCS}
     EXPORT_INCLUDE_DIRS         include
     PROJECT_SHARED_INCLUDE_DIRS ${STB_SOURCE_DIR}
     PUBLIC_LIBRARIES            lux::engine::platform::cxx
+                                lux::engine::resource::asset
 )

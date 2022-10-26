@@ -38,21 +38,22 @@ set(LUX_ENGINE_RENDER_SRCS
 
 add_module(
     MODULE_NAME                 render
-    NAMESPACE                   lux::engine::function
+    NAMESPACE                   function
     SOURCE_FILES                ${LUX_ENGINE_RENDER_SRCS}
                                 ${IMGUI_COMMON_SRCS}
                                 ${IMGUI_OPENGL3_BACKEND}
                                 ${GLAD_SRCS}
     EXPORT_INCLUDE_DIRS         include
     PUBLIC_LIBRARIES            lux::engine::core::math
-                                lux::engine::platform::cxx
+                                lux::engine::platform::system
                                 lux::engine::platform::window
                                 lux::engine::resource::image
                                 lux::engine::resource::model
                                 OpenGL::GL
-    PROJECT_SHARED_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/shared_include
+    PROJECT_SHARED_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+                                ${CMAKE_CURRENT_SOURCE_DIR}/shared_include
                                 ${IMGUI_SOURCE_DIR}
-                                ${IMGUI_SOURCE_BACKEND_DIR}
+                                ${IMGUI_SOURCE_BACKEND_DIR} 
                                 ${GLAD_INCLUDE_DIR}
 )
 

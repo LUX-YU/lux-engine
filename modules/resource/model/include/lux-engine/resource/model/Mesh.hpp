@@ -1,13 +1,13 @@
 #pragma once
-#include <lux-engine/platform/cxx/visibility_control.h>
+#include <lux-engine/platform/system/visibility_control.h>
 #include <vector>
-
 #include "Vertex.hpp"
 
 namespace lux::engine::resource
 {
     enum class TextureType
     {
+        AMBIENT,
         DIFFUSE,
         SPECULAR
     };
@@ -15,12 +15,14 @@ namespace lux::engine::resource
     struct Texture
     {
         uint32_t    id;
+        std::string path;
         TextureType type;
     };
 
     class Mesh
     {
-        std::vector<Vertex>     vertics;
+    public:
+        std::vector<Vertex>     vertices;
         std::vector<uint32_t>   indices;
         std::vector<Texture>    textures;
     };

@@ -61,6 +61,12 @@ namespace lux::engine::function
     
         ShaderProgram& attachShader(const GlShaderBase& shader);
 
+        template<class... T> ShaderProgram& attachShaders(T&&... shader)
+        {
+            (this->attachShader(shader),...);
+            return *this;
+        }
+
         bool link(std::string& info);
 
         bool link();

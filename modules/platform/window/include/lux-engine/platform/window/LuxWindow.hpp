@@ -1,7 +1,7 @@
 #pragma once
 #include <memory>
 #include <functional>
-#include <lux-engine/platform/cxx/visibility_control.h>
+#include <lux-engine/platform/system/visibility_control.h>
 
 struct GLFWwindow;
 

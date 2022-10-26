@@ -2,7 +2,6 @@
 #include <glad/glad.h>
 #include <string>
 
-
 namespace lux::engine::function
 {
     class GlVertexBufferObject

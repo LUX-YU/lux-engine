@@ -7,6 +7,6 @@ namespace lux::engine::resource
     {
         Eigen::Vector3f     position;
         Eigen::Vector3f     normal;
-        Eigen::Vector3f     texture_coordinates;
+        Eigen::Vector2f     texture_coordinates;
     };
 }

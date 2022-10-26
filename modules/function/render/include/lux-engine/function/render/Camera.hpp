@@ -1,6 +1,6 @@
 #pragma once
 #include <Eigen/Eigen>
-#include <lux-engine/platform/cxx/visibility_control.h>
+#include <lux-engine/platform/system/visibility_control.h>
 
 // multiple viewport tutorial
 // http://nehe.gamedev.net/tutorial/multiple_viewports/20002/

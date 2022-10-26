@@ -59,8 +59,8 @@
 namespace std {
     namespace filesystem = experimental::filesystem;
 }
-    // namespace fs = std::experimental::filesystem;
-    namespace cxxstdfs = std::experimental::filesystem;
+// namespace cxxstdfs = std::experimental::filesystem;
+namespace cxxstdfs = std::experimental::filesystem;
 
 // We have a decent compiler and can use the normal version
 #   else

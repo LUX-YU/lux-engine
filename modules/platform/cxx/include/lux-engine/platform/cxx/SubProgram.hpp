@@ -3,6 +3,7 @@
 #include <string>
 #include <functional>
 #include <vector>
+#include <lux-engine/platform/system/visibility_control.h>
 
 namespace lux::engine::platform
 {
@@ -11,14 +12,14 @@ namespace lux::engine::platform
     class SubProgramRegister
     {
     public:
-        static void registProgram(const std::string&, const SubProgramFunc&);
+        LUX_EXPORT static void registProgram(const std::string&, const SubProgramFunc&);
 
-        static bool hasSubProgram(const std::string&);
+        LUX_EXPORT static bool hasSubProgram(const std::string&);
 
-        static std::vector<std::string> listSubProgram();
+        LUX_EXPORT static std::vector<std::string> listSubProgram();
 
         // if not exist, return -255
-        static int invokeSubProgram(const std::string&, int argc, char* argv[]);
+        LUX_EXPORT static int invokeSubProgram(const std::string&, int argc, char* argv[]);
     };
 
     template<class T>

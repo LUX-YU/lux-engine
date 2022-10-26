@@ -1,3 +1,4 @@
+from ctypes.wintypes import BOOL
 import os
 import subprocess
 from zipfile import ZipFile
@@ -39,6 +40,7 @@ class ResourceDescription:
 class GitResourceDescription(ResourceDescription):
     def __init__(self) -> None:
         super().__init__()
+        self.__should_init_submodule = False
 
     def __git_download(self, clone_path) -> bool:
         clone_cmd = [
@@ -73,6 +75,16 @@ class GitResourceDescription(ResourceDescription):
     def set_branch(self, branch : str):
         self.branch = branch
 
+    def init_submodule(self, should : bool):
+        self.__should_init_submodule = should
+        
+    def __init_submodule(self, path):
+        last_path = os.getcwd()
+        os.chdir(path)
+        if subprocess.run(["git", "submodule", "update", "--init", "--recursive"]).returncode == 0:
+            os.chdir(last_path)
+            return True
+
     def to_source_code(self) -> SourceCodeDescription:
         global source_dir
         clone_path = os.path.join(source_dir, self.name)
@@ -81,6 +93,9 @@ class GitResourceDescription(ResourceDescription):
                 return None
         else:
             self.__git_checkout(clone_path, self.branch)
+        
+        if self.__should_init_submodule:
+            self.__init_submodule(clone_path)
             
         return SourceCodeDescription(self.name, os.path.join(clone_path, self.available_path))
 
@@ -134,16 +149,25 @@ class Installer:
 
 class CustomerInstaller(Installer):
     def __init__(self, desc : SourceCodeDescription) -> None:
-        super(CMakeProjectInstaller, self).__init__(desc)
+        super(CustomerInstaller, self).__init__(desc)
 
     def set_config_command(self, cmd : list):
-        self.config_command(cmd)
+        current_path = os.getcwd()
+        os.chdir(self.desc.source_code_path())
+        self.config_command = cmd
+        os.chdir(current_path)
 
     def set_build_command(self, cmd : list):
+        current_path = os.getcwd()
+        os.chdir(self.desc.source_code_path())
         self.build_command = cmd
+        os.chdir(current_path)
 
     def set_install_command(self, cmd : list):
+        current_path = os.getcwd()
+        os.chdir(self.desc.source_code_path())
         self.install_command = cmd
+        os.chdir(current_path)
 
 class CMakeProjectInstaller(Installer):
     def __init__(self, desc : SourceCodeDescription) -> None:

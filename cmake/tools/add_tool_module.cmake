@@ -10,7 +10,7 @@ function(add_header_only_module)
 endfunction()
 
 function(add_module)
-	set(_options	  			STATIC)	
+	set(_options	  			STATIC)
 	set(_one_value_arguments	MODULE_NAME NAMESPACE)
 	set(_multi_value_arguments
 		SOURCE_FILES

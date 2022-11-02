@@ -20,5 +20,6 @@ glfw3_description.set_package_path(
 source_code_desc = glfw3_description.to_source_code()
 
 installer = itools.CMakeProjectInstaller(source_code_desc)
+installer.add_config_option("-DBUILD_SHARED_LIBS=ON")
 
 installer.enable()

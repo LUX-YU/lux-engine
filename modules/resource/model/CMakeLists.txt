@@ -8,10 +8,10 @@ add_module(
     NAMESPACE                   resource
     SOURCE_FILES                ${RESOURCE_MODEL_SRCS}
     EXPORT_INCLUDE_DIRS         include
-    PROJECT_SHARED_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/private
+    PROJECT_SHARED_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     PUBLIC_LIBRARIES            lux::engine::platform::cxx
                                 lux::engine::platform::system
                                 lux::engine::core::math
-                                lux::engine::resource::asset
+                                lux::engine::resource::image
                                 assimp::assimp
 )

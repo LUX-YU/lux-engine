@@ -1,5 +1,4 @@
 import sys
-import os
 
 tool_dir_path = sys.argv[1]
 sys.path.append(tool_dir_path)

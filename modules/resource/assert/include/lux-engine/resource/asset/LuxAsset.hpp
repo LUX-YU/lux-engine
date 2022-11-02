@@ -3,7 +3,7 @@
 
 namespace lux::engine::resource
 {
-    class LuxAssert
+    class LuxAsset
     {
     public:
         

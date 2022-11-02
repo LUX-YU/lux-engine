@@ -43,12 +43,16 @@ def execute_cmd_list(cmd_dict : dict, enable_list = []):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--tools",    nargs='*')
+    parser.add_argument("--tools-all")
     parser.add_argument("-l", "--libraries",nargs='*')
+    parser.add_argument("--libraries-all")
     parser.add_argument("-d", "--debug")
 
     args = parser.parse_args()
     input_tools = []
     input_libraries = []
+
+    print(args.tools)
 
     if args.tools:
         input_tools += args.tools

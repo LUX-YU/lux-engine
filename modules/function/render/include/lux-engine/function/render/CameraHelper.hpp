@@ -1,5 +1,7 @@
+#pragma once
 #include <lux-engine/function/render/Camera.hpp>
 #include <lux-engine/platform/window/LuxWindow.hpp>
+#include <lux-engine/platform/system/visibility_control.h>
 #include <Eigen/Eigen>
 
 namespace lux::engine::function
@@ -10,25 +12,25 @@ namespace lux::engine::function
         using WindowsType       = ::lux::engine::platform::LuxWindow;
         using ControlKeyEnum    = ::lux::engine::platform::KeyEnum;
 
-        UserControlCamera(WindowsType&);
+        LUX_EXPORT explicit UserControlCamera(WindowsType&);
 
-        void updateViewInLoop();
+        LUX_EXPORT void updateViewInLoop();
 
-        void setForwardKey(ControlKeyEnum);
+        LUX_EXPORT void setForwardKey(ControlKeyEnum);
 
-        void setBackwardKey(ControlKeyEnum);
+        LUX_EXPORT void setBackwardKey(ControlKeyEnum);
 
-        void setlLeftKey(ControlKeyEnum);
+        LUX_EXPORT void setlLeftKey(ControlKeyEnum);
 
-        void setRightKey(ControlKeyEnum);
+        LUX_EXPORT void setRightKey(ControlKeyEnum);
 
-        void enableMouseControl();
+        LUX_EXPORT void enableMouseControl();
 
-        void disableMouseControl();
+        LUX_EXPORT void disableMouseControl();
 
-        void setCameraSpeed(float speed);
+        LUX_EXPORT void setCameraSpeed(float speed);
 
-        const Eigen::Vector3f& cameraPosition();
+        LUX_EXPORT const Eigen::Vector3f& cameraPosition();
 
     private:
         WindowsType& _window;
@@ -37,7 +39,6 @@ namespace lux::engine::function
         Eigen::Vector3f cameraFront{0.0f, 0.0f, -1.0f};
         Eigen::Vector3f _camera_position{0.0f, 0.0f,  800};
         Eigen::Vector3f cameraUp{0.0f, 1.0f,  0.0f};
-
         
         // mouse related variable
         float lastX = 960;

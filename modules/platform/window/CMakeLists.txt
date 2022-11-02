@@ -16,7 +16,7 @@ add_module(
 if(WIN32)
     target_compile_definitions(
         window
-        PRIVATE
+        PUBLIC
         __PLATFORM_WIN32__
     )
 endif()

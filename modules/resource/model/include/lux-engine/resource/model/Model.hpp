@@ -10,28 +10,23 @@
 namespace lux::engine::resource
 {
     class Model;
+    struct ModelImpl;
 
     class ModelLoader
     {
     public:
-        LUX_EXPORT virtual void loadFrom(const std::string& path);
+        LUX_EXPORT virtual std::unique_ptr<Model> loadFrom(const std::string& path);
 
     private:
         class Impl;
         std::unique_ptr<Impl> _impl;
     };
 
-    class Model : public LuxAssert
+    class Model : public LuxAsset
     {
     public:
-        using LuxFSPath = ::lux::engine::platform::cxxstdfs::path;
-
-        LUX_EXPORT LuxFSPath modelPath();
-
-        LUX_EXPORT LuxFSPath modelDirectory();
-         
-    private:
-        struct ModelImpl;
-        ModelImpl* reference;
+        std::string         path;
+        std::string         directory;
+        std::vector<Mesh>   meshs;
     };
 }

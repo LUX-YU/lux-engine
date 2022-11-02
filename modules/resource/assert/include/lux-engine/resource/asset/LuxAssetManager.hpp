@@ -1,15 +1,17 @@
 #pragma once
+#include "LuxAsset.hpp"
+
 #include <memory>
 #include <lux-engine/platform/system/visibility_control.h>
 
 namespace lux::engine::resource
 {
-    class LuxAssertManager
+    class LuxAssetManager
     {
     public:
-        LUX_EXPORT LuxAssertManager();
+        LUX_EXPORT LuxAssetManager();
 
-        LUX_EXPORT ~LuxAssertManager();
+        LUX_EXPORT ~LuxAssetManager();
 
         LUX_EXPORT void registAssert();
         

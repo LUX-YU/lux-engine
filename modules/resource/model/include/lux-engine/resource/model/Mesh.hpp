@@ -1,5 +1,6 @@
 #pragma once
 #include <lux-engine/platform/system/visibility_control.h>
+#include <lux-engine/resource/image/Image.hpp>
 #include <vector>
 #include "Vertex.hpp"
 
@@ -9,11 +10,16 @@ namespace lux::engine::resource
     {
         AMBIENT,
         DIFFUSE,
-        SPECULAR
+        SPECULAR,
+        UNKNOWN
     };
 
-    struct Texture
+    class Texture : public Image
     {
+    public:
+        Texture(std::string path, bool flip_vertically = true)
+            : Image(path, flip_vertically), path(std::move(path)){}
+
         uint32_t    id;
         std::string path;
         TextureType type;

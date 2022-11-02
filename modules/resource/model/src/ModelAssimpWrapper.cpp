@@ -1,5 +1,4 @@
 #include <lux-engine/resource/model/Model.hpp>
-#include <lux-engine/resource/model/ModelImpl.hpp>
 #include <lux-engine/platform/system/filesystem.hpp>
 
 #include <vector>
@@ -16,26 +15,28 @@ namespace lux::engine::resource
     class ModelLoader::Impl
     {
     public:
-        void loadFrom(const std::string& path)
+        std::unique_ptr<Model> loadFrom(const std::string& path)
         {
-            ModelImpl ret_model_impl;
+            auto ret_model_impl = std::make_unique<Model>();
 
             const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs); 
             if(!scene || scene->mFlags == AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
             {
-                return;
+                return nullptr;
             }
-            processNode(ret_model_impl, scene->mRootNode, scene);
-            ret_model_impl.directory = LuxFSPath(path).parent_path().string();
-            ret_model_impl.path      = LuxFSPath(path).string();
+            processNode(*ret_model_impl, scene->mRootNode, scene);
+            ret_model_impl->directory = LuxFSPath(path).parent_path().string();
+            ret_model_impl->path      = LuxFSPath(path).string();
+            return ret_model_impl;
         }
 
-        void processNode(ModelImpl& model, aiNode* node, const aiScene* scene)
+        void processNode(Model& model, aiNode* node, const aiScene* scene)
         {
             for(size_t i = 0; i < node->mNumMeshes; i++)
             {
-                aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-                model.meshs.push_back(this->processMesh(mesh, scene));
+                aiMesh* ai_mesh = scene->mMeshes[node->mMeshes[i]];
+                Mesh mesh; processMesh(mesh, ai_mesh, scene);
+                model.meshs.emplace_back(std::move(mesh));
             }
 
             for(size_t i = 0; i < node->mNumChildren; i++)
@@ -44,9 +45,8 @@ namespace lux::engine::resource
             }
         }
 
-        Mesh processMesh(aiMesh* mesh, const aiScene* scene)
+        void processMesh(Mesh& ret_mesh, aiMesh* mesh, const aiScene* scene)
         {
-            Mesh ret_mesh;
             // load vertices
             for(size_t i = 0; i < mesh->mNumVertices; i++)
             {
@@ -60,10 +60,10 @@ namespace lux::engine::resource
                 vertex.normal.z()   = mesh->mNormals[i].z;
                 // texture
                 vertex.texture_coordinates = 
-                mesh->mTextureCoords[0] ? Eigen::Vector2f{
-                    mesh->mTextureCoords[0][i].x,
-                    mesh->mTextureCoords[0][i].y
-                } : Eigen::Vector2f{0,0};
+                    mesh->mTextureCoords[0] ? Eigen::Vector2f{
+                        mesh->mTextureCoords[0][i].x,
+                        mesh->mTextureCoords[0][i].y
+                    } : Eigen::Vector2f{0,0};
 
                 ret_mesh.vertices.push_back(vertex);
             }
@@ -96,9 +96,8 @@ namespace lux::engine::resource
                 return TextureType::DIFFUSE;
             case aiTextureType::aiTextureType_SPECULAR :
                 return TextureType::SPECULAR;
-            default:
-                break;
             }
+            return TextureType::UNKNOWN;
         }
 
         void loadMaterialTextures(std::vector<Texture>& current_textures, aiMaterial* mat, aiTextureType type)
@@ -120,9 +119,8 @@ namespace lux::engine::resource
                 }
                 if(!skip)
                 {
-                    Texture texture;
+                    Texture texture(str.C_Str());
                     texture.type = assimpTextureEnumConverter(type);
-                    texture.path = str.C_Str();
                     current_textures.emplace_back(std::move(texture));
                 }
             }
@@ -133,8 +131,8 @@ namespace lux::engine::resource
         Assimp::Importer import;
     };
 
-    void ModelLoader::loadFrom(const std::string& path)
+    std::unique_ptr<Model> ModelLoader::loadFrom(const std::string& path)
     {
-    
+        return _impl->loadFrom(path);
     }
 }

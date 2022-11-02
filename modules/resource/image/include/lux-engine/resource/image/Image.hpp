@@ -1,10 +1,11 @@
 #pragma once
 #include <string>
 #include <lux-engine/platform/system/visibility_control.h>
+#include <lux-engine/resource/asset/LuxAsset.hpp>
 
 namespace lux::engine::resource
 {
-    class Image
+    class Image : public LuxAsset
     {
     public:
         LUX_EXPORT Image(std::string path, bool flip_vertically = true);

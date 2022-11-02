@@ -2,22 +2,22 @@
 
 namespace lux::engine::resource
 {
-    class LuxAssertManager::Impl
+    class LuxAssetManager::Impl
     {
 
     };
 
-    LuxAssertManager::LuxAssertManager()
+    LuxAssetManager::LuxAssetManager()
     {
 
     }
 
-    LuxAssertManager::~LuxAssertManager()
+    LuxAssetManager::~LuxAssetManager()
     {
 
     }
 
-    void LuxAssertManager::registAssert()
+    void LuxAssetManager::registAssert()
     {
 
     }

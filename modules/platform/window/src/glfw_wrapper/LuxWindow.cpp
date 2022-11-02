@@ -1,10 +1,11 @@
 #include <lux-engine/platform/window/LuxWindow.hpp>
 #include <thread>
+
+#include <GLFW/glfw3.h>
 #ifdef __PLATFORM_WIN32__
 #   define GLFW_EXPOSE_NATIVE_WIN32
+#   include <GLFW/glfw3native.h>
 #endif
-#include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
 
 #include <atomic>
 #include <stdexcept>
@@ -27,6 +28,7 @@ namespace lux::engine::platform
         case GLFW_REPEAT :
             return KeyState::REPEAT;
         }
+        return KeyState::UNKNOWN;
     }
 
     static ModifierKey glfwModifierKeyEnumConvert(int key)
@@ -46,6 +48,7 @@ namespace lux::engine::platform
         case GLFW_MOD_NUM_LOCK:
             return ModifierKey::KEY_MOD_NUM_LOCK;
         }
+        return ModifierKey::UNKNOWN;
     }
 
     static MouseButton glfwMouseButtonEnumConvert(int key)
@@ -71,6 +74,7 @@ namespace lux::engine::platform
         default:
             break;
         }
+        return MouseButton::UNKNOWN;
     }
 
     struct WindowCallbacks
@@ -84,14 +88,61 @@ namespace lux::engine::platform
     class LuxWindow::Impl
     {
     public:
-        Impl(int width, int height, std::string title, GraphicAPI api)
-        : width(width), height(height), _title(std::move(title))
+        static void glfw_opengl_init()
         {
-            glfw_window = glfwCreateWindow(width, height, _title.c_str(), nullptr, nullptr);
-            if(api == GraphicAPI::OPENGL)
+            static bool is_init{false};
+            if(!is_init)
             {
-                glfwMakeContextCurrent(glfw_window);
+                if(glfwInit() != GLFW_TRUE)
+                {
+                    throw std::runtime_error("glfw init error");
+                }
+                glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+                glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+                is_init = true;
             }
+        }
+
+        static void glfw_no_api()
+        {
+            static bool is_init{false};
+            if(!is_init)
+            {
+                if(glfwInit() != GLFW_TRUE)
+                {
+                    throw std::runtime_error("glfw init error");
+                }
+                glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+                is_init = true;
+            }
+        }
+
+        inline void initialize_method(lux::engine::platform::GraphicAPI api)
+        {
+            switch (api)
+            {
+            case GraphicAPI::OPENGL :
+                glfw_opengl_init();
+                break;
+            case GraphicAPI::DIRECTX :
+                break;
+            case GraphicAPI::VULKAN :
+                glfw_no_api();
+                break;
+            default:
+                break;
+            }
+        }
+
+        Impl(LuxWindow* window, InitParameter param)
+            : parameter(std::move(param)), owner(window)
+        {
+            // this method only call once in one process
+            initialize_method(parameter.graphic_api);
+            glfw_window = glfwCreateWindow(parameter.width, parameter.height, parameter.title.c_str(), nullptr, nullptr);
+
+            glfwMakeContextCurrent(glfw_window);
+            glfwSetWindowUserPointer(glfw_window, this);
         }
 
         ~Impl()
@@ -99,71 +150,97 @@ namespace lux::engine::platform
             glfwDestroyWindow(glfw_window);
         }
 
+        void subscribeKeyEvent(KeyEventCallback callback)
+        {
+            callbacks.key_callback = std::move(callback);
+            glfwSetKeyCallback(
+                glfw_window, 
+                [](GLFWwindow* window, int key, int scancode, int action, int mods){
+                    auto self = static_cast<Impl*>(glfwGetWindowUserPointer(window));
+                    self->callbacks.key_callback(
+                        *self->owner, 
+                        glfwKeyEnumConvert(key), 
+                        scancode, 
+                        glfwKeyStateEnumConvert(action),
+                        glfwModifierKeyEnumConvert(mods)
+                    );
+                }
+            );
+        }
+
+        void subscribeCursorPositionCallback(CursorPoitionCallback callback)
+        {
+            callbacks.cursor_position_callback = std::move(callback);
+            glfwSetCursorPosCallback(
+                glfw_window,
+                [](GLFWwindow* window, double xpos, double ypos)
+                {
+                    auto self = static_cast<Impl*>(glfwGetWindowUserPointer(window));
+                    self->callbacks.cursor_position_callback(*self->owner, xpos, ypos);
+                }
+            );
+        }
+
+        void subscribeScrollCallback(ScrollCallback callback)
+        {
+            callbacks.scroll_callback = std::move(callback);
+            glfwSetScrollCallback(
+                glfw_window,
+                [](GLFWwindow* window, double xoffset, double yoffset)
+                {
+                    auto self = static_cast<Impl*>(glfwGetWindowUserPointer(window));
+                    self->callbacks.scroll_callback(*self->owner, xoffset, yoffset);
+                }
+            );
+        }
+
+        void subscribeMouseButtonCallback(MouseButtonCallback callback)
+        {
+            callbacks.mouse_button_callback = std::move(callback);
+            glfwSetMouseButtonCallback(
+                glfw_window,
+                [](GLFWwindow* window, int button, int action, int mods)
+                {
+                    auto self = static_cast<Impl*>(glfwGetWindowUserPointer(window));
+                    self->callbacks.mouse_button_callback(
+                        *self->owner, 
+                        glfwMouseButtonEnumConvert(button),
+                        glfwKeyStateEnumConvert(action),
+                        glfwModifierKeyEnumConvert(mods)
+                    );
+                }
+            );
+        }
+
+        LuxWindow*          owner;
         WindowCallbacks     callbacks;
         GLFWwindow*         glfw_window;
-        GraphicAPI          api_type;
-        std::string         _title;
-        int                 width;
-        int                 height;
+        InitParameter       parameter;
     };
 
-    static void glfw_opengl_init()
-    {
-        static bool is_init{false};
-        if(!is_init)
-        {
-            if(glfwInit() != GLFW_TRUE)
-            {
-                throw std::runtime_error("glfw init error");
-            }
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-            is_init = true;
-        }
-    }
-
-    static void glfw_no_api()
-    {
-        static bool is_init{false};
-        if(!is_init)
-        {
-            if(glfwInit() != GLFW_TRUE)
-            {
-                throw std::runtime_error("glfw init error");
-            }
-            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-            is_init = true;
-        }
-    }
+    /**
+     * Start LuxWindow Defination
+     */
 
     LuxWindow::LuxWindow(int width, int height, std::string title, GraphicAPI api_type)
     {
-        switch (api_type)
-        {
-        case GraphicAPI::OPENGL :
-            glfw_opengl_init();
-            break;
-        case GraphicAPI::DIRECTX :
-        case GraphicAPI::VULKAN :
-            glfw_no_api();
-            break;
-        default:
-            break;
-        }
-        _common_constructor(width, height, std::move(title), api_type);
+        InitParameter parameter;
+        parameter.width = width; parameter.height = height;
+        parameter.title = std::move(title);
+        parameter.graphic_api = api_type;
+        _impl = std::make_unique<Impl>(this, std::move(parameter));
     }
 
-    void LuxWindow::_common_constructor(int width, int height, std::string title, GraphicAPI api)
+    LuxWindow::LuxWindow(const InitParameter& parameter)
     {
-        _impl = std::make_unique<Impl>(width, height, title, api);
-        glfwSetWindowUserPointer(_impl->glfw_window, this);
+        _impl = std::make_unique<Impl>(this, parameter);
     }
 
     LuxWindow::~LuxWindow() = default;
 
-    std::string LuxWindow::title()
+    std::string LuxWindow::title() const
     {
-        return _impl->_title;
+        return _impl->parameter.title;
     }
 
     bool LuxWindow::shouldClose()
@@ -178,10 +255,10 @@ namespace lux::engine::platform
 
     void LuxWindow::hideCursor(bool enable)
     {
-        if(enable)
-            glfwSetInputMode(_impl->glfw_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-        else
-            glfwSetInputMode(_impl->glfw_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        glfwSetInputMode(
+            _impl->glfw_window, GLFW_CURSOR, 
+            enable ? GLFW_CURSOR_DISABLED: GLFW_CURSOR_NORMAL
+        );
     }
 
     void LuxWindow::enableVsync(bool enable)
@@ -199,98 +276,68 @@ namespace lux::engine::platform
         glfwWaitEvents();
     }
 
-    float LuxWindow::timeAfterFirstInitialization()
+    double LuxWindow::timeAfterFirstInitialization()
     {
         return glfwGetTime();
     }
 
-    KeyState LuxWindow::queryKey(KeyEnum key)
+    KeyState LuxWindow::queryKey(KeyEnum key) const
     {
         return glfwKeyStateEnumConvert(
             glfwGetKey(_impl->glfw_window, static_cast<int>(key))
         );
     }
 
-    WindowSize LuxWindow::windowSize()
+    WindowSize LuxWindow::windowSize() const
     {
         WindowSize size;
         glfwGetWindowSize(_impl->glfw_window, &size.width, &size.height);
         return size;
     }
 
-    void LuxWindow::windowSize(int* width, int* height)
+    GraphicAPI LuxWindow::graphicAPIType() const
     {
-        glfwGetWindowSize(_impl->glfw_window, width, height);
+        return _impl->parameter.graphic_api;
+    }
+
+    std::string LuxWindow::windowFrameworkName() const
+    {
+        static const std::string framework_type = "glfw";
+        return framework_type;
     }
 
     void LuxWindow::subscribeKeyEvent(KeyEventCallback callback)
     {
-        _impl->callbacks.key_callback = std::move(callback);
-
-        glfwSetKeyCallback(
-            _impl->glfw_window, 
-            [](GLFWwindow* window, int key, int scancode, int action, int mods){
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->_impl->callbacks.key_callback(
-                    *self, 
-                    glfwKeyEnumConvert(key), 
-                    scancode, 
-                    glfwKeyStateEnumConvert(action),
-                    glfwModifierKeyEnumConvert(mods)
-                );
-            }
-        );
+        _impl->subscribeKeyEvent(std::move(callback));
     }
 
     void LuxWindow::subscribeCursorPositionCallback(CursorPoitionCallback callback)
     {
-        _impl->callbacks.cursor_position_callback = std::move(callback);
-
-        glfwSetCursorPosCallback(
-            _impl->glfw_window,
-            [](GLFWwindow* window, double xpos, double ypos)
-            {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->_impl->callbacks.cursor_position_callback(*self, xpos, ypos);
-            }
-        );
+        _impl->subscribeCursorPositionCallback(std::move(callback));
     }
 
     void LuxWindow::subscribeScrollCallback(ScrollCallback callback)
     {
-        _impl->callbacks.scroll_callback = std::move(callback);;
-        
-        glfwSetScrollCallback(
-            _impl->glfw_window,
-            [](GLFWwindow* window, double xoffset, double yoffset)
-            {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->_impl->callbacks.scroll_callback(*self, xoffset, yoffset);
-            }
-        );
+        _impl->subscribeScrollCallback(std::move(callback));
     }
 
     void LuxWindow::subscribeMouseButtonCallback(MouseButtonCallback callback)
     {
-        _impl->callbacks.mouse_button_callback = std::move(callback);
-
-        glfwSetMouseButtonCallback(
-            _impl->glfw_window,
-            [](GLFWwindow* window, int button, int action, int mods)
-            {
-                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->_impl->callbacks.mouse_button_callback(
-                    *self, 
-                    glfwMouseButtonEnumConvert(button),
-                    glfwKeyStateEnumConvert(action),
-                    glfwModifierKeyEnumConvert(mods)
-                );
-            }
-        );
+        _impl->subscribeMouseButtonCallback(std::move(callback));
     }
 
-    GLFWwindow* LuxWindow::lowLayerPointer()
+    HWND LuxWindow::win32Windows()
     {
-        return _impl->glfw_window;
+        return glfwGetWin32Window(_impl->glfw_window);
+    }
+
+    GLFWwindow* LuxWindow::currentContext()
+    {
+        return glfwGetCurrentContext();
+    }
+
+    LuxWindow::ProcPtr LuxWindow::getProcAddress(const char* procname)
+    {
+        return glfwGetProcAddress(procname);
     }
 }

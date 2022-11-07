@@ -8,13 +8,13 @@ import install_tools as itools
 
 imgui_description = itools.PackageResouceDescription()
 imgui_description.set_name("imgui")
-imgui_description.set_available_path_in_resource("imgui-1.88")
+imgui_description.set_available_path_in_resource("imgui-docking")
 imgui_description.set_package_path(
     os.path.join(
         itools.project_root_path, 
         "external",
         "libraries", 
-        "imgui-1.88.zip"
+        "imgui-docking.zip"
     )
 )
 source_code_desc = imgui_description.to_source_code()

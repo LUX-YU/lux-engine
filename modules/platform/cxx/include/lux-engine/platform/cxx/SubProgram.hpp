@@ -71,10 +71,8 @@ namespace lux::engine::platform
         }
     };
 
-
     /*
         sample:
-
         class Test : public lux::engine::platform::SubProgramCRTP<Test>
         {
         public:

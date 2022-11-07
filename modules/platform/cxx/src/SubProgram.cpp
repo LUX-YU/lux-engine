@@ -5,7 +5,7 @@ namespace lux::engine::platform
 {
     using FunctionMap = std::unordered_map<std::string, SubProgramFunc>;
 
-    static FunctionMap& getMap()
+    static inline FunctionMap& getMap()
     {
         static FunctionMap map;
         return map;

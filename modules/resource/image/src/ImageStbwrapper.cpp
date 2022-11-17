@@ -4,45 +4,86 @@
 
 namespace lux::engine::resource
 {
+	class Image::Impl
+	{
+	public:
+		Impl(std::string path, bool flip_vertically)
+		{
+			stbi_set_flip_vertically_on_load(flip_vertically);
+			load(path.c_str());
+		}
+
+		~Impl()
+		{
+			if (_data)
+				stbi_image_free(_data);
+		}
+
+		void load(const char *path)
+		{
+			if (_data)
+				stbi_image_free(_data);
+			_data = stbi_load(path, &_width, &_height, &_channel, 0);
+		}
+
+		bool isEnable() const
+		{
+			return _data != nullptr;
+		}
+
+		int width() const
+		{
+			return _width;
+		}
+
+		int height() const
+		{
+			return _height;
+		}
+
+		int channel() const
+		{
+			return _channel;
+		}
+
+		void *data()
+		{
+			return _data;
+		}
+	private:
+        void*   _data{nullptr};
+        int     _width;
+        int     _height;
+        int     _channel;
+	};
+
 	Image::Image(std::string path, bool flip_vertically)
 	{
-		stbi_set_flip_vertically_on_load(flip_vertically);
-		load(path.c_str());
+		_impl = std::make_shared<Impl>(std::move(path), flip_vertically);
 	}
 
-	Image::~Image()
+	bool Image::isEnable() const
 	{
-		stbi_image_free(_data);
+		return _impl->isEnable();
 	}
 
-	void Image::load(const char *path)
+	int Image::width() const
 	{
-		if(_data) stbi_image_free(_data);
-		_data = stbi_load(path, &_width, &_height, &_channel, 0);
+		return _impl->width();
 	}
 
-	bool Image::isEnable()
+	int Image::height() const
 	{
-		return _data != nullptr;
+		return _impl->height();
 	}
 
-	int Image::width()
+	int Image::channel() const
 	{
-		return _width;
+		return _impl->channel();
 	}
 
-	int Image::height()
+	void *Image::data()
 	{
-		return _height;
-	}
-
-	int Image::channel()
-	{
-		return _channel;
-	}
-
-	void* Image::data()
-	{
-		return _data;
+		return _impl->data();
 	}
 } // namespace lux::engine::platform

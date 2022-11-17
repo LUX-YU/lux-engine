@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <functional>
+#include <string>
 #include <lux-engine/platform/window/LuxWindowDefination.hpp>
 #include <lux-engine/platform/system/visibility_control.h>
 
@@ -19,6 +20,8 @@ namespace lux::engine::platform
         std::string title;
         GraphicAPI  graphic_api;
     };
+    
+    class LuxWidget;
 
     // not copyable
     // movable
@@ -48,10 +51,10 @@ namespace lux::engine::platform
         using ScrollCallback        = std::function<void (LuxWindow&, double xoffset, double yoffset)>;
         using MouseButtonCallback   = std::function<void (LuxWindow&, MouseButton button, KeyState action, ModifierKey mods)>;
 
-        LUX_EXPORT void         subscribeKeyEvent(KeyEventCallback);
-        LUX_EXPORT void         subscribeCursorPositionCallback(CursorPoitionCallback);
-        LUX_EXPORT void         subscribeScrollCallback(ScrollCallback);
-        LUX_EXPORT void         subscribeMouseButtonCallback(MouseButtonCallback);
+        LUX_EXPORT void subscribeKeyEvent(KeyEventCallback);
+        LUX_EXPORT void subscribeCursorPositionCallback(CursorPoitionCallback);
+        LUX_EXPORT void subscribeScrollCallback(ScrollCallback);
+        LUX_EXPORT void subscribeMouseButtonCallback(MouseButtonCallback);
 
         /* current version always return GraphicAPI::OPENGL */
         LUX_EXPORT GraphicAPI   graphicAPIType() const;
@@ -77,6 +80,4 @@ namespace lux::engine::platform
         class Impl;
         std::unique_ptr<Impl> _impl;
     };
-
-    
 } // namespace lux-engine::platform

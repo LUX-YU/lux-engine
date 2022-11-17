@@ -3,7 +3,7 @@
 #include <lux-engine/function/graphic_api/opengl3/VertexBufferObject.hpp>
 
 #include "GodHandInterface.hpp"
-#include <glad.h>
+#include <glad/glad.h>
 
 namespace lux::engine::function
 {

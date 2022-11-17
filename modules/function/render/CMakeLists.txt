@@ -12,6 +12,7 @@ set(RENDER_SRCS
     src/render/Camera.cpp
     src/render/CameraHelper.cpp
     src/render/GodHand.cpp
+    src/render/GodHandOpenGLImpl.cpp
 )
 
 add_module(

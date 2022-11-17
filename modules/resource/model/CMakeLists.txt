@@ -1,5 +1,6 @@
 find_package(assimp REQUIRED)
 set(RESOURCE_MODEL_SRCS
+    src/Mesh.cpp
     src/ModelAssimpWrapper.cpp
 )
 

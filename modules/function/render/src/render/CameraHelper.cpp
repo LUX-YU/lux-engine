@@ -35,10 +35,10 @@ namespace lux::engine::function
                 if (pitch < -89.0f)
                     pitch = -89.0f;
 
-                cameraFront.x() = cos(yaw * EIGEN_PI / 180) * cos(pitch * EIGEN_PI / 180);
-                cameraFront.y() = sin(pitch * EIGEN_PI / 180);
-                cameraFront.z() = sin(yaw * EIGEN_PI / 180) * cos(pitch * EIGEN_PI / 180);
-                cameraFront.normalize();
+                _camera_front.x() = cos(yaw * EIGEN_PI / 180) * cos(pitch * EIGEN_PI / 180);
+                _camera_front.y() = sin(pitch * EIGEN_PI / 180);
+                _camera_front.z() = sin(yaw * EIGEN_PI / 180) * cos(pitch * EIGEN_PI / 180);
+                _camera_front.normalize();
             }
         );
 
@@ -59,22 +59,20 @@ namespace lux::engine::function
     {
         if (_window.queryKey(control_key[0]) == platform::KeyState::PRESS)
         {
-            _camera_position += cameraSpeed * cameraFront;
+            _position += cameraSpeed * _camera_front;
         }
         if (_window.queryKey(control_key[1]) == platform::KeyState::PRESS)
         {
-            _camera_position -= cameraSpeed * cameraFront;
+            _position -= cameraSpeed * _camera_front;
         }
         if (_window.queryKey(control_key[2]) == platform::KeyState::PRESS)
         {
-            _camera_position -= (cameraFront.cross(cameraUp)).normalized() * cameraSpeed;
+            _position -= (_camera_front.cross(_camera_up)).normalized() * cameraSpeed;
         }
         if (_window.queryKey(control_key[3]) == platform::KeyState::PRESS)
         {
-            _camera_position += (cameraFront.cross(cameraUp)).normalized() * cameraSpeed;
+            _position += (_camera_front.cross(_camera_up)).normalized() * cameraSpeed;
         }
-
-        lookAt(_camera_position, _camera_position + cameraFront, cameraUp);
     }
 
     void UserControlCamera::enableMouseControl()
@@ -111,10 +109,5 @@ namespace lux::engine::function
     void UserControlCamera::setCameraSpeed(float speed)
     {
         cameraSpeed = speed;
-    }
-
-    const Eigen::Vector3f& UserControlCamera::cameraPosition()
-    {
-        return _camera_position;
     }
 } // namespace lux::engine::function

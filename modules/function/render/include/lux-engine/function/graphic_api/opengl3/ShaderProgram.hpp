@@ -76,7 +76,7 @@ namespace lux::engine::function
             return *this;
         }
 
-        bool ShaderProgram::link(std::string &info)
+        bool link(std::string &info)
         {
             GLint success;
             glLinkProgram(_shader_program_object);
@@ -89,7 +89,7 @@ namespace lux::engine::function
             return true;
         }
     
-        bool ShaderProgram::link()
+        bool link()
         {
             GLint success;
             glLinkProgram(_shader_program_object);
@@ -97,29 +97,29 @@ namespace lux::engine::function
             return success;
         }
     
-        void ShaderProgram::use()
+        void use()
         {
             glUseProgram(_shader_program_object);
         }
     
-        void ShaderProgram::release()
+        void release()
         {
             glDeleteProgram(_shader_program_object);
         }
     
-        bool ShaderProgram::operator==(ShaderProgram other)
+        bool operator==(ShaderProgram other)
         {
             return _shader_program_object == other._shader_program_object;
         }
     
-        void ShaderProgram::getLinkMessage(std::string &info)
+        void getLinkMessage(std::string &info)
         {
             char info_buffer[512];
             glGetProgramInfoLog(_shader_program_object, 512, nullptr, info_buffer);
             info = info_buffer;
         }
     
-        GLuint ShaderProgram::rawProgramObject()
+        GLuint rawProgramObject()
         {
             return _shader_program_object;
         }
@@ -145,17 +145,17 @@ namespace lux::engine::function
          * @param location 
          * @return SetUniformValueEnum 
          */
-        inline SetUniformValueEnum uniformFindLocation(const std::string& name, GLint& location)
+        inline SetUniformValueEnum uniformFindLocation(const std::string& name, GLint& location) const
         {
             location = glGetUniformLocation(_shader_program_object, name.c_str());
             return location_judge(location);
         }
-        inline SetUniformValueEnum uniformFindLocation(const char* name, GLint& location)
+        inline SetUniformValueEnum uniformFindLocation(const char* name, GLint& location) const
         {
             location = glGetUniformLocation(_shader_program_object, name);
             return location_judge(location);
         }
-        inline SetUniformValueEnum uniformFindLocation(std::string_view name, GLint& location)
+        inline SetUniformValueEnum uniformFindLocation(std::string_view name, GLint& location) const
         {
             location = glGetUniformLocation(_shader_program_object, name.data());
             return location_judge(location);
@@ -167,15 +167,15 @@ namespace lux::engine::function
          * @tparam T 
          * @return GLint 
          */
-        GLint uniformFindLocationUnsafe(const std::string& name)
+        GLint uniformFindLocationUnsafe(const std::string& name) const
         {
             return glGetUniformLocation(_shader_program_object, name.c_str());
         }
-        GLint uniformFindLocationUnsafe(const char* name)
+        GLint uniformFindLocationUnsafe(const char* name) const
         {
             return glGetUniformLocation(_shader_program_object, name);
         }
-        GLint uniformFindLocationUnsafe(std::string_view name)
+        GLint uniformFindLocationUnsafe(std::string_view name) const
         {
             return glGetUniformLocation(_shader_program_object, name.data());
         }

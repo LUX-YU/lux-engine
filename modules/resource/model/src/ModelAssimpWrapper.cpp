@@ -24,9 +24,9 @@ namespace lux::engine::resource
             {
                 return nullptr;
             }
-            processNode(*ret_model_impl, scene->mRootNode, scene);
             ret_model_impl->directory = LuxFSPath(path).parent_path().string();
             ret_model_impl->path      = LuxFSPath(path).string();
+            processNode(*ret_model_impl, scene->mRootNode, scene);
             return ret_model_impl;
         }
 
@@ -35,7 +35,7 @@ namespace lux::engine::resource
             for(size_t i = 0; i < node->mNumMeshes; i++)
             {
                 aiMesh* ai_mesh = scene->mMeshes[node->mMeshes[i]];
-                Mesh mesh; processMesh(mesh, ai_mesh, scene);
+                Mesh mesh; processMesh(model, mesh, ai_mesh, scene);
                 model.meshs.emplace_back(std::move(mesh));
             }
 
@@ -45,7 +45,7 @@ namespace lux::engine::resource
             }
         }
 
-        void processMesh(Mesh& ret_mesh, aiMesh* mesh, const aiScene* scene)
+        void processMesh(Model& model, Mesh& ret_mesh, aiMesh* mesh, const aiScene* scene)
         {
             // load vertices
             for(size_t i = 0; i < mesh->mNumVertices; i++)
@@ -55,9 +55,13 @@ namespace lux::engine::resource
                 vertex.position.y() = mesh->mVertices[i].y;
                 vertex.position.z() = mesh->mVertices[i].z;
                 // normal
-                vertex.normal.x()   = mesh->mNormals[i].x;
-                vertex.normal.y()   = mesh->mNormals[i].y;
-                vertex.normal.z()   = mesh->mNormals[i].z;
+                if(mesh->mNormals)
+                {
+                    vertex.normal.x()   = mesh->mNormals[i].x;
+                    vertex.normal.y()   = mesh->mNormals[i].y;
+                    vertex.normal.z()   = mesh->mNormals[i].z;
+                }
+                
                 // texture
                 vertex.texture_coordinates = 
                     mesh->mTextureCoords[0] ? Eigen::Vector2f{
@@ -81,8 +85,8 @@ namespace lux::engine::resource
             {
                 aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
                 // diffuse map
-                loadMaterialTextures(ret_mesh.textures, material, aiTextureType_DIFFUSE);
-                loadMaterialTextures(ret_mesh.textures, material, aiTextureType_SPECULAR);
+                loadMaterialTextures(model, ret_mesh, material, aiTextureType_DIFFUSE);
+                loadMaterialTextures(model, ret_mesh, material, aiTextureType_SPECULAR);
             }
         }
 
@@ -100,36 +104,53 @@ namespace lux::engine::resource
             return TextureType::UNKNOWN;
         }
 
-        void loadMaterialTextures(std::vector<Texture>& current_textures, aiMaterial* mat, aiTextureType type)
+        void loadMaterialTextures(Model& model, Mesh& mesh, aiMaterial* mat, aiTextureType type)
         {
-            std::vector<Texture> textures;
-            for(size_t i = 0; i < mat->GetTextureCount(type); i++)
+            auto texture_count = mat->GetTextureCount(type);
+            auto& current_textures = model.textures;
+            for(size_t i = 0; i < texture_count; i++)
             {
                 bool skip = false;
-                aiString str;
-                mat->GetTexture(type, i, &str);
-                for(size_t j = 0; j < current_textures.size(); j++)
+                // get current material texture path
+                aiString str; mat->GetTexture(type, i, &str);
+                // get texture absulate path
+                auto texture_absulate_path = LuxFSPath(model.directory) / str.C_Str();
+                for(size_t j = 0; j < model.textures.size(); j++)
                 {
-                    if(current_textures[j].path == str.C_Str())
+                    // already loaded
+                    if(current_textures[j].path == texture_absulate_path)
                     {
-                        textures.push_back(current_textures[j]);
+                        mesh.texture_indices.push_back(j);
                         skip = true;
                         break;
                     }
                 }
                 if(!skip)
                 {
-                    Texture texture(str.C_Str());
-                    texture.type = assimpTextureEnumConverter(type);
+                    float shininess;
+                    // get shininess
+                    if(AI_SUCCESS != aiGetMaterialFloat(mat, AI_MATKEY_SHININESS, &shininess))
+                    {
+                        // if unsuccessful set a default
+                        shininess = 16.f;
+                    }
+                    Texture texture(texture_absulate_path.string(), assimpTextureEnumConverter(type), shininess);
                     current_textures.emplace_back(std::move(texture));
+                    mesh.texture_indices.push_back(current_textures.size() - 1);
                 }
             }
-            current_textures.insert(current_textures.end(), textures.begin(), textures.end());
         }
 
     private:
         Assimp::Importer import;
     };
+
+    ModelLoader::ModelLoader()
+    {
+        _impl = std::make_unique<Impl>();
+    }
+
+    ModelLoader::~ModelLoader() = default;
 
     std::unique_ptr<Model> ModelLoader::loadFrom(const std::string& path)
     {

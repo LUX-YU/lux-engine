@@ -17,12 +17,13 @@ namespace lux::engine::resource
     class Texture : public Image
     {
     public:
-        Texture(std::string path, bool flip_vertically = true)
-            : Image(path, flip_vertically), path(std::move(path)){}
+        Texture() = default;
 
-        uint32_t    id;
+        LUX_EXPORT Texture(std::string path, TextureType type, float shininess, bool flip_vertically = true);
+
         std::string path;
         TextureType type;
+        float       shininess;
     };
 
     class Mesh
@@ -30,6 +31,6 @@ namespace lux::engine::resource
     public:
         std::vector<Vertex>     vertices;
         std::vector<uint32_t>   indices;
-        std::vector<Texture>    textures;
+        std::vector<size_t>     texture_indices;
     };
 }

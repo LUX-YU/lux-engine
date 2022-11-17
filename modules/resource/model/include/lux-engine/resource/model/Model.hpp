@@ -15,6 +15,10 @@ namespace lux::engine::resource
     class ModelLoader
     {
     public:
+        LUX_EXPORT ModelLoader();
+
+        LUX_EXPORT virtual ~ModelLoader();
+
         LUX_EXPORT virtual std::unique_ptr<Model> loadFrom(const std::string& path);
 
     private:
@@ -25,8 +29,9 @@ namespace lux::engine::resource
     class Model : public LuxAsset
     {
     public:
-        std::string         path;
-        std::string         directory;
-        std::vector<Mesh>   meshs;
+        std::string             path;
+        std::string             directory;
+        std::vector<Texture>    textures;
+        std::vector<Mesh>       meshs;
     };
 }

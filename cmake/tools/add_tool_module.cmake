@@ -102,7 +102,7 @@ function(add_module)
 		)
 	endforeach()
 
-	foreach(private_include_dir ${MODULE_ARGS_PROJECT_SHARED_INCLUDE_DIRS})
+	foreach(private_include_dir ${MODULE_ARGS_PRIVATE_INCLUDE_DIRS})
 		message("---- Module private include dir:${private_include_dir}")
 		target_include_directories(
 			${MODULE_ARGS_MODULE_NAME}

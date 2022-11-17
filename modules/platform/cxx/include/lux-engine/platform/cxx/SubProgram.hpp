@@ -39,22 +39,23 @@ namespace lux::engine::platform
         template<class... Args>
         SubProgramClassRegistHelper(const std::string& name, Args&&... args)
         {
-            static_assert( std::is_convertible_v(T*, SubProgramCRTP<T>*), "Error Type of T" );
+            static_assert( std::is_convertible_v<T*, SubProgramCRTP<T>*>, "Error Type of T" );
 
             auto regist_wrapper = 
-            [args = std::make_tuple(std::forward<Args>(args) ...)](int argc, char* argv[])-> int{
+            [args = std::make_tuple(std::forward<Args>(args) ...)]
+            (int argc, char* argv[])-> int{
                 return std::apply(
                     [argc, argv](auto&&... args)  -> int {
                         T instance(std::forward<Args>(args)...);
                         return instance.__main(argc, argv);
                     },
                     std::move(args)
-                )
+                );
             };
             
             SubProgramRegister::registProgram(
                 name, 
-                std::move(regist_wrapper);
+                std::move(regist_wrapper)
             );
         }
     };

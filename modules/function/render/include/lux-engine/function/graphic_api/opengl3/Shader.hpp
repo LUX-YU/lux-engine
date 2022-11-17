@@ -82,7 +82,7 @@ namespace lux::engine::function
             return true;
         }
 
-        bool GlShaderBase::compile()
+        bool compile()
         {
             GLint success;
             glCompileShader(_shader_object);
@@ -90,26 +90,26 @@ namespace lux::engine::function
             return success;
         }
 
-        bool GlShaderBase::isCompiled()
+        bool isCompiled()
         {
             GLint status;
             glGetShaderiv(_shader_object, GL_COMPILE_STATUS, &status);
             return status == GL_TRUE;
         }
 
-        bool GlShaderBase::isReleased()
+        bool isReleased()
         {
             GLint status;
             glGetShaderiv(_shader_object, GL_DELETE_STATUS, &status);
             return status != GL_FALSE;
         }
 
-        bool GlShaderBase::released()
+        bool released()
         {
             return isReleased() ? glDeleteShader(_shader_object), true : false;
         }
 
-        void GlShaderBase::getCompileMessage(std::string &info)
+        void getCompileMessage(std::string &info)
         {
             GLint info_lenght;
             glGetShaderiv(_shader_object, GL_INFO_LOG_LENGTH, &info_lenght);
@@ -118,7 +118,7 @@ namespace lux::engine::function
             glGetShaderInfoLog(_shader_object, info_lenght, nullptr, info.data());
         }
 
-        ShaderType GlShaderBase::shaderType()
+        ShaderType shaderType()
         {
             GLint type;
             glGetShaderiv(_shader_object, GL_SHADER_TYPE, &type);

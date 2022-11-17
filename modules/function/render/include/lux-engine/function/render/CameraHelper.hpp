@@ -30,15 +30,10 @@ namespace lux::engine::function
 
         LUX_EXPORT void setCameraSpeed(float speed);
 
-        LUX_EXPORT const Eigen::Vector3f& cameraPosition();
-
     private:
         WindowsType& _window;
 
         float cameraSpeed = 100.0f;
-        Eigen::Vector3f cameraFront{0.0f, 0.0f, -1.0f};
-        Eigen::Vector3f _camera_position{0.0f, 0.0f,  800};
-        Eigen::Vector3f cameraUp{0.0f, 1.0f,  0.0f};
         
         // mouse related variable
         float lastX = 960;

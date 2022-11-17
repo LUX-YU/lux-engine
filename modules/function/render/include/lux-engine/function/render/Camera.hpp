@@ -12,22 +12,27 @@ namespace lux::engine::function
     public:
         LUX_EXPORT Camera();
 
+        LUX_EXPORT Camera(const Eigen::Vector3f& position);
+
+        LUX_EXPORT Camera(float x, float y, float z);
+
         LUX_EXPORT void setCameraPosition(float x, float y, float z);
 
         LUX_EXPORT void setCameraPosition(const Eigen::Vector3f &pos);
 
-        LUX_EXPORT Eigen::Vector3f cameraPosition();
+        LUX_EXPORT Eigen::Vector3f  cameraPosition() const;
 
-        LUX_EXPORT const Eigen::Matrix4f& viewMatrix();
+        LUX_EXPORT Eigen::Matrix4f  viewMatrix() const;
 
         LUX_EXPORT void setFov(float fov);
 
-        LUX_EXPORT float fov();
-
-        LUX_EXPORT void lookAt(const Eigen::Vector3f &camera_position, const Eigen::Vector3f &target, const Eigen::Vector3f &up);
+        LUX_EXPORT float fov() const;
 
     protected:
-        float _fov; // radius
-        Eigen::Matrix4f _view_transform;
+
+        float           _fov; // (zoom)
+        Eigen::Vector3f _camera_up{0.0f, 1.0f,  0.0f};
+        Eigen::Vector3f _camera_front{0,0,-1.0f};
+        Eigen::Vector3f _position;
     };
 } // namespace lux::engine::function

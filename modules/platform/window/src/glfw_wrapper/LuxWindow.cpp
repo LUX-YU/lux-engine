@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 #ifdef __PLATFORM_WIN32__
 #   define GLFW_EXPOSE_NATIVE_WIN32
+#   include <windows.h>
 #   include <GLFW/glfw3native.h>
 #endif
 
@@ -79,10 +80,11 @@ namespace lux::engine::platform
 
     struct WindowCallbacks
     {
-        LuxWindow::KeyEventCallback        key_callback;
-        LuxWindow::CursorPoitionCallback   cursor_position_callback;
-        LuxWindow::ScrollCallback          scroll_callback;
-        LuxWindow::MouseButtonCallback     mouse_button_callback;
+        LuxWindow::KeyEventCallback             key_callback;
+        LuxWindow::CursorPoitionCallback        cursor_position_callback;
+        LuxWindow::ScrollCallback               scroll_callback;
+        LuxWindow::MouseButtonCallback          mouse_button_callback;
+        LuxWindow::WindowSizeChangedCallbcak    window_size_changed_callback;
     };
 
     class LuxWindow::Impl
@@ -143,6 +145,9 @@ namespace lux::engine::platform
 
             glfwMakeContextCurrent(glfw_window);
             glfwSetWindowUserPointer(glfw_window, this);
+            #ifdef __PLATFORM_WIN32__
+            windows_handle = glfwGetWin32Window(glfw_window);
+            #endif
         }
 
         ~Impl()
@@ -212,10 +217,31 @@ namespace lux::engine::platform
             );
         }
 
+        void subscribeWindowSizeChangeCallback(WindowSizeChangedCallbcak callback)
+        {
+            callbacks.window_size_changed_callback = std::move(callback);
+            glfwSetWindowSizeCallback(
+                glfw_window,
+                [](GLFWwindow* window, int width, int height)
+                {
+                    auto self = static_cast<Impl*>(glfwGetWindowUserPointer(window));
+                    self->callbacks.window_size_changed_callback(
+                        *self->owner,
+                        width,
+                        height
+                    );
+                }
+            );
+        }
+
         LuxWindow*          owner;
         WindowCallbacks     callbacks;
         GLFWwindow*         glfw_window;
         InitParameter       parameter;
+
+        #ifdef __PLATFORM_WIN32__
+        HWND                windows_handle;
+        #endif
     };
 
     /**
@@ -326,10 +352,17 @@ namespace lux::engine::platform
         _impl->subscribeMouseButtonCallback(std::move(callback));
     }
 
-    HWND LuxWindow::win32Windows()
+    void LuxWindow::subscribeWindowSizeChangeCallback(WindowSizeChangedCallbcak callback)
     {
-        return glfwGetWin32Window(_impl->glfw_window);
+        _impl->subscribeWindowSizeChangeCallback(std::move(callback));
+    }   
+
+    #ifdef __PLATFORM_WIN32__
+    void  LuxWindow::win32Windows(void* out)
+    {
+        out = static_cast<void*>(_impl->windows_handle);
     }
+    #endif
 
     GLFWwindow* LuxWindow::currentContext()
     {

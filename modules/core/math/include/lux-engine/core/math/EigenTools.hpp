@@ -139,4 +139,20 @@ namespace lux::engine::core
 		mat(2,3) = - (2.0f * zFar * zNear) / (zFar - zNear);
 		return mat;
     }
+
+    template<class _RetScalar>
+    requires is_general_float<_RetScalar>
+    EigenMatrix4<_RetScalar> scale(EigenMatrix4<_RetScalar>& raw, _RetScalar scale)
+    {
+        Eigen::Transform<float, 3, Eigen::Affine> mat(raw);
+        return mat.scale(scale);
+    }
+
+    template<class _RetScalar>
+    requires is_general_float<_RetScalar>
+    EigenMatrix4<_RetScalar> translate(EigenMatrix4<_RetScalar>& raw, _RetScalar value)
+    {
+        Eigen::Transform<float, 3, Eigen::Affine> mat(raw);
+        return mat.translate(value);
+    }
 }

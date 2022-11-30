@@ -5,10 +5,6 @@
 #include <lux-engine/platform/window/LuxWindowDefination.hpp>
 #include <lux-engine/platform/system/visibility_control.h>
 
-#ifdef __PLATFORM_WIN32__
-#   include <windows.h>
-#endif
-
 struct GLFWwindow;
 
 namespace lux::engine::platform
@@ -22,9 +18,6 @@ namespace lux::engine::platform
     };
     
     class LuxWidget;
-
-    // not copyable
-    // movable
     class LuxWindow
     {
     public:
@@ -50,27 +43,29 @@ namespace lux::engine::platform
         using CursorPoitionCallback = std::function<void (LuxWindow&, double xpose, double ypose)>;
         using ScrollCallback        = std::function<void (LuxWindow&, double xoffset, double yoffset)>;
         using MouseButtonCallback   = std::function<void (LuxWindow&, MouseButton button, KeyState action, ModifierKey mods)>;
+        using WindowSizeChangedCallbcak = std::function<void (LuxWindow&, int width, int height)>;
 
         LUX_EXPORT void subscribeKeyEvent(KeyEventCallback);
         LUX_EXPORT void subscribeCursorPositionCallback(CursorPoitionCallback);
         LUX_EXPORT void subscribeScrollCallback(ScrollCallback);
         LUX_EXPORT void subscribeMouseButtonCallback(MouseButtonCallback);
+        LUX_EXPORT void subscribeWindowSizeChangeCallback(WindowSizeChangedCallbcak);
 
-        /* current version always return GraphicAPI::OPENGL */
+        /* Current version always return GraphicAPI::OPENGL */
         LUX_EXPORT GraphicAPI   graphicAPIType() const;
-        /* current version always return "glfw" */
+        /* Current version always return "glfw" */
         LUX_EXPORT std::string  windowFrameworkName() const;
 
         #ifdef __PLATFORM_WIN32__
-        // get windows 
-        LUX_EXPORT HWND         win32Windows();
+        // Get windows 
+        LUX_EXPORT void         win32Windows(void*);
         #endif
         
         LUX_EXPORT static void  enableVsync(bool enable);
         LUX_EXPORT static void  pollEvents();
         LUX_EXPORT static void  waitEvents();
         LUX_EXPORT static double timeAfterFirstInitialization();
-        // get glfw context
+        // Get glfw context
         LUX_EXPORT static GLFWwindow* currentContext();
 
         using ProcPtr = void (*)();

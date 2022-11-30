@@ -151,4 +151,8 @@ namespace lux::engine::function
                     std::istreambuf_iterator<char>()));
         }
     };
+
+    using GlVertexShader   = GlShader<ShaderType::VERTEX>;
+    using GlFragmentShader = GlShader<ShaderType::FRAGMENT>;
+    using GlGeometryShader = GlShader<ShaderType::GEOMETRY>;
 }

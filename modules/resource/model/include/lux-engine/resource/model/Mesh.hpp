@@ -11,6 +11,7 @@ namespace lux::engine::resource
         AMBIENT,
         DIFFUSE,
         SPECULAR,
+        HEIGHT,
         UNKNOWN
     };
 

@@ -63,11 +63,28 @@ namespace lux::engine::resource
                 }
                 
                 // texture
-                vertex.texture_coordinates = 
-                    mesh->mTextureCoords[0] ? Eigen::Vector2f{
-                        mesh->mTextureCoords[0][i].x,
-                        mesh->mTextureCoords[0][i].y
-                    } : Eigen::Vector2f{0,0};
+                if(mesh->mTextureCoords[0])
+                {
+                    // texture coordinate
+                    vertex.texture_coordinates.x() = mesh->mTextureCoords[0][i].x;
+                    vertex.texture_coordinates.y() = mesh->mTextureCoords[0][i].y;
+
+                    // tangent
+                    if(mesh->mTangents)
+                    {
+                        vertex.tangent.x() = mesh->mTangents[i].x;
+                        vertex.tangent.y() = mesh->mTangents[i].y;
+                        vertex.tangent.z() = mesh->mTangents[i].z;
+                    }
+
+                    // bitangent
+                    if(mesh->mBitangents)
+                    {
+                        vertex.bitangent.x() = mesh->mBitangents[i].x;
+                        vertex.bitangent.y() = mesh->mBitangents[i].y;
+                        vertex.bitangent.z() = mesh->mBitangents[i].z;
+                    }
+                }
 
                 ret_mesh.vertices.push_back(vertex);
             }
@@ -85,8 +102,10 @@ namespace lux::engine::resource
             {
                 aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
                 // diffuse map
+                loadMaterialTextures(model, ret_mesh, material, aiTextureType_AMBIENT);
                 loadMaterialTextures(model, ret_mesh, material, aiTextureType_DIFFUSE);
                 loadMaterialTextures(model, ret_mesh, material, aiTextureType_SPECULAR);
+                loadMaterialTextures(model, ret_mesh, material, aiTextureType_HEIGHT);
             }
         }
 
@@ -100,6 +119,8 @@ namespace lux::engine::resource
                 return TextureType::DIFFUSE;
             case aiTextureType::aiTextureType_SPECULAR :
                 return TextureType::SPECULAR;
+            case aiTextureType::aiTextureType_HEIGHT :
+                return TextureType::HEIGHT;
             }
             return TextureType::UNKNOWN;
         }

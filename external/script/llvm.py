@@ -8,7 +8,7 @@ import install_tools as itools
 llvm_description = itools.GitResourceDescription()
 llvm_description.set_name("llvm")
 llvm_description.set_available_path_in_resource("llvm")
-llvm_description.set_branch("llvmorg-14.0.6")
+llvm_description.set_branch("llvmorg-15.0.5")
 llvm_description.set_git_repo_uri("https://github.com/llvm/llvm-project.git")
 source_code_desc = llvm_description.to_source_code()
 

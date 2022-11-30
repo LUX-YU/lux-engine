@@ -31,6 +31,21 @@ namespace lux::engine::function
         _position = pos;
     }
 
+    void Camera::setNear(float n)
+    {
+        _pnear = n;
+    }
+
+    void Camera::setFar(float f)
+    {
+        _pfar = f;
+    }
+
+    void Camera::setAspect(float aspect)
+    {
+        _aspect = aspect;
+    }
+
     Eigen::Vector3f Camera::cameraPosition() const
     {
         return _position;
@@ -42,6 +57,12 @@ namespace lux::engine::function
         return lookAt(_position, _position + _camera_front, _camera_up);
     }
 
+    Eigen::Matrix4f Camera::projectionMatrix() const
+    {
+        using namespace ::lux::engine::core;
+        return perspectiveMatrix(fov() * EIGEN_PI / 180, _aspect, _pnear, _pfar);
+    }
+
     void Camera::setFov(float fov)
     {
         this->_fov = fov;
@@ -50,5 +71,10 @@ namespace lux::engine::function
     float Camera::fov() const
     {
         return this->_fov;
+    }
+
+    float Camera::aspect() const
+    {
+        return this->_aspect;
     }
 }

@@ -28,6 +28,4 @@ add_module(
                                 lux::engine::resource::image
                                 lux::engine::resource::model
                                 OpenGL::GL
-    PRIVATE_LIBRARIES           # ${IMGUI_LIBRARY}
-                                ${GLAD_LIBRARY}
 )

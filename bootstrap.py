@@ -20,7 +20,7 @@ external_library_list = {
     "freetype": os.path.join(external_install_script_dir,   "freetype.py"),
     "assimp":   os.path.join(external_install_script_dir,   "assimp.py"),
     # "boost":   os.path.join(external_install_script_dir,    "boost.py"),
-    "stduuid":   os.path.join(external_install_script_dir,  "stduuid.py"),
+    "stduuid":   os.path.join(external_install_script_dir,  "stduuid.py")
 }
 
 def execute_cmd_list(cmd_dict : dict, enable_list = []):
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--tools",    nargs='*')
     parser.add_argument("--tools-all")
     parser.add_argument("-l", "--libraries",nargs='*')
-    parser.add_argument("--libraries-all")
+    parser.add_argument("--libraries-all") 
     parser.add_argument("-d", "--debug")
 
     args = parser.parse_args()

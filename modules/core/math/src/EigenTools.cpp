@@ -1,6 +1,6 @@
-#include <lux-engine/core/math/EigenTools.hpp>
+#include <lux/math/EigenTools.hpp>
 
-namespace lux::engine::core
+namespace lux::math
 {
 	LUX_EXPORT void place_holder(){}
 }

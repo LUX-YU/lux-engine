@@ -1,4 +1,4 @@
-#include <lux-engine/platform/window/LuxWindow.hpp>
+#include <lux/window/LuxWindow.hpp>
 #include <thread>
 
 #include <GLFW/glfw3.h>
@@ -11,7 +11,7 @@
 #include <atomic>
 #include <stdexcept>
 
-namespace lux::engine::platform
+namespace lux::window
 {
     static KeyEnum glfwKeyEnumConvert(int key)
     {
@@ -119,7 +119,7 @@ namespace lux::engine::platform
             }
         }
 
-        inline void initialize_method(lux::engine::platform::GraphicAPI api)
+        inline void initialize_method(GraphicAPI api)
         {
             switch (api)
             {
@@ -358,9 +358,9 @@ namespace lux::engine::platform
     }   
 
     #ifdef __PLATFORM_WIN32__
-    void  LuxWindow::win32Windows(void* out)
+    void  LuxWindow::win32Windows(void** out)
     {
-        out = static_cast<void*>(_impl->windows_handle);
+        *out = static_cast<void*>(_impl->windows_handle);
     }
     #endif
 

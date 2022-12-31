@@ -1,7 +1,7 @@
-#include "lux-engine/platform/cxx/SubProgram.hpp"
+#include "lux/cxx/SubProgram.hpp"
 #include <unordered_map>
 
-namespace lux::engine::platform
+namespace lux::cxx
 {
     using FunctionMap = std::unordered_map<std::string, SubProgramFunc>;
 

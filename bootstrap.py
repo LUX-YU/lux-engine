@@ -66,23 +66,24 @@ if __name__ == "__main__":
         if  len(input_tools) > 1:
             print("Warning: option `all` in tools set detected, but there are other option exist.")
         enable_tools = list(external_tools_list.keys())
+    else:
+        for tool in input_tools:
+            if tool not in external_tools_list.keys() and tool != "all":
+                print("tools:", tool, " is not allowed")
+                exit(-1)
+            else:
+                enable_tools.append(tool)
     if "all" in input_libraries:
         if len(input_libraries) > 1:
             print("Warning: option `all` in libraries set detected, but there are other option exist.")
         enable_libraries = list(external_library_list.keys())
-    # input check
-    for tool in input_tools:
-        if tool not in external_tools_list.keys() and tool != "all":
-            print("tools:", tool, " is not allowed")
-            exit(-1)
-        else:
-            enable_tools.append(tool)
-    for library in input_libraries:
-        if library not in external_library_list.keys() and library != "all":
-            print("libraries:", library, " is not allowed")
-            exit(-1)
-        else:
-            enable_libraries.append(library)    
+    else:
+        for library in input_libraries:
+            if library not in external_library_list.keys() and library != "all":
+                print("libraries:", library, " is not allowed")
+                exit(-1)
+            else:
+                enable_libraries.append(library)
 
     execute_cmd_list(external_tools_list, enable_tools)
     execute_cmd_list(external_library_list, enable_libraries)

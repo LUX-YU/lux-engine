@@ -1,6 +1,6 @@
-#include "lux-engine/core/reflection/LuxCxxParserImpl.hpp"
+#include "lux/reflection/LuxCxxParserImpl.hpp"
 
-namespace lux::engine::core
+namespace lux::reflection
 {
         LuxCxxParserImpl::LuxCxxParserImpl()
         {
@@ -16,7 +16,7 @@ namespace lux::engine::core
             clang_disposeIndex(clang_index);
         }
 
-        libclang::TranslationUnit LuxCxxParserImpl::translate(const std::string& file_path, const std::vector<std::string>& commands)
+        TranslationUnit LuxCxxParserImpl::translate(const std::string& file_path, const std::vector<std::string>& commands)
         {
             CXTranslationUnit translation_unit;
             const size_t commands_size = commands.size();
@@ -35,7 +35,7 @@ namespace lux::engine::core
                 CXTranslationUnit_None, // option
                 &translation_unit       // CXTranslationUnit
             );
-            delete _c_commands;
-            return libclang::TranslationUnit(translation_unit);
+            free(_c_commands);
+            return TranslationUnit(translation_unit);
         }
 } // namespace lux::engine::core

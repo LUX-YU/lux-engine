@@ -1,5 +1,5 @@
 #include "lux/builtin-obj/BasicCamera.hpp"
-#include "lux/math/EigenTools.hpp"
+#include "lux/math/eigen_extend.hpp"
 
 #ifndef __PI_FLOAT_CONSTANT
 #   define __PI_FLOAT_CONSTANT 3.14159265358979323846F
@@ -57,14 +57,14 @@ namespace lux::editor::builtin
 
     Eigen::Matrix4f BasicCamera::viewMatrix() const noexcept
     {
-        using namespace ::lux::math;
-        return lookAt(_position, _position + _camera_front, _camera_up);
+        using namespace ::LuxEigenExt;
+        return lookAtf(_position, _position + _camera_front, _camera_up).matrix();
     }
 
     Eigen::Matrix4f BasicCamera::projectionMatrix() const noexcept
     {
-        using namespace ::lux::math;
-        return perspectiveMatrix(fov() * __PI_FLOAT_CONSTANT / 180.0f, _aspect, _pnear, _pfar);
+        using namespace ::LuxEigenExt;
+        return perspectiveProjectionf(fov() * __PI_FLOAT_CONSTANT / 180.0f, _aspect, _pnear, _pfar);
     }
 
     void BasicCamera::setFov(float fov) noexcept

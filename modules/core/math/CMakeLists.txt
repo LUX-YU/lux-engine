@@ -1,5 +1,5 @@
 set(MATH_SRCS
-    src/EigenTools.cpp
+    src/eigen_extend.cpp
 )
 
 find_package (Eigen3 REQUIRED)

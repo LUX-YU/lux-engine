@@ -150,13 +150,6 @@ namespace lux::window
         KEY_MOD_NUM_LOCK    = 0x0020,
         UNKNOWN
     };
-    
-    enum class GraphicAPI : int
-    {
-        OPENGL,
-        DIRECTX,
-        VULKAN
-    };
 
     enum class KeyState : int
     {

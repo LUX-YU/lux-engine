@@ -1,7 +1,9 @@
 #pragma once
 #include <glad/glad.h>
+#include "config.h"
+#include "ValueTypes.hpp"
 
-namespace lux::gapiwrap::opengl
+namespace lux::gapi::opengl
 {
     class RenderBuffer
     {
@@ -9,13 +11,19 @@ namespace lux::gapiwrap::opengl
         RenderBuffer(GLsizei num)
         {
             _num = num;
-            glGenRenderbuffers(num, &_rbo);
+            if(_num > 0)
+                glGenRenderbuffers(num, &_rbo);
+        }
+
+        RenderBuffer()
+        {
+            _num = 1;
+            glGenRenderbuffers(1, &_rbo);
         }
 
         ~RenderBuffer()
         {
-            if(_num > 0)
-                glDeleteRenderbuffers(_num, &_rbo);
+            release();
         }
 
         inline void release()
@@ -37,7 +45,7 @@ namespace lux::gapiwrap::opengl
             glBindRenderbuffer(GL_RENDERBUFFER, _rbo);
         }
 
-        static inline void unbind()
+        static inline void endBind()
         {
             glBindRenderbuffer(GL_RENDERBUFFER, 0);
         }
@@ -59,6 +67,8 @@ namespace lux::gapiwrap::opengl
 
         RenderBuffer &operator=(RenderBuffer &&other)
         {
+            release();
+
             _num = other._num;
             _rbo = other._rbo;
             other._num = 0;
@@ -73,24 +83,24 @@ namespace lux::gapiwrap::opengl
             @param width Specifies the width of the renderbuffer, in pixels.
             @param height Specifies the height of the renderbuffer, in pixels.
         */
-        static inline void staticStorage(GLenum internalformat, GLsizei width, GLsizei height)
+        static inline void staticStorage(ImageFormat internalformat, GLsizei width, GLsizei height)
         {
             // target
             // Specifies a binding target of the allocation for glRenderbufferStorage function. Must be GL_RENDERBUFFER.
-            glRenderbufferStorage(GL_RENDERBUFFER, internalformat, width, height);
+            glRenderbufferStorage(GL_RENDERBUFFER, static_cast<GLenum>(internalformat), width, height);
         }
-        
         /*
             @param samples          Specifies the number of samples to be used for the renderbuffer object's storage.
             @param internalformat   Specifies the internal format to use for the renderbuffer object's image.
             @param width            Specifies the width of the renderbuffer, in pixels.
             @param height           Specifies the height of the renderbuffer, in pixels.
         */
-        static inline void staticStorageMultiSample(GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)
+        static inline void staticStorageMultiSample(GLsizei samples, ImageFormat internalformat, GLsizei width, GLsizei height)
         {
-            glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, internalformat, width, height);
+            glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, static_cast<GLenum>(internalformat), width, height);
         }
 
+#ifdef __GLPP_SUPPORT_DSA
         /*
             @brief  Establish data storage, format and dimensions of a renderbuffer object's image
                     Equivalent to calling glRenderbufferStorageMultisample with the samples set to zero
@@ -99,16 +109,17 @@ namespace lux::gapiwrap::opengl
             @param width Specifies the width of the renderbuffer, in pixels.
             @param height Specifies the height of the renderbuffer, in pixels.
         */
-        inline void storage(GLenum internalformat, GLsizei width, GLsizei height)
+        inline void storage(ImageFormat internalformat, GLsizei width, GLsizei height)
         {
             // renderbuffe Specifies the name of the renderbuffer object for glNamedRenderbufferStorage function.
-            glNamedRenderbufferStorage(_rbo, internalformat, width, height);
+            glNamedRenderbufferStorage(_rbo, static_cast<GLenum>(internalformat), width, height);
         }
 
-        inline void storageMultiSample(GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)
+        inline void storageMultiSample(GLsizei samples, ImageFormat internalformat, GLsizei width, GLsizei height)
         {
-            glNamedRenderbufferStorageMultisample(_rbo, samples, internalformat, width, height);
+            glNamedRenderbufferStorageMultisample(_rbo, samples, static_cast<GLenum>(internalformat), width, height);
         }
+#endif
 
     private:
         GLsizei _num;

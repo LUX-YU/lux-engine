@@ -23,6 +23,10 @@ namespace lux::asset
 
         LUX_EXPORT int  height() const;
 
+        // 1 grey
+        // 2 grey, alpha
+        // 3 red, green, blue
+        // 4 red, green, blue, alpha
         LUX_EXPORT int  channel() const;
 
         LUX_EXPORT const void* const data() const;

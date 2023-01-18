@@ -4,6 +4,7 @@
 #include <string>
 #include <lux/window/LuxWindowDefination.hpp>
 #include <lux/system/visibility_control.h>
+#include "GraphicContext.hpp"
 
 struct GLFWwindow;
 
@@ -14,21 +15,45 @@ namespace lux::window
         int         width;
         int         height;
         std::string title;
-        GraphicAPI  graphic_api;
     };
 
-    class GraphicContext
+    class LuxWindow;
+    class LuxWindowImpl;
+
+    using KeyEventCallback          = std::function<void (LuxWindow&, KeyEnum, int, KeyState, ModifierKey)>;
+    using CursorPoitionCallback     = std::function<void (LuxWindow&, double xpose, double ypose)>;
+    using ScrollCallback            = std::function<void (LuxWindow&, double xoffset, double yoffset)>;
+    using MouseButtonCallback       = std::function<void (LuxWindow&, MouseButton button, KeyState action, ModifierKey mods)>;
+    using WindowSizeChangedCallbcak = std::function<void (LuxWindow&, int width, int height)>;
+
+    using SharedContextPtr          = std::shared_ptr<GraphicContext>;
+
+    template<class T, class... Args> SharedContextPtr createContext(Args&&... args)
+    requires std::is_base_of_v<GraphicContext, T>
     {
-    public:
-        
-    };
+        return std::make_shared<T>(std::forward<Args>(args)...);
+    }
 
     class LuxWindow
     {
     public:
-        LUX_EXPORT              LuxWindow(int width, int height, std::string title, GraphicAPI api = GraphicAPI::OPENGL);
-
+        /**
+         * @brief init() will be called automaticly
+        */
+        LUX_EXPORT              LuxWindow(int width, int height, std::string title, SharedContextPtr context);
+        LUX_EXPORT              LuxWindow(const InitParameter& parameter, SharedContextPtr context);
+        /**
+         * @brief init() won't be called automaticly
+        */
+        LUX_EXPORT              LuxWindow(int width, int height, std::string title);
         LUX_EXPORT              LuxWindow(const InitParameter& parameter);
+
+        /**
+         * @brief call after calling bindContext
+        */
+        LUX_EXPORT bool         init(std::shared_ptr<GraphicContext> context);
+        
+        LUX_EXPORT bool         is_initialized();
 
         LUX_EXPORT virtual      ~LuxWindow();
 
@@ -44,26 +69,18 @@ namespace lux::window
 
         LUX_EXPORT KeyState     queryKey(KeyEnum) const;
 
-        using KeyEventCallback          = std::function<void (LuxWindow&, KeyEnum, int, KeyState, ModifierKey)>;
-        using CursorPoitionCallback     = std::function<void (LuxWindow&, double xpose, double ypose)>;
-        using ScrollCallback            = std::function<void (LuxWindow&, double xoffset, double yoffset)>;
-        using MouseButtonCallback       = std::function<void (LuxWindow&, MouseButton button, KeyState action, ModifierKey mods)>;
-        using WindowSizeChangedCallbcak = std::function<void (LuxWindow&, int width, int height)>;
-
         LUX_EXPORT void subscribeKeyEvent(KeyEventCallback);
         LUX_EXPORT void subscribeCursorPositionCallback(CursorPoitionCallback);
         LUX_EXPORT void subscribeScrollCallback(ScrollCallback);
         LUX_EXPORT void subscribeMouseButtonCallback(MouseButtonCallback);
         LUX_EXPORT void subscribeWindowSizeChangeCallback(WindowSizeChangedCallbcak);
 
-        /* Current version always return GraphicAPI::OPENGL */
-        LUX_EXPORT GraphicAPI   graphicAPIType() const;
         /* Current version always return "glfw" */
         LUX_EXPORT std::string  windowFrameworkName() const;
 
         #ifdef __PLATFORM_WIN32__
         // Get windows 
-        LUX_EXPORT void         win32Windows(void**);
+        LUX_EXPORT void          win32Windows(void**);
         #endif
         
         LUX_EXPORT static void   enableVsync(bool enable);
@@ -76,8 +93,6 @@ namespace lux::window
         using ProcPtr = void (*)();
         LUX_EXPORT static ProcPtr getProcAddress(const char* name);
     private:
-
-        class Impl;
-        std::unique_ptr<Impl> _impl;
+        std::unique_ptr<LuxWindowImpl> _impl;
     };
 } // namespace lux-engine::platform

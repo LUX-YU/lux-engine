@@ -13,11 +13,11 @@ namespace lux::cxx
 
 #define func_map getMap()
 
-    void SubProgramRegister::registProgram(const std::string& name, const SubProgramFunc& func)
+    void SubProgramRegister::registProgram(const std::string& name, SubProgramFunc func)
     {
         if(!func_map.count(name))
         {
-            func_map[name] = func;
+            func_map[name] = std::move(func);
         }
     }
 

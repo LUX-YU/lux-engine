@@ -1,41 +1,147 @@
 #pragma once
+#include "config.h"
 #include "Shader.hpp"
 #include "ShaderUniformType.hpp"
-#include <Eigen/Eigen>
+#include <type_traits>
 #include <array>
-#include <lux/system/visibility_control.h>
 
-namespace lux::gapiwrap::opengl
+namespace lux::gapi::opengl
 {
+    class UniformVariableBase
+    {
+        friend class ShaderProgram;
+    public:
+        bool isAvailable()
+        {
+            return _location != -1;
+        }
+
+    protected:
+        UniformVariableBase(GLint location)
+            : _location(location){}
+
+        GLint _location;
+    };
+
+    template<GLSLBuiltinType TSLType, size_t TArraySize>
+    class TUniformVariableBase : public UniformVariableBase
+    {
+        template<typename... Ts> static constexpr bool all_constructible_v 
+            = std::conjunction_v<std::is_constructible<typename TUnifromInfo<TSLType>::type, Ts>...>;
+
+        using uniform_info = TUnifromInfo<TSLType>;
+        using base_type    = typename uniform_info::type;
+        
+        using func_info = TUniformFunc<TSLType>;
+        static constexpr bool    is_matrix = TUniformFunc<TSLType>::is_matrix;
+        static constexpr uint8_t param_num = TUniformFunc<TSLType>::param_num;
+
+    public:
+        TUniformVariableBase(GLint location)
+            : UniformVariableBase(location){}
+
+        // TODO enable implicit convertion
+        /* non-matrix functions */
+        // see https ://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html (-fipa-sra)
+        template<class... Ts> void setValue(Ts&&... values)
+        requires (param_num == sizeof...(Ts) && all_constructible_v<Ts...> && (!is_matrix) && TArraySize == 1)
+        {
+            func_info::method(_location, std::forward<Ts>(values)...);
+        }
+
+        template<class T> void setValue(const T& value)
+        requires (param_num > 1, uniform_info::size == sizeof(T) && (!is_matrix) && TArraySize == 1)
+        {
+            static_assert(std::is_standard_layout_v<T>, "Type should be standard layout");
+            func_info::vmethod(_location, 1, (base_type*)&value);
+        }
+
+        template<class T> void setValues(const T& value)
+        requires (sizeof(T) / uniform_info::size == TArraySize && (!is_matrix) && TArraySize > 1)
+        {
+            static_assert(std::is_standard_layout_v<T>, "Type should be standard layout");
+            func_info::vmethod(_location, sizeof(T) / uniform_info::size, (base_type*)&value);
+        }
+
+        void setValues(base_type* data, size_t num)
+        requires !is_matrix
+        {
+            func_info::vmethod(_location, num, data);
+        }
+
+        /* matrix functions */
+        template<class T> void setValues(const T& value, size_t num, bool transpose = false)
+        requires (sizeof(T) / uniform_info::size == 0 && is_matrix && TArraySize > 1)
+        {
+            static_assert(std::is_standard_layout_v<T>, "Type should be standard layout");
+            func_info::vmethod(_location, num, transpose, (base_type*)&value);
+        }
+        
+        template<class T> void setValue(const T& value, bool transpose = false)
+        requires (uniform_info::size == sizeof(T) && is_matrix && TArraySize == 1)
+        {
+            static_assert(std::is_standard_layout_v<T>, "Type should be standard layout");
+            func_info::vmethod(_location, 1, transpose, (base_type*)&value);
+        }
+
+        void setValues(base_type* data, size_t num, bool transpose = false)
+        requires is_matrix
+        {
+            func_info::vmethod(_location, num, transpose, data);
+        }
+    };
+
     class ShaderProgram
     {
-    private:
-        template<class T, class...>
-        struct are_same_basic_type : std::true_type{};
-
-        template<class T, class U, class... TT>
-        struct are_same_basic_type<T, U, TT...>
-            : std::integral_constant<
-        bool, (std::is_same_v<T,U> || std::is_convertible_v<T, U>) 
-                && !std::is_class_v<U> && are_same_basic_type<T, TT...>::value>{};
-
     public:
         ShaderProgram()
         {
             _shader_program_object = glCreateProgram();
         }
 
-        ~ShaderProgram() = default;
-    
-        inline ShaderProgram& attachShader(const GlShaderBase& shader)
+        ShaderProgram(const ShaderProgram&) = delete;
+        ShaderProgram& operator=(const ShaderProgram&) = delete;
+
+        ShaderProgram(ShaderProgram&& other)
         {
-            glAttachShader(_shader_program_object, shader._shader_object);
+            this->_shader_program_object = other._shader_program_object;
+            other._shader_program_object = 0;
+        }
+
+        ShaderProgram& operator=(ShaderProgram&& other)
+        {
+            release();
+            this->_shader_program_object = other._shader_program_object;
+            other._shader_program_object = 0;
             return *this;
         }
 
-        template<class... T> inline ShaderProgram& attachShaders(T&&... shader)
+        ~ShaderProgram()
+        {
+            release();
+        }
+    
+        ShaderProgram& attachShader(GlShaderBase& shader)
+        {
+            glAttachShader(_shader_program_object, shader.rawObject());
+            return *this;
+        }
+
+        template<class... T> ShaderProgram& attachShaders(T&&... shader)
         {
             (this->attachShader(shader),...);
+            return *this;
+        }
+
+        ShaderProgram& detachShader(GlShaderBase& shader)
+        {
+            glDetachShader(_shader_program_object, shader.rawObject());
+            return *this;
+        }
+
+        template<class... T> ShaderProgram& detachShaders(T&&... shader)
+        {
+            (this->detachShader(shader),...);
             return *this;
         }
 
@@ -63,11 +169,16 @@ namespace lux::gapiwrap::opengl
         void use()
         {
             glUseProgram(_shader_program_object);
-        }
+        }        
     
         void release()
         {
-            glDeleteProgram(_shader_program_object);
+            // If program is zero or a non-zero value that is not the name of a program object
+            if(glIsProgram(_shader_program_object) != GL_FALSE)
+            {
+                glDeleteProgram(_shader_program_object);
+                _shader_program_object = 0;
+            }
         }
     
         bool operator==(ShaderProgram other)
@@ -87,122 +198,11 @@ namespace lux::gapiwrap::opengl
             return _shader_program_object;
         }
 
-        enum class SetUniformValueEnum
+        template<GLSLBuiltinType TSLType, std::size_t TArraySize = 1>
+        TUniformVariableBase<TSLType, TArraySize> findUniform(const char* name)
         {
-            SUCCESS,
-            INVALID_VALUE,
-            INVALID_OPERATION
-        };
-
-        static inline SetUniformValueEnum location_judge(GLint location) noexcept
-        {
-            if(location == GL_INVALID_VALUE) return SetUniformValueEnum::INVALID_VALUE;
-            else if(location == GL_INVALID_OPERATION) return SetUniformValueEnum::INVALID_OPERATION;
-            return SetUniformValueEnum::SUCCESS;
-        }
-
-        /**
-         * @brief opengl find uniform variable by name
-         * 
-         * @tparam T includes std::string std::string_view and const char*
-         * @param location 
-         * @return SetUniformValueEnum 
-         */
-        inline SetUniformValueEnum uniformFindLocation(const std::string& name, GLint& location) const
-        {
-            location = glGetUniformLocation(_shader_program_object, name.c_str());
-            return location_judge(location);
-        }
-        inline SetUniformValueEnum uniformFindLocation(const char* name, GLint& location) const
-        {
-            location = glGetUniformLocation(_shader_program_object, name);
-            return location_judge(location);
-        }
-        inline SetUniformValueEnum uniformFindLocation(std::string_view name, GLint& location) const
-        {
-            location = glGetUniformLocation(_shader_program_object, name.data());
-            return location_judge(location);
-        }
-
-        /**
-         * @brief get uniform location without return-value check
-         * 
-         * @tparam T 
-         * @return GLint 
-         */
-        GLint uniformFindLocationUnsafe(const std::string& name) const
-        {
-            return glGetUniformLocation(_shader_program_object, name.c_str());
-        }
-        GLint uniformFindLocationUnsafe(const char* name) const
-        {
-            return glGetUniformLocation(_shader_program_object, name);
-        }
-        GLint uniformFindLocationUnsafe(std::string_view name) const
-        {
-            return glGetUniformLocation(_shader_program_object, name.data());
-        }
-
-        template<class T = float, class... VALUES> inline std::enable_if_t<are_same_basic_type<T, VALUES...>::value>
-        uniformSetVector(GLint location, VALUES&&... values)
-        {
-            GLVectorUniformMap<T, sizeof...(VALUES)>::method(location, std::forward<VALUES>(values)...);
-        }
-        // std::array and eigen::Matrix support
-        template<class T, auto LEN> inline void
-        uniformSetVector(GLint location, const std::array<T, LEN>& value)
-        {
-            GLVectorUniformMap<T, LEN>::vmethod(location, 1, value.data());
-        }
-        template<class T, auto LEN> inline void
-        uniformSetVector(GLint location, const Eigen::Vector<T, LEN>& value)
-        {
-            GLVectorUniformMap<T, LEN>::vmethod(location, 1, value.data());
-        }
-        // unsafae uniform vector set
-        template<class... Values, class STRING_TYPE> inline void
-        uniformSetVectorUnsafe(STRING_TYPE&& name, Values&&... values)
-        {
-            auto location = uniformFindLocationUnsafe(std::forward<STRING_TYPE>(name));
-            uniformSetVector(location, std::forward<Values>(values)...);
-        }
-
-        template<class T> inline std::enable_if_t<!std::is_class_v<T>>
-        uniformSetValue(GLint location, T value)
-        {
-            using ValueType = std::remove_reference_t<std::remove_const_t<T>>;
-            GLVectorUniformMap<ValueType, 1>::method(location, value);
-        }
-        template<class T, class STRING_TYPE> void inline
-        uniformSetValueUnsafe(STRING_TYPE&& name, T value)
-        {
-            using ValueType = std::remove_reference_t<std::remove_const_t<T>>;
-            auto location = uniformFindLocationUnsafe(std::forward<STRING_TYPE>(name));
-            GLVectorUniformMap<ValueType, 1>::method(location, value);
-        }
-
-        // uniform matrix set
-        template<class T, int ROW, int COL> inline std::enable_if_t<!std::is_class_v<T>>
-        uniformSetMatrix(GLint location, bool transpose, T* data)
-        {
-            GLMatrixUniformMap<ROW, COL>::vmethod(location, 1, transpose ? GL_TRUE : GL_FALSE, data);
-        }
-        template<class T, int ROW, int COL> inline void
-        uniformSetMatrix(GLint location, bool transpose, const Eigen::Matrix<T, ROW, COL>& matrix)
-        {
-            GLMatrixUniformMap<ROW, COL>::vmethod(location, 1, transpose ? GL_TRUE : GL_FALSE, matrix.data());
-        }
-        template<class T, int DIM, int MODE> void inline
-        uniformSetMatrix(GLint location, bool transpose, const Eigen::Transform<T, DIM, MODE>& matrix)
-        {
-            GLMatrixUniformMap<DIM + 1, DIM + 1>::vmethod(location, 1, transpose ? GL_TRUE : GL_FALSE, matrix.data());
-        }
-        // unsafe uniform matrix set
-        template<class... Values, class STRING_TYPE> void inline
-        uniformSetMatrixUnsafe(STRING_TYPE&& name, bool transpose, Values&&... values)
-        {
-            auto location = uniformFindLocationUnsafe(std::forward<STRING_TYPE>(name));
-            uniformSetMatrix(location, transpose, std::forward<Values>(values)...);
+            GLint location = glGetUniformLocation(_shader_program_object, name);
+            return TUniformVariableBase<TSLType, TArraySize>(location);
         }
 
     private:

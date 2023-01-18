@@ -9,10 +9,20 @@ namespace lux::cxx
 {
     using SubProgramFunc = std::function<int (int, char*[])>;
 
+    template<class T> concept class_has_void_entry = requires(T t){
+        {t()} -> std::same_as<int>;
+    };
+
+    template<class T> concept class_has_argument_entry = requires(T t){
+        {t(std::declval<int>(), std::declval<char*[]>())} -> std::same_as<int>;
+    };
+
+    template<class T> concept class_has_entry = class_has_void_entry<T> || class_has_argument_entry<T>;
+
     class SubProgramRegister
     {
     public:
-        LUX_EXPORT static void registProgram(const std::string&, const SubProgramFunc&);
+        LUX_EXPORT static void registProgram(const std::string&, SubProgramFunc);
 
         LUX_EXPORT static bool hasSubProgram(const std::string&);
 
@@ -23,70 +33,66 @@ namespace lux::cxx
     };
 
     template<class T>
-    class SubProgramCRTP
+    struct ProgramClassEntryRegister
     {
-    public:
-        int __main(int argc, char* argv[])
+        // enable after c++ 20
+        template<class... Args> requires class_has_entry<T>
+        ProgramClassEntryRegister(const std::string& name, Args&&... args)
         {
-            return static_cast<T*>(this)->__main(argc, argv);
+            auto regist_wrapper = [... args = std::forward<Args>(args)](int argc, char* argv[]){
+                T t{args...};
+                if constexpr( class_has_void_entry<T> )
+                    return t();
+                else
+                    return t(argc, argv);
+            };
+            SubProgramRegister::registProgram(name, std::move(regist_wrapper));
         }
     };
 
-    template<class T>
-    class SubProgramClassRegistHelper
+    struct ProgramFuncEntryRegister
     {
-    public:
-        template<class... Args>
-        SubProgramClassRegistHelper(const std::string& name, Args&&... args)
+        template<class Func>
+        ProgramFuncEntryRegister(const std::string& name, Func&& func)
+        requires std::is_convertible_v<Func, std::function<int (void)>>
         {
-            static_assert( std::is_convertible_v<T*, SubProgramCRTP<T>*>, "Error Type of T" );
-
-            auto regist_wrapper = 
-            [args = std::make_tuple(std::forward<Args>(args) ...)]
-            (int argc, char* argv[])-> int{
-                return std::apply(
-                    [argc, argv](auto&&... args)  -> int {
-                        T instance(std::forward<Args>(args)...);
-                        return instance.__main(argc, argv);
-                    },
-                    std::move(args)
-                );
-            };
-            
             SubProgramRegister::registProgram(
-                name, 
-                std::move(regist_wrapper)
+                name, [_func = std::forward<Func>(func)](int argc, char* argv[]){return _func();}
             );
         }
-    };
 
-    class SubProgramFunctionRegistHelper
-    {
-    public:
-        SubProgramFunctionRegistHelper(const std::string& name, const SubProgramFunc& func)
+        template<class Func>
+        ProgramFuncEntryRegister(const std::string& name, Func&& func)
+        requires std::is_convertible_v<Func, std::function<int (int, char*[])>>
         {
             SubProgramRegister::registProgram(
-                name, 
-                func
+                name, [_func = std::forward<Func>(func)](int argc, char* argv[]){return _func(argc, argv);}
             );
         }
     };
 
     /*
-        sample:
-        class Test : public lux::cxx::SubProgramCRTP<Test>
+        example:
+        class SampleClass
         {
         public:
             Test(int, double){}
-            int __main(int argc, char* argv){return 0;}
+
+            int operator()(){}
+            or
+            int operator()(int argc, char* argv[]){}
         };
-        RegistClassSubProgram(Test, "test_class" ,  1, 2.125)
+        RegistClassSubprogramEntry(Test, "test_class" ,  1, 2.125)
     */
+    #define RegistClassSubprogramEntry(type, title, ...)\
+    static ::lux::cxx::ProgramClassEntryRegister<type> func_name ## _regist_helper(title, __VA_ARGS__);
 
-    #define RegistClassSubProgram(class_name, title, ...)\
-    static ::lux::cxx::SubProgramClassRegistHelper<class_name> class_name ## _regist_helper(title, __VA_ARGS__);
-
-    #define RegistFunctionSubProgram(func_name, title)\
-    static ::lux::cxx::SubProgramFunctionRegistHelper func_name ## _regist_helper(title, &func_name);
+    /*
+        example:
+        static int __main(int argc, char* argv){return 0;}
+        RegistFuncSubprogramEntry(__main, "test_func")
+    */
+    #define RegistFuncSubprogramEntry(type, title)\
+    static ::lux::cxx::ProgramFuncEntryRegister func_name ## _regist_helper(title, &type);
 } // namespace lux::cxx
 

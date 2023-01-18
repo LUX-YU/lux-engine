@@ -1,158 +1,115 @@
 #pragma once
-#include <lux/system/visibility_control.h>
-
 #include <glad/glad.h>
 #include <string>
 #include <string_view>
 
 #include <fstream>
-#include <sstream>
 #include <streambuf>
 
-namespace lux::gapiwrap::opengl
+namespace lux::gapi::opengl
 {
     enum class ShaderType
     {
-        VERTEX,
-        FRAGMENT,
-        GEOMETRY
+        VERTEX      = GL_VERTEX_SHADER,
+        FRAGMENT    = GL_FRAGMENT_SHADER,
+        GEOMETRY    = GL_GEOMETRY_SHADER
     };
-
-    template <ShaderType>
-    class GlShader;
 
     class GlShaderBase
     {
-        template <class T>
-        friend class GlShaderTypeHelper;
-
     protected:
-        LUX_EXPORT static GLuint _forward_convert(ShaderType type);
-        LUX_EXPORT static ShaderType _inverse_convert(GLuint type);
-
-        void createShader(ShaderType type)
+        GlShaderBase(ShaderType type)
         {
-            _shader_object = glCreateShader(_forward_convert(type));
-        }
-
-        void shaderSource(const std::string &source)
-        {
-            auto _source_pointer = source.c_str();
-            glShaderSource(_shader_object, 1, &_source_pointer, nullptr);
-        }
-
-        void shaderSource(const char *source)
-        {
-            glShaderSource(_shader_object, 1, &source, nullptr);
+            _shader_object = glCreateShader(static_cast<GLenum>(type));
         }
 
     public:
-        template <typename _CType>
-        GlShaderBase(ShaderType type, _CType &&source)
+
+        GlShaderBase(GlShaderBase&) = delete;
+        GlShaderBase& operator=(GlShaderBase&) = delete;
+
+        GlShaderBase(GlShaderBase&& other)
         {
-            createShader(type);
-            shaderSource(std::forward<_CType>(source));
+            this->_shader_object = other._shader_object;
+            other._shader_object = 0;
         }
 
-        bool operator==(GlShaderBase other)
+        GlShaderBase& operator=(GlShaderBase&& other)
+        {
+            release();
+            this->_shader_object = other._shader_object;
+            other._shader_object = 0;
+            return *this;
+        }
+
+        ~GlShaderBase()
+        {
+            release();
+        }
+
+        GLuint rawObject()
+        {
+            return _shader_object;
+        }
+
+        bool operator==(GlShaderBase& other)
         {
             return other._shader_object == _shader_object;
         }
 
-        ~GlShaderBase() = default;
-
-        template <ShaderType _Shader_Type>
-        GlShader<_Shader_Type> shaderCast()
-        {
-
-            return static_cast<GlShader<_Shader_Type>>(*this);
-        }
-
-        bool compile(std::string &info)
+        bool compile(const char* source)
         {
             int success;
+            // this is ok to get parameter address
+            // because the source will be compile in this function
+
+            // https://registry.khronos.org/OpenGL-Refpages/gl4/html/glShaderSource.xhtml
+            glShaderSource(_shader_object, 1, &source, nullptr);
+
             glCompileShader(_shader_object);
             glGetShaderiv(_shader_object, GL_COMPILE_STATUS, &success);
 
-            if (!success)
-            {
-                getCompileMessage(info);
-                return false;
-            }
-            return true;
+            return success == GL_TRUE;
         }
 
-        bool compile()
+        bool compile(const std::string& source)
         {
-            GLint success;
-            glCompileShader(_shader_object);
-            glGetShaderiv(_shader_object, GL_COMPILE_STATUS, &success);
-            return success;
+            return compile(source.c_str());
         }
 
-        bool isCompiled()
+        bool isCompiled() const
         {
             GLint status;
             glGetShaderiv(_shader_object, GL_COMPILE_STATUS, &status);
             return status == GL_TRUE;
         }
 
-        bool isReleased()
+        bool isReleased() const
         {
-            GLint status;
-            glGetShaderiv(_shader_object, GL_DELETE_STATUS, &status);
-            return status != GL_FALSE;
+            return _shader_object == 0;
         }
 
-        bool released()
+        void release()
         {
-            return isReleased() ? glDeleteShader(_shader_object), true : false;
-        }
-
-        void getCompileMessage(std::string &info)
-        {
-            GLint info_lenght;
-            glGetShaderiv(_shader_object, GL_INFO_LOG_LENGTH, &info_lenght);
-            info.resize(info_lenght);
-            // std::string is guaranteed to be contiguous since C++11
-            glGetShaderInfoLog(_shader_object, info_lenght, nullptr, info.data());
-        }
-
-        ShaderType shaderType()
-        {
-            GLint type;
-            glGetShaderiv(_shader_object, GL_SHADER_TYPE, &type);
-            return _inverse_convert(static_cast<GLuint>(type));
+            if(_shader_object != 0)
+            {
+                glDeleteShader(_shader_object);
+                _shader_object = 0;
+            }
         }
 
     private:
-        friend class ShaderProgram;
         GLuint _shader_object;
     };
 
-    // TODO move to platform layer
-    bool is_file_exists(const std::string &file_path);
-
     template <ShaderType _Shader_TYPE>
-    class GlShader : public GlShaderBase
+    class TShader : public GlShaderBase
     {
     public:
-        template <typename _CType>
-        GlShader(_CType &&shader_src_code)
-            : GlShaderBase(_Shader_TYPE, std::forward<_CType>(shader_src_code)) {}
-
-        template <typename _CType>
-        static GlShader<_Shader_TYPE> loadFromFile(_CType &&path)
-        {
-            std::ifstream t(std::forward<_CType>(path));
-            return GlShader<_Shader_TYPE>(
-                std::string(
-                    std::istreambuf_iterator<char>(t),
-                    std::istreambuf_iterator<char>()));
-        }
+        TShader() : GlShaderBase(_Shader_TYPE) {}
     };
 
-    using GlVertexShader   = GlShader<ShaderType::VERTEX>;
-    using GlFragmentShader = GlShader<ShaderType::FRAGMENT>;
-    using GlGeometryShader = GlShader<ShaderType::GEOMETRY>;
+    using VertexShader   = TShader<ShaderType::VERTEX>;
+    using FragmentShader = TShader<ShaderType::FRAGMENT>;
+    using GeometryShader = TShader<ShaderType::GEOMETRY>;
 }

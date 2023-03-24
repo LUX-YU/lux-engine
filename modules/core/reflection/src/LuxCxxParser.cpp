@@ -10,6 +10,4 @@ namespace lux::reflection
     }
 
     LuxCxxParser::~LuxCxxParser() = default;
-
-
 } // namespace lux::engine::core

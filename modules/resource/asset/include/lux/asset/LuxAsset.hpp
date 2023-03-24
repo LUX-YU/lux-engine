@@ -95,7 +95,7 @@ namespace lux::asset
     class AssetDataProcesser
     {
     public:
-        static_assert(std::is_base_of_v<LuxAsset, _AssetType>, "Not Asset Type");
+        static_assert(std::is_base_of_v<LuxAsset, _AssetType>, "Not An Asset Type");
         void process(std::function<void (const _Data&)> func)
         {
             static_cast<_AssetType*>(this)->process(std::move(func));

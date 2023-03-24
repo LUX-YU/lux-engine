@@ -72,12 +72,12 @@ namespace lux::gapi::opengl
             }
         }
 
-        inline GLuint rawObject()
+        GLuint rawObject()
         {
             return _vbo;
         }
 
-        inline GLuint number() const
+        GLuint number() const
         {
             return _num;
         }
@@ -103,34 +103,34 @@ namespace lux::gapi::opengl
         TVertexBuffer(GLsizei size) : VertexBufferBase(size){}
         TVertexBuffer() : VertexBufferBase(1){}
 
-        inline void bind()
+        void bind()
         {
             glBindBuffer(buffer_type, _vbo);
         }
 
-        inline void endBind()
+        void endBind()
         {
             glBindBuffer(buffer_type, 0);
         }
 
-        static inline void sBufferData(GLsizeiptr size, const void* data, BufferDataUsage usage)
+        static void sBufferData(GLsizeiptr size, const void* data, BufferDataUsage usage)
         {
             glBufferData(buffer_type, size, data, static_cast<GLenum>(usage));
         }
 
-        static inline void sBufferSubData(GLintptr offset, GLsizeiptr size, const void * data)
+        static void sBufferSubData(GLintptr offset, GLsizeiptr size, const void * data)
         {
             glBufferSubData(buffer_type, offset, size, data);
         }
 #ifdef __GLPP_SUPPORT_DSA
         // need opengl >= 4.5
-        inline void bufferData(GLsizeiptr size, const void* data, BufferDataUsage usage)
+        void bufferData(GLsizeiptr size, const void* data, BufferDataUsage usage)
         {
             glNamedBufferData(_vbo, size, data, static_cast<GLenum>(usage));
         }
 
         // need opengl >= 4.5
-        inline void bufferSubData(GLintptr offset, GLsizeiptr size, const void * data)
+        void bufferSubData(GLintptr offset, GLsizeiptr size, const void * data)
         {
             glNamedBufferSubData(_vbo, offset, size, data);
         }

@@ -7,6 +7,3 @@
 #include "RenderBuffer.hpp"
 #include "Tools.hpp"
 #include "Draw.hpp"
-
-
-

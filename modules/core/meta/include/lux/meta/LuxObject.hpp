@@ -2,7 +2,12 @@
 #include <string_view>
 #include <memory>
 
-#define LUX_OBJECT_REGIST
+#if defined __PARSE_TIME__
+#include <vector>
+#define LUX_META(...) __attribute__((annotate("LUX::META;"#__VA_ARGS__)))
+#else
+#define LUX_META(...)
+#endif
 
 namespace lux::meta
 {
@@ -10,6 +15,12 @@ namespace lux::meta
 	{
 	public:
 		[[nodiscard]] virtual bool serializeToFile(std::string_view path) { return false; };
+
+#if defined __GENERATE_TIME__
+		[[nodiscard]] virtual const char* object_name() = 0;
+
+		[[nodiscard]] virtual const std::vector<>
+#endif
 	};
 
 	template<class _Sub>

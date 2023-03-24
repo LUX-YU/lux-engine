@@ -14,14 +14,14 @@ namespace lux::gapi::opengl{
         TextureBase(const TextureBase&) = delete;
         TextureBase& operator=(const TextureBase&) = delete;
 
-        TextureBase(TextureBase&& other)
+        TextureBase(TextureBase&& other) noexcept
         {
             _num = other._num;
             _textures = other._textures;
             other._num = 0;
         }
 
-        TextureBase& operator=(TextureBase&& other)
+        TextureBase& operator=(TextureBase&& other) noexcept
         {
             release();
             _num = other._num;
@@ -30,7 +30,7 @@ namespace lux::gapi::opengl{
             return *this;
         }
 
-        inline GLsizei number() const
+        GLsizei number() const
         {
             return _num;
         }
@@ -49,7 +49,7 @@ namespace lux::gapi::opengl{
         }
 
         // for glad, index is less than 31
-        static inline void sActiveTexture(GLenum index)
+        static void sActiveTexture(GLenum index)
         {
             glActiveTexture(GL_TEXTURE0 + index);
         }

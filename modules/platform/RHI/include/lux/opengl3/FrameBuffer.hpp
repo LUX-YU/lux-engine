@@ -47,7 +47,7 @@ namespace lux::gapi::opengl
         COLOR5  = GL_COLOR_ATTACHMENT5,
         COLOR6  = GL_COLOR_ATTACHMENT6,
         COLOR7  = GL_COLOR_ATTACHMENT7,
-        COLOR8  = GL_COLOR_ATTACHMENT8,
+        COLOR8  = GL_COLOR_ATTACHMENT8, // max for almost device
         COLOR9  = GL_COLOR_ATTACHMENT9,
         COLOR10 = GL_COLOR_ATTACHMENT10,
         COLOR11 = GL_COLOR_ATTACHMENT11,
@@ -175,40 +175,40 @@ namespace lux::gapi::opengl
             return _num;
         }
 
-        static inline FBStatus sCheckStatus()
+        static FBStatus sCheckStatus()
         {
             return static_cast<FBStatus>(glCheckFramebufferStatus(GL_FRAMEBUFFER));
         }
 
-        inline FBStatus checkStatus()
+        FBStatus checkStatus()
         {
             return static_cast<FBStatus>(glCheckNamedFramebufferStatus(_fbo, GL_FRAMEBUFFER));
         }
 
-        static inline GLint sGetMaxColorAttachment()
+        static GLint sGetMaxColorAttachment()
         {
             GLint max;
             glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &max);
             return max;
         }
 
-        static inline void sReadBuffer(ColorBuffer buffer)
+        static void sReadBuffer(ColorBuffer buffer)
         {
             glReadBuffer(static_cast<GLenum>(buffer));
         }
 
         // only color attachments are accepted
-        static inline void sReadBuffer(AttachmentType type)
+        static void sReadBuffer(AttachmentType type)
         {
             glReadBuffer(static_cast<GLenum>(type));
         }
 
-        static inline void sDrawBuffer(ColorBuffer buffer)
+        static void sDrawBuffer(ColorBuffer buffer)
         {
             glDrawBuffer(static_cast<GLenum>(buffer));
         }
         // only color attachments are accepted
-        static inline void sDrawBuffer(AttachmentType type)
+        static void sDrawBuffer(AttachmentType type)
         {
             glDrawBuffer(static_cast<GLenum>(type));
         }
@@ -267,35 +267,35 @@ namespace lux::gapi::opengl
          * For all other values of textarget, level must be 
          *  greater than or equal to zero and (>=0)
          *  less than or equal to log2 of the value of GL_MAX_TEXTURE_SIZE.
-        */
+         */
 
         /**
          * @brief static functions for add color attachment
          * @param level If TextureType is TextureType::THREE_DIM, then level must 
          *  be greater than or equal to zero and less than or equal to log2 of the value of GL_MAX_3D_TEXTURE_SIZE.
-        */
+         */
         template<TextureType ttype>
-        static inline void sAddAttachment(TTextureBase<ttype>& texture, AttachmentType type, GLint level = 0)
+        static void sAddAttachment(TTextureBase<ttype>& texture, AttachmentType type, GLint level = 0)
         requires (ttype != TextureType::CUBE_MAP && !levelzerotex<ttype>)
         {
             auto _type = static_cast<GLenum>(type);
             glFramebufferTexture2D(GL_FRAMEBUFFER, _type, static_cast<GLenum>(ttype) ,texture.rawObject(), level);
         }
         template<TextureType ttype>
-        static inline void sAddAttachment(TTextureBase<ttype>& texture, AttachmentType type)
+        static void sAddAttachment(TTextureBase<ttype>& texture, AttachmentType type)
         requires levelzerotex<ttype>
         {
             auto _type = static_cast<GLenum>(type);
             glFramebufferTexture2D(GL_FRAMEBUFFER, _type, static_cast<GLenum>(ttype) ,texture.rawObject(), 0);
         }
         // for cube texture
-        static inline void sAddAttachment(CubeTexture& texture, CubeTextureDirection direction, AttachmentType type, GLint level)
+        static void sAddAttachment(CubeTexture& texture, CubeTextureDirection direction, AttachmentType type, GLint level)
         {
             auto _type = static_cast<GLenum>(type);
             glFramebufferTexture2D(GL_FRAMEBUFFER, _type, static_cast<GLenum>(direction), texture.rawObject(), level);
         }
         // for render buffer
-        static inline void sAddAttachment(RenderBuffer& render_buffer, AttachmentType type)
+        static void sAddAttachment(RenderBuffer& render_buffer, AttachmentType type)
         {
             auto _type = static_cast<GLenum>(type);
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, _type, GL_RENDERBUFFER, render_buffer.rawObject());
@@ -328,7 +328,7 @@ namespace lux::gapi::opengl
          *  be greater than or equal to zero and less than or equal to log2 of the value of GL_MAX_3D_TEXTURE_SIZE.
         */
         template<TextureType ttype>
-        inline void addAttachment(TTextureBase<ttype>& texture, AttachmentType type, GLint level)
+        void addAttachment(TTextureBase<ttype>& texture, AttachmentType type, GLint level)
         requires (ttype != TextureType::CUBE_MAP && !levelzerotex<ttype>)
         {
             auto _type = static_cast<GLenum>(type);
@@ -340,20 +340,20 @@ namespace lux::gapi::opengl
          *  be greater than or equal to zero and less than or equal to log2 of the value of GL_MAX_3D_TEXTURE_SIZE.
         */
         template<TextureType ttype>
-        inline void addAttachment(TTextureBase<ttype>& texture, AttachmentType type)
+        void addAttachment(TTextureBase<ttype>& texture, AttachmentType type)
         requires levelzerotex<ttype>
         {
             auto _type = static_cast<GLenum>(type);
             glNamedFramebufferTexture(_fbo, _type, texture.rawObject());
         }
         // for cube texture
-        // inline void addAttachment(CubeTexture& texture, CubeTextureDirection direction, GLenum type, GLint level)
+        // void addAttachment(CubeTexture& texture, CubeTextureDirection direction, GLenum type, GLint level)
         // {
         //     auto _type = static_cast<GLenum>(type);
         //     glNamedFramebufferTexture(_fbo, _type, static_cast<GLenum>(direction), texture.rawObject(), level);
         // }
         // for render buffer
-        inline void addAttachment(RenderBuffer& render_buffer, AttachmentType type)
+        void addAttachment(RenderBuffer& render_buffer, AttachmentType type)
         {
             auto _type = static_cast<GLenum>(type);
             glNamedFramebufferRenderbuffer(_fbo, _type, GL_RENDERBUFFER, render_buffer.rawObject());

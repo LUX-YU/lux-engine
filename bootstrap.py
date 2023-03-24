@@ -24,7 +24,7 @@ external_library_list = {
 }
 
 def execute_cmd_list(cmd_dict : dict, enable_list = []):
-    python_executable = "python3"
+    python_executable = "python"
     global installer_class_dir
 
     for name in enable_list:

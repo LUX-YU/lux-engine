@@ -26,7 +26,7 @@ namespace lux::cxx
         // c style std::string_view
         static constexpr std::string_view   view{str, len + 1};
 
-        template<char... OtherChars> 
+        template<char... OtherChars>
         using concat_chars = decltype(__concat_chars<OtherChars...>());
 
         template<class T> 

@@ -26,7 +26,7 @@ namespace lux::gapi::opengl
             release();
         }
 
-        inline void release()
+        void release()
         {
             if(_num > 0)
             {
@@ -35,7 +35,7 @@ namespace lux::gapi::opengl
             }
         }
 
-        inline GLuint rawObject()
+        GLuint rawObject()
         {
             return _rbo;
         }
@@ -45,12 +45,12 @@ namespace lux::gapi::opengl
             glBindRenderbuffer(GL_RENDERBUFFER, _rbo);
         }
 
-        static inline void endBind()
+        static void endBind()
         {
             glBindRenderbuffer(GL_RENDERBUFFER, 0);
         }
 
-        inline GLsizei number() const 
+        GLsizei number() const 
         {
             return _num;
         }
@@ -83,7 +83,7 @@ namespace lux::gapi::opengl
             @param width Specifies the width of the renderbuffer, in pixels.
             @param height Specifies the height of the renderbuffer, in pixels.
         */
-        static inline void staticStorage(ImageFormat internalformat, GLsizei width, GLsizei height)
+        static void staticStorage(ImageFormat internalformat, GLsizei width, GLsizei height)
         {
             // target
             // Specifies a binding target of the allocation for glRenderbufferStorage function. Must be GL_RENDERBUFFER.
@@ -95,7 +95,7 @@ namespace lux::gapi::opengl
             @param width            Specifies the width of the renderbuffer, in pixels.
             @param height           Specifies the height of the renderbuffer, in pixels.
         */
-        static inline void staticStorageMultiSample(GLsizei samples, ImageFormat internalformat, GLsizei width, GLsizei height)
+        static void staticStorageMultiSample(GLsizei samples, ImageFormat internalformat, GLsizei width, GLsizei height)
         {
             glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, static_cast<GLenum>(internalformat), width, height);
         }
@@ -109,13 +109,13 @@ namespace lux::gapi::opengl
             @param width Specifies the width of the renderbuffer, in pixels.
             @param height Specifies the height of the renderbuffer, in pixels.
         */
-        inline void storage(ImageFormat internalformat, GLsizei width, GLsizei height)
+        void storage(ImageFormat internalformat, GLsizei width, GLsizei height)
         {
             // renderbuffe Specifies the name of the renderbuffer object for glNamedRenderbufferStorage function.
             glNamedRenderbufferStorage(_rbo, static_cast<GLenum>(internalformat), width, height);
         }
 
-        inline void storageMultiSample(GLsizei samples, ImageFormat internalformat, GLsizei width, GLsizei height)
+        void storageMultiSample(GLsizei samples, ImageFormat internalformat, GLsizei width, GLsizei height)
         {
             glNamedRenderbufferStorageMultisample(_rbo, samples, static_cast<GLenum>(internalformat), width, height);
         }

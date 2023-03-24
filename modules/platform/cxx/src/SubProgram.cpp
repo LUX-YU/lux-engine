@@ -1,4 +1,5 @@
 #include "lux/cxx/SubProgram.hpp"
+#include "lux/cxx/static_reflection.hpp"
 #include <unordered_map>
 
 namespace lux::cxx

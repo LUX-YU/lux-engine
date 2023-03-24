@@ -61,7 +61,7 @@ namespace lux::gapi::opengl
         static constexpr GLboolean  normalize   = Normalize;
 
         template<GLuint Index, GLsizei Stride, GLuint Offset>
-        static inline void sAttributePointer()
+        static void sAttributePointer()
         {
             TAttrFuncMap<Type>::func(Index, number, type_value, normalize, Stride, reinterpret_cast<void*>(Offset));
         }
@@ -210,45 +210,45 @@ namespace lux::gapi::opengl
             }
         }
 
-        inline GLuint rawObject()
+        GLuint rawObject()
         {
             return _vao;
         }
 
-        inline GLuint number() const
+        GLuint number() const
         {
             return _num;
         }
 
-        inline void bind()
+        void bind()
         {
             glBindVertexArray(_vao);
         }
 
-        inline void endBind()
+        void endBind()
         {
             glBindVertexArray(0);
         }
 
-        template<class T> static inline void sEnableSliceAttribute()
+        template<class T> static void sEnableSliceAttribute()
         requires is_vertex_data_slice<T>::value
         {
             glEnableVertexAttribArray(T::index);
         }
-        template<class T> static inline void sDisableSliceAttribute()
+        template<class T> static void sDisableSliceAttribute()
         requires is_vertex_data_slice<T>::value
         {
             glDisableVertexAttribArray(T::index);
         }
-        static inline void sEnableSliceAttribute(GLuint index)
+        static void sEnableSliceAttribute(GLuint index)
         {
             glEnableVertexAttribArray(index);
         }
-        static inline void sDisableSliceAttribute(GLuint index)
+        static void sDisableSliceAttribute(GLuint index)
         {
             glDisableVertexAttribArray(index);
         }
-        template<class T> static inline void sEnableVertexDataAttribute()
+        template<class T> static void sEnableVertexDataAttribute()
         requires is_vertex_data<T>::value
         {
             []<std::size_t... I>(std::index_sequence<I...>)
@@ -256,7 +256,7 @@ namespace lux::gapi::opengl
                 (glEnableVertexAttribArray(I), ...);
             }(std::make_index_sequence<T::slice_number>());
         }
-        template<class T> static inline void sDisableVertexDataAttribute()
+        template<class T> static void sDisableVertexDataAttribute()
         requires is_vertex_data<T>::value
         {
             []<std::size_t... I>(std::index_sequence<I...>)
@@ -268,33 +268,33 @@ namespace lux::gapi::opengl
 #ifdef __GLPP_SUPPORT_DSA
         // same as sEnableSliceAttribute but not static
         // need opengl >= 4.5
-        template<class T> inline void enableSliceAttribute()
+        template<class T> void enableSliceAttribute()
         requires is_vertex_data_slice<T>::value
         {
             glEnableVertexArrayAttrib(_vao, T::index);
         }
         // same as sDisableSliceAttribute but not static
         // need opengl >= 4.5
-        template<class T> inline void disableSliceAttribute()
+        template<class T> void disableSliceAttribute()
         requires is_vertex_data_slice<T>::value
         {
             glDisableVertexArrayAttrib(_vao, T::index);
         }
         // same as sEnableSliceAttribute but not static
         // need opengl >= 4.5
-        inline void enableSliceAttribute(GLuint index)
+        void enableSliceAttribute(GLuint index)
         {
             glEnableVertexArrayAttrib(_vao, index);
         }
         // same as sDisableSliceAttribute but not static
         // need opengl >= 4.5
-        inline void disableSliceAttribute(GLuint index)
+        void disableSliceAttribute(GLuint index)
         {
             glDisableVertexArrayAttrib(_vao, index);
         }
         // same as sEnableVertexDataAttribute not static
         // need opengl >= 4.5
-        template<class T> static inline void enableVertexDataAttribute()
+        template<class T> static void enableVertexDataAttribute()
         requires is_vertex_data<T>::value
         {
             []<std::size_t... I>(std::index_sequence<I...>)
@@ -304,7 +304,7 @@ namespace lux::gapi::opengl
         }
         // same as sDisableVertexDataAttribute but not static
         // need opengl >= 4.5
-        template<class T> static inline void disableVertexDataAttribute()
+        template<class T> static void disableVertexDataAttribute()
         requires is_vertex_data<T>::value
         {
             []<std::size_t... I>(std::index_sequence<I...>)

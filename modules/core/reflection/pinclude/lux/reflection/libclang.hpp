@@ -17,7 +17,15 @@ namespace lux::reflection {
 
 		~TranslationUnit()
 		{
-			clang_disposeTranslationUnit(_unit);
+			if (_unit)
+			{
+				clang_disposeTranslationUnit(_unit);
+			}
+		}
+
+		bool isVaild()
+		{
+			return _unit != nullptr;
 		}
 
 	private:
@@ -58,7 +66,7 @@ namespace lux::reflection {
 			return ret;
 		}
 
-		inline const char* c_str() const
+		const char* c_str() const
 		{
 			return clang_getCString(_string);
 		}
@@ -70,7 +78,7 @@ namespace lux::reflection {
 		CXString _string;
 	};
 
-	static inline std::ostream& operator<<(std::ostream& os, const String& str)
+	static std::ostream& operator<<(std::ostream& os, const String& str)
 	{
 		return os << str.c_str();
 	}
@@ -83,37 +91,37 @@ namespace lux::reflection {
 		explicit Cursor(const TranslationUnit& unit)
 			: _cursor(clang_getTranslationUnitCursor(unit._unit)) {}
 
-		inline bool operator==(const Cursor& other) const
+		bool operator==(const Cursor& other) const
 		{
 			return clang_equalCursors(_cursor, other._cursor);
 		}
 
-		inline size_t hash() const
+		size_t hash() const
 		{
 			clang_hashCursor(_cursor);
 		}
 
-		inline bool isInvalidDeclaration() const
+		bool isInvalidDeclaration() const
 		{
 			return clang_isInvalidDeclaration(_cursor);
 		}
 
-		inline bool hasAttrs() const
+		bool hasAttrs() const
 		{
 			return clang_Cursor_hasAttrs(_cursor);
 		}
 
-		inline Cursor getCursorSemanticParent()
+		Cursor getCursorSemanticParent()
 		{
 			return Cursor(clang_getCursorSemanticParent(_cursor));
 		}
 
-		inline Cursor getCursorLexicalParent()
+		Cursor getCursorLexicalParent()
 		{
 			return Cursor(clang_getCursorLexicalParent(_cursor));
 		}
 
-		inline Cursor getArgument(unsigned i)
+		Cursor getArgument(unsigned i)
 		{
 			return Cursor(clang_Cursor_getArgument(_cursor, i));
 		}
@@ -145,12 +153,12 @@ namespace lux::reflection {
 			return clang_getCursorAvailability(_cursor);
 		}
 
-		inline String displayName()
+		String displayName()
 		{
 			return String(clang_getCursorDisplayName(_cursor));
 		}
 
-		inline String mangling()
+		String mangling()
 		{
 			return String(clang_Cursor_getMangling(_cursor));
 		}
@@ -162,7 +170,7 @@ namespace lux::reflection {
 		 *
 		 * @return Cursor
 		 */
-		inline Cursor getReferenced()
+		Cursor getReferenced()
 		{
 			return Cursor(
 				clang_getCursorReferenced(_cursor)
@@ -174,19 +182,19 @@ namespace lux::reflection {
 		 *
 		 * @return Cursor
 		 */
-		inline Cursor getDefinition()
+		Cursor getDefinition()
 		{
 			return Cursor(
 				clang_getCursorDefinition(_cursor)
 			);
 		}
 
-		inline bool isDefinition()
+		bool isDefinition()
 		{
 			return clang_isCursorDefinition(_cursor);
 		}
 
-		inline Cursor getCanonicalCursor()
+		Cursor getCanonicalCursor()
 		{
 			return Cursor(
 				clang_getCanonicalCursor(_cursor)
@@ -204,7 +212,7 @@ namespace lux::reflection {
 		* If the method/message is "static" or the cursor does not point to a
 		* method/message, it will return zero.
 		*/
-		inline int isDynamicCall()
+		int isDynamicCall()
 		{
 			return clang_Cursor_isDynamicCall(_cursor);
 		}
@@ -212,7 +220,7 @@ namespace lux::reflection {
 		/**
 		* Returns non-zero if the given cursor is a variadic function or method.
 		*/
-		inline bool isVariadic()
+		bool isVariadic()
 		{
 			return clang_Cursor_isVariadic(_cursor);
 		}
@@ -225,8 +233,8 @@ namespace lux::reflection {
 
 		void visitChildren(VisitChildrenCallback callback)
 		{
-			auto raw_cb =
-				[](CXCursor cursor, CXCursor parent, CXClientData client_data) -> enum CXChildVisitResult
+			auto raw_cb = 
+			[](CXCursor cursor, CXCursor parent, CXClientData client_data) -> enum CXChildVisitResult
 			{
 				auto cb_ptr = static_cast<VisitChildrenCallback*>(client_data);
 				return (*cb_ptr)(Cursor(cursor), Cursor(parent));
@@ -234,7 +242,7 @@ namespace lux::reflection {
 			clang_visitChildren(_cursor, raw_cb, (CXClientData)&callback);
 		}
 
-		inline int getCursorExceptionSpecificationType()
+		int getCursorExceptionSpecificationType()
 		{
 			return clang_getCursorExceptionSpecificationType(_cursor);
 		}
@@ -270,7 +278,6 @@ namespace lux::reflection {
 		// clang_getNumOverloadedDecls
 		// clang_getOverloadedDecl
 		// clang_getIBOutletCollectionType seem like not a cxx attribute
-
 		// clang_Cursor_getOffsetOfField
 		// clang_Cursor_isAnonymous
 		// clang_Cursor_isAnonymousRecordDecl
@@ -292,22 +299,22 @@ namespace lux::reflection {
 		CursorKind(Cursor& cursor)
 			: _kind(clang_getCursorKind(cursor._cursor)) {}
 
-		bool inline operator==(const CursorKind& other) const
+		bool operator==(const CursorKind& other) const
 		{
 			return other._kind == _kind;
 		}
 
-		bool inline operator==(CXCursorKind other_enum) const
+		bool operator==(CXCursorKind other_enum) const
 		{
 			return other_enum == _kind;
 		}
 
-		bool inline isDeclatation() const
+		bool isDeclatation() const
 		{
 			return clang_isDeclaration(_kind);
 		}
 
-		bool inline isReference() const
+		bool isReference() const
 		{
 			return clang_isReference(_kind);
 		}
@@ -315,7 +322,7 @@ namespace lux::reflection {
 		/**
 		 * Determine whether the given cursor kind represents an expression.
 		 */
-		bool inline isExpression() const
+		bool isExpression() const
 		{
 			return clang_isExpression(_kind);
 		}
@@ -323,7 +330,7 @@ namespace lux::reflection {
 		/**
 		 * Determine whether the given cursor kind represents a statement.
 		 */
-		bool inline isStatement() const
+		bool isStatement() const
 		{
 			return clang_isStatement(_kind);
 		}
@@ -331,7 +338,7 @@ namespace lux::reflection {
 		/**
 		 * Determine whether the given cursor kind represents an attribute.
 		 */
-		bool inline isAttribute() const
+		bool isAttribute() const
 		{
 			return clang_isAttribute(_kind);
 		}
@@ -340,7 +347,7 @@ namespace lux::reflection {
 		 * Determine whether the given cursor kind represents an invalid
 		 * cursor.
 		 */
-		bool inline isInvalid() const
+		bool isInvalid() const
 		{
 			return clang_isInvalid(_kind);
 		}
@@ -349,7 +356,7 @@ namespace lux::reflection {
 		 * Determine whether the given cursor kind represents a translation
 		 * unit.
 		 */
-		bool inline isTranslationUnit() const
+		bool isTranslationUnit() const
 		{
 			return clang_isTranslationUnit(_kind);
 		}
@@ -358,7 +365,7 @@ namespace lux::reflection {
 		 * Determine whether the given cursor represents a preprocessing
 		 * element, such as a preprocessor directive or macro instantiation.
 		 */
-		bool inline isPreprocessing() const
+		bool isPreprocessing() const
 		{
 			return clang_isPreprocessing(_kind);
 		}
@@ -367,14 +374,14 @@ namespace lux::reflection {
 		 * Determine whether the given cursor represents a currently
 		 *  unexposed piece of the AST (e.g., CXCursor_UnexposedStmt).
 		 */
-		bool inline isUnexposed() const
+		bool isUnexposed() const
 		{
 			return clang_isUnexposed(_kind);
 		}
 
 		// wrapper of clang_getCursorKindSpelling, which convert enum CXCursorKind
 		// to CXString
-		inline String cursorKindSpelling() const
+		String cursorKindSpelling() const
 		{
 			return clang_getCursorKindSpelling(_kind);
 		}
@@ -410,7 +417,7 @@ namespace lux::reflection {
 			return Type(clang_getCursorType(cursor._cursor));
 		}
 
-		inline bool operator==(Type other)
+		bool operator==(Type other)
 		{
 			// non-zero if the CXTypes represent the same type and
 			// zero otherwise.
@@ -439,7 +446,7 @@ namespace lux::reflection {
 		* If the type declaration is not a constant size type,
 		*   CXTypeLayoutError_NotConstantSize is returned.
 		*/
-		inline size_t typeAlignof()
+		size_t typeAlignof()
 		{
 			return clang_Type_getAlignOf(_type);
 		}
@@ -449,7 +456,7 @@ namespace lux::reflection {
 		 *
 		 * If a non-member-pointer type is passed in, an invalid type is returned.
 		 */
-		inline Type classType()
+		Type classType()
 		{
 			return Type(clang_Type_getClassType(_type));
 		}
@@ -463,7 +470,7 @@ namespace lux::reflection {
 		 * If the type declaration is a dependent type, CXTypeLayoutError_Dependent is
 		 *   returned.
 		 */
-		inline size_t typeSizeof()
+		size_t typeSizeof()
 		{
 			return clang_Type_getSizeOf(_type);
 		}
@@ -481,7 +488,7 @@ namespace lux::reflection {
 		 * If the field's name S is not found,
 		 *   CXTypeLayoutError_InvalidFieldName is returned.
 		 */
-		inline size_t typeOffset(const char* name)
+		size_t typeOffset(const char* name)
 		{
 			return clang_Type_getOffsetOf(_type, name);
 		}
@@ -491,7 +498,7 @@ namespace lux::reflection {
 		 *
 		 * If the type is not an attributed type, an invalid type is returned.
 		 */
-		inline Type modifiedType()
+		Type modifiedType()
 		{
 			return Type(clang_Type_getModifiedType(_type));
 		}
@@ -501,7 +508,7 @@ namespace lux::reflection {
 		 *
 		 * If a non-atomic type is passed in, an invalid type is returned.
 		 */
-		inline Type valueType()
+		Type valueType()
 		{
 			return Type(clang_Type_getValueType(_type));
 		}
@@ -514,27 +521,27 @@ namespace lux::reflection {
 		 * type with all the "sugar" removed.  For example, if 'T' is a typedef
 		 * for 'int', the canonical type for 'T' would be 'int'.
 		 */
-		inline Type canonicalType()
+		Type canonicalType()
 		{
 			return Type(clang_getCanonicalType(_type));
 		}
 
-		inline bool isConstQualifiedType()
+		bool isConstQualifiedType()
 		{
 			return clang_isConstQualifiedType(_type);
 		}
 
-		inline bool isVolatileQualifiedType()
+		bool isVolatileQualifiedType()
 		{
 			return clang_isVolatileQualifiedType(_type);
 		}
 
-		inline bool isRestrictQualifiedType()
+		bool isRestrictQualifiedType()
 		{
 			return clang_isRestrictQualifiedType(_type);
 		}
 
-		inline size_t getAddressSpace()
+		size_t getAddressSpace()
 		{
 			return clang_getAddressSpace(_type);
 		}
@@ -548,101 +555,101 @@ namespace lux::reflection {
 			return ret;
 		}
 
-		inline int getNumTemplateArguments()
+		int getNumTemplateArguments()
 		{
 			return clang_Type_getNumTemplateArguments(_type);
 		}
 
-		inline Type getPointeeType()
+		Type getPointeeType()
 		{
 			return Type(clang_getPointeeType(_type));
 		}
 
-		inline Cursor getTypeDeclaration()
+		Cursor getTypeDeclaration()
 		{
 			return Cursor(clang_getTypeDeclaration(_type));
 		}
 
-		inline CXCallingConv getFunctionTypeCallingConv()
+		CXCallingConv getFunctionTypeCallingConv()
 		{
 			return clang_getFunctionTypeCallingConv(_type);
 		}
 
 		// function related
-		inline Type getResultType()
+		Type getResultType()
 		{
 			return Type(clang_getResultType(_type));
 		}
 
 		// function related
-		inline int getExceptionSpecificationType()
+		int getExceptionSpecificationType()
 		{
 			return clang_getExceptionSpecificationType(_type);
 		}
 
 		// function related
-		inline int getNumArgTypes()
+		int getNumArgTypes()
 		{
 			return clang_getNumArgTypes(_type);
 		}
 
 		// function related
-		inline Type getArgType(unsigned i)
+		Type getArgType(unsigned i)
 		{
 			return Type(clang_getArgType(_type, i));
 		}
 
-		inline bool isFunctionTypeVariadic()
+		bool isFunctionTypeVariadic()
 		{
 			return clang_isFunctionTypeVariadic(_type);
 		}
 
-		inline Type getTemplateArgumentAsType(unsigned i)
+		Type getTemplateArgumentAsType(unsigned i)
 		{
 			return Type(clang_Type_getTemplateArgumentAsType(_type, i));
 		}
 
-		inline size_t getNumElements()
+		size_t getNumElements()
 		{
 			return clang_getNumElements(_type);
 		}
 
-		inline bool isPODType()
+		bool isPODType()
 		{
 			return clang_isPODType(_type);
 		}
 
-		inline Type getElementType()
+		Type getElementType()
 		{
 			return Type(clang_getElementType(_type));
 		}
 
-		inline Type getArrayElementType()
+		Type getArrayElementType()
 		{
 			return Type(clang_getArrayElementType(_type));
 		}
 
-		inline size_t getArraySize()
+		size_t getArraySize()
 		{
 			return clang_getArraySize(_type);
 		}
 
-		inline Type getNamedType()
+		Type getNamedType()
 		{
 			return Type(clang_Type_getNamedType(_type));
 		}
 
-		inline CXTypeNullabilityKind getNullability()
+		CXTypeNullabilityKind getNullability()
 		{
 			return clang_Type_getNullability(_type);
 		}
 
-		inline size_t isTransparentTagTypedef()
+		size_t isTransparentTagTypedef()
 		{
 			return clang_Type_isTransparentTagTypedef(_type);
 		}
 
-		inline CXRefQualifierKind getCXXRefQualifier()
+		CXRefQualifierKind getCXXRefQualifier()
 		{
 			return clang_Type_getCXXRefQualifier(_type);
 		}
@@ -650,7 +657,7 @@ namespace lux::reflection {
 		using TypeVisitCallback = std::function<CXVisitorResult(const Cursor&)>;
 
 		// clang_Type_visitFields
-		inline size_t visitFields(TypeVisitCallback callback)
+		size_t visitFields(TypeVisitCallback callback)
 		{
 			auto raw_cb =
 				[](CXCursor cursor, CXClientData client_data) -> CXVisitorResult
@@ -667,7 +674,7 @@ namespace lux::reflection {
 		CXType _type;
 	};
 
-	static inline bool operator==(Type l_type, Type r_type)
+	static bool operator==(Type l_type, Type r_type)
 	{
 		return l_type.operator==(r_type);
 	}

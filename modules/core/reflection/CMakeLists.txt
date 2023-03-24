@@ -15,4 +15,5 @@ add_module(
                             pinclude
     PUBLIC_LIBRARIES        libclang
                             lux::engine::platform::system
+                            lux::engine::core::meta
 )

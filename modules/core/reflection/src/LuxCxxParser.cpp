@@ -1,8 +1,8 @@
 #include <clang-c/Index.h>
-#include "lux-engine/core/reflection/LuxCxxParser.hpp"
-#include "lux-engine/core/reflection/LuxCxxParserImpl.hpp"
+#include "lux/reflection/LuxCxxParser.hpp"
+#include "lux/reflection/LuxCxxParserImpl.hpp"
 
-namespace lux::engine::core
+namespace lux::reflection
 {
     LuxCxxParser::LuxCxxParser()
     {
@@ -10,6 +10,4 @@ namespace lux::engine::core
     }
 
     LuxCxxParser::~LuxCxxParser() = default;
-
-
 } // namespace lux::engine::core

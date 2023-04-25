@@ -1,7 +1,8 @@
-#include "lux-engine/platform/cxx/SubProgram.hpp"
+#include "lux/cxx/SubProgram.hpp"
+#include "lux/cxx/static_reflection.hpp"
 #include <unordered_map>
 
-namespace lux::engine::platform
+namespace lux::cxx
 {
     using FunctionMap = std::unordered_map<std::string, SubProgramFunc>;
 
@@ -13,11 +14,11 @@ namespace lux::engine::platform
 
 #define func_map getMap()
 
-    void SubProgramRegister::registProgram(const std::string& name, const SubProgramFunc& func)
+    void SubProgramRegister::registProgram(const std::string& name, SubProgramFunc func)
     {
         if(!func_map.count(name))
         {
-            func_map[name] = func;
+            func_map[name] = std::move(func);
         }
     }
 

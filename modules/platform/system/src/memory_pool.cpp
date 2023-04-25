@@ -1,6 +1,6 @@
-#include <lux-engine/platform/system/memory_pool.hpp>
+#include <lux/system/memory_pool.hpp>
 
-namespace lux::engine::platform
+namespace lux::system
 {
     MemoryPool::MemoryPool()
     {

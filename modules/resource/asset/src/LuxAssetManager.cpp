@@ -1,24 +1,14 @@
-#include <lux-engine/resource/asset/LuxAssetManager.hpp>
+#include <lux/asset/LuxAssetManager.hpp>
+#include <lux/asset/LuxAssetManagerImpl.hpp>
 
-namespace lux::engine::resource
+namespace lux::asset
 {
-    class LuxAssetManager::Impl
+    LuxAssetManager::LuxAssetManager() = default;
+
+    LuxAssetManager::~LuxAssetManager() = default;
+
+    LoadAssetResult LuxAssetManager::loadExternalAsset(const std::string& name, const FilePath& path)
     {
-
-    };
-
-    LuxAssetManager::LuxAssetManager()
-    {
-
-    }
-
-    LuxAssetManager::~LuxAssetManager()
-    {
-
-    }
-
-    void LuxAssetManager::registAssert()
-    {
-
+        return LoadAssetResult::UNKNOWN_ERROR;
     }
 }

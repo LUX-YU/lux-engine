@@ -7,6 +7,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <type_traits>
 
 namespace lux::asset
 {
@@ -121,20 +122,21 @@ namespace lux::asset
 
         void loadMaterialTextures(ModelAsset& model, Mesh& mesh, aiMaterial* mat, aiTextureType type)
         {
-            auto texture_count = mat->GetTextureCount(type);
+            using Integer = decltype(std::declval<aiMaterial>().GetTextureCount(type));
+            Integer texture_count = mat->GetTextureCount(type);
             auto& current_textures = model.textures;
-            for (size_t i = 0; i < texture_count; i++)
+            for (Integer i = 0; i < texture_count; i++)
             {
                 bool skip = false;
                 // get current material texture path
                 aiString str; mat->GetTexture(type, i, &str);
-                // get texture absulate path
+                // get texture absolute path
                 auto parent_directory = model.filePath().parent_path();
-                auto texture_absulate_path = parent_directory / str.C_Str();
+                auto texture_absolute_path = parent_directory / str.C_Str();
                 for (size_t j = 0; j < model.textures.size(); j++)
                 {
                     // already loaded
-                    if (current_textures[j].filePath() == texture_absulate_path)
+                    if (current_textures[j].filePath() == texture_absolute_path)
                     {
                         mesh.texture_indices.push_back(j);
                         skip = true;
@@ -150,7 +152,7 @@ namespace lux::asset
                         // if unsuccessful set a default
                         shininess = 16.f;
                     }
-                    TextureAsset texture(texture_absulate_path.string());
+                    TextureAsset texture(texture_absolute_path.string());
                     texture._type      = assimpTextureEnumConverter(type);
                     texture._shininess = shininess;
 

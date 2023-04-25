@@ -1,4 +1,5 @@
 #include "lux/reflection/LuxCxxParserImpl.hpp"
+#include <numeric>
 
 namespace lux::reflection
 {
@@ -18,10 +19,16 @@ namespace lux::reflection
 
         TranslationUnit LuxCxxParserImpl::translate(const std::string& file_path, const std::vector<std::string>& commands)
         {
-            static const char* parse_defination = "-D __PARSE_TIME__=1";
+            static const char* parse_definition = "-D __PARSE_TIME__=1";
             CXTranslationUnit translation_unit;
-            const size_t commands_size = commands.size();
-            // +1 for add defination
+
+            if(commands.size() > std::numeric_limits<int>::max())
+            {
+                return TranslationUnit(nullptr);
+            }
+
+            const int commands_size = static_cast<int>(commands.size());
+            // +1 for add definition
             const char ** _c_commands = (const char **)malloc((commands_size + 1) * sizeof(char*));
             if (!_c_commands)
             {
@@ -32,7 +39,7 @@ namespace lux::reflection
             {
                 _c_commands[i] = commands[i].c_str();
             }
-            _c_commands[commands_size] = parse_defination;
+            _c_commands[commands_size] = parse_definition;
             CXErrorCode error_code = clang_parseTranslationUnit2(
                 clang_index,            // CXIndex
                 file_path.c_str(),      // source_filename
@@ -44,6 +51,7 @@ namespace lux::reflection
                 &translation_unit       // CXTranslationUnit
             );
             free(_c_commands);
-            return TranslationUnit(translation_unit);
+
+            return TranslationUnit(error_code == CXErrorCode::CXError_Success ? translation_unit : nullptr);
         }
 } // namespace lux::engine::core

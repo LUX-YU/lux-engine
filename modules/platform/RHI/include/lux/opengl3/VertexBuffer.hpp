@@ -77,21 +77,21 @@ namespace lux::gapi::opengl
             return _vbo;
         }
 
-        GLuint number() const
+        [[nodiscard]] GLuint number() const
         {
             return _num;
         }
 
     protected:
 
-        VertexBufferBase(GLsizei number)
+        explicit VertexBufferBase(GLsizei number)
         :_num(number){
             if(_num > 0)
             glGenBuffers(_num, &_vbo);
         }
 
         GLsizei _num;
-        GLuint  _vbo;
+        GLuint  _vbo{};
     };
 
     template<BufferType btype>
@@ -100,7 +100,7 @@ namespace lux::gapi::opengl
     public:
         static constexpr auto buffer_type = static_cast<GLenum>(btype);
 
-        TVertexBuffer(GLsizei size) : VertexBufferBase(size){}
+        explicit TVertexBuffer(GLsizei size) : VertexBufferBase(size){}
         TVertexBuffer() : VertexBufferBase(1){}
 
         void bind()

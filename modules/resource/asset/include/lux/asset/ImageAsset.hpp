@@ -9,7 +9,7 @@ namespace lux::asset
     class ImageAsset : public LuxExternalAsset
     {
     public:
-        LUX_EXPORT ImageAsset(FilePath path, bool flip_vertically = true);
+        LUX_EXPORT explicit ImageAsset(FilePath path, bool flip_vertically = true);
 
         LUX_EXPORT virtual ~ImageAsset();
 
@@ -17,19 +17,19 @@ namespace lux::asset
         
         LUX_EXPORT bool unload() override;
 
-        LUX_EXPORT virtual bool isLoaded() const override;
+        [[nodiscard]] LUX_EXPORT bool isLoaded() const override;
 
-        LUX_EXPORT int  width() const;
+        [[nodiscard]] LUX_EXPORT int  width() const;
 
-        LUX_EXPORT int  height() const;
+        [[nodiscard]] LUX_EXPORT int  height() const;
 
         // 1 grey
         // 2 grey, alpha
         // 3 red, green, blue
         // 4 red, green, blue, alpha
-        LUX_EXPORT int  channel() const;
+        [[nodiscard]] LUX_EXPORT int  channel() const;
 
-        LUX_EXPORT const void* const data() const;
+        [[nodiscard]] LUX_EXPORT const void* const data() const;
 
         LUX_EXPORT void* data();
 

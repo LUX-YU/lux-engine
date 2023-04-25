@@ -1,6 +1,7 @@
 .vs
 CMakeSettings.json
 .vscode
+.idea
 imgui.ini
 __pycache__
 build
@@ -8,3 +9,5 @@ prebuild
 install
 tools_temp
 out
+cmake-build-debug
+cmake-build-release

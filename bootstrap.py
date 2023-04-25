@@ -2,28 +2,29 @@ import os
 import subprocess
 import argparse
 
-project_root_dir            = os.path.dirname(__file__)
+project_root_dir = os.path.dirname(__file__)
 external_install_script_dir = os.path.join(project_root_dir, "external", "script")
-installer_class_dir         = os.path.join(project_root_dir, "script")
+installer_class_dir = os.path.join(project_root_dir, "script")
 
 external_tools_list = {
-    "ninja":    os.path.join(external_install_script_dir,   "ninja.py"),
-    "llvm":     os.path.join(external_install_script_dir,   "llvm.py"),
+    "ninja": os.path.join(external_install_script_dir, "ninja.py"),
+    "llvm": os.path.join(external_install_script_dir, "llvm.py"),
 }
 
 external_library_list = {
-    "glad":     os.path.join(external_install_script_dir,   "glad.py"),
-    "glfw":     os.path.join(external_install_script_dir,   "glfw.py"),
-    "imgui":    os.path.join(external_install_script_dir,   "imgui.py"),
-    "eigen3":   os.path.join(external_install_script_dir,   "eigen3.py"),
-    "stb":      os.path.join(external_install_script_dir,   "stb.py"),
-    "freetype": os.path.join(external_install_script_dir,   "freetype.py"),
-    "assimp":   os.path.join(external_install_script_dir,   "assimp.py"),
+    "glad": os.path.join(external_install_script_dir, "glad.py"),
+    "glfw": os.path.join(external_install_script_dir, "glfw.py"),
+    "imgui": os.path.join(external_install_script_dir, "imgui.py"),
+    "eigen3": os.path.join(external_install_script_dir, "eigen3.py"),
+    "stb": os.path.join(external_install_script_dir, "stb.py"),
+    "freetype": os.path.join(external_install_script_dir, "freetype.py"),
+    "assimp": os.path.join(external_install_script_dir, "assimp.py"),
     # "boost":   os.path.join(external_install_script_dir,    "boost.py"),
-    "stduuid":   os.path.join(external_install_script_dir,  "stduuid.py")
+    "stduuid": os.path.join(external_install_script_dir, "stduuid.py")
 }
 
-def execute_cmd_list(cmd_dict : dict, enable_list = []):
+
+def execute_cmd_list(cmd_dict: dict, enable_list=[]):
     python_executable = "python"
     global installer_class_dir
 
@@ -40,12 +41,13 @@ def execute_cmd_list(cmd_dict : dict, enable_list = []):
             print("Error Occurred when execute script:", script_path)
             exit(255)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-t", "--tools",    nargs='*')
+    parser.add_argument("-t", "--tools", nargs='*')
     parser.add_argument("--tools-all")
-    parser.add_argument("-l", "--libraries",nargs='*')
-    parser.add_argument("--libraries-all") 
+    parser.add_argument("-l", "--libraries", nargs='*')
+    parser.add_argument("--libraries-all")
     parser.add_argument("-d", "--debug")
 
     args = parser.parse_args()
@@ -63,7 +65,7 @@ if __name__ == "__main__":
     enable_libraries = []
 
     if "all" in input_tools:
-        if  len(input_tools) > 1:
+        if len(input_tools) > 1:
             print("Warning: option `all` in tools set detected, but there are other option exist.")
         enable_tools = list(external_tools_list.keys())
     else:

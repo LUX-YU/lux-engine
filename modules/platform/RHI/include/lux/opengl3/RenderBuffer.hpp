@@ -8,7 +8,7 @@ namespace lux::gapi::opengl
     class RenderBuffer
     {
     public:
-        RenderBuffer(GLsizei num)
+        explicit RenderBuffer(GLsizei num)
         {
             _num = num;
             if(_num > 0)
@@ -35,7 +35,7 @@ namespace lux::gapi::opengl
             }
         }
 
-        GLuint rawObject()
+        [[nodiscard]] GLuint rawObject()
         {
             return _rbo;
         }
@@ -50,7 +50,7 @@ namespace lux::gapi::opengl
             glBindRenderbuffer(GL_RENDERBUFFER, 0);
         }
 
-        GLsizei number() const 
+        [[nodiscard]] GLsizei number() const
         {
             return _num;
         }
@@ -65,7 +65,7 @@ namespace lux::gapi::opengl
             other._num = 0;
         }
 
-        RenderBuffer &operator=(RenderBuffer &&other)
+        RenderBuffer &operator=(RenderBuffer &&other) noexcept
         {
             release();
 
@@ -123,6 +123,6 @@ namespace lux::gapi::opengl
 
     private:
         GLsizei _num;
-        GLuint  _rbo;
+        GLuint  _rbo{};
     };
 }

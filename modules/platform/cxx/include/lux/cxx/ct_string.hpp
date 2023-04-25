@@ -33,24 +33,24 @@ namespace lux::cxx
         using concat_string = decltype(__concat_string(T{}));
     };
 
-    template<class _CTStr>
-    concept ct_string_type = is_template_of_v<ct_string, _CTStr>;
+    template<class CTStr>
+    concept ct_string_type = is_template_of_v<ct_string, CTStr>;
 
-    template<ct_string_type _CTStr1, ct_string_type _CTStr2>
+    template<ct_string_type CTStr1, ct_string_type CTStr2>
     struct concat_string
     {
-        using type = typename _CTStr1::template concat_string<_CTStr2>;
+        using type = typename CTStr1::template concat_string<CTStr2>;
     };
 
-    template<ct_string_type _CTStr1, ct_string_type _CTStr2>
-    using concat_string_t = typename concat_string<_CTStr1, _CTStr2>::type;
+    template<ct_string_type CTStr1, ct_string_type CTStr2>
+    using concat_string_t = typename concat_string<CTStr1, CTStr2>::type;
 
     /**
      * @brief concat any number of compile time string
      * 
      * @tparam _CT_Strs requires ct_string_type
      */
-    template<class... _CT_Strs>
+    template<class... CT_Strs>
     struct concat_strings;
 
     template<ct_string_type T ,ct_string_type U>
@@ -65,14 +65,14 @@ namespace lux::cxx
         using type = T;
     };
 
-    template<ct_string_type _Current_Str, ct_string_type... Lasts>
-    struct concat_strings<_Current_Str, Lasts...> : private concat_strings<Lasts...>
+    template<ct_string_type Current_Str, ct_string_type... Lasts>
+    struct concat_strings<Current_Str, Lasts...> : private concat_strings<Lasts...>
     {
-        using _Base_Concat = concat_strings<Lasts...>;
-        using type = concat_string_t<_Current_Str, typename _Base_Concat::type>;
+        using Base_Concat = concat_strings<Lasts...>;
+        using type = concat_string_t<Current_Str, typename Base_Concat::type>;
     };
 
-    template<ct_string_type... _CTStrs> using concat_strings_t = typename concat_strings<_CTStrs...>::type;
+    template<ct_string_type... CTStrs> using concat_strings_t = typename concat_strings<CTStrs...>::type;
 
     /**
      * @brief generate compile time string from integer
@@ -84,7 +84,7 @@ namespace lux::cxx
      * 
      * @tparam _Ty 
      */
-    template<size_t _Ty>
+    template<size_t Ty>
     class ctstring_index_generator
     {
     private:
@@ -92,8 +92,8 @@ namespace lux::cxx
         static constexpr auto _generate(std::integer_sequence<char, num...>)
             ->ct_string<(num + 48)...>;
     public:
-        using type = decltype(_generate(integer_to_sequence_t<_Ty>{}));
+        using type = decltype(_generate(integer_to_sequence_t<Ty>{}));
     };
 
-    template<size_t _Ty> using ctstring_index_generator_t = typename ctstring_index_generator<_Ty>::type;
+    template<size_t Ty> using ctstring_index_generator_t = typename ctstring_index_generator<Ty>::type;
 }

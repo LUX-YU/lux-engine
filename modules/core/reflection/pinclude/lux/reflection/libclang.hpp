@@ -12,7 +12,7 @@ namespace lux::reflection {
 		friend class Cursor;
 		friend class CursorKind;
 	public:
-		TranslationUnit(CXTranslationUnit unit)
+		explicit TranslationUnit(CXTranslationUnit unit)
 			: _unit(unit) {}
 
 		~TranslationUnit()
@@ -59,23 +59,23 @@ namespace lux::reflection {
 			if (_string.data) clang_disposeString(_string);
 		}
 
-		std::string std_string() const
+		[[nodiscard]] std::string std_string() const
 		{
 			const char* c_str = clang_getCString(_string);
 			std::string ret(c_str);
 			return ret;
 		}
 
-		const char* c_str() const
+		[[nodiscard]] const char* c_str() const
 		{
 			return clang_getCString(_string);
 		}
 
 	private:
-		String(CXString string)
+		explicit String(CXString string)
 			:_string(string) {}
 
-		CXString _string;
+		CXString _string{};
 	};
 
 	static std::ostream& operator<<(std::ostream& os, const String& str)
@@ -96,34 +96,34 @@ namespace lux::reflection {
 			return clang_equalCursors(_cursor, other._cursor);
 		}
 
-		size_t hash() const
+		[[nodiscard]] size_t hash() const
 		{
 			clang_hashCursor(_cursor);
 		}
 
-		bool isInvalidDeclaration() const
+		[[nodiscard]] bool isInvalidDeclaration() const
 		{
 			return clang_isInvalidDeclaration(_cursor);
 		}
 
-		bool hasAttrs() const
+		[[nodiscard]] bool hasAttrs() const
 		{
 			return clang_Cursor_hasAttrs(_cursor);
 		}
 
 		Cursor getCursorSemanticParent()
 		{
-			return Cursor(clang_getCursorSemanticParent(_cursor));
+			return {clang_getCursorSemanticParent(_cursor)};
 		}
 
 		Cursor getCursorLexicalParent()
 		{
-			return Cursor(clang_getCursorLexicalParent(_cursor));
+			return {clang_getCursorLexicalParent(_cursor)};
 		}
 
 		Cursor getArgument(unsigned i)
 		{
-			return Cursor(clang_Cursor_getArgument(_cursor, i));
+			return {clang_Cursor_getArgument(_cursor, i)};
 		}
 
 		/**
@@ -172,9 +172,7 @@ namespace lux::reflection {
 		 */
 		Cursor getReferenced()
 		{
-			return Cursor(
-				clang_getCursorReferenced(_cursor)
-			);
+			return {clang_getCursorReferenced(_cursor)};
 		}
 
 		/**
@@ -184,9 +182,7 @@ namespace lux::reflection {
 		 */
 		Cursor getDefinition()
 		{
-			return Cursor(
-				clang_getCursorDefinition(_cursor)
-			);
+			return {clang_getCursorDefinition(_cursor)};
 		}
 
 		bool isDefinition()
@@ -196,9 +192,7 @@ namespace lux::reflection {
 
 		Cursor getCanonicalCursor()
 		{
-			return Cursor(
-				clang_getCanonicalCursor(_cursor)
-			);
+			return {clang_getCanonicalCursor(_cursor)};
 		}
 
 		/**
@@ -296,7 +290,7 @@ namespace lux::reflection {
 	class CursorKind
 	{
 	public:
-		CursorKind(Cursor& cursor)
+		explicit CursorKind(Cursor& cursor)
 			: _kind(clang_getCursorKind(cursor._cursor)) {}
 
 		bool operator==(const CursorKind& other) const
@@ -309,12 +303,12 @@ namespace lux::reflection {
 			return other_enum == _kind;
 		}
 
-		bool isDeclatation() const
+		[[nodiscard]] bool isDeclatation() const
 		{
 			return clang_isDeclaration(_kind);
 		}
 
-		bool isReference() const
+		[[nodiscard]] bool isReference() const
 		{
 			return clang_isReference(_kind);
 		}
@@ -322,7 +316,7 @@ namespace lux::reflection {
 		/**
 		 * Determine whether the given cursor kind represents an expression.
 		 */
-		bool isExpression() const
+		[[nodiscard]] bool isExpression() const
 		{
 			return clang_isExpression(_kind);
 		}
@@ -330,7 +324,7 @@ namespace lux::reflection {
 		/**
 		 * Determine whether the given cursor kind represents a statement.
 		 */
-		bool isStatement() const
+        [[nodiscard]] bool isStatement() const
 		{
 			return clang_isStatement(_kind);
 		}
@@ -338,7 +332,7 @@ namespace lux::reflection {
 		/**
 		 * Determine whether the given cursor kind represents an attribute.
 		 */
-		bool isAttribute() const
+        [[nodiscard]] bool isAttribute() const
 		{
 			return clang_isAttribute(_kind);
 		}
@@ -347,7 +341,7 @@ namespace lux::reflection {
 		 * Determine whether the given cursor kind represents an invalid
 		 * cursor.
 		 */
-		bool isInvalid() const
+        [[nodiscard]] bool isInvalid() const
 		{
 			return clang_isInvalid(_kind);
 		}
@@ -356,7 +350,7 @@ namespace lux::reflection {
 		 * Determine whether the given cursor kind represents a translation
 		 * unit.
 		 */
-		bool isTranslationUnit() const
+        [[nodiscard]] bool isTranslationUnit() const
 		{
 			return clang_isTranslationUnit(_kind);
 		}
@@ -365,7 +359,7 @@ namespace lux::reflection {
 		 * Determine whether the given cursor represents a preprocessing
 		 * element, such as a preprocessor directive or macro instantiation.
 		 */
-		bool isPreprocessing() const
+        [[nodiscard]] bool isPreprocessing() const
 		{
 			return clang_isPreprocessing(_kind);
 		}
@@ -374,16 +368,16 @@ namespace lux::reflection {
 		 * Determine whether the given cursor represents a currently
 		 *  unexposed piece of the AST (e.g., CXCursor_UnexposedStmt).
 		 */
-		bool isUnexposed() const
+        [[nodiscard]] bool isUnexposed() const
 		{
 			return clang_isUnexposed(_kind);
 		}
 
 		// wrapper of clang_getCursorKindSpelling, which convert enum CXCursorKind
 		// to CXString
-		String cursorKindSpelling() const
+        [[nodiscard]] String cursorKindSpelling() const
 		{
-			return clang_getCursorKindSpelling(_kind);
+			return String{clang_getCursorKindSpelling(_kind)};
 		}
 
 		std::underlying_type_t<CXCursorKind> kindEnumValue()
@@ -424,14 +418,14 @@ namespace lux::reflection {
 			return clang_equalTypes(_type, other._type);
 		}
 
-		String typeSpelling() const
+        [[nodiscard]] String typeSpelling() const
 		{
-			return clang_getTypeSpelling(_type);
+			return String{clang_getTypeSpelling(_type)};
 		}
 
-		String typeKindSpelling() const
+        [[nodiscard]] String typeKindSpelling() const
 		{
-			return clang_getTypeKindSpelling(_type.kind);
+			return String{clang_getTypeKindSpelling(_type.kind)};
 		}
 
 		/**
@@ -567,7 +561,7 @@ namespace lux::reflection {
 
 		Cursor getTypeDeclaration()
 		{
-			return Cursor(clang_getTypeDeclaration(_type));
+			return {clang_getTypeDeclaration(_type)};
 		}
 
 		CXCallingConv getFunctionTypeCallingConv()

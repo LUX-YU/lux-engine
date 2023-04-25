@@ -46,7 +46,7 @@ namespace lux::window
          * @brief init() won't be called automaticly
         */
         LUX_EXPORT              LuxWindow(int width, int height, std::string title);
-        LUX_EXPORT              LuxWindow(const InitParameter& parameter);
+        LUX_EXPORT     explicit LuxWindow(const InitParameter& parameter);
 
         /**
          * @brief call after calling bindContext
@@ -57,9 +57,9 @@ namespace lux::window
 
         LUX_EXPORT virtual      ~LuxWindow();
 
-        LUX_EXPORT std::string  title() const;
+        [[nodiscard]] LUX_EXPORT std::string  title() const;
 
-        LUX_EXPORT WindowSize   windowSize() const;
+        [[nodiscard]] LUX_EXPORT WindowSize   windowSize() const;
 
         LUX_EXPORT bool         shouldClose();
 
@@ -67,7 +67,7 @@ namespace lux::window
 
         LUX_EXPORT void         hideCursor(bool);
 
-        LUX_EXPORT KeyState     queryKey(KeyEnum) const;
+        [[nodiscard]] LUX_EXPORT KeyState     queryKey(KeyEnum) const;
 
         LUX_EXPORT void subscribeKeyEvent(KeyEventCallback);
         LUX_EXPORT void subscribeCursorPositionCallback(CursorPoitionCallback);
@@ -76,7 +76,7 @@ namespace lux::window
         LUX_EXPORT void subscribeWindowSizeChangeCallback(WindowSizeChangedCallbcak);
 
         /* Current version always return "glfw" */
-        LUX_EXPORT std::string  windowFrameworkName() const;
+        [[nodiscard]] LUX_EXPORT std::string  windowFrameworkName() const;
 
         #ifdef __PLATFORM_WIN32__
         // Get windows 

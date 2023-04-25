@@ -11,13 +11,13 @@ namespace lux::gapi::opengl
     {
         friend class ShaderProgram;
     public:
-        bool isAvailable()
+        [[nodiscard]] bool isAvailable() const
         {
             return _location != -1;
         }
 
     protected:
-        UniformVariableBase(GLint location)
+        explicit UniformVariableBase(GLint location)
             : _location(location){}
 
         GLint _location;
@@ -37,7 +37,7 @@ namespace lux::gapi::opengl
         static constexpr uint8_t param_num = TUniformFunc<TSLType>::param_num;
 
     public:
-        TUniformVariableBase(GLint location)
+        explicit TUniformVariableBase(GLint location)
             : UniformVariableBase(location){}
 
         // TODO enable implicit convertion
@@ -64,7 +64,7 @@ namespace lux::gapi::opengl
         }
 
         void setValues(base_type* data, size_t num)
-        requires !is_matrix
+        requires (!is_matrix)
         {
             func_info::vmethod(_location, num, data);
         }
@@ -102,13 +102,13 @@ namespace lux::gapi::opengl
         ShaderProgram(const ShaderProgram&) = delete;
         ShaderProgram& operator=(const ShaderProgram&) = delete;
 
-        ShaderProgram(ShaderProgram&& other)
+        ShaderProgram(ShaderProgram&& other) noexcept
         {
             this->_shader_program_object = other._shader_program_object;
             other._shader_program_object = 0;
         }
 
-        ShaderProgram& operator=(ShaderProgram&& other)
+        ShaderProgram& operator=(ShaderProgram&& other) noexcept
         {
             release();
             this->_shader_program_object = other._shader_program_object;
@@ -181,12 +181,12 @@ namespace lux::gapi::opengl
             }
         }
     
-        bool operator==(ShaderProgram other)
+        bool operator==(ShaderProgram other) const
         {
             return _shader_program_object == other._shader_program_object;
         }
     
-        void getLinkMessage(std::string &info)
+        void getLinkMessage(std::string &info) const
         {
             char info_buffer[512];
             glGetProgramInfoLog(_shader_program_object, 512, nullptr, info_buffer);

@@ -3,15 +3,9 @@
 
 namespace lux::asset
 {
-    LuxAssetManager::LuxAssetManager()
-    {
-        
-    }
+    LuxAssetManager::LuxAssetManager() = default;
 
-    LuxAssetManager::~LuxAssetManager()
-    {
-
-    }
+    LuxAssetManager::~LuxAssetManager() = default;
 
     LoadAssetResult LuxAssetManager::loadExternalAsset(const std::string& name, const FilePath& path)
     {

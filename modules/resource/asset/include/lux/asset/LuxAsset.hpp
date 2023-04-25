@@ -23,11 +23,12 @@ namespace lux::asset
         friend class LuxAssetManager;
     public:
         LuxAsset()
+        : _manager(nullptr)
         {
             _name = "no_name_asset";
         }
-    
-        LUX_EXPORT std::string name() const
+
+        [[nodiscard]] LUX_EXPORT std::string name() const
         {
             return _name;
         }
@@ -58,7 +59,7 @@ namespace lux::asset
     {
         friend class LuxAssetManager;
     protected:
-        LuxExternalAsset(FilePath filepath)
+        LUX_EXPORT explicit LuxExternalAsset(FilePath filepath)
         : _file_path(std::move(filepath))
         {
 
@@ -70,14 +71,14 @@ namespace lux::asset
 
         LUX_EXPORT virtual bool unload() = 0;
 
-        LUX_EXPORT virtual bool isLoaded() const = 0;
+        [[nodiscard]] LUX_EXPORT virtual bool isLoaded() const = 0;
 
-        LUX_EXPORT FilePath filePath() const 
+        [[nodiscard]] LUX_EXPORT FilePath filePath() const
         {
             return _file_path;
         }
 
-        LUX_EXPORT bool isExist() const 
+        [[nodiscard]] LUX_EXPORT bool isExist() const
         {
             return ::lux::system::filesystem::exists(_file_path);
         }
@@ -91,14 +92,14 @@ namespace lux::asset
         FilePath _file_path;
     };
     
-    template<typename _AssetType, typename _Data>
+    template<typename AssetType, typename Data>
     class AssetDataProcesser
     {
     public:
-        static_assert(std::is_base_of_v<LuxAsset, _AssetType>, "Not An Asset Type");
-        void process(std::function<void (const _Data&)> func)
+        static_assert(std::is_base_of_v<LuxAsset, AssetType>, "Not An Asset Type");
+        void process(std::function<void (const Data&)> func)
         {
-            static_cast<_AssetType*>(this)->process(std::move(func));
+            static_cast<AssetType*>(this)->process(std::move(func));
         }
     };
 }

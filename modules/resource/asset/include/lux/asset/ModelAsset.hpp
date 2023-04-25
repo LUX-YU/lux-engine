@@ -46,14 +46,14 @@ namespace lux::asset
     {
         friend class ModelLoader;
     public:
-        LUX_EXPORT TextureAsset(FilePath path, bool flip_vertically = true);
+        LUX_EXPORT explicit TextureAsset(FilePath path, bool flip_vertically = true);
 
-        TextureType type() const
+        [[nodiscard]] TextureType type() const
         {
             return _type;
         }
 
-        float shininess()
+        [[nodiscard]] float shininess() const
         {
             return _shininess;
         }
@@ -80,18 +80,18 @@ namespace lux::asset
 
         LUX_EXPORT bool unload() override;
 
-        LUX_EXPORT bool isLoaded() const override;
+        [[nodiscard]] LUX_EXPORT bool isLoaded() const override;
 
         using TextureList   = std::vector<TextureAsset>;
         using MeshList      = std::vector<Mesh>;
         
         LUX_EXPORT TextureList& textureList();
 
-        LUX_EXPORT const TextureList& textureList() const;
+        [[nodiscard]] LUX_EXPORT const TextureList& textureList() const;
 
-        LUX_EXPORT MeshList& meshList();
+        [[nodiscard]] LUX_EXPORT MeshList& meshList();
 
-        LUX_EXPORT const MeshList& meshList() const;
+        [[nodiscard]] LUX_EXPORT const MeshList& meshList() const;
 
     private:
         TextureList     textures;

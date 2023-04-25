@@ -13,6 +13,6 @@ llvm_description.set_git_repo_uri("https://github.com/llvm/llvm-project.git")
 source_code_desc = llvm_description.to_source_code()
 
 installer = itools.CMakeProjectInstaller(source_code_desc)
-installer.add_config_option("-DLLVM_ENABLE_PROJECTS=clang;clang-tools-extra;lld;lldb")
+installer.add_config_option("-DLLVM_ENABLE_PROJECTS=clang")
 
 installer.enable()

@@ -37,7 +37,7 @@ namespace lux::cxx
     {
         // enable after c++ 20
         template<class... Args> requires class_has_entry<T>
-        ProgramClassEntryRegister(const std::string& name, Args&&... args)
+        explicit ProgramClassEntryRegister(const std::string& name, Args&&... args)
         {
             auto regist_wrapper = [... args = std::forward<Args>(args)](int argc, char* argv[]){
                 T t{args...};

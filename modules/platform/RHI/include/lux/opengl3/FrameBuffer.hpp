@@ -114,7 +114,7 @@ namespace lux::gapi::opengl
     class FrameBuffer
     {
     public:
-        FrameBuffer(GLsizei size)
+        explicit FrameBuffer(GLsizei size)
         {
             _num = size;
             if(_num > 0)
@@ -135,14 +135,14 @@ namespace lux::gapi::opengl
         FrameBuffer(const FrameBuffer &) = delete;
         FrameBuffer &operator=(const FrameBuffer &) = delete;
 
-        FrameBuffer(FrameBuffer &&other)
+        FrameBuffer(FrameBuffer &&other) noexcept
         {
             _num = other._num;
             _fbo = other._fbo;
             other._num = 0;
         }
 
-        FrameBuffer &operator=(FrameBuffer &&other)
+        FrameBuffer &operator=(FrameBuffer &&other) noexcept
         {
             release();
             _num = other._num;
@@ -170,7 +170,7 @@ namespace lux::gapi::opengl
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
 
-        GLsizei number()
+        [[nodiscard]] GLsizei number() const
         {
             return _num;
         }
@@ -180,7 +180,7 @@ namespace lux::gapi::opengl
             return static_cast<FBStatus>(glCheckFramebufferStatus(GL_FRAMEBUFFER));
         }
 
-        FBStatus checkStatus()
+        [[nodiscard]] FBStatus checkStatus() const
         {
             return static_cast<FBStatus>(glCheckNamedFramebufferStatus(_fbo, GL_FRAMEBUFFER));
         }
@@ -362,6 +362,6 @@ namespace lux::gapi::opengl
 
     private:
         GLsizei _num;
-        GLuint  _fbo;
+        GLuint  _fbo{};
     };
 }

@@ -13,7 +13,7 @@ namespace lux::asset
     class ModelLoader
     {
     public:
-        LoadAssetResult loadFrom(FilePath path, ModelAsset& model_asset)
+        LoadAssetResult loadFrom(const FilePath& path, ModelAsset& model_asset)
         {
             const aiScene* scene = import.ReadFile(path.string().c_str(), aiProcess_Triangulate | aiProcess_FlipUVs);
             if (!scene || scene->mFlags == AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
@@ -208,7 +208,7 @@ namespace lux::asset
 
     bool ModelAsset::isLoaded() const
     {
-        return meshs.size() > 0;
+        return !meshs.empty();
     }
 
     ModelAsset::TextureList& ModelAsset::textureList()

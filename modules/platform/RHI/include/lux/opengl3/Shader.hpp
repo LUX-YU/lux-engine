@@ -18,7 +18,7 @@ namespace lux::gapi::opengl
     class GlShaderBase
     {
     protected:
-        GlShaderBase(ShaderType type)
+        explicit GlShaderBase(ShaderType type)
         {
             _shader_object = glCreateShader(static_cast<GLenum>(type));
         }
@@ -28,7 +28,7 @@ namespace lux::gapi::opengl
         GlShaderBase(GlShaderBase&) = delete;
         GlShaderBase& operator=(GlShaderBase&) = delete;
 
-        GlShaderBase(GlShaderBase&& other)
+        GlShaderBase(GlShaderBase&& other) noexcept
         {
             this->_shader_object = other._shader_object;
             other._shader_object = 0;
@@ -52,7 +52,7 @@ namespace lux::gapi::opengl
             return _shader_object;
         }
 
-        bool operator==(GlShaderBase& other)
+        bool operator==(GlShaderBase& other) const
         {
             return other._shader_object == _shader_object;
         }
@@ -77,14 +77,14 @@ namespace lux::gapi::opengl
             return compile(source.c_str());
         }
 
-        bool isCompiled() const
+        [[nodiscard]] bool isCompiled() const
         {
             GLint status;
             glGetShaderiv(_shader_object, GL_COMPILE_STATUS, &status);
             return status == GL_TRUE;
         }
 
-        bool isReleased() const
+        [[nodiscard]] bool isReleased() const
         {
             return _shader_object == 0;
         }
@@ -102,11 +102,11 @@ namespace lux::gapi::opengl
         GLuint _shader_object;
     };
 
-    template <ShaderType _Shader_TYPE>
+    template <ShaderType Shader_TYPE>
     class TShader : public GlShaderBase
     {
     public:
-        TShader() : GlShaderBase(_Shader_TYPE) {}
+        TShader() : GlShaderBase(Shader_TYPE) {}
     };
 
     using VertexShader   = TShader<ShaderType::VERTEX>;

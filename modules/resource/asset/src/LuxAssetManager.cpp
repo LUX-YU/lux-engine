@@ -1,5 +1,5 @@
-#include <lux/asset/LuxAssetManager.hpp>
-#include <lux/asset/LuxAssetManagerImpl.hpp>
+#include <lux/engine/asset/LuxAssetManager.hpp>
+#include <lux/engine/asset/LuxAssetManagerImpl.hpp>
 
 namespace lux::asset
 {

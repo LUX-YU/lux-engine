@@ -1,5 +1,5 @@
-#include <lux/window/LuxWindow.hpp>
-#include <lux/window/LuxWindowImpl.hpp>
+#include <lux/engine/window/LuxWindow.hpp>
+#include <lux/engine/window/LuxWindowImpl.hpp>
 #include <thread>
 
 #include <atomic>

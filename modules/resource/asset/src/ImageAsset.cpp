@@ -1,4 +1,4 @@
-#include <lux/asset/ImageAsset.hpp>
+#include <lux/engine/asset/ImageAsset.hpp>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 

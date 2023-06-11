@@ -1,5 +1,5 @@
-#include "lux/window/GLContext.hpp"
-#include "lux/window/LuxWindowImpl.hpp"
+#include "lux/engine/window/GLContext.hpp"
+#include "lux/engine/window/LuxWindowImpl.hpp"
 #include <GLFW/glfw3.h>
 
 namespace lux::window

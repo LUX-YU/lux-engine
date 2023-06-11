@@ -1,9 +1,9 @@
-#include "lux/meta/LuxObject.hpp"
-#include "lux/system/visibility_control.h"
+#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/core/visibility.h>
 
 namespace lux::meta
 {
-	LUX_EXPORT void placeholder()
+	LUX_CORE_PUBLIC void placeholder()
 	{
 		
 	}

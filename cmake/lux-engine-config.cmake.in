@@ -1,9 +1,0 @@
-@PACKAGE_INIT@
-
-set(lux_engine_layers @lux_engine_layers@)
-
-foreach(layer ${lux_engine_layers})
-  include(${CMAKE_CURRENT_LIST_DIR}/lux-engine-${layer}-config-targets.cmake)
-endforeach()
-
-check_required_components(lux-engine)

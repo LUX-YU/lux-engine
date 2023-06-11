@@ -1,4 +1,4 @@
-#include <lux/RHI/GraphicDeviceInfo.hpp>
+#include <lux/engine/RHI/GraphicDeviceInfo.hpp>
 
 #ifndef __PLATFORM_UNIX__
 #define _WIN32_DCOM

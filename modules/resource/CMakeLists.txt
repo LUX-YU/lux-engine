@@ -1,3 +1,11 @@
+message("-------- Start config resource layer --------")
+
+generate_visibility_header(
+    ENABLE_MACRO_NAME   LUX_RESOURCE_LIBRARY
+    PUBLIC_MACRO_NAME   LUX_RESOURCE_PUBLIC
+    GENERATE_FILE_PATH  lux/engine/resource/visibility.h
+)
+
 # get sublist
 subdirectory_list(dir_list)
 
@@ -7,9 +15,9 @@ foreach(subdir ${dir_list})
     endif()
 endforeach()
 
-install(
-	EXPORT		lux::engine::resource
-	DESTINATION ${CMAKE_INSTALL_PREFIX}/share/lux-engine
-	NAMESPACE   ${PROJECT_NAMESPACE}::resource::
-	FILE		${resource_config_targets_file}
+install_projects(
+	PROJECT_NAME	lux-engine-resource
+	VERSION			0.0.1
+	NAMESPACE		lux::engine::resource
+	COMPONENTS		asset
 )

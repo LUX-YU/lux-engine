@@ -11,15 +11,21 @@ set(ASSET_SRCS
 )
 # find_package(stduuid REQUIRED)
 
-add_module(
-    MODULE_NAME                 asset
-    NAMESPACE                   resource
-    SOURCE_FILES                ${ASSET_SRCS}
-    EXPORT_INCLUDE_DIRS         include
-    PROJECT_SHARED_INCLUDE_DIRS ${STB_SOURCE_DIR}
-    PRIVATE_INCLUDE_DIRS        pinclude
-    PUBLIC_LIBRARIES            lux::engine::platform::system
-                                lux::engine::core::math
-                                lux::engine::core::meta
-                                assimp::assimp
+add_component(
+    COMPONENT_NAME                  asset
+    NAMESPACE                       lux::engine::resource
+    SOURCE_FILES                    ${ASSET_SRCS}
+    # include directories
+	BUILD_TIME_EXPORT_INCLUDE_DIRS  ${CMAKE_CURRENT_SOURCE_DIR}/include
+                                    ${LUX_GENERATE_HEADER_DIR}
+    BUILD_TIME_SHARED_INCLUDE_DIRS  ${STB_SOURCE_DIR}
+    INSTALL_TIME_INCLUDE_PREFIX     include
+    PRIVATE_INCLUDE_DIRS            pinclude
+    PUBLIC_LIBRARIES                lux::engine::platform::system
+                                    lux::engine::core::math
+                                    lux::engine::core::meta
+                                    assimp::assimp
+    PRIVATE_DEFINITIONS             LUX_RESOURCE_LIBRARY
+    TRANSITIVE_PACKAGES_COMMANDS    "find_package(assimp REQUIRED)"
 )
+

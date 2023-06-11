@@ -1,5 +1,5 @@
+cmake_minimum_required(VERSION 3.18)
 project(lux-engine)
-cmake_minimum_required(VERSION 3.16)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "RELEASE")
@@ -15,10 +15,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_TOOL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tools)
 set(PROJECT_NAMESPACE lux::engine)
 
-set(THIRD_PARTY_PKG_DIR			${CMAKE_CURRENT_SOURCE_DIR}/prebuild)
-set(THIRD_PARTY_SOURCE_DIR		${CMAKE_CURRENT_SOURCE_DIR}/prebuild/source)
-set(THIRD_PARTY_PKG_INSTALL_DIR ${THIRD_PARTY_PKG_DIR}/install)
-list(APPEND CMAKE_PREFIX_PATH 	${THIRD_PARTY_PKG_INSTALL_DIR})
+set(ENABLE_SUPERBUILD OFF CACHE BOOL "Prebuild the dependencies.")
+
+if(ENABLE_SUPERBUILD)
+    set(THIRD_PARTY_PKG_DIR			${CMAKE_CURRENT_SOURCE_DIR}/prebuild)
+    set(THIRD_PARTY_SOURCE_DIR		${CMAKE_CURRENT_SOURCE_DIR}/prebuild/source)
+    set(THIRD_PARTY_PKG_INSTALL_DIR ${THIRD_PARTY_PKG_DIR}/install)
+    list(APPEND CMAKE_PREFIX_PATH 	${THIRD_PARTY_PKG_INSTALL_DIR})
+endif()
 
 include(${CMAKE_TOOL_DIR}/subdirectory_list.cmake)
 include(${CMAKE_TOOL_DIR}/add_tool_module.cmake)

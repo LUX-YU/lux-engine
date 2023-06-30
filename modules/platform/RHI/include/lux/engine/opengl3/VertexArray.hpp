@@ -145,6 +145,12 @@ namespace lux::gapi::opengl
             return offset_array[I];
         }
 
+        template<size_t I>
+        static constexpr void sAttributePointerbyIndex()
+        {
+            std::tuple_element_t<I, slice_type_tuple>::template sAttributePointer<I, size, offset_array[I]>();
+        }
+
         static constexpr void sAttributePointerAll()
         {
             __attribute_pointer_all(std::make_index_sequence<slice_number>());
@@ -225,7 +231,7 @@ namespace lux::gapi::opengl
             glBindVertexArray(_vao);
         }
 
-        void endBind()
+        static void endBind()
         {
             glBindVertexArray(0);
         }

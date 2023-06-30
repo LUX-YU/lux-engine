@@ -43,14 +43,14 @@ namespace lux::gapi::opengl{
         ttype != TextureType::PROXY_CUBE_MAP_ARRAY  &&
         ttype != TextureType::PROXY_RECTANGLE;
 
-    template<TextureType ttype> concept texmipmap   =
-        ttype != TextureType::ONE_DIM               &&
-        ttype != TextureType::TWO_DIM               &&
-        ttype != TextureType::THREE_DIM             &&
-        ttype != TextureType::ONE_DIM_ARRAY         &&
-        ttype != TextureType::TWO_DIM_ARRAY         &&
-        ttype != TextureType::CUBE_MAP              &&
-        ttype != TextureType::CUBE_MAP_ARRAY;
+    template<TextureType ttype> concept texmipmap =
+        ttype == TextureType::ONE_DIM               ||
+        ttype == TextureType::TWO_DIM               ||
+        ttype == TextureType::THREE_DIM             ||
+        ttype == TextureType::ONE_DIM_ARRAY         ||
+        ttype == TextureType::TWO_DIM_ARRAY         ||
+        ttype == TextureType::CUBE_MAP              ||
+        ttype == TextureType::CUBE_MAP_ARRAY;
 
     template<TextureType ttype> concept bindable = texnotproxy<ttype>;
 

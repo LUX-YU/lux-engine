@@ -1,4 +1,4 @@
-message("-------- Start config core layer --------")
+message("-------- Core Layer --------")
 
 generate_visibility_header(
     ENABLE_MACRO_NAME   LUX_CORE_LIBRARY

@@ -1,4 +1,4 @@
-#include <lux/math/eigen_extend.hpp>
+#include <lux/engine/math/eigen_extend.hpp>
 
 namespace LuxEigenExt
 {

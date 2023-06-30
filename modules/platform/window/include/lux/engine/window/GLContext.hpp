@@ -11,9 +11,16 @@ namespace lux::window
         /**
          * @return bool return true if success. if context already initialized, return true;
          * 
-        */
-        LUX_PLATFORM_PUBLIC bool init() override;
-        LUX_PLATFORM_PUBLIC void makeCurrentContext(LuxWindowImpl*)  override;
+         */
+        LUX_PLATFORM_PUBLIC bool acceptVisitor(ContextVisitor* visitor) override;
+
+        LUX_PLATFORM_PUBLIC bool apiInit() override;
+
+        LUX_PLATFORM_PUBLIC void cleanUp() override;
+
+        LUX_PLATFORM_PUBLIC int  majorVersion();
+
+        LUX_PLATFORM_PUBLIC int  minorVersion();
 
     private:
         bool    _init{false};

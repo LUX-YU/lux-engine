@@ -1,4 +1,4 @@
-message("-------- Start config resource layer --------")
+message("-------- Resource Layer --------")
 
 generate_visibility_header(
     ENABLE_MACRO_NAME   LUX_RESOURCE_LIBRARY

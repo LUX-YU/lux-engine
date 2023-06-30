@@ -10,21 +10,25 @@ namespace lux::window
         _minor_version = minor;
     }
 
-    bool GLContext::init()
+    bool GLContext::acceptVisitor(ContextVisitor* visitor)
     {
-        if(!_init)
-        {
-            if(glfwInit() != GLFW_TRUE) return false;
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, _major_version);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, _minor_version);
-            _init = true;
-        }
+        return visitor->visitContext(this);
+    }
 
+    bool GLContext::apiInit()
+    {
         return true;
     }
 
-    void GLContext::makeCurrentContext(LuxWindowImpl* window) 
+    int GLContext::majorVersion()
     {
-        glfwMakeContextCurrent(window->glfw_window);
+        return _major_version;
     }
+
+    int GLContext::minorVersion()
+    {
+        return _minor_version;
+    }
+
+    void GLContext::cleanUp() {}
 } // namespace lux::window

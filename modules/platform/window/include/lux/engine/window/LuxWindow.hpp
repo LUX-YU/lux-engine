@@ -5,6 +5,7 @@
 #include <lux/engine/window/LuxWindowDefination.hpp>
 #include <lux/engine/platform/visibility.h>
 #include "GraphicContext.hpp"
+#include "ContextVisitor.hpp"
 
 struct GLFWwindow;
 
@@ -92,6 +93,7 @@ namespace lux::window
 
         using ProcPtr = void (*)();
         LUX_PLATFORM_PUBLIC static ProcPtr getProcAddress(const char* name);
+
     private:
         std::unique_ptr<LuxWindowImpl> _impl;
     };

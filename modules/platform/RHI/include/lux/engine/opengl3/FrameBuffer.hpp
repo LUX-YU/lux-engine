@@ -165,7 +165,7 @@ namespace lux::gapi::opengl
             glBindFramebuffer(GL_FRAMEBUFFER, _fbo);
         }
 
-        void endBind()
+        static void endBind()
         {
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
@@ -281,6 +281,7 @@ namespace lux::gapi::opengl
             auto _type = static_cast<GLenum>(type);
             glFramebufferTexture2D(GL_FRAMEBUFFER, _type, static_cast<GLenum>(ttype) ,texture.rawObject(), level);
         }
+
         template<TextureType ttype>
         static void sAddAttachment(TTextureBase<ttype>& texture, AttachmentType type)
         requires levelzerotex<ttype>
@@ -288,12 +289,14 @@ namespace lux::gapi::opengl
             auto _type = static_cast<GLenum>(type);
             glFramebufferTexture2D(GL_FRAMEBUFFER, _type, static_cast<GLenum>(ttype) ,texture.rawObject(), 0);
         }
+
         // for cube texture
         static void sAddAttachment(CubeTexture& texture, CubeTextureDirection direction, AttachmentType type, GLint level)
         {
             auto _type = static_cast<GLenum>(type);
             glFramebufferTexture2D(GL_FRAMEBUFFER, _type, static_cast<GLenum>(direction), texture.rawObject(), level);
         }
+
         // for render buffer
         static void sAddAttachment(RenderBuffer& render_buffer, AttachmentType type)
         {

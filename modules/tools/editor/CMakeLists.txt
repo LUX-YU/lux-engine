@@ -2,16 +2,18 @@ set(LUX_EDITOR_SRCS
     src/builtin-obj/BasicCamera.cpp
 )
 
-add_module(
-    MODULE_NAME         builtin_obj
-    NAMESPACE           tools
-    SOURCE_FILES        ${LUX_EDITOR_SRCS}
-    EXPORT_INCLUDE_DIRS include
-    PUBLIC_LIBRARIES    lux::engine::platform::system
-                        lux::engine::platform::cxx
-                        lux::engine::core::meta
-                        lux::engine::core::math
-                        lux::engine::core::reflection
+add_component(
+    COMPONENT_NAME                  builtin_obj
+    NAMESPACE                       lux::engine::tools
+    SOURCE_FILES                    ${LUX_EDITOR_SRCS}
+	BUILD_TIME_EXPORT_INCLUDE_DIRS  ${CMAKE_CURRENT_SOURCE_DIR}/include
+                                    ${LUX_GENERATE_HEADER_DIR}
+    INSTALL_TIME_INCLUDE_PREFIX     include
+    PUBLIC_LIBRARIES                lux::engine::platform::system
+                                    lux::engine::core::meta
+                                    lux::engine::core::math
+    PRIVATE_DEFINITIONS             LUX_CORE_LIBRARY
+    TRANSITIVE_PACKAGES_COMMANDS    "find_package (Eigen3 REQUIRED)"
 )
 
 add_executable(

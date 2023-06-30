@@ -9,6 +9,9 @@
 #   include <GLFW/glfw3native.h>
 #endif
 
+#include "lux/engine/window/GLContext.hpp"
+#include "lux/engine/window/VulkanContext.hpp"
+
 namespace lux::window
 {
     static KeyEnum glfwKeyEnumConvert(int key)
@@ -18,13 +21,13 @@ namespace lux::window
 
     static KeyState glfwKeyStateEnumConvert(int key)
     {
-        switch(key)
+        switch (key)
         {
-        case GLFW_RELEASE :
+        case GLFW_RELEASE:
             return KeyState::RELEASE;
-        case GLFW_PRESS :
+        case GLFW_PRESS:
             return KeyState::PRESS;
-        case GLFW_REPEAT :
+        case GLFW_REPEAT:
             return KeyState::REPEAT;
         }
         return KeyState::UNKNOWN;
@@ -32,15 +35,15 @@ namespace lux::window
 
     static ModifierKey glfwModifierKeyEnumConvert(int key)
     {
-        switch(key)
+        switch (key)
         {
-        case GLFW_MOD_SHIFT :
-            return ModifierKey::KEY_MOD_SHIFT ;
-        case GLFW_MOD_CONTROL :
+        case GLFW_MOD_SHIFT:
+            return ModifierKey::KEY_MOD_SHIFT;
+        case GLFW_MOD_CONTROL:
             return ModifierKey::KEY_MOD_CONTROL;
-        case GLFW_MOD_ALT :
+        case GLFW_MOD_ALT:
             return ModifierKey::KEY_MOD_ALT;
-        case GLFW_MOD_SUPER :
+        case GLFW_MOD_SUPER:
             return ModifierKey::KEY_MOD_SUPER;
         case GLFW_MOD_CAPS_LOCK:
             return ModifierKey::KEY_MODE_CAPS_LOCK;
@@ -85,8 +88,9 @@ namespace lux::window
         WindowSizeChangedCallbcak    window_size_changed_callback;
     };
 
-    class LuxWindowImpl
+    class LuxWindowImpl : protected ContextVisitor
     {
+        friend class LuxWindow;
     public:
         LuxWindowImpl(LuxWindow* window, InitParameter param, std::shared_ptr<GraphicContext> context)
             : parameter(std::move(param)), owner(window)
@@ -95,26 +99,33 @@ namespace lux::window
         }
 
         LuxWindowImpl(LuxWindow* window, InitParameter param)
-            : parameter(std::move(param)), owner(window){}
+            : parameter(std::move(param)), owner(window) {}
 
         bool init(std::shared_ptr<GraphicContext> context)
         {
-            if(_init) return true;
-
-            if(!context->init())
-                return false;
+            if (_init) return true;
 
             _context = std::move(context);
+            _context->acceptVisitor(this);
 
             auto* cw = glfwGetCurrentContext();
 
             glfw_window = glfwCreateWindow(
-                parameter.width, parameter.height, parameter.title.c_str(), nullptr, cw
+                parameter.width, parameter.height, 
+                parameter.title.c_str(), nullptr, cw
             );
+            if (!glfw_window) return false;
 
-            if(!glfw_window) return false;
+            if (!_context->apiInit())
+            {
+                _context->cleanUp();
 
-            _context->makeCurrentContext(this);
+                glfwDestroyWindow(glfw_window);
+
+                return false;
+            }
+
+            glfwMakeContextCurrent(glfw_window);
 
             glfwSetWindowUserPointer(glfw_window, this);
 
@@ -129,6 +140,8 @@ namespace lux::window
 
         ~LuxWindowImpl()
         {
+            _context->cleanUp();
+
             glfwDestroyWindow(glfw_window);
         }
 
@@ -136,13 +149,13 @@ namespace lux::window
         {
             callbacks.key_callback = std::move(callback);
             glfwSetKeyCallback(
-                glfw_window, 
-                [](GLFWwindow* window, int key, int scancode, int action, int mods){
+                glfw_window,
+                [](GLFWwindow* window, int key, int scancode, int action, int mods) {
                     auto self = static_cast<LuxWindowImpl*>(glfwGetWindowUserPointer(window));
                     self->callbacks.key_callback(
-                        *self->owner, 
-                        glfwKeyEnumConvert(key), 
-                        scancode, 
+                        *self->owner,
+                        glfwKeyEnumConvert(key),
+                        scancode,
                         glfwKeyStateEnumConvert(action),
                         glfwModifierKeyEnumConvert(mods)
                     );
@@ -185,7 +198,7 @@ namespace lux::window
                 {
                     auto self = static_cast<LuxWindowImpl*>(glfwGetWindowUserPointer(window));
                     self->callbacks.mouse_button_callback(
-                        *self->owner, 
+                        *self->owner,
                         glfwMouseButtonEnumConvert(button),
                         glfwKeyStateEnumConvert(action),
                         glfwModifierKeyEnumConvert(mods)
@@ -210,12 +223,28 @@ namespace lux::window
                 }
             );
         }
+    protected:
+        bool visitContext(GLContext* gl_context) override
+        {
+            if(glfwInit() != GLFW_TRUE) return false;
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, gl_context->majorVersion());
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, gl_context->minorVersion());
+            return true;
+        }
 
-        LuxWindow*          owner;
+        bool visitContext(VulkanContext* vulkan_context)  override
+        {
+            if (glfwInit() != GLFW_TRUE) return false;
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+            return true;
+        }
+
+    private:
+        LuxWindow* owner;
         WindowCallbacks     callbacks;
-        GLFWwindow*         glfw_window;
+        GLFWwindow* glfw_window;
         InitParameter       parameter;
-        bool                _init{false};
+        bool                _init{ false };
         std::shared_ptr<GraphicContext> _context;
     };
 } // namespace lux::window

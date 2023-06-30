@@ -26,11 +26,12 @@ endif()
 
 # load the build system helper
 find_package(lux-cmake-toolset CONFIG REQUIRED)
-if(NOT LUX_CMAKE_TOOLSET_VERSION STREQUAL "0.0.1")
-    message(FATAL_ERROR "LUX_CMAKE_TOOLSET 0.0.1 is needed")
+set(LUX_CMAKE_TOOLSET_NEEDED_VERSION "0.1.0")
+if(NOT LUX_CMAKE_TOOLSET_VERSION STREQUAL ${LUX_CMAKE_TOOLSET_NEEDED_VERSION})
+    message(FATAL_ERROR "LUX_CMAKE_TOOLSET ${LUX_CMAKE_TOOLSET_NEEDED_VERSION} is needed")
 endif()
 
-set(lux_engine_layers "platform" "core" "resource" "function" #[["tools"]])
+set(lux_engine_layers "platform" "core" "resource" "function" "tools")
 
 foreach(layer ${lux_engine_layers})
     add_subdirectory(modules/${layer})

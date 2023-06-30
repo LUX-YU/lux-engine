@@ -1,4 +1,4 @@
-message("-------- Start config plaform layer --------")
+message("-------- Plaform Layer --------")
 # get sublist
 subdirectory_list(dir_list)
 

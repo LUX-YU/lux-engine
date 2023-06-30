@@ -1,6 +1,6 @@
-#include "lux/editor/LuxEditor.hpp"
-#include "lux/window/GLContext.hpp"
-#include "lux/window/LuxWindow.hpp"
+#include "lux/engine/editor/LuxEditor.hpp"
+#include "lux/engine/window/GLContext.hpp"
+#include "lux/engine/window/LuxWindow.hpp"
 
 int main(int argc, char* argv[])
 {

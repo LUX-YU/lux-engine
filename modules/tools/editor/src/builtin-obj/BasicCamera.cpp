@@ -1,5 +1,5 @@
-#include "lux/builtin-obj/BasicCamera.hpp"
-#include "lux/math/eigen_extend.hpp"
+#include "lux/engine/builtin-obj/BasicCamera.hpp"
+#include "lux/engine/math/eigen_extend.hpp"
 
 #ifndef __PI_FLOAT_CONSTANT
 #   define __PI_FLOAT_CONSTANT 3.14159265358979323846F

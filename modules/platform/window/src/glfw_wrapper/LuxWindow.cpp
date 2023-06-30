@@ -1,9 +1,15 @@
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/window/LuxWindowImpl.hpp>
+
+// graphics api context
+#include <lux/engine/window/GLContext.hpp>
+#include <lux/engine/window/VulkanContext.hpp>
+
 #include <thread>
 
 #include <atomic>
 #include <stdexcept>
+
 
 namespace lux::window
 {
@@ -13,9 +19,9 @@ namespace lux::window
     LuxWindow::LuxWindow(int width, int height, std::string title, std::shared_ptr<GraphicContext> context)
     {
         InitParameter parameter;
-        parameter.width  = width; 
+        parameter.width = width;
         parameter.height = height;
-        parameter.title  = std::move(title);
+        parameter.title = std::move(title);
 
         _impl = std::make_unique<LuxWindowImpl>(this, std::move(parameter), std::move(context));
     }
@@ -28,9 +34,9 @@ namespace lux::window
     LuxWindow::LuxWindow(int width, int height, std::string title)
     {
         InitParameter parameter;
-        parameter.width  = width; 
+        parameter.width = width;
         parameter.height = height;
-        parameter.title  = std::move(title);
+        parameter.title = std::move(title);
 
         _impl = std::make_unique<LuxWindowImpl>(this, std::move(parameter));
     }
@@ -70,14 +76,14 @@ namespace lux::window
     void LuxWindow::hideCursor(bool enable)
     {
         glfwSetInputMode(
-            _impl->glfw_window, GLFW_CURSOR, 
-            enable ? GLFW_CURSOR_DISABLED: GLFW_CURSOR_NORMAL
+            _impl->glfw_window, GLFW_CURSOR,
+            enable ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL
         );
     }
 
     void LuxWindow::enableVsync(bool enable)
     {
-        glfwSwapInterval(enable?1:0);
+        glfwSwapInterval(enable ? 1 : 0);
     }
 
     void LuxWindow::pollEvents()
@@ -140,12 +146,12 @@ namespace lux::window
         _impl->subscribeWindowSizeChangeCallback(std::move(callback));
     }
 
-    #ifdef __PLATFORM_WIN32__
+#ifdef __PLATFORM_WIN32__
     void  LuxWindow::win32Windows(void** out)
     {
         *out = static_cast<void*>(glfwGetWin32Window(_impl->glfw_window));
     }
-    #endif
+#endif
 
     GLFWwindow* LuxWindow::currentContext()
     {

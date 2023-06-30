@@ -3,6 +3,12 @@ find_library(GLAD_LIBRARY   glad        REQUIRED)
 find_path(GLAD_INCLUDE      glad/glad.h REQUIRED)
 # opengl
 find_package(OpenGL     REQUIRED)
+find_package(Vulkan     REQUIRED)
+if(VULKAN_FOUND)
+message("---- VULKAN INCLUDE DIRS: ${Vulkan_INCLUDE_DIRS}")
+message("---- VULKAN LIBRARIES: ${Vulkan_LIBRARIES}")
+endif()
+
 set(RHI_SRCS
     src/RHI_GL4.cpp
     src/GraphicDeviceInfo.cpp
@@ -17,11 +23,10 @@ add_component(
     INSTALL_TIME_INCLUDE_PREFIX     include
     PRIVATE_INCLUDE_DIRS            ${GLAD_INCLUDE}
     PUBLIC_LIBRARIES                OpenGL::GL
+                                    Vulkan::Vulkan
                                     ${GLAD_LIBRARY}
     PRIVATE_DEFINITIONS             LUX_PLATFORM_LIBRARY
-    TRANSITIVE_PACKAGES_COMMANDS    "find_library(GLAD_LIBRARY   glad        REQUIRED)"
-                                    "find_path(GLAD_INCLUDE      glad/glad.h REQUIRED)"
-                                    "find_package(OpenGL     REQUIRED)"
+    TRANSITIVE_PACKAGES_COMMANDS    "find_package(OpenGL     REQUIRED)"
 )
 
 if(WIN32)

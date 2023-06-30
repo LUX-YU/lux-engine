@@ -1,4 +1,4 @@
-message("-------- Start config function layer --------")
+message("-------- Function Layer --------")
 
 generate_visibility_header(
     ENABLE_MACRO_NAME   LUX_FUNCTION_LIBRARY

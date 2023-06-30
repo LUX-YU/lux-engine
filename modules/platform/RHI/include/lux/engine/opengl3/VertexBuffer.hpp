@@ -108,7 +108,7 @@ namespace lux::gapi::opengl
             glBindBuffer(buffer_type, _vbo);
         }
 
-        void endBind()
+        static void endBind()
         {
             glBindBuffer(buffer_type, 0);
         }

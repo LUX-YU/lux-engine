@@ -12,20 +12,37 @@ set(ASSET_SRCS
 # find_package(stduuid REQUIRED)
 
 add_component(
-    COMPONENT_NAME                  asset
-    NAMESPACE                       lux::engine::resource
-    SOURCE_FILES                    ${ASSET_SRCS}
-    # include directories
-	BUILD_TIME_EXPORT_INCLUDE_DIRS  ${CMAKE_CURRENT_SOURCE_DIR}/include
-                                    ${LUX_GENERATE_HEADER_DIR}
-    BUILD_TIME_SHARED_INCLUDE_DIRS  ${STB_SOURCE_DIR}
-    INSTALL_TIME_INCLUDE_PREFIX     include
-    PRIVATE_INCLUDE_DIRS            pinclude
-    PUBLIC_LIBRARIES                lux::engine::platform::system
-                                    lux::engine::core::math
-                                    lux::engine::core::meta
-                                    assimp::assimp
-    PRIVATE_DEFINITIONS             LUX_RESOURCE_LIBRARY
-    TRANSITIVE_PACKAGES_COMMANDS    "find_package(assimp REQUIRED)"
+    COMPONENT_NAME asset
+    NAMESPACE      lux::engine::resource
+    SOURCE_FILES   ${ASSET_SRCS}
 )
 
+component_include_directories(
+    asset
+    BUILD_TIME_EXPORT  
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${LUX_GENERATE_HEADER_DIR}
+    INSTALL_TIME
+        include
+    PRIVATE
+        pinclude
+)
+
+target_compile_definitions(
+    asset
+    PRIVATE
+    LUX_RESOURCE_LIBRARY
+)
+
+target_link_libraries(
+    asset
+    PUBLIC
+    lux::engine::core::math
+    lux::engine::core::meta
+    assimp::assimp
+)
+
+component_add_transitive_commands(
+    asset
+    "find_package(assimp REQUIRED)"
+)

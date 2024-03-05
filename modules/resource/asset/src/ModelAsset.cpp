@@ -1,5 +1,4 @@
 #include <lux/engine/asset/ModelAsset.hpp>
-#include <lux/engine/system/file_system.hpp>
 
 #include <vector>
 #include <Eigen/Eigen>
@@ -25,12 +24,13 @@ namespace lux::asset
             return LoadAssetResult::SUCCESS;
         }
 
-        void processNode(ModelAsset& model, aiNode* node, const aiScene* scene)
+        void processNode(ModelAsset& model, const aiNode* node, const aiScene* scene)
         {
             for (size_t i = 0; i < node->mNumMeshes; i++)
             {
                 aiMesh* ai_mesh = scene->mMeshes[node->mMeshes[i]];
-                Mesh mesh; processMesh(model, mesh, ai_mesh, scene);
+                Mesh mesh;
+            	processMesh(model, mesh, ai_mesh, scene);
                 model.meshs.emplace_back(std::move(mesh));
             }
 
@@ -40,7 +40,7 @@ namespace lux::asset
             }
         }
 
-        void processMesh(ModelAsset& model, Mesh& ret_mesh, aiMesh* mesh, const aiScene* scene)
+        static void processMesh(ModelAsset& model, Mesh& ret_mesh, aiMesh* mesh, const aiScene* scene)
         {
             // load vertices
             for (size_t i = 0; i < mesh->mNumVertices; i++)
@@ -103,24 +103,24 @@ namespace lux::asset
                 loadMaterialTextures(model, ret_mesh, material, aiTextureType_HEIGHT);
             }
         }
-
-        static TextureType assimpTextureEnumConverter(aiTextureType type)
+        
+        static ETextureType assimpTextureEnumConverter(aiTextureType type)
         {
             switch (type)
             {
             case aiTextureType::aiTextureType_AMBIENT:
-                return TextureType::AMBIENT;
+                return ETextureType::AMBIENT;
             case aiTextureType::aiTextureType_DIFFUSE:
-                return TextureType::DIFFUSE;
+                return ETextureType::DIFFUSE;
             case aiTextureType::aiTextureType_SPECULAR:
-                return TextureType::SPECULAR;
+                return ETextureType::SPECULAR;
             case aiTextureType::aiTextureType_HEIGHT:
-                return TextureType::HEIGHT;
+                return ETextureType::HEIGHT;
             }
-            return TextureType::UNKNOWN;
+            return ETextureType::UNKNOWN;
         }
 
-        void loadMaterialTextures(ModelAsset& model, Mesh& mesh, aiMaterial* mat, aiTextureType type)
+        static void loadMaterialTextures(ModelAsset& model, Mesh& mesh, aiMaterial* mat, aiTextureType type)
         {
             using Integer = decltype(std::declval<aiMaterial>().GetTextureCount(type));
             Integer texture_count = mat->GetTextureCount(type);
@@ -166,7 +166,7 @@ namespace lux::asset
     };
 
     TextureAsset::TextureAsset(FilePath path, bool flip_vertically)
-    : ImageAsset(std::move(path), flip_vertically), _type(TextureType::UNKNOWN) , _shininess(16.0f)
+    : ImageAsset(std::move(path), flip_vertically), _type(ETextureType::UNKNOWN) , _shininess(16.0f)
     {
     }
 
@@ -185,8 +185,7 @@ namespace lux::asset
         {
             for (auto& texture : textures)
             {
-                auto _texture_laod_rst = texture.load();
-                if (_texture_laod_rst != LoadAssetResult::SUCCESS)
+                if (texture.load() != LoadAssetResult::SUCCESS)
                 {
                     rst = LoadAssetResult::RELATED_ASSET_LOAD_ERROR;
                 }

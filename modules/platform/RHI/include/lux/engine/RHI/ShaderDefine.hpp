@@ -5,7 +5,7 @@ namespace lux::rhi
 	enum class ShaderType
 	{
 		GLSL,
-		// HLSL,
+		HLSL,
 		UNKNOWN
 	};
 

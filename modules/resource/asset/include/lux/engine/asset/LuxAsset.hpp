@@ -2,14 +2,14 @@
 #include <memory>
 #include <string>
 #include <functional>
+#include <filesystem>
 #include <lux/engine/resource/visibility.h>
-#include <lux/engine/system/file_system.hpp>
 #include <lux/engine/meta/LuxObject.hpp>
 // #include <uuid.h>
 
 namespace lux::asset
 {
-    using FilePath = ::lux::system::filesystem::path;
+    using FilePath = ::std::filesystem::path;
 
     namespace detail {
         using LuxObject          = ::lux::meta::LuxObject;
@@ -43,7 +43,7 @@ namespace lux::asset
     private:
 
         LuxAssetManager* _manager;
-        std::string         _name;
+        std::string      _name;
     };
 
     enum class LoadAssetResult
@@ -80,7 +80,7 @@ namespace lux::asset
 
         [[nodiscard]] LUX_RESOURCE_PUBLIC bool isExist() const
         {
-            return ::lux::system::filesystem::exists(_file_path);
+            return ::std::filesystem::exists(_file_path);
         }
 
         [[nodiscard]] bool isExternalAsset() const override

@@ -33,7 +33,7 @@ namespace lux::asset
         Bone                bone;
     };
 
-    enum class TextureType
+    enum class ETextureType
     {
         AMBIENT,
         DIFFUSE,
@@ -48,7 +48,7 @@ namespace lux::asset
     public:
         LUX_RESOURCE_PUBLIC explicit TextureAsset(FilePath path, bool flip_vertically = true);
 
-        [[nodiscard]] TextureType type() const
+        [[nodiscard]] ETextureType type() const
         {
             return _type;
         }
@@ -59,8 +59,8 @@ namespace lux::asset
         }
 
     private:
-        TextureType _type;
-        float       _shininess;
+        ETextureType _type;
+        float        _shininess;
     };
 
     struct Mesh

@@ -1,6 +1,5 @@
 #include "lux/engine/window/GLContext.hpp"
 #include "lux/engine/window/LuxWindowImpl.hpp"
-#include <GLFW/glfw3.h>
 
 namespace lux::window
 {
@@ -10,6 +9,8 @@ namespace lux::window
         _minor_version = minor;
     }
 
+    GLContext::~GLContext() = default;
+
     bool GLContext::acceptVisitor(ContextVisitor* visitor)
     {
         return visitor->visitContext(this);
@@ -17,15 +18,16 @@ namespace lux::window
 
     bool GLContext::apiInit()
     {
+        _init = true;
         return true;
     }
 
-    int GLContext::majorVersion()
+    int GLContext::majorVersion() const
     {
         return _major_version;
     }
 
-    int GLContext::minorVersion()
+    int GLContext::minorVersion() const
     {
         return _minor_version;
     }

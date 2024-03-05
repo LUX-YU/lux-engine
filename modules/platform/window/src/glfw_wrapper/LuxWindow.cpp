@@ -7,10 +7,6 @@
 
 #include <thread>
 
-#include <atomic>
-#include <stdexcept>
-
-
 namespace lux::window
 {
     /**
@@ -53,30 +49,30 @@ namespace lux::window
         return _impl->init(std::move(context));
     }
 
-    bool LuxWindow::is_initialized()
+    bool LuxWindow::isInitialized() const
     {
-        return _impl->is_initialized();
+        return _impl->isInitialized();
     }
 
     std::string LuxWindow::title() const
     {
-        return _impl->parameter.title;
+        return _impl->_parameter.title;
     }
 
     bool LuxWindow::shouldClose()
     {
-        return glfwWindowShouldClose(_impl->glfw_window);
+        return glfwWindowShouldClose(_impl->_glfw_window);
     }
 
     void LuxWindow::swapBuffer()
     {
-        glfwSwapBuffers(_impl->glfw_window);
+        glfwSwapBuffers(_impl->_glfw_window);
     }
 
     void LuxWindow::hideCursor(bool enable)
     {
         glfwSetInputMode(
-            _impl->glfw_window, GLFW_CURSOR,
+            _impl->_glfw_window, GLFW_CURSOR,
             enable ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL
         );
     }
@@ -104,14 +100,14 @@ namespace lux::window
     KeyState LuxWindow::queryKey(KeyEnum key) const
     {
         return glfwKeyStateEnumConvert(
-            glfwGetKey(_impl->glfw_window, static_cast<int>(key))
+            glfwGetKey(_impl->_glfw_window, static_cast<int>(key))
         );
     }
 
     WindowSize LuxWindow::windowSize() const
     {
         WindowSize size;
-        glfwGetWindowSize(_impl->glfw_window, &size.width, &size.height);
+        glfwGetWindowSize(_impl->_glfw_window, &size.width, &size.height);
         return size;
     }
 
@@ -149,7 +145,7 @@ namespace lux::window
 #ifdef __PLATFORM_WIN32__
     void  LuxWindow::win32Windows(void** out)
     {
-        *out = static_cast<void*>(glfwGetWin32Window(_impl->glfw_window));
+        *out = static_cast<void*>(glfwGetWin32Window(_impl->_glfw_window));
     }
 #endif
 
@@ -161,5 +157,20 @@ namespace lux::window
     LuxWindow::ProcPtr LuxWindow::getProcAddress(const char* procname)
     {
         return glfwGetProcAddress(procname);
+    }
+
+    void LuxWindow::addSubwindow(std::unique_ptr<Subwindow> window)
+    {
+        _impl->addSubwindow(std::move(window));
+    }
+
+    int LuxWindow::exec()
+    {
+        return _impl->exec();
+    }
+
+    void LuxWindow::paint()
+    {
+
     }
 }

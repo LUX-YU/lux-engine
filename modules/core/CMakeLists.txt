@@ -15,7 +15,7 @@ foreach(subdir ${dir_list})
     endif()
 endforeach()
 
-install_projects(
+install_components(
 	PROJECT_NAME	lux-engine-core
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::core

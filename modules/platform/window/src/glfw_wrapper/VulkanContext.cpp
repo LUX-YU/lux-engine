@@ -11,6 +11,8 @@ namespace lux::window
         vkEnumerateInstanceExtensionProperties(nullptr, &_extension_count, nullptr);
     }
 
+    VulkanContext::~VulkanContext() = default;
+
     bool VulkanContext::acceptVisitor(ContextVisitor* visitor)
     {
         return visitor->visitContext(this);

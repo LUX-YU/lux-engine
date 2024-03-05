@@ -14,11 +14,10 @@ foreach(subdir ${dir_list})
     endif()
 endforeach()
 
-install_projects(
+install_components(
 	PROJECT_NAME	lux-engine-platform
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::platform
-	COMPONENTS		system
-					RHI
+	COMPONENTS		RHI
 					window
 )

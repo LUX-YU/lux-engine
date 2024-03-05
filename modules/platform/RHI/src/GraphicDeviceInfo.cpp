@@ -1,19 +1,18 @@
 #include <lux/engine/RHI/GraphicDeviceInfo.hpp>
 
 #ifndef __PLATFORM_UNIX__
-#define _WIN32_DCOM
-#include <iostream>
-#include <tchar.h>
-#include <comdef.h>
-#include <Wbemidl.h>
+#   ifdef _WIN32 
+#       define _WIN32_DCOM
+#       include <iostream>
+#       include <tchar.h>
+#       include <comdef.h>
+#       include <Wbemidl.h>
+#   endif
 #endif
 
 namespace lux::rhi
 {
 #ifndef __PLATFORM_UNIX__
-
-
-
     std::vector<GraphicDeviceInfo> GraphicDeviceInfoLoader::getGraphicDeviceInfo()
 	{
         std::vector<GraphicDeviceInfo> ret;

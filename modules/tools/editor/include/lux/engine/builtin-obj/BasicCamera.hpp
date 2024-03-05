@@ -30,12 +30,12 @@ namespace lux::editor::builtin
         LUX_EXPORT float            aspect() const noexcept;
 
     protected:
-        LUX_META() float           _aspect{ 16 / 9.0f };
-        LUX_META() float           _pfar{ 100.0f };
-        LUX_META() float           _pnear{ 0.1f };
-        LUX_META() float           _fov; // (zoom)
-        LUX_META() Eigen::Vector3f _camera_up{ 0.0f, 1.0f,  0.0f };
-        LUX_META() Eigen::Vector3f _camera_front{ 0,0,-1.0f };
-        LUX_META() Eigen::Vector3f _position;
+        LUX_META_VAR() float           _aspect{ 16 / 9.0f };
+        LUX_META_VAR() float           _pfar{ 100.0f };
+        LUX_META_VAR() float           _pnear{ 0.1f };
+        LUX_META_VAR() float           _fov; // (zoom)
+        LUX_META_VAR() Eigen::Vector3f _camera_up{ 0.0f, 1.0f,  0.0f };
+        LUX_META_VAR() Eigen::Vector3f _camera_front{ 0,0,-1.0f };
+        LUX_META_VAR() Eigen::Vector3f _position;
     };
 }

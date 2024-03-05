@@ -18,7 +18,6 @@ namespace lux::gapi::opengl
         explicit scope_bind(T& ref)
             : _obj_ref(ref)
         {
-            std::scoped_lock lock;
             _obj_ref.bind();
         }
 

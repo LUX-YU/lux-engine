@@ -5,7 +5,7 @@
 #include <lux/engine/window/LuxWindowDefination.hpp>
 #include <lux/engine/platform/visibility.h>
 #include "GraphicContext.hpp"
-#include "ContextVisitor.hpp"
+#include "Subwindow.hpp"
 
 struct GLFWwindow;
 
@@ -41,34 +41,34 @@ namespace lux::window
         /**
          * @brief init() will be called automaticly
         */
-        LUX_PLATFORM_PUBLIC              LuxWindow(int width, int height, std::string title, SharedContextPtr context);
-        LUX_PLATFORM_PUBLIC              LuxWindow(const InitParameter& parameter, SharedContextPtr context);
+        LUX_PLATFORM_PUBLIC  LuxWindow(int width, int height, std::string title, SharedContextPtr context);
+        LUX_PLATFORM_PUBLIC  LuxWindow(const InitParameter& parameter, SharedContextPtr context);
         /**
          * @brief init() won't be called automaticly
         */
-        LUX_PLATFORM_PUBLIC              LuxWindow(int width, int height, std::string title);
-        LUX_PLATFORM_PUBLIC     explicit LuxWindow(const InitParameter& parameter);
+        LUX_PLATFORM_PUBLIC          LuxWindow(int width, int height, std::string title);
+        LUX_PLATFORM_PUBLIC explicit LuxWindow(const InitParameter& parameter);
 
         /**
          * @brief call after calling bindContext
         */
-        LUX_PLATFORM_PUBLIC bool         init(std::shared_ptr<GraphicContext> context);
+        [[nodiscard]] LUX_PLATFORM_PUBLIC bool init(std::shared_ptr<GraphicContext> context);
 
-        LUX_PLATFORM_PUBLIC bool         is_initialized();
+        [[nodiscard]] LUX_PLATFORM_PUBLIC bool isInitialized() const;
 
-        LUX_PLATFORM_PUBLIC virtual      ~LuxWindow();
+        LUX_PLATFORM_PUBLIC virtual ~LuxWindow();
 
-        [[nodiscard]] LUX_PLATFORM_PUBLIC std::string  title() const;
+        [[nodiscard]] LUX_PLATFORM_PUBLIC std::string title() const;
 
-        [[nodiscard]] LUX_PLATFORM_PUBLIC WindowSize   windowSize() const;
+        [[nodiscard]] LUX_PLATFORM_PUBLIC WindowSize windowSize() const;
 
-        LUX_PLATFORM_PUBLIC bool         shouldClose();
+        LUX_PLATFORM_PUBLIC bool shouldClose();
 
-        LUX_PLATFORM_PUBLIC void         swapBuffer();
+        LUX_PLATFORM_PUBLIC void swapBuffer();
 
-        LUX_PLATFORM_PUBLIC void         hideCursor(bool);
+        LUX_PLATFORM_PUBLIC void hideCursor(bool);
 
-        [[nodiscard]] LUX_PLATFORM_PUBLIC KeyState     queryKey(KeyEnum) const;
+        [[nodiscard]] LUX_PLATFORM_PUBLIC KeyState queryKey(KeyEnum) const;
 
         LUX_PLATFORM_PUBLIC void subscribeKeyEvent(KeyEventCallback);
         LUX_PLATFORM_PUBLIC void subscribeCursorPositionCallback(CursorPoitionCallback);
@@ -76,23 +76,32 @@ namespace lux::window
         LUX_PLATFORM_PUBLIC void subscribeMouseButtonCallback(MouseButtonCallback);
         LUX_PLATFORM_PUBLIC void subscribeWindowSizeChangeCallback(WindowSizeChangedCallbcak);
 
+        LUX_PLATFORM_PUBLIC void addSubwindow(std::unique_ptr<Subwindow>);
+        LUX_PLATFORM_PUBLIC int  exec();
+
         /* Current version always return "glfw" */
         [[nodiscard]] LUX_PLATFORM_PUBLIC std::string  windowFrameworkName() const;
 
 #ifdef __PLATFORM_WIN32__
         // Get windows 
-        LUX_PLATFORM_PUBLIC void          win32Windows(void**);
+        LUX_PLATFORM_PUBLIC void            win32Windows(void**);
 #endif
-
-        LUX_PLATFORM_PUBLIC static void   enableVsync(bool enable);
-        LUX_PLATFORM_PUBLIC static void   pollEvents();
-        LUX_PLATFORM_PUBLIC static void   waitEvents();
-        LUX_PLATFORM_PUBLIC static double timeAfterFirstInitialization();
+        /*
+         * @brief Enable or disable vsync
+         * @param enable true to enable, false to disable
+         */
+        LUX_PLATFORM_PUBLIC static void     enableVsync(bool enable);
+        LUX_PLATFORM_PUBLIC static void     pollEvents();
+        LUX_PLATFORM_PUBLIC static void     waitEvents();
+        LUX_PLATFORM_PUBLIC static double   timeAfterFirstInitialization();
         // Get glfw context
         LUX_PLATFORM_PUBLIC static GLFWwindow* currentContext();
 
         using ProcPtr = void (*)();
-        LUX_PLATFORM_PUBLIC static ProcPtr getProcAddress(const char* name);
+        LUX_PLATFORM_PUBLIC static ProcPtr  getProcAddress(const char* name);
+
+    protected:
+        LUX_PLATFORM_PUBLIC virtual void paint();
 
     private:
         std::unique_ptr<LuxWindowImpl> _impl;

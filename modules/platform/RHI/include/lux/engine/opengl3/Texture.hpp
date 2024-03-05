@@ -189,7 +189,7 @@ namespace lux::gapi::opengl{
         {
             TextureGetLevelParameterTypeMap<T>::tex_method(gl_texture_type, level, static_cast<GLenum>(pname), out);
         }
-        template<TextureGetLevelPName PName, class ValueType = typename TextureGetLevelParameterTypeMap::value_type>
+        template<TextureGetLevelPName PName, class ValueType = GLint>
         static void sTGetLevelParameter(GLint level, ValueType* out)
         requires level_param_allowed<TexType>
         {
@@ -208,9 +208,9 @@ namespace lux::gapi::opengl{
         void getLevelParameter(GLint level, TextureGetLevelPName pname, T* out)
         requires level_param_allowed<TexType>
         {
-            TextureGetLevelParameterTypeMap::texture_method(_textures, level, static_cast<GLenum>(pname), out);
+            TextureGetLevelParameterTypeMap<T>::texture_method(_textures, level, static_cast<GLenum>(pname), out);
         }
-        template<TextureGetLevelPName PName, class ValueType = typename TextureGetLevelParameterTypeMap::value_type>
+        template<TextureGetLevelPName PName, class ValueType = GLint>
         void TGetLevelParameter(GLint level, ValueType* out)
         requires level_param_allowed<TexType>
         {
@@ -300,10 +300,16 @@ namespace lux::gapi::opengl{
                 width, height, border, static_cast<GLenum>(format), static_cast<GLenum>(type), pixels);
         }
 
-        static void generateMipmap()
+        static void sGenerateMipmap()
         requires texmipmap<TexType>
         {
             glGenerateMipmap(gl_texture_type);
+        }
+
+        template<PixelStoreParameter E, class ValueType = typename PixStoreTypeMap<E>::type>
+        static void sTPixelStore(ValueType value)
+        {
+            glPixelStore(static_cast<std::underlying_type_t<PixelStoreParameter>>(E), value);
         }
     };
 

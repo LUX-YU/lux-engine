@@ -25,8 +25,6 @@ namespace lux::rhi
 	class GraphicDeviceInfoLoader
 	{
 	public:
-
-		// TODO
 		LUX_PLATFORM_PUBLIC static std::vector<GraphicDeviceInfo> getGraphicDeviceInfo();
 	};
 }

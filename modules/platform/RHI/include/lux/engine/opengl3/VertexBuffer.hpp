@@ -47,7 +47,7 @@ namespace lux::gapi::opengl
         VertexBufferBase(const VertexBufferBase&) = delete;
         VertexBufferBase& operator=(const VertexBufferBase&) = delete;
 
-        VertexBufferBase(VertexBufferBase&& other)
+        VertexBufferBase(VertexBufferBase&& other) noexcept
         {
             _num = other._num;
             _vbo = other._vbo;

@@ -1,8 +1,6 @@
 #pragma once
-#include <string>
 #include <lux/engine/resource/visibility.h>
 #include "LuxAsset.hpp"
-#include <memory>
 
 namespace lux::asset
 {

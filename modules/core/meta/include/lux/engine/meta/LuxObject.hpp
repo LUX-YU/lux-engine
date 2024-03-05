@@ -1,13 +1,11 @@
 #pragma once
 #include <string_view>
-#include <memory>
+#include <lux/cxx/dref/parser/Attribute.hpp>
 
-#if defined __PARSE_TIME__
-#include <vector>
-#define LUX_META(...) __attribute__((annotate("LUX::META;"#__VA_ARGS__)))
-#else
-#define LUX_META(...)
-#endif
+#define LUX_META_CLASS(...) LUX_REF_MARK(class, __VA_ARGS__)
+#define LUX_META_FUNC(...)  LUX_REF_MARK(function, __VA_ARGS__)
+#define LUX_META_ENUM(...)  LUX_REF_MARK(enum, __VA_ARGS__)
+#define LUX_META_VAR(...)   LUX_REF_MARK(var, __VA_ARGS__)
 
 namespace lux::meta
 {
@@ -27,12 +25,12 @@ namespace lux::meta
 	class TLuxObject : public LuxObject
 	{
 	public:
-		[[nodiscard]] static inline bool TserializeToFile(std::string_view path)
+		[[nodiscard]] static bool TserializeToFile(std::string_view path)
 		{
 			return _Sub::__TserializeToFile(path);
 		}
 
-		[[nodiscard]] static inline bool TdeserializeFromFile(std::string_view path, _Sub& subclass)
+		[[nodiscard]] static bool TdeserializeFromFile(std::string_view path, _Sub& subclass)
 		{
 			return _Sub::__TdeserializeFromFile(path, subclass);
 		}
@@ -43,8 +41,8 @@ namespace lux::meta
 		}
 
 	protected:
-		static inline bool __TserializeToFile(std::string_view path) { return false; }
-		static inline bool __TdeserializeFromFile(std::string_view path, _Sub& subclass) { return false; }
+		static bool __TserializeToFile(std::string_view path) { return false; }
+		static bool __TdeserializeFromFile(std::string_view path, _Sub& subclass) { return false; }
 	// private:
 	// 	std::unique_ptr<LuxObjectImpl> _impl;
 	};

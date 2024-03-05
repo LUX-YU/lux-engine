@@ -7,6 +7,8 @@ namespace lux::window
     {
     public:
         LUX_PLATFORM_PUBLIC GLContext(int major, int minor);
+
+        LUX_PLATFORM_PUBLIC ~GLContext() override;
         
         /**
          * @return bool return true if success. if context already initialized, return true;
@@ -18,9 +20,9 @@ namespace lux::window
 
         LUX_PLATFORM_PUBLIC void cleanUp() override;
 
-        LUX_PLATFORM_PUBLIC int  majorVersion();
+        LUX_PLATFORM_PUBLIC int  majorVersion() const;
 
-        LUX_PLATFORM_PUBLIC int  minorVersion();
+        LUX_PLATFORM_PUBLIC int  minorVersion() const;
 
     private:
         bool    _init{false};

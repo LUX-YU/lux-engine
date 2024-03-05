@@ -15,18 +15,39 @@ set(RHI_SRCS
 )
 
 add_component(
-    COMPONENT_NAME                  RHI
-    NAMESPACE                       lux::engine::platform
-    SOURCE_FILES                    ${RHI_SRCS}
-	BUILD_TIME_EXPORT_INCLUDE_DIRS  ${CMAKE_CURRENT_SOURCE_DIR}/include
-                                    ${LUX_GENERATE_HEADER_DIR}
-    INSTALL_TIME_INCLUDE_PREFIX     include
-    PRIVATE_INCLUDE_DIRS            ${GLAD_INCLUDE}
-    PUBLIC_LIBRARIES                OpenGL::GL
-                                    Vulkan::Vulkan
-                                    ${GLAD_LIBRARY}
-    PRIVATE_DEFINITIONS             LUX_PLATFORM_LIBRARY
-    TRANSITIVE_PACKAGES_COMMANDS    "find_package(OpenGL     REQUIRED)"
+    COMPONENT_NAME RHI
+    NAMESPACE      lux::engine::platform
+    SOURCE_FILES   ${RHI_SRCS}
+)
+
+component_include_directories(
+    RHI
+    BUILD_TIME_EXPORT  
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${LUX_GENERATE_HEADER_DIR}
+    INSTALL_TIME
+        include
+    PRIVATE
+        ${GLAD_INCLUDE}
+)
+
+target_compile_definitions(
+    RHI
+    PRIVATE
+    LUX_PLATFORM_LIBRARY
+)
+
+target_link_libraries(
+    RHI
+    PUBLIC
+    OpenGL::GL
+    Vulkan::Vulkan
+    ${GLAD_LIBRARY}
+)
+
+component_add_transitive_commands(
+    RHI
+    "find_package(OpenGL REQUIRED)"
 )
 
 if(WIN32)

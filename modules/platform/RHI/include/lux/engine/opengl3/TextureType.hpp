@@ -307,4 +307,39 @@ namespace lux::gapi::opengl{
         _ttype == TextureType::CUBE_MAP                     ||
         _ttype == TextureType::CUBE_MAP_ARRAY               ||
         _ttype == TextureType::RECTANGLE;
+
+
+    enum class PixelStoreParameter
+    {                                                   // type     initial value   valid range
+        PACK_SWAP_BYTES     = GL_PACK_SWAP_BYTES,       // bool     false           true or false
+        PACK_LSB_FIRST      = GL_PACK_LSB_FIRST,        // bool     false           true or false
+        PACK_ROW_LENGTH     = GL_PACK_ROW_LENGTH,       // int      0               [0, inf)
+        PACK_IMAGE_HEIGHT   = GL_PACK_IMAGE_HEIGHT,     // int      0               [0, inf)
+        PACK_SKIP_ROWS      = GL_PACK_SKIP_ROWS,        // int      0               [0, inf)
+        PACK_SKIP_PIXELS    = GL_PACK_SKIP_PIXELS,      // int      0               [0, inf)
+        PACK_SKIP_IMAGES    = GL_PACK_SKIP_IMAGES,      // int      0               [0, inf)
+        PACK_ALIGNMENT      = GL_PACK_ALIGNMENT,        // int      4               [1, 2, 4, 8]
+        UNPACK_SWAP_BYTES   = GL_UNPACK_SWAP_BYTES,     // bool     false           true or false
+        UNPACK_LSB_FIRST    = GL_UNPACK_LSB_FIRST,      // bool     false           true or false
+        UNPACK_ROW_LENGTH   = GL_UNPACK_ROW_LENGTH,     // int      0               [0, inf)
+        UNPACK_IMAGE_HEIGHT = GL_UNPACK_IMAGE_HEIGHT,   // int      0               [0, inf)
+        UNPACK_SKIP_ROWS    = GL_UNPACK_SKIP_ROWS,      // int      0               [0, inf)
+        UNPACK_SKIP_PIXELS  = GL_UNPACK_SKIP_PIXELS,    // int      0               [0, inf)
+        UNPACK_SKIP_IMAGES  = GL_UNPACK_SKIP_IMAGES,    // int      0               [0, inf)
+        UNPACK_ALIGNMENT    = GL_UNPACK_ALIGNMENT       // int      4               [1, 2, 4, 8]
+    };
+
+    template<PixelStoreParameter> struct PixStoreTypeMap { using type = GLint; };
+    template<> struct PixStoreTypeMap<PixelStoreParameter::PACK_SWAP_BYTES> { using type = GLboolean; };
+    template<> struct PixStoreTypeMap<PixelStoreParameter::PACK_LSB_FIRST> { using type = GLboolean; };
+    template<> struct PixStoreTypeMap<PixelStoreParameter::UNPACK_SWAP_BYTES> { using type = GLboolean; };
+    template<> struct PixStoreTypeMap<PixelStoreParameter::UNPACK_LSB_FIRST> { using type = GLboolean; };
+
+    enum class UnpackAlignment
+    {
+        BYTE_ALIGNMENT = 1,
+        ROW_ALIGNMENT  = 2,
+        WORD_ALIGNMENT = 4,
+        DOUBLE_WORD    = 8
+    };
 }

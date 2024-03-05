@@ -9,7 +9,7 @@ namespace lux::asset
     using AssetPtr = std::unique_ptr<LuxAsset>;
     template<class T> using ExternalAssetPtr = std::unique_ptr<T>;
 
-    // TODO This may be no use until starting to develop the editor;
+    // TODO This may be no used until starting to develop the editor;
     // So just let this go.
     class LuxAssetManager
     {
@@ -21,8 +21,6 @@ namespace lux::asset
         LUX_RESOURCE_PUBLIC LoadAssetResult loadExternalAsset(const std::string& name, const FilePath& path);
 
         LUX_RESOURCE_PUBLIC void unloadAsset(AssetPtr ptr);
-
-    protected:
 
     private:
         std::unique_ptr<LuxAssetManagerImpl> _impl;

@@ -93,6 +93,11 @@ namespace lux::window
     {
         friend class LuxWindow;
     public:
+        enum class ContextOperation
+        {
+            GLFW_INIT
+        };
+
         LuxWindowImpl(LuxWindow* window, InitParameter param, std::shared_ptr<GraphicContext> context)
             : _owner(window), _parameter(std::move(param))
         {
@@ -100,14 +105,14 @@ namespace lux::window
         }
 
         LuxWindowImpl(LuxWindow* window, InitParameter param)
-            : _owner(window), _parameter(std::move(param))  {}
+            : _owner(window), _parameter(std::move(param)){}
 
         bool init(std::shared_ptr<GraphicContext> context)
         {
             if (_init) return true;
 
             _context = std::move(context);
-            _context->acceptVisitor(this);
+            _context->acceptVisitor(this, static_cast<int>(ContextOperation::GLFW_INIT));
 
             auto* cw = glfwGetCurrentContext();
 
@@ -234,6 +239,8 @@ namespace lux::window
         {
             while (!glfwWindowShouldClose(_glfw_window))
             {
+                glfwPollEvents();
+
                 for (auto& subwindow : _subwindows)
                 {
                     subwindow->paint();
@@ -244,19 +251,29 @@ namespace lux::window
             return 0;
         }
     protected:
-        bool visitContext(GLContext* gl_context) override
+        bool visitContext(GLContext* gl_context, int operation) override
         {
-            if(glfwInit() != GLFW_TRUE) return false;
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, gl_context->majorVersion());
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, gl_context->minorVersion());
-            return true;
+            if(operation == static_cast<int>(ContextOperation::GLFW_INIT))
+            {
+                if (glfwInit() != GLFW_TRUE) return false;
+                glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, gl_context->majorVersion());
+                glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, gl_context->minorVersion());
+                return true;
+            }
+
+            return false;
         }
 
-        bool visitContext(VulkanContext* vulkan_context)  override
+        bool visitContext(VulkanContext* vulkan_context, int operation)  override
         {
-            if (glfwInit() != GLFW_TRUE) return false;
-            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-            return true;
+            if (operation == static_cast<int>(ContextOperation::GLFW_INIT))
+            {
+                if (glfwInit() != GLFW_TRUE) return false;
+                glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+                return true;
+            }
+
+            return false;
         }
 
     private:

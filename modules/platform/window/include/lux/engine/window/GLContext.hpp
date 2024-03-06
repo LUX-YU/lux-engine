@@ -14,7 +14,9 @@ namespace lux::window
          * @return bool return true if success. if context already initialized, return true;
          * 
          */
-        LUX_PLATFORM_PUBLIC bool acceptVisitor(ContextVisitor* visitor) override;
+        LUX_PLATFORM_PUBLIC bool acceptVisitor(ContextVisitor* visitor, int operation) override;
+
+        LUX_PLATFORM_PUBLIC GraphicAPI apiType() const override;
 
         LUX_PLATFORM_PUBLIC bool apiInit() override;
 

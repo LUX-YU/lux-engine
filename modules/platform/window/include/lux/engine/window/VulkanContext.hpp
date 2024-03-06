@@ -11,7 +11,9 @@ namespace lux::window
 
         LUX_PLATFORM_PUBLIC ~VulkanContext() override;
 
-        LUX_PLATFORM_PUBLIC bool acceptVisitor(ContextVisitor* visitor) override;
+        LUX_PLATFORM_PUBLIC bool acceptVisitor(ContextVisitor* visitor, int operation) override;
+
+        LUX_PLATFORM_PUBLIC GraphicAPI apiType() const override;
 
         LUX_PLATFORM_PUBLIC bool apiInit() override;
 

@@ -43,6 +43,7 @@ add_executable(
 target_link_libraries(
     LuxEditor
     PRIVATE
+    lux::engine::platform::window
     lux::engine::resource::asset
     lux::engine::function::render
     lux::engine::tools::builtin_object

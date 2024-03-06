@@ -13,9 +13,14 @@ namespace lux::window
 
     VulkanContext::~VulkanContext() = default;
 
-    bool VulkanContext::acceptVisitor(ContextVisitor* visitor)
+    bool VulkanContext::acceptVisitor(ContextVisitor* visitor, int operation)
     {
-        return visitor->visitContext(this);
+        return visitor->visitContext(this, operation);
+    }
+
+    GraphicAPI VulkanContext::apiType() const
+    {
+        return GraphicAPI::Vulkan;
     }
 
     bool VulkanContext::apiInit()

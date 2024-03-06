@@ -9,7 +9,7 @@ namespace lux::window
 	class ContextVisitor
 	{
 	public:
-		virtual bool visitContext(GLContext*) = 0;
-		virtual bool visitContext(VulkanContext*) = 0;
+		virtual bool visitContext(GLContext*, int operation) = 0;
+		virtual bool visitContext(VulkanContext*, int operation) = 0;
 	};
 }

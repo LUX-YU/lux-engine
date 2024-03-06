@@ -11,9 +11,14 @@ namespace lux::window
 
     GLContext::~GLContext() = default;
 
-    bool GLContext::acceptVisitor(ContextVisitor* visitor)
+    bool GLContext::acceptVisitor(ContextVisitor* visitor, int operation)
     {
-        return visitor->visitContext(this);
+        return visitor->visitContext(this, operation);
+    }
+
+    GraphicAPI GLContext::apiType() const
+    {
+        return GraphicAPI::OpenGL3;
     }
 
     bool GLContext::apiInit()

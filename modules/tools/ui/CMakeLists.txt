@@ -1,4 +1,4 @@
-find_package(imgui REQUIRED COMPONENTS imgui)
+find_package(imgui REQUIRED COMPONENTS glfw opengl3)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_TOOLS_UI_LIBRARY
@@ -43,5 +43,6 @@ target_link_libraries(
     lux::engine::core::meta
     lux::engine::core::math
     lux::engine::function::render
-    imgui::imgui
+    imgui::glfw
+    imgui::opengl3
 )

@@ -31,7 +31,7 @@ target_link_libraries(
 )
 
 component_add_transitive_commands(
-    RHI
+    builtin_object
     "find_package (Eigen3 REQUIRED)"
 )
 
@@ -43,8 +43,12 @@ add_executable(
 target_link_libraries(
     LuxEditor
     PRIVATE
-    lux::engine::platform::window
     lux::engine::resource::asset
     lux::engine::function::render
     lux::engine::tools::builtin_object
+)
+
+component_add_internal_dependencies(
+    LuxEditor
+    lux::engine::tools::ui
 )

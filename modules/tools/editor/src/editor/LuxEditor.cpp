@@ -1,41 +1,37 @@
-#include "lux/engine/editor/LuxEditor.hpp"
-#include "lux/engine/window/GLContext.hpp"
-#include "lux/engine/window/LuxWindow.hpp"
-#include "lux/engine/window/Subwindow.hpp"
-
+#include <lux/engine/window/GLContext.hpp>
+#include <lux/engine/ui/WindowUI.hpp>
 #include <imgui/imgui.h>
 
-class AssetBrowser : public lux::window::Subwindow
+using namespace lux::ui;
+
+class AssetBrowser : public Widget
 {
 public:
-	AssetBrowser()
-		: lux::window::Subwindow("AssetBrowser")
+	AssetBrowser() : Widget("Asset Browser")
 	{
 
 	}
 
-private:
-	void paint() override
+	void paint(void* imgui_context) override
 	{
-		ImGui::Begin("AssetBrowser");
-		ImGui::Text("Hello World");
+		ImGuiWindowFlags window_flags = 0;
+		window_flags |= ImGuiWindowFlags_NoBackground;
+		// window_flags |= ImGuiWindowFlags_NoTitleBar;
+		static bool open_ptr = true;
+
+		ImGui::Begin("Asset Browser", &open_ptr, window_flags);
+		ImGui::Text("This is prototype of asset browser");
+		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 		ImGui::End();
 	}
 };
 
 int main(int argc, char* argv[])
 {
-	lux::window::InitParameter windows_parameter;
-	windows_parameter.height 		= 1080;
-	windows_parameter.width  		= 1920;
-	windows_parameter.title  		= "LuxEditor";
+	lux::ui::WindowUI<EGraphicAPI::OpenGL3> window(1920, 1080);
 
-	auto context = std::make_shared<lux::window::GLContext>(4, 5);
-
-	lux::window::LuxWindow window(windows_parameter, context);
-
-	window.addSubwindow(std::make_unique<AssetBrowser>());
-
+	auto asset_brower = std::make_unique<AssetBrowser>();
+	window.addSubwindow(std::move(asset_brower));
 	window.enableVsync(true);
 
 	return window.exec();

@@ -5,7 +5,7 @@
 #include <lux/engine/window/LuxWindowDefination.hpp>
 #include <lux/engine/platform/visibility.h>
 #include "GraphicContext.hpp"
-#include "Subwindow.hpp"
+#include "ContextVisitor.hpp"
 
 struct GLFWwindow;
 
@@ -19,7 +19,6 @@ namespace lux::window
     };
 
     class LuxWindow;
-    class LuxWindowImpl;
 
     using KeyEventCallback          = std::function<void (LuxWindow&, KeyEnum, int, KeyState, ModifierKey)>;
     using CursorPoitionCallback     = std::function<void (LuxWindow&, double xpose, double ypose)>;
@@ -27,7 +26,16 @@ namespace lux::window
     using MouseButtonCallback       = std::function<void (LuxWindow&, MouseButton button, KeyState action, ModifierKey mods)>;
     using WindowSizeChangedCallbcak = std::function<void (LuxWindow&, int width, int height)>;
 
-    using SharedContextPtr          = std::shared_ptr<GraphicContext>;
+    struct WindowCallbacks
+    {
+        KeyEventCallback             key_callback;
+        CursorPoitionCallback        cursor_position_callback;
+        ScrollCallback               scroll_callback;
+        MouseButtonCallback          mouse_button_callback;
+        WindowSizeChangedCallbcak    window_size_changed_callback;
+    };
+
+    using SharedContextPtr = std::shared_ptr<GraphicContext>;
 
     template<class T, class... Args> SharedContextPtr createContext(Args&&... args)
     requires std::is_base_of_v<GraphicContext, T>
@@ -35,7 +43,7 @@ namespace lux::window
         return std::make_shared<T>(std::forward<Args>(args)...);
     }
 
-    class LuxWindow
+    class LuxWindow : protected ContextVisitor
     {
     public:
         /**
@@ -43,6 +51,7 @@ namespace lux::window
         */
         LUX_PLATFORM_PUBLIC  LuxWindow(int width, int height, std::string title, SharedContextPtr context);
         LUX_PLATFORM_PUBLIC  LuxWindow(const InitParameter& parameter, SharedContextPtr context);
+        
         /**
          * @brief init() won't be called automaticly
         */
@@ -76,8 +85,7 @@ namespace lux::window
         LUX_PLATFORM_PUBLIC void subscribeMouseButtonCallback(MouseButtonCallback);
         LUX_PLATFORM_PUBLIC void subscribeWindowSizeChangeCallback(WindowSizeChangedCallbcak);
 
-        LUX_PLATFORM_PUBLIC void addSubwindow(std::unique_ptr<Subwindow>);
-        LUX_PLATFORM_PUBLIC int  exec();
+        LUX_PLATFORM_PUBLIC virtual int exec();
 
         /* Current version always return "glfw" */
         [[nodiscard]] LUX_PLATFORM_PUBLIC std::string  windowFrameworkName() const;
@@ -96,14 +104,23 @@ namespace lux::window
         LUX_PLATFORM_PUBLIC static double   timeAfterFirstInitialization();
         // Get glfw context
         LUX_PLATFORM_PUBLIC static GLFWwindow* currentContext();
+        LUX_PLATFORM_PUBLIC static void makeContextCurrent(GLFWwindow*);
 
         using ProcPtr = void (*)();
         LUX_PLATFORM_PUBLIC static ProcPtr  getProcAddress(const char* name);
 
     protected:
-        LUX_PLATFORM_PUBLIC virtual void paint();
+        LUX_PLATFORM_PUBLIC virtual void    newFrame();
 
     private:
-        std::unique_ptr<LuxWindowImpl> _impl;
+
+        LUX_PLATFORM_PUBLIC bool visitContext(GLContext* gl_context, int operation) override;
+        LUX_PLATFORM_PUBLIC bool visitContext(VulkanContext* vulkan_context, int operation)  override;
+
+        WindowCallbacks                 _callbacks;
+        GLFWwindow*                     _glfw_window;
+        InitParameter                   _parameter;
+        bool                            _init{ false };
+        std::shared_ptr<GraphicContext> _context;
     };
 } // namespace lux-engine::platform

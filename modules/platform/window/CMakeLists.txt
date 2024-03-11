@@ -1,12 +1,10 @@
 find_package(glfw3   REQUIRED)
 find_package(Vulkan  REQUIRED)
-find_package(imgui   REQUIRED COMPONENTS imgui)
 
 set(GLFW_WRAPPER_SRCS
     src/glfw_wrapper/LuxWindow.cpp
     src/glfw_wrapper/GLContext.cpp
     src/glfw_wrapper/VulkanContext.cpp
-    src/glfw_wrapper/Subwindow.cpp
 )
 
 add_component(
@@ -37,7 +35,6 @@ target_link_libraries(
     PUBLIC
     glfw
     Vulkan::Vulkan
-    imgui::imgui
 )
 
 component_add_transitive_commands(

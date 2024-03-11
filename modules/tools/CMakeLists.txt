@@ -20,4 +20,5 @@ install_components(
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::tools
 	COMPONENTS		builtin_object
+                    ui
 )

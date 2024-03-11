@@ -1,5 +1,5 @@
 #include "lux/engine/window/GLContext.hpp"
-#include "lux/engine/window/LuxWindowImpl.hpp"
+#include "lux/engine/window/ContextVisitor.hpp"
 
 namespace lux::window
 {
@@ -16,9 +16,9 @@ namespace lux::window
         return visitor->visitContext(this, operation);
     }
 
-    GraphicAPI GLContext::apiType() const
+    EGraphicAPI GLContext::apiType() const
     {
-        return GraphicAPI::OpenGL3;
+        return EGraphicAPI::OpenGL3;
     }
 
     bool GLContext::apiInit()

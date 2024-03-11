@@ -7,7 +7,7 @@ namespace lux::window
     class LuxWindowImpl;
     class ContextVisitor;
 
-    enum class GraphicAPI
+    enum class EGraphicAPI
 	{
 		OpenGL3,
         EGL,
@@ -27,6 +27,6 @@ namespace lux::window
         // invoke after window is been created
         LUX_PLATFORM_PUBLIC virtual bool apiInit() = 0;
         LUX_PLATFORM_PUBLIC virtual void cleanUp() = 0;
-        LUX_PLATFORM_PUBLIC virtual GraphicAPI apiType() const = 0;
+        LUX_PLATFORM_PUBLIC virtual EGraphicAPI apiType() const = 0;
     };
 } // namespace lux::window

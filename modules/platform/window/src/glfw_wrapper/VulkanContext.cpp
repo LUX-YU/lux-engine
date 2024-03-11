@@ -1,5 +1,5 @@
 #include "lux/engine/window/VulkanContext.hpp"
-#include "lux/engine/window/LuxWindowImpl.hpp"
+#include "lux/engine/window/ContextVisitor.hpp"
 
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
@@ -18,9 +18,9 @@ namespace lux::window
         return visitor->visitContext(this, operation);
     }
 
-    GraphicAPI VulkanContext::apiType() const
+    EGraphicAPI VulkanContext::apiType() const
     {
-        return GraphicAPI::Vulkan;
+        return EGraphicAPI::Vulkan;
     }
 
     bool VulkanContext::apiInit()

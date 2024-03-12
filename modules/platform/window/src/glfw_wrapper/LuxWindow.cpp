@@ -147,7 +147,7 @@ namespace lux::window
             glfwDestroyWindow(_glfw_window);
 
             return false;
-        }
+        }  
 
         glfwMakeContextCurrent(_glfw_window);
 

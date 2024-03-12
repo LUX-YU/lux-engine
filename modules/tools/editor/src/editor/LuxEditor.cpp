@@ -12,7 +12,7 @@ public:
 
 	}
 
-	void paint(void* imgui_context) override
+	void paint() override
 	{
 		ImGuiWindowFlags window_flags = 0;
 		window_flags |= ImGuiWindowFlags_NoBackground;
@@ -28,7 +28,7 @@ public:
 
 int main(int argc, char* argv[])
 {
-	lux::ui::WindowUI<EGraphicAPI::OpenGL3> window(1920, 1080);
+	lux::ui::WindowUI<EGraphicAPI::OpenGL3> window(1920, 1080, "lux_editor_test");
 
 	auto asset_brower = std::make_unique<AssetBrowser>();
 	window.addSubwindow(std::move(asset_brower));

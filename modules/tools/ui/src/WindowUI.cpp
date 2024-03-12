@@ -6,8 +6,8 @@
 
 namespace lux::ui
 {
-	WindowUI<EGraphicAPI::OpenGL3>::WindowUI(int width, int height)
-		: LuxWindow(width, height, "windows", std::make_shared<lux::window::GLContext>(4, 5))
+	WindowUI<EGraphicAPI::OpenGL3>::WindowUI(int width, int height, std::string title)
+		: LuxWindow(width, height, std::move(title), std::make_shared<lux::window::GLContext>(4, 5))
 	{
 		gladLoadGLLoader((GLADloadproc)getProcAddress);
 
@@ -63,7 +63,7 @@ namespace lux::ui
 
 		for (auto& widget : widgets)
 		{
-			widget->paint(ImGui::GetCurrentContext());
+			widget->paint();
 		}
 
 		// imgui draw
@@ -78,6 +78,11 @@ namespace lux::ui
 			ImGui::RenderPlatformWindowsDefault();
 			makeContextCurrent(backup_current_context);
 		}
+	}
+
+	float WindowUI<EGraphicAPI::OpenGL3>::updateTime()
+	{
+		return _delta_time;
 	}
 
 	void WindowUI<EGraphicAPI::OpenGL3>::addSubwindow(std::unique_ptr<Widget> widget)

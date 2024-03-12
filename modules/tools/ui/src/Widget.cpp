@@ -22,7 +22,7 @@ namespace lux::ui
 		_visible = visible;
 	}
 
-	void Widget::paint(void* context)
+	void Widget::paint()
 	{
 		if (!_visible)
 		{

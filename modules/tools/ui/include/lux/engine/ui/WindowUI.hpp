@@ -14,12 +14,14 @@ namespace lux::ui
 		 * @param width The width of the window
 		 * @param height The height of the window
 		*/
-		LUX_TOOLS_UI_PUBLIC WindowUI(int width, int height);
+		LUX_TOOLS_UI_PUBLIC WindowUI(int width, int height, std::string title);
 		LUX_TOOLS_UI_PUBLIC ~WindowUI();
 
 		LUX_TOOLS_UI_PUBLIC void addSubwindow(std::unique_ptr<Widget> widget);
 
 		LUX_TOOLS_UI_PUBLIC void* uiContext();
+
+		LUX_TOOLS_UI_PUBLIC float updateTime();
 
 	protected:
 

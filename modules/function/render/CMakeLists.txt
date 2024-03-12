@@ -30,6 +30,12 @@ target_compile_definitions(
     LUX_FUNCTION_LIBRARY
 )
 
+component_add_transitive_commands(
+    render
+    "find_package (lux-engine-platform REQUIRED COMPONENTS window RHI)"
+    "find_package (lux-engine-core     REQUIRED COMPONENTS meta math)"
+)
+
 target_link_libraries(
     render
     PUBLIC
@@ -37,5 +43,4 @@ target_link_libraries(
     lux::engine::platform::window
     lux::engine::core::math
     lux::engine::core::meta
-    lux::engine::resource::asset
 )

@@ -36,12 +36,15 @@ target_compile_definitions(
     LUX_TOOLS_UI_DLL_DISABLE
 )
 
+component_add_transitive_commands(
+    ui
+    "find_package (lux-engine-function REQUIRED COMPONENTS render)"
+    "find_package (imgui REQUIRED COMPONENTS glfw opengl3)"
+)
+
 target_link_libraries(
     ui
     PUBLIC
-    lux::engine::platform::window
-    lux::engine::core::meta
-    lux::engine::core::math
     lux::engine::function::render
     imgui::glfw
     imgui::opengl3

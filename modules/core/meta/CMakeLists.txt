@@ -7,6 +7,7 @@ find_package(lux-cxx REQUIRED COMPONENTS dynamic_reflection)
 add_component(
     COMPONENT_NAME  meta
     NAMESPACE       lux::engine::core
+    OUTPUT_NAME     lux_engine_core_mata
     SOURCE_FILES    ${LUX_META_SRCS}
 )
 
@@ -22,6 +23,11 @@ target_compile_definitions(
     meta
     PRIVATE
     LUX_CORE_LIBRARY
+)
+
+component_add_transitive_commands(
+    meta
+    "find_package(lux-cxx REQUIRED COMPONENTS dynamic_reflection)"
 )
 
 target_link_libraries(

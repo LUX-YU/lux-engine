@@ -36,7 +36,7 @@ namespace lux::ui
 #endif
 
 	private:
-		LUX_TOOLS_UI_PUBLIC virtual void paint(void* context);
+		LUX_TOOLS_UI_PUBLIC virtual void paint();
 
 		bool		_visible;
 		std::string _title;

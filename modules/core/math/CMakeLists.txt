@@ -7,6 +7,7 @@ set(MATH_SRCS
 add_component(
     COMPONENT_NAME math
     NAMESPACE      lux::engine::core
+    OUTPUT_NAME    lux_engine_core_math
     SOURCE_FILES   ${MATH_SRCS}
 )
 

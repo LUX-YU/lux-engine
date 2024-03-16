@@ -119,6 +119,11 @@ namespace lux::ui
 	void WindowUI<EGraphicAPI::OpenGL3>::newFrame()
 	{
 		static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+		auto size = framebufferSize();
+		glViewport(0, 0, size.width, size.height);
+		glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
 		// new frame
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
@@ -135,12 +140,6 @@ namespace lux::ui
 
 		// imgui draw
 		ImGui::Render(); // This will call EndFrame
-
-		auto size = framebufferSize();
-		glViewport(0, 0, size.width, size.height);
-		glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		ImGuiIO& io = ImGui::GetIO();

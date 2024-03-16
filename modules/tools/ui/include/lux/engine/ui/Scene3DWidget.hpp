@@ -11,20 +11,21 @@ namespace lux::ui
 		Scene3DWidget();
 		void paint() override;
 
+		virtual void drawMethod();
+
+		void setBackGround(float r, float g, float b, float a);
+
 	private:
-		void create_framebuffer();
-		void rescale_framebuffer(float width, float height);
+		void rescale_and_draw_framebuffer(float width, float height);
 
 		// temporary, scene will use RHI and render api command list to draw later
+		// lux::render::LuxScene3D		   _scene;
+		
+		// render buffer
 		lux::gapi::opengl::Texture2D		_texture;
 		lux::gapi::opengl::FrameBuffer		_frame_buffer;
-		lux::gapi::opengl::ShaderProgram	_shader;
-		lux::gapi::opengl::VertexShader		_vertex_shader;
-		lux::gapi::opengl::FragmentShader	_fragment_shader;
-		lux::gapi::opengl::VertexArray		_vertex_array;
-		lux::gapi::opengl::ArrayBuffer		_vertex_buffer;
 		lux::gapi::opengl::RenderBuffer		_render_buffer;
-		// lux::render::LuxScene3D		   _scene;
-		GLuint	RBO;
+
+		std::array<float, 4>				_background;
 	};
 }

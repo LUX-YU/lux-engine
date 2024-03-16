@@ -32,8 +32,10 @@ int main(int argc, char* argv[])
 	lux::ui::WindowUI<EGraphicAPI::OpenGL3> window(1920, 1080, "lux_editor_test");
 
 	window.addWidget(std::make_unique<AssetBrowser>());
-	window.addWidget(std::make_unique<Scene3DWidget>());
-	window.enableVsync(false);
+	auto scene_widget = std::make_unique<Scene3DWidget>();
+	scene_widget->setBackGround(164, 255, 164, 1.000);
+	window.addWidget(std::move(scene_widget));
+	window.enableVsync(true);
 
 	return window.exec();
 }

@@ -164,4 +164,31 @@ namespace lux::window
         int width;
         int height;
     };
+
+    struct CursorPositionChanged
+    {
+        double x;
+        double y;
+    };
+
+    struct MouseScrollAction
+	{
+		double x;
+		double y;
+	};
+
+    struct MouseButtonAction
+	{
+        MouseButton button; 
+        KeyState    action; 
+        ModifierKey mods;
+	};
+
+    struct KeyAction
+	{
+		KeyEnum key;
+        int scancode;
+		KeyState state;
+		ModifierKey mod;
+	};
 }

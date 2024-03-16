@@ -11,7 +11,6 @@ namespace lux::window
 
 namespace lux::render
 {
-
 	// Scene acually is a ui element?
 	class LuxScene : public lux::meta::TLuxObject<LuxScene>
 	{

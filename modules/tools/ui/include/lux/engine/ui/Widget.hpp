@@ -9,6 +9,11 @@
 
 using EGraphicAPI = lux::window::EGraphicAPI;
 
+namespace lux::window
+{
+	class LuxWindow;
+}
+
 namespace lux::ui
 {
 	class Widget
@@ -35,10 +40,16 @@ namespace lux::ui
 		}
 #endif
 
+	protected:
+		lux::window::LuxWindow* _window;
+
 	private:
+		LUX_TOOLS_UI_PUBLIC void setWindow(lux::window::LuxWindow*);
+
 		LUX_TOOLS_UI_PUBLIC virtual void paint();
 
-		bool		_visible;
-		std::string _title;
+		
+		bool					_visible;
+		std::string				_title;
 	};
 }

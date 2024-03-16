@@ -1,7 +1,7 @@
 #pragma once
-#include <glad/glad.h>
 #include "config.h"
 #include "ValueTypes.hpp"
+#include "Attachment.hpp"
 
 namespace lux::gapi::opengl
 {
@@ -83,7 +83,7 @@ namespace lux::gapi::opengl
             @param width Specifies the width of the renderbuffer, in pixels.
             @param height Specifies the height of the renderbuffer, in pixels.
         */
-        static void staticStorage(ImageFormat internalformat, GLsizei width, GLsizei height)
+        static void sStorage(ImageFormat internalformat, GLsizei width, GLsizei height)
         {
             // target
             // Specifies a binding target of the allocation for glRenderbufferStorage function. Must be GL_RENDERBUFFER.
@@ -95,7 +95,7 @@ namespace lux::gapi::opengl
             @param width            Specifies the width of the renderbuffer, in pixels.
             @param height           Specifies the height of the renderbuffer, in pixels.
         */
-        static void staticStorageMultiSample(GLsizei samples, ImageFormat internalformat, GLsizei width, GLsizei height)
+        static void sStorageMultiSample(GLsizei samples, ImageFormat internalformat, GLsizei width, GLsizei height)
         {
             glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, static_cast<GLenum>(internalformat), width, height);
         }

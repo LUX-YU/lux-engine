@@ -19,5 +19,6 @@ install_components(
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::platform
 	COMPONENTS		RHI
+                    event
 					window
 )

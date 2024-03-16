@@ -96,14 +96,14 @@ namespace lux::window
         _parameter.height = height;
         _parameter.title  = std::move(title);
 
-        init(std::move(context));
+        _init = init(std::move(context));
     }
 
     LuxWindow::LuxWindow(const InitParameter& parameter, std::shared_ptr<GraphicContext> context)
     {
         _parameter = parameter;
 
-        init(std::move(context));
+        _init = init(std::move(context));
     }
 
     LuxWindow::LuxWindow(int width, int height, std::string title)
@@ -147,13 +147,17 @@ namespace lux::window
             glfwDestroyWindow(_glfw_window);
 
             return false;
-        }  
+        }
 
         glfwMakeContextCurrent(_glfw_window);
-
         glfwSetWindowUserPointer(_glfw_window, this);
 
-        _init = true;
+        subscribeKeyEvent();
+        subscribeCursorPositionCallback();
+        subscribeScrollCallback();
+        subscribeMouseButtonCallback();
+        subscribeWindowSizeChangeCallback();
+
         return true;
     }
 
@@ -212,7 +216,7 @@ namespace lux::window
         );
     }
 
-    WindowSize LuxWindow::windowSize() const
+    WindowSize LuxWindow::size() const
     {
         WindowSize size;
         glfwGetWindowSize(_glfw_window, &size.width, &size.height);
@@ -225,83 +229,91 @@ namespace lux::window
         return framework_type;
     }
 
-    void LuxWindow::subscribeKeyEvent(KeyEventCallback callback)
+    void LuxWindow::subscribeKeyEvent()
     {
-        _callbacks.key_callback = std::move(callback);
         glfwSetKeyCallback(
             _glfw_window,
             [](GLFWwindow* window, int key, int scancode, int action, int mods) {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->_callbacks.key_callback(
-                    *self,
-                    glfwKeyEnumConvert(key),
-                    scancode,
-                    glfwKeyStateEnumConvert(action),
-                    glfwModifierKeyEnumConvert(mods)
-                );
+                auto event = std::make_unique<KeyEvent>(
+                    KeyAction{
+					    glfwKeyEnumConvert(key),
+					    scancode,
+					    glfwKeyStateEnumConvert(action),
+					    glfwModifierKeyEnumConvert(mods)
+					}
+				);
+                self->dispatch(std::move(event));
             }
         );
     }
 
-    void LuxWindow::subscribeCursorPositionCallback(CursorPoitionCallback callback)
+    void LuxWindow::subscribeCursorPositionCallback()
     {
-        _callbacks.cursor_position_callback = std::move(callback);
         glfwSetCursorPosCallback(
             _glfw_window,
             [](GLFWwindow* window, double xpos, double ypos)
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->_callbacks.cursor_position_callback(*self, xpos, ypos);
+                self->dispatch(std::make_unique<CursorPositionChangedEvent>(CursorPositionChanged{ xpos, ypos }));
             }
         );
     }
 
-    void LuxWindow::subscribeScrollCallback(ScrollCallback callback)
+    void LuxWindow::subscribeScrollCallback()
     {
-        _callbacks.scroll_callback = std::move(callback);
         glfwSetScrollCallback(
             _glfw_window,
             [](GLFWwindow* window, double xoffset, double yoffset)
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->_callbacks.scroll_callback(*self, xoffset, yoffset);
+                self->dispatch(std::make_unique<MouseScrollEvent>(MouseScrollAction{xoffset, yoffset}));
             }
         );
     }
 
-    void LuxWindow::subscribeMouseButtonCallback(MouseButtonCallback callback)
+    void LuxWindow::subscribeMouseButtonCallback()
     {
-        _callbacks.mouse_button_callback = std::move(callback);
         glfwSetMouseButtonCallback(
             _glfw_window,
             [](GLFWwindow* window, int button, int action, int mods)
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->_callbacks.mouse_button_callback(
-                    *self,
-                    glfwMouseButtonEnumConvert(button),
-                    glfwKeyStateEnumConvert(action),
-                    glfwModifierKeyEnumConvert(mods)
+                auto event = std::make_unique<MouseButtonEvent>(
+                    MouseButtonAction {
+                        glfwMouseButtonEnumConvert(button),
+                        glfwKeyStateEnumConvert(action),
+                        glfwModifierKeyEnumConvert(mods)
+                    }
                 );
+                
+                self->dispatch(std::move(event));
             }
         );
     }
 
-    void LuxWindow::subscribeWindowSizeChangeCallback(WindowSizeChangedCallbcak callback)
+    void LuxWindow::subscribeWindowSizeChangeCallback()
     {
-        _callbacks.window_size_changed_callback = std::move(callback);
         glfwSetWindowSizeCallback(
             _glfw_window,
             [](GLFWwindow* window, int width, int height)
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->_callbacks.window_size_changed_callback(
-                    *self,
-                    width,
-                    height
-                );
+                self->dispatch(std::make_unique<WindowSizeChangedEvent>(WindowSize{ width, height }));
             }
         );
+    }
+
+    float LuxWindow::lastFrameDelayTime() const
+    {
+        return _delta_time;
+    }
+
+    WindowSize LuxWindow::framebufferSize() const
+    {
+        WindowSize size;
+        glfwGetFramebufferSize(_glfw_window, &size.width, &size.height);
+        return size;
     }
 
 #ifdef __PLATFORM_WIN32__
@@ -330,11 +342,19 @@ namespace lux::window
     {
         while (!glfwWindowShouldClose(_glfw_window))
         {
+            float current_time = timeAfterFirstInitialization();
+            _delta_time        = current_time - _last_frame_time;
+            _last_frame_time   = current_time;
+
+            dispatch(std::make_unique<DrawReadyEvent>());
+
             glfwPollEvents();
 
             newFrame();
 
             glfwSwapBuffers(_glfw_window);
+
+            dispatch(std::make_unique<DrawFinishedEvent>());
         }
 
         return 0;

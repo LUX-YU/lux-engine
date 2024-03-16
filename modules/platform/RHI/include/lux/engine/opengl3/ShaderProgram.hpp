@@ -169,7 +169,12 @@ namespace lux::gapi::opengl
         void use()
         {
             glUseProgram(_shader_program_object);
-        }        
+        }
+
+        void unuse()
+		{
+			glUseProgram(0);
+		}
     
         void release()
         {

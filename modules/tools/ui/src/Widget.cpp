@@ -1,5 +1,6 @@
 #include <lux/engine/ui/Widget.hpp>
-#include <imgui/imgui.h>
+#include <lux/engine/window/LuxWindow.hpp>
+#include <imgui.h>
 
 namespace lux::ui
 {
@@ -43,5 +44,10 @@ namespace lux::ui
 	int Widget::height() const noexcept
 	{
 		return ImGui::GetContentRegionAvail().y;
+	}
+
+	void Widget::setWindow(lux::window::LuxWindow* window)
+	{
+		_window = window;
 	}
 }

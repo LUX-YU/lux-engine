@@ -1,6 +1,7 @@
 #include <lux/engine/window/GLContext.hpp>
 #include <lux/engine/ui/WindowUI.hpp>
-#include <imgui/imgui.h>
+#include <lux/engine/ui/Scene3DWidget.hpp>
+#include <imgui.h>
 
 using namespace lux::ui;
 
@@ -15,7 +16,7 @@ public:
 	void paint() override
 	{
 		ImGuiWindowFlags window_flags = 0;
-		window_flags |= ImGuiWindowFlags_NoBackground;
+		// window_flags |= ImGuiWindowFlags_NoBackground;
 		// window_flags |= ImGuiWindowFlags_NoTitleBar;
 		static bool open_ptr = true;
 
@@ -30,9 +31,9 @@ int main(int argc, char* argv[])
 {
 	lux::ui::WindowUI<EGraphicAPI::OpenGL3> window(1920, 1080, "lux_editor_test");
 
-	auto asset_brower = std::make_unique<AssetBrowser>();
-	window.addSubwindow(std::move(asset_brower));
-	window.enableVsync(true);
+	window.addWidget(std::make_unique<AssetBrowser>());
+	window.addWidget(std::make_unique<Scene3DWidget>());
+	window.enableVsync(false);
 
 	return window.exec();
 }

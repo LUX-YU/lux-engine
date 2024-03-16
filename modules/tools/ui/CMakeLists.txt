@@ -10,6 +10,7 @@ generate_visibility_header(
 set(LUX_UI_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Widget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WindowUI.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Scene3DWidget.cpp
 )
 
 add_component(

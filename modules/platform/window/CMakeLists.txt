@@ -43,6 +43,11 @@ component_add_transitive_commands(
     "find_package(Vulkan    REQUIRED)"
 )
 
+component_add_internal_dependencies(
+    window
+    event
+)
+
 if(WIN32)
     target_compile_definitions(
         window

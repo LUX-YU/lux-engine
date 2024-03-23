@@ -6,19 +6,67 @@
 namespace lux::gapi::opengl{
     enum class TextureType : GLenum
     {
+        // One-dimensional textures are primarily used for 
+        // storing one-dimensional data (like gradients) or 
+        // when the texture's height is not important.
         ONE_DIM                     = GL_TEXTURE_1D,
+        // One-dimensional texture arrays can store multiple 
+        // one-dimensional textures, used for various effects 
+        // like material transitions, data charts, etc.
         ONE_DIM_ARRAY               = GL_TEXTURE_1D_ARRAY,
+        // Three-dimensional textures are used for storing 
+        // volumetric data, common in volume rendering, 
+        // 3D texture mapping, etc.
         THREE_DIM                   = GL_TEXTURE_3D,
+        // Cube maps are used for environment mapping to simulate 
+        // reflections or refractions, commonly used in creating 
+        // skyboxes or simulating reflections on smooth surfaces.
         CUBE_MAP                    = GL_TEXTURE_CUBE_MAP,
+        // Cube map arrays are collections of cube maps, 
+        // which can be used to implement objects with 
+        // various reflection or refraction effects.
         CUBE_MAP_ARRAY              = GL_TEXTURE_CUBE_MAP_ARRAY,
+        // Two-dimensional textures are the most commonly used texture type, 
+        // used for texture mapping on various surfaces like walls, floors, etc.
         TWO_DIM                     = GL_TEXTURE_2D,
+        // Two-dimensional texture arrays can store multiple two-dimensional 
+        // textures, commonly used for implementing character sets, 
+        // layered terrain textures, etc.
         TWO_DIM_ARRAY               = GL_TEXTURE_2D_ARRAY,
+        // Multisample two-dimensional textures are used for anti-aliasing 
+        // effects, directly used in the rendering to texture process.
         TWO_DIM_MULTISAMPLE         = GL_TEXTURE_2D_MULTISAMPLE,
+        // Multisample two-dimensional texture arrays are the array form of 
+        // multisample two-dimensional textures, used in advanced anti-aliasing 
+        // techniques like multisample anti-aliasing (MSAA) in deferred rendering.
         TWO_DIM_MULTISAMPLE_ARRAY   = GL_TEXTURE_2D_MULTISAMPLE_ARRAY,
+        // Rectangle textures are mainly used in specific non-power of two 
+        // texture scenarios, like video playback or UI elements rendering.
+
+        // Non - Power - Of - Two(NPOT) textures refer to textures whose width 
+        // and height are not powers of two.In earlier graphics APIs, texture 
+        // dimensions were typically required to be powers of two(e.g., 2, 4, 8, 
+        // 16, 32, 64, etc.), due to hardware and driver limitations, allowing 
+        // such textures to be processed and mapped more efficiently.However, 
+        // this restriction also meant that if a texture's natural size did not 
+        // conform to this requirement, it had to be resized or padded, potentially 
+        // leading to wasted memory and reduced performance.
+        // With advancements in hardware, modern graphics APIs(such as OpenGL ES 2.0 
+        // and above, DirectX 10 and above, and Vulkan) now support NPOT textures, 
+        // enhancing the flexibility and efficiency of texture usage.Developers can 
+        // use images in their original sizes as textures without the need for resizing 
+        // or padding, which is beneficial for optimizing memory use and performance.
         RECTANGLE                   = GL_TEXTURE_RECTANGLE,
+        // Texture buffers are used to directly use buffer data as a texture, 
+        // commonly used in advanced shading techniques, like deformable animation 
+        // or data visualization.
         BUFFER                      = GL_TEXTURE_BUFFER, // no proxy
 
         // proxy
+        // Proxy textures are mainly used to query certain parameters at texture 
+        // creation time, such as the maximum supported size and format, without 
+        // actually creating the texture. 
+        // These types are typically used for pre-checking textures.
         PROXY_ONE_DIM               = GL_PROXY_TEXTURE_1D,
         PROXY_ONE_DIM_ARRAY         = GL_PROXY_TEXTURE_1D_ARRAY,
         PROXY_TWO_DIM               = GL_PROXY_TEXTURE_2D,

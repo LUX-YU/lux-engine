@@ -2,5 +2,8 @@
 
 namespace lux::render
 {
+	class Scene3D
+	{
 
+	};
 }

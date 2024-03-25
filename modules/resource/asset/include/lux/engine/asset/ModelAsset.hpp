@@ -74,16 +74,18 @@ namespace lux::asset
     {
         friend class ModelLoader;
     public:
-        LUX_RESOURCE_PUBLIC explicit ModelAsset(FilePath path);
+        using TextureList = std::vector<TextureAsset>;
+        using MeshList    = std::vector<Mesh>;
 
-        LUX_RESOURCE_PUBLIC LoadAssetResult load() override;
+        LUX_RESOURCE_PUBLIC explicit
+        ModelAsset(FilePath path);
+
+        LUX_RESOURCE_PUBLIC LoadAssetResult    
+        load() override;
 
         LUX_RESOURCE_PUBLIC bool unload() override;
 
         [[nodiscard]] LUX_RESOURCE_PUBLIC bool isLoaded() const override;
-
-        using TextureList = std::vector<TextureAsset>;
-        using MeshList = std::vector<Mesh>;
 
         LUX_RESOURCE_PUBLIC TextureList& textureList();
 

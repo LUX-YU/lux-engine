@@ -2,9 +2,9 @@
 
 namespace lux::engine::rhi
 {
-	class CommandInterface
+	class CommandBase
 	{
 	public:
-		virtual execute() = 0;
+		virtual void execute() = 0;
 	};
 }

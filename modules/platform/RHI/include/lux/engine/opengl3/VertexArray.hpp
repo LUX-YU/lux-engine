@@ -186,14 +186,14 @@ namespace lux::gapi::opengl
         VertexArray(const VertexArray&) = delete;
         VertexArray& operator=(const VertexArray&) = delete;
 
-        VertexArray(VertexArray&& other)
+        VertexArray(VertexArray&& other) noexcept
         {
             _num = other._num;
             _vao = other._vao;
             other._num = 0;
         }
 
-        VertexArray& operator=(VertexArray&& other)
+        VertexArray& operator=(VertexArray&& other) noexcept
         {
             release();
             _num = other._num;

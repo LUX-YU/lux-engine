@@ -4,7 +4,7 @@
 #include <vector>
 #include <lux/engine/platform/visibility.h>
 
-namespace lux::rhi
+namespace lux::engine::rhi
 {
 	struct DriverInfo
 	{

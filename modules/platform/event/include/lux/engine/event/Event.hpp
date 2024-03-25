@@ -65,9 +65,9 @@ namespace lux::event
 	class EventDispatcher
 	{
 		template<typename EventType>
-		using THandlerFuncPtr = std::function<std::unique_ptr<EventType>(std::unique_ptr<EventType>)>;
+		using THandlerFuncPtr		= std::function<std::unique_ptr<EventType>(std::unique_ptr<EventType>)>;
 		template<typename EventType>
-		using THandlerFuncList = std::vector<THandlerFuncPtr<EventType>>;
+		using THandlerFuncList		= std::vector<THandlerFuncPtr<EventType>>;
 		using THandlerFuncListTuple = std::tuple<THandlerFuncList<TEvents>...>;
 
 	public:

@@ -114,6 +114,7 @@ namespace lux::gapi::opengl{
             ImageFormat::COMPRESSED_RGBA                        ImageFormat::COMPRESSED_SRGB_ALPHA
             ImageFormat::COMPRESSED_RGBA_BPTC_UNORM             ImageFormat::COMPRESSED_SRGB_ALPHA_BPTC_UNORM
         */
+        // This parameter specifies the format in which the texture is stored in the GPU.
         ImageFormat         internalformat;
         GLsizei             width;
         GLsizei             height;
@@ -123,6 +124,7 @@ namespace lux::gapi::opengl{
             ImageFormat::RGBA,            ImageFormat::BGRA
             ImageFormat::DEPTH_COMPONENT, ImageFormat::DEPTH_STENCIL
         */
+        // This parameter describes the format of the data you are passing to OpenGL.
         ImageFormat         format;
         /*
             DataType::UNSIGNED_BYTE,              DataType::BYTE,

@@ -10,7 +10,7 @@
 #   endif
 #endif
 
-namespace lux::rhi
+namespace lux::engine::rhi
 {
 #ifndef __PLATFORM_UNIX__
     std::vector<GraphicDeviceInfo> GraphicDeviceInfoLoader::getGraphicDeviceInfo()

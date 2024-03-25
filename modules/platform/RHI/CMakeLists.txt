@@ -9,9 +9,15 @@ message("---- VULKAN INCLUDE DIRS: ${Vulkan_INCLUDE_DIRS}")
 message("---- VULKAN LIBRARIES: ${Vulkan_LIBRARIES}")
 endif()
 
+set(RHI_OPENGL4_SRCS
+    src/gl4RHI/GLRHI.cpp
+    src/gl4RHI/OpenGLBuffer.cpp
+)
+
 set(RHI_SRCS
-    src/RHI_GL4.cpp
+    src/RHI.cpp
     src/GraphicDeviceInfo.cpp
+    ${RHI_OPENGL4_SRCS}
 )
 
 add_component(

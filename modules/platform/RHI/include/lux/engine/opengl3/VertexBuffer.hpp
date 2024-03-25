@@ -4,7 +4,7 @@
 
 namespace lux::gapi::opengl
 {
-    enum class BufferType
+    enum class EBufferType
     {
         ARRAY_BUFFER                = GL_ARRAY_BUFFER, 	                // Vertex attributes
         ATOMIC_COUNTER_BUFFER       = GL_ATOMIC_COUNTER_BUFFER, 	    // Atomic counter storage
@@ -36,25 +36,25 @@ namespace lux::gapi::opengl
     };
 
     // vertex buffer object
-    class VertexBufferBase
+    class BufferBase
     {
     public:
-        ~VertexBufferBase()
+        ~BufferBase()
         {
             release();
         }
 
-        VertexBufferBase(const VertexBufferBase&) = delete;
-        VertexBufferBase& operator=(const VertexBufferBase&) = delete;
+        BufferBase(const BufferBase&) = delete;
+        BufferBase& operator=(const BufferBase&) = delete;
 
-        VertexBufferBase(VertexBufferBase&& other) noexcept
+        BufferBase(BufferBase&& other) noexcept
         {
             _num = other._num;
             _vbo = other._vbo;
             other._num = 0;
         }
 
-        VertexBufferBase& operator=(VertexBufferBase&& other)
+        BufferBase& operator=(BufferBase&& other) noexcept
         {
             release();
             _num = other._num;
@@ -84,27 +84,27 @@ namespace lux::gapi::opengl
 
     protected:
 
-        explicit VertexBufferBase(GLsizei number)
+        explicit BufferBase(GLsizei number)
         :_num(number){
             if(_num > 0)
-            glGenBuffers(_num, &_vbo);
+                glGenBuffers(_num, &_vbo);
         }
 
         GLsizei _num;
         GLuint  _vbo{};
     };
 
-    template<BufferType btype>
-    class TVertexBuffer : VertexBufferBase
+    template<EBufferType btype>
+    class TBuffer : BufferBase
     {
     public:
         static constexpr auto buffer_type = static_cast<GLenum>(btype);
 
-        explicit TVertexBuffer(GLsizei size) : VertexBufferBase(size){}
-        TVertexBuffer() : VertexBufferBase(1){}
+        explicit TBuffer(GLsizei size) : BufferBase(size){}
+        TBuffer() : BufferBase(1){}
 
         void bind()
-        {
+        {    
             glBindBuffer(buffer_type, _vbo);
         }
 
@@ -122,7 +122,26 @@ namespace lux::gapi::opengl
         {
             glBufferSubData(buffer_type, offset, size, data);
         }
+    };
+
 #ifdef __GLPP_SUPPORT_DSA
+    class Buffer : BufferBase
+    {
+    public:
+        explicit Buffer(GLsizei size, EBufferType type) : BufferBase(size), _type(type){}
+        Buffer(EBufferType type) : BufferBase(1), _type(type) {}
+
+        void bind()
+        {
+            glBindBuffer(static_cast<GLenum>(_type), _vbo);
+        }
+
+        void endBind()
+        {
+            glBindBuffer(static_cast<GLenum>(_type), 0);
+        }
+
+
         // need opengl >= 4.5
         void bufferData(GLsizeiptr size, const void* data, BufferDataUsage usage)
         {
@@ -130,13 +149,15 @@ namespace lux::gapi::opengl
         }
 
         // need opengl >= 4.5
-        void bufferSubData(GLintptr offset, GLsizeiptr size, const void * data)
+        void bufferSubData(GLintptr offset, GLsizeiptr size, const void* data)
         {
             glNamedBufferSubData(_vbo, offset, size, data);
         }
-#endif
+    private:
+        EBufferType _type;
     };
+#endif
 
-    using ArrayBuffer           = TVertexBuffer<BufferType::ARRAY_BUFFER>;
-    using ElementArrayBuffer    = TVertexBuffer<BufferType::ELEMENT_ARRAY_BUFFER>;
+    using ArrayBuffer           = TBuffer<EBufferType::ARRAY_BUFFER>;
+    using ElementArrayBuffer    = TBuffer<EBufferType::ELEMENT_ARRAY_BUFFER>;
 }

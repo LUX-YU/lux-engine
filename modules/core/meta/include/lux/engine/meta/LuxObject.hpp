@@ -12,37 +12,33 @@ namespace lux::meta
 	class LuxObject
 	{
 	public:
-		[[nodiscard]] virtual bool serializeToFile(std::string_view path) { return false; };
+		[[nodiscard]] virtual bool serialize(std::string_view path) { return false; };
 
-#if defined __GENERATE_TIME__
-		[[nodiscard]] virtual const char* object_name() = 0;
-
-		[[nodiscard]] virtual const std::vector<>
-#endif
+		[[nodiscard]] virtual void update() {};
 	};
 
 	template<class _Sub>
 	class TLuxObject : public LuxObject
 	{
 	public:
-		[[nodiscard]] static bool TserializeToFile(std::string_view path)
+		[[nodiscard]] static bool Tserialize(std::string_view path)
 		{
-			return _Sub::__TserializeToFile(path);
+			return _Sub::__Tserialize(path);
 		}
 
-		[[nodiscard]] static bool TdeserializeFromFile(std::string_view path, _Sub& subclass)
+		[[nodiscard]] static bool Tdeserialize(std::string_view path, _Sub& subclass)
 		{
-			return _Sub::__TdeserializeFromFile(path, subclass);
+			return _Sub::__Tdeserialize(path, subclass);
 		}
 
-		[[nodiscard]] bool serializeToFile(std::string_view path) override
+		[[nodiscard]] bool serialize(std::string_view path) override
 		{
-			return TLuxObject<_Sub>::TserializeToFile(path);
+			return TLuxObject<_Sub>::Tserialize(path);
 		}
 
 	protected:
-		static bool __TserializeToFile(std::string_view path) { return false; }
-		static bool __TdeserializeFromFile(std::string_view path, _Sub& subclass) { return false; }
+		static bool __Tserialize(std::string_view path) { return false; }
+		static bool __Tdeserialize(std::string_view path, _Sub& subclass) { return false; }
 	// private:
 	// 	std::unique_ptr<LuxObjectImpl> _impl;
 	};

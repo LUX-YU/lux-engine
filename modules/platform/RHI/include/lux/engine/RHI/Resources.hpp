@@ -13,8 +13,7 @@ namespace lux::engine::rhi
 	{
 		UNKNOWN,
 		VERTEX,
-		INDEX,
-		UNIFORM
+		INDEX
 	};
 
 	struct BufferInfo
@@ -49,6 +48,10 @@ namespace lux::engine::rhi
 		BufferInfo _info;
 	};
 
+	class UniformBuffer : public Buffer
+	{
+	};
+
 	/* Shader related */
 	class Shader : public Resource
 	{
@@ -67,6 +70,11 @@ namespace lux::engine::rhi
 	};
 
 	class PixelShader : public GraphicsShader
+	{
+
+	};
+
+	class ComputerShader : public Shader
 	{
 
 	};

@@ -1,0 +1,66 @@
+#version 450
+/// @file downsample.comp
+/// @brief One level of the Hi-Z (max-Z) occlusion pyramid.
+///
+/// Level 0 copies SceneDepth → HZB mip0 (1:1). Level k>0 writes the 2×2 max of
+/// HZB mip(k-1) into mip k. The same kernel serves both via the `is_mip0` flag,
+/// so the whole pyramid is built by dispatching it once per mip level.
+///
+/// Direction matters: this engine uses FORWARD Vulkan ZO depth (near=0, far=1,
+/// clear=1.0, compare LESS — see eigen_extend.hpp / CameraSystem::buildProjection).
+/// So a tile must store the FARTHEST visible depth (max), letting the cull test
+/// reject a sphere when its NEAREST point is still behind the tile's max depth
+/// (sphereMinZ > tileMaxZ ⇒ fully occluded). Taking min-Z here would cull every
+/// visible object instead — this is the single most important invariant.
+///
+/// NPOT levels: a coarse texel maps to a 2×2 block of the finer level, but when
+/// the finer dim is odd the block can fall one texel short. Clamping the read
+/// coords to [0, src-1] keeps the max conservative (never reads stale/out-of-
+/// range memory); the fully-conservative 3×3-on-odd refinement is a follow-up.
+
+#extension GL_EXT_samplerless_texture_functions : require
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(push_constant) uniform HzbPC {
+    uint dst_w;     // dest (this level) dimensions
+    uint dst_h;
+    uint src_w;     // source level dimensions (mip0: depth dims; else mip k-1)
+    uint src_h;
+    uint is_mip0;   // 1 = read SceneDepth (set 1); 0 = read HZB src mip (set 0)
+    uint _pad;
+} pc;
+
+// set 0 — per-level views (rebound by the feature each mip iteration):
+//   binding 0 = HZB previous (finer) mip, read via texelFetch (unused at mip0)
+//   binding 1 = HZB this mip, written via imageStore
+layout(set = 0, binding = 0)       uniform texture2D        uSrc;
+layout(set = 0, binding = 1, r32f) uniform writeonly image2D uDst;
+// set 1 — the scene depth, bound once for the whole build (mip0 source):
+layout(set = 1, binding = 0)       uniform texture2D        uDepth;
+
+void main()
+{
+    uvec2 dst = gl_GlobalInvocationID.xy;
+    if (dst.x >= pc.dst_w || dst.y >= pc.dst_h) return;
+
+    float z;
+    if (pc.is_mip0 != 0u)
+    {
+        // mip0 IS the depth (max over a single texel = that texel).
+        z = texelFetch(uDepth, ivec2(dst), 0).r;
+    }
+    else
+    {
+        const ivec2 s0 = ivec2(dst * 2u);
+        const int x1 = min(s0.x + 1, int(pc.src_w) - 1);
+        const int y1 = min(s0.y + 1, int(pc.src_h) - 1);
+        const float a = texelFetch(uSrc, ivec2(s0.x, s0.y), 0).r;
+        const float b = texelFetch(uSrc, ivec2(x1,    s0.y), 0).r;
+        const float c = texelFetch(uSrc, ivec2(s0.x, y1   ), 0).r;
+        const float d = texelFetch(uSrc, ivec2(x1,    y1   ), 0).r;
+        z = max(max(a, b), max(c, d));   // FARTHEST of the 2×2 block
+    }
+
+    imageStore(uDst, ivec2(dst), vec4(z));
+}

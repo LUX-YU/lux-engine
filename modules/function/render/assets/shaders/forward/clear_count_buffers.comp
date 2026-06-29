@@ -1,0 +1,54 @@
+#version 450
+// =========================================================================
+//  clear_count_buffers.comp
+//
+//  Clears up to 8 uint count buffers in one dispatch.
+//  This shader is intended for replacing repeated vkCmdFillBuffer clears.
+// =========================================================================
+
+layout(local_size_x = 64) in;
+
+layout(push_constant) uniform PC {
+    uint element_count;
+    uint buffer_count;
+    uint element_counts[8];
+} pc;
+
+layout(set = 0, binding = 0, std430) buffer CountBuffer0 { uint data0[]; } b0;
+layout(set = 0, binding = 1, std430) buffer CountBuffer1 { uint data1[]; } b1;
+layout(set = 0, binding = 2, std430) buffer CountBuffer2 { uint data2[]; } b2;
+layout(set = 0, binding = 3, std430) buffer CountBuffer3 { uint data3[]; } b3;
+layout(set = 0, binding = 4, std430) buffer CountBuffer4 { uint data4[]; } b4;
+layout(set = 0, binding = 5, std430) buffer CountBuffer5 { uint data5[]; } b5;
+layout(set = 0, binding = 6, std430) buffer CountBuffer6 { uint data6[]; } b6;
+layout(set = 0, binding = 7, std430) buffer CountBuffer7 { uint data7[]; } b7;
+
+void clearAt(uint buffer_index, uint element_index)
+{
+    switch (buffer_index)
+    {
+    case 0u: b0.data0[element_index] = 0u; break;
+    case 1u: b1.data1[element_index] = 0u; break;
+    case 2u: b2.data2[element_index] = 0u; break;
+    case 3u: b3.data3[element_index] = 0u; break;
+    case 4u: b4.data4[element_index] = 0u; break;
+    case 5u: b5.data5[element_index] = 0u; break;
+    case 6u: b6.data6[element_index] = 0u; break;
+    case 7u: b7.data7[element_index] = 0u; break;
+    default: break;
+    }
+}
+
+void main()
+{
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.element_count)
+        return;
+
+    uint count = min(pc.buffer_count, 8u);
+    for (uint i = 0u; i < count; ++i)
+    {
+        if (idx < pc.element_counts[i])
+            clearAt(i, idx);
+    }
+}

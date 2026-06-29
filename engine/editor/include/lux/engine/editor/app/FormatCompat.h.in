@@ -1,0 +1,46 @@
+#pragma once
+//===- FormatCompat.h - std::format Compatibility Header -*-C++-*-===//
+//
+// This file provides compatibility between std::format and libfmt
+//
+//===----------------------------------------------------------------------===//
+
+// This header will be configured by CMake based on format support detection
+#cmakedefine USE_STD_FORMAT
+#cmakedefine USE_LIBFMT
+
+#ifdef USE_STD_FORMAT
+    #include <format>
+    namespace lux {
+        using std::format;
+        using std::format_string;
+        using std::make_format_args;
+        using std::vformat;
+    }
+#elif defined(USE_LIBFMT)
+    #include <fmt/format.h>
+    #include <fmt/args.h>
+    namespace lux {
+        using fmt::format;
+        template<typename... Args>
+        using format_string = fmt::format_string<Args...>;
+        using fmt::make_format_args;
+        using fmt::vformat;
+    }
+#else
+    #include <sstream>
+    #include <string>
+    namespace lux {
+        // Fallback implementation using stringstream
+        template<typename... Args>
+        std::string format(const std::string& fmt_str, Args&&... args) {
+            std::ostringstream oss;
+            oss << fmt_str;
+            ((oss << " " << args), ...);
+            return oss.str();
+        }
+        
+        template<typename... Args>
+        using format_string = std::string;
+    }
+#endif

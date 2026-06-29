@@ -1,0 +1,4 @@
+#pragma once
+
+static inline const char* asset_path = "@ASSET_GENERATE_PATH@";
+

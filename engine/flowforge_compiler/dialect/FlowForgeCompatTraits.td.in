@@ -1,0 +1,19 @@
+//===- FlowForgeCompatTraits.td - MLIR Version Compatibility -*-tablegen-*-===//
+//
+// This file provides version-compatible trait definitions for TableGen
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef FLOWFORGE_COMPAT_TRAITS_TD
+#define FLOWFORGE_COMPAT_TRAITS_TD
+
+include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
+
+// Version-compatible trait definitions
+// This will be configured by CMake based on the MLIR version
+
+// The actual trait definition based on MLIR version
+@FLOWFORGE_PURE_TRAIT_DEF@
+
+#endif // FLOWFORGE_COMPAT_TRAITS_TD

@@ -1,0 +1,35 @@
+#pragma once
+/**
+ * @file EngineContentPath.hpp (cmake-generated)
+ * @brief Absolute path to the editor's built-in engine content directory.
+ *
+ * Populated by `configure_file` at CMake-configure time, the same pattern
+ * `RuntimeAssetPath.hpp` uses for the render module's runtime assets.
+ *
+ * At dev time this points at `${CMAKE_BINARY_DIR}/engine_content/`, which
+ * the `lux_content_baker` target writes into during build. At install time
+ * the file is re-generated with the install location
+ * (`<install>/bin/engine_content/`) so a deployed editor can find the same
+ * tree alongside its executable.
+ *
+ * Layout under the root:
+ *   Meshes/
+ *     SM_Cube.luxasset
+ *     SM_Plane.luxasset
+ *   Materials/
+ *     M_WhitePBR.luxasset
+ *   Textures/
+ *     T_DefaultSkybox.luxasset    (copied from the render module's runtime assets)
+ */
+
+#include <filesystem>
+
+namespace lux::editor
+{
+    /// Absolute path to the engine content root. Always exists after a
+    /// successful editor build; never empty.
+    inline const std::filesystem::path engine_content_path{
+        "@LUX_ENGINE_CONTENT_DIR@"
+    };
+
+} // namespace lux::editor

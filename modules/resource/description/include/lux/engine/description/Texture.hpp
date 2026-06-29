@@ -1,0 +1,253 @@
+#pragma once
+#include <lux/engine/resource/visibility.h>
+#include <cstddef>
+#include <cstdint>
+#include <array>
+#include <type_traits>
+
+namespace lux::rdesc
+{
+    inline constexpr uint32_t kTextureMaxMipCount = 16;
+
+    enum class ETexturePixelFormat : uint32_t
+    {
+        UNKNOWN = 0,
+        RGBA8_UNORM,
+        RGBA8_SRGB,
+        RG8_UNORM,
+        R8_UNORM,
+        RGBA16_SFLOAT,
+        BC1_SRGB,
+        BC3_SRGB,
+        BC5_UNORM,
+        BC7_SRGB,
+        ETC2_RGB8_UNORM,
+        ETC2_RGB8_SRGB,
+        ETC2_RGBA8_UNORM,
+        ETC2_RGBA8_SRGB,
+        ASTC_4x4_UNORM,
+        ASTC_4x4_SRGB,
+        ASTC_6x6_UNORM,
+        ASTC_6x6_SRGB,
+    };
+
+    enum class ETextureColorSpace : uint8_t
+    {
+        UNKNOWN = 0,
+        SRGB,
+        LINEAR,
+        DATA,
+    };
+
+    enum class ETextureAssetFlags : uint32_t
+    {
+        NONE = 0u,
+        COMPRESSED = 1u << 0,
+        PREMULTIPLIED_ALPHA = 1u << 1,
+    };
+
+    [[nodiscard]] inline constexpr uint32_t toUnderlying(ETextureAssetFlags v) noexcept
+    {
+        return static_cast<uint32_t>(v);
+    }
+
+    [[nodiscard]] inline constexpr bool hasTextureFlag(uint32_t flags, ETextureAssetFlags bit) noexcept
+    {
+        return (flags & toUnderlying(bit)) != 0u;
+    }
+
+    [[nodiscard]] inline constexpr bool isCompressedFormat(ETexturePixelFormat fmt) noexcept
+    {
+        switch (fmt)
+        {
+        case ETexturePixelFormat::BC1_SRGB:
+        case ETexturePixelFormat::BC3_SRGB:
+        case ETexturePixelFormat::BC5_UNORM:
+        case ETexturePixelFormat::BC7_SRGB:
+        case ETexturePixelFormat::ETC2_RGB8_UNORM:
+        case ETexturePixelFormat::ETC2_RGB8_SRGB:
+        case ETexturePixelFormat::ETC2_RGBA8_UNORM:
+        case ETexturePixelFormat::ETC2_RGBA8_SRGB:
+        case ETexturePixelFormat::ASTC_4x4_UNORM:
+        case ETexturePixelFormat::ASTC_4x4_SRGB:
+        case ETexturePixelFormat::ASTC_6x6_UNORM:
+        case ETexturePixelFormat::ASTC_6x6_SRGB:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    struct TextureMipRange
+    {
+        uint64_t offset{0};
+        uint64_t size{0};
+        uint32_t width{0};
+        uint32_t height{0};
+    };
+
+    /**
+     * @brief Structure containing basic texture information.
+     * 
+     * This structure holds the fundamental properties of a texture,
+     * including its dimensions and color channel information.
+     */
+    struct TextureInfo
+    {
+        int width;   ///< Width of the texture in pixels
+        int height;  ///< Height of the texture in pixels
+        int channel; ///< Number of color channels (e.g., 3 for RGB, 4 for RGBA)
+        ETexturePixelFormat pixel_format{ETexturePixelFormat::RGBA8_SRGB};
+        ETextureColorSpace color_space{ETextureColorSpace::SRGB};
+        uint32_t layers{1};
+        uint32_t mip_count{1};
+        uint32_t flags{toUnderlying(ETextureAssetFlags::NONE)};
+        std::array<TextureMipRange, kTextureMaxMipCount> mip_ranges{};
+        bool copy = false; ///< Whether the pixel data should be copied (true) or referenced (false)
+        bool owns_data = false; ///< Whether the Texture instance owns the pixel data and is responsible for freeing it
+    };
+
+    // for serialization/deserialization (POD – written directly into .luxasset)
+    struct TextureAssetInfo
+    {
+        int32_t width{0};    ///< Width of the texture in pixels
+        int32_t height{0};   ///< Height of the texture in pixels
+        int32_t channel{0};  ///< Number of colour channels (e.g. 4 for RGBA)
+        uint32_t layers{1};
+        uint32_t mip_count{1};
+        uint32_t pixel_format{static_cast<uint32_t>(ETexturePixelFormat::RGBA8_SRGB)};
+        uint32_t color_space{static_cast<uint32_t>(ETextureColorSpace::SRGB)};
+        uint32_t flags{toUnderlying(ETextureAssetFlags::NONE)};
+        std::array<TextureMipRange, kTextureMaxMipCount> mip_ranges{};
+    };
+
+    static_assert(std::is_standard_layout_v<TextureAssetInfo>, "TextureAssetInfo must be standard layout");
+
+    /**
+     * @brief Represents a loaded texture resource.
+     * 
+     * The Texture class encapsulates texture data and provides access to
+     * texture properties such as dimensions and pixel data. It manages
+     * the lifetime of texture data and provides copy/move semantics.
+     */
+    class LUX_RESOURCE_PUBLIC Texture
+    {
+    public:
+        /**
+         * @brief Default constructor for Texture.
+         */
+        Texture();
+
+        /**
+         * @brief Constructs a Texture with the given information and data.
+         * @param info Texture information structure
+         * @param data Pointer to the texture pixel data
+         * @param size Size of the texture data in bytes
+         */
+        Texture(const TextureInfo& info, void* data, size_t size);
+
+        /**
+         * @brief Copy constructor for Texture.
+         * @param other The texture to copy from
+         */
+        Texture(const Texture& other);
+        
+        /**
+         * @brief Copy assignment operator for Texture.
+         * @param other The texture to copy from
+         * @return Reference to this texture
+         */
+        Texture& operator=(const Texture& other);
+
+        /**
+         * @brief Move constructor for Texture.
+         * @param other The texture to move from
+         */
+        Texture(Texture&& other) noexcept;
+        
+        /**
+         * @brief Move assignment operator for Texture.
+         * @param other The texture to move from
+         * @return Reference to this texture
+         */
+        Texture& operator=(Texture&& other) noexcept;
+
+        /**
+         * @brief Destructor for Texture.
+         */
+        ~Texture();
+
+        /**
+         * @brief Gets the width of the texture.
+         * @return Width in pixels
+         */
+        [[nodiscard]] int width() const {
+			return info_.width;
+		}
+
+        /**
+         * @brief Gets the height of the texture.
+         * @return Height in pixels
+         */
+        [[nodiscard]] int height() const {
+            return info_.height;
+        }
+
+        /**
+         * @brief Gets the number of color channels.
+         * @return Number of channels (e.g., 3 for RGB, 4 for RGBA)
+         */
+        [[nodiscard]] int channel() const {
+			return info_.channel;
+		}
+
+        [[nodiscard]] ETexturePixelFormat pixelFormat() const {
+            return info_.pixel_format;
+        }
+
+        [[nodiscard]] ETextureColorSpace colorSpace() const {
+            return info_.color_space;
+        }
+
+        [[nodiscard]] uint32_t layers() const {
+            return info_.layers;
+        }
+
+        [[nodiscard]] uint32_t mipCount() const {
+            return info_.mip_count;
+        }
+
+        [[nodiscard]] uint32_t flags() const {
+            return info_.flags;
+        }
+
+        [[nodiscard]] const TextureMipRange& mipRange(uint32_t level) const {
+            if (level >= kTextureMaxMipCount)
+                level = 0;
+            return info_.mip_ranges[level];
+        }
+
+        [[nodiscard]] const TextureInfo& info() const {
+            return info_;
+        }
+
+        /**
+         * @brief Gets a const pointer to the texture data.
+         * @return Const pointer to the pixel data
+         */
+        [[nodiscard]] const void* data() const {
+			return data_;
+		}
+
+        [[nodiscard]] size_t size() const {
+			return size_;
+		}
+
+    private:
+        TextureInfo  info_;
+        
+        void*        data_;
+        size_t       size_;
+        bool         owns_data_{false};
+    };
+}

@@ -1,0 +1,45 @@
+#version 450
+/// @file shadow_evsm_blur_v.comp
+/// @brief Vertical separable Gaussian blur over a single EVSM atlas tile.
+///
+/// Closes the separable pair started by shadow_evsm_blur_h.comp: reads from
+/// the scratch (horizontal-blurred) atlas, blurs along Y within the tile,
+/// writes to the final blurred atlas that lighting samples in C4.
+///
+/// Tile boundaries are respected (samples clamped). Dispatch / push-constant
+/// shape mirrors the horizontal pass — only the read offset axis differs.
+
+#extension GL_EXT_samplerless_texture_functions : require
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(push_constant) uniform BlurPC {
+    ivec2 tile_min;
+    ivec2 tile_max;
+    uint  atlas_layer;
+    uint  _pad;
+} pc;
+
+layout(set = 0, binding = 0) uniform texture2DArray uInputAtlas;
+layout(set = 0, binding = 1, rgba16f) uniform writeonly image2DArray uOutputAtlas;
+
+// 5-tap σ≈1.0 — see shadow_evsm_blur_h.comp for rationale (wider kernel
+// over-smooths cube/floor depth discontinuity → flattens Chebyshev → no
+// shadow visible).
+const float kWeights[5] = float[5](0.0625, 0.25, 0.375, 0.25, 0.0625);
+
+void main()
+{
+    ivec2 out_coord = pc.tile_min + ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThan(out_coord, pc.tile_max))) return;
+
+    vec4 acc = vec4(0.0);
+    for (int i = -2; i <= 2; ++i) {
+        ivec2 read = ivec2(out_coord.x, out_coord.y + i);
+        read.y = clamp(read.y, pc.tile_min.y, pc.tile_max.y);
+        acc += kWeights[i + 2]
+             * texelFetch(uInputAtlas, ivec3(read, int(pc.atlas_layer)), 0);
+    }
+
+    imageStore(uOutputAtlas, ivec3(out_coord, int(pc.atlas_layer)), acc);
+}

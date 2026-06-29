@@ -1,0 +1,138 @@
+#version 450
+// =========================================================================
+//  skin_compute.comp — GPU vertex pre-skinning (batched dispatch)
+//
+//  ONE batched dispatch per frame skins every queued instance's vertices.
+//  CPU lays out `SkinDispatchParams[]` in the dispatch-params SSBO (binding 2)
+//  with a running prefix sum of workgroup counts. Each compute workgroup
+//  recovers its dispatch entry by binary-searching `gl_WorkGroupID.x` against
+//  the `workgroup_start` field. Replaces the per-instance
+//  vkCmdPushConstants + vkCmdDispatch loop.
+//
+//  Vertex layout (LUX_VTX_* spec constants — defaults = lux::rdesc::Vertex,
+//  22 floats / 88 bytes):
+//    [ 0.. 2] position    [ 3.. 5] normal     [ 6.. 8] tangent
+//    [ 9..10] uv          [11..13] bitangent
+//    [14..17] bone_ids (int bits)  [18..21] bone_weights
+//  Output layout (LUX_OUT_* spec constants — aligned to layout 0, 22 floats
+//  / 88 bytes; the bone tail is zero-padded so the skinned pool stride
+//  matches the global VBO, see ForwardMeshFeature.cpp).
+// =========================================================================
+
+layout(local_size_x = 64) in;
+
+// Bindless vertex-pool array bound at set 1 for this compute pipeline (graphics
+// uses set 7). Brings in luxVertexPools[], LUX_VERTEX_FLOAT_STRIDE, MeshVertex.
+#define LUX_VERTEX_POOL_SET 1
+#include "vertex_pool.glsl"
+
+const uint LUX_MAX_BONE_INFLUENCE = 4u;   // == rdesc::max_bone_influence
+
+// set 0, binding 0: bone palette — world-space skinning matrices (mat4 per bone)
+layout(set = 0, binding = 0, std430) readonly buffer BonePalette {
+    mat4 bones[];
+} uPalette;
+
+// set 0, binding 1: output vertices (skinned, transient pool)
+layout(set = 0, binding = 1, std430) writeonly buffer OutVertexPool {
+    float data[];
+} uOut;
+
+// set 0, binding 2: per-dispatch parameters. Layout must match
+// `lux::render::SkinDispatchParams` in SkinningResources.hpp (6 uints, 24 B).
+struct SkinDispatchParams {
+    uint workgroup_start;   // prefix sum (sort key)
+    uint vertex_count;
+    uint in_base;
+    uint out_base;
+    uint palette_base;
+    uint in_pool_id;
+};
+layout(set = 0, binding = 2, std430) readonly buffer SkinDispatchBuf {
+    SkinDispatchParams params[];
+} uDispatch;
+
+layout(push_constant) uniform SkinPC {
+    uint dispatch_count;   // number of valid entries in uDispatch.params
+} pc;
+
+void main()
+{
+    if (pc.dispatch_count == 0u) return;
+
+    // Recover this workgroup's dispatch entry via binary search on the
+    // prefix sum. After the loop, `di` is the largest index with
+    //   uDispatch.params[di].workgroup_start <= gl_WorkGroupID.x.
+    uint wg = gl_WorkGroupID.x;
+    uint lo = 0u;
+    uint hi = pc.dispatch_count;
+    while (lo + 1u < hi)
+    {
+        uint mid = (lo + hi) >> 1u;
+        if (uDispatch.params[mid].workgroup_start <= wg) lo = mid;
+        else                                              hi = mid;
+    }
+    SkinDispatchParams d = uDispatch.params[lo];
+
+    // Vertex index within this dispatch entry.
+    uint local_wg = wg - d.workgroup_start;
+    uint vid      = local_wg * 64u + gl_LocalInvocationID.x;
+    if (vid >= d.vertex_count) return;   // tail past per-dispatch vertex_count
+
+    uint ip = nonuniformEXT(d.in_pool_id);   // input pool (dynamically uniform per dispatch)
+    uint i  = (d.in_base  + vid) * LUX_VTX_FLOAT_STRIDE;
+    uint o  = (d.out_base + vid) * LUX_OUT_FLOAT_STRIDE;
+
+    vec3 position  = vec3(luxVertexPools[ip].data[i+LUX_VTX_OFF_POSITION+0u],  luxVertexPools[ip].data[i+LUX_VTX_OFF_POSITION+1u],  luxVertexPools[ip].data[i+LUX_VTX_OFF_POSITION+2u]);
+    vec3 normal    = vec3(luxVertexPools[ip].data[i+LUX_VTX_OFF_NORMAL+0u],    luxVertexPools[ip].data[i+LUX_VTX_OFF_NORMAL+1u],    luxVertexPools[ip].data[i+LUX_VTX_OFF_NORMAL+2u]);
+    vec3 tangent   = vec3(luxVertexPools[ip].data[i+LUX_VTX_OFF_TANGENT+0u],   luxVertexPools[ip].data[i+LUX_VTX_OFF_TANGENT+1u],   luxVertexPools[ip].data[i+LUX_VTX_OFF_TANGENT+2u]);
+    vec2 uv        = vec2(luxVertexPools[ip].data[i+LUX_VTX_OFF_UV0+0u],       luxVertexPools[ip].data[i+LUX_VTX_OFF_UV0+1u]);
+    vec3 bitangent = vec3(luxVertexPools[ip].data[i+LUX_VTX_OFF_BITANGENT+0u], luxVertexPools[ip].data[i+LUX_VTX_OFF_BITANGENT+1u], luxVertexPools[ip].data[i+LUX_VTX_OFF_BITANGENT+2u]);
+
+    int bone_ids[4];
+    bone_ids[0] = floatBitsToInt(luxVertexPools[ip].data[i+LUX_VTX_OFF_BONE_IDS+0u]);
+    bone_ids[1] = floatBitsToInt(luxVertexPools[ip].data[i+LUX_VTX_OFF_BONE_IDS+1u]);
+    bone_ids[2] = floatBitsToInt(luxVertexPools[ip].data[i+LUX_VTX_OFF_BONE_IDS+2u]);
+    bone_ids[3] = floatBitsToInt(luxVertexPools[ip].data[i+LUX_VTX_OFF_BONE_IDS+3u]);
+
+    float w[4];
+    w[0] = luxVertexPools[ip].data[i+LUX_VTX_OFF_WEIGHTS+0u];
+    w[1] = luxVertexPools[ip].data[i+LUX_VTX_OFF_WEIGHTS+1u];
+    w[2] = luxVertexPools[ip].data[i+LUX_VTX_OFF_WEIGHTS+2u];
+    w[3] = luxVertexPools[ip].data[i+LUX_VTX_OFF_WEIGHTS+3u];
+
+    // Linear blend skinning. If a vertex has no influences (all weights 0)
+    // fall back to the bind pose (identity) so it isn't collapsed to origin.
+    float wsum = w[0] + w[1] + w[2] + w[3];
+    vec3 skP, skN, skT, skB;
+    if (wsum <= 1e-6) {
+        skP = position; skN = normal; skT = tangent; skB = bitangent;
+    } else {
+        mat4 skin = mat4(0.0);
+        for (uint k = 0u; k < LUX_MAX_BONE_INFLUENCE; ++k) {
+            if (w[k] <= 0.0) continue;
+            int bid = bone_ids[k];
+            if (bid < 0) continue;
+            skin += w[k] * uPalette.bones[d.palette_base + uint(bid)];
+        }
+        mat3 skin3 = mat3(skin);
+        skP = (skin * vec4(position, 1.0)).xyz;
+        skN = skin3 * normal;
+        skT = skin3 * tangent;
+        skB = skin3 * bitangent;
+    }
+
+    // Write skinned geometry into the FULL 22-float layout. Bone tail
+    // (bone_ids + weights) is zero-padded so the stride matches the global
+    // VBO, enabling a single _vp.vert pipeline across static and skinned
+    // draws. Downstream _vp mesh shaders ignore the tail.
+    uOut.data[o+LUX_OUT_OFF_POSITION+0u]  = skP.x; uOut.data[o+LUX_OUT_OFF_POSITION+1u]  = skP.y; uOut.data[o+LUX_OUT_OFF_POSITION+2u]  = skP.z;
+    uOut.data[o+LUX_OUT_OFF_NORMAL+0u]    = skN.x; uOut.data[o+LUX_OUT_OFF_NORMAL+1u]    = skN.y; uOut.data[o+LUX_OUT_OFF_NORMAL+2u]    = skN.z;
+    uOut.data[o+LUX_OUT_OFF_TANGENT+0u]   = skT.x; uOut.data[o+LUX_OUT_OFF_TANGENT+1u]   = skT.y; uOut.data[o+LUX_OUT_OFF_TANGENT+2u]   = skT.z;
+    uOut.data[o+LUX_OUT_OFF_UV0+0u]       = uv.x;  uOut.data[o+LUX_OUT_OFF_UV0+1u]       = uv.y;
+    uOut.data[o+LUX_OUT_OFF_BITANGENT+0u] = skB.x; uOut.data[o+LUX_OUT_OFF_BITANGENT+1u] = skB.y; uOut.data[o+LUX_OUT_OFF_BITANGENT+2u] = skB.z;
+    uOut.data[o+LUX_VTX_OFF_BONE_IDS+0u]  = 0.0; uOut.data[o+LUX_VTX_OFF_BONE_IDS+1u]  = 0.0;
+    uOut.data[o+LUX_VTX_OFF_BONE_IDS+2u]  = 0.0; uOut.data[o+LUX_VTX_OFF_BONE_IDS+3u]  = 0.0;
+    uOut.data[o+LUX_VTX_OFF_WEIGHTS+0u]   = 0.0; uOut.data[o+LUX_VTX_OFF_WEIGHTS+1u]   = 0.0;
+    uOut.data[o+LUX_VTX_OFF_WEIGHTS+2u]   = 0.0; uOut.data[o+LUX_VTX_OFF_WEIGHTS+3u]   = 0.0;
+}

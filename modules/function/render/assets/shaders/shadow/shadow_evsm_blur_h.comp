@@ -1,0 +1,52 @@
+#version 450
+/// @file shadow_evsm_blur_h.comp
+/// @brief Horizontal separable Gaussian blur over a single EVSM atlas tile.
+///
+/// Pre-filtered moments are what give EVSM its bias-free sampling — see
+/// .internal/plan/evsm-shadow-implementation-guide.md §2.5. This pass reads
+/// raw moments from the caster output, blurs along X within the tile, and
+/// writes to scratch; shadow_evsm_blur_v.comp closes the separable pair.
+///
+/// Tile boundaries are respected (samples are clamped to [tile_min, tile_max]),
+/// so adjacent tiles in the atlas cannot bleed into each other.
+///
+/// Dispatch one workgroup per 8×8 region of the tile; push constants carry
+/// the tile bounds + atlas layer.
+
+#extension GL_EXT_samplerless_texture_functions : require
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(push_constant) uniform BlurPC {
+    ivec2 tile_min;    // inclusive pixel coords of tile in atlas
+    ivec2 tile_max;    // inclusive pixel coords of tile in atlas
+    uint  atlas_layer;
+    uint  _pad;
+} pc;
+
+layout(set = 0, binding = 0) uniform texture2DArray uInputAtlas;
+layout(set = 0, binding = 1, rgba16f) uniform writeonly image2DArray uOutputAtlas;
+
+// 5-tap σ≈1.0 Gaussian. Wider kernels (9-tap σ=2.0) were tried but heavily
+// over-smoothed cube-on-floor shadows: for ~32-pixel cube projections, a ±4
+// blur reach pulls moments.x onto the receiver value, collapsing Chebyshev's
+// d² term and turning every "should-be-dark" sample into ≈1.0 (lit). 5-tap
+// gives just enough pre-filtering for bias-free sampling without bleeding
+// shadow detail across the cube/floor depth discontinuity.
+const float kWeights[5] = float[5](0.0625, 0.25, 0.375, 0.25, 0.0625);
+
+void main()
+{
+    ivec2 out_coord = pc.tile_min + ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThan(out_coord, pc.tile_max))) return;
+
+    vec4 acc = vec4(0.0);
+    for (int i = -2; i <= 2; ++i) {
+        ivec2 read = ivec2(out_coord.x + i, out_coord.y);
+        read.x = clamp(read.x, pc.tile_min.x, pc.tile_max.x);
+        acc += kWeights[i + 2]
+             * texelFetch(uInputAtlas, ivec3(read, int(pc.atlas_layer)), 0);
+    }
+
+    imageStore(uOutputAtlas, ivec3(out_coord, int(pc.atlas_layer)), acc);
+}

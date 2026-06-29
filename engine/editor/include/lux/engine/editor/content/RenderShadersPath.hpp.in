@@ -1,0 +1,30 @@
+#pragma once
+/**
+ * @file RenderShadersPath.hpp (cmake-generated)
+ * @brief Absolute path to the render module's shared GLSL SSOT directory.
+ *
+ * Populated by `configure_file` at CMake-configure time — the same pattern
+ * `EngineContentPath.hpp` / `RuntimeAssetPath.hpp` use. ShaderGen's
+ * `compileToSpirv` `#include`s the REAL SSOT (gbuffer_encode.glsl /
+ * lighting_common.glsl / brdf/*.glsl) through its shaderc IncluderInterface, so
+ * the editor's bake path passes this directory as the include search root. At
+ * dev time it points at the source tree
+ * (`${CMAKE_SOURCE_DIR}/modules/function/render/assets/shaders`).
+ *
+ * NOTE (deployment follow-up): a deployed editor with no source tree needs these
+ * shader sources bundled alongside the executable (cf. the engine_content install
+ * step); for now editor bake runs on the dev machine where the source tree
+ * exists. The old material_graph_glsl backend inlined these snippets and so was
+ * self-contained — ShaderGen trades that for a real-SSOT include at the cost of
+ * this path dependency.
+ */
+
+#include <string>
+
+namespace lux::editor
+{
+    /// Absolute path to the render module's GLSL SSOT directory. Used as the
+    /// shaderc include search root when baking graph materials via ShaderGen.
+    inline const std::string render_shaders_dir{ "@LUX_RENDER_SHADERS_DIR@" };
+
+} // namespace lux::editor

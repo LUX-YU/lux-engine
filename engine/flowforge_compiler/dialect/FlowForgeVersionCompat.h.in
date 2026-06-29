@@ -1,0 +1,103 @@
+#pragma once
+//===- FlowForgeVersionCompat.h - MLIR Version Compatibility -*-C++-*-===//
+//
+// This file provides version compatibility macros for different MLIR versions
+//
+//===----------------------------------------------------------------------===//
+
+// MLIR version information
+#define FLOWFORGE_MLIR_VERSION_MAJOR @MLIR_VERSION_MAJOR@
+#define FLOWFORGE_MLIR_VERSION_MINOR @MLIR_VERSION_MINOR@
+
+// Version comparison macros
+#define FLOWFORGE_MLIR_VERSION_AT_LEAST(major, minor) \
+    ((FLOWFORGE_MLIR_VERSION_MAJOR > (major)) || \
+     (FLOWFORGE_MLIR_VERSION_MAJOR == (major) && FLOWFORGE_MLIR_VERSION_MINOR >= (minor)))
+
+// Arith dialect compatibility
+#if FLOWFORGE_MLIR_VERSION_AT_LEAST(16, 0)
+    // MLIR 16+ uses new Arith dialect path
+    #define FLOWFORGE_ARITH_DIALECT_INCLUDE <mlir/Dialect/Arith/IR/Arith.h>
+    #define FLOWFORGE_ARITH_NAMESPACE arith
+    #define FLOWFORGE_GET_I16_TYPE(builder) (builder).getI16Type()
+#elif FLOWFORGE_MLIR_VERSION_AT_LEAST(15, 0)
+    // MLIR 15 uses Arithmetic dialect
+    #define FLOWFORGE_ARITH_DIALECT_INCLUDE <mlir/Dialect/Arithmetic/IR/Arithmetic.h>
+    #define FLOWFORGE_ARITH_NAMESPACE arith
+    #define FLOWFORGE_GET_I16_TYPE(builder) (builder).getIntegerType(16)
+#else
+    // MLIR 14 and below use StandardOps
+    #define FLOWFORGE_ARITH_DIALECT_INCLUDE <mlir/Dialect/StandardOps/IR/Ops.h>
+    #define FLOWFORGE_ARITH_NAMESPACE std
+    #define FLOWFORGE_GET_I16_TYPE(builder) (builder).getIntegerType(16)
+#endif
+
+// Trait compatibility macros
+#if FLOWFORGE_MLIR_VERSION_AT_LEAST(16, 0)
+    // MLIR 16+ uses Pure trait
+    #define FLOWFORGE_PURE_TRAIT Pure
+#else
+    // MLIR 15 and below use MemoryEffects<[]> trait
+    #define FLOWFORGE_PURE_TRAIT MemoryEffects<[]>
+#endif
+
+// Region branch interface compatibility
+#if FLOWFORGE_MLIR_VERSION_AT_LEAST(16, 0)
+    // MLIR 16+ uses RegionBranchPoint (MLIR 20+ also uses this)
+    #define FLOWFORGE_REGION_BRANCH_PARAM RegionBranchPoint point
+    #define FLOWFORGE_IS_PARENT_REGION point.isParent()
+    #define FLOWFORGE_GET_REGION_OR_NULL point.getRegionOrNull()
+    #define FLOWFORGE_GET_REGION_INDEX(region) (point.getRegionOrNull() ? point.getRegionOrNull()->getRegionNumber() : 0)
+    
+    // MLIR 16+ uses getThenRegion(), getElseRegion() style method names
+    #define FLOWFORGE_GET_THEN_REGION(op) (op).getThenRegion()
+    #define FLOWFORGE_GET_ELSE_REGION(op) (op).getElseRegion()
+    #define FLOWFORGE_GET_BODY_REGION(op) (op).getBody()
+    #define FLOWFORGE_GET_COND_REGION(op) (op).getCondRegion()
+    #define FLOWFORGE_GET_BODY_REGION_WHILE(op) (op).getBodyRegion()
+    
+    // For MLIR 20+, Optional is deprecated in favor of std::optional
+    // #if FLOWFORGE_MLIR_VERSION_AT_LEAST(20, 0)
+    //     #include <optional>
+    //     #define FLOWFORGE_OPTIONAL std::optional
+    // #else
+    //     #include <llvm/ADT/Optional.h>
+    //     #define FLOWFORGE_OPTIONAL llvm::Optional
+    // #endif
+#else
+    // MLIR 15 and below use Optional<unsigned>
+    #include <llvm/ADT/Optional.h>
+    #define FLOWFORGE_OPTIONAL llvm::Optional
+    #define FLOWFORGE_REGION_BRANCH_PARAM Optional<unsigned> index, ArrayRef<Attribute> operands
+    #define FLOWFORGE_IS_PARENT_REGION (!index)
+    #define FLOWFORGE_GET_REGION_OR_NULL nullptr
+    #define FLOWFORGE_GET_REGION_INDEX(region) (*index)
+    
+    // MLIR 15 uses thenRegion(), elseRegion() style method names (no "get" prefix)
+    #define FLOWFORGE_GET_THEN_REGION(op) (op).thenRegion()
+    #define FLOWFORGE_GET_ELSE_REGION(op) (op).elseRegion()
+    #define FLOWFORGE_GET_BODY_REGION(op) (op).body()
+    #define FLOWFORGE_GET_COND_REGION(op) (op).condRegion()
+    #define FLOWFORGE_GET_BODY_REGION_WHILE(op) (op).bodyRegion()
+#endif
+
+// Type interface compatibility
+#if FLOWFORGE_MLIR_VERSION_AT_LEAST(16, 0)
+    #define FLOWFORGE_BUILTIN_TYPE_INTERFACES_INCLUDE <mlir/IR/BuiltinTypeInterfaces.h>
+#else
+    // MLIR 15 and below don't have this header or it's in a different location
+    #define FLOWFORGE_BUILTIN_TYPE_INTERFACES_INCLUDE <mlir/IR/BuiltinTypes.h>
+#endif
+
+// Type name compatibility
+#if FLOWFORGE_MLIR_VERSION_AT_LEAST(16, 0)
+    // MLIR 16+ uses lowercase type names
+    #define FLOWFORGE_TOKEN_TYPE tokenType
+    #define FLOWFORGE_OBJECT_TYPE objectType
+    #define FLOWFORGE_STRING_TYPE stringType
+#else
+    // MLIR 15 uses capitalized type names
+    #define FLOWFORGE_TOKEN_TYPE TokenType
+    #define FLOWFORGE_OBJECT_TYPE ObjectRefType
+    #define FLOWFORGE_STRING_TYPE StringType
+#endif

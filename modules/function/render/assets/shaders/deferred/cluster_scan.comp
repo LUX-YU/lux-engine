@@ -1,0 +1,102 @@
+#version 450
+// PrefixScan: build cluster offsets from counts and reset write heads.
+// Uses a Blelloch-style parallel exclusive scan in shared memory.
+// 256 threads; each handles ceil(cluster_count / 256) elements.
+// Supports up to 256 * 256 = 65,536 clusters (single workgroup).
+
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0, std140) uniform ClusterParamsUBO {
+    mat4 view;
+    mat4 proj;
+    vec4 viewport;
+    uvec4 grid;
+    uvec4 limits; // cluster_count, max_indices, point_count, spot_count
+} uParams;
+
+layout(set = 0, binding = 1, std430) buffer ClusterCountBuf {
+    uint counts[];
+} uCounts;
+
+layout(set = 0, binding = 2, std430) buffer ClusterOffsetBuf {
+    uint offsets[];
+} uOffsets;
+
+layout(set = 0, binding = 3, std430) buffer ClusterWriteHeadBuf {
+    uint heads[];
+} uHeads;
+
+layout(set = 0, binding = 5, std430) buffer ClusterOverflowBuf {
+    uint overflow;
+} uOverflow;
+
+shared uint s_data[256];
+shared uint s_grand_total;
+
+void main()
+{
+    uint tid = gl_LocalInvocationID.x;
+    uint cluster_count = max(uParams.limits.x, 1u);
+
+    // ── Phase 1: each thread reduces a contiguous chunk into s_data ──
+    uint chunk = (cluster_count + 255u) / 256u;
+    uint begin = tid * chunk;
+    uint end   = min(begin + chunk, cluster_count);
+
+    uint local_sum = 0u;
+    for (uint i = begin; i < end; ++i)
+        local_sum += uCounts.counts[i];
+    s_data[tid] = local_sum;
+    barrier();
+
+    // ── Phase 2: Blelloch up-sweep (reduce) ──────────────────────────
+    for (uint stride = 1u; stride < 256u; stride <<= 1u)
+    {
+        uint idx = (tid + 1u) * (stride << 1u) - 1u;
+        if (idx < 256u)
+            s_data[idx] += s_data[idx - stride];
+        barrier();
+    }
+
+    // ── Phase 3: Blelloch down-sweep (exclusive scan) ────────────────
+    // Save grand total before overwriting the root with identity.
+    if (tid == 0u)
+    {
+        s_grand_total = s_data[255];
+        s_data[255] = 0u;
+    }
+    barrier();
+
+    for (uint stride = 128u; stride >= 1u; stride >>= 1u)
+    {
+        uint idx = (tid + 1u) * (stride << 1u) - 1u;
+        if (idx < 256u)
+        {
+            uint tmp = s_data[idx - stride];
+            s_data[idx - stride] = s_data[idx];
+            s_data[idx] += tmp;
+        }
+        barrier();
+    }
+
+    // s_data[tid] now holds the exclusive prefix sum of chunk totals.
+
+    // ── Phase 4: each thread writes per-cluster offsets + clears heads ──
+    uint running = s_data[tid];
+    for (uint i = begin; i < end; ++i)
+    {
+        uOffsets.offsets[i] = running;
+        running += uCounts.counts[i];
+        uHeads.heads[i] = 0u;
+    }
+
+    // ── Sentinel offset + overflow check (thread 0) ─────────────────
+    if (tid == 0u)
+    {
+        uint total = s_grand_total;
+        uOffsets.offsets[cluster_count] = total;
+        uint max_indices = max(uParams.limits.y, 1u);
+        if (total > max_indices)
+            uOverflow.overflow += (total - max_indices);
+    }
+}

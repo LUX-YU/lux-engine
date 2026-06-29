@@ -1,0 +1,23 @@
+.vs
+.internal
+.venv
+.claude
+/cpp.hint
+CMakeSettings.json
+.vscode
+.idea
+.cache
+.github
+imgui.ini
+__pycache__
+build
+prebuild
+install
+tools_temp
+out
+cmake-build-debug
+cmake-build-release
+
+*sync-conflict-*
+# MLIR Generations
+NUL.obj

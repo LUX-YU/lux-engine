@@ -1,0 +1,215 @@
+#version 450 core
+
+// Point cloud culling compute shader
+// Performs frustum culling, LOD selection, and instance generation
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// ---------------------------------------------------------------------------
+// Struct definitions — must appear before any buffer blocks that use them
+// ---------------------------------------------------------------------------
+
+// Octree node struct (must match C++ GpuOctreeNode layout)
+struct GPUOctreeNode {
+    vec3 bbox_min;
+    float pad0;
+    vec3 bbox_max;
+    float pad1;
+
+    uint first_point;
+    uint point_count;
+    uint children_mask;
+    uint stream_state; // NodeState enum  (RESIDENT = 2)
+
+    float lod_error;
+    uint depth_level;
+    uint morton_code_lo; // 64-bit Morton code (low 32 bits)
+    uint morton_code_hi; // 64-bit Morton code (high 32 bits)
+
+    vec3 avg_color;
+    float avg_intensity;
+
+    uint padding[2];
+};
+
+// Render instance struct (matches C++ PointCloudInstance)
+struct PointCloudInstance {
+    uint first_point;
+    uint point_count;
+    uint node_id;
+    float lod_error;
+};
+
+// ---------------------------------------------------------------------------
+// Descriptor bindings
+// ---------------------------------------------------------------------------
+
+// Input: Octree node SSBO
+layout(set = 0, binding = 0, std430) restrict readonly buffer NodeBuffer {
+    uint node_count;
+    uint padding[3];
+    GPUOctreeNode nodes[];
+} node_buffer;
+
+// Output: Visible instance SSBO
+layout(set = 0, binding = 1, std430) restrict writeonly buffer InstanceBuffer {
+    uint instance_count;
+    uint padding[3];
+    PointCloudInstance instances[];
+} instance_buffer;
+
+// Output: Indirect draw commands (multi-draw indirect with count)
+// Layout: [IndirectDrawHeader { draw_count, pad[3] }] [VkDrawIndirectCommand commands[]]
+// Each command: { vertex_count, instance_count, first_vertex, first_instance }
+layout(set = 0, binding = 2, std430) restrict buffer IndirectBuffer {
+    uint draw_count;        // Atomic counter: number of valid draw commands
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
+    // Flat array of uint32s for draw commands (each command = 4 consecutive uints)
+    uint commands[];
+} indirect_buf;
+
+// Constant buffer
+layout(set = 0, binding = 3, std140) uniform CullingParams {
+    mat4 view_proj_matrix;
+    vec3 camera_position;
+    float lod_bias;
+    vec3 camera_direction;
+    float pixel_error_threshold;
+    uint max_points_per_frame;
+    uint max_instances;
+    float time;
+    float delta_time;
+} culling_params;
+
+// Frustum planes (6 planes, 4 coefficients each)
+layout(set = 0, binding = 4, std140) uniform FrustumPlanes {
+    vec4 planes[6];
+} frustum;
+
+// Shared memory: not needed for per-node approach
+
+// Utility: AABB-frustum intersection test
+bool frustumCull(vec3 bbox_min, vec3 bbox_max) {
+    // Test the 8 corners of the bounding box
+    vec3 corners[8] = {
+        vec3(bbox_min.x, bbox_min.y, bbox_min.z),
+        vec3(bbox_max.x, bbox_min.y, bbox_min.z),
+        vec3(bbox_min.x, bbox_max.y, bbox_min.z),
+        vec3(bbox_max.x, bbox_max.y, bbox_min.z),
+        vec3(bbox_min.x, bbox_min.y, bbox_max.z),
+        vec3(bbox_max.x, bbox_min.y, bbox_max.z),
+        vec3(bbox_min.x, bbox_max.y, bbox_max.z),
+        vec3(bbox_max.x, bbox_max.y, bbox_max.z)
+    };
+    
+    // Test against each frustum plane
+    for (int plane = 0; plane < 6; ++plane) {
+        vec4 plane_eq = frustum.planes[plane];
+        int outside_count = 0;
+        
+        for (int i = 0; i < 8; ++i) {
+            float distance = dot(plane_eq.xyz, corners[i]) + plane_eq.w;
+            if (distance < 0.0) {
+                outside_count++;
+            }
+        }
+        
+        // If all vertices are outside the plane, the box is culled
+        if (outside_count == 8) {
+            return false; // Culled
+        }
+    }
+    
+    return true; // Visible
+}
+
+// LOD error calculation
+float calculateScreenError(vec3 bbox_center, float lod_error) {
+    float distance = length(bbox_center - culling_params.camera_position);
+    if (distance < 0.001) {
+        return 1e10; // Very large error
+    }
+    
+    float projected_error = (lod_error * culling_params.pixel_error_threshold) / distance;
+    return projected_error * culling_params.lod_bias;
+}
+
+// Main compute function
+void main() {
+    uint node_index = gl_GlobalInvocationID.x;
+    
+    // Bounds check
+    if (node_index >= node_buffer.node_count) {
+        return;
+    }
+    
+    GPUOctreeNode node = node_buffer.nodes[node_index];
+    
+    // Skip unloaded nodes
+    if (node.stream_state != 2) { // RESIDENT = 2
+        return;
+    }
+    
+    // Skip empty nodes
+    if (node.point_count == 0) {
+        return;
+    }
+    
+    // Frustum culling
+    if (!frustumCull(node.bbox_min, node.bbox_max)) {
+        return;
+    }
+    
+    // LOD selection - only render leaf nodes or nodes with sufficiently small error
+    vec3 bbox_center = (node.bbox_min + node.bbox_max) * 0.5;
+    float screen_error = calculateScreenError(bbox_center, node.lod_error);
+    
+    bool should_render = false;
+    
+    if (node.children_mask == 0) {
+        // Leaf nodes are always rendered (if they pass culling)
+        should_render = true;
+    } else {
+        // Internal node: only render when error is small enough
+        should_render = (screen_error <= 1.0);
+    }
+    
+    if (!should_render) {
+        return;
+    }
+    
+    // Allocate instance slot (for instance buffer) and draw command slot (for indirect buffer)
+    uint instance_index = atomicAdd(instance_buffer.instance_count, 1);
+    
+    // Check if maximum instance count exceeded
+    if (instance_index >= culling_params.max_instances) {
+        // Rollback counter
+        atomicAdd(instance_buffer.instance_count, uint(-1));
+        return;
+    }
+    
+    // Write render instance
+    PointCloudInstance instance;
+    instance.first_point = node.first_point;
+    instance.point_count = node.point_count;
+    instance.node_id = node_index;
+    instance.lod_error = node.lod_error;
+    
+    instance_buffer.instances[instance_index] = instance;
+    
+    // Allocate draw command slot (multi-draw indirect)
+    uint draw_index = atomicAdd(indirect_buf.draw_count, 1);
+    
+    // Write VkDrawIndirectCommand for this node:
+    //   vertex_count  = node.point_count  (draw this many points)
+    //   instance_count = 1                (single instance per draw)
+    //   first_vertex   = node.first_point (offset into the point buffer)
+    //   first_instance = instance_index   (index into instance buffer for per-node data)
+    uint base = draw_index * 4;
+    indirect_buf.commands[base + 0] = node.point_count;
+    indirect_buf.commands[base + 1] = 1;
+    indirect_buf.commands[base + 2] = node.first_point;
+    indirect_buf.commands[base + 3] = instance_index;
+}

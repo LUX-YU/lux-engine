@@ -72,7 +72,7 @@ namespace lux::render
             {
                 auto* sc = lookupScene(ctx.user_state, u.scene_id);
                 if (!sc) continue;
-                auto* view = sc->getView(u.view.id);
+                auto* view = sc->getView(u.view);
                 if (!view) continue;
 
                 const ViewFrameData data = buildViewFrameData(u, view->current_extent);
@@ -80,7 +80,7 @@ namespace lux::render
                 // Feature-owned per-view camera mirror — read by the camera consumers
                 // (cull / shadow / hzb / deferred lighting) via ViewCameraResource.
                 if (auto* cam = sc->sceneRegistry().find<ViewCameraResource>())
-                    cam->setView(u.view.id, data);
+                    cam->setView(u.view.index, data);
 
                 // Publish the neutral per-view GPU bytes into the core View. The core
                 // does NOT interpret them; RenderScene::beginFrame uploads
@@ -99,7 +99,7 @@ namespace lux::render
     } // namespace
 
     // ── Uniform factory interface ────────────────────────────────────────────
-    static uint32_t standardViewCameraCreateFn(void* scene_ptr, const void* /*param*/, size_t /*sz*/)
+    static FeatureHandle standardViewCameraCreateFn(void* scene_ptr, const void* /*param*/, size_t /*sz*/)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
         StandardViewCameraFeature::Config cfg{};   // no per-scene comm config

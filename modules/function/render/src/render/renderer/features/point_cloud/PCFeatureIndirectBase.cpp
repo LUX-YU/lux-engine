@@ -230,7 +230,7 @@ void PCFeatureIndirectBase::addComputePass(
         {
             if (!node_buf_ || node_buf_->nodeCount() == 0) return;
 
-            const uint32_t view_handle = ctx.view ? ctx.view->handle : 0;
+            const uint32_t view_handle = ctx.view ? ctx.view->handle.index : 0;
             auto* cam = renderScene().sceneRegistry().find<ViewCameraResource>();
 
             // Upload CullingParams UBO

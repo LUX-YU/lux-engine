@@ -12,7 +12,7 @@
 namespace lux::render
 {
     // ── Uniform factory interface ────────────────────────────────────────
-    static uint32_t forwardMeshCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle forwardMeshCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
         constexpr uint32_t kInvalidFeatureId = std::numeric_limits<uint32_t>::max();
@@ -21,11 +21,11 @@ namespace lux::render
         if (!validateMeshCommConfig("ForwardMeshOperationHandlers", param, param_size,
                 kForwardMeshCommConfigVersion, kForwardMeshDescriptorLayoutVersion,
                 kForwardMeshExtFlagHZB | kForwardMeshExtFlagBindless, cc))
-            return kInvalidFeatureId;
+            return {};
 
         auto* shaders = sc->renderContext().globalRegistry().find<ShaderResources>();
         if (!shaders)
-            return kInvalidFeatureId;
+            return {};
 
         // Fill null handles with embedded builtin shaders
         // HZB-on picks the set-1 cull variant; HZB-off picks the set-0-only one
@@ -58,7 +58,7 @@ namespace lux::render
             || !has_shader(cc.stylized_fragment)
             || !has_valid_graph)
         {
-            return kInvalidFeatureId;
+            return {};
         }
 
         ForwardMeshFeature::Config cfg{};

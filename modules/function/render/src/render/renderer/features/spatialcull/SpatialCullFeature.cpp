@@ -67,7 +67,7 @@ namespace lux::render
         camera_scratch_.clear();
         renderScene().forEachActiveView([this, cam](View& v)
         {
-            const auto* cam_fd = cam ? cam->find(v.handle) : nullptr;
+            const auto* cam_fd = cam ? cam->find(v.handle.index) : nullptr;
             if (!cam_fd)
                 return;
             const auto& p = cam_fd->camera_transform.position;
@@ -97,7 +97,7 @@ namespace lux::render
     }
 
     // ── Factory (grid pattern: feature added via addFeatureFactory + a FIP) ──
-    static uint32_t spatialCullCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle spatialCullCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 

@@ -38,6 +38,11 @@ struct RenderTargetSlotDesc
     VkImageLayout        final_layout   = VK_IMAGE_LAYOUT_UNDEFINED;
     bool                 is_presentable = false;
     bool                 preserve_content = false;  ///< If true, first loadOp is LOAD (not CLEAR) — for overlay-on-top scenarios
+
+    /// Value equality — every field is part of the graph-compile identity, so a
+    /// change in any of them must force a recompile. (Defaulted: all members are
+    /// scalars / Vk enums.)
+    friend bool operator==(const RenderTargetSlotDesc&, const RenderTargetSlotDesc&) = default;
 };
 
 // ─────────────────────────────────────────────────────────────────────
@@ -61,6 +66,13 @@ struct RenderTargetLayout
         assert(hasSlot(s) && "RenderTargetLayout: slot not present");
         return *slots[static_cast<size_t>(s)];
     }
+
+    /// Full-layout value equality (compares every slot's presence + descriptor).
+    /// The compiled graph template is only valid for the exact layout it was built
+    /// from; Renderer::prepareSceneForRender uses this to detect a changed target
+    /// layout and force a recompile. (A stable hash + per-key template cache for
+    /// simultaneous heterogeneous layouts is 阶段4 — see .internal/UNFINISHED-WORK.md.)
+    friend bool operator==(const RenderTargetLayout&, const RenderTargetLayout&) = default;
 };
 
 // ─────────────────────────────────────────────────────────────────────

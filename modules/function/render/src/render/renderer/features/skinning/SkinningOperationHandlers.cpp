@@ -160,7 +160,7 @@ namespace lux::render
     } // namespace
 
     // ── Uniform factory interface ────────────────────────────────────────────
-    static uint32_t skinningCreateFn(void* scene_ptr, const void* /*param*/, size_t /*sz*/)
+    static FeatureHandle skinningCreateFn(void* scene_ptr, const void* /*param*/, size_t /*sz*/)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
         SkinningFeature::Config cfg{};   // compute shader self-loads from builtin

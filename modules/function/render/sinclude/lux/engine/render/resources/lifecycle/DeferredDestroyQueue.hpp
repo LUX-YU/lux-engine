@@ -54,6 +54,13 @@ namespace lux::render
         void retireImageView(VkImageView view, uint64_t serial);
         void retireSampler(VkSampler sampler);
         void retireSampler(VkSampler sampler, uint64_t serial);
+        // Raw (non-VMA) handles for the external-memory interop path: a dedicated
+        // VkDeviceMemory / VkSemaphore allocated outside VMA (createExportableBuffer /
+        // createExportableTimelineSemaphore). Freed with vkFreeMemory / vkDestroySemaphore.
+        void retireDeviceMemory(VkDeviceMemory memory);
+        void retireDeviceMemory(VkDeviceMemory memory, uint64_t serial);
+        void retireSemaphore(VkSemaphore semaphore);
+        void retireSemaphore(VkSemaphore semaphore, uint64_t serial);
 
         // ── Serial-based collection ──────────────────────────────────────
 
@@ -68,7 +75,7 @@ namespace lux::render
         [[nodiscard]] size_t pendingCount() const noexcept { return pending_count_; }
 
     private:
-        enum class PendingType : uint8_t { Buffer, DescriptorSet, Image, ImageView, Sampler };
+        enum class PendingType : uint8_t { Buffer, DescriptorSet, Image, ImageView, Sampler, DeviceMemory, Semaphore };
 
         struct BufferPayload {
             VkBuffer      buffer;
@@ -93,12 +100,22 @@ namespace lux::render
             VkSampler     sampler;
         };
 
+        struct DeviceMemoryPayload {
+            VkDeviceMemory memory;
+        };
+
+        struct SemaphorePayload {
+            VkSemaphore   semaphore;
+        };
+
         union Payload {
-            BufferPayload    buffer;
-            DescSetPayload   desc_set;
-            ImagePayload     image;
-            ImageViewPayload image_view;
-            SamplerPayload   sampler;
+            BufferPayload       buffer;
+            DescSetPayload      desc_set;
+            ImagePayload        image;
+            ImageViewPayload    image_view;
+            SamplerPayload      sampler;
+            DeviceMemoryPayload device_memory;
+            SemaphorePayload    semaphore;
         };
 
         struct PendingDestroy {

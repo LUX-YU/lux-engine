@@ -106,7 +106,7 @@ namespace lux::editor
         // real Vulkan descriptor set each frame.
         viewport_panel_->setTextureID(
             lux::ui::encodeSceneViewSentinel(
-                scene->sceneId(), scene->mainView().id));
+                scene->sceneId(), scene->mainView().index));
 
         // Inspector + Hierarchy follow the new World by reading the shared
         // Selection — bind the new registry and clear the stale entity in one

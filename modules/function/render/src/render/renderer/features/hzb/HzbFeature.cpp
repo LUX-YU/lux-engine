@@ -218,7 +218,7 @@ namespace lux::render
             {
                 vw = v.current_extent.width;
                 vh = v.current_extent.height;
-                auto* cam_fd = cam ? cam->find(v.handle) : nullptr;
+                auto* cam_fd = cam ? cam->find(v.handle.index) : nullptr;
                 if (cam_fd)
                     view_proj = cam_fd->camera_view.view_proj.data();
             }

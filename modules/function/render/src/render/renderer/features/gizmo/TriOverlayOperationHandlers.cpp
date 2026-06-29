@@ -59,7 +59,7 @@ namespace
     //  TriOverlayTransient factory
     // =====================================================================
 
-    static uint32_t triOverlayTransientCreateFn(void* scene_ptr,
+    static FeatureHandle triOverlayTransientCreateFn(void* scene_ptr,
                                                 const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);

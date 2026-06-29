@@ -7,6 +7,7 @@
  */
 #include <lux/engine/render/core/RenderTypes.hpp> // common::Size2D + kViewDataStrideBytes / kViewFrustumStrideBytes
 #include <lux/engine/render/core/RenderObjectTypes.hpp>
+#include <lux/engine/render/core/FeatureHandle.hpp> // ViewHandle (generational)
 #include <lux/engine/render/utils/Slot.hpp> // SlotHandle
 #include <lux/engine/function/visibility.h>
 #include <lux/cxx/container/SparseSet.hpp>
@@ -40,7 +41,7 @@ namespace lux::render
         ~View();
 
         // ── Identity ────────────────────────────────────────────────────
-        uint32_t handle{0};
+        ViewHandle handle{};   ///< generational; .index keys per-view tables
         ViewState state{ViewState::Created};
         std::string debug_name;
 

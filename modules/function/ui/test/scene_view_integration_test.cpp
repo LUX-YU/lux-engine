@@ -687,7 +687,7 @@ int main()
     closeFrame(*session);
     auto scene_reply = waitReady(*session, std::move(scene_req), ui);
     auto scene_id = scene_reply.scene_id;
-    std::printf("  Scene created (id=%u)\n", static_cast<uint32_t>(scene_id));
+    std::printf("  Scene created (id=%u)\n", scene_id.index);
 
     openFrame(*session, ui);
     auto active_req = session->setActiveScene(scene_id, true);
@@ -707,7 +707,7 @@ int main()
     closeFrame(*session);
     auto view1_reply = waitReady(*session, std::move(v1_req), ui);
     auto view1 = view1_reply.view;
-    std::printf("  View 1 (main, rotating camera) created: handle=%u\n", view1.id);
+    std::printf("  View 1 (main, rotating camera) created: handle=%u\n", view1.index);
 
     // Secondary view — top-down angled
     Eigen::Vector3f eye2(0.f, 20.f, 10.f);
@@ -720,15 +720,15 @@ int main()
     closeFrame(*session);
     auto view2_reply = waitReady(*session, std::move(v2_req), ui);
     auto view2 = view2_reply.view;
-    std::printf("  View 2 (secondary, fixed camera) created: handle=%u\n", view2.id);
+    std::printf("  View 2 (secondary, fixed camera) created: handle=%u\n", view2.index);
     std::printf("  Camera update order default: rotating(view1=%u) -> fixed(view2=%u)\n",
-        view1.id, view2.id);
+        view1.index, view2.index);
 
     // Wire sentinel texture IDs to SceneViewElements
     main_vp.sceneView().setTextureID(
-        lux::ui::encodeSceneViewSentinel(scene_id, view1.id));
+        lux::ui::encodeSceneViewSentinel(scene_id, view1.index));
     sec_vp.sceneView().setTextureID(
-        lux::ui::encodeSceneViewSentinel(scene_id, view2.id));
+        lux::ui::encodeSceneViewSentinel(scene_id, view2.index));
 
     // Resize callbacks — defer actual resizeView to in-frame processing
     struct PendingResize { uint32_t w{0}, h{0}; bool pending{false}; };
@@ -1390,7 +1390,7 @@ int main()
             std::printf("  FPS: %d  cam_angle=%.2f  rotating_view=%u fixed_view=%u order=%s eye=(%.1f, %.1f, %.1f)\n",
                 static_cast<int>(avg_fps),
                 cam_angle,
-                view1.id, view2.id,
+                view1.index, view2.index,
                 rotate_view_first ? "V1->V2" : "V2->V1",
                 eye_rot.x(), eye_rot.y(), eye_rot.z());
             frame_count = 0;

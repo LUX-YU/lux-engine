@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <stdexcept>
 #include <unordered_map>
 #include <vector>
 
@@ -38,7 +39,13 @@ namespace lux::render
     FrameDriver::FrameDriver(ResourceContext &res_ctx, uint32_t frames_in_flight)
         : res_ctx_(res_ctx), frames_in_flight_(frames_in_flight)
     {
-        assert(frames_in_flight > 0 && frames_in_flight <= kMaxFramesInFlight);
+        // Ring-sizing site. RenderContext already gates fif at construction, so this
+        // is a release-safe backstop for any direct FrameDriver construction — the
+        // per-frame fences/sems/cmd-buffers below are sized to fif and must stay
+        // within [1, kMaxFramesInFlight].
+        if (frames_in_flight < 1 || frames_in_flight > kMaxFramesInFlight)
+            throw std::runtime_error(
+                "FrameDriver: frames_in_flight must be in [1, kMaxFramesInFlight].");
 
         submission_merger_ = std::make_unique<SubmissionMerger>();
 

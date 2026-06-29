@@ -6,7 +6,7 @@
 namespace lux::render
 {
     // ── Uniform factory interface ────────────────────────────────────────
-    static uint32_t depthPrepassCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle depthPrepassCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 

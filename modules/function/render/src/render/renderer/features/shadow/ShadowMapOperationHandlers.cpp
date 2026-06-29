@@ -9,7 +9,7 @@ namespace lux::render
 {
     // ── Uniform factory interface ────────────────────────────────────────
 
-    static uint32_t shadowMapCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle shadowMapCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 
@@ -40,12 +40,28 @@ namespace lux::render
     // SetFeatureParams handler routes the reflected ShadowQualityParams blob there).
     using ShadowMapOps = FeatureOpRegistrar<ServerOp<ShadowMapParamsOp>>;
 
+    // Stable type identity + descriptor (阶段 3). ShadowMap reads the scene's light
+    // data, so it REQUIRES the Light feature; it contributes graph passes and owns
+    // per-view state (per_view_shadow_ ViewStateTable). The dep array has static
+    // storage (static constexpr) so the descriptor's span stays valid program-wide.
+    static constexpr FeatureDependency kShadowMapDeps[] = {
+        { featureId("lux.render.light.v1"), /*optional=*/false },
+    };
+    static constexpr FeatureDescriptor kShadowMapDescriptor{
+        .type               = featureId("lux.render.shadow_map.v1"),
+        .name               = "ShadowMap",
+        .dependencies       = kShadowMapDeps,
+        .contributes_graph  = true,
+        .creates_view_state = true,
+    };
+
     const FeatureFactory kShadowMapFeatureFactory{
         &shadowMapCreateFn,
         &ShadowMapOps::registerAll,
         &ShadowMapOps::unregisterAll,
         "ShadowMap",
         ShadowMapOps::kParamSetOpIndex,   // = 0, auto-derived (no magic number)
+        kShadowMapDescriptor,
     };
 
 } // namespace lux::render

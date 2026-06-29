@@ -397,7 +397,7 @@ namespace lux::render
             RenderScene* sc = nullptr;
             auto* inst = resolveInstances(ctx, p.scene_id, sc);
             if (!inst) return;
-            auto* view = sc->getView(p.view.id);
+            auto* view = sc->getView(p.view);
             if (!view) return;
             const InstanceSlot slot = resolveInstanceSlot(inst, p.object);
             if (!inst->isAlive(slot)) return;
@@ -414,7 +414,7 @@ namespace lux::render
             if (!inst) return;
             const InstanceSlot slot = resolveInstanceSlot(inst, p.object);
             if (!inst->isAlive(slot)) return;
-            if (auto* view = sc->getView(p.view.id))
+            if (auto* view = sc->getView(p.view))
                 view->unregisterObject(p.object);
         }
 
@@ -490,7 +490,7 @@ namespace lux::render
     } // namespace
 
     // ── Uniform factory interface ────────────────────────────────────────────
-    static uint32_t standardMeshStackCreateFn(void* scene_ptr, const void* /*param*/, size_t /*sz*/)
+    static FeatureHandle standardMeshStackCreateFn(void* scene_ptr, const void* /*param*/, size_t /*sz*/)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
         StandardMeshStackFeature::Config cfg{};   // no per-scene comm config

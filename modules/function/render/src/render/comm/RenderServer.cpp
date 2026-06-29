@@ -423,7 +423,7 @@ namespace lux::render
         // Shared by handleCreateScene (initial views) and handleAddView.
         void setupOffscreenViewTarget(GeneralRenderServer::Impl& im,
                              RenderScene* sc, RenderSceneId scene_id,
-                             uint32_t handle, common::Size2D extent)
+                             ViewHandle handle, common::Size2D extent)
         {
             RenderTargetLayout layout;
             {
@@ -529,28 +529,26 @@ namespace lux::render
 
         void handleAddView(Ctx& ctx, const AddViewPayload& p)
         {
-            constexpr uint32_t kInvalidViewId = std::numeric_limits<uint32_t>::max();
-
             auto& im = impl(ctx);
             auto* sc = im.renderer_->getScene(p.scene_id);
             if (!sc)
             {
                 std::cerr << "[RenderServer] AddView failed: invalid scene_id="
-                          << static_cast<uint32_t>(p.scene_id) << "\n";
-                replyToCurrent<AddViewPayload>(ctx, ViewCreatedReply{ViewHandle{kInvalidViewId}});
+                          << p.scene_id.index << "\n";
+                replyToCurrent<AddViewPayload>(ctx, ViewCreatedReply{ViewHandle{}});
                 return;
             }
             ViewCreateInfo ci{
                 .initial_extent = p.extent,
                 .debug_name     = p.name,
             };
-            uint32_t handle = sc->addView(ci);
+            ViewHandle handle = sc->addView(ci);
 
-            if (handle == kInvalidViewId)
+            if (!handle.valid())
             {
                 std::cerr << "[RenderServer] AddView failed in scene addView() for scene_id="
-                          << static_cast<uint32_t>(p.scene_id) << "\n";
-                replyToCurrent<AddViewPayload>(ctx, ViewCreatedReply{ViewHandle{kInvalidViewId}});
+                          << p.scene_id.index << "\n";
+                replyToCurrent<AddViewPayload>(ctx, ViewCreatedReply{ViewHandle{}});
                 return;
             }
 
@@ -560,18 +558,18 @@ namespace lux::render
             // (Initial camera removed from AddView — View 去 3D 化: the client sends a
             // StandardViewCamera op for this view after addView. AddView is neutral.)
 
-            replyToCurrent<AddViewPayload>(ctx, ViewCreatedReply{ViewHandle{handle}});
+            replyToCurrent<AddViewPayload>(ctx, ViewCreatedReply{handle});
         }
 
         void handleRemoveView(Ctx& ctx, const RemoveViewPayload& p)
         {
             auto& im = impl(ctx);
             auto* sc = im.renderer_->getScene(p.scene_id);
-            if (sc) sc->removeView(p.view.id);
+            if (sc) sc->removeView(p.view);
 
             // Remove from offscreen list (swap-and-pop) — pool destroyed via unique_ptr
             auto it = std::find_if(im.offscreen_views_.begin(), im.offscreen_views_.end(),
-                [&](const auto& e) { return e.scene_id == p.scene_id && e.view_id == p.view.id; });
+                [&](const auto& e) { return e.scene_id == p.scene_id && e.view_id == p.view; });
             if (it != im.offscreen_views_.end())
             {
                 *it = std::move(im.offscreen_views_.back());
@@ -580,7 +578,7 @@ namespace lux::render
 
             // Clean up swapchain binding if it referenced this view
             if (im.swapchain_binding_.has_value() &&
-                im.swapchain_binding_->view_id == p.view.id &&
+                im.swapchain_binding_->view_id == p.view &&
                 im.swapchain_binding_->scene_id == p.scene_id)
             {
                 im.swapchain_binding_.reset();
@@ -592,7 +590,7 @@ namespace lux::render
             auto& im = impl(ctx);
             auto* sc = im.renderer_->getScene(p.scene_id);
             if (!sc) return;
-            if (auto* v = sc->getView(p.view.id))
+            if (auto* v = sc->getView(p.view))
             {
                 auto new_extent = p.new_extent;
                 if (new_extent.width == 0 || new_extent.height == 0)
@@ -634,21 +632,21 @@ namespace lux::render
                 return lux::cxx::unexpected(make_error_code(ERenderError::InternalError));
 
             auto* scene = im.renderer_->getScene(scene_id);
-            if (!scene || !scene->getView(view.id))
+            if (!scene || !scene->getView(view))
                 return lux::cxx::unexpected(make_error_code(ERenderError::InternalError));
 
             scene->compileGraphTemplate(layout);
 
             im.swapchain_binding_ = GeneralRenderServer::Impl::SwapchainBinding{
                 .scene_id = scene_id,
-                .view_id  = view.id,
+                .view_id  = view,
                 .layout   = layout,
             };
 
             // Remove from offscreen_views_ — the view is now swapchain-bound
             auto it = std::remove_if(im.offscreen_views_.begin(), im.offscreen_views_.end(),
                 [&](const GeneralRenderServer::Impl::OffscreenViewEntry& e) {
-                    return e.scene_id == scene_id && e.view_id == view.id;
+                    return e.scene_id == scene_id && e.view_id == view;
                 });
             im.offscreen_views_.erase(it, im.offscreen_views_.end());
 
@@ -710,19 +708,18 @@ namespace lux::render
             ViewCreateInfo ci{};
             ci.initial_extent = {extent.width, extent.height};
             ci.debug_name     = "SwapchainView";
-            constexpr uint32_t kInvalidViewId = std::numeric_limits<uint32_t>::max();
-            const uint32_t view_id = scene->addView(ci);
-            if (view_id == kInvalidViewId)
+            const ViewHandle view_id = scene->addView(ci);
+            if (!view_id.valid())
             {
                 std::cerr << "[RenderServer] RequestSwapchainScene: addView failed for scene_id="
-                          << static_cast<uint32_t>(p.scene_id) << "\n";
+                          << p.scene_id.index << "\n";
                 reply.status = 3;   // view creation failed
                 replyToCurrent<RequestSwapchainScenePayload>(ctx, reply);
                 return;
             }
 
             auto layout = im.swapchain_provider_->layout();
-            if (!bindSwapchainInternal(im, p.scene_id, ViewHandle{view_id}, layout, true))
+            if (!bindSwapchainInternal(im, p.scene_id, view_id, layout, true))
             {
                 // Bind failed — drop the just-created view and report the error so
                 // the client does not drive a nonexistent view. (medium)
@@ -732,7 +729,7 @@ namespace lux::render
                 return;
             }
 
-            reply.view   = ViewHandle{view_id};
+            reply.view   = view_id;
             reply.status = 0;
             replyToCurrent<RequestSwapchainScenePayload>(ctx, reply);
         }
@@ -930,7 +927,7 @@ namespace lux::render
             auto& im = impl(ctx);
             GeneralRenderServer::Impl::PendingReadback j{};
             j.scene_id     = p.scene_id;
-            j.view_id      = p.view.id;
+            j.view_id      = p.view;
             j.dst_ptr      = p.dst_ptr;
             j.dst_capacity = p.dst_capacity;
 
@@ -961,7 +958,7 @@ namespace lux::render
             auto& im = impl(ctx);
             GeneralRenderServer::Impl::PendingReadback j{};
             j.scene_id     = p.scene_id;
-            j.view_id      = p.view.id;
+            j.view_id      = p.view;
             j.dst_ptr      = p.dst_ptr;
             j.dst_capacity = p.dst_capacity;
             j.request_id   = ctx.currentRequestId();
@@ -1760,10 +1757,16 @@ namespace lux::render
     // ─────────────────────────────────────────────────────────────────────
     FeatureTypeRegisteredReply GeneralRenderServer::addFeatureFactory(const FeatureFactory& factory)
     {
+        // The feature-type registry now lives in the Renderer (阶段 3), created by
+        // init(). Registering a feature type therefore requires an initialized
+        // server — return an invalid reply (feature_type_id 0) if called too early.
+        if (!impl_->renderer_)
+            return FeatureTypeRegisteredReply{};
+
         FeatureTypeRecord rec{};
         rec.factory  = factory;
         rec.op_count = factory.register_ops_fn(&impl_->dispatcher, rec.ops, 16);
-        uint32_t type_id = impl_->feature_types.insert(std::move(rec));
+        uint32_t type_id = impl_->renderer_->featureTypeRegistry().add(rec);
 
         FeatureTypeRegisteredReply reply{};
         reply.feature_type_id = type_id;
@@ -1794,9 +1797,35 @@ namespace lux::render
         auto* scene = impl_->renderer_->getScene(result.scene_id);
         for (auto& fp : features)
         {
-            auto& rec = impl_->feature_types.at(fp.feature_type_id);
-            uint32_t fid = rec.factory.create_fn(scene, fp.param, fp.param_size);
-            result.features.push_back(FeatureHandle{fid});
+            auto& rec = impl_->renderer_->featureTypeRegistry().at(fp.feature_type_id);
+            const FeatureDescriptor& desc = rec.factory.descriptor;
+
+            // Same dependency/conflict enforcement as handleAddFeature (3c, hard
+            // reject): a feature whose required dep isn't already present, or that
+            // conflicts with one, is skipped (invalid handle in result) — initial
+            // features must be listed in dependency order.
+            bool rejected = false;
+            if (scene && desc.valid())
+            {
+                for (FeatureTypeId c : desc.conflicts)
+                    if (scene->hasFeatureOfType(c)) { rejected = true; break; }
+                if (!rejected)
+                    for (const auto& dep : desc.dependencies)
+                        if (!dep.optional && !scene->hasFeatureOfType(dep.type)) { rejected = true; break; }
+                if (rejected)
+                    std::cerr << "[RenderServer] createScene feature '" << desc.name
+                              << "' rejected: dependency/conflict unmet (check feature order).\n";
+            }
+            if (rejected)
+            {
+                result.features.push_back(FeatureHandle{});
+                continue;
+            }
+
+            FeatureHandle fid = rec.factory.create_fn(scene, fp.param, fp.param_size);
+            if (fid.valid() && desc.valid() && scene)
+                scene->setFeatureDescriptor(fid, desc);
+            result.features.push_back(fid);
         }
 
         return result;
@@ -1812,7 +1841,7 @@ namespace lux::render
             .initial_extent = p.extent,
             .debug_name     = p.name.data(),
         };
-        uint32_t handle = scene->addView(ci);
+        ViewHandle handle = scene->addView(ci);
 
         // All views created via createView are offscreen
         RenderTargetLayout layout;
@@ -1848,7 +1877,7 @@ namespace lux::render
             }
         );
 
-        return ViewHandle{handle};
+        return handle;
     }
 
     Expected<void> GeneralRenderServer::bindSwapchain(

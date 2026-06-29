@@ -83,17 +83,20 @@ namespace lux::ui
     {
         using SceneViewKey = uint64_t;
 
+        // Keyed on the SLOT INDEX of scene + view (generation dropped): this is a
+        // local lookup key for ui_offscreen_views_, and the ImTextureID sentinel
+        // path (decodeSceneView) only carries indices anyway.
         static SceneViewKey makeSceneViewKey(
-            lux::render::RenderSceneId scene_id, uint32_t view_id) noexcept
+            lux::render::RenderSceneId scene_id, uint32_t view_index) noexcept
         {
-            return (static_cast<SceneViewKey>(static_cast<uint32_t>(scene_id)) << 32) | static_cast<SceneViewKey>(view_id);
+            return (static_cast<SceneViewKey>(scene_id.index) << 32) | static_cast<SceneViewKey>(view_index);
         }
 
         // ── UI offscreen views (created by handleAddUIView) ─────────────────
         struct UIOffscreenViewEntry
         {
             lux::render::RenderSceneId scene_id;
-            uint32_t view_id;
+            lux::render::ViewHandle view_id;
             std::unique_ptr<UIOffscreenImagePool> ui_pool;
             lux::render::RenderTargetLayout layout;
         };
@@ -110,7 +113,7 @@ namespace lux::ui
         // ── Eagerly-created ImGui overlay (set once in init()) ──────────────
         lux::render::RenderSceneId imgui_scene_id_{};
         lux::render::RenderScene *imgui_scene_{nullptr};
-        uint32_t imgui_view_id_{UINT32_MAX};
+        lux::render::ViewHandle imgui_view_id_{};
         lux::render::View *imgui_view_{nullptr};
         ImGuiFeature *imgui_feature_{nullptr};
         ImGui_ImplVulkan_Renderer *imgui_vk_renderer_{nullptr};
@@ -126,7 +129,7 @@ namespace lux::ui
         struct SwapchainLayer
         {
             lux::render::RenderSceneId scene_id;
-            uint32_t view_id{UINT32_MAX};
+            lux::render::ViewHandle view_id{};
             lux::render::RenderTargetLayout layout;  ///< final_layout = COLOR_ATTACHMENT_OPTIMAL
         };
         std::optional<SwapchainLayer> swapchain_layer_;
@@ -384,7 +387,7 @@ namespace lux::ui
             GeneralRenderServer::Impl  &im,
             UIRenderServer::UIState    &ui,
             lux::render::RenderSceneId  scene_id,
-            uint32_t                    view_id)
+            lux::render::ViewHandle     view_id)
         {
             auto *sc = im.renderer_->getScene(scene_id);
             if (!sc)
@@ -397,7 +400,7 @@ namespace lux::ui
             if (it != ui.ui_offscreen_views_.end())
             {
                 ui.scene_view_index_.erase(
-                    UIRenderServer::UIState::makeSceneViewKey(it->scene_id, it->view_id));
+                    UIRenderServer::UIState::makeSceneViewKey(it->scene_id, it->view_id.index));
 
                 if (it->ui_pool)
                     ui.retired_ui_pools_.push_back({std::move(it->ui_pool), im.current_stamp_.serial});
@@ -406,7 +409,7 @@ namespace lux::ui
                 {
                     const auto moved_key = UIRenderServer::UIState::makeSceneViewKey(
                         ui.ui_offscreen_views_.back().scene_id,
-                        ui.ui_offscreen_views_.back().view_id);
+                        ui.ui_offscreen_views_.back().view_id.index);
                     *it = std::move(ui.ui_offscreen_views_.back());
                     ui.scene_view_index_[moved_key] =
                         static_cast<size_t>(it - ui.ui_offscreen_views_.begin());
@@ -436,7 +439,7 @@ namespace lux::ui
                 .initial_extent = clamped_extent,
                 .debug_name = p.name,
             };
-            uint32_t handle = sc->addView(ci);
+            ViewHandle handle = sc->addView(ci);
 
             RenderTargetLayout layout = makeUIOffscreenLayout();
 
@@ -452,14 +455,14 @@ namespace lux::ui
                 const size_t idx = ui->ui_offscreen_views_.size();
                 ui->ui_offscreen_views_.push_back(
                     {p.scene_id, handle, std::move(pool), layout});
-                ui->scene_view_index_[UIRenderServer::UIState::makeSceneViewKey(p.scene_id, handle)] = idx;
+                ui->scene_view_index_[UIRenderServer::UIState::makeSceneViewKey(p.scene_id, handle.index)] = idx;
             }
 
             // (Initial camera removed from AddView — View 去 3D 化: the client sends a
             // StandardViewCamera op for this view after addView. AddView is neutral.)
 
             replyToCurrent<AddViewPayload>(
-                ctx, ViewCreatedReply{ViewHandle{handle}});
+                ctx, ViewCreatedReply{handle});
         }
 
         // ── handleRemoveUIView ──────────────────────────────────────────────
@@ -470,7 +473,7 @@ namespace lux::ui
             auto *ui = static_cast<UIRenderServer::UIState *>(im.extension_);
             if (!ui)
                 return;
-            removeUIViewImpl(im, *ui, p.scene_id, p.view.id);
+            removeUIViewImpl(im, *ui, p.scene_id, p.view);
         }
 
         // ── Pre-destroy-scene callback ──────────────────────────────────────
@@ -494,13 +497,13 @@ namespace lux::ui
                     ui->retired_ui_pools_.push_back({std::move(it->ui_pool), 0});
 
                 ui->scene_view_index_.erase(
-                    UIRenderServer::UIState::makeSceneViewKey(it->scene_id, it->view_id));
+                    UIRenderServer::UIState::makeSceneViewKey(it->scene_id, it->view_id.index));
 
                 if (it != ui->ui_offscreen_views_.end() - 1)
                 {
                     const auto moved_key = UIRenderServer::UIState::makeSceneViewKey(
                         ui->ui_offscreen_views_.back().scene_id,
-                        ui->ui_offscreen_views_.back().view_id);
+                        ui->ui_offscreen_views_.back().view_id.index);
                     *it = std::move(ui->ui_offscreen_views_.back());
                     ui->scene_view_index_[moved_key] = static_cast<size_t>(
                         it - ui->ui_offscreen_views_.begin());
@@ -549,7 +552,7 @@ namespace lux::ui
                 .initial_extent = {sc_extent.width, sc_extent.height},
                 .debug_name = "SwapchainSceneView",
             };
-            uint32_t view_id = scene->addView(ci);
+            ViewHandle view_id = scene->addView(ci);
 
             // Build layout: COLOR_ATTACHMENT_OPTIMAL if ImGui overlay is enabled
             RenderTargetLayout scene_layout;
@@ -600,7 +603,7 @@ namespace lux::ui
                     recompileImGuiOverlayGraph(*ui, sc);
             }
 
-            reply.view   = ViewHandle{view_id};
+            reply.view   = view_id;
             reply.status = 0;
             replyToCurrent<RequestSwapchainScenePayload>(ctx, reply);
         }
@@ -672,7 +675,7 @@ namespace lux::ui
         if (ui_->swapchain_layer_.has_value())
         {
             auto &layer = *ui_->swapchain_layer_;
-            if (layer.view_id != UINT32_MAX)
+            if (layer.view_id.valid())
             {
                 if (auto *scene = impl_->renderer_->getScene(layer.scene_id))
                     scene->removeView(layer.view_id);
@@ -751,7 +754,7 @@ namespace lux::ui
             .initial_extent = clamped,
             .debug_name     = debug_name ? debug_name : "EditorUIView",
         };
-        const uint32_t handle = sc->addView(ci);
+        const lux::render::ViewHandle handle = sc->addView(ci);
 
         lux::render::RenderTargetLayout layout = makeUIOffscreenLayout();
 
@@ -768,9 +771,9 @@ namespace lux::ui
         const size_t idx = ui.ui_offscreen_views_.size();
         ui.ui_offscreen_views_.push_back(
             {scene_id, handle, std::move(pool), layout});
-        ui.scene_view_index_[UIState::makeSceneViewKey(scene_id, handle)] = idx;
+        ui.scene_view_index_[UIState::makeSceneViewKey(scene_id, handle.index)] = idx;
 
-        return lux::render::ViewHandle{handle};
+        return handle;
     }
 
     void UIRenderServer::removeUIView(
@@ -778,7 +781,7 @@ namespace lux::ui
         lux::render::ViewHandle    view)
     {
         // Shared core with handleRemoveUIView.
-        removeUIViewImpl(*impl_, *ui_, scene_id, view.id);
+        removeUIViewImpl(*impl_, *ui_, scene_id, view);
     }
 
     lux::render::ViewHandle UIRenderServer::setSwapchainScene(lux::render::RenderSceneId scene_id)
@@ -803,7 +806,7 @@ namespace lux::ui
             .initial_extent = {sc_extent.width, sc_extent.height},
             .debug_name = "SwapchainSceneView",
         };
-        uint32_t view_id = scene->addView(ci);
+        lux::render::ViewHandle view_id = scene->addView(ci);
         auto *view = scene->getView(view_id);
         if (!view)
             return kInvalid;
@@ -829,7 +832,7 @@ namespace lux::ui
         if (hasSwapchainBinding())
             unbindSwapchain();
 
-        auto bind_result = bindSwapchain(scene_id, ViewHandle{view_id}, scene_layout);
+        auto bind_result = bindSwapchain(scene_id, view_id, scene_layout);
         if (!bind_result)
         {
             scene->removeView(view_id);
@@ -846,7 +849,7 @@ namespace lux::ui
         if (ui_->imgui_overlay_enabled_)
             recompileImGuiOverlayGraph(*ui_, sc);
 
-        return lux::render::ViewHandle{view_id};
+        return view_id;
     }
 
     void UIRenderServer::clearSwapchainScene()
@@ -855,7 +858,7 @@ namespace lux::ui
             return;
 
         auto &layer = *ui_->swapchain_layer_;
-        if (layer.view_id != UINT32_MAX)
+        if (layer.view_id.valid())
         {
             if (auto *scene = impl_->renderer_->getScene(layer.scene_id))
                 scene->removeView(layer.view_id);
@@ -936,7 +939,7 @@ namespace lux::ui
         auto scene_result = createScene("ImGuiOverlay", {&fp, 1});
         ui_->imgui_scene_id_ = scene_result.scene_id;
         ui_->imgui_scene_ = impl_->renderer_->getScene(scene_result.scene_id);
-        ui_->imgui_feature_ = ui_->imgui_scene_->getFeatureAs<ImGuiFeature>(scene_result.features[0].id);
+        ui_->imgui_feature_ = ui_->imgui_scene_->getFeatureAs<ImGuiFeature>(scene_result.features[0]);
 
         // 4. Store color format now; renderer creation is deferred until swapchain is attached.
         if (ui_->imgui_feature_)
@@ -976,7 +979,7 @@ namespace lux::ui
         }
 
         // Create the ImGui swapchain view eagerly now that swapchain_provider_ exists.
-        if (ui_->imgui_scene_ && ui_->imgui_view_id_ == UINT32_MAX && impl_->swapchain_provider_)
+        if (ui_->imgui_scene_ && !ui_->imgui_view_id_.valid() && impl_->swapchain_provider_)
         {
             lux::render::ViewCreateInfo ci{
                 .initial_extent = {impl_->swapchain_provider_->extent().width, impl_->swapchain_provider_->extent().height},
@@ -986,7 +989,7 @@ namespace lux::ui
             ui_->imgui_view_ = ui_->imgui_scene_->getView(ui_->imgui_view_id_);
             if (!ui_->imgui_view_)
             {
-                ui_->imgui_view_id_ = UINT32_MAX;
+                ui_->imgui_view_id_ = {};
                 return lux::cxx::unexpected(make_error_code(lux::render::ERenderError::InternalError));
             }
 

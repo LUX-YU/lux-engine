@@ -45,6 +45,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
+# Enable CTest so module test suites can register via add_test() and CI can run
+# them with `ctest` from the build root. Must be called in the top-level source
+# directory, before the add_subdirectory() calls below, for CTest to aggregate
+# tests across all modules. Modules without add_test() contribute nothing, so
+# this is a no-op for the runtime-only build. Render registers its suite under
+# the ENABLE_RENDER_TEST gate (modules/function/render/test/CMakeLists.txt).
+enable_testing()
+
 foreach(layer ${lux_engine_layers})
     add_subdirectory(modules/${layer})
     if(layer STREQUAL "resource")

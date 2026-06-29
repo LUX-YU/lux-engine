@@ -59,24 +59,26 @@ namespace lux::render
             rec.op_count = p.factory.register_ops_fn(
                 &im.dispatcher, rec.ops, 16);
 
-            uint32_t type_id = im.feature_types.insert(std::move(rec));
+            uint32_t type_id = im.renderer_->featureTypeRegistry().add(std::move(rec));
 
             FeatureTypeRegisteredReply reply{};
             reply.feature_type_id = type_id;
-            reply.op_count = im.feature_types.at(type_id).op_count;
-            std::copy_n(im.feature_types.at(type_id).ops, reply.op_count, reply.ops);
+            auto& stored = im.renderer_->featureTypeRegistry().at(type_id);
+            reply.op_count = stored.op_count;
+            std::copy_n(stored.ops, reply.op_count, reply.ops);
             replyToCurrent<RegisterFeatureTypePayload>(ctx, reply);
         }
 
         void handleUnregisterFeatureType(Ctx& ctx, const UnregisterFeatureTypePayload& p)
         {
             auto& im = impl(ctx);
-            if (!im.feature_types.contains(p.feature_type_id)) return;
+            auto& registry = im.renderer_->featureTypeRegistry();
+            if (!registry.contains(p.feature_type_id)) return;
 
-            auto& rec = im.feature_types.at(p.feature_type_id);
+            auto& rec = registry.at(p.feature_type_id);
             rec.factory.unregister_ops_fn(
                 &im.dispatcher, rec.ops, rec.op_count);
-            im.feature_types.erase(p.feature_type_id);
+            registry.erase(p.feature_type_id);
         }
 
         // ── Name-based TypeId query ───────────────────────────────────────
@@ -106,11 +108,11 @@ namespace lux::render
             if (!sc)
             {
                 std::cerr << "[RenderServer] AddFeature failed: invalid scene_id="
-                          << static_cast<uint32_t>(p.scene_id) << "\n";
+                          << p.scene_id.index << "\n";
                 reply_invalid();
                 return;
             }
-            if (!im.feature_types.contains(p.feature_type_id))
+            if (!im.renderer_->featureTypeRegistry().contains(p.feature_type_id))
             {
                 std::cerr << "[RenderServer] AddFeature failed: unknown feature_type_id="
                           << p.feature_type_id << "\n";
@@ -134,18 +136,53 @@ namespace lux::render
                           << p.feature_type_id << "\n";
             }
 
-            auto& rec = im.feature_types.at(p.feature_type_id);
-            uint32_t feature_id = rec.factory.create_fn(sc, param, param_size);
+            auto& rec = im.renderer_->featureTypeRegistry().at(p.feature_type_id);
 
-            if (feature_id == kInvalidFeatureId)
+            // Dependency / conflict ENFORCEMENT (阶段 3 slice 3c — hard reject, no
+            // auto-install). A required dependency that isn't installed, or a conflict
+            // with an installed feature, rejects the add (the client must install
+            // dependencies first / resolve the conflict). A default-empty descriptor
+            // (no declared relationships) is never rejected — old behaviour preserved.
+            const FeatureDescriptor& desc = rec.factory.descriptor;
+            if (desc.valid())
+            {
+                for (FeatureTypeId c : desc.conflicts)
+                    if (sc->hasFeatureOfType(c))
+                    {
+                        std::cerr << "[RenderServer] AddFeature '" << desc.name
+                                  << "' rejected: conflicts with an installed feature.\n";
+                        reply_invalid();
+                        return;
+                    }
+                for (const auto& dep : desc.dependencies)
+                    if (!dep.optional && !sc->hasFeatureOfType(dep.type))
+                    {
+                        std::cerr << "[RenderServer] AddFeature '" << desc.name
+                                  << "' rejected: required dependency not installed "
+                                     "(install it first).\n";
+                        reply_invalid();
+                        return;
+                    }
+            }
+
+            FeatureHandle feature_id = rec.factory.create_fn(sc, param, param_size);
+
+            if (!feature_id.valid())
             {
                 std::cerr << "[RenderServer] AddFeature failed in factory: feature_type_id="
                           << p.feature_type_id << ", param_size="
                           << param_size << "\n";
             }
+            else if (desc.valid())
+            {
+                // Attach the type-level descriptor to the instance: drives type
+                // identity (hasFeatureOfType), dependency/conflict checks, and the
+                // lifecycle state machine's capability gating.
+                sc->setFeatureDescriptor(feature_id, desc);
+            }
 
             FeatureAddedReply reply{};
-            reply.feature = FeatureHandle{feature_id};
+            reply.feature = feature_id;
             replyToCurrent<AddFeaturePayload>(ctx, reply);
         }
 
@@ -153,14 +190,14 @@ namespace lux::render
         {
             auto& im = impl(ctx);
             auto* sc = im.renderer_->getScene(p.scene_id);
-            if (sc) sc->removeFeature(p.feature.id);
+            if (sc) sc->removeFeature(p.feature);
         }
 
         void handleSetFeatureEnabled(Ctx& ctx, const SetFeatureEnabledPayload& p)
         {
             auto& im = impl(ctx);
             auto* sc = im.renderer_->getScene(p.scene_id);
-            if (sc) sc->setFeatureEnabled(p.feature.id, p.enabled);
+            if (sc) sc->setFeatureEnabled(p.feature, p.enabled);
         }
 
         // Debug: dump the scene's compiled render graph into the caller-owned

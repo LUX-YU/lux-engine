@@ -7,7 +7,9 @@
 #include <lux/engine/render/transfer/TransferScheduler.hpp>
 #include <lux/engine/render/core/RenderSceneId.hpp>
 #include <lux/engine/render/core/Errors.hpp>
+#include <lux/engine/render/renderer/FeatureTypeRegistry.hpp>   // sunk feature-type registry (阶段 3)
 #include <lux/cxx/container/SparseSet.hpp>
+#include <lux/cxx/container/BasicSparseSet.hpp>   // SlotKeyAutoSparseSet (generational)
 
 #include <cstdint>
 #include <memory>
@@ -24,7 +26,7 @@ namespace lux::render
     struct AddSceneResult
     {
         RenderSceneId scene_id{};
-        std::vector<uint32_t> view_handles;
+        std::vector<ViewHandle> view_handles;
     };
 
     // ─────────────────────────────────────────────────────────────────────
@@ -96,6 +98,11 @@ namespace lux::render
         /// Direct access to a scene by ID (render thread only).
         [[nodiscard]] RenderScene *getScene(RenderSceneId id) noexcept;
 
+        /// Registry of feature TYPES (factories + descriptors). The comm layer
+        /// registers types into it; dependency resolution resolves declared deps
+        /// against it (FeatureTypeRegistry::findByStableType). Render thread only.
+        [[nodiscard]] FeatureTypeRegistry &featureTypeRegistry() noexcept { return feature_type_registry_; }
+
         /// Iterate all live scenes (render thread only).
         template<typename Fn>
         void forEachScene(Fn&& fn)
@@ -134,6 +141,10 @@ namespace lux::render
                         const DrawRequest &req, FrameRuntime &rt,
                         uint32_t cross_view_index = 0);
 
+        /// Reclaim scenes retired via removeScene() whose GPU work has fully
+        /// drained (frame_serial - retire_serial >= fif). Called once per endFrame().
+        void collectRetiredScenes(uint64_t frame_serial);
+
         FrameStamp current_stamp_{}; ///< Authoritative stamp set by beginFrame().
 
         std::shared_ptr<RenderContext> ctx_;
@@ -147,8 +158,25 @@ namespace lux::render
         // init-time, registered eagerly).
         bool mesh_contributor_added_{false};
         bool material_contributor_added_{false};
-        // ── Scene storage ──────────────────────────────────────────
-        lux::cxx::AutoSparseSet<std::unique_ptr<RenderScene>> scenes_;
+        // ── Feature-type registry (sunk from comm Impl, 阶段 3) ──────
+        FeatureTypeRegistry feature_type_registry_;
+
+        // ── Scene storage (generational: rejects stale RenderSceneId) ──
+        lux::cxx::SlotKeyAutoSparseSet<RenderSceneId, std::unique_ptr<RenderScene>> scenes_;
+
+        // ── Async scene retirement ──────────────────────────────────
+        // removeScene() does NOT stall the whole device (waitIdle). It moves the
+        // scene here, tagged with the serial of the last frame that could still
+        // reference its GPU resources; endFrame() reclaims it once the GPU has
+        // drained that frame (frame_serial - retire_serial >= fif). This mirrors
+        // the per-view / per-graph deferred-destroy already used inside RenderScene
+        // and keeps destroying one scene from blocking every other scene's frames.
+        struct RetiredScene
+        {
+            std::unique_ptr<RenderScene> scene;
+            uint64_t                     retire_serial{0};
+        };
+        std::vector<RetiredScene> retired_scenes_;
     };
 
 } // namespace lux::render

@@ -8,6 +8,7 @@
 
 #include <lux/engine/render/comm/RenderCommTypes.hpp>
 #include <lux/engine/render/core/FeatureHandle.hpp>
+#include <lux/engine/render/core/FeatureDescriptor.hpp>
 #include <lux/engine/render/core/PickResult.hpp>
 #include <lux/engine/render/core/RenderObjectTypes.hpp>
 #include <lux/engine/render/core/RenderResourceHandle.hpp>
@@ -125,7 +126,7 @@ namespace lux::render
     // =============================================================================
     //  FeatureFactory — function-pointer table for dynamic feature type registration
     // =============================================================================
-    using FeatureCreateFn       = uint32_t(*)(void* scene, const void* param, size_t param_size);
+    using FeatureCreateFn       = FeatureHandle(*)(void* scene, const void* param, size_t param_size);
     using FeatureRegisterOpsFn  = uint32_t(*)(void* dispatcher, TypeId* out_ops, uint32_t max_ops);
     using FeatureUnregisterOpsFn = void(*)(void* dispatcher, const TypeId* ops, uint32_t op_count);
 
@@ -145,16 +146,25 @@ namespace lux::render
         /// a reflected param blob to the right op BY NAME without knowing the
         /// feature's concrete type (so a plugin's params are editable too).
         int                    param_set_op_index{-1};
+        /// Static type-level metadata: stable FeatureTypeId, declared dependencies /
+        /// conflicts, capability flags (阶段 3). Default-empty (type == invalid) for
+        /// factories that don't declare one — the SceneFeatureManager then treats the
+        /// feature as today: caller-ordered, no dependency/conflict validation.
+        FeatureDescriptor      descriptor{};
     };
     static_assert(std::is_trivially_copyable_v<FeatureFactory>);
 
-    inline FeatureFactory makeSimpleFactory(FeatureCreateFn create_fn, const char* name = "") noexcept
+    inline FeatureFactory makeSimpleFactory(FeatureCreateFn create_fn,
+                                            const char* name = "",
+                                            FeatureDescriptor descriptor = {}) noexcept
     {
         return FeatureFactory{
             create_fn,
             +[](void*, TypeId*, uint32_t) -> uint32_t { return 0u; },
             +[](void*, const TypeId*, uint32_t) {},
-            name
+            name,
+            -1,
+            descriptor
         };
     }
 

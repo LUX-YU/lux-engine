@@ -56,6 +56,30 @@ namespace lux::render
     class DeferredDestroyQueue;     // returned by-reference; defined in an internal header
     struct GraphicsPipelineTemplate;// taken by-reference; engine pipeline description
 
+    /// Result of createExportableBuffer — a VMA-BYPASSING dedicated allocation
+    /// (vkAllocateMemory + VkExportMemoryAllocateInfo + vkBindBufferMemory) whose
+    /// memory can be exported for import by an external API (e.g. CUDA). The caller
+    /// OWNS all three handles: retire `buffer` + `memory` via retireBuffer*/
+    /// retireDeviceMemory, and close `external_handle` once the importer has dup'd it.
+    /// A null result (buffer == 0) means external memory is unsupported or a Vulkan
+    /// call failed — the caller should fall back to a host-upload path.
+    struct ExportableBuffer
+    {
+        VkBuffer       buffer{};         // forward-declared in core/vk_fwd.hpp
+        VkDeviceMemory memory{};
+        uint64_t       external_handle{0};   // Win32 HANDLE / POSIX fd widened to u64
+        uint64_t       actual_size{0};       // >= requested (driver may round up)
+    };
+
+    /// Result of createExportableTimelineSemaphore — an exportable TIMELINE semaphore
+    /// for cross-API (CUDA<->Vulkan) ping-pong sync. Caller owns both; retire the
+    /// semaphore via retireSemaphore and close the handle after import.
+    struct ExportableTimelineSemaphore
+    {
+        VkSemaphore semaphore{};
+        uint64_t    external_handle{0};
+    };
+
     class LUX_FUNCTION_PUBLIC RenderContextView
     {
     public:
@@ -106,6 +130,36 @@ namespace lux::render
         void retireImage(VkImage image, VmaAllocation allocation);
         void retireImageView(VkImageView view);
         void retireSampler(VkSampler sampler);
+
+        // ── External-memory interop (CUDA<->Vulkan zero-copy) ───────────
+        // Domain-neutral seam: a feature can allocate an EXPORTABLE buffer + the two
+        // TIMELINE semaphores that synchronise an external producer (e.g. a CUDA
+        // writer) with the engine's reads, then hand the exported handles out of
+        // process-or-thread via its own (downstream) query op. The engine knows
+        // nothing of what the buffer holds.
+        [[nodiscard]] bool     supportsExternalMemory() noexcept;
+        /// Copies VK_UUID_SIZE (16) bytes into out[16] so an external API matches its device.
+        void                   deviceUUID(uint8_t out[16]) noexcept;
+        /// Forwards to PhysicalDevice::findMemoryTypeIndex; UINT32_MAX on miss.
+        [[nodiscard]] uint32_t findMemoryTypeIndex(uint32_t type_filter, uint32_t property_flags) noexcept;
+
+        /// Dedicated, VMA-BYPASSING exportable storage buffer. @p usage_flags is OR'd
+        /// with STORAGE_BUFFER|TRANSFER_DST (pass a VkBufferUsageFlags as uint32_t to
+        /// keep this header vulkan.h-free; 0 for storage-only). Null result on
+        /// unsupported / failure. See ExportableBuffer for ownership.
+        [[nodiscard]] ExportableBuffer createExportableBuffer(uint64_t size, uint32_t usage_flags);
+
+        /// Exportable TIMELINE semaphore (initial value 0). Pair TWO of these for the
+        /// producer/consumer ping-pong: the external producer signals one when its
+        /// write is done (the engine waits on it via addExternalGraphicsWait before
+        /// reading), and the engine signals the other when its read is done (the
+        /// producer waits on it before reusing the buffer). Strictly monotonic values.
+        [[nodiscard]] ExportableTimelineSemaphore createExportableTimelineSemaphore();
+
+        /// Retire raw (non-VMA) interop handles (FIF-safe deferred destroy), for the
+        /// VkDeviceMemory / VkSemaphore returned by the two creators above.
+        void retireDeviceMemory(VkDeviceMemory memory);
+        void retireSemaphore(VkSemaphore semaphore);
 
     private:
         RenderContext* ctx_;   // the subject this facade forwards to (never null)

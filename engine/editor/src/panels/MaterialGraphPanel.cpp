@@ -710,7 +710,7 @@ namespace lux::editor
     {
         preview_ = preview;
         if (!preview_) return;
-        preview_element_.setView(preview_->sceneId(), preview_->view().id);
+        preview_element_.setView(preview_->sceneId(), preview_->view().index);
         preview_element_.setOrbitCallback(
             [p = preview_](float dy, float dp, float dz){ p->orbit(dy, dp, dz); });
         preview_element_.setResizeCallback(

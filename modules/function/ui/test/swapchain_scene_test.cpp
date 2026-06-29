@@ -337,7 +337,7 @@ int main()
         const auto scene = server->createScene(
             "SwapchainTestScene",
             std::span<const GeneralRenderServer::FeatureInitParam>{&grid_init, 1});
-        ctrl.initial_scene_id.store(static_cast<uint32_t>(scene.scene_id),
+        ctrl.initial_scene_id.store(scene.scene_id.index,
                                     std::memory_order_release);
 
         ctrl.server_running.store(true, std::memory_order_release);
@@ -355,9 +355,9 @@ int main()
                 auto vh = server->setSwapchainScene(RenderSceneId{sc_sid});
                 bool ok = vh.valid();
                 std::printf("  [render] setSwapchainScene(%u) → %s (view=%u)\n",
-                    sc_sid, ok ? "OK" : "FAIL", vh.id);
+                    sc_sid, ok ? "OK" : "FAIL", vh.index);
                 ctrl.has_sc_scene.store(ok, std::memory_order_release);
-                ctrl.sc_view_id.store(vh.id, std::memory_order_release);
+                ctrl.sc_view_id.store(vh.index, std::memory_order_release);
             }
 
             if (ctrl.cmd_clear_sc_scene.exchange(false, std::memory_order_acquire))
@@ -395,7 +395,7 @@ int main()
     const auto scene_id = RenderSceneId{ ctrl.initial_scene_id.load(
         std::memory_order_acquire) };
     std::printf("  Scene ready (id=%u, Grid pre-attached)\n",
-                static_cast<uint32_t>(scene_id));
+                scene_id.index);
 
     // Activate the scene for rendering. UIRenderServer's createScene
     // does not auto-activate (the scene-graph rendering decision lives
@@ -421,7 +421,7 @@ int main()
 
     // ── 7. Activate swapchain scene ──────────────────────────────────
     std::printf("  Activating swapchain scene...\n");
-    ctrl.cmd_set_sc_scene.store(static_cast<uint32_t>(scene_id),
+    ctrl.cmd_set_sc_scene.store(scene_id.index,
         std::memory_order_release);
 
     // Pump frames until the render thread picks it up
@@ -546,10 +546,10 @@ int main()
                 }
                 else
                 {
-                    ctrl.cmd_set_sc_scene.store(static_cast<uint32_t>(scene_id),
+                    ctrl.cmd_set_sc_scene.store(scene_id.index,
                         std::memory_order_release);
                     std::printf("  [main] requesting setSwapchainScene(%u)\n",
-                        static_cast<uint32_t>(scene_id));
+                        scene_id.index);
                 }
             }
             key_s_was_down = key_s;

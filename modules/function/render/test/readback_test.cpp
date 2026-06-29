@@ -127,12 +127,12 @@ int main()
 
     session.beginFrame({});
     const auto scene = await(session, window, session.createScene("ReadbackTest"));
-    std::cout << "[3] scene created id=" << static_cast<uint32_t>(scene.scene_id) << "\n";
+    std::cout << "[3] scene created id=" << scene.scene_id.index << "\n";
     await(session, window, session.setActiveScene(scene.scene_id, true));
     std::cout << "[4] scene activated\n";
     const auto view = await(session, window,
                             session.addView(scene.scene_id, {W, H}, "ReadbackView"));
-    std::cout << "[5] view added id=" << view.view.id << "\n";
+    std::cout << "[5] view added id=" << view.view.index << "\n";
 
     // Render several frames (BLOCKING submit — see await() — so the begin/submit
     // state machine never desyncs) so the offscreen color image is cleared and

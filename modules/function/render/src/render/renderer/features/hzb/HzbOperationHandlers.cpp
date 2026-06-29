@@ -10,7 +10,7 @@
 
 namespace lux::render
 {
-    static uint32_t hzbCreateFn(void* scene_ptr, const void* /*param*/, size_t /*sz*/)
+    static FeatureHandle hzbCreateFn(void* scene_ptr, const void* /*param*/, size_t /*sz*/)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
         // Extent 0 → inert until Stage C wires the swapchain size.

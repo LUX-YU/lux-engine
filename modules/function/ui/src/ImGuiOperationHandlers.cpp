@@ -32,7 +32,7 @@ namespace lux::ui
     }
 
     // ── FeatureFactory callbacks ─────────────────────────────────────────
-    static uint32_t imguiCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static lux::render::FeatureHandle imguiCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<lux::render::RenderScene*>(scene_ptr);
 

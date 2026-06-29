@@ -108,6 +108,20 @@ namespace lux::render
     //  Frame-in-flight budget
     // =========================================================================
 
+    // Hard upper bound on frames-in-flight (FIF). The configured FIF is validated
+    // to lie in [1, kMaxFramesInFlight] at RenderContext construction (and, early,
+    // at RenderServer::init) — no path may exceed it.
+    //
+    // Two per-frame ring-indexing schemes coexist; BOTH are correct under this cap,
+    // and each ring must stay on its own modulus:
+    //   • Staging / transfer rings are sized to the *configured* FIF and indexed by
+    //     FrameStamp::slotIndex() == serial % fif.
+    //   • GPU resource rings (skinning / shadow / instance / …) are fixed at this
+    //     constant and indexed by serial % kMaxFramesInFlight. Reuse of slot S%k at
+    //     frame S+k waits on frame S, which (with fif <= k) has finished by S+fif <=
+    //     S+k — so a fixed k-slot ring never collides for any fif <= k.
+    // Do NOT index a k-sized array by serial % fif, nor a fif-sized ring by
+    // serial % k (the latter is a no-op clamp only while fif <= k).
     inline constexpr uint32_t kMaxFramesInFlight = 3;
 
     // =========================================================================

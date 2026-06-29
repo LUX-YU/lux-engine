@@ -535,7 +535,7 @@ namespace lux::render
                 if (rec.view)
                 {
                     auto* cam = renderScene().sceneRegistry().find<ViewCameraResource>();
-                    const ViewFrameData* cam_fd = cam ? cam->find(rec.view->handle) : nullptr;
+                    const ViewFrameData* cam_fd = cam ? cam->find(rec.view->handle.index) : nullptr;
                     ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
                     const auto& cv = vfd.camera_view;
                     std::memcpy(params.view, cv.view.data(), sizeof(params.view));

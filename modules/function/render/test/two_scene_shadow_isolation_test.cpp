@@ -420,7 +420,7 @@ int main()
     // ── Scene A alone (light pointing one way) ──────────────────────────
     const SceneBundle A = buildScene(s, w, "SceneA", W, H,
                                      Eigen::Vector3f(-1.0f, -1.2f, -0.35f));
-    std::cout << "[3] scene A built (id=" << static_cast<uint32_t>(A.scene_id) << ")\n";
+    std::cout << "[3] scene A built (id=" << A.scene_id.index << ")\n";
     warmUp({A}, 12);
     std::vector<std::uint8_t> bufA0;
     const auto rb0 = readback(A, bufA0);
@@ -430,7 +430,7 @@ int main()
     // ── Scene B with the OPPOSITE light direction ───────────────────────
     const SceneBundle B = buildScene(s, w, "SceneB", W, H,
                                      Eigen::Vector3f(+1.0f, -1.2f, +0.35f));
-    std::cout << "[5] scene B built (id=" << static_cast<uint32_t>(B.scene_id) << ")\n";
+    std::cout << "[5] scene B built (id=" << B.scene_id.index << ")\n";
     warmUp({A, B}, 12);            // both scenes render each tick now
     std::vector<std::uint8_t> bufA1;
     const auto rb1 = readback(A, bufA1);

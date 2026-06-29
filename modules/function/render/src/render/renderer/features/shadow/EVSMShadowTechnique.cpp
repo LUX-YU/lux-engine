@@ -118,7 +118,7 @@ namespace lux::render
 
         auto blur_kernel = [page_res, shadow_res_ptr, scene_ptr](const PassRecordContext& pctx) {
             if (pctx.pipeline_layout == VK_NULL_HANDLE) return;
-            const uint32_t view_handle = (pctx.view != nullptr) ? pctx.view->handle : 0u;
+            const uint32_t view_handle = (pctx.view != nullptr) ? pctx.view->handle.index : 0u;
             const uint32_t scene_key   = scene_ptr->sceneGlobalSlot().index;
             // Pin the slice list for the whole loop: the frame thread may swap the
             // cache entry concurrently; the shared_ptr keeps our slices alive.

@@ -34,7 +34,7 @@ namespace lux::render
         {
             auto* sc = lookupScene(ctx.user_state, p.scene);
             if (!sc) return;
-            auto* f = sc->getFeature(p.feature.id);
+            auto* f = sc->getFeature(p.feature);
             if (!f) return;
             auto blob = resolveBlob(ctx.program, p.params);
             const auto verdict = f->applyParams(blob.data(), blob.size());

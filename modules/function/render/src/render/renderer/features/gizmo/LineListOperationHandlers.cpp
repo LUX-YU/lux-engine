@@ -59,7 +59,7 @@ namespace
     //  LineListTransient factory
     // =====================================================================
 
-    static uint32_t lineListTransientCreateFn(void* scene_ptr,
+    static FeatureHandle lineListTransientCreateFn(void* scene_ptr,
                                               const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);

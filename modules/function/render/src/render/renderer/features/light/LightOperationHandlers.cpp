@@ -103,7 +103,7 @@ namespace lux::render
     } // namespace
 
     // ── Uniform factory interface ────────────────────────────────────────────
-    static uint32_t lightCreateFn(void* scene_ptr, const void* /*param*/, size_t /*sz*/)
+    static FeatureHandle lightCreateFn(void* scene_ptr, const void* /*param*/, size_t /*sz*/)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
         LightFeature::Config cfg{};   // LightFeature has no per-scene comm config
@@ -120,11 +120,21 @@ namespace lux::render
         ServerOp<DestroyLightOp, &handleDestroyLight>,
         ServerOp<LightBatchOp,   &handleLightBatch>>;
 
+    // Stable type identity + descriptor (阶段 3). Light is a data-only feature
+    // (owns the per-scene light SSBO; no graph passes, no per-view state) and has
+    // no dependencies — a foundational type other features (ShadowMap) depend on.
+    static constexpr FeatureDescriptor kLightDescriptor{
+        .type = featureId("lux.render.light.v1"),
+        .name = "Light",
+    };
+
     const FeatureFactory kLightFeatureFactory{
         &lightCreateFn,
         &LightOps::registerAll,
         &LightOps::unregisterAll,
         "Light",
+        -1,
+        kLightDescriptor,
     };
 
     // ── Client-side proxy (typed-op send-routing: send/sendWithReply/sendBulk

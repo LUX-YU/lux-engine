@@ -124,4 +124,40 @@ namespace lux::render
         ctx_->deferredDestroyQueue().retireSampler(sampler);
     }
 
+    // ── External-memory interop (forward to the subject) ─────────────────
+    bool RenderContextView::supportsExternalMemory() noexcept
+    {
+        return ctx_->supportsExternalMemory();
+    }
+
+    void RenderContextView::deviceUUID(uint8_t out[16]) noexcept
+    {
+        ctx_->deviceUUID(out);
+    }
+
+    uint32_t RenderContextView::findMemoryTypeIndex(uint32_t type_filter, uint32_t property_flags) noexcept
+    {
+        return ctx_->findMemoryTypeIndex(type_filter, property_flags);
+    }
+
+    ExportableBuffer RenderContextView::createExportableBuffer(uint64_t size, uint32_t usage_flags)
+    {
+        return ctx_->createExportableBuffer(size, usage_flags);
+    }
+
+    ExportableTimelineSemaphore RenderContextView::createExportableTimelineSemaphore()
+    {
+        return ctx_->createExportableTimelineSemaphore();
+    }
+
+    void RenderContextView::retireDeviceMemory(VkDeviceMemory memory)
+    {
+        ctx_->deferredDestroyQueue().retireDeviceMemory(memory);
+    }
+
+    void RenderContextView::retireSemaphore(VkSemaphore semaphore)
+    {
+        ctx_->deferredDestroyQueue().retireSemaphore(semaphore);
+    }
+
 } // namespace lux::render

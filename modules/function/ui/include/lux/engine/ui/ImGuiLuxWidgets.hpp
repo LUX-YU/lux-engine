@@ -45,9 +45,12 @@ namespace lux::ui
     {
         assert((view_id & 0x80000000u) == 0 &&
                "SceneView sentinel supports up to 31-bit view_id");
+        // scene_id is a generational SlotKey (index+gen); the ImTextureID sentinel
+        // has only 31 bits for it, so — as before the handle became generational —
+        // we pack the slot INDEX only. decodeSceneView reconstructs {index, gen=0}.
         return static_cast<ImTextureID>(
             kSceneViewSentinelBit
-            | (static_cast<ImU64>(static_cast<uint32_t>(scene_id)) << 31)
+            | (static_cast<ImU64>(scene_id.index) << 31)
             | (static_cast<ImU64>(view_id) & 0x7FFFFFFFu));
     }
 

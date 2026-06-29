@@ -51,8 +51,8 @@ namespace lux::render
         auto initial_views = std::move(config.initial_views);
         auto scene = std::make_unique<RenderScene>(ctx_, config);
         auto* scene_ptr = scene.get();
-        auto id = scenes_.insert(std::move(scene));
-        auto scene_id = static_cast<RenderSceneId>(id);
+        // SlotKeyAutoSparseSet::insert assigns a generational RenderSceneId.
+        auto scene_id = scenes_.insert(std::move(scene));
 
         AddSceneResult result{scene_id};
         result.view_handles.reserve(initial_views.size());
@@ -63,16 +63,32 @@ namespace lux::render
 
     void Renderer::removeScene(RenderSceneId scene_id)
     {
-        auto idx = static_cast<uint32_t>(scene_id);
-        if (scenes_.contains(idx))
+        if (!scenes_.contains(scene_id))
+            return;
+
+        // Defer teardown instead of stalling the whole device (the old waitIdle()
+        // blocked every other scene to destroy one). The scene leaves the live set
+        // immediately — its slot's generation bumps so the id can never alias a
+        // future scene, and it renders no more — and its GPU resources are reclaimed
+        // in endFrame() once all in-flight frames that could reference them have
+        // completed (see retired_scenes_ / collectRetiredScenes).
+        retired_scenes_.push_back({std::move(scenes_.at(scene_id)), current_stamp_.serial});
+        scenes_.erase(scene_id);
+    }
+
+    void Renderer::collectRetiredScenes(uint64_t frame_serial)
+    {
+        const uint64_t fif = ctx_->framesInFlight();
+        std::erase_if(retired_scenes_, [&](RetiredScene& r)
         {
-            // `waitIdle` is tolerant of `VK_ERROR_DEVICE_LOST` (the macro
-            // logs but does not assert) so teardown can run to completion
-            // even when an earlier frame faulted the GPU.
-            ctx_->deviceContext().logicalDevice().waitIdle();
-            scenes_.at(idx)->shutdownFull();
-            scenes_.erase(idx);
-        }
+            // frame_serial >= retire_serial always (retire happens during a frame
+            // whose endFrame runs with frame_serial == that frame). Reuse of the
+            // GPU work only completes fif frames after the last submission.
+            if (frame_serial - r.retire_serial < fif)
+                return false; // GPU may still reference this scene's resources
+            r.scene->shutdownFull();
+            return true;      // drop — the unique_ptr frees the scene
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -203,13 +219,29 @@ namespace lux::render
     {
         auto &gs = scene.graphState();
 
-        // Auto-recompile if graph is invalid (and not suppressed).
-        if (!gs.valid && !scene.isGraphRecompileSuppressed())
+        // The compiled graph template is only valid for the exact layout it was
+        // built from. Recompile when the graph is invalid OR when the layout we are
+        // about to render to differs from the one it was compiled for (last_layout)
+        // — otherwise a scene whose target layout changed (format / usage / slots,
+        // or a different target) would render with a graph that mismatches its
+        // binding. The requested `layout` is always complete at the render entry
+        // (offscreen e.layout / swapchain sb.layout), so prefer it over the stored
+        // one when recompiling.
+        //   NOTE: with one stable layout per scene (today's usage) layout_changed is
+        //   always false → a zero-cost safety net. Two *simultaneous* heterogeneous
+        //   layouts on one scene would recompile every frame (thrash) until the
+        //   per-key graph-template cache lands (阶段4); that case is broken today and
+        //   correct-but-slow after this change.
+        const bool layout_changed =
+            layout.hasSlot(TargetSlot::SceneColor) && !(layout == gs.last_layout);
+
+        // Auto-recompile if graph is invalid or the target layout changed (and not suppressed).
+        if ((!gs.valid || layout_changed) && !scene.isGraphRecompileSuppressed())
         {
-            if (gs.last_layout.hasSlot(TargetSlot::SceneColor))
-                scene.compileGraphTemplate(gs.last_layout);
-            else if (layout.hasSlot(TargetSlot::SceneColor))
+            if (layout.hasSlot(TargetSlot::SceneColor))
                 scene.compileGraphTemplate(layout);
+            else if (gs.last_layout.hasSlot(TargetSlot::SceneColor))
+                scene.compileGraphTemplate(gs.last_layout);
             else if (!gs.render_skip_warned)
             {
                 // No SceneColor target in either the stored or the active layout, so
@@ -267,6 +299,8 @@ namespace lux::render
                 if (svc) svc->onEndFrame(current_stamp_);
             }
         }
+
+        collectRetiredScenes(frame_serial);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -412,10 +446,10 @@ namespace lux::render
 
     RenderScene *Renderer::getScene(RenderSceneId id) noexcept
     {
-        auto idx = static_cast<uint32_t>(id);
-        if (!scenes_.contains(idx))
-            return nullptr;
-        return scenes_.at(idx).get();
+        // tryGet returns nullptr for a stale id (generation mismatch) as well as
+        // an unknown one — no separate validity check needed.
+        auto* slot = scenes_.tryGet(id);
+        return slot ? slot->get() : nullptr;
     }
 
 } // namespace lux::render

@@ -664,7 +664,7 @@ void ShadowMapFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
     const uint32_t scene_key = renderScene().sceneGlobalSlot().index;
     auto* cam = renderScene().sceneRegistry().find<ViewCameraResource>();
     renderScene().forEachActiveView([&](View& view) {
-        const ViewFrameData* cam_fd = cam ? cam->find(view.handle) : nullptr;
+        const ViewFrameData* cam_fd = cam ? cam->find(view.handle.index) : nullptr;
         ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
         PerViewShadowFingerprint new_fp;
         new_fp.view_proj = vfd.camera_view.view_proj;
@@ -672,7 +672,7 @@ void ShadowMapFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
         new_fp.light_config_hash = light_hash;
         new_fp.shadow_config_serial = shadow_config_serial_;
 
-        const auto* prev_fp = per_view_fingerprint_.find(view.handle);
+        const auto* prev_fp = per_view_fingerprint_.find(view.handle.index);
         if (prev_fp != nullptr
             && prev_fp->light_config_hash == new_fp.light_config_hash
             && prev_fp->shadow_config_serial == new_fp.shadow_config_serial
@@ -682,9 +682,9 @@ void ShadowMapFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
             // Fingerprint match — reuse last frame's slices by MOVE (prev_view_shadow_
             // is swapped+cleared next frame, so moving-out is safe) and skip the cache
             // re-snapshot (it already holds identical data). (P-4)
-            auto* prev_state = prev_view_shadow_.find(view.handle);
+            auto* prev_state = prev_view_shadow_.find(view.handle.index);
             if (prev_state != nullptr) {
-                per_view_shadow_.set(view.handle, std::move(*prev_state));
+                per_view_shadow_.set(view.handle.index, std::move(*prev_state));
                 return;
             }
         }
@@ -694,10 +694,10 @@ void ShadowMapFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
         PerViewShadowState state{};
         buildSlicesForView(view, light_res, state);
         shadow_res_->setCachedData(
-            scene_key, view.handle, state.slices,
+            scene_key, view.handle.index, state.slices,
             state.spot_shadow_slice_index, state.point_shadow_base_slice, state.config);
-        per_view_shadow_.set(view.handle, std::move(state));
-        per_view_fingerprint_.set(view.handle, new_fp);
+        per_view_shadow_.set(view.handle.index, std::move(state));
+        per_view_fingerprint_.set(view.handle.index, new_fp);
     });
 }
 
@@ -870,7 +870,7 @@ void ShadowMapFeature::addPasses(RGBuilder& builder)
             if (!shadow_res_)
                 return;
 
-            const uint32_t view_handle = (pctx.view != nullptr) ? pctx.view->handle : 0u;
+            const uint32_t view_handle = (pctx.view != nullptr) ? pctx.view->handle.index : 0u;
             const uint32_t scene_key   = renderScene().sceneGlobalSlot().index;
 
             // IMPORTANT: read from ShadowResources cache, NOT per_view_shadow_.
@@ -1206,7 +1206,7 @@ void ShadowMapFeature::buildSlicesForView(
     // Per-view 3D camera state now lives in ViewCameraResource (found-or-default
     // preserves the old behavior of reading a zero cached_frame_data when absent).
     auto* cam = renderScene().sceneRegistry().find<ViewCameraResource>();
-    const ViewFrameData* cam_fd = cam ? cam->find(view.handle) : nullptr;
+    const ViewFrameData* cam_fd = cam ? cam->find(view.handle.index) : nullptr;
     const ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
 
     const uint32_t map_capacity = (shadow_res_ != nullptr)

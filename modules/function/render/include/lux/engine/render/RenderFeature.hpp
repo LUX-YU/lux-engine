@@ -2,6 +2,9 @@
 #include <lux/engine/render/graph/RGForwardDecls.hpp>
 #include <lux/engine/render/RenderContextView.hpp>  // contextView() return type (narrow facade)
 #include <lux/engine/render/RenderSceneView.hpp>    // sceneView() return type (narrow facade)
+#include <lux/engine/render/core/FeatureHandle.hpp> // FeatureHandle (generational)
+#include <lux/engine/render/core/FeatureTypeId.hpp> // FeatureTypeId (stable type identity)
+#include <lux/engine/render/core/FeatureDescriptor.hpp> // FeatureDescriptor (type-level metadata)
 #include <lux/engine/function/visibility.h>
 
 #include <cstdint>
@@ -27,6 +30,26 @@ namespace lux::render
     struct FeatureFrameContext
     {
         uint32_t           frame_index{0};
+    };
+
+    // =========================================================================
+    // FeatureState — lifecycle state of an installed feature (阶段 3)
+    // =========================================================================
+    // Transitions are driven by RenderScene (install / setEnabled / remove); a
+    // feature never mutates its own state. The transient states (Attaching/
+    // Enabling/Disabling/Detaching) mark in-progress steps so a failed transactional
+    // install can roll back to a known point (slice 3c). Failed marks a feature whose
+    // attach failed — it is detached, never enabled.
+    enum class FeatureState : std::uint8_t
+    {
+        Constructed,  ///< object built, not yet attached to a scene
+        Attaching,    ///< initAndAttachTo in progress
+        Disabled,     ///< attached, not contributing this frame
+        Enabling,     ///< Disabled → Enabled in progress
+        Enabled,      ///< attached + contributing
+        Disabling,    ///< Enabled → Disabled in progress
+        Detaching,    ///< being removed from the scene
+        Failed,       ///< attach failed; awaiting detach
     };
 
     // =========================================================================
@@ -95,9 +118,14 @@ namespace lux::render
         // --- Per-view GPU state ---
 
         /// Allocate GPU resources for a newly created view.
-        virtual void allocateViewState(uint32_t /*view*/, RenderScene& /*scene*/) {}
+        /// Return false on failure: RenderScene then records NO per-view state for
+        /// this (feature, view) pair and will not call deallocateViewState() for
+        /// it. Default: nothing to allocate, always succeeds.
+        virtual bool allocateViewState(uint32_t /*view*/, RenderScene& /*scene*/) { return true; }
 
-        /// Release GPU resources when a view is destroyed.
+        /// Release GPU resources for a view. Called exactly once per successful
+        /// allocateViewState() — on view removal OR when the feature itself is
+        /// removed from the scene. Must not throw.
         virtual void deallocateViewState(uint32_t /*view*/) {}
 
         /**
@@ -183,8 +211,20 @@ namespace lux::render
 
         // --- Feature ID (assigned by RenderScene during registration) ------
 
-        [[nodiscard]] uint32_t featureId() const noexcept { return feature_id_; }
+        [[nodiscard]] FeatureHandle featureId() const noexcept { return feature_id_; }
         [[nodiscard]] uint32_t extractorTypeId() const noexcept { return extractor_type_id_; }
+
+        /// Stable type identity (== descriptor().type), set by RenderScene at
+        /// add-time from the FeatureFactory descriptor. kInvalidFeatureTypeId for
+        /// features whose factory declared none — they skip dependency/conflict checks.
+        [[nodiscard]] FeatureTypeId typeId() const noexcept { return descriptor_.type; }
+
+        /// Static type-level metadata (deps / conflicts / capability flags), copied
+        /// from the FeatureFactory at add-time. Default-empty if none was declared.
+        [[nodiscard]] const FeatureDescriptor& descriptor() const noexcept { return descriptor_; }
+
+        /// Current lifecycle state (managed by RenderScene; see FeatureState).
+        [[nodiscard]] FeatureState featureState() const noexcept { return lifecycle_state_; }
 
     protected:
         RenderFeature() = default;
@@ -195,8 +235,10 @@ namespace lux::render
         RenderScene*                    scene_{nullptr};
 
         friend class RenderScene;
-        uint32_t feature_id_{UINT32_MAX};
+        FeatureHandle feature_id_{};
         uint32_t extractor_type_id_{0};
+        FeatureDescriptor descriptor_{};                       ///< type-level metadata (阶段 3)
+        FeatureState lifecycle_state_{FeatureState::Constructed};
     };
 
 } // namespace lux::render

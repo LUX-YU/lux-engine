@@ -19,6 +19,11 @@ namespace lux::render
     class DescriptorService;
     class PipelineLayoutService;
 
+    // Return structs for the external-memory interop helpers (defined in the public
+    // RenderContextView.hpp; forward-declared here so this header stays facade-free).
+    struct ExportableBuffer;
+    struct ExportableTimelineSemaphore;
+
     struct SyncManifestSummary
     {
         uint32_t resource_types{0};
@@ -96,6 +101,15 @@ namespace lux::render
 
         [[nodiscard]] FrameRetireScheduler&
         retireScheduler() noexcept { return retire_scheduler_; }
+
+        // ── External-memory interop backing (impl in RenderContext.cpp) ──
+        // Domain-neutral: dedicated, VMA-bypassing exportable allocations for
+        // CUDA<->Vulkan zero-copy. Surfaced to features via RenderContextView.
+        [[nodiscard]] bool        supportsExternalMemory() const noexcept;
+        void                      deviceUUID(uint8_t out[16]) const noexcept;
+        [[nodiscard]] uint32_t    findMemoryTypeIndex(uint32_t type_filter, uint32_t property_flags) const noexcept;
+        ExportableBuffer            createExportableBuffer(uint64_t size, uint32_t usage_flags);
+        ExportableTimelineSemaphore createExportableTimelineSemaphore();
 
     private:
         ResourceContext&                            resource_ctx_;

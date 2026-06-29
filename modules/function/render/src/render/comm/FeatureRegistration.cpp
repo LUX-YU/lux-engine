@@ -13,7 +13,7 @@ namespace lux::render::detail
         return static_cast<RenderScene*>(scene)->renderObjectExtractor();
     }
 
-    uint32_t installFeatureErased(
+    FeatureHandle installFeatureErased(
         void*                          scene,
         std::unique_ptr<RenderFeature> feature,
         uint32_t                       extractor_type_id)

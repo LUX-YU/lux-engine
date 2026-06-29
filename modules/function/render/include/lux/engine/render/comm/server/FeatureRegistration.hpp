@@ -43,8 +43,8 @@ namespace lux::render
         [[nodiscard]] LUX_FUNCTION_PUBLIC RenderObjectExtractor& sceneObjectExtractor(void* scene) noexcept;
 
         /// Install an already-constructed feature into the (type-erased) scene.
-        /// Forwards to RenderScene::addFeatureErased. Returns the feature id.
-        LUX_FUNCTION_PUBLIC uint32_t installFeatureErased(
+        /// Forwards to RenderScene::addFeatureErased. Returns the generational handle.
+        LUX_FUNCTION_PUBLIC FeatureHandle installFeatureErased(
             void*                          scene,
             std::unique_ptr<RenderFeature> feature,
             uint32_t                       extractor_type_id);
@@ -59,7 +59,7 @@ namespace lux::render
      * Any @p args are forwarded to T's constructor.
      */
     template <typename T, typename... Args>
-    uint32_t addFeature(void* scene, Args&&... args)
+    FeatureHandle addFeature(void* scene, Args&&... args)
     {
         static_assert(std::is_base_of_v<RenderFeature, T>,
                       "addFeature<T>: T must derive from lux::render::RenderFeature");

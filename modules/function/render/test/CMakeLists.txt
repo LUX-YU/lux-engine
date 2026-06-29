@@ -389,3 +389,105 @@ target_include_directories(
     ${RENDER_PINCLUDE_DIR}
     ${SHADER_CONFIG_OUT_PATH}
 )
+
+# feature_view_lifecycle_test — asserts the feature/view lifecycle matrix (PR-1),
+# the FeatureState enable/disable view-state management (3b), and dependency
+# hard-reject (3c), via a test CountingFeature driven through the server+session.
+add_executable(
+	feature_view_lifecycle_test
+	feature_view_lifecycle_test.cpp
+)
+
+target_link_libraries(
+	feature_view_lifecycle_test
+	PRIVATE
+	render
+	lux::engine::platform::window
+)
+
+target_include_directories(
+	feature_view_lifecycle_test
+	PRIVATE
+	${RENDER_PINCLUDE_DIR}
+	${SHADER_CONFIG_OUT_PATH}
+)
+
+# exportable_memory_test — asserts the domain-neutral CUDA<->Vulkan external-memory
+# seam (createExportableBuffer / createExportableTimelineSemaphore + raw-handle
+# retire) via a neutral ExportProbeFeature. No CUDA, no downstream/Gaussian code.
+add_executable(
+	exportable_memory_test
+	exportable_memory_test.cpp
+)
+
+target_link_libraries(
+	exportable_memory_test
+	PRIVATE
+	render
+	lux::engine::platform::window
+)
+
+target_include_directories(
+	exportable_memory_test
+	PRIVATE
+	${RENDER_PINCLUDE_DIR}
+	${SHADER_CONFIG_OUT_PATH}
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  CTest registration (render 重构阶段 0 — 测试基线)
+#
+#  Three capability labels so CI can select by what a runner actually provides:
+#    cpu          — device-free; self-checking via process exit code. Safe on
+#                   any runner (some still LINK platform::window for a test
+#                   helper, but create no Vulkan device at run time).
+#    gpu          — headless Vulkan; self-checking; terminate on their own.
+#                   Need a GPU runner (or a software ICD: Lavapipe / SwiftShader).
+#    interactive  — open a window and loop until closed (while(!shouldClose())).
+#                   NOT for unattended CI; the TIMEOUT below turns an accidental
+#                   headless run into a fail-fast instead of a hang.
+#
+#  Typical CI:  ctest -L cpu             # no GPU needed
+#               ctest -LE interactive    # GPU runner: cpu + gpu, skip windowed
+#
+#  Follow-up (tracked in .internal/UNFINISHED-WORK.md): give the interactive
+#  tests a headless/frame-capped self-exit mode so they can join the `gpu` tier;
+#  optionally split CPU-only tests off imgui/window so a `cpu` build needs no
+#  graphics deps. Out of scope for the baseline PR.
+# ─────────────────────────────────────────────────────────────────────────────
+
+function(lux_render_add_test target)
+    cmake_parse_arguments(ARG "" "LABEL;TIMEOUT" "" ${ARGN})
+    if(NOT ARG_TIMEOUT)
+        set(ARG_TIMEOUT 120)
+    endif()
+    add_test(NAME ${target} COMMAND ${target})
+    set_tests_properties(${target} PROPERTIES
+        LABELS   "${ARG_LABEL}"
+        TIMEOUT  ${ARG_TIMEOUT})
+endfunction()
+
+# CPU-only (device-free) — always CI-safe
+lux_render_add_test(spatial_cull_grid_test          LABEL cpu)
+lux_render_add_test(ping_pong_test                  LABEL cpu)
+lux_render_add_test(ping_pong_rg_test               LABEL cpu)
+lux_render_add_test(render_graph_loadop_policy_test LABEL cpu)
+lux_render_add_test(render_graph_qfot_guard_test    LABEL cpu)
+lux_render_add_test(submission_merge_test           LABEL cpu)
+lux_render_add_test(shadow_slice_math_test          LABEL cpu)
+lux_render_add_test(graph_bucket_render_state_test  LABEL cpu)
+
+# Headless Vulkan, self-checking, self-terminating — need a GPU runner
+lux_render_add_test(descriptor_arena_growth_test    LABEL gpu)
+lux_render_add_test(shader_dedup_test               LABEL gpu)
+lux_render_add_test(readback_test                   LABEL gpu)
+lux_render_add_test(feature_view_lifecycle_test      LABEL gpu)
+lux_render_add_test(exportable_memory_test          LABEL gpu)
+lux_render_add_test(hzb_pyramid_test                LABEL gpu TIMEOUT 300)
+lux_render_add_test(spatial_cull_grid_stress_test   LABEL gpu TIMEOUT 300)
+
+# Interactive (open a window, loop until closed) — NOT for unattended CI
+lux_render_add_test(point_cloud_stress_test         LABEL interactive)
+lux_render_add_test(point_cloud_transient_test      LABEL interactive)
+lux_render_add_test(trajectory_line_test            LABEL interactive)
+lux_render_add_test(gizmo_transient_test            LABEL interactive)

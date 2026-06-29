@@ -141,11 +141,34 @@ namespace lux::render
     //  Feature Management
     // ─────────────────────────────────────────────────────────────────────
 
-    uint32_t RenderScene::addFeatureImpl(
+    bool RenderScene::ensureFeatureViewState(RenderFeature& feature, uint32_t view_index)
+    {
+        // Keyed by the feature's index (generation validated at the features_
+        // lookup boundary; the matrix only tracks live (feature, view) pairs).
+        auto& owned = feature_view_states_[feature.featureId().index];
+        if (owned.contains(view_index))
+            return true;
+        if (!feature.allocateViewState(view_index, *this))
+            return false;
+        owned.insert(view_index);
+        return true;
+    }
+
+    void RenderScene::releaseFeatureViewState(RenderFeature& feature, uint32_t view_index) noexcept
+    {
+        auto it = feature_view_states_.find(feature.featureId().index);
+        if (it == feature_view_states_.end() || !it->second.contains(view_index))
+            return;
+        feature.deallocateViewState(view_index);
+        it->second.erase(view_index);
+    }
+
+    FeatureHandle RenderScene::addFeatureImpl(
         std::unique_ptr<RenderFeature> feature,
         uint32_t extractor_type_id)
     {
         feature->scene_ = this;
+        feature->lifecycle_state_ = FeatureState::Attaching;
         feature->initAndAttachTo(*this);
 
         auto *raw = feature.get();
@@ -158,9 +181,30 @@ namespace lux::render
             raw->configureMaterialPipelines(material_pipeline_);
         }
 
-        // Insert into SparseSet — auto-assigns the feature_id
-        size_t id = features_.insert(std::move(feature));
-        raw->feature_id_ = static_cast<uint32_t>(id);
+        // Insert into the slot map — auto-assigns a generational FeatureHandle.
+        // (unique_ptr move transfers ownership but not address, so `raw` stays valid.)
+        raw->feature_id_ = features_.insert(std::move(feature));
+
+        // Back-fill per-view state for views that ALREADY exist: a feature added
+        // to a live scene must observe current views, mirroring addView()'s
+        // allocate. Without this, a feature added after addView() never gets
+        // per-view state for those views. Best-effort for now (allocateViewState
+        // only fails for a feature that overrides it to do so; transactional
+        // rollback + Result return is deferred to the FeatureManager — see
+        // .internal/UNFINISHED-WORK.md §2.4).
+        if (initialized_ && raw->isEnabled())
+        {
+            rebuildActiveViewCacheIfNeeded();
+            for (auto* view : active_views_dense_)
+                ensureFeatureViewState(*raw, view->handle.index);
+        }
+
+        // Attach complete (initAndAttachTo cannot fail today — transactional Result
+        // + rollback to Failed lands in slice 3c). Land in the steady state matching
+        // the feature's enabled flag.
+        raw->lifecycle_state_ = raw->isEnabled() ? FeatureState::Enabled
+                                                 : FeatureState::Disabled;
+
         markFeatureCacheDirty();
         // Adding a feature changes the pass set; force graph recompile on next render.
         graph_state_.valid = false;
@@ -168,27 +212,57 @@ namespace lux::render
         return raw->feature_id_;
     }
 
-    uint32_t RenderScene::addFeatureErased(
+    FeatureHandle RenderScene::addFeatureErased(
         std::unique_ptr<RenderFeature> feature,
         uint32_t extractor_type_id)
     {
         return addFeatureImpl(std::move(feature), extractor_type_id);
     }
 
-    RenderFeature *RenderScene::getFeature(uint32_t feature_id) const
+    RenderFeature *RenderScene::getFeature(FeatureHandle feature_id) const
     {
-        if (!features_.contains(feature_id))
-            return nullptr;
-        return features_.at(feature_id).get();
+        // tryGet rejects a stale handle (generation mismatch) as well as unknown.
+        auto* slot = features_.tryGet(feature_id);
+        return slot ? slot->get() : nullptr;
     }
 
-    bool RenderScene::removeFeature(uint32_t feature_id)
+    void RenderScene::setFeatureDescriptor(FeatureHandle feature_id, const FeatureDescriptor& descriptor) noexcept
+    {
+        if (auto* f = getFeature(feature_id))
+            f->descriptor_ = descriptor;   // RenderScene is a friend of RenderFeature
+    }
+
+    bool RenderScene::hasFeatureOfType(FeatureTypeId type) const noexcept
+    {
+        if (type == kInvalidFeatureTypeId)
+            return false;
+        for (const auto& f : features_.values())
+            if (f && f->descriptor_.type == type)
+                return true;
+        return false;
+    }
+
+    bool RenderScene::removeFeature(FeatureHandle feature_id)
     {
         if (!features_.contains(feature_id))
             return false;
 
         auto &ptr = features_.at(feature_id);
+        ptr->lifecycle_state_ = FeatureState::Detaching;
         render_object_extractor_.unregisterProvider(ptr.get());
+
+        // Tear down per-view state this feature allocated BEFORE detaching it.
+        // removeView() only fires deallocateViewState() on view removal, never on
+        // feature removal — so without this a removed feature's per-view eviction
+        // hook never runs (leak; e.g. StandardViewCamera's ViewCameraResource
+        // entries). Snapshot the ids first: releaseFeatureViewState() mutates the set.
+        if (auto it = feature_view_states_.find(feature_id.index); it != feature_view_states_.end())
+        {
+            std::vector<uint32_t> owned_views(it->second.begin(), it->second.end());
+            for (uint32_t view_id : owned_views)
+                releaseFeatureViewState(*ptr, view_id);
+            feature_view_states_.erase(feature_id.index);
+        }
 
         ptr->onDetachFromScene(*this);
         // Erase (destroying the feature) while scene_ is still valid,
@@ -202,7 +276,7 @@ namespace lux::render
     void RenderScene::removeAllFeatures()
     {
         // Collect ids first since erase during iteration may invalidate
-        std::vector<uint32_t> ids;
+        std::vector<FeatureHandle> ids;
         ids.reserve(features_.size());
         for (auto &f : features_.values())
             if (f)
@@ -212,16 +286,53 @@ namespace lux::render
             removeFeature(id);
     }
 
-    void RenderScene::setFeatureEnabled(uint32_t feature_id, bool enabled)
+    void RenderScene::setFeatureEnabled(FeatureHandle feature_id, bool enabled)
     {
-        if (auto *f = getFeature(feature_id))
+        auto *f = getFeature(feature_id);
+        if (!f || f->isEnabled() == enabled)
+            return;
+
+        // Capability gate (阶段 3): a feature may declare it cannot be toggled at
+        // runtime. Default descriptor → supports_runtime_disable=true, so untyped
+        // features behave as before.
+        if (!enabled && !f->descriptor_.supports_runtime_disable)
         {
-            if (f->isEnabled() == enabled)
-                return;
-            f->setEnabled(enabled);
-            markFeatureCacheDirty();
-            graph_state_.valid = false; // trigger recompile next frame
+            std::cerr << "[RenderScene] setFeatureEnabled(false) rejected: feature '"
+                      << f->name() << "' declares supports_runtime_disable=false.\n";
+            return;
         }
+
+        // State machine + symmetric per-view-state management (closes PR-1's deferred
+        // enable/disable case). Per-view state is only touched for features that
+        // declare they own it (creates_view_state) — for everything else this is the
+        // old flag-flip, so no behaviour change.
+        if (enabled)
+        {
+            f->lifecycle_state_ = FeatureState::Enabling;
+            f->setEnabled(true);
+            if (f->descriptor_.creates_view_state)
+            {
+                rebuildActiveViewCacheIfNeeded();
+                for (auto* view : active_views_dense_)
+                    ensureFeatureViewState(*f, view->handle.index);
+            }
+            f->lifecycle_state_ = FeatureState::Enabled;
+        }
+        else
+        {
+            f->lifecycle_state_ = FeatureState::Disabling;
+            if (f->descriptor_.creates_view_state)
+            {
+                rebuildActiveViewCacheIfNeeded();
+                for (auto* view : active_views_dense_)
+                    releaseFeatureViewState(*f, view->handle.index);
+            }
+            f->setEnabled(false);
+            f->lifecycle_state_ = FeatureState::Disabled;
+        }
+
+        markFeatureCacheDirty();
+        graph_state_.valid = false; // trigger recompile next frame
     }
 
     void RenderScene::setFeatureEnabled(std::string_view feature_name, bool enabled)
@@ -261,7 +372,7 @@ namespace lux::render
             // so the packed enumerate stream never claims bytes it can't supply.
             const std::size_t size = (has_params && data) ? f->paramSize() : 0;
             descs.push_back(FeatureParamDesc{
-                f->featureId(),
+                f->featureId().index,
                 f->isEnabled(),
                 f->name(),
                 sn,
@@ -286,15 +397,14 @@ namespace lux::render
     // ─────────────────────────────────────────────────────────────────────
     //  View Management
     // ─────────────────────────────────────────────────────────────────────
-    uint32_t RenderScene::addView(const ViewCreateInfo &info)
+    ViewHandle RenderScene::addView(const ViewCreateInfo &info)
     {
         auto view = std::make_unique<View>();
         view->current_extent = info.initial_extent;
         view->debug_name     = info.debug_name ? info.debug_name : "View";
 
-        // AutoSparseSet::insert returns the assigned index
-        size_t id        = views_.insert(std::move(view));
-        uint32_t handle  = static_cast<uint32_t>(id);
+        // SlotKeyAutoSparseSet::insert assigns a generational ViewHandle.
+        ViewHandle handle = views_.insert(std::move(view));
         auto* new_view   = views_.at(handle).get();
         new_view->handle = handle;
         new_view->state  = ViewState::Active;
@@ -305,27 +415,33 @@ namespace lux::render
         markViewCacheDirty();
         rebuildEnabledFeatureCacheIfNeeded();
 
-        // call allocateViewState for each enabled feature
+        // Record per-view state for each enabled feature, via the truth source so
+        // removeView()/removeFeature() release it symmetrically.
         for (auto* feat : enabled_features_dense_)
-            feat->allocateViewState(handle, *this);
+            ensureFeatureViewState(*feat, handle.index);
 
         return handle;
     }
 
-    void RenderScene::removeView(uint32_t handle)
+    void RenderScene::removeView(ViewHandle handle)
     {
         if (!views_.contains(handle))
             return;
 
-        rebuildEnabledFeatureCacheIfNeeded();
-        for (auto *feat : enabled_features_dense_)
-            feat->deallocateViewState(handle);
+        // Release per-view state for EVERY feature that owns it — not just the
+        // currently-enabled set. A feature disabled after this view was created
+        // still holds state recorded at addView()/addFeature() time; iterating
+        // enabled-only here used to leak it. releaseFeatureViewState() is a no-op
+        // for a feature with no recorded state for this view.
+        for (auto &feat : features_.values())
+            if (feat)
+                releaseFeatureViewState(*feat, handle.index);
 
         // Only ShadowResources subscribes to view-destroy (per-view cache
         // eviction), and it is per-scene now (Plan A) — so the scene registry
         // notify reaches it. The old global-registry notify is a dead no-op
         // (no global frame service overrides onViewDestroyed) and is dropped.
-        scene_registry_.notifySceneViewDestroyed(scene_global_slot_.index, handle);
+        scene_registry_.notifySceneViewDestroyed(scene_global_slot_.index, handle.index);
 
         auto &view = *views_.at(handle);
         // Do NOT call destroyViewUBO here — the view's ViewBuffer slot may still be
@@ -337,20 +453,17 @@ namespace lux::render
         pending_destroys_.push_back({handle, 0});
     }
 
-    View *RenderScene::getView(uint32_t handle) noexcept
+    View *RenderScene::getView(ViewHandle handle) noexcept
     {
-        if (!views_.contains(handle))
-            return nullptr;
-        auto &ptr = views_.at(handle);
-        return ptr ? ptr.get() : nullptr;
+        // tryGet rejects a stale handle (generation mismatch) as well as unknown.
+        auto* ptr = views_.tryGet(handle);
+        return ptr ? ptr->get() : nullptr;
     }
 
-    const View *RenderScene::getView(uint32_t handle) const noexcept
+    const View *RenderScene::getView(ViewHandle handle) const noexcept
     {
-        if (!views_.contains(handle))
-            return nullptr;
-        auto &ptr = views_.at(handle);
-        return ptr ? ptr.get() : nullptr;
+        auto* ptr = views_.tryGet(handle);
+        return ptr ? ptr->get() : nullptr;
     }
 
     size_t RenderScene::activeViewCount() const noexcept
@@ -856,12 +969,15 @@ namespace lux::render
 
     void RenderScene::recordUploads(VkCommandBuffer cmd, const FrameStamp& stamp)
     {
+        // slotIndex() is already serial % fif, and the staging/transfer ring is
+        // sized to the configured fif — so it indexes directly. (The old extra
+        // "% kMaxFramesInFlight" was a redundant clamp: frame_slot < fif <= k made
+        // it the identity. fif <= k is enforced at RenderContext construction.)
         const uint32_t frame_slot = stamp.slotIndex();
-        const uint32_t staging_slot = frame_slot % kMaxFramesInFlight;
 
         // ── Transfer scheduler path ─────────────────────────────────────
-        transfer_scheduler_.resetFrame(staging_slot);
-        transfer_scheduler_.retireStaging(staging_slot);
+        transfer_scheduler_.resetFrame(frame_slot);
+        transfer_scheduler_.retireStaging(frame_slot);
 
         // (PointCloud / Trajectory transfer-contributor registration is performed
         // by the OWNING feature in initAndAttachTo now — like Light / mesh-stack —

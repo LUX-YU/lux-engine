@@ -96,7 +96,7 @@ namespace
     {
         auto* sc = lookupScene(ctx.user_state, p.scene_id);
         if (!sc) return;
-        if (auto* f = sc->getFeatureAs<IPointCloudFeature>(p.feature.id))
+        if (auto* f = sc->getFeatureAs<IPointCloudFeature>(p.feature))
             f->setPointSize(p.point_size);
     }
 
@@ -116,7 +116,7 @@ namespace
     //  PCFeatureSimple factory
     // =====================================================================
 
-    static uint32_t pcSimpleCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle pcSimpleCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 
@@ -144,7 +144,7 @@ namespace
     //  PCFeatureGPUDriven factory
     // =====================================================================
 
-    static uint32_t pcGPUDrivenCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle pcGPUDrivenCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 
@@ -172,7 +172,7 @@ namespace
     //  PCFeatureLOD factory
     // =====================================================================
 
-    static uint32_t pcLODCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle pcLODCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 
@@ -202,7 +202,7 @@ namespace
     //  PCFeatureSplatting factory
     // =====================================================================
 
-    static uint32_t pcSplattingCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle pcSplattingCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 
@@ -270,7 +270,7 @@ namespace
         ServerOp<ClearPointCloudChunkOp,   &handleClearPointCloudChunk>,
         ServerOp<SetPointCloudPointSizeOp, &handleSetPointCloudPointSize>>;
 
-    static uint32_t pcTransientCreateFn(void* scene_ptr,
+    static FeatureHandle pcTransientCreateFn(void* scene_ptr,
                                         const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);

@@ -14,7 +14,7 @@ namespace lux::render
 
     // ── Uniform factory interface ────────────────────────────────────────
 
-    static uint32_t meshShadowCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle meshShadowCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
         constexpr uint32_t kInvalidFeatureId = std::numeric_limits<uint32_t>::max();
@@ -23,11 +23,11 @@ namespace lux::render
         if (!validateMeshCommConfig("MeshShadowOperationHandlers", param, param_size,
                 kMeshShadowCommConfigVersion, kMeshShadowDescriptorLayoutVersion,
                 kMeshShadowExtFlagHZB | kMeshShadowExtFlagBindless, cc))
-            return kInvalidFeatureId;
+            return {};
 
         auto* shaders = sc->renderContext().globalRegistry().find<ShaderResources>();
         if (!shaders){
-            return kInvalidFeatureId;
+            return {};
         }
         // Fill null handles with embedded builtin shaders
         cc.shadow_cull_shader    = ensureBuiltinShader(shaders, cc.shadow_cull_shader,    EBuiltinShader::MESH_CULL_UNIFIED_COMP);
@@ -56,7 +56,7 @@ namespace lux::render
             || !has_deprecated_finalize
             || (cc.shadow_clear_shader.valid() && !has_shader(cc.shadow_clear_shader)))
         {
-            return kInvalidFeatureId;
+            return {};
         }
 
         MeshShadowFeature::Config cfg{};

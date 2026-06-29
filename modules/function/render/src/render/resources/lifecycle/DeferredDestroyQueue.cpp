@@ -108,6 +108,40 @@ void DeferredDestroyQueue::retireSampler(VkSampler sampler, uint64_t serial)
     enqueue(std::move(p));
 }
 
+void DeferredDestroyQueue::retireDeviceMemory(VkDeviceMemory memory)
+{
+    retireDeviceMemory(memory, current_serial_);
+}
+
+void DeferredDestroyQueue::retireDeviceMemory(VkDeviceMemory memory, uint64_t serial)
+{
+    if (memory == VK_NULL_HANDLE)
+        return;
+
+    PendingDestroy p{};
+    p.retire_serial = serial;
+    p.type = PendingType::DeviceMemory;
+    p.payload.device_memory = {memory};
+    enqueue(std::move(p));
+}
+
+void DeferredDestroyQueue::retireSemaphore(VkSemaphore semaphore)
+{
+    retireSemaphore(semaphore, current_serial_);
+}
+
+void DeferredDestroyQueue::retireSemaphore(VkSemaphore semaphore, uint64_t serial)
+{
+    if (semaphore == VK_NULL_HANDLE)
+        return;
+
+    PendingDestroy p{};
+    p.retire_serial = serial;
+    p.type = PendingType::Semaphore;
+    p.payload.semaphore = {semaphore};
+    enqueue(std::move(p));
+}
+
 void DeferredDestroyQueue::collect(uint64_t completed_serial)
 {
     // Drain the FIFO front-to-back. The oldest entry has the smallest serial
@@ -189,6 +223,12 @@ void DeferredDestroyQueue::destroy(PendingDestroy& p)
         break;
     case PendingType::Sampler:
         vkDestroySampler(device_, p.payload.sampler.sampler, nullptr);
+        break;
+    case PendingType::DeviceMemory:
+        vkFreeMemory(device_, p.payload.device_memory.memory, nullptr);
+        break;
+    case PendingType::Semaphore:
+        vkDestroySemaphore(device_, p.payload.semaphore.semaphore, nullptr);
         break;
     }
 }

@@ -22,7 +22,7 @@ namespace lux::render
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
             if (sc)
-                if (auto* f = sc->getFeatureAs<GridPassFeature>(p.feature.id))
+                if (auto* f = sc->getFeatureAs<GridPassFeature>(p.feature))
                     f->setGridParams({p.planeY, p.cellSize, p.linePx, p.fadeDist, p.holeRatio});
         }
 
@@ -30,7 +30,7 @@ namespace lux::render
 
     // ── Uniform factory interface ────────────────────────────────────────
 
-    static uint32_t gridCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle gridCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 

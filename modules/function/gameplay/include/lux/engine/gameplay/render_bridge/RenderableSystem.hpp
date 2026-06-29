@@ -35,13 +35,19 @@
 #include <lux/engine/gameplay/world/systems/AssetLoadFn.hpp>  // injected async-load hook
 #include <lux/engine/function/visibility.h>
 
-// Forward declarations only — no render headers leak into render_bridge's
-// public interface (keeps the render_bridge->render link PRIVATE).
+// RenderSceneId / ViewHandle are now lux::cxx::SlotKey<Tag> aliases (generational
+// handles), which cannot be forward-declared — so we include their header-only
+// type headers (same as the sibling RenderableBridgeContext.hpp). These pull no
+// render link symbols, so the render_bridge->render link stays PRIVATE; every
+// other render type below remains forward-declared only.
+#include <lux/engine/render/core/RenderSceneId.hpp>   // lux::render::RenderSceneId (SlotKey alias)
+#include <lux/engine/render/core/FeatureHandle.hpp>   // lux::render::ViewHandle (SlotKey alias)
+
+// Forward declarations for the remaining render types — no other render headers
+// leak into render_bridge's public interface.
 namespace lux::asset  { class AssetManager; }
 namespace lux::render {
     class RenderSession;
-    struct ViewHandle;
-    enum class RenderSceneId : std::uint32_t;
     struct SkinningOperationIds;   // feature-scoped skinning op-ids (by value below)
     struct MeshStackOperationIds;  // feature-scoped mesh-stack op-ids (by value below)
     struct MaterialOperationIds;   // feature-scoped material op-ids (by value below)

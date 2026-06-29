@@ -22,7 +22,7 @@ namespace lux::render
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
             if (sc)
-                if (auto* f = sc->getFeatureAs<SkyboxFeature>(p.feature.id))
+                if (auto* f = sc->getFeatureAs<SkyboxFeature>(p.feature))
                     f->applyEquirectangularHandle(p.texture);
         }
 
@@ -30,7 +30,7 @@ namespace lux::render
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
             if (sc)
-                if (auto* f = sc->getFeatureAs<SkyboxFeature>(p.feature.id))
+                if (auto* f = sc->getFeatureAs<SkyboxFeature>(p.feature))
                     f->applyCubemapHandles(p.cube);
         }
 
@@ -38,7 +38,7 @@ namespace lux::render
 
     // ── Uniform factory interface ────────────────────────────────────────
 
-    static uint32_t skyboxCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle skyboxCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 

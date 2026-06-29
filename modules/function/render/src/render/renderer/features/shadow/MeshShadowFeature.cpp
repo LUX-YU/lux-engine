@@ -418,7 +418,7 @@ namespace lux::render
         this->renderScene().forEachActiveView([&](const View& view)
         {
             if (slice_cache) return;
-            auto c = shadow_res->findViewCache(scene_key, view.handle);
+            auto c = shadow_res->findViewCache(scene_key, view.handle.index);
             if (c && !c->slices.empty())
                 slice_cache = std::move(c);
         });

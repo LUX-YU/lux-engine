@@ -35,15 +35,10 @@ namespace lux::window { class LuxWindow; }
 namespace lux::render
 {
     class OffscreenImagePool;
-    // ─────────────────────────────────────────────────────────────────────
-    //  Feature type registration bookkeeping
-    // ─────────────────────────────────────────────────────────────────────
-    struct FeatureTypeRecord
-    {
-        FeatureFactory factory{};
-        uint32_t       op_count{0};
-        TypeId         ops[16]{};
-    };
+    // FeatureTypeRecord + the feature-type registry moved down to the
+    // Renderer-owned FeatureRegistry (renderer/FeatureRegistry.hpp, 阶段 3), so
+    // dependency resolution can reach factories. The comm layer registers types
+    // INTO it (renderer_->featureRegistry()) and still binds their ops here.
 
     // ─────────────────────────────────────────────────────────────────────
     //  Handle conversion between cross-thread (R*Handle) and internal (*Handle)
@@ -56,8 +51,6 @@ namespace lux::render
     // ─────────────────────────────────────────────────────────────────────
     struct GeneralRenderServer::Impl
     {
-        using FeatureSet = lux::cxx::OffsetAutoSparseSet<uint32_t, FeatureTypeRecord, 1>;
-
         // Back-pointer to the owning server — set in constructor.
         // Allows anonymous-namespace handlers to call server public methods.
         GeneralRenderServer* server_{nullptr};
@@ -71,7 +64,7 @@ namespace lux::render
 
         // Dispatch
         Dispatcher                        dispatcher;
-        FeatureSet                        feature_types;
+        // Feature-type registry now lives in renderer_->featureRegistry() (阶段 3).
 
         // Surface + targets
         RenderSurface                     surface_;
@@ -83,7 +76,7 @@ namespace lux::render
         // Per-view state — stable scene/view handles; resolved on demand each tick.
         struct OffscreenViewEntry {
             RenderSceneId                      scene_id;
-            uint32_t                           view_id;
+            ViewHandle                         view_id;
             std::unique_ptr<OffscreenImagePool> pool;
             RenderTargetLayout                 layout;
         };
@@ -92,7 +85,7 @@ namespace lux::render
         // Swapchain binding — at most one scene/view bound to the swapchain.
         struct SwapchainBinding {
             RenderSceneId      scene_id{};
-            uint32_t           view_id{UINT32_MAX};
+            ViewHandle         view_id{};
             RenderTargetLayout layout;
         };
         std::optional<SwapchainBinding>   swapchain_binding_;
@@ -157,7 +150,7 @@ namespace lux::render
         struct PendingReadback
         {
             RenderSceneId   scene_id{};
-            uint32_t        view_id{0};
+            ViewHandle      view_id{};
             uint64_t        dst_ptr{0};
             uint64_t        dst_capacity{0};
             uint32_t        request_id{0};

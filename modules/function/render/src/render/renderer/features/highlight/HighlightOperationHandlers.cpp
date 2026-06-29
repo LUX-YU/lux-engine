@@ -6,7 +6,7 @@
 
 namespace lux::render
 {
-    static uint32_t highlightCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static FeatureHandle highlightCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
 

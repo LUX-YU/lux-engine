@@ -54,7 +54,7 @@ namespace lux::render
         explicit SkinningFeature(Config cfg = {});
 
         std::string_view name() const override { return "Skinning"; }
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
 
     private:

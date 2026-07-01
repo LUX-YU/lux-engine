@@ -53,7 +53,7 @@ namespace lux::render
         // =====================================================================
         //  RenderFeature lifecycle
         // =====================================================================
-        void initAndAttachTo(RenderScene &scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene &scene) override;
         void onDetachFromScene(RenderScene &scene) override;
         void addPasses(RGBuilder &builder) override;
 

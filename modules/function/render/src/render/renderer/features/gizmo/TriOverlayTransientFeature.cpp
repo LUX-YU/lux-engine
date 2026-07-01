@@ -74,8 +74,7 @@ TriOverlayTransientFeature::~TriOverlayTransientFeature()
 //  Initialisation
 // ============================================================================
 
-void TriOverlayTransientFeature::initAndAttachTo(RenderScene& /*scene*/)
-{
+lux::render::Expected<void> TriOverlayTransientFeature::initAndAttachTo(RenderScene& /*scene*/){
     // Self-contained feature: only the narrow RenderContextView / RenderSceneView
     // SDK surface — no engine-internal RenderContext / RenderScene / ShaderResources.
     auto cv = contextView();
@@ -104,7 +103,8 @@ void TriOverlayTransientFeature::initAndAttachTo(RenderScene& /*scene*/)
 
     // ---- Scene-registry bridge for the upload handler ----
     incoming_ = sceneView().sceneRegistry().ensure<TransientTriOverlayBuffer>();
-}
+    return {};
+    }
 
 // ============================================================================
 //  Frame lifecycle

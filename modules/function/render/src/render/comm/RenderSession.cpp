@@ -135,7 +135,8 @@ namespace lux::render
     }
 
     RenderRequest<ReadbackViewReply> RenderSession::readbackView(
-        RenderSceneId scene_id, ViewHandle view, void* dst, std::size_t dst_capacity)
+        RenderSceneId scene_id, ViewHandle view, void* dst, std::size_t dst_capacity,
+        TargetSlot slot)
     {
         auto [req, cb] = RenderRequestFactory<ReadbackViewReply>::make();
 
@@ -146,6 +147,7 @@ namespace lux::render
         // the request (syncCall), so handing it a raw pointer to fill is safe.
         p.dst_ptr      = reinterpret_cast<std::uint64_t>(dst);
         p.dst_capacity = static_cast<std::uint64_t>(dst_capacity);
+        p.slot         = static_cast<std::uint8_t>(slot);
 
         builder().pushWithReply(opcodes::CommandOp, type_ids::ReadbackView, p, std::move(cb));
         return req;
@@ -153,7 +155,7 @@ namespace lux::render
 
     RenderRequest<ReadbackViewReply> RenderSession::readbackViewAsync(
         RenderSceneId scene_id, ViewHandle view, void* dst, std::size_t dst_capacity,
-        std::uint32_t settle_frames)
+        std::uint32_t settle_frames, TargetSlot slot)
     {
         auto [req, cb] = RenderRequestFactory<ReadbackViewReply>::make();
 
@@ -167,6 +169,7 @@ namespace lux::render
         p.dst_ptr       = reinterpret_cast<std::uint64_t>(dst);
         p.dst_capacity  = static_cast<std::uint64_t>(dst_capacity);
         p.settle_frames = settle_frames;
+        p.slot          = static_cast<std::uint8_t>(slot);
 
         builder().pushWithReply(opcodes::CommandOp, type_ids::ReadbackViewAsync, p, std::move(cb));
         return req;

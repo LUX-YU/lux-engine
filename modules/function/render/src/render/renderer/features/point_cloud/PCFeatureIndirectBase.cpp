@@ -50,8 +50,7 @@ PCFeatureIndirectBase::PCFeatureIndirectBase(
 {
 }
 
-void PCFeatureIndirectBase::initAndAttachTo(RenderScene& /*scene*/)
-{
+lux::render::Expected<void> PCFeatureIndirectBase::initAndAttachTo(RenderScene& /*scene*/){
     auto& ctx = renderContext();
     vk_device_ = ctx.device();
     allocator_ = ctx.vmaAllocator();
@@ -101,7 +100,8 @@ void PCFeatureIndirectBase::initAndAttachTo(RenderScene& /*scene*/)
     }
     global_buf_ = &pc_res->globalBuffer();
     node_buf_   = &pc_res->nodeBuffer();
-}
+    return {};
+    }
 
 PCFeatureIndirectBase::~PCFeatureIndirectBase()
 {

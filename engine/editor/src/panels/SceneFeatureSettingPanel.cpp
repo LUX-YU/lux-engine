@@ -150,9 +150,9 @@ namespace lux::editor
 
         for (std::uint32_t i = 0; i < count; ++i)
         {
-            if (!avail(4u + 1u + 2u)) break;
+            if (!avail(8u + 1u + 2u)) break;   // id is now an 8-byte FeatureHandle (五-5)
             FeatureEntry e{};
-            std::memcpy(&e.id, p, 4); p += 4;
+            std::memcpy(&e.id, p, 8); p += 8;
             e.enabled = (*p++ != 0);
             std::uint16_t nl; std::memcpy(&nl, p, 2); p += 2;
             if (!avail(nl)) break;
@@ -222,7 +222,7 @@ namespace lux::editor
                 const FeatureEntry& e = features_[static_cast<std::size_t>(selected_feature_)];
                 if (!e.struct_name.empty() && !e.edit_bytes.empty())
                     lux::render::FeatureParamsProxy(*session_).setParams(
-                        scene_id_, lux::render::FeatureHandle{e.id},
+                        scene_id_, e.id,   // full handle (五-5)
                         registry_->paramSetOp(e.name),
                         e.edit_bytes.data(), e.edit_bytes.size());
             }

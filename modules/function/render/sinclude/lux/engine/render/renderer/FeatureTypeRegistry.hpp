@@ -43,10 +43,24 @@ namespace lux::render
         // Offset 1 so id 0 stays reserved as "none" (matches the prior comm registry).
         using Storage = lux::cxx::OffsetAutoSparseSet<std::uint32_t, FeatureTypeRecord, 1>;
 
+        static constexpr std::uint32_t kMaxOps = 16;  // FeatureTypeRecord::ops[] capacity
+
         /// Store a fully-built record (factory + ops already bound by the caller).
-        /// @return the dynamic feature_type_id.
+        /// Boundary-validated (五-2): REJECTS a record with no create_fn (addFeature
+        /// would crash) or a duplicate stable type id (two types sharing one stable id
+        /// make findByStableType / dependency resolution ambiguous) — returns 0 = "none";
+        /// and CLAMPS op_count to the ops[] capacity so a misbehaving register_ops_fn
+        /// can't drive an out-of-bounds copy downstream.
+        /// @return the dynamic feature_type_id, or 0 if rejected.
         [[nodiscard]] std::uint32_t add(FeatureTypeRecord record)
         {
+            if (record.factory.create_fn == nullptr)
+                return 0;
+            if (record.op_count > kMaxOps)
+                record.op_count = kMaxOps;
+            if (record.factory.descriptor.valid() &&
+                findByStableType(record.factory.descriptor.type) != nullptr)
+                return 0;
             return types_.insert(std::move(record));
         }
 

@@ -45,10 +45,10 @@ TonemapFeature::~TonemapFeature()
 //  Lifecycle
 // =========================================================================
 
-void TonemapFeature::initAndAttachTo(RenderScene& /*scene*/)
-{
+lux::render::Expected<void> TonemapFeature::initAndAttachTo(RenderScene& /*scene*/){
     init();
-}
+    return {};
+    }
 
 void TonemapFeature::onDetachFromScene(RenderScene& /*scene*/)
 {

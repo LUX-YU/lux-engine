@@ -73,7 +73,13 @@ namespace lux::render
             }
 
             Entry& entry = entries_.at(slot);
-            if (entry.expected_reply_type != record.type_id)
+            // P0-4: a generic dispatch-failure reply is routed to whatever request it
+            // names, REGARDLESS of that request's expected reply type — the request's
+            // callback recognises it and settles the request as failed (it does not
+            // memcpy the wrong-shaped failure payload). Everything else still requires
+            // an exact type match.
+            const bool is_failure = (record.type_id == kReplyCommandFailedTypeId);
+            if (!is_failure && entry.expected_reply_type != record.type_id)
             {
                 // Mis-routed reply: the type does not match what this request
                 // expects. Drop + log instead of memcpy-ing a wrong-shaped

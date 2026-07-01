@@ -108,7 +108,7 @@ namespace lux::editor
         /// One enumerated feature + its local edit buffer.
         struct FeatureEntry
         {
-            std::uint32_t            id{};
+            lux::render::FeatureHandle id{};   // full generational handle (五-5)
             bool                     enabled{false};
             std::string              name;          ///< display name
             std::string              struct_name;   ///< reflected param type, "" = no params

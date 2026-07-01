@@ -38,9 +38,11 @@ struct FrameRuntime
     VkExtent2D      present_extent = {};
 
     /// Swapchain binding for the current frame (filled by SwapchainFrameDriver).
-    /// Use as the compose destination.  layout == nullptr (swapchain has no RenderTargetLayout).
+    /// Use as the compose destination. The provider leaves binding.layout null; the
+    /// caller sets it per overlay phase before renderSingleView (阶段4 P4d) — hence
+    /// this is a MUTABLE handle to the per-frame binding, not a const view.
     /// Valid only within the runFrame() lambda — do NOT hold across frames.
-    const RenderTargetBinding* present_target = nullptr;
+    RenderTargetBinding* present_target = nullptr;
 
     bool            is_present_frame = false;
 

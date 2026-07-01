@@ -43,7 +43,8 @@ namespace lux::render
         destroyCommon();
     }
 
-    void HighlightFeature::initAndAttachTo(RenderScene& /*scene*/) { init(); }
+    lux::render::Expected<void> HighlightFeature::initAndAttachTo(RenderScene& /*scene*/){ init();     return {};
+    }
 
     void HighlightFeature::onDetachFromScene(RenderScene& /*scene*/)
     {

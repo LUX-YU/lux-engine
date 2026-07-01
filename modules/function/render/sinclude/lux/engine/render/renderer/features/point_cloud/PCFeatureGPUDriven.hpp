@@ -47,7 +47,7 @@ namespace lux::render
         }
 
         [[nodiscard]] std::string_view name() const override { return "PointCloudGPUDriven"; }
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         void addPasses(RGBuilder& builder) override;
 

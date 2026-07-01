@@ -121,6 +121,13 @@ namespace lux::editor
         //   the old bringUp for the rationale).
         lux::render::ShadowMapCommConfig    shmap_cfg{};
         shmap_cfg.enable_directional_csm = 1u;
+        // Spot/point shadow casters are culled past this camera distance to bound
+        // the shared shadow atlas. The 60 m default is far too small for editor
+        // scenes (lights routinely sit hundreds of units from the camera), which
+        // silently dropped EVERY non-directional shadow — only the sun (no
+        // distance cull) ever cast. 0 = no limit; Top-K + atlas budget still bound
+        // how many casters actually get slices. Tunable live via ShadowQualityParams.
+        shmap_cfg.non_directional_shadow_max_distance = 0.0f;
 
         lux::render::MeshShadowCommConfig   mshsw_cfg{};
         mshsw_cfg.comm_config_version       = lux::render::kMeshShadowCommConfigVersion;

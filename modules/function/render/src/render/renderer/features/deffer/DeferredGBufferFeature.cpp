@@ -51,9 +51,9 @@ namespace lux::render
     //  Lifecycle
     // =========================================================================
 
-    void DeferredGBufferFeature::initAndAttachTo(RenderScene & /*scene*/)
-    {
+    lux::render::Expected<void> DeferredGBufferFeature::initAndAttachTo(RenderScene & /*scene*/){
         init();
+        return {};
     }
 
     void DeferredGBufferFeature::onDetachFromScene(RenderScene & /*scene*/)

@@ -24,8 +24,7 @@ PCFeatureSimple::PCFeatureSimple(Config cfg)
 {
 }
 
-void PCFeatureSimple::initAndAttachTo(RenderScene& /*scene*/)
-{
+lux::render::Expected<void> PCFeatureSimple::initAndAttachTo(RenderScene& /*scene*/){
     // Self-contained feature: only the narrow RenderContextView / RenderSceneView
     // SDK surface — no engine-internal RenderContext / RenderScene / ShaderResources.
     auto cv = contextView();
@@ -65,7 +64,8 @@ void PCFeatureSimple::initAndAttachTo(RenderScene& /*scene*/)
         pc_res->setUseTransferScheduler(true);
     }
     global_buf_ = &pc_res->globalBuffer();
-}
+    return {};
+    }
 
 void PCFeatureSimple::extractRenderObjects(
     const RenderObjectExtractContext& ctx,

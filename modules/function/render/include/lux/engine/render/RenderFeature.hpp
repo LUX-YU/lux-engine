@@ -5,6 +5,7 @@
 #include <lux/engine/render/core/FeatureHandle.hpp> // FeatureHandle (generational)
 #include <lux/engine/render/core/FeatureTypeId.hpp> // FeatureTypeId (stable type identity)
 #include <lux/engine/render/core/FeatureDescriptor.hpp> // FeatureDescriptor (type-level metadata)
+#include <lux/engine/render/core/Errors.hpp>            // Expected<void> (attach result, 三-3)
 #include <lux/engine/function/visibility.h>
 
 #include <cstdint>
@@ -93,7 +94,9 @@ namespace lux::render
         /// the owning scene.  Called by RenderScene when the feature is
         /// first added (or when a deferred add arrives via FramePack).
         /// The scene/context accessors are valid inside this callback.
-        virtual void initAndAttachTo(RenderScene& /*scene*/) {}
+        /// Returns an error to ABORT the install (三-3): RenderScene::addFeatureImpl
+        /// drops the half-attached feature and the add fails. Default = success.
+        virtual Expected<void> initAndAttachTo(RenderScene& /*scene*/) { return {}; }
 
         /// Called when this feature is removed from a RenderScene.
         virtual void onDetachFromScene(RenderScene& /*scene*/) {}
@@ -161,9 +164,10 @@ namespace lux::render
         virtual void populateFrameContext(RGFrameContext& /*frame_ctx*/) {}
 
         // --- Runtime enable/disable -----------------------------------------
-
-        virtual void setEnabled(bool e) noexcept { enabled_ = e; }
-        [[nodiscard]] bool isEnabled() const noexcept  { return enabled_; }
+        // Single source of truth (三-1): enabled-ness DERIVES from the lifecycle state,
+        // which only RenderScene::setFeatureEnabled (the handle path) drives. There is
+        // no separate enabled_ flag that could diverge from it.
+        [[nodiscard]] bool isEnabled() const noexcept { return lifecycle_state_ == FeatureState::Enabled; }
 
         // --- Tunable parameters (feature-driven quality system) -------------
         //
@@ -228,7 +232,9 @@ namespace lux::render
 
     protected:
         RenderFeature() = default;
-        bool     enabled_{true};
+        // (No enabled_ flag — enabled-ness is lifecycle_state_ == Enabled; see isEnabled.
+        //  A feature is added Enabled by RenderScene::addFeatureImpl and toggled only by
+        //  RenderScene::setFeatureEnabled, which owns the FeatureState transitions. 三-1)
 
     private:
         Config                          cfg_;

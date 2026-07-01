@@ -35,8 +35,7 @@ PCFeatureLOD::PCFeatureLOD(Config cfg)
 {
 }
 
-void PCFeatureLOD::initAndAttachTo(RenderScene& scene)
-{
+lux::render::Expected<void> PCFeatureLOD::initAndAttachTo(RenderScene& scene){
     PCFeatureIndirectBase::initAndAttachTo(scene);
 
     auto& ctx = renderContext();
@@ -62,7 +61,8 @@ void PCFeatureLOD::initAndAttachTo(RenderScene& scene)
         infos,
         "PointCloudLODLayout").value();
     draw_handle_ = ctx.pipelineManager().registerGraphicsTemplate(tmpl, infos).value();
-}
+    return {};
+    }
 
 // ============================================================================
 //  RenderFeature — addPasses

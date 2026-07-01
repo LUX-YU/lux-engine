@@ -36,7 +36,7 @@ namespace lux::render
 
         explicit StandardViewCameraFeature(Config cfg = {});
 
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
         void deallocateViewState(uint32_t view) override;  ///< evict the destroyed view's camera entry
         void addPasses(RGBuilder& builder) override;   ///< no RG passes (resource owner)

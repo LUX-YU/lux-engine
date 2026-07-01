@@ -24,7 +24,11 @@ namespace lux::render
     class FrameClock
     {
     public:
-        explicit FrameClock(uint32_t fif) : frames_in_flight_(fif) {}
+        // Clamp to >= 1 (五-1): frames_in_flight is validated to [1, kMaxFramesInFlight]
+        // at the RenderContext ctor (the single authoritative gate), but a 0 here would
+        // make beginTick's `serial % frames_in_flight_` a division by zero, so guard the
+        // clock's own invariant defensively rather than trust every constructor caller.
+        explicit FrameClock(uint32_t fif) : frames_in_flight_(fif ? fif : 1u) {}
 
         /// Produce the stamp for the current tick and advance.
         FrameStamp beginTick(uint32_t image_index)

@@ -134,7 +134,7 @@ namespace lux::editor
             dl.direction      = Eigen::Vector3f(-0.5f, -1.f, -0.3f).normalized();
             dl.color          = Eigen::Vector3f(1.f, 0.95f, 0.8f);
             dl.intensity      = 1.5f;
-            dl.flags          = lux::render::LIGHT_FLAG_CAST_SHADOW;
+            dl.cast_shadow    = true;
             // Editor scene casts only the sun (no point/spot shadows), so all 4
             // atlas pages are free for the cascades: 4096 gives each cascade a full
             // 4096² page (~2× texel density vs 2048) → shadow detail stays sharp
@@ -315,7 +315,7 @@ namespace lux::editor
             dl.direction       = Eigen::Vector3f(-0.4f, -1.f, -0.35f).normalized();
             dl.color           = Eigen::Vector3f(0.9f, 0.92f, 1.0f);
             dl.intensity       = 1.1f;
-            dl.flags           = lux::render::LIGHT_FLAG_CAST_SHADOW;
+            dl.cast_shadow     = true;
             // Only shadow-caster in the big demo → all 4 atlas pages free for the
             // cascades, so a full 4096² per cascade (~2× texel density vs 2048).
             dl.shadow_map_size = 4096;
@@ -417,6 +417,7 @@ namespace lux::editor
                 pl.color     = col;
                 pl.intensity = 3.f;
                 pl.range     = 450.f;
+                pl.cast_shadow = false;   // sun is the only caster in this demo (keep all 4 atlas pages for the cascades)
                 reg.emplace<lux::gameplay::d3::PointLightComponent>(e, pl);
                 ++point_count;
             }
@@ -454,6 +455,7 @@ namespace lux::editor
                 sl.range     = 700.f;
                 sl.inner_cone_angle = 0.45f;
                 sl.outer_cone_angle = 0.70f;
+                sl.cast_shadow = false;   // sun is the only caster in this demo (keep all 4 atlas pages for the cascades)
                 reg.emplace<lux::gameplay::d3::SpotLightComponent>(e, sl);
                 ++spot_count;
             }

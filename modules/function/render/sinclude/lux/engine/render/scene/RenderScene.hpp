@@ -177,6 +177,25 @@ namespace lux::render
         /// lifecycle state machine's capability gating. No-op if the handle is stale.
         void setFeatureDescriptor(FeatureHandle feature_id, const FeatureDescriptor& descriptor) noexcept;
 
+        /// RAII bracket around a factory create_fn call: makes the feature it
+        /// constructs receive its type-level descriptor BEFORE initAndAttachTo, so the
+        /// feature can observe its own descriptor (deps / conflicts / capability flags)
+        /// during attach instead of only after. The comm install paths wrap create_fn
+        /// in one of these; addFeatureImpl applies the pending descriptor pre-attach.
+        /// Replaces the old "create then setFeatureDescriptor afterwards" two-step,
+        /// which left the descriptor invisible during attach. (三-2)
+        class FeatureInstallScope
+        {
+        public:
+            FeatureInstallScope(RenderScene& scene, const FeatureDescriptor& desc) noexcept
+                : scene_(scene) { scene_.pending_install_descriptor_ = &desc; }
+            ~FeatureInstallScope() { scene_.pending_install_descriptor_ = nullptr; }
+            FeatureInstallScope(const FeatureInstallScope&)            = delete;
+            FeatureInstallScope& operator=(const FeatureInstallScope&) = delete;
+        private:
+            RenderScene& scene_;
+        };
+
         /// True if any live feature in this scene has the given stable type id.
         /// (kInvalidFeatureTypeId never matches — untyped features are excluded.)
         [[nodiscard]] bool hasFeatureOfType(FeatureTypeId type) const noexcept;
@@ -200,7 +219,8 @@ namespace lux::render
         /// render-thread-owned storage valid for the duration of the call.
         struct FeatureParamDesc
         {
-            uint32_t         id;
+            FeatureHandle    id;   // full generational handle (五-5), not just .index —
+                                   // so a stale editor selection can't alias a reused slot
             bool             enabled;
             std::string_view name;
             std::string_view struct_name;
@@ -420,6 +440,16 @@ namespace lux::render
         }
 
         FeatureHandle addFeatureImpl(std::unique_ptr<RenderFeature> feature, uint32_t extractor_type_id);
+
+        // Core feature removal. check_reverse_deps=true (public removeFeature) refuses
+        // to remove a feature another installed feature still requires; =false
+        // (removeAllFeatures / shutdownFull) bypasses the guard for bulk teardown. (三-4)
+        bool removeFeatureInternal(FeatureHandle feature_id, bool check_reverse_deps);
+
+        // Set for the duration of a factory create_fn call (see FeatureInstallScope):
+        // addFeatureImpl applies it to the feature BEFORE initAndAttachTo so the
+        // descriptor is visible during attach. Null outside an install. (三-2)
+        const FeatureDescriptor* pending_install_descriptor_{nullptr};
 
         // ── Per-(feature, view) state ownership (truth source) ───────────────
         // Records which (feature, view) pairs have had allocateViewState()

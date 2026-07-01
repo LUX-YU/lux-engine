@@ -55,17 +55,22 @@ namespace lux::render
             FeatureTypeRecord rec{};
             rec.factory = p.factory;
 
-            // Register operation handlers via the factory function pointer
-            rec.op_count = p.factory.register_ops_fn(
-                &im.dispatcher, rec.ops, 16);
+            // Register operation handlers via the factory function pointer (五-2: guard
+            // a null fn + clamp op_count to ops[] capacity before any copy / add).
+            if (p.factory.register_ops_fn)
+                rec.op_count = p.factory.register_ops_fn(&im.dispatcher, rec.ops, 16);
+            if (rec.op_count > 16) rec.op_count = 16;
 
             uint32_t type_id = im.renderer_->featureTypeRegistry().add(std::move(rec));
 
             FeatureTypeRegisteredReply reply{};
-            reply.feature_type_id = type_id;
-            auto& stored = im.renderer_->featureTypeRegistry().at(type_id);
-            reply.op_count = stored.op_count;
-            std::copy_n(stored.ops, reply.op_count, reply.ops);
+            reply.feature_type_id = type_id;   // 0 if the registry rejected it (五-2)
+            if (type_id != 0)
+            {
+                auto& stored = im.renderer_->featureTypeRegistry().at(type_id);
+                reply.op_count = stored.op_count;
+                std::copy_n(stored.ops, reply.op_count, reply.ops);
+            }
             replyToCurrent<RegisterFeatureTypePayload>(ctx, reply);
         }
 
@@ -138,47 +143,29 @@ namespace lux::render
 
             auto& rec = im.renderer_->featureTypeRegistry().at(p.feature_type_id);
 
-            // Dependency / conflict ENFORCEMENT (阶段 3 slice 3c — hard reject, no
-            // auto-install). A required dependency that isn't installed, or a conflict
-            // with an installed feature, rejects the add (the client must install
-            // dependencies first / resolve the conflict). A default-empty descriptor
-            // (no declared relationships) is never rejected — old behaviour preserved.
+            // Dependency / conflict / multiplicity ENFORCEMENT is done inside
+            // RenderScene::addFeatureImpl now (三-2 unified install entry) — the scope
+            // below makes the descriptor visible there, so create_fn returns an invalid
+            // handle if the install is rejected. No pre-check is duplicated here (a
+            // default-empty descriptor has no declared relationships → never rejected).
             const FeatureDescriptor& desc = rec.factory.descriptor;
-            if (desc.valid())
-            {
-                for (FeatureTypeId c : desc.conflicts)
-                    if (sc->hasFeatureOfType(c))
-                    {
-                        std::cerr << "[RenderServer] AddFeature '" << desc.name
-                                  << "' rejected: conflicts with an installed feature.\n";
-                        reply_invalid();
-                        return;
-                    }
-                for (const auto& dep : desc.dependencies)
-                    if (!dep.optional && !sc->hasFeatureOfType(dep.type))
-                    {
-                        std::cerr << "[RenderServer] AddFeature '" << desc.name
-                                  << "' rejected: required dependency not installed "
-                                     "(install it first).\n";
-                        reply_invalid();
-                        return;
-                    }
-            }
 
-            FeatureHandle feature_id = rec.factory.create_fn(sc, param, param_size);
+            // Install with the descriptor visible DURING attach (三-2): the scope makes
+            // addFeatureImpl set feature->descriptor_ before initAndAttachTo, replacing
+            // the old create-then-setFeatureDescriptor two-step. The descriptor drives
+            // type identity (hasFeatureOfType), dependency/conflict checks, and the
+            // lifecycle state machine's capability gating.
+            FeatureHandle feature_id;
+            {
+                RenderScene::FeatureInstallScope install_scope(*sc, desc);
+                feature_id = rec.factory.create_fn(sc, param, param_size);
+            }
 
             if (!feature_id.valid())
             {
                 std::cerr << "[RenderServer] AddFeature failed in factory: feature_type_id="
                           << p.feature_type_id << ", param_size="
                           << param_size << "\n";
-            }
-            else if (desc.valid())
-            {
-                // Attach the type-level descriptor to the instance: drives type
-                // identity (hasFeatureOfType), dependency/conflict checks, and the
-                // lifecycle state machine's capability gating.
-                sc->setFeatureDescriptor(feature_id, desc);
             }
 
             FeatureAddedReply reply{};
@@ -242,7 +229,8 @@ namespace lux::render
 
             // PASS 1: total packed size (see QueryFeatureParamsPayload for layout).
             auto recordSize = [](const RenderScene::FeatureParamDesc& d) -> uint64_t {
-                return 4u + 1u + 2u + d.name.size() + 2u + d.struct_name.size() + 2u + d.size;
+                // id is now an 8-byte FeatureHandle (五-5): index(4) + generation(4).
+                return 8u + 1u + 2u + d.name.size() + 2u + d.struct_name.size() + 2u + d.size;
             };
             uint64_t needed = 0;
             for (const auto& d : descs) needed += recordSize(d);
@@ -259,12 +247,12 @@ namespace lux::render
                 };
                 for (const auto& d : descs)
                 {
-                    const uint32_t id  = d.id;
+                    const lux::render::FeatureHandle id = d.id;   // 8 bytes (五-5)
                     const uint8_t  en  = d.enabled ? 1u : 0u;
                     const uint16_t nl  = static_cast<uint16_t>(d.name.size());
                     const uint16_t sl  = static_cast<uint16_t>(d.struct_name.size());
                     const uint16_t pl  = static_cast<uint16_t>(d.size);
-                    put(&id, 4); put(&en, 1);
+                    put(&id, 8); put(&en, 1);
                     put(&nl, 2); put(d.name.data(), nl);
                     put(&sl, 2); put(d.struct_name.data(), sl);
                     put(&pl, 2); put(d.data, pl);

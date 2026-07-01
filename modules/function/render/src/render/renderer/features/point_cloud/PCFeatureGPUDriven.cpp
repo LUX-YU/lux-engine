@@ -35,8 +35,7 @@ PCFeatureGPUDriven::PCFeatureGPUDriven(Config cfg)
 {
 }
 
-void PCFeatureGPUDriven::initAndAttachTo(RenderScene& scene)
-{
+lux::render::Expected<void> PCFeatureGPUDriven::initAndAttachTo(RenderScene& scene){
     PCFeatureIndirectBase::initAndAttachTo(scene);
 
     auto& ctx = renderContext();
@@ -61,7 +60,8 @@ void PCFeatureGPUDriven::initAndAttachTo(RenderScene& scene)
         infos,
         "PointCloudGPUDrivenLayout").value();
     draw_handle_ = ctx.pipelineManager().registerGraphicsTemplate(tmpl, infos).value();
-}
+    return {};
+    }
 
 // ============================================================================
 //  RenderFeature — addPasses

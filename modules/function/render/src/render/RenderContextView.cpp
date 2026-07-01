@@ -150,6 +150,11 @@ namespace lux::render
         return ctx_->createExportableTimelineSemaphore();
     }
 
+    void RenderContextView::retireRawBuffer(VkBuffer buffer)
+    {
+        ctx_->deferredDestroyQueue().retireRawBuffer(buffer);
+    }
+
     void RenderContextView::retireDeviceMemory(VkDeviceMemory memory)
     {
         ctx_->deferredDestroyQueue().retireDeviceMemory(memory);

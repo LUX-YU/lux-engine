@@ -21,8 +21,7 @@ namespace lux::render
         , params_{cfg.cell_size, cfg.cull_distance}
     {}
 
-    void SpatialCullFeature::initAndAttachTo(RenderScene& sc)
-    {
+    lux::render::Expected<void> SpatialCullFeature::initAndAttachTo(RenderScene& sc){
         // Feature owns its scene resource (PointCloud/Trajectory pattern): emplace
         // the SpatialCullGrid here, NOT in the general RenderScene constructor.
         auto& reg = sc.sceneRegistry();
@@ -38,6 +37,7 @@ namespace lux::render
         gi.cell_size        = params_.cell_size;
         gi.cull_distance    = params_.cull_distance;
         grid->init(gi);   // idempotent
+        return {};
     }
 
     void SpatialCullFeature::onDetachFromScene(RenderScene& /*sc*/)

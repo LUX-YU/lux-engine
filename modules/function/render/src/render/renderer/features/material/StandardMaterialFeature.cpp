@@ -17,14 +17,14 @@ namespace lux::render
         : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
     {}
 
-    void StandardMaterialFeature::initAndAttachTo(RenderScene& /*sc*/)
-    {
+    lux::render::Expected<void> StandardMaterialFeature::initAndAttachTo(RenderScene& /*sc*/){
         // Own the global material stack (registry-first; MaterialResources::init
         // requires ShadingModelRegistry). Idempotent + shared across scenes (lives
         // in the global registry). Adding this feature IS the opt-in to the stack —
         // moved out of RenderServer::init so a 2D / unlit / headless server pays
         // nothing.
         ensureGlobalMaterialResources(renderContext());
+        return {};
     }
 
     void StandardMaterialFeature::onDetachFromScene(RenderScene& /*sc*/)

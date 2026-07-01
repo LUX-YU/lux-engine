@@ -232,26 +232,29 @@ namespace lux::render
         //   layouts on one scene would recompile every frame (thrash) until the
         //   per-key graph-template cache lands (阶段4); that case is broken today and
         //   correct-but-slow after this change.
-        const bool layout_changed =
-            layout.hasSlot(TargetSlot::SceneColor) && !(layout == gs.last_layout);
+        // Compare UNCONDITIONALLY (四-1): the old `hasSlot(SceneColor) && …` short
+        // circuit meant a NEW layout with no SceneColor never counted as changed, so a
+        // stale graph kept being used for the new binding. Any layout difference now
+        // triggers a recompile against the REQUESTED layout.
+        const bool layout_changed = !(layout == gs.last_layout);
 
-        // Auto-recompile if graph is invalid or the target layout changed (and not suppressed).
         if ((!gs.valid || layout_changed) && !scene.isGraphRecompileSuppressed())
         {
-            if (layout.hasSlot(TargetSlot::SceneColor))
-                scene.compileGraphTemplate(layout);
-            else if (gs.last_layout.hasSlot(TargetSlot::SceneColor))
-                scene.compileGraphTemplate(gs.last_layout);
-            else if (!gs.render_skip_warned)
+            // Always (re)compile against the REQUESTED layout — never fall back to the
+            // stored last_layout (四-1): rendering a new binding with a graph built for
+            // a DIFFERENT layout is exactly the mismatch this guards against.
+            // compileGraphTemplate treats a no-SceneColor layout as a valid "no graph"
+            // outcome (the scene then renders blank), so it is not special-cased here.
+            scene.compileGraphTemplate(layout);
+
+            if (!gs.valid && !layout.hasSlot(TargetSlot::SceneColor) && !gs.render_skip_warned)
             {
-                // No SceneColor target in either the stored or the active layout, so
-                // no compile is even attempted and the view renders blank. This used
-                // to be wholly silent (M21); surface it once. (Compile *failures* are
-                // already logged by RenderScene::compileGraphTemplate.)
+                // Surface the blank-render reason once (compile *failures* are logged
+                // by compileGraphTemplate itself).
                 gs.render_skip_warned = true;
-                std::cerr << "[Renderer] scene has no SceneColor render target in "
-                             "either its stored or the active layout; its views are "
-                             "skipped (blank) until a SceneColor target is provided.\n";
+                std::cerr << "[Renderer] scene has no SceneColor render target in the "
+                             "active layout; its views are skipped (blank) until one is "
+                             "provided.\n";
             }
         }
 
@@ -266,10 +269,23 @@ namespace lux::render
         RenderScene &scene,
         View &view,
         const RenderTargetBinding &binding,
-        const RenderTargetLayout &layout,
         FrameRuntime &rt,
         uint32_t cross_view_index)
     {
+        // The binding is the single source of truth for its target: it carries both
+        // the physical images AND the layout the graph must compile against (阶段4 P4d
+        // merged the formerly-separate `layout` parameter into it, so the two can no
+        // longer disagree). A binding that reaches here without a layout is a caller
+        // bug — the swapchain paths set binding.layout per overlay phase before calling
+        // (they previously passed it as a separate argument).
+        if (binding.layout == nullptr)
+        {
+            std::cerr << "[Renderer] renderSingleView: binding carries no layout — "
+                         "view skipped (阶段4 P4d).\n";
+            return;
+        }
+        const RenderTargetLayout &layout = *binding.layout;
+
         if (!prepareSceneForRender(scene, layout))
             return;
 

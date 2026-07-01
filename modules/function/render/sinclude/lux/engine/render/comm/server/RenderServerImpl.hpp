@@ -111,6 +111,15 @@ namespace lux::render
         // corresponding frame's fence has been waited on in beginFrame().
         std::vector<StagingBuffer>        async_deferred_staging_[kMaxFramesInFlight];
 
+        // Deferred offscreen-pool deletion ring (per FIF slot). DestroyScene moves a
+        // scene's OffscreenImagePools here (whole-pool GPU resources) instead of
+        // freeing them immediately; cleared when the slot's fence is next waited (fif
+        // frames later) — same lifetime guarantee as the staging ring. This lets the
+        // DestroyScene handler drop its full-device vkDeviceWaitIdle, which used to
+        // stall every other scene on each scene teardown. (P0-3)
+        std::vector<std::unique_ptr<OffscreenImagePool>>
+                                          async_deferred_pools_[kMaxFramesInFlight];
+
         // Staging buffers finalized during the drain phase.
         // Moved into async_deferred_staging_ at endTickFrame(), AFTER
         // runUploadPhase() has recorded all copies that read them.
@@ -153,6 +162,7 @@ namespace lux::render
             ViewHandle      view_id{};
             uint64_t        dst_ptr{0};
             uint64_t        dst_capacity{0};
+            TargetSlot      slot{TargetSlot::SceneColor}; ///< which output semantic to read (阶段4 P4c)
             uint32_t        request_id{0};
             uint32_t        settle_left{0};   ///< ticks to render before the copy
             uint32_t        deadline{0};      ///< ticks to wait for the fence

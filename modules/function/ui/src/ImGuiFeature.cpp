@@ -15,8 +15,9 @@ namespace lux::ui
 
     ImGuiFeature::~ImGuiFeature() = default;
 
-    void ImGuiFeature::initAndAttachTo(lux::render::RenderScene & /*scene*/)
+    lux::render::Expected<void> ImGuiFeature::initAndAttachTo(lux::render::RenderScene & /*scene*/)
     {
+        return {};
     }
 
     void ImGuiFeature::onDetachFromScene(lux::render::RenderScene & /*scene*/)

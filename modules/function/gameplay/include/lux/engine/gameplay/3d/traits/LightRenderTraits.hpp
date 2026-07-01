@@ -68,7 +68,7 @@ namespace lux::gameplay
             d.direction       = c.direction;     // unit world-space; NOT from a transform
             d.color           = c.color;
             d.intensity       = c.intensity;
-            d.flags           = c.flags;
+            d.flags           = c.cast_shadow ? lux::render::LIGHT_FLAG_CAST_SHADOW : 0u;
             d.shadow_map_size = c.shadow_map_size;
             d.shadow_bias     = c.shadow_bias;
             d.cascade_count   = c.cascade_count;
@@ -103,7 +103,7 @@ namespace lux::gameplay
             d.attenuation_constant  = c.attenuation_constant;
             d.attenuation_linear    = c.attenuation_linear;
             d.attenuation_quadratic = c.attenuation_quadratic;
-            d.flags                 = c.flags;
+            d.flags                 = c.cast_shadow ? lux::render::LIGHT_FLAG_CAST_SHADOW : 0u;
             d.shadow_map_size       = c.shadow_map_size;
             d.shadow_bias           = c.shadow_bias;
             d.shadow_normal_bias    = c.shadow_normal_bias;
@@ -140,7 +140,7 @@ namespace lux::gameplay
             d.attenuation_quadratic = c.attenuation_quadratic;
             d.inner_cone_angle      = c.inner_cone_angle;
             d.outer_cone_angle      = c.outer_cone_angle;
-            d.flags                 = c.flags;
+            d.flags                 = c.cast_shadow ? lux::render::LIGHT_FLAG_CAST_SHADOW : 0u;
             d.shadow_map_size       = c.shadow_map_size;
             d.shadow_bias           = c.shadow_bias;
             d.shadow_normal_bias    = c.shadow_normal_bias;

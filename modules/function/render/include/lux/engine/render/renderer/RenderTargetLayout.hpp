@@ -10,18 +10,60 @@ namespace lux::render
 {
 
 // ─────────────────────────────────────────────────────────────────────
-//  TargetSlot — identifies a well-known output slot in a RenderTarget
+//  TargetSlot — a well-known OUTPUT SEMANTIC a render target can expose
 // ─────────────────────────────────────────────────────────────────────
+//
+// TargetSlot IS the output-semantic identity (阶段4): each value names WHAT an
+// output means, not a fixed hardware register. The first three are the primary
+// present/compose targets the framework injects (swapchain / offscreen pool). The
+// rest are additional semantics a feature may render AND expose for external
+// read-back / binding — editor picking (InstanceId), thumbnails, robotics
+// multi-sensor (LinearDepth / Normal / SemanticClass). A slot is absent from a
+// layout unless a feature declares it, so adding values here is zero-cost for
+// scenes that don't use them (the per-slot arrays just grow by a few empty entries).
+//
+// This stays a closed enum on purpose: a multi-purpose game engine's output
+// semantics are a known, finite set — a string-hashed open id (draft §7) would be
+// YAGNI here. Widen this enum when a new built-in semantic is genuinely needed.
 
 enum class TargetSlot : uint8_t
 {
-    SceneColor  = 0,   ///< Primary colour output (LDR or HDR backbuffer)
-    SceneDepth  = 1,   ///< Primary depth/stencil output
-    ResolveColor = 2,  ///< MSAA resolve target
-    COUNT              ///< Sentinel — keep last
+    // ── Primary present/compose targets (framework-injected) ──
+    SceneColor    = 0,   ///< Primary colour output (LDR or HDR backbuffer)
+    SceneDepth    = 1,   ///< Primary depth/stencil output
+    ResolveColor  = 2,   ///< MSAA resolve target
+
+    // ── Additional output semantics (feature-declared, externally accessible) ──
+    Normal        = 3,   ///< world/view-space normals
+    InstanceId    = 4,   ///< per-pixel instance id (editor picking / selection)
+    LinearDepth   = 5,   ///< linearised depth (sensors / SSAO / DoF)
+    SemanticClass = 6,   ///< semantic-segmentation class id
+    MotionVector  = 7,   ///< screen-space motion (TAA / motion blur / optical flow)
+
+    COUNT                ///< Sentinel — keep last
 };
 
 static constexpr size_t kTargetSlotCount = static_cast<size_t>(TargetSlot::COUNT);
+
+/// Stable graph-resource name for an output-semantic slot. A feature writes an
+/// additional semantic output by referencing this name (referenceTexture), and the
+/// framework imports the slot under it (see RenderScene::compileGraphTemplate). Stable
+/// across builds so name-based discovery is deterministic. (阶段4)
+[[nodiscard]] inline const char* targetSlotName(TargetSlot s) noexcept
+{
+    switch (s)
+    {
+    case TargetSlot::SceneColor:    return "SceneColor";
+    case TargetSlot::SceneDepth:    return "SceneDepth";
+    case TargetSlot::ResolveColor:  return "ResolveColor";
+    case TargetSlot::Normal:        return "SceneNormal";
+    case TargetSlot::InstanceId:    return "InstanceId";
+    case TargetSlot::LinearDepth:   return "LinearDepth";
+    case TargetSlot::SemanticClass: return "SemanticClass";
+    case TargetSlot::MotionVector:  return "MotionVector";
+    default:                        return "UnknownOutput";
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────
 //  RenderTargetSlotDesc — static description of one output slot

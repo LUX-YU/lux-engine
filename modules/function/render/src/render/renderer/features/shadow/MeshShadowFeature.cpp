@@ -187,8 +187,7 @@ namespace lux::render
     //  Lifecycle
     // =========================================================================
 
-    void MeshShadowFeature::initAndAttachTo(RenderScene &scene)
-    {
+    lux::render::Expected<void> MeshShadowFeature::initAndAttachTo(RenderScene &scene){
         // ---- Ensure builtin shader defaults ----
         {
             auto *shaders = renderContext().globalRegistry().find<ShaderResources>();
@@ -253,7 +252,7 @@ namespace lux::render
             auto *shader_obj = shaders->get(cfg_.shadow_cull_shader);
             assert(shader_obj && "MeshShadowFeature: shadow_cull_shader index is invalid (config not received?)");
             if (!shader_obj)
-                return;
+                return {};
 
             const VkPushConstantRange pc{VK_SHADER_STAGE_COMPUTE_BIT, 0,
                                          static_cast<uint32_t>(sizeof(MeshCullPushConstants))};
@@ -331,6 +330,7 @@ namespace lux::render
             }
         }
 
+        return {};
     }
 
     void MeshShadowFeature::populateFrameContext(RGFrameContext &frame_ctx)
@@ -473,6 +473,16 @@ namespace lux::render
             if (shadow_mdc_count_ == 0)
             {
                 shadow_total_visible_capacity_ = 0;
+                // buildBiasGroups() above already populated bias_group_count from
+                // the live slices, but with view_mdc_count_ == 0 there are no
+                // shadow MDCs to draw, so the count/indirect buffers get sized to
+                // max(shadow_mdc_count_,1) == 1 slot. Leaving the stale (>0)
+                // bias_group_count would make emitShadowDrawKernel emit one draw
+                // lane PER bias group (offset g*4) into that 1-slot count buffer →
+                // vkCmdDrawIndexedIndirectCount countBufferOffset OOB (VUID-04129).
+                // Reset it so the invariant shadow_mdc_count_ == bias_group_count *
+                // view_mdc_count_ holds on this early-out and zero lanes are emitted.
+                shadow_frame_data_.bias_group_count = 0;
                 checkShadowGraphInvalidation();
                 return;
             }

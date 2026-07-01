@@ -21,8 +21,7 @@ DepthPrepassFeature::DepthPrepassFeature(Config cfg)
 {
 }
 
-void DepthPrepassFeature::initAndAttachTo(RenderScene& /*scene*/)
-{
+lux::render::Expected<void> DepthPrepassFeature::initAndAttachTo(RenderScene& /*scene*/){
     auto& ctx = renderContext();
     auto* shaders = ctx.globalRegistry().find<ShaderResources>();
     auto* vs = shaders ? shaders->get(cfg_.vertex_shader)   : nullptr;
@@ -37,7 +36,7 @@ void DepthPrepassFeature::initAndAttachTo(RenderScene& /*scene*/)
         // feature inert rather than fatal. (medium)
         std::cerr << "[DepthPrepassFeature] missing vertex/fragment shader handle; "
                      "feature disabled (no pass will be emitted)\n";
-        return;
+        return {};
     }
 
     auto tmpl = makeDepthPrepassTemplate();
@@ -53,7 +52,8 @@ void DepthPrepassFeature::initAndAttachTo(RenderScene& /*scene*/)
         infos,
         "DepthPrepassLayout").value();
     pipeline_handle_ = ctx.pipelineManager().registerGraphicsTemplate(tmpl, infos).value();
-}
+    return {};
+    }
 
 void DepthPrepassFeature::addPasses(RGBuilder& builder)
 {

@@ -83,9 +83,9 @@ namespace lux::render
     //  Lifecycle
     // =========================================================================
 
-    void DeferredLightingFeature::initAndAttachTo(RenderScene & /*scene*/)
-    {
+    lux::render::Expected<void> DeferredLightingFeature::initAndAttachTo(RenderScene & /*scene*/){
         init();
+        return {};
     }
 
     void DeferredLightingFeature::onDetachFromScene(RenderScene & /*scene*/)

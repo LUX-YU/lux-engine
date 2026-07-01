@@ -167,43 +167,106 @@ namespace lux::render
         std::unique_ptr<RenderFeature> feature,
         uint32_t extractor_type_id)
     {
+        // Unified install entry (三-2): dependency / conflict / multiplicity validation
+        // lives HERE — the single internal install path that the comm AddFeature
+        // handler, the bulk createScene path AND a direct in-module addFeature<T>() all
+        // funnel through — instead of being duplicated in the comm handlers. The
+        // descriptor comes from the FeatureInstallScope the comm paths wrap create_fn
+        // in; a bare addFeature<T>() has none (untyped → no declared relationships →
+        // nothing to validate), so it installs unchecked as before. Rejection here
+        // returns an invalid handle BEFORE any attach / insert / provider registration,
+        // so there is nothing to roll back.
+        const FeatureDescriptor* desc = pending_install_descriptor_;
+        if (desc && desc->valid())
+        {
+            if (desc->multiplicity == FeatureMultiplicity::SinglePerScene && hasFeatureOfType(desc->type))
+            {
+                std::cerr << "[RenderScene] install '" << desc->name
+                          << "' rejected: SinglePerScene — an instance already exists.\n";
+                return FeatureHandle{};
+            }
+            for (FeatureTypeId c : desc->conflicts)
+                if (hasFeatureOfType(c))
+                {
+                    std::cerr << "[RenderScene] install '" << desc->name
+                              << "' rejected: conflicts with an installed feature.\n";
+                    return FeatureHandle{};
+                }
+            for (const auto& dep : desc->dependencies)
+                if (!dep.optional && !hasFeatureOfType(dep.type))
+                {
+                    std::cerr << "[RenderScene] install '" << desc->name
+                              << "' rejected: a required dependency is not installed "
+                                 "(install it first).\n";
+                    return FeatureHandle{};
+                }
+        }
+
         feature->scene_ = this;
+        // Apply the type-level descriptor BEFORE attach so a feature can observe its
+        // own descriptor during initAndAttachTo. (三-2)
+        if (desc && desc->valid())
+            feature->descriptor_ = *desc;
         feature->lifecycle_state_ = FeatureState::Attaching;
-        feature->initAndAttachTo(*this);
+        if (auto attached = feature->initAndAttachTo(*this); !attached)
+        {
+            // attach failed (三-3): nothing has been registered/inserted yet, so just
+            // drop the half-attached feature — its destructor frees whatever it
+            // allocated during the partial attach. The caller sees an invalid handle.
+            std::cerr << "[RenderScene] install rejected: feature attach failed ("
+                      << attached.error().message() << ").\n";
+            return FeatureHandle{};
+        }
 
         auto *raw = feature.get();
         raw->extractor_type_id_ = extractor_type_id;
         render_object_extractor_.registerProvider(raw, extractor_type_id);
 
-        // If scene is already initialized, run lifecycle for this feature
-        if (initialized_ && raw->isEnabled())
-        {
-            raw->configureMaterialPipelines(material_pipeline_);
-        }
-
         // Insert into the slot map — auto-assigns a generational FeatureHandle.
         // (unique_ptr move transfers ownership but not address, so `raw` stays valid.)
         raw->feature_id_ = features_.insert(std::move(feature));
 
-        // Back-fill per-view state for views that ALREADY exist: a feature added
-        // to a live scene must observe current views, mirroring addView()'s
-        // allocate. Without this, a feature added after addView() never gets
-        // per-view state for those views. Best-effort for now (allocateViewState
-        // only fails for a feature that overrides it to do so; transactional
-        // rollback + Result return is deferred to the FeatureManager — see
-        // .internal/UNFINISHED-WORK.md §2.4).
-        if (initialized_ && raw->isEnabled())
-        {
-            rebuildActiveViewCacheIfNeeded();
-            for (auto* view : active_views_dense_)
-                ensureFeatureViewState(*raw, view->handle.index);
-        }
+        // A feature is added in the ENABLED state — there is no "add disabled" path
+        // today. FeatureState is the single source of truth for enabled-ness (三-1),
+        // so we land it here; isEnabled() derives from it.
+        raw->lifecycle_state_ = FeatureState::Enabled;
 
-        // Attach complete (initAndAttachTo cannot fail today — transactional Result
-        // + rollback to Failed lands in slice 3c). Land in the steady state matching
-        // the feature's enabled flag.
-        raw->lifecycle_state_ = raw->isEnabled() ? FeatureState::Enabled
-                                                 : FeatureState::Disabled;
+        // Enabled-state initialisation for an already-live scene.
+        if (initialized_)
+        {
+            raw->configureMaterialPipelines(material_pipeline_);
+
+            // Back-fill per-view state for views that ALREADY exist: a feature added
+            // to a live scene must observe current views, mirroring addView()'s allocate.
+            // TRANSACTIONAL (三-3): if any view's allocateViewState() fails, roll back the
+            // per-view state already created for this feature and ABORT the install — the
+            // caller observes NO half-attached feature (returns an invalid handle). Today
+            // no built-in feature fails allocateViewState, so this is a strong-guarantee
+            // safety net rather than a behaviour change.
+            rebuildActiveViewCacheIfNeeded();
+            std::vector<uint32_t> created;
+            created.reserve(active_views_dense_.size());
+            bool ok = true;
+            for (auto* view : active_views_dense_)
+            {
+                if (ensureFeatureViewState(*raw, view->handle.index))
+                    created.push_back(view->handle.index);
+                else { ok = false; break; }
+            }
+            if (!ok)
+            {
+                for (uint32_t v : created)
+                    releaseFeatureViewState(*raw, v);
+                feature_view_states_.erase(raw->feature_id_.index);
+                raw->lifecycle_state_ = FeatureState::Failed;
+                render_object_extractor_.unregisterProvider(raw);
+                raw->onDetachFromScene(*this);
+                features_.erase(raw->feature_id_);
+                markFeatureCacheDirty();
+                graph_state_.valid = false;
+                return FeatureHandle{};   // invalid → install rejected, no leak
+            }
+        }
 
         markFeatureCacheDirty();
         // Adding a feature changes the pass set; force graph recompile on next render.
@@ -244,10 +307,46 @@ namespace lux::render
 
     bool RenderScene::removeFeature(FeatureHandle feature_id)
     {
+        // Public removal enforces reverse-dependency protection (三-4).
+        return removeFeatureInternal(feature_id, /*check_reverse_deps=*/true);
+    }
+
+    bool RenderScene::removeFeatureInternal(FeatureHandle feature_id, bool check_reverse_deps)
+    {
         if (!features_.contains(feature_id))
             return false;
 
         auto &ptr = features_.at(feature_id);
+
+        // Reverse-dependency guard (三-4): refuse to remove a feature that another
+        // INSTALLED feature still REQUIRES (a non-optional dependency on this type).
+        // Default policy is reject — the caller must remove the dependent first —
+        // which also prevents the "provider gone, consumer dangling" hazard (e.g.
+        // removing Light out from under ShadowMap). Skipped for whole-scene teardown
+        // (removeAllFeatures passes check=false): there every feature is going away,
+        // so the guard must not block its own bulk removal. Untyped features
+        // (kInvalidFeatureTypeId) are never depended upon, so they bypass the scan.
+        if (check_reverse_deps)
+        {
+            const FeatureTypeId target_type = ptr->descriptor_.type;
+            if (target_type != kInvalidFeatureTypeId)
+            {
+                for (const auto& other : features_.values())
+                {
+                    if (!other || other.get() == ptr.get())
+                        continue;
+                    for (const auto& dep : other->descriptor_.dependencies)
+                        if (!dep.optional && dep.type == target_type)
+                        {
+                            std::cerr << "[RenderScene] removeFeature '" << ptr->name()
+                                      << "' rejected: still required by '" << other->name()
+                                      << "' (remove the dependent first).\n";
+                            return false;
+                        }
+                }
+            }
+        }
+
         ptr->lifecycle_state_ = FeatureState::Detaching;
         render_object_extractor_.unregisterProvider(ptr.get());
 
@@ -282,8 +381,10 @@ namespace lux::render
             if (f)
                 ids.push_back(f->feature_id_);
 
+        // Whole-scene teardown: bypass the reverse-dependency guard — every feature
+        // is going away, so a dependent still being present must not block removal.
         for (auto id : ids)
-            removeFeature(id);
+            removeFeatureInternal(id, /*check_reverse_deps=*/false);
     }
 
     void RenderScene::setFeatureEnabled(FeatureHandle feature_id, bool enabled)
@@ -303,18 +404,35 @@ namespace lux::render
         }
 
         // State machine + symmetric per-view-state management (closes PR-1's deferred
-        // enable/disable case). Per-view state is only touched for features that
-        // declare they own it (creates_view_state) — for everything else this is the
-        // old flag-flip, so no behaviour change.
+        // enable/disable case). The lifecycle_state_ transitions ARE the enable/disable
+        // (isEnabled() derives from them — 三-1); per-view state is only touched for
+        // features that declare they own it (creates_view_state).
         if (enabled)
         {
             f->lifecycle_state_ = FeatureState::Enabling;
-            f->setEnabled(true);
             if (f->descriptor_.creates_view_state)
             {
                 rebuildActiveViewCacheIfNeeded();
+                std::vector<uint32_t> created;
+                created.reserve(active_views_dense_.size());
+                bool ok = true;
                 for (auto* view : active_views_dense_)
-                    ensureFeatureViewState(*f, view->handle.index);
+                {
+                    if (ensureFeatureViewState(*f, view->handle.index))
+                        created.push_back(view->handle.index);
+                    else { ok = false; break; }
+                }
+                if (!ok)
+                {
+                    // Transactional enable (三-3): roll back partial per-view state and
+                    // revert to Disabled — no half-enabled feature with partial state.
+                    for (uint32_t v : created)
+                        releaseFeatureViewState(*f, v);
+                    f->lifecycle_state_ = FeatureState::Disabled;
+                    markFeatureCacheDirty();
+                    graph_state_.valid = false;
+                    return;
+                }
             }
             f->lifecycle_state_ = FeatureState::Enabled;
         }
@@ -327,7 +445,6 @@ namespace lux::render
                 for (auto* view : active_views_dense_)
                     releaseFeatureViewState(*f, view->handle.index);
             }
-            f->setEnabled(false);
             f->lifecycle_state_ = FeatureState::Disabled;
         }
 
@@ -337,14 +454,14 @@ namespace lux::render
 
     void RenderScene::setFeatureEnabled(std::string_view feature_name, bool enabled)
     {
+        // Route through the handle-based overload so the name path gets the SAME
+        // capability gate (supports_runtime_disable) + FeatureState transitions +
+        // per-view-state management. Previously it flipped enabled_ directly,
+        // bypassing all three (三-1 single control path).
         for (auto &f : features_.values())
-            if (f->name() == feature_name)
+            if (f && f->name() == feature_name)
             {
-                if (f->isEnabled() == enabled)
-                    return;
-                f->setEnabled(enabled);
-                markFeatureCacheDirty();
-                graph_state_.valid = false; // trigger recompile next frame
+                setFeatureEnabled(f->featureId(), enabled);
                 return;
             }
     }
@@ -372,7 +489,7 @@ namespace lux::render
             // so the packed enumerate stream never claims bytes it can't supply.
             const std::size_t size = (has_params && data) ? f->paramSize() : 0;
             descs.push_back(FeatureParamDesc{
-                f->featureId().index,
+                f->featureId(),               // full handle (五-5)
                 f->isEnabled(),
                 f->name(),
                 sn,
@@ -428,6 +545,15 @@ namespace lux::render
         if (!views_.contains(handle))
             return;
 
+        auto &view = *views_.at(handle);
+        // Idempotent (五-4): a view already being torn down lingers in the slot map
+        // (state=Destroying) until endFrame() GC frees it fif frames later. A repeat
+        // removeView in that window must NOT re-release feature state, re-notify the
+        // scene registry, or re-enqueue another pending-destroy (the second record
+        // would double-process the same handle at GC).
+        if (view.state == ViewState::Destroying)
+            return;
+
         // Release per-view state for EVERY feature that owns it — not just the
         // currently-enabled set. A feature disabled after this view was created
         // still holds state recorded at addView()/addFeature() time; iterating
@@ -443,7 +569,6 @@ namespace lux::render
         // (no global frame service overrides onViewDestroyed) and is dropped.
         scene_registry_.notifySceneViewDestroyed(scene_global_slot_.index, handle.index);
 
-        auto &view = *views_.at(handle);
         // Do NOT call destroyViewUBO here — the view's ViewBuffer slot may still be
         // referenced by in-flight GPU commands for the other frames-in-flight slots.
         // Deferring to endFrame() GC ensures the GPU has finished all work before
@@ -520,10 +645,112 @@ namespace lux::render
     {
         auto &rctx = *render_ctx_;
 
-        // Store for recompilation
+        // ── Build + compile the NEW graph FIRST, into locals, WITHOUT touching the
+        // currently-live graph or view resources (四: transactional / build-then-commit).
+        // A layout with no color target yields no graph — a valid "no render" outcome.
+        // A compile FAILURE returns early having mutated NOTHING, so the scene keeps
+        // rendering with its last good graph instead of being left graph-less (the old
+        // order retired the old graph up-front, so a failed recompile black-screened).
+        std::unique_ptr<RGCompiledGraph> new_graph;
+        RGResourceHandle                 new_color_handle{};
+
+        if (layout.hasSlot(TargetSlot::SceneColor))
+        {
+            const auto &color_slot = layout.slot(TargetSlot::SceneColor);
+
+            // 1. Set up RGBuilder with backbuffer + depth
+            RGBuilder builder;
+
+            // Use a placeholder extent (1x1) for the template — actual images are injected per-frame
+            RGTextureDescription bb_desc = RGTextureDescription::Absolute(
+                1, 1, mapVkFormat(color_slot.format)
+            );
+
+            RGImportedResourceInfo bb_import{};
+            bb_import.image_getter     = nullptr; // no getter; images injected via imported_slots
+            bb_import.update_group     = static_cast<uint32_t>(RGUpdateGroup::GROUP_SWAPCHAIN);
+            bb_import.initial_layout   = color_slot.initial_layout;
+            bb_import.final_layout     = color_slot.final_layout;
+            bb_import.preserve_content = color_slot.preserve_content;
+
+            auto backbuffer = builder.importSlottedTexture(
+                TargetSlot::SceneColor, "SceneColor", bb_desc, bb_import);
+
+            RGTextureDescription depth_desc = RGTextureDescription::Relative(
+                1.0f, 1.0f, lux::common::ETextureFormat::D32_SFLOAT
+            );
+            depth_desc.usage = static_cast<uint32_t>(ERGTextureUsageBits::DEPTH_STENCIL) | static_cast<uint32_t>(ERGTextureUsageBits::SAMPLED);
+            auto scene_depth = builder.createTexture("SceneDepth", depth_desc);
+
+            // Import every ADDITIONAL semantic slot the layout declares (beyond the
+            // framework-special SceneColor / SceneDepth / ResolveColor) as an
+            // externally-accessible slotted texture (阶段4 P4b). A feature writes one
+            // via referenceTexture(targetSlotName(slot)); its physical image is
+            // allocated by the OffscreenImagePool (already generalised over layout
+            // slots) and injected per-frame through the binding — so the output is
+            // readable-back / bindable, not a graph-internal transient. No-op for a
+            // layout that declares only the primary slots (today's scenes).
+            for (size_t si = 0; si < kTargetSlotCount; ++si)
+            {
+                const auto extra_slot = static_cast<TargetSlot>(si);
+                if (extra_slot == TargetSlot::SceneColor ||
+                    extra_slot == TargetSlot::SceneDepth ||
+                    extra_slot == TargetSlot::ResolveColor)
+                    continue;                      // primary slots handled above
+                if (!layout.hasSlot(extra_slot))
+                    continue;
+                const auto& sd = layout.slot(extra_slot);
+                RGImportedResourceInfo imp{};
+                imp.slot             = extra_slot;
+                imp.update_group     = static_cast<uint32_t>(RGUpdateGroup::GROUP_SWAPCHAIN);
+                imp.initial_layout   = sd.initial_layout;
+                imp.final_layout     = sd.final_layout;
+                imp.preserve_content = sd.preserve_content;
+                RGTextureDescription st = RGTextureDescription::Absolute(
+                    1, 1, mapVkFormat(sd.format));
+                (void)builder.importSlottedTexture(extra_slot, targetSlotName(extra_slot), st, imp);
+            }
+
+            // 2. Collect enabled features and call addPasses
+            std::vector<RenderFeature *> feature_ptrs;
+            rebuildEnabledFeatureCacheIfNeeded();
+            feature_ptrs.reserve(enabled_features_dense_.size());
+            feature_ptrs.insert(feature_ptrs.end(),
+                enabled_features_dense_.begin(),
+                enabled_features_dense_.end()
+            );
+
+            for (auto *feature : feature_ptrs)
+                feature->addPasses(builder);
+
+            // 4. Static compile (no resource allocation)
+            auto compiled = RenderGraphCompiler::compile(
+                std::move(builder).build(),
+                rctx.pipelineManager()
+            );
+
+            if (!compiled.valid)
+            {
+                if (!compiled.compile_error.empty())
+                    std::cerr << "[RenderScene] Graph compile failed for scene '" << debug_name_
+                              << "': " << compiled.compile_error << "\n";
+                // Commit NOTHING — old graph + view resources + last_layout stay intact
+                // so the scene keeps rendering the last good graph. (四)
+                return;
+            }
+
+            new_graph        = std::make_unique<RGCompiledGraph>(std::move(compiled));
+            new_color_handle = backbuffer;
+        }
+
+        // ── Commit point ───────────────────────────────────────────────────────
+        // Only now (new graph built, or a legit no-color layout) do we mutate
+        // observable state: record the layout, retire the old graph (deferred destroy
+        // after FIF frames) + invalidate the view resource states keyed on it so they
+        // return to the transient pool instead of leaking VRAM (P1#37), then install
+        // the new graph (null for a no-color layout).
         graph_state_.last_layout = layout;
 
-        // Retire previous graph if it exists (deferred destroy after FIF frames)
         const RGGraphDescription* old_graph_desc = nullptr;
         if (graph_state_.graph)
         {
@@ -532,90 +759,23 @@ namespace lux::render
             retired.graph = std::move(graph_state_.graph);
             retired.retire_frame = 0; // will be filled by endFrame tracking
             retired_graphs_.push_back(std::move(retired));
-            graph_state_.valid = false;
         }
-
-        // Invalidate all view resource states up-front (keyed on the just-retired
-        // old graph for pool return). This MUST run before the early returns below:
-        // otherwise an invalid-layout or compile-failure recompile retires the old
-        // graph but leaves every view's physical images + record context allocated
-        // against it (VRAM held until a later success) and bypasses the
-        // transient-pool return invariant (endFrame would deallocate, not
-        // deallocateToPool, because graph_state_.graph is now null). (P1#37)
         invalidateAllViewResources(old_graph_desc);
 
-        if (!layout.hasSlot(TargetSlot::SceneColor))
-        {
-            return;
-        }
-
-        const auto &color_slot = layout.slot(TargetSlot::SceneColor);
-
-        // 1. Set up RGBuilder with backbuffer + depth
-        RGBuilder builder;
-
-        // Use a placeholder extent (1x1) for the template — actual images are injected per-frame
-        RGTextureDescription bb_desc = RGTextureDescription::Absolute(
-            1, 1, mapVkFormat(color_slot.format)
-        );
-
-        RGImportedResourceInfo bb_import{};
-        bb_import.image_getter     = nullptr; // no getter; images injected via imported_slots
-        bb_import.update_group     = static_cast<uint32_t>(RGUpdateGroup::GROUP_SWAPCHAIN);
-        bb_import.initial_layout   = color_slot.initial_layout;
-        bb_import.final_layout     = color_slot.final_layout;
-        bb_import.preserve_content = color_slot.preserve_content;
-
-        auto backbuffer = builder.importSlottedTexture(
-            TargetSlot::SceneColor, "SceneColor", bb_desc, bb_import);
-
-        RGTextureDescription depth_desc = RGTextureDescription::Relative(
-            1.0f, 1.0f, lux::common::ETextureFormat::D32_SFLOAT
-        );
-        depth_desc.usage = static_cast<uint32_t>(ERGTextureUsageBits::DEPTH_STENCIL) | static_cast<uint32_t>(ERGTextureUsageBits::SAMPLED);
-        auto scene_depth = builder.createTexture("SceneDepth", depth_desc);
-
-        // 2. Collect enabled features and call addPasses
-        std::vector<RenderFeature *> feature_ptrs;
-        rebuildEnabledFeatureCacheIfNeeded();
-        feature_ptrs.reserve(enabled_features_dense_.size());
-        feature_ptrs.insert(feature_ptrs.end(),
-            enabled_features_dense_.begin(),
-            enabled_features_dense_.end()
-        );
-
-        for (auto *feature : feature_ptrs)
-            feature->addPasses(builder);
-
-        // 4. Static compile (no resource allocation)
-        auto compiled = RenderGraphCompiler::compile(
-            std::move(builder).build(),
-            rctx.pipelineManager()
-        );
-
-        if (!compiled.valid)
-        {
-            if (!compiled.compile_error.empty())
-                std::cerr << "[RenderScene] Graph compile failed for scene '" << debug_name_
-                          << "': " << compiled.compile_error << "\n";
-            graph_state_.valid = false;
-            return;
-        }
-
-        graph_state_.graph = std::make_unique<RGCompiledGraph>(std::move(compiled));
-        graph_state_.final_color_handle = backbuffer;
-        graph_state_.valid = true;
+        graph_state_.graph              = std::move(new_graph);   // null for a no-color layout
+        graph_state_.final_color_handle = new_color_handle;
+        graph_state_.valid              = (graph_state_.graph != nullptr);
 
         // Optional graph dump for editor debugging — set LUX_DUMP_RG=1 in the
-        // environment to write the compiled execution order + pass details to
-        // stderr each time the scene's render graph is (re)compiled.
-        if (const char* dump = std::getenv("LUX_DUMP_RG"); dump && dump[0] != '0' && dump[0] != '\0')
+        // environment to write the compiled execution order + pass details to stderr.
+        if (graph_state_.graph)
         {
-            std::cerr << "[RenderScene] '" << debug_name_ << "' graph (re)compiled:\n";
-            printCompiledGraph(*graph_state_.graph, std::cerr);
+            if (const char* dump = std::getenv("LUX_DUMP_RG"); dump && dump[0] != '0' && dump[0] != '\0')
+            {
+                std::cerr << "[RenderScene] '" << debug_name_ << "' graph (re)compiled:\n";
+                printCompiledGraph(*graph_state_.graph, std::cerr);
+            }
         }
-        // (view resource states already invalidated up-front, before the early
-        // returns — see P1#37 above)
     }
 
     void RenderScene::invalidateAllViewResources(const RGGraphDescription* source_graph) noexcept
@@ -880,7 +1040,23 @@ namespace lux::render
         if (!initialized_)
             return;
 
-        // Destroy all view UBO resources and per-view GPU state before clearing
+        // Tear down FEATURES FIRST — before destroying views — so each feature's
+        // per-(feature,view) state is released through the SAME path as explicit
+        // removal. removeAllFeatures() → removeFeature() runs releaseFeatureViewState()
+        // → deallocateViewState() for every owned (feature, view) pair, then detaches
+        // and destroys each feature, all while views_, the scene registry and the
+        // descriptor services are still alive (a feature's per-view eviction may still
+        // reference them — so views must NOT be destroyed first). The previous order
+        // (destroy views, then a bare onDetachFromScene loop that never touched
+        // feature_view_states_) skipped deallocateViewState entirely on whole-scene
+        // teardown — a per-view-state leak for features that create it (P0-2).
+        removeAllFeatures();
+        feature_view_states_.clear();
+        enabled_features_dense_.clear();
+        feature_cache_dirty_ = false;
+        render_object_extractor_.clearProviders();
+
+        // Now destroy all view UBO resources and per-view GPU state.
         for (auto &v : views_.values())
         {
             if (!v) continue;
@@ -897,22 +1073,6 @@ namespace lux::render
         views_.clear();
         active_views_dense_.clear();
         view_cache_dirty_ = false;
-
-        for (auto &f : features_.values())
-        {
-            if (!f)
-                continue;
-            render_object_extractor_.unregisterProvider(f.get());
-            f->onDetachFromScene(*this);
-        }
-        // Clear (destroy) features while scene_ is still valid, so that
-        // destructors calling destroy()→renderContext() can safely access the
-        // scene.  Null out scene_ only after the feature objects are gone.
-        features_.clear();
-        enabled_features_dense_.clear();
-        feature_cache_dirty_ = false;
-        // (scene_ pointers in the now-destroyed features are irrelevant)
-        render_object_extractor_.clearProviders();
 
         // Free retired graphs
         for (auto &retired : retired_graphs_)

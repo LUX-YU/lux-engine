@@ -78,13 +78,14 @@ namespace lux::render
 
         /// Render a single view of a scene to a specific target binding.
         /// Use when multiple views of the same scene need different targets.
+        /// The binding fully describes the target — including the layout the graph
+        /// compiles against (binding.layout); a binding without a layout is skipped.
         /// @param cross_view_index  0 for the first view of a scene in the
         ///        current frame; >0 for subsequent views.  The recorder uses
         ///        this to patch imported-resource first-touch barriers.
         void renderSingleView(
             RenderScene &scene, View &view,
             const RenderTargetBinding &binding,
-            const RenderTargetLayout &layout,
             FrameRuntime &rt,
             uint32_t cross_view_index = 0);
 

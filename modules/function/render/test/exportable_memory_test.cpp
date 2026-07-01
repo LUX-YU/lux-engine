@@ -61,7 +61,7 @@ namespace
 
         ExportProbeFeature() : RenderFeature(RenderFeature::Config{"ExportProbe"}) {}
 
-        void initAndAttachTo(RenderScene& /*scene*/) override
+        lux::render::Expected<void> initAndAttachTo(RenderScene& /*scene*/) override
         {
             auto cv = contextView();
 
@@ -90,14 +90,17 @@ namespace
             }
 
             ran.fetch_add(1, std::memory_order_relaxed);
+            return {};
         }
 
         void onDetachFromScene(RenderScene& /*scene*/) override
         {
             auto cv = contextView();
             // Retire whatever was allocated. Null handles are ignored by the queue.
+            // The buffer came from vkCreateBuffer (NOT VMA), so it must go through
+            // retireRawBuffer (vkDestroyBuffer), not retireBuffer (vmaDestroyBuffer).
             if (buf_.buffer != VkBuffer{})
-                cv.retireBuffer(buf_.buffer, nullptr);   // dedicated (non-VMA): allocation == null
+                cv.retireRawBuffer(buf_.buffer);
             if (buf_.memory != VkDeviceMemory{})
                 cv.retireDeviceMemory(buf_.memory);
             if (produce_done_.semaphore != VkSemaphore{})

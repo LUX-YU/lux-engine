@@ -67,7 +67,7 @@ public:
 
     std::string_view name() const override { return "DeferredLighting"; }
 
-    void initAndAttachTo(RenderScene& scene) override;
+    lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
     void onDetachFromScene(RenderScene& scene) override;
     void addPasses(RGBuilder& builder) override;
     void onFrameBegin(const FeatureFrameContext& ctx) override;

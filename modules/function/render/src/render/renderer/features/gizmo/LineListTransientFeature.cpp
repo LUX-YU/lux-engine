@@ -73,8 +73,7 @@ namespace lux::render
     //  Initialisation
     // ============================================================================
 
-    void LineListTransientFeature::initAndAttachTo(RenderScene & /*scene*/)
-    {
+    lux::render::Expected<void> LineListTransientFeature::initAndAttachTo(RenderScene & /*scene*/){
         // Self-contained feature: only the narrow RenderContextView / RenderSceneView
         // SDK surface — no engine-internal RenderContext / RenderScene / ShaderResources.
         auto cv = contextView();
@@ -104,6 +103,7 @@ namespace lux::render
 
         // ---- Scene-registry bridge for the upload handler ----
         incoming_ = sceneView().sceneRegistry().ensure<TransientLineListBuffer>();
+        return {};
     }
 
     // ============================================================================

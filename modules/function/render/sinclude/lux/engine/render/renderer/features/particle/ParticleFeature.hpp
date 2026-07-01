@@ -54,7 +54,7 @@ namespace lux::render
         explicit ParticleFeature(Config cfg = {});
 
         std::string_view name() const override { return "ParticleEffect"; }
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         // =====================================================================
         //  RenderFeature lifecycle

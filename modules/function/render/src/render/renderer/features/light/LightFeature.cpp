@@ -15,8 +15,7 @@ namespace lux::render
         : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
     {}
 
-    void LightFeature::initAndAttachTo(RenderScene& sc)
-    {
+    lux::render::Expected<void> LightFeature::initAndAttachTo(RenderScene& sc){
         // Feature owns its scene resource (PointCloud/Trajectory pattern): emplace
         // LightResources here, NOT in the general RenderScene constructor. Must be
         // attached BEFORE the lighting consumers — ShadowMapFeature caches a raw
@@ -29,7 +28,7 @@ namespace lux::render
         const bool fresh = (reg.find<LightResources>() == nullptr);
         auto* light_res  = reg.ensure<LightResources>();
         if (!fresh)
-            return;
+            return {};
 
         auto& ctx = renderContext();
 
@@ -54,6 +53,7 @@ namespace lux::render
         // ctor used to do this; the OWNER does it now.
         sc.transferScheduler().contributors().add(
             makeTransferContributor(light_res, /*priority=*/6));
+        return {};
     }
 
     void LightFeature::onDetachFromScene(RenderScene& /*sc*/)

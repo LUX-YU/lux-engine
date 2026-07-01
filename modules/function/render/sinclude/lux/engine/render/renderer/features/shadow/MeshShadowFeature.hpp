@@ -70,7 +70,7 @@ namespace lux::render
 
         std::string_view name() const override { return "MeshShadow"; }
 
-        void initAndAttachTo(RenderScene &scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene &scene) override;
         void onFrameBegin(const FeatureFrameContext &ctx) override;
         void addPasses(RGBuilder &builder) override;
         void populateFrameContext(RGFrameContext &frame_ctx) override;

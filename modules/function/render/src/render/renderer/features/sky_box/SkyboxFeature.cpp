@@ -24,10 +24,10 @@ SkyboxFeature::SkyboxFeature(Config cfg)
 {
 }
 
-void SkyboxFeature::initAndAttachTo(RenderScene& /*scene*/)
-{
+lux::render::Expected<void> SkyboxFeature::initAndAttachTo(RenderScene& /*scene*/){
     init(cfg_);
-}
+    return {};
+    }
 
 void SkyboxFeature::init(const Config& cfg)
 {

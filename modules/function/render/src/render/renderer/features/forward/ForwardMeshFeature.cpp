@@ -52,9 +52,9 @@ namespace lux::render
     //  Lifecycle
     // =========================================================================
 
-    void ForwardMeshFeature::initAndAttachTo(RenderScene &scene)
-    {
+    lux::render::Expected<void> ForwardMeshFeature::initAndAttachTo(RenderScene &scene){
         init();
+        return {};
     }
 
     // =========================================================================

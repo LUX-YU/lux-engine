@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdio>   // [ShadowDiag] TEMP — remove with the diagnostic logging below
 #include <cstring>
 #include <cmath>
 #include <limits>
@@ -437,10 +438,9 @@ ShadowMapFeature::~ShadowMapFeature()
         if (t) t->destroyResources();
 }
 
-void ShadowMapFeature::initAndAttachTo(RenderScene& scene)
-{
+lux::render::Expected<void> ShadowMapFeature::initAndAttachTo(RenderScene& scene){
     if (initialized_)
-        return;
+        return {};
 
     auto& ctx = renderContext();
     device_ = ctx.device();
@@ -476,7 +476,7 @@ void ShadowMapFeature::initAndAttachTo(RenderScene& scene)
     if (!shadow_res_)
         shadow_res_ = sreg.emplace<ShadowResources>().get();
     if (!shadow_res_)
-        return;
+        return {};
 
     // Publish the current technique (abstract pointer) into the shared resource so
     // MeshShadowFeature drives its caster + post passes polymorphically instead of
@@ -556,7 +556,8 @@ void ShadowMapFeature::initAndAttachTo(RenderScene& scene)
     }
 
     initialized_ = true;
-}
+    return {};
+    }
 
 void ShadowMapFeature::writeEVSMBindings(LightResources& light_res,
                                           EVSMShadowResources& evsm_res)
@@ -1490,6 +1491,10 @@ void ShadowMapFeature::buildSlicesForView(
     spot_candidates.reserve(spot_count);
     point_candidates.reserve(point_count);
 
+    // [ShadowDiag] TEMP instrumentation — remove after diagnosing point shadows.
+    uint32_t dbg_pt_flag_ok = 0;
+    uint32_t dbg_pt_alloc_fail = 0;
+
     light_res->forEachLight<SpotLightGPU>([&](uint32_t slot, const SpotLightGPU& sl) {
         if (slot >= map_capacity)
             return;
@@ -1510,6 +1515,7 @@ void ShadowMapFeature::buildSlicesForView(
             return;
         if ((pl.flags & LF_CAST_SHADOW) == 0u)
             return;
+        ++dbg_pt_flag_ok;
         Eigen::Vector3f pos(pl.position.x, pl.position.y, pl.position.z);
         const float score = scoreShadowCandidate(
             pl,
@@ -1609,7 +1615,10 @@ void ShadowMapFeature::buildSlicesForView(
                 atlas_packer,
                 std::max(pl.shadow_map_size, 1u),
                 tiles))
+        {
+            ++dbg_pt_alloc_fail;
             continue;
+        }
 
         // Widen the 90° cube-face FOV by a few texels of overlap so that
         // PCF taps at face edges still have valid depth data rendered.
@@ -1635,6 +1644,25 @@ void ShadowMapFeature::buildSlicesForView(
     out_state.config.point_light_count = shadow_point_slices;
     out_state.config.spot_light_count = shadow_spot_slices;
     out_state.config.total_slices = static_cast<uint32_t>(out_state.slices.size());
+
+    // [ShadowDiag] TEMP — throttled per-call summary (remove after diagnosis).
+    {
+        static uint32_t s_dbg_call = 0;
+        if ((s_dbg_call++ % 120u) == 0u)
+        {
+            const int base0 = (!out_state.point_shadow_base_slice.empty())
+                ? out_state.point_shadow_base_slice[0] : -2;
+            std::fprintf(stderr,
+                "[ShadowDiag] pt_total=%u pt_flag_ok=%u pt_scored=%zu pt_alloc_fail=%u "
+                "spot_scored=%zu dir_slices_used=%u total_slices=%u/%u pt_slice_words=%u "
+                "base0=%d cam=(%.1f,%.1f,%.1f)\n",
+                point_count, dbg_pt_flag_ok, point_candidates.size(), dbg_pt_alloc_fail,
+                spot_candidates.size(), out_state.config.dir_light_offset,
+                out_state.config.total_slices, max_slices, shadow_point_slices,
+                base0, camera_pos.x(), camera_pos.y(), camera_pos.z());
+            std::fflush(stderr);
+        }
+    }
 }
 
 } // namespace lux::render

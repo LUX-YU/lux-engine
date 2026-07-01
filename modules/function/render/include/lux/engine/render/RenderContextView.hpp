@@ -59,8 +59,9 @@ namespace lux::render
     /// Result of createExportableBuffer — a VMA-BYPASSING dedicated allocation
     /// (vkAllocateMemory + VkExportMemoryAllocateInfo + vkBindBufferMemory) whose
     /// memory can be exported for import by an external API (e.g. CUDA). The caller
-    /// OWNS all three handles: retire `buffer` + `memory` via retireBuffer*/
-    /// retireDeviceMemory, and close `external_handle` once the importer has dup'd it.
+    /// OWNS all three handles: retire `buffer` via retireRawBuffer (NOT retireBuffer —
+    /// the buffer came from vkCreateBuffer, not VMA) and `memory` via retireDeviceMemory,
+    /// and close `external_handle` once the importer has dup'd it.
     /// A null result (buffer == 0) means external memory is unsupported or a Vulkan
     /// call failed — the caller should fall back to a host-upload path.
     struct ExportableBuffer
@@ -157,7 +158,10 @@ namespace lux::render
         [[nodiscard]] ExportableTimelineSemaphore createExportableTimelineSemaphore();
 
         /// Retire raw (non-VMA) interop handles (FIF-safe deferred destroy), for the
-        /// VkDeviceMemory / VkSemaphore returned by the two creators above.
+        /// VkBuffer / VkDeviceMemory / VkSemaphore returned by the two creators above.
+        /// Use retireRawBuffer (vkDestroyBuffer) for createExportableBuffer's buffer —
+        /// NOT retireBuffer, which routes to vmaDestroyBuffer (wrong for a non-VMA buffer).
+        void retireRawBuffer(VkBuffer buffer);
         void retireDeviceMemory(VkDeviceMemory memory);
         void retireSemaphore(VkSemaphore semaphore);
 

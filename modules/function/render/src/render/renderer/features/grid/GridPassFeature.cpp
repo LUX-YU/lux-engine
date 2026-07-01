@@ -12,8 +12,7 @@ namespace lux::render
     {
     }
 
-    void GridPassFeature::initAndAttachTo(RenderScene & /*scene*/)
-    {
+    lux::render::Expected<void> GridPassFeature::initAndAttachTo(RenderScene & /*scene*/){
         // Self-contained feature: only the narrow RenderContextView SDK surface —
         // no engine-internal RenderContext / PipelineManager / ShaderResources.
         auto cv = contextView();
@@ -35,6 +34,7 @@ namespace lux::render
             "GridPassLayout"
         );
         grid_handle_ = cv.registerGraphics(tmpl, infos);
+        return {};
     }
 
     void GridPassFeature::addPasses(RGBuilder &builder)

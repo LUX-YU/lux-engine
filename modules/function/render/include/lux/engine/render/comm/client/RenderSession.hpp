@@ -9,6 +9,7 @@
 #include <lux/engine/render/comm/client/RenderClient.hpp>
 #include <lux/engine/render/comm/client/RenderRequest.hpp>
 #include <lux/engine/render/comm/RenderProtocol.hpp>
+#include <lux/engine/render/renderer/RenderTargetLayout.hpp>   // TargetSlot (readback semantic)
 // Mesh data ops moved to renderer/features/meshstack/MeshStackOperation.hpp (feature domain).
 #include <lux/engine/render/resources/ops/TextureResourceOperation.hpp>
 // Material ops moved to renderer/features/material/MaterialOperation.hpp (feature domain).
@@ -160,9 +161,12 @@ namespace lux::render
         /// resolves (use a blocking syncCall, since the server writes into it
         /// directly). Pixels are copied in the view's native color format; the
         /// reply reports width / height / bytes_per_pixel / bytes_written /
-        /// format. Intended for offscreen thumbnail capture.
+        /// format. Intended for offscreen thumbnail capture. @p slot selects WHICH
+        /// output semantic to read (default SceneColor; e.g. InstanceId for picking,
+        /// LinearDepth for sensors) — must be a slot the view's layout exposes.
         RenderRequest<ReadbackViewReply> readbackView(
-            RenderSceneId scene_id, ViewHandle view, void* dst, std::size_t dst_capacity);
+            RenderSceneId scene_id, ViewHandle view, void* dst, std::size_t dst_capacity,
+            TargetSlot slot = TargetSlot::SceneColor);
 
         /// Async (non-blocking) readback: returns immediately; the request
         /// resolves via a DEFERRED reply once the server has settled
@@ -172,7 +176,7 @@ namespace lux::render
         /// the request (isReady) from a frame loop; do NOT block the UI thread.
         RenderRequest<ReadbackViewReply> readbackViewAsync(
             RenderSceneId scene_id, ViewHandle view, void* dst, std::size_t dst_capacity,
-            std::uint32_t settle_frames = 3);
+            std::uint32_t settle_frames = 3, TargetSlot slot = TargetSlot::SceneColor);
 
         /// Debug: dump @p scene_id's CURRENT compiled render graph (human-readable
         /// text) into @p dst — a CALLER-OWNED buffer that must stay valid until the

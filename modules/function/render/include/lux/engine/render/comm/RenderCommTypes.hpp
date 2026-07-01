@@ -88,6 +88,13 @@ namespace lux::render
     inline constexpr TypeId     kInvalidTypeId    = std::numeric_limits<TypeId>::max();
     inline constexpr RequestId  kInvalidRequestId = std::numeric_limits<RequestId>::max();
 
+    // Reply type id for a generic "the command failed during dispatch" reply (P0-4).
+    // A reserved high value so it never collides with a hand-assigned type_ids reply
+    // id. Lives in this base comm header so BOTH the client (RenderRequest /
+    // ResponseCallbackStore) and the server/protocol can name it without a circular
+    // include (RenderProtocol.hpp aliases it as type_ids::ReplyCommandFailed).
+    inline constexpr TypeId     kReplyCommandFailedTypeId = 0xFFFFFF01u;
+
     // TypeId encodes a 16-bit slot index (low) and 16-bit generation (high).
     // Static type_ids have generation 0 — they are never recycled.
     inline constexpr TypeId makeTypeId(std::uint16_t index, std::uint16_t generation) noexcept

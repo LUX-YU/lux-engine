@@ -24,6 +24,13 @@
 
 namespace lux::render
 {
+    /// How many instances of a feature type a single scene may hold.
+    enum class FeatureMultiplicity : std::uint8_t
+    {
+        MultiplePerScene,  ///< default — any number of instances (today's behaviour)
+        SinglePerScene,    ///< at most one; a second install of this type is rejected
+    };
+
     /// One declared dependency of a feature on another feature type.
     struct FeatureDependency
     {
@@ -51,6 +58,10 @@ namespace lux::render
         bool creates_view_state{false};
         /// May be toggled at runtime; when false the manager rejects setEnabled(false).
         bool supports_runtime_disable{true};
+
+        /// At most one instance per scene? SinglePerScene → the install path rejects a
+        /// second instance of this type (default MultiplePerScene = today's behaviour).
+        FeatureMultiplicity multiplicity{FeatureMultiplicity::MultiplePerScene};
 
         [[nodiscard]] constexpr bool valid() const noexcept
         {

@@ -35,8 +35,7 @@ PCFeatureSplatting::PCFeatureSplatting(Config cfg)
 {
 }
 
-void PCFeatureSplatting::initAndAttachTo(RenderScene& scene)
-{
+lux::render::Expected<void> PCFeatureSplatting::initAndAttachTo(RenderScene& scene){
     PCFeatureIndirectBase::initAndAttachTo(scene);
 
     auto& ctx = renderContext();
@@ -72,7 +71,8 @@ void PCFeatureSplatting::initAndAttachTo(RenderScene& scene)
         infos,
         "PointCloudSplatLayout").value();
     draw_handle_ = ctx.pipelineManager().registerGraphicsTemplate(tmpl, infos).value();
-}
+    return {};
+    }
 
 // ============================================================================
 //  RenderFeature — addPasses

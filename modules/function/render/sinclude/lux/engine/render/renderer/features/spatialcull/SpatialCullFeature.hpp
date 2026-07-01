@@ -49,7 +49,7 @@ namespace lux::render
 
         explicit SpatialCullFeature(Config cfg = {});
 
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
         void onFrameBegin(const FeatureFrameContext& ctx) override;
         void addPasses(RGBuilder& builder) override;   ///< no RG passes

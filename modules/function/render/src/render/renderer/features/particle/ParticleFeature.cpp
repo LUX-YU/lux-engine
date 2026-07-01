@@ -60,10 +60,10 @@ ParticleFeature::ParticleFeature(Config cfg)
 {
 }
 
-void ParticleFeature::initAndAttachTo(RenderScene& /*scene*/)
-{
+lux::render::Expected<void> ParticleFeature::initAndAttachTo(RenderScene& /*scene*/){
     init(cfg_);
-}
+    return {};
+    }
 
 ParticleResources* ParticleFeature::particleResources() noexcept
 {

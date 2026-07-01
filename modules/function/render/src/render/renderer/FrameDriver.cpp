@@ -113,6 +113,12 @@ namespace lux::render
                                          SwapchainProvider *swapchain)
     {
         assert(frame_index < frames_in_flight_);
+        // Release-safe guard (五-1): an out-of-range slot would index fences_/command
+        // pools out of bounds (UB). Every call site passes serial % fif (always in
+        // range), so this only fires on a contract violation — fold into range instead
+        // of corrupting memory. frames_in_flight_ is >= 1 (RenderContext gate).
+        if (frame_index >= frames_in_flight_)
+            frame_index %= frames_in_flight_;
 
         auto &dev = res_ctx_.deviceContext().logicalDevice();
         const auto fi = frame_index;

@@ -321,9 +321,12 @@ namespace lux::render
             pending_readbacks_.clear();
         }
 
-        // Free deferred staging buffers in all FIF slots.
+        // Free deferred staging buffers + deferred offscreen pools in all FIF slots.
         for (uint32_t i = 0; i < kMaxFramesInFlight; ++i)
+        {
             async_deferred_staging_[i].clear();
+            async_deferred_pools_[i].clear();   // P0-3 deferred DestroyScene pools
+        }
 
         // Destroy offscreen pools before device teardown
         offscreen_views_.clear();
@@ -499,27 +502,35 @@ namespace lux::render
             auto& im = impl(ctx);
             if (!im.renderer_->getScene(p.scene_id)) return;
 
-            // shutdownFull() immediately frees GPU resources (UBOs, render graph
-            // physical resources, instance staging buffers, …).  The last rendered
-            // frame may still be in-flight because tick() waits on the FIF fence
-            // AFTER drainRequestBlocking().  We must ensure all GPU work is
-            // complete before tearing down resources the GPU might still reference.
-            vkDeviceWaitIdle(im.dev_ctx_->logicalDevice().handle());
-
-            // removeScene() calls shutdownFull() internally, so no need to
-            // call it separately.
+            // NO full-device vkDeviceWaitIdle here (P0-3): it stalled every OTHER scene
+            // on each teardown. Everything the GPU might still reference is retired
+            // ASYNChronously instead, freed only once the GPU has passed the frames
+            // that could touch it:
+            //   - the scene's own GPU resources  → removeScene() retires the scene and
+            //     defers shutdownFull() by fif frames (PR-6);
+            //   - the server-side offscreen pools → moved into the per-FIF deferred
+            //     ring below (freed when the slot's fence is next waited);
+            //   - subclass per-scene pools (UI)   → pre_destroy_scene_cb_ retires them
+            //     into its own fif-gated list.
+            // The swapchain binding owns no GPU pool (the swapchain images belong to
+            // the provider), so dropping it is immediate and safe.
             im.renderer_->removeScene(p.scene_id);
 
             // Notify subclass before removing cached pointers
             if (im.pre_destroy_scene_cb_ && im.extension_)
                 im.pre_destroy_scene_cb_(im.extension_, p.scene_id);
 
-            // Remove all offscreen views belonging to this scene
+            // Defer this scene's offscreen pools into the current FIF slot's ring
+            // (freed fif frames later), then drop the now-empty entries.
+            const uint32_t slot = im.current_stamp_.slotIndex();
+            for (auto& e : im.offscreen_views_)
+                if (e.scene_id == p.scene_id && e.pool)
+                    im.async_deferred_pools_[slot].push_back(std::move(e.pool));
             std::erase_if(im.offscreen_views_, [&](const auto& e) {
                 return e.scene_id == p.scene_id;
             });
 
-            // Clear swapchain binding if it belonged to this scene
+            // Clear swapchain binding if it belonged to this scene (no GPU pool owned).
             if (im.swapchain_binding_.has_value() &&
                 im.swapchain_binding_->scene_id == p.scene_id)
             {
@@ -784,19 +795,20 @@ namespace lux::render
             if (!pool) return 1;
 
             const RenderTargetLayout rt_layout = pool->layout();
-            if (!rt_layout.hasSlot(TargetSlot::SceneColor)) return 2;
+            const TargetSlot slot = j.slot;                  // which output semantic to read (阶段4 P4c)
+            if (!rt_layout.hasSlot(slot)) return 2;
 
-            const RenderTargetSlotDesc& color = rt_layout.slot(TargetSlot::SceneColor);
-            const VkFormat      fmt         = color.format;
-            const VkImageLayout from_layout = color.final_layout;
+            const RenderTargetSlotDesc& slot_desc = rt_layout.slot(slot);
+            const VkFormat      fmt         = slot_desc.format;
+            const VkImageLayout from_layout = slot_desc.final_layout;
             const uint32_t      bpp         = readbackBpp(fmt);
             const VkExtent2D    ext         = pool->extent();
             if (bpp == 0 || ext.width == 0 || ext.height == 0) return 3;
 
             const RenderTargetBinding& binding = pool->binding();
-            const SlotImages& color_imgs = binding.slot(TargetSlot::SceneColor);
-            if (color_imgs.images.empty()) return 4;
-            const VkImage image = color_imgs.images.front();
+            const SlotImages& slot_imgs = binding.slot(slot);
+            if (slot_imgs.images.empty()) return 4;
+            const VkImage image = slot_imgs.images.front();
 
             const uint64_t needed = static_cast<uint64_t>(ext.width) * ext.height * bpp;
             if (needed > j.dst_capacity || j.dst_ptr == 0) return 5;
@@ -930,6 +942,7 @@ namespace lux::render
             j.view_id      = p.view;
             j.dst_ptr      = p.dst_ptr;
             j.dst_capacity = p.dst_capacity;
+            j.slot         = static_cast<TargetSlot>(p.slot);
 
             ReadbackViewReply reply{};
             const uint32_t st = submitReadbackCopy(im, j);
@@ -961,6 +974,7 @@ namespace lux::render
             j.view_id      = p.view;
             j.dst_ptr      = p.dst_ptr;
             j.dst_capacity = p.dst_capacity;
+            j.slot         = static_cast<TargetSlot>(p.slot);
             j.request_id   = ctx.currentRequestId();
             j.settle_left  = std::max<uint32_t>(p.settle_frames, im.frames_in_flight_);
             j.deadline     = 600; // ticks before a stuck fence is declared failed
@@ -1567,6 +1581,9 @@ namespace lux::render
         // FrameDriver::beginFrame() has already waited this slot's fence.
         frame_orchestrator_.beginFrame(*renderer_);
         async_deferred_staging_[current_stamp_.slotIndex()].clear();
+        // This slot's fence is now waited → the offscreen pools retired into it (by a
+        // DestroyScene fif frames ago) are GPU-idle and safe to destroy. (P0-3)
+        async_deferred_pools_[current_stamp_.slotIndex()].clear();
 
         VRAMBudgetGuard budget(dev_ctx_->vmaAllocator());
         auto snap = budget.snapshot();
@@ -1709,7 +1726,7 @@ namespace lux::render
             // null command buffer (crash/UB). (C-9)
             if (rt.primary_cmd != VK_NULL_HANDLE)
                 im.renderer_->renderSingleView(
-                    *item.scene, *item.view, binding, e.layout, rt, item.cross_view_index);
+                    *item.scene, *item.view, binding, rt, item.cross_view_index);
         }
 
         // 4. Render swapchain view
@@ -1722,8 +1739,10 @@ namespace lux::render
             {
                 scene_view_batch.add(sc_scene, sv);
                 const auto& item = scene_view_batch.items().back();
+                // The swapchain provider leaves binding.layout null — set it here (阶段4 P4d).
+                rt.present_target->layout = &sb.layout;
                 im.renderer_->renderSingleView(
-                    *item.scene, *item.view, *rt.present_target, sb.layout, rt, item.cross_view_index);
+                    *item.scene, *item.view, *rt.present_target, rt, item.cross_view_index);
             }
         }
 
@@ -1765,13 +1784,21 @@ namespace lux::render
 
         FeatureTypeRecord rec{};
         rec.factory  = factory;
-        rec.op_count = factory.register_ops_fn(&impl_->dispatcher, rec.ops, 16);
+        // 五-2: guard a null register_ops_fn + clamp op_count to ops[] capacity before
+        // any copy (a misbehaving plugin could over-report what it wrote).
+        if (factory.register_ops_fn)
+            rec.op_count = factory.register_ops_fn(&impl_->dispatcher, rec.ops, 16);
+        if (rec.op_count > 16) rec.op_count = 16;
+
         uint32_t type_id = impl_->renderer_->featureTypeRegistry().add(rec);
 
         FeatureTypeRegisteredReply reply{};
-        reply.feature_type_id = type_id;
-        reply.op_count = rec.op_count;
-        std::copy_n(rec.ops, rec.op_count, reply.ops);
+        reply.feature_type_id = type_id;   // 0 if the registry rejected it (五-2)
+        if (type_id != 0)
+        {
+            reply.op_count = rec.op_count;
+            std::copy_n(rec.ops, rec.op_count, reply.ops);
+        }
         return reply;
     }
 
@@ -1800,31 +1827,17 @@ namespace lux::render
             auto& rec = impl_->renderer_->featureTypeRegistry().at(fp.feature_type_id);
             const FeatureDescriptor& desc = rec.factory.descriptor;
 
-            // Same dependency/conflict enforcement as handleAddFeature (3c, hard
-            // reject): a feature whose required dep isn't already present, or that
-            // conflicts with one, is skipped (invalid handle in result) — initial
-            // features must be listed in dependency order.
-            bool rejected = false;
-            if (scene && desc.valid())
+            // Dependency / conflict / multiplicity enforcement is inside addFeatureImpl
+            // now (三-2 unified entry): create_fn returns an invalid handle if rejected,
+            // so initial features still must be listed in dependency order. Descriptor
+            // visible during attach via the scope. (Guard on scene — getScene may have
+            // failed; the old code would have crashed in create_fn(null,...).)
+            FeatureHandle fid{};
+            if (scene)
             {
-                for (FeatureTypeId c : desc.conflicts)
-                    if (scene->hasFeatureOfType(c)) { rejected = true; break; }
-                if (!rejected)
-                    for (const auto& dep : desc.dependencies)
-                        if (!dep.optional && !scene->hasFeatureOfType(dep.type)) { rejected = true; break; }
-                if (rejected)
-                    std::cerr << "[RenderServer] createScene feature '" << desc.name
-                              << "' rejected: dependency/conflict unmet (check feature order).\n";
+                RenderScene::FeatureInstallScope install_scope(*scene, desc);
+                fid = rec.factory.create_fn(scene, fp.param, fp.param_size);
             }
-            if (rejected)
-            {
-                result.features.push_back(FeatureHandle{});
-                continue;
-            }
-
-            FeatureHandle fid = rec.factory.create_fn(scene, fp.param, fp.param_size);
-            if (fid.valid() && desc.valid() && scene)
-                scene->setFeatureDescriptor(fid, desc);
             result.features.push_back(fid);
         }
 

@@ -1130,7 +1130,7 @@ namespace lux::ui
             // image pool, so imported images start at UNDEFINED (not at the
             // previous view's final state).  first_view_barriers handle this.
             im.renderer_->renderSingleView(
-                *scene, *view, binding, e.layout, rt, 0);
+                *scene, *view, binding, rt, 0);
         }
 
         // Phase 2: Render UI offscreen views + ensure ImGui descriptors
@@ -1145,7 +1145,7 @@ namespace lux::ui
             auto binding = e.ui_pool->makeFrameBinding(im.current_stamp_.slotIndex());
             // cross_view_index=0: same rationale as Phase 1 — independent pool.
             im.renderer_->renderSingleView(
-                *scene, *view, binding, e.layout, rt, 0);
+                *scene, *view, binding, rt, 0);
             e.ui_pool->ensureImGuiDescriptors();
         }
 
@@ -1171,8 +1171,10 @@ namespace lux::ui
             {
                 scene_view_batch.add(scene, view);
                 // cross_view_index=0: swapchain layer uses its own target binding.
+                // Swapchain layout varies per overlay phase — set it here (阶段4 P4d).
+                rt.present_target->layout = &layer.layout;
                 im.renderer_->renderSingleView(
-                    *scene, *view, *rt.present_target, layer.layout, rt, 0);
+                    *scene, *view, *rt.present_target, rt, 0);
             }
         }
 
@@ -1188,8 +1190,10 @@ namespace lux::ui
 
             scene_view_batch.add(ui_->imgui_scene_, ui_->imgui_view_);
             const auto &item = scene_view_batch.items().back();
+            // Overlay composites on top of the swapchain layer — its own layout (阶段4 P4d).
+            rt.present_target->layout = &ui_->overlay_layout_;
             im.renderer_->renderSingleView(
-                *item.scene, *item.view, *rt.present_target, ui_->overlay_layout_, rt, item.cross_view_index);
+                *item.scene, *item.view, *rt.present_target, rt, item.cross_view_index);
         }
 
         // End-of-view-frame for each touched scene

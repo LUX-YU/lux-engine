@@ -25,8 +25,7 @@ namespace lux::render
         : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
     {}
 
-    void StandardMeshStackFeature::initAndAttachTo(RenderScene& sc)
-    {
+    lux::render::Expected<void> StandardMeshStackFeature::initAndAttachTo(RenderScene& sc){
         // Own the per-scene 3D mesh-stack resources the RenderScene ctor used to
         // emplace unconditionally. ensure<T>: whoever attaches first builds them;
         // a second mesh feature gets the same instances. Order matters —
@@ -90,6 +89,7 @@ namespace lux::render
                     makeTransferContributor(inst, /*priority=*/0));
             }
         }
+        return {};
     }
 
     void StandardMeshStackFeature::onDetachFromScene(RenderScene& /*sc*/)

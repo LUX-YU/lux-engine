@@ -100,7 +100,7 @@ namespace lux::render
             RenderFeature::Config feature_cfg,
             std::string_view     pass_label);
 
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         // -------------------------------------------------------------------
         //  addComputePass — call from subclass addPasses()

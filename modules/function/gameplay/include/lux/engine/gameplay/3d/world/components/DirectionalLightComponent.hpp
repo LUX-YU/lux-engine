@@ -33,11 +33,12 @@ namespace lux::gameplay::d3
         LUX_MEMBER(display_name=Intensity, min=0.0, max=50.0)
         float intensity = 1.f;
 
-        /// Bitfield mirroring `lux::render::LightDescriptorFlags`. Bit 0 =
-        /// `LIGHT_FLAG_CAST_SHADOW`. Not Inspector-edited as a primitive
-        /// because the bit semantics need a custom widget — that lands with
-        /// the +Add Component UI in M2.
-        std::uint32_t flags = 0;
+        /// Whether the sun renders cascaded shadow maps. The directional light
+        /// is the cheapest, highest-impact caster, so this defaults on. The
+        /// bridge folds it into `DirectionalLightDesc::flags` bit 0
+        /// (`LIGHT_FLAG_CAST_SHADOW`) in LightRenderTraits.
+        LUX_MEMBER(display_name=Cast Shadow, tooltip=Render cascaded shadow maps for this light)
+        bool cast_shadow = true;
 
         LUX_MEMBER(display_name=Shadow Map Size, min=128, max=8192, tooltip=Resolution of each shadow cascade map in texels)
         std::uint32_t shadow_map_size = 1024;

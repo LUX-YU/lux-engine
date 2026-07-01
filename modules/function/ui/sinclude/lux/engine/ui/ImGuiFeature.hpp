@@ -55,7 +55,7 @@ namespace lux::ui
 
         std::string_view name()     const override { return "ImGuiOverlay"; }
 
-        void initAndAttachTo(lux::render::RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(lux::render::RenderScene& scene) override;
         void onDetachFromScene(lux::render::RenderScene& scene) override;
 
         void addPasses(lux::render::RGBuilder& builder) override;

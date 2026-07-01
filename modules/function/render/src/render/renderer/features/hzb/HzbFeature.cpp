@@ -29,9 +29,9 @@ namespace lux::render
         , cfg_(cfg)
     {}
 
-    void HzbFeature::initAndAttachTo(RenderScene& /*scene*/)
-    {
+    lux::render::Expected<void> HzbFeature::initAndAttachTo(RenderScene& /*scene*/){
         init(cfg_);
+        return {};
     }
 
     void HzbFeature::init(const Config& /*cfg*/)

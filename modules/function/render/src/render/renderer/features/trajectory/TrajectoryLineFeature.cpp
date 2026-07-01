@@ -68,8 +68,7 @@ TrajectoryLineFeature::TrajectoryLineFeature(Config cfg)
 {
 }
 
-void TrajectoryLineFeature::initAndAttachTo(RenderScene& /*scene*/)
-{
+lux::render::Expected<void> TrajectoryLineFeature::initAndAttachTo(RenderScene& /*scene*/){
     // Self-contained feature: only the narrow RenderContextView / RenderSceneView
     // SDK surface — no engine-internal RenderContext / RenderScene / ShaderResources.
     auto cv = contextView();
@@ -109,7 +108,8 @@ void TrajectoryLineFeature::initAndAttachTo(RenderScene& /*scene*/)
         traj_res->setUseTransferScheduler(true);
     }
     global_buf_ = &traj_res->globalBuffer();
-}
+    return {};
+    }
 
 void TrajectoryLineFeature::extractRenderObjects(
     const RenderObjectExtractContext& ctx,

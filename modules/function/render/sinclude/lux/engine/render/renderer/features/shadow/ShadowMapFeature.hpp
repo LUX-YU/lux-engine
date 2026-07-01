@@ -81,7 +81,7 @@ namespace lux::render
 
         std::string_view name() const override { return "ShadowMap"; }
 
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
         void onFrameBegin(const FeatureFrameContext& ctx) override;
 

@@ -26,7 +26,7 @@ namespace lux::render
         explicit GridPassFeature(Config cfg);
 
         std::string_view name() const override { return "GridPass"; }
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         GraphicsPipelineHandle gridHandle() const noexcept { return grid_handle_; }
 

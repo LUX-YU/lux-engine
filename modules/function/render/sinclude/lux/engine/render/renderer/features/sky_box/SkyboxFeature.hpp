@@ -30,7 +30,7 @@ namespace lux::render
         ~SkyboxFeature() override;
 
         std::string_view name() const override { return "Skybox"; }
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         // ---- RenderFeature lifecycle (render thread) ----
         void addPasses(RGBuilder& builder) override;

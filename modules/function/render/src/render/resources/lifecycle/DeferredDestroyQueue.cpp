@@ -108,6 +108,23 @@ void DeferredDestroyQueue::retireSampler(VkSampler sampler, uint64_t serial)
     enqueue(std::move(p));
 }
 
+void DeferredDestroyQueue::retireRawBuffer(VkBuffer buffer)
+{
+    retireRawBuffer(buffer, current_serial_);
+}
+
+void DeferredDestroyQueue::retireRawBuffer(VkBuffer buffer, uint64_t serial)
+{
+    if (buffer == VK_NULL_HANDLE)
+        return;
+
+    PendingDestroy p{};
+    p.retire_serial = serial;
+    p.type = PendingType::RawBuffer;
+    p.payload.raw_buffer = {buffer};
+    enqueue(std::move(p));
+}
+
 void DeferredDestroyQueue::retireDeviceMemory(VkDeviceMemory memory)
 {
     retireDeviceMemory(memory, current_serial_);
@@ -211,6 +228,9 @@ void DeferredDestroyQueue::destroy(PendingDestroy& p)
     {
     case PendingType::Buffer:
         vmaDestroyBuffer(allocator_, p.payload.buffer.buffer, p.payload.buffer.allocation);
+        break;
+    case PendingType::RawBuffer:
+        vkDestroyBuffer(device_, p.payload.raw_buffer.buffer, nullptr);
         break;
     case PendingType::DescriptorSet:
         vkFreeDescriptorSets(device_, p.payload.desc_set.pool, 1, &p.payload.desc_set.set);

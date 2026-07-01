@@ -126,6 +126,9 @@ namespace lux::render
     static constexpr FeatureDescriptor kLightDescriptor{
         .type = featureId("lux.render.light.v1"),
         .name = "Light",
+        // One per-scene light SSBO owner; a second instance would be a no-op shell
+        // over the same registry resource, so reject it (三-4).
+        .multiplicity = FeatureMultiplicity::SinglePerScene,
     };
 
     const FeatureFactory kLightFeatureFactory{

@@ -139,7 +139,10 @@ vec3 accumulateLightingShadow(vec3 worldPos, vec3 normal, vec3 viewDir, vec3 kd,
 
     for (int i = 0; i < uPointLights.lights.length(); ++i) {
         if (uPointLights.lights[i].range <= 0.0) continue;
-        totalLighting += calculatePointLight(uPointLights.lights[i], worldPos, normal, viewDir, kd, ks, shininess);
+        float shadow = 1.0;
+        if ((uPointLights.lights[i].flags & 1u) != 0u)
+            shadow = pointShadow(uint(i), worldPos, normal);
+        totalLighting += calculatePointLight(uPointLights.lights[i], worldPos, normal, viewDir, kd, ks, shininess) * shadow;
     }
 
     for (int i = 0; i < uSpotLights.lights.length(); ++i) {

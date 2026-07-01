@@ -120,6 +120,10 @@ void main()
                            uPointLights.lights[i].attenuation_quadratic * d * d);
         vec3 lc = uPointLights.lights[i].color * uPointLights.lights[i].intensity * att;
 
+        float pshadow = 1.0;
+        if ((uPointLights.lights[i].flags & 1u) != 0u)
+            pshadow = pointShadow(uint(i), vWorldPos, N);
+
         float diff_raw = NdotL;
         if (sigma_deg >= 0.0)
             diff_raw = orenNayarDiffuse(L, V, N, radians(sigma_deg));
@@ -130,12 +134,12 @@ void main()
         else
             diff_t = toonStep(diff_raw, diffuse_steps);
 
-        Lo += baseColor * lc * diff_t;
+        Lo += baseColor * lc * diff_t * pshadow;
 
         if (specular_steps > 0.0) {
             vec3  H    = normalize(L + V);
             float spec = pow(max(dot(N, H), 0.0), 32.0);
-            Lo += lc * toonStep(spec, specular_steps);
+            Lo += lc * toonStep(spec, specular_steps) * pshadow;
         }
     }
 

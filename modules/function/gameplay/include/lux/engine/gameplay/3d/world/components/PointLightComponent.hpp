@@ -48,10 +48,12 @@ namespace lux::gameplay::d3
         LUX_MEMBER(display_name=Attenuation Quadratic, min=0.0)
         float attenuation_quadratic = 0.f;
 
-        /// Bitfield mirroring `lux::render::LightDescriptorFlags`.
-        /// Bit 0 = `LIGHT_FLAG_CAST_SHADOW` (point shadow = a cubemap, costly —
-        /// leave 0 for most lights). Not Inspector-edited as a primitive.
-        std::uint32_t flags = 0;
+        /// Whether this light renders into the shadow atlas. A point shadow is a
+        /// 6-face cubemap (costly) and competes for a Top-K shadow-atlas slot, so
+        /// only the highest-scoring casters in view actually get one. The bridge
+        /// folds it into `PointLightDesc::flags` bit 0 (`LIGHT_FLAG_CAST_SHADOW`).
+        LUX_MEMBER(display_name=Cast Shadow, tooltip=Render this light into the shadow map (point shadow = cubemap, costly))
+        bool cast_shadow = true;
 
         LUX_MEMBER(display_name=Shadow Map Size, min=128, max=8192)
         std::uint32_t shadow_map_size = 1024;

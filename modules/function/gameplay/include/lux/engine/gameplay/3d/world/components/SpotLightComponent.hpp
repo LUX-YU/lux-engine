@@ -53,8 +53,12 @@ namespace lux::gameplay::d3
         LUX_MEMBER(display_name=Outer Cone Angle, min=0.0, max=1.5708, tooltip=Radians; falls to zero by this half-angle)
         float outer_cone_angle = 0.61f;   // ~35°
 
-        /// Bit 0 = `LIGHT_FLAG_CAST_SHADOW`.
-        std::uint32_t flags = 0;
+        /// Whether this light renders into the shadow atlas. A spot shadow is a
+        /// single perspective slice and competes for a Top-K shadow-atlas slot.
+        /// The bridge folds it into `SpotLightDesc::flags` bit 0
+        /// (`LIGHT_FLAG_CAST_SHADOW`).
+        LUX_MEMBER(display_name=Cast Shadow, tooltip=Render this light into the shadow map)
+        bool cast_shadow = true;
 
         LUX_MEMBER(display_name=Shadow Map Size, min=128, max=8192)
         std::uint32_t shadow_map_size = 1024;

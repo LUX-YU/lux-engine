@@ -29,7 +29,7 @@ namespace lux::render
         ~DepthPrepassFeature() override = default;
 
         std::string_view name() const override { return "DepthPrepass"; }
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         void addPasses(RGBuilder& builder) override;
 

@@ -55,8 +55,13 @@ namespace lux::render
         void retireSampler(VkSampler sampler);
         void retireSampler(VkSampler sampler, uint64_t serial);
         // Raw (non-VMA) handles for the external-memory interop path: a dedicated
-        // VkDeviceMemory / VkSemaphore allocated outside VMA (createExportableBuffer /
-        // createExportableTimelineSemaphore). Freed with vkFreeMemory / vkDestroySemaphore.
+        // VkBuffer / VkDeviceMemory / VkSemaphore created outside VMA
+        // (createExportableBuffer / createExportableTimelineSemaphore). The buffer
+        // came from vkCreateBuffer (NOT vmaCreateBuffer), so it MUST be freed with
+        // vkDestroyBuffer — routing it through retireBuffer (vmaDestroyBuffer) is the
+        // wrong API pairing. Memory/semaphore freed with vkFreeMemory/vkDestroySemaphore.
+        void retireRawBuffer(VkBuffer buffer);
+        void retireRawBuffer(VkBuffer buffer, uint64_t serial);
         void retireDeviceMemory(VkDeviceMemory memory);
         void retireDeviceMemory(VkDeviceMemory memory, uint64_t serial);
         void retireSemaphore(VkSemaphore semaphore);
@@ -75,11 +80,15 @@ namespace lux::render
         [[nodiscard]] size_t pendingCount() const noexcept { return pending_count_; }
 
     private:
-        enum class PendingType : uint8_t { Buffer, DescriptorSet, Image, ImageView, Sampler, DeviceMemory, Semaphore };
+        enum class PendingType : uint8_t { Buffer, RawBuffer, DescriptorSet, Image, ImageView, Sampler, DeviceMemory, Semaphore };
 
         struct BufferPayload {
             VkBuffer      buffer;
             VmaAllocation allocation;
+        };
+
+        struct RawBufferPayload {
+            VkBuffer      buffer;
         };
 
         struct DescSetPayload {
@@ -110,6 +119,7 @@ namespace lux::render
 
         union Payload {
             BufferPayload       buffer;
+            RawBufferPayload    raw_buffer;
             DescSetPayload      desc_set;
             ImagePayload        image;
             ImageViewPayload    image_view;

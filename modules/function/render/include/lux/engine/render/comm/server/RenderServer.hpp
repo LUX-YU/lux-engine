@@ -117,6 +117,10 @@ namespace lux::render
     T readUnaryPayload(const FrameProgram<PayloadAlignment>& pack, const CmdRecord& cmd)
     {
         assert(cmd.payload_size == sizeof(T));
+        // Release-safe (五-3): a corrupt payload_size would memcpy past the buffer.
+        // Return a default-zeroed value so the handler operates on safe input instead.
+        if (cmd.payload_size != sizeof(T))
+            return T{};
         T value{};
         std::memcpy(&value, pack.payload.data() + cmd.payload_offset, sizeof(T));
         return value;
@@ -128,6 +132,11 @@ namespace lux::render
         assert((cmd.payload_size % sizeof(T)) == 0);
         const auto* ptr = reinterpret_cast<const T*>(pack.payload.data() + cmd.payload_offset);
         assert((reinterpret_cast<std::uintptr_t>(ptr) % alignof(T)) == 0);
+        // Release-safe (五-3): a non-multiple size or misaligned pointer yields an empty
+        // span instead of a malformed view.
+        if ((cmd.payload_size % sizeof(T)) != 0 ||
+            (reinterpret_cast<std::uintptr_t>(ptr) % alignof(T)) != 0)
+            return {};
         return {ptr, cmd.payload_size / sizeof(T)};
     }
 
@@ -135,6 +144,8 @@ namespace lux::render
     T readReplyPayload(const FrameReplies<PayloadAlignment>& pack, const ReplyRecord& rec)
     {
         assert(rec.payload_size == sizeof(T));
+        if (rec.payload_size != sizeof(T))   // release-safe (五-3)
+            return T{};
         T value{};
         std::memcpy(&value, pack.payload.data() + rec.payload_offset, sizeof(T));
         return value;
@@ -144,6 +155,10 @@ namespace lux::render
     std::span<const std::byte> resolveBlob(const FrameProgram<PayloadAlignment>& pack, BlobRef ref)
     {
         assert(static_cast<std::size_t>(ref.offset) + ref.size <= pack.payload.size());
+        // Release-safe (五-3): a corrupt BlobRef yields an empty span instead of a view
+        // pointing past the payload buffer.
+        if (static_cast<std::size_t>(ref.offset) + ref.size > pack.payload.size())
+            return {};
         return {
             pack.payload.data() + ref.offset,
             ref.size,
@@ -182,9 +197,14 @@ namespace lux::render
         TypeId expected_attachment_type = kInvalidTypeId)
     {
         assert(ref.attachment_index < pack.attachments.size());
+        // Release-safe (五-3): an out-of-range attachment index or a type mismatch
+        // yields an empty view instead of indexing the attachments vector OOB / casting
+        // a wrong-typed object.
+        if (ref.attachment_index >= pack.attachments.size())
+            return {};
         const AttachmentRecord& record = pack.attachments[ref.attachment_index];
-        if (expected_attachment_type != kInvalidTypeId)
-            assert(record.type_id == expected_attachment_type);
+        if (expected_attachment_type != kInvalidTypeId && record.type_id != expected_attachment_type)
+            return {};
 
         const std::byte* data = nullptr;
         std::uint32_t size = 0;
@@ -489,11 +509,25 @@ namespace lux::render
         {
             const auto* base = program.payload.data();
 
+            // P0-4: turn a dispatch failure into a CommandFailedReply for the
+            // originating request (when it expects one), so the client unblocks with a
+            // failure instead of hanging on a reply that never arrives. Routed by the
+            // command's request_id.
+            auto emitFailure = [&ctx](const CmdRecord& c, EDispatchFailure code)
+            {
+                if (hasFlag(c.flags, CmdFlags::ExpectsReply))
+                    ctx.replies.template push<CommandFailedReply>(
+                        type_ids::ReplyCommandFailed,
+                        CommandFailedReply{ static_cast<uint32_t>(code) },
+                        0, c.request_id);
+            };
+
             for (const CmdRecord& cmd : program.commands)
             {
                 if (cmd.opcode >= MaxOpcodes)
                 {
                     std::cerr << "[FrameDispatcher] Invalid opcode=" << static_cast<uint32_t>(cmd.opcode) << "\n";
+                    emitFailure(cmd, EDispatchFailure::InvalidOpcode);
                     ctx.current_cmd = nullptr;
                     return false;
                 }
@@ -503,6 +537,7 @@ namespace lux::render
                 {
                     std::cerr << "[FrameDispatcher] Payload out of bounds: offset="
                               << cmd.payload_offset << ", size=" << cmd.payload_size << "\n";
+                    emitFailure(cmd, EDispatchFailure::PayloadOutOfBounds);
                     ctx.current_cmd = nullptr;
                     return false;
                 }
@@ -515,6 +550,7 @@ namespace lux::render
                 if (idx >= dom.handlers.size())
                 {
                     std::cerr << "[FrameDispatcher] Unknown TypeId index=" << idx << "\n";
+                    emitFailure(cmd, EDispatchFailure::UnknownTypeId);
                     ctx.current_cmd = nullptr;
                     return false;
                 }
@@ -522,6 +558,7 @@ namespace lux::render
                 if (dom.generations[idx] != typeIdGen(cmd.type_id))
                 {
                     std::cerr << "[FrameDispatcher] TypeId generation mismatch for index=" << idx << "\n";
+                    emitFailure(cmd, EDispatchFailure::TypeIdGeneration);
                     ctx.current_cmd = nullptr;
                     return false;
                 }
@@ -541,6 +578,7 @@ namespace lux::render
                 {
                     if (ctx.dispatch_error_msg)
                         std::cerr << "[FrameDispatcher] Dispatch failed: " << ctx.dispatch_error_msg << "\n";
+                    emitFailure(cmd, EDispatchFailure::HandlerRejected);
                     ctx.current_cmd = nullptr;
                     return false;
                 }
@@ -549,6 +587,7 @@ namespace lux::render
                     std::cerr << "[FrameDispatcher] Handler payload validation failed"
                               << (ctx.dispatch_error_msg ? std::string(": ") + ctx.dispatch_error_msg : std::string())
                               << "\n";
+                    emitFailure(cmd, EDispatchFailure::PayloadValidation);
                     ctx.current_cmd = nullptr;
                     return false;
                 }

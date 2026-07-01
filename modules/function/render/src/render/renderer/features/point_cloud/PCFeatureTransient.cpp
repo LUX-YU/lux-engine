@@ -39,8 +39,7 @@ PCFeatureTransient::~PCFeatureTransient()
 //  Initialisation
 // ============================================================================
 
-void PCFeatureTransient::initAndAttachTo(RenderScene& /*scene*/)
-{
+lux::render::Expected<void> PCFeatureTransient::initAndAttachTo(RenderScene& /*scene*/){
     auto& ctx = renderContext();
 
     // ---- Shaders ----
@@ -71,7 +70,8 @@ void PCFeatureTransient::initAndAttachTo(RenderScene& /*scene*/)
     if (!renderScene().sceneRegistry().find<TransientPointCloudBuffer>())
         renderScene().sceneRegistry().emplace<TransientPointCloudBuffer>();
     incoming_ = renderScene().sceneRegistry().find<TransientPointCloudBuffer>();
-}
+    return {};
+    }
 
 // ============================================================================
 //  Frame lifecycle

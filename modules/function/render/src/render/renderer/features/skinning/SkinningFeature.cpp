@@ -54,9 +54,9 @@ namespace lux::render
         return renderScene().sceneRegistry().find<SkinningResources>();
     }
 
-    void SkinningFeature::initAndAttachTo(RenderScene& /*scene*/)
-    {
+    lux::render::Expected<void> SkinningFeature::initAndAttachTo(RenderScene& /*scene*/){
         init(cfg_);
+        return {};
     }
 
     void SkinningFeature::init(const Config& cfg)

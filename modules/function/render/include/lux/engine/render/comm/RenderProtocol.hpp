@@ -121,6 +121,14 @@ namespace lux::render
 
         // ---- Swapchain-scene binding ----
         inline constexpr TypeId ReplySwapchainBound = 19;
+
+        // ---- Generic dispatch failure (P0-4) ----
+        // Emitted by the dispatcher for ANY reply-expecting command that fails to
+        // dispatch (bad opcode / payload OOB / unknown or stale TypeId / handler
+        // rejection). Routed to the originating request by request_id so the client
+        // unblocks with a failure instead of hanging. Reserved high value (see
+        // RenderCommTypes.hpp) — not part of the hand-assigned reply-id space.
+        inline constexpr TypeId ReplyCommandFailed = kReplyCommandFailedTypeId;
     } // namespace type_ids
 
     // =============================================================================
@@ -292,6 +300,7 @@ namespace lux::render
         ViewHandle    view{};
         uint64_t      dst_ptr{0};       ///< reinterpret_cast<uintptr_t> of caller buffer
         uint64_t      dst_capacity{0};  ///< bytes available at dst_ptr
+        uint8_t       slot{0};          ///< TargetSlot to read back (0 = SceneColor) — 阶段4 P4c
     };
     static_assert(std::is_trivially_copyable_v<ReadbackViewPayload>);
 
@@ -309,6 +318,7 @@ namespace lux::render
         uint64_t      dst_ptr{0};        ///< reinterpret_cast<uintptr_t> of caller buffer
         uint64_t      dst_capacity{0};   ///< bytes available at dst_ptr
         uint32_t      settle_frames{3};  ///< render ticks before the copy is submitted
+        uint8_t       slot{0};           ///< TargetSlot to read back (0 = SceneColor) — 阶段4 P4c
     };
     static_assert(std::is_trivially_copyable_v<ReadbackViewAsyncPayload>);
 
@@ -488,6 +498,25 @@ namespace lux::render
         uint32_t code{0};
     };
     static_assert(std::is_trivially_copyable_v<GenericOkReply>);
+
+    // Payload of a ReplyCommandFailed reply (P0-4). `code` classifies the dispatch
+    // failure (see EDispatchFailure); the failing request is identified by the
+    // ReplyRecord's request_id, not by this payload.
+    enum class EDispatchFailure : uint32_t
+    {
+        Unspecified      = 0,
+        InvalidOpcode    = 1,
+        PayloadOutOfBounds = 2,
+        UnknownTypeId    = 3,
+        TypeIdGeneration = 4,
+        HandlerRejected  = 5,
+        PayloadValidation = 6,
+    };
+    struct CommandFailedReply
+    {
+        uint32_t code{0};   ///< EDispatchFailure
+    };
+    static_assert(std::is_trivially_copyable_v<CommandFailedReply>);
 
     // ---- Per-resource-type replies ----
 

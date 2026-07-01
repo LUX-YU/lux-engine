@@ -59,7 +59,7 @@ namespace lux::render
         //  RenderFeature
         // -----------------------------------------------------------------------
         [[nodiscard]] std::string_view name() const override { return "PointCloudSimple"; }
-        void initAndAttachTo(RenderScene& scene) override;
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void extractRenderObjects(
             const RenderObjectExtractContext& ctx,
             std::vector<DrawPacket>& out_packets);

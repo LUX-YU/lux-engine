@@ -31,6 +31,11 @@ namespace lux::render
         [[nodiscard]] bool isReady() const noexcept { return state_ && state_->ready; }
         explicit operator bool() const noexcept { return isReady(); }
 
+        /// True if the command FAILED server-side during dispatch (P0-4). When set,
+        /// isReady() is also true (the request is settled, so a blocking wait unblocks)
+        /// but result() holds the default Reply — treat it as an error, not a value.
+        [[nodiscard]] bool failed() const noexcept { return state_ && state_->failed; }
+
         /// True iff this request was produced by RenderRequestFactory (has shared
         /// state), as opposed to a default-constructed handle. Distinct from
         /// isReady() (which is false for BOTH a pending and a stateless request).
@@ -81,6 +86,7 @@ namespace lux::render
             T value{};
             std::function<void(const T&)> continuation{};
             bool ready{false};
+            bool failed{false};   ///< set by the CommandFailedReply path (P0-4)
         };
 
         std::shared_ptr<State> state_;
@@ -112,6 +118,18 @@ namespace lux::render
 
             auto callback = [state](const Packet& pkt, const ReplyRecord& rec)
             {
+                // P0-4: a generic dispatch-failure reply settles the request as FAILED.
+                // Its payload is a (differently shaped) CommandFailedReply, so do NOT
+                // memcpy it into `value` — leave value default and flag failed.
+                if (rec.type_id == kReplyCommandFailedTypeId)
+                {
+                    state->failed = true;
+                    state->ready  = true;
+                    if (state->continuation)
+                        state->continuation(state->value);
+                    return;
+                }
+
                 assert(rec.payload_size == sizeof(Reply));
                 Reply value{};
                 std::memcpy(&value, pkt.payload.data() + rec.payload_offset, sizeof(Reply));

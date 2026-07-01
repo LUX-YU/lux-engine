@@ -11,13 +11,13 @@ namespace lux::render
         : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
     {}
 
-    void StandardViewCameraFeature::initAndAttachTo(RenderScene& sc)
-    {
+    lux::render::Expected<void> StandardViewCameraFeature::initAndAttachTo(RenderScene& sc){
         // Own the per-scene 3D camera store. ensure<T>: idempotent get-or-create
         // (whoever attaches first builds it). No GPU state — it is a plain CPU
         // mirror filled by the camera op handler each frame and read by the camera
         // consumers (cull / shadow / hzb / deferred lighting).
         sc.sceneRegistry().ensure<ViewCameraResource>();
+        return {};
     }
 
     void StandardViewCameraFeature::onDetachFromScene(RenderScene& /*sc*/)

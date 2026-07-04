@@ -44,13 +44,14 @@ namespace lux::render
     using Dispatcher = GeneralRenderServer::Dispatcher;
     using Ctx        = Dispatcher::Ctx;
 
-    // Generic scene-resolution shims — these stay in the core server (they resolve a
-    // scene for ANY feature, not just mesh), so we forward-declare and link to them:
-    //   lookupScene            : resolve a scene by id.
-    //   lookupCurrentBulkScene : the scene set by SetActiveScene (the transform batch
-    //                            carries no per-entry scene_id).
+    // Generic scene-resolution shim — stays in the core server (resolves a scene for
+    // ANY feature, not just mesh), so we forward-declare and link to it:
+    //   lookupScene : resolve a scene by id.
+    // (The transform batch used to resolve via lookupCurrentBulkScene / SetActiveScene;
+    //  G-04 made every TransformWriteEntry carry its own scene_id, so it now routes
+    //  through lookupScene like every other op. SetActiveScene stays in the core server
+    //  for any remaining legacy bulk path.)
     RenderScene* lookupScene(void* user_state, RenderSceneId scene_id);
-    RenderScene* lookupCurrentBulkScene(void* user_state);
 
     // ── GLOBAL mesh arena (vertex 64MB + index 32MB) ──────────────────────────
     // External linkage: StandardMeshStackFeature::initAndAttachTo also triggers this
@@ -452,15 +453,18 @@ namespace lux::render
             inst->markPropertyDirty(slot);
         }
 
-        // ── Per-frame transform batch (scene = the SetActiveScene one) ────────
+        // ── Per-frame transform batch (each entry self-routes by scene_id, G-04) ──
         void handleTransformBatch(Ctx& ctx, std::span<const TransformWriteEntry> entries)
         {
-            auto* sc = lookupCurrentBulkScene(ctx.user_state);
-            if (!sc) return;
-            auto* inst = sc->sceneRegistry().find<InstanceResources>();
-            if (!inst) return;
+            // No SetActiveScene dependency: resolve each entry's OWN scene, so batches
+            // interleaved from different scenes (editor main + preview) never cross.
+            // Batches are typically single-scene (the mesh bridge sends one entry per
+            // instance), so the per-entry resolve is cheap.
             for (const auto& e : entries)
             {
+                RenderScene* sc = nullptr;
+                auto* inst = resolveInstances(ctx, e.scene_id, sc);
+                if (!inst) continue;
                 const InstanceSlot slot = resolveInstanceSlot(inst, e.object);
                 if (!inst->isAlive(slot)) continue;
                 InstanceTransform xf{};
@@ -592,10 +596,11 @@ namespace lux::render
         send<UpdateInstanceUserMetaOp>(*session_, ops_, p);
     }
 
-    void MeshStackProxy::updateTransform(RenderObjectHandle object, const float transform[16])
+    void MeshStackProxy::updateTransform(RenderSceneId scene_id, RenderObjectHandle object, const float transform[16])
     {
         TransformWriteEntry e{};
-        e.object = object;
+        e.scene_id = scene_id;
+        e.object   = object;
         std::memcpy(e.transform, transform, sizeof(e.transform));
         sendBulk<TransformBatchOp>(*session_, ops_, std::span<const TransformWriteEntry>{&e, 1});
     }

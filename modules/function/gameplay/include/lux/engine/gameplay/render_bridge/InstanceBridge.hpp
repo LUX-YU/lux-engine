@@ -141,7 +141,7 @@ namespace lux::gameplay
                         inst.last_flags = flags;
                     }
                     if (xf.dirty)
-                        mesh.updateTransform(inst.object, xf.world);   // §6.1 borrowed, not copied
+                        mesh.updateTransform(ctx.scene(), inst.object, xf.world);   // §6.1 borrowed, not copied; G-04 scene-routed
 
                     if constexpr (requires { T::accumulate(frame_, inst.object, inst.mesh, e, reg); })
                         T::accumulate(frame_, inst.object, inst.mesh, e, reg);

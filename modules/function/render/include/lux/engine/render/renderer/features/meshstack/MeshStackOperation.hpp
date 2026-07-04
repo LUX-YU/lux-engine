@@ -111,10 +111,15 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<UpdateInstanceUserMetaPayload>);
 
-    /// Per-frame transform batch entry (BulkData). Carries no scene_id — the
-    /// server applies it to the SetActiveScene scene.
+    /// Per-frame transform batch entry (BulkData). Each entry self-routes by its
+    /// own `scene_id` (G-04) — the server no longer applies the batch to the
+    /// SetActiveScene scene, so transform batches from different scenes (editor
+    /// main + PreviewScene) interleaved on the ring never cross. The bulk mechanism
+    /// carries no batch header (pushBulk = TypeId + span), so scene_id rides each
+    /// entry; batches are typically single-scene (often one entry per instance).
     struct TransformWriteEntry
     {
+        RenderSceneId      scene_id{};
         RenderObjectHandle object{};
         float transform[16]{}; // column-major 4x4
     };
@@ -304,9 +309,10 @@ namespace lux::render
         void updateInstanceRenderState(RenderSceneId scene_id, RenderObjectHandle object, EGeometryKind geometry_kind, PassMask pass_mask);
         void updateInstanceUserMeta(RenderSceneId scene_id, RenderObjectHandle object, std::uint32_t user_meta_index);
 
-        /// Per-frame transform updates (batched as bulk data). The scene is the
-        /// one set by SetActiveScene — entries carry only {object, transform}.
-        void updateTransform(RenderObjectHandle object, const float transform[16]);
+        /// Per-frame transform updates (batched as bulk data). Each write self-routes
+        /// by `scene_id` (G-04), NOT the SetActiveScene scene. `updateTransforms` takes
+        /// entries that already carry their own scene_id.
+        void updateTransform(RenderSceneId scene_id, RenderObjectHandle object, const float transform[16]);
         void updateTransforms(std::span<const TransformWriteEntry> entries);
 
         /// Upload mesh DATA into the global mesh arena; replies with the new RMeshHandle.

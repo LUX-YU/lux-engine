@@ -87,6 +87,22 @@ namespace lux::gameplay
                            lux::render::RenderRequest<lux::render::MeshInstanceSlotReply>> pending_;
         FrameState                                     frame_{};   // per-frame skinning scratch (empty for static)
 
+        // G-05: entities whose addMeshInstance replied a FAILURE. A failed create never
+        // got a valid object, so it must not become live or bump refcounts — but nor
+        // should drive re-issue it every frame (command + would-be log spam). We remember
+        // the FAILED asset ids + the failure kind: a CONFIG error (scene / mesh-stack
+        // feature absent) is futile to retry until the ids change (the config is fixed);
+        // a CAPACITY error (pool / section exhausted) is transient, retried after backoff.
+        struct FailRecord
+        {
+            lux::asset::asset_id_t mesh_id{};
+            lux::asset::asset_id_t material_id{};
+            bool                   config{false};   // true = permanent config error
+            int                    retry_in{0};     // capacity: drives until next retry
+        };
+        std::unordered_map<lux::meta::entity_id, FailRecord> failed_;
+        static constexpr int kTransientRetryDrives = 120;   // ~2s @ 60fps between capacity retries
+
         /// Single writer of the per-instance flags word: cast-shadow / visible from the
         /// component plus the highlight bit, so selection rides the same updateInstanceFlags
         /// diff path (no second writer clobbering it).
@@ -149,6 +165,23 @@ namespace lux::gameplay
                 }
                 if (pending_.count(e)) return;   // create reply still in flight
 
+                // G-05: a prior create replied failure. Skip re-issuing unless the
+                // situation changed: asset ids differ (config fixed / new mesh) → retry;
+                // a config error otherwise stays skipped; a capacity error retries after
+                // a bounded backoff.
+                if (auto fit = failed_.find(e); fit != failed_.end())
+                {
+                    FailRecord& fr = fit->second;
+                    if (fr.mesh_id != c.mesh_asset_id || fr.material_id != c.material_asset_id)
+                        failed_.erase(fit);        // ids changed → drop the block, retry below
+                    else if (fr.config)
+                        return;                    // permanent config error → keep skipping
+                    else if (--fr.retry_in > 0)
+                        return;                    // capacity: still in backoff
+                    else
+                        failed_.erase(fit);        // backoff elapsed → retry below
+                }
+
                 // First sight: resolve assets (async, cached) then fire the create.
                 const lux::render::RMeshHandle m = ctx.ensureMesh(c.mesh_asset_id);
                 if (m.is_null()) return;   // mesh not ready — retry next frame
@@ -167,6 +200,16 @@ namespace lux::gameplay
                     {
                         pending_.erase(e);                    // drops this request; the store keeps
                                                               // the state alive across this call
+                        if (r.status != lux::render::kMeshInstanceOk || !r.object)
+                        {
+                            // G-05: failed create — do NOT become live or acquire assets.
+                            // Record it so drive stops re-issuing every frame (see skip above).
+                            failed_[e] = FailRecord{ mesh_id, material_id,
+                                                     r.status == lux::render::kMeshInstanceErrConfig,
+                                                     kTransientRetryDrives };
+                            return;
+                        }
+                        failed_.erase(e);                     // a prior failure recovered
                         instances_.emplace(e, Live{ r.object, m, false, mesh_id, material_id, flags });
                         ctx_ptr->acquireMesh(mesh_id);
                         ctx_ptr->acquireMaterial(material_id);
@@ -194,6 +237,11 @@ namespace lux::gameplay
                 }
                 else ++it;
             }
+            // G-05: prune known-bad records for entities that left the view, keeping
+            // failed_ bounded (same membership test as the instance reap above).
+            std::erase_if(failed_, [&](const auto& kv) {
+                return !inComponentView<C>(reg, kv.first, typename T::Require{}, typename T::Exclude{});
+            });
         }
 
         void shutdown(RenderableBridgeContext& ctx) override
@@ -210,6 +258,7 @@ namespace lux::gameplay
                 ctx.releaseMaterial(inst.material_id);
             }
             instances_.clear();
+            failed_.clear();         // G-05: drop known-bad create records
             frame_ = FrameState{};   // drop per-frame skinning scratch
         }
     };

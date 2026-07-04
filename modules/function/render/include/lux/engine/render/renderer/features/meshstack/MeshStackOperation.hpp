@@ -125,10 +125,17 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<TransformWriteEntry>);
 
-    /// Reply for the create (addMeshInstance) op — the new instance handle.
+    /// addMeshInstance reply status (G-05). Non-zero ⇒ the instance was NOT created
+    /// (object is null); the client must not treat it as live or bump asset refcounts.
+    inline constexpr std::uint32_t kMeshInstanceOk          = 0u;  // created; object valid
+    inline constexpr std::uint32_t kMeshInstanceErrConfig   = 1u;  // scene / mesh-stack feature absent — a CONFIG error (retry futile until fixed)
+    inline constexpr std::uint32_t kMeshInstanceErrCapacity = 2u;  // instance / section slot exhausted — TRANSIENT (may succeed later)
+
+    /// Reply for the create (addMeshInstance) op — the new instance handle + status.
     struct MeshInstanceSlotReply
     {
         RenderObjectHandle object{};
+        std::uint32_t      status{kMeshInstanceOk};
     };
     static_assert(std::is_trivially_copyable_v<MeshInstanceSlotReply>);
 

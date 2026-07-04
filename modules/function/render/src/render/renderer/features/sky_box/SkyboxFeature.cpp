@@ -247,7 +247,15 @@ SkyboxFeature::~SkyboxFeature()
 
 bool SkyboxFeature::applyEquirectangularHandle(RTextureHandle texture)
 {
-    uint32_t bindless = 0;
+    // A null handle is the DISABLE signal (the client's SkyboxProxy::setEquirect with a
+    // null texture — e.g. the ParamBridge's teardown clear): drop to NONE so the pass
+    // kernel early-outs, rather than binding a stale/garbage bindless index into a
+    // sampler2D[] slot the texture pool may have since reused.
+    if (texture.is_null())
+    {
+        active_mode_ = ActiveMode::NONE;
+        return true;
+    }
     equirect_bindless_index_ = texture.index;
     active_mode_             = ActiveMode::EQUIRECT;
     return true;
@@ -255,6 +263,11 @@ bool SkyboxFeature::applyEquirectangularHandle(RTextureHandle texture)
 
 bool SkyboxFeature::applyCubemapHandles(RTextureHandle cube)
 {
+    if (cube.is_null())   // disable (see applyEquirectangularHandle)
+    {
+        active_mode_ = ActiveMode::NONE;
+        return true;
+    }
     // The handle-based cubemap path expects a SINGLE cube-texture handle stored in cube.
     cubemap_bindless_index_ = cube.index;
     active_mode_            = ActiveMode::CUBEMAP;

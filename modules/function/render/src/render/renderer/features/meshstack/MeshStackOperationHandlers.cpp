@@ -173,24 +173,24 @@ namespace lux::render
             RMeshHandle mesh, RMaterialHandle material,
             const float* transform16, std::uint32_t flags,
             EGeometryKind geometry_kind, PassMask pass_mask, std::uint32_t user_meta_index,
-            std::uint32_t& out_status)   // G-05: distinguishes config vs capacity failure
+            MeshInstanceCreateStatus& out_status)   // distinguishes config vs capacity failure
         {
             auto& im = *static_cast<GeneralRenderServer::Impl*>(user_state);
 
             auto* scene = im.renderer_->getScene(scene_id);
             if (!scene)
-            { out_status = kMeshInstanceErrConfig; return RenderObjectHandle{}; }   // dead/wrong scene_id
+            { out_status = MeshInstanceCreateStatus::InvalidConfiguration; return RenderObjectHandle{}; }   // dead/wrong scene_id
 
             auto* inst     = scene->sceneRegistry().find<InstanceResources>();
             auto* mesh_res = im.render_ctx_->globalRegistry().find<MeshResources>();
             auto* mat_res  = im.render_ctx_->globalRegistry().find<MaterialResources>();
             if (!inst || !mesh_res || !mat_res)
-            { out_status = kMeshInstanceErrConfig; return RenderObjectHandle{}; }   // mesh-stack feature absent
+            { out_status = MeshInstanceCreateStatus::InvalidConfiguration; return RenderObjectHandle{}; }   // mesh-stack feature absent
 
             const RenderObjectHandle object = inst->allocateObject();
             const InstanceSlot slot = inst->resolveSlot(object);
             if (!object || !slot)
-            { out_status = kMeshInstanceErrCapacity; return RenderObjectHandle{}; }   // instance pool exhausted
+            { out_status = MeshInstanceCreateStatus::CapacityExhausted; return RenderObjectHandle{}; }   // instance pool exhausted
 
             // Mesh sections — one per LOD level (LOD0 first).
             auto mesh_h = handle_cast<MeshHandle>(mesh);
@@ -205,7 +205,7 @@ namespace lux::render
                     for (uint32_t j = 0; j < i; ++j)
                         inst->unregisterMeshSection(section_ids[j]);
                     inst->freeObject(object);
-                    out_status = kMeshInstanceErrCapacity; return RenderObjectHandle{};   // section table exhausted
+                    out_status = MeshInstanceCreateStatus::CapacityExhausted; return RenderObjectHandle{};   // section table exhausted
                 }
             }
 
@@ -272,7 +272,7 @@ namespace lux::render
             // Local bounds from mesh
             writeLocalBoundsFromMesh(inst, mesh_res, slot, mesh_h);
 
-            out_status = kMeshInstanceOk;
+            out_status = MeshInstanceCreateStatus::Ok;
             return object;
         }
 
@@ -373,7 +373,7 @@ namespace lux::render
         // ── Instance lifecycle ───────────────────────────────────────────────
         void handleAddMeshInstance(Ctx& ctx, const AddMeshInstancePayload& p)
         {
-            std::uint32_t status = kMeshInstanceOk;
+            MeshInstanceCreateStatus status = MeshInstanceCreateStatus::Unknown;
             const RenderObjectHandle object = serverAddMeshInstance(
                 ctx.user_state, p.scene_id, p.mesh, p.material, p.transform,
                 p.flags, p.geometry_kind, p.pass_mask, p.user_meta_index, status);

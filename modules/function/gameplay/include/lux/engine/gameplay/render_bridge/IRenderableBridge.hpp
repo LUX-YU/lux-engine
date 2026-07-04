@@ -4,9 +4,11 @@
  * @brief Common base of the three generic ECS->renderer bridges.
  *
  * `RenderableSystem` drives a list of these in three phases per tick
- * (`drive` -> `finalize` -> `reap`). Each concrete bridge carries the
- * invariant lifecycle of one renderable KIND — view query, asset
- * ensure/refcount, instance creation, state push, removal — once:
+ * (`drive` -> `finalize` -> `reap`), plus a one-shot `shutdown` at teardown
+ * (explicit + builder-live: a dtor cannot reliably send GPU delete commands, so a
+ * skipped shutdown leaks). Each concrete bridge carries the invariant lifecycle of
+ * one renderable KIND — view query, asset ensure/refcount, instance creation, state
+ * push, removal — once:
  *   ParamBridge<C>    (Grid, Skybox),
  *   PoolBridge<C>     (Directional/Point/Spot Light),
  *   InstanceBridge<C> (Static/Skeletal Mesh).
@@ -59,15 +61,30 @@ namespace lux::gameplay
         /// destroy*`). Runs with the builder still live.
         virtual void reap(lux::meta::EntityRegistry& registry, RenderableBridgeContext& ctx) = 0;
 
-        /// Explicit teardown — release EVERY live render object, asset refcount, and
-        /// pending create continuation this bridge holds, IN PLACE. Called once by
-        /// `RenderableSystem::shutdown()` with the FrameProgram builder LIVE (it emits
-        /// destroy / removeMeshInstance builder commands, same as `reap`), BEFORE the
-        /// bridge — and the RenderSession / scene it targets — are destroyed.
-        /// Pure virtual on purpose: a bridge must not silently leak by forgetting to
-        /// tear down. Destructors must NOT send render commands (a dtor may run after
-        /// the frame / session is already gone); `shutdown` is the single seam for it.
-        virtual void shutdown(RenderableBridgeContext& ctx) = 0;
+        // ── Two-phase teardown (drain, don't cancel) ──────────────────────────
+        // A pending async create (addMeshInstance / createLight) whose reply has NOT
+        // arrived cannot be simply cancelled at teardown: `RenderRequest::cancel()`
+        // only detaches the CLIENT continuation — the server still processes the
+        // command and creates the object, which then leaks in a REUSED scene (editor
+        // scene swaps keep the same render scene; nothing reaps it). So teardown
+        // DRAINS instead: keep the pending continuations, pump replies until they
+        // settle, then destroy whatever the late replies created.
+
+        /// Phase 1 (builder LIVE): destroy every KNOWN live object + release its asset
+        /// refcounts, then enter "stopping" mode — do NOT cancel pending creates; their
+        /// late replies route the server-created handle into an orphan list (destroyed
+        /// in phase 2) instead of becoming live. Pure virtual: a bridge must not leak by
+        /// forgetting to tear down. Destructors must NOT send render commands.
+        virtual void beginShutdown(RenderableBridgeContext& ctx) = 0;
+
+        /// True while async creates started before beginShutdown are still in flight.
+        /// The caller submits+pumps until this is false across ALL bridges (and the
+        /// context has no inflight uploads) BEFORE calling flushShutdownCleanup.
+        [[nodiscard]] virtual bool hasPendingShutdownWork() const = 0;
+
+        /// Phase 2 (builder LIVE): destroy the orphan objects the drained late replies
+        /// created while stopping. Call once, after the drain reports no pending work.
+        virtual void flushShutdownCleanup(RenderableBridgeContext& ctx) = 0;
 
     protected:
         IRenderableBridge() = default;

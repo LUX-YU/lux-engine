@@ -66,10 +66,11 @@ namespace lux::gameplay
         /// @param scene_id   render scene to submit instances into
         /// @param view       view in which submitted instances are made visible
         ///
-        /// Constructs with the two default INSTANCE bridges (static + skeletal
-        /// mesh) pre-registered via registerComponent<> so existing apps require
-        /// no wiring change. Additional components register via
-        /// `registerComponent<C>()` BEFORE the first `update()` call.
+        /// Constructs component-agnostic: NO bridges are registered by default (an
+        /// earlier doc claimed two default INSTANCE bridges — that is stale; the ctor
+        /// registers none). A dimension kit wires its renderables via
+        /// `registerComponent<C>()` / `addBridge()` BEFORE the first `update()` call
+        /// (e.g. `d3::registerRenderables` adds the standard 3D mesh/light set).
         ///
         /// @param request_load Injected async-load hook forwarded to the bridge
         ///        context (app wires EngineExecutor::requestLoad). Null = the
@@ -139,14 +140,20 @@ namespace lux::gameplay
         /// few hash lookups). See RenderableBridgeContext::isAssetReferenced.
         [[nodiscard]] bool isAssetReferenced(const lux::asset::asset_id_t& id) const;
 
-        /// Explicit teardown: tear down every registered bridge's live render objects,
-        /// asset refcounts, and pending create continuations, IN PLACE. MUST be called
-        /// with the frame builder LIVE (bridge shutdown emits destroy / removeMeshInstance
-        /// builder commands) and BEFORE this system — and the RenderSession / scene it
-        /// targets — are destroyed; do NOT rely on destructors to send render commands.
-        /// Idempotent; after shutdown, update() is a rejected no-op. See G-03 for the
-        /// EditorScene teardown call site (open frame → shutdown → pump replies → reset).
-        void shutdown();
+        /// Two-phase teardown DRAIN. A pending async create can't be cancelled (the server
+        /// still creates the object → it leaks in a reused scene), so teardown drains: run
+        /// each call with the frame builder OPEN, and pump the ring between them:
+        ///
+        ///   beginFrame(); beginShutdown();       submitFrame(true); pumpReplies();
+        ///   while (hasPendingShutdownWork()) { beginFrame(); submitFrame(true); pumpReplies(); }
+        ///   beginFrame(); flushShutdownCleanup(); submitFrame(true); pumpReplies();
+        ///
+        /// See EditorScene::tearDown for the canonical call site. Do NOT rely on
+        /// destructors to send render commands. After beginShutdown, update() is a
+        /// rejected no-op; beginShutdown is idempotent.
+        void               beginShutdown();
+        [[nodiscard]] bool hasPendingShutdownWork() const;   // pending creates OR inflight uploads still settling
+        void               flushShutdownCleanup();           // destroy drained orphans + unreferenced resources
 
         void update(lux::meta::EntityRegistry& registry, float dt) override;
 

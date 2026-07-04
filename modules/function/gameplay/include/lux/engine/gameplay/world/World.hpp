@@ -37,8 +37,12 @@ namespace lux::gameplay
         //  Component access                                                   //
         // ------------------------------------------------------------------ //
 
+        // decltype(auto), not `C&`: entt's emplace<EmptyTag> returns void (empty-type
+        // optimization), which `C&` can't forward — so `world.emplace<SomeTag>(e)` failed
+        // to compile for empty tag components. 2D will lean on tags (dormant / disabled /
+        // dirty / trigger), so support them here. Non-empty components still yield `C&`.
         template<typename C, typename... Args>
-        C& emplace(lux::meta::entity_id id, Args&&... args)
+        decltype(auto) emplace(lux::meta::entity_id id, Args&&... args)
         { return registry_.emplace<C>(id, std::forward<Args>(args)...); }
 
         template<typename C>

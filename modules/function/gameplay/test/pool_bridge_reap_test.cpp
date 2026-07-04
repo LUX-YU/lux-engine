@@ -12,12 +12,13 @@
 /// (observing that T::destroy actually fires) lands with the fake-session fixture
 /// in G-09; it is intentionally not attempted here.
 ///
-/// Plain assert() — no external test framework, matching transform_system_test.
+/// Uses explicit failure counting (NOT assert()) so the checks are NOT compiled out
+/// under NDEBUG in a Release build — a plain assert() test can PASS vacuously there.
+/// Also exercises World::emplace<EmptyTag> (the empty-tag fix), not the raw registry.
 
 #include <lux/engine/gameplay/world/World.hpp>                       // World / registry()
 #include <lux/engine/gameplay/render_bridge/EcsRenderTraits.hpp>     // inComponentView / ComponentList
 
-#include <cassert>
 #include <cstdio>
 
 using namespace lux::gameplay;
@@ -26,10 +27,17 @@ namespace
 {
     // Stand-ins for a POOL component and its trait companions, mirroring the light
     // traits' shapes: a primary component, a required companion (like Point/Spot's
-    // WorldTransformComponent), and an exclude tag (like RenderDormantComponent).
+    // WorldTransformComponent), and an EMPTY exclude tag (like RenderDormantComponent).
     struct LightTag   { int _pad{0}; };   // primary component C
     struct XformTag   { int _pad{0}; };   // Require companion
-    struct DormantTag {};                 // Exclude tag
+    struct DormantTag {};                 // Exclude tag (EMPTY — exercises World::emplace fix)
+
+    int g_fail = 0;
+    void check(bool cond, const char* msg)
+    {
+        if (cond) { std::printf("  [OK] %s\n", msg); }
+        else      { std::printf("  [FAIL] %s\n", msg); ++g_fail; }
+    }
 }
 
 int main()
@@ -46,44 +54,38 @@ int main()
     const auto e = world.createEntity();
     world.emplace<LightTag>(e);
     world.emplace<XformTag>(e);
-    assert(inComponentView<LightTag>(reg, e, Req{}, Exc{})
-           && "C + Require present, no Exclude → in view (kept live)");
+    check(inComponentView<LightTag>(reg, e, Req{}, Exc{}),
+          "C + Require present, no Exclude -> in view (kept live)");
 
-    // --- Require removed → out of view (the pre-G-01 `all_of<C>` check kept it) ---
+    // --- Require removed → out of view (the pre-G-01 all_of<C> check kept it) ---
     world.remove<XformTag>(e);
-    assert(!inComponentView<LightTag>(reg, e, Req{}, Exc{})
-           && "Require shed → out of view → reap must tear down");
-    std::printf("  [OK] Require removed while C stays → reaped\n");
+    check(!inComponentView<LightTag>(reg, e, Req{}, Exc{}),
+          "Require shed -> out of view -> reap must tear down");
 
-    // --- Exclude tag added → out of view ---
+    // --- Exclude tag added → out of view (empty tag via World::emplace) ---
     world.emplace<XformTag>(e);
-    assert(inComponentView<LightTag>(reg, e, Req{}, Exc{}) && "Require restored → back in view");
-    // Empty tag added via the raw registry — matches how streaming adds
-    // RenderDormantComponent (entt's emplace<EmptyType> returns void, which
-    // World::emplace's `return C&` can't forward).
-    reg.emplace<DormantTag>(e);
-    assert(!inComponentView<LightTag>(reg, e, Req{}, Exc{})
-           && "Exclude (dormant) tag gained → out of view → reap must tear down");
-    std::printf("  [OK] Exclude tag gained → reaped\n");
+    check(inComponentView<LightTag>(reg, e, Req{}, Exc{}), "Require restored -> back in view");
+    world.emplace<DormantTag>(e);   // empty-tag emplace through World (decltype(auto) fix)
+    check(!inComponentView<LightTag>(reg, e, Req{}, Exc{}),
+          "Exclude (dormant) tag gained -> out of view -> reap must tear down");
 
     // --- Entity destroyed → out of view ---
-    reg.remove<DormantTag>(e);
-    assert(inComponentView<LightTag>(reg, e, Req{}, Exc{}) && "tag cleared → back in view");
+    world.remove<DormantTag>(e);
+    check(inComponentView<LightTag>(reg, e, Req{}, Exc{}), "tag cleared -> back in view");
     world.destroyEntity(e);
-    assert(!inComponentView<LightTag>(reg, e, Req{}, Exc{})
-           && "entity destroyed → out of view → reap must tear down");
-    std::printf("  [OK] entity destroyed → reaped\n");
+    check(!inComponentView<LightTag>(reg, e, Req{}, Exc{}),
+          "entity destroyed -> out of view -> reap must tear down");
 
     // --- Control: empty Require/Exclude (DirectionalLight-like) tracks C alone ---
     const auto d = world.createEntity();
     world.emplace<LightTag>(d);
-    assert((inComponentView<LightTag>(reg, d, ComponentList<>{}, ComponentList<>{}))
-           && "no Require/Exclude, C present → in view");
+    check(inComponentView<LightTag>(reg, d, ComponentList<>{}, ComponentList<>{}),
+          "no Require/Exclude, C present -> in view");
     world.remove<LightTag>(d);
-    assert((!inComponentView<LightTag>(reg, d, ComponentList<>{}, ComponentList<>{}))
-           && "C removed → out of view");
-    std::printf("  [OK] empty Require/Exclude (Directional-like) unchanged\n");
+    check(!inComponentView<LightTag>(reg, d, ComponentList<>{}, ComponentList<>{}),
+          "C removed -> out of view");
 
-    std::printf("=== PASS ===\n");
-    return 0;
+    if (g_fail == 0) { std::printf("=== PASS ===\n"); return 0; }
+    std::printf("=== FAIL (%d) ===\n", g_fail);
+    return 1;
 }

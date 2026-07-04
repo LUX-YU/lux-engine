@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <lux/engine/meta/LuxObject.hpp>                    // entity_id / EntityRegistry
 #include <lux/engine/asset/Asset.hpp>                       // asset_id_t
@@ -97,11 +98,17 @@ namespace lux::gameplay
         {
             lux::asset::asset_id_t mesh_id{};
             lux::asset::asset_id_t material_id{};
-            bool                   config{false};   // true = permanent config error
-            int                    retry_in{0};     // capacity: drives until next retry
+            bool                   permanent{false};   // true = don't auto-retry (config / protocol failure)
+            int                    retry_in{0};        // transient (capacity): drives until next retry
         };
         std::unordered_map<lux::meta::entity_id, FailRecord> failed_;
         static constexpr int kTransientRetryDrives = 120;   // ~2s @ 60fps between capacity retries
+
+        // Teardown drain (IRenderableBridge two-phase teardown): once stopping_, a late
+        // create reply routes its server-created object into orphans_ instead of becoming
+        // live; flushShutdownCleanup removes them. (Never acquired → no refcount to release.)
+        bool                                          stopping_{false};
+        std::vector<lux::render::RenderObjectHandle>  orphans_;
 
         /// Single writer of the per-instance flags word: cast-shadow / visible from the
         /// component plus the highlight bit, so selection rides the same updateInstanceFlags
@@ -174,8 +181,8 @@ namespace lux::gameplay
                     FailRecord& fr = fit->second;
                     if (fr.mesh_id != c.mesh_asset_id || fr.material_id != c.material_asset_id)
                         failed_.erase(fit);        // ids changed → drop the block, retry below
-                    else if (fr.config)
-                        return;                    // permanent config error → keep skipping
+                    else if (fr.permanent)
+                        return;                    // permanent (config / protocol) → keep skipping
                     else if (--fr.retry_in > 0)
                         return;                    // capacity: still in backoff
                     else
@@ -200,15 +207,25 @@ namespace lux::gameplay
                     {
                         pending_.erase(e);                    // drops this request; the store keeps
                                                               // the state alive across this call
-                        if (r.status != lux::render::kMeshInstanceOk || !r.object)
+                        if (r.status != lux::render::MeshInstanceCreateStatus::Ok || !r.object)
                         {
-                            // G-05: failed create — do NOT become live or acquire assets.
-                            // Record it so drive stops re-issuing every frame (see skip above).
-                            failed_[e] = FailRecord{ mesh_id, material_id,
-                                                     r.status == lux::render::kMeshInstanceErrConfig,
-                                                     kTransientRetryDrives };
+                            // Failed create — do NOT become live or acquire assets. Record it
+                            // so drive stops re-issuing every frame (skip during teardown).
+                            // Only an explicit CapacityExhausted is transient (retry after
+                            // backoff); an InvalidConfiguration OR a generic dispatch failure
+                            // (Unknown — RenderRequest delivers a DEFAULT reply on
+                            // CommandFailedReply) is permanent: skip until asset ids change.
+                            if (!stopping_)
+                            {
+                                const bool transient =
+                                    r.status == lux::render::MeshInstanceCreateStatus::CapacityExhausted;
+                                failed_[e] = FailRecord{ mesh_id, material_id,
+                                                         /*permanent=*/!transient, kTransientRetryDrives };
+                            }
                             return;
                         }
+                        if (stopping_)                        // late reply during teardown drain →
+                        { orphans_.push_back(r.object); return; }   // destroy in flushShutdownCleanup (never acquired)
                         failed_.erase(e);                     // a prior failure recovered
                         instances_.emplace(e, Live{ r.object, m, false, mesh_id, material_id, flags });
                         ctx_ptr->acquireMesh(mesh_id);
@@ -244,22 +261,29 @@ namespace lux::gameplay
             });
         }
 
-        void shutdown(RenderableBridgeContext& ctx) override
+        void beginShutdown(RenderableBridgeContext& ctx) override
         {
-            for (auto& [e, req] : pending_){
-                req.cancel();   // detach late replies (see dtor)
-            }
-            pending_.clear();
             auto mesh = ctx.meshStack();
-            for (auto& [e, inst] : instances_)
+            for (auto& [e, inst] : instances_)   // remove KNOWN live + release their asset refcounts
             {
                 mesh.removeMeshInstance(ctx.scene(), inst.object);
                 ctx.releaseMesh(inst.mesh_id);
                 ctx.releaseMaterial(inst.material_id);
             }
             instances_.clear();
-            failed_.clear();         // G-05: drop known-bad create records
+            failed_.clear();         // drop known-bad create records
             frame_ = FrameState{};   // drop per-frame skinning scratch
+            stopping_ = true;        // keep pending_; late create replies route to orphans_ (drained then flushed)
+        }
+
+        [[nodiscard]] bool hasPendingShutdownWork() const override { return !pending_.empty(); }
+
+        void flushShutdownCleanup(RenderableBridgeContext& ctx) override
+        {
+            auto mesh = ctx.meshStack();
+            for (const auto& obj : orphans_)   // objects the drained late replies created while stopping
+                mesh.removeMeshInstance(ctx.scene(), obj);
+            orphans_.clear();
         }
     };
 } // namespace lux::gameplay

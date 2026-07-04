@@ -51,6 +51,19 @@ namespace lux::gameplay
         {
             lux::render::SkyboxProxy(s, ops).setEquirect(p.scene, p.feature, p.tex);
         }
+
+        /// Teardown reset (G-06): unbind the skybox on the server so a REUSED scene does
+        /// not keep sampling a texture the bridge's teardown already released (P1-1). A
+        /// null-texture setEquirect drops the feature to ActiveMode::NONE. PARAM has no
+        /// async create, so this is synchronous; ParamBridge::beginShutdown calls it.
+        static void clear(RenderableBridgeContext& ctx)
+        {
+            const auto feat = ctx.features().handle(feature);
+            if (!feat.valid()) return;   // feature absent → nothing bound → nothing to clear
+            const auto ops = ctx.features().ops<Ops>(feature);
+            lux::render::SkyboxProxy(ctx.session(), ops)
+                .setEquirect(ctx.scene(), feat, lux::render::RTextureHandle{});
+        }
     };
 
 } // namespace lux::gameplay

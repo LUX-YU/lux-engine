@@ -142,12 +142,16 @@ namespace lux::gameplay
         // a null handle while pending OR if the entry settled as known-bad
         // (failed upload / unsupported format). MUST be called from
         // `update()` — these methods push builder commands.
-        [[nodiscard]] lux::render::RMeshHandle     ensureMesh(const lux::asset::asset_id_t& id);
+        // LUX_FUNCTION_PUBLIC: a bridge instantiated in ANOTHER module (a 2D kit /
+        // plugin, or a headless test) compiles its drive() there and calls these —
+        // so the non-inline asset ensure/refcount methods must be exported (the
+        // "cross-module bridge calls" the header's visibility.h include anticipates).
+        [[nodiscard]] LUX_FUNCTION_PUBLIC lux::render::RMeshHandle     ensureMesh(const lux::asset::asset_id_t& id);
         // ensureMaterial transparently dispatches MATERIAL assets to the
         // graph-material path (multi-stage: compile baked frags -> resolve
         // textures -> uploadGraphMaterial); bridges call ensureMaterial only.
-        [[nodiscard]] lux::render::RMaterialHandle ensureMaterial(const lux::asset::asset_id_t& id);
-        [[nodiscard]] lux::render::RTextureHandle  ensureTexture(const lux::asset::asset_id_t& id);
+        [[nodiscard]] LUX_FUNCTION_PUBLIC lux::render::RMaterialHandle ensureMaterial(const lux::asset::asset_id_t& id);
+        [[nodiscard]] LUX_FUNCTION_PUBLIC lux::render::RTextureHandle  ensureTexture(const lux::asset::asset_id_t& id);
 
         // ── Refcount lifecycle ─────────────────────────────────────────
         // acquireMesh / acquireMaterial bump the asset's refcount (and, for
@@ -155,10 +159,10 @@ namespace lux::gameplay
         // release* decrement; at 0 the GPU resource is destroyed via the
         // matching `session->destroy*` (FIF-safe under the server-side
         // DeferredDestroyQueue) and the cache entry erased.
-        void acquireMesh    (const lux::asset::asset_id_t& mesh_id);
-        void acquireMaterial(const lux::asset::asset_id_t& mat_id);
-        void releaseMesh    (const lux::asset::asset_id_t& mesh_id);
-        void releaseMaterial(const lux::asset::asset_id_t& mat_id);
+        LUX_FUNCTION_PUBLIC void acquireMesh    (const lux::asset::asset_id_t& mesh_id);
+        LUX_FUNCTION_PUBLIC void acquireMaterial(const lux::asset::asset_id_t& mat_id);
+        LUX_FUNCTION_PUBLIC void releaseMesh    (const lux::asset::asset_id_t& mesh_id);
+        LUX_FUNCTION_PUBLIC void releaseMaterial(const lux::asset::asset_id_t& mat_id);
         void releaseTexture (const lux::asset::asset_id_t& tex_id);
 
         // ── W2c eviction guard ──────────────────────────────────────────
@@ -176,6 +180,17 @@ namespace lux::gameplay
                 || material_instance_resources_.contains(id)
                 || texture_resources_.contains(id);
         }
+
+        // ── Teardown drain (two-phase shutdown) ─────────────────────────────
+        /// True while any upload / compile is still in flight (a cache entry not yet
+        /// settled). Teardown pumps until this is false so no inflight upload is
+        /// cancelled mid-flight — a cancelled upload whose server worker then completes
+        /// leaves a global resource nobody tracks (never destroyed).
+        [[nodiscard]] bool hasInflightUploads() const noexcept;
+        /// Destroy every SETTLED cached resource left at refcount 0 — uploaded but never
+        /// referenced, so release*() never fired for it (no 1→0 transition) and it would
+        /// leak. Call once at the teardown flush, after the drain, with the builder LIVE.
+        void destroyUnreferencedResources();
 
     private:
         // Issue an async upload/compile whose continuation captures `this`, made

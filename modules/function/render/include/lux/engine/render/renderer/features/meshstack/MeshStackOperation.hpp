@@ -125,17 +125,26 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<TransformWriteEntry>);
 
-    /// addMeshInstance reply status (G-05). Non-zero ⇒ the instance was NOT created
+    /// addMeshInstance outcome. Anything other than Ok ⇒ the instance was NOT created
     /// (object is null); the client must not treat it as live or bump asset refcounts.
-    inline constexpr std::uint32_t kMeshInstanceOk          = 0u;  // created; object valid
-    inline constexpr std::uint32_t kMeshInstanceErrConfig   = 1u;  // scene / mesh-stack feature absent — a CONFIG error (retry futile until fixed)
-    inline constexpr std::uint32_t kMeshInstanceErrCapacity = 2u;  // instance / section slot exhausted — TRANSIENT (may succeed later)
+    /// `Unknown` is the DEFAULT on purpose: a GENERIC dispatch failure delivers the
+    /// continuation a default-constructed reply the server never typed-filled (see
+    /// RenderRequest's CommandFailedReply path), so the outcome must NOT default to Ok
+    /// (silent zombie) nor to a retriable capacity error (endless retry). Only
+    /// CapacityExhausted is transient; Unknown / InvalidConfiguration are permanent.
+    enum class MeshInstanceCreateStatus : std::uint32_t
+    {
+        Unknown              = 0,   // default — generic dispatch/protocol failure (server never set it)
+        Ok                   = 1,   // created; object valid
+        InvalidConfiguration = 2,   // scene / mesh-stack feature absent — permanent (retry futile until fixed)
+        CapacityExhausted    = 3,   // instance / section slot exhausted — transient (may succeed later)
+    };
 
-    /// Reply for the create (addMeshInstance) op — the new instance handle + status.
+    /// Reply for the create (addMeshInstance) op — the new instance handle + outcome.
     struct MeshInstanceSlotReply
     {
-        RenderObjectHandle object{};
-        std::uint32_t      status{kMeshInstanceOk};
+        RenderObjectHandle       object{};
+        MeshInstanceCreateStatus status{MeshInstanceCreateStatus::Unknown};
     };
     static_assert(std::is_trivially_copyable_v<MeshInstanceSlotReply>);
 

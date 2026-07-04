@@ -12,6 +12,7 @@
 #include <cstring>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <lux/engine/meta/LuxObject.hpp>   // entity_id / EntityRegistry
 #include <lux/engine/render/comm/client/RenderRequest.hpp>   // in-flight create handle (cancel on teardown)
@@ -38,9 +39,18 @@ namespace lux::gameplay
         std::unordered_map<lux::meta::entity_id,
                            lux::render::RenderRequest<typename T::Reply>> pending_;
 
+        // Teardown drain (see IRenderableBridge two-phase teardown): once stopping_,
+        // a late create reply routes its server-created handle into orphans_ instead
+        // of becoming live; flushShutdownCleanup destroys them.
+        bool                            stopping_{false};
+        std::vector<typename T::Handle> orphans_;
+
     public:
         ~PoolBridge() override
         {
+            // Safety net only: a correct teardown DRAINS pending (beginShutdown +
+            // pump), so pending_ is empty here. If the caller skipped the drain, cancel
+            // detaches late continuations to avoid UAF — at the cost of a server orphan.
             for (auto& [e, req] : pending_) req.cancel();
         }
 
@@ -72,6 +82,8 @@ namespace lux::gameplay
                         pending_.erase(e);                    // drops this request; the store keeps
                                                               // the state alive across this call
                         if (r.status != 0) return;            // creation failed; entity stays absent
+                        if (stopping_)                        // late reply during teardown drain →
+                        { orphans_.push_back(T::handle(r)); return; }   // destroy in flushShutdownCleanup
                         live_.emplace(e, Live{T::handle(r), d});
                     });
                 pending_.emplace(e, std::move(req));
@@ -101,14 +113,23 @@ namespace lux::gameplay
             // which would risk a server-side object with no client handle to reclaim it.
         }
 
-        void shutdown(RenderableBridgeContext& ctx) override
+        void beginShutdown(RenderableBridgeContext& ctx) override
         {
             const auto ops = ctx.features().template ops<typename T::Ops>(T::feature);
             for (auto& [e, live] : live_)
                 T::destroy(ctx.session(), ops, ctx.scene(), live.handle);
             live_.clear();
-            for (auto& [e, req] : pending_) req.cancel();   // detach late replies (see dtor)
-            pending_.clear();
+            stopping_ = true;   // keep pending_; late create replies route to orphans_ (drained then flushed)
+        }
+
+        [[nodiscard]] bool hasPendingShutdownWork() const override { return !pending_.empty(); }
+
+        void flushShutdownCleanup(RenderableBridgeContext& ctx) override
+        {
+            const auto ops = ctx.features().template ops<typename T::Ops>(T::feature);
+            for (const auto& h : orphans_)   // objects the drained late replies created while stopping
+                T::destroy(ctx.session(), ops, ctx.scene(), h);
+            orphans_.clear();
         }
     };
 

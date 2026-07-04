@@ -87,6 +87,28 @@ namespace lux::render
             return e ? IdsT::fromOps(e->ops, e->op_count) : IdsT{};
         }
 
+        /// Test-only seam: register a feature entry with EXPLICIT dynamic op-ids,
+        /// bypassing the server round-trip the normal add() needs (a live
+        /// GeneralRenderServer + GPU device). A headless bridge test pairs this with
+        /// a FrameDispatcher that registers recording handlers at these SAME TypeIds,
+        /// so ops<IdsT>(name) resolves to ids the fake dispatcher actually handles.
+        /// Never called on a production path — production goes through add().
+        void injectForTest(std::string_view name,
+                           std::span<const TypeId> ops,
+                           FeatureHandle handle = {},
+                           int param_set_op_index = -1)
+        {
+            Entry e{};
+            e.name               = std::string(name);
+            e.feature_type_id    = 0;
+            e.op_count           = static_cast<std::uint32_t>(std::min<std::size_t>(ops.size(), 16));
+            for (std::uint32_t i = 0; i < e.op_count; ++i)
+                e.ops[i] = ops[i];
+            e.param_set_op_index = param_set_op_index;
+            e.handle             = handle;
+            entries_.push_back(std::move(e));
+        }
+
         /// The feature's GENERIC setParams op-id (FeatureParamsOperation.hpp), or
         /// kInvalidTypeId if it exposes no editable params. The settings panel pushes
         /// a reflected blob here via FeatureParamsProxy — works for any feature

@@ -68,12 +68,23 @@ namespace lux::gameplay
         // does the standard 3D set) before the first update().
     }
 
-    RenderableSystem::~RenderableSystem() = default;
+    RenderableSystem::~RenderableSystem()
+    {
+        // Teardown must go through shutdown() (builder-live), not the dtor: a dtor cannot
+        // reliably send GPU delete commands, so a skipped shutdown silently leaks every
+        // live instance/light + its asset refcounts. Debug-guard it — a system that was
+        // never used (no update()) is fine to just drop. Future 2D bridges hit the same
+        // trap, so enforce the contract at the one shared choke point.
+        assert((impl_->shutdown_done || !impl_->update_started) &&
+               "RenderableSystem destroyed without shutdown() after use — GPU objects leak");
+    }
 
     void RenderableSystem::addBridge(std::unique_ptr<IRenderableBridge> bridge)
     {
         assert(!impl_->update_started &&
                "RenderableSystem::addBridge must be called before the first update()");
+        assert(!impl_->shutdown_done &&
+               "RenderableSystem::addBridge must not be called after shutdown()");
         if (!bridge) return;
         impl_->bridges.push_back(std::move(bridge));
     }
@@ -108,14 +119,32 @@ namespace lux::gameplay
         return impl_->ctx->isAssetReferenced(id);
     }
 
-    void RenderableSystem::shutdown()
+    void RenderableSystem::beginShutdown()
     {
         if (impl_->shutdown_done) return;          // idempotent
         impl_->shutdown_done = true;
-        // Builder must be LIVE here — bridge shutdown emits destroy / removeMeshInstance
-        // commands, the same discipline as reap. The caller (EditorScene teardown, G-03)
-        // opens a frame, calls this, then pumps replies before resetting session/scene.
-        for (auto& b : impl_->bridges) b->shutdown(*impl_->ctx);
+        // Builder must be LIVE — beginShutdown emits destroy / removeMeshInstance. It
+        // removes KNOWN live objects + enters stopping mode; pending async creates are
+        // NOT cancelled but drained by the caller (submit+pump until hasPendingShutdownWork
+        // is false), then flushShutdownCleanup() destroys whatever the late replies created.
+        for (auto& b : impl_->bridges) b->beginShutdown(*impl_->ctx);
+    }
+
+    bool RenderableSystem::hasPendingShutdownWork() const
+    {
+        for (const auto& b : impl_->bridges)
+            if (b->hasPendingShutdownWork()) return true;
+        return impl_->ctx && impl_->ctx->hasInflightUploads();   // also wait for uploads to settle (P0-2)
+    }
+
+    void RenderableSystem::flushShutdownCleanup()
+    {
+        // Builder must be LIVE. Destroy the orphan objects the drained late replies
+        // created, then any global resource an upload completed but nothing referenced
+        // (refcount 0) — release*() never fires for those (no 1→0 transition), so they'd
+        // leak in the reused scene.
+        for (auto& b : impl_->bridges) b->flushShutdownCleanup(*impl_->ctx);
+        if (impl_->ctx) impl_->ctx->destroyUnreferencedResources();
     }
 
     void RenderableSystem::update(lux::meta::EntityRegistry& registry, float /*dt*/)

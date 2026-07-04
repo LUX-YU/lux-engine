@@ -53,14 +53,16 @@ namespace lux::gameplay
             });
         }
 
-        void shutdown([[maybe_unused]] RenderableBridgeContext& ctx) override
+        void beginShutdown([[maybe_unused]] RenderableBridgeContext& ctx) override
         {
-            // Optional per-trait render-state reset (e.g. Skybox nil clears its bound
-            // texture) — G-06 defines Traits::clear; absent → nothing to undo on the
-            // render side. Then drop the dirty-diff cache so a re-driven scene re-pushes.
+            // PARAM has no async create — teardown is synchronous. Optional per-trait
+            // render-state reset (e.g. Skybox nil clears its bound texture) — G-06 defines
+            // Traits::clear; absent → nothing to undo. Drop the dirty-diff cache.
             if constexpr (requires { T::clear(ctx); }) T::clear(ctx);
             last_.clear();
         }
+        [[nodiscard]] bool hasPendingShutdownWork() const override { return false; }
+        void flushShutdownCleanup(RenderableBridgeContext& /*ctx*/) override {}
     };
 
 } // namespace lux::gameplay

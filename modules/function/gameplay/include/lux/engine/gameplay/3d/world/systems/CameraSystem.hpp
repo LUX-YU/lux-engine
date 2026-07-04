@@ -24,6 +24,21 @@ namespace lux::gameplay::d3
                 Eigen::Vector3f position = wc.world.block<3, 1>(0, 3);
                 Eigen::Matrix3f rot3     = wc.world.block<3, 3>(0, 0);
 
+                // G-08: a scaled ancestor bakes scale into the world basis, which skews
+                // the view direction we extract below (a distorted camera). Detect it
+                // (basis columns not unit-length) → diagnostic flag; then de-scale by
+                // normalizing the two columns we use, so magnitude scale does not leak
+                // into the view. (A non-UNIFORM shear also needs the columns re-
+                // orthogonalized — LookAt below does exactly that from forward+up.)
+                constexpr float kEps = 1e-3f;
+                const float n1 = rot3.col(1).norm();
+                const float n2 = rot3.col(2).norm();
+                const float n0 = rot3.col(0).norm();
+                cc.ancestry_scale_warning =
+                    std::abs(n0 - 1.f) > kEps || std::abs(n1 - 1.f) > kEps || std::abs(n2 - 1.f) > kEps;
+                if (n1 > kEps) rot3.col(1) /= n1;
+                if (n2 > kEps) rot3.col(2) /= n2;
+
                 // Camera looks along -Z in local space.
                 Eigen::Vector3f forward = -(rot3.col(2));
                 Eigen::Vector3f up      =   rot3.col(1);

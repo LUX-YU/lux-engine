@@ -320,27 +320,13 @@ namespace lux::editor
             }
         }
 
-        // Ensure every entity with a TransformComponent also has a
-        // WorldTransformComponent. WorldTransform is derived data — the
-        // TransformSystem computes it from Transform every tick — and
-        // is intentionally NOT in the reflection-registered component
-        // list (it would be ugly in the Inspector and bloats scene
-        // files). Scene::load therefore never restores it for loaded
-        // entities, but EditorScene::tick + RenderableSystem assume
-        // every transform-bearing entity has one. We bridge the gap by
-        // emplacing a default WorldTransform here, then running one
-        // zero-dt world tick so TransformSystem fills it with the
-        // correct values before the renderer ever reads them.
-        {
-            auto& reg = world_->registry();
-            auto view = reg.view<lux::gameplay::d3::TransformComponent>();
-            for (auto e : view)
-            {
-                if (!reg.all_of<lux::gameplay::d3::WorldTransformComponent>(e))
-                    reg.emplace<lux::gameplay::d3::WorldTransformComponent>(e);
-            }
-            world_->tick(0.f);
-        }
+        // WorldTransform is derived, non-persistent data (Scene::load never restores
+        // it — it would bloat scene files + clutter the Inspector), yet EditorScene::tick
+        // + RenderableSystem assume every transform-bearing entity has a valid one. The
+        // TransformSystem OWNS that invariant now (G-07): one zero-dt tick auto-emplaces a
+        // WorldTransform on every loaded Transform entity AND composes it, before the
+        // renderer ever reads it — no editor-side back-fill loop.
+        world_->tick(0.f);
 
         live_ = true;
         return true;
@@ -358,20 +344,38 @@ namespace lux::editor
         // drains scene-LOCAL state (mesh instances + lights) and the
         // RenderableSystem; it does NOT call destroyScene /
         // removeUIView / removeFeature.
-        session_->beginFrame({});
-
-        // Explicit bridge shutdown (G-02/G-03), NOT a "final update()". A trailing
-        // update() runs the view-based reap, which tears down NOTHING here: the
-        // entities are still alive (they leave the view only when World is destroyed
-        // below — too late, the RenderableSystem is already gone), so their live
-        // mesh instances / lights would leak to the scene-destruction fallback and
-        // accumulate across scene swaps. shutdown() UNCONDITIONALLY removes every
-        // live instance/light and releases its asset refcounts. The FrameProgram
-        // builder is live (beginFrame above), so the removeMeshInstance / destroy
-        // commands are emitted now and flushed by the blocking submit below.
+        // Two-phase teardown DRAIN, NOT a "final update()" and NOT a plain shutdown that
+        // cancels pending. The render scene is REUSED across scene swaps (LuxEditor owns
+        // it, never destroyed here), so a pending async create/upload cannot be cancelled:
+        // RenderRequest::cancel() only detaches the client continuation — the server still
+        // creates the object/resource, which then leaks in the reused scene. Instead we
+        // drain: remove known-live + enter stopping mode, pump until the in-flight
+        // creates/uploads settle, then destroy whatever the late replies created.
         if (renderable_system_)
-            renderable_system_->shutdown();
+        {
+            // Phase 1 — remove known live + enter stopping mode (builder live).
+            session_->beginFrame({});
+            renderable_system_->beginShutdown();
+            session_->submitFrame(/*blocking=*/true);
+            session_->pumpReplies();   // in-flight create/upload replies fire; orphans collected
+
+            // Drain — advance until pending creates + inflight uploads settle. Bounded:
+            // creates/uploads reply exactly once and no new ones are issued after phase 1.
+            for (int i = 0; i < 8 && renderable_system_->hasPendingShutdownWork(); ++i)
+            {
+                session_->beginFrame({});
+                session_->submitFrame(/*blocking=*/true);
+                session_->pumpReplies();
+            }
+
+            // Phase 2 — destroy drained orphan objects + resources uploaded-but-unreferenced.
+            session_->beginFrame({});
+            renderable_system_->flushShutdownCleanup();
+            session_->submitFrame(/*blocking=*/true);
+            session_->pumpReplies();
+        }
         renderable_system_.reset();
+
         // Registered scene systems hold no GPU/entity handles in their dtors
         // (StreamingSceneSystem just drops its WorldStreamingSystem; the resolver
         // just releases its requestLoad closure; the camera controller's dangling
@@ -380,12 +384,6 @@ namespace lux::editor
         // would accumulate across scene swaps).
         systems_.clear();
         camera_system_ = nullptr;   // non-owning; the CameraSceneSystem was just freed
-
-        // Submit blocking so the render thread definitely picks the
-        // teardown commands off the channel before we proceed (the
-        // editor's `shutdown` may call `sync_->requestStop()` next).
-        session_->submitFrame(/*blocking=*/true);
-        session_->pumpReplies();
 
         // World last — its destructor invalidates all entity handles, but
         // by now no adapter holds them (RenderableSystem was reset above).

@@ -62,6 +62,12 @@ namespace lux::gameplay::d3
         Eigen::Matrix4f LUX_NO_MEMBER() proj           = Eigen::Matrix4f::Identity();
         Eigen::Matrix4f LUX_NO_MEMBER() view_proj      = Eigen::Matrix4f::Identity();
         Eigen::Matrix4f LUX_NO_MEMBER() prev_view_proj = Eigen::Matrix4f::Identity();
+
+        /// G-08 diagnostic: set by CameraSystem when the camera's world matrix carries
+        /// scale (basis columns not unit-length — typically a scaled ancestor), which
+        /// skews the view basis. Runtime-only (not persisted); the system also de-scales
+        /// the basis so the view is not magnitude-distorted. Tools can surface this.
+        bool LUX_NO_MEMBER() ancestry_scale_warning = false;
     };
 
 } // namespace lux::gameplay::d3

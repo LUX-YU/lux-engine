@@ -602,4 +602,55 @@ namespace lux::gameplay
         mesh_resources_.erase(it);
     }
 
+    // ── Teardown drain (two-phase shutdown) ─────────────────────────────────────
+    bool RenderableBridgeContext::hasInflightUploads() const noexcept
+    {
+        for (const auto& [id, e] : mesh_resources_)          if (e.pending) return true;
+        for (const auto& [id, e] : texture_resources_)       if (e.pending) return true;
+        for (const auto& [id, e] : graph_material_resources_)
+            if (e.gbuffer_in_flight || e.forward_in_flight || e.upload_in_flight) return true;
+        for (const auto& [id, e] : material_instance_resources_)
+            if (e.upload_in_flight) return true;
+        return false;
+    }
+
+    void RenderableBridgeContext::destroyUnreferencedResources()
+    {
+        // A never-acquired resource (uploaded during the teardown drain for an orphan
+        // create we skipped acquiring, or whose instance was already torn down) sits at
+        // refcount 0 with a live GPU handle. release*() only destroys on a 1->0 transition,
+        // so it never fires here — destroy directly. Only touch SETTLED entries (a still-
+        // inflight one is covered by the drain wait). A refcount-0 material was never
+        // acquired, so it holds no texture refs -> no cascade needed.
+        for (auto it = mesh_resources_.begin(); it != mesh_resources_.end(); )
+        {
+            const auto& e = it->second;
+            if (!e.pending && e.refcount == 0 && !e.gpu_handle.is_null())
+            { meshStack().destroyMesh(e.gpu_handle); it = mesh_resources_.erase(it); }
+            else ++it;
+        }
+        for (auto it = texture_resources_.begin(); it != texture_resources_.end(); )
+        {
+            const auto& e = it->second;
+            if (!e.pending && e.refcount == 0 && !e.gpu_handle.is_null())
+            { session_->destroyTexture(e.gpu_handle); it = texture_resources_.erase(it); }
+            else ++it;
+        }
+        for (auto it = graph_material_resources_.begin(); it != graph_material_resources_.end(); )
+        {
+            const auto& e = it->second;
+            const bool settled = !e.gbuffer_in_flight && !e.forward_in_flight && !e.upload_in_flight;
+            if (settled && e.refcount == 0 && !e.gpu_handle.is_null())
+            { material().destroyMaterial(e.gpu_handle); it = graph_material_resources_.erase(it); }
+            else ++it;
+        }
+        for (auto it = material_instance_resources_.begin(); it != material_instance_resources_.end(); )
+        {
+            const auto& e = it->second;
+            if (!e.upload_in_flight && e.refcount == 0 && !e.gpu_handle.is_null())
+            { material().destroyMaterial(e.gpu_handle); it = material_instance_resources_.erase(it); }
+            else ++it;
+        }
+    }
+
 } // namespace lux::gameplay

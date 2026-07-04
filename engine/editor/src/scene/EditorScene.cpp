@@ -360,11 +360,17 @@ namespace lux::editor
         // removeUIView / removeFeature.
         session_->beginFrame({});
 
-        // Final reap pass — lets adapters issue removeMeshInstance /
-        // destroyLight for any entity already gone or that shed its
-        // component, draining per-asset refcounts before the system dies.
-        if (renderable_system_ && world_)
-            renderable_system_->update(world_->registry(), 0.f);
+        // Explicit bridge shutdown (G-02/G-03), NOT a "final update()". A trailing
+        // update() runs the view-based reap, which tears down NOTHING here: the
+        // entities are still alive (they leave the view only when World is destroyed
+        // below — too late, the RenderableSystem is already gone), so their live
+        // mesh instances / lights would leak to the scene-destruction fallback and
+        // accumulate across scene swaps. shutdown() UNCONDITIONALLY removes every
+        // live instance/light and releases its asset refcounts. The FrameProgram
+        // builder is live (beginFrame above), so the removeMeshInstance / destroy
+        // commands are emitted now and flushed by the blocking submit below.
+        if (renderable_system_)
+            renderable_system_->shutdown();
         renderable_system_.reset();
         // Registered scene systems hold no GPU/entity handles in their dtors
         // (StreamingSceneSystem just drops its WorldStreamingSystem; the resolver

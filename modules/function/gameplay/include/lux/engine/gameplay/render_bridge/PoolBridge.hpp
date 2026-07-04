@@ -81,15 +81,24 @@ namespace lux::gameplay
         void reap(lux::meta::EntityRegistry& reg, RenderableBridgeContext& ctx) override
         {
             const auto ops = ctx.features().template ops<typename T::Ops>(T::feature);
+            // Full Require/Exclude membership, matching InstanceBridge::reap. The old
+            // `valid && all_of<C>` check ignored the trait's Require/Exclude lists, so a
+            // Point/Spot light that shed its WorldTransform (a Require) or gained an
+            // Exclude tag stayed live → a zombie render object. `inComponentView` is the
+            // single source of truth for the same set `drive`'s view iterates (G-01).
             for (auto it = live_.begin(); it != live_.end(); )
             {
-                if (!reg.valid(it->first) || !reg.template all_of<C>(it->first))
+                if (!inComponentView<C>(reg, it->first, typename T::Require{}, typename T::Exclude{}))
                 {
                     T::destroy(ctx.session(), ops, ctx.scene(), it->second.handle);
                     it = live_.erase(it);
                 }
                 else ++it;
             }
+            // Pending-create passthrough (entity left the view before its create reply
+            // arrived) self-heals: the reply still emplaces into live_, and the next reap
+            // tears it down via the check above — same as InstanceBridge. No cancel here,
+            // which would risk a server-side object with no client handle to reclaim it.
         }
     };
 

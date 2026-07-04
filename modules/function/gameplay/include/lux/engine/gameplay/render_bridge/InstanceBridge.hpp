@@ -195,6 +195,22 @@ namespace lux::gameplay
                 else ++it;
             }
         }
-    };
 
+        void shutdown(RenderableBridgeContext& ctx) override
+        {
+            for (auto& [e, req] : pending_){
+                req.cancel();   // detach late replies (see dtor)
+            }
+            pending_.clear();
+            auto mesh = ctx.meshStack();
+            for (auto& [e, inst] : instances_)
+            {
+                mesh.removeMeshInstance(ctx.scene(), inst.object);
+                ctx.releaseMesh(inst.mesh_id);
+                ctx.releaseMaterial(inst.material_id);
+            }
+            instances_.clear();
+            frame_ = FrameState{};   // drop per-frame skinning scratch
+        }
+    };
 } // namespace lux::gameplay

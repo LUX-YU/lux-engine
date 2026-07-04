@@ -51,6 +51,7 @@ namespace lux::gameplay
         std::unique_ptr<RenderableBridgeContext>          ctx;
         std::vector<std::unique_ptr<IRenderableBridge>>   bridges;
         bool                                              update_started{false};
+        bool                                              shutdown_done{false};
     };
 
     RenderableSystem::RenderableSystem(lux::render::RenderSession& session,
@@ -107,8 +108,23 @@ namespace lux::gameplay
         return impl_->ctx->isAssetReferenced(id);
     }
 
+    void RenderableSystem::shutdown()
+    {
+        if (impl_->shutdown_done) return;          // idempotent
+        impl_->shutdown_done = true;
+        // Builder must be LIVE here — bridge shutdown emits destroy / removeMeshInstance
+        // commands, the same discipline as reap. The caller (EditorScene teardown, G-03)
+        // opens a frame, calls this, then pumps replies before resetting session/scene.
+        for (auto& b : impl_->bridges) b->shutdown(*impl_->ctx);
+    }
+
     void RenderableSystem::update(lux::meta::EntityRegistry& registry, float /*dt*/)
     {
+        if (impl_->shutdown_done)   // torn down: ctx/bridges are empty and the scene it
+        {                           // targeted may be gone — reject rather than re-drive.
+            assert(false && "RenderableSystem::update() called after shutdown()");
+            return;
+        }
         impl_->update_started = true;
 
         // Three-phase loop. See file header for invariants.

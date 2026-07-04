@@ -100,6 +100,16 @@ namespace lux::gameplay
             // tears it down via the check above — same as InstanceBridge. No cancel here,
             // which would risk a server-side object with no client handle to reclaim it.
         }
+
+        void shutdown(RenderableBridgeContext& ctx) override
+        {
+            const auto ops = ctx.features().template ops<typename T::Ops>(T::feature);
+            for (auto& [e, live] : live_)
+                T::destroy(ctx.session(), ops, ctx.scene(), live.handle);
+            live_.clear();
+            for (auto& [e, req] : pending_) req.cancel();   // detach late replies (see dtor)
+            pending_.clear();
+        }
     };
 
 } // namespace lux::gameplay

@@ -139,6 +139,15 @@ namespace lux::gameplay
         /// few hash lookups). See RenderableBridgeContext::isAssetReferenced.
         [[nodiscard]] bool isAssetReferenced(const lux::asset::asset_id_t& id) const;
 
+        /// Explicit teardown: tear down every registered bridge's live render objects,
+        /// asset refcounts, and pending create continuations, IN PLACE. MUST be called
+        /// with the frame builder LIVE (bridge shutdown emits destroy / removeMeshInstance
+        /// builder commands) and BEFORE this system — and the RenderSession / scene it
+        /// targets — are destroyed; do NOT rely on destructors to send render commands.
+        /// Idempotent; after shutdown, update() is a rejected no-op. See G-03 for the
+        /// EditorScene teardown call site (open frame → shutdown → pump replies → reset).
+        void shutdown();
+
         void update(lux::meta::EntityRegistry& registry, float dt) override;
 
     private:

@@ -52,6 +52,15 @@ namespace lux::gameplay
                 return !reg.valid(kv.first) || !reg.template all_of<C>(kv.first);
             });
         }
+
+        void shutdown([[maybe_unused]] RenderableBridgeContext& ctx) override
+        {
+            // Optional per-trait render-state reset (e.g. Skybox nil clears its bound
+            // texture) — G-06 defines Traits::clear; absent → nothing to undo on the
+            // render side. Then drop the dirty-diff cache so a re-driven scene re-pushes.
+            if constexpr (requires { T::clear(ctx); }) T::clear(ctx);
+            last_.clear();
+        }
     };
 
 } // namespace lux::gameplay

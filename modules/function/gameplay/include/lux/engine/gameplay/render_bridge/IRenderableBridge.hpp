@@ -59,6 +59,16 @@ namespace lux::gameplay
         /// destroy*`). Runs with the builder still live.
         virtual void reap(lux::meta::EntityRegistry& registry, RenderableBridgeContext& ctx) = 0;
 
+        /// Explicit teardown — release EVERY live render object, asset refcount, and
+        /// pending create continuation this bridge holds, IN PLACE. Called once by
+        /// `RenderableSystem::shutdown()` with the FrameProgram builder LIVE (it emits
+        /// destroy / removeMeshInstance builder commands, same as `reap`), BEFORE the
+        /// bridge — and the RenderSession / scene it targets — are destroyed.
+        /// Pure virtual on purpose: a bridge must not silently leak by forgetting to
+        /// tear down. Destructors must NOT send render commands (a dtor may run after
+        /// the frame / session is already gone); `shutdown` is the single seam for it.
+        virtual void shutdown(RenderableBridgeContext& ctx) = 0;
+
     protected:
         IRenderableBridge() = default;
     };

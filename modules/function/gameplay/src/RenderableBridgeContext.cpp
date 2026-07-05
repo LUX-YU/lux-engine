@@ -71,10 +71,14 @@ namespace lux::gameplay
             {
                 auto rit = mesh_resources_.find(id);
                 if (rit == mesh_resources_.end()) return;
+                // Validate BOTH status and handle: a generic dispatch failure delivers a
+                // DEFAULT reply {status 0, null handle}, which status-only would read as
+                // success → {pending 0, failed 0, gpu_handle null} = the "never attempted"
+                // state → a per-frame re-upload loop. Route it to failed instead (P1-4).
+                const bool ok = (r.status == 0 && !r.handle.is_null());
                 rit->second.pending    = false;
-                rit->second.gpu_handle =
-                    (r.status == 0) ? r.handle : lux::render::RMeshHandle{};
-                if (r.status != 0)
+                rit->second.gpu_handle = ok ? r.handle : lux::render::RMeshHandle{};
+                if (!ok)
                 {
                     rit->second.failed = true;
                     std::cerr << "[RenderableSystem] mesh upload failed (status="
@@ -118,10 +122,13 @@ namespace lux::gameplay
             {
                 auto rit = texture_resources_.find(id);
                 if (rit == texture_resources_.end()) return;
+                // Validate handle too, not just status (P1-4 — see ensureMesh): a
+                // default dispatch-failure reply {status 0, null handle} must route to
+                // failed, not settle as a ready-but-null texture that re-uploads forever.
+                const bool ok = (r.status == 0 && !r.handle.is_null());
                 rit->second.pending    = false;
-                rit->second.gpu_handle =
-                    (r.status == 0) ? r.handle : lux::render::RTextureHandle{};
-                if (r.status != 0)
+                rit->second.gpu_handle = ok ? r.handle : lux::render::RTextureHandle{};
+                if (!ok)
                 {
                     rit->second.failed = true;
                     std::cerr << "[RenderableSystem] texture upload failed (status="
@@ -327,7 +334,10 @@ namespace lux::gameplay
                 auto rit = graph_material_resources_.find(id);
                 if (rit == graph_material_resources_.end()) return;
                 rit->second.upload_in_flight = false;
-                if (r.status == 0)
+                // A generic dispatch failure delivers a DEFAULT reply {status 0, null
+                // handle} — validate the handle too, not just status, or the entry
+                // settles as a ready-but-null material (P1-4).
+                if (r.status == 0 && !r.handle.is_null())
                     rit->second.gpu_handle = r.handle;
                 else
                 {

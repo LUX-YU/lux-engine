@@ -81,7 +81,11 @@ namespace lux::gameplay
                     {
                         pending_.erase(e);                    // drops this request; the store keeps
                                                               // the state alive across this call
-                        if (r.status != 0) return;            // creation failed; entity stays absent
+                        // Validate the HANDLE too, not just status (mirrors InstanceBridge's
+                        // `|| !r.object`): a generic dispatch failure delivers a DEFAULT reply
+                        // {null handle, status 0} — status-only would emplace a null-handle
+                        // zombie into live_ that never renders and never retries (P1-3).
+                        if (r.status != 0 || T::handle(r).is_null()) return;   // failed; entity stays absent → retries
                         if (stopping_)                        // late reply during teardown drain →
                         { orphans_.push_back(T::handle(r)); return; }   // destroy in flushShutdownCleanup
                         live_.emplace(e, Live{T::handle(r), d});

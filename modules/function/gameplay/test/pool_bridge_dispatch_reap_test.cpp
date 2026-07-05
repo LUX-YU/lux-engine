@@ -126,6 +126,8 @@ namespace
         sys->beginShutdown();       // live_ already empty
         fix.roundTrip();
         check(fix.recorder().count("DestroyLight") == 1, "no double-destroy after a Require-shed reap");
+        sys->flushShutdownCleanup();   // complete the two-phase teardown
+        fix.roundTrip();
     }
 }
 

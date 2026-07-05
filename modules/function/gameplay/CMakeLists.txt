@@ -22,6 +22,9 @@ set(LUX_GAMEPLAY_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SkeletalAnimationResolver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldStreamingSystem.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Scene3D.cpp
+    # 2D kit (lux::gameplay::d2) — sibling of 3d/, plan-driven install (Gate 0)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Scene2D.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Simulation2DSystem.cpp
 )
 
 add_component(
@@ -104,6 +107,10 @@ if(LUX_BUILD_EDITOR)
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/gameplay/3d/world/components/PointLightComponent.hpp
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/gameplay/3d/world/components/SpotLightComponent.hpp
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/gameplay/3d/world/components/SceneSettingsComponent.hpp
+            # 2D kit reflected components (lux::gameplay::d2) — added as they land (Slice A+):
+            #   ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/gameplay/2d/world/components/Transform2DComponent.hpp
+            #   ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/gameplay/2d/world/components/Camera2DComponent.hpp
+            #   ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/gameplay/2d/world/components/SpriteComponent.hpp
         LUA_BINDING
     )
 endif()

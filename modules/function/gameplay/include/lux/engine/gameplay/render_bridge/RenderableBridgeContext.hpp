@@ -44,6 +44,7 @@
 #include <lux/engine/render/renderer/features/skinning/SkinningOperation.hpp> // SkinningOperationIds
 #include <lux/engine/render/renderer/features/meshstack/MeshStackOperation.hpp> // MeshStackOperationIds / MeshStackProxy
 #include <lux/engine/render/renderer/features/material/MaterialOperation.hpp>  // MaterialOperationIds / MaterialProxy
+#include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeatureOps.hpp> // Canvas2DOperationIds / Canvas2DProxy (2D)
 #include <lux/engine/render/comm/server/FeatureRegistry.hpp>                  // name → {handle, ops} (PARAM/POOL bridges)
 #include <lux/engine/render/comm/client/RenderRequest.hpp>                    // in-flight upload/compile cancel (teardown)
 
@@ -119,6 +120,18 @@ namespace lux::gameplay
         /// A fresh MaterialProxy bound to this context's session + ops (cheap;
         /// construct per call site; no-ops if no StandardMaterialFeature).
         [[nodiscard]] lux::render::MaterialProxy material() noexcept { return {*session_, material_ops_}; }
+        /// A fresh Canvas2DProxy for the scene's Canvas2DFeature — the 2D sprite / tilemap /
+        /// pixel-field bridges submit their per-frame draw batch through it. Unlike
+        /// meshStack() (which caches ops the app sets), this resolves the ops from the
+        /// already-wired `features_` registry BY NAME each call, so it needs no extra
+        /// setCanvas2DOps wiring and is INVALID exactly when the scene has no Canvas2DFeature
+        /// (a pure-3D scene, or before setFeatures) → submitSprites() then no-ops, so a 3D
+        /// path pays nothing (R2-04 contract). Cheap (a pointer + a small linear name lookup).
+        [[nodiscard]] lux::render::Canvas2DProxy canvas2d() noexcept
+        {
+            return { *session_, features_ ? features_->ops<lux::render::Canvas2DOperationIds>("Canvas2D")
+                                          : lux::render::Canvas2DOperationIds{} };
+        }
 
         // ── Highlight bridge ────────────────────────────────────────────
         // The set of entities to highlight (a multi-mesh root expands to root +
@@ -319,7 +332,7 @@ namespace lux::gameplay
         lux::render::SkinningOperationIds skinning_ops_{};   // skeletal mesh bridge → SkinningProxy
         lux::render::MeshStackOperationIds mesh_stack_ops_{}; // mesh bridge → MeshStackProxy
         lux::render::MaterialOperationIds  material_ops_{};   // ensureGraphMaterial → MaterialProxy
-        const lux::render::FeatureRegistry* features_{nullptr}; // name → {handle, ops} (PARAM/POOL bridges)
+        const lux::render::FeatureRegistry* features_{nullptr}; // name → {handle, ops} (PARAM/POOL + 2D bridges)
         // Injected async loader (never null after the ctor — falls back to a
         // synchronous mgr.ensureAsset when the caller passes none). Fired from
         // ensure* when an id resolves to an absent/data-less shell.

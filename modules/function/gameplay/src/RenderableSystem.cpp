@@ -51,7 +51,8 @@ namespace lux::gameplay
         std::unique_ptr<RenderableBridgeContext>          ctx;
         std::vector<std::unique_ptr<IRenderableBridge>>   bridges;
         bool                                              update_started{false};
-        bool                                              shutdown_done{false};
+        bool                                              shutdown_begun{false};   // beginShutdown() called
+        bool                                              shutdown_done{false};    // flushShutdownCleanup() completed
     };
 
     RenderableSystem::RenderableSystem(lux::render::RenderSession& session,
@@ -70,20 +71,21 @@ namespace lux::gameplay
 
     RenderableSystem::~RenderableSystem()
     {
-        // Teardown must go through shutdown() (builder-live), not the dtor: a dtor cannot
-        // reliably send GPU delete commands, so a skipped shutdown silently leaks every
-        // live instance/light + its asset refcounts. Debug-guard it — a system that was
-        // never used (no update()) is fine to just drop. Future 2D bridges hit the same
-        // trap, so enforce the contract at the one shared choke point.
+        // Teardown must go through the full two-phase shutdown (builder-live), not the
+        // dtor: a dtor cannot reliably send GPU delete commands, so a skipped OR TRUNCATED
+        // shutdown silently leaks live instances/lights + asset refcounts. Assert on
+        // shutdown_done (set only when flushShutdownCleanup COMPLETES), not merely on
+        // beginShutdown — so "began shutdown but never finished draining/cleanup" is
+        // caught, not given false confidence. A never-used system (no update()) is fine.
         assert((impl_->shutdown_done || !impl_->update_started) &&
-               "RenderableSystem destroyed without shutdown() after use — GPU objects leak");
+               "RenderableSystem destroyed without COMPLETING shutdown after use — GPU objects leak");
     }
 
     void RenderableSystem::addBridge(std::unique_ptr<IRenderableBridge> bridge)
     {
         assert(!impl_->update_started &&
                "RenderableSystem::addBridge must be called before the first update()");
-        assert(!impl_->shutdown_done &&
+        assert(!impl_->shutdown_begun &&
                "RenderableSystem::addBridge must not be called after shutdown()");
         if (!bridge) return;
         impl_->bridges.push_back(std::move(bridge));
@@ -121,8 +123,8 @@ namespace lux::gameplay
 
     void RenderableSystem::beginShutdown()
     {
-        if (impl_->shutdown_done) return;          // idempotent
-        impl_->shutdown_done = true;
+        if (impl_->shutdown_begun) return;         // idempotent
+        impl_->shutdown_begun = true;
         // Builder must be LIVE — beginShutdown emits destroy / removeMeshInstance. It
         // removes KNOWN live objects + enters stopping mode; pending async creates are
         // NOT cancelled but drained by the caller (submit+pump until hasPendingShutdownWork
@@ -139,17 +141,24 @@ namespace lux::gameplay
 
     void RenderableSystem::flushShutdownCleanup()
     {
+        // Precondition: the caller has DRAINED (pumped until hasPendingShutdownWork() is
+        // false). Cleaning up with work still pending means the drain was truncated (e.g.
+        // a fixed round cap exceeded) — orphans may leak. Surface it instead of silently
+        // proceeding. (Release still runs best-effort cleanup below.)
+        assert(!hasPendingShutdownWork() &&
+               "flushShutdownCleanup() while shutdown work is still pending — drain first");
         // Builder must be LIVE. Destroy the orphan objects the drained late replies
         // created, then any global resource an upload completed but nothing referenced
         // (refcount 0) — release*() never fires for those (no 1→0 transition), so they'd
         // leak in the reused scene.
         for (auto& b : impl_->bridges) b->flushShutdownCleanup(*impl_->ctx);
         if (impl_->ctx) impl_->ctx->destroyUnreferencedResources();
+        impl_->shutdown_done = true;   // cleanup complete — the dtor contract is now satisfied
     }
 
     void RenderableSystem::update(lux::meta::EntityRegistry& registry, float /*dt*/)
     {
-        if (impl_->shutdown_done)   // torn down: ctx/bridges are empty and the scene it
+        if (impl_->shutdown_begun)  // torn down: ctx/bridges are draining and the scene it
         {                           // targeted may be gone — reject rather than re-drive.
             assert(false && "RenderableSystem::update() called after shutdown()");
             return;

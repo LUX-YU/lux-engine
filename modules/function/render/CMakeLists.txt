@@ -170,6 +170,9 @@ set(RENDER_SRCS
     # Features — light (owns per-scene LightResources + light CRUD ops)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/renderer/features/light/LightFeature.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/renderer/features/light/LightOperationHandlers.cpp
+    # Features — Canvas2D (SinglePerScene 2D draw-batch owner; sprite/tilemap/pixel bridges → SceneColor)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/renderer/features/canvas2d/Canvas2DFeature.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/renderer/features/canvas2d/Canvas2DOperationHandlers.cpp
     # Features — generic per-feature setParams op (reflection-driven settings panel)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/renderer/features/FeatureParamsHandlers.cpp
     # Resources — trajectory
@@ -314,6 +317,8 @@ compile_and_pack_shaders(
 		# Gizmo
 		gizmo/line_list.vert                gizmo/line_list.frag
 		gizmo/tri_overlay.vert              gizmo/tri_overlay.frag
+		# Canvas2D (2D sprite draw-batch)
+		canvas2d/sprite.vert                canvas2d/sprite.frag
 		# Highlight outline
 		highlight/highlight_mask.vert       highlight/highlight_mask.frag
 		highlight/highlight_blur.frag       highlight/highlight_composite.frag
@@ -461,6 +466,9 @@ embed_builtin_shaders(
 		gizmo/line_list.frag
 		gizmo/tri_overlay.vert
 		gizmo/tri_overlay.frag
+		# Canvas2D (2)
+		canvas2d/sprite.vert
+		canvas2d/sprite.frag
 		# Highlight outline
 		highlight/highlight_mask.vert
 		highlight/highlight_mask.frag

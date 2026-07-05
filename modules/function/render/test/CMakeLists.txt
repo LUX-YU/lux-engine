@@ -434,6 +434,65 @@ target_include_directories(
 	${SHADER_CONFIG_OUT_PATH}
 )
 
+# R2-00 — Canvas2D public protocol freeze. Both are pure header-only POD checks
+# (no Vulkan device); they only need render's PUBLIC include dir, reachable by linking
+# `render`. Kept device-free so they ride the `cpu` tier.
+add_executable(protocol_static_asserts protocol_static_asserts.cpp)
+target_link_libraries(protocol_static_asserts PRIVATE render)
+
+add_executable(draw_order_comparator_test draw_order_comparator_test.cpp)
+target_link_libraries(draw_order_comparator_test PRIVATE render)
+
+# R2-01 — Canvas2DFeature factory + descriptor + submit-op protocol (device-free half).
+add_executable(canvas2d_factory_static_test canvas2d_factory_static_test.cpp)
+target_link_libraries(canvas2d_factory_static_test PRIVATE render)
+
+# R2-03 — painter-order sort + adjacent batch coalescing (pure logic, device-free).
+add_executable(cross_producer_order_test cross_producer_order_test.cpp)
+target_link_libraries(cross_producer_order_test PRIVATE render)
+
+add_executable(batch_does_not_cross_layer_test batch_does_not_cross_layer_test.cpp)
+target_link_libraries(batch_does_not_cross_layer_test PRIVATE render)
+
+# R2-04 — Canvas2D op-ids are addressable by name; absent → invalid (3D scene no-ops).
+add_executable(feature_absent_noop_test feature_absent_noop_test.cpp)
+target_link_libraries(feature_absent_noop_test PRIVATE render)
+
+add_executable(feature_present_ops_test feature_present_ops_test.cpp)
+target_link_libraries(feature_present_ops_test PRIVATE render)
+
+# R2-01 — Canvas2DFeature attach/detach lifecycle over the server+session harness
+# (needs a device; skips cleanly if no Vulkan). Mirrors feature_view_lifecycle_test.
+add_executable(canvas2d_feature_lifecycle_test canvas2d_feature_lifecycle_test.cpp)
+target_link_libraries(
+	canvas2d_feature_lifecycle_test
+	PRIVATE
+	render
+	lux::engine::platform::window
+)
+target_include_directories(
+	canvas2d_feature_lifecycle_test
+	PRIVATE
+	${RENDER_PINCLUDE_DIR}
+	${SHADER_CONFIG_OUT_PATH}
+)
+
+# R2-02 — the Canvas2D render graph is stable under per-frame content change
+# (submitting sprites causes no recompile). Needs a device; skips if no Vulkan.
+add_executable(graph_dump_stability_test graph_dump_stability_test.cpp)
+target_link_libraries(
+	graph_dump_stability_test
+	PRIVATE
+	render
+	lux::engine::platform::window
+)
+target_include_directories(
+	graph_dump_stability_test
+	PRIVATE
+	${RENDER_PINCLUDE_DIR}
+	${SHADER_CONFIG_OUT_PATH}
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  CTest registration (render 重构阶段 0 — 测试基线)
 #
@@ -476,12 +535,21 @@ lux_render_add_test(render_graph_qfot_guard_test    LABEL cpu)
 lux_render_add_test(submission_merge_test           LABEL cpu)
 lux_render_add_test(shadow_slice_math_test          LABEL cpu)
 lux_render_add_test(graph_bucket_render_state_test  LABEL cpu)
+lux_render_add_test(protocol_static_asserts         LABEL cpu)
+lux_render_add_test(draw_order_comparator_test      LABEL cpu)
+lux_render_add_test(canvas2d_factory_static_test    LABEL cpu)
+lux_render_add_test(cross_producer_order_test       LABEL cpu)
+lux_render_add_test(batch_does_not_cross_layer_test LABEL cpu)
+lux_render_add_test(feature_absent_noop_test        LABEL cpu)
+lux_render_add_test(feature_present_ops_test        LABEL cpu)
 
 # Headless Vulkan, self-checking, self-terminating — need a GPU runner
 lux_render_add_test(descriptor_arena_growth_test    LABEL gpu)
 lux_render_add_test(shader_dedup_test               LABEL gpu)
 lux_render_add_test(readback_test                   LABEL gpu)
 lux_render_add_test(feature_view_lifecycle_test      LABEL gpu)
+lux_render_add_test(canvas2d_feature_lifecycle_test  LABEL gpu)
+lux_render_add_test(graph_dump_stability_test        LABEL gpu)
 lux_render_add_test(exportable_memory_test          LABEL gpu)
 lux_render_add_test(hzb_pyramid_test                LABEL gpu TIMEOUT 300)
 lux_render_add_test(spatial_cull_grid_stress_test   LABEL gpu TIMEOUT 300)

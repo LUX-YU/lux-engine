@@ -89,6 +89,9 @@ namespace lux::render
     X(LINE_LIST_FRAG,             gizmo_line_list_frag)                                         \
     X(TRI_OVERLAY_VERT,           gizmo_tri_overlay_vert)                                       \
     X(TRI_OVERLAY_FRAG,           gizmo_tri_overlay_frag)                                       \
+    /* Canvas2D (2D sprite draw-batch → SceneColor) */                                           \
+    X(CANVAS2D_SPRITE_VERT,       canvas2d_sprite_vert)                                         \
+    X(CANVAS2D_SPRITE_FRAG,       canvas2d_sprite_frag)                                         \
     /* Highlight outline (object highlight; editor selection is one client) */                   \
     X(HIGHLIGHT_MASK_VERT,        highlight_highlight_mask_vert)                                \
     X(HIGHLIGHT_MASK_FRAG,        highlight_highlight_mask_frag)                                \

@@ -76,10 +76,11 @@ namespace lux::gameplay::d3
             for (auto e : child_view)
                 resolve(registry, e);
 
-            // G-08: a parent cycle (A→B→A) is a malformed scene. resolve() breaks it
-            // (a back-edge does not recurse; the entity keeps its previous-frame world,
-            // so descendants can't mix a half-updated matrix) and counts it. Diagnose in
-            // debug so the bad data is fixable; `cyclesLastUpdate()` exposes it to tests.
+            // G-08: a parent cycle (A→B→A) is a malformed scene. resolve() breaks it by
+            // dropping the cycle-closing parent edge to Identity (P1-1), so the cycle nodes
+            // reach a STABLE fixed point (no cross-frame drift) instead of composing off a
+            // this-frame-incomplete sibling, and counts it. Diagnose in debug so the bad
+            // data is fixable; `cyclesLastUpdate()` exposes it to tests.
 #ifndef NDEBUG
             if (cycles_last_update_ > 0)
                 std::fprintf(stderr,
@@ -127,9 +128,9 @@ namespace lux::gameplay::d3
             if (resolved_.count(e)) return;           // already composed this frame
             if (!visiting_.insert(e).second)          // e is on the current DFS stack → cycle
             {
-                ++cycles_last_update_;                // G-08: break the back-edge (don't recurse)
-                return;                               // e keeps its previous-frame world
-            }
+                ++cycles_last_update_;                // G-08: back-edge — don't recurse. e's own
+                return;                               // top-level resolve() still composes it, but
+            }                                         // its cycle-parent edge is dropped (see below).
 
             auto* tc = registry.try_get<TransformComponent>(e);
             auto* wc = registry.try_get<WorldTransformComponent>(e);
@@ -144,11 +145,17 @@ namespace lux::gameplay::d3
                 // parents (those whose own world still needs composing).
                 if (registry.all_of<HierarchyComponent>(hc->parent))
                     resolve(registry, hc->parent);
-                if (const auto* pwc = registry.try_get<WorldTransformComponent>(hc->parent))
-                {
-                    parent_world = pwc->world;
-                    parent_dirty = pwc->dirty;
-                }
+                // P1-1: if the parent is STILL on the DFS stack after recursing, this edge
+                // closes a cycle — the parent's world is this-frame-incomplete. Reading it
+                // would mix a stale/fresh sibling matrix and DRIFT every frame
+                // (A_n = A_0·(b·a)^n). Skip the parent contribution (leave Identity) so the
+                // cycle node composes from its own local TRS — a stable fixed point.
+                if (!visiting_.count(hc->parent))
+                    if (const auto* pwc = registry.try_get<WorldTransformComponent>(hc->parent))
+                    {
+                        parent_world = pwc->world;
+                        parent_dirty = pwc->dirty;
+                    }
             }
 
             const Eigen::Matrix4f new_world = parent_world * computeTRS(*tc);

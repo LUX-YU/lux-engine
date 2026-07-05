@@ -35,7 +35,9 @@ namespace lux::render
         uint32_t flags{ 0 };         // reserved (MATF_* style)
         uint32_t _pad{ 0 };
     };
-    static_assert(std::is_trivially_copyable_v<GraphMaterialData>,
-                  "GraphMaterialData is sent as raw bytes over the comm channel");
 
+    static_assert(
+        std::is_trivially_copyable_v<GraphMaterialData>,
+        "GraphMaterialData is sent as raw bytes over the comm channel"
+    );
 } // namespace lux::render

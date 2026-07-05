@@ -28,6 +28,8 @@
 #include <lux/engine/gameplay/3d/world/components/TransformComponent.hpp>
 #include <lux/engine/gameplay/3d/world/components/WorldTransformComponent.hpp>
 #include <lux/engine/gameplay/world/HierarchyView.hpp>   // hierarchyRoot (pick -> whole object)
+
+#include <iostream>   // teardown-drain overflow diagnostic
 #include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>
 #include <lux/engine/gameplay/3d/Scene3D.hpp>   // d3::installSystems / registerRenderables
 #include <lux/engine/gameplay/3d/world/systems/SkeletalAnimationResolver.hpp>
@@ -367,6 +369,16 @@ namespace lux::editor
                 session_->submitFrame(/*blocking=*/true);
                 session_->pumpReplies();
             }
+
+            // The cap is generous headroom for the single-reply invariant above; if work
+            // STILL pends the invariant broke (a bridge re-issued work, a reply needs >1
+            // round-trip, or the channel is stopping and submit/pump silently no-op). Do
+            // NOT silently proceed to cleanup+reset — that reintroduces the orphan leak.
+            // Surface it; a robust caller would keep the cleanup owner alive or destroy the
+            // whole render scene instead. (flushShutdownCleanup also asserts this.)
+            if (renderable_system_->hasPendingShutdownWork())
+                std::cerr << "[EditorScene] teardown drain exceeded its cap with work still "
+                             "pending — orphaned render objects may leak in the reused scene.\n";
 
             // Phase 2 — destroy drained orphan objects + resources uploaded-but-unreferenced.
             session_->beginFrame({});

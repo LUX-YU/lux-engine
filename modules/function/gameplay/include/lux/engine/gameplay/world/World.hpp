@@ -77,6 +77,10 @@ namespace lux::gameplay
         void addSystem(std::unique_ptr<ISystem> system)
         { systems_.push_back(std::move(system)); }
 
+        /// Number of installed systems (for diagnostics + install-contract tests, e.g.
+        /// verifying an empty D2ScenePlan installs none).
+        [[nodiscard]] std::size_t systemCount() const noexcept { return systems_.size(); }
+
         // ------------------------------------------------------------------ //
         //  Per-frame update                                                   //
         // ------------------------------------------------------------------ //

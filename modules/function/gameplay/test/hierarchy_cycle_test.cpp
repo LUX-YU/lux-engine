@@ -56,6 +56,10 @@ int main()
         lux::meta::EntityRegistry reg;
         const auto a = makeXform(reg);
         const auto b = makeXform(reg);
+        // Non-identity locals so b*a != Identity — otherwise the stale/fresh mixing in the
+        // old code produces no observable drift (Identity is a fixed point either way).
+        reg.get<TransformComponent>(a).position = Eigen::Vector3f(1.f, 0.f, 0.f);
+        reg.get<TransformComponent>(b).position = Eigen::Vector3f(0.f, 2.f, 0.f);
         reg.emplace<HierarchyComponent>(a).parent = b;
         reg.emplace<HierarchyComponent>(b).parent = a;
 
@@ -65,6 +69,17 @@ int main()
         check(reg.get<WorldTransformComponent>(a).world.allFinite()
               && reg.get<WorldTransformComponent>(b).world.allFinite(),
               "cycle entities keep finite world matrices (no garbage)");
+
+        // P1-1: with unchanged locals the cycle nodes must reach a STABLE fixed point —
+        // no cross-frame drift (the old code mixed a stale/fresh sibling matrix so the
+        // world grew by (b*a) every frame).
+        const Eigen::Matrix4f a1 = reg.get<WorldTransformComponent>(a).world;
+        const Eigen::Matrix4f b1 = reg.get<WorldTransformComponent>(b).world;
+        sys.update(reg, 0.f);   // second frame, nothing changed
+        const bool a_stable = (reg.get<WorldTransformComponent>(a).world - a1).cwiseAbs().maxCoeff() == 0.0f;
+        const bool b_stable = (reg.get<WorldTransformComponent>(b).world - b1).cwiseAbs().maxCoeff() == 0.0f;
+        check(a_stable && b_stable,
+              "cycle world matrices are stable across frames (no drift, P1-1)");
 
         // Breaking the cycle (A becomes a root) clears the count next update.
         reg.remove<HierarchyComponent>(a);

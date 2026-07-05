@@ -8,14 +8,14 @@
 //     re-issue addMeshInstance every frame (count stays 1 across further drives).
 //
 //   Scenario B — P1-2 (a DEFAULT/Unknown status must not be read as Ok): the server
-//     replies with the DEFAULT status (Unknown) but a NON-null object — the real
-//     shape of a generic dispatch failure (RenderRequest delivers a default reply).
-//     The status default was the bug: it used to be Ok, so such a reply became a
-//     zombie live instance. This scenario forces a valid object so the `!r.object`
-//     guard half cannot mask the status check, then proves the instance never went
-//     live by removing the entity and asserting reap emits NO RemoveMeshInstance
-//     (a live instance would emit one). Under the pre-fix default-Ok, the instance
-//     WOULD be live and reap WOULD remove it, flipping the assertion.
+//     replies with the DEFAULT status (Unknown). The status default was the bug: it used
+//     to be Ok, so a dispatch-failure default reply became a zombie live instance. The
+//     genuine dispatch-failure wire shape is {Unknown, NULL object}; here we SYNTHESIZE
+//     {Unknown, VALID object} so the `!r.object` guard half cannot mask the status check
+//     — proving the STATUS default alone rejects the reply. We then prove the instance
+//     never went live by removing the entity and asserting reap emits NO RemoveMeshInstance
+//     (a live instance would emit one). Under the pre-fix default-Ok, the instance WOULD
+//     be live and reap WOULD remove it, flipping the assertion.
 //
 //  The upload path is real: ensureMesh resolves a minimal in-memory MeshAsset and
 //  fires UploadMesh; only after its (successful) reply does the bridge reach
@@ -114,9 +114,9 @@ namespace
         std::printf("-- P1-2: default (Unknown) status is not treated as Ok --\n");
         lux::bridgetest::HeadlessBridgeFixture fix;
         fix.registerMeshStackOps();
-        // The real dispatch-failure shape: the server never typed-filled status (default
-        // Unknown) yet a slot object is present. Force the object so the `!r.object` half
-        // cannot mask the status check — the STATUS default alone must reject it.
+        // Synthesize {Unknown status, VALID object} (the real wire shape is {Unknown, NULL}):
+        // forcing the object decouples the guard halves so the STATUS default alone must
+        // reject it — the `!r.object` half cannot do the work here.
         fix.recorder().add_instance_status         = lux::render::MeshInstanceCreateStatus::Unknown;
         fix.recorder().add_instance_object_on_failure = true;
 

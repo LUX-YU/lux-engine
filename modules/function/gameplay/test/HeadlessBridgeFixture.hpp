@@ -31,6 +31,8 @@
 #include <lux/engine/render/renderer/features/light/LightOperation.hpp>
 #include <lux/engine/render/renderer/features/meshstack/MeshStackOperation.hpp>  // MeshStack ops/payloads/proxy ids
 #include <lux/engine/render/renderer/features/sky_box/SkyboxOperation.hpp>       // Skybox ops/payloads (PARAM)
+#include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeatureOps.hpp>  // Canvas2D submit op (2D bridges)
+#include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>   // SpriteDraw
 #include <lux/engine/render/comm/RenderProtocol.hpp>          // MeshUploadedReply
 #include <lux/engine/render/core/RenderObjectTypes.hpp>       // RenderObjectHandle
 
@@ -59,19 +61,29 @@ namespace lux::bridgetest
         // CreateLight reply controls.
         std::uint32_t light_create_status{0};   ///< 0 = Ok; non-zero = creation failed
         std::uint32_t next_light_index{1};      ///< hand out distinct RLightHandle indices
+        /// Simulate a generic dispatch failure: reply {status 0, NULL handle} (the default
+        /// reply RenderRequest delivers on CommandFailedReply). Tests P1-3 — status-only
+        /// validation would emplace a null-handle zombie.
+        bool          light_create_null_handle{false};
         std::vector<lux::render::RLightHandle> created_lights;
         std::vector<lux::render::RLightHandle> destroyed_lights;
 
         // Mesh-stack reply controls (InstanceBridge).
         std::uint32_t mesh_upload_status{0};    ///< 0 = Ok; non-zero = upload failed
         std::uint32_t next_mesh_index{1};       ///< hand out distinct RMeshHandle indices
+        /// Simulate a generic dispatch failure for uploadMesh: reply {status 0, NULL
+        /// handle}. Tests P1-4 — status-only validation settles a ready-but-null entry
+        /// that re-uploads every frame.
+        bool          mesh_upload_null_handle{false};
         std::uint32_t next_object_index{1};     ///< hand out distinct RenderObjectHandle indices
         lux::render::MeshInstanceCreateStatus add_instance_status{
             lux::render::MeshInstanceCreateStatus::Ok};   ///< addMeshInstance outcome the server reports
-        /// When true, hand back a NON-null object even on a non-Ok status. Decouples
-        /// the InstanceBridge's `status != Ok || !object` guard halves, so a P1-2 test
-        /// can prove the STATUS check alone rejects a would-be-live reply (a default /
-        /// Unknown status carrying a valid object — the real dispatch-failure shape).
+        /// When true, hand back a NON-null object even on a non-Ok status. This is a
+        /// SYNTHETIC shape (the real dispatch-failure wire shape is {Unknown, NULL object}
+        /// — RenderRequest delivers a default-constructed reply on CommandFailedReply). It
+        /// is forced only to DECOUPLE the InstanceBridge's `status != Ok || !object` guard
+        /// halves, so a P1-2 test can prove the STATUS check ALONE rejects a would-be-live
+        /// reply (otherwise the `!object` half would mask the status check).
         bool add_instance_object_on_failure{false};
         std::vector<lux::render::RenderObjectHandle> created_objects;
 
@@ -108,11 +120,18 @@ namespace lux::bridgetest
             auto* rec = static_cast<Recorder*>(ctx.user_state);
             rec->record("CreateLight", &p, sizeof(p));
             lux::render::LightCreatedReply reply{};
-            reply.status = rec->light_create_status;
-            if (reply.status == 0)
+            if (rec->light_create_null_handle)
             {
-                reply.handle = lux::render::RLightHandle{ rec->next_light_index++, 1u };
-                rec->created_lights.push_back(reply.handle);
+                reply.status = 0;   // dispatch-failure default reply: status 0 + null handle
+            }
+            else
+            {
+                reply.status = rec->light_create_status;
+                if (reply.status == 0)
+                {
+                    reply.handle = lux::render::RLightHandle{ rec->next_light_index++, 1u };
+                    rec->created_lights.push_back(reply.handle);
+                }
             }
             lux::render::replyToCurrent<lux::render::CreateLightPayload>(ctx, reply);
         }
@@ -135,9 +154,16 @@ namespace lux::bridgetest
             auto* rec = static_cast<Recorder*>(ctx.user_state);
             rec->record("UploadMesh", &p, sizeof(p));
             lux::render::MeshUploadedReply reply{};
-            reply.status = rec->mesh_upload_status;
-            if (reply.status == 0)
-                reply.handle = lux::render::RMeshHandle{ rec->next_mesh_index++, 1u };
+            if (rec->mesh_upload_null_handle)
+            {
+                reply.status = 0;   // dispatch-failure default reply: status 0 + null handle
+            }
+            else
+            {
+                reply.status = rec->mesh_upload_status;
+                if (reply.status == 0)
+                    reply.handle = lux::render::RMeshHandle{ rec->next_mesh_index++, 1u };
+            }
             lux::render::replyToCurrent<lux::render::UploadMeshPayload>(ctx, reply);
         }
 
@@ -174,6 +200,16 @@ namespace lux::bridgetest
         {
             static_cast<Recorder*>(ctx.user_state)->record(
                 "TransformBatch", entries.data(), entries.size_bytes());
+        }
+
+        // ── Canvas2D submit handler (Sprite2DBridge / 2D producers) ──
+        // The submit op is a Blob: scene_id rides the envelope, the SpriteDraw[] rides a
+        // BlobRef. Resolve it and record the RAW SpriteDraw bytes under "Canvas2DSubmit" so
+        // a test decodes the batch as SpriteDraw[] (mirrors the real handleCanvas2DSubmit).
+        inline void recCanvas2DSubmit(Ctx& ctx, const lux::render::Canvas2DSubmitPayload& p)
+        {
+            const auto blob = lux::render::resolveBlob(ctx.program, p.sprites);
+            static_cast<Recorder*>(ctx.user_state)->record("Canvas2DSubmit", blob.data(), blob.size());
         }
     } // namespace detail
 
@@ -243,6 +279,19 @@ namespace lux::bridgetest
             ids.fill(kInvalidTypeId);
             ids[0] = dispatcher_.allocateAndRegisterUnary<SkyboxSetEquirectPayload, &detail::recSkyboxSetEquirect>(opcode_of_v<SkyboxSetEquirectOp>, "SkyboxSetEquirect");
             features_.injectForTest("Skybox", ids, FeatureHandle{ 0u, 1u });
+        }
+
+        // Register the Canvas2D submit op (Blob) + inject "Canvas2D" → its id, so a
+        // Sprite2DBridge resolving ctx.canvas2d() (features().ops<Canvas2DOperationIds>)
+        // dispatches its per-frame batch to a handler the fake server owns. Order matches
+        // FeatureOpIds<Canvas2DSubmitOp>.
+        void registerCanvas2DOps()
+        {
+            using namespace lux::render;
+            const TypeId submit = dispatcher_.allocateAndRegisterUnary<Canvas2DSubmitPayload, &detail::recCanvas2DSubmit>(
+                opcode_of_v<Canvas2DSubmitOp>, "Canvas2DSubmit");
+            const std::array<TypeId, 1> ops{ submit };
+            features_.injectForTest("Canvas2D", ops);
         }
 
         // ── Granular frame steps (for tests that must interleave shutdown between

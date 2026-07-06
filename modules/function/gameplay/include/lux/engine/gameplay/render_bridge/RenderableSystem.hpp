@@ -42,6 +42,7 @@
 // other render type below remains forward-declared only.
 #include <lux/engine/render/core/RenderSceneId.hpp>   // lux::render::RenderSceneId (SlotKey alias)
 #include <lux/engine/render/core/FeatureHandle.hpp>   // lux::render::ViewHandle (SlotKey alias)
+#include <lux/engine/render/core/Errors.hpp>          // lux::render::Expected<void> (flushShutdownCleanup result; header-only alias)
 
 // Forward declarations for the remaining render types — no other render headers
 // leak into render_bridge's public interface.
@@ -146,14 +147,24 @@ namespace lux::gameplay
         ///
         ///   beginFrame(); beginShutdown();       submitFrame(true); pumpReplies();
         ///   while (hasPendingShutdownWork()) { beginFrame(); submitFrame(true); pumpReplies(); }
-        ///   beginFrame(); flushShutdownCleanup(); submitFrame(true); pumpReplies();
+        ///   beginFrame(); auto ok = flushShutdownCleanup(); submitFrame(true); pumpReplies();
+        ///
+        /// flushShutdownCleanup() REFUSES (returns unexpected(ShutdownStillPending), with NO
+        /// side effects — shutdown_done stays false) if the drain is incomplete: cleaning up
+        /// while creates/uploads are still in flight would truncate the drain and leak the
+        /// late server objects. The caller MUST check the result and, on refusal, keep
+        /// draining (or abort the scene switch) rather than destroy the system — destroying it
+        /// cancels the pending continuations and reintroduces the leak. Only a success sets
+        /// the shutdown-complete state the destructor asserts on.
         ///
         /// See EditorScene::tearDown for the canonical call site. Do NOT rely on
         /// destructors to send render commands. After beginShutdown, update() is a
         /// rejected no-op; beginShutdown is idempotent.
         void               beginShutdown();
         [[nodiscard]] bool hasPendingShutdownWork() const;   // pending creates OR inflight uploads still settling
-        void               flushShutdownCleanup();           // destroy drained orphans + unreferenced resources
+        /// Destroy drained orphans + unreferenced resources and mark shutdown COMPLETE.
+        /// Refuses (returns unexpected) without side effects if work still pends — drain first.
+        [[nodiscard]] lux::render::Expected<void> flushShutdownCleanup();
 
         void update(lux::meta::EntityRegistry& registry, float dt) override;
 

@@ -11,28 +11,30 @@
  * per-frame batch CONTENT changes (uploaded in `onFrameBegin`), so sprite updates
  * never invalidate the render graph.
  *
- * R2-02 (this checkpoint) lands the pass + pipeline + upload + draw:
- *  - own 2D sprite shaders + a color-only SceneColor pass (NO depth → pure painter
- *    order), premultiplied-alpha blend;
- *  - per-frame the submitted SpriteDraws are CPU-expanded into a 3-slot host-mapped
- *    ring buffer and drawn.
+ * It owns its 2D sprite shaders, a color-only SceneColor pass (NO depth → pure painter
+ * order, premultiplied-alpha blend), and a host-mapped vertex ring. Each frame the
+ * submitted SpriteDraws are sorted, CPU-expanded into the ring slot for the current
+ * frame-in-flight, and drawn.
  *
- * OWNERSHIP NOTE (deliberate divergence from design §3B's literal "reuse
- * TransientVertexSource"): recon found TransientVertexSource is (a) single-buffered
- * (a known FIF-safety bug, P1#9) and (b) OWNED BY SkinningResources — a 3D/skinning
- * resource. Reusing it would make a Canvas-only scene allocate SkinningResources,
- * breaking the 2D↔3D decoupling (R2-01's verified "no 3D mesh arena"). So Canvas2D
- * owns its OWN 3-slot ring buffer (mirroring TriOverlayTransientFeature) — NOT a new
- * heavy resource class, just feature-owned VkBuffers, and FIF-safe. See the 2D log.
+ * The ring has ONE slot per frame-in-flight and is indexed by the engine's real
+ * `frame_index % framesInFlight()` — never a private frame counter, which would desync
+ * from the actual in-flight set (feature disable/re-enable, skipped frames, multi-scene)
+ * and let the CPU overwrite a slot the GPU is still reading.
+ *
+ * The ring is FEATURE-owned (feature VkBuffers, not a shared resource class): reusing
+ * the shared TransientVertexSource would drag SkinningResources — a 3D resource — into a
+ * 2D-only scene, breaking the verified 2D↔3D decoupling ("no 3D mesh arena").
  */
 
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/render/core/ResourceHandle.hpp>            // ShaderHandle
 #include <lux/engine/render/pipeline/GraphicsPipelineTemplate.hpp> // GraphicsPipelineHandle
+#include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp> // SpriteDraw (drain buffer)
 #include <lux/engine/function/visibility.h>
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 struct VmaAllocator_T;  using VmaAllocator  = VmaAllocator_T*;
 struct VmaAllocation_T; using VmaAllocation = VmaAllocation_T*;
@@ -59,17 +61,20 @@ namespace lux::render
         struct Config
         {
             std::string   name{"Canvas2D"};
-            std::string   color_target{"SceneColor"};    ///< the R2-02 pass writes here (color-only)
-            std::uint32_t max_sprites_per_frame{100'000}; ///< ring-buffer capacity (design §3.3 sort budget)
+            std::string   color_target{"SceneColor"};   ///< the pass writes here (color-only)
+            /// Per-frame sprite capacity (per ring slot). Sprites beyond it this frame are
+            /// dropped (reported in FrameStats::dropped). A modest default keeps the ring
+            /// small; a scene with more sprites raises it. (A future growable ring removes
+            /// the fixed cap.)
+            std::uint32_t max_sprites_per_frame{16'384};
             ShaderHandle  vertex_shader{};
             ShaderHandle  fragment_shader{};
         };
 
-        /// Per-frame draw statistics (R2-03): what the last onFrameBegin produced.
+        /// Per-frame draw statistics: what the last onFrameBegin produced.
         struct FrameStats
         {
             std::uint32_t sprites{0};   ///< sprites drawn (after the max-per-frame clamp)
-            std::uint32_t batches{0};   ///< coalesced draw batches (sorted-adjacent, same texture)
             std::uint32_t dropped{0};   ///< sprites dropped because they exceeded max_sprites_per_frame
         };
 
@@ -84,8 +89,7 @@ namespace lux::render
         [[nodiscard]] const FrameStats& lastFrameStats() const noexcept { return stats_; }
 
     private:
-        static constexpr std::uint32_t kBufferCount   = 3;             ///< FIF-safe ring
-        static constexpr std::uint32_t kVertsPerSprite = 6;            ///< 2 triangles
+        static constexpr std::uint32_t kVertsPerSprite = 6;   ///< 2 triangles
 
         struct FrameSlot
         {
@@ -97,16 +101,16 @@ namespace lux::render
         Config                 cfg_;
         GraphicsPipelineHandle pipeline_handle_{kInvalidPipelineHandle};
 
-        VmaAllocator           allocator_{nullptr};
-        FrameSlot              slots_[kBufferCount]{};
-        std::uint32_t          active_slot_{0};
-        std::uint32_t          frame_counter_{0};
-        std::uint32_t          draw_count_{0};   ///< vertices to draw this frame (6 * sprites)
-        FrameStats             stats_{};         ///< R2-03: last frame's sort/batch/drop counts
+        VmaAllocator            allocator_{nullptr};
+        std::vector<FrameSlot>  slots_;             ///< one host-mapped vertex buffer per frame-in-flight
+        std::uint32_t           active_slot_{0};    ///< frame_index % slots_.size()
+        std::uint32_t           draw_count_{0};     ///< vertices to draw this frame (6 * sprites)
+        FrameStats              stats_{};
 
-        Canvas2DResources*     ingest_{nullptr};  ///< scene-registry snapshot source
+        Canvas2DResources*      ingest_{nullptr};   ///< scene-registry submission source
+        std::vector<SpriteDraw> sprite_snapshot_;   ///< persistent drain buffer (capacity reused each frame)
 
-        void createSlotBuffers();
+        [[nodiscard]] lux::render::Expected<void> createSlotBuffers(std::uint32_t frames_in_flight);
         void destroySlotBuffers();
     };
 

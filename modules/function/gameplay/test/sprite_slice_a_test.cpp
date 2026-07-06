@@ -48,9 +48,11 @@ int main()
     lux::bridgetest::HeadlessBridgeFixture fix;
     fix.registerCanvas2DOps();
 
-    // Neutral World with 2D Core (Transform2DSystem → WorldTransform2D; Camera2DSystem).
+    // Neutral World with traditional 2D (Core: Transform2DSystem → WorldTransform2D;
+    // Camera2DSystem — plus SpriteRendering, so registerBridges adds the sprite producer).
     World world;
-    d2::install(world, /*runtime=*/nullptr, d2::D2ScenePlan{}.enableCore());
+    const auto plan = d2::traditional2DPlan();
+    d2::install(world, /*runtime=*/nullptr, plan);
 
     // An active camera (the Camera2DUploadBridge gracefully no-ops here — the fixture has
     // no StandardViewCamera feature — proving a 2D scene without that feature still runs).
@@ -75,7 +77,7 @@ int main()
     // RenderableSystem wired to the fake scene + the 2D bridge set.
     RenderableSystem rs(fix.session(), fix.assetMgr(), fix.scene(), fix.view());
     rs.setFeatures(fix.features());
-    d2::registerBridges(rs, /*runtime=*/nullptr, d2::D2ScenePlan{}.enableCore());
+    d2::registerBridges(rs, /*runtime=*/nullptr, plan);
 
     // One tick: Sprite2DBridge reads the ECS and submits the batch; roundTrip lets the
     // fake server dispatch it into the recorder.
@@ -105,6 +107,27 @@ int main()
               "a null-texture sprite resolves to kNoTexture (tint-only, no bindless sample)");
     }
 
+    // Pivot: a non-centred pivot shifts the quad so the pivot point sits at the world
+    // origin. With pivot (0,0) and size (3,4) at (1,2), the translation offsets by
+    // (col0*0.5 + col1*0.5) = (1.5, 2) → (2.5, 4). (Default pivot 0.5,0.5 = zero offset.)
+    world.get<d2::SpriteComponent>(spr).pivot = Eigen::Vector2f(0.f, 0.f);
+    world.tick(1.f / 60.f);
+    fix.recorder().by_op.clear();
+    rs.update(world.registry(), 1.f / 60.f);
+    fix.roundTrip();
+    if (fix.recorder().count("Canvas2DSubmit") == 1 &&
+        fix.recorder().by_op.at("Canvas2DSubmit").at(0).size() == sizeof(lux::render::SpriteDraw))
+    {
+        lux::render::SpriteDraw dp{};
+        std::memcpy(&dp, fix.recorder().by_op.at("Canvas2DSubmit").at(0).data(), sizeof(dp));
+        check(std::abs(dp.transform[12] - 2.5f) < 1e-4f && std::abs(dp.transform[13] - 4.f) < 1e-4f,
+              "non-centred pivot (0,0) shifts the quad so the pivot sits at the entity origin");
+    }
+    else
+    {
+        check(false, "pivot sprite still submitted after changing pivot");
+    }
+
     // An invisible sprite is skipped → an empty batch → the proxy submits nothing.
     world.get<d2::SpriteComponent>(spr).visible = false;
     world.tick(1.f / 60.f);
@@ -119,7 +142,7 @@ int main()
     rs.beginShutdown();
     fix.roundTrip();
     while (rs.hasPendingShutdownWork()) fix.roundTrip();
-    rs.flushShutdownCleanup();
+    check(rs.flushShutdownCleanup().has_value(), "flush completes the drained teardown");
     fix.roundTrip();
 
     std::printf(g_failures ? "\nFAILED (%d)\n" : "\nPASSED\n", g_failures);

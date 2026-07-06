@@ -1,5 +1,5 @@
 // ============================================================================
-//  cross_producer_order_test.cpp — R2-03 (cpu): sortAndBatch puts a SCRAMBLE of
+//  cross_producer_order_test.cpp — R2-03 (cpu): sortDraws puts a SCRAMBLE of
 //  draws from different producers/layers into a single deterministic painter order
 //  (the full DrawOrderKey order), so cross-producer interleave "just works".
 //
@@ -47,7 +47,7 @@ int main()
 
     // Submitted in a scrambled, producer-clustered order (as three bridges would).
     std::vector<SpriteDraw> draws = { sprite, tile_bg, pixel_fg, tile_fg, pixel_field };
-    (void)sortAndBatch(draws);   // this test cares about the sort side-effect, not the batches
+    sortDraws(draws);
 
     check(ascending(draws), "sorted list is in non-decreasing DrawOrderKey order");
     check(draws[0].key == tile_bg.key,     "layer 0 tile-bg first");
@@ -62,7 +62,7 @@ int main()
         make(5, /*producer=*/2, 7),
         make(5, /*producer=*/2, 1),
     };
-    (void)sortAndBatch(same_layer);
+    sortDraws(same_layer);
     check(ascending(same_layer), "same-layer draws ordered by producer then stable_id");
     check(same_layer[0].key.producer_order == 2 && same_layer[0].key.stable_id == 1,
           "lowest (producer=2, stable=1) sorts first within the layer");
@@ -71,7 +71,7 @@ int main()
     // Stability: equal keys keep submission order (stable_sort). Two draws with the SAME
     // full key retain their relative order (distinguished here by texture tag a/b).
     std::vector<SpriteDraw> tie = { make(6, 0, 1, /*tex=*/0xAA), make(6, 0, 1, /*tex=*/0xBB) };
-    (void)sortAndBatch(tie);
+    sortDraws(tie);
     check(tie[0].texture_bindless == 0xAA && tie[1].texture_bindless == 0xBB,
           "equal keys preserve submission order (stable sort)");
 

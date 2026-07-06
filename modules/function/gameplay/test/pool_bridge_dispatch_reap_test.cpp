@@ -86,7 +86,7 @@ namespace
         sys->beginShutdown();
         fix.roundTrip();
         check(!sys->hasPendingShutdownWork(), "no pending shutdown work after a completed reap");
-        sys->flushShutdownCleanup();
+        check(sys->flushShutdownCleanup().has_value(), "flush completes the drained teardown");
         fix.roundTrip();
         check(fix.recorder().count("DestroyLight") == 1, "shutdown after reap emits no extra DestroyLight");
     }
@@ -126,7 +126,7 @@ namespace
         sys->beginShutdown();       // live_ already empty
         fix.roundTrip();
         check(fix.recorder().count("DestroyLight") == 1, "no double-destroy after a Require-shed reap");
-        sys->flushShutdownCleanup();   // complete the two-phase teardown
+        check(sys->flushShutdownCleanup().has_value(), "flush completes the drained teardown");
         fix.roundTrip();
     }
 }

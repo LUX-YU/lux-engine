@@ -209,12 +209,18 @@ namespace lux::gameplay
                                                               // the state alive across this call
                         if (r.status != lux::render::MeshInstanceCreateStatus::Ok || !r.object)
                         {
-                            // Failed create — do NOT become live or acquire assets. Record it
-                            // so drive stops re-issuing every frame (skip during teardown).
-                            // Only an explicit CapacityExhausted is transient (retry after
-                            // backoff); an InvalidConfiguration OR a generic dispatch failure
-                            // (Unknown — RenderRequest delivers a DEFAULT reply on
-                            // CommandFailedReply) is permanent: skip until asset ids change.
+                            // Failed create — do NOT become live or acquire assets. If the
+                            // server nonetheless handed back a valid object (a non-Ok status
+                            // WITH an object), it must be reclaimed, not dropped: route it to
+                            // the orphan set (destroyed at flushShutdownCleanup, like a late
+                            // reply) — it was never made live, so reap will never see it.
+                            if (r.object)
+                                orphans_.push_back(r.object);
+                            // Record the failure so drive stops re-issuing every frame (skip
+                            // during teardown). Only an explicit CapacityExhausted is transient
+                            // (retry after backoff); an InvalidConfiguration OR a generic
+                            // dispatch failure (Unknown — a DEFAULT reply on CommandFailedReply)
+                            // is permanent: skip until asset ids change.
                             if (!stopping_)
                             {
                                 const bool transient =

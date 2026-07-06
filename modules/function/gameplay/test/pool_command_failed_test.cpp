@@ -65,7 +65,7 @@ int main()
     sys.beginShutdown();
     fix.roundTrip();
     check(fix.recorder().count("DestroyLight") == 0, "a rejected create left nothing live to destroy");
-    sys.flushShutdownCleanup();
+    check(sys.flushShutdownCleanup().has_value(), "flush completes the drained teardown");
     fix.roundTrip();
 
     std::printf(g_failures ? "\nFAILED (%d)\n" : "\nPASSED\n", g_failures);

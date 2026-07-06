@@ -63,10 +63,11 @@ int main()
               "pixel+physics+interop installs ONE Simulation2DSystem (single accumulator, count 3 not 4)");
     }
 
-    // Sprite-only (Core + SpriteAnimation) → Transform2D + Camera2D, no Simulation2DSystem.
+    // Sprite-only (Core + SpriteRendering) → Transform2D + Camera2D, no Simulation2DSystem
+    // (SpriteRendering is a render bridge, not a World system).
     {
         World w;
-        const auto r = install(w, nullptr, D2ScenePlan{}.enableCore().enableSpriteAnimation());
+        const auto r = install(w, nullptr, D2ScenePlan{}.enableCore().enableSpriteRendering());
         check(w.systemCount() == 2 && r.simulation == nullptr && r.transform && r.camera,
               "sprite-only installs Core (Transform2D + Camera2D) but no Simulation2DSystem");
     }

@@ -69,7 +69,7 @@ int main()
         check(fix.recorder().payload<lux::render::SkyboxSetEquirectPayload>("SkyboxSetEquirect", 0).texture.is_null(),
               "the teardown clear is a DISABLE (null texture)");
 
-    sys.flushShutdownCleanup();        // PARAM: no-op
+    check(sys.flushShutdownCleanup().has_value(), "flush completes the drained teardown");   // PARAM: no-op
     fix.roundTrip();
     check(fix.recorder().count("SkyboxSetEquirect") == 1, "flush emits no further SetEquirect");
 

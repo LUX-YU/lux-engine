@@ -482,7 +482,10 @@ namespace lux::gameplay
                 auto rit = material_instance_resources_.find(id);
                 if (rit == material_instance_resources_.end()) return;
                 rit->second.upload_in_flight = false;
-                if (r.status == 0)
+                // Validate the handle too, not just status: a dispatch-failure default
+                // reply {status 0, null handle} must settle as failed, not a ready-but-null
+                // zombie (the material-instance twin of the mesh/texture check).
+                if (r.status == 0 && !r.handle.is_null())
                     rit->second.gpu_handle = r.handle;
                 else
                 {
@@ -559,23 +562,28 @@ namespace lux::gameplay
     {
         if (mat_id.is_nil()) return;
 
-        // Graph materials: same 1->0 cascade as builtin materials (release each
-        // held texture, then destroy the GPU material). The compiled graph
-        // ShaderHandles are intentionally NOT destroyed here — the session has no
-        // destroyShader and the server owns shader lifetime (shaders are cheap,
-        // deduped, and live for the session); a future destroyShader can reclaim.
+        // Graph materials: 1->0 cascade — release each held texture, destroy the GPU
+        // material, AND destroy the compiled graph shader modules. The client now has a
+        // destroyShader (P0-2), so the gbuffer/forward ShaderHandles are reclaimed via the
+        // server's refcounted, content-deduped shader cache (freed on 1->0) instead of
+        // leaking until renderer teardown — a base graph material compiles at least one.
+        // (A material INSTANCE reuses the parent's shaders and must NOT destroy them; that
+        // branch below stays shader-free.)
         if (auto git = graph_material_resources_.find(mat_id);
             git != graph_material_resources_.end())
         {
             auto& e = git->second;
             if (e.refcount == 0) return;
             if (--e.refcount != 0) return;
-            auto texture_ids     = std::move(e.texture_ids);
-            const auto gpu_handle = e.gpu_handle;
+            auto texture_ids          = std::move(e.texture_ids);
+            const auto gpu_handle     = e.gpu_handle;
+            const auto gbuffer_shader = e.gbuffer_shader;
+            const auto forward_shader = e.forward_shader;
             graph_material_resources_.erase(git);
             for (const auto& tex_id : texture_ids) releaseTexture(tex_id);
-            if (!gpu_handle.is_null())
-                material().destroyMaterial(gpu_handle);
+            if (!gpu_handle.is_null())     material().destroyMaterial(gpu_handle);
+            if (!gbuffer_shader.is_null()) session_->destroyShader(gbuffer_shader);
+            if (!forward_shader.is_null()) session_->destroyShader(forward_shader);
             return;
         }
 
@@ -650,8 +658,21 @@ namespace lux::gameplay
         {
             const auto& e = it->second;
             const bool settled = !e.gbuffer_in_flight && !e.forward_in_flight && !e.upload_in_flight;
-            if (settled && e.refcount == 0 && !e.gpu_handle.is_null())
-            { material().destroyMaterial(e.gpu_handle); it = graph_material_resources_.erase(it); }
+            // A settled, never-acquired (refcount 0) entry is reclaimable — INCLUDING one
+            // frozen MID-bring-up (gpu_handle null: after beginShutdown the drive phase is
+            // rejected, so ensureGraphMaterial never advances it to terminal — P0-2). Destroy
+            // whatever it actually produced: the GPU material if it finished, and the compiled
+            // shader modules regardless of gpu_handle (they're the piece that would otherwise
+            // leak). Its resolved textures sit at refcount 0 (a refcount-0 material never took
+            // texture refs — acquireMaterial bumps them only on 0->1), so the texture loop
+            // above already reclaimed them; no cascade needed here.
+            if (settled && e.refcount == 0)
+            {
+                if (!e.gpu_handle.is_null())     material().destroyMaterial(e.gpu_handle);
+                if (!e.gbuffer_shader.is_null()) session_->destroyShader(e.gbuffer_shader);
+                if (!e.forward_shader.is_null()) session_->destroyShader(e.forward_shader);
+                it = graph_material_resources_.erase(it);
+            }
             else ++it;
         }
         for (auto it = material_instance_resources_.begin(); it != material_instance_resources_.end(); )

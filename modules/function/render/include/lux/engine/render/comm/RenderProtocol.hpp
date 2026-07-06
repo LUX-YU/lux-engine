@@ -566,9 +566,14 @@ namespace lux::render
 
     struct FeatureTypeRegisteredReply
     {
-        std::uint32_t feature_type_id{0};
+        std::uint32_t feature_type_id{0};   ///< >=1 on success, 0 on failure (see status / server log)
         std::uint32_t op_count{0};
         TypeId ops[16]{};
+        /// EFeatureTypeRegisterStatus on success (0 = Registered, 1 = AlreadyRegistered).
+        /// Only meaningful when feature_type_id != 0; the specific failure reason is
+        /// logged server-side. Kept a raw uint32 so this header stays free of the
+        /// renderer-side enum (FeatureTypeRegistry.hpp) it rides.
+        std::uint32_t status{0};
     };
     static_assert(std::is_trivially_copyable_v<FeatureTypeRegisteredReply>);
 

@@ -1212,7 +1212,7 @@ int main()
             setTransformEuler(xform,
                 state.cube_pos[0], state.cube_pos[1], state.cube_pos[2],
                 rx, ry, rz);
-            MeshStackProxy(*session, mesh_stack_ops).updateTransform(cube_object, xform);
+            MeshStackProxy(*session, mesh_stack_ops).updateTransform(scene_id, cube_object, xform);
         }
 
         // ── Update point lights ─────────────────────────────────────

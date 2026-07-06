@@ -7,7 +7,7 @@
 // ============================================================================
 
 #include <lux/engine/gameplay/2d/D2ScenePlan.hpp>
-#include <lux/engine/gameplay/2d/Scene2D.hpp>   // platformerPlan
+#include <lux/engine/gameplay/2d/Scene2D.hpp>   // traditional2DPlan
 
 #include <cstdio>
 
@@ -26,10 +26,12 @@ int main()
     // ── Legal combinations ──────────────────────────────────────────────────
     check(D2ScenePlan{}.validate().ok(), "an empty plan is valid");
     check(D2ScenePlan{}.enableCore().validate().ok(), "Core alone is valid");
-    check(D2ScenePlan{}.enableCore().enableSpriteAnimation().validate().ok(),
-          "Core + SpriteAnimation is valid (visual-novel / card shape)");
-    check(platformerPlan().validate().ok(),
-          "platformerPlan (Core+SpriteAnim+Physics+CharCtrl) is valid");
+    check(D2ScenePlan{}.enableCore().enableSpriteRendering().validate().ok(),
+          "Core + SpriteRendering is valid (traditional 2D)");
+    check(D2ScenePlan{}.enableCore().enableSpriteRendering().enableSpriteAnimation().validate().ok(),
+          "Core + SpriteRendering + SpriteAnimation is valid");
+    check(traditional2DPlan().validate().ok(),
+          "traditional2DPlan (Core + SpriteRendering) is valid");
     check(D2ScenePlan{}.enableCore().enablePixelSimulation()
               .enablePhysics().enablePixelInterop().validate().ok(),
           "Core + PixelSim + Physics + PixelInterop is valid (Noita shape)");
@@ -39,6 +41,18 @@ int main()
         const auto v = D2ScenePlan{}.enableSpriteAnimation().validate();
         check(!v.ok() && v.has(D2PlanError::MissingCore),
               "a non-empty plan without Core is rejected (MissingCore)");
+    }
+
+    // ── Sprite capability dependencies ─────────────────────────────────────────
+    {
+        const auto v = D2ScenePlan{}.enableSpriteRendering().validate();
+        check(!v.ok() && v.has(D2PlanError::SpriteRenderingRequiresCore),
+              "SpriteRendering without Core is rejected (needs Transform2D + Camera2D)");
+    }
+    {
+        const auto v = D2ScenePlan{}.enableCore().enableSpriteAnimation().validate();
+        check(!v.ok() && v.has(D2PlanError::SpriteAnimationRequiresSpriteRendering),
+              "SpriteAnimation without SpriteRendering is rejected (animates a rendered sprite)");
     }
 
     // ── CharacterController without Physics ────────────────────────────────────
@@ -67,7 +81,7 @@ int main()
     // ── Fixed-step bounds only checked when a fixed-step capability runs ────────
     {
         // A non-simulation plan with a bogus fixed-step is still valid (config unused).
-        D2ScenePlan p = D2ScenePlan{}.enableCore().enableSpriteAnimation();
+        D2ScenePlan p = D2ScenePlan{}.enableCore().enableSpriteRendering().enableSpriteAnimation();
         FixedStepConfig bad; bad.fixed_dt = 0.0f;
         p.setFixedStep(bad);
         check(p.validate().ok(), "a non-simulation plan ignores an unused fixed-step config");
@@ -89,9 +103,27 @@ int main()
     }
 
     // ── Determinism ────────────────────────────────────────────────────────────
+    // validate() is a pure function of the capability SET (a bitmask read in a fixed
+    // order), not of the order capabilities were enabled or of plan identity. Testing
+    // that requires two DIFFERENTLY-built plans — comparing one plan's result to itself
+    // would be a tautology (a pure const method returns the same value by definition).
     {
-        const D2ScenePlan p = D2ScenePlan{}.enableCore().enablePixelInterop();   // 2 errors
-        check(p.validate().errors == p.validate().errors, "validate() is deterministic for the same plan");
+        // Same set (Core + PixelInterop, both seam sides missing → 2 errors), enabled
+        // in OPPOSITE orders: order must not change a single error bit.
+        const auto a = D2ScenePlan{}.enableCore().enablePixelInterop().validate();
+        const auto b = D2ScenePlan{}.enablePixelInterop().enableCore().validate();
+        check(a.errors == b.errors,
+              "validate() depends only on the capability set, not the enable order");
+        check(!a.ok()
+              && a.has(D2PlanError::PixelInteropRequiresPhysics)
+              && a.has(D2PlanError::PixelInteropRequiresPixelSimulation),
+              "…and the shared result pins BOTH PixelInterop violations (exact bits)");
+
+        // A copy is an independent value that validates identically (no shared state).
+        const D2ScenePlan original = D2ScenePlan{}.enableCore().enablePhysics().enablePixelInterop();
+        const D2ScenePlan copy = original;
+        check(original.validate().errors == copy.validate().errors,
+              "a copied plan validates identically (pure value type)");
     }
 
     std::printf(g_failures ? "\nFAILED (%d)\n" : "\nPASSED\n", g_failures);

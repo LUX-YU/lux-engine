@@ -20,6 +20,7 @@
 #include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>
 #include <lux/engine/gameplay/render_bridge/PoolBridge.hpp>
 #include <lux/engine/gameplay/3d/traits/LightRenderTraits.hpp>
+#include <lux/engine/render/core/Errors.hpp>   // ERenderError::ShutdownStillPending (P0-1 refusal)
 
 #include <lux/engine/meta/LuxObject.hpp>
 
@@ -80,7 +81,7 @@ namespace
         }
         check(!r.sys->hasPendingShutdownWork(), "A: no pending work after live teardown");
 
-        r.sys->flushShutdownCleanup();
+        check(r.sys->flushShutdownCleanup().has_value(), "A: flush succeeds on a fully-drained system");
         r.fix.roundTrip();
         check(r.fix.recorder().count("DestroyLight") == 1, "A: flush emits no extra DestroyLight");
     }
@@ -106,6 +107,19 @@ namespace
         check(r.sys->hasPendingShutdownWork(), "B: pending work true while a create is in flight");
         check(r.fix.recorder().count("DestroyLight") == 0, "B: nothing destroyed at beginShutdown");
 
+        // P0-1: a flush now, mid-drain, must REFUSE — it may not enter the shutdown-complete
+        // state while a create is still in flight (cleaning up here would truncate the drain
+        // and leak the late server object). It returns unexpected(ShutdownStillPending) with
+        // NO side effect: nothing destroyed, the drain below is unaffected.
+        {
+            const auto refused = r.sys->flushShutdownCleanup();
+            check(!refused.has_value()
+                  && refused.error() == lux::render::make_error_code(
+                         lux::render::ERenderError::ShutdownStillPending),
+                  "B: flush refuses (ShutdownStillPending) while a create is in flight");
+            check(r.fix.recorder().count("DestroyLight") == 0, "B: a refused flush destroys nothing");
+        }
+
         // Drain: pump the late reply. Its continuation sees stopping_ → routes the
         // server-created handle to orphans_ instead of going live.
         r.fix.submit();
@@ -116,7 +130,7 @@ namespace
 
         // Flush destroys the drained orphan.
         r.fix.beginFrame();
-        r.sys->flushShutdownCleanup();
+        check(r.sys->flushShutdownCleanup().has_value(), "B: flush succeeds once the drain is complete");
         r.fix.submit();
         r.fix.dispatch();
         check(r.fix.recorder().count("DestroyLight") == 1, "B: flush destroys the drained orphan");

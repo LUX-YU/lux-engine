@@ -202,6 +202,14 @@ namespace lux::render
             std::span<const std::byte> spirv,
             std::span<const std::byte> shader_info = {});
 
+        /// Destroy a shader module compiled via compileShader, balancing the compile's
+        /// reference on the server's content-deduped shader cache (the VkShaderModule is
+        /// freed on the 1->0 transition; a module shared by identical SPIR-V survives until
+        /// its last owner destroys it). Without this every compiled shader — at least one per
+        /// graph material — would leak until the renderer tears down. Fire-and-forget, like
+        /// destroyTexture; the caller guards against a null handle.
+        void destroyShader(ShaderHandle handle);
+
         // =================================================================
         //  Feature management
         // =================================================================

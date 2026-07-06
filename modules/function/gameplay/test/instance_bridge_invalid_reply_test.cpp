@@ -103,7 +103,7 @@ namespace
         sys->beginShutdown();
         fix.roundTrip();
         check(!sys->hasPendingShutdownWork(), "no pending shutdown work after a failed create");
-        sys->flushShutdownCleanup();
+        check(sys->flushShutdownCleanup().has_value(), "flush completes the drained teardown");
         fix.roundTrip();
         check(fix.recorder().count("RemoveMeshInstance") == 0, "shutdown removes nothing for a failed create");
     }
@@ -143,11 +143,17 @@ namespace
         check(fix.recorder().count("RemoveMeshInstance") == 0,
               "an Unknown-status reply never became live (P1-2; fails under old default-Ok)");
 
+        // …but the server DID hand back a valid object, so that stray object must be
+        // reclaimed, not leaked (review #8): the bridge routes it to its orphan set and
+        // destroys it at flushShutdownCleanup — exactly one RemoveMeshInstance, of the
+        // object the failed create returned. (The real wire shape {Unknown, NULL} would
+        // add zero here; this synthetic forces the recycle path.)
         sys->beginShutdown();
         fix.roundTrip();
-        sys->flushShutdownCleanup();
+        check(sys->flushShutdownCleanup().has_value(), "flush completes the drained teardown");
         fix.roundTrip();
-        check(fix.recorder().count("RemoveMeshInstance") == 0, "teardown removes nothing for a rejected create");
+        check(fix.recorder().count("RemoveMeshInstance") == 1,
+              "teardown reclaims the rejected create's stray server object (#8: recycle, not drop)");
     }
 }
 

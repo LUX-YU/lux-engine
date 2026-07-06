@@ -76,7 +76,7 @@ int main()
 
     sys.beginShutdown();
     fix.roundTrip();
-    sys.flushShutdownCleanup();
+    check(sys.flushShutdownCleanup().has_value(), "flush completes the drained teardown");
     fix.roundTrip();
 
     std::printf(g_failures ? "\nFAILED (%d)\n" : "\nPASSED\n", g_failures);

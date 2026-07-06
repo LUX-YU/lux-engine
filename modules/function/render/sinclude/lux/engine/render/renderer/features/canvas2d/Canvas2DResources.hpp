@@ -36,13 +36,14 @@ namespace lux::render
             pending_sprites.insert(pending_sprites.end(), batch.begin(), batch.end());
         }
 
-        /// Hand off this frame's accumulated sprites, leaving the ingest empty
-        /// (swap, not move — guarantees the source is cleared, not merely valid).
-        [[nodiscard]] std::vector<SpriteDraw> takeSprites() noexcept
+        /// Move this frame's accumulated sprites into @p out (the feature's persistent
+        /// working buffer) and leave the ingest empty. Swapping the two buffers keeps the
+        /// heap capacity on BOTH sides frame to frame — no per-frame reallocation from
+        /// zero (unlike returning by value, whose temporary would free the capacity).
+        void drainInto(std::vector<SpriteDraw>& out) noexcept
         {
-            std::vector<SpriteDraw> out;
-            out.swap(pending_sprites);
-            return out;
+            out.clear();                 // discard last frame's contents, keep out's capacity
+            out.swap(pending_sprites);   // out <- this frame's data; ingest <- out's spare buffer
         }
     };
 

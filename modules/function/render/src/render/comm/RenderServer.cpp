@@ -1782,23 +1782,37 @@ namespace lux::render
         if (!impl_->renderer_)
             return FeatureTypeRegisteredReply{};
 
-        FeatureTypeRecord rec{};
-        rec.factory  = factory;
-        // 五-2: guard a null register_ops_fn + clamp op_count to ops[] capacity before
-        // any copy (a misbehaving plugin could over-report what it wrote).
-        if (factory.register_ops_fn)
-            rec.op_count = factory.register_ops_fn(&impl_->dispatcher, rec.ops, 16);
-        if (rec.op_count > 16) rec.op_count = 16;
+        auto& registry = impl_->renderer_->featureTypeRegistry();
 
-        uint32_t type_id = impl_->renderer_->featureTypeRegistry().add(rec);
+        // Register the TYPE first with NO ops (the registry dedups by factory identity, it
+        // doesn't need op ids), then bind op handlers ONLY on the Registered branch — an
+        // idempotent re-register must not call register_ops_fn again (each call allocates
+        // fresh dispatcher slots → leak, 五-2). Mirrors handleRegisterFeatureType.
+        FeatureTypeRecord rec{};
+        rec.factory = factory;
+        auto result = registry.add(std::move(rec));
 
         FeatureTypeRegisteredReply reply{};
-        reply.feature_type_id = type_id;   // 0 if the registry rejected it (五-2)
-        if (type_id != 0)
+        if (!result)
         {
-            reply.op_count = rec.op_count;
-            std::copy_n(rec.ops, rec.op_count, reply.ops);
+            std::cerr << "[RenderServer] addFeatureFactory rejected '"
+                      << (factory.name ? factory.name : "?") << "': "
+                      << result.error().message() << "\n";
+            return reply;   // feature_type_id = 0
         }
+
+        reply.feature_type_id = result->type_id;
+        reply.status          = static_cast<std::uint32_t>(result->status);
+
+        FeatureTypeRecord& stored = registry.at(result->type_id);
+        if (result->status == EFeatureTypeRegisterStatus::Registered && factory.register_ops_fn)
+        {
+            stored.op_count = factory.register_ops_fn(&impl_->dispatcher, stored.ops, 16);
+            if (stored.op_count > FeatureTypeRegistry::kMaxOps)
+                stored.op_count = FeatureTypeRegistry::kMaxOps;
+        }
+        reply.op_count = stored.op_count;
+        std::copy_n(stored.ops, stored.op_count, reply.ops);
         return reply;
     }
 

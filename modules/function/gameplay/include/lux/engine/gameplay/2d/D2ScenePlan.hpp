@@ -45,12 +45,13 @@ namespace lux::gameplay::d2
     enum class D2Capability : std::uint32_t
     {
         None                = 0u,
-        Core                = 1u << 0,   ///< Transform2D + Camera2D (base)
-        SpriteAnimation     = 1u << 1,   ///< SpriteAnimSystem (consumes dt)
-        Physics             = 1u << 2,   ///< collision + rigid/character (fixed-step)
-        CharacterController = 1u << 3,   ///< kinematic sweep (needs collision)
-        PixelSimulation     = 1u << 4,   ///< CA field stepping (fixed-step; needs a runtime)
-        PixelInterop        = 1u << 5,   ///< query/command/event/transfer seam (needs Physics ∧ PixelSimulation)
+        Core                = 1u << 0,   ///< Transform2D + Camera2D (base every 2D scene needs)
+        SpriteRendering     = 1u << 1,   ///< Sprite2DBridge → Canvas2DFeature (needs Core)
+        SpriteAnimation     = 1u << 2,   ///< SpriteAnimSystem, consumes dt (needs SpriteRendering)
+        Physics             = 1u << 3,   ///< collision + rigid/character (fixed-step)
+        CharacterController = 1u << 4,   ///< kinematic sweep (needs collision)
+        PixelSimulation     = 1u << 5,   ///< CA field stepping (fixed-step; needs a runtime)
+        PixelInterop        = 1u << 6,   ///< query/command/event/transfer seam (needs Physics ∧ PixelSimulation)
     };
 
     [[nodiscard]] constexpr std::uint32_t operator|(D2Capability a, D2Capability b) noexcept
@@ -61,14 +62,16 @@ namespace lux::gameplay::d2
     /// as a structured result, never an assert (user config error ≠ programmer bug).
     enum class D2PlanError : std::uint32_t
     {
-        None                                = 0u,
-        MissingCore                         = 1u << 0,  ///< a non-empty plan without Core (every layer is placed by Transform2D)
-        PixelInteropRequiresPhysics         = 1u << 1,  ///< the pixel↔rigid seam needs a physics world
-        PixelInteropRequiresPixelSimulation = 1u << 2,  ///< …and a pixel field to transfer with
-        CharacterControllerRequiresPhysics  = 1u << 3,  ///< kinematic sweep runs over the collision world
-        FixedStepInvalidDt                  = 1u << 4,  ///< fixed_dt must be > 0
-        FixedStepInvalidSubsteps            = 1u << 5,  ///< max_substeps must be >= 1
-        FixedStepInvalidAccumulated         = 1u << 6,  ///< max_accumulated must bank at least one step (>= fixed_dt)
+        None                                  = 0u,
+        MissingCore                           = 1u << 0,  ///< a non-empty plan without Core (every layer is placed by Transform2D)
+        SpriteRenderingRequiresCore           = 1u << 1,  ///< sprites need Transform2D placement + a Camera2D
+        SpriteAnimationRequiresSpriteRendering = 1u << 2, ///< frame animation drives a sprite that must be rendered
+        PixelInteropRequiresPhysics           = 1u << 3,  ///< the pixel↔rigid seam needs a physics world
+        PixelInteropRequiresPixelSimulation   = 1u << 4,  ///< …and a pixel field to transfer with
+        CharacterControllerRequiresPhysics    = 1u << 5,  ///< kinematic sweep runs over the collision world
+        FixedStepInvalidDt                    = 1u << 6,  ///< fixed_dt must be > 0
+        FixedStepInvalidSubsteps              = 1u << 7,  ///< max_substeps must be >= 1
+        FixedStepInvalidAccumulated           = 1u << 8,  ///< max_accumulated must bank at least one step (>= fixed_dt)
     };
 
     /// Structured validation result — deterministic (same plan → same errors), no
@@ -87,6 +90,7 @@ namespace lux::gameplay::d2
     {
     public:
         D2ScenePlan& enableCore()                                        { set(D2Capability::Core);                return *this; }
+        D2ScenePlan& enableSpriteRendering()                             { set(D2Capability::SpriteRendering);     return *this; }
         D2ScenePlan& enableSpriteAnimation()                             { set(D2Capability::SpriteAnimation);     return *this; }
         D2ScenePlan& enablePhysics(const Physics2DConfig& cfg = {})      { set(D2Capability::Physics); physics_ = cfg; return *this; }
         D2ScenePlan& enableCharacterController()                         { set(D2Capability::CharacterController); return *this; }
@@ -123,6 +127,13 @@ namespace lux::gameplay::d2
             // Transform2D-placed entities, so a non-empty plan must enable it.
             if (!empty() && !has(D2Capability::Core))
                 flag(D2PlanError::MissingCore);
+
+            // Sprites are placed by Transform2D and viewed through Camera2D (Core); frame
+            // animation drives a sprite that must actually be rendered.
+            if (has(D2Capability::SpriteRendering) && !has(D2Capability::Core))
+                flag(D2PlanError::SpriteRenderingRequiresCore);
+            if (has(D2Capability::SpriteAnimation) && !has(D2Capability::SpriteRendering))
+                flag(D2PlanError::SpriteAnimationRequiresSpriteRendering);
 
             // PixelInterop is the pixel↔rigid seam — it needs BOTH sides present.
             if (has(D2Capability::PixelInterop))

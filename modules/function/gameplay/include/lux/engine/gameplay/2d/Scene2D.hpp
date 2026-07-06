@@ -65,8 +65,8 @@ namespace lux::gameplay::d2
     /// the RenderableSystem's first update(). An empty plan registers nothing.
     LUX_FUNCTION_PUBLIC void registerBridges(RenderableSystem& rs, PixelFieldRuntime* runtime, const D2ScenePlan& plan);
 
-    /// Convenience preset: a side-scrolling platformer (Core + sprite animation +
-    /// physics + character controller). Equivalent to chaining those enable*() calls.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC D2ScenePlan platformerPlan();
+    /// Convenience preset for traditional 2D: a Camera2D + rendered sprites
+    /// (Core + SpriteRendering) — the capability set that fully installs today.
+    [[nodiscard]] LUX_FUNCTION_PUBLIC D2ScenePlan traditional2DPlan();
 
 } // namespace lux::gameplay::d2

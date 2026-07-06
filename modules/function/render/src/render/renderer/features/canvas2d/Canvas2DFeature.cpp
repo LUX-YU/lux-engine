@@ -1,20 +1,17 @@
 // ============================================================================
-//  Canvas2DFeature.cpp — R2-01 ownership + R2-02 pass/pipeline/upload/draw.
+//  Canvas2DFeature.cpp — 2D draw-batch owner: sort, upload, draw sprites.
 //
-//  Owns Canvas2DResources via the scene registry (LightFeature pattern) AND its own
-//  3-slot host-mapped ring buffer (mirroring TriOverlayTransientFeature — a
-//  self-contained, FIF-safe, domain-neutral dynamic vertex source; NOT SkinningResources'
-//  single-buffered 3D-coupled TransientVertexSource, which would break the 2D↔3D
-//  decoupling — see the header ownership note). Per frame it CPU-expands the submitted
-//  SpriteDraws into quads and draws them color-only to SceneColor in painter order
-//  (no depth). The 2D camera's ortho view/proj is read from the standard per-view scene
-//  descriptor set (set 0, binding 1); the gameplay Camera2DSystem → render camera upload
-//  is wired in R2-04.
+//  Owns Canvas2DResources via the scene registry (the feature-owned-resource pattern)
+//  plus a host-mapped vertex ring with one slot per frame-in-flight. Each frame it
+//  drains the submitted SpriteDraws, painter-order sorts them, CPU-expands them into the
+//  slot for the current frame_index, and draws them color-only to SceneColor (no depth).
+//  The 2D camera's ortho view/proj is read from the standard per-view scene descriptor
+//  set (set 0, binding 1); textures from the global bindless set (set 2).
 // ============================================================================
 
 #include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeature.hpp>
 #include <lux/engine/render/renderer/features/canvas2d/Canvas2DResources.hpp>
-#include <lux/engine/render/renderer/features/canvas2d/Canvas2DSort.hpp>       // sortAndBatch (R2-03)
+#include <lux/engine/render/renderer/features/canvas2d/Canvas2DSort.hpp>       // sortDraws
 
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/graph/RGBuilder.hpp>
@@ -25,9 +22,9 @@
 
 #include <vk_mem_alloc.h>
 #include <algorithm>
-#include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -116,11 +113,16 @@ Canvas2DFeature::~Canvas2DFeature()
 
 lux::render::Expected<void> Canvas2DFeature::initAndAttachTo(RenderScene& scene)
 {
-    // R2-01: own the scene's Canvas2DResources (per-frame draw snapshot ingest). Pure
-    // CPU state — no 3D mesh arena is touched (a Canvas-only scene stays 3D-free).
+    using lux::cxx::unexpected;
+    const auto fail = [](std::errc e) { return unexpected(std::make_error_code(e)); };
+
+    // Own the scene's Canvas2DResources (per-frame draw snapshot ingest). Pure CPU state —
+    // no 3D mesh arena is touched (a Canvas-only scene stays 3D-free).
     ingest_ = scene.sceneRegistry().ensure<Canvas2DResources>();
 
-    // R2-02: shaders + pipeline (self-contained via the narrow RenderContextView SDK).
+    // Shaders + pipeline (self-contained via the narrow RenderContextView SDK). Every
+    // step is validated so a failed attach aborts + rolls back (initAndAttachTo is a
+    // fallible Expected; the install path abandons the feature on unexpected).
     auto cv = contextView();
     cfg_.vertex_shader   = cv.loadBuiltinShader(EBuiltinShader::CANVAS2D_SPRITE_VERT, cfg_.vertex_shader);
     cfg_.fragment_shader = cv.loadBuiltinShader(EBuiltinShader::CANVAS2D_SPRITE_FRAG, cfg_.fragment_shader);
@@ -132,61 +134,62 @@ lux::render::Expected<void> Canvas2DFeature::initAndAttachTo(RenderScene& scene)
     tmpl.descriptor_set_count = 3;
     tmpl.vertex_shader   = cv.shaderModule(cfg_.vertex_shader);
     tmpl.fragment_shader = cv.shaderModule(cfg_.fragment_shader);
+    if (tmpl.vertex_shader == VK_NULL_HANDLE || tmpl.fragment_shader == VK_NULL_HANDLE)
+        return fail(std::errc::io_error);   // builtin sprite shader missing / failed to load
 
-    std::vector<const lux::rdesc::ShaderInfo*> infos = {
+    const std::vector<const lux::rdesc::ShaderInfo*> infos = {
         cv.shaderInfo(cfg_.vertex_shader),
         cv.shaderInfo(cfg_.fragment_shader),
     };
     tmpl.pipeline_layout = cv.buildStandardGraphicsLayout(
         tmpl.descriptor_set_count, infos, "Canvas2DSpriteLayout");
-    pipeline_handle_ = cv.registerGraphics(tmpl, infos);
+    if (tmpl.pipeline_layout == VK_NULL_HANDLE)
+        return fail(std::errc::io_error);   // layout build failed
 
-    // Own 3-slot host-mapped ring buffer (see header ownership note).
+    pipeline_handle_ = cv.registerGraphics(tmpl, infos);
+    if (pipeline_handle_ == kInvalidPipelineHandle)
+        return fail(std::errc::io_error);   // pipeline registration failed
+
+    // One host-mapped ring slot per frame-in-flight (rolls back partial allocations).
     allocator_ = cv.vmaAllocator();
-    createSlotBuffers();
+    if (auto r = createSlotBuffers(cv.framesInFlight()); !r)
+        return r;
+
     return {};
 }
 
-void Canvas2DFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
+void Canvas2DFeature::onFrameBegin(const FeatureFrameContext& ctx)
 {
-    active_slot_ = frame_counter_ % kBufferCount;
-    ++frame_counter_;
     draw_count_ = 0;
     stats_ = {};
+    if (slots_.empty() || !ingest_) return;
 
-    if (!ingest_) return;
-    auto sprites = ingest_->takeSprites();
-    if (sprites.empty()) return;
+    // Pick the ring slot for the engine's REAL frame-in-flight — never a private counter,
+    // which could overwrite a slot the GPU is still reading.
+    active_slot_ = ctx.frame_index % static_cast<std::uint32_t>(slots_.size());
 
-    // R2-03: painter-order sort + adjacent batch coalescing (design §3.3). Sorting the
-    // WHOLE list means the expand+upload below emit vertices in draw order.
-    const auto batches = sortAndBatch(sprites);
+    ingest_->drainInto(sprite_snapshot_);   // swap-in (keeps capacity on both buffers)
+    if (sprite_snapshot_.empty()) return;
 
-    const uint32_t total = static_cast<uint32_t>(sprites.size());
-    const uint32_t n     = std::min(total, cfg_.max_sprites_per_frame);
+    // Painter-order sort the whole list so the expand+upload below emit vertices in draw
+    // order (bindless per-sprite texture selection needs no per-texture batching).
+    sortDraws(sprite_snapshot_);
+
+    const std::uint32_t total = static_cast<std::uint32_t>(sprite_snapshot_.size());
+    const std::uint32_t n     = std::min(total, cfg_.max_sprites_per_frame);
 
     auto& slot = slots_[active_slot_];
-    assert(slot.mapped && "Canvas2D ring slot not created");
-    auto* out = static_cast<CanvasVertex*>(slot.mapped);
-    for (uint32_t i = 0; i < n; ++i)
-        expandSprite(sprites[i], out + i * kVertsPerSprite);
+    auto* out  = static_cast<CanvasVertex*>(slot.mapped);
+    for (std::uint32_t i = 0; i < n; ++i)
+        expandSprite(sprite_snapshot_[i], out + i * kVertsPerSprite);
 
-    const VkDeviceSize bytes =
-        static_cast<VkDeviceSize>(n) * kVertsPerSprite * sizeof(CanvasVertex);
+    const VkDeviceSize bytes = static_cast<VkDeviceSize>(n) * kVertsPerSprite * sizeof(CanvasVertex);
     vmaFlushAllocation(allocator_, slot.alloc, 0, bytes);
     draw_count_ = n * kVertsPerSprite;
 
-    // Stats (design §3.3: draw / batch counts) — and a NON-file-IO diagnostic of the
-    // over-budget drop (the R2-02 review's silent-cap note; sits in stats, not a log).
+    // Non-file-IO diagnostic of the over-budget drop (stats, not a render-thread log).
     stats_.sprites = n;
     stats_.dropped = total - n;
-    std::uint32_t drawn_batches = 0;
-    for (const auto& b : batches)
-    {
-        if (b.first >= n) break;   // batches are over the sorted order; count those with a drawn sprite
-        ++drawn_batches;
-    }
-    stats_.batches = drawn_batches;
 }
 
 void Canvas2DFeature::addPasses(RGBuilder& builder)
@@ -233,12 +236,14 @@ void Canvas2DFeature::onDetachFromScene(RenderScene& /*scene*/)
     }
 }
 
-void Canvas2DFeature::createSlotBuffers()
+lux::render::Expected<void> Canvas2DFeature::createSlotBuffers(std::uint32_t frames_in_flight)
 {
+    const std::uint32_t count = std::max<std::uint32_t>(1u, frames_in_flight);
     const VkDeviceSize byte_size =
         static_cast<VkDeviceSize>(cfg_.max_sprites_per_frame) * kVertsPerSprite * sizeof(CanvasVertex);
 
-    for (auto& slot : slots_)
+    slots_.assign(count, FrameSlot{});
+    for (std::uint32_t i = 0; i < count; ++i)
     {
         VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         bci.size  = byte_size;
@@ -250,11 +255,17 @@ void Canvas2DFeature::createSlotBuffers()
                   | VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
         VmaAllocationInfo info{};
-        VkResult r = vmaCreateBuffer(allocator_, &bci, &aci, &slot.buffer, &slot.alloc, &info);
-        assert(r == VK_SUCCESS && "Failed to create Canvas2D sprite ring buffer");
-        (void)r;
-        slot.mapped = info.pMappedData;
+        const VkResult r = vmaCreateBuffer(allocator_, &bci, &aci, &slots_[i].buffer, &slots_[i].alloc, &info);
+        if (r != VK_SUCCESS || info.pMappedData == nullptr)
+        {
+            // Roll back the buffers created so far (0..i-1); slot i is null on failure.
+            destroySlotBuffers();
+            slots_.clear();
+            return lux::cxx::unexpected(std::make_error_code(std::errc::not_enough_memory));
+        }
+        slots_[i].mapped = info.pMappedData;
     }
+    return {};
 }
 
 void Canvas2DFeature::destroySlotBuffers()

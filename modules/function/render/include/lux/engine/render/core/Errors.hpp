@@ -58,6 +58,13 @@ namespace lux::render
         InvalidCompiledGraph,           ///< Compiled graph is invalid or in bad state
         VulkanObjectCreationFailed,     ///< Vulkan object (semaphore, cmd pool, etc.) creation failed
         RecordContextAllocationFailed,  ///< RGRecordContext allocation failed
+
+        // --- lifecycle / teardown ---
+        ShutdownStillPending,           ///< flushShutdownCleanup() called while async work still pends
+
+        // --- feature-type registration ---
+        NullFeatureFactory,             ///< a feature factory has no create_fn (addFeature would crash)
+        FeatureTypeCollision,           ///< a DIFFERENT factory claims an already-registered stable feature-type id
     };
 
     class RenderErrorCategory : public std::error_category
@@ -105,6 +112,9 @@ namespace lux::render
             case ERenderError::InvalidCompiledGraph:    return "Compiled render graph is invalid";
             case ERenderError::VulkanObjectCreationFailed: return "Vulkan object creation failed";
             case ERenderError::RecordContextAllocationFailed: return "Record context allocation failed";
+            case ERenderError::ShutdownStillPending:   return "Shutdown still has pending async work";
+            case ERenderError::NullFeatureFactory:     return "Feature factory has no create function";
+            case ERenderError::FeatureTypeCollision:   return "Feature type id collision (two factories share one stable id)";
             default:                                   return "Unknown error code";
             }
         }

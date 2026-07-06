@@ -1,10 +1,10 @@
 // ============================================================================
 //  Scene2D.cpp — install entry impl for the 2D kit (lux::gameplay::d2).
 //
-//  D-00 scaffold: the entry points exist + compile + install NOTHING by default
-//  (an empty plan leaves the World system-free — the compile-test's contract).
-//  The deterministic order below is documented now; each system is wired in as it
-//  lands (Simulation2DSystem in D-03, Transform2D/Camera2D in Slice A), by D-02.
+//  install() adds the plan's systems to the World in ONE deterministic pass (the
+//  append-only World cannot reorder afterwards): an optional fixed-step
+//  Simulation2DSystem, then Transform2DSystem and Camera2DSystem for Core. An empty
+//  plan installs nothing. registerBridges() adds the matching render producers.
 // ============================================================================
 
 #include <lux/engine/gameplay/2d/Scene2D.hpp>
@@ -82,27 +82,27 @@ namespace lux::gameplay::d2
         // NOT the generic INSTANCE/POOL). Registered per enabled capability, BEFORE the
         // first RenderableSystem::update(). Each no-ops if its target render feature is
         // absent, so registering costs only the per-frame view iteration.
+        // Camera publish (Core): upload the active Camera2D's ortho view/proj into the
+        // per-view ViewGpuData (set 0 binding 1) that every 2D producer's shader reads.
         if (plan.has(D2Capability::Core))
-        {
-            // Camera FIRST: upload the active Camera2D's ortho view/proj into the per-view
-            // ViewGpuData (set 0 binding 1) that the sprite shader reads.
             rs.addBridge(std::make_unique<Camera2DUploadBridge>());
-            // Sprite producer (producer_order 0 — the first 2D producer; tilemap/pixel
-            // producers take later ids when their slices land).
+
+        // Sprite producer — ONLY when SpriteRendering is enabled, so a pixel-only scene
+        // never registers (and never per-frame iterates) the sprite view (payment symmetry).
+        if (plan.has(D2Capability::SpriteRendering))
             rs.addBridge(std::make_unique<Sprite2DBridge>(/*producer_order=*/0u));
-        }
 
         // Tilemap2D / PixelField2D producers — their slices (A2-xx / F2-xx).
         (void)runtime;
     }
 
-    D2ScenePlan platformerPlan()
+    D2ScenePlan traditional2DPlan()
     {
-        return D2ScenePlan{}
-            .enableCore()
-            .enableSpriteAnimation()
-            .enablePhysics()
-            .enableCharacterController();
+        // The one preset that is fully installable today: a Camera2D + rendered sprites.
+        // Presets for physics / character-control / pixel plans arrive only once those
+        // capabilities actually install something — a preset must not promise a capability
+        // the install path silently drops.
+        return D2ScenePlan{}.enableCore().enableSpriteRendering();
     }
 
 } // namespace lux::gameplay::d2

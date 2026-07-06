@@ -37,14 +37,14 @@ int main()
     check(!p.has(D2Capability::Physics), "an un-enabled capability stays off");
     check(p.needsSimulation(), "a pixel-sim plan needs a Simulation2DSystem");
 
-    // 3. The platformer preset enables the expected bundle.
-    const D2ScenePlan plat = platformerPlan();
-    check(plat.has(D2Capability::Core)
-          && plat.has(D2Capability::SpriteAnimation)
-          && plat.has(D2Capability::Physics)
-          && plat.has(D2Capability::CharacterController),
-          "platformerPlan() = Core + SpriteAnimation + Physics + CharacterController");
-    check(!plat.has(D2Capability::PixelSimulation), "platformerPlan() has no pixel simulation");
+    // 3. The traditional-2D preset enables exactly the installable capability set, and
+    //    validates (a preset must not promise a capability install would silently drop).
+    const D2ScenePlan trad = traditional2DPlan();
+    check(trad.has(D2Capability::Core) && trad.has(D2Capability::SpriteRendering),
+          "traditional2DPlan() = Core + SpriteRendering");
+    check(!trad.has(D2Capability::Physics) && !trad.has(D2Capability::PixelSimulation),
+          "traditional2DPlan() promises no unimplemented capability");
+    check(trad.validate().ok(), "traditional2DPlan() validates");
 
     // 4. Installing an EMPTY plan installs NO systems (the D-00 contract).
     {

@@ -629,7 +629,7 @@ int main()
                 cube_transform[13] = 0.5f;
                 cube_transform[15] = 1.f;
 
-                MeshStackProxy(session, mesh_stack_ops).updateTransform(cube_inst_req.result().object, cube_transform);
+                MeshStackProxy(session, mesh_stack_ops).updateTransform(scene_req.result().scene_id, cube_inst_req.result().object, cube_transform);
 
                 ViewCameraProxy(session, view_cam_ops).update(
                     scene_req.result().scene_id, view_req.result().view,

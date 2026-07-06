@@ -8,13 +8,14 @@
 //  component only adds the quad's own size/appearance/order. Sprite2DBridge (S2-01)
 //  reads it each frame and submits a SpriteDraw to Canvas2DFeature.
 //
-//  MVP render is tint-only (R2-02): `texture` + `uv_rect` + `pivot` are carried for the
-//  bindless-atlas texturing follow-up (R2-04/S2-xx) but the first-visible-sprite path
-//  draws the flat `tint`. No SpriteAtlasAsset yet — uv_rect is authored/hardcoded.
+//  The bridge resolves `texture` to a bindless index and the sprite shader samples it at
+//  `uv_rect`, modulated by `tint`; a null texture draws the flat tint. `pivot` places the
+//  quad so its normalised pivot point sits at the entity's world position. There is no
+//  SpriteAtlasAsset yet — `uv_rect` is authored/hardcoded.
 //
-//  NOTE: annotated LUX_COMPONENT for future Inspector/serialisation, but not yet in the
-//  gameplay_meta TARGET_FILES list (mirrors Transform2DComponent) — headless tests do
-//  not need reflection.
+//  Annotated LUX_COMPONENT for future Inspector/serialisation, but not yet in the
+//  gameplay_meta reflection list (mirrors Transform2DComponent) — headless tests do not
+//  need reflection.
 // ============================================================================
 
 #include <lux/engine/meta/MetaAnnotations.hpp>

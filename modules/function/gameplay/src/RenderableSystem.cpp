@@ -139,14 +139,21 @@ namespace lux::gameplay
         return impl_->ctx && impl_->ctx->hasInflightUploads();   // also wait for uploads to settle (P0-2)
     }
 
-    void RenderableSystem::flushShutdownCleanup()
+    lux::render::Expected<void> RenderableSystem::flushShutdownCleanup()
     {
-        // Precondition: the caller has DRAINED (pumped until hasPendingShutdownWork() is
-        // false). Cleaning up with work still pending means the drain was truncated (e.g.
-        // a fixed round cap exceeded) — orphans may leak. Surface it instead of silently
-        // proceeding. (Release still runs best-effort cleanup below.)
-        assert(!hasPendingShutdownWork() &&
-               "flushShutdownCleanup() while shutdown work is still pending — drain first");
+        // REFUSE if the drain is incomplete — do NOT silently "complete". Cleaning up while
+        // creates/uploads are still in flight only destroys the orphans that HAVE replied;
+        // the still-pending ones would then be cancelled by the bridge dtors (which only
+        // detach the client continuation — the server still creates the object), leaking in
+        // the reused scene. Returning here (before any side effect, and before setting
+        // shutdown_done) keeps the operation terminal-or-nothing: the caller drains more and
+        // retries, and shutdown_done stays false so the dtor assert still guards a truncated
+        // teardown. (This replaces the old debug-only assert, which Release compiled out —
+        // the exact hole P0-1 flagged.)
+        if (hasPendingShutdownWork())
+            return lux::cxx::unexpected(
+                lux::render::make_error_code(lux::render::ERenderError::ShutdownStillPending));
+
         // Builder must be LIVE. Destroy the orphan objects the drained late replies
         // created, then any global resource an upload completed but nothing referenced
         // (refcount 0) — release*() never fires for those (no 1→0 transition), so they'd
@@ -154,6 +161,7 @@ namespace lux::gameplay
         for (auto& b : impl_->bridges) b->flushShutdownCleanup(*impl_->ctx);
         if (impl_->ctx) impl_->ctx->destroyUnreferencedResources();
         impl_->shutdown_done = true;   // cleanup complete — the dtor contract is now satisfied
+        return {};
     }
 
     void RenderableSystem::update(lux::meta::EntityRegistry& registry, float /*dt*/)

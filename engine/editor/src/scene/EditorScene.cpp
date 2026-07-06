@@ -370,21 +370,30 @@ namespace lux::editor
                 session_->pumpReplies();
             }
 
-            // The cap is generous headroom for the single-reply invariant above; if work
-            // STILL pends the invariant broke (a bridge re-issued work, a reply needs >1
-            // round-trip, or the channel is stopping and submit/pump silently no-op). Do
-            // NOT silently proceed to cleanup+reset — that reintroduces the orphan leak.
-            // Surface it; a robust caller would keep the cleanup owner alive or destroy the
-            // whole render scene instead. (flushShutdownCleanup also asserts this.)
-            if (renderable_system_->hasPendingShutdownWork())
-                std::cerr << "[EditorScene] teardown drain exceeded its cap with work still "
-                             "pending — orphaned render objects may leak in the reused scene.\n";
-
             // Phase 2 — destroy drained orphan objects + resources uploaded-but-unreferenced.
+            // flushShutdownCleanup() REFUSES (returns unexpected, NO side effects, leaves the
+            // shutdown-complete flag false) if the drain is incomplete: cleaning up mid-flight
+            // would truncate the drain and leak the late server objects. The cap above is
+            // generous headroom for the single-reply invariant; a refusal means it broke (a
+            // bridge re-issued work, a reply needs >1 round-trip, or the channel is stopping
+            // and submit/pump silently no-op). We cannot recover in-place: the render scene is
+            // REUSED (LuxEditor owns it, not destroyed here) and this EditorScene — hence
+            // renderable_system_ — is destroyed right after unloadScene, so the reset() below
+            // will cancel any still-pending continuations. Surface it loudly; the Debug dtor
+            // assert then fires on the unfinished shutdown (the tripwire the old code hid by
+            // faking completion). The durable recovery — a deferred-drain owner that outlives
+            // the scene swap (SceneController/LuxEditor) so a stuck channel can keep draining
+            // or force-destroy the render scene — is tracked separately, beyond tearDown.
             session_->beginFrame({});
-            renderable_system_->flushShutdownCleanup();
+            const auto flushed = renderable_system_->flushShutdownCleanup();
             session_->submitFrame(/*blocking=*/true);
             session_->pumpReplies();
+
+            if (!flushed.has_value())
+                std::cerr << "[EditorScene] teardown drain did not settle ("
+                          << flushed.error().message()
+                          << ") — render objects may leak in the reused scene. This is a "
+                             "drain-invariant violation, not normal teardown.\n";
         }
         renderable_system_.reset();
 

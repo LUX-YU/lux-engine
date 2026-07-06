@@ -260,6 +260,13 @@ namespace lux::render
         return req;
     }
 
+    void RenderSession::destroyShader(ShaderHandle handle)
+    {
+        DestroyShaderPayload dsp{};
+        dsp.handle = handle;
+        builder().push(opcodes::ResourceOp, type_ids::DestroyShader, dsp);
+    }
+
     // =========================================================================
     //  Feature management
     // =========================================================================

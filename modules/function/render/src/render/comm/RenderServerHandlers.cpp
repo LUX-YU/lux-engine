@@ -50,27 +50,47 @@ namespace lux::render
 
         void handleRegisterFeatureType(Ctx& ctx, const RegisterFeatureTypePayload& p)
         {
-            auto& im = impl(ctx);
+            auto& im       = impl(ctx);
+            auto& registry = im.renderer_->featureTypeRegistry();
 
+            // Register the TYPE first with NO ops — the registry dedups by factory identity
+            // (create_fn), so it does not need the op ids. Binding op handlers is deferred
+            // to the Registered branch only: an idempotent re-register must NOT call
+            // register_ops_fn again — each call allocates FRESH dispatcher slots, so doing
+            // it on a duplicate leaks slots + repoints name_index_ to an orphan (五-2).
             FeatureTypeRecord rec{};
             rec.factory = p.factory;
-
-            // Register operation handlers via the factory function pointer (五-2: guard
-            // a null fn + clamp op_count to ops[] capacity before any copy / add).
-            if (p.factory.register_ops_fn)
-                rec.op_count = p.factory.register_ops_fn(&im.dispatcher, rec.ops, 16);
-            if (rec.op_count > 16) rec.op_count = 16;
-
-            uint32_t type_id = im.renderer_->featureTypeRegistry().add(std::move(rec));
+            auto result = registry.add(std::move(rec));
 
             FeatureTypeRegisteredReply reply{};
-            reply.feature_type_id = type_id;   // 0 if the registry rejected it (五-2)
-            if (type_id != 0)
+            if (!result)
             {
-                auto& stored = im.renderer_->featureTypeRegistry().at(type_id);
-                reply.op_count = stored.op_count;
-                std::copy_n(stored.ops, reply.op_count, reply.ops);
+                // NullFeatureFactory / FeatureTypeCollision — surface WHICH (the old path
+                // silently returned 0, which then crashed far away at addFeature).
+                std::cerr << "[RenderServer] RegisterFeatureType rejected '"
+                          << (p.factory.name ? p.factory.name : "?") << "': "
+                          << result.error().message() << "\n";
+                replyToCurrent<RegisterFeatureTypePayload>(ctx, reply);   // feature_type_id = 0
+                return;
             }
+
+            reply.feature_type_id = result->type_id;
+            reply.status          = static_cast<std::uint32_t>(result->status);
+
+            FeatureTypeRecord& stored = registry.at(result->type_id);
+            if (result->status == EFeatureTypeRegisterStatus::Registered && p.factory.register_ops_fn)
+            {
+                // Fresh type: bind its op handlers exactly ONCE, into the stored record.
+                stored.op_count = p.factory.register_ops_fn(&im.dispatcher, stored.ops, 16);
+                if (stored.op_count > FeatureTypeRegistry::kMaxOps)
+                    stored.op_count = FeatureTypeRegistry::kMaxOps;
+            }
+            // Both scopes report the type's already-bound ops. On AlreadyRegistered this is
+            // the FIRST registration's ops, so a re-registering caller gets VALID op ids
+            // (the old 0-path left op_count = 0 → all-invalid ids for the reusing scene).
+            reply.op_count = stored.op_count;
+            std::copy_n(stored.ops, stored.op_count, reply.ops);
+
             replyToCurrent<RegisterFeatureTypePayload>(ctx, reply);
         }
 

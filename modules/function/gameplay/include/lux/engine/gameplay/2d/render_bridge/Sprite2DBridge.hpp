@@ -21,8 +21,9 @@
 #include <lux/engine/gameplay/render_bridge/RenderableBridgeContext.hpp>       // ctx.canvas2d() / scene()
 #include <lux/engine/gameplay/2d/world/components/SpriteComponent.hpp>
 #include <lux/engine/gameplay/2d/world/components/WorldTransform2DComponent.hpp>
+#include <lux/engine/gameplay/2d/world/systems/Camera2DSystem.hpp>             // activeCamera (frame camera gate)
 #include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>  // SpriteDraw / DrawOrderKey / Rect2D
-#include <lux/engine/meta/LuxObject.hpp>   // EntityRegistry / entity_id / entt::to_integral
+#include <lux/engine/meta/LuxObject.hpp>   // EntityRegistry / entity_id / entt::to_integral / null_entity
 
 #include <cstdint>
 #include <cstring>
@@ -41,20 +42,28 @@ namespace lux::gameplay::d2
         void drive(lux::meta::EntityRegistry& registry, RenderableBridgeContext& ctx) override
         {
             if (stopping_) return;
-            batch_.clear();
 
+            // Frame camera gate: with no single active Camera2D there is no valid view/proj
+            // to draw against, so no 2D producer submits (else sprites render against stale /
+            // default camera data). Same rule the Camera2DUploadBridge uses to decide whether
+            // to publish a camera at all.
+            if (activeCamera(registry) == lux::meta::null_entity) return;
+
+            batch_.clear();
             registry.view<SpriteComponent, WorldTransform2DComponent>().each(
                 [&](lux::meta::entity_id e, const SpriteComponent& sp, const WorldTransform2DComponent& wt)
                 {
                     if (!sp.visible) return;
 
-                    // World quad = WorldTransform2D * Scale(sprite size). The render side
-                    // expands a UNIT quad centred at the origin; `size` scales it and
-                    // wt.world places/rotates it. (M * Scale(sx,sy,1) == columns 0/1 of M
-                    // scaled by sx/sy — Eigen is column-major.)
+                    // World quad = WorldTransform2D * Scale(size) * Pivot. The render side
+                    // expands a UNIT quad centred at the origin ([-0.5,0.5]); `size` scales
+                    // it (columns 0/1, Eigen is column-major) and the pivot offset shifts it
+                    // so the sprite's normalised pivot point sits at the entity's world
+                    // origin (pivot 0.5,0.5 = centred → zero offset).
                     Eigen::Matrix4f m = wt.world;
                     m.col(0) *= sp.size.x();
                     m.col(1) *= sp.size.y();
+                    m.col(3) += m.col(0) * (0.5f - sp.pivot.x()) + m.col(1) * (0.5f - sp.pivot.y());
 
                     lux::render::SpriteDraw d{};
                     std::memcpy(d.transform, m.data(), 16 * sizeof(float));

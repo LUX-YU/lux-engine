@@ -7,7 +7,6 @@ CMakeSettings.json
 .vscode
 .idea
 .cache
-.github
 imgui.ini
 __pycache__
 build

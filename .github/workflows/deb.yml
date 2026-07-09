@@ -1,0 +1,102 @@
+name: deb
+
+# Builds the lux-engine RUNTIME tier (LUX_BUILD_EDITOR=OFF) as per-layer .debs
+# (lux-engine-platform/core/resource/function), amd64 + arm64. LUX deps come from
+# the LUX apt repo; the rest from Ubuntu. The external-dep list below is a first
+# pass — expect to iterate (EnTT/meshoptimizer/spirv-cross/shaderc availability
+# on jammy is uncertain; missing ones get packaged into lux-apt or fixed in code).
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-22.04,     arch: amd64 }
+          - { runner: ubuntu-22.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: lux-engine
+
+      - name: Add LUX apt repo
+        run: |
+          sudo install -d /etc/apt/keyrings
+          curl -fsSL https://lux-yu.github.io/lux-apt/lux-archive-keyring.asc \
+            | sudo tee /etc/apt/keyrings/lux.asc >/dev/null
+          echo "deb [signed-by=/etc/apt/keyrings/lux.asc] https://lux-yu.github.io/lux-apt jammy main" \
+            | sudo tee /etc/apt/sources.list.d/lux.list
+
+      - name: Install deps
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          cmake ninja-build g++ dpkg-dev pkg-config
+          libeigen3-dev libglfw3-dev libvulkan-dev libassimp-dev libluajit-5.1-dev
+          libentt-dev libmeshoptimizer-dev libshaderc-dev libspirv-cross-c-shared-dev
+          libclang-dev
+          lux-cmake-toolset lux-cxx imgui stduuid
+
+      - name: Derive version from tag
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "extra=-DCPACK_PACKAGE_VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure
+        run: >
+          cmake -S lux-engine -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_PREFIX=/usr
+          -DLUX_BUILD_EDITOR=OFF
+          -DBUILD_TESTING=OFF
+          ${{ steps.ver.outputs.extra }}
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Package
+        run: cd build && cpack -G DEB --verbose
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lux-engine-deb-${{ matrix.arch }}
+          path: build/*.deb
+          if-no-files-found: error
+
+      - name: Attach .debs to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "Automated .deb build." 2>/dev/null || true
+          gh release upload "$TAG" build/*.deb --repo "$GITHUB_REPOSITORY" --clobber
+
+  notify-apt:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Trigger lux-apt publish
+        env:
+          DISPATCH_TOKEN: ${{ secrets.LUX_APT_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$DISPATCH_TOKEN" ]; then
+            echo "LUX_APT_DISPATCH_TOKEN not set — skipping auto-publish."; exit 0
+          fi
+          curl -sf -X POST \
+            -H "Authorization: Bearer $DISPATCH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/LUX-YU/lux-apt/dispatches \
+            -d '{"event_type":"publish"}'
+          echo "Triggered lux-apt publish."

@@ -45,6 +45,22 @@ jobs:
           libclang-dev sol2
           lux-cmake-toolset lux-cxx imgui stduuid entt
 
+      # shaderc isn't packaged for Ubuntu 22.04 (it lands in 24.04's libshaderc-dev)
+      # and LunarG's SDK apt repo is amd64-only, so build it from source natively on
+      # each arch. Installed to /usr so asset's find_package(Vulkan COMPONENTS
+      # shaderc_combined) picks up the STATIC libshaderc_combined.a — baked into
+      # asset.so, keeping the .deb self-contained (shaderc is PRIVATE / cook-only,
+      # so consumers never need it). git-sync-deps fetches pinned glslang/SPIRV-Tools.
+      - name: Build & install shaderc (static combined)
+        run: |
+          git clone --depth 1 --branch v2024.3 https://github.com/google/shaderc shaderc-src
+          ( cd shaderc-src && ./utils/git-sync-deps )
+          cmake -S shaderc-src -B shaderc-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+            -DSHADERC_SKIP_TESTS=ON -DSHADERC_SKIP_EXAMPLES=ON
+          cmake --build shaderc-build
+          sudo cmake --install shaderc-build
+
       - name: Derive version from tag
         id: ver
         run: |

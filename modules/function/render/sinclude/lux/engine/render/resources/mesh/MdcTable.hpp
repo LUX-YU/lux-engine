@@ -11,6 +11,7 @@
  * addressed using per-MDC offsets computed by buildOffsets().
  */
 
+#include <cstddef>   // size_t
 #include <cstdint>
 #include <vector>
 #include <unordered_map>

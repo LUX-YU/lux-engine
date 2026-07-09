@@ -46,12 +46,21 @@ jobs:
           lux-cmake-toolset lux-cxx imgui stduuid entt
 
       # shaderc isn't packaged for Ubuntu 22.04 (it lands in 24.04's libshaderc-dev)
-      # and LunarG's SDK apt repo is amd64-only, so build it from source natively on
-      # each arch. Installed to /usr so asset's find_package(Vulkan COMPONENTS
-      # shaderc_combined) picks up the STATIC libshaderc_combined.a — baked into
-      # asset.so, keeping the .deb self-contained (shaderc is PRIVATE / cook-only,
-      # so consumers never need it). git-sync-deps fetches pinned glslang/SPIRV-Tools.
-      - name: Build & install shaderc (static combined)
+      # and LunarG's SDK apt repo is amd64-only, so build it from source. It's slow,
+      # so the install tree is cached (keyed on version+arch): the first run builds
+      # (~10 min), later runs restore in seconds. Installed to /usr so asset's
+      # find_package(Vulkan COMPONENTS shaderc_combined) picks up the STATIC
+      # libshaderc_combined.a — baked into asset.so, keeping the .deb self-contained
+      # (shaderc is PRIVATE / cook-only, so consumers never need it).
+      - name: Cache shaderc
+        id: shaderc-cache
+        uses: actions/cache@v4
+        with:
+          path: shaderc-install
+          key: shaderc-v2024.3-${{ matrix.arch }}
+
+      - name: Build shaderc (cache miss only)
+        if: steps.shaderc-cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch v2024.3 https://github.com/google/shaderc shaderc-src
           ( cd shaderc-src && ./utils/git-sync-deps )
@@ -59,7 +68,10 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
             -DSHADERC_SKIP_TESTS=ON -DSHADERC_SKIP_EXAMPLES=ON
           cmake --build shaderc-build
-          sudo cmake --install shaderc-build
+          DESTDIR="$PWD/shaderc-install" cmake --install shaderc-build
+
+      - name: Install shaderc into /usr
+        run: sudo cp -a shaderc-install/usr/. /usr/
 
       - name: Derive version from tag
         id: ver

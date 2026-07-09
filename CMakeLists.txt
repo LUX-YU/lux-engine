@@ -111,7 +111,7 @@ set(CPACK_DEBIAN_LUX_ENGINE_PLATFORM_PACKAGE_NAME    "lux-engine-platform")
 set(CPACK_DEBIAN_LUX_ENGINE_PLATFORM_PACKAGE_DEPENDS "lux-cxx (>= 0.0.2), libglfw3-dev, libvulkan-dev")
 # core -> platform
 set(CPACK_DEBIAN_LUX_ENGINE_CORE_PACKAGE_NAME    "lux-engine-core")
-set(CPACK_DEBIAN_LUX_ENGINE_CORE_PACKAGE_DEPENDS "lux-engine-platform, lux-cxx (>= 0.0.2), libeigen3-dev, libluajit-5.1-dev")
+set(CPACK_DEBIAN_LUX_ENGINE_CORE_PACKAGE_DEPENDS "lux-engine-platform, lux-cxx (>= 0.0.2), libeigen3-dev, libluajit-5.1-dev, entt")
 # resource -> core, platform
 set(CPACK_DEBIAN_LUX_ENGINE_RESOURCE_PACKAGE_NAME    "lux-engine-resource")
 set(CPACK_DEBIAN_LUX_ENGINE_RESOURCE_PACKAGE_DEPENDS "lux-engine-core, lux-engine-platform, lux-cxx (>= 0.0.2), stduuid, libassimp-dev, libvulkan-dev")

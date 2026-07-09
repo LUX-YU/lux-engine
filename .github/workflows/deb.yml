@@ -41,7 +41,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y
           cmake ninja-build g++ dpkg-dev pkg-config
           libeigen3-dev libglfw3-dev libvulkan-dev libassimp-dev libluajit-5.1-dev
-          libmeshoptimizer-dev libspirv-cross-c-shared-dev libstb-dev
+          libspirv-cross-c-shared-dev libstb-dev
           libclang-dev libfmt-dev sol2
           lux-cmake-toolset lux-cxx imgui stduuid entt vulkanmemoryallocator
 
@@ -72,6 +72,19 @@ jobs:
 
       - name: Install shaderc into /usr
         run: sudo cp -a shaderc-install/usr/. /usr/
+
+      # jammy's libmeshoptimizer-dev is too old (no meshopt_simplify `options` param,
+      # added in v0.18), and the code targets the current API (as vcpkg does on
+      # Windows). Build a current version from source; static (the default), so it
+      # bakes into asset.so/render.so — self-contained, no runtime dep.
+      - name: Build & install meshoptimizer
+        run: |
+          git clone --depth 1 --branch v0.21 https://github.com/zeux/meshoptimizer meshopt-src
+          cmake -S meshopt-src -B meshopt-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+            -DMESHOPT_BUILD_SHARED_LIBS=OFF
+          cmake --build meshopt-build
+          sudo cmake --install meshopt-build
 
       - name: Derive version from tag
         id: ver

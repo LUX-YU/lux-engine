@@ -7,8 +7,8 @@
  * renders only the point data received during the current frame.  If no data
  * arrives for a frame, nothing is drawn.
  *
- * Memory:      O(frame_data × kBufferCount) — only the latest frame, ring-buffered
- *              for frames-in-flight safety.
+ * Memory:      O(frame_data × framesInFlight) — only the latest frame, ring-buffered
+ *              for frames-in-flight safety (the shared TransientVertexRing).
  * Performance: Single vkCmdDraw per frame, HOST_VISIBLE mapped buffer (zero-copy
  *              upload, no staging).
  * Rendering:   No slot management, no octree, no deferred destroy.
@@ -18,6 +18,7 @@
 
 #include <lux/engine/render/renderer/features/point_cloud/IPointCloudFeature.hpp>
 #include <lux/engine/render/renderer/features/point_cloud/PointCloudGpuData.hpp>
+#include <lux/engine/render/renderer/features/TransientVertexRing.hpp>
 #include <lux/engine/render/core/ResourceHandle.hpp>
 #include <lux/engine/render/pipeline/GraphicsPipelineTemplate.hpp>
 #include <lux/engine/function/visibility.h>
@@ -26,11 +27,6 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-
-struct VmaAllocator_T;
-using VmaAllocator = VmaAllocator_T*;
-struct VmaAllocation_T;
-using VmaAllocation = VmaAllocation_T*;
 
 namespace lux::render
 {
@@ -106,29 +102,18 @@ namespace lux::render
         }
 
     private:
-        static constexpr uint32_t kBufferCount = 3; ///< ring count (≥ max_frames_in_flight)
-
-        struct FrameSlot
-        {
-            VkBuffer      buffer{VK_NULL_HANDLE};
-            VmaAllocation alloc{nullptr};
-            void*         mapped{nullptr};
-        };
-
         Config                 cfg_;
         GraphicsPipelineHandle pipeline_handle_{kInvalidPipelineHandle};
         std::atomic<float>     point_size_{3.0f};
 
-        VmaAllocator           allocator_{nullptr};
-        FrameSlot              slots_[kBufferCount]{};
+        // Shared FIF vertex ring: sized to framesInFlight() and indexed by the REAL
+        // frame_index (replaces the old fixed slots_[3] + private frame counter, which
+        // could desync from the actual in-flight set).
+        TransientVertexRing    ring_;
         uint32_t               active_slot_{0};
-        uint32_t               frame_counter_{0};
         uint32_t               draw_count_{0};
 
         TransientPointCloudBuffer* incoming_{nullptr};
-
-        void createSlotBuffers();
-        void destroySlotBuffers();
     };
 
 } // namespace lux::render

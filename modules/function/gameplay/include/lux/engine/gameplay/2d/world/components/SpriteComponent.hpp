@@ -2,11 +2,12 @@
 // ============================================================================
 //  SpriteComponent.hpp — a textured 2D quad (lux::gameplay::d2).
 //
-//  The minimal traditional-2D sprite (design §4 / Slice A §9): a texture region +
-//  pivot + world size + tint + painter layer/order. Its world POSITION comes from the
-//  entity's Transform2D → WorldTransform2D (composed by Transform2DSystem); this
-//  component only adds the quad's own size/appearance/order. Sprite2DBridge (S2-01)
-//  reads it each frame and submits a SpriteDraw to Canvas2DFeature.
+//  The minimal traditional-2D sprite (design §4, v2 GPU-driven): a texture region +
+//  pivot + world size + tint + a single float draw PRIORITY. Its world POSITION comes
+//  from the entity's Transform2D → WorldTransform2D (composed by Transform2DSystem);
+//  this component only adds the quad's own size/appearance/priority. The retained
+//  Sprite2DBridge owns one GPU-resident instance per sprite entity and pushes DELTAS
+//  (create/remove/dirty transform/visual/key) — never per-frame content.
 //
 //  The bridge resolves `texture` to a bindless index and the sprite shader samples it at
 //  `uv_rect`, modulated by `tint`; a null texture draws the flat tint. `pivot` places the
@@ -50,13 +51,13 @@ namespace lux::gameplay::d2
         LUX_MEMBER(display_name=Tint, tooltip=Premultiplied RGBA8 tint)
         std::uint32_t tint = 0xFFFFFFFFu;
 
-        /// Painter layer — coarse draw order (→ DrawOrderKey.layer). Lower draws first.
-        LUX_MEMBER(display_name=Layer, tooltip=Painter layer (lower draws first))
-        std::int16_t layer = 0;
-
-        /// Within-layer order (→ DrawOrderKey.order); may encode a y-sort later.
-        LUX_MEMBER(display_name=Order, tooltip=Within-layer draw order)
-        std::int32_t order = 0;
+        /// Draw priority — the ONE ordering knob (decision ① 2026-07-06): HIGHER
+        /// priority draws ON TOP. Equal priorities tie-break deterministically by
+        /// creation order (server slot index). Quantized order-preservingly into
+        /// the canvas sort key; kept a float so gameplay can interpolate/derive it
+        /// (e.g. a future y-sort writes priority = -y).
+        LUX_MEMBER(display_name=Priority, tooltip=Draw priority; higher is drawn on top)
+        float priority = 0.f;
 
         /// Skip submission when false (still a live entity; just not drawn this frame).
         LUX_MEMBER(display_name=Visible, tooltip=Whether the sprite is drawn)

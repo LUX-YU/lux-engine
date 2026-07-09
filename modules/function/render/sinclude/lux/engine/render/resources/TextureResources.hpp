@@ -3,11 +3,14 @@
 #include <lux/engine/render/FrameServices.hpp>
 #include <lux/engine/render/resources/descriptor/BindlessCombinedSet.hpp>
 #include <lux/engine/render/resources/lifecycle/ResourceCapacityMonitor.hpp>
+#include <lux/engine/render/resources/ops/TextureResourceOperation.hpp>   // U2-00 region protocol
 #include <lux/engine/render/core/ResourceHandle.hpp>
 #include <lux/engine/render/core/Errors.hpp>
 #include <lux/engine/render/FrameStamp.hpp>
 #include <lux/engine/description/Texture.hpp>
 
+#include <span>
+#include <unordered_map>
 #include <vector>
 #include <memory>
 
@@ -69,6 +72,29 @@ namespace lux::render
             combined_.setDeferredQueue(q);
             combined_cube_.setDeferredQueue(q);
         }
+
+        // ========== Persistent dynamic textures + region updates (U2-01) ==========
+
+        /// Create a PERSISTENT dynamic 2D texture (U2-00 contract): fixed descriptor,
+        /// zero-filled this frame, updated in place by updateTextureRegions — handle
+        /// and bindless index never change. The desc is kept per slot as the SERVER's
+        /// authoritative bounds source. Refusals carry ERegionUploadStatus in the
+        /// error message path: InvalidDesc / UnsupportedFormat (shared U2-00
+        /// validator), and array_layers > 1 is refused as an implementation limit
+        /// (2D_ARRAY bindless views arrive with the chunk-atlas slice, C2-01).
+        [[nodiscard]] Expected<TextureHandle> createPersistentTexture2D(
+            const PersistentTexture2DDesc& desc,
+            const VkSamplerCreateInfo* opt_sampler = nullptr);
+
+        /// Apply one region batch to a persistent texture. Validates AUTHORITATIVELY
+        /// against the stored create-desc via the SHARED U2-00 validator (client
+        /// pre-flight and this check agree byte for byte), refuses immutable-asset
+        /// slots (only textures created by createPersistentTexture2D are updatable),
+        /// then queues the copies through the normal per-frame upload pipeline.
+        [[nodiscard]] ERegionUploadStatus updateTextureRegions(
+            TextureHandle h,
+            std::span<const TextureRegionDesc> regions,
+            std::span<const std::byte> pixels);
 
         bool remove(TextureHandle h);
         bool removeCube(TextureHandle h);
@@ -221,6 +247,12 @@ namespace lux::render
         static lux::rdesc::Texture makeDefaultWhite();
         void createSharedPoolAndSet(VkDescriptorSetLayout layout,
                                     uint32_t tex2d_max, uint32_t cube_max);
+
+        /// Per-slot create-desc of PERSISTENT textures (slot index → desc): the
+        /// authoritative bounds for updateTextureRegions AND the "is persistent"
+        /// mark — an immutable asset texture has no entry and refuses region
+        /// updates. Erased on remove().
+        std::unordered_map<uint32_t, PersistentTexture2DDesc> persistent_descs_;
 
     private:
         DeviceContext*                          dc_{nullptr};

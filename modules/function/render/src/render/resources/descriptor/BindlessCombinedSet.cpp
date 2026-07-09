@@ -31,6 +31,23 @@ namespace lux::render
                 return false;
             }
         }
+
+        /// Bytes per texel for the UNCOMPRESSED formats the persistent-texture /
+        /// region-update path accepts (0 = not a supported format for that path).
+        [[nodiscard]] uint32_t texelBytesOfVkFormat(VkFormat fmt) noexcept
+        {
+            switch (fmt)
+            {
+            case VK_FORMAT_R8G8B8A8_SRGB:
+            case VK_FORMAT_R8G8B8A8_UNORM:      return 4;
+            case VK_FORMAT_R16G16B16A16_SFLOAT: return 8;
+            case VK_FORMAT_R8G8_UNORM:          return 2;
+            case VK_FORMAT_R8_UNORM:            return 1;
+            case VK_FORMAT_R16_UINT:            return 2;
+            case VK_FORMAT_R16_UNORM:           return 2;
+            default:                            return 0;
+            }
+        }
     }
 
     bool BindlessCombinedSet::init(const BCInitInfo &ci)
@@ -299,6 +316,124 @@ namespace lux::render
         return {idx, gen_[idx]};
     }
 
+    SlotHandle BindlessCombinedSet::addPersistentTexture(
+        uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat fmt,
+        const VkSamplerCreateInfo* opt_sampler_ci)
+    {
+        assert(view_type_ == VK_IMAGE_VIEW_TYPE_2D &&
+               "addPersistentTexture() targets the 2D bindless set");
+        if (width == 0 || height == 0 || mip_levels == 0 || fmt == VK_FORMAT_UNDEFINED)
+            return SlotHandle{};
+        if (!ensureRoom())
+            return SlotHandle{};
+
+        CombinedSlot s{};
+        s.width        = static_cast<int>(width);
+        s.height       = static_cast<int>(height);
+        s.format       = fmt;
+        s.mip_levels   = std::min<uint32_t>(mip_levels, calcMipLevels(width, height));
+        s.array_layers = 1;
+        createImageGPU(s);
+        createImageView(s);
+        VkSamplerCreateInfo sci = opt_sampler_ci ? *opt_sampler_ci : default_sampler_ci_;
+        VK_CHECK(vkCreateSampler(rc_->logicalDevice(), &sci, nullptr, &s.sampler));
+
+        const uint32_t idx = allocIndex();
+        slots_[idx] = s;
+        alive_[idx] = 1;
+        writeCombinedDescriptor(idx, s.view, s.sampler);
+
+        // Zero-fill EVERY mip through the normal upload pipeline this frame: the whole
+        // image lands in SHADER_READ_ONLY (so later region updates barrier from a
+        // uniform known layout) and a sample before the first update reads zeros, not
+        // undefined memory. texelBytesOfVkFormat is exact for the region-updatable
+        // (uncompressed) formats this entry point accepts.
+        const uint32_t texel = texelBytesOfVkFormat(fmt);
+        assert(texel != 0 && "persistent textures must use an uncompressed format");
+        TextureCopyPlan plan{};
+        plan.count = std::min<uint32_t>(s.mip_levels, rdesc::kTextureMaxMipCount);
+        VkDeviceSize total = 0;
+        for (uint32_t m = 0; m < plan.count; ++m)
+        {
+            const uint32_t mw = std::max(1u, width  >> m);
+            const uint32_t mh = std::max(1u, height >> m);
+            plan.regions[m].buffer_offset = total;
+            plan.regions[m].mip_level     = m;
+            plan.regions[m].width         = mw;
+            plan.regions[m].height        = mh;
+            total += static_cast<VkDeviceSize>(mw) * mh * texel;
+        }
+        const std::vector<std::byte> zeros(static_cast<size_t>(total));   // value-init = 0
+        StagingBuf staging = createStaging(total, zeros.data());
+        pending_uploads_.push_back(PendingUpload{
+            staging, idx, /*do_mips=*/false, /*is_cube=*/false, 0, plan,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+        });
+        return {idx, gen_[idx]};
+    }
+
+    bool BindlessCombinedSet::updateTextureRegions(
+        const SlotHandle& h,
+        std::span<const RegionUpdate> regions,
+        std::span<const std::byte> pixels,
+        uint32_t texel_bytes)
+    {
+        if (!isTextureAlive(h) || regions.empty() || texel_bytes == 0)
+            return false;
+        const uint32_t idx = h.index;
+
+        // Ride the NORMAL pending-upload pipeline in ≤kTextureMaxMipCount-region
+        // chunks (TextureCopyPlan's capacity): rows are repacked TIGHTLY into each
+        // chunk's staging buffer, so VkBufferImageCopy never needs bufferRowLength
+        // (and the wire row_pitch has no texel-alignment constraint).
+        std::size_t next = 0;
+        while (next < regions.size())
+        {
+            const uint32_t count = static_cast<uint32_t>(std::min<std::size_t>(
+                regions.size() - next, rdesc::kTextureMaxMipCount));
+
+            TextureCopyPlan plan{};
+            plan.count = count;
+            VkDeviceSize total = 0;
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                const RegionUpdate& r = regions[next + i];
+                plan.regions[i].buffer_offset = total;
+                plan.regions[i].mip_level     = r.mip;
+                plan.regions[i].width         = r.width;
+                plan.regions[i].height        = r.height;
+                plan.regions[i].x             = r.x;
+                plan.regions[i].y             = r.y;
+                plan.regions[i].array_layer   = r.array_layer;
+                total += static_cast<VkDeviceSize>(r.width) * r.height * texel_bytes;
+            }
+
+            std::vector<std::byte> packed(static_cast<size_t>(total));
+            VkDeviceSize out = 0;
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                const RegionUpdate& r = regions[next + i];
+                const std::size_t tight = static_cast<std::size_t>(r.width) * texel_bytes;
+                const std::size_t pitch = r.row_pitch_bytes ? r.row_pitch_bytes : tight;
+                const std::byte*  src   = pixels.data() + r.data_offset;
+                for (uint32_t row = 0; row < r.height; ++row)
+                {
+                    std::memcpy(packed.data() + static_cast<size_t>(out),
+                                src + static_cast<std::size_t>(row) * pitch, tight);
+                    out += static_cast<VkDeviceSize>(tight);
+                }
+            }
+
+            StagingBuf staging = createStaging(total, packed.data());
+            pending_uploads_.push_back(PendingUpload{
+                staging, idx, /*do_mips=*/false, /*is_cube=*/false, 0, plan,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,   // persistent textures are always initialized
+            });
+            next += count;
+        }
+        return true;
+    }
+
     SlotHandle BindlessCombinedSet::addCubeTexture(
         const rdesc::Texture faces[6],
         const VkSamplerCreateInfo *opt_sampler_ci,
@@ -465,8 +600,9 @@ namespace lux::render
                                              : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                         req.subresource = { image_aspect_,
                                             std::min(cr.mip_level, s.mip_levels - 1),
-                                            0, 1 };
-                        req.offset     = {0, 0, 0};
+                                            cr.array_layer, 1 };
+                        req.offset     = { static_cast<int32_t>(cr.x),
+                                           static_cast<int32_t>(cr.y), 0 };
                         req.extent     = { std::max(1u, cr.width),
                                            std::max(1u, cr.height), 1 };
                         req.domain     = EBufferDomain::Sampled_FS;
@@ -538,8 +674,9 @@ namespace lux::render
                                              : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                         req.subresource = { image_aspect_,
                                             std::min(cr.mip_level, s.mip_levels - 1),
-                                            0, 1 };
-                        req.offset     = {0, 0, 0};
+                                            cr.array_layer, 1 };
+                        req.offset     = { static_cast<int32_t>(cr.x),
+                                           static_cast<int32_t>(cr.y), 0 };
                         req.extent     = { std::max(1u, cr.width),
                                            std::max(1u, cr.height), 1 };
                         req.domain     = EBufferDomain::Sampled_FS;
@@ -1294,8 +1431,13 @@ namespace lux::render
             r.imageSubresource = {
                 image_aspect_,
                 std::min(cr.mip_level, s.mip_levels - 1),
-                0,
+                cr.array_layer,   // 0 for full-mip uploads; region updates target a layer
                 1
+            };
+            r.imageOffset = {
+                static_cast<int32_t>(cr.x),   // 0 for full-mip uploads
+                static_cast<int32_t>(cr.y),
+                0
             };
             r.imageExtent = {
                 std::max(1u, cr.width),

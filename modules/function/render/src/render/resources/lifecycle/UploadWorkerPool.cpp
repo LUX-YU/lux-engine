@@ -273,6 +273,8 @@ namespace lux::render
             return VK_FORMAT_BC5_UNORM_BLOCK;
         case EPixelFormat::BC7_SRGB:
             return VK_FORMAT_BC7_SRGB_BLOCK;
+        case EPixelFormat::R16_UINT:
+            return VK_FORMAT_R16_UINT;
         default:
             return VK_FORMAT_R8G8B8A8_SRGB;
         }

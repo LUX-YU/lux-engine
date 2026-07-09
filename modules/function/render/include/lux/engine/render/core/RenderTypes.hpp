@@ -157,6 +157,11 @@ namespace lux::render
         BC3_SRGB,
         BC5_UNORM,
         BC7_SRGB,
+        R16_UINT,       ///< single-channel 16-bit id plane (pixel-field material-id mirror, F2-09)
+        R16_UNORM,      ///< single-channel 16-bit UNORM: integer ids round-trip EXACTLY through a
+                        ///< float sampler (texelFetch + round(v*65535)) — the pixel-field mirror's
+                        ///< actual format, so the global bindless set-2 (float sampler2D[]) needs
+                        ///< no usampler binding (F2-09 decision, 2026-07-06)
     };
 
     /// @brief Map an asset-description texture pixel format to a render-side

@@ -30,10 +30,8 @@ PCFeatureTransient::PCFeatureTransient(Config cfg)
 {
 }
 
-PCFeatureTransient::~PCFeatureTransient()
-{
-    destroySlotBuffers();
-}
+// The ring destroys itself (no-detach fallback; a runtime detach retired + nulled first).
+PCFeatureTransient::~PCFeatureTransient() = default;
 
 // ============================================================================
 //  Initialisation
@@ -62,9 +60,11 @@ lux::render::Expected<void> PCFeatureTransient::initAndAttachTo(RenderScene& /*s
         "PointCloudTransientLayout").value();
     pipeline_handle_ = ctx.pipelineManager().registerGraphicsTemplate(tmpl, infos).value();
 
-    // ---- GPU ring buffers (HOST_VISIBLE, persistently mapped) ----
-    allocator_ = ctx.vmaAllocator();
-    createSlotBuffers();
+    // ---- GPU ring buffers (HOST_VISIBLE, persistently mapped; shared FIF ring) ----
+    if (auto r = ring_.create(ctx.vmaAllocator(), contextView().framesInFlight(),
+                              static_cast<VkDeviceSize>(cfg_.max_points) * sizeof(GpuPointVertex));
+        !r)
+        return r;
 
     // ---- Scene-registry bridge for the upload handler ----
     if (!renderScene().sceneRegistry().find<TransientPointCloudBuffer>())
@@ -77,10 +77,12 @@ lux::render::Expected<void> PCFeatureTransient::initAndAttachTo(RenderScene& /*s
 //  Frame lifecycle
 // ============================================================================
 
-void PCFeatureTransient::onFrameBegin(const FeatureFrameContext& /*ctx*/)
+void PCFeatureTransient::onFrameBegin(const FeatureFrameContext& ctx)
 {
-    active_slot_ = frame_counter_ % kBufferCount;
-    ++frame_counter_;
+    if (ring_.empty()) { draw_count_ = 0; return; }
+    // The engine's REAL frame-in-flight picks the slot (rule encoded in the ring —
+    // the old private frame counter could desync and overwrite an in-flight slot).
+    active_slot_ = ring_.slotIndexFor(ctx.frame_index);
 
     auto data = incoming_->take();
     if (data.empty()) {
@@ -91,12 +93,11 @@ void PCFeatureTransient::onFrameBegin(const FeatureFrameContext& /*ctx*/)
     const uint32_t count = static_cast<uint32_t>(
         std::min<size_t>(data.size(), cfg_.max_points));
 
-    auto& slot = slots_[active_slot_];
-    assert(slot.mapped && "FrameSlot buffer was not created");
+    auto& slot = ring_.slotAt(active_slot_);
+    assert(slot.mapped && "ring slot buffer was not created");
 
     std::memcpy(slot.mapped, data.data(), count * sizeof(GpuPointVertex));
-    vmaFlushAllocation(allocator_, slot.alloc, 0,
-                       count * sizeof(GpuPointVertex));
+    ring_.flush(active_slot_, count * sizeof(GpuPointVertex));
     draw_count_ = count;
 }
 
@@ -117,7 +118,7 @@ void PCFeatureTransient::addPasses(RGBuilder& builder)
             if (draw_count_ == 0) return;
             if (ctx.view == nullptr) return;
 
-            auto& slot = slots_[active_slot_];
+            auto& slot = ring_.slotAt(active_slot_);
 
             const float point_size = point_size_.load(std::memory_order_relaxed);
             vkCmdPushConstants(ctx.cmd, ctx.pipeline_layout,
@@ -135,57 +136,14 @@ void PCFeatureTransient::addPasses(RGBuilder& builder)
 //  Buffer management
 // ============================================================================
 
-void PCFeatureTransient::createSlotBuffers()
-{
-    const VkDeviceSize byte_size =
-        static_cast<VkDeviceSize>(cfg_.max_points) * sizeof(GpuPointVertex);
-
-    for (auto& slot : slots_) {
-        VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        bci.size  = byte_size;
-        bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-
-        VmaAllocationCreateInfo aci{};
-        aci.usage = VMA_MEMORY_USAGE_AUTO;
-        aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-                  | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-        VmaAllocationInfo info{};
-        VkResult r = vmaCreateBuffer(allocator_, &bci, &aci,
-                                     &slot.buffer, &slot.alloc, &info);
-        assert(r == VK_SUCCESS && "Failed to create transient PC buffer");
-        (void)r;
-        slot.mapped = info.pMappedData;
-    }
-}
-
 void PCFeatureTransient::onDetachFromScene(RenderScene& /*scene*/)
 {
     // Runtime removeFeature has NO GPU idle wait, and these HOST_VISIBLE ring
     // buffers are bound by frames N-1/N-2 still executing on the GPU. Retire them
     // through the frames-in-flight deferred-destroy queue instead of destroying
-    // inline (which the destructor would otherwise do). The handles are nulled so
-    // the destructor's destroySlotBuffers() is a no-op on this path. (#17)
+    // inline; retireInto nulls the handles so the destructor is a no-op. (#17)
     auto& q = renderContext().deferredDestroyQueue();
-    for (auto& slot : slots_) {
-        if (slot.buffer != VK_NULL_HANDLE)
-            q.retireBuffer(slot.buffer, slot.alloc);
-        slot = {};
-    }
-}
-
-void PCFeatureTransient::destroySlotBuffers()
-{
-    // Fallback for the no-detach path only: onDetachFromScene() (called by both
-    // removeFeature and scene teardown) normally retires + nulls these first, so
-    // this is a no-op there. If it ever runs with live handles, the device is
-    // idle (shutdown), so immediate destruction is safe.
-    if (!allocator_) return;
-    for (auto& slot : slots_) {
-        if (slot.buffer != VK_NULL_HANDLE)
-            vmaDestroyBuffer(allocator_, slot.buffer, slot.alloc);
-        slot = {};
-    }
+    ring_.retireInto([&](VkBuffer b, VmaAllocation a) { q.retireBuffer(b, a); });
 }
 
 } // namespace lux::render

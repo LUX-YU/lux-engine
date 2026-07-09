@@ -1,25 +1,39 @@
 #version 450
 
 // =============================================================================
-// Canvas2D sprite vertex shader (R2-02).
+// Canvas2D sprite vertex shader (v2, GPU-driven — vertex pulling).
 //
-// CPU expands each SpriteDraw into 6 CanvasVertex (2 triangles) in WORLD space
-// (the sprite's WorldTransform2D 4x4 is applied on the CPU to a unit quad). This
-// shader only applies the scene camera (set 0, binding 1 — the SAME per-view
-// ViewGpuData path as 3D; the 2D camera's ortho view/proj is uploaded there by the
-// camera bridge, R2-04). Painter order comes from the CPU draw order (no depth).
+// NO vertex inputs. Each instance is one sprite: gl_InstanceIndex walks the
+// arena's ORDER buffer (slot indices in ascending sort-key order — the draw
+// sequence IS the painter order), the slot indexes the instance records, and
+// gl_VertexIndex (0..5) synthesizes a unit ±0.5 quad corner that the sprite's
+// baked 2D affine places in world space. The scene camera comes from the SAME
+// per-view ViewGpuData path as 3D (set 0, binding 1).
 //
-// CanvasVertex (24 bytes):
-//   vec2  position       (8 bytes, location 0)  world XY (z = 0)
-//   vec2  uv             (8 bytes, location 1)  atlas UV
-//   uint  rgba           (4 bytes, location 2)  PREMULTIPLIED RGBA8, R[7:0]..A[31:24]
-//   uint  texture_bindless (4 bytes, location 3) bindless set-2 index, or 0xFFFFFFFF = tint-only
+// Sprite2DInstanceData (std430, 48 B — keep Canvas2DOperation.hpp in sync):
+//   float m[6]     column-major 2D affine: c0.x c0.y c1.x c1.y tx ty
+//   float uv[4]    atlas rect: u0, v0, w, h
+//   uint  tint     PREMULTIPLIED RGBA8, R[7:0]..A[31:24]
+//   uint  tex      bindless set-2 index, or 0xFFFFFFFF = tint-only
 // =============================================================================
 
-layout(location = 0) in vec2 inPosition;
-layout(location = 1) in vec2 inUV;
-layout(location = 2) in uint inRGBA;
-layout(location = 3) in uint inTexBindless;
+struct Sprite2DInstance {
+    float m0x; float m0y;   // world col0.xy
+    float m1x; float m1y;   // world col1.xy
+    float tx;  float ty;    // translation
+    float u0;  float v0;    // uv origin
+    float uw;  float vh;    // uv extent
+    uint  tint;
+    uint  tex;
+};
+
+layout(set = 1, binding = 0, std430) readonly buffer SpriteBuf {
+    Sprite2DInstance sprites[];
+} uSprites;
+
+layout(set = 1, binding = 1, std430) readonly buffer OrderBuf {
+    uint order[];
+} uOrder;
 
 struct ViewGpuData {
     mat4 view;
@@ -42,18 +56,32 @@ layout(location = 0) out vec2 vUV;
 layout(location = 1) out vec4 vColor;
 layout(location = 2) flat out uint vTexBindless;
 
+// Two CCW triangles over a unit quad centred at the origin.
+const vec2 kCorners[6] = vec2[6](
+    vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5),
+    vec2(-0.5, -0.5), vec2(0.5,  0.5), vec2(-0.5, 0.5)
+);
+
 void main()
 {
+    const uint slot = uOrder.order[gl_InstanceIndex];
+    const Sprite2DInstance s = uSprites.sprites[slot];
+    const vec2 c = kCorners[gl_VertexIndex];
+
+    const vec2 world = vec2(s.m0x * c.x + s.m1x * c.y + s.tx,
+                            s.m0y * c.x + s.m1y * c.y + s.ty);
     gl_Position = uViews.views[uPC.view_index].proj
                 * uViews.views[uPC.view_index].view
-                * vec4(inPosition, 0.0, 1.0);
+                * vec4(world, 0.0, 1.0);
 
-    vUV          = inUV;
-    vTexBindless = inTexBindless;
+    // uv: +x → u grows; +y (up) → v shrinks (top of the sprite = top of the rect).
+    vUV          = vec2(s.u0 + (c.x + 0.5) * s.uw,
+                        s.v0 + (0.5 - c.y) * s.vh);
+    vTexBindless = s.tex;
 
-    float r = float((inRGBA >>  0u) & 0xFFu) / 255.0;
-    float g = float((inRGBA >>  8u) & 0xFFu) / 255.0;
-    float b = float((inRGBA >> 16u) & 0xFFu) / 255.0;
-    float a = float((inRGBA >> 24u) & 0xFFu) / 255.0;
+    const float r = float((s.tint >>  0u) & 0xFFu) / 255.0;
+    const float g = float((s.tint >>  8u) & 0xFFu) / 255.0;
+    const float b = float((s.tint >> 16u) & 0xFFu) / 255.0;
+    const float a = float((s.tint >> 24u) & 0xFFu) / 255.0;
     vColor = vec4(r, g, b, a);   // already premultiplied (pipeline blends ONE / 1-SRC_ALPHA)
 }

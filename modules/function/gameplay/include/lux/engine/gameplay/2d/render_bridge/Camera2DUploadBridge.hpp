@@ -23,17 +23,25 @@
 
 namespace lux::gameplay::d2
 {
-    class Camera2DUploadBridge final : public lux::gameplay::IRenderableBridge
+    class Camera2DUploadBridge final : public lux::gameplay::TransientRenderableBridge
     {
     public:
         void drive(lux::meta::EntityRegistry& registry, RenderableBridgeContext& ctx) override
         {
-            if (stopping_) return;
-
-            const auto cam = activeCamera(registry);   // the single ActiveCamera2DTag entity, or null
-            if (cam == lux::meta::null_entity) return;
-            const auto* cache = registry.try_get<Camera2DCacheComponent>(cam);
-            if (!cache) return;
+            // Shared 2D camera gate (P0-5): the single active camera WITH a derived
+            // cache. v2: the gate drives the RETAINED scene enable bit — sprites are
+            // GPU-resident, so "no publishable camera" no longer stops submissions
+            // (there are none); it flips SetCanvas2DEnabled EDGE-TRIGGERED instead
+            // (steady state = zero wire), and the canvas draws nothing while off.
+            const auto cam = publishableCamera(registry);
+            const bool enabled = (cam != lux::meta::null_entity);
+            if (last_enabled_ != static_cast<int>(enabled))
+            {
+                ctx.canvas2d().setEnabled(ctx.scene(), enabled);   // no-op without a Canvas2D
+                last_enabled_ = static_cast<int>(enabled);
+            }
+            if (!enabled) return;
+            const auto& cache = registry.get<Camera2DCacheComponent>(cam);
 
             // Resolve the per-view camera op by name — invalid on a scene without a
             // StandardViewCamera feature, in which case there is nothing to upload into.
@@ -43,16 +51,11 @@ namespace lux::gameplay::d2
             const float eye[3] = {0.f, 0.f, 0.f};   // 2D ortho: the sprite shader ignores cam_pos
             lux::render::ViewCameraProxy(ctx.session(), ops).update(
                 ctx.scene(), ctx.view(),
-                cache->view.data(), cache->proj.data(), eye);   // Eigen Matrix4f = column-major
+                cache.view.data(), cache.proj.data(), eye);   // Eigen Matrix4f = column-major
         }
 
-        void reap(lux::meta::EntityRegistry& /*registry*/, RenderableBridgeContext& /*ctx*/) override {}
-        void beginShutdown(RenderableBridgeContext& /*ctx*/) override { stopping_ = true; }
-        [[nodiscard]] bool hasPendingShutdownWork() const override { return false; }
-        void flushShutdownCleanup(RenderableBridgeContext& /*ctx*/) override {}
-
     private:
-        bool stopping_{false};
+        int last_enabled_{-1};   ///< tri-state: -1 = never sent → first drive always sends
     };
 
 } // namespace lux::gameplay::d2

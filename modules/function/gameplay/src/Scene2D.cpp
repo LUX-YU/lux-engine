@@ -8,10 +8,12 @@
 // ============================================================================
 
 #include <lux/engine/gameplay/2d/Scene2D.hpp>
+#include <lux/engine/gameplay/2d/pixel/PixelFieldRuntime.hpp>
 #include <lux/engine/gameplay/2d/world/systems/Simulation2DSystem.hpp>
 #include <lux/engine/gameplay/2d/world/systems/Transform2DSystem.hpp>
 #include <lux/engine/gameplay/2d/world/systems/Camera2DSystem.hpp>
 #include <lux/engine/gameplay/2d/render_bridge/Sprite2DBridge.hpp>
+#include <lux/engine/gameplay/2d/render_bridge/PixelField2DBridge.hpp>
 #include <lux/engine/gameplay/2d/render_bridge/Camera2DUploadBridge.hpp>
 #include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>   // addBridge
 #include <lux/engine/gameplay/world/World.hpp>
@@ -20,14 +22,38 @@
 
 namespace lux::gameplay::d2
 {
+    namespace
+    {
+        // ── The capability-backing table ────────────────────────────────────
+        // A capability may be ENABLED only once a slice has landed the system/phase
+        // that backs it — otherwise validate() passes, install() succeeds, and the
+        // caller gets a silently dead capability (the exact trap the platformerPlan
+        // removal banned for presets, one level down). Each slice extends this mask
+        // IN THE SAME CHANGE that wires its backing (F2: PixelSimulation via
+        // Phase::SimulateFields; P2: Physics/CharacterController; A2: SpriteAnimation),
+        // so the promise and the implementation cannot drift apart.
+        constexpr std::uint32_t kBackedCapabilities =
+            static_cast<std::uint32_t>(D2Capability::Core) |
+            static_cast<std::uint32_t>(D2Capability::SpriteRendering) |
+            static_cast<std::uint32_t>(D2Capability::PixelSimulation);   // F2: backed below
+    } // namespace
+
+    std::uint32_t unbackedCapabilities(const D2ScenePlan& plan) noexcept
+    {
+        return plan.capabilities() & ~kBackedCapabilities;
+    }
+
     D2Installed install(World& world, PixelFieldRuntime* runtime, const D2ScenePlan& plan)
     {
         D2Installed installed;
 
         // Refuse an illegal plan wholesale — never a partial install (D-01/D-02). A
         // PixelSimulation plan additionally needs a live field runtime; that runtime-
-        // presence check belongs here (validate() is plan-only).
+        // presence check belongs here (validate() is plan-only). A plan enabling a
+        // capability nothing backs yet is refused the same way (see table above).
         if (!plan.validate().ok())
+            return installed;
+        if (unbackedCapabilities(plan) != 0u)
             return installed;
         if (plan.has(D2Capability::PixelSimulation) && runtime == nullptr)
             return installed;
@@ -72,7 +98,22 @@ namespace lux::gameplay::d2
             world.addSystem(std::move(camera));
         }
 
-        (void)runtime;   // captured into the sim phases by registerBridges (later)
+        // F2: back the PixelSimulation capability — the runtime is captured into the
+        // coordinator's canonical phases (non-null guaranteed by the gate above).
+        // ApplyFieldCommands also carries the owner maintenance (value-scan reap of
+        // fields whose owning component/entity died), so ownership and commands are
+        // settled BEFORE the CA scan of the same substep.
+        if (plan.has(D2Capability::PixelSimulation) && installed.simulation != nullptr)
+        {
+            installed.simulation->setPhase(Simulation2DSystem::Phase::ApplyFieldCommands,
+                [runtime](lux::meta::EntityRegistry& reg, float)
+                {
+                    runtime->maintainOwners(reg);
+                    runtime->applyCommands();
+                });
+            installed.simulation->setPhase(Simulation2DSystem::Phase::SimulateFields,
+                [runtime](lux::meta::EntityRegistry&, float) { runtime->step(); });
+        }
         return installed;
     }
 
@@ -89,11 +130,16 @@ namespace lux::gameplay::d2
 
         // Sprite producer — ONLY when SpriteRendering is enabled, so a pixel-only scene
         // never registers (and never per-frame iterates) the sprite view (payment symmetry).
+        // v2: RETAINED bridge (one GPU-resident instance per sprite entity, delta ops).
         if (plan.has(D2Capability::SpriteRendering))
-            rs.addBridge(std::make_unique<Sprite2DBridge>(/*producer_order=*/0u));
+            rs.addBridge(std::make_unique<Sprite2DBridge>());
 
-        // Tilemap2D / PixelField2D producers — their slices (A2-xx / F2-xx).
-        (void)runtime;
+        // PixelField producer (F2-08) — retained: persistent id-mirror texture +
+        // canvas field instance per field entity; content rides the export ticket.
+        if (plan.has(D2Capability::PixelSimulation) && runtime != nullptr)
+            rs.addBridge(std::make_unique<PixelField2DBridge>(runtime));
+
+        // Tilemap2D producer — its slice (A2-xx).
     }
 
     D2ScenePlan traditional2DPlan()

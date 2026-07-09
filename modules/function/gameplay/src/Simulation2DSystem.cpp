@@ -27,8 +27,14 @@ namespace lux::gameplay::d2
             return;
 
         // Clamp banked time so a long stall (breakpoint, load hitch) can't schedule a
-        // burst of catch-up substeps.
-        accumulator_ = std::min(accumulator_ + dt, cfg_.max_accumulated);
+        // burst of catch-up substeps. The clamp is an unconditional hard bound (documented
+        // on FixedStepConfig::max_accumulated; drop_excess_time only governs the
+        // substep-cap case below) — but what it discards is still DISCARDED BACKLOG, so
+        // it must be booked into lagged_time_ like every other drop: laggedTime() is
+        // "total discarded backlog", and a 1s stall that banks only 0.25s dropped 0.75s.
+        const float banked = accumulator_ + dt;
+        accumulator_ = std::min(banked, cfg_.max_accumulated);
+        lagged_time_ += banked - accumulator_;
 
         while (accumulator_ >= cfg_.fixed_dt && substeps_last_frame_ < cfg_.max_substeps)
         {

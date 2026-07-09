@@ -1,18 +1,19 @@
 // ============================================================================
-//  sprite2d_visual_demo.cpp — S2-03 VISUAL (interactive tier): actually SEE the
-//  Canvas2D sprites on screen. Opens a real window, binds the view to the swapchain
-//  (on-screen presentation, unlike sprite2d_offscreen_test's readback), and loops
-//  rendering a set of sprites until you close the window:
-//    - a row + grid of solid-colour sprites (red/green/blue/yellow/magenta/cyan/white),
-//    - a premultiplied-alpha blend pair (50% red over a white base),
-//    - one ANIMATED sprite that orbits + spins + pulses (proves it's live).
+//  sprite2d_visual_demo.cpp — VISUAL (interactive tier): actually SEE the
+//  GPU-driven Canvas2D v2 on screen. Opens a real window, binds the view to the
+//  swapchain, and loops until you close it:
+//    - a grid of solid-colour sprites (red/green/blue/yellow/magenta/cyan/white)
+//      created ONCE — after creation they cost ZERO wire per frame (GPU-resident),
+//    - a premultiplied-alpha blend pair (50% red over a white base — priorities
+//      order them),
+//    - one ANIMATED sprite that orbits + spins + pulses: exactly ONE transform
+//      delta entry on the wire per frame (the whole delta model in one pixel).
 //
-//  NOT self-checking — it's for eyeballing the 2D sprite pipeline. Registered as the
-//  `interactive` tier (a window that loops), so CI's `ctest -LE interactive` skips it.
-//  Skips with exit 0 when no Vulkan device is present.
+//  NOT self-checking — for eyeballing the pipeline. `interactive` tier, so CI's
+//  `ctest -LE interactive` skips it. Exit 0 when no Vulkan device is present.
 //
-//  Camera: view = identity, proj squashes x by 1/aspect so quads render SQUARE; the
-//  world frame is x∈[-aspect,aspect], y∈[-1,1].
+//  Camera: view = identity, proj squashes x by 1/aspect so quads render SQUARE;
+//  the world frame is x∈[-aspect,aspect], y∈[-1,1].
 // ============================================================================
 
 #include "DeviceRenderFixture.hpp"
@@ -25,7 +26,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <vector>
 
 using namespace lux::render;
 
@@ -33,31 +33,13 @@ namespace
 {
     struct EmptyConfig {};
 
-    // Axis-aligned sprite: size s at (px,py), premultiplied RGBA8 tint (AABBGGRR), paint id.
-    SpriteDraw sprite(float px, float py, float s, std::uint32_t tint,
-                      std::uint64_t id, std::int16_t layer = 0)
+    // Axis-aligned sprite record: size s at (px,py), premultiplied RGBA8 tint.
+    Sprite2DInstanceData quad(float px, float py, float s, std::uint32_t tint)
     {
-        SpriteDraw d{};
-        d.transform[0] = s;  d.transform[5]  = s;
-        d.transform[10] = 1.f; d.transform[15] = 1.f;
-        d.transform[12] = px; d.transform[13] = py;
+        Sprite2DInstanceData d{};
+        d.m[0] = s; d.m[3] = s;
+        d.m[4] = px; d.m[5] = py;
         d.tint = tint;
-        d.key  = DrawOrderKey{layer, 0, 0, 0, id};
-        return d;
-    }
-
-    // Rotated sprite (2D rotation baked into the column-major basis).
-    SpriteDraw spriteRot(float px, float py, float s, float ang, std::uint32_t tint,
-                         std::uint64_t id, std::int16_t layer = 0)
-    {
-        const float c = std::cos(ang), sn = std::sin(ang);
-        SpriteDraw d{};
-        d.transform[0] = s * c;  d.transform[1] = s * sn;    // col 0
-        d.transform[4] = -s * sn; d.transform[5] = s * c;    // col 1
-        d.transform[10] = 1.f; d.transform[15] = 1.f;
-        d.transform[12] = px; d.transform[13] = py;
-        d.tint = tint;
-        d.key  = DrawOrderKey{layer, 0, 0, 0, id};
         return d;
     }
 }
@@ -65,7 +47,7 @@ namespace
 int main()
 {
     std::setbuf(stdout, nullptr);
-    std::printf("=== sprite2d_visual_demo ===  (close the window to exit)\n");
+    std::printf("=== sprite2d_visual_demo (GPU-driven v2) ===  (close the window to exit)\n");
 
     constexpr std::uint32_t W = 960, H = 600;
     lux::rendertest::DeviceRenderFixture fx(W, H, "Sprite2D Visual Demo");
@@ -80,13 +62,36 @@ int main()
 
     const auto cam_ops    = ViewCameraOperationIds::fromOps(cam_reg.ops, cam_reg.op_count);
     const auto canvas_ops = Canvas2DOperationIds::fromOps(canvas_reg.ops, canvas_reg.op_count);
+    Canvas2DProxy canvas(fx.session(), canvas_ops);
+
+    // Static content is created ONCE — from here on it lives on the GPU and
+    // costs nothing per frame (no heartbeat, no re-submit).
+    // top row — primaries
+    (void)canvas.addSprite(sv.scene_id, quad(-1.05f,  0.45f, 0.35f, 0xFF0000FFu), 0.f);   // red
+    (void)canvas.addSprite(sv.scene_id, quad(-0.35f,  0.45f, 0.35f, 0xFF00FF00u), 0.f);   // green
+    (void)canvas.addSprite(sv.scene_id, quad( 0.35f,  0.45f, 0.35f, 0xFFFF0000u), 0.f);   // blue
+    (void)canvas.addSprite(sv.scene_id, quad( 1.05f,  0.45f, 0.35f, 0xFF00FFFFu), 0.f);   // yellow
+    // bottom row — secondaries + white
+    (void)canvas.addSprite(sv.scene_id, quad(-1.05f, -0.45f, 0.35f, 0xFFFF00FFu), 0.f);   // magenta
+    (void)canvas.addSprite(sv.scene_id, quad(-0.35f, -0.45f, 0.35f, 0xFFFFFF00u), 0.f);   // cyan
+    (void)canvas.addSprite(sv.scene_id, quad( 0.35f, -0.45f, 0.35f, 0xFFFFFFFFu), 0.f);   // white
+    // premultiplied-alpha blend: 50% red drawn OVER a white base (priority orders them)
+    (void)canvas.addSprite(sv.scene_id, quad( 1.05f, -0.45f, 0.35f, 0xFFFFFFFFu), 0.f);   // white base
+    (void)canvas.addSprite(sv.scene_id, quad( 1.13f, -0.37f, 0.35f, 0x80000080u), 1.f);   // 50% premul red on top
+
+    // The animated sprite — the only per-frame wire traffic in this demo.
+    const auto orbiter = fx.await(canvas.addSprite(
+        sv.scene_id, quad(0.55f, 0.f, 0.22f, 0xFF20C0FFu), /*priority=*/5.f));
+    if (orbiter.status != ECanvas2DCreateStatus::Ok)
+    { std::printf("addSprite failed (%u)\n", static_cast<unsigned>(orbiter.status)); return 1; }
 
     const float aspect  = static_cast<float>(W) / static_cast<float>(H);
     const float view[16] = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
     const float proj[16] = { 1.f/aspect,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
     const float eye[3]   = { 0,0,0 };
 
-    std::printf("window up — you should see a colour grid + one orbiting sprite. Close to exit.\n");
+    std::printf("window up — colour grid (static, zero wire) + one orbiting sprite "
+                "(one transform delta per frame). Close to exit.\n");
     const auto t0 = std::chrono::steady_clock::now();
 
     while (fx.running())
@@ -95,28 +100,14 @@ int main()
 
         ViewCameraProxy(fx.session(), cam_ops).update(sv.scene_id, sv.view, view, proj, eye);
 
-        std::vector<SpriteDraw> s;
-        // top row — primaries
-        s.push_back(sprite(-1.05f,  0.45f, 0.35f, 0xFF0000FFu, 1));   // red
-        s.push_back(sprite(-0.35f,  0.45f, 0.35f, 0xFF00FF00u, 2));   // green
-        s.push_back(sprite( 0.35f,  0.45f, 0.35f, 0xFFFF0000u, 3));   // blue
-        s.push_back(sprite( 1.05f,  0.45f, 0.35f, 0xFF00FFFFu, 4));   // yellow
-        // bottom row — secondaries + white
-        s.push_back(sprite(-1.05f, -0.45f, 0.35f, 0xFFFF00FFu, 5));   // magenta
-        s.push_back(sprite(-0.35f, -0.45f, 0.35f, 0xFFFFFF00u, 6));   // cyan
-        s.push_back(sprite( 0.35f, -0.45f, 0.35f, 0xFFFFFFFFu, 7));   // white
-        // premultiplied-alpha blend: 50% red drawn OVER a white base (see the tint mix)
-        s.push_back(sprite( 1.05f, -0.45f, 0.35f, 0xFFFFFFFFu, 8, 0));   // white base
-        s.push_back(sprite( 1.13f, -0.37f, 0.35f, 0x80000080u, 9, 1));   // 50% premul red on top
-        // animated — orbits, spins, and pulses so it is obviously live
-        s.push_back(spriteRot(0.55f * std::cos(t), 0.35f * std::sin(t),
-                              0.22f + 0.05f * std::sin(t * 3.f), t * 1.6f,
-                              0xFF20C0FFu, 100, 5));   // orange
+        // Orbit + spin + pulse, all baked into the 6-float affine: ONE delta entry.
+        const float s = 0.22f + 0.05f * std::sin(t * 3.f);
+        const float c = std::cos(t * 1.6f), sn = std::sin(t * 1.6f);
+        const float m[6] = { s * c, s * sn, -s * sn, s * c,
+                             0.55f * std::cos(t), 0.35f * std::sin(t) };
+        canvas.updateTransform(sv.scene_id, orbiter.handle, m);
 
-        Canvas2DProxy(fx.session(), canvas_ops).submitSprites(sv.scene_id, s);
         fx.flush();
     }
-
-    std::printf("window closed — bye.\n");
     return 0;
 }

@@ -1,22 +1,28 @@
 #pragma once
 // ============================================================================
-//  Canvas2DFeatureOps.hpp — Canvas2DFeature factory + feature-scoped submit op.
+//  Canvas2DFeatureOps.hpp — Canvas2DFeature factory + the v2 GPU-DRIVEN
+//  feature-scoped instance ops (C2D-R0; .internal/2d-gpu-driven-rewrite.md).
 //
-//  The 2D draw-batch submit is a FEATURE-scoped dynamic op (the grid pattern),
-//  not a core protocol op — mirrors LightOperation.hpp. The sprite list is a
-//  Blob (variable length, no borrowed pointer across the frame); the owning
-//  RenderSceneId rides the op envelope (G-04 per-command routing), NOT each
-//  SpriteDraw (R2-00 kept scene_id out of the draw POD on purpose).
+//  Sprites are GPU-resident instances in the scene's Canvas2D arena. The wire
+//  carries create / destroy / delta COMMANDS — never per-frame content:
+//    AddSprite2D            Stream + reply (handle, G-05 status)   entity appears
+//    RemoveSprite2D         Stream                                 entity dies
+//    Sprite2DTransformBatch Bulk (per-entry scene routing, G-04)   per frame, DIRTY only
+//    UpdateSprite2DVisual   Stream                                 uv/tint/texture changed
+//    UpdateSprite2DKey      Stream                                 priority/visible changed
+//    SetCanvas2DEnabled     Stream                                 camera gate flipped
+//  A static scene therefore sends NOTHING (no heartbeat, no producer staging —
+//  that whole v1 concept group is gone).
 //
-//  This is the COMM-coupled half of the Canvas2D protocol; the plain draw PODs
-//  (DrawOrderKey / SpriteDraw / owner handles) stay in the lean Canvas2DOperation.hpp.
-//  Handlers + factory definition live in Canvas2DOperationHandlers.cpp; the client
-//  bridge that SENDS the op is wired in R2-04.
+//  This is the COMM-coupled half; the comm-free PODs (Sprite2DInstanceData /
+//  Sprite2DHandle / quantizePriority / status) stay in Canvas2DOperation.hpp.
+//  Handlers + factory definition live in Canvas2DOperationHandlers.cpp; the
+//  retained gameplay bridge that SENDS these ops is wired in C2D-R3.
 // ============================================================================
 
-#include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>  // SpriteDraw
-#include <lux/engine/render/renderer/features/FeatureOps.hpp>                   // EOpKind / FeatureOpIds / TypeId
-#include <lux/engine/render/comm/RenderCommTypes.hpp>                           // BlobRef
+#include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>  // Sprite2DInstanceData / Sprite2DHandle / status
+#include <lux/engine/render/renderer/features/FeatureOps.hpp>                   // EOpKind / FeatureOpIds / reply_type_id_of_v
+#include <lux/engine/render/comm/RenderCommTypes.hpp>                           // CommandTraits / TypeId
 #include <lux/engine/render/core/RenderSceneId.hpp>
 #include <lux/engine/function/visibility.h>
 
@@ -28,31 +34,211 @@ namespace lux::render
 {
     struct FeatureFactory;   // forward-decl (extern ref below) — avoids RenderProtocol.hpp here
     class RenderSession;
+    template <typename T> class RenderRequest;
 
-    /// Submit a per-frame batch of sprite draws to a scene's (single) Canvas2DFeature.
-    /// Routed by scene_id (SinglePerScene → exactly one Canvas per scene, so no feature
-    /// handle is needed); the sprites ride a Blob. Mirrors SetFeatureParamsPayload.
-    struct Canvas2DSubmitPayload
+    // ── v2 payloads ───────────────────────────────────────────────────────────
+
+    /// Create one GPU-resident sprite instance. Replies with its owner handle +
+    /// outcome (G-05: anything but Ok ⇒ handle null, nothing was created).
+    struct AddSprite2DPayload
+    {
+        RenderSceneId        scene{};
+        Sprite2DInstanceData data{};
+        float                priority{0.f};
+        std::uint32_t        visible{1};
+    };
+    static_assert(std::is_trivially_copyable_v<AddSprite2DPayload>);
+
+    struct Sprite2DSlotReply
+    {
+        Sprite2DHandle        handle{};
+        ECanvas2DCreateStatus status{ECanvas2DCreateStatus::Unknown};
+    };
+    static_assert(std::is_trivially_copyable_v<Sprite2DSlotReply>);
+
+    template <>
+    struct CommandTraits<AddSprite2DPayload>
+    {
+        using Reply = Sprite2DSlotReply;
+        static constexpr bool has_reply = true;
+        static constexpr TypeId reply_type_id = reply_type_id_of_v<Sprite2DSlotReply>;
+    };
+
+    struct RemoveSprite2DPayload
+    {
+        RenderSceneId  scene{};
+        Sprite2DHandle handle{};
+    };
+    static_assert(std::is_trivially_copyable_v<RemoveSprite2DPayload>);
+
+    /// Per-frame transform delta (BulkData). Each entry self-routes by its own
+    /// `scene` (G-04); only DIRTY sprites produce entries, so wire traffic is
+    /// proportional to change, never to scene size.
+    struct Sprite2DTransformEntry
+    {
+        RenderSceneId  scene{};
+        Sprite2DHandle handle{};
+        float          m[6]{};   ///< column-major 2D affine (see Sprite2DInstanceData)
+    };
+    static_assert(std::is_trivially_copyable_v<Sprite2DTransformEntry>);
+
+    /// Visual fields (uv rect / tint / texture) — low-frequency, order-neutral.
+    struct UpdateSprite2DVisualPayload
+    {
+        RenderSceneId  scene{};
+        Sprite2DHandle handle{};
+        float          uv[4]{0.f, 0.f, 1.f, 1.f};
+        std::uint32_t  tint{0xFFFFFFFFu};
+        std::uint32_t  texture_bindless{kNoTexture};
+    };
+    static_assert(std::is_trivially_copyable_v<UpdateSprite2DVisualPayload>);
+
+    /// Order-affecting fields — the ONLY op that can trigger an order rebuild.
+    struct UpdateSprite2DKeyPayload
+    {
+        RenderSceneId  scene{};
+        Sprite2DHandle handle{};
+        float          priority{0.f};
+        std::uint32_t  visible{1};
+    };
+    static_assert(std::is_trivially_copyable_v<UpdateSprite2DKeyPayload>);
+
+    /// Scene-level draw gate (retained bit). The camera bridge flips it when the
+    /// publishable-camera gate changes — the P0-5 concern ("never draw against a
+    /// stale camera") expressed as ONE retained bit instead of per-frame liveness.
+    struct SetCanvas2DEnabledPayload
     {
         RenderSceneId scene{};
-        BlobRef       sprites{};   ///< raw bytes of a SpriteDraw[] in the frame payload
+        std::uint32_t enabled{1};
     };
-    static_assert(std::is_trivially_copyable_v<Canvas2DSubmitPayload>);
+    static_assert(std::is_trivially_copyable_v<SetCanvas2DEnabledPayload>);
 
-    /// The single R2-01 op. Blob-kind → CommandOp opcode, pushBlob + push on the client,
-    /// resolveBlob on the server. (Tilemap / pixel-field submit ops arrive with their slices.)
-    struct Canvas2DSubmitOp
+    // ── PixelField kind payloads (F2-09; same command grammar as sprites) ─────
+
+    struct AddPixelField2DPayload
     {
-        using Payload = Canvas2DSubmitPayload;
-        static constexpr EOpKind      kind = EOpKind::Blob;
-        static constexpr const char*  name = "Canvas2D.SubmitSprites";
+        RenderSceneId            scene{};
+        PixelField2DInstanceData data{};
+        float                    priority{0.f};
+        std::uint32_t            visible{1};
+    };
+    static_assert(std::is_trivially_copyable_v<AddPixelField2DPayload>);
+
+    struct PixelFieldSlotReply
+    {
+        PixelFieldInstanceHandle handle{};
+        ECanvas2DCreateStatus    status{ECanvas2DCreateStatus::Unknown};
+    };
+    static_assert(std::is_trivially_copyable_v<PixelFieldSlotReply>);
+
+    template <>
+    struct CommandTraits<AddPixelField2DPayload>
+    {
+        using Reply = PixelFieldSlotReply;
+        static constexpr bool has_reply = true;
+        static constexpr TypeId reply_type_id = reply_type_id_of_v<PixelFieldSlotReply>;
     };
 
-    /// Op ids returned to the client after RegisterFeatureType (forward-declarable, so
-    /// gameplay bridges can stay render-light — mirrors LightOperationIds).
-    struct Canvas2DOperationIds : FeatureOpIds<Canvas2DSubmitOp>
+    struct RemovePixelField2DPayload
     {
-        using Ids = FeatureOpIds<Canvas2DSubmitOp>;
+        RenderSceneId            scene{};
+        PixelFieldInstanceHandle handle{};
+    };
+    static_assert(std::is_trivially_copyable_v<RemovePixelField2DPayload>);
+
+    /// Fields are FEW (a handful per scene) and mostly static — a plain Stream op
+    /// per moved field beats a bulk lane here.
+    struct UpdatePixelField2DTransformPayload
+    {
+        RenderSceneId            scene{};
+        PixelFieldInstanceHandle handle{};
+        float                    m[6]{};
+    };
+    static_assert(std::is_trivially_copyable_v<UpdatePixelField2DTransformPayload>);
+
+    struct UpdatePixelField2DKeyPayload
+    {
+        RenderSceneId            scene{};
+        PixelFieldInstanceHandle handle{};
+        float                    priority{0.f};
+        std::uint32_t            visible{1};
+    };
+    static_assert(std::is_trivially_copyable_v<UpdatePixelField2DKeyPayload>);
+
+    // ── v2 typed op declarations (order == Canvas2DOperationIds order) ─────────
+    struct AddSprite2DOp
+    {
+        using Payload = AddSprite2DPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;   // CommandOp + replyToCurrent
+        static constexpr const char* name = "AddSprite2D";
+    };
+    struct RemoveSprite2DOp
+    {
+        using Payload = RemoveSprite2DPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr const char* name = "RemoveSprite2D";
+    };
+    struct Sprite2DTransformBatchOp
+    {
+        using Payload = Sprite2DTransformEntry;
+        static constexpr EOpKind kind = EOpKind::Bulk;
+        static constexpr const char* name = "Sprite2DTransformBatch";
+    };
+    struct UpdateSprite2DVisualOp
+    {
+        using Payload = UpdateSprite2DVisualPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr const char* name = "UpdateSprite2DVisual";
+    };
+    struct UpdateSprite2DKeyOp
+    {
+        using Payload = UpdateSprite2DKeyPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr const char* name = "UpdateSprite2DKey";
+    };
+    struct SetCanvas2DEnabledOp
+    {
+        using Payload = SetCanvas2DEnabledPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr const char* name = "SetCanvas2DEnabled";
+    };
+    struct AddPixelField2DOp
+    {
+        using Payload = AddPixelField2DPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;   // CommandOp + replyToCurrent
+        static constexpr const char* name = "AddPixelField2D";
+    };
+    struct RemovePixelField2DOp
+    {
+        using Payload = RemovePixelField2DPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr const char* name = "RemovePixelField2D";
+    };
+    struct UpdatePixelField2DTransformOp
+    {
+        using Payload = UpdatePixelField2DTransformPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr const char* name = "UpdatePixelField2DTransform";
+    };
+    struct UpdatePixelField2DKeyOp
+    {
+        using Payload = UpdatePixelField2DKeyPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr const char* name = "UpdatePixelField2DKey";
+    };
+
+    /// Op ids returned to the client after RegisterFeatureType (forward-declarable,
+    /// so gameplay bridges stay render-light — mirrors MeshStackOperationIds).
+    struct Canvas2DOperationIds
+        : FeatureOpIds<AddSprite2DOp, RemoveSprite2DOp, Sprite2DTransformBatchOp,
+                       UpdateSprite2DVisualOp, UpdateSprite2DKeyOp, SetCanvas2DEnabledOp,
+                       AddPixelField2DOp, RemovePixelField2DOp,
+                       UpdatePixelField2DTransformOp, UpdatePixelField2DKeyOp>
+    {
+        using Ids = FeatureOpIds<AddSprite2DOp, RemoveSprite2DOp, Sprite2DTransformBatchOp,
+                                 UpdateSprite2DVisualOp, UpdateSprite2DKeyOp, SetCanvas2DEnabledOp,
+                                 AddPixelField2DOp, RemovePixelField2DOp,
+                                 UpdatePixelField2DTransformOp, UpdatePixelField2DKeyOp>;
         Canvas2DOperationIds() = default;
         Canvas2DOperationIds(const Ids& base) noexcept : Ids(base) {}
         [[nodiscard]] static Canvas2DOperationIds fromOps(const TypeId* ops, std::uint32_t count) noexcept
@@ -61,20 +247,45 @@ namespace lux::render
         }
     };
 
-    /// Canvas2DFeature factory (create + register_ops_fn allocating the submit op above).
+    /// Canvas2DFeature factory (create + register_ops_fn allocating the 6 ops above).
     extern LUX_FUNCTION_PUBLIC const FeatureFactory kCanvas2DFeatureFactory;
 
-    /// Client proxy — pushes a per-frame sprite batch to a scene's Canvas2DFeature.
-    /// Wired to the Sprite2DBridge in R2-04; a fire-and-forget Blob command.
+    /// Client proxy — issues v2 instance commands against a scene's Canvas2DFeature.
+    /// All methods no-op when the feature exposes no ops (unregistered scene → a
+    /// pure-3D host pays nothing). Wired to the retained Sprite2DBridge in C2D-R3.
     class LUX_FUNCTION_PUBLIC Canvas2DProxy
     {
     public:
         Canvas2DProxy(RenderSession& session, Canvas2DOperationIds ops) noexcept
             : session_(&session), ops_(ops) {}
 
-        /// Copies @p sprites into the frame blob and submits them. No-op if the batch is
-        /// empty or the feature exposes no ops (unregistered).
-        void submitSprites(RenderSceneId scene, std::span<const SpriteDraw> sprites);
+        /// Create one GPU-resident sprite; replies with {handle, status} (G-05).
+        [[nodiscard]] RenderRequest<Sprite2DSlotReply> addSprite(
+            RenderSceneId scene, const Sprite2DInstanceData& data,
+            float priority, bool visible = true);
+
+        void removeSprite(RenderSceneId scene, Sprite2DHandle handle);
+
+        /// Per-frame dirty transform deltas. Entries already carry their scene
+        /// (G-04); the scene-stamping overload covers the common one-scene batch.
+        void updateTransforms(std::span<const Sprite2DTransformEntry> entries);
+        void updateTransforms(RenderSceneId scene, std::span<Sprite2DTransformEntry> entries);
+        void updateTransform(RenderSceneId scene, Sprite2DHandle handle, const float m[6]);
+
+        void updateVisual(RenderSceneId scene, Sprite2DHandle handle,
+                          const float uv[4], std::uint32_t tint, std::uint32_t texture_bindless);
+        void updateKey(RenderSceneId scene, Sprite2DHandle handle, float priority, bool visible);
+        void setEnabled(RenderSceneId scene, bool enabled);
+
+        // ── PixelField kind (F2-09) ──
+        [[nodiscard]] RenderRequest<PixelFieldSlotReply> addPixelField(
+            RenderSceneId scene, const PixelField2DInstanceData& data,
+            float priority, bool visible = true);
+        void removePixelField(RenderSceneId scene, PixelFieldInstanceHandle handle);
+        void updatePixelFieldTransform(RenderSceneId scene, PixelFieldInstanceHandle handle,
+                                       const float m[6]);
+        void updatePixelFieldKey(RenderSceneId scene, PixelFieldInstanceHandle handle,
+                                 float priority, bool visible);
 
         [[nodiscard]] bool valid() const noexcept { return ops_.valid(); }
 

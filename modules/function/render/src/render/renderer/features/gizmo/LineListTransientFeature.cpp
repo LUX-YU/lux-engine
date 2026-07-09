@@ -64,10 +64,8 @@ namespace lux::render
     {
     }
 
-    LineListTransientFeature::~LineListTransientFeature()
-    {
-        destroySlotBuffers();
-    }
+    // The ring destroys itself (no-detach fallback; a runtime detach retired + nulled first).
+    LineListTransientFeature::~LineListTransientFeature() = default;
 
     // ============================================================================
     //  Initialisation
@@ -97,9 +95,11 @@ namespace lux::render
             tmpl.descriptor_set_count, infos, "LineListTransientLayout");
         pipeline_handle_ = cv.registerGraphics(tmpl, infos);
 
-        // ---- GPU ring buffers (HOST_VISIBLE, persistently mapped) ----
-        allocator_ = cv.vmaAllocator();
-        createSlotBuffers();
+        // ---- GPU ring buffers (HOST_VISIBLE, persistently mapped; shared FIF ring) ----
+        if (auto r = ring_.create(cv.vmaAllocator(), cv.framesInFlight(),
+                                  static_cast<VkDeviceSize>(cfg_.max_vertices) * sizeof(GizmoVertex));
+            !r)
+            return r;
 
         // ---- Scene-registry bridge for the upload handler ----
         incoming_ = sceneView().sceneRegistry().ensure<TransientLineListBuffer>();
@@ -110,10 +110,12 @@ namespace lux::render
     //  Frame lifecycle
     // ============================================================================
 
-    void LineListTransientFeature::onFrameBegin(const FeatureFrameContext & /*ctx*/)
+    void LineListTransientFeature::onFrameBegin(const FeatureFrameContext &ctx)
     {
-        active_slot_ = frame_counter_ % kBufferCount;
-        ++frame_counter_;
+        if (ring_.empty()) { draw_count_ = 0; return; }
+        // The engine's REAL frame-in-flight picks the slot (rule encoded in the ring —
+        // the old private frame counter could desync and overwrite an in-flight slot).
+        active_slot_ = ring_.slotIndexFor(ctx.frame_index);
 
         auto data = incoming_->take();
         if (data.empty())
@@ -125,12 +127,11 @@ namespace lux::render
         const uint32_t count = static_cast<uint32_t>(
             std::min<size_t>(data.size(), cfg_.max_vertices));
 
-        auto &slot = slots_[active_slot_];
-        assert(slot.mapped && "FrameSlot buffer was not created");
+        auto &slot = ring_.slotAt(active_slot_);
+        assert(slot.mapped && "ring slot buffer was not created");
 
         std::memcpy(slot.mapped, data.data(), count * sizeof(GizmoVertex));
-        vmaFlushAllocation(allocator_, slot.alloc, 0,
-                           count * sizeof(GizmoVertex));
+        ring_.flush(active_slot_, count * sizeof(GizmoVertex));
         draw_count_ = count;
     }
 
@@ -151,7 +152,7 @@ namespace lux::render
             if (draw_count_ == 0) return;
             if (ctx.view == nullptr) return;
 
-            auto& slot = slots_[active_slot_];
+            auto& slot = ring_.slotAt(active_slot_);
 
             VkDeviceSize zero_offset = 0;
             vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &slot.buffer, &zero_offset);
@@ -161,61 +162,14 @@ namespace lux::render
                                            // (tonemapped) image, after the grid
     }
 
-    // ============================================================================
-    //  Buffer management
-    // ============================================================================
-
-    void LineListTransientFeature::createSlotBuffers()
-    {
-        const VkDeviceSize byte_size =
-            static_cast<VkDeviceSize>(cfg_.max_vertices) * sizeof(GizmoVertex);
-
-        for (auto &slot : slots_)
-        {
-            VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-            bci.size = byte_size;
-            bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-
-            VmaAllocationCreateInfo aci{};
-            aci.usage = VMA_MEMORY_USAGE_AUTO;
-            aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-            VmaAllocationInfo info{};
-            VkResult r = vmaCreateBuffer(allocator_, &bci, &aci,
-                                         &slot.buffer, &slot.alloc, &info);
-            assert(r == VK_SUCCESS && "Failed to create transient line list buffer");
-            (void)r;
-            slot.mapped = info.pMappedData;
-        }
-    }
-
     void LineListTransientFeature::onDetachFromScene(RenderScene & /*scene*/)
     {
         // Runtime removeFeature has no GPU idle wait; frames N-1/N-2 may still bind
         // these ring buffers. Retire through the FIF deferred-destroy queue rather
-        // than the inline destroy the destructor would do. Nulled handles make
-        // destroySlotBuffers() a no-op on this path. (#17)
+        // than the inline destroy the destructor would do; retireInto nulls the
+        // handles so the destructor is a no-op. (#17)
         auto cv = contextView();
-        for (auto &slot : slots_)
-        {
-            if (slot.buffer != VK_NULL_HANDLE)
-                cv.retireBuffer(slot.buffer, slot.alloc);
-            slot = {};
-        }
-    }
-
-    void LineListTransientFeature::destroySlotBuffers()
-    {
-        // Fallback for the no-detach path (device idle at shutdown); a no-op after
-        // onDetachFromScene() has retired + nulled the handles.
-        if (!allocator_)
-            return;
-        for (auto &slot : slots_)
-        {
-            if (slot.buffer != VK_NULL_HANDLE)
-                vmaDestroyBuffer(allocator_, slot.buffer, slot.alloc);
-            slot = {};
-        }
+        ring_.retireInto([&](VkBuffer b, VmaAllocation a) { cv.retireBuffer(b, a); });
     }
 
 } // namespace lux::render

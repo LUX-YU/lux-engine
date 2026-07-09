@@ -33,6 +33,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -68,6 +70,16 @@ namespace lux::rendertest
                 if (auto r = server.attachToWindow(window_); !r) { failed_.store(true); ready_.store(true); return; }
                 ready_.store(true);
                 try { while (server.tick()) {} } catch (...) {}
+                // Liveness: if the loop ended WITHOUT the fixture asking (device loss,
+                // an exception swallowed above, a server-side fatal), any await() is
+                // blocked on a reply that will never come. Mark the death and set the
+                // channel stopping so reply_cv waiters wake and fail FAST with a message
+                // instead of dying as an opaque ctest TIMEOUT.
+                if (!stop_requested_.load(std::memory_order_acquire))
+                {
+                    server_died_.store(true, std::memory_order_release);
+                    sync_->requestStop();
+                }
             });
 
             while (!ready_.load(std::memory_order_acquire))
@@ -82,6 +94,7 @@ namespace lux::rendertest
 
         ~DeviceRenderFixture()
         {
+            stop_requested_.store(true, std::memory_order_release);   // an expected stop, not a death
             if (sync_) sync_->requestStop();
             if (server_thread_.joinable()) server_thread_.join();
         }
@@ -101,11 +114,21 @@ namespace lux::rendertest
         /// Submit BLOCKING + pump window events & replies until @p req resolves, then leave a
         /// fresh frame begun. A non-pumping blocking wait deadlocks the swapchain, and a
         /// non-blocking submit silently drops later commands when the ring is full.
+        /// Liveness: waitAndPumpReplies() returning false means the channel is stopping and
+        /// the reply can never arrive (RenderSession::syncCall honours the same signal) —
+        /// fail fast with a diagnostic instead of hanging into the ctest timeout.
         template <class T>
         T await(lux::render::RenderRequest<T> req)
         {
             session_->submitFrame(/*blocking=*/true);
-            while (!req.isReady()) { window_.pollEvents(); session_->waitAndPumpReplies(); }
+            while (!req.isReady())
+            {
+                window_.pollEvents();
+                const bool channel_alive = session_->waitAndPumpReplies();
+                if (req.isReady()) break;
+                if (!channel_alive || server_died_.load(std::memory_order_acquire))
+                    dieServerLost("await");
+            }
             T r = req.result();
             session_->beginFrame({});
             return r;
@@ -116,7 +139,8 @@ namespace lux::rendertest
         {
             session_->submitFrame(/*blocking=*/true);
             window_.pollEvents();
-            session_->waitAndPumpReplies();
+            if (!session_->waitAndPumpReplies() || server_died_.load(std::memory_order_acquire))
+                dieServerLost("flush");
             session_->beginFrame({});
         }
         void flush(int n) { for (int i = 0; i < n; ++i) flush(); }
@@ -164,6 +188,17 @@ namespace lux::rendertest
         [[nodiscard]] const lux::render::ReadbackViewReply& lastReadback() const noexcept { return last_readback_; }
 
     private:
+        /// The server thread stopped WITHOUT the fixture asking — the test cannot make
+        /// progress, so await()/flush() abort with a message rather than hang.
+        [[noreturn]] void dieServerLost(const char* where)
+        {
+            std::fprintf(stderr,
+                "[DeviceRenderFixture] render server thread died / channel stopped during %s — "
+                "a pending reply can never arrive; aborting instead of hanging into the ctest timeout.\n",
+                where);
+            std::abort();
+        }
+
         bool                                                glfw_inited_;   // FIRST: glfwInit() before window_
         std::uint32_t                                       width_;
         std::uint32_t                                       height_;
@@ -172,6 +207,8 @@ namespace lux::rendertest
         std::shared_ptr<lux::render::RenderChannelSync>     sync_;
         std::atomic<bool>                                   ready_{false};
         std::atomic<bool>                                   failed_{false};
+        std::atomic<bool>                                   stop_requested_{false};
+        std::atomic<bool>                                   server_died_{false};
         std::thread                                         server_thread_;
         std::unique_ptr<lux::render::RenderSession>         session_;
         lux::render::ReadbackViewReply                      last_readback_{};

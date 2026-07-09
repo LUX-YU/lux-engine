@@ -19,7 +19,13 @@ namespace lux::render
     }
 
     // No feature-local commands → the shared no-op factory helper (drops the redundant
-    // hand-written register/unregister fns).
-    const FeatureFactory kHzbFeatureFactory = makeSimpleFactory(&hzbCreateFn, "Hzb");
+    // hand-written register/unregister fns). Stable identity so re-registration dedups
+    // via AlreadyRegistered instead of growing the registry per bring-up.
+    static constexpr FeatureDescriptor kHzbDescriptor{
+        .type              = featureId("lux.render.hzb.v1"),
+        .name              = "Hzb",
+        .contributes_graph = true,
+    };
+    const FeatureFactory kHzbFeatureFactory = makeSimpleFactory(&hzbCreateFn, "Hzb", kHzbDescriptor);
 
 } // namespace lux::render

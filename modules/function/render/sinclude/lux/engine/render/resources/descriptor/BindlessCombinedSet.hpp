@@ -216,6 +216,41 @@ namespace lux::render
             std::span<const TextureUpdateMip> mips,
             bool generate_mips);
 
+        // ========== Persistent dynamic textures + region updates (U2-01) ==========
+
+        /// Create a PERSISTENT dynamic 2D texture: GPU objects + descriptor now, the
+        /// contents ZERO-FILLED this frame through the normal pending-upload pipeline
+        /// (every mip — so the whole image reaches SHADER_READ_ONLY and later region
+        /// updates can barrier from it uniformly). The slot — and therefore the
+        /// bindless index — never changes across region updates. 2D set only;
+        /// single-layer (2D_ARRAY views arrive with the chunk-atlas slice).
+        SlotHandle addPersistentTexture(uint32_t width, uint32_t height,
+                                        uint32_t mip_levels, VkFormat fmt,
+                                        const VkSamplerCreateInfo* opt_sampler_ci = nullptr);
+
+        /// One region write for updateTextureRegions — the comm-free mirror of the
+        /// wire TextureRegionDesc (this header stays out of the comm layer).
+        struct RegionUpdate
+        {
+            uint32_t x{0}, y{0};
+            uint32_t width{0}, height{0};
+            uint32_t mip{0};
+            uint32_t array_layer{0};
+            uint32_t row_pitch_bytes{0};   ///< source stride; 0 = tight
+            uint32_t data_offset{0};       ///< byte offset into @p pixels
+        };
+
+        /// Queue in-place region updates for a live slot. Source rows are repacked
+        /// TIGHTLY into staging (honouring row_pitch_bytes), and the batch rides the
+        /// NORMAL pending-upload pipeline in chunks of ≤ kTextureMaxMipCount regions —
+        /// both drain paths (direct record + transfer scheduler) apply them with no
+        /// new machinery. The caller has already bounds-validated the batch
+        /// (validateTextureRegions); this checks only slot liveness.
+        [[nodiscard]] bool updateTextureRegions(const SlotHandle& h,
+                                                std::span<const RegionUpdate> regions,
+                                                std::span<const std::byte> pixels,
+                                                uint32_t texel_bytes);
+
         /// Queue an in-place cube texture update for an existing live slot.
         [[nodiscard]] bool updateCubeFaces(
             const SlotHandle& h,
@@ -491,6 +526,12 @@ namespace lux::render
             uint32_t mip_level{0};
             uint32_t width{0};
             uint32_t height{0};
+            // Region uploads (U2): texel offset within the mip + target array layer.
+            // Full-mip uploads leave these 0, so every pre-existing producer is
+            // unchanged; both drain paths honour them.
+            uint32_t x{0};
+            uint32_t y{0};
+            uint32_t array_layer{0};
         };
 
         struct TextureCopyPlan

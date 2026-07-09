@@ -150,8 +150,85 @@ namespace lux::render
         return h;
     }
 
+    namespace
+    {
+        // EPixelFormat → VkFormat for the UNCOMPRESSED formats the persistent path
+        // accepts (create refused UnsupportedFormat before reaching this).
+        [[nodiscard]] VkFormat persistentVkFormat(EPixelFormat f) noexcept
+        {
+            switch (f)
+            {
+            case EPixelFormat::RGBA8_SRGB:    return VK_FORMAT_R8G8B8A8_SRGB;
+            case EPixelFormat::RGBA8_UNORM:   return VK_FORMAT_R8G8B8A8_UNORM;
+            case EPixelFormat::RGBA16_SFLOAT: return VK_FORMAT_R16G16B16A16_SFLOAT;
+            case EPixelFormat::RG8_UNORM:     return VK_FORMAT_R8G8_UNORM;
+            case EPixelFormat::R8_UNORM:      return VK_FORMAT_R8_UNORM;
+            case EPixelFormat::R16_UINT:      return VK_FORMAT_R16_UINT;
+            case EPixelFormat::R16_UNORM:     return VK_FORMAT_R16_UNORM;
+            default:                          return VK_FORMAT_UNDEFINED;
+            }
+        }
+    }
+
+    Expected<TextureHandle> TextureResources::createPersistentTexture2D(
+        const PersistentTexture2DDesc& desc,
+        const VkSamplerCreateInfo* opt_sampler)
+    {
+        // Shared U2-00 validator — the same pure check the client pre-flights with.
+        if (const auto v = validatePersistentTexture2DDesc(desc); !v.ok())
+            return lux::cxx::unexpected(make_error_code(
+                v.status == ERegionUploadStatus::UnsupportedFormat
+                    ? ERenderError::UnsupportedFormat
+                    : ERenderError::InvalidArgument));
+        // Implementation limit (NOT a protocol limit): the 2D bindless set builds
+        // VK_IMAGE_VIEW_TYPE_2D views — layered persistent textures arrive with the
+        // chunk-atlas slice (C2-01) on a 2D_ARRAY set.
+        if (desc.array_layers != 1)
+            return lux::cxx::unexpected(make_error_code(ERenderError::InvalidArgument));
+
+        const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
+        const SlotHandle sh = combined_.addPersistentTexture(
+            desc.width, desc.height, desc.mip_levels, persistentVkFormat(desc.format), &sci);
+        if (!sh.valid())
+            return lux::cxx::unexpected(make_error_code(ERenderError::SsboFull));
+
+        persistent_descs_.emplace(sh.index, desc);
+        return TextureHandle{sh.index, sh.gen};
+    }
+
+    ERegionUploadStatus TextureResources::updateTextureRegions(
+        TextureHandle h,
+        std::span<const TextureRegionDesc> regions,
+        std::span<const std::byte> pixels)
+    {
+        const SlotHandle sh{h.index, h.gen};
+        if (!combined_.isTextureAlive(sh))
+            return ERegionUploadStatus::InvalidHandle;
+        const auto it = persistent_descs_.find(h.index);
+        if (it == persistent_descs_.end())
+            return ERegionUploadStatus::InvalidHandle;   // immutable asset texture — not updatable
+
+        // Authoritative bounds check — the SAME pure validator the client used.
+        if (const auto v = validateTextureRegions(it->second, regions, pixels.size()); !v.ok())
+            return v.status;
+
+        // Wire descs → the bindless set's comm-free mirror (identical fields).
+        std::vector<BindlessCombinedSet::RegionUpdate> updates;
+        updates.reserve(regions.size());
+        for (const TextureRegionDesc& r : regions)
+            updates.push_back(BindlessCombinedSet::RegionUpdate{
+                r.x, r.y, r.width, r.height, r.mip, r.array_layer,
+                r.row_pitch_bytes, r.data_offset});
+
+        return combined_.updateTextureRegions(
+                   sh, updates, pixels, regionTexelBytes(it->second.format))
+                   ? ERegionUploadStatus::Ok
+                   : ERegionUploadStatus::InvalidHandle;
+    }
+
     bool TextureResources::remove(TextureHandle h)
     {
+        persistent_descs_.erase(h.index);   // no-op for immutable asset textures
         return combined_.removeTexture(SlotHandle{h.index, h.gen});
     }
 

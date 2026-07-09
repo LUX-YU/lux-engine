@@ -31,8 +31,8 @@
 #include <lux/engine/render/renderer/features/light/LightOperation.hpp>
 #include <lux/engine/render/renderer/features/meshstack/MeshStackOperation.hpp>  // MeshStack ops/payloads/proxy ids
 #include <lux/engine/render/renderer/features/sky_box/SkyboxOperation.hpp>       // Skybox ops/payloads (PARAM)
-#include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeatureOps.hpp>  // Canvas2D submit op (2D bridges)
-#include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>   // SpriteDraw
+#include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeatureOps.hpp>  // Canvas2D v2 instance ops (2D bridges)
+#include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>   // Sprite2DInstanceData / Sprite2DHandle
 #include <lux/engine/render/comm/RenderProtocol.hpp>          // MeshUploadedReply
 #include <lux/engine/render/core/RenderObjectTypes.hpp>       // RenderObjectHandle
 
@@ -86,6 +86,13 @@ namespace lux::bridgetest
         /// reply (otherwise the `!object` half would mask the status check).
         bool add_instance_object_on_failure{false};
         std::vector<lux::render::RenderObjectHandle> created_objects;
+
+        // Canvas2D v2 reply controls (Sprite2DBridge).
+        lux::render::ECanvas2DCreateStatus add_sprite_status{
+            lux::render::ECanvas2DCreateStatus::Ok};   ///< AddSprite2D outcome the server reports
+        std::uint32_t next_sprite_index{1};            ///< hand out distinct Sprite2DHandle indices
+        std::vector<lux::render::Sprite2DHandle> created_sprites;
+        std::vector<lux::render::Sprite2DHandle> removed_sprites;
 
         void record(const char* op, const void* data, std::size_t n)
         {
@@ -202,14 +209,49 @@ namespace lux::bridgetest
                 "TransformBatch", entries.data(), entries.size_bytes());
         }
 
-        // ── Canvas2D submit handler (Sprite2DBridge / 2D producers) ──
-        // The submit op is a Blob: scene_id rides the envelope, the SpriteDraw[] rides a
-        // BlobRef. Resolve it and record the RAW SpriteDraw bytes under "Canvas2DSubmit" so
-        // a test decodes the batch as SpriteDraw[] (mirrors the real handleCanvas2DSubmit).
-        inline void recCanvas2DSubmit(Ctx& ctx, const lux::render::Canvas2DSubmitPayload& p)
+        // ── Canvas2D v2 instance handlers (Sprite2DBridge) ──
+        inline void recAddSprite2D(Ctx& ctx, const lux::render::AddSprite2DPayload& p)
         {
-            const auto blob = lux::render::resolveBlob(ctx.program, p.sprites);
-            static_cast<Recorder*>(ctx.user_state)->record("Canvas2DSubmit", blob.data(), blob.size());
+            auto* rec = static_cast<Recorder*>(ctx.user_state);
+            rec->record("AddSprite2D", &p, sizeof(p));
+            lux::render::Sprite2DSlotReply reply{};
+            reply.status = rec->add_sprite_status;
+            if (reply.status == lux::render::ECanvas2DCreateStatus::Ok)
+            {
+                reply.handle = lux::render::Sprite2DHandle{ rec->next_sprite_index++, 1u };
+                rec->created_sprites.push_back(reply.handle);
+            }
+            lux::render::replyToCurrent<lux::render::AddSprite2DPayload>(ctx, reply);
+        }
+
+        inline void recRemoveSprite2D(Ctx& ctx, const lux::render::RemoveSprite2DPayload& p)
+        {
+            auto* rec = static_cast<Recorder*>(ctx.user_state);
+            rec->record("RemoveSprite2D", &p, sizeof(p));
+            rec->removed_sprites.push_back(p.handle);
+        }
+
+        // Bulk: one command carries a span of dirty transform entries. Recorded as one
+        // "Sprite2DTransformBatch" blob (decode as Sprite2DTransformEntry[]).
+        inline void recSprite2DTransformBatch(Ctx& ctx, std::span<const lux::render::Sprite2DTransformEntry> entries)
+        {
+            static_cast<Recorder*>(ctx.user_state)->record(
+                "Sprite2DTransformBatch", entries.data(), entries.size_bytes());
+        }
+
+        inline void recUpdateSprite2DVisual(Ctx& ctx, const lux::render::UpdateSprite2DVisualPayload& p)
+        {
+            static_cast<Recorder*>(ctx.user_state)->record("UpdateSprite2DVisual", &p, sizeof(p));
+        }
+
+        inline void recUpdateSprite2DKey(Ctx& ctx, const lux::render::UpdateSprite2DKeyPayload& p)
+        {
+            static_cast<Recorder*>(ctx.user_state)->record("UpdateSprite2DKey", &p, sizeof(p));
+        }
+
+        inline void recSetCanvas2DEnabled(Ctx& ctx, const lux::render::SetCanvas2DEnabledPayload& p)
+        {
+            static_cast<Recorder*>(ctx.user_state)->record("SetCanvas2DEnabled", &p, sizeof(p));
         }
     } // namespace detail
 
@@ -281,17 +323,23 @@ namespace lux::bridgetest
             features_.injectForTest("Skybox", ids, FeatureHandle{ 0u, 1u });
         }
 
-        // Register the Canvas2D submit op (Blob) + inject "Canvas2D" → its id, so a
-        // Sprite2DBridge resolving ctx.canvas2d() (features().ops<Canvas2DOperationIds>)
-        // dispatches its per-frame batch to a handler the fake server owns. Order matches
-        // FeatureOpIds<Canvas2DSubmitOp>.
+        // Register the Canvas2D v2 instance ops + inject "Canvas2D" → their ids, so a
+        // retained Sprite2DBridge / Camera2DUploadBridge resolving ctx.canvas2d()
+        // (features().ops<Canvas2DOperationIds>) dispatches to handlers the fake server
+        // owns. Order matches FeatureOpIds<AddSprite2DOp, RemoveSprite2DOp,
+        // Sprite2DTransformBatchOp, UpdateSprite2DVisualOp, UpdateSprite2DKeyOp,
+        // SetCanvas2DEnabledOp>.
         void registerCanvas2DOps()
         {
             using namespace lux::render;
-            const TypeId submit = dispatcher_.allocateAndRegisterUnary<Canvas2DSubmitPayload, &detail::recCanvas2DSubmit>(
-                opcode_of_v<Canvas2DSubmitOp>, "Canvas2DSubmit");
-            const std::array<TypeId, 1> ops{ submit };
-            features_.injectForTest("Canvas2D", ops);
+            std::array<TypeId, 6> ids;
+            ids[0] = dispatcher_.allocateAndRegisterUnary<AddSprite2DPayload,        &detail::recAddSprite2D        >(opcode_of_v<AddSprite2DOp>,            "AddSprite2D");
+            ids[1] = dispatcher_.allocateAndRegisterUnary<RemoveSprite2DPayload,     &detail::recRemoveSprite2D     >(opcode_of_v<RemoveSprite2DOp>,         "RemoveSprite2D");
+            ids[2] = dispatcher_.allocateAndRegisterBulk <Sprite2DTransformEntry,    &detail::recSprite2DTransformBatch>(opcode_of_v<Sprite2DTransformBatchOp>, "Sprite2DTransformBatch");
+            ids[3] = dispatcher_.allocateAndRegisterUnary<UpdateSprite2DVisualPayload,&detail::recUpdateSprite2DVisual>(opcode_of_v<UpdateSprite2DVisualOp>,  "UpdateSprite2DVisual");
+            ids[4] = dispatcher_.allocateAndRegisterUnary<UpdateSprite2DKeyPayload,  &detail::recUpdateSprite2DKey  >(opcode_of_v<UpdateSprite2DKeyOp>,      "UpdateSprite2DKey");
+            ids[5] = dispatcher_.allocateAndRegisterUnary<SetCanvas2DEnabledPayload, &detail::recSetCanvas2DEnabled >(opcode_of_v<SetCanvas2DEnabledOp>,     "SetCanvas2DEnabled");
+            features_.injectForTest("Canvas2D", ids);
         }
 
         // ── Granular frame steps (for tests that must interleave shutdown between

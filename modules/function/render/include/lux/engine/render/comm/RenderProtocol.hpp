@@ -110,6 +110,7 @@ namespace lux::render
         // feature-scoped createLight; value reserved). Core no longer names light.
         inline constexpr TypeId ReplyShaderCompiled = 15;
         inline constexpr TypeId ReplyReadbackView   = 20;
+        inline constexpr TypeId ReplyTextureRegionsApplied = 23;   ///< U2-00 region-batch ack
 
         // ---- Name-based TypeId query ----
         inline constexpr TypeId QueryTypeId      = 22;
@@ -548,6 +549,18 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<CubeTextureCreatedReply>);
 
+    /// Reply for UpdateTextureRegions (U2-00): echoes the batch's content_revision so
+    /// the producer advances its uploaded_revision ONLY on status == Ok
+    /// (ERegionUploadStatus) — a refused batch leaves the dirty state pending for
+    /// retry instead of being silently lost (U2-03 acceptance).
+    struct TextureRegionsAppliedReply
+    {
+        uint64_t content_revision{0};
+        uint32_t status{0};   ///< numeric ERegionUploadStatus
+        uint32_t reserved_{0};
+    };
+    static_assert(std::is_trivially_copyable_v<TextureRegionsAppliedReply>);
+
     // LightCreatedReply moved to renderer/features/light/LightOperation.hpp
     // (reply for the feature-scoped createLight). Core no longer names light.
 
@@ -692,6 +705,24 @@ namespace lux::render
         using Reply = CubeTextureCreatedReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyCubeTextureCreated;
+    };
+
+    template <>
+    struct CommandTraits<CreatePersistentTexture2DPayload>
+    {
+        // Same reply shape as any texture create: {handle, status}. status carries
+        // ERegionUploadStatus (InvalidDesc / UnsupportedFormat on refusal).
+        using Reply = Texture2DCreatedReply;
+        static constexpr bool has_reply = true;
+        static constexpr TypeId reply_type_id = type_ids::ReplyTexture2DCreated;
+    };
+
+    template <>
+    struct CommandTraits<UpdateTextureRegionsPayload>
+    {
+        using Reply = TextureRegionsAppliedReply;
+        static constexpr bool has_reply = true;
+        static constexpr TypeId reply_type_id = type_ids::ReplyTextureRegionsApplied;
     };
 
     template <>

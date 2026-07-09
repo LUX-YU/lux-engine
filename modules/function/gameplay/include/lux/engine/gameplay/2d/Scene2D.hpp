@@ -52,12 +52,19 @@ namespace lux::gameplay::d2
         Camera2DSystem*     camera     = nullptr;   ///< world → ortho view/proj (if has(Core))
     };
 
+    /// Capabilities of @p plan that are enabled but NOT yet backed by an installable
+    /// system/phase (the capability-backing table in Scene2D.cpp — each slice flips its
+    /// bit in the same place it wires the backing, so the two cannot drift). Non-zero →
+    /// install() refuses the plan: a preset/capability must never promise something the
+    /// install path silently drops (the platformerPlan rule, applied one level down).
+    [[nodiscard]] LUX_FUNCTION_PUBLIC std::uint32_t unbackedCapabilities(const D2ScenePlan& plan) noexcept;
+
     /// Install @p plan's systems onto @p world in ONE deterministic addSystem pass, in
     /// canonical order. Call once, right after constructing the World, BEFORE its first
     /// tick(). An empty plan installs nothing (payment symmetry). An INVALID plan
-    /// (!plan.validate().ok()) or a PixelSimulation plan given a null @p runtime installs
-    /// NOTHING and returns an empty result — never a partial install. @p runtime may be
-    /// null unless the plan enables PixelSimulation.
+    /// (!plan.validate().ok()), a plan with unbackedCapabilities(), or a PixelSimulation
+    /// plan given a null @p runtime installs NOTHING and returns an empty result — never
+    /// a partial install. @p runtime may be null unless the plan enables PixelSimulation.
     LUX_FUNCTION_PUBLIC D2Installed install(World& world, PixelFieldRuntime* runtime, const D2ScenePlan& plan);
 
     /// Register @p plan's custom renderable bridges on @p rs (Sprite2D / Tilemap2D /

@@ -38,6 +38,7 @@
 #include "lux/engine/gameplay/render_bridge/IRenderableBridge.hpp"
 
 #include <cassert>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -48,11 +49,22 @@ namespace lux::gameplay
 {
     struct RenderableSystem::Impl
     {
+        // The teardown lifecycle is ONE three-state progression, encoded as one field so
+        // an impossible combination ("done without ever draining") is unrepresentable —
+        // with two independent bools, flushShutdownCleanup() without beginShutdown() could
+        // set done-without-begun, silently defusing the dtor tripwire while update() was
+        // still permitted.
+        enum class ShutdownState : std::uint8_t
+        {
+            Active,     ///< normal operation (addBridge/update permitted)
+            Draining,   ///< beginShutdown() ran; pending async work is being drained
+            Done,       ///< flushShutdownCleanup() completed — dtor contract satisfied
+        };
+
         std::unique_ptr<RenderableBridgeContext>          ctx;
         std::vector<std::unique_ptr<IRenderableBridge>>   bridges;
         bool                                              update_started{false};
-        bool                                              shutdown_begun{false};   // beginShutdown() called
-        bool                                              shutdown_done{false};    // flushShutdownCleanup() completed
+        ShutdownState                                     shutdown{ShutdownState::Active};
     };
 
     RenderableSystem::RenderableSystem(lux::render::RenderSession& session,
@@ -77,7 +89,7 @@ namespace lux::gameplay
         // shutdown_done (set only when flushShutdownCleanup COMPLETES), not merely on
         // beginShutdown — so "began shutdown but never finished draining/cleanup" is
         // caught, not given false confidence. A never-used system (no update()) is fine.
-        assert((impl_->shutdown_done || !impl_->update_started) &&
+        assert((impl_->shutdown == Impl::ShutdownState::Done || !impl_->update_started) &&
                "RenderableSystem destroyed without COMPLETING shutdown after use — GPU objects leak");
     }
 
@@ -85,7 +97,7 @@ namespace lux::gameplay
     {
         assert(!impl_->update_started &&
                "RenderableSystem::addBridge must be called before the first update()");
-        assert(!impl_->shutdown_begun &&
+        assert(impl_->shutdown == Impl::ShutdownState::Active &&
                "RenderableSystem::addBridge must not be called after shutdown()");
         if (!bridge) return;
         impl_->bridges.push_back(std::move(bridge));
@@ -123,8 +135,8 @@ namespace lux::gameplay
 
     void RenderableSystem::beginShutdown()
     {
-        if (impl_->shutdown_begun) return;         // idempotent
-        impl_->shutdown_begun = true;
+        if (impl_->shutdown != Impl::ShutdownState::Active) return;   // idempotent
+        impl_->shutdown = Impl::ShutdownState::Draining;
         // Builder must be LIVE — beginShutdown emits destroy / removeMeshInstance. It
         // removes KNOWN live objects + enters stopping mode; pending async creates are
         // NOT cancelled but drained by the caller (submit+pump until hasPendingShutdownWork
@@ -141,13 +153,22 @@ namespace lux::gameplay
 
     lux::render::Expected<void> RenderableSystem::flushShutdownCleanup()
     {
+        // Cleanup is only legal from Draining: calling it without beginShutdown() would
+        // previously mark the teardown "done" while update() was still permitted —
+        // silently defusing the dtor tripwire. Done → idempotent success (nothing left
+        // to do); Active → refuse.
+        if (impl_->shutdown == Impl::ShutdownState::Done)   return {};
+        if (impl_->shutdown == Impl::ShutdownState::Active)
+            return lux::cxx::unexpected(
+                lux::render::make_error_code(lux::render::ERenderError::ShutdownNotBegun));
+
         // REFUSE if the drain is incomplete — do NOT silently "complete". Cleaning up while
         // creates/uploads are still in flight only destroys the orphans that HAVE replied;
         // the still-pending ones would then be cancelled by the bridge dtors (which only
         // detach the client continuation — the server still creates the object), leaking in
-        // the reused scene. Returning here (before any side effect, and before setting
-        // shutdown_done) keeps the operation terminal-or-nothing: the caller drains more and
-        // retries, and shutdown_done stays false so the dtor assert still guards a truncated
+        // the reused scene. Returning here (before any side effect, and before reaching
+        // Done) keeps the operation terminal-or-nothing: the caller drains more and
+        // retries, and the state stays Draining so the dtor assert still guards a truncated
         // teardown. (This replaces the old debug-only assert, which Release compiled out —
         // the exact hole P0-1 flagged.)
         if (hasPendingShutdownWork())
@@ -160,14 +181,15 @@ namespace lux::gameplay
         // leak in the reused scene.
         for (auto& b : impl_->bridges) b->flushShutdownCleanup(*impl_->ctx);
         if (impl_->ctx) impl_->ctx->destroyUnreferencedResources();
-        impl_->shutdown_done = true;   // cleanup complete — the dtor contract is now satisfied
+        impl_->shutdown = Impl::ShutdownState::Done;   // dtor contract now satisfied
         return {};
     }
 
     void RenderableSystem::update(lux::meta::EntityRegistry& registry, float /*dt*/)
     {
-        if (impl_->shutdown_begun)  // torn down: ctx/bridges are draining and the scene it
-        {                           // targeted may be gone — reject rather than re-drive.
+        if (impl_->shutdown != Impl::ShutdownState::Active)
+        {                           // torn down: ctx/bridges are draining/gone and the scene
+                                    // they targeted may be too — reject rather than re-drive.
             assert(false && "RenderableSystem::update() called after shutdown()");
             return;
         }

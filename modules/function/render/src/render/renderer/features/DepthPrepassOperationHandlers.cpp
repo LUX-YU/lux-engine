@@ -20,6 +20,16 @@ namespace lux::render
         return sc->addFeature<DepthPrepassFeature>(cfg);
     }
 
-    const FeatureFactory kDepthPrepassFeatureFactory = makeSimpleFactory(&depthPrepassCreateFn);
+    // Stable identity: re-registration (editor preview bring-up) dedups via
+    // AlreadyRegistered instead of growing the registry per bring-up. (This factory
+    // previously had no name at all — nothing looks a feature up by "", so giving it
+    // its real name is purely additive.)
+    static constexpr FeatureDescriptor kDepthPrepassDescriptor{
+        .type              = featureId("lux.render.depth_prepass.v1"),
+        .name              = "DepthPrepass",
+        .contributes_graph = true,
+    };
+    const FeatureFactory kDepthPrepassFeatureFactory =
+        makeSimpleFactory(&depthPrepassCreateFn, "DepthPrepass", kDepthPrepassDescriptor);
 
 } // namespace lux::render

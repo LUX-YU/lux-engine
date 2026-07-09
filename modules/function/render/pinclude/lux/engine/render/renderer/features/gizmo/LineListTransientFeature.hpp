@@ -9,6 +9,7 @@
 
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/render/renderer/features/gizmo/GizmoVertex.hpp>
+#include <lux/engine/render/renderer/features/TransientVertexRing.hpp>
 #include <lux/engine/render/core/ResourceHandle.hpp>
 #include <lux/engine/render/pipeline/GraphicsPipelineTemplate.hpp>
 #include <lux/engine/function/visibility.h>
@@ -16,11 +17,6 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-
-struct VmaAllocator_T;
-using VmaAllocator = VmaAllocator_T*;
-struct VmaAllocation_T;
-using VmaAllocation = VmaAllocation_T*;
 
 namespace lux::render
 {
@@ -78,28 +74,17 @@ namespace lux::render
         void onDetachFromScene(RenderScene& scene) override;
 
     private:
-        static constexpr uint32_t kBufferCount = 3;
-
-        struct FrameSlot
-        {
-            VkBuffer      buffer{VK_NULL_HANDLE};
-            VmaAllocation alloc{nullptr};
-            void*         mapped{nullptr};
-        };
-
         Config                 cfg_;
         GraphicsPipelineHandle pipeline_handle_{kInvalidPipelineHandle};
 
-        VmaAllocator           allocator_{nullptr};
-        FrameSlot              slots_[kBufferCount]{};
+        // Shared FIF vertex ring: sized to framesInFlight() and indexed by the REAL
+        // frame_index (replaces the old fixed slots_[3] + private frame counter, which
+        // could desync from the actual in-flight set).
+        TransientVertexRing    ring_;
         uint32_t               active_slot_{0};
-        uint32_t               frame_counter_{0};
         uint32_t               draw_count_{0};
 
         TransientLineListBuffer* incoming_{nullptr};
-
-        void createSlotBuffers();
-        void destroySlotBuffers();
     };
 
 } // namespace lux::render

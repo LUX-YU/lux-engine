@@ -74,6 +74,14 @@ namespace lux::render
         return sc->addFeature<ForwardMeshFeature>(cfg);
     }
 
-    const FeatureFactory kForwardMeshFeatureFactory = makeSimpleFactory(&forwardMeshCreateFn, "ForwardMesh");
+    // Stable identity: re-registration (editor preview bring-up) dedups via
+    // AlreadyRegistered instead of growing the registry per bring-up.
+    static constexpr FeatureDescriptor kForwardMeshDescriptor{
+        .type              = featureId("lux.render.forward_mesh.v1"),
+        .name              = "ForwardMesh",
+        .contributes_graph = true,
+    };
+    const FeatureFactory kForwardMeshFeatureFactory =
+        makeSimpleFactory(&forwardMeshCreateFn, "ForwardMesh", kForwardMeshDescriptor);
 
 } // namespace lux::render

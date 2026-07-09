@@ -3,10 +3,11 @@
 //  TransformSystem.hpp — local TRS → world, hierarchy-aware (lux::gameplay::d3).
 //
 //  A thin binding of the shared HierarchicalTransformSystem to the 3D component pair.
-//  Only the per-node math is 3D-specific: computeTRS composes translation, a
-//  quaternion rotation, and scale. The resolution kernel (two-pass memoized DFS,
-//  G-07 derived-component maintenance, G-08 cycle breaking, value-based dirty) lives
-//  once in HierarchicalTransformSystem and is shared with d2::Transform2DSystem.
+//  Only the per-node math is 3D-specific: localMatrix composes translation, a
+//  quaternion rotation, and scale; poseEquals is the value-based skip-gate input
+//  compare. The resolution kernel (preorder-vector linear pass, G-07 derived-
+//  component maintenance, entry-guarded cycles, value-based dirty/skip) lives once
+//  in HierarchicalTransformSystem and is shared with d2::Transform2DSystem.
 // ============================================================================
 
 #include <lux/engine/gameplay/world/systems/HierarchicalTransformSystem.hpp>
@@ -31,6 +32,15 @@ namespace lux::gameplay::d3
             t.rotate(tc.rotation);
             t.scale(tc.scale);
             return t.matrix();
+        }
+
+        /// Skip-gate input compare: EXACT pose equality, value-based — a direct
+        /// field write that sets no dirty flag still registers as a change.
+        static bool poseEquals(const TransformComponent& a, const TransformComponent& b)
+        {
+            return a.position == b.position &&
+                   a.rotation.coeffs() == b.rotation.coeffs() &&
+                   a.scale == b.scale;
         }
     };
 

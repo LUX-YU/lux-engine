@@ -82,6 +82,14 @@ namespace lux::render
         return sc->addFeature<DeferredGBufferFeature>(cfg);
     }
 
-    const FeatureFactory kDeferredGBufferFeatureFactory = makeSimpleFactory(&deferredGBufferCreateFn, "DeferredGBuffer");
+    // Stable identity: re-registration (editor preview bring-up) dedups via
+    // AlreadyRegistered instead of growing the registry per bring-up.
+    static constexpr FeatureDescriptor kDeferredGBufferDescriptor{
+        .type              = featureId("lux.render.deferred_gbuffer.v1"),
+        .name              = "DeferredGBuffer",
+        .contributes_graph = true,
+    };
+    const FeatureFactory kDeferredGBufferFeatureFactory =
+        makeSimpleFactory(&deferredGBufferCreateFn, "DeferredGBuffer", kDeferredGBufferDescriptor);
 
 } // namespace lux::render

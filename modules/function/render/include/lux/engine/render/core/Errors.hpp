@@ -61,6 +61,7 @@ namespace lux::render
 
         // --- lifecycle / teardown ---
         ShutdownStillPending,           ///< flushShutdownCleanup() called while async work still pends
+        ShutdownNotBegun,               ///< flushShutdownCleanup() called before beginShutdown()
 
         // --- feature-type registration ---
         NullFeatureFactory,             ///< a feature factory has no create_fn (addFeature would crash)
@@ -113,6 +114,7 @@ namespace lux::render
             case ERenderError::VulkanObjectCreationFailed: return "Vulkan object creation failed";
             case ERenderError::RecordContextAllocationFailed: return "Record context allocation failed";
             case ERenderError::ShutdownStillPending:   return "Shutdown still has pending async work";
+            case ERenderError::ShutdownNotBegun:       return "Shutdown cleanup requested before beginShutdown";
             case ERenderError::NullFeatureFactory:     return "Feature factory has no create function";
             case ERenderError::FeatureTypeCollision:   return "Feature type id collision (two factories share one stable id)";
             default:                                   return "Unknown error code";

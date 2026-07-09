@@ -90,6 +90,8 @@
 // ── Canvas2D ──
 #include "canvas2d_sprite_vert_embed.hpp"
 #include "canvas2d_sprite_frag_embed.hpp"
+#include "canvas2d_pixel_field_vert_embed.hpp"
+#include "canvas2d_pixel_field_frag_embed.hpp"
 // ── Highlight outline ──
 #include "highlight_highlight_mask_vert_embed.hpp"
 #include "highlight_highlight_mask_frag_embed.hpp"

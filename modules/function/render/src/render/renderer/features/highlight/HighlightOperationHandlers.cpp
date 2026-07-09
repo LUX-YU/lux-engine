@@ -31,6 +31,14 @@ namespace lux::render
         return sc->addFeature<HighlightFeature>(cfg);
     }
 
-    const FeatureFactory kHighlightFeatureFactory = makeSimpleFactory(&highlightCreateFn, "Highlight");
+    // Stable identity: re-registration (editor preview bring-up) dedups via
+    // AlreadyRegistered instead of growing the registry per bring-up.
+    static constexpr FeatureDescriptor kHighlightDescriptor{
+        .type              = featureId("lux.render.highlight.v1"),
+        .name              = "Highlight",
+        .contributes_graph = true,
+    };
+    const FeatureFactory kHighlightFeatureFactory =
+        makeSimpleFactory(&highlightCreateFn, "Highlight", kHighlightDescriptor);
 
 } // namespace lux::render

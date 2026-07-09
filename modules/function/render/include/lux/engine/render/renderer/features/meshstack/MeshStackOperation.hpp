@@ -326,9 +326,14 @@ namespace lux::render
         void updateInstanceUserMeta(RenderSceneId scene_id, RenderObjectHandle object, std::uint32_t user_meta_index);
 
         /// Per-frame transform updates (batched as bulk data). Each write self-routes
-        /// by `scene_id` (G-04), NOT the SetActiveScene scene. `updateTransforms` takes
-        /// entries that already carry their own scene_id.
+        /// by `scene_id` (G-04), NOT the SetActiveScene scene — the server silently
+        /// SKIPS an entry whose scene_id is null (there is no fallback), so a hand-built
+        /// batch that forgets to set it freezes its objects with no error. The
+        /// scene-stamping overload makes that mistake unrepresentable for the common
+        /// one-scene batch; take the span<const> overload only for genuinely
+        /// heterogeneous per-entry routing (entries already carry their scene_id).
         void updateTransform(RenderSceneId scene_id, RenderObjectHandle object, const float transform[16]);
+        void updateTransforms(RenderSceneId scene_id, std::span<TransformWriteEntry> entries);
         void updateTransforms(std::span<const TransformWriteEntry> entries);
 
         /// Upload mesh DATA into the global mesh arena; replies with the new RMeshHandle.

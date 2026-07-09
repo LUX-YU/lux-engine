@@ -375,6 +375,64 @@ namespace lux::render
         return createTexture2D(pixels, byte_count, width, height, channels, fmt, generate_mips);
     }
 
+    RenderRequest<Texture2DCreatedReply> RenderSession::createPersistentTexture2D(
+        const PersistentTexture2DDesc& desc)
+    {
+        // Client pre-flight with the SHARED U2-00 validator: a malformed desc settles
+        // synchronously (status = the exact ERegionUploadStatus) with no wire dispatch.
+        if (const auto v = validatePersistentTexture2DDesc(desc); !v.ok())
+            return RenderRequestFactory<Texture2DCreatedReply>::makeImmediate(
+                Texture2DCreatedReply{RTextureHandle{}, static_cast<uint32_t>(v.status)});
+
+        auto [req, cb] = RenderRequestFactory<Texture2DCreatedReply>::make();
+        CreatePersistentTexture2DPayload p{};
+        p.desc = desc;
+        builder().pushResource(type_ids::CreatePersistentTexture2D, p, std::move(cb));
+        return req;
+    }
+
+    RenderRequest<TextureRegionsAppliedReply> RenderSession::updateTextureRegions(
+        const OwnedTextureUploadBatch& batch)
+    {
+        // Structural refusals settle synchronously (echoing the revision so a
+        // producer's ack bookkeeping stays uniform). Bounds are validated by the
+        // SERVER against the authoritative create-desc; producers that know their
+        // desc can pre-flight via batch.validate().
+        if (batch.regions.empty())
+            return RenderRequestFactory<TextureRegionsAppliedReply>::makeImmediate(
+                TextureRegionsAppliedReply{batch.content_revision,
+                    static_cast<uint32_t>(ERegionUploadStatus::NoRegions), 0});
+        if (!batch.pixels || batch.pixel_bytes == 0)
+            return RenderRequestFactory<TextureRegionsAppliedReply>::makeImmediate(
+                TextureRegionsAppliedReply{batch.content_revision,
+                    static_cast<uint32_t>(ERegionUploadStatus::DataOutOfRange), 0});
+
+        auto [req, cb] = RenderRequestFactory<TextureRegionsAppliedReply>::make();
+        auto& b = builder();
+
+        // U2-00 ownership contract: the region descs are deep-copied into their own
+        // owned attachment and the pixel block rides the batch's shared_ptr — the
+        // caller's memory is reusable the moment we return; the attachments pin both
+        // blocks until the render thread / transfer worker is done.
+        auto owned_regions =
+            std::make_shared<std::vector<TextureRegionDesc>>(batch.regions);
+
+        UpdateTextureRegionsPayload p{};
+        p.handle           = batch.dst;
+        p.content_revision = batch.content_revision;
+        p.region_count     = static_cast<uint32_t>(owned_regions->size());
+        p.regions = b.pushSharedBytes(
+            owned_regions,
+            reinterpret_cast<const std::byte*>(owned_regions->data()),
+            static_cast<uint32_t>(owned_regions->size() * sizeof(TextureRegionDesc)));
+        p.pixels = b.pushSharedBytes(
+            std::shared_ptr<const void>(batch.pixels, batch.pixels.get()),   // aliasing: array→void
+            batch.pixels.get(),
+            static_cast<uint32_t>(batch.pixel_bytes));
+        b.pushResource(type_ids::UpdateTextureRegions, p, std::move(cb));
+        return req;
+    }
+
     RenderRequest<Texture2DCreatedReply> RenderSession::createTexture2DMips(
         const Texture2DMipLevel* mip_levels,
         std::uint32_t mip_count,

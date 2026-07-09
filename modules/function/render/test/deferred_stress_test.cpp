@@ -783,7 +783,9 @@ static RenderTask<void> stressTask(
             xform_batch[idx].object = ci.object;
             std::memcpy(xform_batch[idx].transform, xform, sizeof(xform));
         }
-        mesh_proxy.updateTransforms(xform_batch);
+        // Scene-stamping overload: every entry self-routes by scene_id (G-04 — the
+        // server SKIPS null-scene entries; there is no SetActiveScene fallback).
+        mesh_proxy.updateTransforms(srv.scene_id, xform_batch);
 
         // ── Update point light positions (orbit, distinct colours) ───
         std::vector<UpdateLightPayload> light_batch;
@@ -826,7 +828,7 @@ static RenderTask<void> stressTask(
             lc_xform_batch.push_back(lc_tw);
         }
         light_proxy.updateLights(light_batch);
-        mesh_proxy.updateTransforms(lc_xform_batch);
+        mesh_proxy.updateTransforms(srv.scene_id, lc_xform_batch);
 
         co_await yield_frame();
 

@@ -608,6 +608,14 @@ namespace lux::render
         sendBulk<TransformBatchOp>(*session_, ops_, std::span<const TransformWriteEntry>{&e, 1});
     }
 
+    void MeshStackProxy::updateTransforms(RenderSceneId scene_id, std::span<TransformWriteEntry> entries)
+    {
+        for (auto& e : entries)
+            e.scene_id = scene_id;
+        sendBulk<TransformBatchOp>(*session_, ops_,
+                                   std::span<const TransformWriteEntry>{entries.data(), entries.size()});
+    }
+
     void MeshStackProxy::updateTransforms(std::span<const TransformWriteEntry> entries)
     {
         sendBulk<TransformBatchOp>(*session_, ops_, entries);

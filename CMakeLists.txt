@@ -70,3 +70,53 @@ endforeach()
 # link against function::* / core::* / resource::* targets. The LUX_BUILD_EDITOR
 # gate lives inside engine/CMakeLists.txt at component granularity.
 add_subdirectory(engine)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Packaging (CPack) — one .deb PER LAYER.
+#
+# Each layer calls install_components(PROJECT_NAME lux-engine-<layer>), and
+# install_components tags every file with a CPack component (<layer> with hyphens
+# -> underscores, e.g. lux_engine_platform). CPACK_DEB_COMPONENT_INSTALL + IGNORE
+# grouping then emit one .deb per layer, named via CPACK_DEBIAN_<COMP>_PACKAGE_NAME
+# and wired with per-layer Depends. SHLIBDEPS adds the concrete system .so deps;
+# the *-dev / inter-layer entries below are the build/transitive ones it can't infer.
+#
+# Runtime tier only for now (LUX_BUILD_EDITOR=OFF). Editor-tier components get
+# their config in the editor phase. Configure with -DCMAKE_INSTALL_PREFIX=/usr.
+# ──────────────────────────────────────────────────────────────────────────────
+set(CPACK_PACKAGE_NAME    "lux-engine")
+if(NOT DEFINED CPACK_PACKAGE_VERSION)
+    set(CPACK_PACKAGE_VERSION "0.0.1")
+endif()
+set(CPACK_PACKAGE_VENDOR  "LUX-YU")
+set(CPACK_PACKAGE_CONTACT "LUX-YU <chenhui.lux.yu@outlook.com>")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "LUX engine (layered: platform/core/resource/function)")
+set(CPACK_GENERATOR                "DEB")
+set(CPACK_DEBIAN_FILE_NAME         "DEB-DEFAULT")
+set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+
+# one .deb per component, no grouping
+set(CPACK_DEB_COMPONENT_INSTALL ON)
+set(CPACK_COMPONENTS_GROUPING   IGNORE)
+set(CPACK_COMPONENTS_ALL
+    lux_engine_platform
+    lux_engine_core
+    lux_engine_resource
+    lux_engine_function
+)
+
+# platform (bottom layer)
+set(CPACK_DEBIAN_LUX_ENGINE_PLATFORM_PACKAGE_NAME    "lux-engine-platform")
+set(CPACK_DEBIAN_LUX_ENGINE_PLATFORM_PACKAGE_DEPENDS "lux-cxx (>= 0.0.2), libglfw3-dev, libvulkan-dev")
+# core -> platform
+set(CPACK_DEBIAN_LUX_ENGINE_CORE_PACKAGE_NAME    "lux-engine-core")
+set(CPACK_DEBIAN_LUX_ENGINE_CORE_PACKAGE_DEPENDS "lux-engine-platform, lux-cxx (>= 0.0.2), libeigen3-dev, libluajit-5.1-dev")
+# resource -> core, platform
+set(CPACK_DEBIAN_LUX_ENGINE_RESOURCE_PACKAGE_NAME    "lux-engine-resource")
+set(CPACK_DEBIAN_LUX_ENGINE_RESOURCE_PACKAGE_DEPENDS "lux-engine-core, lux-engine-platform, lux-cxx (>= 0.0.2), stduuid, libassimp-dev, libvulkan-dev")
+# function -> core, resource, platform
+set(CPACK_DEBIAN_LUX_ENGINE_FUNCTION_PACKAGE_NAME    "lux-engine-function")
+set(CPACK_DEBIAN_LUX_ENGINE_FUNCTION_PACKAGE_DEPENDS "lux-engine-core, lux-engine-resource, lux-engine-platform, lux-cxx (>= 0.0.2), imgui, libvulkan-dev")
+
+include(CPack)

@@ -39,6 +39,14 @@ namespace lux::render
         return sc->addFeature<DeferredLightingFeature>(cfg);
     }
 
-    const FeatureFactory kDeferredLightingFeatureFactory = makeSimpleFactory(&deferredLightingCreateFn, "DeferredLighting");
+    // Stable identity: re-registration (editor preview bring-up) dedups via
+    // AlreadyRegistered instead of growing the registry per bring-up.
+    static constexpr FeatureDescriptor kDeferredLightingDescriptor{
+        .type              = featureId("lux.render.deferred_lighting.v1"),
+        .name              = "DeferredLighting",
+        .contributes_graph = true,
+    };
+    const FeatureFactory kDeferredLightingFeatureFactory =
+        makeSimpleFactory(&deferredLightingCreateFn, "DeferredLighting", kDeferredLightingDescriptor);
 
 } // namespace lux::render

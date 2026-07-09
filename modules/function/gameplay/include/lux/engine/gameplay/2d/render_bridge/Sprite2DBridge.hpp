@@ -1,114 +1,265 @@
 #pragma once
 // ============================================================================
-//  Sprite2DBridge.hpp — ECS SpriteComponent → Canvas2DFeature (lux::gameplay::d2).
+//  Sprite2DBridge.hpp — ECS SpriteComponent → GPU-resident Canvas2D instance
+//  (lux::gameplay::d2, v2 — .internal/2d-gpu-driven-rewrite.md §3.5).
 //
-//  A BESPOKE IRenderableBridge (design §0R V1/V2: a custom bridge, NOT the generic
-//  INSTANCE/POOL — those are MeshStack-specific). Each frame it reads every visible
-//  (SpriteComponent, WorldTransform2DComponent) entity, builds a SpriteDraw batch and
-//  submits it to the scene's single Canvas2DFeature via Canvas2DProxy.
+//  RETAINED bridge (the InstanceBridge shape): each sprite entity owns ONE
+//  GPU-resident instance in the scene's Canvas2D arena, created on first sight
+//  (AddSprite2D, reply-validated per G-05), updated by DELTAS and removed on
+//  reap. The wire carries change, never content:
+//    - transform: the world affine is re-baked each frame (world × size ×
+//      pivot — 2D, ~12 FLOPs) and VALUE-compared against the last-sent bake;
+//      only a difference emits a batch entry. Value-based on purpose (the
+//      no-trust axiom): a direct field write to Transform2D / size / pivot
+//      with no dirty flag still registers.
+//    - visual (uv/tint/texture) and key (priority/visible): value-compared
+//      against the last-sent copy; changes emit their low-frequency op.
+//  A fully static sprite set therefore sends NOTHING — no heartbeat, no
+//  producer staging; those v1 concepts are gone.
 //
-//  Submission is a fire-and-forget Blob (TRANSIENT — the whole batch is rebuilt +
-//  re-uploaded each frame; there is no retained SpriteBatchHandle and no async create),
-//  so the two-phase teardown-drain contract is trivial: nothing is ever in flight
-//  (hasPendingShutdownWork() is always false, reap/flushShutdownCleanup are no-ops).
+//  No per-frame camera gate here: instances persist server-side, and DRAWING
+//  is gated by the retained scene bit (SetCanvas2DEnabled), which the
+//  Camera2DUploadBridge flips edge-triggered on the publishable-camera state.
 //
-//  If the scene has no Canvas2DFeature (a pure-3D scene never registers it), ctx.canvas2d()
-//  yields an invalid proxy and submitSprites() no-ops — so registering this bridge on a
-//  3D scene costs only the view iteration (R2-04 contract).
+//  Teardown follows the two-phase drain contract: beginShutdown removes every
+//  known live instance and routes late create replies into an orphan list that
+//  flushShutdownCleanup destroys (never cancel-and-leak — G-05).
 // ============================================================================
 
 #include <lux/engine/gameplay/render_bridge/IRenderableBridge.hpp>
 #include <lux/engine/gameplay/render_bridge/RenderableBridgeContext.hpp>       // ctx.canvas2d() / scene()
 #include <lux/engine/gameplay/2d/world/components/SpriteComponent.hpp>
 #include <lux/engine/gameplay/2d/world/components/WorldTransform2DComponent.hpp>
-#include <lux/engine/gameplay/2d/world/systems/Camera2DSystem.hpp>             // activeCamera (frame camera gate)
-#include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>  // SpriteDraw / DrawOrderKey / Rect2D
-#include <lux/engine/meta/LuxObject.hpp>   // EntityRegistry / entity_id / entt::to_integral / null_entity
+#include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>  // Sprite2DInstanceData / Sprite2DHandle
+#include <lux/engine/render/comm/client/RenderRequest.hpp>                      // in-flight create handle
+#include <lux/engine/meta/LuxObject.hpp>   // EntityRegistry / entity_id
 
 #include <cstdint>
 #include <cstring>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace lux::gameplay::d2
 {
     class Sprite2DBridge final : public lux::gameplay::IRenderableBridge
     {
+        /// One live GPU instance + the LAST-SENT state every diff compares against.
+        struct Live
+        {
+            lux::render::Sprite2DHandle handle{};
+            float                       m[6]{};      ///< last sent baked affine
+            float                       uv[4]{};
+            std::uint32_t               tint{0};
+            std::uint32_t               tex{lux::render::kNoTexture};
+            float                       priority{0.f};
+            bool                        visible{true};
+        };
+
+        /// G-05 failure record: a failed create must not re-issue every frame.
+        /// InvalidConfiguration / generic Unknown are permanent (the scene has no
+        /// Canvas2D — futile until the scene is rebuilt); CapacityExhausted is
+        /// transient and retried after a bounded backoff.
+        struct FailRecord
+        {
+            bool permanent{false};
+            int  retry_in{0};
+        };
+        static constexpr int kTransientRetryDrives = 120;   // ~2s @ 60fps
+
     public:
-        /// @p producer_order distinguishes this producer in the DrawOrderKey when several
-        /// bridges share a layer (design §3.3). Unique per registered 2D producer.
-        explicit Sprite2DBridge(std::uint32_t producer_order = 0) noexcept
-            : producer_order_(producer_order) {}
+        ~Sprite2DBridge() override
+        {
+            for (auto& [e, req] : pending_) req.cancel();   // never a dangling `this`
+        }
 
         void drive(lux::meta::EntityRegistry& registry, RenderableBridgeContext& ctx) override
         {
-            if (stopping_) return;
-
-            // Frame camera gate: with no single active Camera2D there is no valid view/proj
-            // to draw against, so no 2D producer submits (else sprites render against stale /
-            // default camera data). Same rule the Camera2DUploadBridge uses to decide whether
-            // to publish a camera at all.
-            if (activeCamera(registry) == lux::meta::null_entity) return;
+            auto canvas = ctx.canvas2d();
+            if (!canvas.valid()) return;   // scene without Canvas2D → zero cost (R2-04 contract)
 
             batch_.clear();
+            tex_memo_.clear();
             registry.view<SpriteComponent, WorldTransform2DComponent>().each(
                 [&](lux::meta::entity_id e, const SpriteComponent& sp, const WorldTransform2DComponent& wt)
                 {
-                    if (!sp.visible) return;
+                    // Bake the 2D affine: world × Scale(size), pivot shift folded into
+                    // the translation so the normalised pivot sits at the entity origin
+                    // (pivot 0.5,0.5 = centred → zero offset). Column-major world 4x4 →
+                    // 6-float 2D affine (the render side expands a unit ±0.5 quad).
+                    float m[6];
+                    m[0] = wt.world(0, 0) * sp.size.x();
+                    m[1] = wt.world(1, 0) * sp.size.x();
+                    m[2] = wt.world(0, 1) * sp.size.y();
+                    m[3] = wt.world(1, 1) * sp.size.y();
+                    const float px = 0.5f - sp.pivot.x(), py = 0.5f - sp.pivot.y();
+                    m[4] = wt.world(0, 3) + m[0] * px + m[2] * py;
+                    m[5] = wt.world(1, 3) + m[1] * px + m[3] * py;
 
-                    // World quad = WorldTransform2D * Scale(size) * Pivot. The render side
-                    // expands a UNIT quad centred at the origin ([-0.5,0.5]); `size` scales
-                    // it (columns 0/1, Eigen is column-major) and the pivot offset shifts it
-                    // so the sprite's normalised pivot point sits at the entity's world
-                    // origin (pivot 0.5,0.5 = centred → zero offset).
-                    Eigen::Matrix4f m = wt.world;
-                    m.col(0) *= sp.size.x();
-                    m.col(1) *= sp.size.y();
-                    m.col(3) += m.col(0) * (0.5f - sp.pivot.x()) + m.col(1) * (0.5f - sp.pivot.y());
+                    // Resolve the texture every frame (advances the async upload state
+                    // machine; memoised per distinct id per frame). kNoTexture while an
+                    // upload is still in flight → tint-only until it settles, at which
+                    // point the value diff below promotes it — no special path.
+                    const std::uint32_t tex = sp.texture.is_nil()
+                        ? lux::render::kNoTexture
+                        : resolveBindless(ctx, sp.texture);
 
-                    lux::render::SpriteDraw d{};
-                    std::memcpy(d.transform, m.data(), 16 * sizeof(float));
-                    d.uv               = lux::render::Rect2D{ sp.uv_rect.x(), sp.uv_rect.y(),
-                                                             sp.uv_rect.z(), sp.uv_rect.w() };
-                    d.tint             = sp.tint;
-                    // Resolve the sprite's texture to a bindless set-2 index. Null asset →
-                    // tint-only (kNoTexture, the SpriteDraw default). Upload still in flight
-                    // → handle null → stays tint-only THIS frame, textures once it settles.
-                    //
-                    // LIFECYCLE: ensureTexture is idempotent (uploads once, cached by id — no
-                    // per-frame re-upload). A transient producer keeps no per-instance state,
-                    // so it does NOT acquire/release per sprite: a used texture is SCENE-SCOPED
-                    // (freed at scene teardown via destroyUnreferencedResources), not per-frame
-                    // leaked. Bounded over-retention is fine for the MVP; per-sprite eviction
-                    // (release when no live sprite references a texture) is a streaming-era
-                    // refinement (needs retained texture tracking), deliberately deferred.
-                    d.texture_bindless = lux::render::kNoTexture;
-                    if (!sp.texture.is_nil())
+                    if (auto it = live_.find(e); it != live_.end())
                     {
-                        const auto th = ctx.ensureTexture(sp.texture);
-                        if (!th.is_null())
-                            d.texture_bindless = th.index;   // RTextureHandle::index IS the bindless index
-                    }
-                    d.key              = lux::render::DrawOrderKey{
-                        sp.layer, /*sublayer=*/0, sp.order, producer_order_,
-                        static_cast<std::uint64_t>(entt::to_integral(e)) };  // entity id = deterministic tie-break
-                    batch_.push_back(d);
-                });
+                        Live& L = it->second;
 
-            if (!batch_.empty())
-                ctx.canvas2d().submitSprites(ctx.scene(), batch_);   // no-ops if the scene has no Canvas2DFeature
+                        if (std::memcmp(m, L.m, sizeof(m)) != 0)
+                        {
+                            lux::render::Sprite2DTransformEntry ent{};
+                            ent.scene  = ctx.scene();
+                            ent.handle = L.handle;
+                            std::memcpy(ent.m, m, sizeof(m));
+                            batch_.push_back(ent);
+                            std::memcpy(L.m, m, sizeof(m));
+                        }
+                        const float uv[4] = {sp.uv_rect.x(), sp.uv_rect.y(),
+                                             sp.uv_rect.z(), sp.uv_rect.w()};
+                        if (std::memcmp(uv, L.uv, sizeof(uv)) != 0 ||
+                            sp.tint != L.tint || tex != L.tex)
+                        {
+                            canvas.updateVisual(ctx.scene(), L.handle, uv, sp.tint, tex);
+                            std::memcpy(L.uv, uv, sizeof(uv));
+                            L.tint = sp.tint;
+                            L.tex  = tex;
+                        }
+                        if (sp.priority != L.priority || sp.visible != L.visible)
+                        {
+                            canvas.updateKey(ctx.scene(), L.handle, sp.priority, sp.visible);
+                            L.priority = sp.priority;
+                            L.visible  = sp.visible;
+                        }
+                        return;
+                    }
+                    if (pending_.count(e)) return;   // create reply still in flight
+
+                    if (auto fit = failed_.find(e); fit != failed_.end())
+                    {
+                        if (fit->second.permanent) return;
+                        if (--fit->second.retry_in > 0) return;
+                        failed_.erase(fit);          // backoff elapsed → retry below
+                    }
+
+                    // First sight: create with the FULL current state.
+                    lux::render::Sprite2DInstanceData d{};
+                    std::memcpy(d.m, m, sizeof(m));
+                    d.uv[0] = sp.uv_rect.x(); d.uv[1] = sp.uv_rect.y();
+                    d.uv[2] = sp.uv_rect.z(); d.uv[3] = sp.uv_rect.w();
+                    d.tint             = sp.tint;
+                    d.texture_bindless = tex;
+
+                    Live snap{};
+                    std::memcpy(snap.m, d.m, sizeof(snap.m));
+                    std::memcpy(snap.uv, d.uv, sizeof(snap.uv));
+                    snap.tint     = d.tint;
+                    snap.tex      = d.texture_bindless;
+                    snap.priority = sp.priority;
+                    snap.visible  = sp.visible;
+
+                    auto req = canvas.addSprite(ctx.scene(), d, sp.priority, sp.visible);
+                    req.then([this, e, snap](const lux::render::Sprite2DSlotReply& r)
+                    {
+                        pending_.erase(e);
+                        if (r.status != lux::render::ECanvas2DCreateStatus::Ok || r.handle.is_null())
+                        {
+                            // Failed create never becomes live (G-05). A non-Ok reply
+                            // that nonetheless carries a handle must be reclaimed, not
+                            // dropped — route it to the orphan set.
+                            if (r.handle.valid())
+                                orphans_.push_back(r.handle);
+                            if (!stopping_)
+                            {
+                                const bool transient =
+                                    r.status == lux::render::ECanvas2DCreateStatus::CapacityExhausted;
+                                failed_[e] = FailRecord{!transient, kTransientRetryDrives};
+                            }
+                            return;
+                        }
+                        if (stopping_)                       // late reply during teardown →
+                        { orphans_.push_back(r.handle); return; }   // destroyed in flushShutdownCleanup
+                        failed_.erase(e);
+                        Live L = snap;
+                        L.handle = r.handle;
+                        live_.emplace(e, L);
+                    });
+                    pending_.emplace(e, std::move(req));
+                });
         }
 
-        // Transient producer: nothing is retained across frames, so reap has nothing to
-        // release and shutdown has nothing to drain.
-        void reap(lux::meta::EntityRegistry& /*registry*/, RenderableBridgeContext& /*ctx*/) override {}
-        void beginShutdown(RenderableBridgeContext& /*ctx*/) override { stopping_ = true; batch_.clear(); }
-        [[nodiscard]] bool hasPendingShutdownWork() const override { return false; }
-        void flushShutdownCleanup(RenderableBridgeContext& /*ctx*/) override {}
+        void finalize(RenderableBridgeContext& ctx) override
+        {
+            if (!batch_.empty())
+                ctx.canvas2d().updateTransforms(batch_);   // ONE bulk op for every dirty sprite
+        }
+
+        void reap(lux::meta::EntityRegistry& registry, RenderableBridgeContext& ctx) override
+        {
+            auto canvas = ctx.canvas2d();
+            for (auto it = live_.begin(); it != live_.end(); )
+            {
+                const auto e = it->first;
+                if (!registry.valid(e) || !registry.all_of<SpriteComponent, WorldTransform2DComponent>(e))
+                {
+                    canvas.removeSprite(ctx.scene(), it->second.handle);
+                    it = live_.erase(it);
+                }
+                else ++it;
+            }
+            std::erase_if(failed_, [&](const auto& kv) {
+                return !registry.valid(kv.first) ||
+                       !registry.all_of<SpriteComponent, WorldTransform2DComponent>(kv.first);
+            });
+        }
+
+        void beginShutdown(RenderableBridgeContext& ctx) override
+        {
+            auto canvas = ctx.canvas2d();
+            for (auto& [e, L] : live_)
+                canvas.removeSprite(ctx.scene(), L.handle);
+            live_.clear();
+            failed_.clear();
+            stopping_ = true;   // keep pending_; late replies route into orphans_
+        }
+
+        [[nodiscard]] bool hasPendingShutdownWork() const override { return !pending_.empty(); }
+
+        void flushShutdownCleanup(RenderableBridgeContext& ctx) override
+        {
+            auto canvas = ctx.canvas2d();
+            for (const auto& h : orphans_)
+                canvas.removeSprite(ctx.scene(), h);
+            orphans_.clear();
+        }
 
     private:
-        std::uint32_t                        producer_order_{0};
-        bool                                 stopping_{false};
-        std::vector<lux::render::SpriteDraw> batch_;   // reused across frames
+        /// Per-FRAME texture-resolution memo (a scene draws from a handful of
+        /// atlases; resolve once per distinct id per frame). Frame-scoped on
+        /// purpose: ensureTexture must run once per id per frame to advance the
+        /// async upload state machine — a cross-frame memo would serve stale indices.
+        std::uint32_t resolveBindless(RenderableBridgeContext& ctx, const lux::asset::asset_id_t& id)
+        {
+            for (const auto& [mid, idx] : tex_memo_)
+                if (mid == id) return idx;
+            std::uint32_t idx = lux::render::kNoTexture;   // upload in flight → tint-only this frame
+            const auto th = ctx.ensureTexture(id);
+            if (!th.is_null())
+                idx = th.index;                            // RTextureHandle::index IS the bindless index
+            tex_memo_.emplace_back(id, idx);
+            return idx;
+        }
+
+        std::unordered_map<lux::meta::entity_id, Live> live_;
+        std::unordered_map<lux::meta::entity_id,
+                           lux::render::RenderRequest<lux::render::Sprite2DSlotReply>> pending_;
+        std::unordered_map<lux::meta::entity_id, FailRecord> failed_;
+        bool                                          stopping_{false};
+        std::vector<lux::render::Sprite2DHandle>      orphans_;
+        std::vector<lux::render::Sprite2DTransformEntry> batch_;   // dirty transforms this frame
+        std::vector<std::pair<lux::asset::asset_id_t, std::uint32_t>> tex_memo_;
     };
 
 } // namespace lux::gameplay::d2

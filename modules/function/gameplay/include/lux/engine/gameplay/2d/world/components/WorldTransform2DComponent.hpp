@@ -9,6 +9,9 @@
 //  (EcsRenderTraits::InstanceTransform) — no separate 2D matrix layout.
 // ============================================================================
 
+#include "Transform2DComponent.hpp"
+
+#include <lux/engine/meta/LuxObject.hpp>
 #include <Eigen/Core>
 
 namespace lux::gameplay::d2
@@ -18,6 +21,14 @@ namespace lux::gameplay::d2
         Eigen::Matrix4f world      = Eigen::Matrix4f::Identity();
         Eigen::Matrix4f prev_world = Eigen::Matrix4f::Identity();
         bool            dirty      = true;
+
+        /// HierarchicalTransformSystem's value-based skip gate: the EXACT compose
+        /// inputs `world` was last recomposed from — the local pose and the parent
+        /// entity whose world was consumed (null = composed as a root). Same inputs
+        /// next frame → the compose is skipped with zero writes. System-owned
+        /// scratch; never read these as gameplay state.
+        Transform2DComponent last_local;
+        lux::meta::entity_id last_parent = lux::meta::null_entity;
     };
 
 } // namespace lux::gameplay::d2

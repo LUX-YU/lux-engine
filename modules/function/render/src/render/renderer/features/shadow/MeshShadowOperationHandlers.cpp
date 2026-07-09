@@ -70,6 +70,15 @@ namespace lux::render
         return sc->addFeature<MeshShadowFeature>(cfg);
     }
 
-    const FeatureFactory kMeshShadowFeatureFactory = makeSimpleFactory(&meshShadowCreateFn, "MeshShadow");
+    // Stable identity so a re-registration (editor preview / second scene bring-up)
+    // dedups through the AlreadyRegistered path instead of inserting a fresh registry
+    // record per bring-up forever (a descriptor-less factory has NO identity).
+    static constexpr FeatureDescriptor kMeshShadowDescriptor{
+        .type              = featureId("lux.render.mesh_shadow.v1"),
+        .name              = "MeshShadow",
+        .contributes_graph = true,
+    };
+    const FeatureFactory kMeshShadowFeatureFactory =
+        makeSimpleFactory(&meshShadowCreateFn, "MeshShadow", kMeshShadowDescriptor);
 
 } // namespace lux::render

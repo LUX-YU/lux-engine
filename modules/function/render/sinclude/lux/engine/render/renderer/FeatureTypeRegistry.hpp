@@ -37,6 +37,11 @@ namespace lux::render
         FeatureFactory factory{};
         std::uint32_t  op_count{0};
         TypeId         ops[16]{};
+        /// How many register calls share this record. The idempotent AlreadyRegistered
+        /// path hands a second registrant the FIRST registration's type_id + ops — i.e.
+        /// shared ownership — so unregistration must be counted: one sharer's unregister
+        /// must not destroy the type id and dispatcher slots the others still use.
+        std::uint32_t  registrations{1};
     };
 
     /// Outcome SCOPE of a successful add(): distinguishes a fresh insert from an
@@ -104,8 +109,11 @@ namespace lux::render
                     // that would make findByStableType / dependency resolution ambiguous.
                     if (existing->factory.create_fn != record.factory.create_fn)
                         return lux::cxx::unexpected(make_error_code(ERenderError::FeatureTypeCollision));
-                    return FeatureTypeAddResult{findIdByStableType(record.factory.descriptor.type),
-                                                EFeatureTypeRegisterStatus::AlreadyRegistered};
+                    // Shared ownership is COUNTED: release() destroys the record only when
+                    // the last registrant lets go (see FeatureTypeRecord::registrations).
+                    const std::uint32_t id = findIdByStableType(record.factory.descriptor.type);
+                    ++types_.at(id).registrations;
+                    return FeatureTypeAddResult{id, EFeatureTypeRegisterStatus::AlreadyRegistered};
                 }
             }
 
@@ -117,6 +125,19 @@ namespace lux::render
         [[nodiscard]] FeatureTypeRecord&  at(std::uint32_t id)                      { return types_.at(id); }
         [[nodiscard]] const FeatureTypeRecord& at(std::uint32_t id) const           { return types_.at(id); }
         void                              erase(std::uint32_t id)                   { types_.erase(id); }
+
+        /// Counted unregistration, pairing add()'s shared ownership: decrements the
+        /// record's registration count and erases only when the LAST registrant lets go.
+        /// Returns true when the record was actually erased — the caller (comm layer)
+        /// unbinds the dispatcher op slots exactly then, never while a sharer remains.
+        [[nodiscard]] bool release(std::uint32_t id)
+        {
+            if (!types_.contains(id)) return false;
+            FeatureTypeRecord& rec = types_.at(id);
+            if (rec.registrations > 1) { --rec.registrations; return false; }
+            types_.erase(id);
+            return true;
+        }
 
         /// Resolve a declared dependency: the registered type whose descriptor has
         /// this stable id, or nullptr if no such type is registered. The engine of

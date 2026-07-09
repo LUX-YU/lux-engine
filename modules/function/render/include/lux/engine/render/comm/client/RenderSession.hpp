@@ -379,6 +379,22 @@ namespace lux::render
             bool generate_mips = false
         );
 
+        // ── Persistent dynamic textures + region updates (U2-00/U2-01) ──
+
+        /// Create a PERSISTENT dynamic 2D texture: fixed shape (desc), zero-filled,
+        /// updated in place by updateTextureRegions — its handle (and bindless index)
+        /// never changes. Reply status carries ERegionUploadStatus on refusal.
+        RenderRequest<Texture2DCreatedReply> createPersistentTexture2D(
+            const PersistentTexture2DDesc& desc);
+
+        /// Submit one region batch to a persistent texture (the U2-00 ownership
+        /// contract): region descs are deep-copied into an owned attachment and the
+        /// pixel block rides the batch's own shared_ptr — the caller's buffers are
+        /// free for reuse the moment this returns. The reply echoes
+        /// batch.content_revision; advance uploaded_revision ONLY on status == Ok.
+        RenderRequest<TextureRegionsAppliedReply> updateTextureRegions(
+            const OwnedTextureUploadBatch& batch);
+
         /// Create a cube texture from 6 faces of raw pixel data.
         RenderRequest<CubeTextureCreatedReply> createCubeTexture(
             const std::byte* face_data[6], std::uint32_t face_bytes,

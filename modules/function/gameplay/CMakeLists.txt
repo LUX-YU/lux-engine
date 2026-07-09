@@ -23,6 +23,7 @@ set(LUX_GAMEPLAY_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldStreamingSystem.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Scene3D.cpp
     # 2D kit (lux::gameplay::d2) — sibling of 3d/, plan-driven install (Gate 0)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/PixelFieldRuntime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Scene2D.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Simulation2DSystem.cpp
 )

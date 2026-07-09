@@ -85,7 +85,17 @@ namespace lux::gameplay
                         // `|| !r.object`): a generic dispatch failure delivers a DEFAULT reply
                         // {null handle, status 0} — status-only would emplace a null-handle
                         // zombie into live_ that never renders and never retries (P1-3).
-                        if (r.status != 0 || T::handle(r).is_null()) return;   // failed; entity stays absent → retries
+                        // A failure status delivered WITH a non-null handle means the server
+                        // allocated before failing — reclaim it via orphans_ (InstanceBridge's
+                        // `if (r.object) orphans_.push_back` rule) instead of leaking a
+                        // server-side object no client record tracks. Today's light handler is
+                        // all-or-nothing, so this is the contract for future pool features.
+                        if (r.status != 0 || T::handle(r).is_null())
+                        {
+                            if (!T::handle(r).is_null())
+                                orphans_.push_back(T::handle(r));
+                            return;                           // failed; entity stays absent → retries
+                        }
                         if (stopping_)                        // late reply during teardown drain →
                         { orphans_.push_back(T::handle(r)); return; }   // destroy in flushShutdownCleanup
                         live_.emplace(e, Live{T::handle(r), d});

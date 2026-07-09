@@ -5,6 +5,7 @@
 #include <lux/engine/serialize/TaggedPropertyArchive.hpp>
 
 #include <lux/engine/gameplay/ComponentTypeRegistry.hpp>
+#include <lux/engine/gameplay/world/systems/HierarchicalTransformSystem.hpp>  // repairHierarchyCycles (load-time hierarchy guard)
 #include <lux/engine/meta/LuxObject.hpp>  // EntityRegistry
 #include <lux/engine/meta/Meta.hpp>       // RefClass
 
@@ -371,6 +372,17 @@ namespace lux::editor
         if (active_idx != kNoActiveCamera &&
             active_idx < out.created_entities.size())
             out.active_camera = out.created_entities[active_idx];
+
+        // Entry-point hierarchy guard (2026-07-06 ruling: entries validate, the
+        // per-frame system does not pay for malformed data): a file whose parent
+        // links form a cycle — hand-edit, merge conflict, version skew — is
+        // repaired here (cycle members become roots, still visible/selectable)
+        // with a loud warning, instead of surfacing as excluded entities later.
+        if (const auto repaired = lux::gameplay::repairHierarchyCycles(registry); repaired != 0)
+            std::fprintf(stderr,
+                "[Scene::load] WARNING %zu entity(ies) sat on a parent CYCLE — their "
+                "parent links were removed (now roots). Re-parent them and re-save '%s'.\n",
+                repaired, path.string().c_str());
 
         return {};
     }

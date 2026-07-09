@@ -317,8 +317,9 @@ compile_and_pack_shaders(
 		# Gizmo
 		gizmo/line_list.vert                gizmo/line_list.frag
 		gizmo/tri_overlay.vert              gizmo/tri_overlay.frag
-		# Canvas2D (2D sprite draw-batch)
+		# Canvas2D (GPU-driven 2D instances: sprite + pixel-field kinds)
 		canvas2d/sprite.vert                canvas2d/sprite.frag
+		canvas2d/pixel_field.vert           canvas2d/pixel_field.frag
 		# Highlight outline
 		highlight/highlight_mask.vert       highlight/highlight_mask.frag
 		highlight/highlight_blur.frag       highlight/highlight_composite.frag
@@ -466,9 +467,11 @@ embed_builtin_shaders(
 		gizmo/line_list.frag
 		gizmo/tri_overlay.vert
 		gizmo/tri_overlay.frag
-		# Canvas2D (2)
+		# Canvas2D (4)
 		canvas2d/sprite.vert
 		canvas2d/sprite.frag
+		canvas2d/pixel_field.vert
+		canvas2d/pixel_field.frag
 		# Highlight outline
 		highlight/highlight_mask.vert
 		highlight/highlight_mask.frag

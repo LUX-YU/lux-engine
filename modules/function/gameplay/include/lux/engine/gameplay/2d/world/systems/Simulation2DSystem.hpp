@@ -7,7 +7,10 @@
 //  fixed-step capability (pixel sim, physics) shares a single timeline and can
 //  never phase-drift. It implements NO physics or CA itself: it runs a fixed set
 //  of PHASES in canonical order each fixed substep, and each phase is an OPTIONAL
-//  injected strategy (install()/registerBridges() wire the ones the plan enables).
+//  injected strategy. Phase backing arrives per capability slice (F2 wires
+//  SimulateFields, P2 wires SimulatePhysics, ...); install() REFUSES a plan that
+//  enables a fixed-step capability no slice has backed yet (Scene2D's capability
+//  backing table), so an enabled-but-dead coordinator cannot be installed.
 //
 //  Key contracts (design §2.4 + D-03):
 //    - clamp banked time (max_accumulated) + cap substeps/frame (max_substeps) to

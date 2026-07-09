@@ -93,7 +93,14 @@ namespace lux::gameplay
         /// resolve their target feature's handle + op-ids by name through this. Set
         /// by the app after the scene's features are registered (editor wires it from
         /// EditorRenderInfra). Precondition for any PARAM/POOL registerComponent.
-        [[nodiscard]] const lux::render::FeatureRegistry& features() const noexcept { return *features_; }
+        /// Null-object before setFeatures(): a host that drives bridges without ever
+        /// wiring a registry gets an EMPTY catalogue — every name lookup yields invalid
+        /// ops and the caller's proxy no-ops — instead of UB on a null deref.
+        [[nodiscard]] const lux::render::FeatureRegistry& features() const noexcept
+        {
+            static const lux::render::FeatureRegistry kEmptyFeatures{};
+            return features_ ? *features_ : kEmptyFeatures;
+        }
         void setFeatures(const lux::render::FeatureRegistry& reg) noexcept { features_ = &reg; }
         /// Feature-scoped skinning op-ids (for SkinningProxy); invalid when no
         /// SkinningFeature is present in the scene. Set by the app after the scene's
@@ -120,17 +127,16 @@ namespace lux::gameplay
         /// A fresh MaterialProxy bound to this context's session + ops (cheap;
         /// construct per call site; no-ops if no StandardMaterialFeature).
         [[nodiscard]] lux::render::MaterialProxy material() noexcept { return {*session_, material_ops_}; }
-        /// A fresh Canvas2DProxy for the scene's Canvas2DFeature — the 2D sprite / tilemap /
-        /// pixel-field bridges submit their per-frame draw batch through it. Unlike
-        /// meshStack() (which caches ops the app sets), this resolves the ops from the
-        /// already-wired `features_` registry BY NAME each call, so it needs no extra
-        /// setCanvas2DOps wiring and is INVALID exactly when the scene has no Canvas2DFeature
-        /// (a pure-3D scene, or before setFeatures) → submitSprites() then no-ops, so a 3D
-        /// path pays nothing (R2-04 contract). Cheap (a pointer + a small linear name lookup).
+        /// A fresh Canvas2DProxy for the scene's Canvas2DFeature — the retained 2D
+        /// bridges issue their instance commands (create/remove/deltas) through it.
+        /// Unlike meshStack() (which caches ops the app sets), this resolves the ops
+        /// from the already-wired `features_` registry BY NAME each call, so it needs
+        /// no extra wiring and is INVALID exactly when the scene has no Canvas2DFeature
+        /// (a pure-3D scene, or before setFeatures) → every proxy op then no-ops, so a
+        /// 3D path pays nothing (R2-04 contract). Cheap (a pointer + a name lookup).
         [[nodiscard]] lux::render::Canvas2DProxy canvas2d() noexcept
         {
-            return { *session_, features_ ? features_->ops<lux::render::Canvas2DOperationIds>("Canvas2D")
-                                          : lux::render::Canvas2DOperationIds{} };
+            return { *session_, features().ops<lux::render::Canvas2DOperationIds>("Canvas2D") };
         }
 
         // ── Highlight bridge ────────────────────────────────────────────

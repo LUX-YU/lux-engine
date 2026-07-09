@@ -1,85 +1,41 @@
 #pragma once
 // ============================================================================
-//  Canvas2DOperation.hpp — the FROZEN public protocol between the 2D renderable
-//  bridges (gameplay d2: Sprite2D / Tilemap2D / PixelField2D) and the render-side
-//  Canvas2DFeature (SinglePerScene). R2-00 freezes the PODs; the feature + ops
-//  (submit / handle CRUD) are R2-01.
+//  Canvas2DOperation.hpp — the public protocol between the 2D renderable bridges
+//  (gameplay d2) and the render-side Canvas2DFeature (SinglePerScene).
 //
-//  Contract (design §3.3):
-//   - Every draw carries a DrawOrderKey forming a STRICT TOTAL ORDER; the feature
-//     does ONE stable sort → painter order. Duplicate keys are illegal (debug assert
-//     in the feature).
-//   - Draw packets are trivially-copyable value PODs — NO raw borrowed pointers that
-//     would dangle across the frame. Variable-length producer data (tile chunk indices,
-//     pixel chunk textures) is OWNED server-side and referenced by an owner handle
-//     (SpriteBatchHandle / TilemapRenderHandle / PixelFieldRenderHandle) — NOT the
-//     MeshStack RenderObjectHandle (a 2D batch is not a mesh instance).
-//   - MVP blend is premultiplied alpha.
-//   - The submit op (R2-01) carries the owning RenderSceneId explicitly (scene-routed,
-//     like every other feature op — G-04).
+//  v2 (C2D-R0, GPU-DRIVEN — .internal/2d-gpu-driven-rewrite.md): sprites are
+//  GPU-RESIDENT instances in the scene's Canvas2D instance arena, maintained by
+//  create / destroy / delta commands (the MeshStack paradigm). This header holds
+//  the comm-free half: the instance record (std430 mirror), the owner handle,
+//  the priority quantization and the create status. The ops themselves live in
+//  Canvas2DFeatureOps.hpp.
+//
+//  DRAW-ORDER CONTRACT (frozen, decision ① 2026-07-06):
+//   - every live+visible instance has key = (quantizePriority(priority) << 32)
+//     | slot_index; the canvas draws keys in ASCENDING order;
+//   - HIGHER priority ⇒ HIGHER key ⇒ drawn LATER ⇒ ON TOP;
+//   - equal priorities tie-break by slot index (≈ creation order) — the key
+//     space is a STRICT TOTAL ORDER by construction, deterministically;
+//   - the key space is shared by every future canvas producer (tile chunks /
+//     pixel-field chunks interleave with sprites on the same axis).
+//   - blend stays premultiplied alpha (Canvas2DAlphaMode).
 // ============================================================================
 
 #include <lux/cxx/container/SlotMap.hpp>   // lux::cxx::SlotKey (generational owner handles)
 
+#include <bit>
 #include <cstdint>
 #include <type_traits>
 
 namespace lux::render
 {
-    // ── Owner handles (generational; NOT the MeshStack RenderObjectHandle) ──
-    struct SpriteBatchTag{};
-    struct TilemapRenderTag{};
-    struct PixelFieldRenderTag{};
-    using SpriteBatchHandle      = lux::cxx::SlotKey<SpriteBatchTag>;
-    using TilemapRenderHandle    = lux::cxx::SlotKey<TilemapRenderTag>;
-    using PixelFieldRenderHandle = lux::cxx::SlotKey<PixelFieldRenderTag>;
-
-    /// MVP is premultiplied alpha; kept as an enum so a future straight-alpha path is a
-    /// value, not a rewrite. (M0A protocol decision — design §3.3.)
+    /// Blend contract: premultiplied alpha (kept as an enum so a future
+    /// straight-alpha path is a value, not a rewrite).
     enum class Canvas2DAlphaMode : std::uint8_t
     {
         Premultiplied = 0,
         Straight      = 1,
     };
-
-    /// Strict-total-order draw key (design §3.3). Ordered field-by-field
-    /// layer < sublayer < order < producer_order < stable_id, so a single stable sort
-    /// expresses e.g. `tile-bg < pixel-field < tile-fg < sprite < pixel-fg` — which
-    /// coarse ERenderStage z-buckets cannot. `order` may pack a quantised y-sort;
-    /// `producer_order` + `stable_id` are the deterministic final tie-breaks (no two
-    /// distinct items ever compare equal in a well-formed frame).
-    struct DrawOrderKey
-    {
-        std::int16_t  layer          = 0;
-        std::uint16_t sublayer       = 0;
-        std::int32_t  order          = 0;   ///< within-layer order (may encode y-sort)
-        std::uint32_t producer_order = 0;   ///< which producer/bridge emitted it
-        std::uint64_t stable_id      = 0;   ///< deterministic final tie-break (kills non-determinism)
-    };
-    static_assert(std::is_trivially_copyable_v<DrawOrderKey>);
-    static_assert(std::is_standard_layout_v<DrawOrderKey>);
-
-    [[nodiscard]] constexpr bool operator<(const DrawOrderKey& a, const DrawOrderKey& b) noexcept
-    {
-        if (a.layer          != b.layer)          return a.layer          < b.layer;
-        if (a.sublayer       != b.sublayer)       return a.sublayer       < b.sublayer;
-        if (a.order          != b.order)          return a.order          < b.order;
-        if (a.producer_order != b.producer_order) return a.producer_order < b.producer_order;
-        return a.stable_id < b.stable_id;
-    }
-    [[nodiscard]] constexpr bool operator==(const DrawOrderKey& a, const DrawOrderKey& b) noexcept
-    {
-        return a.layer == b.layer && a.sublayer == b.sublayer && a.order == b.order
-            && a.producer_order == b.producer_order && a.stable_id == b.stable_id;
-    }
-    [[nodiscard]] constexpr bool operator!=(const DrawOrderKey& a, const DrawOrderKey& b) noexcept { return !(a == b); }
-
-    /// A 2D rectangle (UV in an atlas, or a region in field space). POD.
-    struct Rect2D
-    {
-        float x = 0.f, y = 0.f, w = 0.f, h = 0.f;
-    };
-    static_assert(std::is_trivially_copyable_v<Rect2D>);
 
     /// Sentinel bindless index meaning "no texture — draw the flat premultiplied tint".
     /// (The bindless allocator can hand out index 0 for a real texture, so 0 can't be the
@@ -88,43 +44,92 @@ namespace lux::render
     /// texture resolves; the default leaves the draw tint-only.
     inline constexpr std::uint32_t kNoTexture = 0xFFFFFFFFu;
 
-    // ── Minimal render-side draw packets (typed lists; firmed up in R2-01) ──
-    //  Each carries a column-major 4x4 world transform (the 2D pose embedded, matching
-    //  the zero-copy std430 mat4 path) + its DrawOrderKey + a premultiplied RGBA8 tint.
+    // ════════════════════════════════════════════════════════════════════════
+    //  v2 GPU-driven instance protocol (C2D-R0)
+    // ════════════════════════════════════════════════════════════════════════
 
-    /// One textured sprite quad.
-    struct SpriteDraw
-    {
-        DrawOrderKey  key{};
-        float         transform[16]{};                ///< column-major world matrix (2D embedded)
-        Rect2D        uv{};                            ///< uv rect in the atlas texture
-        std::uint32_t texture_bindless = kNoTexture;  ///< bindless set-2 index, or kNoTexture (tint-only)
-        std::uint32_t tint = 0xFFFFFFFFu;             ///< premultiplied RGBA8
-    };
-    static_assert(std::is_trivially_copyable_v<SpriteDraw>);
+    struct Sprite2DInstanceTag{};
+    /// Generational per-sprite owner handle into the scene's Canvas2D instance
+    /// arena. A stale handle (generation mismatch) is rejected by every op.
+    using Sprite2DHandle = lux::cxx::SlotKey<Sprite2DInstanceTag>;
 
-    /// One tile-chunk batch — its index grid is OWNED server-side (referenced by handle),
-    /// never a borrowed pointer in the packet.
-    struct TileDraw
+    /// Order-preserving float→u32 map:  a < b  ⇔  quantizePriority(a) <
+    /// quantizePriority(b)  for every ordered pair of floats (negatives flip;
+    /// -0.0f lands one step below +0.0f — distinct but adjacent, deterministic).
+    /// NaN has no float ordering; it maps above +inf — a NaN priority is a
+    /// producer contract violation, but the sort stays deterministic (never UB).
+    [[nodiscard]] constexpr std::uint32_t quantizePriority(float priority) noexcept
     {
-        DrawOrderKey        key{};
-        float               transform[16]{};
-        TilemapRenderHandle chunk{};          ///< server-owned chunk (index grid + dims)
-        std::uint32_t       tileset_bindless = 0;
-        std::uint32_t       tint = 0xFFFFFFFFu;
-    };
-    static_assert(std::is_trivially_copyable_v<TileDraw>);
+        const auto bits = std::bit_cast<std::uint32_t>(priority);
+        return (bits & 0x80000000u) ? ~bits : (bits | 0x80000000u);
+    }
 
-    /// One pixel-field chunk quad — the chunk's GPU texture is OWNED server-side.
-    struct PixelFieldDraw
+    // The order-preservation property is pinned at COMPILE TIME — permanent,
+    // zero-cost, cannot rot (C2D-R0 gate).
+    static_assert(quantizePriority(-1e30f)  < quantizePriority(-1.0f));
+    static_assert(quantizePriority(-1.0f)   < quantizePriority(-0.5f));
+    static_assert(quantizePriority(-0.5f)   < quantizePriority(-0.0f));
+    static_assert(quantizePriority(-0.0f)   < quantizePriority(0.0f));
+    static_assert(quantizePriority(0.0f)    < quantizePriority(0.5f));
+    static_assert(quantizePriority(0.5f)    < quantizePriority(1.0f));
+    static_assert(quantizePriority(1.0f)    < quantizePriority(1e30f));
+
+    /// GPU-resident per-sprite record — the std430 mirror the sprite vertex
+    /// shader pulls (keep canvas2d/sprite.vert in sync). Scalar fields only, so
+    /// C++ packing == std430 packing (48 B, array stride 48 in an SSBO).
+    struct Sprite2DInstanceData
     {
-        DrawOrderKey           key{};
-        float                  transform[16]{};
-        PixelFieldRenderHandle field{};        ///< server-owned field (chunk texture cache)
-        Rect2D                 region{};        ///< the chunk's region in field space
-        std::uint32_t          texture_bindless = 0;
-        std::uint32_t          tint = 0xFFFFFFFFu;
+        /// 2D affine world transform, column-major: [c0.x c0.y c1.x c1.y tx ty].
+        /// The producer bakes size×pivot in; the VS expands a unit ±0.5 quad.
+        float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f};
+        float uv[4]{0.f, 0.f, 1.f, 1.f};              ///< atlas rect: u0, v0, w, h
+        std::uint32_t tint{0xFFFFFFFFu};              ///< premultiplied RGBA8
+        std::uint32_t texture_bindless{kNoTexture};   ///< set-2 index / kNoTexture = tint-only
     };
-    static_assert(std::is_trivially_copyable_v<PixelFieldDraw>);
+    static_assert(sizeof(Sprite2DInstanceData) == 48,
+                  "Sprite2DInstanceData layout drift — keep canvas2d/sprite.vert in sync.");
+    static_assert(std::is_trivially_copyable_v<Sprite2DInstanceData>);
+
+    // ── PixelField kind (F2-09) ─────────────────────────────────────────────
+
+    struct PixelFieldInstanceTag{};
+    /// Generational per-field-chunk owner handle into the canvas arena's
+    /// PixelField kind store. A stale handle is rejected by every op.
+    using PixelFieldInstanceHandle = lux::cxx::SlotKey<PixelFieldInstanceTag>;
+
+    /// GPU-resident per-field-chunk record — the std430 mirror the pixel-field
+    /// vertex/fragment shaders pull (keep canvas2d/pixel_field.vert in sync).
+    /// The chunk quad is a unit ±0.5 quad placed by `m`; the fragment shader
+    /// texelFetches the R16_UNORM material-id mirror (`field_texture`, cell ids
+    /// round-trip exactly through the float sampler) and looks the id up in the
+    /// 256×1 RGBA8 `palette_texture` (premultiplied; entry 0 = transparent).
+    /// Material colour changes therefore update ONLY the palette texture.
+    struct PixelField2DInstanceData
+    {
+        float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f};    ///< column-major 2D affine (full field extent baked in)
+        std::uint32_t field_texture{kNoTexture};      ///< bindless set-2 index of the R16_UNORM id mirror
+        std::uint32_t palette_texture{kNoTexture};    ///< bindless set-2 index of the 256×1 RGBA8 palette
+        std::uint32_t cells_w{0};                     ///< id-mirror texel extent (texelFetch bounds)
+        std::uint32_t cells_h{0};
+        std::uint32_t tint{0xFFFFFFFFu};              ///< premultiplied RGBA8 modulate
+        std::uint32_t _pad0{0};
+    };
+    static_assert(sizeof(PixelField2DInstanceData) == 48,
+                  "PixelField2DInstanceData layout drift — keep canvas2d/pixel_field.vert in sync.");
+    static_assert(std::is_trivially_copyable_v<PixelField2DInstanceData>);
+
+    /// addSprite outcome (G-05 discipline, mirrors MeshInstanceCreateStatus):
+    /// anything but Ok ⇒ NO instance exists (handle is null) — the client must
+    /// not treat it as live. `Unknown` is the DEFAULT on purpose: a generic
+    /// dispatch failure delivers a default-constructed reply the server never
+    /// filled, so the default must be neither Ok (silent zombie) nor a retriable
+    /// error (endless retry). Only CapacityExhausted is transient.
+    enum class ECanvas2DCreateStatus : std::uint32_t
+    {
+        Unknown              = 0,
+        Ok                   = 1,
+        InvalidConfiguration = 2,   ///< scene / Canvas2DFeature absent — permanent
+        CapacityExhausted    = 3,   ///< arena at max capacity — transient
+    };
 
 } // namespace lux::render

@@ -100,10 +100,18 @@ namespace lux::render
             auto& registry = im.renderer_->featureTypeRegistry();
             if (!registry.contains(p.feature_type_id)) return;
 
-            auto& rec = registry.at(p.feature_type_id);
-            rec.factory.unregister_ops_fn(
-                &im.dispatcher, rec.ops, rec.op_count);
-            registry.erase(p.feature_type_id);
+            // The AlreadyRegistered path makes registrations SHARED (one record, one set of
+            // dispatcher op slots, N registrants) — so unregistration is counted: copy what
+            // unbinding needs, then release(); only the LAST registrant's release actually
+            // erases, and only then are the op slots unbound (a sharer's unregister must
+            // not destroy the type id / ops the others still dispatch through).
+            const auto rec = registry.at(p.feature_type_id);   // copy — release() may erase it
+            if (!registry.release(p.feature_type_id))
+                return;
+            // unregister_ops_fn is nullable by contract (FeatureFactory defaults it null;
+            // an ops-less factory has nothing to unbind).
+            if (rec.factory.unregister_ops_fn)
+                rec.factory.unregister_ops_fn(&im.dispatcher, rec.ops, rec.op_count);
         }
 
         // ── Name-based TypeId query ───────────────────────────────────────
@@ -284,6 +292,63 @@ namespace lux::render
         }
 
         // ── Texture resource handlers ─────────────────────────────────────────
+
+        // ── Persistent dynamic textures + region updates (U2-01) ──
+        // Synchronous on the render thread: create allocates GPU objects + queues a
+        // zero-fill through the normal upload pipeline (no worker round-trip — there
+        // are no caller pixels to copy), so the reply carries the final handle
+        // immediately and the bindless index is stable from this moment on.
+        void handleCreatePersistentTexture2D(Ctx& ctx, const CreatePersistentTexture2DPayload& p)
+        {
+            auto& im = impl(ctx);
+            auto* tex_res = im.render_ctx_->globalRegistry().find<TextureResources>();
+            if (!tex_res) {
+                replyToCurrent<CreatePersistentTexture2DPayload>(ctx,
+                    Texture2DCreatedReply{RTextureHandle{},
+                        static_cast<uint32_t>(ERegionUploadStatus::InvalidHandle)});
+                return;
+            }
+            const auto r = tex_res->createPersistentTexture2D(p.desc);
+            if (!r) {
+                // Map the Expected error back onto the wire's ERegionUploadStatus.
+                const auto st = r.error() == make_error_code(ERenderError::UnsupportedFormat)
+                                    ? ERegionUploadStatus::UnsupportedFormat
+                                    : ERegionUploadStatus::InvalidDesc;
+                replyToCurrent<CreatePersistentTexture2DPayload>(ctx,
+                    Texture2DCreatedReply{RTextureHandle{}, static_cast<uint32_t>(st)});
+                return;
+            }
+            replyToCurrent<CreatePersistentTexture2DPayload>(ctx,
+                Texture2DCreatedReply{RTextureHandle{r->index, r->gen}, 0u});
+        }
+
+        void handleUpdateTextureRegions(Ctx& ctx, const UpdateTextureRegionsPayload& p)
+        {
+            auto& im = impl(ctx);
+            auto reply = [&](ERegionUploadStatus st) {
+                replyToCurrent<UpdateTextureRegionsPayload>(ctx,
+                    TextureRegionsAppliedReply{p.content_revision,
+                                               static_cast<uint32_t>(st), 0});
+            };
+            auto* tex_res = im.render_ctx_->globalRegistry().find<TextureResources>();
+            if (!tex_res) { reply(ERegionUploadStatus::InvalidHandle); return; }
+
+            const auto region_bytes = resolveExternalData(ctx.program, p.regions);
+            const auto pixel_bytes  = resolveExternalData(ctx.program, p.pixels);
+            const std::size_t decl  = static_cast<std::size_t>(p.region_count) * sizeof(TextureRegionDesc);
+            if (p.region_count == 0 || region_bytes.size() < decl)
+            { reply(ERegionUploadStatus::NoRegions); return; }
+
+            // Authoritative validation + queuing live in TextureResources (the SAME
+            // shared U2-00 validator the client pre-flights with).
+            const auto st = tex_res->updateTextureRegions(
+                TextureHandle{p.handle.index, p.handle.gen},
+                std::span<const TextureRegionDesc>{
+                    reinterpret_cast<const TextureRegionDesc*>(region_bytes.data()),
+                    p.region_count},
+                std::span<const std::byte>{pixel_bytes.data(), pixel_bytes.size()});
+            reply(st);
+        }
 
         void handleCreateTexture2D(Ctx& ctx, const CreateTexture2DPayload& p)
         {
@@ -495,6 +560,8 @@ namespace lux::render
         d.registerUnary<UpdateTexture2DPayload,             &handleUpdateTexture2D>  (opcodes::ResourceOp, type_ids::UpdateTexture2D,  "UpdateTexture2D");
         d.registerUnary<CreateCubeTexturePayload,           &handleCreateCubeTexture>(opcodes::ResourceOp, type_ids::CreateCubeTexture,"CreateCubeTexture");
         d.registerUnary<UpdateCubeTexturePayload,           &handleUpdateCubeTexture>(opcodes::ResourceOp, type_ids::UpdateCubeTexture,"UpdateCubeTexture");
+        d.registerUnary<CreatePersistentTexture2DPayload,   &handleCreatePersistentTexture2D>(opcodes::ResourceOp, type_ids::CreatePersistentTexture2D, "CreatePersistentTexture2D");
+        d.registerUnary<UpdateTextureRegionsPayload,        &handleUpdateTextureRegions>(opcodes::ResourceOp, type_ids::UpdateTextureRegions, "UpdateTextureRegions");
         d.registerUnary<DestroyTexturePayload,              &handleDestroyTexture>   (opcodes::ResourceOp, type_ids::DestroyTexture,   "DestroyTexture");
         d.registerUnary<DestroyCubeTexturePayload,          &handleDestroyCubeTexture>(opcodes::ResourceOp, type_ids::DestroyCubeTexture, "DestroyCubeTexture");
         // ── ResourceOp: shaders ──

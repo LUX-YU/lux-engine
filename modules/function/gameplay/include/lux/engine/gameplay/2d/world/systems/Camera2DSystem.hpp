@@ -14,12 +14,14 @@
 // ============================================================================
 
 #include <lux/engine/gameplay/world/systems/ISystem.hpp>
+#include <lux/engine/gameplay/world/systems/HierarchicalTransformSystem.hpp>   // maintainDerived
 #include "../components/Camera2DComponent.hpp"
 #include "../components/Camera2DCacheComponent.hpp"
 #include "../components/WorldTransform2DComponent.hpp"
 
 #include <lux/engine/math/eigen_extend.hpp>
 #include <Eigen/Core>
+#include <cassert>
 #include <cmath>
 #include <vector>
 
@@ -30,17 +32,23 @@ namespace lux::gameplay::d2
     public:
         void update(lux::meta::EntityRegistry& registry, float /*dt*/) override
         {
-            // G-07: auto-maintain the derived cache — a Camera2D entity gets a
-            // Camera2DCache; a cache whose Camera2D was removed is dropped.
-            scratch_.clear();
-            for (auto e : registry.view<Camera2DComponent>(entt::exclude<Camera2DCacheComponent>))
-                scratch_.push_back(e);
-            for (auto e : scratch_) registry.emplace<Camera2DCacheComponent>(e);
-
-            scratch_.clear();
-            for (auto e : registry.view<Camera2DCacheComponent>(entt::exclude<Camera2DComponent>))
-                scratch_.push_back(e);
-            for (auto e : scratch_) registry.remove<Camera2DCacheComponent>(e);
+            // G-07: the derived cache is maintained by entt construct/destroy signals
+            // (a Camera2D entity gets a Camera2DCache; a cache whose Camera2D was
+            // removed is dropped). Wired ONCE on the first update + a one-time
+            // backfill, then zero per-frame cost. See connectDerivedMaintenance.
+            if (!cache_maintenance_connected_)
+            {
+                connectDerivedMaintenance<Camera2DComponent, Camera2DCacheComponent>(registry, scratch_);
+                cache_maintenance_connected_ = true;
+#ifndef NDEBUG
+                maintenance_registry_ = &registry;
+#endif
+            }
+#ifndef NDEBUG
+            assert(maintenance_registry_ == &registry &&
+                   "Camera2DSystem reused across registries: its G-07 signal "
+                   "maintenance is wired to a different one");
+#endif
 
             auto view = registry.view<WorldTransform2DComponent, Camera2DComponent, Camera2DCacheComponent>();
             view.each([](const WorldTransform2DComponent& wc, const Camera2DComponent& cc, Camera2DCacheComponent& cache)
@@ -92,7 +100,13 @@ namespace lux::gameplay::d2
         static constexpr float kNearZ = -1024.0f;
         static constexpr float kFarZ  =  1024.0f;
 
+        /// Reused scratch for the ONE-TIME derived-cache-maintenance backfill.
         std::vector<lux::meta::entity_id> scratch_;
+        /// G-07 signals are wired lazily on the first update.
+        bool cache_maintenance_connected_{false};
+#ifndef NDEBUG
+        const void* maintenance_registry_{nullptr};   // 1:1-registry tripwire
+#endif
     };
 
     // ── Camera helpers (T2-02/T2-03) ──
@@ -107,6 +121,20 @@ namespace lux::gameplay::d2
         int count = 0;
         for (auto e : reg.view<ActiveCamera2DTag, Camera2DComponent>()) { found = e; ++count; }
         return count == 1 ? found : lux::meta::null_entity;
+    }
+
+    /// The camera gate every 2D PRODUCER bridge shares (P0-5): the single active camera,
+    /// but only once its derived Camera2DCacheComponent exists (i.e. Camera2DSystem has
+    /// run at least once), so callers never publish or frame content against a camera
+    /// whose view/proj was never derived. Returns null_entity otherwise. Note what this
+    /// deliberately does NOT check: whether the render side can resolve camera-upload
+    /// ops — that is the upload bridge's own concern (a headless / feature-less scene
+    /// still submits draw content; pinned by sprite_slice_a_test).
+    [[nodiscard]] inline lux::meta::entity_id publishableCamera(lux::meta::EntityRegistry& reg)
+    {
+        const lux::meta::entity_id cam = activeCamera(reg);
+        if (cam == lux::meta::null_entity) return lux::meta::null_entity;
+        return reg.all_of<Camera2DCacheComponent>(cam) ? cam : lux::meta::null_entity;
     }
 
     /// World point on the z=0 plane → screen pixel via a camera's view_proj. @p viewport

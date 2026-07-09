@@ -90,4 +90,24 @@ namespace lux::gameplay
         IRenderableBridge() = default;
     };
 
+    /// Base for TRANSIENT producer bridges — bespoke bridges (the 2D sprite / camera
+    /// producers today, tilemap next) that rebuild and submit their whole payload every
+    /// frame: nothing is retained across frames and no async create is ever in flight,
+    /// so reap and the two-phase teardown drain are no-ops BY CONTRACT. Deriving from
+    /// this states that contract once (the overrides are `final`) — a transient bridge
+    /// implements only drive() (+ finalize() if it batches). A bridge that retains ANY
+    /// server-side object must derive from IRenderableBridge directly instead.
+    ///
+    /// No stopping flag: drive() is only ever invoked from RenderableSystem::update(),
+    /// which rejects all calls once shutdown begins (shutdown state is set BEFORE any
+    /// bridge's beginShutdown runs), so a per-bridge guard would be dead code.
+    class LUX_FUNCTION_PUBLIC TransientRenderableBridge : public IRenderableBridge
+    {
+    public:
+        void reap(lux::meta::EntityRegistry& /*registry*/, RenderableBridgeContext& /*ctx*/) final {}
+        void beginShutdown(RenderableBridgeContext& /*ctx*/) final {}
+        [[nodiscard]] bool hasPendingShutdownWork() const final { return false; }
+        void flushShutdownCleanup(RenderableBridgeContext& /*ctx*/) final {}
+    };
+
 } // namespace lux::gameplay

@@ -147,6 +147,9 @@ namespace lux::engine::platform
 
 #if defined(__linux__)
         // Preferred path: anonymous memory file descriptor + dlopen via /proc.
+        // Extra braces scope this fd so it does not clash with the fallback fd below
+        // (both paths are compiled on Linux, unlike Windows where only one is).
+        {
         int fd = memfdCreateCompat(sanitized.c_str(), MFD_CLOEXEC);
         if (fd >= 0)
         {
@@ -184,6 +187,7 @@ namespace lux::engine::platform
             handle_     = h;
             return true;
         }
+        }   // end memfd scope
         // memfd_create failed (old kernel, sandbox, etc.) → fall through to tmp file.
 #endif
 

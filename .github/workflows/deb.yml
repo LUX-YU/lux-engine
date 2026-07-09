@@ -43,7 +43,7 @@ jobs:
           libeigen3-dev libglfw3-dev libvulkan-dev libassimp-dev libluajit-5.1-dev
           libmeshoptimizer-dev libspirv-cross-c-shared-dev libstb-dev
           libclang-dev sol2
-          lux-cmake-toolset lux-cxx imgui stduuid entt
+          lux-cmake-toolset lux-cxx imgui stduuid entt vulkanmemoryallocator
 
       # shaderc isn't packaged for Ubuntu 22.04 (it lands in 24.04's libshaderc-dev)
       # and LunarG's SDK apt repo is amd64-only, so build it from source. It's slow,

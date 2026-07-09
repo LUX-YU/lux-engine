@@ -133,8 +133,9 @@ namespace lux::asset
         if (entry->size == 0)
             return lux::cxx::unexpected(EAssetError::ABNORMAL_FILE_SIZE);
 
-        auto bytes = std::make_shared<std::byte[]>(
-            static_cast<std::size_t>(entry->size));
+        // std::make_shared<T[]> needs GCC 12+; shared_ptr's array ctor works on GCC 11.
+        auto bytes = std::shared_ptr<std::byte[]>(
+            new std::byte[static_cast<std::size_t>(entry->size)]());
         {
             std::lock_guard lock(d_->stream_mutex);
             d_->stream.clear();

@@ -174,7 +174,8 @@ namespace lux::asset
         ifs.seekg(0, std::ios::beg);
 
         const auto size = static_cast<std::size_t>(end);
-        auto bytes = std::make_shared<std::byte[]>(size);
+        // std::make_shared<T[]> needs GCC 12+; shared_ptr's array ctor works on GCC 11.
+        auto bytes = std::shared_ptr<std::byte[]>(new std::byte[size]());
         if (!ifs.read(reinterpret_cast<char*>(bytes.get()),
                       static_cast<std::streamsize>(size)))
         {

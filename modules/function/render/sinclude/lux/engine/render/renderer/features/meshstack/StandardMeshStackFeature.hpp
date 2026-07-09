@@ -37,7 +37,7 @@ namespace lux::render
             std::string name{"StandardMeshStack"};
         };
 
-        explicit StandardMeshStackFeature(Config cfg = Config{});
+        explicit StandardMeshStackFeature(Config cfg = {});
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;

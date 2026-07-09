@@ -51,7 +51,7 @@ namespace lux::render
             std::string depth_target{"SceneDepth"};
         };
 
-        explicit ParticleFeature(Config cfg = Config{});
+        explicit ParticleFeature(Config cfg = {});
 
         std::string_view name() const override { return "ParticleEffect"; }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;

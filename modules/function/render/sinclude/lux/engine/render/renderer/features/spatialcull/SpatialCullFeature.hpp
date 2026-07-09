@@ -47,7 +47,7 @@ namespace lux::render
             float       cull_distance{512.0f};  ///< 剔除距离(cell 超此距相机 → 休眠)
         };
 
-        explicit SpatialCullFeature(Config cfg = Config{});
+        explicit SpatialCullFeature(Config cfg = {});
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;

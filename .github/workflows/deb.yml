@@ -39,7 +39,7 @@ jobs:
       - name: Install deps
         run: >
           sudo apt-get update && sudo apt-get install -y
-          cmake ninja-build g++ dpkg-dev pkg-config
+          cmake ninja-build g++ g++-12 dpkg-dev pkg-config
           libeigen3-dev libglfw3-dev libvulkan-dev libassimp-dev libluajit-5.1-dev
           libspirv-cross-c-shared-dev libstb-dev
           libclang-dev libfmt-dev sol2
@@ -99,6 +99,8 @@ jobs:
           cmake -S lux-engine -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_INSTALL_PREFIX=/usr
+          -DCMAKE_C_COMPILER=gcc-12
+          -DCMAKE_CXX_COMPILER=g++-12
           -DLUX_BUILD_EDITOR=OFF
           -DBUILD_TESTING=OFF
           ${{ steps.ver.outputs.extra }}

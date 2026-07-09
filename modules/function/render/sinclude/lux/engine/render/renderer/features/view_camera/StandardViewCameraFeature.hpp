@@ -34,7 +34,7 @@ namespace lux::render
             std::string name{"StandardViewCamera"};
         };
 
-        explicit StandardViewCameraFeature(Config cfg = Config{});
+        explicit StandardViewCameraFeature(Config cfg = {});
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;

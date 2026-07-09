@@ -37,7 +37,7 @@ namespace lux::render
             std::string name{"StandardMaterial"};
         };
 
-        explicit StandardMaterialFeature(Config cfg = {});
+        explicit StandardMaterialFeature(Config cfg = Config{});
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;

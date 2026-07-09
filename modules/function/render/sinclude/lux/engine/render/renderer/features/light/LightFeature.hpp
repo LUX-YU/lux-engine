@@ -34,7 +34,7 @@ namespace lux::render
             std::string name{"Light"};
         };
 
-        explicit LightFeature(Config cfg = {});
+        explicit LightFeature(Config cfg = Config{});
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;

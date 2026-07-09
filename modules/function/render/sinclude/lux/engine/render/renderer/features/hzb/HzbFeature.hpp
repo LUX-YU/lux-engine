@@ -40,7 +40,7 @@ namespace lux::render
             uint32_t     height{0};
         };
 
-        explicit HzbFeature(Config cfg = {});
+        explicit HzbFeature(Config cfg = Config{});
 
         std::string_view name() const override { return "Hzb"; }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;

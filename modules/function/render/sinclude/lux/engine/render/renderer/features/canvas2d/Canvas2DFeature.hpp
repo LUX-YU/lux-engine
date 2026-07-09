@@ -42,7 +42,7 @@ namespace lux::render
             ShaderHandle  fragment_shader{};
         };
 
-        explicit Canvas2DFeature(Config cfg = {});
+        explicit Canvas2DFeature(Config cfg = Config{});
         ~Canvas2DFeature() override;
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;

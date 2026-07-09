@@ -4,7 +4,7 @@
 #include <lux/engine/asset/VirtualPath.hpp>
 
 #include <algorithm>
-#include <format>
+#include <lux/engine/platform/FormatCompat.h>
 #include <fstream>
 #include <map>
 #include <system_error>
@@ -19,12 +19,12 @@ namespace lux::asset
     {
         if (!VirtualPath::isLegalRoot(mount_hint))
             return lux::cxx::unexpected(
-                std::format("illegal mount hint '{}'", mount_hint));
+                lux::format("illegal mount hint '{}'", mount_hint));
 
         std::error_code ec;
         if (!std::filesystem::is_directory(content_dir, ec) || ec)
             return lux::cxx::unexpected(
-                std::format("'{}' is not a directory", content_dir.string()));
+                lux::format("'{}' is not a directory", content_dir.string()));
 
         // Walk with the SAME byte-for-byte rules as the editor scan
         // (extension filter + header probe + extensionless relative vpath),
@@ -67,7 +67,7 @@ namespace lux::asset
 
             if (auto verr = VirtualPath::validateRelative(vpath))
             {
-                violations.push_back(std::format(
+                violations.push_back(lux::format(
                     "'{}': not addressable as a virtual path (err={})",
                     rel, static_cast<int>(*verr)));
                 continue;
@@ -77,14 +77,14 @@ namespace lux::asset
             const auto type  = assetTypeOfMagic(probe.magic);
             if (type == EAssetType::UNKNOWN || probe.id.is_nil())
             {
-                violations.push_back(std::format(
+                violations.push_back(lux::format(
                     "'{}': unrecognized or corrupt asset header", rel));
                 continue;
             }
 
             if (const auto it = by_vpath.find(vpath); it != by_vpath.end())
             {
-                violations.push_back(std::format(
+                violations.push_back(lux::format(
                     "duplicate vpath '{}': '{}' vs '{}'",
                     vpath, rel, it->second));
                 continue;
@@ -92,14 +92,14 @@ namespace lux::asset
             if (const auto it = by_folded.find(foldCaseAscii(vpath));
                 it != by_folded.end() && it->second != vpath)
             {
-                violations.push_back(std::format(
+                violations.push_back(lux::format(
                     "case-insensitive vpath clash: '{}' vs '{}'",
                     vpath, it->second));
                 continue;
             }
             if (const auto it = by_id.find(probe.id); it != by_id.end())
             {
-                violations.push_back(std::format(
+                violations.push_back(lux::format(
                     "duplicate uuid: '{}' vs '{}'", rel, it->second));
                 continue;
             }
@@ -113,7 +113,7 @@ namespace lux::asset
 
         if (!violations.empty())
         {
-            std::string msg = std::format(
+            std::string msg = lux::format(
                 "cook rejected — {} violation(s):", violations.size());
             for (const auto& v : violations)
             {
@@ -124,14 +124,14 @@ namespace lux::asset
         }
         if (entries.empty())
             return lux::cxx::unexpected(
-                std::format("no assets under '{}'", content_dir.string()));
+                lux::format("no assets under '{}'", content_dir.string()));
 
         std::uintmax_t payload_bytes = 0;
         for (const auto& e : entries)
         {
             payload_bytes += std::filesystem::file_size(e.source_file, ec);
             if (ec)
-                return lux::cxx::unexpected(std::format(
+                return lux::cxx::unexpected(lux::format(
                     "cannot stat '{}'", e.source_file.string()));
         }
 
@@ -152,12 +152,12 @@ namespace lux::asset
         const auto file_size = std::filesystem::file_size(pak_path, ec);
         if (ec)
             return lux::cxx::unexpected(
-                std::format("cannot stat '{}'", pak_path.string()));
+                lux::format("cannot stat '{}'", pak_path.string()));
 
         std::ifstream stream(pak_path, std::ios::binary);
         if (!stream)
             return lux::cxx::unexpected(
-                std::format("cannot open '{}'", pak_path.string()));
+                lux::format("cannot open '{}'", pak_path.string()));
 
         detail::PakIndex index;
         std::string err;

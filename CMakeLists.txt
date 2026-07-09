@@ -27,6 +27,20 @@ find_package(lux-cxx                  REQUIRED
     reflection_generator
 )
 
+# ── Shared std::format compatibility (lives in the platform tier) ──────────────
+# jammy's GCC 11 has no <format>; detect it and otherwise fall back to header-only
+# libfmt. The generated header sits on a global include path so every layer can
+# #include <lux/engine/platform/FormatCompat.h> and use lux::format (no layering
+# violation, unlike the editor-only FormatCompat).
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckFormatSupport.cmake)
+check_format_support()
+set(LUX_FORMAT_COMPAT_INCLUDE_DIR ${CMAKE_BINARY_DIR}/format-compat/include)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/modules/platform/FormatCompat.h.in
+    ${LUX_FORMAT_COMPAT_INCLUDE_DIR}/lux/engine/platform/FormatCompat.h
+)
+include_directories(${LUX_FORMAT_COMPAT_INCLUDE_DIR})
+
 # The editor tier (engine/) is built by default. Turn this OFF for a
 # runtime-only build: the editor UI panels and the FlowForge MLIR compiler are
 # excluded, and the resulting link commands carry no imgui_node_editor / MLIR /

@@ -42,7 +42,7 @@ jobs:
           cmake ninja-build g++ dpkg-dev pkg-config
           libeigen3-dev libglfw3-dev libvulkan-dev libassimp-dev libluajit-5.1-dev
           libmeshoptimizer-dev libspirv-cross-c-shared-dev libstb-dev
-          libclang-dev sol2
+          libclang-dev libfmt-dev sol2
           lux-cmake-toolset lux-cxx imgui stduuid entt vulkanmemoryallocator
 
       # shaderc isn't packaged for Ubuntu 22.04 (it lands in 24.04's libshaderc-dev)

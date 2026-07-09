@@ -3,7 +3,7 @@
 #include <lux/engine/asset/PakCodec.hpp>
 
 #include <algorithm>
-#include <format>
+#include <lux/engine/platform/FormatCompat.h>
 #include <fstream>
 #include <mutex>
 #include <system_error>
@@ -54,18 +54,18 @@ namespace lux::asset
         const auto file_size = std::filesystem::file_size(pak_path, ec);
         if (ec)
             return lux::cxx::unexpected(
-                std::format("cannot stat '{}'", pak_path.string()));
+                lux::format("cannot stat '{}'", pak_path.string()));
 
         std::ifstream stream(pak_path, std::ios::binary);
         if (!stream)
             return lux::cxx::unexpected(
-                std::format("cannot open '{}'", pak_path.string()));
+                lux::format("cannot open '{}'", pak_path.string()));
 
         detail::PakIndex index;
         std::string err;
         if (!detail::readPakIndex(stream, file_size, index, &err))
             return lux::cxx::unexpected(
-                std::format("'{}': {}", pak_path.string(), err));
+                lux::format("'{}': {}", pak_path.string(), err));
 
         auto provider = std::shared_ptr<PakAssetProvider>(new PakAssetProvider());
         Data& d = *provider->d_;

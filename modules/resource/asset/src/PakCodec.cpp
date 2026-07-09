@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
-#include <format>
+#include <lux/engine/platform/FormatCompat.h>
 #include <fstream>
 #include <system_error>
 
@@ -70,7 +70,7 @@ namespace lux::asset::detail
     {
         if (!VirtualPath::isLegalRoot(mount_hint))
             return fail(error_out,
-                        std::format("illegal mount hint '{}'", mount_hint));
+                        lux::format("illegal mount hint '{}'", mount_hint));
         if (entries.size() > kMaxPakEntries)
             return fail(error_out, "too many entries");
 
@@ -95,7 +95,7 @@ namespace lux::asset::detail
                 continue; // no PATH row (tombstone/patch shape)
             if (auto err = VirtualPath::validateRelative(e.vpath))
                 return fail(error_out,
-                            std::format("non-canonical vpath '{}' (err={})",
+                            lux::format("non-canonical vpath '{}' (err={})",
                                         e.vpath, static_cast<int>(*err)));
             path_rows.push_back(&e);
         }
@@ -108,7 +108,7 @@ namespace lux::asset::detail
         {
             if (path_rows[i - 1]->vpath == path_rows[i]->vpath)
                 return fail(error_out,
-                            std::format("duplicate vpath '{}'",
+                            lux::format("duplicate vpath '{}'",
                                         path_rows[i]->vpath));
         }
 
@@ -142,7 +142,7 @@ namespace lux::asset::detail
                 std::error_code rm;
                 std::filesystem::remove(tmp, rm);
                 return fail(error_out,
-                            std::format("cannot read payload '{}'",
+                            lux::format("cannot read payload '{}'",
                                         entries[i].source_file.string()));
             }
             cursor += placed[i].size;
@@ -298,7 +298,7 @@ namespace lux::asset::detail
             return fail(error_out, "cannot read mount hint");
         if (!VirtualPath::isLegalRoot(out.mount_hint))
             return fail(error_out,
-                        std::format("illegal mount hint '{}'", out.mount_hint));
+                        lux::format("illegal mount hint '{}'", out.mount_hint));
 
         bool seen_entb = false, seen_path = false;
         while (true)
@@ -390,7 +390,7 @@ namespace lux::asset::detail
                         return fail(error_out, "PATH uuid truncated");
                     if (auto verr = VirtualPath::validateRelative(row.vpath))
                         return fail(error_out,
-                                    std::format("non-canonical vpath '{}'",
+                                    lux::format("non-canonical vpath '{}'",
                                                 row.vpath));
                     if (!out.paths.empty()
                         && !(out.paths.back().vpath < row.vpath))
@@ -406,7 +406,7 @@ namespace lux::asset::detail
                         });
                     if (it == out.entries.end() || !(it->id == row.id))
                         return fail(error_out,
-                                    std::format("PATH row '{}' references an "
+                                    lux::format("PATH row '{}' references an "
                                                 "unknown uuid", row.vpath));
                     out.paths.push_back(std::move(row));
                 }

@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <charconv>
 #include <filesystem>
-#include <format>
+#include <lux/engine/platform/FormatCompat.h>
 #include <optional>
 #include <string_view>
 #include <iostream>
@@ -145,7 +145,7 @@ namespace lux::asset
                 tex_key = (!rel_ec && !rel.empty()) ? rel.generic_string() : path_key;
             }
             texture_loader_.config().deterministic_seed =
-                std::format("{}|texture|{}", config().deterministic_seed, tex_key);
+                lux::format("{}|texture|{}", config().deterministic_seed, tex_key);
         }
 
         if (embeddedIfAny) {
@@ -502,8 +502,8 @@ namespace lux::asset
         if (config().deterministic_seed.empty())
             return {};
         return index
-            ? std::format("{}|{}|{}", config().deterministic_seed, kind, *index)
-            : std::format("{}|{}", config().deterministic_seed, kind);
+            ? lux::format("{}|{}|{}", config().deterministic_seed, kind, *index)
+            : lux::format("{}|{}", config().deterministic_seed, kind);
     }
 
     lux::cxx::expected<AssetIDPair, EAssetError>

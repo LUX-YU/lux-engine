@@ -3,7 +3,7 @@
 #include <lux/engine/asset/VirtualPath.hpp>
 
 #include <algorithm>
-#include <format>
+#include <lux/engine/platform/FormatCompat.h>
 #include <fstream>
 #include <system_error>
 #include <unordered_map>
@@ -60,7 +60,7 @@ namespace lux::asset
             const std::string vpath = vrel.generic_string();
             if (auto err = VirtualPath::validateRelative(vpath))
             {
-                diagnostics_.push_back(std::format(
+                diagnostics_.push_back(lux::format(
                     "skip '{}': not addressable as a virtual path (err={})",
                     rel.generic_string(), static_cast<int>(*err)));
                 continue;
@@ -70,7 +70,7 @@ namespace lux::asset
             const auto type  = assetTypeOfMagic(probe.magic);
             if (type == EAssetType::UNKNOWN || probe.id.is_nil())
             {
-                diagnostics_.push_back(std::format(
+                diagnostics_.push_back(lux::format(
                     "skip '{}': unrecognized or corrupt asset header",
                     rel.generic_string()));
                 continue;
@@ -97,7 +97,7 @@ namespace lux::asset
         {
             if (const auto it = by_path_.find(c.vpath); it != by_path_.end())
             {
-                diagnostics_.push_back(std::format(
+                diagnostics_.push_back(lux::format(
                     "vpath collision: '{}' also stored as '{}' — keeping '{}'",
                     c.rel_file, entries_[it->second].file.filename().string(),
                     entries_[it->second].file.filename().string()));
@@ -105,7 +105,7 @@ namespace lux::asset
             }
             if (const auto it = by_id_.find(c.id); it != by_id_.end())
             {
-                diagnostics_.push_back(std::format(
+                diagnostics_.push_back(lux::format(
                     "uuid collision: '{}' duplicates the id of '{}' — keeping '{}'",
                     c.rel_file, entries_[it->second].vpath,
                     entries_[it->second].vpath));
@@ -116,7 +116,7 @@ namespace lux::asset
                 folded_seen.try_emplace(foldCaseAscii(c.vpath), c.vpath);
             if (!fresh && fit->second != c.vpath)
             {
-                diagnostics_.push_back(std::format(
+                diagnostics_.push_back(lux::format(
                     "case-insensitive clash: '{}' vs '{}' (both resolvable "
                     "now; cook will reject)",
                     c.vpath, fit->second));

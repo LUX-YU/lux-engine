@@ -1,0 +1,56 @@
+#pragma once
+//===- FormatCompat.h - std::format compatibility (platform tier) -*-C++-*-===//
+//
+// Shared std::format / libfmt shim. Lives in the platform layer so EVERY layer
+// (core / resource / function / editor) can use lux::format without a layering
+// violation. Configured by cmake/CheckFormatSupport.cmake at the top level:
+//   - std::format when the compiler has it (GCC 13+/Clang 16+/MSVC),
+//   - else header-only libfmt (FMT_HEADER_ONLY, so nothing needs to link fmt),
+//   - else a crude stringstream fallback.
+// Use lux::format / lux::vformat / lux::format_to instead of the std:: ones.
+//
+//===----------------------------------------------------------------------===//
+
+#cmakedefine USE_STD_FORMAT
+#cmakedefine USE_LIBFMT
+
+#ifdef USE_STD_FORMAT
+    #include <format>
+    namespace lux {
+        using std::format;
+        using std::vformat;
+        using std::format_to;
+        using std::format_string;
+        using std::make_format_args;
+    }
+#elif defined(USE_LIBFMT)
+    #ifndef FMT_HEADER_ONLY
+        #define FMT_HEADER_ONLY
+    #endif
+    #include <fmt/format.h>
+    #include <fmt/args.h>
+    namespace lux {
+        using fmt::format;
+        using fmt::vformat;
+        using fmt::format_to;
+        template<typename... Args>
+        using format_string = fmt::format_string<Args...>;
+        using fmt::make_format_args;
+    }
+#else
+    #include <sstream>
+    #include <string>
+    namespace lux {
+        // Crude fallback (no real format-spec support); only hit when neither
+        // std::format nor libfmt is available — install libfmt-dev to avoid it.
+        template<typename... Args>
+        std::string format(const std::string& fmt_str, Args&&... args) {
+            std::ostringstream oss;
+            oss << fmt_str;
+            ((oss << " " << args), ...);
+            return oss.str();
+        }
+        template<typename... Args>
+        using format_string = std::string;
+    }
+#endif

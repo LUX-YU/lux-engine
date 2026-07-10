@@ -1,30 +1,32 @@
 #pragma once
 // ============================================================================
 //  PixelField2DBridge.hpp — ECS PixelField2DComponent → GPU-resident canvas
-//  field instance + persistent id-mirror texture (lux::gameplay::d2, F2-08).
+//  field instances + persistent id-mirror textures (lux::gameplay::d2,
+//  F2-08; PER CHUNK since C2-00).
 //
-//  RETAINED bridge (the Sprite2DBridge/InstanceBridge shape) with a TWO-STAGE
-//  first sight: ① create the field's persistent R16_UNORM id-mirror texture
-//  (reply → bindless index), ② create the canvas PixelField instance carrying
-//  that index (reply → instance handle, G-05 validated). One scene-shared
-//  256×1 RGBA8 PALETTE texture (premultiplied material colours; entry 0 =
-//  transparent) is created once and re-uploaded only when the material table
-//  GROWS — material colour changes touch ONLY the palette (F2-09 acceptance).
+//  RETAINED bridge. Since C2-00 a field is a grid of 256²-cell chunks and the
+//  render mirror is one R16_UNORM texture + one canvas PixelField instance PER
+//  CHUNK (the arena's per-field-chunk semantics, now actually exercised).
+//  First sight is a BUILDING state machine: ① create ALL chunk mirror
+//  textures (each reply fills its slot), ② once every texture (and the
+//  scene-shared palette) is ready, create ALL canvas instances (G-05
+//  validated), ③ promote to Live. Any failure orphans what was created and
+//  backs off (the F2-08 FailRecord discipline).
 //
-//  Steady state per frame:
-//    - CONTENT: runtime.exportDirty() → OwnedTextureUploadBatch (pixels ride
-//      the export's own shared_ptr — attachment channel, not the command ring)
-//      → session.updateTextureRegions → the reply's status routes back through
-//      runtime.confirmExport (Ok advances uploadedRevision, anything else
-//      re-dirties — defer-never-lose). A settled field exports NOTHING.
-//    - PLACEMENT: the world affine (WorldTransform2D translation = min corner,
-//      scale = cells × cell_size, unit quad centring folded in) is re-baked and
-//      VALUE-compared; only a change emits UpdatePixelField2DTransform.
-//    - priority/visible value-diff → UpdatePixelField2DKey.
+//  Steady state per frame (per live field):
+//    - CONTENT: for each chunk, runtime.exportDirty(field, cx, cy, budget) →
+//      OwnedTextureUploadBatch against THAT chunk's texture → the reply's
+//      status routes back through runtime.confirmExport(field, cx, cy, …)
+//      (Ok advances that chunk's uploadedRevision, anything else re-dirties —
+//      defer-never-lose). A settled chunk exports NOTHING.
+//    - PLACEMENT: the field affine is value-compared; a change re-sends every
+//      chunk instance's transform (fields are FEW and mostly static).
+//    - priority/visible value-diff → per-chunk UpdatePixelField2DKey.
 //
-//  The bridge never reads CA internals — only the F2-07 export ticket and the
-//  component. Reap removes the canvas instance AND destroys the field texture;
-//  teardown drains pending creates into orphans (two-phase contract).
+//  The bridge never reads CA internals — only the export ticket, the chunk
+//  geometry queries and the component. Reap removes every chunk instance AND
+//  destroys every mirror texture; teardown drains pending creates into
+//  orphans (two-phase contract).
 // ============================================================================
 
 #include <lux/engine/gameplay/render_bridge/IRenderableBridge.hpp>
@@ -39,6 +41,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -47,14 +50,37 @@ namespace lux::gameplay::d2
 {
     class PixelField2DBridge final : public lux::gameplay::IRenderableBridge
     {
-        struct Live
+        struct ChunkSlot
         {
             lux::render::PixelFieldInstanceHandle instance{};
-            lux::render::RTextureHandle           texture{};     ///< the field's id mirror
-            PixelFieldHandle                      field{};       ///< runtime handle (export source)
-            float                                 m[6]{};        ///< last sent affine
-            float                                 priority{0.f};
-            bool                                  visible{true};
+            lux::render::RTextureHandle           texture{};
+        };
+
+        struct Live
+        {
+            PixelFieldHandle       field{};
+            std::uint32_t          chunks_x{0}, chunks_y{0};
+            std::vector<ChunkSlot> slots;          ///< chunks_x*chunks_y, all populated
+            float                  m[6]{};         ///< last sent FIELD affine (chunk affines derive)
+            float                  priority{0.f};
+            bool                   visible{true};
+        };
+
+        /// The per-entity first-sight state machine (shared_ptr so the async
+        /// reply continuations keep it alive across frames).
+        struct Building
+        {
+            PixelFieldHandle field{};
+            std::uint32_t    chunks_x{0}, chunks_y{0};
+            std::vector<lux::render::RTextureHandle>           textures;    ///< filled by replies
+            std::vector<lux::render::PixelFieldInstanceHandle> instances;   ///< filled by replies
+            std::uint32_t    textures_pending{0};
+            std::uint32_t    instances_pending{0};
+            bool             instances_issued{false};
+            bool             failed{false};
+            bool             failed_permanent{false};
+            std::vector<lux::render::RenderRequest<lux::render::Texture2DCreatedReply>> tex_reqs;
+            std::vector<lux::render::RenderRequest<lux::render::PixelFieldSlotReply>>   add_reqs;
         };
 
     public:
@@ -62,8 +88,11 @@ namespace lux::gameplay::d2
 
         ~PixelField2DBridge() override
         {
-            for (auto& [e, req] : tex_pending_) req.cancel();
-            for (auto& [e, req] : add_pending_) req.cancel();
+            for (auto& [e, b] : building_)
+            {
+                for (auto& r : b->tex_reqs) r.cancel();
+                for (auto& r : b->add_reqs) r.cancel();
+            }
             palette_pending_.cancel();   // idempotent; no-op on a stateless request
         }
 
@@ -81,134 +110,33 @@ namespace lux::gameplay::d2
                     if (!runtime_->isAlive(pc.field)) return;   // field not created yet / died
                     const auto d = runtime_->desc(pc.field);
 
-                    // Bake the placement affine: min corner = world translation
-                    // (F2-02 contract), extent = cells × cell_size; the unit quad
-                    // is centred, so the centre offset folds into the translation.
-                    const float sx = static_cast<float>(d.cells_w) * pc.cell_size;
-                    const float sy = static_cast<float>(d.cells_h) * pc.cell_size;
+                    // The FIELD affine (min corner = world translation, F2-02);
+                    // per-chunk affines derive from it below.
                     float m[6];
-                    m[0] = sx;  m[1] = 0.f;
-                    m[2] = 0.f; m[3] = sy;
-                    m[4] = wt.world(0, 3) + sx * 0.5f;
-                    m[5] = wt.world(1, 3) + sy * 0.5f;
+                    m[0] = static_cast<float>(d.cells_w) * pc.cell_size;
+                    m[1] = 0.f;
+                    m[2] = 0.f;
+                    m[3] = static_cast<float>(d.cells_h) * pc.cell_size;
+                    m[4] = wt.world(0, 3);
+                    m[5] = wt.world(1, 3);
 
                     if (auto it = live_.find(e); it != live_.end())
                     {
-                        Live& L = it->second;
-                        if (std::memcmp(m, L.m, sizeof(m)) != 0)
-                        {
-                            canvas.updatePixelFieldTransform(ctx.scene(), L.instance, m);
-                            std::memcpy(L.m, m, sizeof(m));
-                        }
-                        if (pc.priority != L.priority || pc.visible != L.visible)
-                        {
-                            canvas.updatePixelFieldKey(ctx.scene(), L.instance, pc.priority, pc.visible);
-                            L.priority = pc.priority;
-                            L.visible  = pc.visible;
-                        }
-
-                        // CONTENT: one budgeted export per frame; the reply's status
-                        // routes straight back into the planner (defer-never-lose).
-                        auto ex = runtime_->exportDirty(L.field, kUploadBudget);
-                        if (!ex.empty())
-                        {
-                            lux::render::OwnedTextureUploadBatch batch{};
-                            batch.dst              = L.texture;
-                            batch.content_revision = ex.content_revision;
-                            batch.regions          = std::move(ex.regions);
-                            batch.pixels           = ex.pixels;
-                            batch.pixel_bytes      = ex.pixel_bytes;
-                            auto req = ctx.session().updateTextureRegions(batch);
-                            PixelFieldRuntime* rt = runtime_;
-                            const PixelFieldHandle fh = L.field;
-                            const std::uint64_t rev = ex.content_revision;
-                            req.then([rt, fh, rev](const lux::render::TextureRegionsAppliedReply& r)
-                            {
-                                rt->confirmExport(fh, rev,
-                                    static_cast<lux::render::ERegionUploadStatus>(r.status));
-                            });
-                        }
+                        driveLive(ctx, canvas, it->second, pc, m);
                         return;
                     }
-
-                    // ── two-stage first sight ──
-                    if (add_pending_.count(e) || tex_pending_.count(e) || failed_.count(e))
+                    if (auto bit = building_.find(e); bit != building_.end())
                     {
-                        if (auto fit = failed_.find(e); fit != failed_.end())
-                        {
-                            if (fit->second.permanent) return;
-                            if (--fit->second.retry_in > 0) return;
-                            failed_.erase(fit);
-                        }
-                        else return;
-                    }
-
-                    if (auto tit = tex_ready_.find(e); tit != tex_ready_.end())
-                    {
-                        // ② the mirror exists → create the canvas instance.
-                        if (palette_bindless_ == lux::render::kNoTexture)
-                            return;   // palette still in flight — next frame
-                        lux::render::PixelField2DInstanceData data{};
-                        std::memcpy(data.m, m, sizeof(m));
-                        data.field_texture   = tit->second.index;   // RTextureHandle::index IS the bindless index
-                        data.palette_texture = palette_bindless_;
-                        data.cells_w         = d.cells_w;
-                        data.cells_h         = d.cells_h;
-
-                        Live snap{};
-                        snap.texture = tit->second;
-                        snap.field   = pc.field;
-                        std::memcpy(snap.m, m, sizeof(m));
-                        snap.priority = pc.priority;
-                        snap.visible  = pc.visible;
-
-                        auto req = canvas.addPixelField(ctx.scene(), data, pc.priority, pc.visible);
-                        req.then([this, e, snap](const lux::render::PixelFieldSlotReply& r)
-                        {
-                            add_pending_.erase(e);
-                            if (r.status != lux::render::ECanvas2DCreateStatus::Ok || r.handle.is_null())
-                            {
-                                if (r.handle.valid())
-                                    orphan_instances_.push_back(r.handle);
-                                if (!stopping_)
-                                    failed_[e] = FailRecord{
-                                        r.status != lux::render::ECanvas2DCreateStatus::CapacityExhausted,
-                                        kRetryDrives};
-                                return;
-                            }
-                            if (stopping_) { orphan_instances_.push_back(r.handle); return; }
-                            Live L = snap;
-                            L.instance = r.handle;
-                            live_.emplace(e, L);
-                        });
-                        add_pending_.emplace(e, std::move(req));
-                        tex_ready_.erase(tit);
+                        advanceBuilding(ctx, canvas, e, *bit->second, pc, m);
                         return;
                     }
-
-                    // ① create the persistent id-mirror texture. Full initial
-                    // content lands via the export path (create marks the WHOLE
-                    // surface dirty below, so the first exports carry everything).
-                    lux::render::PersistentTexture2DDesc td{};
-                    td.width  = d.cells_w;
-                    td.height = d.cells_h;
-                    td.format = lux::render::EPixelFormat::R16_UNORM;
-                    auto req = ctx.session().createPersistentTexture2D(td);
-                    if (auto* planner = runtime_->uploadPlanner(pc.field))
-                        planner->markDirty(0, 0, d.cells_w, d.cells_h);   // first upload = full surface
-                    req.then([this, e](const lux::render::Texture2DCreatedReply& r)
+                    if (auto fit = failed_.find(e); fit != failed_.end())
                     {
-                        tex_pending_.erase(e);
-                        if (r.status != 0 || r.handle.is_null())
-                        {
-                            if (!stopping_)
-                                failed_[e] = FailRecord{/*permanent=*/true, 0};
-                            return;
-                        }
-                        if (stopping_) { orphan_textures_.push_back(r.handle); return; }
-                        tex_ready_[e] = r.handle;
-                    });
-                    tex_pending_.emplace(e, std::move(req));
+                        if (fit->second.permanent) return;
+                        if (--fit->second.retry_in > 0) return;
+                        failed_.erase(fit);
+                    }
+                    startBuilding(ctx, e, pc);
                 });
         }
 
@@ -221,17 +149,16 @@ namespace lux::gameplay::d2
                 if (!registry.valid(e) ||
                     !registry.all_of<PixelField2DComponent, WorldTransform2DComponent>(e))
                 {
-                    canvas.removePixelField(ctx.scene(), it->second.instance);
-                    ctx.session().destroyTexture(it->second.texture);
+                    destroyLive(ctx, canvas, it->second);
                     it = live_.erase(it);
                 }
                 else ++it;
             }
-            std::erase_if(tex_ready_, [&](auto& kv) {
+            std::erase_if(building_, [&](auto& kv) {
                 if (registry.valid(kv.first) &&
                     registry.all_of<PixelField2DComponent, WorldTransform2DComponent>(kv.first))
                     return false;
-                ctx.session().destroyTexture(kv.second);   // mirror created, owner gone
+                abandonBuilding(ctx, *kv.second);   // owner died mid-build → orphan the parts
                 return true;
             });
             std::erase_if(failed_, [&](const auto& kv) {
@@ -244,14 +171,11 @@ namespace lux::gameplay::d2
         {
             auto canvas = ctx.canvas2d();
             for (auto& [e, L] : live_)
-            {
-                canvas.removePixelField(ctx.scene(), L.instance);
-                ctx.session().destroyTexture(L.texture);
-            }
+                destroyLive(ctx, canvas, L);
             live_.clear();
-            for (auto& [e, t] : tex_ready_)
-                ctx.session().destroyTexture(t);
-            tex_ready_.clear();
+            for (auto& [e, b] : building_)
+                abandonBuilding(ctx, *b);   // collected parts → destroyed now; late replies → orphans
+            // keep building_ entries: their pending replies still route via stopping_
             if (!palette_texture_.is_null())
             {
                 ctx.session().destroyTexture(palette_texture_);
@@ -259,12 +183,15 @@ namespace lux::gameplay::d2
                 palette_bindless_ = lux::render::kNoTexture;
             }
             failed_.clear();
-            stopping_ = true;   // keep pendings; late replies route into the orphan lists
+            stopping_ = true;
         }
 
         [[nodiscard]] bool hasPendingShutdownWork() const override
         {
-            return !tex_pending_.empty() || !add_pending_.empty();
+            for (const auto& [e, b] : building_)
+                if (b->textures_pending > 0 || b->instances_pending > 0)
+                    return true;
+            return false;
         }
 
         void flushShutdownCleanup(RenderableBridgeContext& ctx) override
@@ -276,6 +203,7 @@ namespace lux::gameplay::d2
             for (const auto& t : orphan_textures_)
                 ctx.session().destroyTexture(t);
             orphan_textures_.clear();
+            building_.clear();
         }
 
     private:
@@ -285,10 +213,228 @@ namespace lux::gameplay::d2
             int  retry_in{0};
         };
         static constexpr int kRetryDrives = 120;
-        /// Per-frame content budget. Generous on purpose: pixels ride the
-        /// ATTACHMENT channel (an owned shared_ptr block), not the 64 KiB
-        /// command ring, so the cap is about pacing PCIe, not wire limits.
+        /// Per-frame PER-CHUNK content budget. Pixels ride the ATTACHMENT
+        /// channel (owned shared_ptr block), not the 64 KiB command ring, so
+        /// the cap is about pacing PCIe, not wire limits.
         static constexpr lux::render::RegionUploadBudget kUploadBudget{1u << 20, 64};
+
+        // ── live steady state ────────────────────────────────────────────────
+        void driveLive(RenderableBridgeContext& ctx, lux::render::Canvas2DProxy& canvas,
+                       Live& L, const PixelField2DComponent& pc, const float m[6])
+        {
+            if (std::memcmp(m, L.m, sizeof(float) * 6) != 0)
+            {
+                std::memcpy(L.m, m, sizeof(float) * 6);
+                for (std::uint32_t cy = 0; cy < L.chunks_y; ++cy)
+                    for (std::uint32_t cx = 0; cx < L.chunks_x; ++cx)
+                    {
+                        float cm[6];
+                        chunkAffine(L.field, pc, m, cx, cy, cm);
+                        canvas.updatePixelFieldTransform(
+                            ctx.scene(), L.slots[cy * L.chunks_x + cx].instance, cm);
+                    }
+            }
+            if (pc.priority != L.priority || pc.visible != L.visible)
+            {
+                for (auto& s : L.slots)
+                    canvas.updatePixelFieldKey(ctx.scene(), s.instance, pc.priority, pc.visible);
+                L.priority = pc.priority;
+                L.visible  = pc.visible;
+            }
+
+            // CONTENT: one budgeted export per chunk per frame; the reply's
+            // status routes straight back into that chunk's planner.
+            for (std::uint32_t cy = 0; cy < L.chunks_y; ++cy)
+                for (std::uint32_t cx = 0; cx < L.chunks_x; ++cx)
+                {
+                    auto ex = runtime_->exportDirty(L.field, cx, cy, kUploadBudget);
+                    if (ex.empty()) continue;
+                    lux::render::OwnedTextureUploadBatch batch{};
+                    batch.dst              = L.slots[cy * L.chunks_x + cx].texture;
+                    batch.content_revision = ex.content_revision;
+                    batch.regions          = std::move(ex.regions);
+                    batch.pixels           = ex.pixels;
+                    batch.pixel_bytes      = ex.pixel_bytes;
+                    auto req = ctx.session().updateTextureRegions(batch);
+                    PixelFieldRuntime* rt = runtime_;
+                    const PixelFieldHandle fh = L.field;
+                    const std::uint64_t rev = ex.content_revision;
+                    req.then([rt, fh, cx, cy, rev](const lux::render::TextureRegionsAppliedReply& r)
+                    {
+                        rt->confirmExport(fh, cx, cy, rev,
+                            static_cast<lux::render::ERegionUploadStatus>(r.status));
+                    });
+                }
+        }
+
+        // ── first-sight state machine ────────────────────────────────────────
+        void startBuilding(RenderableBridgeContext& ctx, lux::meta::entity_id e,
+                           const PixelField2DComponent& pc)
+        {
+            auto b = std::make_shared<Building>();
+            b->field    = pc.field;
+            b->chunks_x = runtime_->chunksX(pc.field);
+            b->chunks_y = runtime_->chunksY(pc.field);
+            const std::uint32_t n = b->chunks_x * b->chunks_y;
+            if (n == 0) return;
+            b->textures.resize(n);
+            b->instances.resize(n);
+            b->textures_pending = n;
+            b->tex_reqs.reserve(n);
+
+            for (std::uint32_t cy = 0; cy < b->chunks_y; ++cy)
+                for (std::uint32_t cx = 0; cx < b->chunks_x; ++cx)
+                {
+                    const auto cc = runtime_->chunkCells(pc.field, cx, cy);
+                    lux::render::PersistentTexture2DDesc td{};
+                    td.width  = static_cast<std::uint32_t>(cc.x());
+                    td.height = static_cast<std::uint32_t>(cc.y());
+                    td.format = lux::render::EPixelFormat::R16_UNORM;
+                    // First upload = the whole chunk (the export path carries it).
+                    if (auto* planner = runtime_->uploadPlanner(pc.field, cx, cy))
+                        planner->markDirty(0, 0, td.width, td.height);
+                    auto req = ctx.session().createPersistentTexture2D(td);
+                    const std::uint32_t idx = cy * b->chunks_x + cx;
+                    std::weak_ptr<Building> wb = b;
+                    req.then([this, wb, idx](const lux::render::Texture2DCreatedReply& r)
+                    {
+                        auto sb = wb.lock();
+                        if (!sb) return;
+                        --sb->textures_pending;
+                        if (r.status != 0 || r.handle.is_null())
+                        {
+                            sb->failed = true;
+                            sb->failed_permanent = true;
+                            return;
+                        }
+                        if (stopping_) { orphan_textures_.push_back(r.handle); return; }
+                        sb->textures[idx] = r.handle;
+                    });
+                    b->tex_reqs.push_back(std::move(req));
+                }
+            building_.emplace(e, std::move(b));
+        }
+
+        void advanceBuilding(RenderableBridgeContext& ctx, lux::render::Canvas2DProxy& canvas,
+                             lux::meta::entity_id e, Building& b,
+                             const PixelField2DComponent& pc, const float m[6])
+        {
+            if (b.failed)
+            {
+                if (b.textures_pending > 0 || b.instances_pending > 0)
+                    return;   // let the stragglers land first (they self-orphan)
+                abandonBuilding(ctx, b);
+                if (!stopping_)
+                    failed_[e] = FailRecord{b.failed_permanent, kRetryDrives};
+                building_.erase(e);
+                return;
+            }
+            if (b.textures_pending > 0)
+                return;
+            if (!b.instances_issued)
+            {
+                if (palette_bindless_ == lux::render::kNoTexture)
+                    return;   // palette still in flight — next frame
+                b.instances_issued  = true;
+                b.instances_pending = b.chunks_x * b.chunks_y;
+                b.add_reqs.reserve(b.instances_pending);
+                for (std::uint32_t cy = 0; cy < b.chunks_y; ++cy)
+                    for (std::uint32_t cx = 0; cx < b.chunks_x; ++cx)
+                    {
+                        const auto cc = runtime_->chunkCells(pc.field, cx, cy);
+                        lux::render::PixelField2DInstanceData data{};
+                        chunkAffine(pc.field, pc, m, cx, cy, data.m);
+                        const std::uint32_t idx = cy * b.chunks_x + cx;
+                        data.field_texture   = b.textures[idx].index;
+                        data.palette_texture = palette_bindless_;
+                        data.cells_w         = static_cast<std::uint32_t>(cc.x());
+                        data.cells_h         = static_cast<std::uint32_t>(cc.y());
+
+                        auto req = canvas.addPixelField(ctx.scene(), data, pc.priority, pc.visible);
+                        auto bit = building_.find(e);
+                        std::weak_ptr<Building> wb = (bit != building_.end())
+                            ? std::weak_ptr<Building>(bit->second) : std::weak_ptr<Building>{};
+                        req.then([this, wb, idx](const lux::render::PixelFieldSlotReply& r)
+                        {
+                            auto sb = wb.lock();
+                            if (!sb) { if (r.handle.valid()) orphan_instances_.push_back(r.handle); return; }
+                            --sb->instances_pending;
+                            if (r.status != lux::render::ECanvas2DCreateStatus::Ok || r.handle.is_null())
+                            {
+                                if (r.handle.valid()) orphan_instances_.push_back(r.handle);
+                                sb->failed = true;
+                                sb->failed_permanent =
+                                    r.status != lux::render::ECanvas2DCreateStatus::CapacityExhausted;
+                                return;
+                            }
+                            if (stopping_) { orphan_instances_.push_back(r.handle); return; }
+                            sb->instances[idx] = r.handle;
+                        });
+                        b.add_reqs.push_back(std::move(req));
+                    }
+                return;
+            }
+            if (b.instances_pending > 0)
+                return;
+
+            // Everything landed → promote to Live.
+            Live L{};
+            L.field    = b.field;
+            L.chunks_x = b.chunks_x;
+            L.chunks_y = b.chunks_y;
+            L.slots.resize(b.textures.size());
+            for (std::size_t i = 0; i < b.textures.size(); ++i)
+            {
+                L.slots[i].texture  = b.textures[i];
+                L.slots[i].instance = b.instances[i];
+            }
+            std::memcpy(L.m, m, sizeof(float) * 6);
+            L.priority = pc.priority;
+            L.visible  = pc.visible;
+            live_.emplace(e, std::move(L));
+            building_.erase(e);
+        }
+
+        // ── teardown helpers ─────────────────────────────────────────────────
+        void destroyLive(RenderableBridgeContext& ctx, lux::render::Canvas2DProxy& canvas, Live& L)
+        {
+            for (auto& s : L.slots)
+            {
+                canvas.removePixelField(ctx.scene(), s.instance);
+                ctx.session().destroyTexture(s.texture);
+            }
+            L.slots.clear();
+        }
+
+        /// Destroy every ALREADY-COLLECTED part of a build; pending replies keep
+        /// routing through the shared_ptr continuations (self-orphaning).
+        void abandonBuilding(RenderableBridgeContext& ctx, Building& b)
+        {
+            auto canvas = ctx.canvas2d();
+            for (auto& t : b.textures)
+                if (!t.is_null()) { ctx.session().destroyTexture(t); t = {}; }
+            for (auto& i : b.instances)
+                if (i.valid()) { canvas.removePixelField(ctx.scene(), i); i = {}; }
+        }
+
+        /// The affine of chunk (cx,cy): its clipped extent placed at the field's
+        /// min corner + the chunk offset (unit-quad centring folded in).
+        void chunkAffine(PixelFieldHandle field, const PixelField2DComponent& pc,
+                         const float field_m[6], std::uint32_t cx, std::uint32_t cy,
+                         float out[6]) const
+        {
+            const auto cc = runtime_->chunkCells(field, cx, cy);
+            const float sx = static_cast<float>(cc.x()) * pc.cell_size;
+            const float sy = static_cast<float>(cc.y()) * pc.cell_size;
+            out[0] = sx;  out[1] = 0.f;
+            out[2] = 0.f; out[3] = sy;
+            out[4] = field_m[4]
+                   + static_cast<float>(cx * PixelFieldRuntime::kChunkSizeCells) * pc.cell_size
+                   + sx * 0.5f;
+            out[5] = field_m[5]
+                   + static_cast<float>(cy * PixelFieldRuntime::kChunkSizeCells) * pc.cell_size
+                   + sy * 0.5f;
+        }
 
         /// The scene-shared palette: create once, fill from the material table,
         /// re-upload only when the table GROWS (append-only registry).
@@ -344,13 +490,9 @@ namespace lux::gameplay::d2
 
         PixelFieldRuntime* runtime_{nullptr};
 
-        std::unordered_map<lux::meta::entity_id, Live> live_;
-        std::unordered_map<lux::meta::entity_id,
-                           lux::render::RenderRequest<lux::render::Texture2DCreatedReply>> tex_pending_;
-        std::unordered_map<lux::meta::entity_id, lux::render::RTextureHandle> tex_ready_;
-        std::unordered_map<lux::meta::entity_id,
-                           lux::render::RenderRequest<lux::render::PixelFieldSlotReply>> add_pending_;
-        std::unordered_map<lux::meta::entity_id, FailRecord> failed_;
+        std::unordered_map<lux::meta::entity_id, Live>                      live_;
+        std::unordered_map<lux::meta::entity_id, std::shared_ptr<Building>> building_;
+        std::unordered_map<lux::meta::entity_id, FailRecord>                failed_;
 
         lux::render::RTextureHandle palette_texture_{};
         lux::render::RenderRequest<lux::render::Texture2DCreatedReply> palette_pending_{};

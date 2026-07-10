@@ -48,17 +48,20 @@
 
 namespace lux::gameplay::d2
 {
-    /// F2-07: one frame's upload snapshot for ONE field — an OWNED, immutable
-    /// copy of the dirty regions' pixels (u16 material ids, tight rows at each
-    /// region's data_offset), so the runtime keeps simulating freely after the
-    /// export. The consumer (PixelField2DBridge) wraps it in an
-    /// OwnedTextureUploadBatch with ITS texture handle and MUST route the
-    /// outcome back via confirmExport — Ok advances uploadedRevision, anything
-    /// else re-marks the coverage dirty (defer-never-lose); a ticket it failed
-    /// to submit at all is confirmed with a non-Ok status for the same reason.
+    /// F2-07 (per CHUNK since C2-00): one frame's upload snapshot for ONE chunk
+    /// of one field — an OWNED, immutable copy of the dirty regions' pixels
+    /// (u16 material ids, tight rows at each region's data_offset), so the
+    /// runtime keeps simulating freely after the export. Region coordinates are
+    /// CHUNK-LOCAL (row 0 = the chunk's bottom row) — exactly the target
+    /// texture's texel space, since the render mirror is one texture PER CHUNK.
+    /// The consumer (PixelField2DBridge) wraps it in an OwnedTextureUploadBatch
+    /// with that chunk's texture handle and MUST route the outcome back via
+    /// confirmExport — Ok advances uploadedRevision, anything else re-marks the
+    /// coverage dirty (defer-never-lose); a ticket it failed to submit at all
+    /// is confirmed with a non-Ok status for the same reason.
     struct PixelFieldRenderExport
     {
-        std::vector<lux::render::TextureRegionDesc> regions;   ///< CELL coordinates (row 0 = bottom)
+        std::vector<lux::render::TextureRegionDesc> regions;   ///< CHUNK-LOCAL cell coords
         std::shared_ptr<const std::byte[]>          pixels;    ///< owned tight-packed u16 ids
         std::uint64_t                               pixel_bytes{0};
         std::uint64_t                               content_revision{0};
@@ -69,6 +72,17 @@ namespace lux::gameplay::d2
     {
     public:
         static constexpr std::uint32_t kTileSize = 32;
+
+        /// C2-00: CELL storage is chunked (dense, ALL RESIDENT — P3a; sparse
+        /// residency is C2-02b). 256² cells = 128 KiB of u16 per chunk = 8×8 of
+        /// the 32-cell sim tiles; a power of two so global→local is shift/mask.
+        /// TILE state (active/dirty rects) stays field-global — tiles are tiny
+        /// (bytes each) and every chunk owns a disjoint 8×8 slice of them.
+        static constexpr std::uint32_t kChunkSizeCells = 256;
+        static constexpr std::uint32_t kChunkShift     = 8;
+        static constexpr std::uint32_t kChunkMask      = kChunkSizeCells - 1;
+        static_assert((1u << kChunkShift) == kChunkSizeCells);
+        static_assert(kChunkSizeCells % kTileSize == 0);
 
         PixelFieldRuntime() = default;
         PixelFieldRuntime(const PixelFieldRuntime&) = delete;
@@ -121,55 +135,114 @@ namespace lux::gameplay::d2
         /// Events dropped by the pending-queue cap (a consumer that never drains
         /// cannot grow the queue without bound; drops are counted, not silent).
         [[nodiscard]] std::uint64_t eventsDropped() const noexcept { return events_dropped_; }
-        /// The field's upload-dirty planner (CELL coordinates). The render export
-        /// (F2-07) takes batches from it and routes acks back; tests inspect it.
-        /// Null when the handle is stale.
-        [[nodiscard]] lux::render::RegionUploadPlanner* uploadPlanner(PixelFieldHandle h) noexcept;
+        // ── C2-00: chunk geometry (the render mirror is one texture PER CHUNK) ─
+        [[nodiscard]] std::uint32_t chunksX(PixelFieldHandle h) const noexcept;
+        [[nodiscard]] std::uint32_t chunksY(PixelFieldHandle h) const noexcept;
+        /// The CLIPPED cell extent of chunk (cx,cy) — edge chunks are smaller.
+        [[nodiscard]] Eigen::Vector2i chunkCells(PixelFieldHandle h,
+                                                 std::uint32_t cx, std::uint32_t cy) const noexcept;
 
-        // ── F2-07: render export ticket ──────────────────────────────────────
-        /// Take one budgeted upload snapshot (empty when nothing is dirty / the
-        /// handle is stale). The returned pixels are an OWNED copy — the CA may
-        /// keep stepping immediately.
+        /// Chunk (cx,cy)'s upload-dirty planner (CHUNK-LOCAL cell coordinates).
+        /// The render export takes batches from it and routes acks back; tests
+        /// inspect it. Null when the handle is stale / the chunk out of range.
+        [[nodiscard]] lux::render::RegionUploadPlanner* uploadPlanner(PixelFieldHandle h,
+                                                                      std::uint32_t cx,
+                                                                      std::uint32_t cy) noexcept;
+
+        // ── F2-07: render export ticket (per chunk since C2-00) ──────────────
+        /// Take one budgeted upload snapshot of chunk (cx,cy) (empty when
+        /// nothing is dirty / the handle is stale). The returned pixels are an
+        /// OWNED copy — the CA may keep stepping immediately.
         [[nodiscard]] PixelFieldRenderExport exportDirty(PixelFieldHandle h,
+                                                         std::uint32_t cx, std::uint32_t cy,
                                                          const lux::render::RegionUploadBudget& budget);
         /// Route the submit outcome back (the wire reply's status, or a non-Ok
         /// status for a ticket that was never submitted). Ok is the ONLY thing
         /// that advances uploadedRevision; anything else re-dirties the coverage.
-        void confirmExport(PixelFieldHandle h, std::uint64_t revision,
-                           lux::render::ERegionUploadStatus status);
+        void confirmExport(PixelFieldHandle h, std::uint32_t cx, std::uint32_t cy,
+                           std::uint64_t revision, lux::render::ERegionUploadStatus status);
+        /// Aggregate observability: the SUM of every chunk planner's
+        /// uploadedRevision (monotonic; the soak/demo counters read this).
         [[nodiscard]] std::uint64_t uploadedRevision(PixelFieldHandle h) const noexcept;
 
     private:
+        /// C2-00: one dense 256²-cell storage block. Edge chunks allocate the
+        /// full block too (uniform addressing); their planner is sized to the
+        /// CLIPPED extent so exported regions are exactly the mirror texture's
+        /// texel space. All chunks are resident (P3a; sparsity is C2-02b).
+        struct Chunk
+        {
+            std::vector<MaterialId>   cells;        ///< kChunkSizeCells², row-major, row 0 = chunk bottom
+            std::vector<std::uint8_t> moved;        ///< per-cell moved-this-step mask
+            lux::render::RegionUploadPlanner planner{0, 0};   ///< CHUNK-LOCAL coords, clipped extent
+            // optional channels (allocated iff enabled — F2-03)
+            std::vector<float> temperature;
+            std::vector<float> lifetime;
+        };
+
         struct Field
         {
             std::uint32_t gen{0};
             bool          alive{false};
             PixelFieldDesc desc{};
-            std::vector<MaterialId>  cells;         ///< w*h, row-major, row 0 = BOTTOM
-            std::vector<std::uint8_t> moved;        ///< per-cell moved-this-step mask
+            // C2-00: chunked cell storage (dense vector, all resident).
+            std::uint32_t chunks_x{0}, chunks_y{0};
+            std::vector<Chunk> chunks;
             // tiles (F2-05 + the Noita-style per-tile DIRTY RECT refinement):
             // `active` gates the tile; the rect bounds WHICH CELLS inside it are
             // scanned (within-tile inclusive coords) — a mountain's sleeping
             // interior is never visited, only its ±1-expanded activity band.
+            // FIELD-GLOBAL on purpose: bytes per tile, and each chunk owns a
+            // disjoint 8×8 slice (I2-02's per-chunk scheduling needs no split).
             std::uint32_t tiles_x{0}, tiles_y{0};
             std::vector<std::uint8_t> active;       ///< sim_active (this step's scan set)
             std::vector<std::uint8_t> active_next;  ///< woken for the next step
             std::vector<std::uint8_t> changed;      ///< per-step upload-dirty accumulation
             std::vector<std::uint8_t> rmin_x, rmin_y, rmax_x, rmax_y;     ///< current scan rects
             std::vector<std::uint8_t> nrmin_x, nrmin_y, nrmax_x, nrmax_y; ///< next-step rects
-            lux::render::RegionUploadPlanner planner{0, 0};
-            // optional channels (allocated iff enabled — F2-03)
-            std::vector<float> temperature;
-            std::vector<float> lifetime;
             // stats
             std::uint32_t moved_cells_last{0};
             std::uint32_t cells_scanned_last{0};
             double        step_ms_last{0.0};
             std::uint64_t steps{0};
+
+            // ── the C2-00 cell access layer: global cell → chunk + local. All
+            // rule/query code goes through these; the chunk layout is invisible
+            // above them. Callers guarantee in-bounds (same contract as the old
+            // flat indexing).
+            [[nodiscard]] Chunk& chunkAt(std::uint32_t x, std::uint32_t y) noexcept
+            {
+                return chunks[static_cast<std::size_t>(y >> kChunkShift) * chunks_x
+                              + (x >> kChunkShift)];
+            }
+            [[nodiscard]] const Chunk& chunkAt(std::uint32_t x, std::uint32_t y) const noexcept
+            {
+                return chunks[static_cast<std::size_t>(y >> kChunkShift) * chunks_x
+                              + (x >> kChunkShift)];
+            }
+            [[nodiscard]] static std::size_t localIndex(std::uint32_t x, std::uint32_t y) noexcept
+            {
+                return (static_cast<std::size_t>(y & kChunkMask) << kChunkShift) + (x & kChunkMask);
+            }
+            [[nodiscard]] MaterialId& cellAt(std::uint32_t x, std::uint32_t y) noexcept
+            { return chunkAt(x, y).cells[localIndex(x, y)]; }
+            [[nodiscard]] MaterialId cellAt(std::uint32_t x, std::uint32_t y) const noexcept
+            { return chunkAt(x, y).cells[localIndex(x, y)]; }
+            [[nodiscard]] std::uint8_t& movedAt(std::uint32_t x, std::uint32_t y) noexcept
+            { return chunkAt(x, y).moved[localIndex(x, y)]; }
+            /// Mark upload dirt for ONE cell (routes to its chunk's planner in
+            /// chunk-local coordinates).
+            void markCellDirty(std::uint32_t x, std::uint32_t y) noexcept
+            {
+                chunkAt(x, y).planner.markDirty(x & kChunkMask, y & kChunkMask, 1, 1);
+            }
         };
 
         [[nodiscard]] Field*       resolve(PixelFieldHandle h) noexcept;
         [[nodiscard]] const Field* resolve(PixelFieldHandle h) const noexcept;
+        /// Split a field-global rect into per-chunk planner dirt.
+        static void markRectDirty(Field& f, std::uint32_t x0, std::uint32_t y0,
+                                  std::uint32_t w, std::uint32_t h) noexcept;
         void destroySlot(std::uint32_t slot);
         void stepField(Field& f);
         /// Wake every tile overlapping the INCLUSIVE cell span [x0,x1]×[y0,y1]

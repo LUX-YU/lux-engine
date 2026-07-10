@@ -1,7 +1,17 @@
 // ============================================================================
-//  PixelFieldRuntime.cpp — deterministic single-screen pixel simulation
-//  (F2-01 lifecycle, F2-04 CA, F2-05 tile state, F2-06 boundary).
+//  PixelFieldRuntime.cpp — deterministic chunked pixel simulation
+//  (F2-01 lifecycle, F2-04 CA, F2-05 tile state, F2-06 boundary,
+//   C2-00 chunked storage — all chunks resident, P3a).
 //  Contracts and the scan-order determinism argument live in the header.
+//
+//  C2-00 NOTE: cell/moved/channel storage is per-chunk (256², uniform blocks;
+//  the header's cellAt/movedAt access layer hides the split — rule code is
+//  UNCHANGED in logic). The CA scans the same fixed global order as before
+//  (tiles bottom-up, dirty-rect refined), reads/writes across chunk borders by
+//  plain global addressing (no halo copies — correctness needs none while the
+//  step is serial; I2-02's parallel scheduling adds the write-reach guard).
+//  Upload dirt routes to the owning chunk's planner in CHUNK-LOCAL coords —
+//  the render mirror is one texture per chunk.
 // ============================================================================
 
 #include <lux/engine/gameplay/2d/pixel/PixelFieldRuntime.hpp>
@@ -26,11 +36,11 @@ namespace lux::gameplay::d2
         /// determinism; a rule knob, not a correctness one.
         constexpr std::int32_t kLiquidDispersion = 8;
 
-        /// FNV-1a 64 over the cell plane — the determinism fingerprint.
-        [[nodiscard]] std::uint64_t fnv1a64(const void* data, std::size_t bytes) noexcept
+        /// FNV-1a 64 running hash over a contiguous block.
+        [[nodiscard]] std::uint64_t fnv1a64Append(std::uint64_t h, const void* data,
+                                                  std::size_t bytes) noexcept
         {
             const auto* p = static_cast<const std::uint8_t*>(data);
-            std::uint64_t h = 1469598103934665603ull;
             for (std::size_t i = 0; i < bytes; ++i)
             {
                 h ^= p[i];
@@ -38,6 +48,7 @@ namespace lux::gameplay::d2
             }
             return h;
         }
+        constexpr std::uint64_t kFnvBasis = 1469598103934665603ull;
     } // namespace
 
     // ── lifecycle ────────────────────────────────────────────────────────────
@@ -54,9 +65,32 @@ namespace lux::gameplay::d2
         Field& f = fields_[slot];
         f.alive  = true;
         f.desc   = desc;
-        const std::size_t n = static_cast<std::size_t>(desc.cells_w) * desc.cells_h;
-        f.cells.assign(n, kEmptyMaterial);
-        f.moved.assign(n, 0);
+
+        // C2-00: dense chunk grid, all resident. Uniform full-size blocks (edge
+        // clipping is logical); each chunk's planner covers ITS clipped extent.
+        f.chunks_x = tileCount(desc.cells_w, kChunkSizeCells);
+        f.chunks_y = tileCount(desc.cells_h, kChunkSizeCells);
+        f.chunks.assign(static_cast<std::size_t>(f.chunks_x) * f.chunks_y, Chunk{});
+        constexpr std::size_t kChunkCellCount =
+            static_cast<std::size_t>(kChunkSizeCells) * kChunkSizeCells;
+        for (std::uint32_t cy = 0; cy < f.chunks_y; ++cy)
+            for (std::uint32_t cx = 0; cx < f.chunks_x; ++cx)
+            {
+                Chunk& c = f.chunks[static_cast<std::size_t>(cy) * f.chunks_x + cx];
+                c.cells.assign(kChunkCellCount, kEmptyMaterial);
+                c.moved.assign(kChunkCellCount, 0);
+                const std::uint32_t cw =
+                    std::min(kChunkSizeCells, desc.cells_w - cx * kChunkSizeCells);
+                const std::uint32_t ch =
+                    std::min(kChunkSizeCells, desc.cells_h - cy * kChunkSizeCells);
+                c.planner = lux::render::RegionUploadPlanner{cw, ch};
+                // Optional channels: a disabled channel allocates NOTHING (F2-03).
+                if (desc.channels_mask & channelBit(ECellChannel::Temperature))
+                    c.temperature.assign(kChunkCellCount, 0.f);
+                if (desc.channels_mask & channelBit(ECellChannel::Lifetime))
+                    c.lifetime.assign(kChunkCellCount, 0.f);
+            }
+
         f.tiles_x = tileCount(desc.cells_w, kTileSize);
         f.tiles_y = tileCount(desc.cells_h, kTileSize);
         const std::size_t t = static_cast<std::size_t>(f.tiles_x) * f.tiles_y;
@@ -67,10 +101,6 @@ namespace lux::gameplay::d2
         f.rmax_x.assign(t, 0);  f.rmax_y.assign(t, 0);
         f.nrmin_x.assign(t, 0); f.nrmin_y.assign(t, 0);
         f.nrmax_x.assign(t, 0); f.nrmax_y.assign(t, 0);
-        f.planner = lux::render::RegionUploadPlanner{desc.cells_w, desc.cells_h};
-        // Optional channels: a disabled channel allocates NOTHING (F2-03).
-        if (desc.channels_mask & channelBit(ECellChannel::Temperature)) f.temperature.assign(n, 0.f);
-        if (desc.channels_mask & channelBit(ECellChannel::Lifetime))    f.lifetime.assign(n, 0.f);
         f.moved_cells_last = 0;
         f.step_ms_last     = 0.0;
         f.steps            = 0;
@@ -103,8 +133,8 @@ namespace lux::gameplay::d2
         f.alive = false;
         ++f.gen;                                  // stale every outstanding handle
         // Cell planes can be megabytes — actually release them (swap idiom).
-        std::vector<MaterialId>().swap(f.cells);
-        std::vector<std::uint8_t>().swap(f.moved);
+        std::vector<Chunk>().swap(f.chunks);
+        f.chunks_x = f.chunks_y = 0;
         std::vector<std::uint8_t>().swap(f.active);
         std::vector<std::uint8_t>().swap(f.active_next);
         std::vector<std::uint8_t>().swap(f.changed);
@@ -112,9 +142,6 @@ namespace lux::gameplay::d2
         std::vector<std::uint8_t>().swap(f.rmax_x);  std::vector<std::uint8_t>().swap(f.rmax_y);
         std::vector<std::uint8_t>().swap(f.nrmin_x); std::vector<std::uint8_t>().swap(f.nrmin_y);
         std::vector<std::uint8_t>().swap(f.nrmax_x); std::vector<std::uint8_t>().swap(f.nrmax_y);
-        std::vector<float>().swap(f.temperature);
-        std::vector<float>().swap(f.lifetime);
-        f.planner = lux::render::RegionUploadPlanner{0, 0};
         free_.push_back(slot);
     }
 
@@ -159,6 +186,27 @@ namespace lux::gameplay::d2
 
     // ── commands (F2-06: ALL writes land here, FIFO, never mid-scan) ─────────
 
+    void PixelFieldRuntime::markRectDirty(Field& f, std::uint32_t x0, std::uint32_t y0,
+                                          std::uint32_t w, std::uint32_t h) noexcept
+    {
+        // Clamp to the field, then split across the owning chunks' planners in
+        // CHUNK-LOCAL coordinates.
+        if (x0 >= f.desc.cells_w || y0 >= f.desc.cells_h || w == 0 || h == 0) return;
+        const std::uint32_t x1 = std::min(x0 + w, f.desc.cells_w);    // exclusive
+        const std::uint32_t y1 = std::min(y0 + h, f.desc.cells_h);
+        for (std::uint32_t cy = y0 >> kChunkShift; cy <= (y1 - 1) >> kChunkShift; ++cy)
+            for (std::uint32_t cx = x0 >> kChunkShift; cx <= (x1 - 1) >> kChunkShift; ++cx)
+            {
+                Chunk& c = f.chunks[static_cast<std::size_t>(cy) * f.chunks_x + cx];
+                const std::uint32_t bx0 = std::max(x0, cx << kChunkShift);
+                const std::uint32_t by0 = std::max(y0, cy << kChunkShift);
+                const std::uint32_t bx1 = std::min(x1, (cx + 1u) << kChunkShift);
+                const std::uint32_t by1 = std::min(y1, (cy + 1u) << kChunkShift);
+                c.planner.markDirty(bx0 & kChunkMask, by0 & kChunkMask,
+                                    bx1 - bx0, by1 - by0);
+            }
+    }
+
     void PixelFieldRuntime::applyCommands()
     {
         for (const PixelFieldCommand& cmd : commands_)
@@ -178,17 +226,18 @@ namespace lux::gameplay::d2
             for (std::int32_t y = y0; y < y1; ++y)
                 for (std::int32_t x = x0; x < x1; ++x)
                 {
-                    auto& cell = f->cells[static_cast<std::size_t>(y) * w + x];
+                    auto& cell = f->cellAt(static_cast<std::uint32_t>(x),
+                                           static_cast<std::uint32_t>(y));
                     if (cell != cmd.material) { cell = cmd.material; ++changed; }
                 }
             if (changed)
             {
-                // Exact-rect upload dirt (the planner coalesces); sim wake = the
-                // stamp ±1, widened by the liquid dispersion reach horizontally
-                // (an ERASE opens holes distant surface water must notice; a
-                // conservative constant band, cheap either way).
-                f->planner.markDirty(static_cast<std::uint32_t>(x0), static_cast<std::uint32_t>(y0),
-                                     static_cast<std::uint32_t>(x1 - x0), static_cast<std::uint32_t>(y1 - y0));
+                // Exact-rect upload dirt (per-chunk planners coalesce); sim wake
+                // = the stamp ±1, widened by the liquid dispersion reach
+                // horizontally (an ERASE opens holes distant surface water must
+                // notice; a conservative constant band, cheap either way).
+                markRectDirty(*f, static_cast<std::uint32_t>(x0), static_cast<std::uint32_t>(y0),
+                              static_cast<std::uint32_t>(x1 - x0), static_cast<std::uint32_t>(y1 - y0));
                 wakeSpan(*f, x0 - kLiquidDispersion, y0 - 1,
                              x1 - 1 + kLiquidDispersion, y1, /*next=*/false);
             }
@@ -247,33 +296,35 @@ namespace lux::gameplay::d2
             ny >= static_cast<std::int32_t>(f.desc.cells_h))
             return false;
 
-        const std::size_t si = static_cast<std::size_t>(y) * f.desc.cells_w + x;
-        const std::size_t di = static_cast<std::size_t>(ny) * f.desc.cells_w + nx;
-        const MaterialId  src = f.cells[si];
-        const MaterialId  dst = f.cells[di];
+        const std::uint32_t ux = static_cast<std::uint32_t>(nx);
+        const std::uint32_t uy = static_cast<std::uint32_t>(ny);
+        MaterialId& src_cell = f.cellAt(x, y);
+        MaterialId& dst_cell = f.cellAt(ux, uy);
+        const MaterialId src = src_cell;
+        const MaterialId dst = dst_cell;
 
         if (dst == kEmptyMaterial)
         {
-            f.cells[di] = src;
-            f.cells[si] = kEmptyMaterial;
+            dst_cell = src;
+            src_cell = kEmptyMaterial;
         }
         else if (displace_liquid &&
                  materials_.at(dst).phase == EMaterialPhase::Liquid &&
                  materials_.at(src).density > materials_.at(dst).density)
         {
-            f.cells[di] = src;                    // heavier sinks…
-            f.cells[si] = dst;                    // …lighter liquid swaps up
-            f.moved[si] = 1;                      // the displaced liquid moved too
+            dst_cell = src;                       // heavier sinks…
+            src_cell = dst;                       // …lighter liquid swaps up
+            f.movedAt(x, y) = 1;                  // the displaced liquid moved too
         }
         else
             return false;
 
-        f.moved[di] = 1;
+        f.movedAt(ux, uy) = 1;
         ++f.moved_cells_last;
 
         const std::uint32_t stx = x / kTileSize, sty = y / kTileSize;
-        const std::uint32_t dtx = static_cast<std::uint32_t>(nx) / kTileSize;
-        const std::uint32_t dty = static_cast<std::uint32_t>(ny) / kTileSize;
+        const std::uint32_t dtx = ux / kTileSize;
+        const std::uint32_t dty = uy / kTileSize;
         f.changed[static_cast<std::size_t>(sty) * f.tiles_x + stx] = 1;
         f.changed[static_cast<std::size_t>(dty) * f.tiles_x + dtx] = 1;
 
@@ -290,7 +341,7 @@ namespace lux::gameplay::d2
         // …and when the SOURCE became a hole, the liquid dispersion rule can see
         // it from up to kLiquidDispersion cells away along the row above — wake
         // that whole band, or distant surface water would never notice the drain.
-        if (f.cells[si] == kEmptyMaterial)
+        if (src_cell == kEmptyMaterial)
             wakeSpan(f, xi - kLiquidDispersion, yi,
                         xi + kLiquidDispersion, yi + 1, /*next=*/true);
         return true;
@@ -300,7 +351,8 @@ namespace lux::gameplay::d2
     {
         const auto t0 = std::chrono::steady_clock::now();
 
-        std::memset(f.moved.data(), 0, f.moved.size());
+        for (Chunk& c : f.chunks)
+            std::memset(c.moved.data(), 0, c.moved.size());
         std::fill(f.changed.begin(), f.changed.end(), std::uint8_t{0});
         std::fill(f.active_next.begin(), f.active_next.end(), std::uint8_t{0});
         f.moved_cells_last = 0;
@@ -312,7 +364,8 @@ namespace lux::gameplay::d2
         // WITHIN the tile's dirty RECT (the Noita-style refinement: an active
         // tile scans its ±1-expanded activity band, never its settled bulk).
         // Cell order stays a FIXED total order — a pure function of
-        // (cells, step index) — so determinism is untouched.
+        // (cells, step index) — so determinism is untouched. Chunk borders are
+        // crossed by plain global addressing (cellAt), no special cases.
         for (std::uint32_t ty = 0; ty < f.tiles_y; ++ty)
         {
             for (std::uint32_t tx = 0; tx < f.tiles_x; ++tx)
@@ -331,10 +384,9 @@ namespace lux::gameplay::d2
                     for (std::uint32_t k = 0; k < x1 - x0; ++k)
                     {
                         const std::uint32_t x = rtl ? (x1 - 1u - k) : (x0 + k);
-                        const std::size_t   i = static_cast<std::size_t>(y) * w + x;
                         ++f.cells_scanned_last;
-                        const MaterialId    id = f.cells[i];
-                        if (id == kEmptyMaterial || f.moved[i])
+                        const MaterialId    id = f.cellAt(x, y);
+                        if (id == kEmptyMaterial || f.movedAt(x, y))
                             continue;
 
                         const EMaterialPhase phase = materials_.at(id).phase;
@@ -363,14 +415,15 @@ namespace lux::gameplay::d2
                             {
                                 const auto flowToward = [&](std::int32_t dir) noexcept -> bool
                                 {
-                                    for (std::int32_t k = 1; k <= kLiquidDispersion; ++k)
+                                    for (std::int32_t k2 = 1; k2 <= kLiquidDispersion; ++k2)
                                     {
-                                        const std::int32_t nx = xi + dir * k;
+                                        const std::int32_t nx = xi + dir * k2;
                                         if (nx < 0 || nx >= static_cast<std::int32_t>(w))
                                             return false;   // wall
-                                        if (f.cells[static_cast<std::size_t>(yi) * w + nx] != kEmptyMaterial)
+                                        const std::uint32_t unx = static_cast<std::uint32_t>(nx);
+                                        if (f.cellAt(unx, y) != kEmptyMaterial)
                                             return false;   // path blocked on this row
-                                        if (f.cells[static_cast<std::size_t>(yi - 1) * w + nx] == kEmptyMaterial)
+                                        if (f.cellAt(unx, static_cast<std::uint32_t>(yi - 1)) == kEmptyMaterial)
                                             return tryMove(f, x, y, xi + dir, yi, false);
                                     }
                                     return false;
@@ -385,11 +438,13 @@ namespace lux::gameplay::d2
             }
         }
 
-        // Upload dirt: one rect per changed tile (the planner coalesces bands).
+        // Upload dirt: one rect per changed tile (per-chunk planners coalesce;
+        // markRectDirty splits tiles straddling a chunk border — with 256 % 32
+        // == 0 a tile never straddles, but the split is correct regardless).
         for (std::uint32_t ty = 0; ty < f.tiles_y; ++ty)
             for (std::uint32_t tx = 0; tx < f.tiles_x; ++tx)
                 if (f.changed[static_cast<std::size_t>(ty) * f.tiles_x + tx])
-                    f.planner.markDirty(tx * kTileSize, ty * kTileSize, kTileSize, kTileSize);
+                    markRectDirty(f, tx * kTileSize, ty * kTileSize, kTileSize, kTileSize);
 
         f.active.swap(f.active_next);
         f.rmin_x.swap(f.nrmin_x); f.rmin_y.swap(f.nrmin_y);
@@ -415,7 +470,8 @@ namespace lux::gameplay::d2
             cell.x() >= static_cast<std::int32_t>(f->desc.cells_w) ||
             cell.y() >= static_cast<std::int32_t>(f->desc.cells_h))
             return kEmptyMaterial;
-        return f->cells[static_cast<std::size_t>(cell.y()) * f->desc.cells_w + cell.x()];
+        return f->cellAt(static_cast<std::uint32_t>(cell.x()),
+                         static_cast<std::uint32_t>(cell.y()));
     }
 
     void PixelFieldRuntime::sampleRegion(PixelFieldHandle h, Eigen::Vector2i min, Eigen::Vector2i size,
@@ -464,8 +520,22 @@ namespace lux::gameplay::d2
 
     std::uint64_t PixelFieldRuntime::determinismHash(PixelFieldHandle h) const noexcept
     {
+        // Logical global row-major hash: a pure function of the field's CONTENT
+        // (chunk layout invisible), fed row-segment-wise (contiguous per chunk).
         const Field* f = resolve(h);
-        return f ? fnv1a64(f->cells.data(), f->cells.size() * sizeof(MaterialId)) : 0;
+        if (!f) return 0;
+        std::uint64_t hash = kFnvBasis;
+        const std::uint32_t w = f->desc.cells_w;
+        for (std::uint32_t y = 0; y < f->desc.cells_h; ++y)
+            for (std::uint32_t x = 0; x < w; )
+            {
+                const std::uint32_t seg = std::min(kChunkSizeCells - (x & kChunkMask), w - x);
+                const Chunk& c = f->chunkAt(x, y);
+                hash = fnv1a64Append(hash, &c.cells[Field::localIndex(x, y)],
+                                     static_cast<std::size_t>(seg) * sizeof(MaterialId));
+                x += seg;
+            }
+        return hash;
     }
     std::uint32_t PixelFieldRuntime::movedCellsLastStep(PixelFieldHandle h) const noexcept
     {
@@ -490,34 +560,58 @@ namespace lux::gameplay::d2
         const Field* f = resolve(h);
         return f ? f->step_ms_last : 0.0;
     }
-    lux::render::RegionUploadPlanner* PixelFieldRuntime::uploadPlanner(PixelFieldHandle h) noexcept
+
+    // ── C2-00: chunk geometry + per-chunk export seam ────────────────────────
+
+    std::uint32_t PixelFieldRuntime::chunksX(PixelFieldHandle h) const noexcept
     {
-        Field* f = resolve(h);
-        return f ? &f->planner : nullptr;
+        const Field* f = resolve(h);
+        return f ? f->chunks_x : 0;
+    }
+    std::uint32_t PixelFieldRuntime::chunksY(PixelFieldHandle h) const noexcept
+    {
+        const Field* f = resolve(h);
+        return f ? f->chunks_y : 0;
+    }
+    Eigen::Vector2i PixelFieldRuntime::chunkCells(PixelFieldHandle h,
+                                                  std::uint32_t cx, std::uint32_t cy) const noexcept
+    {
+        const Field* f = resolve(h);
+        if (!f || cx >= f->chunks_x || cy >= f->chunks_y) return {0, 0};
+        return {static_cast<std::int32_t>(std::min(kChunkSizeCells, f->desc.cells_w - cx * kChunkSizeCells)),
+                static_cast<std::int32_t>(std::min(kChunkSizeCells, f->desc.cells_h - cy * kChunkSizeCells))};
     }
 
-    // ── F2-07: render export ─────────────────────────────────────────────────
+    lux::render::RegionUploadPlanner* PixelFieldRuntime::uploadPlanner(
+        PixelFieldHandle h, std::uint32_t cx, std::uint32_t cy) noexcept
+    {
+        Field* f = resolve(h);
+        if (!f || cx >= f->chunks_x || cy >= f->chunks_y) return nullptr;
+        return &f->chunks[static_cast<std::size_t>(cy) * f->chunks_x + cx].planner;
+    }
 
     PixelFieldRenderExport PixelFieldRuntime::exportDirty(PixelFieldHandle h,
+                                                          std::uint32_t cx, std::uint32_t cy,
                                                           const lux::render::RegionUploadBudget& budget)
     {
         PixelFieldRenderExport out{};
         Field* f = resolve(h);
-        if (!f) return out;
+        if (!f || cx >= f->chunks_x || cy >= f->chunks_y) return out;
+        Chunk& c = f->chunks[static_cast<std::size_t>(cy) * f->chunks_x + cx];
 
-        auto plan = f->planner.takeBatch(sizeof(MaterialId), budget);
+        auto plan = c.planner.takeBatch(sizeof(MaterialId), budget);
         if (plan.empty()) return out;
 
-        // Pack tight rows from the authoritative cells at each region's assigned
-        // data_offset — an OWNED copy, immutable from here on.
+        // Pack tight rows from the authoritative chunk cells at each region's
+        // assigned data_offset — an OWNED copy, immutable from here on. Region
+        // coords are chunk-local; a chunk row is CONTIGUOUS in its block.
         auto pixels = std::shared_ptr<std::byte[]>(new std::byte[plan.pixel_bytes]);
-        const std::uint32_t w = f->desc.cells_w;
         for (const auto& r : plan.regions)
         {
             const std::size_t row_bytes = static_cast<std::size_t>(r.width) * sizeof(MaterialId);
             for (std::uint32_t row = 0; row < r.height; ++row)
                 std::memcpy(pixels.get() + r.data_offset + static_cast<std::size_t>(row) * row_bytes,
-                            &f->cells[static_cast<std::size_t>(r.y + row) * w + r.x],
+                            &c.cells[(static_cast<std::size_t>(r.y + row) << kChunkShift) + r.x],
                             row_bytes);
         }
 
@@ -528,17 +622,22 @@ namespace lux::gameplay::d2
         return out;
     }
 
-    void PixelFieldRuntime::confirmExport(PixelFieldHandle h, std::uint64_t revision,
+    void PixelFieldRuntime::confirmExport(PixelFieldHandle h, std::uint32_t cx, std::uint32_t cy,
+                                          std::uint64_t revision,
                                           lux::render::ERegionUploadStatus status)
     {
-        if (Field* f = resolve(h))
-            f->planner.onAck(revision, status);
+        if (auto* planner = uploadPlanner(h, cx, cy))
+            planner->onAck(revision, status);
     }
 
     std::uint64_t PixelFieldRuntime::uploadedRevision(PixelFieldHandle h) const noexcept
     {
         const Field* f = resolve(h);
-        return f ? f->planner.uploadedRevision() : 0;
+        if (!f) return 0;
+        std::uint64_t sum = 0;
+        for (const Chunk& c : f->chunks)
+            sum += c.planner.uploadedRevision();
+        return sum;
     }
 
 } // namespace lux::gameplay::d2

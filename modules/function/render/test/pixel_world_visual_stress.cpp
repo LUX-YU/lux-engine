@@ -57,7 +57,11 @@ namespace
 {
     struct EmptyConfig {};
     constexpr std::uint32_t W = 1280, H = 800;
-    constexpr std::uint32_t CW = 384, CH = 240;   // field cells (aspect 1.6 — matches the window)
+    // C2-00: a CROSS-CHUNK world (768×480 = 3×2 chunks of 256) — sand rains,
+    // piles and avalanches straight across the chunk borders on screen, the
+    // permanent visual evidence for the chunked runtime. Aspect stays 1.6.
+    constexpr std::uint32_t CW = 768, CH = 480;
+    constexpr int SC = 2;   // terrain layout scale vs the original 384×240 layout
     constexpr float kPi = 3.14159265f;
 
     /// Deterministic tiny LCG (rain placement).
@@ -146,14 +150,14 @@ int main(int argc, char** argv)
         c.field = fcomp.field; c.min = {x, y}; c.size = {w, h}; c.material = m;
         runtime.enqueue(c);
     };
-    stampRect(0, 0, CW, 8, stone);            // floor
-    stampRect(16, 8, 6, 70, stone);           // bowl left wall
-    stampRect(150, 8, 6, 70, stone);          // bowl right wall
-    stampRect(40, 40, 60, 5, water);          // dropped water settles into the bowl
-    stampRect(200, 70, 70, 6, stone);         // platform 1
-    stampRect(290, 120, 70, 6, stone);        // platform 2
-    stampRect(230, 170, 70, 6, stone);        // platform 3
-    stampRect(210, 90, 30, 20, sand);         // starter pile on platform 1
+    stampRect(0, 0, CW, 8*SC, stone);         // floor
+    stampRect(16*SC, 8*SC, 6*SC, 70*SC, stone);   // bowl left wall
+    stampRect(150*SC, 8*SC, 6*SC, 70*SC, stone);  // bowl right wall
+    stampRect(40*SC, 40*SC, 60*SC, 5*SC, water);  // dropped water settles into the bowl
+    stampRect(200*SC, 70*SC, 70*SC, 6*SC, stone); // platform 1 (straddles the x=512 border)
+    stampRect(290*SC, 120*SC, 70*SC, 6*SC, stone);// platform 2
+    stampRect(230*SC, 170*SC, 70*SC, 6*SC, stone);// platform 3
+    stampRect(210*SC, 90*SC, 30*SC, 20*SC, sand); // starter pile on platform 1
 
     // ── sprites, all on the ONE priority axis the field shares ──
     Lcg rng;
@@ -258,15 +262,15 @@ int main(int argc, char** argv)
             stampRect(x, CH - 6, 3, 3, sand);
         }
         if ((frame_no % 7) == 0)
-            stampRect(70 + static_cast<int>(rng.unit() * 30.f), CH - 4, 2, 2, water);
+            stampRect(70*SC + static_cast<int>(rng.unit() * 30.f*SC), CH - 4, 2, 2, water);
 
         // every ~10 s: DIG platform 1 clean away (slab + the pile's bottom rows)
         // → everything on it avalanches to the floor; patch the slab back later.
-        if ((frame_no % 600) == 300) stampRect(195, 68, 80, 14, d2::kEmptyMaterial);
-        if ((frame_no % 600) == 599) stampRect(200, 70, 70, 6, stone);
+        if ((frame_no % 600) == 300) stampRect(195*SC, 68*SC, 80*SC, 14*SC, d2::kEmptyMaterial);
+        if ((frame_no % 600) == 599) stampRect(200*SC, 70*SC, 70*SC, 6*SC, stone);
         // every ~20 s: a big CRATER swallows the accumulated sand near the floor
         // (recycles the world so it never silts up; watch the piles pour in).
-        if ((frame_no % 1200) == 900) stampRect(170, 8, 200, 26, d2::kEmptyMaterial);
+        if ((frame_no % 1200) == 900) stampRect(170*SC, 8*SC, 200*SC, 26*SC, d2::kEmptyMaterial);
 
         // every ~2.5 s: a band of stars pops THROUGH the field (cross-kind order flip).
         if ((frame_no % 150) == 0)

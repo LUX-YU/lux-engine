@@ -42,7 +42,8 @@ namespace lux::render
             ShaderHandle  fragment_shader{};
         };
 
-        explicit Canvas2DFeature(Config cfg = Config{});
+        Canvas2DFeature();
+        explicit Canvas2DFeature(Config cfg);
         ~Canvas2DFeature() override;
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
@@ -58,5 +59,9 @@ namespace lux::render
         GraphicsPipelineHandle field_pipeline_handle_{kInvalidPipelineHandle};  ///< variant 1: pixel-field kind
         Canvas2DInstanceArena* arena_{nullptr};
     };
+
+    // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
+    // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
+    inline Canvas2DFeature::Canvas2DFeature() : Canvas2DFeature(Config{}) {}
 
 } // namespace lux::render

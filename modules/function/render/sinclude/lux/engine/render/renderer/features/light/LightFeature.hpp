@@ -34,11 +34,16 @@ namespace lux::render
             std::string name{"Light"};
         };
 
-        explicit LightFeature(Config cfg = Config{});
+        LightFeature();
+        explicit LightFeature(Config cfg);
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;   ///< no RG passes
     };
+
+    // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
+    // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
+    inline LightFeature::LightFeature() : LightFeature(Config{}) {}
 
 } // namespace lux::render

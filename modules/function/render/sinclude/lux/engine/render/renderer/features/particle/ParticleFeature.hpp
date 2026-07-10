@@ -51,7 +51,8 @@ namespace lux::render
             std::string depth_target{"SceneDepth"};
         };
 
-        explicit ParticleFeature(Config cfg = Config{});
+        ParticleFeature();
+        explicit ParticleFeature(Config cfg);
 
         std::string_view name() const override { return "ParticleEffect"; }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
@@ -98,5 +99,9 @@ namespace lux::render
 
         Config   cfg_{};
     };
+
+    // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
+    // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
+    inline ParticleFeature::ParticleFeature() : ParticleFeature(Config{}) {}
 
 } // namespace lux::render

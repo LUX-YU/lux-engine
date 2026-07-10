@@ -40,7 +40,8 @@ namespace lux::render
             uint32_t     height{0};
         };
 
-        explicit HzbFeature(Config cfg = Config{});
+        HzbFeature();
+        explicit HzbFeature(Config cfg);
 
         std::string_view name() const override { return "Hzb"; }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
@@ -70,5 +71,9 @@ namespace lux::render
         uint32_t              frame_counter_{0};                 ///< absolute frame → ping-pong parity
         std::array<std::vector<VkDescriptorSet>, 2> mip_sets_;   ///< per-mip set 0, one per ping-pong slot
     };
+
+    // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
+    // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
+    inline HzbFeature::HzbFeature() : HzbFeature(Config{}) {}
 
 } // namespace lux::render

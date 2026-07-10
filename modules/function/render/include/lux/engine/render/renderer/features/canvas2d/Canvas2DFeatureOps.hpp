@@ -165,6 +165,58 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<UpdatePixelField2DKeyPayload>);
 
+    // ── Tile kind payloads (A2-02; same command grammar as sprites/fields) ────
+
+    struct AddTile2DPayload
+    {
+        RenderSceneId      scene{};
+        Tile2DInstanceData data{};
+        float              priority{0.f};
+        std::uint32_t      visible{1};
+    };
+    static_assert(std::is_trivially_copyable_v<AddTile2DPayload>);
+
+    struct Tile2DSlotReply
+    {
+        Tile2DInstanceHandle  handle{};
+        ECanvas2DCreateStatus status{ECanvas2DCreateStatus::Unknown};
+    };
+    static_assert(std::is_trivially_copyable_v<Tile2DSlotReply>);
+
+    template <>
+    struct CommandTraits<AddTile2DPayload>
+    {
+        using Reply = Tile2DSlotReply;
+        static constexpr bool has_reply = true;
+        static constexpr TypeId reply_type_id = reply_type_id_of_v<Tile2DSlotReply>;
+    };
+
+    struct RemoveTile2DPayload
+    {
+        RenderSceneId        scene{};
+        Tile2DInstanceHandle handle{};
+    };
+    static_assert(std::is_trivially_copyable_v<RemoveTile2DPayload>);
+
+    /// Tilemaps are FEW (a handful per scene) and mostly static — plain Stream
+    /// ops per moved map, like fields.
+    struct UpdateTile2DTransformPayload
+    {
+        RenderSceneId        scene{};
+        Tile2DInstanceHandle handle{};
+        float                m[6]{};
+    };
+    static_assert(std::is_trivially_copyable_v<UpdateTile2DTransformPayload>);
+
+    struct UpdateTile2DKeyPayload
+    {
+        RenderSceneId        scene{};
+        Tile2DInstanceHandle handle{};
+        float                priority{0.f};
+        std::uint32_t        visible{1};
+    };
+    static_assert(std::is_trivially_copyable_v<UpdateTile2DKeyPayload>);
+
     // ── v2 typed op declarations (order == Canvas2DOperationIds order) ─────────
     struct AddSprite2DOp
     {
@@ -226,6 +278,30 @@ namespace lux::render
         static constexpr EOpKind kind = EOpKind::Stream;
         static constexpr const char* name = "UpdatePixelField2DKey";
     };
+    struct AddTile2DOp
+    {
+        using Payload = AddTile2DPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;   // CommandOp + replyToCurrent
+        static constexpr const char* name = "AddTile2D";
+    };
+    struct RemoveTile2DOp
+    {
+        using Payload = RemoveTile2DPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr const char* name = "RemoveTile2D";
+    };
+    struct UpdateTile2DTransformOp
+    {
+        using Payload = UpdateTile2DTransformPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr const char* name = "UpdateTile2DTransform";
+    };
+    struct UpdateTile2DKeyOp
+    {
+        using Payload = UpdateTile2DKeyPayload;
+        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr const char* name = "UpdateTile2DKey";
+    };
 
     /// Op ids returned to the client after RegisterFeatureType (forward-declarable,
     /// so gameplay bridges stay render-light — mirrors MeshStackOperationIds).
@@ -233,12 +309,16 @@ namespace lux::render
         : FeatureOpIds<AddSprite2DOp, RemoveSprite2DOp, Sprite2DTransformBatchOp,
                        UpdateSprite2DVisualOp, UpdateSprite2DKeyOp, SetCanvas2DEnabledOp,
                        AddPixelField2DOp, RemovePixelField2DOp,
-                       UpdatePixelField2DTransformOp, UpdatePixelField2DKeyOp>
+                       UpdatePixelField2DTransformOp, UpdatePixelField2DKeyOp,
+                       AddTile2DOp, RemoveTile2DOp,
+                       UpdateTile2DTransformOp, UpdateTile2DKeyOp>
     {
         using Ids = FeatureOpIds<AddSprite2DOp, RemoveSprite2DOp, Sprite2DTransformBatchOp,
                                  UpdateSprite2DVisualOp, UpdateSprite2DKeyOp, SetCanvas2DEnabledOp,
                                  AddPixelField2DOp, RemovePixelField2DOp,
-                                 UpdatePixelField2DTransformOp, UpdatePixelField2DKeyOp>;
+                                 UpdatePixelField2DTransformOp, UpdatePixelField2DKeyOp,
+                                 AddTile2DOp, RemoveTile2DOp,
+                                 UpdateTile2DTransformOp, UpdateTile2DKeyOp>;
         Canvas2DOperationIds() = default;
         Canvas2DOperationIds(const Ids& base) noexcept : Ids(base) {}
         [[nodiscard]] static Canvas2DOperationIds fromOps(const TypeId* ops, std::uint32_t count) noexcept
@@ -286,6 +366,16 @@ namespace lux::render
                                        const float m[6]);
         void updatePixelFieldKey(RenderSceneId scene, PixelFieldInstanceHandle handle,
                                  float priority, bool visible);
+
+        // ── Tile kind (A2-02) ──
+        [[nodiscard]] RenderRequest<Tile2DSlotReply> addTilemap(
+            RenderSceneId scene, const Tile2DInstanceData& data,
+            float priority, bool visible = true);
+        void removeTilemap(RenderSceneId scene, Tile2DInstanceHandle handle);
+        void updateTilemapTransform(RenderSceneId scene, Tile2DInstanceHandle handle,
+                                    const float m[6]);
+        void updateTilemapKey(RenderSceneId scene, Tile2DInstanceHandle handle,
+                              float priority, bool visible);
 
         [[nodiscard]] bool valid() const noexcept { return ops_.valid(); }
 

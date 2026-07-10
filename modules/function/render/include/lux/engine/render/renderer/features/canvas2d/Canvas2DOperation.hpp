@@ -118,6 +118,44 @@ namespace lux::render
                   "PixelField2DInstanceData layout drift — keep canvas2d/pixel_field.vert in sync.");
     static_assert(std::is_trivially_copyable_v<PixelField2DInstanceData>);
 
+    // ── Tile kind (A2-02) ───────────────────────────────────────────────────
+
+    struct Tile2DInstanceTag{};
+    /// Generational per-tilemap owner handle into the canvas arena's Tile kind
+    /// store. A stale handle is rejected by every op.
+    using Tile2DInstanceHandle = lux::cxx::SlotKey<Tile2DInstanceTag>;
+
+    /// Tile-id texel meaning "no tile here" in the R16_UNORM index texture
+    /// (encoded 0xFFFF/65535 = 1.0 — the max unorm value, unreachable as a
+    /// real tile ordinal since tileset ids are < cols*rows ≤ 0xFFFF).
+    inline constexpr std::uint16_t kEmptyTile = 0xFFFFu;
+
+    /// GPU-resident per-TILEMAP record — the std430 mirror the tile shaders
+    /// pull (keep canvas2d/tile.vert in sync). One instance = one whole
+    /// tilemap quad (the PixelField shape): the fragment shader texelFetches
+    /// the R16_UNORM tile-INDEX texture, derives the tile's uv rect from the
+    /// tileset's uniform grid (cols × rows, no margin/spacing in the MVP) and
+    /// samples the tileset texture. Editing tiles = a region update of the
+    /// index texture — the instance record never changes.
+    struct Tile2DInstanceData
+    {
+        float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f};    ///< column-major 2D affine (full map extent baked in)
+        std::uint32_t tileset_texture{kNoTexture};    ///< bindless set-2 index of the tileset atlas
+        std::uint32_t index_texture{kNoTexture};      ///< bindless set-2 index of the R16_UNORM tile-id map
+        std::uint32_t tiles_w{0};                     ///< index-map texel extent (texelFetch bounds)
+        std::uint32_t tiles_h{0};
+        std::uint32_t tileset_grid{0};                ///< packed: cols (low 16) | rows (high 16)
+        std::uint32_t tint{0xFFFFFFFFu};              ///< premultiplied RGBA8 modulate
+    };
+    static_assert(sizeof(Tile2DInstanceData) == 48,
+                  "Tile2DInstanceData layout drift — keep canvas2d/tile.vert in sync.");
+    static_assert(std::is_trivially_copyable_v<Tile2DInstanceData>);
+
+    [[nodiscard]] constexpr std::uint32_t packTilesetGrid(std::uint32_t cols, std::uint32_t rows) noexcept
+    {
+        return (cols & 0xFFFFu) | (rows << 16);
+    }
+
     /// addSprite outcome (G-05 discipline, mirrors MeshInstanceCreateStatus):
     /// anything but Ok ⇒ NO instance exists (handle is null) — the client must
     /// not treat it as live. `Unknown` is the DEFAULT on purpose: a generic

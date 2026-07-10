@@ -16,6 +16,7 @@
 #include <lux/engine/gameplay/2d/render_bridge/Sprite2DBridge.hpp>
 #include <lux/engine/gameplay/2d/render_bridge/PixelField2DBridge.hpp>
 #include <lux/engine/gameplay/2d/render_bridge/Camera2DUploadBridge.hpp>
+#include <lux/engine/gameplay/2d/render_bridge/Tilemap2DBridge.hpp>
 #include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>   // addBridge
 #include <lux/engine/gameplay/world/World.hpp>
 
@@ -146,7 +147,11 @@ namespace lux::gameplay::d2
         if (plan.has(D2Capability::PixelSimulation) && runtime != nullptr)
             rs.addBridge(std::make_unique<PixelField2DBridge>(runtime));
 
-        // Tilemap2D producer — its slice (A2-xx).
+        // Tilemap2D producer (A2-02) — rides the SpriteRendering capability (no
+        // extra plan bit: a tilemap is traditional-2D visuals; payment symmetry
+        // holds per entity — no TilemapComponent, no cost beyond the empty view).
+        if (plan.has(D2Capability::SpriteRendering))
+            rs.addBridge(std::make_unique<Tilemap2DBridge>());
     }
 
     D2ScenePlan traditional2DPlan()

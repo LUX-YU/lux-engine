@@ -113,6 +113,36 @@ namespace lux::render
             if (auto* arena = resolveArena(ctx, p.scene))
                 arena->writeFieldKey(p.handle, p.priority, p.visible != 0);
         }
+
+        // ── Tile kind (A2-02) ──
+
+        void handleAddTile2D(Ctx& ctx, const AddTile2DPayload& p)
+        {
+            Tile2DSlotReply r{};
+            if (auto* arena = resolveArena(ctx, p.scene))
+                r.status = arena->addTile(p.data, p.priority, p.visible != 0, r.handle);
+            else
+                r.status = ECanvas2DCreateStatus::InvalidConfiguration;
+            replyToCurrent<AddTile2DPayload>(ctx, r);
+        }
+
+        void handleRemoveTile2D(Ctx& ctx, const RemoveTile2DPayload& p)
+        {
+            if (auto* arena = resolveArena(ctx, p.scene))
+                arena->removeTile(p.handle);
+        }
+
+        void handleUpdateTile2DTransform(Ctx& ctx, const UpdateTile2DTransformPayload& p)
+        {
+            if (auto* arena = resolveArena(ctx, p.scene))
+                arena->writeTileTransform(p.handle, p.m);
+        }
+
+        void handleUpdateTile2DKey(Ctx& ctx, const UpdateTile2DKeyPayload& p)
+        {
+            if (auto* arena = resolveArena(ctx, p.scene))
+                arena->writeTileKey(p.handle, p.priority, p.visible != 0);
+        }
     } // namespace
 
     // ── Uniform factory interface ────────────────────────────────────────────
@@ -134,7 +164,11 @@ namespace lux::render
         ServerOp<AddPixelField2DOp,             &handleAddPixelField2D>,
         ServerOp<RemovePixelField2DOp,          &handleRemovePixelField2D>,
         ServerOp<UpdatePixelField2DTransformOp, &handleUpdatePixelField2DTransform>,
-        ServerOp<UpdatePixelField2DKeyOp,       &handleUpdatePixelField2DKey>>;
+        ServerOp<UpdatePixelField2DKeyOp,       &handleUpdatePixelField2DKey>,
+        ServerOp<AddTile2DOp,                   &handleAddTile2D>,
+        ServerOp<RemoveTile2DOp,                &handleRemoveTile2D>,
+        ServerOp<UpdateTile2DTransformOp,       &handleUpdateTile2DTransform>,
+        ServerOp<UpdateTile2DKeyOp,             &handleUpdateTile2DKey>>;
 
     // Stable type identity + descriptor. v2 bumps the stable id (the wire
     // protocol is incompatible with v1's submit model); the NAME stays
@@ -283,6 +317,52 @@ namespace lux::render
         p.priority = priority;
         p.visible  = visible ? 1u : 0u;
         send<UpdatePixelField2DKeyOp>(*session_, ops_, p);
+    }
+
+    // ── Tile kind (A2-02) ──
+
+    RenderRequest<Tile2DSlotReply> Canvas2DProxy::addTilemap(
+        RenderSceneId scene, const Tile2DInstanceData& data, float priority, bool visible)
+    {
+        AddTile2DPayload p{};
+        p.scene    = scene;
+        p.data     = data;
+        p.priority = priority;
+        p.visible  = visible ? 1u : 0u;
+        return sendWithReply<AddTile2DOp>(*session_, ops_, p);
+    }
+
+    void Canvas2DProxy::removeTilemap(RenderSceneId scene, Tile2DInstanceHandle handle)
+    {
+        if (!ops_.valid()) return;
+        RemoveTile2DPayload p{};
+        p.scene  = scene;
+        p.handle = handle;
+        send<RemoveTile2DOp>(*session_, ops_, p);
+    }
+
+    void Canvas2DProxy::updateTilemapTransform(RenderSceneId scene,
+                                               Tile2DInstanceHandle handle, const float m[6])
+    {
+        if (!ops_.valid()) return;
+        UpdateTile2DTransformPayload p{};
+        p.scene  = scene;
+        p.handle = handle;
+        std::memcpy(p.m, m, sizeof(p.m));
+        send<UpdateTile2DTransformOp>(*session_, ops_, p);
+    }
+
+    void Canvas2DProxy::updateTilemapKey(RenderSceneId scene,
+                                         Tile2DInstanceHandle handle,
+                                         float priority, bool visible)
+    {
+        if (!ops_.valid()) return;
+        UpdateTile2DKeyPayload p{};
+        p.scene    = scene;
+        p.handle   = handle;
+        p.priority = priority;
+        p.visible  = visible ? 1u : 0u;
+        send<UpdateTile2DKeyOp>(*session_, ops_, p);
     }
 
 } // namespace lux::render

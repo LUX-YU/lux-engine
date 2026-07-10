@@ -56,6 +56,7 @@ namespace lux::render
     {
         Sprite     = 0,
         PixelField = 1,   ///< F2-09: R16_UNORM id mirror + palette lookup
+        Tile       = 2,   ///< A2-02: R16_UNORM tile-index map + tileset atlas sample
         COUNT
     };
 
@@ -370,14 +371,19 @@ namespace lux::render
             // Fields are FEW per scene (a handful of chunk quads) — a small store.
             fields_.init(device_ctx_, 64, 4096);
             fields_.createSet(svc_, ds_layout_id_, info.arena);
+            // Tilemaps too: one instance per whole map (A2-02).
+            tiles_.init(device_ctx_, 64, 4096);
+            tiles_.createSet(svc_, ds_layout_id_, info.arena);
             initialized_ = (sprites_.descriptorSet() != VK_NULL_HANDLE &&
-                            fields_.descriptorSet() != VK_NULL_HANDLE);
+                            fields_.descriptorSet() != VK_NULL_HANDLE &&
+                            tiles_.descriptorSet() != VK_NULL_HANDLE);
         }
 
         void setDeferredQueue(DeferredDestroyQueue* q) noexcept
         {
             sprites_.setDeferredQueue(q);
             fields_.setDeferredQueue(q);
+            tiles_.setDeferredQueue(q);
         }
 
         // ── sprite-kind op entry points (wire-typed; handlers stay unchanged) ──
@@ -475,6 +481,46 @@ namespace lux::render
                 order_dirty_ = true;
         }
 
+        // ── Tile-kind op entry points (A2-02; same grammar as sprites/fields) ───
+
+        [[nodiscard]] ECanvas2DCreateStatus addTile(const Tile2DInstanceData& data,
+                                                    float priority, bool visible,
+                                                    Tile2DInstanceHandle& out)
+        {
+            out = {};
+            if (!initialized_) return ECanvas2DCreateStatus::InvalidConfiguration;
+            std::uint32_t slot, gen;
+            const auto st = tiles_.add(data, quantizePriority(priority), visible, slot, gen);
+            if (st != ECanvas2DCreateStatus::Ok) return st;
+            if (visible) order_dirty_ = true;
+            out = Tile2DInstanceHandle{slot, gen};
+            return st;
+        }
+
+        void removeTile(Tile2DInstanceHandle h)
+        {
+            if (!initialized_ || h.is_null()) return;
+            if (tiles_.remove(h.index, h.gen))
+                order_dirty_ = true;
+        }
+
+        void writeTileTransform(Tile2DInstanceHandle h, const float m[6])
+        {
+            if (!initialized_ || h.is_null()) return;
+            if (auto* r = tiles_.resolveRecord(h.index, h.gen))
+            {
+                std::memcpy(r->m, m, sizeof(float) * 6);
+                tiles_.markRecordDirty(h.index);
+            }
+        }
+
+        void writeTileKey(Tile2DInstanceHandle h, float priority, bool visible)
+        {
+            if (!initialized_ || h.is_null()) return;
+            if (tiles_.writeKey(h.index, h.gen, quantizePriority(priority), visible))
+                order_dirty_ = true;
+        }
+
         // ── transfer phase (scene transfer contributor) ─────────────────────────
 
         void submitTransfers(TransferScheduler& scheduler)
@@ -504,12 +550,13 @@ namespace lux::render
             {
             case ECanvas2DKind::Sprite:     return sprites_.descriptorSet();
             case ECanvas2DKind::PixelField: return fields_.descriptorSet();
+            case ECanvas2DKind::Tile:       return tiles_.descriptorSet();
             default:                        return VK_NULL_HANDLE;
             }
         }
         [[nodiscard]] std::uint32_t liveCount() const noexcept
         {
-            return sprites_.liveCount() + fields_.liveCount();
+            return sprites_.liveCount() + fields_.liveCount() + tiles_.liveCount();
         }
         [[nodiscard]] std::uint64_t orderRebuilds() const noexcept { return order_rebuilds_; }
 
@@ -517,7 +564,7 @@ namespace lux::render
         static VkDescriptorSet allocateSet(SceneDescriptorArena* arena, VkDescriptorSetLayout layout);
 
     private:
-        [[nodiscard]] std::array<IKindStore*, 2> stores() noexcept { return {&sprites_, &fields_}; }
+        [[nodiscard]] std::array<IKindStore*, 3> stores() noexcept { return {&sprites_, &fields_, &tiles_}; }
 
         void rebuildOrder()
         {
@@ -547,6 +594,7 @@ namespace lux::render
 
         KindStore<Sprite2DInstanceData>      sprites_;
         KindStore<PixelField2DInstanceData>  fields_;
+        KindStore<Tile2DInstanceData>        tiles_;
 
         std::vector<std::uint64_t> key_scratch_;
         std::vector<Canvas2DRun>   runs_;

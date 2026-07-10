@@ -153,6 +153,24 @@ lux::render::Expected<void> Canvas2DFeature::initAndAttachTo(RenderScene& scene)
     if (field_pipeline_handle_ == kInvalidPipelineHandle)
         return fail(ERenderError::VulkanObjectCreationFailed);
 
+    // Tile kind pipeline (A2-02): same recipe again.
+    const auto tile_vert = cv.loadBuiltinShader(EBuiltinShader::CANVAS2D_TILE_VERT, {});
+    const auto tile_frag = cv.loadBuiltinShader(EBuiltinShader::CANVAS2D_TILE_FRAG, {});
+    auto tile_tmpl = makeCanvas2DSpriteTemplate();
+    tile_tmpl.descriptor_set_count = 3;
+    tile_tmpl.vertex_shader   = cv.shaderModule(tile_vert);
+    tile_tmpl.fragment_shader = cv.shaderModule(tile_frag);
+    if (tile_tmpl.vertex_shader == VK_NULL_HANDLE || tile_tmpl.fragment_shader == VK_NULL_HANDLE)
+        return fail(ERenderError::IOError);
+    const std::vector<const lux::rdesc::ShaderInfo*> tile_infos = {
+        cv.shaderInfo(tile_vert),
+        cv.shaderInfo(tile_frag),
+    };
+    tile_tmpl.pipeline_layout = tmpl.pipeline_layout;    // SHARED layout (see above)
+    tile_pipeline_handle_ = cv.registerGraphics(tile_tmpl, tile_infos);
+    if (tile_pipeline_handle_ == kInvalidPipelineHandle)
+        return fail(ERenderError::VulkanObjectCreationFailed);
+
     return {};
 }
 
@@ -164,6 +182,7 @@ void Canvas2DFeature::addPasses(RGBuilder& builder)
         .write(builder.referenceTexture(cfg_.color_target), lux::common::ETextureRole::COLOR_ATTACHMENT)
         .setPipeline(pipeline_handle_)              // variant 0 = sprite kind
         .addPipeline(field_pipeline_handle_)        // variant 1 = pixel-field kind
+        .addPipeline(tile_pipeline_handle_)         // variant 2 = tile kind
         .bindSceneDS(0)
         // set 1 pass-level bind = the sprite kind's set (the framework binds it
         // with variant 0 before the kernel); the kernel rebinds pipeline + set 1
@@ -186,7 +205,9 @@ void Canvas2DFeature::addPasses(RGBuilder& builder)
             {
                 if (run.kind != bound_kind)
                 {
-                    ctx.bindPipelineVariant(run.kind == static_cast<std::uint8_t>(ECanvas2DKind::Sprite) ? 0u : 1u);
+                    // kind ids map 1:1 onto pipeline variants (Sprite=0,
+                    // PixelField=1, Tile=2 — the setPipeline/addPipeline order).
+                    ctx.bindPipelineVariant(run.kind);
                     const VkDescriptorSet ds =
                         arena_->descriptorSet(static_cast<ECanvas2DKind>(run.kind));
                     vkCmdBindDescriptorSets(ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,

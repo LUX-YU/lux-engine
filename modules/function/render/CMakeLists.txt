@@ -320,6 +320,7 @@ compile_and_pack_shaders(
 		# Canvas2D (GPU-driven 2D instances: sprite + pixel-field kinds)
 		canvas2d/sprite.vert                canvas2d/sprite.frag
 		canvas2d/pixel_field.vert           canvas2d/pixel_field.frag
+		canvas2d/tile.vert                  canvas2d/tile.frag
 		# Highlight outline
 		highlight/highlight_mask.vert       highlight/highlight_mask.frag
 		highlight/highlight_blur.frag       highlight/highlight_composite.frag
@@ -472,6 +473,8 @@ embed_builtin_shaders(
 		canvas2d/sprite.frag
 		canvas2d/pixel_field.vert
 		canvas2d/pixel_field.frag
+		canvas2d/tile.vert
+		canvas2d/tile.frag
 		# Highlight outline
 		highlight/highlight_mask.vert
 		highlight/highlight_mask.frag

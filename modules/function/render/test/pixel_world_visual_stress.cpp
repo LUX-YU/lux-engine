@@ -20,6 +20,10 @@
 //    - console: fps + CA/upload stats once per second.
 //
 //  NOT self-checking — for eyeballing. `interactive` tier. Exit 0 without Vulkan.
+//
+//  SOAK MODE (X2-02): `--soak <seconds>` runs unattended for that long and then
+//  exits 0, printing a stats line every 10 s (fps, CA numbers, uploadedRevision,
+//  dropped events) — the Slice D "no unbounded growth" evidence run.
 // ============================================================================
 
 #include "DeviceRenderFixture.hpp"
@@ -42,6 +46,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <string_view>
 #include <vector>
 
 using namespace lux::render;
@@ -78,10 +84,15 @@ namespace
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
     std::setbuf(stdout, nullptr);
-    std::printf("=== pixel_world_visual_stress ===  (a living pixel world; close the window to exit)\n");
+    float soak_seconds = 0.f;   // 0 = interactive (loop until the window closes)
+    for (int i = 1; i + 1 < argc; ++i)
+        if (std::string_view(argv[i]) == "--soak")
+            soak_seconds = std::strtof(argv[i + 1], nullptr);
+    std::printf("=== pixel_world_visual_stress ===  (a living pixel world; %s)\n",
+                soak_seconds > 0.f ? "soak mode — exits by itself" : "close the window to exit");
 
     lux::rendertest::DeviceRenderFixture fx(W, H, "Pixel World Visual Stress — CA field + sprites, one depth axis");
     if (!fx.ok()) { std::printf("No Vulkan device. Skipping.\n"); return 0; }
@@ -201,10 +212,36 @@ int main()
     bool band_up    = false;
     std::vector<d2::PixelFieldEvent> events_scratch;
 
+    // Soak evidence (X2-02): sampled every 10 s so growth trends are visible.
+    auto  soak_mark = t0;
+    std::uint64_t soak_last_rev = 0;
+
     while (fx.running())
     {
         const auto now = std::chrono::steady_clock::now();
         const float t  = std::chrono::duration<float>(now - t0).count();
+        if (soak_seconds > 0.f)
+        {
+            if (t >= soak_seconds)
+            {
+                std::printf("soak done: %.0f s, %d frames, eventsDropped=%llu — exiting 0\n",
+                            t, frame_no, static_cast<unsigned long long>(runtime.eventsDropped()));
+                return 0;
+            }
+            if (now - soak_mark >= std::chrono::seconds(10))
+            {
+                const auto rev = runtime.uploadedRevision(fcomp.field);
+                std::printf("soak t=%.0fs | tiles=%u scanned=%u | upRev=%llu (+%llu) | evDropped=%llu\n",
+                            t,
+                            runtime.activeTiles(fcomp.field),
+                            runtime.cellsScannedLastStep(fcomp.field),
+                            static_cast<unsigned long long>(rev),
+                            static_cast<unsigned long long>(rev - soak_last_rev),
+                            static_cast<unsigned long long>(runtime.eventsDropped()));
+                soak_last_rev = rev;
+                soak_mark = now;
+            }
+        }
         float dt = std::chrono::duration<float>(now - last_time).count();
         last_time = now;
         if (dt > 0.1f) dt = 0.1f;   // window drag hiccup → clamp banked time

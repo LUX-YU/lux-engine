@@ -64,11 +64,25 @@ namespace lux::render
         ServerOp<SkyboxSetEquirectOp, &handleSkyboxSetEquirect>,
         ServerOp<SkyboxSetCubemapOp,  &handleSkyboxSetCubemap>>;
 
+    // G-06: one sky per scene — a second Skybox instance would fight the first
+    // over the scene-level binding (applyEquirect/applyCubemap write shared
+    // state), so SinglePerScene rejects it at install. contributes_graph mirrors
+    // the real addPasses override; no per-view state hooks.
+    static constexpr FeatureDescriptor kSkyboxDescriptor{
+        .type               = featureId("lux.render.skybox.v1"),
+        .name               = "Skybox",
+        .contributes_graph  = true,
+        .creates_view_state = false,
+        .multiplicity       = FeatureMultiplicity::SinglePerScene,
+    };
+
     const FeatureFactory kSkyboxFeatureFactory{
         &skyboxCreateFn,
         &SkyboxOps::registerAll,
         &SkyboxOps::unregisterAll,
         "Skybox",
+        -1,
+        kSkyboxDescriptor,
     };
 
     // =====================================================================

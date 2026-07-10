@@ -44,6 +44,17 @@ namespace lux::gameplay::d2
         /// determinism; a rule knob, not a correctness one.
         constexpr std::int32_t kLiquidDispersion = 8;
 
+        /// Free-fall speed in cells per step (constant TERMINAL velocity — a
+        /// falling cell drops through up to this many EMPTY cells at once).
+        /// 1 cell/step reads as slow-motion sinking at world scale (user
+        /// feedback 2026-07-10); a constant multi-cell drop fixes the feel
+        /// with ZERO per-cell state — no schema/save/determinism surface.
+        /// True acceleration (per-cell velocity, Noita-style) is a recorded
+        /// future line: it needs save schema v2 + restore-continuation rework.
+        /// Displacement (sinking through liquid) stays 1 cell/step — drag.
+        /// Bounded by the four-colour guard in stepField (reach ≤ one tile).
+        constexpr std::int32_t kMaxFallCells = 4;
+
         /// FNV-1a 64 running hash over a contiguous block.
         [[nodiscard]] std::uint64_t fnv1a64Append(std::uint64_t h, const void* data,
                                                   std::size_t bytes) noexcept
@@ -1186,15 +1197,35 @@ namespace lux::gameplay::d2
                         const EMaterialPhase phase = materials_.at(id).phase;
                         const std::int32_t xi = static_cast<std::int32_t>(x);
                         const std::int32_t yi = static_cast<std::int32_t>(y);
+                        if (phase == EMaterialPhase::Powder || phase == EMaterialPhase::Liquid)
+                        {
+                            // Terminal-velocity free fall: drop through up to
+                            // kMaxFallCells EMPTY cells in one step. The scan
+                            // stops at any wall (non-empty / border / unloaded
+                            // chunk); the landing cell is empty by scan, so
+                            // tryMove is the plain empty-dst move.
+                            std::int32_t d = 0;
+                            while (d < kMaxFallCells)
+                            {
+                                const std::int32_t ny = yi - (d + 1);
+                                if (ny < 0) break;
+                                const std::uint32_t uy = static_cast<std::uint32_t>(ny);
+                                if (!f.chunkAt(x, uy).resident) break;   // C2-02b wall
+                                if (f.cellAt(x, uy) != kEmptyMaterial) break;
+                                ++d;
+                            }
+                            if (d > 0 && tryMove(f, x, y, xi, yi - d, false, moved)) continue;
+                        }
                         if (phase == EMaterialPhase::Powder)
                         {
+                            // below is occupied (fall found no gap): sink into a
+                            // lighter liquid at drag speed, else pile diagonally.
                             if (tryMove(f, x, y, xi, yi - 1, true, moved)) continue;
                             if (tryMove(f, x, y, xi + first, yi - 1, true, moved)) continue;
                             if (tryMove(f, x, y, xi - first, yi - 1, true, moved)) continue;
                         }
                         else if (phase == EMaterialPhase::Liquid)
                         {
-                            if (tryMove(f, x, y, xi, yi - 1, false, moved)) continue;
                             if (tryMove(f, x, y, xi + first, yi - 1, false, moved)) continue;
                             if (tryMove(f, x, y, xi - first, yi - 1, false, moved)) continue;
                             // Lateral DISPERSION rule: step sideways ONLY toward a
@@ -1259,9 +1290,11 @@ namespace lux::gameplay::d2
         // The static_assert is the rule-evolution hard guard: any future rule
         // whose reach exceeds one tile breaks the colour argument and must
         // widen the colouring instead of silently racing.
-        static_assert(kLiquidDispersion + 1 <= static_cast<std::int32_t>(kTileSize),
-                      "four-colour schedule invariant: cross-chunk write reach must stay "
-                      "within the first tile of a neighbour chunk");
+        static_assert(kLiquidDispersion + 1 <= static_cast<std::int32_t>(kTileSize) &&
+                      kMaxFallCells + 1 <= static_cast<std::int32_t>(kTileSize),
+                      "four-colour schedule invariant: cross-chunk write reach (lateral "
+                      "dispersion band AND multi-cell fall) must stay within the first "
+                      "tile of a neighbour chunk");
 
         struct WorkItem { std::uint32_t cx, cy, moved{0}, scanned{0}; };
         std::vector<WorkItem> items;

@@ -53,34 +53,50 @@ void main()
         return;
     }
 
-    // Position inside THIS tile in [0,1)². Inset by half a texel of the
-    // tileset tile so linear filtering cannot bleed the neighbouring tile.
-    const vec2 tile_size = vec2(1.0) / vec2(vGrid);
-    vec2 local = fract(vTile);
-    const vec2 half_texel = 0.5 / vec2(textureSize(uTex[nonuniformEXT(vTilesetTex)], 0));
-    const vec2 lo = half_texel / tile_size;
-    local = clamp(local, lo, vec2(1.0) - lo);
+    // ── ATLAS-SAFE sampling (same contract as sprite.frag) ──────────────────
+    //
+    // Three things must be right, and each has bitten us:
+    //
+    //  1. LOD from a CONTINUOUS uv proxy, never from the atlas `uv` itself: uv
+    //     jumps at every tile edge (fract + atlas cell hop), so an implicit
+    //     LOD sees an exploding derivative and drops to the smallest mip — on
+    //     a mipped atlas that is the whole-atlas average smeared into every
+    //     seam (the classic shimmering-grid-line artifact). vTile is smooth
+    //     across the map, so its derivatives are the honest footprint.
+    //  2. LOD BOUNDED so one texel can never span more than half a tile:
+    //     max_lod = log2(min tile extent in texels) - 1. Beyond that the inset
+    //     below would exceed the tile and its clamp would degenerate.
+    //  3. Sample point inset by half a texel OF THE SAMPLED LEVEL, +1 level
+    //     because trilinear blends the coarser neighbour too. A fixed mip-0
+    //     inset (what this shader used to do) is 2^lod times too small: at
+    //     lod 4 bilinear reaches 8 source texels into the next tile.
+    //
+    // Defence in depth: tileset assets should ALSO carry
+    // ETextureAssetFlags::NO_MIPS so no chain exists at all (the minified
+    // average of a tileset is meaningless). With NO_MIPS the maths below
+    // collapses to lod 0 and the classic half-texel inset.
+    const vec2  tile_size = vec2(1.0) / vec2(vGrid);
+    const vec2  tex_size  = vec2(textureSize(uTex[nonuniformEXT(vTilesetTex)], 0));
+    const vec2  duvdx     = dFdx(vTile) * tile_size * tex_size;
+    const vec2  duvdy     = dFdy(vTile) * tile_size * tex_size;
+    const float lod_raw   = 0.5 * log2(max(dot(duvdx, duvdx), dot(duvdy, duvdy)));
+    const float tile_texels = max(1.0, min(tile_size.x * tex_size.x,
+                                           tile_size.y * tex_size.y));
+    const float max_lod   = max(0.0, floor(log2(tile_texels)) - 1.0);
+    const float lod       = clamp(lod_raw, 0.0, max_lod);
+
+    // Position inside THIS tile in [0,1)², inset so filtering at `lod` (and the
+    // coarser level trilinear pairs it with) cannot reach the neighbouring tile.
+    // (Identical formulation to sprite.frag: the level bound above is what
+    // keeps `inset` ≤ 0.5, so this clamp always has a non-empty range.)
+    const vec2 half_texel = 0.5 * exp2(lod + 1.0) / tex_size;
+    const vec2 inset = half_texel / tile_size;
+    const vec2 local = clamp(fract(vTile), min(inset, vec2(1.0) - inset),
+                                            max(inset, vec2(1.0) - inset));
 
     // Atlas v: ordinal rows run top-down while tile-space +y runs up — flip.
     const vec2 uv = (vec2(col, row) + vec2(local.x, 1.0 - local.y)) * tile_size;
-    // LOD from a CONTINUOUS uv proxy, never from `uv` itself: uv jumps at every
-    // tile edge (fract + atlas cell hop), so a plain texture() there sees an
-    // exploding derivative and drops to the smallest available mip — which, on
-    // a mipped atlas, is the whole-atlas average smeared into every seam (the
-    // classic shimmering-grid-line tilemap artifact). vTile is smooth across
-    // the map; scaled by tile_size it has exactly the interior texel footprint.
-    //
-    // Defence in depth: tileset assets should ALSO carry
-    // ETextureAssetFlags::NO_MIPS so no chain exists to sample at all (the
-    // minified average of a tileset is meaningless). This shader stays correct
-    // either way — a mipped atlas from a careless authoring path still samples
-    // the right level here. Residual limit (recorded): mip>0 texels themselves
-    // average across tile borders, so a MIPPED atlas under heavy minification
-    // can still tint edges; the cures are NO_MIPS (what the demos do) or a
-    // padded tileset atlas (out of MVP scope).
-    const vec2 duvdx = dFdx(vTile) * tile_size;
-    const vec2 duvdy = dFdy(vTile) * tile_size;
-    const vec4 texel = textureGrad(uTex[nonuniformEXT(vTilesetTex)], uv, duvdx, duvdy);
+    const vec4 texel = textureLod(uTex[nonuniformEXT(vTilesetTex)], uv, lod);
     // Tileset atlases are straight-alpha authored art — premultiply to match
     // the canvas blend contract (same as the sprite path).
     outColor = vec4(texel.rgb * texel.a, texel.a) * vColor;

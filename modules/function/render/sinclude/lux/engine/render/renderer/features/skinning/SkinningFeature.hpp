@@ -51,7 +51,7 @@ namespace lux::render
             VkDeviceSize  output_pool_bytes{16ull * 1024 * 1024};
         };
 
-        explicit SkinningFeature(Config cfg = {});
+        explicit SkinningFeature(Config cfg = Config{});
 
         std::string_view name() const override { return "Skinning"; }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;

@@ -254,8 +254,13 @@ namespace lux::gameplay::d2
                                cmin.y() < cam_max.y() + mgn && cmax.y() > cam_min.y() - mgn;
                     };
 
+                    // C2-02b: a CPU-unloaded chunk has no mirror content — never
+                    // acquire it, and evict a stale instance if it just unloaded.
+                    const bool cpu_resident = runtime_->chunkResident(L.field, cx, cy);
+
                     if (rec.slot == kNoSlot)
                     {
+                        if (!cpu_resident) continue;
                         if (!intersects(kEnterMarginChunks)) continue;
                         if (atlas_bindless_ == lux::render::kNoTexture ||
                             palette_bindless_ == lux::render::kNoTexture)
@@ -272,8 +277,9 @@ namespace lux::gameplay::d2
                         continue;
                     }
 
-                    // Resident: evict past the keep band (never while pending).
-                    if (!intersects(kKeepMarginChunks))
+                    // Resident: evict past the keep band OR when the CPU side
+                    // unloaded (never while a create is pending).
+                    if (!intersects(kKeepMarginChunks) || !cpu_resident)
                     {
                         if (rec.pending) continue;   // let the create land first
                         if (rec.instance.valid())

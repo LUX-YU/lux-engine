@@ -238,23 +238,14 @@ namespace lux::gameplay::d2
         }
     }
 
-    // ── C2-02a: save-state blob codec ────────────────────────────────────────
-    //
-    // Layout (little-endian, no implicit padding):
-    //   u32 magic='LPSV'  u32 endian=0x01020304  u32 schema=1
-    //   u32 cells_w  u32 cells_h  u32 channels_mask  u32 chunk_size
-    //   per chunk, cy-major then cx:
-    //     u64 fnv1a64(all following payload bytes of THIS chunk)
-    //     u16[clip_w*clip_h]   material plane (clipped rows, row 0 = chunk bottom)
-    //     f32[clip_w*clip_h]   temperature    (iff channel enabled)
-    //     f32[clip_w*clip_h]   lifetime       (iff channel enabled)
-    // Version / extent / checksum mismatch = explicit failure (no migration).
+    // ── C2-02a/b: shared save codec helpers ──────────────────────────────────
 
     namespace
     {
-        constexpr std::uint32_t kSaveMagic  = 0x5653504Cu;   // 'LPSV' (LE)
-        constexpr std::uint32_t kSaveEndian = 0x01020304u;
-        constexpr std::uint32_t kSaveSchema = 1u;
+        constexpr std::uint32_t kSaveMagic      = 0x5653504Cu;   // 'LPSV' (LE)
+        constexpr std::uint32_t kSaveEndian     = 0x01020304u;
+        constexpr std::uint32_t kSaveSchema     = 1u;
+        constexpr std::uint32_t kChunkBlobMagic = 0x4843504Cu;   // 'LPCH' (LE)
 
         void putU32(std::vector<std::byte>& out, std::uint32_t v)
         {
@@ -283,12 +274,165 @@ namespace lux::gameplay::d2
         };
     }
 
+    // ── C2-02b: per-chunk CPU residency ──────────────────────────────────────
+
+    std::vector<std::byte> PixelFieldRuntime::captureChunk(PixelFieldHandle h,
+                                                           std::uint32_t cx, std::uint32_t cy) const
+    {
+        std::vector<std::byte> out;
+        const Field* f = resolve(h);
+        if (!f || cx >= f->chunks_x || cy >= f->chunks_y) return out;
+        const Chunk& c = f->chunks[static_cast<std::size_t>(cy) * f->chunks_x + cx];
+        if (!c.resident) return out;
+
+        const std::uint32_t cw = std::min(kChunkSizeCells, f->desc.cells_w - cx * kChunkSizeCells);
+        const std::uint32_t ch = std::min(kChunkSizeCells, f->desc.cells_h - cy * kChunkSizeCells);
+        const bool has_temp = (f->desc.channels_mask & channelBit(ECellChannel::Temperature)) != 0;
+        const bool has_life = (f->desc.channels_mask & channelBit(ECellChannel::Lifetime)) != 0;
+
+        // Self-describing standalone record: header + the SAME checksummed
+        // payload captureState writes for this chunk.
+        putU32(out, kChunkBlobMagic);
+        putU32(out, kSaveSchema);
+        putU32(out, cw);
+        putU32(out, ch);
+        putU32(out, f->desc.channels_mask);
+
+        std::vector<std::byte> payload;
+        const auto putRows = [&](const auto* plane, std::size_t elem)
+        {
+            for (std::uint32_t row = 0; row < ch; ++row)
+            {
+                const auto* src = reinterpret_cast<const std::byte*>(plane)
+                                + (static_cast<std::size_t>(row) << kChunkShift) * elem;
+                payload.insert(payload.end(), src, src + static_cast<std::size_t>(cw) * elem);
+            }
+        };
+        putRows(c.cells.data(), sizeof(MaterialId));
+        if (has_temp) putRows(c.temperature.data(), sizeof(float));
+        if (has_life) putRows(c.lifetime.data(), sizeof(float));
+        putU64(out, fnv1a64Append(kFnvBasis, payload.data(), payload.size()));
+        out.insert(out.end(), payload.begin(), payload.end());
+        return out;
+    }
+
+    bool PixelFieldRuntime::unloadChunk(PixelFieldHandle h, std::uint32_t cx, std::uint32_t cy,
+                                        std::vector<std::byte>& out_blob)
+    {
+        out_blob = captureChunk(h, cx, cy);
+        if (out_blob.empty()) return false;
+        Field* f = resolve(h);
+        Chunk& c = f->chunks[static_cast<std::size_t>(cy) * f->chunks_x + cx];
+        // Release the planes (megabytes) and go dark. The planner resets — the
+        // GPU mirror of an unloaded chunk is disposable; loading repaints fully.
+        std::vector<MaterialId>().swap(c.cells);
+        std::vector<std::uint8_t>().swap(c.moved);
+        std::vector<float>().swap(c.temperature);
+        std::vector<float>().swap(c.lifetime);
+        c.planner  = lux::render::RegionUploadPlanner{0, 0};
+        c.resident = false;
+        return true;
+    }
+
+    bool PixelFieldRuntime::loadChunk(PixelFieldHandle h, std::uint32_t cx, std::uint32_t cy,
+                                      std::span<const std::byte> blob, std::string* error_out)
+    {
+        const auto fail = [&](const char* what)
+        {
+            if (error_out) *error_out = what;
+            return false;
+        };
+        Field* f = resolve(h);
+        if (!f || cx >= f->chunks_x || cy >= f->chunks_y) return fail("bad handle / chunk");
+        Chunk& c = f->chunks[static_cast<std::size_t>(cy) * f->chunks_x + cx];
+        if (c.resident) return fail("chunk already resident");
+
+        const std::uint32_t cw = std::min(kChunkSizeCells, f->desc.cells_w - cx * kChunkSizeCells);
+        const std::uint32_t ch = std::min(kChunkSizeCells, f->desc.cells_h - cy * kChunkSizeCells);
+        const bool has_temp = (f->desc.channels_mask & channelBit(ECellChannel::Temperature)) != 0;
+        const bool has_life = (f->desc.channels_mask & channelBit(ECellChannel::Lifetime)) != 0;
+
+        SaveReader r{blob};
+        if (r.u32() != kChunkBlobMagic)          return fail("wrong chunk magic");
+        if (r.u32() != kSaveSchema)              return fail("unsupported chunk schema");
+        if (r.u32() != cw || r.u32() != ch)      return fail("chunk extent mismatch");
+        if (r.u32() != f->desc.channels_mask)    return fail("channel mask mismatch");
+        const std::uint64_t want = r.u64();
+        if (!r.ok)                               return fail("truncated chunk header");
+
+        std::size_t bytes = static_cast<std::size_t>(cw) * ch * sizeof(MaterialId);
+        if (has_temp) bytes += static_cast<std::size_t>(cw) * ch * sizeof(float);
+        if (has_life) bytes += static_cast<std::size_t>(cw) * ch * sizeof(float);
+        std::vector<std::byte> payload(bytes);
+        if (!r.bytes(payload.data(), bytes))     return fail("truncated chunk payload");
+        if (r.pos != blob.size())                return fail("trailing bytes");
+        if (fnv1a64Append(kFnvBasis, payload.data(), payload.size()) != want)
+            return fail("chunk checksum mismatch");
+
+        constexpr std::size_t kChunkCellCount =
+            static_cast<std::size_t>(kChunkSizeCells) * kChunkSizeCells;
+        c.cells.assign(kChunkCellCount, kEmptyMaterial);
+        c.moved.assign(kChunkCellCount, 0);
+        if (has_temp) c.temperature.assign(kChunkCellCount, 0.f);
+        if (has_life) c.lifetime.assign(kChunkCellCount, 0.f);
+
+        std::size_t off = 0;
+        const auto getRows = [&](auto* plane, std::size_t elem)
+        {
+            for (std::uint32_t row = 0; row < ch; ++row)
+            {
+                std::memcpy(reinterpret_cast<std::byte*>(plane)
+                                + (static_cast<std::size_t>(row) << kChunkShift) * elem,
+                            payload.data() + off,
+                            static_cast<std::size_t>(cw) * elem);
+                off += static_cast<std::size_t>(cw) * elem;
+            }
+        };
+        getRows(c.cells.data(), sizeof(MaterialId));
+        if (has_temp) getRows(c.temperature.data(), sizeof(float));
+        if (has_life) getRows(c.lifetime.data(), sizeof(float));
+
+        c.planner  = lux::render::RegionUploadPlanner{cw, ch};
+        c.planner.markDirty(0, 0, cw, ch);   // the mirror repaints fully
+        c.resident = true;
+        // Wake the chunk (+1 border cell so neighbours re-evaluate the seam).
+        wakeSpan(*f,
+                 static_cast<std::int32_t>(cx * kChunkSizeCells) - 1,
+                 static_cast<std::int32_t>(cy * kChunkSizeCells) - 1,
+                 static_cast<std::int32_t>(cx * kChunkSizeCells + cw),
+                 static_cast<std::int32_t>(cy * kChunkSizeCells + ch),
+                 /*next=*/false);
+        return true;
+    }
+
+    bool PixelFieldRuntime::chunkResident(PixelFieldHandle h,
+                                          std::uint32_t cx, std::uint32_t cy) const noexcept
+    {
+        const Field* f = resolve(h);
+        if (!f || cx >= f->chunks_x || cy >= f->chunks_y) return false;
+        return f->chunks[static_cast<std::size_t>(cy) * f->chunks_x + cx].resident;
+    }
+
+    // ── C2-02a: save-state blob codec ────────────────────────────────────────
+    //
+    // Layout (little-endian, no implicit padding):
+    //   u32 magic='LPSV'  u32 endian=0x01020304  u32 schema=1
+    //   u32 cells_w  u32 cells_h  u32 channels_mask  u32 chunk_size
+    //   per chunk, cy-major then cx:
+    //     u64 fnv1a64(all following payload bytes of THIS chunk)
+    //     u16[clip_w*clip_h]   material plane (clipped rows, row 0 = chunk bottom)
+    //     f32[clip_w*clip_h]   temperature    (iff channel enabled)
+    //     f32[clip_w*clip_h]   lifetime       (iff channel enabled)
+    // Version / extent / checksum mismatch = explicit failure (no migration).
+
     std::vector<std::byte> PixelFieldRuntime::captureState(PixelFieldHandle h) const
     {
         const Field* f = resolve(h);
         std::vector<std::byte> out;
         if (!f) return out;
 
+        for (const Chunk& pc : f->chunks)
+            if (!pc.resident) return {};   // C2-02b: whole-field save needs full residency
         putU32(out, kSaveMagic);
         putU32(out, kSaveEndian);
         putU32(out, kSaveSchema);
@@ -454,6 +598,7 @@ namespace lux::gameplay::d2
             for (std::uint32_t cx = x0 >> kChunkShift; cx <= (x1 - 1) >> kChunkShift; ++cx)
             {
                 Chunk& c = f.chunks[static_cast<std::size_t>(cy) * f.chunks_x + cx];
+                if (!c.resident) continue;   // C2-02b: no mirror to dirty
                 const std::uint32_t bx0 = std::max(x0, cx << kChunkShift);
                 const std::uint32_t by0 = std::max(y0, cy << kChunkShift);
                 const std::uint32_t bx1 = std::min(x1, (cx + 1u) << kChunkShift);
@@ -482,6 +627,9 @@ namespace lux::gameplay::d2
             for (std::int32_t y = y0; y < y1; ++y)
                 for (std::int32_t x = x0; x < x1; ++x)
                 {
+                    if (!f->chunkAt(static_cast<std::uint32_t>(x),
+                                    static_cast<std::uint32_t>(y)).resident)
+                        continue;   // C2-02b: command space = resident space
                     auto& cell = f->cellAt(static_cast<std::uint32_t>(x),
                                            static_cast<std::uint32_t>(y));
                     if (cell != cmd.material) { cell = cmd.material; ++changed; }
@@ -554,6 +702,8 @@ namespace lux::gameplay::d2
 
         const std::uint32_t ux = static_cast<std::uint32_t>(nx);
         const std::uint32_t uy = static_cast<std::uint32_t>(ny);
+        if (!f.chunkAt(ux, uy).resident)
+            return false;   // C2-02b: an unloaded chunk is a SOLID WALL
         MaterialId& src_cell = f.cellAt(x, y);
         MaterialId& dst_cell = f.cellAt(ux, uy);
         const MaterialId src = src_cell;
@@ -608,7 +758,8 @@ namespace lux::gameplay::d2
         const auto t0 = std::chrono::steady_clock::now();
 
         for (Chunk& c : f.chunks)
-            std::memset(c.moved.data(), 0, c.moved.size());
+            if (c.resident)
+                std::memset(c.moved.data(), 0, c.moved.size());
         std::fill(f.changed.begin(), f.changed.end(), std::uint8_t{0});
         std::fill(f.active_next.begin(), f.active_next.end(), std::uint8_t{0});
         f.moved_cells_last = 0;
@@ -629,6 +780,8 @@ namespace lux::gameplay::d2
                 const std::size_t t = static_cast<std::size_t>(ty) * f.tiles_x + tx;
                 if (!f.active[t])
                     continue;
+                if (!f.chunkAt(tx * kTileSize, ty * kTileSize).resident)
+                    continue;   // C2-02b: unloaded chunks are never scanned
                 const std::uint32_t y0 = std::min(ty * kTileSize + f.rmin_y[t], h - 1);
                 const std::uint32_t y1 = std::min(ty * kTileSize + f.rmax_y[t] + 1u, h);
                 const std::uint32_t x0 = std::min(tx * kTileSize + f.rmin_x[t], w - 1);
@@ -677,6 +830,8 @@ namespace lux::gameplay::d2
                                         if (nx < 0 || nx >= static_cast<std::int32_t>(w))
                                             return false;   // wall
                                         const std::uint32_t unx = static_cast<std::uint32_t>(nx);
+                                        if (!f.chunkAt(unx, y).resident)
+                                            return false;   // C2-02b: wall
                                         if (f.cellAt(unx, y) != kEmptyMaterial)
                                             return false;   // path blocked on this row
                                         if (f.cellAt(unx, static_cast<std::uint32_t>(yi - 1)) == kEmptyMaterial)
@@ -726,6 +881,9 @@ namespace lux::gameplay::d2
             cell.x() >= static_cast<std::int32_t>(f->desc.cells_w) ||
             cell.y() >= static_cast<std::int32_t>(f->desc.cells_h))
             return kEmptyMaterial;
+        if (!f->chunkAt(static_cast<std::uint32_t>(cell.x()),
+                        static_cast<std::uint32_t>(cell.y())).resident)
+            return kEmptyMaterial;   // C2-02b: unloaded reads empty
         return f->cellAt(static_cast<std::uint32_t>(cell.x()),
                          static_cast<std::uint32_t>(cell.y()));
     }
@@ -787,8 +945,9 @@ namespace lux::gameplay::d2
             {
                 const std::uint32_t seg = std::min(kChunkSizeCells - (x & kChunkMask), w - x);
                 const Chunk& c = f->chunkAt(x, y);
-                hash = fnv1a64Append(hash, &c.cells[Field::localIndex(x, y)],
-                                     static_cast<std::size_t>(seg) * sizeof(MaterialId));
+                if (c.resident)   // C2-02b: the fingerprint covers RESIDENT content
+                    hash = fnv1a64Append(hash, &c.cells[Field::localIndex(x, y)],
+                                         static_cast<std::size_t>(seg) * sizeof(MaterialId));
                 x += seg;
             }
         return hash;
@@ -854,6 +1013,7 @@ namespace lux::gameplay::d2
         Field* f = resolve(h);
         if (!f || cx >= f->chunks_x || cy >= f->chunks_y) return out;
         Chunk& c = f->chunks[static_cast<std::size_t>(cy) * f->chunks_x + cx];
+        if (!c.resident) return out;   // C2-02b: no mirror content while unloaded
 
         auto plan = c.planner.takeBatch(sizeof(MaterialId), budget);
         if (plan.empty()) return out;

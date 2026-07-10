@@ -125,6 +125,35 @@ namespace lux::gameplay::d2
             events_.clear();
         }
 
+        // ── C2-02b: per-chunk CPU residency (streaming primitives) ───────────
+        //
+        // The runtime owns TWO chunk states — Resident / Unloaded — and stays
+        // IO-free: streaming POLICY (which chunks, when, camera radii) and the
+        // async file plumbing (PixelFieldSaveIo) belong to the caller, driven
+        // between fixed steps. Semantics while a chunk is UNLOADED:
+        //   - the CA treats it as a SOLID WALL (movement into it fails; its own
+        //     tiles are never scanned) — settled borders stay put, no artefacts;
+        //   - queries read it as EMPTY (nothing better without loading);
+        //   - stamp commands targeting its cells are DROPPED (command space =
+        //     resident space; callers stream in before editing);
+        //   - captureState (whole-field save) REQUIRES full residency (fails
+        //     explicitly otherwise).
+        /// Serialize ONE chunk (same checksummed record as captureState uses).
+        [[nodiscard]] std::vector<std::byte> captureChunk(PixelFieldHandle h,
+                                                          std::uint32_t cx, std::uint32_t cy) const;
+        /// Capture + release the chunk's CPU planes → Unloaded. False on a
+        /// stale handle / out-of-range / already unloaded (blob empty then).
+        [[nodiscard]] bool unloadChunk(PixelFieldHandle h, std::uint32_t cx, std::uint32_t cy,
+                                       std::vector<std::byte>& out_blob);
+        /// Restore an unloaded chunk from @p blob → Resident (full wake +
+        /// full upload dirt, so the GPU mirror repaints). Explicit failure on
+        /// mismatch/corruption (the chunk stays Unloaded).
+        [[nodiscard]] bool loadChunk(PixelFieldHandle h, std::uint32_t cx, std::uint32_t cy,
+                                     std::span<const std::byte> blob,
+                                     std::string* error_out = nullptr);
+        [[nodiscard]] bool chunkResident(PixelFieldHandle h,
+                                         std::uint32_t cx, std::uint32_t cy) const noexcept;
+
         // ── C2-02a: save state (blob codec; file IO lives in PixelFieldSaveIo) ─
         /// Serialize the field's LOGICAL content (desc + every chunk's clipped
         /// material/channel planes, each chunk fnv-checksummed) into an owned
@@ -207,6 +236,7 @@ namespace lux::gameplay::d2
             // optional channels (allocated iff enabled — F2-03)
             std::vector<float> temperature;
             std::vector<float> lifetime;
+            bool resident{true};   ///< C2-02b: false = planes released (solid wall to the CA)
         };
 
         struct Field

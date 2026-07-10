@@ -22,6 +22,7 @@ layout(location = 1) in vec4  vColor;
 layout(location = 2) flat in uint vFieldTex;
 layout(location = 3) flat in uint vPaletteTex;
 layout(location = 4) flat in uvec2 vCells;
+layout(location = 5) flat in uvec2 vAtlas;   // chunk texel origin in the atlas (C2-01)
 
 layout(location = 0) out vec4 outColor;
 
@@ -35,7 +36,8 @@ void main()
 
     const ivec2 cell = ivec2(clamp(ivec2(floor(vCell)),
                                    ivec2(0), ivec2(vCells) - ivec2(1)));
-    const float v  = texelFetch(uTex[nonuniformEXT(vFieldTex)], cell, 0).r;
+    const float v  = texelFetch(uTex[nonuniformEXT(vFieldTex)],
+                                ivec2(vAtlas) + cell, 0).r;
     const uint  id = min(uint(round(v * 65535.0)), 255u);
     const vec4  c  = texelFetch(uTex[nonuniformEXT(vPaletteTex)], ivec2(int(id), 0), 0);
     outColor = c * vColor;      // palette is premultiplied; entry 0 is transparent

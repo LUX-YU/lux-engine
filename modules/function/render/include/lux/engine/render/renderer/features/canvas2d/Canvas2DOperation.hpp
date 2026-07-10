@@ -106,15 +106,19 @@ namespace lux::render
     /// Material colour changes therefore update ONLY the palette texture.
     struct PixelField2DInstanceData
     {
-        float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f};    ///< column-major 2D affine (full field extent baked in)
-        std::uint32_t field_texture{kNoTexture};      ///< bindless set-2 index of the R16_UNORM id mirror
+        float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f};    ///< column-major 2D affine (this CHUNK's extent baked in)
+        std::uint32_t field_texture{kNoTexture};      ///< bindless set-2 index of the R16_UNORM id mirror (C2-01: the scene ATLAS)
         std::uint32_t palette_texture{kNoTexture};    ///< bindless set-2 index of the 256×1 RGBA8 palette
-        std::uint32_t cells_w{0};                     ///< id-mirror texel extent (texelFetch bounds)
+        std::uint32_t cells_w{0};                     ///< this chunk's texel extent (texelFetch bounds)
         std::uint32_t cells_h{0};
         std::uint32_t tint{0xFFFFFFFFu};              ///< premultiplied RGBA8 modulate
+        /// C2-01: the chunk's texel origin inside the atlas texture (0,0 for a
+        /// dedicated texture). texelFetch reads atlas_origin + cell.
+        std::uint32_t atlas_x{0};
+        std::uint32_t atlas_y{0};
         std::uint32_t _pad0{0};
     };
-    static_assert(sizeof(PixelField2DInstanceData) == 48,
+    static_assert(sizeof(PixelField2DInstanceData) == 56,
                   "PixelField2DInstanceData layout drift — keep canvas2d/pixel_field.vert in sync.");
     static_assert(std::is_trivially_copyable_v<PixelField2DInstanceData>);
 

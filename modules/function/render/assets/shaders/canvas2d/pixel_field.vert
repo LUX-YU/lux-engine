@@ -26,6 +26,8 @@ struct PixelField2DInstance {
     uint  cells_w;
     uint  cells_h;
     uint  tint;
+    uint  atlas_x;
+    uint  atlas_y;
     uint  _pad0;
 };
 
@@ -59,6 +61,7 @@ layout(location = 1) out vec4 vColor;         // premultiplied tint
 layout(location = 2) flat out uint vFieldTex;
 layout(location = 3) flat out uint vPaletteTex;
 layout(location = 4) flat out uvec2 vCells;   // texelFetch clamp bounds
+layout(location = 5) flat out uvec2 vAtlas;   // chunk texel origin in the atlas (C2-01)
 
 const vec2 kCorners[6] = vec2[6](
     vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5),
@@ -83,6 +86,7 @@ void main()
     vFieldTex   = f.field_tex;
     vPaletteTex = f.palette_tex;
     vCells      = uvec2(f.cells_w, f.cells_h);
+    vAtlas      = uvec2(f.atlas_x, f.atlas_y);
 
     const float r = float((f.tint >>  0u) & 0xFFu) / 255.0;
     const float g = float((f.tint >>  8u) & 0xFFu) / 255.0;

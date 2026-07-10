@@ -29,6 +29,8 @@
 #include <lux/engine/gameplay/render_bridge/RenderableBridgeContext.hpp>
 #include <lux/engine/gameplay/2d/world/components/TilemapComponent.hpp>
 #include <lux/engine/gameplay/2d/world/components/WorldTransform2DComponent.hpp>
+#include <lux/engine/gameplay/2d/world/components/Order2DComponents.hpp>   // A2-03: same rules as sprites
+#include <lux/engine/gameplay/2d/world/components/Camera2DComponent.hpp>   // ActiveCamera2DTag
 #include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>
 #include <lux/engine/render/comm/client/RenderSession.hpp>
 #include <lux/engine/render/comm/client/RenderRequest.hpp>
@@ -71,6 +73,15 @@ namespace lux::gameplay::d2
 
             applyPendingClears(registry);   // acked dirty-rect clears from last frame
 
+            // Parallax origin (A2-03) — same convention as Sprite2DBridge.
+            Eigen::Vector2f cam_center{0.f, 0.f};
+            for (auto ce : registry.view<ActiveCamera2DTag, WorldTransform2DComponent>())
+            {
+                const auto& cw = registry.get<WorldTransform2DComponent>(ce);
+                cam_center = {cw.world(0, 3), cw.world(1, 3)};
+                break;
+            }
+
             registry.view<TilemapComponent, WorldTransform2DComponent>().each(
                 [&](lux::meta::entity_id e, TilemapComponent& tc,
                     const WorldTransform2DComponent& wt)
@@ -89,6 +100,16 @@ namespace lux::gameplay::d2
                     m[4] = wt.world(0, 3) + sx * 0.5f;
                     m[5] = wt.world(1, 3) + sy * 0.5f;
 
+                    // A2-03 modifiers — the SAME rules as sprites (checklist DoD).
+                    if (const auto* pl = registry.try_get<Parallax2DComponent>(e))
+                    {
+                        m[4] += cam_center.x() * (1.f - pl->factor.x());
+                        m[5] += cam_center.y() * (1.f - pl->factor.y());
+                    }
+                    float prio = tc.priority;
+                    if (const auto* ys = registry.try_get<YSort2DComponent>(e))
+                        prio = ys->effectivePriority(wt.world(1, 3));
+
                     if (auto it = live_.find(e); it != live_.end())
                     {
                         Live& L = it->second;
@@ -97,10 +118,10 @@ namespace lux::gameplay::d2
                             canvas.updateTilemapTransform(ctx.scene(), L.instance, m);
                             std::memcpy(L.m, m, sizeof(m));
                         }
-                        if (tc.priority != L.priority || tc.visible != L.visible)
+                        if (prio != L.priority || tc.visible != L.visible)
                         {
-                            canvas.updateTilemapKey(ctx.scene(), L.instance, tc.priority, tc.visible);
-                            L.priority = tc.priority;
+                            canvas.updateTilemapKey(ctx.scene(), L.instance, prio, tc.visible);
+                            L.priority = prio;
                             L.visible  = tc.visible;
                         }
                         // CONTENT: at most one region upload in flight per map.
@@ -142,10 +163,10 @@ namespace lux::gameplay::d2
                         Live snap{};
                         snap.index_texture = tit->second;
                         std::memcpy(snap.m, m, sizeof(m));
-                        snap.priority = tc.priority;
+                        snap.priority = prio;
                         snap.visible  = tc.visible;
 
-                        auto req = canvas.addTilemap(ctx.scene(), data, tc.priority, tc.visible);
+                        auto req = canvas.addTilemap(ctx.scene(), data, prio, tc.visible);
                         req.then([this, e, snap](const lux::render::Tile2DSlotReply& r)
                         {
                             add_pending_.erase(e);

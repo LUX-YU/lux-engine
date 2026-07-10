@@ -30,6 +30,8 @@
 #include <lux/engine/gameplay/render_bridge/RenderableBridgeContext.hpp>       // ctx.canvas2d() / scene()
 #include <lux/engine/gameplay/2d/world/components/SpriteComponent.hpp>
 #include <lux/engine/gameplay/2d/world/components/WorldTransform2DComponent.hpp>
+#include <lux/engine/gameplay/2d/world/components/Order2DComponents.hpp>       // A2-03: Y-sort / parallax
+#include <lux/engine/gameplay/2d/world/components/Camera2DComponent.hpp>       // ActiveCamera2DTag (parallax origin)
 #include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>  // Sprite2DInstanceData / Sprite2DHandle
 #include <lux/engine/render/comm/client/RenderRequest.hpp>                      // in-flight create handle
 #include <lux/engine/meta/LuxObject.hpp>   // EntityRegistry / entity_id
@@ -80,6 +82,17 @@ namespace lux::gameplay::d2
 
             batch_.clear();
             tex_memo_.clear();
+
+            // Parallax origin: the active camera's world centre (A2-03). One
+            // lookup per drive; scenes without a camera get a zero origin.
+            Eigen::Vector2f cam_center{0.f, 0.f};
+            for (auto ce : registry.view<ActiveCamera2DTag, WorldTransform2DComponent>())
+            {
+                const auto& cw = registry.get<WorldTransform2DComponent>(ce);
+                cam_center = {cw.world(0, 3), cw.world(1, 3)};
+                break;
+            }
+
             registry.view<SpriteComponent, WorldTransform2DComponent>().each(
                 [&](lux::meta::entity_id e, const SpriteComponent& sp, const WorldTransform2DComponent& wt)
                 {
@@ -95,6 +108,20 @@ namespace lux::gameplay::d2
                     const float px = 0.5f - sp.pivot.x(), py = 0.5f - sp.pivot.y();
                     m[4] = wt.world(0, 3) + m[0] * px + m[2] * py;
                     m[5] = wt.world(1, 3) + m[1] * px + m[3] * py;
+
+                    // A2-03 opt-in modifiers, applied at BAKE time (never written
+                    // back to the authored components):
+                    //  - parallax shifts the sent translation by cam×(1−factor);
+                    //    the value diff below gives the right wire economy for free;
+                    //  - y-sort derives the EFFECTIVE priority from world Y.
+                    if (const auto* pl = registry.try_get<Parallax2DComponent>(e))
+                    {
+                        m[4] += cam_center.x() * (1.f - pl->factor.x());
+                        m[5] += cam_center.y() * (1.f - pl->factor.y());
+                    }
+                    float prio = sp.priority;
+                    if (const auto* ys = registry.try_get<YSort2DComponent>(e))
+                        prio = ys->effectivePriority(wt.world(1, 3));
 
                     // Resolve the texture every frame (advances the async upload state
                     // machine; memoised per distinct id per frame). kNoTexture while an
@@ -127,10 +154,10 @@ namespace lux::gameplay::d2
                             L.tint = sp.tint;
                             L.tex  = tex;
                         }
-                        if (sp.priority != L.priority || sp.visible != L.visible)
+                        if (prio != L.priority || sp.visible != L.visible)
                         {
-                            canvas.updateKey(ctx.scene(), L.handle, sp.priority, sp.visible);
-                            L.priority = sp.priority;
+                            canvas.updateKey(ctx.scene(), L.handle, prio, sp.visible);
+                            L.priority = prio;
                             L.visible  = sp.visible;
                         }
                         return;
@@ -157,10 +184,10 @@ namespace lux::gameplay::d2
                     std::memcpy(snap.uv, d.uv, sizeof(snap.uv));
                     snap.tint     = d.tint;
                     snap.tex      = d.texture_bindless;
-                    snap.priority = sp.priority;
+                    snap.priority = prio;
                     snap.visible  = sp.visible;
 
-                    auto req = canvas.addSprite(ctx.scene(), d, sp.priority, sp.visible);
+                    auto req = canvas.addSprite(ctx.scene(), d, prio, sp.visible);
                     req.then([this, e, snap](const lux::render::Sprite2DSlotReply& r)
                     {
                         pending_.erase(e);

@@ -33,10 +33,13 @@ namespace lux::gameplay::d2
         bool  drop_excess_time = true;
     };
 
-    /// Per-capability configs. Placeholders for now — their owning tasks (physics /
-    /// pixel-sim) flesh them out; the plan just carries them by value so a caller
-    /// can configure at enable*() time.
-    struct Physics2DConfig  {};
+    /// Per-capability configs, carried by value so a caller can configure at
+    /// enable*() time. (PixelSimConfig is still a placeholder for its slice.)
+    struct Physics2DConfig
+    {
+        float gravity_x{0.f};      ///< world gravity (units/s²); +y is up
+        float gravity_y{-9.81f};
+    };
     struct PixelSimConfig   {};
 
     /// The optional capabilities a 2D scene may enable. `Core` (Transform2D +

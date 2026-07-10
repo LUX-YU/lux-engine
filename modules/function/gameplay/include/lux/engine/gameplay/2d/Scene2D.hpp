@@ -34,6 +34,7 @@ namespace lux::gameplay::d2
     class Simulation2DSystem;
     class Transform2DSystem;
     class Camera2DSystem;
+    class Physics2DWorld;
 
     /// Scene-scoped 2D field service (chunks/cells/materials/commands live here, not
     /// in components). Owned by the scene container, injected non-owning into systems
@@ -50,6 +51,11 @@ namespace lux::gameplay::d2
         Simulation2DSystem* simulation = nullptr;   ///< the unified fixed-step coordinator (if needsSimulation)
         Transform2DSystem*  transform  = nullptr;   ///< local 2D TRS → world (if has(Core))
         Camera2DSystem*     camera     = nullptr;   ///< world → ortho view/proj (if has(Core))
+        /// P2: the collision/controller service (if has(Physics)). OWNED by the
+        /// SimulatePhysics phase closure — valid while the World (and its
+        /// Simulation2DSystem) lives; exposed for probe registration (I2-00)
+        /// and tests.
+        Physics2DWorld*     physics    = nullptr;
     };
 
     /// Capabilities of @p plan that are enabled but NOT yet backed by an installable

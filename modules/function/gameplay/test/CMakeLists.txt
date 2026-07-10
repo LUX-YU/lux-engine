@@ -13,5 +13,10 @@
 #  through it, exactly as the Gate -1 / Slice A bridge tests did.
 # ─────────────────────────────────────────────────────────────────────────────
 
-
+# PERMANENT stress: I2-02 parallel-CA determinism (1 ≡ N threads, hash-checked).
+# Thread-schedule races regress silently under rule changes — this stays.
+add_executable(pixel_parallel_determinism_stress pixel_parallel_determinism_stress.cpp)
+target_link_libraries(pixel_parallel_determinism_stress PRIVATE gameplay)
+add_test(NAME pixel_parallel_determinism_stress COMMAND pixel_parallel_determinism_stress)
+set_tests_properties(pixel_parallel_determinism_stress PROPERTIES LABELS "cpu" TIMEOUT 600)
 

@@ -19,10 +19,16 @@
 #include <lux/engine/gameplay/2d/world/components/WorldTransform2DComponent.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <cassert>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <functional>
+#include <mutex>
+#include <thread>
 
 namespace lux::gameplay::d2
 {
@@ -51,7 +57,116 @@ namespace lux::gameplay::d2
             return h;
         }
         constexpr std::uint64_t kFnvBasis = 1469598103934665603ull;
+
+        /// I2-00: does this material BLOCK movement/collision? Solid + Powder
+        /// (a character stands on sand); liquids and empty do not.
+        [[nodiscard]] bool isBlocking(const PixelMaterialRegistry& mats, MaterialId id) noexcept
+        {
+            if (id == kEmptyMaterial) return false;
+            const auto phase = mats.at(id).phase;
+            return phase == EMaterialPhase::Solid || phase == EMaterialPhase::Powder;
+        }
     } // namespace
+
+    // ── I2-02: the persistent CA worker pool ─────────────────────────────────
+    //
+    // Deliberately minimal (a falling-sand step is a fixed fan-out/join, not a
+    // task graph): N sleeping threads, one job at a time, atomic work-stealing
+    // over the item index. Threads exist ONLY while worker_threads_ > 1 —
+    // setWorkerThreads(1) tears the pool down and the step path degenerates to
+    // the pure serial loop with zero synchronisation.
+    struct PixelFieldRuntime::StepPool
+    {
+        explicit StepPool(std::uint32_t n)
+        {
+            threads_.reserve(n);
+            for (std::uint32_t i = 0; i < n; ++i)
+                threads_.emplace_back([this] { workerMain(); });
+        }
+        ~StepPool()
+        {
+            {
+                std::lock_guard lk(m_);
+                quit_ = true;
+            }
+            cv_work_.notify_all();
+            for (std::thread& t : threads_)
+                t.join();
+        }
+
+        /// Run fn(0..count-1) across the pool; returns when ALL items are done.
+        /// (Single caller by contract — the runtime's step path.)
+        void run(std::uint32_t count, const std::function<void(std::uint32_t)>& fn)
+        {
+            {
+                std::lock_guard lk(m_);
+                job_       = &fn;
+                job_count_ = count;
+                next_.store(0, std::memory_order_relaxed);
+                done_ = 0;
+                ++generation_;
+            }
+            cv_work_.notify_all();
+            std::unique_lock lk(m_);
+            cv_done_.wait(lk, [&] { return done_ == threads_.size(); });
+            job_ = nullptr;
+        }
+
+    private:
+        void workerMain()
+        {
+            std::uint64_t seen = 0;
+            for (;;)
+            {
+                std::unique_lock lk(m_);
+                cv_work_.wait(lk, [&] { return quit_ || generation_ != seen; });
+                if (quit_) return;
+                seen = generation_;
+                const auto*         fn    = job_;
+                const std::uint32_t count = job_count_;
+                lk.unlock();
+
+                for (;;)
+                {
+                    const std::uint32_t i = next_.fetch_add(1, std::memory_order_relaxed);
+                    if (i >= count) break;
+                    (*fn)(i);
+                }
+
+                lk.lock();
+                if (++done_ == threads_.size())   // done_ counts THIS generation only
+                    cv_done_.notify_one();
+            }
+        }
+
+        std::vector<std::thread>                  threads_;
+        std::mutex                                m_;
+        std::condition_variable                   cv_work_, cv_done_;
+        const std::function<void(std::uint32_t)>* job_{nullptr};
+        std::uint32_t                             job_count_{0};
+        std::atomic<std::uint32_t>                next_{0};
+        std::size_t                               done_{0};        ///< under m_
+        std::uint64_t                             generation_{0};  ///< under m_
+        bool                                      quit_{false};    ///< under m_
+    };
+
+    PixelFieldRuntime::PixelFieldRuntime()  = default;
+    PixelFieldRuntime::~PixelFieldRuntime() = default;
+
+    void PixelFieldRuntime::setWorkerThreads(std::uint32_t n)
+    {
+        n = std::clamp(n, 1u, 16u);
+        if (n == worker_threads_) return;
+        worker_threads_ = n;
+        pool_.reset();
+        if (n > 1)
+            pool_ = std::make_unique<StepPool>(n);
+    }
+
+    std::uint32_t PixelFieldRuntime::workerThreads() const noexcept
+    {
+        return worker_threads_;
+    }
 
     // ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -103,6 +218,7 @@ namespace lux::gameplay::d2
         f.rmax_x.assign(t, 0);  f.rmax_y.assign(t, 0);
         f.nrmin_x.assign(t, 0); f.nrmin_y.assign(t, 0);
         f.nrmax_x.assign(t, 0); f.nrmax_y.assign(t, 0);
+        f.tile_blocking.assign(t, 0);   // I2-00
         f.moved_cells_last = 0;
         f.step_ms_last     = 0.0;
         f.steps            = 0;
@@ -144,6 +260,7 @@ namespace lux::gameplay::d2
         std::vector<std::uint8_t>().swap(f.rmax_x);  std::vector<std::uint8_t>().swap(f.rmax_y);
         std::vector<std::uint8_t>().swap(f.nrmin_x); std::vector<std::uint8_t>().swap(f.nrmin_y);
         std::vector<std::uint8_t>().swap(f.nrmax_x); std::vector<std::uint8_t>().swap(f.nrmax_y);
+        std::vector<std::uint16_t>().swap(f.tile_blocking);
         free_.push_back(slot);
     }
 
@@ -331,6 +448,7 @@ namespace lux::gameplay::d2
         std::vector<float>().swap(c.lifetime);
         c.planner  = lux::render::RegionUploadPlanner{0, 0};
         c.resident = false;
+        ++transfer_epoch_;   // I2-01: residency change mutates observable cells
         return true;
     }
 
@@ -395,6 +513,7 @@ namespace lux::gameplay::d2
         c.planner  = lux::render::RegionUploadPlanner{cw, ch};
         c.planner.markDirty(0, 0, cw, ch);   // the mirror repaints fully
         c.resident = true;
+        recountChunkOccupancy(*f, cx, cy);   // I2-00
         // Wake the chunk (+1 border cell so neighbours re-evaluate the seam).
         wakeSpan(*f,
                  static_cast<std::int32_t>(cx * kChunkSizeCells) - 1,
@@ -402,6 +521,7 @@ namespace lux::gameplay::d2
                  static_cast<std::int32_t>(cx * kChunkSizeCells + cw),
                  static_cast<std::int32_t>(cy * kChunkSizeCells + ch),
                  /*next=*/false);
+        ++transfer_epoch_;   // I2-01: residency change mutates observable cells
         return true;
     }
 
@@ -411,6 +531,228 @@ namespace lux::gameplay::d2
         const Field* f = resolve(h);
         if (!f || cx >= f->chunks_x || cy >= f->chunks_y) return false;
         return f->chunks[static_cast<std::size_t>(cy) * f->chunks_x + cx].resident;
+    }
+
+    // ── I2-00: collision occupancy ───────────────────────────────────────────
+
+    void PixelFieldRuntime::recountChunkOccupancy(Field& f, std::uint32_t cx, std::uint32_t cy) const
+    {
+        const std::uint32_t cw = std::min(kChunkSizeCells, f.desc.cells_w - cx * kChunkSizeCells);
+        const std::uint32_t ch = std::min(kChunkSizeCells, f.desc.cells_h - cy * kChunkSizeCells);
+        const std::uint32_t gx0 = cx * kChunkSizeCells, gy0 = cy * kChunkSizeCells;
+        for (std::uint32_t ty = gy0 / kTileSize; ty <= (gy0 + ch - 1) / kTileSize; ++ty)
+            for (std::uint32_t tx = gx0 / kTileSize; tx <= (gx0 + cw - 1) / kTileSize; ++tx)
+            {
+                std::uint16_t n = 0;
+                const std::uint32_t x0 = tx * kTileSize, y0 = ty * kTileSize;
+                const std::uint32_t x1 = std::min(x0 + kTileSize, f.desc.cells_w);
+                const std::uint32_t y1 = std::min(y0 + kTileSize, f.desc.cells_h);
+                for (std::uint32_t y = y0; y < y1; ++y)
+                    for (std::uint32_t x = x0; x < x1; ++x)
+                        n += isBlocking(materials_, f.cellAt(x, y)) ? 1u : 0u;
+                f.tile_blocking[static_cast<std::size_t>(ty) * f.tiles_x + tx] = n;
+            }
+    }
+
+    bool PixelFieldRuntime::regionBlocked(PixelFieldHandle h,
+                                          Eigen::Vector2i cell_min,
+                                          Eigen::Vector2i cell_max) const noexcept
+    {
+        const Field* f = resolve(h);
+        if (!f) return false;
+        f->cells_probed_last = 0;
+        const std::int32_t x0 = std::max(cell_min.x(), 0);
+        const std::int32_t y0 = std::max(cell_min.y(), 0);
+        const std::int32_t x1 = std::min(cell_max.x(), static_cast<std::int32_t>(f->desc.cells_w) - 1);
+        const std::int32_t y1 = std::min(cell_max.y(), static_cast<std::int32_t>(f->desc.cells_h) - 1);
+        if (x0 > x1 || y0 > y1) return false;
+
+        const std::uint32_t T = kTileSize;
+        for (std::uint32_t ty = static_cast<std::uint32_t>(y0) / T;
+             ty <= static_cast<std::uint32_t>(y1) / T; ++ty)
+            for (std::uint32_t tx = static_cast<std::uint32_t>(x0) / T;
+                 tx <= static_cast<std::uint32_t>(x1) / T; ++tx)
+            {
+                // Unloaded chunks block entirely (the CA's solid-wall contract).
+                if (!f->chunkAt(tx * T, ty * T).resident)
+                    return true;
+                const std::uint16_t cnt =
+                    f->tile_blocking[static_cast<std::size_t>(ty) * f->tiles_x + tx];
+                if (cnt == 0) continue;                       // empty tile: skip
+
+                const std::uint32_t bx0 = std::max<std::uint32_t>(x0, tx * T);
+                const std::uint32_t by0 = std::max<std::uint32_t>(y0, ty * T);
+                const std::uint32_t bx1 = std::min<std::uint32_t>(x1, tx * T + T - 1);
+                const std::uint32_t by1 = std::min<std::uint32_t>(y1, ty * T + T - 1);
+                const bool full_tile =
+                    bx0 == tx * T && by0 == ty * T &&
+                    bx1 == std::min(tx * T + T - 1, f->desc.cells_w - 1) &&
+                    by1 == std::min(ty * T + T - 1, f->desc.cells_h - 1);
+                if (full_tile)
+                    return true;                              // cnt>0 and fully covered
+                // Partial overlap: scan just the intersection.
+                for (std::uint32_t y = by0; y <= by1; ++y)
+                    for (std::uint32_t x = bx0; x <= bx1; ++x)
+                    {
+                        ++f->cells_probed_last;
+                        if (isBlocking(materials_, f->cellAt(x, y)))
+                            return true;
+                    }
+            }
+        return false;
+    }
+
+    std::uint32_t PixelFieldRuntime::cellsProbedLast(PixelFieldHandle h) const noexcept
+    {
+        const Field* f = resolve(h);
+        return f ? f->cells_probed_last : 0;
+    }
+
+    // ── I2-01: transactional Field → Entity extraction ───────────────────────
+    //
+    // The epoch discipline: transfer_epoch_ increments on EVERY field mutation
+    // (step, command batch, chunk load/unload, a committed extract). A ticket
+    // stamps the epoch at prepare; extractData/commitExtract demand equality.
+    // Consequence: prepare→commit must happen with no mutation in between
+    // (in practice: inside one fixed-step phase), and the FIRST commit in a
+    // window invalidates every other outstanding ticket — their snapshots
+    // could overlap the cells it just cleared. Cheaper and stricter than a
+    // phase-window flag, and it can never clear drifted cells.
+
+    PixelExtractTicket PixelFieldRuntime::prepareExtract(PixelFieldHandle h,
+                                                         Eigen::Vector2i min,
+                                                         Eigen::Vector2i size,
+                                                         std::uint32_t max_cells)
+    {
+        PixelExtractTicket t{};
+        const Field* f = resolve(h);
+        if (!f || size.x() <= 0 || size.y() <= 0)
+            return t;
+        if (static_cast<std::uint64_t>(size.x()) * static_cast<std::uint64_t>(size.y()) > max_cells)
+            return t;   // refuse oversized rects up front (the caller's budget)
+
+        std::uint32_t idx;
+        if (!extract_free_.empty()) { idx = extract_free_.back(); extract_free_.pop_back(); }
+        else { idx = static_cast<std::uint32_t>(extracts_.size()); extracts_.emplace_back(); }
+
+        ExtractSlot& s = extracts_[idx];
+        s.alive = true;
+        ++s.gen;
+        s.field = h;
+        s.epoch = transfer_epoch_;
+        s.data.min  = min;
+        s.data.size = size;
+        s.data.cells.assign(static_cast<std::size_t>(size.x()) * size.y(), kEmptyMaterial);
+        s.data.nonempty = 0;
+
+        // Snapshot only (NEVER mutates): out-of-bounds / unloaded cells read
+        // empty — the same lie every read path tells (C2-02b).
+        const std::int32_t w = static_cast<std::int32_t>(f->desc.cells_w);
+        const std::int32_t hgt = static_cast<std::int32_t>(f->desc.cells_h);
+        for (std::int32_t y = min.y(); y < min.y() + size.y(); ++y)
+        {
+            if (y < 0 || y >= hgt) continue;
+            for (std::int32_t x = min.x(); x < min.x() + size.x(); ++x)
+            {
+                if (x < 0 || x >= w) continue;
+                const std::uint32_t ux = static_cast<std::uint32_t>(x);
+                const std::uint32_t uy = static_cast<std::uint32_t>(y);
+                if (!f->chunkAt(ux, uy).resident) continue;
+                const MaterialId id = f->cellAt(ux, uy);
+                if (id == kEmptyMaterial) continue;
+                s.data.cells[static_cast<std::size_t>(y - min.y()) * size.x()
+                             + static_cast<std::size_t>(x - min.x())] = id;
+                ++s.data.nonempty;
+            }
+        }
+
+        t.index = idx;
+        t.gen   = s.gen;
+        return t;
+    }
+
+    const PixelExtractData* PixelFieldRuntime::extractData(PixelExtractTicket t) const noexcept
+    {
+        if (t.index >= extracts_.size()) return nullptr;
+        const ExtractSlot& s = extracts_[t.index];
+        if (!s.alive || s.gen != t.gen || s.epoch != transfer_epoch_)
+            return nullptr;   // stale = the field moved on; the snapshot is a lie
+        return &s.data;
+    }
+
+    bool PixelFieldRuntime::commitExtract(PixelExtractTicket t)
+    {
+        if (t.index >= extracts_.size()) return false;
+        ExtractSlot& s = extracts_[t.index];
+        if (!s.alive || s.gen != t.gen) return false;
+
+        const auto release = [&]
+        {
+            s.alive = false;
+            s.data.cells.clear();   // keep capacity for slot reuse
+            extract_free_.push_back(t.index);
+        };
+
+        Field* f = resolve(s.field);
+        if (!f || s.epoch != transfer_epoch_)
+        {
+            release();     // stale ticket dies, the FIELD IS NOT TOUCHED
+            return false;
+        }
+
+        // Epoch equality ⇒ the field is bit-identical to the snapshot inside
+        // the rect — clearing exactly the snapshot's non-empty cells conserves
+        // matter by construction (cleared == nonempty, asserted below).
+        std::uint32_t cleared = 0;
+        const Eigen::Vector2i min = s.data.min, size = s.data.size;
+        for (std::int32_t y = min.y(); y < min.y() + size.y(); ++y)
+            for (std::int32_t x = min.x(); x < min.x() + size.x(); ++x)
+            {
+                const MaterialId id =
+                    s.data.cells[static_cast<std::size_t>(y - min.y()) * size.x()
+                                 + static_cast<std::size_t>(x - min.x())];
+                if (id == kEmptyMaterial) continue;
+                const std::uint32_t ux = static_cast<std::uint32_t>(x);
+                const std::uint32_t uy = static_cast<std::uint32_t>(y);
+                assert(f->chunkAt(ux, uy).resident && f->cellAt(ux, uy) == id &&
+                       "epoch guard broken: field drifted under a live ticket");
+                f->cellAt(ux, uy) = kEmptyMaterial;
+                if (isBlocking(materials_, id))   // I2-00 occupancy stays exact
+                    --f->tile_blocking[static_cast<std::size_t>(uy / kTileSize) * f->tiles_x
+                                       + ux / kTileSize];
+                ++cleared;
+            }
+        assert(cleared == s.data.nonempty);
+
+        if (cleared)
+        {
+            // Same dirt/wake shape as a StampRect erase: exact-rect upload dirt
+            // + the dispersion-widened sim wake band.
+            const std::int32_t x0 = std::max(min.x(), 0);
+            const std::int32_t y0 = std::max(min.y(), 0);
+            const std::int32_t x1 = std::min(min.x() + size.x(),
+                                             static_cast<std::int32_t>(f->desc.cells_w));
+            const std::int32_t y1 = std::min(min.y() + size.y(),
+                                             static_cast<std::int32_t>(f->desc.cells_h));
+            markRectDirty(*f, static_cast<std::uint32_t>(x0), static_cast<std::uint32_t>(y0),
+                          static_cast<std::uint32_t>(x1 - x0), static_cast<std::uint32_t>(y1 - y0));
+            wakeSpan(*f, x0 - kLiquidDispersion, y0 - 1,
+                         x1 - 1 + kLiquidDispersion, y1, /*next=*/false);
+        }
+
+        ++transfer_epoch_;   // a commit IS a mutation — sibling tickets die
+        release();
+        return true;
+    }
+
+    void PixelFieldRuntime::rollbackExtract(PixelExtractTicket t) noexcept
+    {
+        if (t.index >= extracts_.size()) return;
+        ExtractSlot& s = extracts_[t.index];
+        if (!s.alive || s.gen != t.gen) return;
+        s.alive = false;
+        s.data.cells.clear();
+        extract_free_.push_back(t.index);
     }
 
     // ── C2-02a: save-state blob codec ────────────────────────────────────────
@@ -542,6 +884,7 @@ namespace lux::gameplay::d2
                 // The restored content must reach the GPU mirror + the CA:
                 // full-chunk upload dirt + a full wake (settles in a few steps).
                 c.planner.markDirty(0, 0, cw, ch);
+                recountChunkOccupancy(*f, cx, cy);   // I2-00
             }
         if (r.pos != blob.size()) { destroy(h); return fail("trailing bytes after the last chunk"); }
         wakeSpan(*f, 0, 0, static_cast<std::int32_t>(desc.cells_w) - 1,
@@ -610,10 +953,26 @@ namespace lux::gameplay::d2
 
     void PixelFieldRuntime::applyCommands()
     {
+        if (!commands_.empty())
+            ++transfer_epoch_;   // I2-01: a command batch is a field mutation
+
         for (const PixelFieldCommand& cmd : commands_)
         {
             Field* f = resolve(cmd.field);
             if (!f) continue;   // stale handle → inert
+
+            const bool stamp_cells = cmd.kind == PixelFieldCommand::EKind::StampCells;
+            if (stamp_cells &&
+                (!cmd.cells || cmd.size.x() <= 0 || cmd.size.y() <= 0 ||
+                 cmd.cells->size() != static_cast<std::size_t>(cmd.size.x()) *
+                                      static_cast<std::size_t>(cmd.size.y())))
+            {
+                // Malformed payload → inert but still evented (the producer's
+                // ack loop must not hang on a bug).
+                pushEvent(PixelFieldEvent{PixelFieldEvent::EKind::CommandsApplied,
+                                          cmd.field, 0});
+                continue;
+            }
 
             const std::int32_t w = static_cast<std::int32_t>(f->desc.cells_w);
             const std::int32_t h = static_cast<std::int32_t>(f->desc.cells_h);
@@ -632,7 +991,30 @@ namespace lux::gameplay::d2
                         continue;   // C2-02b: command space = resident space
                     auto& cell = f->cellAt(static_cast<std::uint32_t>(x),
                                            static_cast<std::uint32_t>(y));
-                    if (cell != cmd.material) { cell = cmd.material; ++changed; }
+                    MaterialId want = cmd.material;
+                    if (stamp_cells)
+                    {
+                        // I2-01 Entity→Field: only non-empty payload cells land,
+                        // and NEVER on occupied field cells — matter is neither
+                        // created from nothing nor destroyed; the event count
+                        // below tells the producer how much actually landed.
+                        want = (*cmd.cells)[static_cast<std::size_t>(y - cmd.min.y()) * cmd.size.x()
+                                            + static_cast<std::size_t>(x - cmd.min.x())];
+                        if (want == kEmptyMaterial || cell != kEmptyMaterial)
+                            continue;
+                    }
+                    if (cell != want)
+                    {
+                        // I2-00: incremental occupancy.
+                        const std::size_t tb = static_cast<std::size_t>(y / static_cast<std::int32_t>(kTileSize)) * f->tiles_x
+                                             + static_cast<std::size_t>(x / static_cast<std::int32_t>(kTileSize));
+                        const bool was = isBlocking(materials_, cell);
+                        const bool now = isBlocking(materials_, want);
+                        if (was && !now) --f->tile_blocking[tb];
+                        else if (!was && now) ++f->tile_blocking[tb];
+                        cell = want;
+                        ++changed;
+                    }
                 }
             if (changed)
             {
@@ -693,7 +1075,8 @@ namespace lux::gameplay::d2
     }
 
     bool PixelFieldRuntime::tryMove(Field& f, std::uint32_t x, std::uint32_t y,
-                                    std::int32_t nx, std::int32_t ny, bool displace_liquid)
+                                    std::int32_t nx, std::int32_t ny, bool displace_liquid,
+                                    std::uint32_t& moved_counter)
     {
         if (nx < 0 || ny < 0 ||
             nx >= static_cast<std::int32_t>(f.desc.cells_w) ||
@@ -726,13 +1109,21 @@ namespace lux::gameplay::d2
             return false;
 
         f.movedAt(ux, uy) = 1;
-        ++f.moved_cells_last;
+        ++moved_counter;
 
         const std::uint32_t stx = x / kTileSize, sty = y / kTileSize;
         const std::uint32_t dtx = ux / kTileSize;
         const std::uint32_t dty = uy / kTileSize;
         f.changed[static_cast<std::size_t>(sty) * f.tiles_x + stx] = 1;
         f.changed[static_cast<std::size_t>(dty) * f.tiles_x + dtx] = 1;
+        // I2-00: the moving material carries its blocking count across tiles
+        // (the empty-dst AND the liquid-swap case both leave the source cell
+        // non-blocking and the destination blocking iff `src` blocks).
+        if ((stx != dtx || sty != dty) && isBlocking(materials_, src))
+        {
+            --f.tile_blocking[static_cast<std::size_t>(sty) * f.tiles_x + stx];
+            ++f.tile_blocking[static_cast<std::size_t>(dty) * f.tiles_x + dtx];
+        }
 
         // Wake the ±1 band around both cells for the NEXT step (anything whose
         // support/neighbourhood this move touched sits inside it)…
@@ -753,35 +1144,29 @@ namespace lux::gameplay::d2
         return true;
     }
 
-    void PixelFieldRuntime::stepField(Field& f)
+    void PixelFieldRuntime::stepField(Field& f, std::uint32_t chunk_cx, std::uint32_t chunk_cy,
+                                      std::uint32_t& moved, std::uint32_t& scanned)
     {
-        const auto t0 = std::chrono::steady_clock::now();
-
-        for (Chunk& c : f.chunks)
-            if (c.resident)
-                std::memset(c.moved.data(), 0, c.moved.size());
-        std::fill(f.changed.begin(), f.changed.end(), std::uint8_t{0});
-        std::fill(f.active_next.begin(), f.active_next.end(), std::uint8_t{0});
-        f.moved_cells_last = 0;
-
         const std::uint32_t w = f.desc.cells_w, h = f.desc.cells_h;
-        f.cells_scanned_last = 0;
 
-        // Tiles bottom-up; rows bottom-up inside each tile row band, and only
-        // WITHIN the tile's dirty RECT (the Noita-style refinement: an active
-        // tile scans its ±1-expanded activity band, never its settled bulk).
-        // Cell order stays a FIXED total order — a pure function of
-        // (cells, step index) — so determinism is untouched. Chunk borders are
-        // crossed by plain global addressing (cellAt), no special cases.
-        for (std::uint32_t ty = 0; ty < f.tiles_y; ++ty)
+        // This chunk's tile slice. Tiles bottom-up; rows bottom-up inside each
+        // tile row band, and only WITHIN the tile's dirty RECT (the Noita-style
+        // refinement: an active tile scans its ±1-expanded activity band, never
+        // its settled bulk). Chunk borders are crossed by plain global
+        // addressing (cellAt), no halo copies.
+        constexpr std::uint32_t kTilesPerChunk = kChunkSizeCells / kTileSize;
+        const std::uint32_t cty0 = chunk_cy * kTilesPerChunk;
+        const std::uint32_t cty1 = std::min(cty0 + kTilesPerChunk, f.tiles_y);
+        const std::uint32_t ctx0 = chunk_cx * kTilesPerChunk;
+        const std::uint32_t ctx1 = std::min(ctx0 + kTilesPerChunk, f.tiles_x);
+
+        for (std::uint32_t ty = cty0; ty < cty1; ++ty)
         {
-            for (std::uint32_t tx = 0; tx < f.tiles_x; ++tx)
+            for (std::uint32_t tx = ctx0; tx < ctx1; ++tx)
             {
                 const std::size_t t = static_cast<std::size_t>(ty) * f.tiles_x + tx;
                 if (!f.active[t])
                     continue;
-                if (!f.chunkAt(tx * kTileSize, ty * kTileSize).resident)
-                    continue;   // C2-02b: unloaded chunks are never scanned
                 const std::uint32_t y0 = std::min(ty * kTileSize + f.rmin_y[t], h - 1);
                 const std::uint32_t y1 = std::min(ty * kTileSize + f.rmax_y[t] + 1u, h);
                 const std::uint32_t x0 = std::min(tx * kTileSize + f.rmin_x[t], w - 1);
@@ -793,7 +1178,7 @@ namespace lux::gameplay::d2
                     for (std::uint32_t k = 0; k < x1 - x0; ++k)
                     {
                         const std::uint32_t x = rtl ? (x1 - 1u - k) : (x0 + k);
-                        ++f.cells_scanned_last;
+                        ++scanned;
                         const MaterialId    id = f.cellAt(x, y);
                         if (id == kEmptyMaterial || f.movedAt(x, y))
                             continue;
@@ -803,15 +1188,15 @@ namespace lux::gameplay::d2
                         const std::int32_t yi = static_cast<std::int32_t>(y);
                         if (phase == EMaterialPhase::Powder)
                         {
-                            if (tryMove(f, x, y, xi, yi - 1, true)) continue;
-                            if (tryMove(f, x, y, xi + first, yi - 1, true)) continue;
-                            if (tryMove(f, x, y, xi - first, yi - 1, true)) continue;
+                            if (tryMove(f, x, y, xi, yi - 1, true, moved)) continue;
+                            if (tryMove(f, x, y, xi + first, yi - 1, true, moved)) continue;
+                            if (tryMove(f, x, y, xi - first, yi - 1, true, moved)) continue;
                         }
                         else if (phase == EMaterialPhase::Liquid)
                         {
-                            if (tryMove(f, x, y, xi, yi - 1, false)) continue;
-                            if (tryMove(f, x, y, xi + first, yi - 1, false)) continue;
-                            if (tryMove(f, x, y, xi - first, yi - 1, false)) continue;
+                            if (tryMove(f, x, y, xi, yi - 1, false, moved)) continue;
+                            if (tryMove(f, x, y, xi + first, yi - 1, false, moved)) continue;
+                            if (tryMove(f, x, y, xi - first, yi - 1, false, moved)) continue;
                             // Lateral DISPERSION rule: step sideways ONLY toward a
                             // visible drainage hole — scan up to kDispersion cells
                             // along this row (path must be empty; walls/liquid stop
@@ -835,7 +1220,7 @@ namespace lux::gameplay::d2
                                         if (f.cellAt(unx, y) != kEmptyMaterial)
                                             return false;   // path blocked on this row
                                         if (f.cellAt(unx, static_cast<std::uint32_t>(yi - 1)) == kEmptyMaterial)
-                                            return tryMove(f, x, y, xi + dir, yi, false);
+                                            return tryMove(f, x, y, xi + dir, yi, false, moved);
                                     }
                                     return false;
                                 };
@@ -846,6 +1231,71 @@ namespace lux::gameplay::d2
                         // Solid / Empty: static.
                     }
                 }
+            }
+        }
+    }
+
+    void PixelFieldRuntime::stepField(Field& f)
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+
+        for (Chunk& c : f.chunks)
+            if (c.resident)
+                std::memset(c.moved.data(), 0, c.moved.size());
+        std::fill(f.changed.begin(), f.changed.end(), std::uint8_t{0});
+        std::fill(f.active_next.begin(), f.active_next.end(), std::uint8_t{0});
+        f.moved_cells_last = 0;
+        f.cells_scanned_last = 0;
+
+        // I2-02: four-colour (cx&1, cy&1) chunk schedule. Same-colour chunks
+        // are ≥ 2 chunks (512 cells) apart; a chunk's scan writes at most
+        // kLiquidDispersion+1 cells past its own border (tryMove reach 1 +
+        // wakeSpan band) and reads at most kLiquidDispersion — so two
+        // same-colour chunks can NEVER touch the same cell or the same tile
+        // bookkeeping entry, and each chunk's result is independent of the
+        // execution order inside its colour group. That makes 1 thread ≡ N
+        // threads by construction (the frozen determinism model: the hash is
+        // a function of (cells, step index, schedule), never of thread count).
+        // The static_assert is the rule-evolution hard guard: any future rule
+        // whose reach exceeds one tile breaks the colour argument and must
+        // widen the colouring instead of silently racing.
+        static_assert(kLiquidDispersion + 1 <= static_cast<std::int32_t>(kTileSize),
+                      "four-colour schedule invariant: cross-chunk write reach must stay "
+                      "within the first tile of a neighbour chunk");
+
+        struct WorkItem { std::uint32_t cx, cy, moved{0}, scanned{0}; };
+        std::vector<WorkItem> items;
+        items.reserve((static_cast<std::size_t>(f.chunks_x) * f.chunks_y + 3) / 4);
+
+        for (std::uint32_t colour = 0; colour < 4; ++colour)
+        {
+            const std::uint32_t px = colour & 1u, py = colour >> 1;
+            items.clear();
+            for (std::uint32_t cy = py; cy < f.chunks_y; cy += 2)
+                for (std::uint32_t cx = px; cx < f.chunks_x; cx += 2)
+                    if (f.chunks[static_cast<std::size_t>(cy) * f.chunks_x + cx].resident)
+                        items.push_back(WorkItem{cx, cy});
+            if (items.empty()) continue;
+
+            if (pool_ == nullptr || worker_threads_ <= 1 || items.size() <= 1)
+            {
+                // Serial path: the SAME colour-major order — 1 ≡ N.
+                for (WorkItem& it : items)
+                    stepField(f, it.cx, it.cy, it.moved, it.scanned);
+            }
+            else
+            {
+                pool_->run(static_cast<std::uint32_t>(items.size()),
+                           [&](std::uint32_t i)
+                           {
+                               WorkItem& it = items[i];
+                               stepField(f, it.cx, it.cy, it.moved, it.scanned);
+                           });
+            }
+            for (const WorkItem& it : items)
+            {
+                f.moved_cells_last += it.moved;
+                f.cells_scanned_last += it.scanned;
             }
         }
 
@@ -867,6 +1317,7 @@ namespace lux::gameplay::d2
 
     void PixelFieldRuntime::step()
     {
+        ++transfer_epoch_;   // I2-01: a CA step is a field mutation
         for (Field& f : fields_)
             if (f.alive)
                 stepField(f);

@@ -86,7 +86,8 @@ namespace lux::gameplay::d2
         static_assert((1u << kChunkShift) == kChunkSizeCells);
         static_assert(kChunkSizeCells % kTileSize == 0);
 
-        PixelFieldRuntime() = default;
+        PixelFieldRuntime();    ///< out-of-line: StepPool (I2-02) is cpp-private
+        ~PixelFieldRuntime();
         PixelFieldRuntime(const PixelFieldRuntime&) = delete;
         PixelFieldRuntime& operator=(const PixelFieldRuntime&) = delete;
 
@@ -124,6 +125,54 @@ namespace lux::gameplay::d2
             out.insert(out.end(), events_.begin(), events_.end());
             events_.clear();
         }
+
+        // ── I2-01: transactional Field → Entity extraction ───────────────────
+        //
+        // Two-phase matter transfer: prepareExtract SNAPSHOTS a cell rect
+        // (never mutates); commitExtract CLEARS exactly the snapshot's
+        // non-empty cells (the matter now belongs to the entity side — one
+        // authoritative copy at every instant); rollbackExtract discards.
+        // A ticket is valid ONLY until the next field mutation (any CA step or
+        // command batch bumps the transfer epoch) — commit across a mutation
+        // fails explicitly, never clears drifted cells. The reverse direction
+        // (Entity → Field) is the StampCells command: occupied field cells are
+        // skipped, so matter is never destroyed in either direction.
+        [[nodiscard]] PixelExtractTicket prepareExtract(PixelFieldHandle h,
+                                                        Eigen::Vector2i min,
+                                                        Eigen::Vector2i size,
+                                                        std::uint32_t max_cells = 4096);
+        /// The snapshot (null when the ticket is stale/invalid).
+        [[nodiscard]] const PixelExtractData* extractData(PixelExtractTicket t) const noexcept;
+        /// Clear the snapshot's cells from the field. False (and NO mutation)
+        /// when the ticket is stale or the epoch moved on.
+        bool commitExtract(PixelExtractTicket t);
+        void rollbackExtract(PixelExtractTicket t) noexcept;
+
+        // ── I2-02: parallel chunk stepping ───────────────────────────────────
+        /// Worker threads for the CA step (default 1 = serial). N threads run
+        /// the SAME four-colour chunk schedule — the hash is identical for any
+        /// N by construction (same-colour chunks' write reaches never overlap;
+        /// see the static_assert in the cpp).
+        void setWorkerThreads(std::uint32_t n);
+        [[nodiscard]] std::uint32_t workerThreads() const noexcept;
+
+        // ── I2-00: collision occupancy (derived, incrementally maintained) ───
+        //
+        // Per-TILE counts of BLOCKING cells (Solid + Powder phases; liquids do
+        // not block) — maintained incrementally by tryMove/applyCommands/
+        // load/restore, so collision queries skip full/empty tiles without
+        // scanning. UNLOADED chunks count as fully blocking (the same solid-
+        // wall contract the CA uses). Queries are const and never expose
+        // internals — the FieldCollisionAdapter builds ICollision2DProbe on
+        // exactly these two calls.
+        /// Any blocking cell in the INCLUSIVE cell rect? (Out-of-field cells
+        /// are non-blocking; unloaded chunks block entirely.)
+        [[nodiscard]] bool regionBlocked(PixelFieldHandle h,
+                                         Eigen::Vector2i cell_min,
+                                         Eigen::Vector2i cell_max) const noexcept;
+        /// Cells the last regionBlocked probe actually SCANNED (tests: the
+        /// tile-count fast path's receipt — full/empty tiles scan nothing).
+        [[nodiscard]] std::uint32_t cellsProbedLast(PixelFieldHandle h) const noexcept;
 
         // ── C2-02b: per-chunk CPU residency (streaming primitives) ───────────
         //
@@ -259,6 +308,9 @@ namespace lux::gameplay::d2
             std::vector<std::uint8_t> changed;      ///< per-step upload-dirty accumulation
             std::vector<std::uint8_t> rmin_x, rmin_y, rmax_x, rmax_y;     ///< current scan rects
             std::vector<std::uint8_t> nrmin_x, nrmin_y, nrmax_x, nrmax_y; ///< next-step rects
+            // I2-00: per-tile BLOCKING-cell counts (Solid+Powder), incremental.
+            std::vector<std::uint16_t> tile_blocking;
+            mutable std::uint32_t      cells_probed_last{0};   ///< regionBlocked receipt
             // stats
             std::uint32_t moved_cells_last{0};
             std::uint32_t cells_scanned_last{0};
@@ -308,6 +360,9 @@ namespace lux::gameplay::d2
         /// Split a field-global rect into per-chunk planner dirt.
         static void markRectDirty(Field& f, std::uint32_t x0, std::uint32_t y0,
                                   std::uint32_t w, std::uint32_t h) noexcept;
+        /// I2-00: recompute the tile_blocking slice covered by chunk (cx,cy)
+        /// (used after loadChunk/restoreState bulk writes).
+        void recountChunkOccupancy(Field& f, std::uint32_t cx, std::uint32_t cy) const;
         void destroySlot(std::uint32_t slot);
         void stepField(Field& f);
         /// Wake every tile overlapping the INCLUSIVE cell span [x0,x1]×[y0,y1]
@@ -320,10 +375,33 @@ namespace lux::gameplay::d2
         void pushEvent(const PixelFieldEvent& e);
         /// Move/displace (x,y)→(nx,ny). True when something moved (single-write
         /// by construction: the target is Empty or a displaced lighter liquid).
+        /// @p moved_counter is the CALLER's per-chunk stat cell (I2-02: shared
+        /// Field counters would race under the four-colour schedule).
         bool tryMove(Field& f, std::uint32_t x, std::uint32_t y,
-                     std::int32_t nx, std::int32_t ny, bool displace_liquid);
+                     std::int32_t nx, std::int32_t ny, bool displace_liquid,
+                     std::uint32_t& moved_counter);
 
         static constexpr std::size_t kMaxPendingEvents = 4096;   ///< un-drained queue cap
+
+        // I2-01 ticket store.
+        struct ExtractSlot
+        {
+            std::uint32_t    gen{0};
+            bool             alive{false};
+            PixelFieldHandle field{};
+            std::uint64_t    epoch{0};
+            PixelExtractData data{};
+        };
+        std::vector<ExtractSlot>   extracts_;
+        std::vector<std::uint32_t> extract_free_;
+        std::uint64_t              transfer_epoch_{0};   ///< bumped by step()/applyCommands()
+
+        // I2-02 worker pool (defined in the cpp; =1 → pure serial path).
+        struct StepPool;
+        std::unique_ptr<StepPool>  pool_;
+        std::uint32_t              worker_threads_{1};
+        void stepField(Field& f, std::uint32_t chunk_cx, std::uint32_t chunk_cy,
+                       std::uint32_t& moved, std::uint32_t& scanned);   ///< one chunk's tiles
 
         PixelMaterialRegistry          materials_;
         std::vector<Field>             fields_;

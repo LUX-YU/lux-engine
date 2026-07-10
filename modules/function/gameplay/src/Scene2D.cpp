@@ -12,6 +12,7 @@
 #include <lux/engine/gameplay/2d/world/systems/Simulation2DSystem.hpp>
 #include <lux/engine/gameplay/2d/world/systems/SpriteAnimationSystem.hpp>
 #include <lux/engine/gameplay/2d/physics/Physics2DWorld.hpp>
+#include <lux/engine/gameplay/2d/pixel/FieldCollisionAdapter.hpp>   // I2-00
 #include <lux/engine/gameplay/2d/world/systems/Transform2DSystem.hpp>
 #include <lux/engine/gameplay/2d/world/systems/Camera2DSystem.hpp>
 #include <lux/engine/gameplay/2d/render_bridge/Sprite2DBridge.hpp>
@@ -41,7 +42,8 @@ namespace lux::gameplay::d2
             static_cast<std::uint32_t>(D2Capability::PixelSimulation) |  // F2: backed below
             static_cast<std::uint32_t>(D2Capability::SpriteAnimation) |  // A2-01: backed below
             static_cast<std::uint32_t>(D2Capability::Physics) |          // P2: backed below
-            static_cast<std::uint32_t>(D2Capability::CharacterController);
+            static_cast<std::uint32_t>(D2Capability::CharacterController) |
+            static_cast<std::uint32_t>(D2Capability::PixelInterop);     // I2: backed below
     } // namespace
 
     std::uint32_t unbackedCapabilities(const D2ScenePlan& plan) noexcept
@@ -117,8 +119,24 @@ namespace lux::gameplay::d2
         {
             auto physics = std::make_shared<Physics2DWorld>(plan.physicsConfig());
             installed.physics = physics.get();
+
+            // I2-00: back the PixelInterop capability — pixel terrain becomes
+            // SOLID to the controller by registering the field probe on the
+            // physics world. The Field↔Entity TRANSFER half of the capability
+            // is the runtime's caller-driven API (prepareExtract/commitExtract
+            // + StampCells commands), invoked by game systems inside the
+            // FieldToEntity / CollectEntityToField phases — install wires no
+            // default transfer behaviour (what to extract is game logic).
+            // validate() guarantees Physics ∧ PixelSimulation here.
+            std::shared_ptr<FieldCollisionAdapter> field_probe;
+            if (plan.has(D2Capability::PixelInterop) && runtime != nullptr)
+            {
+                field_probe = std::make_shared<FieldCollisionAdapter>(runtime);
+                physics->addProbe(field_probe.get());
+            }
+
             installed.simulation->setPhase(Simulation2DSystem::Phase::SimulatePhysics,
-                [physics](lux::meta::EntityRegistry& reg, float dt)
+                [physics, field_probe](lux::meta::EntityRegistry& reg, float dt)
                 {
                     physics->step(reg, dt);
                 });

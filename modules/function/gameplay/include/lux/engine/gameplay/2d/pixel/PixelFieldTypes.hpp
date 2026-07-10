@@ -24,6 +24,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace lux::gameplay::d2
@@ -160,14 +161,42 @@ namespace lux::gameplay::d2
     {
         enum class EKind : std::uint8_t
         {
-            StampRect = 0,   ///< set every cell in [min, min+size) to `material`
-                             ///< (erase = stamp kEmptyMaterial)
+            StampRect  = 0,   ///< set every cell in [min, min+size) to `material`
+                              ///< (erase = stamp kEmptyMaterial)
+            StampCells = 1,   ///< I2-01 Entity→Field: write `cells` (row-major,
+                              ///< size.x×size.y at `min`); EMPTY payload cells
+                              ///< are skipped, and OCCUPIED field cells are NOT
+                              ///< overwritten (matter is never destroyed — the
+                              ///< event's cells_changed reports what landed).
         };
         EKind            kind{EKind::StampRect};
         PixelFieldHandle field{};
         Eigen::Vector2i  min{0, 0};
         Eigen::Vector2i  size{0, 0};
         MaterialId       material{kEmptyMaterial};
+        /// StampCells payload (shared, immutable — this queue is gameplay-
+        /// internal, no wire POD constraint).
+        std::shared_ptr<const std::vector<MaterialId>> cells{};
+    };
+
+    /// I2-01: an in-flight Field→Entity extraction (opaque; resolved by the
+    /// runtime). Valid ONLY within the transfer window it was prepared in —
+    /// ANY field mutation (a CA step or a command batch) invalidates it.
+    struct PixelExtractTicket
+    {
+        std::uint32_t index{0xFFFFFFFFu};
+        std::uint32_t gen{0};
+        [[nodiscard]] bool valid() const noexcept { return index != 0xFFFFFFFFu; }
+    };
+
+    /// The extracted matter snapshot a committed ticket hands to the entity
+    /// side (the payload later re-enters via StampCells).
+    struct PixelExtractData
+    {
+        Eigen::Vector2i         min{0, 0};
+        Eigen::Vector2i         size{0, 0};
+        std::vector<MaterialId> cells;        ///< row-major; empty = nothing there
+        std::uint32_t           nonempty{0};  ///< the conservation count
     };
 
     /// C2-03: one hit of a world-space field query — the handle plus the frame

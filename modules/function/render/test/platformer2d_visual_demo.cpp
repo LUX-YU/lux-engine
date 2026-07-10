@@ -32,6 +32,8 @@
 #include <lux/pack/d2/world/components/Camera2DComponent.hpp>
 #include <lux/pack/d2/world/systems/SpriteAnim2DResolver.hpp>
 #include <lux/pack/physics2d_demo/Physics2DComponents.hpp>
+#include <lux/pack/physics2d_demo/Physics2DWorld.hpp>
+#include <lux/pack/physics2d_demo/Physics2DDemoPack.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/render_bridge/RenderableSystem.hpp>
 
@@ -227,6 +229,7 @@ int main()
     const auto anims      = registerAnimAssets(assets, sheet_id);
 
     // ── gameplay world: traditional + animation + physics + controller ──
+    lux::render_bridge::SceneServices services;   // must outlive the World
     lux::ecs::World world;
     // 240 Hz fixed step: at 60 Hz a 2.4 u/s runner advances ~0.04 world
     // (≈11 px at this zoom) every ~2.7 display frames — visible judder against
@@ -241,8 +244,14 @@ int main()
                           .enablePhysics({0.f, -30.f})
                           .enableCharacterController()
                           .setFixedStep(fixed);
-    const auto installed = d2::install(world, nullptr, plan);
-    if (installed.simulation == nullptr || installed.physics == nullptr)
+    // The demo assembles its own registry: the d2 pack + THE demo physics
+    // pack — physics is externally backed (ADR v3), the engine ships no solver.
+    lux::render_bridge::ScenePackRegistry packs;
+    d2::addD2Pack(packs);
+    d2::addPhysics2DDemoPack(packs);
+    const auto installed = d2::install(world, services, packs, plan);
+    if (!installed.ok || installed.simulation == nullptr ||
+        services.get<d2::Physics2DWorld>() == nullptr)
     { std::printf("install failed\n"); return 1; }
 
     d2::SpriteAnim2DResolver resolver(assets);   // app-level, runs before tick
@@ -317,7 +326,7 @@ int main()
 
     lux::render_bridge::RenderableSystem rs(fx.session(), assets, sv.scene_id, sv.view);
     rs.setFeatures(features);
-    d2::registerBridges(rs, nullptr, plan);
+    d2::registerBridges(rs, services, packs, plan);
 
     std::printf("level up. Run right — the cyan platform at mid-height is jump-through.\n");
 

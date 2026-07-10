@@ -1,86 +1,92 @@
 #pragma once
 // ============================================================================
-//  Scene2D.hpp — install entry for the 2D kit (lux::pack).
+//  Scene2D.hpp — install entry for the 2D pack (lux::pack).
 //
-//  Mirrors d3::Scene3D.hpp (installSystems / registerRenderables) but PLAN-driven
-//  (design §2.5): a D2ScenePlan is turned into ONE deterministic system order in a
-//  single addSystem pass, because the append-only World cannot reorder afterwards.
+//  Registry-driven (ADR: lux-engine-pack-architecture §3/§4): the pack's
+//  capabilities are ENTRIES on a ScenePackRegistry (addD2Pack); install() is a
+//  thin front — validate the plan, refuse anything the assembled registry does
+//  not back, then run the entries in canonical order. Concrete runtimes travel
+//  through SceneServices, never through signatures:
 //
-//  Two free functions (no Scene2D class), matching the d3 convention:
-//    - install()         — add the plan's systems to a World, once, in canonical
-//                          order (gameplay pre-step → Simulation2DSystem[opt] →
-//                          Transform2D → Camera2D). D-02 fills the ordering as the
-//                          systems land; today an empty plan installs nothing.
-//    - registerBridges() — register the plan's custom IRenderableBridge set on a
-//                          RenderableSystem (Sprite/Tilemap/PixelField — all custom,
-//                          NOT the generic INSTANCE/POOL bridges; design §2.2 note).
+//      render_bridge::SceneServices services;          // before the World!
+//      ecs::World world;
+//      services.adopt(&runtime);                       // PixelSimulation plans
+//      auto installed = pack::install(world, services, plan);       // d2 only
 //
-//  PixelFieldRuntime is the scene-scoped field service (design §0R.3): non-owning,
-//  injected into the pixel systems + bridge, and MUST outlive them. Pass nullptr for
-//  plans without PixelSimulation. It is forward-declared here (defined by a later task).
+//  Plans that enable EXTERNALLY-backed capabilities (Physics — the engine
+//  ships no solver, ADR v3) assemble the registry themselves:
+//
+//      render_bridge::ScenePackRegistry reg;
+//      pack::addD2Pack(reg);
+//      pack::addPhysics2DDemoPack(reg);                // or a real integration
+//      auto installed = pack::install(world, services, reg, plan);
+//
+//  The physics service (when a physics pack is registered) is fetched from
+//  services — D2Installed no longer names any solver type.
 // ============================================================================
 
 #include <lux/pack/d2/D2ScenePlan.hpp>
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/ecs/World.hpp>
-#include <lux/engine/render_bridge/RenderableSystem.hpp>
-#include <lux/engine/render_bridge/IRenderableBridge.hpp>
+#include <lux/engine/render_bridge/ScenePackRegistry.hpp>
 
 namespace lux::ecs           { class World; }
 namespace lux::render_bridge { class RenderableSystem; }
 
 namespace lux::pack
 {
-    using lux::ecs::World;
-    using lux::render_bridge::RenderableSystem;
-    using lux::render_bridge::IRenderableBridge;
-
     class Simulation2DSystem;
     class Transform2DSystem;
     class Camera2DSystem;
-    class Physics2DWorld;
-
-    /// Scene-scoped 2D field service (chunks/cells/materials/commands live here, not
-    /// in components). Owned by the scene container, injected non-owning into systems
-    /// + the PixelField2DBridge. Defined by a later pixel-field task; forward-declared
-    /// so the install API compiles for pixel-less plans (which pass nullptr).
     class PixelFieldRuntime;
 
-    /// Non-owning pointers to the systems install() added — so the host / registerBridges
-    /// can wire phase strategies onto them (esp. the Simulation2DSystem's phases). Every
-    /// pointer is null when its system was not installed for the plan. The systems are
-    /// owned by the World; these are valid only as long as the World is.
+    /// Non-owning pointers to the systems install() added (all owned by the
+    /// World; valid while it lives). Null when not installed for the plan.
     struct D2Installed
     {
-        Simulation2DSystem* simulation = nullptr;   ///< the unified fixed-step coordinator (if needsSimulation)
+        bool                ok         = false;     ///< false = plan refused, World untouched
+        Simulation2DSystem* simulation = nullptr;   ///< the unified fixed-step coordinator
         Transform2DSystem*  transform  = nullptr;   ///< local 2D TRS → world (if has(Core))
         Camera2DSystem*     camera     = nullptr;   ///< world → ortho view/proj (if has(Core))
-        /// P2: the collision/controller service (if has(Physics)). OWNED by the
-        /// SimulatePhysics phase closure — valid while the World (and its
-        /// Simulation2DSystem) lives; exposed for probe registration (I2-00)
-        /// and tests.
-        Physics2DWorld*     physics    = nullptr;
     };
 
-    /// Capabilities of @p plan that are enabled but NOT yet backed by an installable
-    /// system/phase (the capability-backing table in Scene2D.cpp — each slice flips its
-    /// bit in the same place it wires the backing, so the two cannot drift). Non-zero →
-    /// install() refuses the plan: a preset/capability must never promise something the
-    /// install path silently drops (the platformerPlan rule, applied one level down).
-    [[nodiscard]] LUX_FUNCTION_PUBLIC std::uint32_t unbackedCapabilities(const D2ScenePlan& plan) noexcept;
+    /// Register the 2D pack's capability entries (systems, phases, bridges)
+    /// on @p reg. Backs: Core / SpriteRendering / SpriteAnimation /
+    /// PixelSimulation / PixelInterop. Physics is NOT backed here — a physics
+    /// pack registers itself (the CollisionProbes2D seam carries the probes).
+    LUX_FUNCTION_PUBLIC void addD2Pack(lux::render_bridge::ScenePackRegistry& reg);
 
-    /// Install @p plan's systems onto @p world in ONE deterministic addSystem pass, in
-    /// canonical order. Call once, right after constructing the World, BEFORE its first
-    /// tick(). An empty plan installs nothing (payment symmetry). An INVALID plan
-    /// (!plan.validate().ok()), a plan with unbackedCapabilities(), or a PixelSimulation
-    /// plan given a null @p runtime installs NOTHING and returns an empty result — never
-    /// a partial install. @p runtime may be null unless the plan enables PixelSimulation.
-    LUX_FUNCTION_PUBLIC D2Installed install(World& world, PixelFieldRuntime* runtime, const D2ScenePlan& plan);
+    /// Capabilities of @p plan that are enabled but not backed by @p reg.
+    /// Non-zero → install() refuses the plan wholesale (never a partial
+    /// install; never a silently dead capability).
+    [[nodiscard]] LUX_FUNCTION_PUBLIC std::uint32_t unbackedCapabilities(
+        const D2ScenePlan& plan, const lux::render_bridge::ScenePackRegistry& reg) noexcept;
 
-    /// Register @p plan's custom renderable bridges on @p rs (Sprite2D / Tilemap2D /
-    /// PixelField2D — all custom IRenderableBridge via addBridge). Call once, BEFORE
-    /// the RenderableSystem's first update(). An empty plan registers nothing.
-    LUX_FUNCTION_PUBLIC void registerBridges(RenderableSystem& rs, PixelFieldRuntime* runtime, const D2ScenePlan& plan);
+    /// Install @p plan's systems onto @p world in ONE deterministic pass, in
+    /// registry order. Refusals (invalid plan / unbacked capability / failed
+    /// preflight, e.g. PixelSimulation without a PixelFieldRuntime service)
+    /// return ok=false with the World untouched. @p services must OUTLIVE the
+    /// World (see SceneServices.hpp).
+    LUX_FUNCTION_PUBLIC D2Installed install(lux::ecs::World& world,
+                                            lux::render_bridge::SceneServices& services,
+                                            const lux::render_bridge::ScenePackRegistry& reg,
+                                            const D2ScenePlan& plan);
+
+    /// Convenience: install with the d2 pack alone (no external packs).
+    LUX_FUNCTION_PUBLIC D2Installed install(lux::ecs::World& world,
+                                            lux::render_bridge::SceneServices& services,
+                                            const D2ScenePlan& plan);
+
+    /// Register the active entries' renderable bridges on @p rs. Call once,
+    /// BEFORE the RenderableSystem's first update().
+    LUX_FUNCTION_PUBLIC void registerBridges(lux::render_bridge::RenderableSystem& rs,
+                                             lux::render_bridge::SceneServices& services,
+                                             const lux::render_bridge::ScenePackRegistry& reg,
+                                             const D2ScenePlan& plan);
+
+    /// Convenience: bridges with the d2 pack alone.
+    LUX_FUNCTION_PUBLIC void registerBridges(lux::render_bridge::RenderableSystem& rs,
+                                             lux::render_bridge::SceneServices& services,
+                                             const D2ScenePlan& plan);
 
     /// Convenience preset for traditional 2D: a Camera2D + rendered sprites
     /// (Core + SpriteRendering) — the capability set that fully installs today.

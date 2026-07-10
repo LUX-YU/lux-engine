@@ -28,6 +28,7 @@ target_compile_definitions(pack_physics2d_demo PRIVATE LUX_FUNCTION_LIBRARY)
 target_link_libraries(pack_physics2d_demo
     PUBLIC
     lux::engine::function::ecs
+    lux::engine::function::render_bridge   # ScenePackRegistry / SceneServices
     lux::engine::core::math
     lux::engine::core::meta
 )

@@ -26,10 +26,9 @@ target_link_libraries(pack_d2
     lux::engine::resource::asset
     lux::engine::core::math
     lux::engine::core::meta
-    PRIVATE
-    pack_physics2d_demo                # phase-1 scaffold: Scene2D wires the demo
-                                       # solver directly; phase 2 (registrar)
-                                       # flips this dependency out of the pack.
 )
+# NOTE (ADR §3, done in phase 2): pack_d2 links NO physics pack — the demo
+# solver self-registers via addPhysics2DDemoPack and drains the
+# CollisionProbes2D seam; the dependency arrow points physics → d2 only.
 
 add_subdirectory(test)

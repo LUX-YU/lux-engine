@@ -10,6 +10,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <lux/pack/physics2d_demo/Physics2DDemoPack.hpp>
+#include <lux/pack/d2/D2ScenePlan.hpp>
+#include <lux/pack/d2/CollisionProbe2D.hpp>
+#include <lux/pack/d2/world/systems/Simulation2DSystem.hpp>
+#include <cassert>
+#include <memory>
 
 namespace lux::pack
 {
@@ -132,6 +138,39 @@ namespace lux::pack
 
                 t.position = center - col.offset;
             });
+    }
+
+    // ── the registry entry (Physics2DDemoPack.hpp) ──────────────────────────
+    void addPhysics2DDemoPack(lux::render_bridge::ScenePackRegistry& reg)
+    {
+        using lux::render_bridge::ScenePackContext;
+        using lux::render_bridge::ScenePackEntry;
+
+        // Order 70: after the d2 entries — the fixed-step coordinator (20)
+        // exists and the domain side has published its probes (60).
+        reg.add(ScenePackEntry{
+            .backs        = static_cast<std::uint32_t>(D2Capability::Physics) |
+                            static_cast<std::uint32_t>(D2Capability::CharacterController),
+            .order        = 70,
+            .install      = [](const ScenePackContext& ctx)
+            {
+                const auto& plan = *static_cast<const D2ScenePlan*>(ctx.plan);
+                auto* sim = ctx.services.get<Simulation2DSystem>();
+                assert(sim && "registry order contract broken: the fixed-step "
+                              "coordinator (d2 entry, order 20) must precede physics");
+
+                auto& physics = ctx.services.emplace(
+                    std::make_unique<Physics2DWorld>(plan.physicsConfig()));
+
+                // Drain the domain-published probe seam (pixel terrain, …).
+                if (const auto* probes = ctx.services.get<CollisionProbes2D>())
+                    for (ICollision2DProbe* p : probes->probes)
+                        physics.addProbe(p);
+
+                Physics2DWorld* raw = &physics;   // services outlive the World
+                sim->setPhase(Simulation2DSystem::Phase::SimulatePhysics,
+                    [raw](lux::meta::EntityRegistry& r, float dt) { raw->step(r, dt); });
+            }});
     }
 
 } // namespace lux::pack

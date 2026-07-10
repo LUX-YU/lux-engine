@@ -120,11 +120,13 @@ int main(int argc, char** argv)
     const auto sand  = runtime.materials().add({d2::EMaterialPhase::Powder, 200, 0xFF29C5F0u});   // golden
     const auto water = runtime.materials().add({d2::EMaterialPhase::Liquid, 100, 0xC0AE6024u});   // 75% premul blue
 
+    lux::render_bridge::SceneServices services;   // must outlive the World
     lux::ecs::World world;
+    services.adopt(&runtime);
     auto plan = d2::traditional2DPlan();
     plan.enablePixelSimulation();
-    const auto installed = d2::install(world, &runtime, plan);
-    if (installed.simulation == nullptr) { std::printf("install failed\n"); return 1; }
+    const auto installed = d2::install(world, services, plan);
+    if (!installed.ok || installed.simulation == nullptr) { std::printf("install failed\n"); return 1; }
 
     // Camera: origin-centred, 1 world unit tall (field spans 1.6×1.0), breathing.
     const auto cam = world.createEntity();
@@ -203,7 +205,7 @@ int main(int argc, char** argv)
     lux::asset::AssetManager assets;
     lux::render_bridge::RenderableSystem rs(fx.session(), assets, sv.scene_id, sv.view);
     rs.setFeatures(features);
-    d2::registerBridges(rs, &runtime, plan);
+    d2::registerBridges(rs, services, plan);
 
     std::printf("world up: %u k cells simulating, %zu sprites on one depth axis. Close to exit.\n",
                 CW * CH / 1000u, stars.size() + swirl.size() + 1);

@@ -14,6 +14,8 @@
 
 #include <Eigen/Core>
 
+#include <vector>
+
 namespace lux::pack
 {
     /// Axis-aligned box in world units.
@@ -45,6 +47,17 @@ namespace lux::pack
         virtual ~ICollision2DProbe() = default;
         /// True when any solid overlaps @p region.
         [[nodiscard]] virtual bool regionSolid(const Aabb2& region) const = 0;
+    };
+
+    /// SceneServices slot the DOMAIN side fills and a physics pack DRAINS:
+    /// providers (the pixel field's interop entry, a future tilemap collider)
+    /// append their probes BEFORE the physics entry runs (registry order
+    /// contract); the physics installer adds every listed probe to its world.
+    /// This is what fully decouples pack_d2 from any concrete solver — the
+    /// domain never names a physics type, the solver never names a domain.
+    struct CollisionProbes2D
+    {
+        std::vector<ICollision2DProbe*> probes;   ///< non-owning; owners keep them in services
     };
 
 } // namespace lux::pack

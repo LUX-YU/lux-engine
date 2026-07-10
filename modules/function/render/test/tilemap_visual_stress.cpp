@@ -183,9 +183,10 @@ int main()
     const auto tileset_id = registerTilesetTexture(assets);
 
     // ── gameplay world (traditional plan: tilemap rides SpriteRendering) ──
+    lux::render_bridge::SceneServices services;   // must outlive the World
     lux::ecs::World world;
     const auto plan = d2::traditional2DPlan();
-    (void)d2::install(world, nullptr, plan);
+    (void)d2::install(world, services, plan);
 
     const auto cam = world.createEntity();
     world.emplace<d2::Transform2DComponent>(cam);
@@ -235,7 +236,7 @@ int main()
 
     lux::render_bridge::RenderableSystem rs(fx.session(), assets, sv.scene_id, sv.view);
     rs.setFeatures(features);
-    d2::registerBridges(rs, nullptr, plan);
+    d2::registerBridges(rs, services, plan);
 
     std::printf("map up: %ux%u tiles (one canvas instance). Mining wave + regen every ~15 s.\n",
                 MAP_W, MAP_H);

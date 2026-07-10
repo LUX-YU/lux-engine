@@ -228,10 +228,19 @@ int main()
 
     // ── gameplay world: traditional + animation + physics + controller ──
     lux::gameplay::World world;
+    // 240 Hz fixed step: at 60 Hz a 2.4 u/s runner advances ~0.04 world
+    // (≈11 px at this zoom) every ~2.7 display frames — visible judder against
+    // the per-frame-smooth camera. 240 Hz cuts the step to ~2.7 px and lands
+    // 1–2 substeps on EVERY frame, which is below perception at this scale.
+    // (The engine-level cure — fixed-step render interpolation — is a future
+    // item; a demo just picks a rate its content can afford.)
+    d2::FixedStepConfig fixed{};
+    fixed.fixed_dt = 1.f / 240.f;
     const auto plan = d2::traditional2DPlan()
                           .enableSpriteAnimation()
                           .enablePhysics({0.f, -30.f})
-                          .enableCharacterController();
+                          .enableCharacterController()
+                          .setFixedStep(fixed);
     const auto installed = d2::install(world, nullptr, plan);
     if (installed.simulation == nullptr || installed.physics == nullptr)
     { std::printf("install failed\n"); return 1; }

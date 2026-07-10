@@ -140,7 +140,7 @@ target_compile_definitions(
 
 component_add_transitive_commands(
     editor
-    "find_package (lux-engine-function REQUIRED COMPONENTS ui flowforge gameplay)"
+    "find_package (lux-engine-function REQUIRED COMPONENTS ui flowforge ecs render_bridge)"
     "find_package (lux-engine-core REQUIRED COMPONENTS script meta)"
     "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package (lux-engine-serialize REQUIRED COMPONENTS serialize)"
@@ -157,7 +157,8 @@ target_link_libraries(
     PUBLIC
     lux::engine::function::ui
     lux::engine::function::flowforge
-    lux::engine::function::gameplay        # World + render bridge + 3D kit (one module now)
+    lux::engine::function::ecs             # World / ComponentTypeRegistry
+    lux::engine::function::render_bridge   # RenderableSystem (bridge kernel)
     lux::engine::function::input           # ActionMapper / input action mapping
     lux::engine::core::script
     lux::engine::core::meta
@@ -212,10 +213,20 @@ endif()
 # (gameplay_lua_registration.hpp); the registration symbols themselves are
 # dllexported from gameplay_meta.dll and resolve at the lux_editor exe link
 # (which links gameplay_meta explicitly further below).
-if(TARGET gameplay_meta)
+# pack_d3 is a packs/-tier library OUTSIDE every export set — the exported
+# editor STATIC lib takes ONLY its include dirs (same trap/pattern as the
+# meta sidecars below); the symbols resolve when lux_editor links pack_d3.
+target_include_directories(editor PRIVATE
+    $<TARGET_PROPERTY:pack_d3,INTERFACE_INCLUDE_DIRECTORIES>)
+
+if(TARGET ecs_meta)
     target_include_directories(editor PRIVATE
-        $<TARGET_PROPERTY:gameplay_meta,INTERFACE_INCLUDE_DIRECTORIES>)
+        $<TARGET_PROPERTY:ecs_meta,INTERFACE_INCLUDE_DIRECTORIES>)
     target_compile_definitions(editor PRIVATE LUX_EDITOR_HAS_GAMEPLAY_LUA)
+endif()
+if(TARGET pack_d3_meta)
+    target_include_directories(editor PRIVATE
+        $<TARGET_PROPERTY:pack_d3_meta,INTERFACE_INCLUDE_DIRECTORIES>)
 endif()
 
 
@@ -313,8 +324,12 @@ target_include_directories(
 # applied to lux_editor here — so OS load of the .exe imports
 # `lux_engine_function_gameplay_meta.dll`, firing every
 # MetaModuleRegistrar static at process start.
-if(TARGET gameplay_meta)
-    target_link_libraries(lux_editor PRIVATE gameplay_meta)
+target_link_libraries(lux_editor PRIVATE pack_d3)
+if(TARGET ecs_meta)
+    target_link_libraries(lux_editor PRIVATE ecs_meta)
+endif()
+if(TARGET pack_d3_meta)
+    target_link_libraries(lux_editor PRIVATE pack_d3_meta)
 endif()
 
 # render_meta: the render module's editor-only reflection sidecar (feature

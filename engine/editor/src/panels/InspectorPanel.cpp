@@ -8,7 +8,7 @@
 
 #include <lux/engine/ui/AssetDragDrop.hpp>
 #include <lux/engine/ui/ReflectedFieldTable.hpp>   // drawReflectedFieldTable scaffold
-#include <lux/engine/gameplay/ComponentTypeRegistry.hpp>
+#include <lux/engine/ecs/ComponentTypeRegistry.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
 
@@ -28,7 +28,7 @@ namespace lux::editor
         // Display label for a component:
         //   1. class-level annotation `display_name=...` if present
         //   2. short class name (segment after the final `::`) otherwise
-        std::string displayLabelFor(const lux::gameplay::ComponentTypeEntry& ce)
+        std::string displayLabelFor(const lux::ecs::ComponentTypeEntry& ce)
         {
             if (ce.ref_class)
             {
@@ -331,7 +331,7 @@ namespace lux::editor
         ImGui::Text("Entity  #%u", static_cast<uint32_t>(e));
         ImGui::Separator();
 
-        auto entries = lux::gameplay::ComponentTypeRegistry::instance().all();
+        auto entries = lux::ecs::ComponentTypeRegistry::instance().all();
         for (const auto& ce : entries)
         {
             if (!ce.has || !ce.has(*reg, e))

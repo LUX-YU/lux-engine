@@ -16,23 +16,23 @@
 #include <lux/engine/math/Intersection.hpp>
 #include <lux/engine/math/Picking.hpp>
 #include <lux/engine/math/Ray.hpp>
-#include <lux/engine/gameplay/world/World.hpp>
-#include <lux/engine/gameplay/3d/world/components/CameraComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/DirectionalLightComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/SceneSettingsComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/GridComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/MeshComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/SkeletalMeshComponent.hpp>
-#include <lux/engine/gameplay/world/components/NameComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/SkyboxComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/TransformComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/WorldTransformComponent.hpp>
-#include <lux/engine/gameplay/world/HierarchyView.hpp>   // hierarchyRoot (pick -> whole object)
+#include <lux/engine/ecs/World.hpp>
+#include <lux/pack/d3/world/components/CameraComponent.hpp>
+#include <lux/pack/d3/world/components/DirectionalLightComponent.hpp>
+#include <lux/pack/d3/world/components/SceneSettingsComponent.hpp>
+#include <lux/pack/d3/world/components/GridComponent.hpp>
+#include <lux/pack/d3/world/components/MeshComponent.hpp>
+#include <lux/pack/d3/world/components/SkeletalMeshComponent.hpp>
+#include <lux/engine/ecs/components/NameComponent.hpp>
+#include <lux/pack/d3/world/components/SkyboxComponent.hpp>
+#include <lux/pack/d3/world/components/TransformComponent.hpp>
+#include <lux/pack/d3/world/components/WorldTransformComponent.hpp>
+#include <lux/engine/ecs/HierarchyView.hpp>   // hierarchyRoot (pick -> whole object)
 
 #include <iostream>   // teardown-drain overflow diagnostic
-#include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>
-#include <lux/engine/gameplay/3d/Scene3D.hpp>   // d3::installSystems / registerRenderables
-#include <lux/engine/gameplay/3d/world/systems/SkeletalAnimationResolver.hpp>
+#include <lux/engine/render_bridge/RenderableSystem.hpp>
+#include <lux/pack/d3/Scene3D.hpp>   // d3::installSystems / registerRenderables
+#include <lux/pack/d3/world/systems/SkeletalAnimationResolver.hpp>
 #include <lux/engine/render/comm/client/RenderSession.hpp>
 #include <lux/engine/render/core/LightDescriptor.hpp>
 #include <lux/engine/render/renderer/features/deffer/DeferredGBufferOperation.hpp>
@@ -74,7 +74,7 @@ namespace lux::editor
         /// initial pose; `CameraSceneSystem`'s `UEEditorController` then drives
         /// it live from input. Mirrors the controller's TRS convention.
         void writeOrbitToTransform(const OrbitCameraState& o,
-                                   lux::gameplay::d3::TransformComponent& tc)
+                                   lux::pack::TransformComponent& tc)
         {
             const float yaw_r   = o.yaw_deg   * kPi / 180.f;
             const float pitch_r = o.pitch_deg * kPi / 180.f;
@@ -120,19 +120,19 @@ namespace lux::editor
     EditorScene::~EditorScene() = default;
 
     // -------------------------------------------------------------------------
-    lux::gameplay::d3::SceneSettingsComponent& EditorScene::ensureSceneSettings()
+    lux::pack::SceneSettingsComponent& EditorScene::ensureSceneSettings()
     {
         auto& reg = world_->registry();
-        if (auto v = reg.view<lux::gameplay::d3::SceneSettingsComponent>(); v.begin() != v.end())
-            return v.get<lux::gameplay::d3::SceneSettingsComponent>(*v.begin());
+        if (auto v = reg.view<lux::pack::SceneSettingsComponent>(); v.begin() != v.end())
+            return v.get<lux::pack::SceneSettingsComponent>(*v.begin());
 
         // None yet (small / new scene): create the scene-settings singleton with
         // struct defaults.
         const auto e = reg.create();
-        reg.emplace<lux::gameplay::NameComponent>(e,
-            lux::gameplay::NameComponent{"Scene Settings"});
-        return reg.emplace<lux::gameplay::d3::SceneSettingsComponent>(e,
-            lux::gameplay::d3::SceneSettingsComponent{});
+        reg.emplace<lux::ecs::NameComponent>(e,
+            lux::ecs::NameComponent{"Scene Settings"});
+        return reg.emplace<lux::pack::SceneSettingsComponent>(e,
+            lux::pack::SceneSettingsComponent{});
     }
 
     // -------------------------------------------------------------------------
@@ -146,22 +146,22 @@ namespace lux::editor
         // The asset-facing half is the app-level SkeletalAnimationResolver below,
         // driven each tick BEFORE world_->tick — without it, AnimatorComponent
         // never resolves a skeleton and skeletal entities render their bind pose.
-        world_ = std::make_unique<lux::gameplay::World>();
+        world_ = std::make_unique<lux::ecs::World>();
         // World is domain-neutral (hardcodes no systems) — install the standard 3D
         // built-ins (Transform → Camera → Animation) BEFORE the first world_->tick
         // below, which seeds the camera matrices.
-        lux::gameplay::d3::installSystems(*world_);
+        lux::pack::installSystems(*world_);
 
         // ── 1. Editor camera entity. Built BEFORE any render commands so
         //      we can drive World::tick once and feed the resulting view /
         //      proj into the initial addUIView call below.
         camera_entity_ = world_->createEntity();
-        world_->emplace<lux::gameplay::NameComponent>(camera_entity_,
-            lux::gameplay::NameComponent{"Editor Camera"});
-        world_->emplace<lux::gameplay::d3::TransformComponent>(camera_entity_);
-        world_->emplace<lux::gameplay::d3::WorldTransformComponent>(camera_entity_);
+        world_->emplace<lux::ecs::NameComponent>(camera_entity_,
+            lux::ecs::NameComponent{"Editor Camera"});
+        world_->emplace<lux::pack::TransformComponent>(camera_entity_);
+        world_->emplace<lux::pack::WorldTransformComponent>(camera_entity_);
         {
-            auto& cc = world_->emplace<lux::gameplay::d3::CameraComponent>(camera_entity_);
+            auto& cc = world_->emplace<lux::pack::CameraComponent>(camera_entity_);
             cc.fov_rad = 60.f * (kPi / 180.f);
             cc.near_z  = 0.1f;
             cc.far_z   = 500.f;
@@ -177,10 +177,10 @@ namespace lux::editor
         // WorldTransformComponent → CameraComponent matrices are valid
         // before we ship them off to the renderer.
         writeOrbitToTransform(orbit_,
-            world_->get<lux::gameplay::d3::TransformComponent>(camera_entity_));
+            world_->get<lux::pack::TransformComponent>(camera_entity_));
         world_->tick(0.f);
-        const auto& cc0 = world_->get<lux::gameplay::d3::CameraComponent>(camera_entity_);
-        const auto& wc0 = world_->get<lux::gameplay::d3::WorldTransformComponent>(camera_entity_);
+        const auto& cc0 = world_->get<lux::pack::CameraComponent>(camera_entity_);
+        const auto& wc0 = world_->get<lux::pack::WorldTransformComponent>(camera_entity_);
         const Eigen::Vector3f eye0 = wc0.world.block<3, 1>(0, 3);
 
         // ── 2. Render-side scene / view / features ────────────────────
@@ -216,7 +216,7 @@ namespace lux::editor
         //      World. World has no removeSystem; this keeps the system's
         //      lifetime tied to EditorScene so tearDown can release its
         //      asset refcounts via reset() before destroying the World.
-        renderable_system_ = std::make_unique<lux::gameplay::RenderableSystem>(
+        renderable_system_ = std::make_unique<lux::render_bridge::RenderableSystem>(
             *session_, *assets_, scene_id_, main_view_, request_load_);
         // Skinning is a feature now — forward its dynamic op-ids so the skeletal
         // mesh bridge can address its bone uploads. Absent feature → empty ops →
@@ -256,7 +256,7 @@ namespace lux::editor
         //     world_->tick so the pure AnimationSystem built-in reads fresh
         //     skeleton/clip pointers. Shares the bridge's async-load hook.
         registerSceneSystem(
-            std::make_unique<PreWorldTickSystem<lux::gameplay::d3::SkeletalAnimationResolver>>(
+            std::make_unique<PreWorldTickSystem<lux::pack::SkeletalAnimationResolver>>(
                 *assets_, request_load_));
 
         // 3c. Selection (highlight publish before the bridge + the single per-frame
@@ -276,7 +276,7 @@ namespace lux::editor
         //      Grid / 3 lights) on the bridge via their EcsRenderTraits — one call,
         //      the d3 kit owns the list. Built before the first tick
         //      (RenderableSystem asserts on late registration).
-        lux::gameplay::d3::registerRenderables(*renderable_system_);
+        lux::pack::registerRenderables(*renderable_system_);
 
         // ── 6. Populate the World from the .luxscene file, if any.
         //
@@ -314,11 +314,11 @@ namespace lux::editor
         // bridge (registered above) pushes its params to the GridPass on the next tick.
         {
             auto& reg = world_->registry();
-            if (reg.view<lux::gameplay::d3::GridComponent>().empty())
+            if (reg.view<lux::pack::GridComponent>().empty())
             {
                 const auto e = reg.create();
-                reg.emplace<lux::gameplay::NameComponent>(e, lux::gameplay::NameComponent{"Grid"});
-                reg.emplace<lux::gameplay::d3::GridComponent>(e, lux::gameplay::d3::GridComponent{});
+                reg.emplace<lux::ecs::NameComponent>(e, lux::ecs::NameComponent{"Grid"});
+                reg.emplace<lux::pack::GridComponent>(e, lux::pack::GridComponent{});
             }
         }
 
@@ -472,10 +472,10 @@ namespace lux::editor
 
         auto& reg = world_->registry();
         if (!reg.valid(camera_entity_) ||
-            !reg.all_of<lux::gameplay::d3::CameraComponent>(camera_entity_))
+            !reg.all_of<lux::pack::CameraComponent>(camera_entity_))
             return;
 
-        const auto& cc = reg.get<lux::gameplay::d3::CameraComponent>(camera_entity_);
+        const auto& cc = reg.get<lux::pack::CameraComponent>(camera_entity_);
 
         // Build the inverse view-proj. We multiply explicitly (rather than
         // reading cc.view_proj which may be stale this frame depending on
@@ -536,32 +536,32 @@ namespace lux::editor
             }
         };
 
-        auto view = reg.view<lux::gameplay::d3::MeshComponent,
-                             lux::gameplay::d3::WorldTransformComponent>();
+        auto view = reg.view<lux::pack::MeshComponent,
+                             lux::pack::WorldTransformComponent>();
         for (auto e : view)
         {
-            const auto& mc = view.get<lux::gameplay::d3::MeshComponent>(e);
+            const auto& mc = view.get<lux::pack::MeshComponent>(e);
             if (!mc.visible) continue;
             testCandidate(e, mc.mesh_asset_id,
-                          view.get<lux::gameplay::d3::WorldTransformComponent>(e).world);
+                          view.get<lux::pack::WorldTransformComponent>(e).world);
         }
 
         // Skeletal (animated) meshes carry SkeletalMeshComponent instead —
         // they were invisible to picking before this loop existed.
-        auto sk_view = reg.view<lux::gameplay::d3::SkeletalMeshComponent,
-                                lux::gameplay::d3::WorldTransformComponent>();
+        auto sk_view = reg.view<lux::pack::SkeletalMeshComponent,
+                                lux::pack::WorldTransformComponent>();
         for (auto e : sk_view)
         {
-            const auto& smc = sk_view.get<lux::gameplay::d3::SkeletalMeshComponent>(e);
+            const auto& smc = sk_view.get<lux::pack::SkeletalMeshComponent>(e);
             if (!smc.visible) continue;
             testCandidate(e, smc.mesh_asset_id,
-                          sk_view.get<lux::gameplay::d3::WorldTransformComponent>(e).world);
+                          sk_view.get<lux::pack::WorldTransformComponent>(e).world);
         }
 
         // Promote to the whole object: clicking any child mesh of a multi-mesh model
         // selects its top-level root. The Hierarchy tree is the explicit way to drill
         // into a single child mesh.
-        best_entity = lux::gameplay::hierarchyRoot(reg, best_entity);
+        best_entity = lux::ecs::hierarchyRoot(reg, best_entity);
 
         // Write the shared selection regardless of hit / miss — a click on
         // empty space clears it (UE convention). Inspector + Hierarchy read it.
@@ -579,9 +579,9 @@ namespace lux::editor
 
         auto& reg = world_->registry();
         if (!reg.valid(camera_entity_) ||
-            !reg.all_of<lux::gameplay::d3::TransformComponent,
-                        lux::gameplay::d3::WorldTransformComponent,
-                        lux::gameplay::d3::CameraComponent>(camera_entity_))
+            !reg.all_of<lux::pack::TransformComponent,
+                        lux::pack::WorldTransformComponent,
+                        lux::pack::CameraComponent>(camera_entity_))
         {
             static bool warned = false;
             if (!warned)
@@ -591,9 +591,9 @@ namespace lux::editor
                     "(valid=%d TC=%d WTC=%d CC=%d); camera/view updates skipped.\n",
                     static_cast<uint32_t>(camera_entity_),
                     (int)reg.valid(camera_entity_),
-                    (int)reg.all_of<lux::gameplay::d3::TransformComponent>(camera_entity_),
-                    (int)reg.all_of<lux::gameplay::d3::WorldTransformComponent>(camera_entity_),
-                    (int)reg.all_of<lux::gameplay::d3::CameraComponent>(camera_entity_));
+                    (int)reg.all_of<lux::pack::TransformComponent>(camera_entity_),
+                    (int)reg.all_of<lux::pack::WorldTransformComponent>(camera_entity_),
+                    (int)reg.all_of<lux::pack::CameraComponent>(camera_entity_));
                 warned = true;
             }
             return;
@@ -620,7 +620,7 @@ namespace lux::editor
         // read it (via the context). Read after World::tick refreshed the camera's
         // WorldTransform.
         sys_ctx.eye =
-            world_->get<lux::gameplay::d3::WorldTransformComponent>(camera_entity_)
+            world_->get<lux::pack::WorldTransformComponent>(camera_entity_)
                 .world.block<3, 1>(0, 3);
 
         // Phase 2: pre-RenderableUpdate systems (selection highlight publish +

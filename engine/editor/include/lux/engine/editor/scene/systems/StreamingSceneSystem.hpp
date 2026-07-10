@@ -17,7 +17,7 @@
  */
 
 #include <lux/engine/editor/scene/EditorSceneSystem.hpp>
-#include <lux/engine/gameplay/3d/world/systems/WorldStreamingSystem.hpp>
+#include <lux/pack/d3/world/systems/WorldStreamingSystem.hpp>
 #include <lux/engine/asset/Asset.hpp>   // asset_id_t (load sink)
 
 #include <cstdint>
@@ -38,7 +38,7 @@ namespace lux::editor
         void onPostRenderableUpdate(const SceneTickContext& ctx) override;
 
     private:
-        lux::gameplay::d3::WorldStreamingSystem streaming_;
+        lux::pack::WorldStreamingSystem streaming_;
 
         // Dirty-tracking: re-push streaming params + the cull mirror (a comm push)
         // ONLY when a SceneSettings value changes (encapsulated here, was 7 stray

@@ -9,9 +9,10 @@
 
 #ifdef LUX_EDITOR_HAS_GAMEPLAY_LUA
 // Generated aggregator (gameplay_meta's build include dir): registers every
-// gameplay sol2 binding — the neutral-core + 3D (lux::gameplay::d3) components +
+// gameplay sol2 binding — the neutral-core + 3D (lux::pack) components +
 // the LUX_FUNC() free functions (lux_debug_draw_line / lux_debug_draw_clear).
-#include <gameplay_lua_registration.hpp>
+#include <ecs_lua_registration.hpp>
+#include <pack_d3_lua_registration.hpp>
 #endif
 
 // ==========================================================================
@@ -79,7 +80,8 @@ namespace lux::editor
 			sol::state_view lua(L);
 			lua.open_libraries(sol::lib::base, sol::lib::math);
 #ifdef LUX_EDITOR_HAS_GAMEPLAY_LUA
-			LuxRegisterGameplayMetas_LUA(lua);
+			LuxRegisterEcsMetas_LUA(lua);
+			LuxRegisterPack_d3Metas_LUA(lua);
 #endif
 		}
 

@@ -3,17 +3,17 @@
 #include <lux/engine/editor/content/EditorBuiltins.hpp>
 #include <lux/engine/editor/scene/Scene.hpp>
 
-#include <lux/engine/gameplay/3d/world/components/CameraComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/DirectionalLightComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/PointLightComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/SpotLightComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/SceneSettingsComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/GridComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/MeshComponent.hpp>
-#include <lux/engine/gameplay/world/components/NameComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/SkyboxComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/TransformComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/WorldTransformComponent.hpp>
+#include <lux/pack/d3/world/components/CameraComponent.hpp>
+#include <lux/pack/d3/world/components/DirectionalLightComponent.hpp>
+#include <lux/pack/d3/world/components/PointLightComponent.hpp>
+#include <lux/pack/d3/world/components/SpotLightComponent.hpp>
+#include <lux/pack/d3/world/components/SceneSettingsComponent.hpp>
+#include <lux/pack/d3/world/components/GridComponent.hpp>
+#include <lux/pack/d3/world/components/MeshComponent.hpp>
+#include <lux/engine/ecs/components/NameComponent.hpp>
+#include <lux/pack/d3/world/components/SkyboxComponent.hpp>
+#include <lux/pack/d3/world/components/TransformComponent.hpp>
+#include <lux/pack/d3/world/components/WorldTransformComponent.hpp>
 #include <lux/engine/meta/LuxObject.hpp>     // EntityRegistry
 #include <lux/engine/render/core/LightDescriptor.hpp>  // LIGHT_FLAG_*
 
@@ -73,10 +73,10 @@ namespace lux::editor
 
         // Editor Camera — looks at the origin from up-and-back.
         const auto camera_e = reg.create();
-        reg.emplace<lux::gameplay::NameComponent>(camera_e,
-            lux::gameplay::NameComponent{"Editor Camera"});
+        reg.emplace<lux::ecs::NameComponent>(camera_e,
+            lux::ecs::NameComponent{"Editor Camera"});
         {
-            auto& tc = reg.emplace<lux::gameplay::d3::TransformComponent>(camera_e);
+            auto& tc = reg.emplace<lux::pack::TransformComponent>(camera_e);
             tc.position = Eigen::Vector3f(6.f, 6.f, 8.f);
             // Yaw ~ -35° round Y so the camera faces -Z toward the cube;
             // pitch ~ -30° to look down at the floor.
@@ -86,9 +86,9 @@ namespace lux::editor
                 Eigen::AngleAxisf(-30.f * kPi / 180.f, Eigen::Vector3f::UnitX()));
             tc.rotation = (q_yaw * q_pitch).normalized();
         }
-        reg.emplace<lux::gameplay::d3::WorldTransformComponent>(camera_e);
+        reg.emplace<lux::pack::WorldTransformComponent>(camera_e);
         {
-            auto& cc = reg.emplace<lux::gameplay::d3::CameraComponent>(camera_e);
+            auto& cc = reg.emplace<lux::pack::CameraComponent>(camera_e);
             cc.fov_rad = 60.f * (kPi / 180.f);
             cc.near_z  = 0.1f;
             cc.far_z   = 500.f;
@@ -102,8 +102,8 @@ namespace lux::editor
         // renders the cleared HDR target; the scene still loads cleanly.
         {
             const auto e = reg.create();
-            reg.emplace<lux::gameplay::NameComponent>(e,
-                lux::gameplay::NameComponent{"Skybox"});
+            reg.emplace<lux::ecs::NameComponent>(e,
+                lux::ecs::NameComponent{"Skybox"});
             // Skybox UUID is the texture id that EditorBuiltins manages
             // privately; we leave the field nil here. EditorBuiltins'
             // SkyboxComponent default below works because the loader
@@ -111,26 +111,26 @@ namespace lux::editor
             // don't have the const exposed at link time. Leaving nil
             // means the Skybox bridge is a no-op until the user assigns
             // a texture via the Inspector; acceptable for the demo.
-            reg.emplace<lux::gameplay::d3::SkyboxComponent>(e,
-                lux::gameplay::d3::SkyboxComponent{});
+            reg.emplace<lux::pack::SkyboxComponent>(e,
+                lux::pack::SkyboxComponent{});
         }
 
         // Grid singleton.
         {
             const auto e = reg.create();
-            reg.emplace<lux::gameplay::NameComponent>(e,
-                lux::gameplay::NameComponent{"Grid"});
-            reg.emplace<lux::gameplay::d3::GridComponent>(e,
-                lux::gameplay::d3::GridComponent{});
+            reg.emplace<lux::ecs::NameComponent>(e,
+                lux::ecs::NameComponent{"Grid"});
+            reg.emplace<lux::pack::GridComponent>(e,
+                lux::pack::GridComponent{});
         }
 
         // Directional sun light — shadow-casting to exercise the full
         // MeshShadow + ShadowMap pipeline.
         {
             const auto e = reg.create();
-            reg.emplace<lux::gameplay::NameComponent>(e,
-                lux::gameplay::NameComponent{"Sun"});
-            lux::gameplay::d3::DirectionalLightComponent dl{};
+            reg.emplace<lux::ecs::NameComponent>(e,
+                lux::ecs::NameComponent{"Sun"});
+            lux::pack::DirectionalLightComponent dl{};
             dl.direction      = Eigen::Vector3f(-0.5f, -1.f, -0.3f).normalized();
             dl.color          = Eigen::Vector3f(1.f, 0.95f, 0.8f);
             dl.intensity      = 1.5f;
@@ -145,38 +145,38 @@ namespace lux::editor
             // Absolute-metre cascade far distances (NOT [0,1] normalized ratios):
             // cascade 0 = near→10 m (sharpest), 1 = 10→30, 2 = 30→70, 3 = 70→150.
             dl.cascade_splits = {10.f, 30.f, 70.f, 150.f, 0.f, 0.f, 0.f, 0.f};
-            reg.emplace<lux::gameplay::d3::DirectionalLightComponent>(e, dl);
+            reg.emplace<lux::pack::DirectionalLightComponent>(e, dl);
         }
 
         // Floor — 10×10 plane at y=0 with the editor-builtin white PBR.
         {
             const auto e = reg.create();
-            reg.emplace<lux::gameplay::NameComponent>(e,
-                lux::gameplay::NameComponent{"Floor"});
-            reg.emplace<lux::gameplay::d3::TransformComponent>(e);
-            reg.emplace<lux::gameplay::d3::WorldTransformComponent>(e);
-            lux::gameplay::d3::MeshComponent mc{};
+            reg.emplace<lux::ecs::NameComponent>(e,
+                lux::ecs::NameComponent{"Floor"});
+            reg.emplace<lux::pack::TransformComponent>(e);
+            reg.emplace<lux::pack::WorldTransformComponent>(e);
+            lux::pack::MeshComponent mc{};
             mc.mesh_asset_id     = plane_id;
             mc.material_asset_id = white_pbr_id;
             mc.cast_shadow       = true;
             mc.visible           = true;
-            reg.emplace<lux::gameplay::d3::MeshComponent>(e, mc);
+            reg.emplace<lux::pack::MeshComponent>(e, mc);
         }
 
         // Cube — lifted to y=1.5 so its shadow falls on the floor.
         {
             const auto e = reg.create();
-            reg.emplace<lux::gameplay::NameComponent>(e,
-                lux::gameplay::NameComponent{"Cube"});
-            auto& tc = reg.emplace<lux::gameplay::d3::TransformComponent>(e);
+            reg.emplace<lux::ecs::NameComponent>(e,
+                lux::ecs::NameComponent{"Cube"});
+            auto& tc = reg.emplace<lux::pack::TransformComponent>(e);
             tc.position = Eigen::Vector3f(0.f, 1.5f, 0.f);
-            reg.emplace<lux::gameplay::d3::WorldTransformComponent>(e);
-            lux::gameplay::d3::MeshComponent mc{};
+            reg.emplace<lux::pack::WorldTransformComponent>(e);
+            lux::pack::MeshComponent mc{};
             mc.mesh_asset_id     = cube_id;
             mc.material_asset_id = white_pbr_id;
             mc.cast_shadow       = true;
             mc.visible           = true;
-            reg.emplace<lux::gameplay::d3::MeshComponent>(e, mc);
+            reg.emplace<lux::pack::MeshComponent>(e, mc);
         }
 
         // ── Persist ──
@@ -233,17 +233,17 @@ namespace lux::editor
                                  bool                           cast_shadow)
         {
             const auto e = reg.create();
-            reg.emplace<lux::gameplay::NameComponent>(e, lux::gameplay::NameComponent{name});
-            auto& tc = reg.emplace<lux::gameplay::d3::TransformComponent>(e);
+            reg.emplace<lux::ecs::NameComponent>(e, lux::ecs::NameComponent{name});
+            auto& tc = reg.emplace<lux::pack::TransformComponent>(e);
             tc.position = pos;
             tc.scale    = scale;
-            reg.emplace<lux::gameplay::d3::WorldTransformComponent>(e);
-            lux::gameplay::d3::MeshComponent mc{};
+            reg.emplace<lux::pack::WorldTransformComponent>(e);
+            lux::pack::MeshComponent mc{};
             mc.mesh_asset_id     = mesh;
             mc.material_asset_id  = mat;
             mc.cast_shadow       = cast_shadow;
             mc.visible           = true;
-            reg.emplace<lux::gameplay::d3::MeshComponent>(e, mc);
+            reg.emplace<lux::pack::MeshComponent>(e, mc);
         };
 
         // [0,1) deterministic hash from two integers (no RNG → reproducible scene).
@@ -256,18 +256,18 @@ namespace lux::editor
 
         // ── Camera — elevated vantage in the middle of the city. ──
         const auto camera_e = reg.create();
-        reg.emplace<lux::gameplay::NameComponent>(camera_e,
-            lux::gameplay::NameComponent{"Editor Camera"});
+        reg.emplace<lux::ecs::NameComponent>(camera_e,
+            lux::ecs::NameComponent{"Editor Camera"});
         {
-            auto& tc = reg.emplace<lux::gameplay::d3::TransformComponent>(camera_e);
+            auto& tc = reg.emplace<lux::pack::TransformComponent>(camera_e);
             tc.position = Eigen::Vector3f(0.f, 45.f, 90.f);
             const Eigen::Quaternionf q_pitch(
                 Eigen::AngleAxisf(-22.f * kPi / 180.f, Eigen::Vector3f::UnitX()));
             tc.rotation = q_pitch.normalized();
         }
-        reg.emplace<lux::gameplay::d3::WorldTransformComponent>(camera_e);
+        reg.emplace<lux::pack::WorldTransformComponent>(camera_e);
         {
-            auto& cc = reg.emplace<lux::gameplay::d3::CameraComponent>(camera_e);
+            auto& cc = reg.emplace<lux::pack::CameraComponent>(camera_e);
             cc.fov_rad = 60.f * (kPi / 180.f);
             cc.near_z  = 0.1f;
             cc.far_z   = 3000.f;
@@ -278,13 +278,13 @@ namespace lux::editor
         // ── Skybox + Grid singletons. ──
         {
             const auto e = reg.create();
-            reg.emplace<lux::gameplay::NameComponent>(e, lux::gameplay::NameComponent{"Skybox"});
-            reg.emplace<lux::gameplay::d3::SkyboxComponent>(e, lux::gameplay::d3::SkyboxComponent{});
+            reg.emplace<lux::ecs::NameComponent>(e, lux::ecs::NameComponent{"Skybox"});
+            reg.emplace<lux::pack::SkyboxComponent>(e, lux::pack::SkyboxComponent{});
         }
         {
             const auto e = reg.create();
-            reg.emplace<lux::gameplay::NameComponent>(e, lux::gameplay::NameComponent{"Grid"});
-            reg.emplace<lux::gameplay::d3::GridComponent>(e, lux::gameplay::d3::GridComponent{});
+            reg.emplace<lux::ecs::NameComponent>(e, lux::ecs::NameComponent{"Grid"});
+            reg.emplace<lux::pack::GridComponent>(e, lux::pack::GridComponent{});
         }
 
         // Scene Settings singleton (the UE WorldSettings model): scene-global view
@@ -294,24 +294,24 @@ namespace lux::editor
         // is also drawable.
         {
             const auto e = reg.create();
-            reg.emplace<lux::gameplay::NameComponent>(e,
-                lux::gameplay::NameComponent{"Scene Settings"});
-            lux::gameplay::d3::SceneSettingsComponent ss{};
+            reg.emplace<lux::ecs::NameComponent>(e,
+                lux::ecs::NameComponent{"Scene Settings"});
+            lux::pack::SceneSettingsComponent ss{};
             ss.cull_distance    = 512.f;   // render draw distance
             ss.cell_size        = 48.f;
             ss.load_range       = 300.f;
             ss.unload_range     = 450.f;
             ss.prefetch_range   = 620.f;
             ss.evict_age_frames = 90;
-            reg.emplace<lux::gameplay::d3::SceneSettingsComponent>(e, ss);
+            reg.emplace<lux::pack::SceneSettingsComponent>(e, ss);
         }
 
         // ── Directional sun (the only shadow-caster — point/spot shadows are
         //    cubemap/extra-map heavy and we have many lights). ──
         {
             const auto e = reg.create();
-            reg.emplace<lux::gameplay::NameComponent>(e, lux::gameplay::NameComponent{"Sun"});
-            lux::gameplay::d3::DirectionalLightComponent dl{};
+            reg.emplace<lux::ecs::NameComponent>(e, lux::ecs::NameComponent{"Sun"});
+            lux::pack::DirectionalLightComponent dl{};
             dl.direction       = Eigen::Vector3f(-0.4f, -1.f, -0.35f).normalized();
             dl.color           = Eigen::Vector3f(0.9f, 0.92f, 1.0f);
             dl.intensity       = 1.1f;
@@ -322,7 +322,7 @@ namespace lux::editor
             dl.shadow_bias     = 0.002f;
             dl.cascade_count   = 4;
             dl.cascade_splits  = {20.f, 60.f, 140.f, 300.f, 0.f, 0.f, 0.f, 0.f};
-            reg.emplace<lux::gameplay::d3::DirectionalLightComponent>(e, dl);
+            reg.emplace<lux::pack::DirectionalLightComponent>(e, dl);
         }
 
         // ── Ground — a 26×26 grid of plane tiles (SM_Plane is 10×10, scaled
@@ -398,27 +398,27 @@ namespace lux::editor
                 const Eigen::Vector3f pos(cx, 9.f, cz);
 
                 const auto e = reg.create();
-                reg.emplace<lux::gameplay::NameComponent>(e,
-                    lux::gameplay::NameComponent{"PointLight"});
-                auto& tc = reg.emplace<lux::gameplay::d3::TransformComponent>(e);
+                reg.emplace<lux::ecs::NameComponent>(e,
+                    lux::ecs::NameComponent{"PointLight"});
+                auto& tc = reg.emplace<lux::pack::TransformComponent>(e);
                 tc.position = pos;
                 tc.scale    = Eigen::Vector3f(2.5f, 2.5f, 2.5f);   // visible glowing bulb
-                reg.emplace<lux::gameplay::d3::WorldTransformComponent>(e);
+                reg.emplace<lux::pack::WorldTransformComponent>(e);
                 // Visible bulb mesh (emissive sphere, same colour as the light).
-                lux::gameplay::d3::MeshComponent mc{};
+                lux::pack::MeshComponent mc{};
                 mc.mesh_asset_id     = sphere_id;
                 mc.material_asset_id  = emissive_id[ci];
                 mc.cast_shadow       = false;
                 mc.visible           = true;
-                reg.emplace<lux::gameplay::d3::MeshComponent>(e, mc);
+                reg.emplace<lux::pack::MeshComponent>(e, mc);
                 // The light itself (position taken from the transform). With the
                 // range-windowed falloff, `range` is the actual reach.
-                lux::gameplay::d3::PointLightComponent pl{};
+                lux::pack::PointLightComponent pl{};
                 pl.color     = col;
                 pl.intensity = 3.f;
                 pl.range     = 450.f;
                 pl.cast_shadow = false;   // sun is the only caster in this demo (keep all 4 atlas pages for the cascades)
-                reg.emplace<lux::gameplay::d3::PointLightComponent>(e, pl);
+                reg.emplace<lux::pack::PointLightComponent>(e, pl);
                 ++point_count;
             }
 
@@ -436,19 +436,19 @@ namespace lux::editor
                 const Eigen::Vector3f pos(cx, 55.f, cz);
 
                 const auto e = reg.create();
-                reg.emplace<lux::gameplay::NameComponent>(e,
-                    lux::gameplay::NameComponent{"SpotLight"});
-                auto& tc = reg.emplace<lux::gameplay::d3::TransformComponent>(e);
+                reg.emplace<lux::ecs::NameComponent>(e,
+                    lux::ecs::NameComponent{"SpotLight"});
+                auto& tc = reg.emplace<lux::pack::TransformComponent>(e);
                 tc.position = pos;
                 tc.scale    = Eigen::Vector3f(3.5f, 3.5f, 3.5f);
-                reg.emplace<lux::gameplay::d3::WorldTransformComponent>(e);
-                lux::gameplay::d3::MeshComponent mc{};
+                reg.emplace<lux::pack::WorldTransformComponent>(e);
+                lux::pack::MeshComponent mc{};
                 mc.mesh_asset_id     = sphere_id;
                 mc.material_asset_id  = emissive_id[ci];
                 mc.cast_shadow       = false;
                 mc.visible           = true;
-                reg.emplace<lux::gameplay::d3::MeshComponent>(e, mc);
-                lux::gameplay::d3::SpotLightComponent sl{};
+                reg.emplace<lux::pack::MeshComponent>(e, mc);
+                lux::pack::SpotLightComponent sl{};
                 sl.direction = Eigen::Vector3f(0.f, -1.f, 0.f);   // straight down
                 sl.color     = col;
                 sl.intensity = 4.f;
@@ -456,7 +456,7 @@ namespace lux::editor
                 sl.inner_cone_angle = 0.45f;
                 sl.outer_cone_angle = 0.70f;
                 sl.cast_shadow = false;   // sun is the only caster in this demo (keep all 4 atlas pages for the cascades)
-                reg.emplace<lux::gameplay::d3::SpotLightComponent>(e, sl);
+                reg.emplace<lux::pack::SpotLightComponent>(e, sl);
                 ++spot_count;
             }
 

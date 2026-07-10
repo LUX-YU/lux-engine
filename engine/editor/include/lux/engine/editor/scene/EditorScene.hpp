@@ -5,11 +5,11 @@
  *
  * `EditorScene` is the unit of "what gets unloaded when the user opens
  * another scene." It owns:
- *   - a `lux::gameplay::World` (the ECS registry + built-in systems)
+ *   - a `lux::ecs::World` (the ECS registry + built-in systems)
  *   - a `lux::render::RenderSceneId` and main offscreen `ViewHandle`
  *   - all render features added during bring-up, in registration order, so
  *     teardown can undo them in reverse
- *   - the `lux::gameplay::RenderableSystem` that bridges the World's
+ *   - the `lux::render_bridge::RenderableSystem` that bridges the World's
  *     transform/mesh components into the renderer
  *
  * It does NOT own the `UIRenderSession` or the `AssetManager` — those are
@@ -44,7 +44,7 @@
 #include <lux/engine/render/comm/RenderProtocol.hpp>
 #include <lux/engine/render/renderer/features/skinning/SkinningOperation.hpp>  // SkinningOperationIds
 #include <lux/engine/render/renderer/features/light/LightOperation.hpp>        // LightOperationIds
-#include <lux/engine/gameplay/3d/world/components/SceneSettingsComponent.hpp>  // ensureSceneSettings return type
+#include <lux/pack/d3/world/components/SceneSettingsComponent.hpp>  // ensureSceneSettings return type
 #include <lux/engine/editor/scene/EditorSceneSystem.hpp>  // pluggable scene subsystems (de-hardcoded tick)
 #include <lux/engine/ui/ImGuiCommConfig.hpp>
 
@@ -57,9 +57,9 @@
 #include <vector>
 
 namespace lux::asset    { class AssetManager; }
-namespace lux::gameplay { class World; }
+namespace lux::ecs { class World; }
 namespace lux::input    { class ActionMapper; }
-namespace lux::gameplay { class RenderableSystem; }
+namespace lux::render_bridge { class RenderableSystem; }
 namespace lux::ui       { class UIRenderSession; class SceneViewportPanel; }
 
 namespace lux::editor
@@ -184,8 +184,8 @@ namespace lux::editor
 
         // ── Accessors ──────────────────────────────────────────────────
 
-        lux::gameplay::World&        world()       noexcept { return *world_; }
-        const lux::gameplay::World&  world() const noexcept { return *world_; }
+        lux::ecs::World&        world()       noexcept { return *world_; }
+        const lux::ecs::World&  world() const noexcept { return *world_; }
 
         lux::render::RenderSceneId   sceneId()   const noexcept { return scene_id_; }
         lux::render::ViewHandle      mainView()  const noexcept { return main_view_; }
@@ -206,7 +206,7 @@ namespace lux::editor
         /// Scene Settings panel edits this in place; `tick()` dirty-applies it to
         /// streaming + the render SpatialCull.
         /// Main-thread only (mutates the registry). Precondition: scene is live.
-        lux::gameplay::d3::SceneSettingsComponent& ensureSceneSettings();
+        lux::pack::SceneSettingsComponent& ensureSceneSettings();
 
         /// Register a pluggable scene subsystem (streaming, anim resolve, camera,
         /// gizmo, ...). Called during bringUp. tick() runs each registered system in
@@ -224,8 +224,8 @@ namespace lux::editor
         const EditorBuiltins*               builtins_{nullptr};
         const EditorRenderInfra*            infra_{nullptr};
 
-        std::unique_ptr<lux::gameplay::World>            world_;
-        std::unique_ptr<lux::gameplay::RenderableSystem> renderable_system_;
+        std::unique_ptr<lux::ecs::World>            world_;
+        std::unique_ptr<lux::render_bridge::RenderableSystem> renderable_system_;
 
         // Injected async-load hook (EngineExecutor::requestLoad), forwarded to the
         // RenderableSystem + the registered scene systems (anim resolver, streaming)

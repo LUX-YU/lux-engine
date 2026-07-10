@@ -79,6 +79,12 @@ foreach(layer ${lux_engine_layers})
     endif()
 endforeach()
 
+# packs/ — first-party reference packs (ADR: lux-engine-pack-architecture).
+# Library-quality but NOT engine modules: they assemble engine mechanisms into
+# concrete domains (2D kit, 3D kit, demo physics) and are constrained to the
+# PUBLIC SDK only. Apps (engine/) link packs; modules never do.
+add_subdirectory(packs)
+
 # The rest of the editor tier (engine-coupled editor panels + the FlowForge
 # MLIR compiler) is processed after all runtime layers so its components can
 # link against function::* / core::* / resource::* targets. The LUX_BUILD_EDITOR

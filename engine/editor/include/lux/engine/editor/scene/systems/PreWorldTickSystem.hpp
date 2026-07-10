@@ -21,7 +21,7 @@
  */
 
 #include <lux/engine/editor/scene/EditorSceneSystem.hpp>
-#include <lux/engine/gameplay/world/World.hpp>   // ctx.world.registry()
+#include <lux/engine/ecs/World.hpp>   // ctx.world.registry()
 
 #include <utility>
 

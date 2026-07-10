@@ -20,7 +20,7 @@
 /// `LUX_CLASS()`. Expands to a `LUX_META` carrying the `luxref::class`
 /// marker plus a `component=true` key/value pair. The meta code generator
 /// notices this class-level flag and emits a registration block that pushes
-/// the type into `lux::gameplay::ComponentTypeRegistry` — the ECS-layer
+/// the type into `lux::ecs::ComponentTypeRegistry` — the ECS-layer
 /// catalogue the Hierarchy + Inspector iterate to auto-discover available
 /// components. Non-component reflected types (e.g. struct payloads embedded
 /// in components) stay on the plain `LUX_CLASS()`.

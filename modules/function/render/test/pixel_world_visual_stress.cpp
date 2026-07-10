@@ -32,14 +32,14 @@
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
 #include <lux/engine/render/comm/server/FeatureRegistry.hpp>
 
-#include <lux/engine/gameplay/2d/Scene2D.hpp>
-#include <lux/engine/gameplay/2d/pixel/PixelFieldRuntime.hpp>
-#include <lux/engine/gameplay/2d/pixel/PixelField2DComponent.hpp>
-#include <lux/engine/gameplay/2d/world/components/Transform2DComponent.hpp>
-#include <lux/engine/gameplay/2d/world/components/SpriteComponent.hpp>
-#include <lux/engine/gameplay/2d/world/components/Camera2DComponent.hpp>
-#include <lux/engine/gameplay/world/World.hpp>
-#include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>
+#include <lux/pack/d2/Scene2D.hpp>
+#include <lux/pack/d2/pixel/PixelFieldRuntime.hpp>
+#include <lux/pack/d2/pixel/PixelField2DComponent.hpp>
+#include <lux/pack/d2/world/components/Transform2DComponent.hpp>
+#include <lux/pack/d2/world/components/SpriteComponent.hpp>
+#include <lux/pack/d2/world/components/Camera2DComponent.hpp>
+#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/render_bridge/RenderableSystem.hpp>
 #include <lux/engine/asset/AssetManager.hpp>
 
 #include <chrono>
@@ -51,7 +51,7 @@
 #include <vector>
 
 using namespace lux::render;
-namespace d2 = lux::gameplay::d2;
+namespace d2 = lux::pack;
 
 namespace
 {
@@ -120,7 +120,7 @@ int main(int argc, char** argv)
     const auto sand  = runtime.materials().add({d2::EMaterialPhase::Powder, 200, 0xFF29C5F0u});   // golden
     const auto water = runtime.materials().add({d2::EMaterialPhase::Liquid, 100, 0xC0AE6024u});   // 75% premul blue
 
-    lux::gameplay::World world;
+    lux::ecs::World world;
     auto plan = d2::traditional2DPlan();
     plan.enablePixelSimulation();
     const auto installed = d2::install(world, &runtime, plan);
@@ -201,7 +201,7 @@ int main(int argc, char** argv)
     }
 
     lux::asset::AssetManager assets;
-    lux::gameplay::RenderableSystem rs(fx.session(), assets, sv.scene_id, sv.view);
+    lux::render_bridge::RenderableSystem rs(fx.session(), assets, sv.scene_id, sv.view);
     rs.setFeatures(features);
     d2::registerBridges(rs, &runtime, plan);
 

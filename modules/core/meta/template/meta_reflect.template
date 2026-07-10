@@ -22,7 +22,7 @@
 {%- endfor -%}
 {%- if has_any_component %}
 // Component registry catalogue lives in the ECS layer, not in `core::meta`.
-#include <lux/engine/gameplay/ComponentTypeRegistry.hpp>
+#include <lux/engine/ecs/ComponentTypeRegistry.hpp>
 {%- endif %}
 {% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
 {% if custom_include %}
@@ -299,13 +299,13 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
     registry.registerClass(std::move(ret));
 
     /* component-type catalogue (LUX_COMPONENT only) ---------------------- */
-    /* Pushed into the ECS-layer catalogue (function::gameplay) rather than */
+    /* Pushed into the ECS-layer catalogue (function::ecs) rather than */
     /* the reflection registry — components are an ECS concept and stay    */
     /* out of `core::meta`. The include lives in the per-class block       */
     /* below so non-component reflected types do not drag in entt.         */
     {%- if is_component %}
     {
-        lux::gameplay::ComponentTypeEntry _cte_{{ rec.hash }};
+        lux::ecs::ComponentTypeEntry _cte_{{ rec.hash }};
         _cte_{{ rec.hash }}.full_name = "{{ rec.fq_name }}";
         _cte_{{ rec.hash }}.ref_class = &cls;
         _cte_{{ rec.hash }}.has = +[](entt::registry& r, entt::entity e) -> bool
@@ -314,7 +314,7 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
             { return r.try_get<{{ rec.fq_name }}>(e); };
         _cte_{{ rec.hash }}.emplace = +[](entt::registry& r, entt::entity e) -> void*
             { return &r.emplace_or_replace<{{ rec.fq_name }}>(e); };
-        lux::gameplay::ComponentTypeRegistry::instance().registerType(_cte_{{ rec.hash }});
+        lux::ecs::ComponentTypeRegistry::instance().registerType(_cte_{{ rec.hash }});
     }
     {%- endif %}
 }

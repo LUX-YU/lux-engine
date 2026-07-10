@@ -2,9 +2,9 @@
 
 #include <lux/engine/editor/app/LuxEditor.hpp>   // EditorRenderInfra (feature_registry)
 
-#include <lux/engine/gameplay/world/World.hpp>
-#include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>
-#include <lux/engine/gameplay/3d/world/components/SceneSettingsComponent.hpp>
+#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/render_bridge/RenderableSystem.hpp>
+#include <lux/pack/d3/world/components/SceneSettingsComponent.hpp>
 
 #include <lux/engine/asset/AssetManager.hpp>
 
@@ -41,13 +41,13 @@ namespace lux::editor
         // WorldStreamingSystem; cull_distance is MIRRORED to the render SpatialCull
         // feature. Applied ONLY on change (dirty): the cull mirror is a comm push,
         // too costly to send every frame.
-        lux::gameplay::d3::WorldStreamingSystem::Params sp{};   // system defaults
+        lux::pack::WorldStreamingSystem::Params sp{};   // system defaults
         bool  have_cull    = false;
         float cull_distance = 0.f;
 
-        if (auto v = reg.view<lux::gameplay::d3::SceneSettingsComponent>(); v.begin() != v.end())
+        if (auto v = reg.view<lux::pack::SceneSettingsComponent>(); v.begin() != v.end())
         {
-            const auto& s = v.get<lux::gameplay::d3::SceneSettingsComponent>(*v.begin());
+            const auto& s = v.get<lux::pack::SceneSettingsComponent>(*v.begin());
             sp.enabled          = s.enabled;
             sp.cell_size        = s.cell_size;
             sp.load_range       = s.load_range;

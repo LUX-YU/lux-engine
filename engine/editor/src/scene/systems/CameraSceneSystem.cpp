@@ -4,9 +4,9 @@
 #include <lux/engine/editor/app/EditorActions.hpp>  // actions:: ActionIds
 #include <lux/engine/editor/app/Selection.hpp>      // Selection::entity (focal provider)
 
-#include <lux/engine/gameplay/3d/controllers/UEEditorController.hpp>
-#include <lux/engine/gameplay/world/World.hpp>
-#include <lux/engine/gameplay/3d/world/components/CameraComponent.hpp>
+#include <lux/pack/d3/controllers/UEEditorController.hpp>
+#include <lux/engine/ecs/World.hpp>
+#include <lux/pack/d3/world/components/CameraComponent.hpp>
 
 #include <lux/engine/ui/UIRenderSession.hpp>                // ctx.session (RenderSession base)
 #include <lux/engine/render/comm/client/RenderSession.hpp>  // ViewCameraProxy upcast target
@@ -25,10 +25,10 @@ namespace lux::editor
         // (EditorScene::tick's camera-validity guard guarantees both before we run).
         if (!controller_)
         {
-            controller_ = std::make_unique<lux::gameplay::d3::UEEditorController>();
+            controller_ = std::make_unique<lux::pack::UEEditorController>();
             controller_->attach(ctx.camera_entity, ctx.world);
 
-            lux::gameplay::d3::UEEditorController::ActionIds ids;
+            lux::pack::UEEditorController::ActionIds ids;
             ids.fly_mode       = actions::CameraFlyMode;
             ids.orbit_mode     = actions::CameraOrbitMode;
             ids.pan_mode       = actions::CameraPanMode;
@@ -56,7 +56,7 @@ namespace lux::editor
         // user took manual control via the Inspector (auto_aspect gate — otherwise
         // any aspect edit is clobbered next frame). Must precede World::tick, which
         // recomputes proj from aspect.
-        auto& cc = ctx.world.get<lux::gameplay::d3::CameraComponent>(ctx.camera_entity);
+        auto& cc = ctx.world.get<lux::pack::CameraComponent>(ctx.camera_entity);
         if (cc.auto_aspect && ctx.content_h > 0.f)
             cc.aspect = ctx.content_w / ctx.content_h;
     }
@@ -74,7 +74,7 @@ namespace lux::editor
             view_ops_resolved_ = true;
         }
 
-        const auto& cc = ctx.world.get<lux::gameplay::d3::CameraComponent>(ctx.camera_entity);
+        const auto& cc = ctx.world.get<lux::pack::CameraComponent>(ctx.camera_entity);
         lux::render::ViewCameraProxy(ctx.session, view_ops_).update(
             ctx.scene_id, ctx.main_view,
             cc.view.data(), cc.proj.data(), ctx.eye.data());

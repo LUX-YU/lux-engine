@@ -3,10 +3,10 @@
 #include <lux/engine/editor/app/LuxEditor.hpp>   // EditorRenderInfra (feature_registry)
 #include <lux/engine/editor/app/Selection.hpp>   // Selection::entity
 
-#include <lux/engine/gameplay/world/World.hpp>
-#include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>          // setHighlighted / anchor
-#include <lux/engine/gameplay/world/HierarchyView.hpp>                    // subtree walk (highlight whole object)
-#include <lux/engine/gameplay/DebugDraw.hpp>                               // debugdraw::lines()
+#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/render_bridge/RenderableSystem.hpp>          // setHighlighted / anchor
+#include <lux/engine/ecs/HierarchyView.hpp>                    // subtree walk (highlight whole object)
+#include <lux/engine/ecs/DebugDraw.hpp>                               // debugdraw::lines()
 
 #include <lux/engine/ui/UIRenderSession.hpp>                // ctx.session (RenderSession base)
 #include <lux/engine/render/comm/client/RenderSession.hpp>  // LineListProxy upcast target
@@ -37,7 +37,7 @@ namespace lux::editor
             // meshless). HierarchyView walks the subtree cycle-safely; the mesh
             // bridges fold kInstanceFlagHighlight into any instance whose entity is
             // in this set.
-            const lux::gameplay::HierarchyView hierarchy(reg);
+            const lux::ecs::HierarchyView hierarchy(reg);
             hierarchy.forEachInSubtree(sel,
                 [&](lux::meta::entity_id e) { selected.insert(e); });
         }
@@ -64,7 +64,7 @@ namespace lux::editor
         // This upload carries only script debug lines (lux_debug_draw_line):
         // retained CPU-side, so a one-shot script call keeps rendering until cleared.
         std::vector<lux::render::GizmoVertex> verts;
-        for (const auto& line : lux::gameplay::debugdraw::lines())
+        for (const auto& line : lux::ecs::debugdraw::lines())
         {
             verts.push_back(lux::render::GizmoVertex::make(
                 line.from[0], line.from[1], line.from[2],

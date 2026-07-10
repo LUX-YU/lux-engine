@@ -37,9 +37,9 @@
 #include <lux/engine/render/core/FeatureHandle.hpp>   // ViewHandle
 #include <lux/engine/meta/LuxObject.hpp>              // entity_id
 
-namespace lux::gameplay { class World; }
+namespace lux::ecs { class World; }
 namespace lux::input { class ActionMapper; }
-namespace lux::gameplay { class RenderableSystem; }
+namespace lux::render_bridge { class RenderableSystem; }
 namespace lux::ui       { class UIRenderSession; }
 namespace lux::asset    { class AssetManager; }
 
@@ -54,8 +54,8 @@ namespace lux::editor
     /// World::tick updates the camera's WorldTransform).
     struct SceneTickContext
     {
-        lux::gameplay::World&               world;          ///< the ECS world (.registry())
-        lux::gameplay::RenderableSystem&    renderable;     ///< entt→GPU bridge anchor (shared)
+        lux::ecs::World&               world;          ///< the ECS world (.registry())
+        lux::render_bridge::RenderableSystem&    renderable;     ///< entt→GPU bridge anchor (shared)
         lux::ui::UIRenderSession&           session;        ///< render session for proxies
         const EditorRenderInfra&            infra;          ///< scene_id / view / feature_registry
         lux::asset::AssetManager*           assets;         ///< may be null

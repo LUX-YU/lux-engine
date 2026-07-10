@@ -303,7 +303,7 @@ namespace lux::editor
         }
         // Edited live in place: EditorScene dirty-applies on change (streaming →
         // WorldStreamingSystem; cull_distance mirrored to the render SpatialCull).
-        if (!drawReflectedStruct("lux::gameplay::d3::SceneSettingsComponent", settings))
+        if (!drawReflectedStruct("lux::pack::SceneSettingsComponent", settings))
             ImGui::TextDisabled("(reflection sidecar not loaded)");
 
         ImGui::Spacing();

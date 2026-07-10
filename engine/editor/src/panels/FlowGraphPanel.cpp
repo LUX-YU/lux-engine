@@ -9,7 +9,7 @@
 #include <lux/engine/flowforge/ControlNode.hpp>
 #include <lux/engine/flowforge/FunctionalNode.hpp>
 #include <lux/engine/flowforge/ObjectNode.hpp>
-#include <lux/engine/gameplay/DebugDraw.hpp>
+#include <lux/engine/ecs/DebugDraw.hpp>
 
 #if LUX_FLOWFORGE_HAS_MLIR
 #include <imgui_stdlib.h>

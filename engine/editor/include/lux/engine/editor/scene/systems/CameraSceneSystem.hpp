@@ -22,7 +22,7 @@
 
 #include <memory>
 
-namespace lux::gameplay::d3 { class UEEditorController; }
+namespace lux::pack { class UEEditorController; }
 
 namespace lux::editor
 {
@@ -40,7 +40,7 @@ namespace lux::editor
         [[nodiscard]] bool wantsCursorCapture() const noexcept;
 
     private:
-        std::unique_ptr<lux::gameplay::d3::UEEditorController> controller_;
+        std::unique_ptr<lux::pack::UEEditorController> controller_;
         lux::render::ViewCameraOperationIds                view_ops_{};
         bool                                               view_ops_resolved_{false};
     };

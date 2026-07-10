@@ -24,14 +24,19 @@ target_link_libraries(
     scene_roundtrip_smoke
     PRIVATE
         editor
-        lux::engine::function::gameplay
+        lux::engine::function::ecs
+        lux::engine::function::render_bridge
+        pack_d3
 )
 
 # Force-include the gameplay meta sidecar so the reflection + component-type
 # registries are populated when the test runs (all component reflection — neutral
 # core + 3D — lives in gameplay_meta again).
-if(TARGET gameplay_meta)
-    target_link_libraries(scene_roundtrip_smoke PRIVATE gameplay_meta)
+if(TARGET ecs_meta)
+    target_link_libraries(scene_roundtrip_smoke PRIVATE ecs_meta)
+endif()
+if(TARGET pack_d3_meta)
+    target_link_libraries(scene_roundtrip_smoke PRIVATE pack_d3_meta)
 endif()
 
 # ── big_demo_baker: generate the large multi-light streaming demo scene ──
@@ -43,12 +48,17 @@ target_link_libraries(
     big_demo_baker
     PRIVATE
         editor
-        lux::engine::function::gameplay
+        lux::engine::function::ecs
+        lux::engine::function::render_bridge
+        pack_d3
 )
 # Force-load the gameplay meta sidecar so the component reflection registry is
 # populated before Scene::save runs.
-if(TARGET gameplay_meta)
-    target_link_libraries(big_demo_baker PRIVATE gameplay_meta)
+if(TARGET ecs_meta)
+    target_link_libraries(big_demo_baker PRIVATE ecs_meta)
+endif()
+if(TARGET pack_d3_meta)
+    target_link_libraries(big_demo_baker PRIVATE pack_d3_meta)
 endif()
 
 # ── Thumbnail storage smoke: PNG codec + ThumbnailSet + payload round-trip ──

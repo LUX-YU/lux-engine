@@ -2,7 +2,7 @@
 
 #include <lux/engine/editor/scene/EditorScene.hpp>   // EditorScene + BringUpConfig
 #include <lux/engine/editor/scene/Scene.hpp>          // Scene::save + SceneSaveOptions
-#include <lux/engine/gameplay/world/World.hpp>        // scene->world().registry()
+#include <lux/engine/ecs/World.hpp>        // scene->world().registry()
 #include <lux/engine/editor/app/Selection.hpp>        // selection_->entity / registry
 #include <lux/engine/editor/app/StateRegistry.hpp>    // states_ (EditorScene ctor arg)
 #include <lux/engine/ui/SceneViewportPanel.hpp>       // viewport_panel_ wiring

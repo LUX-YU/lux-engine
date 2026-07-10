@@ -2,8 +2,8 @@
 #include <lux/engine/editor/app/StateRegistry.hpp>
 #include <lux/engine/editor/app/Selection.hpp>
 
-#include <lux/engine/gameplay/world/components/NameComponent.hpp>
-#include <lux/engine/gameplay/world/HierarchyView.hpp>
+#include <lux/engine/ecs/components/NameComponent.hpp>
+#include <lux/engine/ecs/HierarchyView.hpp>
 
 #include <imgui.h>
 
@@ -41,7 +41,7 @@ namespace lux::editor
         // children carry it; a root has none). The editor's multi-mesh model import
         // already creates ONE root + N child mesh-entities linked this way — the panel
         // now renders that tree instead of a flat list.
-        const lux::gameplay::HierarchyView hierarchy(*reg);
+        const lux::ecs::HierarchyView hierarchy(*reg);
 
         const entt::entity selected = sel_->entity();
 
@@ -52,7 +52,7 @@ namespace lux::editor
         std::function<void(entt::entity)> renderNode = [&](entt::entity e)
         {
             const auto raw = static_cast<std::uint32_t>(entt::to_integral(e));
-            const auto* nc = reg->try_get<lux::gameplay::NameComponent>(e);
+            const auto* nc = reg->try_get<lux::ecs::NameComponent>(e);
             const std::string label = nc
                 ? std::format("{}##entity_{}", nc->name, raw)
                 : std::format("Entity {}##entity_{}", raw, raw);
@@ -82,7 +82,7 @@ namespace lux::editor
         // Children of a valid parent are rendered via that parent's recursion.
         for (auto e : all)
         {
-            const auto* hc = reg->try_get<lux::gameplay::HierarchyComponent>(e);
+            const auto* hc = reg->try_get<lux::ecs::HierarchyComponent>(e);
             if (hc && reg->valid(hc->parent)) continue;
             renderNode(e);
         }

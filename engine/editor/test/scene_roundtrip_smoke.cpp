@@ -7,10 +7,10 @@
 
 #include <lux/engine/editor/scene/Scene.hpp>
 
-#include <lux/engine/gameplay/ComponentTypeRegistry.hpp>
-#include <lux/engine/gameplay/3d/world/components/MeshComponent.hpp>
-#include <lux/engine/gameplay/world/components/NameComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/TransformComponent.hpp>
+#include <lux/engine/ecs/ComponentTypeRegistry.hpp>
+#include <lux/pack/d3/world/components/MeshComponent.hpp>
+#include <lux/engine/ecs/components/NameComponent.hpp>
+#include <lux/pack/d3/world/components/TransformComponent.hpp>
 #include <lux/engine/meta/Meta.hpp>           // meta_module_init / deinit
 
 #include <entt/entt.hpp>
@@ -55,19 +55,19 @@ int main()
     lux::meta::EntityRegistry src_reg;
 
     const auto e0 = src_reg.create();
-    src_reg.emplace<lux::gameplay::NameComponent>(e0,
-        lux::gameplay::NameComponent{"Hello"});
+    src_reg.emplace<lux::ecs::NameComponent>(e0,
+        lux::ecs::NameComponent{"Hello"});
     {
-        auto& tc = src_reg.emplace<lux::gameplay::d3::TransformComponent>(e0);
+        auto& tc = src_reg.emplace<lux::pack::TransformComponent>(e0);
         tc.position = Eigen::Vector3f(1.5f, 2.5f, -3.0f);
         tc.scale    = Eigen::Vector3f(2.0f, 1.0f, 0.5f);
     }
-    src_reg.emplace<lux::gameplay::d3::MeshComponent>(e0,
-        lux::gameplay::d3::MeshComponent{kCubeUuid, kCubeUuid, true, true, false});
+    src_reg.emplace<lux::pack::MeshComponent>(e0,
+        lux::pack::MeshComponent{kCubeUuid, kCubeUuid, true, true, false});
 
     const auto e1 = src_reg.create();
-    src_reg.emplace<lux::gameplay::NameComponent>(e1,
-        lux::gameplay::NameComponent{"World"});
+    src_reg.emplace<lux::ecs::NameComponent>(e1,
+        lux::ecs::NameComponent{"World"});
 
     // ── Save. ──
     {
@@ -96,7 +96,7 @@ int main()
     auto findByName = [&](std::string_view want) -> entt::entity {
         for (auto e : result.created_entities)
         {
-            auto* nc = dst_reg.try_get<lux::gameplay::NameComponent>(e);
+            auto* nc = dst_reg.try_get<lux::ecs::NameComponent>(e);
             if (nc && nc->name == want) return e;
         }
         return entt::null;
@@ -110,10 +110,10 @@ int main()
 
     if (hello != entt::null)
     {
-        expect(dst_reg.all_of<lux::gameplay::d3::TransformComponent>(hello),  "Hello has TransformComponent");
-        expect(dst_reg.all_of<lux::gameplay::d3::MeshComponent>(hello),       "Hello has MeshComponent");
+        expect(dst_reg.all_of<lux::pack::TransformComponent>(hello),  "Hello has TransformComponent");
+        expect(dst_reg.all_of<lux::pack::MeshComponent>(hello),       "Hello has MeshComponent");
 
-        if (auto* tc = dst_reg.try_get<lux::gameplay::d3::TransformComponent>(hello))
+        if (auto* tc = dst_reg.try_get<lux::pack::TransformComponent>(hello))
         {
             const bool pos_ok = tc->position.isApprox(Eigen::Vector3f(1.5f, 2.5f, -3.0f), 1e-6f);
             const bool scl_ok = tc->scale.isApprox(   Eigen::Vector3f(2.0f, 1.0f,  0.5f), 1e-6f);
@@ -121,7 +121,7 @@ int main()
             expect(scl_ok, "Hello Transform.scale preserved");
         }
 
-        if (auto* mc = dst_reg.try_get<lux::gameplay::d3::MeshComponent>(hello))
+        if (auto* mc = dst_reg.try_get<lux::pack::MeshComponent>(hello))
         {
             expect(mc->mesh_asset_id == kCubeUuid,
                                                    "Hello Mesh.mesh_asset_id (asset_id_t / uuid) preserved");
@@ -138,9 +138,9 @@ int main()
     if (world != entt::null)
     {
         // 'World' should be NameComponent-only.
-        expect(!dst_reg.all_of<lux::gameplay::d3::TransformComponent>(world),
+        expect(!dst_reg.all_of<lux::pack::TransformComponent>(world),
             "World does NOT have TransformComponent (preserved minimal entity)");
-        expect(!dst_reg.all_of<lux::gameplay::d3::MeshComponent>(world),
+        expect(!dst_reg.all_of<lux::pack::MeshComponent>(world),
             "World does NOT have MeshComponent");
     }
 

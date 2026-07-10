@@ -51,13 +51,13 @@
 #include <lux/engine/render/renderer/features/grid/GridOperation.hpp>
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>  // StandardViewCamera (per-view camera op; replaces RenderSession::updateView)
 
-#include <lux/engine/gameplay/world/World.hpp>
-#include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>
-#include <lux/engine/gameplay/3d/world/components/TransformComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/WorldTransformComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/MeshComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/SkeletalMeshComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/AnimatorComponent.hpp>
+#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/render_bridge/RenderableSystem.hpp>
+#include <lux/pack/d3/world/components/TransformComponent.hpp>
+#include <lux/pack/d3/world/components/WorldTransformComponent.hpp>
+#include <lux/pack/d3/world/components/MeshComponent.hpp>
+#include <lux/pack/d3/world/components/SkeletalMeshComponent.hpp>
+#include <lux/pack/d3/world/components/AnimatorComponent.hpp>
 
 #include <lux/engine/asset/AssetManager.hpp>
 #include <lux/engine/asset/ModelSerDeser.hpp>
@@ -362,7 +362,7 @@ int main(int argc, char** argv)
     // ---- ECS World (auto-wires Transform/Camera/Animation systems) + entities.
     // RenderableSystem is added later (it needs the scene_id + view, created
     // asynchronously below).
-    lux::gameplay::World world(*mgr);
+    lux::ecs::World world(*mgr);
     std::vector<lux::meta::entity_id> churn_entities;  // --churn: tracked entities to destroy at frame ~240
     for (int dup = 0; dup < opt_dup_model; ++dup)      // --dup-model creates K copies
     for (std::size_t i = 0; i < mesh_ids.size(); ++i)
@@ -373,29 +373,29 @@ int main(int argc, char** argv)
         // Transform + WorldTransform are BOTH required: TransformSystem only
         // updates entities that already have a WorldTransformComponent, and
         // RenderableSystem reads it.
-        auto& tf = world.emplace<lux::gameplay::d3::TransformComponent>(e);
+        auto& tf = world.emplace<lux::pack::TransformComponent>(e);
         tf.rotation = up_fix;                              // stand the model upright (Y-up)
         tf.scale    = Eigen::Vector3f::Constant(model_scale);
         if (dup > 0)                                       // offset extra copies so they don't fully overlap
             tf.position = Eigen::Vector3f(static_cast<float>(dup) * 1.5f, 0.f, 0.f);
-        world.emplace<lux::gameplay::d3::WorldTransformComponent>(e);
+        world.emplace<lux::pack::WorldTransformComponent>(e);
 
         const lux::asset::asset_id_t mat_id =
             (i < mat_ids.size()) ? mat_ids[i] : lux::asset::asset_id_t{};
 
         if (has_skel && !opt_force_static)   // --force-static routes via the static path
         {
-            auto& sk = world.emplace<lux::gameplay::d3::SkeletalMeshComponent>(e);
+            auto& sk = world.emplace<lux::pack::SkeletalMeshComponent>(e);
             sk.mesh_asset_id     = mesh_ids[i];
             sk.material_asset_id = mat_id;
             sk.skeleton_asset_id = skel_id;
-            auto& an = world.emplace<lux::gameplay::d3::AnimatorComponent>(e);
+            auto& an = world.emplace<lux::pack::AnimatorComponent>(e);
             an.clip_asset_id = clip_id;   // nil clip -> bind pose
             an.speed         = 1.0f;
         }
         else
         {
-            auto& mc = world.emplace<lux::gameplay::d3::MeshComponent>(e);
+            auto& mc = world.emplace<lux::pack::MeshComponent>(e);
             mc.mesh_asset_id     = mesh_ids[i];
             mc.material_asset_id = mat_id;
         }
@@ -436,9 +436,9 @@ int main(int argc, char** argv)
 
         auto fe = world.createEntity();
         if (opt_churn) churn_entities.push_back(fe);
-        world.emplace<lux::gameplay::d3::TransformComponent>(fe);          // identity (floor at y=0)
-        world.emplace<lux::gameplay::d3::WorldTransformComponent>(fe);
-        auto& fmc = world.emplace<lux::gameplay::d3::MeshComponent>(fe);
+        world.emplace<lux::pack::TransformComponent>(fe);          // identity (floor at y=0)
+        world.emplace<lux::pack::WorldTransformComponent>(fe);
+        auto& fmc = world.emplace<lux::pack::MeshComponent>(fe);
         fmc.mesh_asset_id     = floor_mesh_id;
         fmc.material_asset_id = floor_mat_id;
     }
@@ -558,7 +558,7 @@ int main(int argc, char** argv)
             // Skinning is feature-scoped now: forward its dynamic bone-upload op-ids
             // (from the SkinningFeature registration reply) so the skeletal mesh bridge
             // can address uploadBoneBatch.
-            auto renderable_system = std::make_unique<lux::gameplay::RenderableSystem>(
+            auto renderable_system = std::make_unique<lux::render_bridge::RenderableSystem>(
                 session, *mgr, scene_req.result().scene_id, view_req.result().view);
             renderable_system->setSkinningOps(SkinningOperationIds::fromOps(
                 skin_reg.result().ops, skin_reg.result().op_count));

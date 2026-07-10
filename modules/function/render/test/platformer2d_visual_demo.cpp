@@ -24,16 +24,16 @@
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
 #include <lux/engine/render/comm/server/FeatureRegistry.hpp>
 
-#include <lux/engine/gameplay/2d/Scene2D.hpp>
-#include <lux/engine/gameplay/2d/world/components/Transform2DComponent.hpp>
-#include <lux/engine/gameplay/2d/world/components/SpriteComponent.hpp>
-#include <lux/engine/gameplay/2d/world/components/SpriteAnimationComponent.hpp>
-#include <lux/engine/gameplay/2d/world/components/TilemapComponent.hpp>
-#include <lux/engine/gameplay/2d/world/components/Camera2DComponent.hpp>
-#include <lux/engine/gameplay/2d/world/systems/SpriteAnim2DResolver.hpp>
-#include <lux/engine/gameplay/2d/physics/Physics2DComponents.hpp>
-#include <lux/engine/gameplay/world/World.hpp>
-#include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>
+#include <lux/pack/d2/Scene2D.hpp>
+#include <lux/pack/d2/world/components/Transform2DComponent.hpp>
+#include <lux/pack/d2/world/components/SpriteComponent.hpp>
+#include <lux/pack/d2/world/components/SpriteAnimationComponent.hpp>
+#include <lux/pack/d2/world/components/TilemapComponent.hpp>
+#include <lux/pack/d2/world/components/Camera2DComponent.hpp>
+#include <lux/pack/d2/world/systems/SpriteAnim2DResolver.hpp>
+#include <lux/pack/physics2d_demo/Physics2DComponents.hpp>
+#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/render_bridge/RenderableSystem.hpp>
 
 #include <lux/engine/asset/AssetManager.hpp>
 #include <lux/engine/asset/TextureAsset.hpp>
@@ -51,7 +51,7 @@
 #include <vector>
 
 using namespace lux::render;
-namespace d2 = lux::gameplay::d2;
+namespace d2 = lux::pack;
 using lux::window::KeyEnum;
 using lux::window::KeyState;
 
@@ -227,7 +227,7 @@ int main()
     const auto anims      = registerAnimAssets(assets, sheet_id);
 
     // ── gameplay world: traditional + animation + physics + controller ──
-    lux::gameplay::World world;
+    lux::ecs::World world;
     // 240 Hz fixed step: at 60 Hz a 2.4 u/s runner advances ~0.04 world
     // (≈11 px at this zoom) every ~2.7 display frames — visible judder against
     // the per-frame-smooth camera. 240 Hz cuts the step to ~2.7 px and lands
@@ -315,7 +315,7 @@ int main()
     pcol.offset       = Eigen::Vector2f(0.f, 0.12f);   // sprite pivot is at the feet
     world.emplace<d2::CharacterController2DComponent>(player);
 
-    lux::gameplay::RenderableSystem rs(fx.session(), assets, sv.scene_id, sv.view);
+    lux::render_bridge::RenderableSystem rs(fx.session(), assets, sv.scene_id, sv.view);
     rs.setFeatures(features);
     d2::registerBridges(rs, nullptr, plan);
 

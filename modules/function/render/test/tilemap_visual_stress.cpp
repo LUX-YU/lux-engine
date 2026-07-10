@@ -28,13 +28,13 @@
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
 #include <lux/engine/render/comm/server/FeatureRegistry.hpp>
 
-#include <lux/engine/gameplay/2d/Scene2D.hpp>
-#include <lux/engine/gameplay/2d/world/components/Transform2DComponent.hpp>
-#include <lux/engine/gameplay/2d/world/components/SpriteComponent.hpp>
-#include <lux/engine/gameplay/2d/world/components/TilemapComponent.hpp>
-#include <lux/engine/gameplay/2d/world/components/Camera2DComponent.hpp>
-#include <lux/engine/gameplay/world/World.hpp>
-#include <lux/engine/gameplay/render_bridge/RenderableSystem.hpp>
+#include <lux/pack/d2/Scene2D.hpp>
+#include <lux/pack/d2/world/components/Transform2DComponent.hpp>
+#include <lux/pack/d2/world/components/SpriteComponent.hpp>
+#include <lux/pack/d2/world/components/TilemapComponent.hpp>
+#include <lux/pack/d2/world/components/Camera2DComponent.hpp>
+#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/render_bridge/RenderableSystem.hpp>
 
 #include <lux/engine/asset/AssetManager.hpp>
 #include <lux/engine/asset/TextureAsset.hpp>
@@ -51,7 +51,7 @@
 #include <vector>
 
 using namespace lux::render;
-namespace d2 = lux::gameplay::d2;
+namespace d2 = lux::pack;
 
 namespace
 {
@@ -183,7 +183,7 @@ int main()
     const auto tileset_id = registerTilesetTexture(assets);
 
     // ── gameplay world (traditional plan: tilemap rides SpriteRendering) ──
-    lux::gameplay::World world;
+    lux::ecs::World world;
     const auto plan = d2::traditional2DPlan();
     (void)d2::install(world, nullptr, plan);
 
@@ -233,7 +233,7 @@ int main()
         clouds.push_back(e);
     }
 
-    lux::gameplay::RenderableSystem rs(fx.session(), assets, sv.scene_id, sv.view);
+    lux::render_bridge::RenderableSystem rs(fx.session(), assets, sv.scene_id, sv.view);
     rs.setFeatures(features);
     d2::registerBridges(rs, nullptr, plan);
 

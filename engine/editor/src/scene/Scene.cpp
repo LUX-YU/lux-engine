@@ -4,8 +4,8 @@
 #include <lux/engine/serialize/NameTable.hpp>
 #include <lux/engine/serialize/TaggedPropertyArchive.hpp>
 
-#include <lux/engine/gameplay/ComponentTypeRegistry.hpp>
-#include <lux/engine/gameplay/world/systems/HierarchicalTransformSystem.hpp>  // repairHierarchyCycles (load-time hierarchy guard)
+#include <lux/engine/ecs/ComponentTypeRegistry.hpp>
+#include <lux/engine/ecs/systems/HierarchicalTransformSystem.hpp>  // repairHierarchyCycles (load-time hierarchy guard)
 #include <lux/engine/meta/LuxObject.hpp>  // EntityRegistry
 #include <lux/engine/meta/Meta.hpp>       // RefClass
 
@@ -126,7 +126,7 @@ namespace lux::editor
         NameTable              names;
         std::uint32_t          active_camera_index = kNoActiveCamera;
 
-        const auto& catalogue = lux::gameplay::ComponentTypeRegistry::instance().all();
+        const auto& catalogue = lux::ecs::ComponentTypeRegistry::instance().all();
 
         // First, snapshot the entity list. entt's `registry.view<entity>()`
         // returns all live entities; iterating it is stable for the
@@ -154,7 +154,7 @@ namespace lux::editor
                 // Gather components present on this entity and remember
                 // pointers to their ComponentTypeEntry so we don't have
                 // to find them twice.
-                std::vector<const lux::gameplay::ComponentTypeEntry*> present;
+                std::vector<const lux::ecs::ComponentTypeEntry*> present;
                 for (const auto& entry : catalogue)
                 {
                     if (entry.has && entry.has(registry, e))
@@ -267,8 +267,8 @@ namespace lux::editor
 
         // ── Phase 2: build full_name → ComponentTypeEntry lookup for
         //    constant-time dispatch in the entity loop. ──
-        const auto& catalogue = lux::gameplay::ComponentTypeRegistry::instance().all();
-        std::unordered_map<std::string_view, const lux::gameplay::ComponentTypeEntry*> by_name;
+        const auto& catalogue = lux::ecs::ComponentTypeRegistry::instance().all();
+        std::unordered_map<std::string_view, const lux::ecs::ComponentTypeEntry*> by_name;
         by_name.reserve(catalogue.size());
         for (const auto& e : catalogue)
             by_name.emplace(e.full_name, &e);
@@ -378,7 +378,7 @@ namespace lux::editor
         // links form a cycle — hand-edit, merge conflict, version skew — is
         // repaired here (cycle members become roots, still visible/selectable)
         // with a loud warning, instead of surfacing as excluded entities later.
-        if (const auto repaired = lux::gameplay::repairHierarchyCycles(registry); repaired != 0)
+        if (const auto repaired = lux::ecs::repairHierarchyCycles(registry); repaired != 0)
             std::fprintf(stderr,
                 "[Scene::load] WARNING %zu entity(ies) sat on a parent CYCLE — their "
                 "parent links were removed (now roots). Re-parent them and re-save '%s'.\n",

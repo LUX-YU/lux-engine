@@ -86,8 +86,11 @@ target_link_libraries(
 # can drain them. The launcher needs the gameplay component types in
 # the reflection registry so `lux::editor::writeDemoScene` →
 # `Scene::save` produces a non-empty scene file.
-if(TARGET gameplay_meta)
-    target_link_libraries(lux_launcher PRIVATE gameplay_meta)
+if(TARGET ecs_meta)
+    target_link_libraries(lux_launcher PRIVATE ecs_meta)
+endif()
+if(TARGET pack_d3_meta)
+    target_link_libraries(lux_launcher PRIVATE pack_d3_meta)
 endif()
 
 set_target_properties(

@@ -23,7 +23,8 @@ install_components(
                     flowforge
                     shadergen
                     input
-                    gameplay
+                    ecs
+                    render_bridge
                     ui
                     animation
 )

@@ -32,14 +32,14 @@
 #include <lux/engine/asset/MaterialInstanceSerDeser.hpp>
 
 #include <filesystem>
-#include <lux/engine/gameplay/3d/world/components/AnimatorComponent.hpp>
-#include <lux/engine/gameplay/world/components/HierarchyComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/MeshComponent.hpp>
-#include <lux/engine/gameplay/world/components/NameComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/SkeletalMeshComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/TransformComponent.hpp>
-#include <lux/engine/gameplay/3d/world/components/WorldTransformComponent.hpp>
-#include <lux/engine/gameplay/world/World.hpp>
+#include <lux/pack/d3/world/components/AnimatorComponent.hpp>
+#include <lux/engine/ecs/components/HierarchyComponent.hpp>
+#include <lux/pack/d3/world/components/MeshComponent.hpp>
+#include <lux/engine/ecs/components/NameComponent.hpp>
+#include <lux/pack/d3/world/components/SkeletalMeshComponent.hpp>
+#include <lux/pack/d3/world/components/TransformComponent.hpp>
+#include <lux/pack/d3/world/components/WorldTransformComponent.hpp>
+#include <lux/engine/ecs/World.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/ui/ImGuiLuxWidgets.hpp>
 #include <lux/engine/editor/panels/InspectorPanel.hpp>
@@ -867,12 +867,12 @@ namespace lux::editor
         {
             if (skinned)
             {
-                auto& smc = w.emplace<lux::gameplay::d3::SkeletalMeshComponent>(ent);
+                auto& smc = w.emplace<lux::pack::SkeletalMeshComponent>(ent);
                 smc.mesh_asset_id     = mesh_ids[i];
                 smc.skeleton_asset_id = *model->skeletonAssetId();
                 smc.material_asset_id = materialFor(i);
 
-                auto& ac = w.emplace<lux::gameplay::d3::AnimatorComponent>(ent);
+                auto& ac = w.emplace<lux::pack::AnimatorComponent>(ent);
                 if (clip_id != lux::asset::asset_id_t{})
                 {
                     ac.clip_asset_id = clip_id;
@@ -882,7 +882,7 @@ namespace lux::editor
             }
             else
             {
-                auto& mc = w.emplace<lux::gameplay::d3::MeshComponent>(ent);
+                auto& mc = w.emplace<lux::pack::MeshComponent>(ent);
                 mc.mesh_asset_id     = mesh_ids[i];
                 mc.material_asset_id = materialFor(i);
             }
@@ -900,10 +900,10 @@ namespace lux::editor
         if (mesh_ids.size() == 1)
         {
             auto e = w.createEntity();
-            w.emplace<lux::gameplay::d3::TransformComponent>(e);
-            w.emplace<lux::gameplay::d3::WorldTransformComponent>(e);
-            w.emplace<lux::gameplay::NameComponent>(e,
-                lux::gameplay::NameComponent{
+            w.emplace<lux::pack::TransformComponent>(e);
+            w.emplace<lux::pack::WorldTransformComponent>(e);
+            w.emplace<lux::ecs::NameComponent>(e,
+                lux::ecs::NameComponent{
                     root_name.empty()
                         ? std::format("Model {}", static_cast<uint32_t>(e))
                         : root_name });
@@ -913,10 +913,10 @@ namespace lux::editor
         }
 
         auto root = w.createEntity();
-        w.emplace<lux::gameplay::d3::TransformComponent>(root);
-        w.emplace<lux::gameplay::d3::WorldTransformComponent>(root);
-        w.emplace<lux::gameplay::NameComponent>(root,
-            lux::gameplay::NameComponent{
+        w.emplace<lux::pack::TransformComponent>(root);
+        w.emplace<lux::pack::WorldTransformComponent>(root);
+        w.emplace<lux::ecs::NameComponent>(root,
+            lux::ecs::NameComponent{
                 root_name.empty()
                     ? std::format("Model {}", static_cast<uint32_t>(root))
                     : root_name });
@@ -924,12 +924,12 @@ namespace lux::editor
         for (std::size_t i = 0; i < mesh_ids.size(); ++i)
         {
             auto e = w.createEntity();
-            w.emplace<lux::gameplay::d3::TransformComponent>(e);
-            w.emplace<lux::gameplay::d3::WorldTransformComponent>(e);
-            w.emplace<lux::gameplay::HierarchyComponent>(e).parent = root;
+            w.emplace<lux::pack::TransformComponent>(e);
+            w.emplace<lux::pack::WorldTransformComponent>(e);
+            w.emplace<lux::ecs::HierarchyComponent>(e).parent = root;
 
-            w.emplace<lux::gameplay::NameComponent>(e,
-                lux::gameplay::NameComponent{
+            w.emplace<lux::ecs::NameComponent>(e,
+                lux::ecs::NameComponent{
                     mesh_name[i].empty()
                         ? std::format("Mesh_{}", i)
                         : mesh_name[i] });

@@ -6,6 +6,7 @@
  */
 
 #include <lux/pack/d3/Scene3D.hpp>
+#include <lux/engine/render_bridge/ScenePackRegistry.hpp>
 
 #include <memory>
 
@@ -44,6 +45,30 @@ namespace lux::pack
         rs.registerComponent<DirectionalLightComponent>(); // POOL
         rs.registerComponent<PointLightComponent>();       // POOL
         rs.registerComponent<SpotLightComponent>();        // POOL
+    }
+
+    // ── the registry entry (ADR §3: both domains speak the same assembly API) ──
+    //
+    // The 3D pack is PLAN-LESS: it has no capability bits and no optional
+    // subsets, so its single entry is UNCONDITIONAL (backs 0, active_on 0 →
+    // always runs) and its plan pointer is ignored. That is precisely why the
+    // registry keeps `backs` and `active_on` separate: "always run, promise
+    // nothing" must be expressible. installSystems/registerRenderables stay as
+    // the direct API — the entry is a thin adapter, so a mixed 2D+3D scene can
+    // be assembled from ONE registry.
+    void addD3Pack(lux::render_bridge::ScenePackRegistry& reg)
+    {
+        using lux::render_bridge::RenderableSystem;
+        using lux::render_bridge::ScenePackContext;
+        using lux::render_bridge::ScenePackEntry;
+
+        reg.add(ScenePackEntry{
+            .order   = 30,   // same stage as the 2D transform/camera systems
+            .install = [](const ScenePackContext& ctx) { installSystems(*ctx.world); },
+            .bridges = [](RenderableSystem& rs, const ScenePackContext&)
+            {
+                registerRenderables(rs);
+            }});
     }
 
 } // namespace lux::pack

@@ -15,6 +15,7 @@
  */
 
 #include <lux/engine/function/visibility.h>   // LUX_FUNCTION_PUBLIC
+#include <lux/engine/render_bridge/ScenePackRegistry.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/render_bridge/RenderableSystem.hpp>
 
@@ -35,5 +36,12 @@ namespace lux::pack
     /// EcsRenderTraits: 2 INSTANCE meshes (static + skeletal), Skybox + Grid (PARAM),
     /// and the 3 lights (POOL). Must run BEFORE the system's first `update()`.
     LUX_FUNCTION_PUBLIC void registerRenderables(lux::render_bridge::RenderableSystem& rs);
+
+    /// Register the 3D pack on a ScenePackRegistry (ADR §3: one assembly API
+    /// for every domain). The entry is UNCONDITIONAL — the 3D kit has no
+    /// capability bits — so it backs nothing and always runs; a mixed 2D+3D
+    /// scene assembles from one registry:
+    ///     ScenePackRegistry reg; addD3Pack(reg); addD2Pack(reg);
+    LUX_FUNCTION_PUBLIC void addD3Pack(lux::render_bridge::ScenePackRegistry& reg);
 
 } // namespace lux::pack

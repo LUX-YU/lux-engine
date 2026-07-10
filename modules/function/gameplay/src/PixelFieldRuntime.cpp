@@ -16,10 +16,12 @@
 
 #include <lux/engine/gameplay/2d/pixel/PixelFieldRuntime.hpp>
 #include <lux/engine/gameplay/2d/pixel/PixelField2DComponent.hpp>
+#include <lux/engine/gameplay/2d/world/components/WorldTransform2DComponent.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 namespace lux::gameplay::d2
@@ -182,6 +184,93 @@ namespace lux::gameplay::d2
         for (std::uint32_t i = 0; i < fields_.size(); ++i)
             if (fields_[i].alive && !owner_scratch_[i])
                 destroySlot(i);
+
+        // ── C2-03: cache each field's frame snapshot (min corner from the
+        // owner's WorldTransform2D — the F2-02 contract) for query routing.
+        for (Field& f : fields_)
+            f.frame_valid = false;
+        registry.view<PixelField2DComponent, WorldTransform2DComponent>().each(
+            [&](const PixelField2DComponent& pc, const WorldTransform2DComponent& wt)
+            {
+                if (Field* f = resolve(pc.field))
+                {
+                    f->frame.origin    = {wt.world(0, 3), wt.world(1, 3)};
+                    f->frame.cell_size = pc.cell_size;
+                    f->frame_priority  = pc.priority;
+                    f->frame_valid     = true;
+                }
+            });
+
+        // R-08: the MVP FORBIDS overlapping fields — detect and warn (once, so
+        // a persistent misconfiguration doesn't spam), count for diagnostics.
+        overlap_pairs_ = 0;
+        for (std::size_t i = 0; i < fields_.size(); ++i)
+        {
+            const Field& a = fields_[i];
+            if (!a.alive || !a.frame_valid) continue;
+            const Eigen::Vector2f a_max = a.frame.origin +
+                Eigen::Vector2f(static_cast<float>(a.desc.cells_w),
+                                static_cast<float>(a.desc.cells_h)) * a.frame.cell_size;
+            for (std::size_t j = i + 1; j < fields_.size(); ++j)
+            {
+                const Field& b = fields_[j];
+                if (!b.alive || !b.frame_valid) continue;
+                const Eigen::Vector2f b_max = b.frame.origin +
+                    Eigen::Vector2f(static_cast<float>(b.desc.cells_w),
+                                    static_cast<float>(b.desc.cells_h)) * b.frame.cell_size;
+                const bool overlap =
+                    a.frame.origin.x() < b_max.x() && a_max.x() > b.frame.origin.x() &&
+                    a.frame.origin.y() < b_max.y() && a_max.y() > b.frame.origin.y();
+                if (overlap)
+                {
+                    ++overlap_pairs_;
+                    if (!overlap_warned_)
+                    {
+                        overlap_warned_ = true;
+                        std::fprintf(stderr,
+                            "[PixelFieldRuntime] R-08 violation: overlapping pixel fields "
+                            "(slots %zu and %zu). The MVP forbids spatial overlap — query "
+                            "routing returns both, but interaction semantics are undefined.\n",
+                            i, j);
+                    }
+                }
+            }
+        }
+    }
+
+    // ── C2-03: world-space query routing ─────────────────────────────────────
+
+    void PixelFieldRuntime::queryFields(const Eigen::Vector2f& min, const Eigen::Vector2f& max,
+                                        std::vector<PixelFieldQueryEntry>& out) const
+    {
+        out.clear();
+        for (std::size_t i = 0; i < fields_.size(); ++i)
+        {
+            const Field& f = fields_[i];
+            if (!f.alive || !f.frame_valid) continue;
+            const Eigen::Vector2f f_max = f.frame.origin +
+                Eigen::Vector2f(static_cast<float>(f.desc.cells_w),
+                                static_cast<float>(f.desc.cells_h)) * f.frame.cell_size;
+            if (f.frame.origin.x() < max.x() && f_max.x() > min.x() &&
+                f.frame.origin.y() < max.y() && f_max.y() > min.y())
+            {
+                out.push_back({PixelFieldHandle{static_cast<std::uint32_t>(i), f.gen},
+                               f.frame, f.frame_priority});
+            }
+        }
+        // Priority DESCENDING, ties by slot (already ascending from the scan) —
+        // stable_sort keeps the deterministic tie order.
+        std::stable_sort(out.begin(), out.end(),
+                         [](const PixelFieldQueryEntry& a, const PixelFieldQueryEntry& b)
+                         { return a.priority > b.priority; });
+    }
+
+    bool PixelFieldRuntime::fieldFrame(PixelFieldHandle h, PixelFieldFrame& out) const noexcept
+    {
+        const Field* f = resolve(h);
+        if (!f || !f->frame_valid) return false;
+        out = f->frame;
+        return true;
     }
 
     // ── commands (F2-06: ALL writes land here, FIFO, never mid-scan) ─────────

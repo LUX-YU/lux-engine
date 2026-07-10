@@ -170,6 +170,22 @@ namespace lux::gameplay::d2
         MaterialId       material{kEmptyMaterial};
     };
 
+    /// C2-03: one hit of a world-space field query — the handle plus the frame
+    /// SNAPSHOT the runtime cached at the last fixed step's owner maintenance.
+    /// The frame lags live ECS writes by at most one substep (the cache is a
+    /// routing convenience, never a second truth source — the authoritative
+    /// placement stays the owning entity's WorldTransform2D). Fields are not
+    /// expected to move fast; a consumer needing exact placement reads the
+    /// component. MVP forbids overlapping fields (R-08) — overlaps are
+    /// detected and warned, the query still returns every intersecting field
+    /// in priority order.
+    struct PixelFieldQueryEntry
+    {
+        PixelFieldHandle handle{};
+        PixelFieldFrame  frame{};
+        float            priority{0.f};
+    };
+
     /// Facts the simulation reports outward (drained by PublishEvents / callers).
     struct PixelFieldEvent
     {

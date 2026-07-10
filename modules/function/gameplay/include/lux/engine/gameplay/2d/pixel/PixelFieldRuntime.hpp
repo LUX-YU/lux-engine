@@ -123,6 +123,21 @@ namespace lux::gameplay::d2
             events_.clear();
         }
 
+        // ── C2-03: world-space query routing ─────────────────────────────────
+        /// Every live field whose cached world AABB intersects [min,max],
+        /// priority-DESCENDING (ties by slot — deterministic). Frames are the
+        /// last owner-maintenance snapshot (≤1 substep stale; see
+        /// PixelFieldQueryEntry). Fields are O(single digits): a linear scan,
+        /// no spatial index (YAGNI until proven otherwise).
+        void queryFields(const Eigen::Vector2f& min, const Eigen::Vector2f& max,
+                         std::vector<PixelFieldQueryEntry>& out) const;
+        /// The cached frame of one field (valid flag via return). Stale handle
+        /// or a field whose owner has no WorldTransform2D yet → false.
+        [[nodiscard]] bool fieldFrame(PixelFieldHandle h, PixelFieldFrame& out) const noexcept;
+        /// R-08 diagnostics: how many overlapping-field pairs the last owner
+        /// maintenance detected (MVP forbids overlap; a warning is printed once).
+        [[nodiscard]] std::uint32_t overlappingFieldPairs() const noexcept { return overlap_pairs_; }
+
         // ── observability + the F2-07 export seam ───────────────────────────
         [[nodiscard]] std::uint64_t determinismHash(PixelFieldHandle h) const noexcept;
         [[nodiscard]] std::uint32_t movedCellsLastStep(PixelFieldHandle h) const noexcept;
@@ -206,6 +221,12 @@ namespace lux::gameplay::d2
             double        step_ms_last{0.0};
             std::uint64_t steps{0};
 
+            // C2-03: the frame snapshot cached by owner maintenance (routing
+            // convenience; authoritative placement = the owner's transform).
+            PixelFieldFrame frame{};
+            float           frame_priority{0.f};
+            bool            frame_valid{false};
+
             // ── the C2-00 cell access layer: global cell → chunk + local. All
             // rule/query code goes through these; the chunk layout is invisible
             // above them. Callers guarantee in-bounds (same contract as the old
@@ -267,6 +288,8 @@ namespace lux::gameplay::d2
         std::vector<PixelFieldEvent>   events_;
         std::uint64_t                  events_dropped_{0};
         std::vector<std::uint8_t>      owner_scratch_;   ///< maintainOwners referenced-set
+        std::uint32_t                  overlap_pairs_{0};   ///< R-08 diagnostics (C2-03)
+        bool                           overlap_warned_{false};
     };
 
 } // namespace lux::gameplay::d2

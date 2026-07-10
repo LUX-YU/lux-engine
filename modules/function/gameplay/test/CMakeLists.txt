@@ -12,3 +12,4 @@
 #  PixelField2DBridge, A2-02 Tilemap2DBridge) drive their development-time tests
 #  through it, exactly as the Gate -1 / Slice A bridge tests did.
 # ─────────────────────────────────────────────────────────────────────────────
+

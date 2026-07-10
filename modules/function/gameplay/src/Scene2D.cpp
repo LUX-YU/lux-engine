@@ -10,6 +10,7 @@
 #include <lux/engine/gameplay/2d/Scene2D.hpp>
 #include <lux/engine/gameplay/2d/pixel/PixelFieldRuntime.hpp>
 #include <lux/engine/gameplay/2d/world/systems/Simulation2DSystem.hpp>
+#include <lux/engine/gameplay/2d/world/systems/SpriteAnimationSystem.hpp>
 #include <lux/engine/gameplay/2d/world/systems/Transform2DSystem.hpp>
 #include <lux/engine/gameplay/2d/world/systems/Camera2DSystem.hpp>
 #include <lux/engine/gameplay/2d/render_bridge/Sprite2DBridge.hpp>
@@ -35,7 +36,8 @@ namespace lux::gameplay::d2
         constexpr std::uint32_t kBackedCapabilities =
             static_cast<std::uint32_t>(D2Capability::Core) |
             static_cast<std::uint32_t>(D2Capability::SpriteRendering) |
-            static_cast<std::uint32_t>(D2Capability::PixelSimulation);   // F2: backed below
+            static_cast<std::uint32_t>(D2Capability::PixelSimulation) |  // F2: backed below
+            static_cast<std::uint32_t>(D2Capability::SpriteAnimation);   // A2-01: backed below
     } // namespace
 
     std::uint32_t unbackedCapabilities(const D2ScenePlan& plan) noexcept
@@ -68,7 +70,12 @@ namespace lux::gameplay::d2
         //   3. Transform2DSystem  (local TRS → world)         — has(Core)             [Slice A]
         //   4. Camera2DSystem     (world → ortho view/proj)   — has(Core)             [Slice A]
 
-        // 1. SpriteAnimSystem — Slice A.
+        // 1. SpriteAnimationSystem (A2-01) — the gameplay pre-step: samples frame
+        //    animation on frame dt and writes SpriteComponent uv/pivot BEFORE the
+        //    bridges extract this frame's sprite state. Asset resolution is NOT
+        //    here — the app drives SpriteAnim2DResolver before World::tick.
+        if (plan.has(D2Capability::SpriteAnimation))
+            world.addSystem(std::make_unique<SpriteAnimationSystem>());
 
         // 2. The unified fixed-step coordinator. Its phase strategies are wired by
         //    registerBridges() / later tasks onto installed.simulation.

@@ -98,6 +98,7 @@ set(ASSET_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AnimationClipAsset.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AnimationClipSerDeser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AnimationClipDescriptionCodec.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Sprite2DAssets.cpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetSerDser.cpp
 )
 

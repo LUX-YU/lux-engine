@@ -34,6 +34,8 @@ namespace lux::asset
 	template<> struct asset_magic_number_of<EAssetType::ANIMATION_CLIP> { static inline constexpr uint32_t value = 0x01309147; };
 	template<> struct asset_magic_number_of<EAssetType::MATERIAL>       { static inline constexpr uint32_t value = 0x01309148; };
 	template<> struct asset_magic_number_of<EAssetType::MATERIAL_INSTANCE> { static inline constexpr uint32_t value = 0x01309149; };
+	template<> struct asset_magic_number_of<EAssetType::SPRITE_ATLAS>       { static inline constexpr uint32_t value = 0x0130914A; };
+	template<> struct asset_magic_number_of<EAssetType::SPRITE_ANIM_CLIP>   { static inline constexpr uint32_t value = 0x0130914B; };
 
     /**
      * @brief Current asset version used in the system.

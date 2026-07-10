@@ -100,6 +100,8 @@ namespace lux::asset
         ANIMATION_CLIP,  ///< Keyframe animation clip targeting a Skeleton.
         MATERIAL,        ///< Node-graph material (authoring graph + baked SPIR-V + params). Every material is a graph.
         MATERIAL_INSTANCE, ///< References a parent MATERIAL; overrides params/textures only (no own shader).
+        SPRITE_ATLAS,    ///< 2D sprite atlas: named uv sub-rects + pivots over one TEXTURE.
+        SPRITE_ANIM_CLIP,///< 2D sprite frame animation over a SPRITE_ATLAS (NOT the skeletal ANIMATION_CLIP).
         UNKNOWN          ///< Unknown asset type.
     };
 

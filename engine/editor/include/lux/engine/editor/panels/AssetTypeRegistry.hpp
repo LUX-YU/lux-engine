@@ -144,7 +144,7 @@ namespace lux::editor
         // EAssetType requires a row INSERTED at its ordinal + the size bump.
         // (W5c/W5d: the closure MATERIAL row was deleted and GRAPH_MATERIAL became
         // MATERIAL at ordinal 9 — this table mirrors the surviving 12-entry enum.)
-        static const std::array<AssetTypeDesc, 12> table = { {
+        static const std::array<AssetTypeDesc, 14> table = { {
             { "TEX", "Texture",          IM_COL32( 64, 180, 220, 255), &detail::glyphTexture   },
             { "MDL", "Model",            IM_COL32(255, 215,  60, 255), &detail::glyphModel     },
             { "SHD", "Shader",           IM_COL32(160, 200, 240, 255), &detail::glyphShader    },
@@ -156,6 +156,8 @@ namespace lux::editor
             { "ANM", "Animation",        IM_COL32(220, 100, 200, 255), &detail::glyphAnimation },
             { "MAT", "Material",         IM_COL32( 90, 200, 180, 255), &detail::glyphMaterial  },
             { "MTI", "Material Instance",IM_COL32(120, 170, 220, 255), &detail::glyphMaterial  },
+            { "SPA", "Sprite Atlas",     IM_COL32(240, 170,  90, 255), &detail::glyphTexture   },
+            { "SPC", "Sprite Anim Clip", IM_COL32(240, 140, 160, 255), &detail::glyphAnimation },
             { "?",   "Unknown",          IM_COL32(120, 120, 120, 255), &detail::glyphGeneric   },
         } };
         const auto i = static_cast<std::size_t>(type);

@@ -26,6 +26,8 @@ set(LUX_GAMEPLAY_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/PixelFieldRuntime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Scene2D.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Simulation2DSystem.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/SpriteAnimationSystem.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/SpriteAnim2DResolver.cpp
 )
 
 add_component(

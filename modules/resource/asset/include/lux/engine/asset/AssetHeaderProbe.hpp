@@ -50,6 +50,8 @@ namespace lux::asset
         if (magic == asset_magic_number_of<EAssetType::SCRIPT>::value)            return EAssetType::SCRIPT;
         if (magic == asset_magic_number_of<EAssetType::SKELETON>::value)          return EAssetType::SKELETON;
         if (magic == asset_magic_number_of<EAssetType::ANIMATION_CLIP>::value)    return EAssetType::ANIMATION_CLIP;
+        if (magic == asset_magic_number_of<EAssetType::SPRITE_ATLAS>::value)      return EAssetType::SPRITE_ATLAS;
+        if (magic == asset_magic_number_of<EAssetType::SPRITE_ANIM_CLIP>::value)  return EAssetType::SPRITE_ANIM_CLIP;
         return EAssetType::UNKNOWN;
     }
 

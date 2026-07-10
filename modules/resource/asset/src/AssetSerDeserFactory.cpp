@@ -9,6 +9,7 @@
 #include <lux/engine/asset/ScriptSerDeser.hpp>
 #include <lux/engine/asset/SkeletonSerDeser.hpp>
 #include <lux/engine/asset/AnimationClipSerDeser.hpp>
+#include <lux/engine/asset/Sprite2DSerDeser.hpp>
 #include <lux/engine/asset/AssetHeaderProbe.hpp>   // assetTypeOfMagic
 
 #include <cstdint>
@@ -43,6 +44,10 @@ namespace lux::asset
             return std::make_unique<SkeletonSerDeser>(std::move(manager));
         case EAssetType::ANIMATION_CLIP:
             return std::make_unique<AnimationClipSerDeser>(std::move(manager));
+        case EAssetType::SPRITE_ATLAS:
+            return std::make_unique<SpriteAtlasSerDeser>(std::move(manager));
+        case EAssetType::SPRITE_ANIM_CLIP:
+            return std::make_unique<SpriteAnimClipSerDeser>(std::move(manager));
         // FONT / SOUND have no serialized form yet; UNKNOWN never will.
         default:
             return nullptr;
@@ -94,6 +99,10 @@ namespace lux::asset
             return wrapInjector<SkeletonAsset>(&SkeletonSerDeser::decodeData, bytes, len);
         case EAssetType::ANIMATION_CLIP:
             return wrapInjector<AnimationClipAsset>(&AnimationClipSerDeser::decodeData, bytes, len);
+        case EAssetType::SPRITE_ATLAS:
+            return wrapInjector<SpriteAtlasAsset>(&SpriteAtlasSerDeser::decodeData, bytes, len);
+        case EAssetType::SPRITE_ANIM_CLIP:
+            return wrapInjector<SpriteAnimClipAsset>(&SpriteAnimClipSerDeser::decodeData, bytes, len);
         // 不走懒注入的类型(调用方 eager 全载):
         //   MODEL  —— 清单/UUID 图,非单一 asset_data_t;
         //   SCRIPT —— 纯数据在 info、payload 另在 data 段;
@@ -117,6 +126,8 @@ namespace lux::asset
         case EAssetType::MATERIAL_INSTANCE: return std::make_unique<MaterialInstanceAsset>(std::move(info));
         case EAssetType::SKELETON:          return std::make_unique<SkeletonAsset>(std::move(info));
         case EAssetType::ANIMATION_CLIP:    return std::make_unique<AnimationClipAsset>(std::move(info));
+        case EAssetType::SPRITE_ATLAS:      return std::make_unique<SpriteAtlasAsset>(std::move(info));
+        case EAssetType::SPRITE_ANIM_CLIP:  return std::make_unique<SpriteAnimClipAsset>(std::move(info));
         // 不做懒空壳(调用方 eager 全载):
         //   SHADER —— 其 ShaderAssetInfo 不在 data 段,无法仅由 AssetInfo 造壳;
         //   MODEL / SCRIPT —— 非单一 asset_data_t 型;FONT / SOUND / UNKNOWN —— 无序列化型。

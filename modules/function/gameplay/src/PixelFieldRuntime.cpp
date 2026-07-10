@@ -238,6 +238,173 @@ namespace lux::gameplay::d2
         }
     }
 
+    // ── C2-02a: save-state blob codec ────────────────────────────────────────
+    //
+    // Layout (little-endian, no implicit padding):
+    //   u32 magic='LPSV'  u32 endian=0x01020304  u32 schema=1
+    //   u32 cells_w  u32 cells_h  u32 channels_mask  u32 chunk_size
+    //   per chunk, cy-major then cx:
+    //     u64 fnv1a64(all following payload bytes of THIS chunk)
+    //     u16[clip_w*clip_h]   material plane (clipped rows, row 0 = chunk bottom)
+    //     f32[clip_w*clip_h]   temperature    (iff channel enabled)
+    //     f32[clip_w*clip_h]   lifetime       (iff channel enabled)
+    // Version / extent / checksum mismatch = explicit failure (no migration).
+
+    namespace
+    {
+        constexpr std::uint32_t kSaveMagic  = 0x5653504Cu;   // 'LPSV' (LE)
+        constexpr std::uint32_t kSaveEndian = 0x01020304u;
+        constexpr std::uint32_t kSaveSchema = 1u;
+
+        void putU32(std::vector<std::byte>& out, std::uint32_t v)
+        {
+            const auto* p = reinterpret_cast<const std::byte*>(&v);
+            out.insert(out.end(), p, p + 4);
+        }
+        void putU64(std::vector<std::byte>& out, std::uint64_t v)
+        {
+            const auto* p = reinterpret_cast<const std::byte*>(&v);
+            out.insert(out.end(), p, p + 8);
+        }
+        struct SaveReader
+        {
+            std::span<const std::byte> in;
+            std::size_t pos{0};
+            bool ok{true};
+            bool bytes(void* dst, std::size_t n)
+            {
+                if (!ok || pos + n > in.size()) { ok = false; return false; }
+                std::memcpy(dst, in.data() + pos, n);
+                pos += n;
+                return true;
+            }
+            std::uint32_t u32() { std::uint32_t v{}; bytes(&v, 4); return v; }
+            std::uint64_t u64() { std::uint64_t v{}; bytes(&v, 8); return v; }
+        };
+    }
+
+    std::vector<std::byte> PixelFieldRuntime::captureState(PixelFieldHandle h) const
+    {
+        const Field* f = resolve(h);
+        std::vector<std::byte> out;
+        if (!f) return out;
+
+        putU32(out, kSaveMagic);
+        putU32(out, kSaveEndian);
+        putU32(out, kSaveSchema);
+        putU32(out, f->desc.cells_w);
+        putU32(out, f->desc.cells_h);
+        putU32(out, f->desc.channels_mask);
+        putU32(out, kChunkSizeCells);
+
+        const bool has_temp = (f->desc.channels_mask & channelBit(ECellChannel::Temperature)) != 0;
+        const bool has_life = (f->desc.channels_mask & channelBit(ECellChannel::Lifetime)) != 0;
+
+        std::vector<std::byte> payload;   // per-chunk scratch (checksummed as a unit)
+        for (std::uint32_t cy = 0; cy < f->chunks_y; ++cy)
+            for (std::uint32_t cx = 0; cx < f->chunks_x; ++cx)
+            {
+                const Chunk& c = f->chunks[static_cast<std::size_t>(cy) * f->chunks_x + cx];
+                const std::uint32_t cw =
+                    std::min(kChunkSizeCells, f->desc.cells_w - cx * kChunkSizeCells);
+                const std::uint32_t ch =
+                    std::min(kChunkSizeCells, f->desc.cells_h - cy * kChunkSizeCells);
+
+                payload.clear();
+                const auto putRows = [&](const auto* plane, std::size_t elem)
+                {
+                    for (std::uint32_t row = 0; row < ch; ++row)
+                    {
+                        const auto* src = reinterpret_cast<const std::byte*>(plane)
+                                        + (static_cast<std::size_t>(row) << kChunkShift) * elem;
+                        payload.insert(payload.end(), src, src + static_cast<std::size_t>(cw) * elem);
+                    }
+                };
+                putRows(c.cells.data(), sizeof(MaterialId));
+                if (has_temp) putRows(c.temperature.data(), sizeof(float));
+                if (has_life) putRows(c.lifetime.data(), sizeof(float));
+
+                putU64(out, fnv1a64Append(kFnvBasis, payload.data(), payload.size()));
+                out.insert(out.end(), payload.begin(), payload.end());
+            }
+        return out;
+    }
+
+    PixelFieldHandle PixelFieldRuntime::restoreState(std::span<const std::byte> blob,
+                                                     std::string* error_out)
+    {
+        const auto fail = [&](const char* what) -> PixelFieldHandle
+        {
+            if (error_out) *error_out = what;
+            return {};
+        };
+
+        SaveReader r{blob};
+        if (r.u32() != kSaveMagic)  return fail("wrong save magic");
+        if (r.u32() != kSaveEndian) return fail("wrong endianness");
+        if (r.u32() != kSaveSchema) return fail("unsupported save schema (no v1 migration)");
+        PixelFieldDesc desc{};
+        desc.cells_w       = r.u32();
+        desc.cells_h       = r.u32();
+        desc.channels_mask = r.u32();
+        const std::uint32_t chunk_size = r.u32();
+        if (!r.ok)                          return fail("truncated header");
+        if (chunk_size != kChunkSizeCells)  return fail("chunk size mismatch (schema-incompatible build)");
+        if (desc.cells_w == 0 || desc.cells_h == 0 ||
+            desc.cells_w > (1u << 20) || desc.cells_h > (1u << 20))
+            return fail("implausible field extent");
+
+        const PixelFieldHandle h = create(desc);
+        Field* f = resolve(h);
+        if (!f) return fail("field creation failed");
+
+        const bool has_temp = (desc.channels_mask & channelBit(ECellChannel::Temperature)) != 0;
+        const bool has_life = (desc.channels_mask & channelBit(ECellChannel::Lifetime)) != 0;
+
+        std::vector<std::byte> payload;
+        for (std::uint32_t cy = 0; cy < f->chunks_y; ++cy)
+            for (std::uint32_t cx = 0; cx < f->chunks_x; ++cx)
+            {
+                Chunk& c = f->chunks[static_cast<std::size_t>(cy) * f->chunks_x + cx];
+                const std::uint32_t cw = std::min(kChunkSizeCells, desc.cells_w - cx * kChunkSizeCells);
+                const std::uint32_t ch = std::min(kChunkSizeCells, desc.cells_h - cy * kChunkSizeCells);
+                std::size_t bytes = static_cast<std::size_t>(cw) * ch * sizeof(MaterialId);
+                if (has_temp) bytes += static_cast<std::size_t>(cw) * ch * sizeof(float);
+                if (has_life) bytes += static_cast<std::size_t>(cw) * ch * sizeof(float);
+
+                const std::uint64_t want = r.u64();
+                payload.resize(bytes);
+                if (!r.bytes(payload.data(), bytes))
+                { destroy(h); return fail("truncated chunk payload"); }
+                if (fnv1a64Append(kFnvBasis, payload.data(), payload.size()) != want)
+                { destroy(h); return fail("chunk checksum mismatch (corrupt save)"); }
+
+                std::size_t off = 0;
+                const auto getRows = [&](auto* plane, std::size_t elem)
+                {
+                    for (std::uint32_t row = 0; row < ch; ++row)
+                    {
+                        std::memcpy(reinterpret_cast<std::byte*>(plane)
+                                        + (static_cast<std::size_t>(row) << kChunkShift) * elem,
+                                    payload.data() + off,
+                                    static_cast<std::size_t>(cw) * elem);
+                        off += static_cast<std::size_t>(cw) * elem;
+                    }
+                };
+                getRows(c.cells.data(), sizeof(MaterialId));
+                if (has_temp) getRows(c.temperature.data(), sizeof(float));
+                if (has_life) getRows(c.lifetime.data(), sizeof(float));
+
+                // The restored content must reach the GPU mirror + the CA:
+                // full-chunk upload dirt + a full wake (settles in a few steps).
+                c.planner.markDirty(0, 0, cw, ch);
+            }
+        if (r.pos != blob.size()) { destroy(h); return fail("trailing bytes after the last chunk"); }
+        wakeSpan(*f, 0, 0, static_cast<std::int32_t>(desc.cells_w) - 1,
+                 static_cast<std::int32_t>(desc.cells_h) - 1, /*next=*/false);
+        return h;
+    }
+
     // ── C2-03: world-space query routing ─────────────────────────────────────
 
     void PixelFieldRuntime::queryFields(const Eigen::Vector2f& min, const Eigen::Vector2f& max,

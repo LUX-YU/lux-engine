@@ -29,6 +29,7 @@ set(LUX_GAMEPLAY_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SpriteAnimationSystem.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SpriteAnim2DResolver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Physics2DWorld.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/PixelFieldSaveIo.cpp
 )
 
 add_component(

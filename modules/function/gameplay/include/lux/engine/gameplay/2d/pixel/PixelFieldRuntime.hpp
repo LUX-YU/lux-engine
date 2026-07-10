@@ -44,6 +44,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
+#include <string>
 #include <vector>
 
 namespace lux::gameplay::d2
@@ -122,6 +124,18 @@ namespace lux::gameplay::d2
             out.insert(out.end(), events_.begin(), events_.end());
             events_.clear();
         }
+
+        // ── C2-02a: save state (blob codec; file IO lives in PixelFieldSaveIo) ─
+        /// Serialize the field's LOGICAL content (desc + every chunk's clipped
+        /// material/channel planes, each chunk fnv-checksummed) into an owned
+        /// blob. Call at a fixed-step boundary (never mid-scan) — the blob is a
+        /// consistent snapshot. Empty on a stale handle.
+        [[nodiscard]] std::vector<std::byte> captureState(PixelFieldHandle h) const;
+        /// Create a NEW field from a captured blob. Version/extent/checksum
+        /// mismatch = EXPLICIT failure (null handle + message) — no migration
+        /// framework for v1 (记档). The caller owns blob↔entity identity.
+        [[nodiscard]] PixelFieldHandle restoreState(std::span<const std::byte> blob,
+                                                    std::string* error_out = nullptr);
 
         // ── C2-03: world-space query routing ─────────────────────────────────
         /// Every live field whose cached world AABB intersects [min,max],

@@ -44,6 +44,20 @@ namespace lux::rdesc
         NONE = 0u,
         COMPRESSED = 1u << 0,
         PREMULTIPLIED_ALPHA = 1u << 1,
+        /// The AUTHOR intends this texture to have NO mip chain: tileset
+        /// atlases, pixel-art sprite sheets, index/lookup textures — anything
+        /// whose minified average is meaningless or actively wrong.
+        ///
+        /// Why a flag and not `mip_count == 1`: mip_count describes the DATA
+        /// the asset carries, and virtually every imported texture ships mip 0
+        /// only, letting the GPU generate the chain. Reading intent off
+        /// mip_count would silently strip mips from all 3D material textures.
+        /// Absent flag = "generate a chain" (the historical behaviour).
+        ///
+        /// Recorded 2026-07-10: unconditional mip generation is what turned a
+        /// tile-shader LOD mistake into whole-atlas colour bleed at every tile
+        /// seam (the seam pixels sampled the smallest mip = the atlas average).
+        NO_MIPS = 1u << 2,
     };
 
     [[nodiscard]] inline constexpr uint32_t toUnderlying(ETextureAssetFlags v) noexcept

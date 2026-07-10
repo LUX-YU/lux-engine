@@ -115,6 +115,9 @@ namespace
         ti.pixel_format = lux::rdesc::ETexturePixelFormat::RGBA8_UNORM;
         ti.mip_count = 1; ti.layers = 1;
         ti.copy = true; ti.owns_data = true;
+        // Pixel-art atlas: NO mip chain (a minified average of a tileset is
+        // meaningless — it bleeds neighbouring tiles into every seam).
+        ti.flags = lux::rdesc::toUnderlying(lux::rdesc::ETextureAssetFlags::NO_MIPS);
 
         auto info  = std::make_unique<lux::asset::AssetInfo>();
         info->id   = uuids::uuid::from_string("aaaa1111-2222-3333-4444-555566667777").value();

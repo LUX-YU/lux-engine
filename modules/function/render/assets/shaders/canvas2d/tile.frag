@@ -64,14 +64,20 @@ void main()
     // Atlas v: ordinal rows run top-down while tile-space +y runs up — flip.
     const vec2 uv = (vec2(col, row) + vec2(local.x, 1.0 - local.y)) * tile_size;
     // LOD from a CONTINUOUS uv proxy, never from `uv` itself: uv jumps at every
-    // tile edge (fract + atlas cell hop), a plain texture() there sees an
-    // exploding derivative, drops to the last mip (the upload path always
-    // generates a full chain) and smears the whole-atlas average into the seam
-    // pixels — the classic shimmering-grid-line tilemap artifact. vTile is
-    // smooth across the map; scaled by tile_size it has exactly the interior
-    // texel footprint. Residual limit (recorded): mip>0 texels themselves
-    // average across tile borders, so heavy minification can still tint edges —
-    // the real cure is a padded tileset atlas, out of MVP scope.
+    // tile edge (fract + atlas cell hop), so a plain texture() there sees an
+    // exploding derivative and drops to the smallest available mip — which, on
+    // a mipped atlas, is the whole-atlas average smeared into every seam (the
+    // classic shimmering-grid-line tilemap artifact). vTile is smooth across
+    // the map; scaled by tile_size it has exactly the interior texel footprint.
+    //
+    // Defence in depth: tileset assets should ALSO carry
+    // ETextureAssetFlags::NO_MIPS so no chain exists to sample at all (the
+    // minified average of a tileset is meaningless). This shader stays correct
+    // either way — a mipped atlas from a careless authoring path still samples
+    // the right level here. Residual limit (recorded): mip>0 texels themselves
+    // average across tile borders, so a MIPPED atlas under heavy minification
+    // can still tint edges; the cures are NO_MIPS (what the demos do) or a
+    // padded tileset atlas (out of MVP scope).
     const vec2 duvdx = dFdx(vTile) * tile_size;
     const vec2 duvdy = dFdy(vTile) * tile_size;
     const vec4 texel = textureGrad(uTex[nonuniformEXT(vTilesetTex)], uv, duvdx, duvdy);

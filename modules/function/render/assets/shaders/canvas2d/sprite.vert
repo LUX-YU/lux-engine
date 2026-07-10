@@ -55,6 +55,10 @@ layout(push_constant) uniform PC {
 layout(location = 0) out vec2 vUV;
 layout(location = 1) out vec4 vColor;
 layout(location = 2) flat out uint vTexBindless;
+/// The sprite's atlas rect (u0, v0, uw, vh) — the FS needs its extent to bound
+/// the mip level it samples, so a minified sprite can never read a mip texel
+/// that averages across the neighbouring atlas frame.
+layout(location = 3) flat out vec4 vRect;
 
 // Two CCW triangles over a unit quad centred at the origin.
 const vec2 kCorners[6] = vec2[6](
@@ -78,6 +82,7 @@ void main()
     vUV          = vec2(s.u0 + (c.x + 0.5) * s.uw,
                         s.v0 + (0.5 - c.y) * s.vh);
     vTexBindless = s.tex;
+    vRect        = vec4(s.u0, s.v0, s.uw, s.vh);
 
     const float r = float((s.tint >>  0u) & 0xFFu) / 255.0;
     const float g = float((s.tint >>  8u) & 0xFFu) / 255.0;

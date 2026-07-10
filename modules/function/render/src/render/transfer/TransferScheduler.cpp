@@ -233,10 +233,22 @@ void TransferScheduler::buildPreBarriers()
     }
 
     // ── Image pre-barriers: layout transition + READ→TRANSFER_WRITE ─
+    // ONE barrier per (image, mip, layer): a region-update batch submits many
+    // copies into the SAME subresource, and duplicate layout transitions of
+    // one subresource inside a single dependency are a spec violation (and
+    // the later ones would carry a stale old_layout anyway).
     for (const auto &c : image_copies_)
     {
         if (c.domain == EBufferDomain::TransferDst && c.old_layout == VK_IMAGE_LAYOUT_UNDEFINED)
             continue; // Brand-new image.
+
+        bool seen = false;
+        for (const auto &e : pre_image_barriers_)
+            if (e.image == c.dst &&
+                e.subresourceRange.baseMipLevel == c.subresource.mipLevel &&
+                e.subresourceRange.baseArrayLayer == c.subresource.baseArrayLayer)
+            { seen = true; break; }
+        if (seen) continue;
 
         auto sa = domainToStageAccess(c.domain);
 
@@ -371,8 +383,51 @@ void TransferScheduler::recordCopies(VkCommandBuffer cmd)
     }
 
     // ── Image copies ────────────────────────────────────────────────
-    for (const auto &c : image_copies_)
+    // WAW ORDERING: writes to the same texels from two transfer commands are
+    // UNORDERED in Vulkan. The region-upload protocol promises submission
+    // order (a later revision of the same rect must win — the pixel-field
+    // bridge routinely has revision N and N+1 of one chunk in the same frame;
+    // without this the OLD content sometimes lands last and the mirror shows
+    // stale trails, planner bookkeeping innocent). Before a copy that overlaps
+    // any earlier copy in this batch (same image/mip/layer, intersecting
+    // rects), emit a TRANSFER→TRANSFER barrier; it orders everything recorded
+    // so far, so the scan window resets. Same-batch planner regions are
+    // disjoint-or-identical in content, so hazards only fire across batches —
+    // rare, and each extra barrier is cheap next to the copies themselves.
+    std::size_t ordered_until = 0;   // copies [0, ordered_until) are barrier-ordered
+    const auto overlaps = [](const ImageCopyRequest &a, const ImageCopyRequest &b) noexcept
     {
+        return a.dst == b.dst &&
+               a.subresource.mipLevel == b.subresource.mipLevel &&
+               a.subresource.baseArrayLayer == b.subresource.baseArrayLayer &&
+               a.offset.x < b.offset.x + static_cast<int32_t>(b.extent.width) &&
+               b.offset.x < a.offset.x + static_cast<int32_t>(a.extent.width) &&
+               a.offset.y < b.offset.y + static_cast<int32_t>(b.extent.height) &&
+               b.offset.y < a.offset.y + static_cast<int32_t>(a.extent.height);
+    };
+    for (std::size_t ci = 0; ci < image_copies_.size(); ++ci)
+    {
+        const auto &c = image_copies_[ci];
+
+        bool hazard = false;
+        for (std::size_t p = ordered_until; p < ci && !hazard; ++p)
+            hazard = overlaps(image_copies_[p], c);
+        if (hazard)
+        {
+            VkMemoryBarrier2 mem{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+            mem.srcStageMask  = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+            mem.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            mem.dstStageMask  = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+            mem.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+
+            VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+            dep.memoryBarrierCount = 1;
+            dep.pMemoryBarriers    = &mem;
+            vkCmdPipelineBarrier2(cmd, &dep);
+            ++last_barrier_count_;
+            ordered_until = ci;
+        }
+
         VkBufferImageCopy2 region{VK_STRUCTURE_TYPE_BUFFER_IMAGE_COPY_2};
         region.bufferOffset      = c.src_offset;
         region.bufferRowLength   = 0; // Tightly packed.
@@ -434,9 +489,20 @@ void TransferScheduler::buildPostBarriers()
     }
 
     // ── Image post-barriers: TRANSFER_DST→READ layout ───────────────
+    // ONE barrier per (image, mip, layer) — same dedup rationale as the pre
+    // pass. When copies of one subresource disagree on new_layout (the
+    // runtime-mips follow-up keeps TRANSFER_DST), the LAST copy's layout is
+    // the final state — later occurrences overwrite the pending entry.
     for (const auto &c : image_copies_)
     {
         auto sa = domainToStageAccess(c.domain);
+
+        VkImageMemoryBarrier2* existing = nullptr;
+        for (auto &e : post_image_barriers_)
+            if (e.image == c.dst &&
+                e.subresourceRange.baseMipLevel == c.subresource.mipLevel &&
+                e.subresourceRange.baseArrayLayer == c.subresource.baseArrayLayer)
+            { existing = &e; break; }
 
         VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
         b.srcStageMask  = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
@@ -454,7 +520,8 @@ void TransferScheduler::buildPostBarriers()
             c.subresource.baseArrayLayer, c.subresource.layerCount,
         };
 
-        post_image_barriers_.push_back(b);
+        if (existing) *existing = b;
+        else          post_image_barriers_.push_back(b);
     }
 
     // ── QFOT acquire barriers ───────────────────────────────────────

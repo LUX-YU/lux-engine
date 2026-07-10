@@ -584,7 +584,10 @@ namespace lux::render
                         plan = &fallback;
                     }
 
-                    const uint32_t copy_count  = std::min(plan->count, s.mip_levels);
+                    // No mip clamp on count — see recordTextureUploadInternal:
+                    // region updates carry many mip-0 rects; clamping dropped
+                    // all but the first on 1-mip textures (stale-trail bug).
+                    const uint32_t copy_count  = plan->count;
                     const bool runtime_mips    = p.do_mips && s.mip_levels > 1 && copy_count == 1;
 
                     for (uint32_t i = 0; i < copy_count; ++i)
@@ -1414,7 +1417,14 @@ namespace lux::render
             copy_plan = &fallback;
         }
 
-        const uint32_t copy_count = std::min(copy_plan->count, s.mip_levels);
+        // NOTE: copy_plan->count is NOT clamped to s.mip_levels — mip-chain
+        // uploads carry one region per level (count == mips by construction),
+        // but REGION UPDATES carry arbitrary many mip-0 rects; clamping used
+        // to silently drop every region after the first on a 1-mip texture
+        // (the 2026-07-10 stale-pixel-trail bug — the ack still said Ok, so
+        // the planner retired dirt that never reached the GPU). The per-region
+        // mip index below is still clamped.
+        const uint32_t copy_count = copy_plan->count;
         const bool runtime_mips = do_mips && s.mip_levels > 1 && copy_count == 1;
         const uint32_t transition_levels = runtime_mips ? 1u : s.mip_levels;
 

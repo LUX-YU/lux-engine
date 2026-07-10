@@ -47,7 +47,7 @@ namespace lux::render
         {
             Sprite2DSlotReply r{};
             if (auto* arena = resolveArena(ctx, p.scene))
-                r.status = arena->add(p.data, p.priority, p.visible != 0, r.handle);
+                r.status = arena->add(p.data, p.priority, p.visible != 0, r.handle, p.group);
             else
                 r.status = ECanvas2DCreateStatus::InvalidConfiguration;
             replyToCurrent<AddSprite2DPayload>(ctx, r);
@@ -76,7 +76,7 @@ namespace lux::render
         void handleUpdateSprite2DKey(Ctx& ctx, const UpdateSprite2DKeyPayload& p)
         {
             if (auto* arena = resolveArena(ctx, p.scene))
-                arena->writeKey(p.handle, p.priority, p.visible != 0);
+                arena->writeKey(p.handle, p.priority, p.visible != 0, p.group);
         }
 
         void handleSetCanvas2DEnabled(Ctx& ctx, const SetCanvas2DEnabledPayload& p)
@@ -146,10 +146,17 @@ namespace lux::render
     } // namespace
 
     // ── Uniform factory interface ────────────────────────────────────────────
-    static FeatureHandle canvas2dCreateFn(void* scene_ptr, const void* /*param*/, std::size_t /*sz*/)
+    static FeatureHandle canvas2dCreateFn(void* scene_ptr, const void* param, std::size_t sz)
     {
         auto* sc = static_cast<RenderScene*>(scene_ptr);
-        return sc->addFeature<Canvas2DFeature>(Canvas2DFeature::Config{});
+        Canvas2DFeature::Config cfg{};
+        if (param != nullptr && sz >= sizeof(Canvas2DCommConfig))
+        {
+            Canvas2DCommConfig cc{};
+            std::memcpy(&cc, param, sizeof(cc));
+            cfg.offscreen_groups = cc.offscreen_groups;
+        }
+        return sc->addFeature<Canvas2DFeature>(cfg);
     }
 
     // Typed-op register/unregister generated from the op list. The declared
@@ -193,13 +200,15 @@ namespace lux::render
     // ── Client-side proxy (typed-op send routing) ─────────────────────────────
 
     RenderRequest<Sprite2DSlotReply> 
-    Canvas2DProxy::addSprite(RenderSceneId scene, const Sprite2DInstanceData& data, float priority, bool visible)
+    Canvas2DProxy::addSprite(RenderSceneId scene, const Sprite2DInstanceData& data, float priority,
+                             bool visible, std::uint32_t group)
     {
         AddSprite2DPayload p{};
         p.scene    = scene;
         p.data     = data;
         p.priority = priority;
         p.visible  = visible ? 1u : 0u;
+        p.group    = group;
         return sendWithReply<AddSprite2DOp>(*session_, ops_, p);
     }
 
@@ -253,7 +262,7 @@ namespace lux::render
     }
 
     void Canvas2DProxy::updateKey(RenderSceneId scene, Sprite2DHandle handle,
-                                  float priority, bool visible)
+                                  float priority, bool visible, std::uint32_t group)
     {
         if (!ops_.valid()) return;
         UpdateSprite2DKeyPayload p{};
@@ -261,6 +270,7 @@ namespace lux::render
         p.handle   = handle;
         p.priority = priority;
         p.visible  = visible ? 1u : 0u;
+        p.group    = group;
         send<UpdateSprite2DKeyOp>(*session_, ops_, p);
     }
 

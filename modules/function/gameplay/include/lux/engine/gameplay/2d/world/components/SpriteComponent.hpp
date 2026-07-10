@@ -62,6 +62,12 @@ namespace lux::gameplay::d2
         /// Skip submission when false (still a live entity; just not drawn this frame).
         LUX_MEMBER(display_name=Visible, tooltip=Whether the sprite is drawn)
         bool visible = true;
+
+        /// A2-04 offscreen group: 0 = the direct SceneColor path; 1..N renders
+        /// into that group's offscreen RT (only when the scene's Canvas2D was
+        /// created with offscreen_groups >= group — otherwise clamped to 0).
+        LUX_MEMBER(display_name=Group, tooltip=Offscreen composition group; 0 = direct)
+        std::uint8_t group = 0;
     };
 
 } // namespace lux::gameplay::d2

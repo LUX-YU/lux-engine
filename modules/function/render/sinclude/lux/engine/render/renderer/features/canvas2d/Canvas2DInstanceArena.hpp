@@ -65,9 +65,14 @@ namespace lux::render
 
     /// One contiguous same-kind segment of the global ascending-key order.
     /// `first` = offset within the kind's ORDER buffer (== firstInstance).
+    /// `group` = the offscreen group this run belongs to (A2-04): the group-g
+    /// pass kernel draws only its own runs; group 0 = the direct SceneColor
+    /// pass. Runs are emitted group-major (all of group 0, then 1, …), each
+    /// group internally in ascending key order.
     struct Canvas2DRun
     {
         std::uint8_t  kind;
+        std::uint8_t  group;
         std::uint32_t first;
         std::uint32_t count;
     };
@@ -78,6 +83,7 @@ namespace lux::render
         {
             std::uint32_t gen{0};
             std::uint32_t key_hi{0};
+            std::uint8_t  group{0};   ///< A2-04 offscreen group (sprite kind only today)
             bool          alive{false};
             bool          visible{false};
         };
@@ -89,7 +95,8 @@ namespace lux::render
         public:
             virtual ~IKindStore() = default;
             virtual void collectLiveKeys(std::vector<std::uint64_t>& out,
-                                         std::uint64_t kind_field) const = 0;
+                                         std::uint64_t kind_field,
+                                         std::uint8_t group) const = 0;
             virtual void resetOrderCursor() = 0;
             /// Write @p slot at the kind's next order position; returns that position.
             [[nodiscard]] virtual std::uint32_t appendOrdered(std::uint32_t slot) = 0;
@@ -128,7 +135,7 @@ namespace lux::render
 
             // ── typed op entry points ────────────────────────────────────────
             [[nodiscard]] ECanvas2DCreateStatus add(const Record& r, std::uint32_t key_hi,
-                                                    bool visible,
+                                                    bool visible, std::uint8_t group,
                                                     std::uint32_t& out_slot, std::uint32_t& out_gen)
             {
                 std::uint32_t slot;
@@ -143,6 +150,7 @@ namespace lux::render
                 s.alive   = true;
                 s.visible = visible;
                 s.key_hi  = key_hi;
+                s.group   = group;
                 records_.at(slot) = r;
                 records_.markDirty(slot);
                 out_slot = slot;
@@ -169,22 +177,24 @@ namespace lux::render
 
             /// Returns true when the key actually changed (order rebuild needed).
             bool writeKey(std::uint32_t slot, std::uint32_t gen,
-                          std::uint32_t key_hi, bool visible)
+                          std::uint32_t key_hi, bool visible, std::uint8_t group)
             {
                 Slot* s = resolve(slot, gen);
-                if (!s || (s->key_hi == key_hi && s->visible == visible))
+                if (!s || (s->key_hi == key_hi && s->visible == visible && s->group == group))
                     return false;
                 s->key_hi  = key_hi;
                 s->visible = visible;
+                s->group   = group;
                 return true;
             }
 
             // ── shared-machinery seam ────────────────────────────────────────
             void collectLiveKeys(std::vector<std::uint64_t>& out,
-                                 std::uint64_t kind_field) const override
+                                 std::uint64_t kind_field,
+                                 std::uint8_t group) const override
             {
                 for (std::uint32_t i = 0; i < slot_count_; ++i)
-                    if (slots_[i].alive && slots_[i].visible)
+                    if (slots_[i].alive && slots_[i].visible && slots_[i].group == group)
                         out.push_back((static_cast<std::uint64_t>(slots_[i].key_hi) << 32)
                                       | kind_field | i);
             }
@@ -333,6 +343,7 @@ namespace lux::render
             SceneDescriptorArena* arena{nullptr};
             std::uint32_t         initial_capacity{4096};
             std::uint32_t         max_capacity{65536};
+            std::uint32_t         offscreen_groups{0};   ///< A2-04 (clamped to kMaxCanvas2DGroups)
         };
 
         Canvas2DInstanceArena() = default;
@@ -346,6 +357,7 @@ namespace lux::render
             if (initialized_) return;
             device_ctx_ = info.device_context;
             svc_        = info.descriptor_svc;
+            group_count_ = 1u + std::min(info.offscreen_groups, kMaxCanvas2DGroups);
 
             // ONE layout for every kind (2× storage, VS|FS, UPDATE_AFTER_BIND —
             // the engine set-1 shape), registered once; one set per kind store.
@@ -390,12 +402,14 @@ namespace lux::render
 
         [[nodiscard]] ECanvas2DCreateStatus add(const Sprite2DInstanceData& data,
                                                 float priority, bool visible,
-                                                Sprite2DHandle& out)
+                                                Sprite2DHandle& out,
+                                                std::uint32_t group = 0)
         {
             out = {};
             if (!initialized_) return ECanvas2DCreateStatus::InvalidConfiguration;
             std::uint32_t slot, gen;
-            const auto st = sprites_.add(data, quantizePriority(priority), visible, slot, gen);
+            const auto st = sprites_.add(data, quantizePriority(priority), visible,
+                                         clampGroup(group), slot, gen);
             if (st != ECanvas2DCreateStatus::Ok) return st;
             if (visible) order_dirty_ = true;
             out = Sprite2DHandle{slot, gen};
@@ -432,10 +446,11 @@ namespace lux::render
             }
         }
 
-        void writeKey(Sprite2DHandle h, float priority, bool visible)
+        void writeKey(Sprite2DHandle h, float priority, bool visible, std::uint32_t group = 0)
         {
             if (!initialized_ || h.is_null()) return;
-            if (sprites_.writeKey(h.index, h.gen, quantizePriority(priority), visible))
+            if (sprites_.writeKey(h.index, h.gen, quantizePriority(priority), visible,
+                                  clampGroup(group)))
                 order_dirty_ = true;
         }
 
@@ -450,7 +465,7 @@ namespace lux::render
             out = {};
             if (!initialized_) return ECanvas2DCreateStatus::InvalidConfiguration;
             std::uint32_t slot, gen;
-            const auto st = fields_.add(data, quantizePriority(priority), visible, slot, gen);
+            const auto st = fields_.add(data, quantizePriority(priority), visible, 0, slot, gen);
             if (st != ECanvas2DCreateStatus::Ok) return st;
             if (visible) order_dirty_ = true;
             out = PixelFieldInstanceHandle{slot, gen};
@@ -477,7 +492,7 @@ namespace lux::render
         void writeFieldKey(PixelFieldInstanceHandle h, float priority, bool visible)
         {
             if (!initialized_ || h.is_null()) return;
-            if (fields_.writeKey(h.index, h.gen, quantizePriority(priority), visible))
+            if (fields_.writeKey(h.index, h.gen, quantizePriority(priority), visible, 0))
                 order_dirty_ = true;
         }
 
@@ -490,7 +505,7 @@ namespace lux::render
             out = {};
             if (!initialized_) return ECanvas2DCreateStatus::InvalidConfiguration;
             std::uint32_t slot, gen;
-            const auto st = tiles_.add(data, quantizePriority(priority), visible, slot, gen);
+            const auto st = tiles_.add(data, quantizePriority(priority), visible, 0, slot, gen);
             if (st != ECanvas2DCreateStatus::Ok) return st;
             if (visible) order_dirty_ = true;
             out = Tile2DInstanceHandle{slot, gen};
@@ -517,7 +532,7 @@ namespace lux::render
         void writeTileKey(Tile2DInstanceHandle h, float priority, bool visible)
         {
             if (!initialized_ || h.is_null()) return;
-            if (tiles_.writeKey(h.index, h.gen, quantizePriority(priority), visible))
+            if (tiles_.writeKey(h.index, h.gen, quantizePriority(priority), visible, 0))
                 order_dirty_ = true;
         }
 
@@ -566,28 +581,38 @@ namespace lux::render
     private:
         [[nodiscard]] std::array<IKindStore*, 3> stores() noexcept { return {&sprites_, &fields_, &tiles_}; }
 
+        [[nodiscard]] std::uint8_t clampGroup(std::uint32_t group) const noexcept
+        {
+            return static_cast<std::uint8_t>(group < group_count_ ? group : 0u);
+        }
+
         void rebuildOrder()
         {
-            key_scratch_.clear();
-            key_scratch_.reserve(liveCount());
+            // Group-major: each group's keys sort independently; every kind's
+            // order buffer is ONE sequence whose cursor runs across groups, so
+            // firstInstance stays a plain offset. Group 0 first (the direct
+            // pass), then each offscreen group.
             const auto sts = stores();
-            for (std::size_t k = 0; k < sts.size(); ++k)
-                sts[k]->collectLiveKeys(key_scratch_,
-                                        static_cast<std::uint64_t>(k) << kCanvas2DSlotBits);
-            std::sort(key_scratch_.begin(), key_scratch_.end());
-
             for (auto* s : sts)
                 s->resetOrderCursor();
             runs_.clear();
-            for (const std::uint64_t key : key_scratch_)
+            for (std::uint8_t g = 0; g < group_count_; ++g)
             {
-                const auto kind = static_cast<std::uint8_t>((key >> kCanvas2DSlotBits) & 0xFu);
-                const auto slot = static_cast<std::uint32_t>(key & kCanvas2DSlotMask);
-                const std::uint32_t pos = sts[kind]->appendOrdered(slot);
-                if (runs_.empty() || runs_.back().kind != kind)
-                    runs_.push_back(Canvas2DRun{kind, pos, 1});
-                else
-                    ++runs_.back().count;
+                key_scratch_.clear();
+                for (std::size_t k = 0; k < sts.size(); ++k)
+                    sts[k]->collectLiveKeys(key_scratch_,
+                                            static_cast<std::uint64_t>(k) << kCanvas2DSlotBits, g);
+                std::sort(key_scratch_.begin(), key_scratch_.end());
+                for (const std::uint64_t key : key_scratch_)
+                {
+                    const auto kind = static_cast<std::uint8_t>((key >> kCanvas2DSlotBits) & 0xFu);
+                    const auto slot = static_cast<std::uint32_t>(key & kCanvas2DSlotMask);
+                    const std::uint32_t pos = sts[kind]->appendOrdered(slot);
+                    if (runs_.empty() || runs_.back().kind != kind || runs_.back().group != g)
+                        runs_.push_back(Canvas2DRun{kind, g, pos, 1});
+                    else
+                        ++runs_.back().count;
+                }
             }
             ++order_rebuilds_;
         }
@@ -598,6 +623,7 @@ namespace lux::render
 
         std::vector<std::uint64_t> key_scratch_;
         std::vector<Canvas2DRun>   runs_;
+        std::uint32_t              group_count_{1};   ///< 1 + declared offscreen groups
         std::uint64_t              order_rebuilds_{0};
         bool                       order_dirty_{false};
         bool                       enabled_{true};

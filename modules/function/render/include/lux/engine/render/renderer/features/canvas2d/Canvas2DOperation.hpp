@@ -118,6 +118,22 @@ namespace lux::render
                   "PixelField2DInstanceData layout drift — keep canvas2d/pixel_field.vert in sync.");
     static_assert(std::is_trivially_copyable_v<PixelField2DInstanceData>);
 
+    // ── Offscreen groups (A2-04) ────────────────────────────────────────────
+
+    /// Group 0 = the direct SceneColor path (always present, zero cost).
+    /// Groups 1..kMaxCanvas2DGroups render into their own full-view offscreen
+    /// RT and are composited (premultiplied) onto SceneColor afterwards — the
+    /// mask/post-FX isolation seam. Declared ONCE at feature creation
+    /// (Canvas2DCommConfig): the pass topology stays fixed per attach.
+    inline constexpr std::uint32_t kMaxCanvas2DGroups = 3;
+
+    /// Wire config for AddFeature("Canvas2D"). Trivially copyable by contract.
+    struct Canvas2DCommConfig
+    {
+        std::uint32_t offscreen_groups{0};   ///< clamped to kMaxCanvas2DGroups
+    };
+    static_assert(std::is_trivially_copyable_v<Canvas2DCommConfig>);
+
     // ── Tile kind (A2-02) ───────────────────────────────────────────────────
 
     struct Tile2DInstanceTag{};

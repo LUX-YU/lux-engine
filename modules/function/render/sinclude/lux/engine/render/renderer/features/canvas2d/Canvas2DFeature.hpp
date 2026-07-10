@@ -20,10 +20,12 @@
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/render/core/ResourceHandle.hpp>               // ShaderHandle
 #include <lux/engine/render/pipeline/GraphicsPipelineTemplate.hpp> // GraphicsPipelineHandle
+#include <lux/engine/render/resources/lifecycle/FifOwned.hpp>      // group_sampler_ (A2-04)
 #include <lux/engine/function/visibility.h>
 
 #include <cstdint>
 #include <string>
+#include <vulkan/vulkan.h>
 
 namespace lux::render
 {
@@ -38,6 +40,12 @@ namespace lux::render
             std::string   color_target{"SceneColor"};   ///< the pass writes here (color-only)
             std::uint32_t initial_capacity{4096};       ///< arena slots at attach (grows ×2)
             std::uint32_t max_capacity{65536};          ///< growth ceiling (CapacityExhausted beyond)
+            /// A2-04: offscreen groups (0 = none — EXACTLY the pre-A2-04
+            /// topology, zero extra RTs/passes/pipelines). Each declared group
+            /// g∈[1..kMaxCanvas2DGroups] renders into its own full-view RT and
+            /// is premultiplied-composited onto color_target afterwards.
+            /// Declared ONCE at creation — the pass topology stays fixed.
+            std::uint32_t offscreen_groups{0};
             ShaderHandle  vertex_shader{};
             ShaderHandle  fragment_shader{};
         };
@@ -58,6 +66,10 @@ namespace lux::render
         GraphicsPipelineHandle pipeline_handle_{kInvalidPipelineHandle};        ///< variant 0: sprite kind
         GraphicsPipelineHandle field_pipeline_handle_{kInvalidPipelineHandle};  ///< variant 1: pixel-field kind
         GraphicsPipelineHandle tile_pipeline_handle_{kInvalidPipelineHandle};   ///< variant 2: tile kind
+        // A2-04 (only when offscreen_groups > 0):
+        GraphicsPipelineHandle composite_pipeline_{kInvalidPipelineHandle};     ///< group RT → color_target
+        VkDescriptorSetLayout  composite_ds_layout_{VK_NULL_HANDLE};            ///< set 1: one sampler
+        FifOwned<VkSampler>    group_sampler_;                                  ///< linear clamp
         Canvas2DInstanceArena* arena_{nullptr};
     };
 

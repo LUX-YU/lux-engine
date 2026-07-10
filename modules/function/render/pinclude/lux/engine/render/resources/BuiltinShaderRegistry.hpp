@@ -94,6 +94,7 @@
 #include "canvas2d_pixel_field_frag_embed.hpp"
 #include "canvas2d_tile_vert_embed.hpp"
 #include "canvas2d_tile_frag_embed.hpp"
+#include "canvas2d_group_composite_frag_embed.hpp"
 // ── Highlight outline ──
 #include "highlight_highlight_mask_vert_embed.hpp"
 #include "highlight_highlight_mask_frag_embed.hpp"

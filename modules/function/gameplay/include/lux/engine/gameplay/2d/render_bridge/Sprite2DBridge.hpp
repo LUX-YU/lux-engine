@@ -56,6 +56,7 @@ namespace lux::gameplay::d2
             std::uint32_t               tex{lux::render::kNoTexture};
             float                       priority{0.f};
             bool                        visible{true};
+            std::uint8_t                group{0};    ///< A2-04 offscreen group
         };
 
         /// G-05 failure record: a failed create must not re-issue every frame.
@@ -154,11 +155,12 @@ namespace lux::gameplay::d2
                             L.tint = sp.tint;
                             L.tex  = tex;
                         }
-                        if (prio != L.priority || sp.visible != L.visible)
+                        if (prio != L.priority || sp.visible != L.visible || sp.group != L.group)
                         {
-                            canvas.updateKey(ctx.scene(), L.handle, prio, sp.visible);
+                            canvas.updateKey(ctx.scene(), L.handle, prio, sp.visible, sp.group);
                             L.priority = prio;
                             L.visible  = sp.visible;
+                            L.group    = sp.group;
                         }
                         return;
                     }
@@ -186,8 +188,9 @@ namespace lux::gameplay::d2
                     snap.tex      = d.texture_bindless;
                     snap.priority = prio;
                     snap.visible  = sp.visible;
+                    snap.group    = sp.group;
 
-                    auto req = canvas.addSprite(ctx.scene(), d, prio, sp.visible);
+                    auto req = canvas.addSprite(ctx.scene(), d, prio, sp.visible, sp.group);
                     req.then([this, e, snap](const lux::render::Sprite2DSlotReply& r)
                     {
                         pending_.erase(e);

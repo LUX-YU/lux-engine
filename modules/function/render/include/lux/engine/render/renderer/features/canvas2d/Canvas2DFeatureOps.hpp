@@ -46,6 +46,7 @@ namespace lux::render
         Sprite2DInstanceData data{};
         float                priority{0.f};
         std::uint32_t        visible{1};
+        std::uint32_t        group{0};   ///< A2-04 offscreen group (0 = direct)
     };
     static_assert(std::is_trivially_copyable_v<AddSprite2DPayload>);
 
@@ -100,6 +101,7 @@ namespace lux::render
         Sprite2DHandle handle{};
         float          priority{0.f};
         std::uint32_t  visible{1};
+        std::uint32_t  group{0};   ///< A2-04 offscreen group (0 = direct)
     };
     static_assert(std::is_trivially_copyable_v<UpdateSprite2DKeyPayload>);
 
@@ -342,7 +344,7 @@ namespace lux::render
         /// Create one GPU-resident sprite; replies with {handle, status} (G-05).
         [[nodiscard]] RenderRequest<Sprite2DSlotReply> addSprite(
             RenderSceneId scene, const Sprite2DInstanceData& data,
-            float priority, bool visible = true);
+            float priority, bool visible = true, std::uint32_t group = 0);
 
         void removeSprite(RenderSceneId scene, Sprite2DHandle handle);
 
@@ -354,7 +356,8 @@ namespace lux::render
 
         void updateVisual(RenderSceneId scene, Sprite2DHandle handle,
                           const float uv[4], std::uint32_t tint, std::uint32_t texture_bindless);
-        void updateKey(RenderSceneId scene, Sprite2DHandle handle, float priority, bool visible);
+        void updateKey(RenderSceneId scene, Sprite2DHandle handle, float priority, bool visible,
+                       std::uint32_t group = 0);
         void setEnabled(RenderSceneId scene, bool enabled);
 
         // ── PixelField kind (F2-09) ──

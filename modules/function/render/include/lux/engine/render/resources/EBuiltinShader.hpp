@@ -96,6 +96,7 @@ namespace lux::render
     X(CANVAS2D_FIELD_FRAG,        canvas2d_pixel_field_frag)                                    \
     X(CANVAS2D_TILE_VERT,         canvas2d_tile_vert)                                           \
     X(CANVAS2D_TILE_FRAG,         canvas2d_tile_frag)                                           \
+    X(CANVAS2D_GROUP_COMPOSITE_FRAG, canvas2d_group_composite_frag)                             \
     /* Highlight outline (object highlight; editor selection is one client) */                   \
     X(HIGHLIGHT_MASK_VERT,        highlight_highlight_mask_vert)                                \
     X(HIGHLIGHT_MASK_FRAG,        highlight_highlight_mask_frag)                                \

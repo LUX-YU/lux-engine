@@ -51,7 +51,8 @@ namespace lux::render
             VkDeviceSize  output_pool_bytes{16ull * 1024 * 1024};
         };
 
-        explicit SkinningFeature(Config cfg = {});
+        SkinningFeature();
+        explicit SkinningFeature(Config cfg);
 
         std::string_view name() const override { return "Skinning"; }
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
@@ -80,5 +81,9 @@ namespace lux::render
 
         RGResourceHandle      out_pool_rg_{};
     };
+
+    // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
+    // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
+    inline SkinningFeature::SkinningFeature() : SkinningFeature(Config{}) {}
 
 } // namespace lux::render

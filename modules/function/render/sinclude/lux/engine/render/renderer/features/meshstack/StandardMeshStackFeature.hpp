@@ -37,11 +37,16 @@ namespace lux::render
             std::string name{"StandardMeshStack"};
         };
 
-        explicit StandardMeshStackFeature(Config cfg = {});
+        StandardMeshStackFeature();
+        explicit StandardMeshStackFeature(Config cfg);
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;   ///< no RG passes (resource owner)
     };
+
+    // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
+    // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
+    inline StandardMeshStackFeature::StandardMeshStackFeature() : StandardMeshStackFeature(Config{}) {}
 
 } // namespace lux::render

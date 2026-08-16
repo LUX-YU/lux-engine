@@ -47,7 +47,8 @@ namespace lux::render
             float       cull_distance{512.0f};  ///< 剔除距离(cell 超此距相机 → 休眠)
         };
 
-        explicit SpatialCullFeature(Config cfg = {});
+        SpatialCullFeature();
+        explicit SpatialCullFeature(Config cfg);
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
@@ -67,5 +68,9 @@ namespace lux::render
         SpatialCullParams params_{};                        ///< live, render-thread-owned tunable params
         std::vector<std::array<float, 3>> camera_scratch_;  ///< reused each frame
     };
+
+    // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
+    // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
+    inline SpatialCullFeature::SpatialCullFeature() : SpatialCullFeature(Config{}) {}
 
 } // namespace lux::render

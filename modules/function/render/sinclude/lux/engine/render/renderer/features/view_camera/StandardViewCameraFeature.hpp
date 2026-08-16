@@ -34,12 +34,17 @@ namespace lux::render
             std::string name{"StandardViewCamera"};
         };
 
-        explicit StandardViewCameraFeature(Config cfg = {});
+        StandardViewCameraFeature();
+        explicit StandardViewCameraFeature(Config cfg);
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
         void deallocateViewState(uint32_t view) override;  ///< evict the destroyed view's camera entry
         void addPasses(RGBuilder& builder) override;   ///< no RG passes (resource owner)
     };
+
+    // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
+    // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
+    inline StandardViewCameraFeature::StandardViewCameraFeature() : StandardViewCameraFeature(Config{}) {}
 
 } // namespace lux::render

@@ -5,12 +5,14 @@
 
 #include <imgui.h>
 #include <imgui_internal.h>
-#include <imgui_impl_glfw.h>
-
-#include <GLFW/glfw3.h>
+#include <imgui_impl_glfw.h>   // desktop imgui platform backend (GLFWwindow fwd-declared inside)
 
 #include <cassert>
 #include <chrono>
+#include <fstream>
+#include <iterator>
+#include <system_error>
+#include <utility>
 
 namespace lux::ui
 {
@@ -31,6 +33,15 @@ public:
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+        // NOTE on the multi-viewport crash that was here: a popup/window overflowing
+        // the main window edge (e.g. the Inspector's Add Component menu) spawns a
+        // secondary Vulkan swapchain, and its ImGuiViewport::Size could be captured
+        // uninitialised/torn and flow UNVALIDATED into vkCreateSwapchainKHR — a
+        // garbage/zero imageExtent that hard-crashed the render thread. The fix lives
+        // in the imgui backend itself: ImGui_ImplVulkanH_CreateWindowSwapChain now
+        // clamps the requested extent to the surface caps [minImageExtent,
+        // maxImageExtent] and skips creation when it is zero (imgui commit a6b2046c5,
+        // rebuilt/reinstalled 2026-07-12). Multi-viewport is safe again — keep it on.
         ImGui::StyleColorsDark();
         ImGui_ImplGlfw_InitForVulkan(window.handle(), true);
 
@@ -56,16 +67,28 @@ public:
         ImGui::DestroyContext();
     }
 
-    size_t registerPanel(Panel* panel)
+    [[nodiscard]] bool containsPanel(const Panel* panel) const noexcept
     {
-        auto id = panels_.insert(panel);
-        panel->setID(id);
+        for (const auto* registered : panels_.values())
+            if (registered == panel)
+                return true;
+        return false;
+    }
+
+    size_t registerPanel(Panel& panel)
+    {
+        auto id = panels_.insert(&panel);
+        panel.setID(id);
         return id;
     }
 
-    void unregisterPanel(Panel* panel)
+    void unregisterPanel(
+        std::size_t handle,
+        const Panel* expected_panel) noexcept
     {
-        panels_.erase(panel->id());
+        const auto* slot = panels_.tryGet(handle);
+        if (slot && *slot == expected_panel)
+            panels_.erase(handle);
     }
 
     void paintPanels()
@@ -79,8 +102,16 @@ public:
                 ImGuiCond_FirstUseEver);
             widget->beforePaint();
             bool open = true;
-            ImGui::Begin(widget->title().c_str(), &open);
-            widget->paint();
+            // Skip the panel BODY when Begin returns false — the window is collapsed
+            // or an UNSELECTED docked tab. Painting a hidden tab is not just waste:
+            // a panel hosting its own input-hit-testing canvas (the imgui-node-editor
+            // in FlowGraph / MaterialGraph) evaluates hover against the SAME dock
+            // rect the visible tab occupies, so e.g. right-clicking the Scene
+            // Viewport summoned the hidden FlowGraph's node palette. ImGui contract:
+            // End() must still be called regardless of Begin()'s return.
+            const bool body_visible = ImGui::Begin(widget->title().c_str(), &open);
+            if (body_visible)
+                widget->paint();
             ImGui::End();
             widget->afterPaint();
             if (!open)
@@ -190,14 +221,54 @@ UISystem::UISystem(lux::window::LuxWindow& window)
 
 UISystem::~UISystem() = default;
 
-size_t UISystem::registerPanel(Panel* panel)
+lux::cxx::expected<PanelRegistration, EPanelRegistrationError>
+UISystem::registerPanel(Panel& panel)
 {
-    return impl_->registerPanel(panel);
+    if (impl_->containsPanel(&panel))
+        return lux::cxx::unexpected(
+            EPanelRegistrationError::ALREADY_REGISTERED);
+    const auto handle = impl_->registerPanel(panel);
+    return PanelRegistration{*this, panel, handle};
 }
 
-void UISystem::unregisterPanel(Panel* panel)
+void UISystem::unregisterPanel(
+    std::size_t handle,
+    Panel* expected_panel) noexcept
 {
-    impl_->unregisterPanel(panel);
+    impl_->unregisterPanel(handle, expected_panel);
+}
+
+PanelRegistration::~PanelRegistration()
+{
+    reset();
+}
+
+PanelRegistration::PanelRegistration(PanelRegistration&& other) noexcept
+    : owner_(std::exchange(other.owner_, nullptr)),
+      panel_(std::exchange(other.panel_, nullptr)),
+      handle_(std::exchange(other.handle_, 0u))
+{}
+
+PanelRegistration& PanelRegistration::operator=(
+    PanelRegistration&& other) noexcept
+{
+    if (this != &other)
+    {
+        reset();
+        owner_ = std::exchange(other.owner_, nullptr);
+        panel_ = std::exchange(other.panel_, nullptr);
+        handle_ = std::exchange(other.handle_, 0u);
+    }
+    return *this;
+}
+
+void PanelRegistration::reset() noexcept
+{
+    if (owner_)
+        owner_->unregisterPanel(handle_, panel_);
+    owner_ = nullptr;
+    panel_ = nullptr;
+    handle_ = 0u;
 }
 
 void UISystem::setMainMenuBarHook(std::function<void()> hook)
@@ -244,17 +315,18 @@ void UISystem::newFrame()
             const auto elapsed = std::chrono::duration<float>(now - impl_->last_autosave_).count();
             if (elapsed >= io.IniSavingRate)
             {
-                ImGui::SaveIniSettingsToDisk(impl_->autosave_path_.string().c_str());
-                io.WantSaveIniSettings = false;
-                impl_->last_autosave_  = now;
+                // 走 saveLayoutToFile 而不是直接 SaveIniSettingsToDisk:落盘失败
+                // 要能被看见,并且脏标记只在**确实写成功**之后才清 —— 否则一次
+                // 失败的自动保存会把「还没存下来」这件事一起抹掉,下一轮不再重试。
+                if (saveLayoutToFile(impl_->autosave_path_))
+                {
+                    // 写失败:保留 WantSaveIniSettings,推后一个节流周期再试,
+                    // 免得每帧都去撞一个写不进的路径。
+                    impl_->last_autosave_ = now;
+                }
             }
         }
     }
-
-    // Flush pending panel-removal callbacks
-    for (auto& cb : panel_remove_callbacks_)
-        cb();
-    panel_remove_callbacks_.clear();
 
     // Update platform windows (multi-viewport).
     // Viewport create/resize/destroy now use the data-decoupled Ex path,
@@ -270,28 +342,66 @@ ImGuiContext* UISystem::context() const noexcept
 
 // ── Layout persistence ───────────────────────────────────────────────
 
-void UISystem::loadLayoutFromFile(const std::filesystem::path& path)
+std::error_code UISystem::loadLayoutFromFile(const std::filesystem::path& path)
 {
     // Always start from a clean settings store so the previous
     // project's windows/docks don't merge into the new layout.
     ImGui::ClearIniSettings();
 
-    std::error_code ec;
-    if (!path.empty() && std::filesystem::exists(path, ec) && !ec)
-        ImGui::LoadIniSettingsFromDisk(path.string().c_str());
+    // 收尾统一:无论从哪条路出去,都要压掉 Clear/Load 抬起的脏标记,
+    // 否则下一个 autosave tick 会立刻把文件重写一遍。
+    const auto finish = [](std::error_code ec) {
+        ImGui::GetIO().WantSaveIniSettings = false;
+        return ec;
+    };
 
-    // Suppress the "dirty" flag any internal Clear/Load may have raised
-    // so the next autosave tick doesn't immediately re-write the file.
-    ImGui::GetIO().WantSaveIniSettings = false;
+    if (path.empty())
+        return finish({});
+
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec) || ec)
+        return finish({});   // 没有布局文件是正常的:走 FirstUseEver 缺省
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return finish(std::make_error_code(std::errc::permission_denied));
+
+    const std::string ini{std::istreambuf_iterator<char>(in),
+                          std::istreambuf_iterator<char>()};
+    if (in.bad())
+        return finish(std::make_error_code(std::errc::io_error));
+
+    // 走内存版而不是 LoadIniSettingsFromDisk —— 后者自己吞掉打不开文件的情形,
+    // 「文件在但读不出来」和「文件不存在」在它那里长得一模一样。
+    ImGui::LoadIniSettingsFromMemory(ini.data(), ini.size());
+    return finish({});
 }
 
-void UISystem::saveLayoutToFile(const std::filesystem::path& path) const
+std::error_code UISystem::saveLayoutToFile(const std::filesystem::path& path) const
 {
     if (path.empty())
-        return;
-    ImGui::SaveIniSettingsToDisk(path.string().c_str());
+        return {};
+
+    std::size_t size = 0;
+    const char* ini  = ImGui::SaveIniSettingsToMemory(&size);
+    if (ini == nullptr)
+        return std::make_error_code(std::errc::invalid_argument);
+
+    // 自己落盘而不是 SaveIniSettingsToDisk:后者返回 void 且吞掉写失败,
+    // 而写失败恰恰是这个函数唯一值得报告的结果。
+    {
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out)
+            return std::make_error_code(std::errc::permission_denied);
+        out.write(ini, static_cast<std::streamsize>(size));
+        out.flush();
+        if (!out)
+            return std::make_error_code(std::errc::io_error);
+    }
+
     ImGui::GetIO().WantSaveIniSettings = false;
     impl_->last_autosave_              = std::chrono::steady_clock::now();
+    return {};
 }
 
 void UISystem::clearLayout()
@@ -308,16 +418,9 @@ void UISystem::setAutosaveTarget(std::filesystem::path path)
 
 /*static*/ std::vector<const char*> UISystem::requiredVulkanExtensions()
 {
-    bool success = (glfwInit() == GLFW_TRUE);
-    assert(("Can't initialize glfw.", success));
-    (void)success;
-
-    uint32_t extensions_count = 0;
-    const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&extensions_count);
-    std::vector<const char*> exts;
-    for (uint32_t i = 0; i < extensions_count; i++)
-        exts.push_back(glfw_extensions[i]);
-    return exts;
+    const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
+    assert(("Window backend has no Vulkan surface extensions.", !exts.empty()));
+    return {exts.begin(), exts.end()};
 }
 
 } // namespace lux::ui

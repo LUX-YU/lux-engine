@@ -1,9 +1,14 @@
 #pragma once
 #include <vector>
 #include <array>
+#include <cstdint>
 #include <cstring>
+#include <string_view>
+#include <utility>
 #include <vulkan/vulkan.h>
+#include <lux/cxx/compile_time/expected.hpp>
 #include "lux/engine/gapi/RenderDevice.hpp"
+#include "lux/engine/gapi/vk/SwapchainError.hpp"
 
 namespace lux::gapi::vk
 {
@@ -13,6 +18,209 @@ namespace lux::gapi::vk
 		std::vector<VkSurfaceFormatKHR> formats;
 		std::vector<VkPresentModeKHR>	presentModes;
 	};
+
+	struct SurfaceQueryOps final
+	{
+		PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR capabilities{nullptr};
+		PFN_vkGetPhysicalDeviceSurfaceFormatsKHR      formats{nullptr};
+		PFN_vkGetPhysicalDeviceSurfacePresentModesKHR present_modes{nullptr};
+
+		[[nodiscard]] static SurfaceQueryOps defaults() noexcept
+		{
+			return SurfaceQueryOps{
+				&vkGetPhysicalDeviceSurfaceCapabilitiesKHR,
+				&vkGetPhysicalDeviceSurfaceFormatsKHR,
+				&vkGetPhysicalDeviceSurfacePresentModesKHR,
+			};
+		}
+	};
+
+	using SurfaceCapabilitiesResult = lux::cxx::expected<
+		VkSurfaceCapabilitiesKHR,
+		SwapchainBuildError>;
+	using SurfaceFormatsResult = lux::cxx::expected<
+		std::vector<VkSurfaceFormatKHR>,
+		SwapchainBuildError>;
+	using SurfacePresentModesResult = lux::cxx::expected<
+		std::vector<VkPresentModeKHR>,
+		SwapchainBuildError>;
+	using SwapChainSupportResult = lux::cxx::expected<
+		SwapChainSupportDetails,
+		SwapchainBuildError>;
+
+	namespace detail
+	{
+		template <class T, class QueryFn>
+		[[nodiscard]] lux::cxx::expected<
+			std::vector<T>,
+			SwapchainBuildError>
+		enumerateSurfaceValues(
+			VkPhysicalDevice physical_device,
+			VkSurfaceKHR surface,
+			ESwapchainBuildStage stage,
+			QueryFn query) noexcept
+		{
+			if (physical_device == VK_NULL_HANDLE
+				|| surface == VK_NULL_HANDLE
+				|| query == nullptr)
+			{
+				return lux::cxx::unexpected(SwapchainBuildError{
+					stage,
+					std::nullopt,
+				});
+			}
+
+			// WSI lists may change between the count and value calls. Retry a
+			// small bounded number of times on VK_INCOMPLETE; returning the
+			// exact status is preferable to an unbounded loop during surface
+			// destruction churn.
+			for (std::uint32_t attempt = 0; attempt < 3; ++attempt)
+			{
+				std::uint32_t count = 0;
+				const VkResult count_result = query(
+					physical_device,
+					surface,
+					&count,
+					nullptr
+				);
+				if (count_result != VK_SUCCESS)
+				{
+					return lux::cxx::unexpected(SwapchainBuildError{
+						stage,
+						count_result,
+					});
+				}
+
+				const std::uint32_t capacity = count;
+				std::vector<T> values(capacity);
+				if (count == 0)
+					return values;
+
+				const VkResult values_result = query(
+					physical_device,
+					surface,
+					&count,
+					values.data()
+				);
+				if (values_result == VK_SUCCESS)
+				{
+					// A conforming implementation cannot report more values than
+					// the supplied capacity together with VK_SUCCESS. Treat that as
+					// a local contract violation instead of fabricating default data.
+					if (count > capacity)
+					{
+						return lux::cxx::unexpected(SwapchainBuildError{
+							stage,
+							std::nullopt,
+						});
+					}
+					values.resize(count);
+					return values;
+				}
+				if (values_result != VK_INCOMPLETE)
+				{
+					return lux::cxx::unexpected(SwapchainBuildError{
+						stage,
+						values_result,
+					});
+				}
+			}
+
+			return lux::cxx::unexpected(SwapchainBuildError{
+				stage,
+				VK_INCOMPLETE,
+			});
+		}
+
+		[[nodiscard]] inline SurfaceCapabilitiesResult querySurfaceCapabilities(
+			VkPhysicalDevice physical_device,
+			VkSurfaceKHR surface,
+			SurfaceQueryOps ops = SurfaceQueryOps::defaults()) noexcept
+		{
+			if (physical_device == VK_NULL_HANDLE
+				|| surface == VK_NULL_HANDLE
+				|| ops.capabilities == nullptr)
+			{
+				return lux::cxx::unexpected(SwapchainBuildError{
+					ESwapchainBuildStage::SURFACE_CAPABILITIES,
+					std::nullopt,
+				});
+			}
+
+			VkSurfaceCapabilitiesKHR capabilities{};
+			const VkResult result = ops.capabilities(
+				physical_device,
+				surface,
+				&capabilities
+			);
+			if (result != VK_SUCCESS)
+			{
+				return lux::cxx::unexpected(SwapchainBuildError{
+					ESwapchainBuildStage::SURFACE_CAPABILITIES,
+					result,
+				});
+			}
+			return capabilities;
+		}
+
+		[[nodiscard]] inline SurfaceFormatsResult querySurfaceFormats(
+			VkPhysicalDevice physical_device,
+			VkSurfaceKHR surface,
+			SurfaceQueryOps ops = SurfaceQueryOps::defaults()) noexcept
+		{
+			return enumerateSurfaceValues<VkSurfaceFormatKHR>(
+				physical_device,
+				surface,
+				ESwapchainBuildStage::SURFACE_FORMATS,
+				ops.formats
+			);
+		}
+
+		[[nodiscard]] inline SurfacePresentModesResult querySurfacePresentModes(
+			VkPhysicalDevice physical_device,
+			VkSurfaceKHR surface,
+			SurfaceQueryOps ops = SurfaceQueryOps::defaults()) noexcept
+		{
+			return enumerateSurfaceValues<VkPresentModeKHR>(
+				physical_device,
+				surface,
+				ESwapchainBuildStage::SURFACE_PRESENT_MODES,
+				ops.present_modes
+			);
+		}
+
+		[[nodiscard]] inline SwapChainSupportResult querySwapChainSupport(
+			VkPhysicalDevice physical_device,
+			VkSurfaceKHR surface,
+			SurfaceQueryOps ops = SurfaceQueryOps::defaults()) noexcept
+		{
+			auto capabilities = querySurfaceCapabilities(
+				physical_device,
+				surface,
+				ops
+			);
+			if (!capabilities)
+				return lux::cxx::unexpected(capabilities.error());
+
+			auto formats = querySurfaceFormats(physical_device, surface, ops);
+			if (!formats)
+				return lux::cxx::unexpected(formats.error());
+
+			auto present_modes = querySurfacePresentModes(
+				physical_device,
+				surface,
+				ops
+			);
+			if (!present_modes)
+				return lux::cxx::unexpected(present_modes.error());
+
+			return SwapChainSupportDetails{
+				*capabilities,
+				std::move(*formats),
+				std::move(*present_modes),
+			};
+		}
+	} // namespace detail
 
 	// TODO remove redundant member
 	class PhysicalDevice
@@ -102,11 +310,15 @@ namespace lux::gapi::vk
 			return EDeviceType::OTHER;
 		}
 
-		VkSurfaceCapabilitiesKHR surfaceCapabilities(VkSurfaceKHR surface) const
+		[[nodiscard]] SurfaceCapabilitiesResult surfaceCapabilities(
+			VkSurfaceKHR surface,
+			SurfaceQueryOps ops = SurfaceQueryOps::defaults()) const noexcept
 		{
-			VkSurfaceCapabilitiesKHR surface_properties;
-			vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_physical_device, surface, &surface_properties);
-			return surface_properties;
+			return detail::querySurfaceCapabilities(
+				_physical_device,
+				surface,
+				ops
+			);
 		}
 
 		bool surfaceSupport(VkSurfaceKHR surface, uint32_t queue_family_index) const
@@ -116,22 +328,22 @@ namespace lux::gapi::vk
 			return supported == VK_TRUE;
 		}
 
-		std::vector<VkSurfaceFormatKHR> supportedSurfaceFormats(VkSurfaceKHR surface) const
+		[[nodiscard]] SurfaceFormatsResult supportedSurfaceFormats(
+			VkSurfaceKHR surface,
+			SurfaceQueryOps ops = SurfaceQueryOps::defaults()) const noexcept
 		{
-			uint32_t format_count;
-			vkGetPhysicalDeviceSurfaceFormatsKHR(_physical_device, surface, &format_count, nullptr);
-			std::vector<VkSurfaceFormatKHR> formats(format_count);
-			vkGetPhysicalDeviceSurfaceFormatsKHR(_physical_device, surface, &format_count, formats.data());
-			return formats;
+			return detail::querySurfaceFormats(_physical_device, surface, ops);
 		}
 
-		std::vector<VkPresentModeKHR> supportedPresentModes(VkSurfaceKHR surface) const
+		[[nodiscard]] SurfacePresentModesResult supportedPresentModes(
+			VkSurfaceKHR surface,
+			SurfaceQueryOps ops = SurfaceQueryOps::defaults()) const noexcept
 		{
-			uint32_t present_mode_count;
-			vkGetPhysicalDeviceSurfacePresentModesKHR(_physical_device, surface, &present_mode_count, nullptr);
-			std::vector<VkPresentModeKHR> present_modes(present_mode_count);
-			vkGetPhysicalDeviceSurfacePresentModesKHR(_physical_device, surface, &present_mode_count, present_modes.data());
-			return present_modes;
+			return detail::querySurfacePresentModes(
+				_physical_device,
+				surface,
+				ops
+			);
 		}
 
 		VkPresentModeKHR selectPresentMode(VkSurfaceKHR surface, const std::vector<VkPresentModeKHR>& modes, bool vsync) const
@@ -179,9 +391,15 @@ namespace lux::gapi::vk
 			return formats[0];
 		}
 
-		SwapChainSupportDetails swapChainSupport(VkSurfaceKHR surface) const
+		[[nodiscard]] SwapChainSupportResult swapChainSupport(
+			VkSurfaceKHR surface,
+			SurfaceQueryOps ops = SurfaceQueryOps::defaults()) const noexcept
 		{
-			return{ surfaceCapabilities(surface), supportedSurfaceFormats(surface), supportedPresentModes(surface) };
+			return detail::querySwapChainSupport(
+				_physical_device,
+				surface,
+				ops
+			);
 		}
 
 		bool presentSupport(VkSurfaceKHR surface, uint32_t queue_family_index) const

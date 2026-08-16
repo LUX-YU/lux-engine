@@ -9,7 +9,7 @@
 //  open" class of bug.
 // ============================================================================
 
-#include <lux/engine/asset/ModelAsset.hpp>   // ModelAsset + lux::rdesc::ModelNode
+#include <lux/engine/resource/asset/ModelAsset.hpp>   // ModelAsset + lux::rdesc::ModelNode
 
 #include <string>
 #include <vector>

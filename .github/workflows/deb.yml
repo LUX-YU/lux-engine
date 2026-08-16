@@ -1,10 +1,9 @@
 name: deb
 
-# Builds the lux-engine RUNTIME tier (LUX_BUILD_EDITOR=OFF) as per-layer .debs
-# (lux-engine-platform/core/resource/function), amd64 + arm64. LUX deps come from
-# the LUX apt repo; the rest from Ubuntu. The external-dep list below is a first
-# pass — expect to iterate (EnTT/meshoptimizer/spirv-cross/shaderc availability
-# on jammy is uncertain; missing ones get packaged into lux-apt or fixed in code).
+# Builds the PLAYER product profile as component .debs, amd64 + arm64. Editor and
+# offline Toolchain targets are not configured; host BUILD_TOOL dependencies used
+# to generate runtime assets remain build inputs but never enter Player's link or
+# install closure. LUX dependencies come from the LUX apt repo.
 on:
   push:
     branches: [ main, master ]
@@ -41,17 +40,12 @@ jobs:
           sudo apt-get update && sudo apt-get install -y
           cmake ninja-build g++ g++-12 dpkg-dev pkg-config
           libeigen3-dev libglfw3-dev libvulkan-dev libassimp-dev libluajit-5.1-dev
-          libspirv-cross-c-shared-dev libstb-dev
+          libspirv-cross-c-shared-dev libstb-dev libasio-dev libtbb-dev
           libclang-dev libfmt-dev sol2
           lux-cmake-toolset lux-cxx imgui stduuid entt vulkanmemoryallocator
 
-      # shaderc isn't packaged for Ubuntu 22.04 (it lands in 24.04's libshaderc-dev)
-      # and LunarG's SDK apt repo is amd64-only, so build it from source. It's slow,
-      # so the install tree is cached (keyed on version+arch): the first run builds
-      # (~10 min), later runs restore in seconds. Installed to /usr so asset's
-      # find_package(Vulkan COMPONENTS shaderc_combined) picks up the STATIC
-      # libshaderc_combined.a — baked into asset.so, keeping the .deb self-contained
-      # (shaderc is PRIVATE / cook-only, so consumers never need it).
+      # shaderc is a host BUILD_TOOL dependency used while generating built-in
+      # runtime shaders. It is not linked into the Player runtime closure.
       - name: Cache shaderc
         id: shaderc-cache
         uses: actions/cache@v4
@@ -101,7 +95,7 @@ jobs:
           -DCMAKE_INSTALL_PREFIX=/usr
           -DCMAKE_C_COMPILER=gcc-12
           -DCMAKE_CXX_COMPILER=g++-12
-          -DLUX_BUILD_EDITOR=OFF
+          -DLUX_BUILD_PROFILE=PLAYER
           -DBUILD_TESTING=OFF
           ${{ steps.ver.outputs.extra }}
 

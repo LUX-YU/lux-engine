@@ -1,7 +1,7 @@
 #include <lux/engine/ui/ImGuiFeature.hpp>
 
 #include <lux/engine/render/graph/RGBuilder.hpp>
-#include <lux/engine/render/graph/RGEnums.hpp>
+#include <lux/engine/function/render/graph/RGEnums.hpp>
 
 #include <imgui_impl_vulkan.h>
 

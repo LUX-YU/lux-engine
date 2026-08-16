@@ -1,0 +1,51 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+
+layout(early_fragment_tests) in;
+
+const uint kPickTokenBits = 19u;
+const uint kMaximumQuantizedDepth = (1u << (32u - kPickTokenBits)) - 1u;
+
+layout(location = 0) in float vViewDistance;
+layout(location = 1) flat in float vTransitionCoverage;
+layout(location = 2) flat in uint vTransitionSeed;
+layout(location = 3) flat in uint vTransitionFadeOut;
+
+#include "transition_dither.glsl"
+
+// Feature-private set. Keeping the explicit slot while routing this module
+// through the lglsl emitter gives PipelineManager the reflected layout needed
+// to allocate the transient result descriptor set.
+layout(set = 2, binding = 0, std430) buffer ResultBuffer
+{
+    uint packed_depth_token;
+} uResult;
+
+layout(push_constant) uniform PickPush
+{
+    uint scene_index;
+    uint view_index;
+    uint instance_slot;
+    uint pick_token;
+    float normalized_x;
+    float normalized_y;
+    float maximum_distance;
+    float scene_time;
+} pc;
+
+void main()
+{
+    luxApplyDirectedTransitionCoverage(
+        vTransitionCoverage, vTransitionSeed, vTransitionFadeOut != 0u);
+    if (vViewDistance < 0.0 || vViewDistance > pc.maximum_distance)
+        discard;
+    float normalized_depth = clamp(
+        log2(1.0 + vViewDistance) / log2(1.0 + pc.maximum_distance),
+        0.0,
+        1.0);
+    uint quantized_depth = uint(round(
+        normalized_depth * float(kMaximumQuantizedDepth)));
+    atomicMin(
+        uResult.packed_depth_token,
+        (quantized_depth << kPickTokenBits) | pc.pick_token);
+}

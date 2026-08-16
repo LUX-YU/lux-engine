@@ -33,8 +33,18 @@ namespace lux::input
         float scale = 1.0f;
     };
 
+    /// Digital "any finger down" source (mobile backends; never fires on
+    /// desktop). Positions/gestures are NOT actions — read them from
+    /// InputSnapshot::activeTouches() in gameplay code. A mobile backend may
+    /// additionally synthesize the primary touch as cursor + LEFT button, so
+    /// existing pointer bindings keep working; bind TouchInput only for
+    /// actions that must react to raw touch presence.
+    struct TouchInput
+    {
+    };
+
     // -------------------------------------------------------------------------
-    // PhysicalInput — currently keyboard/mouse only.
+    // PhysicalInput — currently keyboard/mouse/touch.
     //
     // TODO: Migrate to a device-agnostic RawControlPath for gamepad, rebinding,
     //       device slot, and local multiplayer support:
@@ -45,6 +55,6 @@ namespace lux::input
     //       RawControlKind control_kind;
     //   };
     // -------------------------------------------------------------------------
-    using PhysicalInput = std::variant<KeyInput, MouseButtonInput, MouseAxisInput>;
+    using PhysicalInput = std::variant<KeyInput, MouseButtonInput, MouseAxisInput, TouchInput>;
 
 } // namespace lux::input

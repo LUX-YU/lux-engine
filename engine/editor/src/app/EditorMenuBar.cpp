@@ -1,16 +1,30 @@
 #include "app/EditorMenuBar.hpp"
-#include "app/ImportController.hpp"   // importController().paintDialog()
+#include "app/ImportController.hpp"      // importController().paintDialog()
+#include "app/AssetDeleteController.hpp" // assetDeleteController().paintDialog()
+#include <lux/engine/editor/import/AssetImporter.hpp>   // importableExtensions (audit 7.2)
+
+// ★ 这里曾有 `kNew2DSceneCapabilities`（批 5 删除）——新建 2D 场景时写进文件头的
+//   能力掩码，值是 `Core | ImageRendering | FlipbookAnimation`，注释自称
+//   「Pixel/physics stay opt-in」。
+//
+//   问题是**没有 in 可 opt**：掩码只在这里写一次，存盘原样回显，全仓没有任何修改
+//   它的入口。于是编辑器建的 2D 场景永远只有那三位，想要物理/像素仿真只能手改
+//   文件头或写 C++ —— 这也是 2D 物理的 demo 是自组 plan 的 C++ 测试而不是编辑器
+//   场景的原因。掩码删了，条目全装，能不能用由「场景里有没有那个组件」回答。
+
 
 #include <lux/engine/editor/app/LuxEditor.hpp>     // the editor command surface + accessors
+#include <lux/engine/authoring/project/Project.hpp>
 #include <lux/engine/editor/app/FileDialog.hpp>    // pick/open/save native dialogs
-#include <lux/engine/launcher/SpawnHelpers.hpp>    // spawnLauncher (Switch Project)
-#include <lux/engine/project/RecentProjects.hpp>   // loadRecentProjects
-#include <lux/engine/asset/PakCook.hpp>            // cookDirectoryToPak (Cook Content)
+#include <lux/engine/hosts/launcher/SpawnHelpers.hpp>    // spawnLauncher (Switch Project)
+#include <lux/engine/authoring/project/RecentProjects.hpp>
 #include <lux/engine/ui/UISystem.hpp>              // saveLayoutToFile / clearLayout
 #include <lux/engine/ui/Panel.hpp>                 // Window menu: title / isVisible / setVisible
+#include <lux/engine/log/Log.hpp>                  // 保存失败要让用户看见(§7.1)
 
 #include <imgui.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -64,7 +78,7 @@ namespace lux::editor
 
                     if (ImGui::BeginMenu("Recent Projects"))
                     {
-                        const auto recents = lux::project::loadRecentProjects();
+                        const auto recents = lux::authoring::loadRecentProjects();
                         if (recents.empty())
                         {
                             ImGui::MenuItem("(none)", nullptr, false, false);
@@ -92,8 +106,17 @@ namespace lux::editor
                                         have_project))
                     {
                         if (editor_.currentProject())
-                            editor_.uiSystem().saveLayoutToFile(
-                                editor_.currentProject()->layoutPath());
+                        {
+                            // 用户主动点了"保存布局",失败必须说 —— 菜单点完没
+                            // 反应会被当成保存成功。
+                            const auto path = editor_.currentProject()->layoutPath();
+                            if (const auto ec = editor_.uiSystem().saveLayoutToFile(path))
+                            {
+                                std::fprintf(stderr,
+                                    "[LuxEditor] 保存布局失败:%s (%s)\n",
+                                    path.string().c_str(), ec.message().c_str());
+                            }
+                        }
                     }
 
                     if (ImGui::MenuItem("Reset Layout", nullptr, false,
@@ -143,17 +166,42 @@ namespace lux::editor
 
                 if (ImGui::BeginMenu("Scene"))
                 {
+                    // New scene = pick a path, select one presentation
+                    // contribution in LXWA, then open it.
+                    const auto new_scene = [this](
+                        bool spatial_2d,
+                        const char* def_name)
+                    {
+                        editor_.enqueue([this, spatial_2d, def_name]
+                        {
+                            const std::filesystem::path def =
+                                editor_.currentProject()
+                                    ? editor_.currentProject()->worldsRoot()
+                                    : std::filesystem::path{};
+                            auto p = saveFileDialog(
+                                editor_.nativeWindowHandle(),
+                                { { "Lux World", "luxworld" } }, def, def_name);
+                            if (p && !p->empty())
+                                (void)editor_.newScene(*p, spatial_2d);
+                        });
+                    };
+                    if (ImGui::MenuItem("New 3D Scene..."))
+                        new_scene(false, "New3D.luxworld");
+                    if (ImGui::MenuItem("New 2D Scene..."))
+                        new_scene(true, "New2D.luxworld");
+                    ImGui::Separator();
+
                     if (ImGui::MenuItem("Open..."))
                     {
                         editor_.enqueue([this]
                         {
                             const std::filesystem::path def =
                                 editor_.currentProject()
-                                    ? editor_.currentProject()->scenesRoot()
+                                    ? editor_.currentProject()->worldsRoot()
                                     : std::filesystem::path{};
                             auto p = openFileDialog(
                                 editor_.nativeWindowHandle(),
-                                { { "Lux Scene", "luxscene" } }, def);
+                                { { "Lux World", "luxworld" } }, def);
                             if (p && !p->empty()) (void)editor_.openScene(*p);
                         });
                     }
@@ -162,14 +210,24 @@ namespace lux::editor
                     const bool have_scene_path =
                         have_scene && !editor_.currentScenePath().empty();
                     if (ImGui::MenuItem("Save", nullptr, false, have_scene_path))
-                        (void)editor_.saveScene();
+                    {
+                        // 此前是 `(void)editor_.saveScene();` —— 用户**主动点了保存**,
+                        // 返回值被显式丢弃,失败时连 stderr 都没有:界面上与保存成功
+                        // 完全一样。saveScene 是 [[nodiscard]] 的,那个 (void) 正是
+                        // 在压制编译器的提醒。
+                        if (!editor_.saveScene())
+                            lux::log::error("editor", "保存场景失败:{}",
+                                            editor_.currentScenePath().string());
+                        else
+                            editor_.toasts().push("场景已保存", ToastLevel::Success);
+                    }
 
                     if (ImGui::MenuItem("Save As...", nullptr, false, have_scene))
                     {
                         editor_.enqueue([this]
                         {
                             std::filesystem::path def_dir;
-                            std::string           def_name = "Main.luxscene";
+                            std::string           def_name = "Main.luxworld";
                             if (!editor_.currentScenePath().empty())
                             {
                                 def_dir  = editor_.currentScenePath().parent_path();
@@ -177,11 +235,13 @@ namespace lux::editor
                             }
                             else if (editor_.currentProject())
                             {
-                                def_dir = editor_.currentProject()->scenesRoot();
+                                def_dir = editor_.currentProject()->worldsRoot();
                             }
                             auto p = saveFileDialog(
                                 editor_.nativeWindowHandle(),
-                                { { "Lux Scene", "luxscene" } }, def_dir, def_name);
+                                { { "Lux World", "luxworld" } },
+                                def_dir,
+                                def_name);
                             if (p && !p->empty()) (void)editor_.saveSceneAs(*p);
                         });
                     }
@@ -202,16 +262,19 @@ namespace lux::editor
                             editor_.currentProject()
                                 ? editor_.currentProject()->contentRoot()
                                 : std::filesystem::path{};
+                        // Filter derived from the importer registry (audit 7.2:
+                        // the dialog can no longer offer a format the importer
+                        // rejects). One "Importable" group, ext list built from
+                        // AssetImporter::importableExtensions().
+                        std::string exts;
+                        for (auto e : lux::editor::importableExtensions())
+                        {
+                            if (!exts.empty()) exts += ',';
+                            exts += e.substr(1);   // strip the leading dot
+                        }
                         auto p = openFileDialog(
                             editor_.nativeWindowHandle(),
-                            // assimp reads many formats; expose the ones users
-                            // actually have. .mtl is NOT listed: it is a material
-                            // companion to .obj, loaded automatically when the
-                            // .obj that references it is imported — you pick the
-                            // .obj, not the .mtl. (.blend support is Blender-
-                            // version-sensitive in assimp.)
-                            { { "3D model", "gltf,glb,fbx,obj,dae,blend,ply,stl,3ds,3mf,x,lwo,lws,ms3d,ase,ifc,dxf,off" },
-                              { "Texture",  "png,jpg,jpeg,tga,bmp,hdr,ktx,dds,exr,psd,gif" } },
+                            { { "Importable asset", exts.c_str() } },
                             def);
                         if (p && !p->empty()) editor_.importExternalAsset(*p);
                     });
@@ -225,25 +288,7 @@ namespace lux::editor
                 {
                     editor_.enqueue([this]
                     {
-                        auto* project = editor_.currentProject();
-                        if (!project) return;
-                        const auto out_dir =
-                            project->contentRoot().parent_path() / "Cooked";
-                        std::error_code mk_ec;
-                        std::filesystem::create_directories(out_dir, mk_ec);
-                        const auto out_pak = out_dir
-                            / (project->manifest().name + ".luxpak");
-                        auto cooked = lux::asset::cookDirectoryToPak(
-                            project->contentRoot(), out_pak, "/Game");
-                        if (cooked)
-                            std::fprintf(stderr,
-                                "[LuxEditor] cooked %zu asset(s) -> %s\n",
-                                cooked.value().asset_count,
-                                out_pak.string().c_str());
-                        else
-                            std::fprintf(stderr,
-                                "[LuxEditor] cook FAILED: %s\n",
-                                cooked.error().c_str());
+                        editor_.cookProjectContent();
                     });
                 }
 
@@ -263,12 +308,52 @@ namespace lux::editor
                 // Every registered window gets a visibility checkbox — no hardcoded
                 // list, so a newly registered panel (built-in or plugin) appears here
                 // automatically. Display label is the panel's live title().
-                for (const auto& w : editor_.panels().windows())
+                auto tools = editor_.tools();
+                for (const auto& panel : tools.snapshot())
                 {
-                    bool vis = w.panel->isVisible();
-                    if (ImGui::MenuItem(w.panel->title().c_str(), nullptr, &vis))
-                        w.panel->setVisible(vis);
+                    if (!panel.active)
+                        continue;
+                    bool visible = panel.visible;
+                    if (ImGui::MenuItem(
+                            panel.display_name.c_str(),
+                            nullptr,
+                            &visible))
+                    {
+                        (void)tools.requestVisible(
+                            panel.contribution.view(),
+                            visible);
+                    }
                 }
+                ImGui::EndMenu();
+            }
+
+            // (Entity creation moved OUT of the menu bar, per user ruling:
+            // it lives where mature editors put it, in the Hierarchy panel's `+`
+            // button / right-click and the viewport right-click, backed by the
+            // SpawnRegistry. See LuxEditor::drawSpawnMenuItems.)
+
+            // ── Run menu — editor Edit/Play. A top-level menu (ALWAYS visible, same
+            //    mechanism as File/Window) so it renders regardless of scene state;
+            //    Play enables only once a scene is open. The scene snapshots itself on
+            //    Play and restores on Stop; scripts + sim run only while playing.
+            //    Enqueued (deferred) — enter/exit mutate the World + do file I/O, which
+            //    is unsafe inside the live ImGui frame this hook paints in.
+            if (ImGui::BeginMenu("Run"))
+            {
+                const bool have_scene = editor_.currentScene() != nullptr;
+                const bool playing    = editor_.isPlaying();
+
+                if (ImGui::MenuItem("Play", nullptr, false, have_scene && !playing))
+                    editor_.enqueue([this]{ editor_.enterPlayMode(); });
+                if (ImGui::MenuItem("Stop", nullptr, false, playing))
+                    editor_.enqueue([this]{ editor_.exitPlayMode(); });
+
+                ImGui::Separator();
+                if (!have_scene)
+                    ImGui::TextDisabled("Open a scene first (File > Scene)");
+                else
+                    ImGui::TextDisabled(playing ? "State: Playing" : "State: Editing");
+
                 ImGui::EndMenu();
             }
 
@@ -279,6 +364,10 @@ namespace lux::editor
         // is handled by native OS dialogs from the menu items above, so there is
         // no in-ImGui path prompt to mount here anymore.
         editor_.importController().paintDialog();
+
+        // 资产删除确认对话框(列引用者 + 强删)—— 同为顶层挂载的 modal;
+        // paint 只置位,执行在主循环 frame-OPEN 段的 tick。
+        editor_.assetDeleteController().paintDialog();
     }
 
 } // namespace lux::editor

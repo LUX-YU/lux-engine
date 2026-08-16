@@ -4,10 +4,11 @@
 #include <lux/engine/editor/import/AssetImporter.hpp>   // isModelExtension / importExternalFile / ImportResult
 #include <lux/engine/editor/panels/AssetBrowser.hpp>    // rescan()
 #include <lux/engine/editor/panels/ToastQueue.hpp>      // ToastQueue::push / ToastLevel
-#include <lux/engine/editor/project/Project.hpp>        // contentRoot()
-#include <lux/engine/asset/AssetManager.hpp>            // importExternalFile arg
+#include <lux/engine/authoring/project/Project.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>            // importExternalFile arg
+#include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 
-#include <format>
+#include <lux/engine/platform/FormatCompat.h>
 #include <string>
 
 namespace lux::editor
@@ -35,7 +36,7 @@ namespace lux::editor
         if (source.empty() || !std::filesystem::exists(source))
         {
             editor_.toasts().push(
-                std::format("Import failed: '{}' not found.", source.string()),
+                lux::format("Import failed: '{}' not found.", source.string()),
                 ToastLevel::Error);
             return;
         }
@@ -62,31 +63,84 @@ namespace lux::editor
             return;
         }
 
-        const auto report = importExternalFile(
-            source, project->contentRoot(), editor_.assetManagerShared(), options);
+        // 盘上判重(批H2):池上散管理器没有活账本的确定性 id 碰撞闸,判重
+        // 提前到派发时看**产物** —— models 看 .luxmodel manifest(manifest
+        // 最后写,恰合「崩溃留下无 manifest 目录可重导」的既有恢复设计),
+        // textures 看 Textures/<stem>.luxasset。真重导入仍是记档项 §1.9。
+        const auto stem = source.stem().string();
+        bool already = false;
+        std::error_code ec;
+        if (isModelExtension(source.extension().string()))
+            already = std::filesystem::exists(
+                project->contentRoot() / "Models" / stem / (stem + ".luxmodel"), ec);
+        else
+            already = std::filesystem::exists(
+                project->contentRoot() / "Textures" / (stem + ".luxasset"), ec);
+        if (already)
+        {
+            editor_.toasts().push(
+                lux::format("'{}' is already imported — re-import of edited "
+                            "sources is not yet supported (§1.9).",
+                            source.filename().string()),
+                ToastLevel::Warning);
+            return;
+        }
 
-        // Surface the new files immediately regardless of outcome — a partial
-        // import may still have written some sub-assets. One broadcast refreshes
-        // BOTH the browser (filesystem walk) and the registry (picker index);
-        // this used to only rescan the browser, leaving new textures missing from
-        // the inspector / material-graph pickers until some later refresh.
-        editor_.events().content_changed.emit({});
+        // 发布即返回：解析/转码/写盘在 CPU pool（散管理器，零活账本
+        // 触碰）；结果由 MainThreadScheduler 交回本 controller 提交账本与 UI。
+        auto job       = std::make_shared<const ImportJob>(
+            ImportJob{ source, project->contentRoot(), options });
+        const auto id  = ++next_import_id_;
+        editor_.toasts().push(
+            lux::format("Importing '{}'…", source.filename().string()),
+            ToastLevel::Info);
+        if (!import_dispatch_ || !import_dispatch_(id, std::move(job)))
+        {
+            editor_.toasts().push(
+                "Import queue is stopping or full.",
+                ToastLevel::Error);
+        }
+    }
+
+    void ImportController::adoptImportResult(
+        std::shared_ptr<ImportReport> report_owner,
+        const std::filesystem::path& source)
+    {
+        if (!report_owner) return;
+        const auto& report = *report_owner;
+
+        // 主线程注册产物(账本线程契约):Shells 惰性路径,工程打开同款。
+        if (!report.written.empty())
+            (void)registerImportedFiles(report.written,
+                                        editor_.assetManagerShared());
+
+        // Publish one committed fact per successfully written asset. Partial
+        // imports remain visible without collapsing their identity into a
+        // project-wide invalidation.
+        for (const auto& path : report.written)
+        {
+            const auto probe = lux::asset::readAssetHeader(path);
+            if (probe.id.is_nil()) continue;
+            editor_.events().publish(EditorAssetChanged{
+                probe.id,
+                EEditorAssetChange::ADDED,
+                editor_.assetManagerShared()->contentRevision(probe.id),
+                path
+            });
+        }
 
         if (report.result == ImportResult::OK)
         {
             editor_.toasts().push(
-                std::format("Imported '{}'  ({} file(s))",
+                lux::format("Imported '{}'  ({} file(s))",
                             source.filename().string(), report.written.size()),
                 ToastLevel::Success);
         }
         else
         {
-            const bool already =
-                report.result == ImportResult::ImportFailed &&
-                report.message.find("already imported") != std::string::npos;
             editor_.toasts().push(
-                std::format("Import failed: {}", report.message),
-                already ? ToastLevel::Warning : ToastLevel::Error);
+                lux::format("Import failed: {}", report.message),
+                ToastLevel::Error);
         }
     }
 

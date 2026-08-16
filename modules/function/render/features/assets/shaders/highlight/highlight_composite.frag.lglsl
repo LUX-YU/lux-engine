@@ -1,0 +1,34 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+// =========================================================================
+//  highlight_composite.frag — composites the soft OUTER halo over SceneColor.
+//
+//  Samples the BLURRED mask (uBlur, the H+V Gaussian of the silhouette) and the
+//  SHARP mask (uMask). The halo is the blurred field with the interior cut out:
+//      outer = clamp(blurred - inside, 0, 1)
+//  so the halo appears only OUTSIDE the silhouette and the object's own surface
+//  stays untouched (UE-style highlight outline). Alpha-blended onto SceneColor.
+//
+//  Reuses the fullscreen tonemap.vert triangle (vUV at location 0). Pipeline has
+//  alpha blending ENABLED (SRC_ALPHA / ONE_MINUS_SRC_ALPHA).
+// =========================================================================
+// Resource + PC declarations are GENERATED from HighlightCompositePassParams.hpp
+// (L2-1): uBlur/uMask (binding = field declaration order) + the PC block live
+// in the emitted header — C++ and GLSL share one source now.
+#include "HighlightCompositePassParams.glsl"
+
+layout(location = 0) in  vec2 vUV;
+layout(location = 0) out vec4 outColor;
+
+void main()
+{
+    float blurred = texture(uBlur, vUV).r;
+    float inside  = texture(uMask, vUV).r;
+
+    float outer = clamp(blurred - inside, 0.0, 1.0);   // halo OUTSIDE the silhouette only
+    float a     = clamp(outer * uPC.intensity, 0.0, 1.0);
+    if (a <= 0.0)
+        discard;
+
+    outColor = vec4(uPC.color_r, uPC.color_g, uPC.color_b, a);
+}

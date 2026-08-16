@@ -44,9 +44,11 @@ namespace lux::gapi::vk
 			}
 		}
 
-		void waitIdle()
+		[[nodiscard]] VkResult waitIdle() noexcept
 		{
-			VK_FUNC_INVOKE(vkDeviceWaitIdle, "Failed to wait for device idle", device);
+			if (device == VK_NULL_HANDLE)
+				return VK_ERROR_INITIALIZATION_FAILED;
+			return vkDeviceWaitIdle(device);
 		}
 
 		Queue getQueue(uint32_t queueFamilyIndex, uint32_t queueIndex)
@@ -162,7 +164,7 @@ namespace lux::gapi::vk
 				}
 			}
 			
-			// 添加现代 Vulkan 扩展（修复问题 B）
+			// Add modern Vulkan extensions (fixes issue B)
 			if (IsExtensionAvailable(properties, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)) {
 				device_extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
 			}

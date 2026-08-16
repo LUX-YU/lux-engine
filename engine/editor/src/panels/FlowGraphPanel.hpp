@@ -14,21 +14,27 @@
 //  not installed).
 // ============================================================================
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
-#include <lux/engine/flowforge/FlowGraph.hpp>
-#include <lux/engine/flowforge/NodeRegistry.hpp>
-#include <lux/engine/graphkit/GraphEditor.hpp>
+#include <lux/engine/resource/asset/Asset.hpp>   // asset_id_t, EAssetType
+#include <lux/engine/events/DomainEvents.hpp>
+#include <lux/engine/authoring/flowforge/FlowGraph.hpp>
+#include <lux/engine/authoring/flowforge/NodeRegistry.hpp>
+#include <lux/engine/editor/framework/graphkit/GraphEditor.hpp>
 #include <lux/engine/ui/Panel.hpp>
 
 #if LUX_FLOWFORGE_HAS_MLIR
-#include <memory>
 namespace lux::flowforge { class IRContext; class MLIRBuilder; }
 #endif
 
+namespace lux::asset { class AssetManager; }
+
 namespace lux::editor
 {
+    class AssetRegistry;
     /// IGraphView adapter over a borrowed flowforge::FlowGraph.
     ///  - GraphNodeRef.id  = the FlowGraph sparse-set INDEX (NodeStorage.index;
     ///    recycled on delete — the GraphKit bimap purges eagerly).
@@ -130,6 +136,26 @@ namespace lux::editor
         /// directly — never through the GraphKit port).
         const lux::flowforge::FlowGraph& graph() const { return graph_; }
 
+        /// Wire the project asset index + asset manager (for "Save as
+        /// Asset" / openAsset) + process DomainEvents (to announce a committed
+        /// saved graph). registry/events borrowed (owned by host); manager shared.
+        void setAssetServices(AssetRegistry* registry,
+                              std::shared_ptr<lux::asset::AssetManager> manager,
+                              lux::events::DomainEvents* events);
+
+        /// Open a FLOW_GRAPH asset in the editor (double-click in the asset
+        /// browser). The persisted graph carries node positions, so the
+        /// layout is restored.
+        void openAsset(const lux::asset::asset_id_t& id);
+
+        /// Background precompile on save: called with the saved asset's id right
+        /// after a successful Save-as-Asset, so the AOT cache is warm before
+        /// the next Play. Wired by the host to FlowForgeCompilerService.
+        using PrecompileHook =
+            std::function<void(lux::asset::AssetManager&,
+                               const lux::asset::asset_id_t&)>;
+        void setPrecompileHook(PrecompileHook hook) { precompile_hook_ = std::move(hook); }
+
     private:
         void paint() override;
 
@@ -140,11 +166,30 @@ namespace lux::editor
         /// always starts as a runnable Hello World.
         void buildHelloWorldGraph();
 
-        lux::flowforge::FlowGraph    graph_;
-        lux::flowforge::NodeRegistry registry_;
-        FlowGraphView                view_{ graph_, registry_ };
-        FlowSchema                   schema_{ graph_, registry_, view_ };
-        lux::graphkit::GraphEditor   editor_;
+        /// Serialize the current graph into a FlowGraphAsset and persist it
+        /// under <project>/FlowGraphs/<name>.luxasset + the modal name popup.
+        bool saveAsAsset(const std::string& name, std::string* err);
+        void drawSavePopup();
+
+        lux::flowforge::FlowGraph     graph_;
+        // The PROCESS-WIDE registry: the graph serializer re-instantiates
+        // native-call nodes by creator name through NodeRegistry::global(),
+        // so the panel registers its natives there (not in a private copy).
+        lux::flowforge::NodeRegistry& registry_ = lux::flowforge::NodeRegistry::global();
+        FlowGraphView                 view_{ graph_, registry_ };
+        FlowSchema                    schema_{ graph_, registry_, view_ };
+        lux::graphkit::GraphEditor    editor_;
+
+        // Asset services (borrowed/shared; may be null when no project).
+        AssetRegistry*                             asset_registry_{ nullptr };
+        std::shared_ptr<lux::asset::AssetManager>  asset_manager_;
+        lux::events::DomainEvents*                 events_{ nullptr };
+        PrecompileHook                             precompile_hook_;
+
+        bool        save_popup_open_{ false };
+        std::string save_name_;
+        std::string save_status_;
+        std::string status_;
 
 #if LUX_FLOWFORGE_HAS_MLIR
         // Folded-in CompilerPanel: FlowGraph -> FlowForge dialect IR text,

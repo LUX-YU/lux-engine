@@ -9,16 +9,19 @@
 //    - Reports throughput (points/sec, MB/sec) and frame time stats
 // ============================================================================
 
-#include <lux/engine/render/comm/client/RenderSession.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include "RenderTask.hpp"            // relocated test-only coroutine support
 #include "RenderTaskScheduler.hpp"
+#include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
 
-#include <lux/engine/render/renderer/features/point_cloud/PointCloudOperation.hpp>
-#include <lux/engine/render/renderer/features/trajectory/TrajectoryOperation.hpp>
-#include <lux/engine/render/renderer/features/grid/GridOperation.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
+#include <lux/engine/function/render/client/genops/PointCloudOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/TrajectoryOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/Grid3DOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 
 #include <lux/engine/window/LuxWindow.hpp>
 #include <GLFW/glfw3.h>
@@ -65,14 +68,8 @@ static void check(bool cond, const char *name)
 // ── Vulkan extensions ───────────────────────────────────────────────────
 static std::vector<const char*> getVulkanExtensions()
 {
-    glfwInit();
-    uint32_t count = 0;
-    const char **exts = glfwGetRequiredInstanceExtensions(&count);
-    std::vector<const char*> result;
-    result.reserve(count);
-    for (uint32_t i = 0; i < count; ++i)
-        result.emplace_back(exts[i]);
-    return result;
+    const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
+    return {exts.begin(), exts.end()};
 }
 
 // ── Matrix helpers ──────────────────────────────────────────────────────
@@ -232,12 +229,14 @@ struct ModeTestConfig
 // ── Coroutine task — replaces Phase state machine ───────────────────────
 
 static RenderTask<void> pointCloudTask(
-    RenderSession &session,
+    RenderFrameSession &session,
+    RenderControlSession& control,
+    RenderUploadClient upload,
     lux::window::LuxWindow &window)
 {
 
     // ── Phase 1: Create scene ───────────────────────────────────────
-    auto scene_reply = co_await session.createScene("PCStressScene");
+    auto scene_reply = co_await control.createScene("PCStressScene");
     auto scene_id = scene_reply.scene_id;
     check(true, "CreateScene — OK");
 
@@ -251,64 +250,71 @@ static RenderTask<void> pointCloudTask(
     Eigen::Matrix4f P = buildProjMatrix(60.f * kPi / 180.f, 1280.f / 720.f, 0.1f, 500.f);
     Eigen::Matrix4f V0 = buildViewMatrix(init_eye, target, up);
 
-    auto active_req = session.setActiveScene(scene_id, true);
-    auto view_req = session.addView(scene_id, {1280, 720}, "MainView");
+    auto active_req = control.setActiveScene(scene_id, true);
+    auto view_req = control.addView(scene_id, {1280, 720}, "MainView");
     co_await active_req;
     auto view_reply = co_await view_req;
     auto view_handle = view_reply.view;
-    check(view_handle.valid(), "AddView — valid handle");
-    session.bindSwapchain(scene_id, view_handle);
+    check(view_handle.isValid(), "AddView — valid handle");
+    control.bindSwapchain(scene_id, view_handle);
 
     // ── StandardViewCamera feature ──────────────────────────────────
     //  Owns per-view camera matrices; MUST attach before every camera
     //  consumer. Per-frame updates go through ViewCameraProxy (replaces
-    //  the retired RenderSession::updateView).
+    //  the retired RenderFrameSession::updateView).
     co_await yield_frame();
 
-    auto view_cam_type_reply = co_await session.registerFeatureType(kStandardViewCameraFeatureFactory);
+    auto view_cam_type_reply = co_await control.registerFeatureType(kViewCameraFeatureFactory);
     auto view_cam_ops = ViewCameraOperationIds::fromOps(
         view_cam_type_reply.ops, view_cam_type_reply.op_count);
 
     co_await yield_frame();
 
-    struct EmptyViewCamCfg {} view_cam_cfg{};
-    co_await session.addFeature(scene_id, view_cam_type_reply.feature_type_id, view_cam_cfg);
+    lux::render::ViewCameraCommTag view_cam_cfg{};
+    co_await control.addFeature(scene_id, view_cam_type_reply.feature_type_id, view_cam_cfg);
 
     // ── Phase 3: Register + add grid feature ────────────────────────
     co_await yield_frame();
 
-    auto grid_type_reply = co_await session.registerFeatureType(kGridFeatureFactory);
+    auto grid_type_reply = co_await control.registerFeatureType(kGrid3DFeatureFactory);
     check(grid_type_reply.feature_type_id > 0, "RegisterFeatureType Grid — OK");
 
     co_await yield_frame();
 
-    GridCommConfig gcc{};
-    auto grid_feat_reply = co_await session.addFeature(scene_id, grid_type_reply.feature_type_id, gcc);
+    Grid3DCommConfig gcc{};
+    auto grid_feat_reply = co_await control.addFeature(scene_id, grid_type_reply.feature_type_id, gcc);
     auto grid_handle = grid_feat_reply.feature;
-    check(grid_handle.valid(), "AddFeature Grid — OK");
+    check(grid_handle.isValid(), "AddFeature Grid — OK");
 
     // ── Phase 4b: Register + add trajectory line feature ─────────
     co_await yield_frame();
 
-    auto traj_type_reply = co_await session.registerFeatureType(kTrajectoryLineFactory);
+    auto traj_type_reply = co_await control.registerFeatureType(kTrajectoryFeatureFactory);
     check(traj_type_reply.feature_type_id > 0, "RegisterFeatureType TrajectoryLine — OK");
     auto traj_ops = TrajectoryOperationIds::fromOps(traj_type_reply.ops, traj_type_reply.op_count);
-    TrajectoryProxy traj_proxy{session, traj_ops};
+    TrajectoryUploadClient traj_upload{upload, traj_ops};
+    TrajectoryControlClient traj_control{control, traj_ops};
 
     co_await yield_frame();
 
     TrajectoryLineCommConfig traj_cc{};
     traj_cc.max_global_vertices = 100'000;
-    auto traj_feat_reply = co_await session.addFeature(scene_id, traj_type_reply.feature_type_id, traj_cc);
+    auto traj_feat_reply = co_await control.addFeature(scene_id, traj_type_reply.feature_type_id, traj_cc);
     auto traj_handle = traj_feat_reply.feature;
-    check(traj_handle.valid(), "AddFeature TrajectoryLine — OK");
+    check(traj_handle.isValid(), "AddFeature TrajectoryLine — OK");
 
     co_await yield_frame();
 
-    auto traj_create_reply = co_await traj_proxy.newTrajectory(
-        scene_id,
-        std::span<const TrajectoryPoint>{});
-    check(traj_create_reply.status == 0 && traj_create_reply.trajectory.valid(),
+    lux::render::CreateTrajectoryPayload traj_create_p{};
+    traj_create_p.scene_id = scene_id;
+    auto traj_create_reply = co_await requireUploadAccepted(
+        traj_upload.newTrajectory(
+            traj_create_p,
+            std::span<const std::byte>{},
+            alignof(TrajectoryPoint)
+        )
+    );
+    check(traj_create_reply.status == 0 && traj_create_reply.trajectory.isValid(),
           "newTrajectory — OK");
     TrajectoryHandle trajectory = traj_create_reply.trajectory;
 
@@ -342,14 +348,15 @@ static RenderTask<void> pointCloudTask(
     for (int m = 0; m < 4; ++m)
     {
         co_await yield_frame();
-        auto type_reply = co_await session.registerFeatureType(*modes[m].factory);
+        auto type_reply = co_await control.registerFeatureType(*modes[m].factory);
         feat_type_ids[m] = type_reply.feature_type_id;
         if (m == 0) pc_ops = PointCloudOperationIds::fromOps(type_reply.ops, type_reply.op_count);
         check(feat_type_ids[m] > 0,
               (std::string("RegisterFeatureType ") + modes[m].name + " — OK").c_str());
     }
 
-    PointCloudProxy pc_proxy{session, pc_ops};
+    PointCloudUploadClient pc_upload{upload, pc_ops};
+    PointCloudControlClient pc_control{control, pc_ops};
 
     // ── Phase 6: Add all 4 modes ────────────────────────────────────
 
@@ -361,28 +368,28 @@ static RenderTask<void> pointCloudTask(
         switch (m)
         {
         case 0:
-            freq = session.addFeature(scene_id, feat_type_ids[m], simple_cc);
+            freq = control.addFeature(scene_id, feat_type_ids[m], simple_cc);
             break;
         case 1:
-            freq = session.addFeature(scene_id, feat_type_ids[m], gpudriven_cc);
+            freq = control.addFeature(scene_id, feat_type_ids[m], gpudriven_cc);
             break;
         case 2:
-            freq = session.addFeature(scene_id, feat_type_ids[m], lod_cc);
+            freq = control.addFeature(scene_id, feat_type_ids[m], lod_cc);
             break;
         case 3:
-            freq = session.addFeature(scene_id, feat_type_ids[m], splat_cc);
+            freq = control.addFeature(scene_id, feat_type_ids[m], splat_cc);
             break;
         }
         auto feat_reply = co_await freq;
         feat_handles[m] = feat_reply.feature;
-        check(feat_handles[m].valid(),
+        check(feat_handles[m].isValid(),
               (std::string("AddFeature ") + modes[m].name + " — OK").c_str());
 
         // Only mode 0 starts enabled; disable the rest
         if (m != 0)
         {
             co_await yield_frame();
-            session.setFeatureEnabled(scene_id, feat_handles[m], false);
+            control.setFeatureEnabled(scene_id, feat_handles[m], false);
         }
     }
 
@@ -465,12 +472,14 @@ static RenderTask<void> pointCloudTask(
 
             if (!trajectory_append_buf.empty())
             {
-                auto append_req = traj_proxy.appendPoints(
-                    scene_id,
-                    trajectory,
-                    std::span<const TrajectoryPoint>(
+                lux::render::AppendTrajectoryPointsPayload ap_p{};
+                ap_p.scene_id = scene_id;
+                ap_p.trajectory = trajectory;
+                ap_p.point_count = static_cast<uint32_t>(trajectory_append_buf.size());
+                auto append_req = traj_upload.appendPoints(ap_p,
+                    std::as_bytes(std::span<const TrajectoryPoint>(
                         trajectory_append_buf.data(),
-                        static_cast<size_t>(trajectory_append_buf.size())));
+                        static_cast<size_t>(trajectory_append_buf.size()))), alignof(TrajectoryPoint));
                 (void)append_req;
             }
         }
@@ -486,12 +495,17 @@ static RenderTask<void> pointCloudTask(
                 current_chunk_data = generateLidarChunk(next_chunk, vehicle_pos, lidar_rng);
                 if (!current_chunk_data.empty())
                 {
-                    pc_proxy.uploadChunk(
-                        scene_id,
-                        next_chunk,
-                        std::span<const PointCloudPoint>(
+                    {
+                        auto pc_span = std::span<const PointCloudPoint>(
                             current_chunk_data.data(),
-                            static_cast<size_t>(current_chunk_data.size())));
+                            static_cast<size_t>(current_chunk_data.size()));
+                        lux::render::UploadPointCloudChunkPayload up{};
+                        up.scene_id    = scene_id;
+                        up.chunk_id    = next_chunk;
+                        up.point_count = static_cast<uint32_t>(pc_span.size());
+                        (void)pc_upload.uploadChunk(up, std::as_bytes(pc_span),
+                                             alignof(lux::render::PointCloudPoint));
+                    }
                     total_points_uploaded += current_chunk_data.size();
                 }
                 ++next_chunk;
@@ -518,7 +532,7 @@ static RenderTask<void> pointCloudTask(
                 cam_target.z() + cam_dist * std::sin(angle));
             Eigen::Matrix4f V = buildViewMatrix(eye, cam_target, up);
 
-            ViewCameraProxy(session, view_cam_ops).update(scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
         }
 
         co_await yield_frame(); // <-- frame boundary: submitFrame + pumpReplies
@@ -537,8 +551,8 @@ static RenderTask<void> pointCloudTask(
         {
             if (keyPressed(GLFW_KEY_1 + m) && m != active_mode)
             {
-                session.setFeatureEnabled(scene_id, feat_handles[active_mode], false);
-                session.setFeatureEnabled(scene_id, feat_handles[m], true);
+                control.setFeatureEnabled(scene_id, feat_handles[active_mode], false);
+                control.setFeatureEnabled(scene_id, feat_handles[m], true);
                 co_await yield_frame();
 
                 mode_enabled[active_mode] = false;
@@ -550,10 +564,10 @@ static RenderTask<void> pointCloudTask(
         }
 
         // G — toggle grid
-        if (keyPressed(GLFW_KEY_G) && grid_handle.valid())
+        if (keyPressed(GLFW_KEY_G) && grid_handle.isValid())
         {
             grid_visible = !grid_visible;
-            session.setFeatureEnabled(scene_id, grid_handle, grid_visible);
+            control.setFeatureEnabled(scene_id, grid_handle, grid_visible);
             co_await yield_frame();
             std::cout << "  >> Grid " << (grid_visible ? "ON" : "OFF") << "\n";
         }
@@ -582,7 +596,9 @@ int main()
 
     // ── Channel + sync + window ─────────────────────────────────────
 
-    auto channel = RenderProgramChannel<>::create();
+    auto channel = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
 
     auto surface_exts = getVulkanExtensions();
@@ -595,17 +611,17 @@ int main()
 
     std::thread server_thread([&]
                               {
-        GeneralRenderServer server(channel, sync);
+        GeneralRenderServer server(channel, control_channel, upload_channel, sync);
         ServerConfig cfg;
         cfg.instance_extensions = surface_exts;
         if (auto r = server.init(std::move(cfg)); !r) {
-            std::cerr << "[Server] Init failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] Init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
         }
         if (auto r = server.attachToWindow(window); !r) {
-            std::cerr << "[Server] Attach failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] Attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
@@ -624,13 +640,20 @@ int main()
         return 0;
     }
 
-    RenderSession session(channel, sync);
+    RenderFrameSession session(channel, sync);
+    RenderControlSession control(control_channel, sync);
+    RenderUploadSession upload(upload_channel, sync);
+    lux::render::testing::DirectRenderUploadClient upload_client{upload};
 
     // ── Run coroutine via scheduler ─────────────────────────────────
-    RenderTaskScheduler scheduler(session);
-    auto task = pointCloudTask(session, window);
+    RenderTaskScheduler scheduler(session, control, &upload);
+    auto task = pointCloudTask(
+        session,
+        control,
+        upload_client.client(),
+        window);
     scheduler.run(
-        std::move(task), [&](RenderSession &) -> bool
+        std::move(task), [&](RenderFrameSession &) -> bool
         {
             window.pollEvents();
             return !window.shouldClose(); 

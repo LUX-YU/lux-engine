@@ -1,0 +1,323 @@
+//! lux-shader stage=vertex entry=main
+#version 450
+
+#include "view_common.glsl"
+#include "scene_global.glsl"
+
+struct GpuPageMeta
+{
+    ivec4 origin_full_slot;
+    vec4 local_spacing;
+    vec4 height_extent;
+    uvec4 fallback_flags;
+    vec4 transition;
+    vec4 actual_height_bounds;
+};
+
+struct GpuTerrainPatch
+{
+    uvec4 page_lod_xy;
+    uvec4 slots_flags;
+};
+
+layout(std430) readonly buffer ViewBuffer
+{
+    ViewGpuData views[];
+} uViews;
+
+layout(std430) readonly buffer SceneGlobalBuffer
+{
+    SceneGlobalGpuData scenes[];
+} uSceneGlobals;
+
+// set 1 is occupied by the engine-owned SceneGlobal buffer injected above.
+// Terrain's four buffers are one private shape and must stay together during
+// domain relocation, so their source set is deliberately distinct.
+layout(set = 2, binding = 0, std430) readonly buffer PageMetadataBuffer
+{
+    GpuPageMeta pages[];
+} uPages;
+
+layout(set = 2, binding = 1, std430) readonly buffer FullPageBuffer
+{
+    uint words[];
+} uFullPages;
+
+layout(set = 2, binding = 2, std430) readonly buffer FallbackPageBuffer
+{
+    uint words[];
+} uFallbackPages;
+
+layout(set = 2, binding = 3, std430) readonly buffer SelectionBuffer
+{
+    GpuTerrainPatch patches[];
+} uSelection;
+
+layout(push_constant) uniform TerrainRasterPush
+{
+    uint scene_index;
+    uint view_index;
+    uint full_page_stride_bytes;
+    uint fallback_page_stride_bytes;
+} pc;
+
+layout(location = 0) out vec3 vWorldPosition;
+layout(location = 1) out vec3 vWorldNormal;
+layout(location = 2) out vec4 vColor;
+layout(location = 3) out float vHole;
+layout(location = 4) out float vTransitionCoverage;
+layout(location = 5) flat out uint vTransitionSeed;
+layout(location = 6) flat out uint vTransitionFadeOut;
+
+uint loadFullU16(uint byte_offset)
+{
+    uint word_index = byte_offset >> 2u;
+    if (word_index >= uint(uFullPages.words.length()))
+        return 0u;
+    uint word = uFullPages.words[word_index];
+    return (word >> ((byte_offset & 2u) * 8u)) & 0xffffu;
+}
+
+uint loadFallbackU16(uint byte_offset)
+{
+    uint word_index = byte_offset >> 2u;
+    if (word_index >= uint(uFallbackPages.words.length()))
+        return 0u;
+    uint word = uFallbackPages.words[word_index];
+    return (word >> ((byte_offset & 2u) * 8u)) & 0xffffu;
+}
+
+uint loadFullByte(uint byte_offset)
+{
+    uint word_index = byte_offset >> 2u;
+    if (word_index >= uint(uFullPages.words.length()))
+        return 0u;
+    uint word = uFullPages.words[word_index];
+    return (word >> ((byte_offset & 3u) * 8u)) & 0xffu;
+}
+
+float decodeHeight(GpuPageMeta page, uint quantized)
+{
+    return mix(
+        page.height_extent.x,
+        page.height_extent.y,
+        float(quantized) / 65535.0);
+}
+
+uint fullSample(GpuTerrainPatch item, uvec2 sample_coord)
+{
+    const uint header_bytes = 32u;
+    uint byte_offset = item.slots_flags.x * pc.full_page_stride_bytes +
+        header_bytes +
+        (sample_coord.y * 257u + sample_coord.x) * 2u;
+    return loadFullU16(byte_offset);
+}
+
+uint fallbackSample(GpuTerrainPatch item, uvec2 sample_coord)
+{
+    uint byte_offset = item.slots_flags.y *
+        pc.fallback_page_stride_bytes +
+        (sample_coord.y * 129u + sample_coord.x) * 2u;
+    return loadFallbackU16(byte_offset);
+}
+
+void rejectTerrainVertex()
+{
+    vWorldPosition = vec3(0.0);
+    vWorldNormal = vec3(0.0, 1.0, 0.0);
+    vColor = vec4(0.0);
+    vHole = 1.0;
+    vTransitionCoverage = 0.0;
+    vTransitionSeed = 0u;
+    vTransitionFadeOut = 0u;
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+}
+
+void main()
+{
+    if (gl_InstanceIndex >= uint(uSelection.patches.length()))
+    {
+        rejectTerrainVertex();
+        return;
+    }
+    GpuTerrainPatch item = uSelection.patches[gl_InstanceIndex];
+    if (item.page_lod_xy.x >= uint(uPages.pages.length()) ||
+        item.page_lod_xy.y > 3u)
+    {
+        rejectTerrainVertex();
+        return;
+    }
+    GpuPageMeta page = uPages.pages[item.page_lod_xy.x];
+    uint cell = uint(gl_VertexIndex) / 6u;
+    uint corner = uint(gl_VertexIndex) % 6u;
+    const uvec2 triangle_corner[6] = uvec2[6](
+        // Counter-clockwise when observed from the positive Y side. Terrain
+        // is a heightfield surface, not cave geometry, so its top side must
+        // agree with the standard BACK/CCW raster state.
+        uvec2(0u, 0u), uvec2(1u, 1u), uvec2(1u, 0u),
+        uvec2(0u, 0u), uvec2(0u, 1u), uvec2(1u, 1u));
+    uvec2 skirt_grid = uvec2(cell % 34u, cell / 34u) +
+        triangle_corner[corner];
+    ivec2 raw_logical_grid = ivec2(skirt_grid) - ivec2(1);
+    ivec2 logical_grid = clamp(raw_logical_grid, ivec2(0), ivec2(32));
+
+    uint lod = item.page_lod_xy.y;
+    uint patches_per_edge = 1u << lod;
+    if (any(greaterThanEqual(
+            item.page_lod_xy.zw,
+            uvec2(patches_per_edge))))
+    {
+        rejectTerrainVertex();
+        return;
+    }
+    // The 34x34 patch topology carries a duplicate outer ring so a page edge
+    // can be lowered into a crack-hiding skirt.  Lowering that ring on every
+    // patch also creates vertical walls on the internal boundaries of a page;
+    // those walls become a conspicuous grid in overview views.  One selected
+    // page uses one uniform patch LOD, so its internal boundaries already
+    // share exact samples.  Only the true page perimeter needs the skirt.
+    bool skirt =
+        (raw_logical_grid.x < 0 && item.page_lod_xy.z == 0u) ||
+        (raw_logical_grid.x > 32 &&
+            item.page_lod_xy.z + 1u == patches_per_edge) ||
+        (raw_logical_grid.y < 0 && item.page_lod_xy.w == 0u) ||
+        (raw_logical_grid.y > 32 &&
+            item.page_lod_xy.w + 1u == patches_per_edge);
+    uint full_page_capacity = pc.full_page_stride_bytes == 0u
+        ? 0u
+        : uint(uFullPages.words.length()) * 4u /
+            pc.full_page_stride_bytes;
+    uint fallback_page_capacity = pc.fallback_page_stride_bytes == 0u
+        ? 0u
+        : uint(uFallbackPages.words.length()) * 4u /
+            pc.fallback_page_stride_bytes;
+    if (item.slots_flags.y >= fallback_page_capacity)
+    {
+        rejectTerrainVertex();
+        return;
+    }
+    if ((item.slots_flags.z & 2u) != 0u &&
+        item.slots_flags.x >= full_page_capacity)
+    {
+        item.slots_flags.z &= ~2u;
+    }
+    uint sample_step = 8u >> lod;
+    uvec2 page_sample = item.page_lod_xy.zw * 32u * sample_step +
+        uvec2(logical_grid) * sample_step;
+    bool full = (item.slots_flags.z & 2u) != 0u;
+    uint quantized = 32768u;
+    float physical_step = page.local_spacing.w * float(sample_step);
+    if (full)
+    {
+        quantized = fullSample(item, min(page_sample, uvec2(256u)));
+        physical_step = page.local_spacing.w * float(sample_step);
+    }
+    else
+    {
+        uvec2 fallback_sample = min(page_sample / 2u, uvec2(128u));
+        quantized = fallbackSample(item, fallback_sample);
+        physical_step = page.local_spacing.w * float(sample_step);
+    }
+    float height = decodeHeight(page, quantized);
+    if (skirt)
+    {
+        height -= max(
+            physical_step * 2.0,
+            (page.height_extent.y - page.height_extent.x) * 0.005);
+    }
+
+    uvec2 left_sample = uvec2(
+        page_sample.x > sample_step ? page_sample.x - sample_step : 0u,
+        page_sample.y);
+    uvec2 right_sample = min(
+        page_sample + uvec2(sample_step, 0u), uvec2(256u));
+    uvec2 down_sample = uvec2(
+        page_sample.x,
+        page_sample.y > sample_step ? page_sample.y - sample_step : 0u);
+    uvec2 up_sample = min(
+        page_sample + uvec2(0u, sample_step), uvec2(256u));
+    float h_left = height;
+    float h_right = height;
+    float h_down = height;
+    float h_up = height;
+    if (full)
+    {
+        h_left = decodeHeight(page, fullSample(item, left_sample));
+        h_right = decodeHeight(page, fullSample(item, right_sample));
+        h_down = decodeHeight(page, fullSample(item, down_sample));
+        h_up = decodeHeight(page, fullSample(item, up_sample));
+    }
+    else
+    {
+        h_left = decodeHeight(page, fallbackSample(item, left_sample / 2u));
+        h_right = decodeHeight(page, fallbackSample(item, right_sample / 2u));
+        h_down = decodeHeight(page, fallbackSample(item, down_sample / 2u));
+        h_up = decodeHeight(page, fallbackSample(item, up_sample / 2u));
+    }
+    vec3 normal = normalize(vec3(
+        h_left - h_right,
+        physical_step * 2.0,
+        h_down - h_up));
+
+    vec2 page_position = vec2(page_sample) * page.local_spacing.w;
+    ViewGpuData view_data = uViews.views[pc.view_index];
+    vec3 relative_position = vec3(
+            page.origin_full_slot.xyz - view_data.camera_page.xyz) *
+            view_data.camera_local_page_size.w +
+        page.local_spacing.xyz - view_data.camera_local_page_size.xyz +
+        vec3(page_position.x, height, page_position.y);
+    vWorldPosition = relative_position;
+    vWorldNormal = normal;
+
+    vec4 color = vec4(0.25, 0.34, 0.12, 1.0);
+    vHole = 0.0;
+    if (full)
+    {
+        const uint height_bytes = 257u * 257u * 2u;
+        const uint weight_plane_bytes = 257u * 257u * 4u;
+        uint full_base = item.slots_flags.x * pc.full_page_stride_bytes;
+        uint sample_index = page_sample.y * 257u + page_sample.x;
+        uint weight_offset = full_base + 32u + height_bytes +
+            sample_index * 4u;
+        vec4 weights = vec4(
+            loadFullByte(weight_offset + 0u),
+            loadFullByte(weight_offset + 1u),
+            loadFullByte(weight_offset + 2u),
+            loadFullByte(weight_offset + 3u)) / 255.0;
+        const vec3 layer_colors[4] = vec3[4](
+            vec3(0.23, 0.34, 0.11),
+            vec3(0.36, 0.28, 0.17),
+            vec3(0.42, 0.42, 0.40),
+            vec3(0.86, 0.88, 0.90));
+        float weight_sum = max(dot(weights, vec4(1.0)), 1.0 / 255.0);
+        color.rgb = (layer_colors[0] * weights.x +
+            layer_colors[1] * weights.y +
+            layer_colors[2] * weights.z +
+            layer_colors[3] * weights.w) / weight_sum;
+        uint hole_offset = full_base + 32u + height_bytes +
+            weight_plane_bytes * 2u + sample_index / 8u;
+        uint hole_byte = loadFullByte(hole_offset);
+        vHole = float((hole_byte >> (sample_index & 7u)) & 1u);
+    }
+    vColor = color;
+    float progress = page.transition.y > 0.0
+        ? clamp(
+            (uSceneGlobals.scenes[pc.scene_index].time_sec -
+                page.transition.x) / page.transition.y,
+            0.0,
+            1.0)
+        : 1.0;
+    vTransitionCoverage = mix(
+        page.transition.z, page.transition.w, progress);
+    vTransitionSeed = item.slots_flags.w;
+    vTransitionFadeOut =
+        page.transition.w < page.transition.z ? 1u : 0u;
+    vec4 clip_position = view_data.proj * view_data.view *
+        vec4(relative_position, 1.0);
+    if (any(isnan(clip_position)) || any(isinf(clip_position)))
+    {
+        rejectTerrainVertex();
+        return;
+    }
+    gl_Position = clip_position;
+}

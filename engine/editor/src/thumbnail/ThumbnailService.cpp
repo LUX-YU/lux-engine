@@ -1,36 +1,84 @@
+/**
+ * @file ThumbnailService.cpp
+ *
+ * 缩略图服务 = **第二个 SceneRuntime**(装配归属 ADR 工作线三批 1)。
+ *
+ * 旧形态(925 行 job 状态机)手工对着 RenderFrameSession 编排每一步:uploadMesh /
+ * compileShader / uploadGraphMaterial → addMeshInstance → makeVisible +
+ * updateView → readback,并自己记账 uploaded_meshes / uploaded_textures /
+ * objects 到 cleanupJobResources 逐个销毁 —— 那是把资源解析器 + 网格实例子系统
+ * 的职责在编辑器里重写了一遍,而且两份实现已经漂开(空图重试、反射自愈都只有
+ * 一边有)。
+ *
+ * 新形态:job = **世界里的一组实体**。
+ *
+ *   Spec(资产 id + bounds)
+ *     → 生成 job 实体(MeshComponent{mesh_id, material_id} + Transform3D)
+ *       + frameBounds 数学写进相机实体(Transform3D 位姿 + Camera3D fov/near/far)
+ *     → WaitReady:轮询 MeshInstanceReadyComponent(批 0 的观察点:实例建成且
+ *       对当前 view 代次可见)
+ *     → readbackTargetAsync(沉淀帧数与旧实现相同)
+ *     → Encode(CPU 池) → createTexture2D(显示纹理) → 销毁 job 实体
+ *
+ * 上传/引用计数/换源/离场全部由驻留胶水 + MeshInstanceSubsystem 完成;
+ * 销毁 job 实体后,胶水松票 → AssetManager 归零广播 → 驻留编排
+ * 收 GPU 副本。手工记账整体消亡;zombie 机制缩到只剩「readback dst 缓冲与显示
+ * 纹理的在途回复」。
+ */
 #include <lux/engine/editor/thumbnail/ThumbnailService.hpp>
+#include <lux/engine/runtime/frame/MainCloseDriver.hpp>
 #include <lux/engine/editor/thumbnail/ImageCodec.hpp>
+#include "thumbnail/PreviewWorldCommon.hpp"               // 预览世界共用装配件(批 2 提取)
+#include <lux/engine/editor/app/LuxEditor.hpp>            // EditorRenderInfra
+#include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
 
-#include <lux/engine/asset/AssetManager.hpp>
-#include <lux/engine/asset/TextureAsset.hpp>
-#include <lux/engine/asset/MaterialAsset.hpp>     // baked graph-material payload
-#include <lux/engine/description/Texture.hpp>           // isCompressedFormat
-#include <lux/engine/description/ShaderInfo.hpp>         // rdesc::ShaderInfo::serialize
-#include <lux/engine/render/comm/client/RenderSession.hpp>
-#include <lux/engine/render/resources/material/GraphMaterialData.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadClient.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
 #include <lux/engine/ui/ImGuiLuxWidgets.hpp>   // encodeTextureHandleSentinel
+#include <lux/engine/log/Log.hpp>
 
-#include <lux/engine/execution/EngineExecutor.hpp>
-#include <lux/engine/execution/EngineExecutorSenders.hpp>   // cpuScheduler / spawn (C5b)
-#include <lux/engine/execution/AsyncCache.hpp>
+#include <lux/engine/runtime/scene/SceneRuntime.hpp>
+#include <lux/engine/runtime/render/scene/RenderSceneIntegration.hpp>
+#include <lux/engine/runtime/render/scene/StandardFeaturePlan.hpp>   // previewProfile
+
+#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/render/components/3d/MeshComponent.hpp>
+#include <lux/engine/ecs/render/components/3d/Camera3DComponent.hpp>
+#include <lux/engine/ecs/render/components/MeshInstanceReadyComponent.hpp>
+#include <lux/engine/ecs/components/Transform3DComponent.hpp>
+#include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
+
+#include <lux/engine/input/ActionMapper.hpp>
+#include <lux/engine/common/Size2D.hpp>
+
+#include <lux/engine/runtime/execution/AsyncRuntime.hpp>
+#include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
+#include <lux/engine/runtime/execution/AsyncScope.hpp>
+#include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
+#include <lux/engine/runtime/execution/MainThreadStateCache.hpp>
 
 #include <stdexec/execution.hpp>
 
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+
 #include <atomic>
+#include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
-#include <format>
 #include <memory>
-#include <optional>
 #include <span>
-#include <string>
 #include <utility>
 #include <vector>
 
 namespace lux::editor
 {
     // The cache's stored value — the drawable result of a finished thumbnail.
-    // (State is tracked by the AsyncCache; the requested type rides on the queue.)
+    // The requested type rides on the queue; the cache stores committed state.
     struct ThumbValue
     {
         ThumbnailSet                set;
@@ -38,11 +86,13 @@ namespace lux::editor
         ImTextureID                 im_id{0};
     };
 
-    // .cpp-private wrapper holding the AsyncCache so stdexec stays out of the header.
+    // .cpp-private wrapper keeps the concrete cache type out of the public header.
     struct ThumbnailService::CacheImpl
     {
-        explicit CacheImpl(lux::exec::EngineExecutor& e) : cache(e) {}
-        lux::exec::AsyncCache<lux::asset::asset_id_t, ThumbValue> cache;
+        lux::exec::MainThreadStateCache<
+            lux::asset::asset_id_t,
+            ThumbValue
+        > cache;
     };
 
     // C5b: the Encode stage's CPU work (swizzle + multi-size PNG encode + decode) is
@@ -61,41 +111,20 @@ namespace lux::editor
         std::atomic<bool>      done{false};
     };
 
-    // ── Bringing up ONE distinct graph material for a job ─────────────────────
-    // W5: the editor renders graph materials only (rdesc::Material retired). A
-    // material's runtime artifacts are BAKED into the MaterialAsset; the
-    // service compiles them + resolves textures, mirroring the scene bridge
-    // (RenderableBridgeContext::ensureGraphMaterial). The PreviewScene is
-    // FORWARD-ONLY, so only the FORWARD frag is compiled (the gbuffer frag would
-    // only matter to a deferred pass, which the preview has none of) — the bucket's
-    // gbuffer shader is left null and uploadGraphMaterial still routes the forward
-    // PSO from the forward shader (R1 / registerGraphBucketPipelines).
-    struct ThumbnailService::GraphMatBringup
+    // ── The private preview SceneRuntime ─────────────────────────────────────
+    // This private catalogue owns only the preview descriptor. The empty
+    // mapper satisfies SceneRuntime::tick; preview worlds have no input.
+    struct ThumbnailService::RuntimeHost
     {
-        lux::asset::asset_id_t id{};
-        bool                   failed{false};   // bringup failed -> instance uses default grey
-
-        // compileShader borrows the SPIR-V words AND the serialized ShaderInfo
-        // until submitFrame(); the asset is NOT pinned (the service only re-queries
-        // it, never holds it), so snapshot both into the job to outlive the borrow.
-        std::vector<std::uint32_t> forward_spirv;
-        std::vector<std::byte>     forward_info_bytes;
-        lux::render::RenderRequest<lux::render::ShaderCompiledReply> forward_req;
-        lux::render::ShaderHandle  forward_shader{};
-
-        // One createTexture2D per BOUND texture slot (slot order preserved).
-        std::vector<lux::render::RenderRequest<lux::render::Texture2DCreatedReply>> tex_reqs;
-        std::vector<std::uint32_t> tex_req_slot;   // graph texture-slot index
-
-        // Params + render-state snapshotted at Spec (do NOT depend on the asset
-        // surviving to WaitUpload); tex_bindless filled once the textures resolve.
-        lux::render::GraphMaterialData gd{};
-        std::uint32_t alpha_mode{0};
-        bool          double_sided{false};
-
-        lux::render::RenderRequest<lux::render::MaterialUploadedReply> upload_req;
-        bool                         upload_issued{false};
-        lux::render::RMaterialHandle handle{};
+        lux::runtime::SceneContributionCatalog      contributions;
+        lux::input::ActionMapper                    mapper;
+        std::unique_ptr<lux::runtime::SceneRuntime> runtime;
+        lux::render::RenderTargetLease              target{};
+        lux::meta::entity_id                        camera{entt::null};
+        lux::meta::entity_id                        key_light{entt::null};
+        lux::asset::asset_id_t                      sphere_mesh_id{};
+        lux::asset::asset_id_t                      preview_grey_id{};
+        std::uint32_t                               render_size{256};
     };
 
     // ── In-flight job state (the async state machine) ────────────────────────
@@ -103,14 +132,12 @@ namespace lux::editor
     {
         enum class Stage
         {
-            Spec,         ///< build the CPU spec (sync) + issue mesh/shader/texture uploads
-            WaitUpload,   ///< poll uploadMesh / compileShader / createTexture2D
-            WaitMaterial, ///< poll uploadGraphMaterial (issued after shaders + textures resolve)
-            WaitInstance, ///< poll addMeshInstance
-            WaitCapture,  ///< poll readbackViewAsync
-            Encode,       ///< kick off the CPU encode (swizzle + multi-size PNG + decode) on the pool
-            WaitEncode,   ///< poll the offloaded encode result, then push the display texture
-            WaitDisplay   ///< poll createTexture2D (display texture)
+            Spec,        ///< build the CPU spec (sync) + spawn job entities + frame the camera
+            WaitReady,   ///< poll MeshInstanceReadyComponent on every job entity
+            WaitCapture, ///< poll readbackTargetAsync
+            Encode,      ///< kick off the CPU encode (swizzle + multi-size PNG + decode) on the pool
+            WaitEncode,  ///< poll the offloaded encode result, then push the display texture
+            WaitDisplay  ///< poll createTexture2D (display texture)
         };
 
         lux::asset::asset_id_t id{};
@@ -123,44 +150,26 @@ namespace lux::editor
         int  age_frames{0};
         bool capture_issued{false};
         bool display_issued{false};
-        // One-shot fallback: a job-uploaded mesh wearing a job-uploaded graph
-        // material currently draws NOTHING (render-side bucket x fresh-mesh
-        // defect — sphere+graph and mesh+default both draw; the combination
-        // doesn't). When the readback comes back empty, retry once with the
-        // resident default material so model thumbnails degrade to the old
-        // grey render instead of a black tile.
+        // One-shot fallback: a readback that comes back literally empty swaps
+        // the authored material for PreviewGrey and re-renders once.  A second
+        // empty capture is a failed thumbnail, never a cacheable black image.
         bool retried_default{false};
 
         ThumbnailSpec spec;
         bool          from_embedded{false};
         ThumbnailSet  set;
 
-        // Transient GPU resources created for this job (cleaned up at the end).
-        std::vector<lux::render::RMeshHandle>        uploaded_meshes;
-        std::vector<lux::render::RMaterialHandle>    uploaded_materials;
-        std::vector<lux::render::RTextureHandle>     uploaded_textures;
-        std::vector<lux::render::RenderObjectHandle> objects;
+        /// The job's world entities (one per spec instance). Their whole GPU
+        /// footprint — mesh/material upload, instance, refcounts — is owned by
+        /// the resolver + mesh subsystem; destroying the entities reclaims it.
+        std::vector<lux::meta::entity_id> entities;
 
-        // Per-instance handles fed to addMeshInstance (resolved after uploads).
-        std::vector<lux::render::RMeshHandle>     inst_mesh;
-        std::vector<lux::render::RMaterialHandle> inst_material;
-
-        // Pending mesh uploads + which instance each feeds.
-        std::vector<lux::render::RenderRequest<lux::render::MeshUploadedReply>> mesh_reqs;
-        std::vector<std::size_t>                                               mesh_req_inst;
-
-        // DISTINCT graph materials this job renders (dedup by id) + per-instance
-        // index into them (-1 / nullopt => the resident default grey material).
-        std::vector<GraphMatBringup>             graph_mats;
-        std::vector<std::optional<std::size_t>>  inst_graph_mat;
-
-        std::vector<lux::render::RenderRequest<lux::render::MeshInstanceSlotReply>> inst_reqs;
-        lux::render::RenderRequest<lux::render::ReadbackViewReply>     capture_req;
+        lux::render::RenderRequest<lux::render::ReadbackTargetReply>   capture_req;
         lux::render::RenderRequest<lux::render::Texture2DCreatedReply> display_req;
-
 
         std::vector<std::byte> dst_px;     ///< readback target (alive until capture resolves)
         std::vector<std::byte> display_px; ///< display-tex pixels (alive until display resolves)
+        lux::cxx::SharedBytes<> display_bytes;
         std::uint32_t          display_w{0};
         std::uint32_t          display_h{0};
 
@@ -172,14 +181,32 @@ namespace lux::editor
 
     namespace
     {
-        const float kIdentity[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+        // (手工 preview pack / 相机 look-at 基 / parseBuiltinId 已提取到
+        //  PreviewWorldCommon —— MaterialPreviewHost 与本服务共用,批 2。)
 
-        template <class T>
-        bool allReady(const std::vector<lux::render::RenderRequest<T>>& v)
+        /// frameBounds 数学(轨道公式沿自旧手写预览的 frameBounds):把「取景这个
+        /// AABB」写成相机实体的数据 —— 位姿进 Transform3D(aimPreviewCamera),
+        /// fov/near/far 进 Camera3D。Camera3DSystem 用同一个 TLookAt/TPerspective
+        /// 帮手推导矩阵,所以像旧实现一样取景。
+        void frameCameraForBounds(lux::ecs::World&           world,
+                                  lux::meta::entity_id       camera,
+                                  const lux::math::AABB&     bounds)
         {
-            for (const auto& r : v)
-                if (!r.isReady()) return false;
-            return true;
+            const Eigen::Vector3f center = bounds.center();
+            float radius = bounds.extents().norm() * 0.5f; // bounding-sphere radius
+            if (!(radius > 1e-4f)) radius = 0.5f;          // degenerate / empty guard
+
+            const float fov  = 45.f * 3.14159265f / 180.f;
+            const float dist = (radius / std::sin(fov * 0.5f)) * 1.25f; // + margin
+            const Eigen::Vector3f dir = Eigen::Vector3f(0.6f, 0.45f, 1.0f).normalized();
+            const Eigen::Vector3f eye = center + dir * dist;
+
+            aimPreviewCamera(world, camera, eye, center);
+
+            auto& cc = world.registry().get<lux::ecs::Camera3DComponent>(camera);
+            cc.fov_rad     = fov;
+            cc.near_z      = std::max(0.01f, dist - radius * 2.f);
+            cc.far_z       = dist + radius * 2.f + 1.f;
         }
 
         // RGBA8 → a multi-size PNG ThumbnailSet (1:1 copy at native size, sRGB
@@ -210,22 +237,145 @@ namespace lux::editor
     } // namespace
 
     ThumbnailService::ThumbnailService(lux::asset::AssetManager& assets,
-                                       lux::render::RenderSession& session,
-                                       lux::exec::EngineExecutor& exec)
-        : assets_(assets), session_(session), exec_(&exec), preview_(session),
-          cache_(std::make_unique<CacheImpl>(exec))
+                                       lux::render::RenderFrameSession& session,
+                                       const EditorRenderInfra& render_infra,
+                                       lux::asset_runtime::AssetClient asset_client,
+                                       lux::exec::AsyncRuntime& async)
+        : assets_(assets), session_(session), infra_(render_infra),
+          asset_client_(std::move(asset_client)), async_(async),
+          cache_(std::make_unique<CacheImpl>()),
+          async_scope_(std::make_unique<lux::exec::AsyncScope>(async))
     {
     }
 
-    ThumbnailService::~ThumbnailService() = default;
+    ThumbnailService::~ThumbnailService()
+    {
+        // 自己收自己的尾。正常路径 LuxEditor 先 releaseGpu()(渲染线程还活着)再
+        // shutdown()(线程停了);漏调时这里兜底 —— shutdown() 全是 reset/clear,
+        // 幂等,而 host_ 成员析构会带倒 SceneRuntime(其 tearDown 对已停通道的
+        // 提交返回 false,静默放弃,GPU 侧由 device-destroy 回收)。
+        shutdown();
+    }
 
     bool ThumbnailService::initialize(std::uint32_t render_size)
     {
         if (ready_) return true;
-        if (!preview_.setup(render_size)) return false;
+
+        auto host = std::make_unique<RuntimeHost>();
+        host->render_size = render_size ? render_size : 256u;
+        if (!parseBuiltinId(
+                lux::asset::kBuiltinSphereMeshIdStr,
+                host->sphere_mesh_id))
+            return false;   // programmer error — the literal is compile-time
+        // Mesh-instance creation requires a real material handle; nil is not a
+        // renderer-default sentinel. Prefer PreviewGrey and fall back to the
+        // builtin white material, but never let a thumbnail job reach the
+        // render bridge with an invalid material configuration.
+        (void)parseBuiltinId(
+            lux::asset::kBuiltinPreviewGreyMaterialIdStr,
+            host->preview_grey_id);
+        if (!assets_.hasAsset(host->preview_grey_id))
+        {
+            (void)parseBuiltinId(
+                lux::asset::kBuiltinWhitePbrMaterialIdStr,
+                host->preview_grey_id
+            );
+            if (!assets_.hasAsset(host->preview_grey_id))
+            {
+                std::fprintf(
+                    stderr,
+                    "[Thumbnail] no builtin fallback material is registered — "
+                    "thumbnails stay off\n"
+                );
+                return false;
+            }
+        }
+
+        // ── HOST step 1: the offscreen target the thumbnail view composes onto.
+        //    OURS to create and (in releaseGpu) destroy — the runtime only
+        //    composes the camera's view onto it. SAMPLED 形态与 EditorScene 的
+        //    主视口 target 同款(显示路径要可采样;readback 在两种形态上都走
+        //    readbackTarget* 命令面)。
+        const lux::common::Size2D extent{host->render_size, host->render_size};
+        auto target_result = infra_.control->syncCall(
+            infra_.control->createOffscreenRenderTarget(
+                extent,
+                lux::render::kTargetFlagSampled
+            )
+        );
+        if (!target_result || !target_result->target.isValid())
+        {
+            std::fprintf(stderr, "[Thumbnail] createOffscreenRenderTarget failed — thumbnails stay off\n");
+            return false;
+        }
+        const auto target_reply = *target_result;
+        host->target = infra_.control->adoptTarget(target_reply.target);
+
+        // ── HOST step 2: the preview SceneRuntime — same bring-up seam as the
+        //    editor's main scene, with the manual preview pack + preview profile.
+        if (!host->contributions.add(makePreviewWorldContribution()))
+            return false;
+
+        lux::runtime::SceneRuntime::Config rcfg;
+        rcfg.name            = "Thumbnail";
+        rcfg.transient_scene = makePreviewSceneManifest(rcfg.name);
+        rcfg.events          = infra_.events;      // 进程域同一个 bus(批B,可空)
+        // ★ 批 D2:守卫在这里,因为 `RenderInfra::residency` 按设计可空 —— 详见
+        //   `EditorScene::bringUp` 同位置的说明。
+        if (infra_.residency == nullptr || infra_.control == nullptr ||
+            infra_.components == nullptr ||
+            !infra_.upload)
+        {
+            std::fprintf(stderr, "[Thumbnail] RenderInfra::residency is not wired — thumbnails stay off\n");
+            return false;
+        }
+        lux::runtime::RenderSceneServices render_services{
+            .frame           = session_,
+            .control         = *infra_.control,
+            .upload          = infra_.upload,
+            .feature_catalog = infra_.feature_catalog,
+            .feature_plan    = infra_.feature_plan,
+            .residency       = *infra_.residency,
+            .profile         = lux::runtime::previewProfile(),
+            .render_effect_catalog = infra_.render_effect_catalog,
+            .render_effect_types = infra_.render_effect_types,
+        };
+        const lux::runtime::SceneRuntime::Dependencies deps{
+            .assets          = assets_,
+            .asset_client    = asset_client_,
+            .async           = async_,
+            .components      = *infra_.components,
+            .entity_sections = infra_.entity_sections,
+            .scene_contribution_catalog = &host->contributions,
+            .extension_modules = infra_.extension_modules,
+        };
+        host->runtime = lux::runtime::SceneRuntime::create(
+            deps,
+            rcfg,
+            std::make_unique<lux::runtime::RenderSceneIntegration>(
+                render_services,
+                lux::runtime::RenderSceneConfig{
+                    .target = host->target.id()}));
+        if (!host->runtime)
+        {
+            std::fprintf(stderr, "[Thumbnail] preview SceneRuntime bring-up failed — thumbnails stay off\n");
+            (void)host->target.close();
+            return false;
+        }
+
+        // ── HOST step 3: resident entities — key light + framing camera
+        //    (方图钉 1:1,auto_aspect=false;帮手见 PreviewWorldCommon)。
+        auto& world = host->runtime->world();
+        host->key_light = createPreviewKeyLight(world);
+        host->camera    = createPreviewCamera(world, host->target.id(), extent,
+                                               /*auto_aspect=*/false);
+        // 第一帧提交之前 view 必须在位,否则 target 上没有任何层。
+        lux::runtime::renderScene(*host->runtime)->settleViewCreation();
+
+        host_      = std::move(host);
         providers_ = makeDefaultThumbnailSpecProviders();
-        sizes_ = {{256, 256}, {128, 128}, {64, 64}};
-        ready_ = true;
+        sizes_     = {{256, 256}, {128, 128}, {64, 64}};
+        ready_     = true;
         return true;
     }
 
@@ -242,9 +392,22 @@ namespace lux::editor
         return ImTextureID{0};
     }
 
+    const ThumbnailSet* ThumbnailService::readySet(const lux::asset::asset_id_t& id) const
+    {
+        const auto* v = cache_->cache.tryGet(id);
+        return v ? &v->set : nullptr;
+    }
+
     void ThumbnailService::tick()
     {
         if (!ready_) return;
+        // Drive the preview world one frame FIRST (frame OPEN): the resolver
+        // uploads, the mesh subsystem runs the instance lifecycle and plants
+        // MeshInstanceReadyComponent — the job state machine below observes it.
+        host_->runtime->tick(1.f / 60.f,
+                             static_cast<float>(host_->render_size),
+                             static_cast<float>(host_->render_size),
+                             host_->mapper);
         drainZombies();
         if (!active_) startNextJob();
         if (active_)
@@ -297,75 +460,6 @@ namespace lux::editor
         }
     }
 
-    // Find (or create) the distinct-graph-material bringup for @p mat_id, issuing
-    // its forward-frag compile + per-slot texture uploads exactly once. Returns the
-    // index into j.graph_mats, or nullopt if the asset isn't a usable graph material
-    // (the caller then falls back to the resident default grey material).
-    std::optional<std::size_t>
-    ThumbnailService::ensureJobGraphMaterial(Job& j, const lux::asset::asset_id_t& mat_id)
-    {
-        if (mat_id.is_nil()) return std::nullopt;
-        for (std::size_t i = 0; i < j.graph_mats.size(); ++i)
-            if (j.graph_mats[i].id == mat_id) return i;
-
-        const auto* asset = assets_.fetchAssetAs<lux::asset::MaterialAsset>(mat_id);
-        if (!asset || !asset->data()) return std::nullopt;
-        const lux::asset::MaterialData& payload = *asset->data();
-        if (payload.forward_spirv.empty()) return std::nullopt;   // can't draw in forward
-
-        GraphMatBringup gm;
-        gm.id           = mat_id;
-        gm.alpha_mode   = static_cast<std::uint32_t>(payload.graph.render_state.alpha_mode);
-        gm.double_sided = payload.graph.render_state.double_sided;
-
-        // Params (Graph SSBO lanes) — DERIVED from the authoring graph (the SSOT);
-        // snapshot now so the asset needn't survive.
-        const auto& pslots = payload.graph.param_slots;
-        gm.gd.param_count = static_cast<std::uint32_t>(
-            pslots.size() < lux::render::GraphMaterialData::kMaxParams
-                ? pslots.size() : lux::render::GraphMaterialData::kMaxParams);
-        for (std::uint32_t p = 0; p < lux::render::GraphMaterialData::kMaxParams; ++p)
-            for (int k = 0; k < 4; ++k)
-                gm.gd.params[p][k] = (p < pslots.size()) ? pslots[p].dflt[k] : 0.0f;
-
-        // Forward-frag compile (the only pass the preview renders).
-        gm.forward_spirv      = payload.forward_spirv;
-        gm.forward_info_bytes = lux::rdesc::ShaderInfo::serialize(payload.forward_info);
-        const auto spv = std::span<const std::byte>{
-            reinterpret_cast<const std::byte*>(gm.forward_spirv.data()),
-            gm.forward_spirv.size() * sizeof(std::uint32_t)};
-        gm.forward_req = session_.compileShader(
-            spv, std::span<const std::byte>{gm.forward_info_bytes.data(),
-                                            gm.forward_info_bytes.size()});
-
-        // One createTexture2D per bound slot (slot order == bindless lane order).
-        for (std::uint32_t s = 0;
-             s < lux::asset::MaterialData::kMaxTextures; ++s)
-        {
-            const auto& tid = payload.texture_slot_ids[s];
-            if (tid.is_nil()) continue;
-            const auto* ta = assets_.fetchAssetAs<lux::asset::TextureAsset>(tid);
-            if (!ta || !ta->data())
-            {
-                // W2b safety net: a data-less texture shell (e.g. a model thumbnail
-                // path the provider didn't fully gate) — request it so a later build
-                // binds it; leave it unbound this build.
-                if (ta && exec_) exec_->requestLoad(tid);
-                continue;
-            }
-            const lux::rdesc::Texture& tex = *ta->data();
-            gm.tex_reqs.push_back(session_.createTexture2D(
-                static_cast<const std::byte*>(tex.data()),
-                static_cast<std::uint32_t>(tex.size()),
-                tex.width(), tex.height(), tex.channel(), tex.pixelFormat(),
-                /*generate_mips=*/!lux::rdesc::isCompressedFormat(tex.pixelFormat())));
-            gm.tex_req_slot.push_back(s);
-        }
-
-        j.graph_mats.push_back(std::move(gm));
-        return j.graph_mats.size() - 1;
-    }
-
     void ThumbnailService::advanceJob()
     {
         Job& j = *active_;
@@ -376,8 +470,9 @@ namespace lux::editor
             auto* r = providers_.get(j.type);
             // W2b: provider requests an async load for any data-less shell it needs.
             const ThumbnailLoadFn load = [this](const lux::asset::asset_id_t& dep)
-            { if (exec_) exec_->requestLoad(dep); };
-            j.spec  = r ? r->buildSpec(assets_, preview_, j.id, load) : ThumbnailSpec{};
+            { (void)asset_client_.request(dep); };
+            j.spec = r ? r->buildSpec(assets_, host_->sphere_mesh_id, j.id, load)
+                       : ThumbnailSpec{};
             if (!j.spec.valid)
             {
                 // Deps still streaming in → re-queue (cache stays Pending) instead
@@ -396,161 +491,48 @@ namespace lux::editor
 
             if (j.spec.has_cpu_pixels) { j.stage = Job::Stage::Encode; return; } // texture → encode
 
-            // 3D: upload each instance's mesh (if any) + bring up each DISTINCT
-            // graph material it wears (compile forward frag + upload its textures).
-            const std::size_t n = j.spec.instances.size();
-            j.inst_graph_mat.assign(n, std::nullopt);
-            for (std::size_t i = 0; i < n; ++i)
+            // 3D: one job ENTITY per instance — MeshComponent{ids} is the whole
+            // upload story (resolver + mesh subsystem take it from here).
+            auto& world = host_->runtime->world();
+            for (const auto& in : j.spec.instances)
             {
-                const auto& in = j.spec.instances[i];
-                if (in.mesh_data)
-                {
-                    j.mesh_reqs.push_back(
-                        lux::render::MeshStackProxy(session_, preview_.meshStackOps()).uploadMesh(*in.mesh_data));
-                    j.mesh_req_inst.push_back(i);
-                }
-                j.inst_graph_mat[i] = ensureJobGraphMaterial(j, in.graph_material_id);
+                if (in.mesh_asset_id.is_nil()) continue;
+                const auto e = world.createEntity();
+                world.emplace<lux::ecs::Transform3DComponent>(e);
+                world.emplace<lux::ecs::ResolvedTransform3DComponent>(e);
+                auto& mc = world.emplace<lux::ecs::MeshComponent>(e);
+                mc.mesh_asset_id     = in.mesh_asset_id;
+                // 没有作者材质 → 预览灰(观感与旧手写预览场景的默认灰一致);
+                // 预览灰缺席则留 nil(渲染侧默认材质)。
+                mc.material_asset_id = in.material_asset_id.is_nil()
+                                         ? host_->preview_grey_id
+                                         : in.material_asset_id;
+                mc.cast_shadow       = true;
+                mc.visible           = true;
+                j.entities.push_back(e);
             }
-            j.stage = Job::Stage::WaitUpload;
+            if (j.entities.empty()) { finishJob(false); return; }
+
+            frameCameraForBounds(world, host_->camera, j.spec.bounds);
+            j.stage = Job::Stage::WaitReady;
             return;
         }
 
-        case Job::Stage::WaitUpload:
+        case Job::Stage::WaitReady:
         {
-            if (!allReady(j.mesh_reqs)) return;
-            for (const auto& gm : j.graph_mats)
-            {
-                if (!gm.forward_req.isReady()) return;
-                if (!allReady(gm.tex_reqs))    return;
-            }
+            // 批 0 的观察点:实例建成(slot 回复落地)且对当前 view 代次发过可见性。
+            // 材质就绪由 resolver 隐含 —— MeshGpuCacheComponent 在 = 两者都可用,
+            // 实例建起来即材质路径已通。
+            auto& reg = host_->runtime->world().registry();
+            for (const auto e : j.entities)
+                if (!reg.valid(e)
+                    || !reg.all_of<lux::ecs::MeshInstanceReadyComponent>(e))
+                    return;   // keep waiting (the watchdog bounds this)
 
-            // Harvest EVERY successfully-created texture into j.uploaded_textures
-            // FIRST — before any abort (a mesh failure below, or a forward-compile
-            // failure further down) — so cleanupJobResources() always frees them.
-            // These textures were created server-side back in the Spec stage and are
-            // live GPU resources the moment their request resolves, independent of
-            // whether the owning material's shader compiles. Also bind them into the
-            // material's blob now (binding a doomed material's blob is harmless — it
-            // never uploads).
-            for (auto& gm : j.graph_mats)
-                for (std::size_t t = 0; t < gm.tex_reqs.size(); ++t)
-                {
-                    const auto trep = gm.tex_reqs[t].result();
-                    if (trep.status != 0) continue;       // unresolved -> leave unbound
-                    j.uploaded_textures.push_back(trep.handle);
-                    const std::uint32_t slot = gm.tex_req_slot[t];
-                    gm.gd.tex_bindless[slot] = trep.handle.index;
-                    gm.gd.tex_mask |= (1u << slot);
-                }
-
-            const std::size_t n = j.spec.instances.size();
-            j.inst_mesh.assign(n, preview_.sphereMesh());
-            j.inst_material.assign(n, preview_.defaultMaterial());
-
-            bool ok = true;
-            for (std::size_t k = 0; k < j.mesh_reqs.size(); ++k)
-            {
-                const auto rep = j.mesh_reqs[k].result();
-                if (rep.status != 0) { ok = false; break; }
-                j.inst_mesh[j.mesh_req_inst[k]] = rep.handle;
-                j.uploaded_meshes.push_back(rep.handle);
-            }
-            if (!ok) { cleanupJobResources(); finishJob(false); return; }
-
-            // Resolve each graph material's forward shader, then upload it (its
-            // textures are already bound above). A bringup that fails (compile error /
-            // no shader) is marked failed and its instances fall back to the resident
-            // default grey material.
-            for (auto& gm : j.graph_mats)
-            {
-                const auto rep = gm.forward_req.result();
-                if (rep.status != 0 || rep.shader.is_null()) { gm.failed = true; continue; }
-                gm.forward_shader = rep.shader;
-
-                // Forward-only preview: no gbuffer shader (null) — the forward PSO is
-                // routed from forward_shader by registerGraphBucketPipelines(R1).
-                gm.upload_req = lux::render::MaterialProxy(session_, preview_.materialOps()).uploadGraphMaterial(
-                    gm.gd, lux::render::ShaderHandle{}, gm.forward_shader,
-                    gm.alpha_mode, gm.double_sided);
-                gm.upload_issued = true;
-            }
-            j.stage = Job::Stage::WaitMaterial;
-            return;
-        }
-
-        case Job::Stage::WaitMaterial:
-        {
-            for (const auto& gm : j.graph_mats)
-                if (gm.upload_issued && !gm.failed && !gm.upload_req.isReady())
-                    return;
-
-            // Resolve each graph material's uploaded handle.
-            for (auto& gm : j.graph_mats)
-            {
-                if (gm.failed || !gm.upload_issued) continue;
-                const auto rep = gm.upload_req.result();
-                if (rep.status != 0) { gm.failed = true; continue; }
-                gm.handle = rep.handle;
-                j.uploaded_materials.push_back(rep.handle);
-            }
-
-            // Map each instance to its material (graph handle, else default grey).
-            const std::size_t n = j.spec.instances.size();
-            for (std::size_t i = 0; i < n; ++i)
-            {
-                const auto idx = j.inst_graph_mat[i];
-                if (idx && !j.graph_mats[*idx].failed
-                        && !j.graph_mats[*idx].handle.is_null())
-                    j.inst_material[i] = j.graph_mats[*idx].handle;
-            }
-
-            for (std::size_t i = 0; i < n; ++i)
-            {
-                // Skinned meshes render as STATIC here on purpose: the
-                // unified vertex layout stores BIND-POSE positions, so a
-                // static draw IS the bind pose. The preview scene has no
-                // skinning feature — SkinnedMesh-kind instances are skipped
-                // by its passes entirely (verified: all-black readback).
-                const auto kind = lux::render::EGeometryKind::StaticMesh;
-                j.inst_reqs.push_back(
-                    lux::render::MeshStackProxy(session_, preview_.meshStackOps())
-                        .addMeshInstance(
-                            preview_.sceneId(), j.inst_mesh[i], j.inst_material[i],
-                            kIdentity,
-                            lux::render::kInstanceFlagCastShadow
-                                | lux::render::kInstanceFlagReceiveShadow
-                                | lux::render::kInstanceFlagVisible,
-                            kind));
-            }
-            j.stage = Job::Stage::WaitInstance;
-            return;
-        }
-
-        case Job::Stage::WaitInstance:
-        {
-            if (!allReady(j.inst_reqs)) return;
-
-            for (auto& req : j.inst_reqs)
-            {
-                const auto rep = req.result();
-                if (static_cast<bool>(rep.object)) j.objects.push_back(rep.object);
-            }
-            if (j.objects.empty()) { cleanupJobResources(); finishJob(false); return; }
-
-            // Make the instances visible in the preview view, set the framing
-            // camera, then fire a non-blocking readback (server settles N ticks).
-            for (auto obj : j.objects)
-                lux::render::MeshStackProxy(session_, preview_.meshStackOps())
-                    .makeInstanceVisibleForView(preview_.sceneId(), preview_.view(), obj);
-            const auto cam = preview_.frameBounds(j.spec.bounds);
-            lux::render::ViewCameraProxy(session_, preview_.viewCameraOps())
-                .update(preview_.sceneId(), preview_.view(), cam.view, cam.proj, cam.eye);
-
-            const std::uint32_t rs = preview_.renderSize();
+            const std::uint32_t rs = host_->render_size;
             j.dst_px.assign(static_cast<std::size_t>(rs) * rs * 4, std::byte{0});
-            j.capture_req = session_.readbackViewAsync(
-                preview_.sceneId(), preview_.view(),
-                j.dst_px.data(), j.dst_px.size(), kSettleFrames);
+            j.capture_req = infra_.control->readbackTargetAsync(
+                host_->target.id(), j.dst_px.data(), j.dst_px.size(), kSettleFrames);
             j.capture_issued = true;
             j.stage = Job::Stage::WaitCapture;
             return;
@@ -559,15 +541,18 @@ namespace lux::editor
         case Job::Stage::WaitCapture:
         {
             if (!j.capture_req.isReady()) return;
-            const auto rb = j.capture_req.result();
+            const auto rb = j.capture_req.tryResult()->get();
             if (rb.status != 0 || rb.bytes_written != j.dst_px.size())
             {
-                cleanupJobResources(); finishJob(false); return;
+                finishJob(false);
+                return;
             }
             // Empty-image detection (see retried_default): when the render
-            // produced literally nothing AND the job dressed fresh meshes in
-            // job-uploaded graph materials, swap everything to the resident
-            // default material and re-render once.
+            // produced literally nothing, replace the authored material with
+            // PreviewGrey and re-render once. Nil is not a renderer-default
+            // sentinel; it is an invalid mesh-instance configuration. The swap rides the standard
+            // path: the resolver re-resolves, the mesh subsystem tears the
+            // instance down + rebuilds, Ready re-arms — WaitReady re-waits.
             if (!j.spec.has_cpu_pixels)
             {
                 bool any_nonblack = false;
@@ -580,34 +565,34 @@ namespace lux::editor
                         break;
                     }
 
-                bool wore_graph_mats = false;
-                for (const auto& gm_idx : j.inst_graph_mat)
-                    wore_graph_mats = wore_graph_mats || gm_idx.has_value();
-
-                if (!any_nonblack && wore_graph_mats && !j.retried_default
-                    && !j.objects.empty())
+                if (!any_nonblack && !j.retried_default && !j.entities.empty())
                 {
-                    std::fprintf(stderr,
-                        "[Thumbnail] type=%d graph-material draw produced an "
-                        "empty image — retrying with the default material "
-                        "(render-side bucket x fresh-mesh defect)\n",
-                        static_cast<int>(j.type));
                     j.retried_default = true;
-                    {
-                        lux::render::MeshStackProxy mesh(session_, preview_.meshStackOps());
-                        for (auto obj : j.objects)
-                            mesh.removeMeshInstance(preview_.sceneId(), obj);
-                        j.objects.clear();
-                        j.inst_reqs.clear();
-                        const std::size_t n = j.spec.instances.size();
-                        j.inst_graph_mat.assign(n, std::nullopt);
-                        j.inst_material.assign(n, preview_.defaultMaterial());
-                        for (std::size_t i = 0; i < n; ++i)
-                            j.inst_reqs.push_back(mesh.addMeshInstance(
-                                preview_.sceneId(), j.inst_mesh[i],
-                                j.inst_material[i], kIdentity));
-                    }
-                    j.stage = Job::Stage::WaitInstance;
+                    auto& reg = host_->runtime->world().registry();
+                    const auto fallback_material = host_->preview_grey_id;
+                    for (const auto e : j.entities)
+                        if (reg.valid(e))
+                            reg.patch<lux::ecs::MeshComponent>(
+                                e,
+                                [fallback_material](lux::ecs::MeshComponent& mesh)
+                                {
+                                    mesh.material_asset_id = fallback_material;
+                                }
+                            );
+                    j.capture_issued = false;
+                    j.capture_req    = {};
+                    j.stage = Job::Stage::WaitReady;
+                    return;
+                }
+                if (!any_nonblack)
+                {
+                    std::fprintf(
+                        stderr,
+                        "[Thumbnail] type=%d authored and PreviewGrey "
+                        "captures were empty; refusing to cache a black "
+                        "thumbnail\n",
+                        static_cast<int>(j.type));
+                    finishJob(false);
                     return;
                 }
             }
@@ -626,7 +611,7 @@ namespace lux::editor
             j.encode_out = out;
 
             const int           mode = j.from_embedded ? 0 : (j.spec.has_cpu_pixels ? 1 : 2);
-            const std::uint32_t rs   = preview_.renderSize();
+            const std::uint32_t rs   = host_ ? host_->render_size : 256u;
             const std::uint32_t disp = kDisplaySize;
             std::vector<ThumbnailSize> sizes = sizes_;            // small copy
             std::vector<std::byte>     px;                        // moved input pixels
@@ -636,50 +621,49 @@ namespace lux::editor
             else if (mode == 1) { px = std::move(j.spec.rgba8); w = j.spec.cpu_width; h = j.spec.cpu_height; }
             else                { px = std::move(j.dst_px);      w = rs;               h = rs; }
 
-            lux::exec::spawn(*exec_,
-                  ::stdexec::schedule(lux::exec::cpuScheduler(*exec_))
+            const bool started = lux::exec::spawn(*async_scope_,
+                  ::stdexec::schedule(
+                      lux::exec::backgroundCpuScheduler(async_))
                 | ::stdexec::then([out, mode, w, h, disp, sizes = std::move(sizes),
                                    px = std::move(px), embedded = std::move(embedded)]() mutable noexcept
                   {
-                      // try/catch keeps this noexcept (the op-state contract) while routing an
-                      // OOM from the PNG encode/decode to a clean per-job failure instead of
-                      // std::terminate — strictly safer than the old synchronous main-thread path.
-                      try
+                      // Business failures are values (`empty` / `nullopt`).
+                      // Allocation failure follows the engine's fatal OOM
+                      // policy; exceptions are not a second control channel.
+                      ThumbnailSet set;
+                      if      (mode == 0) set = std::move(embedded);
+                      else if (mode == 1) set = buildSetFromRgba(px.data(), w, h, sizes);
+                      else
                       {
-                          ThumbnailSet set;
-                          if      (mode == 0) set = std::move(embedded);
-                          else if (mode == 1) set = buildSetFromRgba(px.data(), w, h, sizes);
-                          else
-                          {
-                              // GPU readback is BGRA + forward leaves the lit object at alpha 0
-                              // → swizzle to RGBA and force opaque.
-                              swizzleBgraRgba(px.data(), static_cast<std::size_t>(w) * h);
-                              for (std::size_t i = 3; i < px.size(); i += 4) px[i] = std::byte{255};
-                              set = buildSetFromRgba(px.data(), w, h, sizes);
-                          }
-                          if (set.empty())
-                          { out->failed = true; out->done.store(true, std::memory_order_release); return; }
-
-                          const ThumbnailImage* best = set.best(disp, disp);
-                          std::optional<DecodedImage> decoded;
-                          if (best) decoded = decodePngRgba8(best->bytes);
-                          if (!decoded)
-                          { out->failed = true; out->done.store(true, std::memory_order_release); return; }
-
-                          out->set        = std::move(set);
-                          out->display_w  = decoded->width;
-                          out->display_h  = decoded->height;
-                          out->display_px = std::move(decoded->rgba8);
-                          out->done.store(true, std::memory_order_release);
+                          // GPU readback is BGRA + forward leaves the lit object at alpha 0
+                          // → swizzle to RGBA and force opaque.
+                          swizzleBgraRgba(px.data(), static_cast<std::size_t>(w) * h);
+                          for (std::size_t i = 3; i < px.size(); i += 4) px[i] = std::byte{255};
+                          set = buildSetFromRgba(px.data(), w, h, sizes);
                       }
-                      catch (...)
-                      {
-                          out->failed = true;
-                          out->done.store(true, std::memory_order_release);
-                      }
+                      if (set.empty())
+                      { out->failed = true; out->done.store(true, std::memory_order_release); return; }
+
+                      const ThumbnailImage* best = set.best(disp, disp);
+                      std::optional<DecodedImage> decoded;
+                      if (best) decoded = decodePngRgba8(best->bytes);
+                      if (!decoded)
+                      { out->failed = true; out->done.store(true, std::memory_order_release); return; }
+
+                      out->set        = std::move(set);
+                      out->display_w  = decoded->width;
+                      out->display_h  = decoded->height;
+                      out->display_px = std::move(decoded->rgba8);
+                      out->done.store(true, std::memory_order_release);
                   })
-                | ::stdexec::upon_stopped([out]() noexcept     // executor shutdown cancel
+                | ::stdexec::upon_stopped([out]() noexcept     // owner/executor shutdown cancel
                   { out->failed = true; out->done.store(true, std::memory_order_release); }));
+
+            if (!started)
+            {
+                out->failed = true;
+                out->done.store(true, std::memory_order_release);
+            }
 
             j.stage = Job::Stage::WaitEncode;
             return;
@@ -689,29 +673,61 @@ namespace lux::editor
         {
             if (!j.encode_out || !j.encode_out->done.load(std::memory_order_acquire)) return;
             EncodeOut& eo = *j.encode_out;
-            if (eo.failed) { cleanupJobResources(); finishJob(false); return; }
+            if (eo.failed) { finishJob(false); return; }
 
             j.set        = std::move(eo.set);
             j.display_w  = eo.display_w;
             j.display_h  = eo.display_h;
             j.display_px = std::move(eo.display_px);
+            auto display_owner =
+                std::make_shared<std::vector<std::byte>>(
+                    std::move(j.display_px));
+            auto retained = lux::cxx::SharedBytes<>::fromOwner(
+                display_owner,
+                std::span<const std::byte>{
+                    display_owner->data(), display_owner->size()});
+            if (retained.empty())
+            {
+                finishJob(false);
+                return;
+            }
+            j.display_bytes = std::move(retained);
             j.encode_out.reset();      // drop our ref to the (now consumed) EncodeOut
 
-            j.display_req = session_.createTexture2D(
-                j.display_px.data(), static_cast<std::uint32_t>(j.display_px.size()),
-                static_cast<std::int32_t>(j.display_w), static_cast<std::int32_t>(j.display_h),
-                4, lux::render::EPixelFormat::RGBA8_SRGB, /*generate_mips=*/false);
-            j.display_issued = true;
             j.stage = Job::Stage::WaitDisplay;
             return;
         }
 
         case Job::Stage::WaitDisplay:
         {
+            if (!j.display_issued)
+            {
+                auto submitted = infra_.upload.tryCreateTexture2D(
+                    j.display_bytes,
+                    static_cast<std::int32_t>(j.display_w),
+                    static_cast<std::int32_t>(j.display_h),
+                    4,
+                    lux::render::EPixelFormat::RGBA8_SRGB,
+                    /*generate_mips=*/false
+                );
+                if (!submitted)
+                {
+                    if (submitted.error() ==
+                            lux::render::ERenderUploadSubmitError::QUEUE_FULL ||
+                        submitted.error() == lux::render::
+                            ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED)
+                        return;
+                    finishJob(false);
+                    return;
+                }
+                j.display_req = std::move(*submitted);
+                j.display_issued = true;
+            }
             if (!j.display_req.isReady()) return;
-            const auto rep = j.display_req.result();
-            cleanupJobResources();          // remove instances + free transient handles
-            if (rep.status != 0) { finishJob(false); return; }
+            const auto rep = j.display_req.tryResult()->get();
+            // status 与 handle 双判:分发失败的默认回复 status==0 + 空句柄,只判
+            // status 会把空纹理句柄当成功收进缩略图集。
+            if (rep.status != 0 || rep.handle.isNull()) { finishJob(false); return; }
             j.result_tex = rep.handle;
             finishJob(true);
             return;
@@ -719,38 +735,47 @@ namespace lux::editor
         }
     }
 
-    void ThumbnailService::cleanupJobResources()
+    void ThumbnailService::invalidate(const lux::asset::asset_id_t& id)
     {
-        if (!active_) return;
-        Job& j = *active_;
+        // Ready entries own process-global display textures. Destruction is a
+        // control-plane operation, so invalidation is legal from UI paint or
+        // any other main-thread phase without a deferred frame queue.
+        if (const auto* v = cache_->cache.tryGet(id); v && !v->gpu_tex.isNull())
+            infra_.control->destroyTexture(v->gpu_tex);
+        cache_->cache.invalidate(id);
+        pending_attempts_.erase(id);   // 允许重新排队生成
+    }
+
+    void ThumbnailService::destroyJobEntities(Job& j)
+    {
+        if (host_ && host_->runtime && host_->runtime->isLive())
         {
-            lux::render::MeshStackProxy mesh(session_, preview_.meshStackOps());
-            for (auto obj : j.objects)        mesh.removeMeshInstance(preview_.sceneId(), obj);
+            auto& world = host_->runtime->world();
+            for (const auto e : j.entities)
+                if (world.registry().valid(e))
+                    world.destroyEntity(e);
+            // 销毁即回收:leave 观察者记下实例句柄(下一次 tick removeMeshInstance),
+            // 胶水松票,归零广播让驻留编排收 GPU 副本。这里没有
+            // (也不再需要)任何手工 destroy。
         }
-        for (auto h : j.uploaded_meshes)      lux::render::MeshStackProxy(session_, preview_.meshStackOps()).destroyMesh(h);
-        {
-            lux::render::MaterialProxy mat(session_, preview_.materialOps());
-            for (auto h : j.uploaded_materials) mat.destroyMaterial(h);
-        }
-        for (auto h : j.uploaded_textures)    session_.destroyTexture(h);
-        // (Compiled graph frags have no destroy* — the render SPIR-V cache refcounts
-        //  byte-identical shaders, so distinct-shader leakage is bounded + matches
-        //  the scene bridge's resident-material lifecycle.)
-        j.objects.clear();
-        j.uploaded_meshes.clear();
-        j.uploaded_materials.clear();
-        j.uploaded_textures.clear();
+        j.entities.clear();
     }
 
     void ThumbnailService::finishJob(bool ok)
     {
         if (!active_) return;
+        destroyJobEntities(*active_);
         if (!ok)
             std::fprintf(stderr, "[Thumbnail] FAILED type=%d at stage=%d\n",
                          static_cast<int>(active_->type),
                          static_cast<int>(active_->stage));
         if (ok)
         {
+            // 重算覆盖旧条目(资产重导入后缩略图重生成):旧显示纹理无人再引用,
+            // 不还就漏到进程结束。帧开着(advanceJob 语境),当场归还。
+            if (const auto* old = cache_->cache.tryGet(active_->id);
+                old && !old->gpu_tex.isNull() && !(old->gpu_tex == active_->result_tex))
+                infra_.control->destroyTexture(old->gpu_tex);
             ThumbValue v;
             v.set     = std::move(active_->set);
             v.gpu_tex = active_->result_tex;
@@ -771,62 +796,47 @@ namespace lux::editor
 
         // Account WHICH wait is holding the job — this line pins the root
         // cause when the watchdog fires in the field.
-        std::string wait;
+        std::size_t not_ready = 0;
+        if (host_ && host_->runtime && host_->runtime->isLive())
         {
-            std::size_t mesh_pending = 0, tex_pending = 0, fwd_pending = 0,
-                        mat_pending = 0, inst_pending = 0;
-            for (const auto& r : j.mesh_reqs) mesh_pending += !r.isReady();
-            for (const auto& gm : j.graph_mats)
-            {
-                fwd_pending += !gm.forward_req.isReady();
-                for (const auto& r : gm.tex_reqs) tex_pending += !r.isReady();
-                mat_pending += gm.upload_issued && !gm.upload_req.isReady();
-            }
-            for (const auto& r : j.inst_reqs) inst_pending += !r.isReady();
-            wait = std::format(
-                "pending: mesh={} fwd={} tex={} mat={} inst={} capture={} display={}",
-                mesh_pending, fwd_pending, tex_pending, mat_pending, inst_pending,
-                static_cast<int>(j.capture_issued && !j.capture_req.isReady()),
-                static_cast<int>(j.display_issued && !j.display_req.isReady()));
+            auto& reg = host_->runtime->world().registry();
+            for (const auto e : j.entities)
+                if (!reg.valid(e)
+                    || !reg.all_of<lux::ecs::MeshInstanceReadyComponent>(e))
+                    ++not_ready;
         }
         std::fprintf(stderr,
-            "[Thumbnail] job STUCK type=%d stage=%d after %d frames (%s) — "
+            "[Thumbnail] job STUCK type=%d stage=%d after %d frames "
+            "(instances not ready=%zu capture_pending=%d display_pending=%d) — "
             "skipped, queue continues\n",
             static_cast<int>(j.type), static_cast<int>(j.stage), j.age_frames,
-            wait.c_str());
+            not_ready,
+            static_cast<int>(j.capture_issued && !j.capture_req.isReady()),
+            static_cast<int>(j.display_issued && !j.display_req.isReady()));
 
-        // Free everything harvested so far (instances out of the preview
-        // scene, resolved transient handles).
-        cleanupJobResources();
+        // The job's GPU footprint is entity-owned — destroying the entities
+        // reclaims it through the standard leave/refcount path.
+        destroyJobEntities(j);
         cache_->cache.setFailed(j.id);
 
-        // Requests whose results were ALREADY harvested into the uploaded_*
-        // lists (and destroyed by the cleanup above) must not be re-harvested
-        // when the zombie settles — drop them now, keyed by how far the
-        // state machine got. (forward_req stays: it is ready by then anyway
-        // and compiled shaders have no destroy.)
-        const auto stage = static_cast<int>(j.stage);
-        if (stage > static_cast<int>(Job::Stage::WaitUpload))
+        // Only an outstanding readback / display upload still writes into
+        // job-owned memory (dst_px / display_px) — park the Job until those
+        // settle. Everything else (encode_out) is self-contained and orphaned.
+        const bool outstanding =
+            (j.capture_issued && !j.capture_req.isReady()) ||
+            (j.display_issued && !j.display_req.isReady());
+        if (outstanding)
         {
-            j.mesh_reqs.clear();
-            for (auto& gm : j.graph_mats)
-                gm.tex_reqs.clear();
+            zombies_.push_back(std::move(active_));
+            return;
         }
-        if (stage > static_cast<int>(Job::Stage::WaitMaterial))
-            for (auto& gm : j.graph_mats)
-                gm.upload_issued = false;
-        if (stage > static_cast<int>(Job::Stage::WaitInstance))
-            j.inst_reqs.clear();
-
-        // Outstanding replies still write into job-owned memory (readback →
-        // dst_px, texture upload borrows display_px / SPIR-V words), so the
-        // Job must outlive them — park it until everything settles.
-        // NOTE: j.encode_out (an in-flight CPU-pool encode op, only possible at the
-        // WaitEncode stage) is deliberately LEFT untouched here. That op is
-        // self-contained — it holds its OWN shared_ptr<EncodeOut> and touches no
-        // Job/session state — so it is safely orphaned; do NOT block on it. Executor
-        // shutdown's on_empty() reaps it.
-        zombies_.push_back(std::move(active_));
+        // A display texture that resolved but was never harvested would leak —
+        // unreachable today (advanceJob runs before the watchdog), kept as a belt.
+        if (j.display_issued && j.display_req.isReady())
+            if (const auto rep = j.display_req.tryResult()->get();
+                rep.status == 0 && !rep.handle.isNull())   // 默认回复的空句柄不 destroy
+                infra_.control->destroyTexture(rep.handle);
+        active_.reset();
     }
 
     void ThumbnailService::drainZombies()
@@ -834,67 +844,101 @@ namespace lux::editor
         for (std::size_t z = 0; z < zombies_.size(); )
         {
             Job& j = *zombies_[z];
-
-            // Only the render REQUESTS gate settledness. j.encode_out (a WaitEncode-stage
-            // CPU-pool op) is intentionally NOT inspected — it is self-contained and
-            // orphaned (see abortStuckJob); a zombie aborted at WaitEncode has all its
-            // requests settled, so it drains immediately while that op finishes on its own.
+            // Only the readback + display requests gate settledness now — the
+            // entity path has no client-side buffers a late reply could touch.
             const bool settled =
-                allReady(j.mesh_reqs) && allReady(j.inst_reqs)
-                && (!j.capture_issued || j.capture_req.isReady())
-                && (!j.display_issued || j.display_req.isReady())
-                && [&]
-                   {
-                       for (const auto& gm : j.graph_mats)
-                       {
-                           // forward_req is always issued at gm creation;
-                           // compileShader borrows the job's SPIR-V bytes
-                           // until it resolves.
-                           if (!gm.forward_req.isReady()) return false;
-                           if (!allReady(gm.tex_reqs))    return false;
-                           if (gm.upload_issued && !gm.upload_req.isReady())
-                               return false;
-                       }
-                       return true;
-                   }();
+                (!j.capture_issued || j.capture_req.isReady())
+                && (!j.display_issued || j.display_req.isReady());
             if (!settled)
             {
                 ++z;
                 continue;
             }
-
-            // Free anything that resolved AFTER the abort (the cleanup at
-            // abort time could only free what had been harvested).
-            for (const auto& r : j.mesh_reqs)
-                if (const auto rep = r.result(); rep.status == 0)
-                    lux::render::MeshStackProxy(session_, preview_.meshStackOps()).destroyMesh(rep.handle);
-            for (const auto& gm : j.graph_mats)
-            {
-                for (const auto& r : gm.tex_reqs)
-                    if (const auto rep = r.result(); rep.status == 0)
-                        session_.destroyTexture(rep.handle);
-                if (gm.upload_issued)
-                    if (const auto rep = gm.upload_req.result(); rep.status == 0)
-                        lux::render::MaterialProxy(session_, preview_.materialOps())
-                            .destroyMaterial(rep.handle);
-            }
-            for (const auto& r : j.inst_reqs)
-                if (const auto rep = r.result(); static_cast<bool>(rep.object))
-                    lux::render::MeshStackProxy(session_, preview_.meshStackOps())
-                        .removeMeshInstance(preview_.sceneId(), rep.object);
+            // Free a display texture that resolved AFTER the abort.
             if (j.display_issued)
-                if (const auto rep = j.display_req.result(); rep.status == 0)
-                    session_.destroyTexture(rep.handle);
-
+                if (const auto rep = j.display_req.tryResult()->get();
+                    rep.status == 0 && !rep.handle.isNull())   // 默认回复的空句柄不 destroy
+                    infra_.control->destroyTexture(rep.handle);
             zombies_.erase(zombies_.begin() + static_cast<std::ptrdiff_t>(z));
         }
     }
 
+    bool ThumbnailService::releaseGpu()
+    {
+        if (!host_) return true;
+        if (async_scope_)
+        {
+            if (infra_.close_driver == nullptr ||
+                !infra_.close_driver->close(async_scope_->closeAsync()))
+            {
+                lux::log::error(
+                    "thumbnail",
+                    "thumbnail async close timed out; dependencies stay alive");
+                return false;
+            }
+            async_scope_.reset();
+        }
+        // Park an in-flight readback/display (its job-owned buffers must outlive
+        // the server; shutdown() reaps after the thread stops). The job's
+        // entities die with the runtime teardown below.
+        if (active_)
+        {
+            cache_->cache.setFailed(active_->id);
+            active_->entities.clear();   // world dies wholesale below
+            const bool outstanding =
+                (active_->capture_issued && !active_->capture_req.isReady()) ||
+                (active_->display_issued && !active_->display_req.isReady());
+            if (outstanding) zombies_.push_back(std::move(active_));
+            else             active_.reset();
+        }
+        // 成功 job 的显示纹理(readback→重上传的产物,非资产派生物,不归共享
+        // 缓存管):此前 shutdown 只 clear 表,句柄落地即漏 —— 浏览 N 个资产 =
+        // N 张 RGBA8 常驻到进程结束。在渲染线程还活着、帧开着的这里逐个归还。
+        cache_->cache.forEachReady(
+            [this](const lux::asset::asset_id_t&, const ThumbValue& v)
+            {
+                if (!v.gpu_tex.isNull())
+                    infra_.control->destroyTexture(v.gpu_tex);
+            });
+        cache_->cache.clear();
+        if (host_->runtime)
+        {
+            if (infra_.close_driver == nullptr)
+            {
+                lux::log::error("thumbnail", "preview has no MainCloseDriver");
+                return false;
+            }
+            const auto report = infra_.close_driver->close(*host_->runtime);
+            if (!report)
+            {
+                lux::log::error("thumbnail", "preview scene close timed out");
+                return false;
+            }
+            host_->runtime.reset();
+        }
+        if (host_->target)
+        {
+            // Ours to destroy (we created it). SAMPLED 池经统一退休入口回收。
+            if (auto closing = host_->target.close(); closing)
+            {
+                (void)infra_.control->syncCall(std::move(*closing));
+            }
+        }
+        ready_ = false;
+        return true;
+    }
+
     void ThumbnailService::shutdown()
     {
+        // The normal path closed this scope in releaseGpu while MainThreadMailbox and
+        // render progress were still available. Destruction only requests stop
+        // as a passive fallback; it never runs a private blocking pump.
+        if (async_scope_)
+            async_scope_->requestStop();
+
         // The render thread must already be stopped before this runs, so the
         // server can no longer write into an in-flight readback's dst buffer or
-        // a pending job's borrowed upload data.
+        // a pending display upload's borrowed pixels.
         active_.reset();
         zombies_.clear();
         cache_->cache.clear();

@@ -1,57 +1,74 @@
 #pragma once
-#include "lux/engine/gapi/vk/Object.hpp"
 #include "lux/engine/gapi/vk/ExternalHandle.hpp"
 #include <vulkan/vulkan.h>
 
+#include <utility>
+
 namespace lux::gapi::vk
 {
-	class SemaphoreBuilder;
 	class Semaphore
 	{
 	public:
-		using Builder = SemaphoreBuilder;
-
-		Semaphore() : semaphore(VK_NULL_HANDLE) {}
-
-		Semaphore(VkDevice device, const VkSemaphoreCreateInfo& info, VkAllocationCallbacks* allocator = nullptr)
+		Semaphore() noexcept = default;
+		~Semaphore() noexcept
 		{
-			VK_FUNC_INVOKE(vkCreateSemaphore, "Failed to create Semaphore object", device, &info, allocator, &semaphore);
+			reset();
 		}
 
-		Semaphore(VkDevice device, VkAllocationCallbacks* allocator = nullptr)
+		/// Adopt an already-created handle together with everything required to
+		/// destroy it. This is an owning operation; release() is the only way to
+		/// detach the handle without destroying it.
+		[[nodiscard]] static Semaphore adopt(
+			VkDevice device,
+			VkSemaphore handle,
+			const VkAllocationCallbacks* allocator = nullptr
+		) noexcept
 		{
-			VkSemaphoreCreateInfo info;
-			info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-			info.pNext = nullptr;
-			// VkSemaphoreCreateFlags is a bitmask type for setting a mask, but is currently reserved for future use.
-			info.flags = 0;
-
-			VK_FUNC_INVOKE(vkCreateSemaphore, "Failed to create Semaphore object", device, &info, allocator, &semaphore);
+			Semaphore result;
+			result.device_ = device;
+			result.allocator_ = allocator;
+			result.semaphore_ = handle;
+			return result;
 		}
 
 		Semaphore(const Semaphore&) = delete;
 		Semaphore& operator=(const Semaphore&) = delete;
 
 		Semaphore(Semaphore&& other) noexcept
+			: device_(std::exchange(other.device_, VkDevice{})),
+			  allocator_(std::exchange(other.allocator_, nullptr)),
+			  semaphore_(std::exchange(other.semaphore_, VkSemaphore{}))
 		{
-			semaphore = other.semaphore;
-			other.semaphore = VK_NULL_HANDLE;
 		}
 
 		Semaphore& operator=(Semaphore&& other) noexcept
 		{
-			semaphore = other.semaphore;
-			other.semaphore = VK_NULL_HANDLE;
+			if (this == &other)
+				return *this;
+
+			reset();
+			device_ = std::exchange(other.device_, VkDevice{});
+			allocator_ = std::exchange(other.allocator_, nullptr);
+			semaphore_ = std::exchange(other.semaphore_, VkSemaphore{});
 			return *this;
 		}
 
-		void release(VkDevice device, VkAllocationCallbacks* allocator = nullptr)
+		/// Destroy the owned handle, if any, while retaining an empty state.
+		void reset() noexcept
 		{
-			if (semaphore != VK_NULL_HANDLE)
-			{
-				vkDestroySemaphore(device, semaphore, allocator);
-				semaphore = VK_NULL_HANDLE;
-			}
+			if (semaphore_ != VK_NULL_HANDLE)
+				vkDestroySemaphore(device_, semaphore_, allocator_);
+			device_ = VK_NULL_HANDLE;
+			allocator_ = nullptr;
+			semaphore_ = VK_NULL_HANDLE;
+		}
+
+		/// Detach ownership for publication into a raw-handle API.
+		[[nodiscard]] VkSemaphore release() noexcept
+		{
+			device_ = VK_NULL_HANDLE;
+			allocator_ = nullptr;
+			return std::exchange(semaphore_, VkSemaphore{});
 		}
 
 		// Export this semaphore as a platform-neutral external handle (Win32 NT HANDLE or
@@ -61,42 +78,47 @@ namespace lux::gapi::vk
 		// VK_SEMAPHORE_TYPE_TIMELINE) and the matching external-semaphore extension
 		// enabled (external_semaphore_win32 on Windows / external_semaphore_fd on POSIX).
 		// Handle owned by the CALLER. Returns kInvalidExternalHandle on failure.
-		ExternalHandle exportHandle(VkDevice device) const
+		[[nodiscard]] VkResult exportHandle(ExternalHandle& out_handle) const noexcept
 		{
+			out_handle = kInvalidExternalHandle;
+			if (device_ == VK_NULL_HANDLE || semaphore_ == VK_NULL_HANDLE)
+				return VK_ERROR_INITIALIZATION_FAILED;
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 			auto fn = reinterpret_cast<PFN_vkGetSemaphoreWin32HandleKHR>(
-				vkGetDeviceProcAddr(device, "vkGetSemaphoreWin32HandleKHR"));
+				vkGetDeviceProcAddr(device_, "vkGetSemaphoreWin32HandleKHR"));
 			if (!fn)
-				return kInvalidExternalHandle;
+				return VK_ERROR_EXTENSION_NOT_PRESENT;
 			VkSemaphoreGetWin32HandleInfoKHR info{ VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR };
-			info.semaphore  = semaphore;
+			info.semaphore  = semaphore_;
 			info.handleType = kOpaqueExternalSemaphoreType;
 			HANDLE handle = nullptr;
-			if (fn(device, &info, &handle) != VK_SUCCESS)
-				return kInvalidExternalHandle;
-			return handle;
+			const VkResult result = fn(device_, &info, &handle);
+			if (result == VK_SUCCESS)
+				out_handle = handle;
+			return result;
 #else
 			auto fn = reinterpret_cast<PFN_vkGetSemaphoreFdKHR>(
-				vkGetDeviceProcAddr(device, "vkGetSemaphoreFdKHR"));
+				vkGetDeviceProcAddr(device_, "vkGetSemaphoreFdKHR"));
 			if (!fn)
-				return kInvalidExternalHandle;
+				return VK_ERROR_EXTENSION_NOT_PRESENT;
 			VkSemaphoreGetFdInfoKHR info{ VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR };
-			info.semaphore  = semaphore;
+			info.semaphore  = semaphore_;
 			info.handleType = kOpaqueExternalSemaphoreType;
 			int fd = -1;
-			if (fn(device, &info, &fd) != VK_SUCCESS)
-				return kInvalidExternalHandle;
-			return fd;
+			const VkResult result = fn(device_, &info, &fd);
+			if (result == VK_SUCCESS)
+				out_handle = fd;
+			return result;
 #endif
 		}
 
-		inline operator VkSemaphore() const noexcept { return semaphore; }
-		inline const VkSemaphore* operator&() const noexcept { return &semaphore; }
+		inline operator VkSemaphore() const noexcept { return semaphore_; }
 		
-		inline VkSemaphore handle() const noexcept { return semaphore; }
-		inline const VkSemaphore* handlePtr() const noexcept { return &semaphore; }
+		inline VkSemaphore handle() const noexcept { return semaphore_; }
 
 	private:
-		VkSemaphore semaphore{ VK_NULL_HANDLE };
+		VkDevice                     device_{VK_NULL_HANDLE};
+		const VkAllocationCallbacks* allocator_{nullptr};
+		VkSemaphore                  semaphore_{VK_NULL_HANDLE};
 	};
 }

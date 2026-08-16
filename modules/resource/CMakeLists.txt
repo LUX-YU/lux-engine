@@ -6,14 +6,16 @@ generate_visibility_header(
     GENERATE_FILE_PATH  lux/engine/resource/visibility.h
 )
 
-# description must be processed before asset (asset depends on it)
+# Foundation ordering is explicit: asset identity is consumed by later
+# domain-owned content codecs, while asset itself depends on description.
 add_subdirectory(description)
+add_subdirectory(asset)
 
 # get sublist
 subdirectory_list(dir_list)
 
 foreach(subdir ${dir_list})
-    if(subdir STREQUAL "description")
+    if(subdir STREQUAL "description" OR subdir STREQUAL "asset")
         continue()  # already processed above
     endif()
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt)
@@ -25,6 +27,17 @@ install_components(
 	PROJECT_NAME	lux-engine-resource
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::resource
-	COMPONENTS		description 
-                    asset
+	COMPONENTS		description
+                    spatial
+                    spatial3d_scene
+                    deployment
+                    entity_scene
+                    classic_mesh_content
+                    terrain_content
+                    tilemap_content
+                    physics3d_content
+                    asset_identity
+                    asset_core
+                    asset_codecs
+                    asset_pak
 )

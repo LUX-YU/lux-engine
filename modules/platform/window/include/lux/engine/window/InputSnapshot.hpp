@@ -1,6 +1,8 @@
 #pragma once
 #include <lux/engine/window/LuxWindowDefination.hpp>
+#include <array>
 #include <bitset>
+#include <span>
 #include <variant>
 #include <vector>
 #include <cstdint>
@@ -15,13 +17,48 @@ namespace lux::window
     struct CharInput { uint32_t codepoint; };
 
     // -------------------------------------------------------------------------
+    // Touch — pointer-based input. Produced by mobile window backends
+    // (Android); desktop backends report none. Coordinates are client-area
+    // pixels, the same space as InputSnapshot::cursor_x / cursor_y.
+    // -------------------------------------------------------------------------
+
+    enum class TouchPhase : uint8_t
+    {
+        BEGAN,       ///< finger went down this frame
+        MOVED,       ///< position changed since the previous snapshot
+        STATIONARY,  ///< held with no movement
+        ENDED,       ///< finger went up this frame (slot dropped next frame)
+        CANCELED,    ///< OS canceled the gesture (app switch, palm rejection)
+    };
+
+    struct TouchPoint
+    {
+        int32_t    id{-1};      ///< OS pointer id, stable for the whole gesture
+        TouchPhase phase{TouchPhase::ENDED};
+        float      x{0.0f};     ///< client-area pixels
+        float      y{0.0f};
+        float      dx{0.0f};    ///< displacement since the previous snapshot
+        float      dy{0.0f};
+    };
+
+    /// Discrete touch transition, mirrored into InputSnapshot::events.
+    struct TouchAction
+    {
+        int32_t    id;
+        TouchPhase phase;
+        float      x;
+        float      y;
+    };
+
+    // -------------------------------------------------------------------------
     // InputEvent — a single discrete event captured on the main thread
     // and drained once per snapshot.
     // -------------------------------------------------------------------------
     using InputEvent = std::variant<
         KeyAction,          ///< Key press / release / repeat
         MouseButtonAction,  ///< Mouse button press / release
-        MouseScrollAction   ///< Scroll-wheel delta
+        MouseScrollAction,  ///< Scroll-wheel delta
+        TouchAction         ///< Touch begin / move / end / cancel
     >;
 
     // -------------------------------------------------------------------------
@@ -106,6 +143,19 @@ namespace lux::window
 
         /// Mouse button transitioned from down → up this frame.
         uint8_t mouse_just_released{0};
+
+        // ----------------------------------------------------------------
+        // Touch — pointers reported this frame (mobile backends; desktop
+        // backends leave touch_count at 0). A slot with phase ENDED or
+        // CANCELED is reported for exactly one frame, then dropped.
+        // UI capture: touch shares mouse_captured_by_ui (a UI layer that
+        // consumes the pointer consumes touch too).
+        // ----------------------------------------------------------------
+
+        static constexpr size_t kMaxTouchPoints = 10;
+
+        std::array<TouchPoint, kMaxTouchPoints> touches{};
+        uint8_t touch_count{0};
 
         // ----------------------------------------------------------------
         // Cursor
@@ -239,6 +289,60 @@ namespace lux::window
         {
             const auto i = static_cast<int>(btn);
             return i >= 0 && i < 8 && ((mouse_just_released >> i) & 1u);
+        }
+
+        // ----------------------------------------------------------------
+        // Helpers — touch
+        // ----------------------------------------------------------------
+
+        /// Touch points reported this frame (including ENDED/CANCELED ones).
+        [[nodiscard]] std::span<const TouchPoint> activeTouches() const noexcept
+        {
+            return {touches.data(), touch_count};
+        }
+
+        /// The primary (first-reported) touch, or nullptr when none.
+        [[nodiscard]] const TouchPoint* primaryTouch() const noexcept
+        {
+            return touch_count > 0 ? &touches[0] : nullptr;
+        }
+
+        /// True if any touch is currently down (BEGAN / MOVED / STATIONARY).
+        [[nodiscard]] bool anyTouchDown() const noexcept
+        {
+            for (uint8_t i = 0; i < touch_count; ++i)
+            {
+                const auto ph = touches[i].phase;
+                if (ph == TouchPhase::BEGAN || ph == TouchPhase::MOVED ||
+                    ph == TouchPhase::STATIONARY)
+                    return true;
+            }
+            return false;
+        }
+
+        /// True if any touch began this frame.
+        [[nodiscard]] bool anyTouchJustBegan() const noexcept
+        {
+            for (uint8_t i = 0; i < touch_count; ++i)
+                if (touches[i].phase == TouchPhase::BEGAN)
+                    return true;
+            return false;
+        }
+
+        /// True if at least one touch ended/canceled this frame and no
+        /// finger remains down — the touch counterpart of a button release.
+        [[nodiscard]] bool allTouchesJustEnded() const noexcept
+        {
+            bool saw_end = false;
+            for (uint8_t i = 0; i < touch_count; ++i)
+            {
+                const auto ph = touches[i].phase;
+                if (ph == TouchPhase::ENDED || ph == TouchPhase::CANCELED)
+                    saw_end = true;
+                else
+                    return false;   // a finger is still down
+            }
+            return saw_end;
         }
     };
 

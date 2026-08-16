@@ -12,6 +12,12 @@
 
 namespace lux::meta
 {
+    /// Opt-in for reflected, non-EntityObject value records which can appear
+    /// as nested tagged properties. The generated field descriptor resolves
+    /// these records to their RefClass at module-registration time.
+    template <class T>
+    inline constexpr bool is_reflected_value_v = false;
+
     // TODO change to std::__to_underlying when C++23 is available
     template<typename T> 
     constexpr inline std::underlying_type_t<T> p_to_underlying(T e) noexcept
@@ -105,11 +111,13 @@ namespace lux::meta
         else if constexpr (std::same_as<B, std::uint64_t>) return EBaseType::Uint64;
         else if constexpr (std::same_as<B, float>)         return EBaseType::Float;
         else if constexpr (std::same_as<B, double>)        return EBaseType::Double;
+        else if constexpr (std::is_enum_v<B>)
+            return deduce_base<std::underlying_type_t<B>>();
         else if constexpr (std::is_class_v<B>)             return EBaseType::Record;
         else                                               return EBaseType::Unknown;
     }
 
-    //----------- 2.  推导 qualifier ----------------------------------------------------
+    //----------- 2.  Deduce qualifier ----------------------------------------------------
     template<typename T>
     consteval ETypeQual deduce_qual()
     {

@@ -10,7 +10,7 @@
 //     fromLuxAssetStream / exportAsLuxAssetStream
 //
 // Env-var-gated portion (skipped if LUX_ANIMATION_TEST_MODEL is unset):
-//   * ModelSerDeser::importFromFile($LUX_ANIMATION_TEST_MODEL)
+//   * ModelImporter::importFromFile($LUX_ANIMATION_TEST_MODEL)
 //   * Asserts on shape:
 //       - mesh_asset_ids non-empty
 //       - skeleton_asset_id has a value when the model is rigged
@@ -26,18 +26,19 @@
 //   set LUX_ANIMATION_TEST_MODEL=E:\Resources\3DModels\CesiumMan.glb
 //=============================================================================
 
-#include <lux/engine/asset/AssetManager.hpp>
-#include <lux/engine/asset/SkeletonAsset.hpp>
-#include <lux/engine/asset/SkeletonSerDeser.hpp>
-#include <lux/engine/asset/SkeletonDescriptionCodec.hpp>
-#include <lux/engine/asset/AnimationClipAsset.hpp>
-#include <lux/engine/asset/AnimationClipSerDeser.hpp>
-#include <lux/engine/asset/AnimationClipDescriptionCodec.hpp>
-#include <lux/engine/asset/ModelSerDeser.hpp>
-#include <lux/engine/asset/ModelAsset.hpp>
-#include <lux/engine/asset/MeshAsset.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/resource/asset/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/SkeletonDescriptionCodec.hpp>
+#include <lux/engine/resource/asset/AnimationClipAsset.hpp>
+#include <lux/engine/resource/asset/AnimationClipSerDeser.hpp>
+#include <lux/engine/resource/asset/AnimationClipDescriptionCodec.hpp>
+#include <lux/engine/toolchain/asset/model/ModelImporter.hpp>
+#include <lux/engine/resource/asset/ModelAsset.hpp>
+#include <lux/engine/resource/asset/MeshAsset.hpp>
 
 #include <cstdlib>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -138,6 +139,26 @@ static void test_skeleton_roundtrip()
         for (size_t i = 0; i < in.bones.size(); ++i)
             if (!boneAlmostEq(in.bones[i], out.bones[i])) all_eq = false;
         check(all_eq, "every bone bit-for-bit equivalent");
+    }
+
+    std::array<std::uint8_t, 16u> id_bytes{};
+    id_bytes[0] = 0x71u;
+    id_bytes[15] = 0x09u;
+    const asset_id_t id{id_bytes};
+    const auto image = SkeletonSerDeser::encodeData(id, in);
+    check(image.has_value(), "canonical .luxasset image encodes");
+    if (image)
+    {
+        const auto decoded = SkeletonSerDeser::decodeData(
+            image->data(), image->size());
+        check(decoded.has_value(), "canonical .luxasset image decodes");
+        check(
+            decoded && decoded.value()->bones.size() == in.bones.size(),
+            "canonical image preserves bone count");
+        const auto repeated = SkeletonSerDeser::encodeData(id, in);
+        check(
+            repeated && *repeated == *image,
+            "canonical skeleton encoding is byte deterministic");
     }
 
     // Decode rejects rubbish.
@@ -330,7 +351,7 @@ static void test_clip_roundtrip()
 //-----------------------------------------------------------------------------
 static void test_real_model_import()
 {
-    banner("Test 3: ModelSerDeser import of a real model "
+    banner("Test 3: ModelImporter import of a real model "
            "(LUX_ANIMATION_TEST_MODEL)");
 
     const char* env = std::getenv("LUX_ANIMATION_TEST_MODEL");
@@ -354,10 +375,11 @@ static void test_real_model_import()
     }
     std::cout << "  Importing: " << model_path << "\n";
 
-    auto manager = std::make_shared<AssetManager>();
-    ModelSerDeser model_ser(manager);
+    auto manager = std::make_shared<AssetManager>(
+        runtimeAssetCodecCatalog());
+    lux::toolchain::ModelImporter model_importer(manager);
 
-    auto result = model_ser.importFromFile(model_path);
+    auto result = model_importer.importFromFile(model_path);
     if (!result)
     {
         std::cout << "  importFromFile returned error: "

@@ -7,8 +7,8 @@
 // ============================================================================
 
 #include <lux/engine/editor/visibility.h>
-#include <lux/engine/asset/Asset.hpp>            // EAssetType, asset_id_t
-#include <lux/engine/asset/LooseDirProvider.hpp> // the SSOT this is a view of
+#include <lux/engine/resource/asset/Asset.hpp>            // EAssetType, asset_id_t
+#include <lux/engine/authoring/assets/LooseAssetProvider.hpp>
 
 #include <cstdint>
 #include <filesystem>
@@ -33,7 +33,7 @@ namespace lux::editor
     public:
         /// Recursively scan a content root, reading each .luxasset/.luxmodel
         /// header (magic + UUID) — cheap even for thousands of assets. Replaces
-        /// the current index. Since VP-P4 this delegates to a LooseDirProvider
+        /// the current index. Since VP-P4 this delegates to LooseAssetProvider
         /// (the registry is a VIEW over the same provider the editor mounts at
         /// /Game — one path->id table, not two).
         void scan(const std::filesystem::path& content_root);
@@ -41,7 +41,7 @@ namespace lux::editor
         /// The provider backing this registry — what LuxEditor mounts into the
         /// AssetVfs. Stable across refresh(); replaced only when scan() gets a
         /// different root. Null before the first scan.
-        [[nodiscard]] const std::shared_ptr<lux::asset::LooseDirProvider>&
+        [[nodiscard]] const std::shared_ptr<lux::authoring::LooseAssetProvider>&
         provider() const noexcept
         {
             return provider_;
@@ -73,7 +73,7 @@ namespace lux::editor
     private:
         std::filesystem::path  root_;
         std::vector<AssetMeta> assets_;
-        std::shared_ptr<lux::asset::LooseDirProvider> provider_;
+        std::shared_ptr<lux::authoring::LooseAssetProvider> provider_;
     };
 
 } // namespace lux::editor

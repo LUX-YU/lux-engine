@@ -18,20 +18,21 @@
 #include <lux/engine/ui/UISystem.hpp>
 #include <lux/engine/ui/Panel.hpp>
 #include <lux/engine/ui/UIRenderServer.hpp>
-#include <lux/engine/ui/UIRenderSession.hpp>
+#include <lux/engine/ui/UIRenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/ui/ImGuiCommConfig.hpp>
 
 // ── Server-side direct init API (bypasses the channel) ─────────────────
 #include <lux/engine/render/comm/server/RenderServer.hpp>
 
 // ── Render comm ─────────────────────────────────────────────────────────
-#include <lux/engine/render/comm/RenderProtocol.hpp>
-#include <lux/engine/render/core/RenderTypes.hpp>
-#include <lux/engine/render/core/FeatureHandle.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>
+#include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 
 // ── Feature operations ──────────────────────────────────────────────────
-#include <lux/engine/render/renderer/features/grid/GridOperation.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
+#include <lux/engine/function/render/client/genops/Grid3DOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 
 // ── Window ──────────────────────────────────────────────────────────────
 #include <lux/engine/window/LuxWindow.hpp>
@@ -159,29 +160,29 @@ struct RenderThreadCtrl
 //  Frame pump helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-static void openFrame(lux::ui::UIRenderSession &session,
+static void openFrame(lux::ui::UIRenderFrameSession &session,
                       lux::ui::UISystem &ui)
 {
     lux::window::LuxWindow::pollEvents();
     ui.newFrame();
     while (!session.beginFrame())
     {
-        session.submitFrame();
+        session.trySubmitFrame();
         session.pumpReplies();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         lux::window::LuxWindow::pollEvents();
     }
 }
 
-static void closeFrame(lux::ui::UIRenderSession &session)
+static void closeFrame(lux::ui::UIRenderFrameSession &session)
 {
     auto *dd = ImGui::GetDrawData();
     session.submitImGuiDrawData(RenderSceneId{}, dd);
-    session.submitFrame();
+    session.trySubmitFrame();
     session.pumpReplies();
 }
 
-static void pumpFrame(lux::ui::UIRenderSession &session,
+static void pumpFrame(lux::ui::UIRenderFrameSession &session,
                       lux::ui::UISystem &ui)
 {
     openFrame(session, ui);
@@ -189,13 +190,13 @@ static void pumpFrame(lux::ui::UIRenderSession &session,
 }
 
 template<typename T>
-static T waitReady(lux::ui::UIRenderSession &session,
+static T waitReady(lux::ui::UIRenderFrameSession &session,
                    RenderRequest<T> req,
                    lux::ui::UISystem &ui)
 {
     while (!req.isReady())
         pumpFrame(session, ui);
-    return req.result();
+    return req.tryResult()->get();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -281,16 +282,21 @@ int main()
     StatusPanel status_panel(ctrl);
 
     lux::ui::UISystem ui(window);
-    ui.addPanel(&status_panel);
+    auto status_registration = ui.registerPanel(status_panel);
+    if (!status_registration)
+        return 1;
 
     // ── 2. Communication channel + render thread ─────────────────────
-    auto channel = RenderProgramChannel<>::create();
+    auto channel = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel = RenderUploadChannel<>::create();
     auto sync    = std::make_shared<RenderChannelSync>();
 
     lux::ui::ImGuiOperationIds imgui_ops{};
 
     std::thread render_thread([&] {
-        auto server = std::make_unique<lux::ui::UIRenderServer>(channel, sync);
+        auto server = std::make_unique<lux::ui::UIRenderServer>(
+            channel, control_channel, upload_channel, sync);
 
         ServerConfig cfg;
         cfg.enable_validation = true;
@@ -327,8 +333,8 @@ int main()
         // Now: register Grid's feature factory, pre-create the scene
         // with Grid attached in one call, and hand the scene id back to
         // the main thread through `ctrl`. No channel traffic at all.
-        const auto grid_ft_reply = server->addFeatureFactory(kGridFeatureFactory);
-        const GridCommConfig grid_cfg{};
+        const auto grid_ft_reply = server->addFeatureFactory(kGrid3DFeatureFactory);
+        const Grid3DCommConfig grid_cfg{};
         const GeneralRenderServer::FeatureInitParam grid_init{
             .feature_type_id = grid_ft_reply.feature_type_id,
             .param           = &grid_cfg,
@@ -353,7 +359,7 @@ int main()
             if (sc_sid != UINT32_MAX)
             {
                 auto vh = server->setSwapchainScene(RenderSceneId{sc_sid});
-                bool ok = vh.valid();
+                bool ok = vh.isValid();
                 std::printf("  [render] setSwapchainScene(%u) → %s (view=%u)\n",
                     sc_sid, ok ? "OK" : "FAIL", vh.index);
                 ctrl.has_sc_scene.store(ok, std::memory_order_release);
@@ -385,7 +391,8 @@ int main()
     while (!ctrl.server_running.load(std::memory_order_acquire))
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    auto session = std::make_unique<lux::ui::UIRenderSession>(channel, sync, imgui_ops);
+    auto session = std::make_unique<lux::ui::UIRenderFrameSession>(channel, sync, imgui_ops);
+    lux::render::RenderControlSession control(control_channel, sync);
     std::printf("  Server running. Session created.\n");
 
     // ── 3. Pick up the pre-initialised scene + Grid feature ─────────
@@ -402,21 +409,46 @@ int main()
     // on the client side via setActiveScene). Use syncCall so a single
     // blocking round-trip replaces the old openFrame/closeFrame/
     // waitReady sequence.
-    session->beginFrame({});
-    session->syncCall(session->setActiveScene(scene_id, true));
+    auto active_reply = control.syncCall(
+        control.setActiveScene(scene_id, true)
+    );
+    check(
+        static_cast<bool>(active_reply),
+        "scene activation control request completes"
+    );
 
     // Register + attach StandardViewCamera so per-view camera updates flow
     // through the feature-scoped ViewCameraProxy (replaces core updateView).
-    const auto view_cam_reg = session->syncCall(
-        session->registerFeatureType(lux::render::kStandardViewCameraFeatureFactory));
+    auto view_cam_reg_result = control.syncCall(
+        control.registerFeatureType(
+            lux::render::kViewCameraFeatureFactory
+        )
+    );
+    check(
+        static_cast<bool>(view_cam_reg_result),
+        "view-camera feature registration completes"
+    );
+    const auto view_cam_reg = view_cam_reg_result
+        ? *view_cam_reg_result
+        : lux::render::FeatureTypeRegisteredReply{};
     lux::render::ViewCameraOperationIds view_cam_ops =
         lux::render::ViewCameraOperationIds::fromOps(view_cam_reg.ops, view_cam_reg.op_count);
-    struct EmptyViewCamCfg {} view_cam_cfg{};
-    session->syncCall(
-        session->addFeature(scene_id, view_cam_reg.feature_type_id, view_cam_cfg));
+    lux::render::ViewCameraCommTag view_cam_cfg{};
+    auto view_camera_added = control.syncCall(
+        control.addFeature(
+            scene_id,
+            view_cam_reg.feature_type_id,
+            view_cam_cfg
+        )
+    );
+    check(
+        static_cast<bool>(view_camera_added),
+        "view-camera feature attach completes"
+    );
 
     // Pump one no-op frame to let graph compilation settle.
-    session->submitFrame(/*blocking=*/true);
+    session->beginFrame({});
+    session->trySubmitFrame();
     session->pumpReplies();
 
     // ── 7. Activate swapchain scene ──────────────────────────────────
@@ -466,7 +498,7 @@ int main()
 
         // Drain replies + flush pending submission before starting new frame
         session->pumpReplies();
-        session->submitFrame(true);
+        session->trySubmitFrame();
 
         if (!session->beginFrame())
             continue;
@@ -489,8 +521,7 @@ int main()
             float aspect = static_cast<float>(kWidth) / static_cast<float>(kHeight);
             buildProjMatrix(P, 60.f * kPi / 180.f, aspect, 0.1f, 200.f);
 
-            lux::render::ViewCameraProxy(*session, view_cam_ops)
-                .update(scene_id, ViewHandle{vid}, V, P, cam_pos);
+            lux::render::viewCameraUpdateTransient(lux::render::ViewCameraProxy(*session, view_cam_ops), scene_id, ViewHandle{vid}, V, P, cam_pos);
         }
 
         if (auto_validation)
@@ -567,7 +598,7 @@ int main()
     }
 
     // ── 9. Shutdown ──────────────────────────────────────────────────
-    session->submitFrame();
+    session->trySubmitFrame();
     sync->requestStop();
     render_thread.join();
     session.reset();

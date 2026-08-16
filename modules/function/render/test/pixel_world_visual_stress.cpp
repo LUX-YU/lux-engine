@@ -1,20 +1,20 @@
 // ============================================================================
 //  pixel_world_visual_stress.cpp — VISUAL (interactive tier): the ENTIRE 2D
 //  stack alive in one window, as busy as we can make it. The full-stack sibling
-//  of canvas2d_visual_stress (sprites-only) — this one drives the REAL gameplay
+//  of canvas2d_visual_stress (images-only) — this one drives the REAL gameplay
 //  world: ECS + fixed-step CA + all three bridges over the real wire.
 //
 //  What is on screen / what it proves:
 //    - a 384×240-cell PIXEL WORLD (Noita-style): stone terrain with a water
 //      bowl and platforms; SAND rains from the sky and piles up; WATER drips
-//      into the bowl (semi-transparent premultiplied — the sprites BELOW show
+//      into the bowl (semi-transparent premultiplied — the images BELOW show
 //      through both water and every empty cell);
 //    - every ~10 s a DIG carves a hole under a platform → the piles collapse
 //      (erase commands + sleep/wake cascades);
-//    - ~200 dim background sprites BELOW the field + a deep "sun", a 512-sprite
+//    - ~200 dim background images BELOW the field + a deep "sun", a 512-image
 //      swirl ring ABOVE it, all on ONE priority axis (two kinds, run-switched
 //      per frame);
-//    - a band of background sprites POPS through the field every ~2.5 s
+//    - a band of background images POPS through the field every ~2.5 s
 //      (priority flip across the field's depth → cross-kind order rebuild);
 //    - the CAMERA breathes (pan + zoom) through the real Camera2D entity;
 //    - console: fps + CA/upload stats once per second.
@@ -27,35 +27,53 @@
 // ============================================================================
 
 #include "DeviceRenderFixture.hpp"
+#include "VisualSoak.hpp"
 
-#include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeatureOps.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
-#include <lux/engine/render/comm/server/FeatureRegistry.hpp>
+#include <lux/engine/function/render/client/genops/Canvas2DOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
+#include <lux/engine/function/render/client/FeatureCatalog.hpp>
 
-#include <lux/pack/d2/Scene2D.hpp>
-#include <lux/pack/d2/pixel/PixelFieldRuntime.hpp>
-#include <lux/pack/d2/pixel/PixelField2DComponent.hpp>
-#include <lux/pack/d2/world/components/Transform2DComponent.hpp>
-#include <lux/pack/d2/world/components/SpriteComponent.hpp>
-#include <lux/pack/d2/world/components/Camera2DComponent.hpp>
+#include <lux/engine/ecs/render/RenderSystemBuilder.hpp>
+#include <lux/engine/ecs/render/subsystems/CameraViewSubsystem.hpp>
+#include <lux/engine/ecs/render/subsystems/ResidencySubsystem.hpp>
+#include <lux/engine/ecs/render/systems/RenderSystem.hpp>
+#include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>
+#include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
+#include <lux/engine/ecs/render/components/2d/Image2DComponent.hpp>
+#include <lux/engine/runtime/packs/spatial2d/Presentation2DContribution.hpp>
+#include <lux/engine/runtime/packs/spatial2d/Simulation2DContribution.hpp>
+#include <lux/engine/runtime/packs/spatial2d/Transform2DContribution.hpp>
+#include <lux/engine/ecs/physics/systems/Simulation2DSystem.hpp>
+#include <lux/engine/ecs/physics/FixedStepConfig.hpp>
+#include <lux/engine/ecs/render/components/RenderViewBindingComponent.hpp>
+#include <lux/engine/ecs/render/components/PrimaryCameraTag.hpp>
+#include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
+#include <lux/engine/ecs/pixel/components/PixelField2DComponent.hpp>
+#include <lux/engine/ecs/pixel/components/PixelFieldBindingComponent.hpp>
+#include <lux/engine/ecs/components/Transform2DComponent.hpp>
+#include <lux/engine/ecs/render/components/2d/Image2DComponent.hpp>
+#include <lux/engine/ecs/render/components/2d/Camera2DComponent.hpp>
 #include <lux/engine/ecs/World.hpp>
-#include <lux/engine/render_bridge/RenderableSystem.hpp>
-#include <lux/engine/asset/AssetManager.hpp>
+#include <lux/engine/ecs/PersistentEntityIndex.hpp>
+#include <lux/engine/ecs/Schedule.hpp>
+#include <lux/engine/ecs/ScheduleBuilder.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/meta/Meta.hpp>
 
 #include <chrono>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
-#include <string_view>
+#include <memory>
+#include <uuid.h>
 #include <vector>
 
 using namespace lux::render;
-namespace d2 = lux::pack;
+namespace d2 = lux::ecs;
 
 namespace
 {
-    struct EmptyConfig {};
     constexpr std::uint32_t W = 1280, H = 800;
     // C2-00: a CROSS-CHUNK world (768×480 = 3×2 chunks of 256) — sand rains,
     // piles and avalanches straight across the chunk borders on screen, the
@@ -91,24 +109,23 @@ namespace
 int main(int argc, char** argv)
 {
     std::setbuf(stdout, nullptr);
-    float soak_seconds = 0.f;   // 0 = interactive (loop until the window closes)
-    for (int i = 1; i + 1 < argc; ++i)
-        if (std::string_view(argv[i]) == "--soak")
-            soak_seconds = std::strtof(argv[i + 1], nullptr);
+    lux::rendertest::VisualSoak soak;
+    if (!lux::rendertest::VisualSoak::parse(argc, argv, soak))
+        return 2;
     std::printf("=== pixel_world_visual_stress ===  (a living pixel world; %s)\n",
-                soak_seconds > 0.f ? "soak mode — exits by itself" : "close the window to exit");
+                soak.enabled() ? "soak mode — exits by itself" : "close the window to exit");
 
-    lux::rendertest::DeviceRenderFixture fx(W, H, "Pixel World Visual Stress — CA field + sprites, one depth axis");
+    lux::rendertest::DeviceRenderFixture fx(W, H, "Pixel World Visual Stress — CA field + images, one depth axis");
     if (!fx.ok()) { std::printf("No Vulkan device. Skipping.\n"); return 0; }
 
     const auto sv = fx.makeSceneWithSwapchainView("PixelWorld", "main");
 
-    const auto cam_reg = fx.await(fx.session().registerFeatureType(kStandardViewCameraFeatureFactory));
-    fx.await(fx.session().addFeature(sv.scene_id, cam_reg.feature_type_id, EmptyConfig{}));
-    const auto canvas_reg = fx.await(fx.session().registerFeatureType(kCanvas2DFeatureFactory));
-    fx.await(fx.session().addFeature(sv.scene_id, canvas_reg.feature_type_id, EmptyConfig{}));
+    const auto cam_reg = fx.awaitControl(fx.control().registerFeatureType(kViewCameraFeatureFactory));
+    fx.awaitControl(fx.control().addFeature(sv.scene_id, cam_reg.feature_type_id, lux::render::ViewCameraCommTag{}));
+    const auto canvas_reg = fx.awaitControl(fx.control().registerFeatureType(kCanvas2DFeatureFactory));
+    fx.awaitControl(fx.control().addFeature(sv.scene_id, canvas_reg.feature_type_id, lux::render::Canvas2DCommConfig{}));
 
-    FeatureRegistry features;
+    FeatureCatalog features;
     features.injectForTest("StandardViewCamera",
                            std::span<const TypeId>{cam_reg.ops, cam_reg.op_count});
     features.injectForTest("Canvas2D",
@@ -116,17 +133,141 @@ int main(int argc, char** argv)
 
     // ── gameplay world ──
     d2::PixelFieldRuntime runtime;
-    const auto stone = runtime.materials().add({d2::EMaterialPhase::Solid,  255, 0xFF6A6A6Au});   // grey
-    const auto sand  = runtime.materials().add({d2::EMaterialPhase::Powder, 200, 0xFF29C5F0u});   // golden
-    const auto water = runtime.materials().add({d2::EMaterialPhase::Liquid, 100, 0xC0AE6024u});   // 75% premul blue
+    const auto stone = runtime.materials().add({d2::EMaterialPhase::SOLID,  255, 0xFF6A6A6Au});   // grey
+    const auto sand  = runtime.materials().add({d2::EMaterialPhase::POWDER, 200, 0xFF29C5F0u});   // golden
+    const auto water = runtime.materials().add({d2::EMaterialPhase::LIQUID, 100, 0xC0AE6024u});   // 75% premul blue
 
-    lux::render_bridge::SceneServices services;   // must outlive the World
+    lux::asset::AssetManager assets{
+        lux::asset::runtimeAssetCodecCatalog()};
+    // 驻留三件套(裁决二):声明在渲染绑定之前 —— 逆序析构。
+    lux::runtime::testing::AsyncTestServices async(
+        assets,
+        fx.upload(),
+        fx.sync(),
+        lux::exec::AsyncRuntimeConfig{
+            .blocking_io_threads = 1,
+            .background_cpu_concurrency = 1}
+    );
+    if (!async.valid())
+        return 1;
+    lux::runtime::ResidencyAssembly residency(
+        fx.control(),
+        async.uploadClient(),
+        assets,
+        features,
+        async.assetClient(),
+        async.runtime(),
+        {}
+    );
+    // Registry owner must outlive every observer that detaches from it.
     lux::ecs::World world;
-    services.adopt(&runtime);
-    auto plan = d2::traditional2DPlan();
-    plan.enablePixelSimulation();
-    const auto installed = d2::install(world, services, plan);
-    if (!installed.ok || installed.simulation == nullptr) { std::printf("install failed\n"); return 1; }
+    lux::ecs::PersistentEntityIndex persistent_entities{world.registry()};
+    // 资产归驻留胶水:asset_id 经三件套解析成 GPU 句柄写进 cache 组件。
+    // 驻留胶水是一个普通节点(批 B1)。本 demo 手工驱动(不走
+    // Schedule::tick),所以 Schedule 自动做的三件事在这里手动做:
+    // 连信号、每帧 drain、登记成服务供包的 resolve* 声明取用。
+    auto residency_glue = std::make_unique<lux::ecs::ResidencySubsystem>(assets);
+    residency_glue->setCallbacks(residency.makeCallbacks());
+    auto* const residency_owner = residency_glue.get();
+    lux::ecs::RenderSystemBuilder render_builder;
+    if (!render_builder.add(std::move(residency_glue)) ||
+        !render_builder.add(std::make_unique<lux::ecs::CameraViewSubsystem>()))
+    {
+        std::printf("Failed to stage base render subsystems.\n");
+        return 1;
+    }
+
+    // Reverse destruction is intentional: builder → schedule systems → owned
+    // services → residency observers → World registry. Longer-lived borrowed
+    // render/asset resources remain below that graph.
+    lux::ecs::SceneServices   services;
+    lux::ecs::Schedule        schedule{world};
+    lux::ecs::ScheduleBuilder assembly{schedule, services};
+
+    // Every assembly dependency enters the unpublished overlay. Resolver
+    // declarations may mutate residency during plan commit, but cannot reach
+    // a pre-existing live service.
+    auto& staged = assembly.services();
+    if (!staged.adopt(runtime) ||
+        !staged.adopt(persistent_entities) ||
+        !staged.adopt(*residency_owner) ||
+        !staged.adopt(render_builder))
+    {
+        std::printf("Failed to stage 2D scene services.\n");
+        return 1;
+    }
+
+    // This executable is the host boundary for the linked component sidecars.
+    // Drain their registrars before the pack inspects reflected component data.
+    lux::meta::meta_module_init();
+    lux::ecs::ComponentTypeCatalog components;
+    if (!lux::ecs::registerGeneratedComponents(components))
+        return 1;
+
+    lux::runtime::SceneContributionCatalog contributions;
+    auto transform2d =
+        lux::runtime::makeSpatial2DTransformContribution(components);
+    auto simulation2d =
+        lux::runtime::makeSimulation2DContribution(components);
+    auto presentation2d =
+        lux::runtime::makePresentation2DContribution(components);
+    if (!transform2d || !simulation2d || !presentation2d)
+        return 1;
+    std::vector<lux::runtime::SceneContributionDescriptor> descriptors;
+    descriptors.push_back(std::move(*transform2d));
+    descriptors.push_back(std::move(*simulation2d));
+    descriptors.push_back(std::move(*presentation2d));
+    if (!contributions.addBatch(std::move(descriptors)))
+        return 1;
+    constexpr std::array selected{
+        lux::extensions::contributionId(
+            lux::runtime::kPresentation2DContributionName)};
+    if (const auto assembled = contributions.assembleDefaults(
+            assembly,
+            selected); !assembled)
+    {
+        const auto& failure = assembled.error();
+        std::printf(
+            "scene contribution assembly failed: code=%u contribution=%.*s "
+            "build=%u type=%.*s\n",
+            static_cast<unsigned>(failure.code),
+            static_cast<int>(failure.contribution.name().size()),
+            failure.contribution.name().data(),
+            static_cast<unsigned>(failure.build.code),
+            static_cast<int>(failure.build.type.name.size()),
+            failure.build.type.name.data());
+        return 1;
+    }
+    auto render_plan = std::move(render_builder).compile();
+    if (!render_plan)
+    {
+        std::printf("render subsystem graph failed\n");
+        return 1;
+    }
+    auto render_system = std::make_unique<lux::ecs::RenderSystem>(
+        fx.session(),
+        fx.control(),
+        async.uploadClient(),
+        fx.control().adoptScene(sv.scene_id),
+        std::move(*render_plan));
+    auto* const render_owner = render_system.get();
+    render_system->setFeatures(features);
+    if (!assembly.add(std::move(render_system), lux::ecs::kPhaseRender))
+    {
+        std::printf("RenderSystem installation failed\n");
+        return 1;
+    }
+    if (const auto committed = assembly.commit(); !committed)
+    {
+        std::printf("schedule commit failed\n");
+        return 1;
+    }
+
+    // 连信号:包的 resolve* 声明此刻已全部注册(Schedule 走 onAdded,
+    // 手工驱动就在这里)。
+    residency_owner->attach(world.registry());
+    if (services.get<d2::Simulation2DSystem>() == nullptr)
+    { std::printf("install failed\n"); return 1; }
 
     // Camera: origin-centred, 1 world unit tall (field spans 1.6×1.0), breathing.
     const auto cam = world.createEntity();
@@ -134,22 +275,63 @@ int main(int argc, char** argv)
     auto& cc = world.emplace<d2::Camera2DComponent>(cam);
     cc.units_per_view_height = 1.05f;
     cc.aspect = static_cast<float>(W) / static_cast<float>(H);
-    cc.y_flip = true;
-    world.emplace<d2::ActiveCamera2DTag>(cam);
+    world.emplace<lux::ecs::PrimaryCameraTag>(cam);
+    // camera → view wiring is DATA now (RenderViewBinding): this camera drives
+    // the demo's swapchain view; unbound cameras are inert.
+    world.emplace<lux::ecs::RenderViewBindingComponent>(cam,
+        fx.control().adoptView(sv.scene_id, sv.view));
 
     // The field: min corner at (-0.8, -0.5).
     const auto field_e = world.createEntity();
-    world.emplace<d2::Transform2DComponent>(field_e).position = Eigen::Vector2f(-0.8f, -0.5f);
+    world.emplace<d2::Transform2DComponent>(field_e).position = {-0.8, -0.5};
     auto& fcomp = world.emplace<d2::PixelField2DComponent>(field_e);
-    fcomp.field     = runtime.create({CW, CH, 0});
+    fcomp.definition = uuids::uuid::from_string(
+        "89b15d75-4c61-45f8-8654-0d9a239df52b").value();
+    const auto field = runtime.create({
+        d2::PixelFieldId{fcomp.definition},
+        d2::EPixelFieldExtent::BOUNDED,
+        {{0, 0}, {
+            static_cast<std::int64_t>((CW - 1u) >>
+                d2::PixelFieldRuntime::kChunkShift),
+            static_cast<std::int64_t>((CH - 1u) >>
+                d2::PixelFieldRuntime::kChunkShift)}},
+        0u});
+    world.emplace<d2::PixelFieldBindingComponent>(
+        field_e,
+        d2::PixelFieldBindingComponent{field, false});
+    for (std::int64_t chunk_y = 0;
+         chunk_y <= static_cast<std::int64_t>((CH - 1u) >>
+             d2::PixelFieldRuntime::kChunkShift);
+         ++chunk_y)
+    {
+        for (std::int64_t chunk_x = 0;
+             chunk_x <= static_cast<std::int64_t>((CW - 1u) >>
+                 d2::PixelFieldRuntime::kChunkShift);
+             ++chunk_x)
+        {
+            d2::PixelChunkLoad load;
+            load.coordinate = {chunk_x, chunk_y};
+            load.materials.assign(
+                d2::PixelFieldRuntime::kChunkCellCount,
+                d2::kEmptyMaterial);
+            load.simulation_active = true;
+            if (!runtime.loadChunk(field, std::move(load)))
+                return 1;
+        }
+    }
     fcomp.cell_size = 1.f / CH;
-    fcomp.priority  = 0.f;
+    fcomp.draw_priority = 0;
 
     // Terrain: floor, a water bowl (left), three staggered platforms (right).
     const auto stampRect = [&](int x, int y, int w, int h, d2::MaterialId m)
     {
         d2::PixelFieldCommand c{};
-        c.field = fcomp.field; c.min = {x, y}; c.size = {w, h}; c.material = m;
+        c.field = field;
+        c.minimum = {x, y};
+        c.extent = {
+            static_cast<std::uint32_t>(w),
+            static_cast<std::uint32_t>(h)};
+        c.material = m;
         runtime.enqueue(c);
     };
     stampRect(0, 0, CW, 8*SC, stone);         // floor
@@ -161,13 +343,13 @@ int main(int argc, char** argv)
     stampRect(230*SC, 170*SC, 70*SC, 6*SC, stone);// platform 3
     stampRect(210*SC, 90*SC, 30*SC, 20*SC, sand); // starter pile on platform 1
 
-    // ── sprites, all on the ONE priority axis the field shares ──
+    // ── images, all on the ONE priority axis the field shares ──
     Lcg rng;
     // deep background "sun" (priority -8) + ~200 dim stars (priority -5).
     {
         const auto sun = world.createEntity();
-        world.emplace<d2::Transform2DComponent>(sun).position = Eigen::Vector2f(0.45f, 0.28f);
-        auto& sp = world.emplace<d2::SpriteComponent>(sun);
+        world.emplace<d2::Transform2DComponent>(sun).position = {0.45, 0.28};
+        auto& sp = world.emplace<d2::Image2DComponent>(sun);
         sp.size = Eigen::Vector2f(0.28f, 0.28f);
         sp.tint = 0xFF20D0FFu;   // warm
         sp.priority = -8.f;
@@ -177,16 +359,17 @@ int main(int argc, char** argv)
     for (int i = 0; i < 200; ++i)
     {
         const auto e = world.createEntity();
-        world.emplace<d2::Transform2DComponent>(e).position =
-            Eigen::Vector2f(rng.unit() * 1.6f - 0.8f, rng.unit() * 1.0f - 0.5f);
-        auto& sp = world.emplace<d2::SpriteComponent>(e);
+        world.emplace<d2::Transform2DComponent>(e).position = {
+            static_cast<double>(rng.unit() * 1.6f - 0.8f),
+            static_cast<double>(rng.unit() * 1.0f - 0.5f)};
+        auto& sp = world.emplace<d2::Image2DComponent>(e);
         const float s = 0.004f + 0.008f * rng.unit();
         sp.size = Eigen::Vector2f(s, s);
         sp.tint = rainbow(rng.unit());
         sp.priority = -5.f;
         stars.push_back(e);
     }
-    // the swirl ring ABOVE the field (priority +10): 512 sprites, ECS-animated —
+    // the swirl ring ABOVE the field (priority +10): 512 images, ECS-animated —
     // direct field writes each frame; the value-compare bridge turns exactly the
     // moved ones into ONE transform bulk.
     std::vector<lux::meta::entity_id> swirl;
@@ -195,19 +378,14 @@ int main(int argc, char** argv)
     {
         const auto e = world.createEntity();
         world.emplace<d2::Transform2DComponent>(e);
-        auto& sp = world.emplace<d2::SpriteComponent>(e);
+        auto& sp = world.emplace<d2::Image2DComponent>(e);
         sp.size = Eigen::Vector2f(0.012f, 0.012f);
         sp.tint = 0xFFFFFFFFu;
         sp.priority = 10.f;
         swirl.push_back(e);
     }
 
-    lux::asset::AssetManager assets;
-    lux::render_bridge::RenderableSystem rs(fx.session(), assets, sv.scene_id, sv.view);
-    rs.setFeatures(features);
-    d2::registerBridges(rs, services, plan);
-
-    std::printf("world up: %u k cells simulating, %zu sprites on one depth axis. Close to exit.\n",
+    std::printf("world up: %u k cells simulating, %zu images on one depth axis. Close to exit.\n",
                 CW * CH / 1000u, stars.size() + swirl.size() + 1);
 
     const auto t0  = std::chrono::steady_clock::now();
@@ -226,21 +404,15 @@ int main(int argc, char** argv)
     {
         const auto now = std::chrono::steady_clock::now();
         const float t  = std::chrono::duration<float>(now - t0).count();
-        if (soak_seconds > 0.f)
+        if (soak.enabled())
         {
-            if (t >= soak_seconds)
-            {
-                std::printf("soak done: %.0f s, %d frames, eventsDropped=%llu — exiting 0\n",
-                            t, frame_no, static_cast<unsigned long long>(runtime.eventsDropped()));
-                return 0;
-            }
             if (now - soak_mark >= std::chrono::seconds(10))
             {
-                const auto rev = runtime.uploadedRevision(fcomp.field);
+                const auto rev = runtime.uploadedRevision(field);
                 std::printf("soak t=%.0fs | tiles=%u scanned=%u | upRev=%llu (+%llu) | evDropped=%llu\n",
                             t,
-                            runtime.activeTiles(fcomp.field),
-                            runtime.cellsScannedLastStep(fcomp.field),
+                            runtime.activeTiles(field),
+                            runtime.cellsScannedLastStep(field),
                             static_cast<unsigned long long>(rev),
                             static_cast<unsigned long long>(rev - soak_last_rev),
                             static_cast<unsigned long long>(runtime.eventsDropped()));
@@ -253,8 +425,13 @@ int main(int argc, char** argv)
         if (dt > 0.1f) dt = 0.1f;   // window drag hiccup → clamp banked time
 
         // camera breathes: pan + zoom through the REAL camera entity.
-        world.registry().get<d2::Transform2DComponent>(cam).position =
-            Eigen::Vector2f(0.06f * std::sin(t * 0.21f), 0.04f * std::sin(t * 0.13f));
+        // Transform mutation must go through patch so observers see it.
+        world.registry().patch<d2::Transform2DComponent>(cam, [&](auto& tc)
+        {
+            tc.position = {
+                static_cast<double>(0.06f * std::sin(t * 0.21f)),
+                static_cast<double>(0.04f * std::sin(t * 0.13f))};
+        });
         cc.units_per_view_height = 1.05f + 0.12f * std::sin(t * 0.17f);
 
         // sand rain across the sky + water drip into the bowl (deterministic).
@@ -279,8 +456,12 @@ int main(int argc, char** argv)
         {
             band_up = !band_up;
             const float prio = band_up ? 12.f : -5.f;
+            // 改组件字段走 `patch` —— Image2D 的抽取是变更驱动的,裸
+            // `get<T>().field = x` 不发 `on_update`,那次改动送不到 GPU
+            // (症状:星带不翻层)。由抽取 oracle 抓出。
             for (std::size_t i = 0; i < stars.size(); i += 4)
-                world.registry().get<d2::SpriteComponent>(stars[i]).priority = prio;
+                world.registry().patch<d2::Image2DComponent>(
+                    stars[i], [prio](auto& sp) { sp.priority = prio; });
         }
 
         // the swirl orbits the whole world (direct ECS field writes).
@@ -288,12 +469,17 @@ int main(int argc, char** argv)
         {
             const float a = t * 0.8f + static_cast<float>(i) * (2.f * kPi / swirl.size());
             const float r = 0.34f + 0.10f * std::sin(t * 0.6f + i * 0.03f);
-            world.registry().get<d2::Transform2DComponent>(swirl[i]).position =
-                Eigen::Vector2f(r * 1.4f * std::cos(a), r * std::sin(a));
+            world.registry().patch<d2::Transform2DComponent>(swirl[i], [&](auto& tc)
+            {
+                tc.position = {
+                    static_cast<double>(r * 1.4f * std::cos(a)),
+                    static_cast<double>(r * std::sin(a))};
+            });
         }
 
-        world.tick(dt);
-        rs.update(world.registry(), dt);
+        async.drainMainThreadCompletions();   // 驻留管道主线程会合
+        schedule.tick(dt);
+        residency_owner->drainResolvers(world.registry());
         fx.flush();
 
         // Drain the fact stream (the F2-06 consumer contract; unbounded growth
@@ -303,19 +489,48 @@ int main(int argc, char** argv)
 
         ++frame_no;
         ++fps_frames;
+        const auto soak_now = std::chrono::steady_clock::now();
+        if (soak.reached(t0, soak_now))
+        {
+            std::printf(
+                "soak final: eventsDropped=%llu\n",
+                static_cast<unsigned long long>(runtime.eventsDropped())
+            );
+            soak.reportGracefulTeardown(
+                t0,
+                soak_now,
+                static_cast<std::uint64_t>(frame_no)
+            );
+            break;
+        }
         if (now - fps_mark >= std::chrono::seconds(1))
         {
-            std::printf("fps=%d | tiles=%u scanned=%u moved=%u step=%.2fms | upRev=%llu | sprites=%zu\n",
+            std::printf("fps=%d | tiles=%u scanned=%u moved=%u step=%.2fms | upRev=%llu | images=%zu\n",
                         fps_frames,
-                        runtime.activeTiles(fcomp.field),
-                        runtime.cellsScannedLastStep(fcomp.field),
-                        runtime.movedCellsLastStep(fcomp.field),
-                        runtime.stepMillisLast(fcomp.field),
-                        static_cast<unsigned long long>(runtime.uploadedRevision(fcomp.field)),
+                        runtime.activeTiles(field),
+                        runtime.cellsScannedLastStep(field),
+                        runtime.movedCellsLastStep(field),
+                        runtime.stepMillisLast(field),
+                        static_cast<unsigned long long>(runtime.uploadedRevision(field)),
                         stars.size() + swirl.size() + 1);
             fps_frames = 0;
             fps_mark   = now;
         }
     }
+    auto render_close = render_owner->close();
+    while (render_close == lux::render::ERenderLeaseCloseStatus::Stopping)
+    {
+        if (!fx.control().waitAndPumpReplies())
+            return 1;
+        fx.pumpReplies();
+        render_close = render_owner->close();
+    }
+    const auto residency_close =
+        lux::runtime::testing::detail::closeResidency(
+            residency,
+            async.runtime());
+    if (!residency_close.clean())
+        return 1;
+    async.close();
     return 0;
 }

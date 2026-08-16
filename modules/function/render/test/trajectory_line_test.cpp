@@ -47,15 +47,18 @@
 //    • clear-then-append cycles that recycle the same slot
 // ============================================================================
 
-#include <lux/engine/render/comm/client/RenderSession.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include "RenderTask.hpp"            // relocated test-only coroutine support
 #include "RenderTaskScheduler.hpp"
+#include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
 
-#include <lux/engine/render/renderer/features/trajectory/TrajectoryOperation.hpp>
-#include <lux/engine/render/renderer/features/grid/GridOperation.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
+#include <lux/engine/function/render/client/genops/TrajectoryOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/Grid3DOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 
 #include <lux/engine/window/LuxWindow.hpp>
 #include <GLFW/glfw3.h>
@@ -99,14 +102,8 @@ static void check(bool cond, const char* name)
 
 static std::vector<const char*> getVulkanExtensions()
 {
-    glfwInit();
-    uint32_t count = 0;
-    const char** exts = glfwGetRequiredInstanceExtensions(&count);
-    std::vector<const char*> result;
-    result.reserve(count);
-    for (uint32_t i = 0; i < count; ++i)
-        result.emplace_back(exts[i]);
-    return result;
+    const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
+    return {exts.begin(), exts.end()};
 }
 
 // ── Matrix helpers ──────────────────────────────────────────────────────
@@ -296,12 +293,14 @@ static const char* phaseLabel(ETestPhase p)
 // ── Coroutine task ──────────────────────────────────────────────────────
 
 static RenderTask<void> trajectoryLineTask(
-    RenderSession& session,
+    RenderFrameSession& session,
+    RenderControlSession& control,
+    RenderUploadClient upload,
     lux::window::LuxWindow& window)
 {
     // ── Setup: create scene + view + features ───────────────────────
 
-    auto scene_reply = co_await session.createScene("TrajectoryLineTestScene");
+    auto scene_reply = co_await control.createScene("TrajectoryLineTestScene");
     auto scene_id = scene_reply.scene_id;
     check(true, "CreateScene — OK");
 
@@ -314,46 +313,75 @@ static RenderTask<void> trajectoryLineTask(
     Eigen::Matrix4f P = buildProjMatrix(60.f * kPi / 180.f, 1280.f / 720.f, 0.1f, 500.f);
     Eigen::Matrix4f V0 = buildViewMatrix(init_eye, target, up);
 
-    auto active_req = session.setActiveScene(scene_id, true);
-    auto view_req = session.addView(scene_id, {1280, 720}, "MainView");
+    auto active_req = control.setActiveScene(scene_id, true);
+    auto view_req = control.addView(scene_id, {1280, 720}, "MainView");
     co_await active_req;
     auto view_reply = co_await view_req;
     auto view_handle = view_reply.view;
-    check(view_handle.valid(), "AddView — valid handle");
-    session.bindSwapchain(scene_id, view_handle);
+    check(view_handle.isValid(), "AddView — valid handle");
+    control.bindSwapchain(scene_id, view_handle);
 
     // StandardViewCamera feature — owns per-view camera matrices; MUST attach
     // before every camera consumer. Per-frame updates go through ViewCameraProxy
-    // (replaces the retired RenderSession::updateView).
+    // (replaces the retired RenderFrameSession::updateView).
     co_await yield_frame();
-    auto view_cam_type_reply = co_await session.registerFeatureType(kStandardViewCameraFeatureFactory);
+    auto view_cam_type_reply = co_await control.registerFeatureType(kViewCameraFeatureFactory);
     auto view_cam_ops = ViewCameraOperationIds::fromOps(
         view_cam_type_reply.ops, view_cam_type_reply.op_count);
     co_await yield_frame();
-    struct EmptyViewCamCfg {} view_cam_cfg{};
-    co_await session.addFeature(scene_id, view_cam_type_reply.feature_type_id, view_cam_cfg);
+    lux::render::ViewCameraCommTag view_cam_cfg{};
+    co_await control.addFeature(scene_id, view_cam_type_reply.feature_type_id, view_cam_cfg);
 
     // Grid feature (reference plane)
     co_await yield_frame();
-    auto grid_type_reply = co_await session.registerFeatureType(kGridFeatureFactory);
+    auto grid_type_reply = co_await control.registerFeatureType(kGrid3DFeatureFactory);
     check(grid_type_reply.feature_type_id > 0, "RegisterFeatureType Grid — OK");
     co_await yield_frame();
-    GridCommConfig gcc{};
-    auto grid_feat_reply = co_await session.addFeature(scene_id, grid_type_reply.feature_type_id, gcc);
-    check(grid_feat_reply.feature.valid(), "AddFeature Grid — OK");
+    Grid3DCommConfig gcc{};
+    auto grid_feat_reply = co_await control.addFeature(scene_id, grid_type_reply.feature_type_id, gcc);
+    check(grid_feat_reply.feature.isValid(), "AddFeature Grid — OK");
 
     // Trajectory line feature (deliberately small initial allocation to force growth)
     co_await yield_frame();
-    auto traj_type_reply = co_await session.registerFeatureType(kTrajectoryLineFactory);
+    auto traj_type_reply = co_await control.registerFeatureType(kTrajectoryFeatureFactory);
     check(traj_type_reply.feature_type_id > 0, "RegisterFeatureType TrajectoryLine — OK");
     auto traj_ops = TrajectoryOperationIds::fromOps(traj_type_reply.ops, traj_type_reply.op_count);
-    TrajectoryProxy proxy{session, traj_ops};
+    TrajectoryUploadClient upload_client{upload, traj_ops};
+    TrajectoryControlClient control_client{control, traj_ops};
+
+    // A+:生成 Proxy 收 wire 载荷,测试侧打包 helper(回执照旧可 co_await)。
+    auto new_traj = [&](lux::render::RenderSceneId sid, std::span<const TrajectoryPoint> pts) {
+        CreateTrajectoryPayload p{}; p.scene_id = sid;
+        p.point_count = static_cast<uint32_t>(pts.size());
+        return requireUploadAccepted(upload_client.newTrajectory(
+            p,
+            std::as_bytes(pts),
+            alignof(TrajectoryPoint)
+        ));
+    };
+    auto append_pts = [&](lux::render::RenderSceneId sid, TrajectoryHandle h, std::span<const TrajectoryPoint> pts) {
+        AppendTrajectoryPointsPayload p{}; p.scene_id = sid; p.trajectory = h;
+        p.point_count = static_cast<uint32_t>(pts.size());
+        return requireUploadAccepted(upload_client.appendPoints(
+            p,
+            std::as_bytes(pts),
+            alignof(TrajectoryPoint)
+        ));
+    };
+    auto clear_traj = [&](lux::render::RenderSceneId sid, TrajectoryHandle h) {
+        ClearTrajectoryPayload p{}; p.scene_id = sid; p.trajectory = h;
+        return control_client.clear(p);
+    };
+    auto remove_traj = [&](lux::render::RenderSceneId sid, TrajectoryHandle h) {
+        RemoveTrajectoryPayload p{}; p.scene_id = sid; p.trajectory = h;
+        return control_client.remove(p);
+    };
 
     co_await yield_frame();
     TrajectoryLineCommConfig traj_cc{};
     traj_cc.max_global_vertices = 512; // intentionally small — force growth
-    auto traj_feat_reply = co_await session.addFeature(scene_id, traj_type_reply.feature_type_id, traj_cc);
-    check(traj_feat_reply.feature.valid(), "AddFeature TrajectoryLine — OK");
+    auto traj_feat_reply = co_await control.addFeature(scene_id, traj_type_reply.feature_type_id, traj_cc);
+    check(traj_feat_reply.feature.isValid(), "AddFeature TrajectoryLine — OK");
 
     std::cout << "\n  === Phase tests ===\n";
 
@@ -375,9 +403,8 @@ static RenderTask<void> trajectoryLineTask(
             mirror.append({pt.x, pt.y, pt.z});
         }
 
-        auto create_reply = co_await proxy.newTrajectory(scene_id,
-            std::span<const TrajectoryPoint>(pts.data(), pts.size()));
-        check(create_reply.status == 0 && create_reply.trajectory.valid(),
+        auto create_reply = co_await new_traj(scene_id, std::span<const TrajectoryPoint>(pts.data(), pts.size()));
+        check(create_reply.status == 0 && create_reply.trajectory.isValid(),
               "BulkCreate — trajectory created");
         TrajectoryHandle h_bulk = create_reply.trajectory;
 
@@ -389,7 +416,7 @@ static RenderTask<void> trajectoryLineTask(
         check(mirror.totalAnomalies() == 0, "BulkCreate — no anomalies in CPU mirror");
 
         // Clean up
-        auto rm = co_await proxy.remove(scene_id, h_bulk);
+        auto rm = co_await remove_traj(scene_id, h_bulk);
         check(rm.code == 0, "BulkCreate — remove OK");
         co_await yield_frame();
     }
@@ -401,9 +428,8 @@ static RenderTask<void> trajectoryLineTask(
         std::cout << "\n  ── Phase 2: IncrementalAppend (MSCKF pattern) ──\n";
 
         // Create empty trajectory
-        auto create_reply = co_await proxy.newTrajectory(scene_id,
-            std::span<const TrajectoryPoint>{});
-        check(create_reply.status == 0 && create_reply.trajectory.valid(),
+        auto create_reply = co_await new_traj(scene_id, std::span<const TrajectoryPoint>{});
+        check(create_reply.status == 0 && create_reply.trajectory.isValid(),
               "IncrementalAppend — empty trajectory created");
         TrajectoryHandle h_incr = create_reply.trajectory;
 
@@ -418,9 +444,7 @@ static RenderTask<void> trajectoryLineTask(
             mirror.append({pt.x, pt.y, pt.z});
 
             TrajectoryPoint arr[1] = {pt};
-            auto append_req = proxy.appendPoints(
-                scene_id, h_incr,
-                std::span<const TrajectoryPoint>(arr, 1));
+            auto append_req = append_pts(scene_id, h_incr, std::span<const TrajectoryPoint>(arr, 1));
             (void)append_req; // fire-and-forget
 
             // Update camera to follow
@@ -431,7 +455,7 @@ static RenderTask<void> trajectoryLineTask(
                 cam_target.y() + cam_dist * 0.4f,
                 cam_target.z() + cam_dist * std::sin(angle));
             Eigen::Matrix4f V = buildViewMatrix(eye, cam_target, up);
-            ViewCameraProxy(session, view_cam_ops).update(scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
 
             co_await yield_frame();
         }
@@ -443,7 +467,7 @@ static RenderTask<void> trajectoryLineTask(
               "IncrementalAppend — all points recorded");
 
         // Keep alive for next phase
-        auto rm = co_await proxy.remove(scene_id, h_incr);
+        auto rm = co_await remove_traj(scene_id, h_incr);
         check(rm.code == 0, "IncrementalAppend — remove OK");
 
         // Flush a few frames after removal
@@ -479,10 +503,9 @@ static RenderTask<void> trajectoryLineTask(
                 mirrors[t].append({pt.x, pt.y, pt.z});
             }
 
-            auto cr = co_await proxy.newTrajectory(scene_id,
-                std::span<const TrajectoryPoint>(pts.data(), pts.size()));
+            auto cr = co_await new_traj(scene_id, std::span<const TrajectoryPoint>(pts.data(), pts.size()));
             handles[t] = cr.trajectory;
-            if (cr.status != 0 || !cr.trajectory.valid())
+            if (cr.status != 0 || !cr.trajectory.isValid())
                 all_created = false;
 
             co_await yield_frame();
@@ -498,7 +521,7 @@ static RenderTask<void> trajectoryLineTask(
                 cam_dist * 0.6f,
                 cam_dist * std::sin(angle));
             Eigen::Matrix4f V = buildViewMatrix(eye, {0, 3, 0}, up);
-            ViewCameraProxy(session, view_cam_ops).update(scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
             co_await yield_frame();
         }
 
@@ -514,9 +537,9 @@ static RenderTask<void> trajectoryLineTask(
         // Remove all
         for (int t = 0; t < kCount; ++t)
         {
-            if (handles[t].valid())
+            if (handles[t].isValid())
             {
-                auto rm = proxy.remove(scene_id, handles[t]);
+                auto rm = remove_traj(scene_id, handles[t]);
                 (void)rm;
             }
         }
@@ -539,15 +562,14 @@ static RenderTask<void> trajectoryLineTask(
             init_pts.push_back(makeHelixPoint(t * 2.0f * kPi, 2.0f, 1.5f, 1.0f, 0.0f, 0.5f, 1.0f));
         }
 
-        auto cr = co_await proxy.newTrajectory(scene_id,
-            std::span<const TrajectoryPoint>(init_pts.data(), init_pts.size()));
-        check(cr.status == 0 && cr.trajectory.valid(), "ClearReupload — created");
+        auto cr = co_await new_traj(scene_id, std::span<const TrajectoryPoint>(init_pts.data(), init_pts.size()));
+        check(cr.status == 0 && cr.trajectory.isValid(), "ClearReupload — created");
         TrajectoryHandle h_cr = cr.trajectory;
 
         for (int f = 0; f < 10; ++f) co_await yield_frame();
 
         // Clear
-        auto clear_reply = co_await proxy.clear(scene_id, h_cr);
+        auto clear_reply = co_await clear_traj(scene_id, h_cr);
         check(clear_reply.code == 0, "ClearReupload — clear OK");
 
         // The trajectory should render 0 vertices now
@@ -563,8 +585,7 @@ static RenderTask<void> trajectoryLineTask(
             mirror_after.append({pt.x, pt.y, pt.z});
 
             TrajectoryPoint arr[1] = {pt};
-            auto ap = proxy.appendPoints(scene_id, h_cr,
-                std::span<const TrajectoryPoint>(arr, 1));
+            auto ap = append_pts(scene_id, h_cr, std::span<const TrajectoryPoint>(arr, 1));
             (void)ap;
             co_await yield_frame();
         }
@@ -573,7 +594,7 @@ static RenderTask<void> trajectoryLineTask(
         check(mirror_after.totalAnomalies() == 0,
               "ClearReupload — no anomalies after refill");
 
-        auto rm = co_await proxy.remove(scene_id, h_cr);
+        auto rm = co_await remove_traj(scene_id, h_cr);
         check(rm.code == 0, "ClearReupload — remove OK");
         for (int f = 0; f < 3; ++f) co_await yield_frame();
     }
@@ -605,9 +626,8 @@ static RenderTask<void> trajectoryLineTask(
                 mirror.append({pt.x, pt.y, pt.z});
             }
 
-            auto cr = co_await proxy.newTrajectory(scene_id,
-                std::span<const TrajectoryPoint>(pts.data(), pts.size()));
-            if (cr.status != 0 || !cr.trajectory.valid())
+            auto cr = co_await new_traj(scene_id, std::span<const TrajectoryPoint>(pts.data(), pts.size()));
+            if (cr.status != 0 || !cr.trajectory.isValid())
             {
                 all_ok = false;
                 continue;
@@ -620,7 +640,7 @@ static RenderTask<void> trajectoryLineTask(
                 all_ok = false;
 
             // Remove
-            auto rm = co_await proxy.remove(scene_id, cr.trajectory);
+            auto rm = co_await remove_traj(scene_id, cr.trajectory);
             if (rm.code != 0) all_ok = false;
 
             // Flush deferred destruction
@@ -637,9 +657,8 @@ static RenderTask<void> trajectoryLineTask(
         std::cout << "\n  ── Phase 6: SlotGrowth (append beyond capacity) ──\n";
 
         // Create empty trajectory (initial capacity in GlobalBuffer defaults to 64)
-        auto cr = co_await proxy.newTrajectory(scene_id,
-            std::span<const TrajectoryPoint>{});
-        check(cr.status == 0 && cr.trajectory.valid(), "SlotGrowth — created");
+        auto cr = co_await new_traj(scene_id, std::span<const TrajectoryPoint>{});
+        check(cr.status == 0 && cr.trajectory.isValid(), "SlotGrowth — created");
         TrajectoryHandle h_grow = cr.trajectory;
 
         TrajectoryMirror mirror;
@@ -660,8 +679,7 @@ static RenderTask<void> trajectoryLineTask(
                 mirror.append({pt.x, pt.y, pt.z});
             }
 
-            auto ap = proxy.appendPoints(scene_id, h_grow,
-                std::span<const TrajectoryPoint>(batch.data(), batch.size()));
+            auto ap = append_pts(scene_id, h_grow, std::span<const TrajectoryPoint>(batch.data(), batch.size()));
             (void)ap;
 
             // Update camera
@@ -672,7 +690,7 @@ static RenderTask<void> trajectoryLineTask(
                 cam_dist * 0.5f,
                 z_center + cam_dist * std::sin(angle));
             Eigen::Matrix4f V = buildViewMatrix(eye, {0, z_center, z_center}, up);
-            ViewCameraProxy(session, view_cam_ops).update(scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
 
             co_await yield_frame();
         }
@@ -709,7 +727,7 @@ static RenderTask<void> trajectoryLineTask(
                 cam_dist * 0.5f,
                 cam_dist * std::sin(angle));
             Eigen::Matrix4f V = buildViewMatrix(eye, {0, 2, 0}, up);
-            ViewCameraProxy(session, view_cam_ops).update(scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
 
             co_await yield_frame();
 
@@ -732,7 +750,9 @@ int main()
               << "  Tests: BulkCreate, IncrementalAppend, MultiTrajectory,\n"
               << "         ClearReupload, RemoveRecreate, SlotGrowth, VisualHold\n\n";
 
-    auto channel = RenderProgramChannel<>::create();
+    auto channel = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
 
     auto surface_exts = getVulkanExtensions();
@@ -745,19 +765,19 @@ int main()
 
     std::thread server_thread([&]
     {
-        GeneralRenderServer server(channel, sync);
+        GeneralRenderServer server(channel, control_channel, upload_channel, sync);
         ServerConfig cfg;
         cfg.instance_extensions = surface_exts;
         if (auto r = server.init(std::move(cfg)); !r)
         {
-            std::cerr << "[Server] Init failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] Init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
         }
         if (auto r = server.attachToWindow(window); !r)
         {
-            std::cerr << "[Server] Attach failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] Attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
@@ -777,14 +797,21 @@ int main()
         return 0;
     }
 
-    RenderSession session(channel, sync);
+    RenderFrameSession session(channel, sync);
+    RenderControlSession control(control_channel, sync);
+    RenderUploadSession upload(upload_channel, sync);
+    lux::render::testing::DirectRenderUploadClient upload_client{upload};
 
     // ── Run ─────────────────────────────────────────────────────────
 
-    RenderTaskScheduler scheduler(session);
-    auto task = trajectoryLineTask(session, window);
+    RenderTaskScheduler scheduler(session, control, &upload);
+    auto task = trajectoryLineTask(
+        session,
+        control,
+        upload_client.client(),
+        window);
     scheduler.run(
-        std::move(task), [&](RenderSession&) -> bool
+        std::move(task), [&](RenderFrameSession&) -> bool
         {
             window.pollEvents();
             return !window.shouldClose();

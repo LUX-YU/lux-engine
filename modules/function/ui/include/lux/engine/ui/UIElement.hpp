@@ -31,7 +31,6 @@ namespace lux::ui
 		virtual void draw() = 0;
 
 		[[nodiscard]] const std::string& label() const noexcept { return label_; }
-		void setLabel(std::string label) { label_ = std::move(label); }
 
 		void setVisible(bool v) noexcept { visible_ = v; }
 		[[nodiscard]] bool isVisible() const noexcept { return visible_; }

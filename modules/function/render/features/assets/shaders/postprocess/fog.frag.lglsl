@@ -1,0 +1,62 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+
+layout(location = 0) in vec2 vUV;
+layout(location = 0) out vec4 outColor;
+
+uniform sampler2D uHdrColor;
+uniform sampler2D uLinearDepth;
+
+#include "view_common.glsl"
+layout(std430) readonly buffer ViewBuffer {
+    ViewGpuData views[];
+} uViews;
+
+#include "view_pc_prefix.glsl"
+layout(push_constant) uniform PC {
+    LUX_VIEW_PC_PREFIX
+    float color_r;
+    float color_g;
+    float color_b;
+    float density;
+    float start_distance;
+    float reference_height;
+    float height_falloff;
+    float maximum_opacity;
+    uint enabled;
+} uPC;
+
+void main()
+{
+    vec4 source = texture(uHdrColor, vUV);
+    if (uPC.enabled == 0u || uPC.density <= 0.0)
+    {
+        outColor = source;
+        return;
+    }
+
+    ViewGpuData view_data = uViews.views[uPC.view_index];
+    float linear_depth = texture(uLinearDepth, vUV).r;
+    vec2 ndc = vUV * 2.0 - 1.0;
+    vec4 view_position = view_data.inv_proj * vec4(ndc, 1.0, 1.0);
+    vec3 view_ray = normalize(view_position.xyz / view_position.w);
+    float ray_distance = linear_depth / max(abs(view_ray.z), 0.025);
+    vec3 world_ray = normalize(mat3(view_data.inv_view) * view_ray);
+    float camera_height =
+        float(view_data.camera_page.y) *
+            view_data.camera_local_page_size.w +
+        view_data.camera_local_page_size.y;
+    float sample_height = camera_height + world_ray.y * ray_distance;
+    float height_density = exp(clamp(
+        -uPC.height_falloff *
+            (sample_height - uPC.reference_height),
+        -20.0,
+        20.0));
+    float fog_distance = max(ray_distance - uPC.start_distance, 0.0);
+    float amount = 1.0 - exp(
+        -uPC.density * fog_distance * height_density);
+    amount = clamp(amount, 0.0, uPC.maximum_opacity);
+    outColor = vec4(
+        mix(source.rgb, vec3(uPC.color_r, uPC.color_g, uPC.color_b), amount),
+        source.a);
+}

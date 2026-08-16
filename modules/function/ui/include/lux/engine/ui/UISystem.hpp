@@ -2,12 +2,15 @@
 #include <lux/engine/function/visibility_ui.h>
 #include "Panel.hpp"
 
+#include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/container/SparseSet.hpp>
 
 #include <filesystem>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <system_error>
 #include <vector>
 
 struct ImGuiContext;
@@ -16,6 +19,47 @@ namespace lux::window { class LuxWindow; }
 
 namespace lux::ui
 {
+    class UISystem;
+
+    enum class EPanelRegistrationError : std::uint8_t
+    {
+        ALREADY_REGISTERED
+    };
+
+    /// Move-only lifetime token for a panel registered with one UISystem.
+    /// Destroying it removes the panel before the panel object can disappear.
+    class LUX_FUNCTION_UI_PUBLIC PanelRegistration final
+    {
+    public:
+        PanelRegistration() noexcept = default;
+        ~PanelRegistration();
+
+        PanelRegistration(const PanelRegistration&) = delete;
+        PanelRegistration& operator=(const PanelRegistration&) = delete;
+        PanelRegistration(PanelRegistration&& other) noexcept;
+        PanelRegistration& operator=(PanelRegistration&& other) noexcept;
+
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return owner_ != nullptr;
+        }
+
+        void reset() noexcept;
+
+    private:
+        friend class UISystem;
+        PanelRegistration(
+            UISystem& owner,
+            Panel& panel,
+            std::size_t handle) noexcept
+            : owner_(&owner), panel_(&panel), handle_(handle)
+        {}
+
+        UISystem*   owner_{nullptr};
+        Panel*      panel_{nullptr};
+        std::size_t handle_{0u};
+    };
+
     /**
      * @brief ImGui context + panel management, decoupled from Vulkan rendering.
      *
@@ -30,7 +74,7 @@ namespace lux::ui
      * @code
      *   lux::window::LuxWindow window(1280, 720, "App");
      *   lux::ui::UISystem ui(window);
-     *   ui.addPanel(&my_panel);
+     *   auto registration = ui.registerPanel(my_panel);
      *
      *   while (!window.shouldClose()) {
      *       lux::window::LuxWindow::pollEvents();
@@ -50,23 +94,10 @@ namespace lux::ui
 
         // ── Panel management ─────────────────────────────────────────
 
-        template<typename T>
-        size_t addPanel(T* panel) requires std::is_base_of_v<Panel, T>
-        {
-            return registerPanel(panel);
-        }
-
-        template<typename T>
-        void markPanelAsRemove(T* panel) requires std::is_base_of_v<Panel, T>
-        {
-            panel_remove_callbacks_.push_back(
-                [this, panel]()
-                {
-                    unregisterPanel(panel);
-                    panel->onDelete();
-                }
-            );
-        }
+        [[nodiscard]] lux::cxx::expected<
+            PanelRegistration,
+            EPanelRegistrationError>
+        registerPanel(Panel& panel);
 
         // ── Per-frame ────────────────────────────────────────────────
         /// Drive ImGui pipeline: NewFrame → docking → panels → Render.
@@ -102,15 +133,26 @@ namespace lux::ui
         // sees the C-string for IniFilename, so caller need not keep
         // the path alive past the call.
 
+        // 这两个函数原本返回 void。它们**碰文件系统**,而磁盘满、路径不可写、
+        // 权限不足都会让保存失败 —— 返回 void 意味着用户的面板布局丢了而没有
+        // 任何渠道能知道。ImGui 的 Load/SaveIniSettingsToDisk 自己吞掉失败,
+        // 所以下面改走内存版 + 自己做 IO,失败才看得见。
+        //
+        // 用 std::error_code 而不是 render 的 Expected:这是文件系统错误,
+        // errc 就是它的标准词汇,没必要为此把渲染错误注册表拉进 UI 层。
+
         /// Replace the in-memory ini settings with the contents of the
         /// given file. No-op (with cleared state) if the file does not
         /// exist; ImGui will fall back to per-window FirstUseEver
         /// defaults on first paint.
-        void loadLayoutFromFile(const std::filesystem::path& path);
+        /// @return 空 error_code 表示成功(含"文件不存在"这一正常情形);
+        ///         非空表示文件存在却读不出来。
+        [[nodiscard]] std::error_code loadLayoutFromFile(const std::filesystem::path& path);
 
         /// Force-flush current ini state to disk. Caller is responsible
         /// for ensuring the parent directory exists.
-        void saveLayoutToFile(const std::filesystem::path& path) const;
+        /// @return 空 error_code 表示确实写成功了。
+        [[nodiscard]] std::error_code saveLayoutToFile(const std::filesystem::path& path) const;
 
         /// Drop all ini settings ImGui currently holds. Useful when
         /// switching projects so the next Load starts from a clean
@@ -129,10 +171,11 @@ namespace lux::ui
         [[nodiscard]] static std::vector<const char*> requiredVulkanExtensions();
 
     private:
-        size_t registerPanel(Panel* panel);
-        void   unregisterPanel(Panel* panel);
+        friend class PanelRegistration;
+        void unregisterPanel(
+            std::size_t handle,
+            Panel* expected_panel) noexcept;
 
-        std::vector<std::function<void()>> panel_remove_callbacks_;
         std::function<void()>              main_menu_bar_hook_;
         std::function<void()>              overlay_hook_;
 

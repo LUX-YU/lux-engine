@@ -1,0 +1,47 @@
+find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+
+add_component(
+    COMPONENT_NAME  script_native
+    NAMESPACE       lux::engine::function
+    OUTPUT_NAME     lux_engine_function_script_native
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/NativeBackend.cpp
+)
+
+component_include_directories(
+    script_native
+    BUILD_TIME_EXPORT
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${LUX_GENERATE_HEADER_DIR}
+    INSTALL_TIME
+        include
+)
+
+target_compile_definitions(
+    script_native
+    PRIVATE
+        LUX_FUNCTION_LIBRARY
+)
+
+target_link_libraries(
+    script_native
+    PUBLIC
+        lux::engine::function::script_core
+        lux::cxx::compile_time
+    PRIVATE
+        lux::engine::platform::dynamic_library
+)
+
+component_add_transitive_commands(
+    script_native
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
+    "find_package(lux-engine-platform REQUIRED COMPONENTS dynamic_library)"
+)
+
+lux_classify_target(
+    TARGET  script_native
+    LAYER   FUNCTION
+    PRODUCT RUNTIME
+    ROLE    DOMAIN
+)

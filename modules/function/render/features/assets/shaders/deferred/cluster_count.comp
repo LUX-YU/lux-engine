@@ -1,0 +1,140 @@
+#version 450
+// ClusterCount: count light references per cluster.
+
+layout(local_size_x = 64) in;
+
+#include "light_types.glsl"
+
+#include "cluster_common.glsl"
+layout(set = 0, binding = 0, std140) uniform ClusterParamsUBO {
+    LUX_CLUSTER_PARAMS_FIELDS   // mat4 view/proj; vec4 viewport; uvec4 grid/limits
+} uParams;
+
+layout(set = 0, binding = 1, std430) buffer ClusterCountBuf {
+    uint counts[];
+} uCounts;
+
+layout(set = 1, binding = 0, std430) readonly buffer SpotLightBuf {
+    SpotLightGPU lights[];
+} uSpotLights;
+
+layout(set = 1, binding = 2, std430) readonly buffer PointLightBuf {
+    PointLightGPU lights[];
+} uPointLights;
+
+uint flattenCluster(uvec3 c)
+{
+    return c.x + c.y * uParams.grid.x + c.z * uParams.grid.x * uParams.grid.y;
+}
+
+bool computeClusterRange(vec3 position_relative, float range, out uvec3 min_cell, out uvec3 max_cell)
+{
+    float near_z = max(uParams.viewport.z, 1e-3);
+    float far_z = max(uParams.viewport.w, near_z + 1e-3);
+
+    vec3 position_vs = (uParams.view * vec4(position_relative, 1.0)).xyz;
+    float center_depth = -position_vs.z;
+
+    float z_min = max(near_z, center_depth - range);
+    float z_max = min(far_z, center_depth + range);
+    if (z_max <= z_min)
+        return false;
+
+    vec4 clip = uParams.proj * vec4(position_vs, 1.0);
+    if (abs(clip.w) < 1e-5)
+        return false;
+
+    vec2 ndc = clip.xy / clip.w;
+    float radius_ndc_x = abs(uParams.proj[0][0]) * range / max(center_depth, near_z);
+    float radius_ndc_y = abs(uParams.proj[1][1]) * range / max(center_depth, near_z);
+
+    vec2 min_ndc = ndc - vec2(radius_ndc_x, radius_ndc_y);
+    vec2 max_ndc = ndc + vec2(radius_ndc_x, radius_ndc_y);
+
+    float width = max(uParams.viewport.x, 1.0);
+    float height = max(uParams.viewport.y, 1.0);
+    vec2 min_px = (min_ndc * 0.5 + 0.5) * vec2(width, height);
+    vec2 max_px = (max_ndc * 0.5 + 0.5) * vec2(width, height);
+
+    float tile_w = width / float(max(uParams.grid.x, 1u));
+    float tile_h = height / float(max(uParams.grid.y, 1u));
+
+    float log_den = log2(far_z / near_z);
+    uint z0 = uint(clamp(floor(log2(max(z_min, near_z) / near_z) / max(log_den, 1e-6) * float(uParams.grid.z)), 0.0, float(uParams.grid.z - 1u)));
+    uint z1 = uint(clamp(floor(log2(max(z_max, near_z) / near_z) / max(log_den, 1e-6) * float(uParams.grid.z)), 0.0, float(uParams.grid.z - 1u)));
+
+    uint x0 = uint(clamp(floor(min_px.x / max(tile_w, 1.0)), 0.0, float(uParams.grid.x - 1u)));
+    uint x1 = uint(clamp(floor(max_px.x / max(tile_w, 1.0)), 0.0, float(uParams.grid.x - 1u)));
+    uint y0 = uint(clamp(floor(min_px.y / max(tile_h, 1.0)), 0.0, float(uParams.grid.y - 1u)));
+    uint y1 = uint(clamp(floor(max_px.y / max(tile_h, 1.0)), 0.0, float(uParams.grid.y - 1u)));
+
+    min_cell = uvec3(x0, y0, min(z0, z1));
+    max_cell = uvec3(x1, y1, max(z0, z1));
+    return true;
+}
+
+// Dispatch contract: one workgroup per light.  All 64 threads cooperatively
+// iterate the 3-D cluster range that the light overlaps.
+void main()
+{
+    if (uParams.grid.w == 0u)
+        return;
+
+    uint point_count = uParams.limits.z;
+    uint spot_count = uParams.limits.w;
+    uint total = point_count + spot_count;
+
+    uint light_idx = gl_WorkGroupID.x;
+    if (light_idx >= total)
+        return;
+
+    vec3 light_pos;
+    float range;
+
+    if (light_idx < point_count)
+    {
+        PointLightGPU pl = uPointLights.lights[light_idx];
+        if (pl.intensity <= 0.0 || pl.range <= 0.0)
+            return;
+        light_pos = luxLightViewPosition(
+            pl,
+            uParams.camera_page.xyz,
+            uParams.camera_local_page_size.xyz,
+            uParams.camera_local_page_size.w);
+        range = pl.range;
+    }
+    else
+    {
+        uint sid = light_idx - point_count;
+        SpotLightGPU sl = uSpotLights.lights[sid];
+        if (sl.intensity <= 0.0 || sl.range <= 0.0)
+            return;
+        light_pos = luxLightViewPosition(
+            sl,
+            uParams.camera_page.xyz,
+            uParams.camera_local_page_size.xyz,
+            uParams.camera_local_page_size.w);
+        range = sl.range;
+    }
+
+    uvec3 min_cell, max_cell;
+    if (!computeClusterRange(light_pos, range, min_cell, max_cell))
+        return;
+
+    uint range_x = max_cell.x - min_cell.x + 1u;
+    uint range_y = max_cell.y - min_cell.y + 1u;
+    uint range_z = max_cell.z - min_cell.z + 1u;
+    uint total_cells = range_x * range_y * range_z;
+
+    for (uint i = gl_LocalInvocationID.x; i < total_cells; i += gl_WorkGroupSize.x)
+    {
+        uint iz  = i / (range_x * range_y);
+        uint rem = i % (range_x * range_y);
+        uint iy  = rem / range_x;
+        uint ix  = rem % range_x;
+        uint cluster_idx = flattenCluster(uvec3(min_cell.x + ix,
+                                                min_cell.y + iy,
+                                                min_cell.z + iz));
+        atomicAdd(uCounts.counts[cluster_idx], 1u);
+    }
+}

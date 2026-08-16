@@ -4,8 +4,8 @@
 /// (`-DENABLE_EDITOR_TEST=ON`) the developer runs by hand. Prints PASS /
 /// FAIL per checkpoint; returns nonzero on any failure.
 
-#include <lux/engine/editor/project/Project.hpp>
-#include <lux/engine/editor/project/ProjectManifest.hpp>
+#include <lux/engine/authoring/project/Project.hpp>
+#include <lux/engine/authoring/project/ProjectManifest.hpp>
 
 #include <cstdio>
 #include <filesystem>
@@ -29,8 +29,8 @@ namespace
 
 int main()
 {
-    using lux::editor::Project;
-    using lux::editor::ProjectManifest;
+    using lux::authoring::Project;
+    using lux::authoring::ProjectManifest;
 
     namespace fs = std::filesystem;
 
@@ -47,7 +47,13 @@ int main()
     expect(m.display_name == "TestGame",            "makeDefault.display_name");
     expect(!m.project_guid.is_nil(),                "makeDefault.project_guid != nil");
     expect(!m.engine_version.empty(),               "makeDefault.engine_version filled");
-    expect(m.default_scene.empty(),                 "makeDefault.default_scene initially empty");
+    expect(m.default_world.empty(),                 "makeDefault.default_world initially empty");
+    m.extensions.push_back(lux::authoring::ProjectExtensionEntry{
+        lux::extensions::ExtensionId{"org.lux.physics2d"},
+        "Plugins/physics2d",
+        lux::extensions::EExtensionModuleTarget::RUNTIME,
+        1u,
+        0u});
 
     // ── 2) save + load round-trip ──────────────────────────────────
     fs::create_directories(tmp_root, ec);
@@ -66,7 +72,13 @@ int main()
         expect(loaded->display_name == m.display_name,       "loaded.display_name == saved.display_name");
         expect(loaded->project_guid == m.project_guid,       "loaded.project_guid == saved.project_guid");
         expect(loaded->engine_version == m.engine_version,   "loaded.engine_version == saved.engine_version");
-        expect(loaded->default_scene == m.default_scene,     "loaded.default_scene == saved.default_scene");
+        expect(loaded->default_world == m.default_world,     "loaded.default_world == saved.default_world");
+        expect(loaded->extensions.size() == 1u &&
+                   loaded->extensions.front().id.name() ==
+                       "org.lux.physics2d" &&
+                   loaded->extensions.front().path.generic_string() ==
+                       "Plugins/physics2d",
+               "loaded extensions == saved extensions");
     }
 
     std::printf("=== Phase B smoke: Project::newOnDisk + openFromDisk ===\n");
@@ -80,12 +92,12 @@ int main()
     {
         expect(fs::exists(created->manifestPath()),                   "manifest exists at expected path");
         expect(fs::exists(created->contentRoot()),                    "Content/ created");
-        expect(fs::exists(created->scenesRoot()),                     "Scenes/ created");
+        expect(fs::exists(created->worldsRoot()),                     "Worlds/ created");
         expect(fs::exists(created->sourceRoot()),                     "Source/ created");
         expect(fs::exists(created->cacheRoot()),                      "Content/.lux created");
         expect(created->manifest().name == "TestGame",                "new project manifest.name");
         expect(created->scanAssetFiles().empty(),                     "Content/ scan empty in new project");
-        expect(created->scanSceneFiles().empty(),                     "Scenes/ scan empty in new project");
+        expect(created->scanWorldFiles().empty(),                     "Worlds/ scan empty in new project");
     }
 
     // Re-open from disk.

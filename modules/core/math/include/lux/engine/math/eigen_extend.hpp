@@ -175,23 +175,23 @@ namespace LuxEigenExt
         const Scalar centerY  = (top   + bottom);
         const Scalar depth    = (far_p - near_p);   // f - n
 
-        // 前两行（x/y）两种约定一致
+        // The first two rows (x/y) are the same under both conventions
         const Scalar A00 = Scalar(2) * near_p / width;
         const Scalar A02 = centerX / width;
         const Scalar A11 = Scalar(2) * near_p / height;
         const Scalar A12 = centerY / height;
 
         if constexpr (!OpenGLNDC) {
-            // Vulkan Zero-to-One（NDC z ∈ [0,1]）
-            // 第三行：[-f/(f-n), -(f*n)/(f-n)]，第四行：[0,0,-1,0]
+            // Vulkan Zero-to-One (NDC z in [0,1])
+            // Third row: [-f/(f-n), -(f*n)/(f-n)], fourth row: [0,0,-1,0]
             ret <<  A00, 0,   A02,                              0,
                        0, A11, A12,                              0,
                        0, 0,  -far_p / depth,   -(far_p * near_p) / depth,
                        0, 0,         -1,                         0;
         } else {
             const Scalar sumZF    = (far_p + near_p);   // f + n
-            // OpenGL（NDC z ∈ [-1,1]）
-            // 第三行：[ -(f+n)/(f-n), -(2fn)/(f-n) ]，第四行：[0,0,-1,0]
+            // OpenGL (NDC z in [-1,1])
+            // Third row: [ -(f+n)/(f-n), -(2fn)/(f-n) ], fourth row: [0,0,-1,0]
             ret <<  A00, 0,   A02,                              0,
                        0, A11, A12,                              0,
                        0, 0,  -sumZF / depth,   Scalar(-2) * far_p * near_p / depth,
@@ -217,19 +217,19 @@ namespace LuxEigenExt
         const Scalar a11 = Scalar(1) / t;
         const Scalar fn  = (zFar - zNear);
 
-        // x/y 与两种 NDC 约定相同
+        // x/y are the same under both NDC conventions
         mat(0,0) = a00;
         mat(1,1) = a11;
 
-        // 透视除法设置
+        // Perspective-divide setup
         mat(3,2) = -Scalar(1);
 
         if constexpr (!OpenGLNDC) {
-            // Vulkan Zero-to-One（NDC z ∈ [0,1]）
+            // Vulkan Zero-to-One (NDC z in [0,1])
             mat(2,2) = -zFar / fn;
             mat(2,3) = -(zFar * zNear) / fn;
         } else {
-            // OpenGL（NDC z ∈ [-1,1]）
+            // OpenGL (NDC z in [-1,1])
             mat(2,2) = -(zFar + zNear) / fn;
             mat(2,3) = -(Scalar(2) * zFar * zNear) / fn;
         }

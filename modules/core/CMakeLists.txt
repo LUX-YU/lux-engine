@@ -19,7 +19,10 @@ install_components(
 	PROJECT_NAME	lux-engine-core
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::core
-	COMPONENTS		math                    
+	COMPONENTS		extension_abi
+					math
 					meta
-                    script
+                    serialization
+                    log
+                    events
 )

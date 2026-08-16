@@ -6,7 +6,7 @@
 #include <vector>
 
 // Thin, engine-idiomatic facade over the vendored nativefiledialog-extended
-// (engine/thirdparty/nativefiledialog). It exposes ONLY std types so the rest
+// (engine/editor/framework/native_dialog). It exposes ONLY std types so the rest
 // of the editor never sees nfd's C API — the nfd headers are an implementation
 // detail of FileDialog.cpp.
 //

@@ -1,8 +1,7 @@
 .vs
 .internal
 .venv
-.claude
-/cpp.hint
+cpp.hint
 CMakeSettings.json
 .vscode
 .idea
@@ -17,6 +16,12 @@ out
 cmake-build-debug
 cmake-build-release
 
+# AI Agent
+.claude
+AGENTS.md
+.codex-*
+
 *sync-conflict-*
 # MLIR Generations
 NUL.obj
+platforms/android/build/

@@ -1,0 +1,18 @@
+# Deterministic diagnostic preset for lux_world_benchmark.  Select this file
+# through VK_LAYER_SETTINGS_PATH and launch with --vk-validation.  The layer
+# callback still reaches the engine's structured diagnostics, while the log
+# file preserves complete GPU-AV text that the bounded render error channel
+# intentionally reduces to fingerprints.
+khronos_validation.debug_action = VK_DBG_LAYER_ACTION_LOG_MSG
+khronos_validation.log_filename = lux-world-benchmark-gpuav.log
+khronos_validation.report_flags = error,warn
+khronos_validation.enable_message_limit = false
+khronos_validation.enables = VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT,VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT
+khronos_validation.gpuav_shader_instrumentation = true
+khronos_validation.gpuav_descriptor_checks = true
+khronos_validation.gpuav_warn_on_robust_oob = true
+khronos_validation.gpuav_buffer_address_oob = true
+khronos_validation.gpuav_buffers_validation = true
+khronos_validation.gpuav_indirect_draws_buffers = true
+khronos_validation.gpuav_indirect_dispatches_buffers = true
+khronos_validation.gpuav_index_buffers = true

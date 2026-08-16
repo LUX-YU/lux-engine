@@ -38,7 +38,15 @@ namespace lux::engine::platform
         // glibc < 2.27 does not wrap memfd_create; fall back to syscall.
         int memfdCreateCompat(const char* name, unsigned int flags)
         {
-#  if defined(__GLIBC_PREREQ) && __GLIBC_PREREQ(2, 27)
+// Invoking an undefined function-like macro in #if is ill-formed, so the
+// defined() check cannot share a line with the invocation — clang/bionic
+// (Android, no __GLIBC_PREREQ at all) rejects the combined form. Nest it.
+#  if defined(__GLIBC_PREREQ)
+#    if __GLIBC_PREREQ(2, 27)
+#      define LUX_HAVE_MEMFD_CREATE_WRAPPER 1
+#    endif
+#  endif
+#  if defined(LUX_HAVE_MEMFD_CREATE_WRAPPER)
             return ::memfd_create(name, flags);
 #  elif defined(SYS_memfd_create)
             return static_cast<int>(::syscall(SYS_memfd_create, name, flags));

@@ -1,0 +1,68 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+
+// ============================================================================
+//  grid2d.frag — the 2D scene reference grid (XY content plane, orthographic).
+//
+//  Same fullscreen-triangle vertex as the 3D grid (grid.vert); the math is
+//  simpler — no ray-plane intersection, no horizon: NDC maps back to world XY
+//  through the inverse view/projection, lines are drawn with fwidth AA.
+//
+//  ZOOM-ADAPTIVE LOD: minor lines fade out as their on-screen spacing shrinks
+//  (a far-zoomed view keeps only the major lines instead of a grey mush);
+//  the major grid fades the same way another decade later.
+// ============================================================================
+
+// ====== View UBO (SET=0, BINDING=1) — same layout the 3D grid samples ======
+#include "view_common.glsl"
+layout(std430) readonly buffer ViewBuffer {
+    ViewGpuData views[];
+} uViews;
+
+#include "view_pc_prefix.glsl"
+layout(push_constant) uniform Grid2DPC {
+    LUX_VIEW_PC_PREFIX      // uint scene_index (0); uint view_index (4)
+    float cellSize;    // world units per minor cell
+    float majorEvery;  // minor cells per major line (e.g. 10)
+    float linePx;      // line width in pixels
+    uint  onTop;       // pass selection happens kernel-side; kept for layout parity
+} uPC;
+
+layout(location = 0) noperspective in vec2 v_ndc;
+layout(location = 0) out vec4 outColor;
+
+// Anti-aliased line factor at `coord` (in cell units); deriv = fwidth(coord).
+float lineFactor(vec2 coord, vec2 deriv, float widthPx) {
+    vec2 g      = abs(fract(coord - 0.5) - 0.5);
+    vec2 lineAA = max(deriv * widthPx, vec2(1e-6));
+    vec2 lines  = 1.0 - min(g / lineAA, vec2(1.0));
+    return max(lines.x, lines.y);
+}
+
+// Fade a grid level out once its cells shrink below a few pixels on screen.
+// density = cells per pixel; full at ≥8px/cell, gone at ≤2px/cell.
+float lodFade(vec2 deriv) {
+    float density = max(deriv.x, deriv.y);
+    return 1.0 - smoothstep(0.125, 0.5, density);
+}
+
+void main() {
+    // Orthographic NDC → world XY (affine; /w kept for generality).
+    ViewGpuData v = uViews.views[uPC.view_index];
+    vec4 wp4 = v.inv_view * (v.inv_proj * vec4(v_ndc, 0.0, 1.0));
+    vec2 wp  = wp4.xy / wp4.w;
+
+    vec2  minorCoord = wp / uPC.cellSize;
+    vec2  minorDeriv = fwidth(minorCoord);
+    float minor      = lineFactor(minorCoord, minorDeriv, uPC.linePx)
+                     * lodFade(minorDeriv);
+
+    vec2  majorCoord = minorCoord / max(uPC.majorEvery, 1.0);
+    vec2  majorDeriv = fwidth(majorCoord);
+    float major      = lineFactor(majorCoord, majorDeriv, uPC.linePx)
+                     * lodFade(majorDeriv);
+
+    float alpha = max(major * 0.30, minor * 0.14);
+    if (alpha < 0.004) discard;
+    outColor = vec4(vec3(0.62), alpha);   // neutral editor chrome grey
+}

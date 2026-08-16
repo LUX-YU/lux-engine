@@ -10,29 +10,29 @@
 // sweep — namespace follows the tier).
 namespace lux::editor
 {
-    // 用于编辑不同类型常量的特性系统
+    // Traits system for editing constants of different types
     template<typename T>
     struct ConstantTypeTraits {
-        // 默认实现：显示不支持编辑
+        // Default implementation: show that editing isn't supported
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
             ImGui::Text("(%s 不支持编辑)", label);
             return false;
         }
     };
 
-    // 布尔类型特化
+    // bool specialization
     template<>
     struct ConstantTypeTraits<bool> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
             bool* value_ptr = static_cast<bool*>(constant.data());
             if (value_ptr && ImGui::Checkbox(label, value_ptr)) {
-                return true; // 值已被修改
+                return true; // value was modified
             }
             return false;
         }
     };
 
-    // 8位有符号整数特化
+    // 8-bit signed integer specialization
     template<>
     struct ConstantTypeTraits<int8_t> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
@@ -44,7 +44,7 @@ namespace lux::editor
         }
     };
 
-    // 16位有符号整数特化
+    // 16-bit signed integer specialization
     template<>
     struct ConstantTypeTraits<int16_t> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
@@ -56,7 +56,7 @@ namespace lux::editor
         }
     };
 
-    // 32位有符号整数特化
+    // 32-bit signed integer specialization
     template<>
     struct ConstantTypeTraits<int32_t> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
@@ -68,7 +68,7 @@ namespace lux::editor
         }
     };
 
-    // 64位有符号整数特化
+    // 64-bit signed integer specialization
     template<>
     struct ConstantTypeTraits<int64_t> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
@@ -80,7 +80,7 @@ namespace lux::editor
         }
     };
 
-    // 8位无符号整数特化
+    // 8-bit unsigned integer specialization
     template<>
     struct ConstantTypeTraits<uint8_t> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
@@ -92,7 +92,7 @@ namespace lux::editor
         }
     };
 
-    // 16位无符号整数特化
+    // 16-bit unsigned integer specialization
     template<>
     struct ConstantTypeTraits<uint16_t> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
@@ -104,7 +104,7 @@ namespace lux::editor
         }
     };
 
-    // 32位无符号整数特化
+    // 32-bit unsigned integer specialization
     template<>
     struct ConstantTypeTraits<uint32_t> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
@@ -116,7 +116,7 @@ namespace lux::editor
         }
     };
 
-    // 64位无符号整数特化
+    // 64-bit unsigned integer specialization
     template<>
     struct ConstantTypeTraits<uint64_t> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
@@ -128,7 +128,7 @@ namespace lux::editor
         }
     };
 
-    // 浮点数特化
+    // float specialization
     template<>
     struct ConstantTypeTraits<float> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
@@ -140,7 +140,7 @@ namespace lux::editor
         }
     };
 
-    // 双精度浮点数特化
+    // double-precision float specialization
     template<>
     struct ConstantTypeTraits<double> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
@@ -152,25 +152,25 @@ namespace lux::editor
         }
     };
 
-    // 字符串特化 (std::string_view)
+    // string specialization (std::string_view)
     template<>
     struct ConstantTypeTraits<std::string_view> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
-            // 由于std::string_view是只读的，我们只能显示它
+            // std::string_view is read-only, so we can only display it
             const std::string_view* value_ptr = static_cast<const std::string_view*>(constant.data());
             if (value_ptr) {
                 ImGui::LabelText(label, "%.*s", static_cast<int>(value_ptr->size()), value_ptr->data());
             }
-            return false; // 字符串视图无法修改
+            return false; // a string_view can't be modified
         }
     };
 
-    // 字符串特化 (std::string)
+    // string specialization (std::string)
     template<>
     struct ConstantTypeTraits<std::string> {
         static bool editValue(const char* label, lux::meta::RuntimeObject& constant, const lux::meta::RefType* type) {
-            // 注意：这里假设我们可以转换和访问std::string
-            // 如果Constant实际上不存储std::string而是std::string_view，这需要特殊处理
+            // Note: this assumes we can cast to and access a std::string
+            // If Constant actually stores a std::string_view rather than a std::string, this needs special handling
             std::string* value_ptr = static_cast<std::string*>(constant.data());
             if (value_ptr && ImGui::InputText(label, value_ptr)) {
                 return true;
@@ -179,7 +179,7 @@ namespace lux::editor
         }
     };
 
-    // 基于类型调度常量编辑器
+    // Dispatches to the right constant editor based on type
     class ConstantEditor {
     public:
         static bool editConstant(const char* label, lux::meta::RuntimeObject& constant) {
@@ -194,11 +194,11 @@ namespace lux::editor
                 return false;
             }
 
-            // 根据类型分发到相应的编辑器
+            // Dispatch to the matching editor based on type
             using namespace lux::meta;
             auto baseType = static_cast<EBaseType>(type->qtype.base);
-            
-            // 处理基本类型
+
+            // Handle primitive types
             switch (baseType) {
                 case EBaseType::Bool:
                     return ConstantTypeTraits<bool>::editValue(label, constant, type);

@@ -1,11 +1,11 @@
 include_component_cmake_scripts(meta)
-include_component_cmake_scripts(lux::engine::resource::asset)
+include_component_cmake_scripts(lux::engine::resource::asset_codecs)
 
-set(RENDER_PINCLUDE_DIR "${CMAKE_SOURCE_DIR}/modules/function/render/pinclude")
+set(RENDER_PINCLUDE_DIR "${CMAKE_SOURCE_DIR}/modules/function/render/vulkan/pinclude")
 set(UI_TEST_CONFIG_OUT  "${CMAKE_BINARY_DIR}/gen/test/function/ui/include")
 
 component_generate_runtime_asset_path_header(
-    COMPONENT render
+    COMPONENT render_features
     OUTPUT_HEADER ${UI_TEST_CONFIG_OUT}/test_time_asset_path.hpp
 )
 
@@ -20,10 +20,10 @@ add_executable(
 target_link_libraries(
 	imgui_comm_render_test
 	PRIVATE
-		lux::engine::function::ui
+		lux::engine::function::ui_vulkan
 )
 
-# scene_view_integration_test -> RELOCATED to engine/shadergen_glsl/test (W5a:
+# scene_view_integration_test -> RELOCATED to engine/toolchain/shader/glsl/test (W5a:
 # ported off rdesc::Material onto graph materials; needs the engine-tier cook backend,
 # which a modules/-tier ui test target can't link. Sources stay here.)
 
@@ -43,5 +43,5 @@ target_include_directories(
 target_link_libraries(
 	swapchain_scene_test
 	PRIVATE
-		lux::engine::function::ui
+		lux::engine::function::ui_vulkan
 )

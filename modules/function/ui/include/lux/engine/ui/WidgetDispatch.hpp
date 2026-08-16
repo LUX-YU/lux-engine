@@ -30,8 +30,13 @@ namespace lux::ui
      *        Must be called from within an active ImGui table row (column 1
      *        is already active when the function is invoked by WidgetDispatch).
      *        ImGui::SetNextItemWidth(-FLT_MIN) is applied before the call.
+     *
+     *        RETURNS whether the user EDITED the value this frame (the ImGui
+     *        widget's return) — the write half of the write contract (C5/C8):
+     *        the Inspector forwards it into ComponentTypeEntry::notify so
+     *        reflection field writes still fire entt's on_update signal.
      */
-    using WidgetDrawFn = std::function<void(const WidgetContext&)>;
+    using WidgetDrawFn = std::function<bool(const WidgetContext&)>;
 
     /// Identity hasher for pre-computed type hashes (FNV1a uint64_t).
     /// The key is already a well-distributed hash value, so passing it
@@ -96,8 +101,13 @@ namespace lux::ui
          *
          * @return true  if a widget was found and drawn.
          * @return false if no widget is registered for this type (caller can fallback).
+         *
+         * @param out_edited  When non-null, OR-ed with "the user edited the
+         *        value this frame" (incl. nested record sub-fields) — the
+         *        Inspector forwards it into ComponentTypeEntry::notify (the write contract).
          */
-        bool draw(const lux::meta::RefField& field, void* component_base) const;
+        bool draw(const lux::meta::RefField& field, void* component_base,
+                  bool* out_edited = nullptr) const;
 
     private:
         /// Fallback for record types not in `record_table_`: look up the
@@ -106,7 +116,8 @@ namespace lux::ui
         /// when the type is not in the registry (caller falls back to hex
         /// display).
         bool drawRecord(const lux::meta::RefField& field,
-                        void* component_base) const;
+                        void* component_base,
+                        bool* out_edited) const;
 
         /// Direct-indexed by EBaseType value (0-13).  Entries for unregistered
         /// primitives are default-constructed (empty std::function == nullptr).

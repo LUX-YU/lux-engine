@@ -1,6 +1,4 @@
-find_package(Vulkan  REQUIRED)
-
-set(LUX_PLATFORM_GAPI_DISABLE_EXCEPTION TRUE CACHE BOOL "Allow exceptions in the gapi library")
+find_package(Vulkan REQUIRED)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME   LUX_PLATFORM_GAPI_LIBRARY
@@ -29,7 +27,6 @@ target_compile_definitions(
     INTERFACE
     VULKAN_SUPPORT
     VULKAN_DEBUG_REPORT
-    $<$<BOOL:${LUX_PLATFORM_GAPI_DISABLE_EXCEPTION}>:LUX_PLATFORM_GAPI_DISABLE_EXCEPTION>
     # PRIVATE
     # LUX_PLATFORM_GAPI_LIBRARY
 )
@@ -44,4 +41,11 @@ target_link_libraries(
 component_add_transitive_commands(
     gapi
     "find_package(Vulkan    REQUIRED)"
+)
+
+lux_classify_target(
+    TARGET  gapi
+    LAYER   PLATFORM
+    PRODUCT RUNTIME
+    ROLE    FOUNDATION
 )

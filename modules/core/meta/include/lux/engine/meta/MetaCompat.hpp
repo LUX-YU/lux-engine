@@ -10,10 +10,10 @@ namespace lux::meta
     //--------------------------------------------------------------------------------------------------
 
     /**
-     * @brief 9×9 table描述 *initialisation* 兼容性。
+     * @brief 9×9 table describing *initialisation* compatibility.
      *
-     * 行 = 目标 qualifier，列 = 源 qualifier。
-     * 值 1 ⇒ “允许”。
+     * Row = destination qualifier, column = source qualifier.
+     * Value 1 means “allowed”.
      */
     static inline constexpr bool gInit[9 /*dst*/][9 /*src*/] = {
         // Dst\Src:    Val   LRef  RRef  CRef  RRefC Ptr   PtrC  CPtr  CPtrC
@@ -29,12 +29,13 @@ namespace lux::meta
     };
 
     /**
-     * @brief 9×9 table描述 *assignment* 兼容性。
+     * @brief 9×9 table describing *assignment* compatibility.
      *
-     * 行 = 目标 qualifier，列 = 源 qualifier。
-     * 值 1 ⇒ “允许”。
+     * Row = destination qualifier, column = source qualifier.
+     * Value 1 means “allowed”.
      *
-     * 注意：ConstRef（CRef）在外层已被阻止，不予赋值。
+     * Note: ConstRef (CRef) is already rejected at the outer layer, so it
+     * never reaches assignment.
      */
     static inline constexpr bool gAssign[9 /*dst*/][9 /*src*/] = {
         // Dst\Src:    Val   LRef  RRef  CRef  RRefC   Ptr PtrC  CPtr  CPtrC
@@ -95,6 +96,12 @@ namespace lux::meta
     //--------------------------------------------------------------------------------------------------
     static inline bool recordCompatible(const RefType* dst, const RefType* src) noexcept
     {
+        // Identical record types are always compatible — and this must not
+        // depend on RefType.ptr, which is null for constexpr ref_type_of_v
+        // instances (e.g. reflected function parameter types).
+        if (dst->hash == src->hash)
+            return true;
+
         auto *dst_class = static_cast<const RefClass*>(dst->ptr);
         auto *src_class = static_cast<const RefClass*>(src->ptr);
         if(!dst_class || !src_class)

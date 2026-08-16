@@ -12,8 +12,11 @@
 //   * rubbish input is rejected (bad magic)
 //=============================================================================
 
-#include <lux/engine/asset/MeshAsset.hpp>            // lux::asset::{Mesh,Vertex,Bone}
-#include <lux/engine/asset/MeshDescriptionCodec.hpp> // detail::{encode,decode}MeshDescription
+#include <lux/engine/resource/asset/MeshAsset.hpp>            // lux::asset::{Mesh,Vertex,Bone}
+#include <lux/engine/resource/asset/MeshDescriptionCodec.hpp> // detail::{encode,decode}MeshDescription
+#include <lux/engine/resource/asset/MeshSerDeser.hpp>
+
+#include <uuid.h>
 
 #include <cstring>
 #include <cstdint>
@@ -188,6 +191,31 @@ static void test_v1_tolerance()
     check(out.lods.empty(), "v1 mesh decodes as single-LOD (no lods)");
 }
 
+static void test_standard_generated_asset()
+{
+    banner("Standard generated Mesh asset is deterministic");
+    const auto id = uuids::uuid::from_string(
+        "76500000-0000-4000-8000-000000000001").value();
+    const Mesh input = makeTestMesh(/*with_bounds=*/true);
+    const auto first = MeshSerDeser::encodeData(id, input);
+    const auto second = MeshSerDeser::encodeData(id, input);
+    check(static_cast<bool>(first), "standard Mesh image encodes");
+    check(first && second && *first == *second,
+          "same id and geometry produce identical bytes");
+    if (!first)
+        return;
+    const auto decoded = MeshSerDeser::decodeData(
+        first->data(), first->size());
+    check(static_cast<bool>(decoded), "standard Mesh image decodes");
+    if (decoded)
+    {
+        check((*decoded)->vertices.size() == input.vertices.size(),
+              "standard image vertex count preserved");
+        check((*decoded)->indices == input.indices,
+              "standard image indices preserved");
+    }
+}
+
 //-----------------------------------------------------------------------------
 int main()
 {
@@ -197,6 +225,7 @@ int main()
     test_bad_blob();
     test_mesh_lods();
     test_v1_tolerance();
+    test_standard_generated_asset();
 
     std::cout << "\nmesh_asset_test: " << g_pass << " passed, "
               << g_fail << " failed\n";

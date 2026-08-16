@@ -24,3 +24,10 @@ component_add_transitive_commands(
     math
     "find_package (Eigen3 REQUIRED)"
 )
+
+lux_classify_target(
+    TARGET  math
+    LAYER   CORE
+    PRODUCT RUNTIME
+    ROLE    FOUNDATION
+)

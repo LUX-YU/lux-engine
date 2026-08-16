@@ -26,10 +26,6 @@ namespace lux::ui
 		}
 	}
 
-	void Panel::onDelete()
-	{
-	}
-
 	bool Panel::isVisible() const noexcept
 	{
 		return visible_;

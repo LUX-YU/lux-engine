@@ -1,7 +1,7 @@
 #include <lux/engine/ui/UIOffscreenImagePool.hpp>
 
-#include <lux/engine/render/core/VulkanContext.hpp>
-#include <lux/engine/render/renderer/RenderTargetLayout.hpp>
+#include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/function/render/client/RenderTargetLayout.hpp>
 
 #include <imgui_impl_vulkan.h>
 
@@ -79,7 +79,7 @@ namespace lux::ui
 
         // One descriptor per FIF slot, permanently bound to its colour view.
         auto &color_views = slot_views_[static_cast<size_t>(
-            lux::render::TargetSlot::SceneColor)];
+            lux::render::TargetSlot::SCENE_COLOR)];
 
         imgui_descriptors_.resize(color_views.size(), VK_NULL_HANDLE);
         for (size_t i = 0; i < color_views.size(); ++i)
@@ -98,14 +98,13 @@ namespace lux::ui
         // Descriptors will be lazily recreated on next ensureImGuiDescriptors().
     }
 
-    void UIOffscreenImagePool::collectRetired(uint64_t frame_id, uint32_t frames_in_flight)
+    void UIOffscreenImagePool::collectRetired(uint64_t frame_id, uint64_t completed_serial)
     {
-        OffscreenImagePool::collectRetired(frame_id, frames_in_flight);
+        OffscreenImagePool::collectRetired(frame_id, completed_serial);
 
         if (!imgui_renderer_ || retired_imgui_.empty())
             return;
 
-        const uint64_t threshold = frames_in_flight;
         auto it = retired_imgui_.begin();
         while (it != retired_imgui_.end())
         {
@@ -116,7 +115,8 @@ namespace lux::ui
                 continue;
             }
 
-            const bool aged_out = (frame_id >= it->retire_frame + threshold);
+            // Fence-proven watermark, not serial arithmetic (see base class).
+            const bool aged_out = (it->retire_frame <= completed_serial);
             if (!aged_out)
             {
                 ++it;

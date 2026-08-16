@@ -38,7 +38,7 @@
 #include <vector>
 
 // Suppress deprecation warnings — this test intentionally exercises deprecated API
-// (accumulateValue 2-arg, performed(), injectPerformed(), injectAxis()).
+// (accumulateValue 2-arg and the old scalar ActionMapper API).
 #if defined(_MSC_VER)
 #   pragma warning(disable : 4996)
 #elif defined(__GNUC__) || defined(__clang__)
@@ -1017,8 +1017,10 @@ static void test_mapper_injection()
         assert(mapper.active(Actions::Move));
     }
 
-    // Legacy scalar injection
-    mapper.injectPerformed(Actions::Jump, 1.f);
+    mapper.injectTriggered(
+        Actions::Jump,
+        InputValue::makeAxis1D(1.f)
+    );
     {
         auto snap = makeBlankSnapshot();
         mapper.update(snap, stack, snap.sample_dt);
@@ -1326,7 +1328,7 @@ static void test_mapper_scroll_axis()
     snap.scroll_dy = 3.0;
     mapper.update(snap, stack, snap.sample_dt);
 
-    assert(near(mapper.axis(Zoom), 3.f));
+    assert(near(mapper.getValue(Zoom).as1D(), 3.f));
     assert(mapper.active(Zoom));
 
     TEST_SECTION("ActionMapper scroll wheel axis");

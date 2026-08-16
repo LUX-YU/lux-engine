@@ -1,9 +1,9 @@
 #include <lux/engine/ui/ImGuiCommConfig.hpp>
 #include <lux/engine/ui/ImGuiFeature.hpp>
 
-#include <lux/engine/render/comm/client/RenderRequest.hpp>
-#include <lux/engine/render/comm/client/RenderSession.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderRequest.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 
 #include <cstring>
@@ -32,13 +32,15 @@ namespace lux::ui
     }
 
     // ── FeatureFactory callbacks ─────────────────────────────────────────
-    static lux::render::FeatureHandle imguiCreateFn(void* scene_ptr, const void* param, size_t param_size)
+    static lux::render::Expected<lux::render::FeatureHandle>
+    imguiCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
         auto* sc = static_cast<lux::render::RenderScene*>(scene_ptr);
 
-        ImGuiCommConfig cfg{};
-        if (param && param_size >= sizeof(ImGuiCommConfig))
-            cfg = *static_cast<const ImGuiCommConfig*>(param);
+        const auto decoded = lux::render::decodeCommConfig<ImGuiCommConfig>(param, param_size);
+        if (!decoded)
+            return lux::cxx::unexpected(decoded.error());
+        const ImGuiCommConfig& cfg = *decoded;
 
         return sc->addFeature<ImGuiFeature>(
             textureFormatToVk(cfg.color_format),
@@ -66,38 +68,7 @@ namespace lux::ui
         session_->builder().push(opcodes::CommandOp, ops_.submit_draw_data, payload);
     }
 
-    RenderRequest<ViewCreatedReply> ImGuiProxy::addUIView(
-        RenderSceneId scene_id,
-        common::Size2D extent,
-        const char* name,
-        const float* initial_view_matrix,
-        const float* initial_proj_matrix,
-        const float* initial_camera_position)
-    {
-        auto [req, cb] = RenderRequestFactory<ViewCreatedReply>::make();
-
-        AddViewPayload avp{};
-        avp.scene_id     = scene_id;
-        avp.extent       = extent;
-        if (name)
-            std::strncpy(avp.name, name, sizeof(avp.name) - 1);
-        // (initial camera removed from AddView — View 去 3D 化. The camera comes via the
-        //  StandardViewCamera op now; these params are ignored. Follow-up: drop them from
-        //  addUIView + its callers, a UI-module tidy-up.)
-        (void)initial_view_matrix;
-        (void)initial_proj_matrix;
-        (void)initial_camera_position;
-
-        session_->builder().pushWithReply(opcodes::CommandOp, ops_.add_ui_view, avp, std::move(cb));
-        return req;
-    }
-
-    void ImGuiProxy::removeUIView(RenderSceneId scene_id, ViewHandle view)
-    {
-        RemoveViewPayload rvp{};
-        rvp.scene_id = scene_id;
-        rvp.view     = view;
-        session_->builder().push(opcodes::CommandOp, ops_.remove_ui_view, rvp);
-    }
+    // (ImGuiProxy::addUIView / removeUIView 已消亡:UI 目标统一走核心命令面
+    //  RenderFrameSession::addView + createOffscreenRenderTarget(SAMPLED) + setLayer。)
 
 } // namespace lux::ui

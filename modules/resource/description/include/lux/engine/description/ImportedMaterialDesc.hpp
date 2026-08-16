@@ -3,9 +3,9 @@
 //  ImportedMaterialDesc.hpp — a flat, closure-FREE description of an imported
 //  surface material (W5b).
 //
-//  The Assimp importer (ModelSerDeser) used to produce a closure rdesc::Material
+//  The Assimp ModelImporter used to produce a closure rdesc::Material
 //  + a MaterialAsset per material. W5 retired the builtin closure material model:
-//  every material is a node graph now. ModelSerDeser instead emits this POD, and
+//  every material is a node graph now. ModelImporter instead emits this POD, and
 //  the editor (which links the material-graph cook backend) converts it to a graph
 //  (materialToGraph(ImportedMaterialDesc)) + bakes a MaterialAsset.
 //

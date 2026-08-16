@@ -49,6 +49,12 @@ namespace lux::input
                 raw.just_pressed  = raw.held;
                 raw.just_released = false;
             }
+            else if constexpr (std::is_same_v<T, TouchInput>) {
+                raw.just_pressed  = snapshot.anyTouchJustBegan();
+                raw.just_released = snapshot.allTouchesJustEnded();
+                raw.held          = snapshot.anyTouchDown();
+                raw.value         = raw.held || raw.just_pressed ? 1.f : 0.f;
+            }
 
             return raw;
         }, binding.source);
@@ -182,12 +188,16 @@ namespace lux::input
                 const bool is_axis      = std::holds_alternative<MouseAxisInput>(binding.source);
                 const bool is_kb        = std::holds_alternative<KeyInput>(binding.source);
                 const bool is_mouse_btn = std::holds_alternative<MouseButtonInput>(binding.source);
+                const bool is_touch     = std::holds_alternative<TouchInput>(binding.source);
 
                 // --- Consumption / category filtering ---
+                // Touch shares the pointer (mouse) category: a UI layer that
+                // consumes the pointer consumes touch too.
                 bool blocked = false;
                 if (is_kb        && skip_kb)    blocked = true;
                 if (is_mouse_btn && skip_mouse) blocked = true;
                 if (is_axis      && skip_mouse) blocked = true;
+                if (is_touch     && skip_mouse) blocked = true;
 
                 // Look up or create the binding state.
                 auto& bs = binding_states_[binding.binding_id];
@@ -380,9 +390,6 @@ namespace lux::input
         return states_.contains(id) ? states_.at(id) : kDefaultState_;
     }
 
-    bool ActionMapper::performed(ActionId id) const noexcept
-    { return state(id).performed(); }
-
     bool ActionMapper::ongoing(ActionId id) const noexcept
     { return state(id).ongoing(); }
 
@@ -394,9 +401,6 @@ namespace lux::input
 
     bool ActionMapper::triggered(ActionId id) const noexcept
     { return state(id).triggered(); }
-
-    float ActionMapper::axis(ActionId id) const noexcept
-    { return state(id).value.as1D(); }
 
     const InputValue& ActionMapper::getValue(ActionId id) const noexcept
     {
@@ -417,11 +421,5 @@ namespace lux::input
 
     void ActionMapper::injectValue(ActionId id, const InputValue& value)
     { injected_value_[id] = value; }
-
-    void ActionMapper::injectPerformed(ActionId id, float value)
-    { injected_triggered_[id] = InputValue::makeAxis1D(value); }
-
-    void ActionMapper::injectAxis(ActionId id, float value)
-    { injected_value_[id] = InputValue::makeAxis1D(value); }
 
 } // namespace lux::input

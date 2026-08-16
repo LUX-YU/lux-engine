@@ -23,7 +23,7 @@
  *         byte_size bytes of image data (encoding-specific)
  */
 
-#include <lux/engine/asset/Asset.hpp>   // lux::asset::payload_tag_t, Payload
+#include <lux/engine/resource/asset/Asset.hpp>   // lux::asset::payload_tag_t, Payload
 
 #include <cstdint>
 #include <optional>

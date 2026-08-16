@@ -161,7 +161,8 @@ namespace lux::ui
     }
 
     bool WidgetDispatch::draw(const lux::meta::RefField& field,
-                              void* component_base) const
+                              void* component_base,
+                              bool* out_edited) const
     {
         // Two-level dispatch: array lookup for primitives, hash map for records.
         const auto base = static_cast<lux::meta::EBaseType>(field.type.qtype.base);
@@ -185,7 +186,7 @@ namespace lux::ui
                 // registry, render each subfield inline under a TreeNode.
                 // This is how nested user structs become editable for free
                 // as long as their leaves resolve to known widgets.
-                return drawRecord(field, component_base);
+                return drawRecord(field, component_base, out_edited);
             }
             fn_ptr = &it->second;
         }
@@ -218,7 +219,8 @@ namespace lux::ui
 
         void* data = static_cast<uint8_t*>(component_base) + field.offset;
         WidgetContext ctx{ id_buf, data, annot };
-        (*fn_ptr)(ctx);
+        const bool edited = (*fn_ptr)(ctx);
+        if (out_edited) *out_edited = *out_edited || edited;
         return true;
     }
 
@@ -226,7 +228,8 @@ namespace lux::ui
     // drawRecord — recursive fallback for unregistered record types
     // -------------------------------------------------------------------------
     bool WidgetDispatch::drawRecord(const lux::meta::RefField& field,
-                                    void* component_base) const
+                                    void* component_base,
+                                    bool* out_edited) const
     {
         // Look the type up by full name (`field.type.name` is the qualified
         // type name emitted by the reflection generator).
@@ -277,7 +280,7 @@ namespace lux::ui
                 continue;
             // Recurse via the public dispatch — this picks up registered
             // widgets for primitives + supports further nesting.
-            draw(sub_field, sub_base);
+            draw(sub_field, sub_base, out_edited);
         }
 
         ImGui::TreePop();
@@ -292,6 +295,7 @@ namespace lux::ui
         // ----- float -----
         registerWidget<float>([](const WidgetContext& ctx) {
             auto* v = static_cast<float*>(ctx.data);
+            bool edited = false;
             float vmin = 0.f, vmax = 0.f;
             if (annotation_range(ctx.annot, vmin, vmax))
             {
@@ -299,7 +303,7 @@ namespace lux::ui
                 // wide range (e.g. 0..500) feels continuous, not chunky.
                 const float raw   = (vmax - vmin) * 0.001f;
                 const float speed = raw > 0.001f ? raw : 0.001f;
-                ImGui::DragFloat(ctx.id, v, speed, vmin, vmax, "%.3f");
+                edited = ImGui::DragFloat(ctx.id, v, speed, vmin, vmax, "%.3f");
             }
             else
             {
@@ -312,69 +316,118 @@ namespace lux::ui
                 const bool has_min  = sv_min.has_value() && parse_float(*sv_min, lo);
                 const float mag     = *v < 0.f ? -*v : *v;
                 const float speed   = mag * 0.01f > 0.01f ? mag * 0.01f : 0.01f;
-                ImGui::DragFloat(ctx.id, v, speed,
+                edited = ImGui::DragFloat(ctx.id, v, speed,
                                  has_min ? lo : 0.f, has_min ? 3.0e38f : 0.f, "%.3f");
             }
             maybe_tooltip(ctx.annot);
+            return edited;
         });
 
         // ----- double -----
         registerWidget<double>([](const WidgetContext& ctx) {
             auto* d = static_cast<double*>(ctx.data);
             float f = static_cast<float>(*d);
+            bool edited = false;
             float vmin = 0.f, vmax = 0.f;
             if (annotation_range(ctx.annot, vmin, vmax))
-                ImGui::DragFloat(ctx.id, &f, (vmax - vmin) * 0.005f, vmin, vmax, "%.3f");
+                edited = ImGui::DragFloat(ctx.id, &f, (vmax - vmin) * 0.005f, vmin, vmax, "%.3f");
             else
-                ImGui::InputFloat(ctx.id, &f, 0.f, 0.f, "%.4f");
-            *d = static_cast<double>(f);
+                edited = ImGui::InputFloat(ctx.id, &f, 0.f, 0.f, "%.4f");
+            if (edited)   // write back only on a real edit — the old unconditional
+                *d = static_cast<double>(f);   // write truncated doubles every DISPLAY frame
             maybe_tooltip(ctx.annot);
+            return edited;
         });
 
         // ----- int (int32_t / int) -----
         registerWidget<int>([](const WidgetContext& ctx) {
             auto* v = static_cast<int*>(ctx.data);
+            bool edited = false;
             float vmin = 0.f, vmax = 0.f;
             if (annotation_range(ctx.annot, vmin, vmax))
-                ImGui::DragInt(ctx.id, v, 1.f,
+                edited = ImGui::DragInt(ctx.id, v, 1.f,
                                static_cast<int>(vmin), static_cast<int>(vmax));
             else
-                ImGui::InputInt(ctx.id, v);
+                edited = ImGui::InputInt(ctx.id, v);
             maybe_tooltip(ctx.annot);
+            return edited;
         });
 
         // ----- uint32_t -----
+        // Native U32 widget — NEVER round-trip through int. The old int cast +
+        // unconditional write-back destroyed any value > INT_MAX just by DISPLAYING
+        // it: 0xFFFFFFFF → (int)-1 → clamped to 0 → written back every paint. That
+        // silently zeroed Image2DComponent.tint (opaque white → transparent) the
+        // moment the Inspector showed a freshly created image — the editor 2D
+        // "image invisible / viewport black" root cause. ImGui edits *u in place
+        // only on real user interaction; display alone never mutates.
         registerWidget<uint32_t>([](const WidgetContext& ctx) {
             auto* u = static_cast<uint32_t*>(ctx.data);
-            int  vi = static_cast<int>(*u);
+            bool edited = false;
             float vmin = 0.f, vmax = 0.f;
             if (annotation_range(ctx.annot, vmin, vmax))
-                ImGui::DragInt(ctx.id, &vi, 1.f,
-                               static_cast<int>(vmin), static_cast<int>(vmax));
+            {
+                const ImU32 umin = static_cast<ImU32>(vmin < 0.f ? 0.f : vmin);
+                const ImU32 umax = static_cast<ImU32>(vmax < 0.f ? 0.f : vmax);
+                edited = ImGui::DragScalar(ctx.id, ImGuiDataType_U32, u, 1.f, &umin, &umax);
+            }
             else
-                ImGui::InputInt(ctx.id, &vi);
-            *u = static_cast<uint32_t>(vi < 0 ? 0 : vi);
+                edited = ImGui::InputScalar(ctx.id, ImGuiDataType_U32, u);
             maybe_tooltip(ctx.annot);
+            return edited;
         });
 
         // ----- bool -----
         registerWidget<bool>([](const WidgetContext& ctx) {
             auto* b = static_cast<bool*>(ctx.data);
-            ImGui::Checkbox(ctx.id, b);
+            const bool edited = ImGui::Checkbox(ctx.id, b);
             maybe_tooltip(ctx.annot);
+            return edited;
+        });
+
+        // ----- Eigen::Vector2f -----
+        // (Was missing — 2D component fields (Image2D pivot/size, Transform2D
+        // position/scale) fell through to the Inspector's raw-hex fallback.)
+        registerWidget<Eigen::Vector2f>([](const WidgetContext& ctx) {
+            auto& v      = *static_cast<Eigen::Vector2f*>(ctx.data);
+            float arr[2] = {v.x(), v.y()};
+
+            float vmin = 0.f, vmax = 0.f;
+            const bool has_range = annotation_range(ctx.annot, vmin, vmax);
+            const float speed    = has_range ? (vmax - vmin) * 0.005f : 0.01f;
+
+            // "labels=A,B" overrides the default X/Y axis labels.
+            char label_bufs[2][8];
+            const char* kLabels[2] = {"X", "Y"};
+            auto labels_sv = ctx.annot.get("labels");
+            if (labels_sv.has_value() && parse_label_list(*labels_sv, label_bufs, 2) == 2)
+                for (int i = 0; i < 2; ++i) kLabels[i] = label_bufs[i];
+
+            bool edited = false;
+            if (draw_vec_components(ctx.id, arr, 2, kLabels, speed, vmin, vmax, has_range))
+            {
+                v      = Eigen::Vector2f(arr[0], arr[1]);
+                edited = true;
+            }
+            maybe_tooltip(ctx.annot);
+            return edited;
         });
 
         // ----- Eigen::Vector3f -----
         registerWidget<Eigen::Vector3f>([](const WidgetContext& ctx) {
             auto& v      = *static_cast<Eigen::Vector3f*>(ctx.data);
             float arr[3] = {v.x(), v.y(), v.z()};
+            bool edited  = false;
 
             // "color=true" → ColorEdit3, otherwise labeled component drag inputs
             auto color_flag = ctx.annot.get("color");
             if (color_flag.has_value() && *color_flag == "true")
             {
                 if (ImGui::ColorEdit3(ctx.id, arr))
-                    v = Eigen::Vector3f(arr[0], arr[1], arr[2]);
+                {
+                    v      = Eigen::Vector3f(arr[0], arr[1], arr[2]);
+                    edited = true;
+                }
             }
             else
             {
@@ -390,21 +443,29 @@ namespace lux::ui
                     for (int i = 0; i < 3; ++i) kLabels[i] = label_bufs[i];
 
                 if (draw_vec_components(ctx.id, arr, 3, kLabels, speed, vmin, vmax, has_range))
-                    v = Eigen::Vector3f(arr[0], arr[1], arr[2]);
+                {
+                    v      = Eigen::Vector3f(arr[0], arr[1], arr[2]);
+                    edited = true;
+                }
             }
             maybe_tooltip(ctx.annot);
+            return edited;
         });
 
         // ----- Eigen::Vector4f -----
         registerWidget<Eigen::Vector4f>([](const WidgetContext& ctx) {
             auto& v      = *static_cast<Eigen::Vector4f*>(ctx.data);
             float arr[4] = {v.x(), v.y(), v.z(), v.w()};
+            bool edited  = false;
 
             auto color_flag = ctx.annot.get("color");
             if (color_flag.has_value() && *color_flag == "true")
             {
                 if (ImGui::ColorEdit4(ctx.id, arr))
-                    v = Eigen::Vector4f(arr[0], arr[1], arr[2], arr[3]);
+                {
+                    v      = Eigen::Vector4f(arr[0], arr[1], arr[2], arr[3]);
+                    edited = true;
+                }
             }
             else
             {
@@ -420,9 +481,13 @@ namespace lux::ui
                     for (int i = 0; i < 4; ++i) kLabels[i] = label_bufs[i];
 
                 if (draw_vec_components(ctx.id, arr, 4, kLabels, speed, vmin, vmax, has_range))
-                    v = Eigen::Vector4f(arr[0], arr[1], arr[2], arr[3]);
+                {
+                    v      = Eigen::Vector4f(arr[0], arr[1], arr[2], arr[3]);
+                    edited = true;
+                }
             }
             maybe_tooltip(ctx.annot);
+            return edited;
         });
 
         // ----- Eigen::Quaternionf -----
@@ -431,12 +496,15 @@ namespace lux::ui
             auto& q      = *static_cast<Eigen::Quaternionf*>(ctx.data);
             float arr[4] = {q.x(), q.y(), q.z(), q.w()};
             static const char* const kLabels[4] = {"X", "Y", "Z", "W"};
+            bool edited = false;
             if (draw_vec_components(ctx.id, arr, 4, kLabels, 0.001f, -1.f, 1.f, true))
             {
                 q = Eigen::Quaternionf(arr[3], arr[0], arr[1], arr[2]);
                 q.normalize();
+                edited = true;
             }
             maybe_tooltip(ctx.annot);
+            return edited;
         });
 
         // ----- std::array<float, 8> -----
@@ -447,6 +515,7 @@ namespace lux::ui
         // explicit registration is the only path until M2-part-3.
         registerWidget<std::array<float, 8>>([](const WidgetContext& ctx) {
             auto& arr = *static_cast<std::array<float, 8>*>(ctx.data);
+            bool edited = false;
             ImGui::PushID(ctx.id);
             for (int i = 0; i < 8; ++i)
             {
@@ -454,11 +523,12 @@ namespace lux::ui
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 char slot_id[8];
                 std::snprintf(slot_id, sizeof(slot_id), "##%d", i);
-                ImGui::InputFloat(slot_id, &arr[i], 0.f, 0.f, "%.3f");
+                edited = ImGui::InputFloat(slot_id, &arr[i], 0.f, 0.f, "%.3f") || edited;
                 ImGui::PopID();
             }
             ImGui::PopID();
             maybe_tooltip(ctx.annot);
+            return edited;
         });
 
         // ----- std::string -----
@@ -468,9 +538,14 @@ namespace lux::ui
             const std::size_t copy_n = std::min(s.size(), std::size_t{255});
             std::memcpy(buf, s.data(), copy_n);
             buf[copy_n] = '\0';
+            bool edited = false;
             if (ImGui::InputText(ctx.id, buf, sizeof(buf)))
-                s = buf;
+            {
+                s      = buf;
+                edited = true;
+            }
             maybe_tooltip(ctx.annot);
+            return edited;
         });
     }
 

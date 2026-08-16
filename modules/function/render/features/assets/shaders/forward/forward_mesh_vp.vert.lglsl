@@ -1,0 +1,145 @@
+//! lux-shader stage=vertex entry=main
+#version 450
+#ifdef LUX_INSTANCE_PAGED
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+#endif
+// =========================================================================
+//  forward_mesh_vp.vert — forward vertex shader, VERTEX-POOL variant
+//
+//  Vertices come from the bindless vertex pool array (set 7) instead of
+//  vertex attribute inputs. Used by every mesh draw — static meshes
+//  register the global VBO as a pool entry; skinned meshes write to a
+//  transient pool consumed here as well.
+//
+//  No vertex attribute inputs: gl_VertexIndex + InstanceProperty's
+//  vertex_pool_id / vertex_base resolve the vertex.
+// =========================================================================
+
+// ========== SET 0: View Buffer ==========
+#include "view_common.glsl"
+#include "scene_global.glsl"
+layout(std430) readonly buffer SceneGlobalBuffer {
+    SceneGlobalGpuData scenes[];
+} uSceneGlobals;
+layout(std430) readonly buffer ViewBuffer {
+    ViewGpuData views[];
+} uViews;
+
+#include "view_pc_prefix.glsl"
+layout(push_constant) uniform SharedPC {
+    LUX_VIEW_PC_PREFIX      // uint scene_index (0); uint view_index (4)
+} uPC;
+
+// ========== SET 1: Three-stream instance data ==========
+#include "instance.glsl"
+
+layout(std430) readonly buffer TransformBuf {
+#ifdef LUX_INSTANCE_PAGED
+    uint64_t leaf_addresses[];
+#else
+    InstanceTransform transforms[];
+#endif
+} uTransforms;
+
+layout(std430) readonly buffer PropertyBuf {
+#ifdef LUX_INSTANCE_PAGED
+    uint64_t leaf_addresses[];
+#else
+    InstanceProperty properties[];
+#endif
+} uProperties;
+
+layout(std430) readonly buffer VisibleInstanceBuf {
+    GpuVisibleInstance entries[];
+} uVisibleInstances;
+
+// ========== SET 7: Bindless vertex pools ==========
+#include "vertex_pool.glsl"
+
+// ========== Varyings (matches family forward fragment interface) ==========
+layout(location = 0) out vec3 vWorldPos;
+layout(location = 1) out vec3 vWorldNormal;
+layout(location = 2) out vec3 vViewDir;
+layout(location = 3) out vec2 vUV;
+layout(location = 4) out flat uint vMatIndex;
+layout(location = 5) out vec3 vWorldTangent;
+layout(location = 6) out vec3 vWorldBitangent;
+layout(location = 7) out flat float vTransitionCoverage;
+layout(location = 8) out flat uint vTransitionSeed;
+layout(location = 9) out flat uint vTransitionFadeOut;
+layout(location = 10) out flat vec4 vInstanceTint;
+
+void main()
+{
+    uint visibleIndex = uint(gl_InstanceIndex);
+    uint drawSlot = uVisibleInstances.entries[visibleIndex].instance_slot;
+
+#ifdef LUX_INSTANCE_PAGED
+    InstanceTransform xform = luxLoadInstanceTransform(
+        uTransforms.leaf_addresses[luxInstanceRootIndex(drawSlot)],
+        drawSlot);
+    InstanceProperty prop = luxLoadInstanceProperty(
+        uProperties.leaf_addresses[luxInstanceRootIndex(drawSlot)],
+        drawSlot);
+#else
+    InstanceTransform xform = uTransforms.transforms[drawSlot];
+    InstanceProperty prop = uProperties.properties[drawSlot];
+#endif
+
+    // gl_VertexIndex == draw vertexOffset + index == input_vertex_offset + local.
+    // Subtract the bias so vertex_base stays the honest output base,
+    // instead of the old CPU-side (out_base - in_base) uint-wraparound encoding.
+    uint localVertex = uint(gl_VertexIndex) - prop.input_vertex_offset;
+    MeshVertex mv = luxFetchMeshVertex(prop.vertex_pool_id,
+                                       prop.vertex_base,
+                                       localVertex);
+
+    ViewGpuData view_data = uViews.views[uPC.view_index];
+    mat4 render_model = luxSpatialModel(
+        xform,
+        view_data.camera_page.xyz,
+        view_data.camera_local_page_size.xyz,
+        view_data.camera_local_page_size.w
+    );
+    mat4 model = luxSpatialModel(
+        xform,
+        ivec3(0),
+        vec3(0.0),
+        view_data.camera_local_page_size.w
+    );
+    // Cofactor (adjugate) of mat3(model) = det(M) * inverse-transpose; direction
+    // matches and the normalize()s below cancel the missing 1/det (correct for
+    // non-uniform scale) at ~1/3 the per-vertex cost. (P-3)
+    mat3 _m    = mat3(model);
+    mat3 Nmat  = mat3(cross(_m[1], _m[2]), cross(_m[2], _m[0]), cross(_m[0], _m[1]));
+
+    vec4 worldPos    = render_model * vec4(mv.position, 1.0);
+    vec3 worldNorm   = normalize(Nmat * mv.normal);
+    vec3 worldTang   = normalize(Nmat * mv.tangent);
+    vec3 worldBitang = normalize(Nmat * mv.bitangent);
+
+    // Gram-Schmidt re-orthogonalise
+    worldTang   = normalize(worldTang - dot(worldTang, worldNorm) * worldNorm);
+    worldBitang = normalize(worldBitang
+                  - dot(worldBitang, worldNorm) * worldNorm
+                  - dot(worldBitang, worldTang) * worldTang);
+
+    vWorldPos      = worldPos.xyz;
+    vWorldNormal   = worldNorm;
+    vWorldTangent  = worldTang;
+    vWorldBitangent = worldBitang;
+    vViewDir       = normalize(-worldPos.xyz);
+    vUV            = mv.uv;
+    vMatIndex      = packMaterialIndex(prop);
+    vTransitionCoverage = luxTransitionCoverage(
+        prop, uSceneGlobals.scenes[uPC.scene_index].time_sec);
+    vTransitionSeed = prop.transition_seed;
+    vTransitionFadeOut =
+        (prop.transition_flags & LUX_TRANSITION_FADE_OUT) != 0u ? 1u : 0u;
+    vInstanceTint = unpackUnorm4x8(prop.rgba8);
+
+    gl_Position = uViews.views[uPC.view_index].proj
+                * uViews.views[uPC.view_index].view
+                * (render_model * vec4(mv.position, 1.0));
+}

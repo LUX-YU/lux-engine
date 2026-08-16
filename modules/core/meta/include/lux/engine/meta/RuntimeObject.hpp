@@ -7,6 +7,7 @@
 #include "Meta.hpp"
 
 #include <cassert>
+#include <cstdlib>
 #include <cstring>
 #include <new>
 #include <type_traits>
@@ -36,16 +37,16 @@ namespace lux::meta
 
     public:
         /* ------------------------------------------------------------------ */
-        /* 0. 默认构造 —— invalid                                             */
+        /* 0. Default construction — invalid                                  */
         /* ------------------------------------------------------------------ */
         RuntimeObject() = default;
 
-        /* 禁用拷贝，只保留移动语义 */
+        /* Copying is disabled; only move semantics are supported */
         RuntimeObject(const RuntimeObject&) = delete;
         RuntimeObject& operator=(const RuntimeObject&) = delete;
 
         /* ------------------------------------------------------------------ */
-        /* 1. 移动构造                                                        */
+        /* 1. Move constructor                                                */
         /* ------------------------------------------------------------------ */
         RuntimeObject(RuntimeObject&& other) noexcept
         {
@@ -53,7 +54,7 @@ namespace lux::meta
         }
 
         /* ------------------------------------------------------------------ */
-        /* 2. 移动赋值                                                        */
+        /* 2. Move assignment                                                 */
         /* ------------------------------------------------------------------ */
         RuntimeObject& operator=(RuntimeObject&& other) noexcept
         {
@@ -65,22 +66,22 @@ namespace lux::meta
         }
 
         /* ------------------------------------------------------------------ */
-        /* 3. 反射类型：由 RefClass 构造                                         */
+        /* 3. Reflected type: constructed from a RefClass                     */
         /* ------------------------------------------------------------------ */
         explicit RuntimeObject(const RefClass* cls)
         {
             auto* type_ptr = &cls->type;
             setTagged(type_ptr, true);
-            void* p = ::operator new(type_ptr->size, std::align_val_t{ SBO_ALIGN });
-            try {
-                assert(cls->construct && "RefClass::construct must be valid");
-                cls->construct(p);
-            }
-            catch (...) {
-                ::operator delete(p, std::align_val_t{ SBO_ALIGN });
-                setTagged(nullptr, false);
-                throw;
-            }
+            if (!cls->construct)
+                std::abort();
+            void* p = ::operator new(
+                type_ptr->size,
+                std::align_val_t{SBO_ALIGN},
+                std::nothrow
+            );
+            if (!p)
+                std::abort();
+            cls->construct(p);
             storage_.heap = p;
         }
 
@@ -104,7 +105,7 @@ namespace lux::meta
         }
 
         /* ------------------------------------------------------------------ */
-        /* 4. 内建 ≤ 8B 类型：直接放进 SBO（trivially copyable）               */
+        /* 4. Built-in types ≤ 8 B: stored directly in the SBO (trivially copyable) */
         /* ------------------------------------------------------------------ */
         template<typename T, typename U = std::decay_t<T>>
             requires(sizeof(U) <= SBO_SIZE && std::is_trivially_copyable_v<U> && alignof(U) <= SBO_ALIGN)
@@ -116,7 +117,37 @@ namespace lux::meta
         }
 
         /* ------------------------------------------------------------------ */
-        /* 5. 析构                                                            */
+        /* 4b. Named factory: produces a zero-initialized default value for a
+         *     given RefType. Note this can't be expressed via the
+         *     RuntimeObject(const RefType*) constructor — that constructor
+         *     would match the SBO template above instead, storing the pointer
+         *     itself as the value. Non-trivially-copyable types (which need
+         *     their constructor to run) return an invalid object; callers
+         *     must construct through RefClass::construct instead.            */
+        /* ------------------------------------------------------------------ */
+        static RuntimeObject defaultOf(const RefType* type)
+        {
+            RuntimeObject obj;
+            if (!type || type->size == 0 || !type->traits.is_trivially_copyable)
+                return obj;
+
+            if (type->size <= SBO_SIZE)
+            {
+                obj.setTagged(type, false);
+                std::memset(obj.storage_.sbo, 0, type->size);
+            }
+            else
+            {
+                void* p = ::operator new(type->size, std::align_val_t{ SBO_ALIGN });
+                std::memset(p, 0, type->size);
+                obj.setTagged(type, true);
+                obj.storage_.heap = p;
+            }
+            return obj;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* 5. Destructor                                                      */
         /* ------------------------------------------------------------------ */
         ~RuntimeObject() noexcept
         {
@@ -124,7 +155,7 @@ namespace lux::meta
         }
 
         /* ------------------------------------------------------------------ */
-        /* 6. 状态 / 访问                                                     */
+        /* 6. State / access                                                  */
         /* ------------------------------------------------------------------ */
         [[nodiscard]] bool           isValid() const noexcept { return getType() != nullptr; }
         [[nodiscard]] const RefType* type()    const noexcept { return getType(); }
@@ -147,7 +178,7 @@ namespace lux::meta
         }
 
         /* ------------------------------------------------------------------ */
-        /* 7. 显式复制                                                        */
+        /* 7. Explicit copy                                                   */
         /* ------------------------------------------------------------------ */
         bool copyTo(RuntimeObject& dst)
         {
@@ -155,7 +186,7 @@ namespace lux::meta
         }
 
         /* ------------------------------------------------------------------ */
-        /* 8. 重置 / 交换                                                     */
+        /* 8. Reset / swap                                                    */
         /* ------------------------------------------------------------------ */
         void reset() noexcept { cleanup(); }
 
@@ -188,15 +219,19 @@ namespace lux::meta
         }
 
         /* ------------------------------------------------------------------ */
-        /* 清理当前持有的资源                                                 */
+        /* Release whatever resource is currently held                       */
         /* ------------------------------------------------------------------ */
         void cleanup() noexcept
         {
             auto* type_ptr = getType();
             if (!type_ptr) return;
             if (isHeap()) {
-                auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
-                cls->destruct(storage_.heap);
+                // Trivially-copyable payloads (defaultOf's heap path) have
+                // no destructor to run — and may not even carry a RefClass.
+                if (!type_ptr->traits.is_trivially_copyable) {
+                    auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
+                    cls->destruct(storage_.heap);
+                }
                 ::operator delete(storage_.heap, std::align_val_t{ SBO_ALIGN });
                 storage_.heap = nullptr;
             }
@@ -204,7 +239,7 @@ namespace lux::meta
         }
 
         /* ------------------------------------------------------------------ */
-        /* 克隆（强异常安全：先构造临时，再 swap 到 dst）                     */
+        /* Clone (strong exception safety: build a temporary first, then swap it into dst) */
         /* ------------------------------------------------------------------ */
         bool cloneImpl(RuntimeObject& dst)
         {
@@ -212,12 +247,12 @@ namespace lux::meta
             if (!type_ptr) return false;
             bool heap = isHeap();
 
-            // 如果类型和存储方式都相同，直接 in-place copy
+            // Same type and same storage mode — copy in place directly
             if (dst.getType() == type_ptr && dst.isHeap() == heap)
             {
                 if (heap) {
                     auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
-                    if (!cls->copy) // 可能是个空函数
+                    if (!cls->copy) // may be a null function pointer
                     {
                         return false;
                     }
@@ -236,21 +271,17 @@ namespace lux::meta
             RuntimeObject tmp;
             if (heap)
             {
-                try {
-                    auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
-                    if (!cls->copy_construct) // 可能是个空函数
-                    {
-						tmp.setTagged(nullptr, false);
-                        return false;
-                    }
-                    tmp.storage_.heap = ::operator new(type_ptr->size, std::align_val_t{ SBO_ALIGN });
-                    cls->copy_construct(tmp.storage_.heap, storage_.heap);
-                }
-                catch (...) {
-                    ::operator delete(tmp.storage_.heap, std::align_val_t{ SBO_ALIGN });
-					tmp.setTagged(nullptr, false);
-                    throw;
-                }
+                auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
+                if (!cls->copy_construct)
+                    return false;
+                tmp.storage_.heap = ::operator new(
+                    type_ptr->size,
+                    std::align_val_t{SBO_ALIGN},
+                    std::nothrow
+                );
+                if (!tmp.storage_.heap)
+                    return false;
+                cls->copy_construct(tmp.storage_.heap, storage_.heap);
             }
             else
             {

@@ -24,20 +24,23 @@
 //  1 = FAIL, 0 (skip) if no Vulkan device.
 // ============================================================================
 
-#include <lux/engine/render/comm/client/RenderSession.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
+#include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
 
-#include <lux/engine/render/renderer/features/deffer/DeferredGBufferOperation.hpp>
-#include <lux/engine/render/renderer/features/deffer/DeferredLightingOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/ShadowMapOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/MeshShadowOperation.hpp>
-#include <lux/engine/render/renderer/features/light/LightOperation.hpp>
-#include <lux/engine/render/renderer/features/meshstack/MeshStackOperation.hpp>
-#include <lux/engine/render/renderer/features/material/MaterialOperation.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
-#include <lux/engine/render/core/LightDescriptor.hpp>
-#include <lux/engine/render/resources/material/GraphMaterialData.hpp>
+#include <lux/engine/function/render/client/genops/DeferredGBufferOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/DeferredLightingOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
+#include <lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp>
+#include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
 
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
@@ -46,7 +49,6 @@
 #include "graph_test_helpers.hpp"   // lux::mgtest::makeColorGraph + compileGraphPass
 
 #include <lux/engine/window/LuxWindow.hpp>
-#include <GLFW/glfw3.h>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -68,14 +70,8 @@ namespace rdesc = lux::rdesc;
 
 static std::vector<const char*> getVulkanExtensions()
 {
-    glfwInit();
-    uint32_t count = 0;
-    const char** exts = glfwGetRequiredInstanceExtensions(&count);
-    std::vector<const char*> result;
-    result.reserve(count);
-    for (uint32_t i = 0; i < count; ++i)
-        result.emplace_back(exts[i]);
-    return result;
+    const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
+    return {exts.begin(), exts.end()};
 }
 
 static Eigen::Matrix4f buildViewMatrix(const Eigen::Vector3f& eye,
@@ -144,19 +140,27 @@ static rdesc::Mesh buildSphereMesh(float radius, uint32_t segments, uint32_t rin
     };
 }
 
-template <class T>
-static T await(RenderSession& s, lux::window::LuxWindow& w, RenderRequest<T> req)
+template <class Session, class T>
+static T await(Session& endpoint, lux::window::LuxWindow& window, RenderRequest<T> request)
 {
-    s.submitFrame(/*blocking=*/true);
-    s.waitAndPumpReplies();
-    while (!req.isReady())
+    if constexpr (std::is_same_v<Session, RenderFrameSession>)
+        endpoint.trySubmitFrame();
+
+    while (!request.isReady())
     {
-        s.beginFrame({});
-        w.pollEvents();
-        s.submitFrame(/*blocking=*/true);
-        s.waitAndPumpReplies();
+        window.pollEvents();
+        if (!endpoint.waitAndPumpReplies())
+            break;
+        if constexpr (std::is_same_v<Session, RenderFrameSession>)
+        {
+            if (!request.isReady())
+            {
+                endpoint.beginFrame({});
+                endpoint.trySubmitFrame();
+            }
+        }
     }
-    return req.result();
+    return request.tryResult()->get();
 }
 
 // Per-third luminance statistics over the "lit body" pixels (background is
@@ -183,6 +187,16 @@ static ThirdStats classifyThird(const std::vector<std::uint8_t>& px, uint32_t W,
     return r;
 }
 
+template <class T>
+static T await(
+    RenderUploadSession& endpoint,
+    lux::window::LuxWindow& window,
+    UploadSubmitResult<T> submitted)
+{
+    if (!submitted)
+        return {};
+    return await(endpoint, window, std::move(submitted.value()));
+}
 int main()
 {
     std::cout << std::unitbuf;
@@ -190,7 +204,9 @@ int main()
 
     constexpr uint32_t W = 384, H = 256;
 
-    auto channel = RenderProgramChannel<>::create();
+    auto channel = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel = RenderUploadChannel<>::create();
     auto sync    = std::make_shared<RenderChannelSync>();
     auto exts    = getVulkanExtensions();
 
@@ -199,19 +215,19 @@ int main()
     std::atomic<bool> ready{false}, failed{false};
     std::thread server_thread([&]
     {
-        GeneralRenderServer server(channel, sync);
+        GeneralRenderServer server(channel, control_channel, upload_channel, sync);
         ServerConfig cfg;
         cfg.instance_extensions = exts;
         if (auto r = server.init(std::move(cfg)); !r)
         {
-            std::cerr << "[Server] init failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             failed.store(true, std::memory_order_release);
             ready.store(true, std::memory_order_release);
             return;
         }
         if (auto r = server.attachToWindow(window); !r)
         {
-            std::cerr << "[Server] attach failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             failed.store(true, std::memory_order_release);
             ready.store(true, std::memory_order_release);
             return;
@@ -232,21 +248,30 @@ int main()
     }
     std::cout << "[1] server ready\n";
 
-    RenderSession session(channel, sync);
+    RenderFrameSession session(channel, sync);
+    RenderControlSession control(control_channel, sync);
+    RenderUploadSession upload(upload_channel, sync);
+    lux::render::testing::DirectRenderUploadClient upload_client{upload};
     auto& s = session;
     auto& w = window;
 
     // LDR scene so deferred lighting writes SceneColor directly (offscreen
     // readback needs no tonemap pass).
-    RenderSession::CreateSceneConfig scfg{};
+    RenderControlSession::CreateSceneConfig scfg{};
     scfg.name             = "MultiSMScene";
     scfg.lit_color_format = lux::common::ETextureFormat::RGBA8_SRGB;
     s.beginFrame({});
-    const auto scene = await(s, w, s.createScene(scfg));
+    const auto scene = await(control, w, control.createScene(scfg));
     s.beginFrame({});
-    await(s, w, s.setActiveScene(scene.scene_id, true));
+    await(control, w, control.setActiveScene(scene.scene_id, true));
     s.beginFrame({});
-    const auto view = await(s, w, s.addView(scene.scene_id, {W, H}, "MultiSMView"));
+    const auto view = await(control, w, control.addView(scene.scene_id, {W, H}, "MultiSMView"));
+    s.beginFrame({});
+    const auto target = await(control, w, control.createOffscreenRenderTarget({W, H}));
+    s.beginFrame({});
+    control.setLayer(target.target, 0, scene.scene_id, view.view);
+    s.trySubmitFrame();
+    s.waitAndPumpReplies();
 
     // Deferred feature set (shadow + meshshadow + gbuffer + lighting). No Config
     // override — each graph material carries its OWN gbuffer frag (R1), and the
@@ -258,48 +283,48 @@ int main()
     // lighting) reads ViewCameraResource, so it MUST be added FIRST — owner-first,
     // like StandardMeshStack. Carries the per-view camera update op (ViewCameraProxy).
     s.beginFrame({});
-    const auto view_cam_reg = await(s, w, s.registerFeatureType(lux::render::kStandardViewCameraFeatureFactory));
+    const auto view_cam_reg = await(control, w, control.registerFeatureType(lux::render::kViewCameraFeatureFactory));
     lux::render::ViewCameraOperationIds view_cam_ops = lux::render::ViewCameraOperationIds::fromOps(view_cam_reg.ops, view_cam_reg.op_count);
-    struct EmptyViewCamCfg {} view_cam_cfg{};
+    lux::render::ViewCameraCommTag view_cam_cfg{};
     s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, view_cam_reg.feature_type_id, view_cam_cfg));
+    await(control, w, control.addFeature(scene.scene_id, view_cam_reg.feature_type_id, view_cam_cfg));
 
     s.beginFrame({});
-    const auto light_feat_reg = await(s, w, s.registerFeatureType(kLightFeatureFactory));
+    const auto light_feat_reg = await(control, w, control.registerFeatureType(kLightFeatureFactory));
     LightOperationIds light_ops = LightOperationIds::fromOps(light_feat_reg.ops, light_feat_reg.op_count);
-    struct EmptyLightCfg {} light_cfg{};
+    lux::render::LightCommTag light_cfg{};
     s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, light_feat_reg.feature_type_id, light_cfg));
+    await(control, w, control.addFeature(scene.scene_id, light_feat_reg.feature_type_id, light_cfg));
 
     // StandardMaterialFeature owns the standard material-stack resources (shading
     // model registry, material resources) that the mesh stack reads. Must attach
     // before StandardMeshStack.
     s.beginFrame({});
-    const auto material_reg = await(s, w, s.registerFeatureType(lux::render::kStandardMaterialFeatureFactory));
+    const auto material_reg = await(control, w, control.registerFeatureType(lux::render::kMaterialFeatureFactory));
     MaterialOperationIds material_ops = MaterialOperationIds::fromOps(material_reg.ops, material_reg.op_count);
-    struct EmptyMaterialCfg {} material_cfg{};
+    lux::render::MaterialCommTag material_cfg{};
     s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, material_reg.feature_type_id, material_cfg));
+    await(control, w, control.addFeature(scene.scene_id, material_reg.feature_type_id, material_cfg));
 
     // StandardMeshStackFeature owns the standard 3D mesh-stack resources (cull
     // layout, instance buffers, …) that every mesh consumer reads, and supplies
     // the dynamic mesh-instance ops sent via MeshStackProxy. Must attach before
     // any mesh feature or nothing renders.
     s.beginFrame({});
-    const auto mesh_stack_reg = await(s, w, s.registerFeatureType(lux::render::kStandardMeshStackFeatureFactory));
+    const auto mesh_stack_reg = await(control, w, control.registerFeatureType(lux::render::kMeshStackFeatureFactory));
     MeshStackOperationIds mesh_stack_ops = MeshStackOperationIds::fromOps(mesh_stack_reg.ops, mesh_stack_reg.op_count);
-    struct EmptyMeshStackCfg {} mesh_stack_cfg{};
+    lux::render::MeshStackCommTag mesh_stack_cfg{};
     s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, mesh_stack_reg.feature_type_id, mesh_stack_cfg));
+    await(control, w, control.addFeature(scene.scene_id, mesh_stack_reg.feature_type_id, mesh_stack_cfg));
 
     s.beginFrame({});
-    const auto shadow_reg = await(s, w, s.registerFeatureType(kShadowMapFeatureFactory));
+    const auto shadow_reg = await(control, w, control.registerFeatureType(kShadowMapFeatureFactory));
     s.beginFrame({});
-    const auto mshsw_reg  = await(s, w, s.registerFeatureType(kMeshShadowFeatureFactory));
+    const auto mshsw_reg  = await(control, w, control.registerFeatureType(kMeshShadowFeatureFactory));
     s.beginFrame({});
-    const auto gbuf_reg   = await(s, w, s.registerFeatureType(kDeferredGBufferFeatureFactory));
+    const auto gbuf_reg   = await(control, w, control.registerFeatureType(kDeferredGBufferFeatureFactory));
     s.beginFrame({});
-    const auto light_reg  = await(s, w, s.registerFeatureType(kDeferredLightingFeatureFactory));
+    const auto light_reg  = await(control, w, control.registerFeatureType(kDeferredLightingFeatureFactory));
 
     ShadowMapCommConfig scc{};
     scc.atlas_page_resolution  = 2048;
@@ -308,22 +333,22 @@ int main()
     scc.enable_directional_csm = 1;
     scc.default_technique      = EShadowTechnique::PCF;
     s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, shadow_reg.feature_type_id, scc));
+    await(control, w, control.addFeature(scene.scene_id, shadow_reg.feature_type_id, scc));
 
     MeshShadowCommConfig mscc{};
     mscc.comm_config_version       = kMeshShadowCommConfigVersion;
     mscc.descriptor_layout_version = kMeshShadowDescriptorLayoutVersion;
     s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, mshsw_reg.feature_type_id, mscc));
+    await(control, w, control.addFeature(scene.scene_id, mshsw_reg.feature_type_id, mscc));
 
     DeferredGBufferCommConfig gbcc{};
     gbcc.comm_config_version       = kDeferredGBufferCommConfigVersion;
     gbcc.descriptor_layout_version = kDeferredGBufferDescriptorLayoutVersion;
     s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, gbuf_reg.feature_type_id, gbcc));
+    await(control, w, control.addFeature(scene.scene_id, gbuf_reg.feature_type_id, gbcc));
 
     DeferredLightingCommConfig dlcc{};
-    dlcc.read_mode           = 0;
+    dlcc.read_mode           = lux::render::ELightingReadMode::SAMPLED;
     dlcc.enable_clustered    = 1;
     dlcc.cluster_x           = 16;
     dlcc.cluster_y           = 9;
@@ -331,7 +356,7 @@ int main()
     dlcc.max_cluster_indices = 1'048'576;
     dlcc.technique           = EShadowTechnique::PCF;
     s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, light_reg.feature_type_id, dlcc));
+    await(control, w, control.addFeature(scene.scene_id, light_reg.feature_type_id, dlcc));
     std::cout << "[2] deferred features added\n";
 
     // Three GRAPH materials, IDENTICAL grey albedo, different shading models. The
@@ -369,11 +394,11 @@ int main()
         const auto bytes = std::span<const std::byte>{
             reinterpret_cast<const std::byte*>(spv.data()), spv.size() * sizeof(uint32_t)};
         s.beginFrame({});
-        const auto comp = await(s, w, s.compileShader(
+        const auto comp = await(control, w, control.compileShader(
             bytes, std::span<const std::byte>{info.data(), info.size()}));
         GraphMaterialData gd{};
         s.beginFrame({});
-        return await(s, w, MaterialProxy(s, material_ops).uploadGraphMaterial(gd, comp.shader, ShaderHandle{}));
+        return await(upload, w, uploadGraphMaterial(MaterialUploadClient(upload_client.client(), material_ops), gd, comp.shader, ShaderHandle{}));
     };
     const auto mat_pbr   = uploadGraph(spv_pbr,   info_pbr);
     const auto mat_unlit = uploadGraph(spv_unlit, info_unlit);
@@ -384,7 +409,7 @@ int main()
 
     const rdesc::Mesh sphere = buildSphereMesh(0.5f, 48, 24);
     s.beginFrame({});
-    const auto mesh = await(s, w, lux::render::MeshStackProxy(s, mesh_stack_ops).uploadMesh(sphere));
+    const auto mesh = await(upload, w, lux::render::uploadMesh(lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops), sphere));
 
     // Three instances spread so each sphere stays cleanly within its screen
     // third: left=PBR (x=-1.8), middle=Unlit (x=0), right=Toon (x=+1.8).
@@ -393,15 +418,15 @@ int main()
     };
     auto x_l = xform(-1.8f), x_m = xform(0.0f), x_r = xform(1.8f);
     s.beginFrame({});
-    const auto inst_l = await(s, w, MeshStackProxy(s, mesh_stack_ops).addMeshInstance(scene.scene_id, mesh.handle, mat_pbr.handle,   x_l.data()));
+    const auto inst_l = await(s, w, addTransientMeshInstance(MeshStackProxy(s, mesh_stack_ops), scene.scene_id, mesh.handle, mat_pbr.handle,   x_l.data()));
     s.beginFrame({});
-    const auto inst_m = await(s, w, MeshStackProxy(s, mesh_stack_ops).addMeshInstance(scene.scene_id, mesh.handle, mat_unlit.handle, x_m.data()));
+    const auto inst_m = await(s, w, addTransientMeshInstance(MeshStackProxy(s, mesh_stack_ops), scene.scene_id, mesh.handle, mat_unlit.handle, x_m.data()));
     s.beginFrame({});
-    const auto inst_r = await(s, w, MeshStackProxy(s, mesh_stack_ops).addMeshInstance(scene.scene_id, mesh.handle, mat_toon.handle,  x_r.data()));
+    const auto inst_r = await(s, w, addTransientMeshInstance(MeshStackProxy(s, mesh_stack_ops), scene.scene_id, mesh.handle, mat_toon.handle,  x_r.data()));
     s.beginFrame({});
-    MeshStackProxy(s, mesh_stack_ops).makeInstanceVisibleForView(scene.scene_id, view.view, inst_l.object);
-    MeshStackProxy(s, mesh_stack_ops).makeInstanceVisibleForView(scene.scene_id, view.view, inst_m.object);
-    MeshStackProxy(s, mesh_stack_ops).makeInstanceVisibleForView(scene.scene_id, view.view, inst_r.object);
+    MeshStackProxy(s, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene.scene_id, .view = view.view, .object = inst_l.object});
+    MeshStackProxy(s, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene.scene_id, .view = view.view, .object = inst_m.object});
+    MeshStackProxy(s, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene.scene_id, .view = view.view, .object = inst_r.object});
 
     // One directional light from the front-left. NO cast-shadow flag (keeps the
     // spheres free of inter-occlusion so the test isolates the shading model).
@@ -410,7 +435,7 @@ int main()
     dl.color     = Eigen::Vector3f(1.f, 1.f, 1.f);
     dl.intensity = 3.0f;
     dl.flags     = 0;
-    await(s, w, LightProxy(s, light_ops).createLight(scene.scene_id, LightDescriptor{dl}));
+    await(s, w, lightCreate(LightProxy(s, light_ops), scene.scene_id, LightDescriptor{dl}));
 
     const Eigen::Vector3f eye(0.f, 0.f, 4.2f), center(0.f, 0.f, 0.f);
     const float fov = 50.f * 3.14159265f / 180.f;
@@ -421,15 +446,15 @@ int main()
     {
         s.beginFrame({});
         w.pollEvents();
-        lux::render::ViewCameraProxy(s, view_cam_ops).update(scene.scene_id, view.view, V.data(), P.data(), eye.data());
-        s.submitFrame(/*blocking=*/true);
+        lux::render::viewCameraUpdateTransient(lux::render::ViewCameraProxy(s, view_cam_ops), scene.scene_id, view.view, V.data(), P.data(), eye.data());
+        s.trySubmitFrame();
         s.waitAndPumpReplies();
     }
     std::cout << "[4] rendered warm-up frames\n";
 
     std::vector<std::uint8_t> px(static_cast<std::size_t>(W) * H * 4, 0);
     s.beginFrame({});
-    const auto rb = await(s, w, s.readbackView(scene.scene_id, view.view, px.data(), px.size()));
+    const auto rb = await(control, w, control.readbackTarget(target.target, px.data(), px.size()));
     std::cout << "[5] readback status=" << rb.status << " " << rb.width << "x" << rb.height << "\n";
 
     const ThirdStats L = classifyThird(px, W, H, 0,        W / 3);       // PBR

@@ -12,8 +12,9 @@ add_executable(
 
 target_link_libraries(
     animation_asset_test
-    PRIVATE
-    asset            # pulls in description + meta + math transitively
+      PRIVATE
+      asset_codecs     # runtime codecs + asset core
+      lux::engine::toolchain::toolchain_model_importer
 )
 
 target_include_directories(
@@ -32,7 +33,7 @@ add_executable(
 target_link_libraries(
     mesh_asset_test
     PRIVATE
-    asset            # pulls in description + meta + math transitively
+    asset_codecs     # runtime codecs + asset core
 )
 
 target_include_directories(
@@ -41,29 +42,8 @@ target_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/../pinclude   # for MeshDescriptionCodec.hpp
 )
 
-# material_graph_codec_test: in-memory round-trip of the MaterialGraphCodec —
-# encode -> decode -> byte-identical re-encode + structural equality + bad-magic
-# rejection (the binary persistence behind the material asset's concrete graph).
-add_executable(
-    material_graph_codec_test
-    material_graph_codec_test.cpp
-)
-
-target_link_libraries(
-    material_graph_codec_test
-    PRIVATE
-    asset            # pulls in description (rdesc::MaterialGraph) transitively
-)
-
-target_include_directories(
-    material_graph_codec_test
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../pinclude   # for MaterialGraphCodec.hpp
-)
-
-# asset_lifecycle_test: AssetManager onLoaded / onWillUnload / unsubscribe
-# lifecycle subscription callbacks (the AssetHandle<T> wrapper that built on
-# them was retired in the async-asset redesign).
+# asset_lifecycle_test: AssetManager::setBroadcast 回调缝的语义(批E:归零/
+# 失效/内容变更三事实互不混用;批E2 起 onLoaded/onWillUnload 订阅面已退役)。
 add_executable(
     asset_lifecycle_test
     asset_lifecycle_test.cpp
@@ -72,41 +52,7 @@ add_executable(
 target_link_libraries(
     asset_lifecycle_test
     PRIVATE
-    asset            # pulls in description + meta + math transitively
-)
-
-# asset_vfs_test: VP-P2 — VirtualPath grammar tables, LooseDirProvider scan/
-# resolve/open/collision determinism, AssetVfs mount-priority + tombstone
-# shadowing, AssetManager findAssetByPath/ensureAsset round-trip.
-add_executable(
-    asset_vfs_test
-    asset_vfs_test.cpp
-)
-
-target_link_libraries(
-    asset_vfs_test
-    PRIVATE
-    asset            # pulls in description + meta + math transitively
-)
-
-# asset_pak_test: VP-P3 — cook rejection table, pak determinism, loose-vs-pak
-# parity (resolve/open byte-identical), ensureAsset through a pak mount, and
-# the negative decode table (truncation/corruption/unknown-section/tombstone).
-add_executable(
-    asset_pak_test
-    asset_pak_test.cpp
-)
-
-target_link_libraries(
-    asset_pak_test
-    PRIVATE
-    asset            # pulls in description + meta + math transitively
-)
-
-target_include_directories(
-    asset_pak_test
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../pinclude   # for PakCodec.hpp (index surgery)
+    asset_codecs     # runtime codecs + asset core
 )
 
 # shell_from_file_test: W2b — makeShellFromFile reads only a .luxasset header and
@@ -120,5 +66,21 @@ add_executable(
 target_link_libraries(
     shell_from_file_test
     PRIVATE
-    asset            # makeShellFromFile + MeshAsset + header structs
+    asset_codecs     # makeShellFromFile + MeshAsset + header structs
 )
+
+# ── CTest registration ────────────────────────────────────────────────────────
+# All eight are CPU-only self-contained binaries (no GPU, no window); the "cpu"
+# label folds them into the same suite as the render module's cpu tests, so the
+# one command a verification run already uses — `ctest -L cpu` — now exercises
+# the codec/VFS/pak layers too instead of relying on someone remembering to run
+# them by hand (they had never been registered).
+foreach(t
+    animation_asset_test
+    mesh_asset_test
+    material_graph_codec_test
+    asset_lifecycle_test
+    shell_from_file_test)
+    add_test(NAME ${t} COMMAND ${t})
+    set_tests_properties(${t} PROPERTIES LABELS "cpu" TIMEOUT 120)
+endforeach()

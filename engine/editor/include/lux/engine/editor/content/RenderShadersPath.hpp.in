@@ -9,7 +9,7 @@
  * lighting_common.glsl / brdf/*.glsl) through its shaderc IncluderInterface, so
  * the editor's bake path passes this directory as the include search root. At
  * dev time it points at the source tree
- * (`${CMAKE_SOURCE_DIR}/modules/function/render/assets/shaders`).
+ * (`${CMAKE_SOURCE_DIR}/modules/function/render/features/assets/shaders`).
  *
  * NOTE (deployment follow-up): a deployed editor with no source tree needs these
  * shader sources bundled alongside the executable (cf. the engine_content install
@@ -26,5 +26,12 @@ namespace lux::editor
     /// Absolute path to the render module's GLSL SSOT directory. Used as the
     /// shaderc include search root when baking graph materials via ShaderGen.
     inline const std::string render_shaders_dir{ "@LUX_RENDER_SHADERS_DIR@" };
+
+    /// The .lglsl emitted tree (a mirror of canonical GLSL, in the build
+    /// directory). Once a shared header migrates to .lglslh, its include
+    /// name (foo.glsl) actually resolves here — include search order is the
+    /// emitted tree first, then the source tree (headers not yet migrated
+    /// still live in the source tree).
+    inline const std::string render_shaders_emitted_dir{ "@LUX_RENDER_SHADERS_EMITTED_DIR@" };
 
 } // namespace lux::editor

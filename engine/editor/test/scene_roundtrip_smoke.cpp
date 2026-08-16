@@ -1,157 +1,373 @@
-/// Smoke test: Scene::save + Scene::load round-trip.
-///
-/// Builds a small entt::registry by hand with a few annotated components
-/// (NameComponent, TransformComponent, MeshComponent), saves it to a
-/// tmpdir, loads it into a fresh registry, and verifies every field
-/// survived the trip.
+#include <lux/engine/authoring/world/WorldSourceCodec.hpp>
+#include <lux/engine/editor/scene/DemoSceneTemplate.hpp>
+#include <lux/engine/editor/scene/WorldActorEcsAdapter.hpp>
+#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
 
-#include <lux/engine/editor/scene/Scene.hpp>
-
-#include <lux/engine/ecs/ComponentTypeRegistry.hpp>
-#include <lux/pack/d3/world/components/MeshComponent.hpp>
+#include <lux/engine/ecs/ComponentTypeCatalog.hpp>
+#include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/components/NameComponent.hpp>
-#include <lux/pack/d3/world/components/TransformComponent.hpp>
-#include <lux/engine/meta/Meta.hpp>           // meta_module_init / deinit
+#include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
+#include <lux/engine/ecs/components/Transform3DComponent.hpp>
+#include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
+#include <lux/engine/ecs/systems/HierarchicalTransformSystem.hpp>
+#include <lux/engine/ecs/render/components/3d/MeshComponent.hpp>
+#include <lux/engine/meta/Meta.hpp>
+#include <lux/cxx/algorithm/hash.hpp>
 
-#include <entt/entt.hpp>
-#include <uuid.h>
-
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <ranges>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace
 {
-    int fail_count = 0;
+    constexpr std::string_view kTransientProbeSchema =
+        "org.lux.test.transient_probe";
 
-    void expect(bool cond, const char* msg)
+    struct TransientProbe final
     {
-        std::printf("  [%s] %s\n", cond ? "PASS" : "FAIL", msg);
-        if (!cond) ++fail_count;
+        std::uint32_t value{0u};
+    };
+
+    bool transientProbeHas(
+        lux::meta::EntityRegistryBase& registry,
+        entt::entity entity)
+    {
+        return registry.all_of<TransientProbe>(entity);
     }
-} // namespace
+
+    void* transientProbeGet(
+        lux::meta::EntityRegistryBase& registry,
+        entt::entity entity)
+    {
+        return registry.try_get<TransientProbe>(entity);
+    }
+
+    void* transientProbeEmplace(
+        lux::meta::EntityRegistryBase& registry,
+        entt::entity entity)
+    {
+        return &registry.get_or_emplace<TransientProbe>(entity);
+    }
+
+    void transientProbeRemove(
+        lux::meta::EntityRegistryBase& registry,
+        entt::entity entity)
+    {
+        (void)registry.remove<TransientProbe>(entity);
+    }
+
+    void transientProbeNotify(
+        lux::meta::EntityRegistryBase& registry,
+        entt::entity entity)
+    {
+        registry.patch<TransientProbe>(entity, [](auto&) noexcept {});
+    }
+
+    void transientProbeReserve(
+        lux::meta::EntityRegistryBase& registry,
+        std::size_t additional)
+    {
+        auto& storage = registry.storage<TransientProbe>();
+        storage.reserve(storage.size() + additional);
+    }
+
+    void* transientProbeTransfer(
+        lux::meta::EntityRegistryBase&,
+        entt::entity,
+        lux::meta::EntityRegistryBase&,
+        entt::entity) noexcept
+    {
+        return nullptr;
+    }
+
+    [[nodiscard]] lux::ecs::ComponentSchemaDescriptor
+    transientProbeDescriptor()
+    {
+        const auto token = lux::ecs::typeToken<TransientProbe>();
+        return {
+            {token.hash, std::string{token.name}},
+            {lux::cxx::algorithm::fnv1a(kTransientProbeSchema),
+             std::string{kTransientProbeSchema}},
+            1u,
+            nullptr,
+            {
+                &transientProbeHas,
+                &transientProbeGet,
+                &transientProbeEmplace,
+                &transientProbeRemove,
+                nullptr,
+                &transientProbeNotify,
+                &transientProbeReserve,
+                &transientProbeTransfer,
+                false},
+            "org.lux.test",
+            {},
+            lux::ecs::EComponentSerializationPolicy::TRANSIENT};
+    }
+
+    int failures = 0;
+
+    void expect(bool condition, const char* message)
+    {
+        std::printf("  [%s] %s\n", condition ? "PASS" : "FAIL", message);
+        if (!condition)
+            ++failures;
+    }
+
+}
 
 int main()
 {
     namespace fs = std::filesystem;
+    std::printf("=== LXAD -> LXSC/LXES round-trip ===\n");
 
-    // Drain the meta-module init queue so ReflectionRegistry +
-    // ComponentTypeRegistry are populated. Without this Scene::save sees
-    // an empty catalogue and writes a scene with zero components.
     lux::meta::meta_module_init();
-
-    const auto tmp_root = fs::temp_directory_path() / "lux_test_scene";
-    std::error_code ec;
-    fs::remove_all(tmp_root, ec);
-    fs::create_directories(tmp_root, ec);
-    const auto out = tmp_root / "test.luxscene";
-
-    std::printf("=== Phase D smoke: Scene round-trip ===\n");
-
-    // Cube reference UUID — same value the engine builtins use.
-    const auto kCubeUuid = *uuids::uuid::from_string("00000000-0000-4000-8000-cccccccccccc");
-
-    // ── Build a 2-entity registry. ──
-    lux::meta::EntityRegistry src_reg;
-
-    const auto e0 = src_reg.create();
-    src_reg.emplace<lux::ecs::NameComponent>(e0,
-        lux::ecs::NameComponent{"Hello"});
+    lux::ecs::ComponentTypeCatalog components;
+    expect(
+        lux::ecs::registerGeneratedComponents(components).has_value(),
+        "generated component schemas registered");
+    expect(
+        components.registerSchema(transientProbeDescriptor()).has_value(),
+        "transient component schema registered");
+    const auto* transform_schema = components.findByType(
+        lux::ecs::typeToken<lux::ecs::Transform3DComponent>());
+    const lux::meta::RefField* position_field = nullptr;
+    if (transform_schema && transform_schema->ref_class)
     {
-        auto& tc = src_reg.emplace<lux::pack::TransformComponent>(e0);
-        tc.position = Eigen::Vector3f(1.5f, 2.5f, -3.0f);
-        tc.scale    = Eigen::Vector3f(2.0f, 1.0f, 0.5f);
+        const auto found = std::ranges::find(
+            transform_schema->ref_class->fields,
+            std::string_view{"position"},
+            &lux::meta::RefField::name);
+        if (found != transform_schema->ref_class->fields.end())
+            position_field = &*found;
     }
-    src_reg.emplace<lux::pack::MeshComponent>(e0,
-        lux::pack::MeshComponent{kCubeUuid, kCubeUuid, true, true, false});
+    expect(
+        position_field &&
+            position_field->type.ptr != nullptr &&
+            static_cast<const lux::meta::RefClass*>(
+                position_field->type.ptr)->full_name ==
+                "lux::spatial::Position3D",
+        "non-final Position field retains its nested reflection link");
 
-    const auto e1 = src_reg.create();
-    src_reg.emplace<lux::ecs::NameComponent>(e1,
-        lux::ecs::NameComponent{"World"});
+    const lux::entity_scene::EntitySceneId world_id{
+        *uuids::uuid::from_string(
+            "99999999-0000-4000-8000-000000000001")};
+    const auto mesh_id = *uuids::uuid::from_string(
+        "00000000-0000-4000-8000-cccccccccccc");
+    lux::meta::EntityRegistry source_registry;
+    lux::ecs::PersistentEntityIndex source_persistent_entities{
+        source_registry};
+    const auto hello = source_registry.create();
+    source_registry.emplace<lux::ecs::NameComponent>(
+        hello, lux::ecs::NameComponent{"Hello"});
+    auto& transform = source_registry.emplace<
+        lux::ecs::Transform3DComponent>(hello);
+    transform.position = {1.5, 2.5, -3.0};
+    transform.scale = Eigen::Vector3f(2.0f, 1.0f, 0.5f);
+    const lux::spatial::Position3D hello_position{1.5, 2.5, -3.0};
+    source_registry.emplace<lux::ecs::MeshComponent>(
+        hello,
+        lux::ecs::MeshComponent{
+            mesh_id, mesh_id, true, true, false});
+    source_registry.emplace<TransientProbe>(hello, 73u);
+    const auto peer = source_registry.create();
+    source_registry.emplace<lux::ecs::NameComponent>(
+        peer, lux::ecs::NameComponent{"World"});
+    source_registry.emplace<lux::ecs::Transform3DComponent>(peer);
+    const auto child = source_registry.create();
+    source_registry.emplace<lux::ecs::NameComponent>(
+        child, lux::ecs::NameComponent{"Child"});
+    source_registry.emplace<lux::ecs::Transform3DComponent>(
+        child).position = {4.0, 0.0, 0.0};
+    source_registry.emplace<lux::ecs::ResolvedTransform3DComponent>(
+        child,
+        lux::ecs::ResolvedTransform3DComponent{
+            {5.5, 2.5, -3.0}, Eigen::Matrix3f::Identity()});
+    expect(lux::ecs::setParent(source_registry, child, hello),
+        "Authoring child linked to its transient ECS parent");
 
-    // ── Save. ──
+    lux::editor::WorldActorEcsAdapter authoring{
+        components, source_persistent_entities};
+    auto hello_source = authoring.capture(
+        source_registry,
+        hello,
+        world_id,
+        "Hello");
+    auto peer_source = authoring.capture(
+        source_registry,
+        peer,
+        world_id,
+        "World");
+    auto child_source = authoring.capture(
+        source_registry,
+        child,
+        world_id,
+        "Child");
+    expect(
+        hello_source && std::ranges::none_of(
+            hello_source->components,
+            [](const auto& component)
+            {
+                return component.schema_name == kTransientProbeSchema;
+            }),
+        "Authoring capture excludes transient component schemas");
+    const lux::authoring::PartitionSpaceId space_id{
+        *uuids::uuid::from_string(
+            "99999999-0000-4000-8000-000000000010")};
+    if (hello_source)
     {
-        lux::editor::SceneSaveOptions opts;
-        opts.active_camera = e0;
-        auto r = lux::editor::Scene::save(out, src_reg, opts);
-        expect(r.has_value(), "save returned ok");
-        expect(fs::exists(out), "file was written");
-        expect(fs::file_size(out) > 64, "file is non-trivial in size");
+        hello_source->actor_class = "org.lux.test.actor";
+        hello_source->space = space_id;
+        hello_source->position = hello_position;
     }
-
-    // ── Load into a fresh registry. ──
-    lux::meta::EntityRegistry dst_reg;
-    lux::editor::SceneLoadResult result{};
+    if (peer_source)
     {
-        auto r = lux::editor::Scene::load(out, dst_reg, result);
-        expect(r.has_value(), "load returned ok");
-        expect(result.created_entities.size() == 2u, "two entities created");
+        peer_source->actor_class = "org.lux.test.actor";
+        peer_source->space = space_id;
+        peer_source->position = lux::spatial::Position3D{0.0, 0.0, 0.0};
     }
+    if (child_source)
+    {
+        child_source->actor_class = "org.lux.test.actor";
+        child_source->space = space_id;
+        child_source->position =
+            lux::spatial::Position3D{5.5, 2.5, -3.0};
+    }
+    auto hello_bytes = hello_source
+        ? lux::authoring::encodeWorldActorDocument(*hello_source)
+        : decltype(lux::authoring::encodeWorldActorDocument({})){};
+    auto peer_bytes = peer_source
+        ? lux::authoring::encodeWorldActorDocument(*peer_source)
+        : decltype(lux::authoring::encodeWorldActorDocument({})){};
+    auto child_bytes = child_source
+        ? lux::authoring::encodeWorldActorDocument(*child_source)
+        : decltype(lux::authoring::encodeWorldActorDocument({})){};
+    expect(hello_bytes && peer_bytes && child_bytes,
+        "root and child LXAD Actors encoded independently");
+    auto hello_document = hello_bytes
+        ? lux::authoring::decodeWorldActorDocument(*hello_bytes)
+        : decltype(lux::authoring::decodeWorldActorDocument({})){};
+    auto peer_document = peer_bytes
+        ? lux::authoring::decodeWorldActorDocument(*peer_bytes)
+        : decltype(lux::authoring::decodeWorldActorDocument({})){};
+    auto child_document = child_bytes
+        ? lux::authoring::decodeWorldActorDocument(*child_bytes)
+        : decltype(lux::authoring::decodeWorldActorDocument({})){};
+    expect(hello_document && peer_document && child_document,
+        "LXAD v2 hierarchy documents decoded");
+    expect(
+        hello_document && std::ranges::none_of(
+            hello_document->components,
+            [](const auto& component)
+            {
+                return component.schema_name == kTransientProbeSchema;
+            }),
+        "encoded LXAD bytes exclude transient component schemas");
 
-    // ── Verify components survived. ──
-    //
-    // Entity iteration order is entt-implementation-defined, so look up
-    // entities by NameComponent value rather than index. This is the same
-    // pattern editor UI would use when "finding" an entity post-load.
-    auto findByName = [&](std::string_view want) -> entt::entity {
-        for (auto e : result.created_entities)
+    const auto hello_id = lux::entity_scene::PersistentEntityId{
+        source_registry.get<
+        lux::ecs::PersistentEntityIdComponent>(hello).id().value()};
+    const auto peer_id = lux::entity_scene::PersistentEntityId{
+        source_registry.get<
+        lux::ecs::PersistentEntityIdComponent>(peer).id().value()};
+    expect(!hello_id.empty() && hello_id != peer_id,
+        "Authoring assigned distinct stable Actor IDs");
+    expect(child_source && child_source->transform_parent == hello_id,
+        "Authoring captured the Transform parent as a stable World ID");
+
+    lux::authoring::WorldSourceDocument root =
+        lux::authoring::makeWorldSourceDocument(
+            lux::authoring::EPartitionTopology::PLANAR_XZ);
+    root.contributions.push_back({
+        lux::extensions::ContributionId{"org.lux.builtin.physics3d"},
+        0u,
+        {std::byte{0x10u}, std::byte{0x20u}}});
+    auto encoded_root = lux::authoring::encodeWorldSource(root);
+    auto decoded_root = encoded_root
+        ? lux::authoring::decodeWorldSource(*encoded_root)
+        : decltype(lux::authoring::decodeWorldSource({})){};
+    expect(decoded_root &&
+            decoded_root->contributions == root.contributions,
+        "LXWA v4 Root owns only the generic scene contribution plan");
+
+    const auto temp_root = fs::temp_directory_path() / "lux-world-roundtrip";
+    std::error_code error;
+    fs::remove_all(temp_root, error);
+    fs::create_directories(temp_root, error);
+    const auto demo = temp_root / "demo.luxworld";
+    expect(lux::editor::writeDemoScene(demo, components),
+        "demo LXWA/LXAI/LXAD World written");
+    auto demo_source = lux::authoring::loadWorldSource(demo);
+    expect(demo_source && !demo_source->spaces.empty() &&
+            !demo_source->descriptor_pages.empty(),
+        "demo LXWA v4 Root indexes external Actor content");
+    expect(
+        demo_source && demo_source->contributions.size() == 1u &&
+            demo_source->contributions.front().id.name() ==
+                "org.lux.builtin.presentation3d",
+        "demo LXWA v4 Root installs its 3D presentation contribution");
+    std::vector<lux::ecs::ComponentSchemaDescriptor> frozen_schemas{
+        components.all().begin(), components.all().end()};
+    lux::ecs::ComponentTypeCatalog worker_components;
+    auto frozen_registration = worker_components.registerSchemas(
+        frozen_schemas);
+    expect(
+        frozen_registration &&
+            *frozen_registration == frozen_schemas.size(),
+        "Play Cook rebuilds a worker-local catalog from an owning schema snapshot");
+    auto cooked_demo = lux::toolchain::cookSpatial3DEntitySceneSource(
+        demo,
+        worker_components,
+        lux::toolchain::Spatial3DMeshAssetCatalog{});
+    if (!cooked_demo)
+    {
+        std::fprintf(
+            stderr,
+            "Spatial3D EntityScene cook failed: %s\n",
+            cooked_demo.error().detail.c_str());
+    }
+    expect(cooked_demo && !cooked_demo->sections.empty(),
+        "demo Authoring World cooked through LXAD -> LXSC/LXES");
+    auto decoded_manifest = cooked_demo
+        ? lux::entity_scene::decodeEntitySceneManifest(
+              cooked_demo->encoded_manifest)
+        : decltype(lux::entity_scene::decodeEntitySceneManifest({})){};
+    expect(
+        decoded_manifest && cooked_demo &&
+            decoded_manifest->id == cooked_demo->manifest.id,
+        "cooked LXSC manifest decodes with the expected Scene identity");
+    bool sections_decode = cooked_demo.has_value();
+    if (cooked_demo)
+    {
+        for (const auto& section : cooked_demo->sections)
         {
-            auto* nc = dst_reg.try_get<lux::ecs::NameComponent>(e);
-            if (nc && nc->name == want) return e;
+            auto decoded = lux::entity_scene::decodeEntitySectionImage(
+                section.encoded_image);
+            if (!decoded || decoded->section != section.record.id)
+            {
+                sections_decode = false;
+                break;
+            }
         }
-        return entt::null;
-    };
-
-    const auto hello = findByName("Hello");
-    const auto world = findByName("World");
-
-    expect(hello != entt::null, "found entity 'Hello' by name");
-    expect(world != entt::null, "found entity 'World' by name");
-
-    if (hello != entt::null)
-    {
-        expect(dst_reg.all_of<lux::pack::TransformComponent>(hello),  "Hello has TransformComponent");
-        expect(dst_reg.all_of<lux::pack::MeshComponent>(hello),       "Hello has MeshComponent");
-
-        if (auto* tc = dst_reg.try_get<lux::pack::TransformComponent>(hello))
-        {
-            const bool pos_ok = tc->position.isApprox(Eigen::Vector3f(1.5f, 2.5f, -3.0f), 1e-6f);
-            const bool scl_ok = tc->scale.isApprox(   Eigen::Vector3f(2.0f, 1.0f,  0.5f), 1e-6f);
-            expect(pos_ok, "Hello Transform.position preserved");
-            expect(scl_ok, "Hello Transform.scale preserved");
-        }
-
-        if (auto* mc = dst_reg.try_get<lux::pack::MeshComponent>(hello))
-        {
-            expect(mc->mesh_asset_id == kCubeUuid,
-                                                   "Hello Mesh.mesh_asset_id (asset_id_t / uuid) preserved");
-            expect(mc->material_asset_id == kCubeUuid,
-                                                   "Hello Mesh.material_asset_id preserved");
-            expect(mc->cast_shadow == true,        "Hello Mesh.cast_shadow preserved");
-            expect(mc->visible == true,            "Hello Mesh.visible preserved");
-            expect(mc->two_sided_shadow == false,  "Hello Mesh.two_sided_shadow preserved");
-        }
-
-        expect(result.active_camera == hello, "active_camera resolved back to Hello");
     }
+    expect(
+        sections_decode,
+        "every cooked LXES image decodes with its manifest Section identity");
 
-    if (world != entt::null)
-    {
-        // 'World' should be NameComponent-only.
-        expect(!dst_reg.all_of<lux::pack::TransformComponent>(world),
-            "World does NOT have TransformComponent (preserved minimal entity)");
-        expect(!dst_reg.all_of<lux::pack::MeshComponent>(world),
-            "World does NOT have MeshComponent");
-    }
-
-    fs::remove_all(tmp_root, ec);
+    fs::remove_all(temp_root, error);
     lux::meta::meta_module_deinit();
-
-    if (fail_count == 0)
+    if (failures == 0)
     {
         std::printf("\nAll checks passed.\n");
         return 0;
     }
-    std::printf("\n%d check(s) FAILED.\n", fail_count);
+    std::printf("\n%d check(s) FAILED.\n", failures);
     return 1;
 }

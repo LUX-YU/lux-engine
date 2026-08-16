@@ -15,9 +15,9 @@
 #include <lux/engine/editor/thumbnail/ThumbnailSet.hpp>
 #include <lux/engine/editor/thumbnail/ImageCodec.hpp>
 
-#include <lux/engine/asset/AssetManager.hpp>
-#include <lux/engine/asset/MeshAsset.hpp>
-#include <lux/engine/asset/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/resource/asset/MeshAsset.hpp>
+#include <lux/engine/resource/asset/MeshSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
 #include <lux/engine/math/AABB.hpp>
@@ -109,7 +109,8 @@ int main()
     const lux::asset::asset_id_t id = parsed.value_or(lux::asset::asset_id_t{});
 
     {   // export
-        auto mgr_ref = std::make_shared<lux::asset::AssetManager>();
+        auto mgr_ref = std::make_shared<lux::asset::AssetManager>(
+            lux::asset::runtimeAssetCodecCatalog());
         using V3 = Eigen::Vector3f; using V2 = Eigen::Vector2f;
         std::vector<lux::rdesc::Vertex> verts = {
             {V3(0,0,0), V3(0,0,1), V3(1,0,0), V2(0,0), V3(0,1,0)},
@@ -135,7 +136,8 @@ int main()
     }
 
     {   // re-import into a FRESH manager + verify the thumbnail payload survived
-        auto mgr_ref = std::make_shared<lux::asset::AssetManager>();
+        auto mgr_ref = std::make_shared<lux::asset::AssetManager>(
+            lux::asset::runtimeAssetCodecCatalog());
         lux::asset::MeshSerDeser ser(mgr_ref);
         auto res = ser.fromLuxAsset(tmp);
         check(static_cast<bool>(res), "fromLuxAsset ok");

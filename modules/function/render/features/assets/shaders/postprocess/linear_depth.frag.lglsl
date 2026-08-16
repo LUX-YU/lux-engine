@@ -1,0 +1,35 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+// =========================================================================
+//  linear_depth.frag.lglsl — SceneDepth → 线性(眼空间)深度,写 LinearDepth 槽
+//
+//  TargetSlot::LINEAR_DEPTH 注释多年前就点名的用途(sensors / SSAO / DoF)
+//  第一次有了生产者。R2-3 全链的消费端样板:
+//    · uSceneDepth 是**契约外局部资源**(R2-1:发射器自动 set1 b0)
+//    · uViews 是契约 GLOBAL 资源(set0 b1 注入);near/far 取 viewport.zw
+//    · 深度约定:正向 [0,1](管线全用 LESS 系比较,非 reverse-Z)
+// =========================================================================
+
+layout(location = 0) in vec2 vUV;
+layout(location = 0) out float outLinearDepth;
+
+uniform sampler2D uSceneDepth;
+
+#include "view_common.glsl"
+layout(std430) readonly buffer ViewBuffer {
+    ViewGpuData views[];
+} uViews;
+
+#include "view_pc_prefix.glsl"
+layout(push_constant) uniform PC {
+    LUX_VIEW_PC_PREFIX      // uint scene_index (0); uint view_index (4)
+} uPC;
+
+void main()
+{
+    float d    = texture(uSceneDepth, vUV).r;
+    float near = uViews.views[uPC.view_index].viewport.z;
+    float far  = uViews.views[uPC.view_index].viewport.w;
+    // 标准透视投影([0,1] 正向深度)的眼空间线性化。
+    outLinearDepth = (near * far) / (far - d * (far - near));
+}

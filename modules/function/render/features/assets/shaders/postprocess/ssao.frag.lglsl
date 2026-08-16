@@ -1,0 +1,45 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+// =========================================================================
+//  ssao.frag.lglsl — 最简屏幕空间环境光遮蔽(R5-1 参考实现)
+//
+//  定位:**着色输入槽(Light b11)通路的树内打样**,不是产品级 SSAO ——
+//  纯 LinearDepth 8 邻域深度差,无随机核、无法线、无模糊。换成任何
+//  正经实现(HBAO/GTAO)时,通路(SsaoFeature → provideShadingInput →
+//  b11 → luxShadingInputAO)一行不变,只换本文件的算法体。
+//
+//  输入:uLinearDepth 契约外局部资源(R2-1:发射器自动 set1 b0),
+//  由 LinearDepthFeature 产出(眼空间线性深度,米)。
+//  输出:单通道遮蔽因子,1.0 = 不遮蔽(与 b11 默认白一致)。
+// =========================================================================
+
+layout(location = 0) in vec2 vUV;
+layout(location = 0) out float outAO;
+
+uniform sampler2D uLinearDepth;
+
+void main()
+{
+    float d0 = texture(uLinearDepth, vUV).r;
+
+    const vec2 kDirs[8] = vec2[8](
+        vec2( 1.0,  0.0), vec2( 0.707,  0.707),
+        vec2( 0.0,  1.0), vec2(-0.707,  0.707),
+        vec2(-1.0,  0.0), vec2(-0.707, -0.707),
+        vec2( 0.0, -1.0), vec2( 0.707, -0.707));
+
+    // 世界半径近似恒定:屏幕采样半径随深度反比缩放(近大远小)。
+    vec2  texel     = 1.0 / vec2(textureSize(uLinearDepth, 0));
+    float radius_px = clamp(48.0 / max(d0, 0.05), 2.0, 24.0);
+
+    float occ = 0.0;
+    for (int i = 0; i < 8; ++i)
+    {
+        float di   = texture(uLinearDepth, vUV + kDirs[i] * texel * radius_px).r;
+        float diff = d0 - di;   // 正 = 邻居更近 = 潜在遮蔽
+        // 窗口:小于 2cm 视为共面噪声,大于 ~30cm 视为前景跳变(不遮蔽)。
+        occ += smoothstep(0.02, 0.10, diff) * (1.0 - smoothstep(0.3, 1.0, diff));
+    }
+
+    outAO = 1.0 - (occ / 8.0) * 0.8;
+}

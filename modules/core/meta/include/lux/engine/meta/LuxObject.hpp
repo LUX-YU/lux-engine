@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/core/visibility.h>
+#include <lux/engine/meta/RegistryMemoryResource.hpp>
 #include <entt/entt.hpp>
 
 namespace lux::meta
@@ -12,6 +13,37 @@ namespace lux::meta
 	using null_entity_t = entt::null_t;
 	inline constexpr null_entity_t null_entity = entt::null;
 
+    /// Canonical engine registry and handle spellings.  Signal callbacks use
+    /// EntityRegistryBase because EnTT dispatches the basic_registry subobject;
+    /// gameplay/world ownership uses EntityRegistry below.  The base alias is
+    /// the single coordinated allocator ABI switch point.
+    using EntityRegistryBase = entt::basic_registry<
+        entity_id,
+        RegistryAllocator<entity_id>>;
+    using EntityHandle = entt::basic_handle<EntityRegistryBase>;
+    using ConstEntityHandle = entt::basic_handle<const EntityRegistryBase>;
+
+    namespace detail
+    {
+        class EntityRegistryMemoryOwner
+        {
+        protected:
+            explicit EntityRegistryMemoryOwner(
+                std::shared_ptr<RegistryMemoryResource> resource) noexcept
+                : resource_(std::move(resource))
+            {}
+
+            [[nodiscard]] const std::shared_ptr<RegistryMemoryResource>&
+            registryMemoryResource() const noexcept
+            {
+                return resource_;
+            }
+
+        private:
+            std::shared_ptr<RegistryMemoryResource> resource_;
+        };
+    } // namespace detail
+
 	class EntityRegistry;
 	class LUX_CORE_PUBLIC LuxObject
 	{
@@ -20,11 +52,30 @@ namespace lux::meta
 		virtual ~LuxObject() = default;
 	};
 
-	class LUX_CORE_PUBLIC EntityRegistry : public entt::registry
+	class LUX_CORE_PUBLIC EntityRegistry
+        : private detail::EntityRegistryMemoryOwner,
+          public EntityRegistryBase
 	{
 		friend class EntityObject;
 	public:
 		EntityRegistry();
+        explicit EntityRegistry(IRegistryMemoryUpstream& upstream);
+        EntityRegistry(const EntityRegistry&) = delete;
+        EntityRegistry& operator=(const EntityRegistry&) = delete;
+        EntityRegistry(EntityRegistry&&) = delete;
+        EntityRegistry& operator=(EntityRegistry&&) = delete;
+
+        [[nodiscard]] RegistryPublicationReservationResult
+        reservePublication(std::size_t bytes) noexcept;
+
+        [[nodiscard]] RegistryPublicationAdmissionScope
+        closePublicationAdmission() noexcept;
+
+        [[nodiscard]] RegistryMemorySnapshot memorySnapshot() const noexcept;
+
+	private:
+        explicit EntityRegistry(
+            std::shared_ptr<RegistryMemoryResource> resource) noexcept;
 	};
 
 	class LUX_CORE_PUBLIC EntityObject : public LuxObject
@@ -136,9 +187,12 @@ namespace lux::meta
 			return reg_->template try_get<Type...>(ent_);
 		}
 
-	    // 需要时再临时构造 handle 使用
-	    entt::handle handle() { return entt::handle{*reg_, ent_}; }
-	    entt::const_handle handle() const { return entt::const_handle{*reg_, ent_}; }
+	    // Construct a handle on demand, only when actually needed
+	    EntityHandle handle() { return EntityHandle{*reg_, ent_}; }
+	    ConstEntityHandle handle() const
+        {
+            return ConstEntityHandle{*reg_, ent_};
+        }
 
 		inline operator entity_id() const { return ent_; }
 

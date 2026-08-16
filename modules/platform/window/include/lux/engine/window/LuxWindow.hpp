@@ -1,14 +1,25 @@
 #pragma once
 #include <memory>
 #include <functional>
+#include <cstdint>
 #include <string>
+#include <span>
 #include <lux/engine/window/LuxWindowDefination.hpp>
 #include <lux/engine/window/InputSnapshot.hpp>
 #include <lux/engine/window/WindowEvents.hpp>
-#include <lux/cxx/event/Signal.hpp>
 #include <lux/engine/window/visibility.h>
 
 struct GLFWwindow;
+
+// Vulkan handle forward declarations — keeps <vulkan/vulkan.h> out of this
+// public header. Matches the vulkan.h typedefs on 64-bit platforms, where
+// non-dispatchable handles (VkSurfaceKHR) are pointer types too; the engine
+// only targets 64-bit (x64 / arm64), enforced below.
+typedef struct VkInstance_T*   VkInstance;
+typedef struct VkSurfaceKHR_T* VkSurfaceKHR;
+struct VkAllocationCallbacks;
+static_assert(sizeof(void*) == 8,
+              "LuxWindow's Vulkan handle forward declarations assume a 64-bit platform");
 
 namespace lux::window
 {
@@ -28,14 +39,26 @@ namespace lux::window
         Default
     };
 
+    enum class EWindowInitError : std::uint8_t
+    {
+        NONE,
+        VULKAN_UNAVAILABLE,
+        BACKEND_CREATE_FAILED
+    };
+
     class LuxWindow;
 
     class LUX_PLATFORM_WINDOW_PUBLIC LuxWindow
     {
     public:
         /**
-         * @brief init() won't be called automaticly
-        */          
+         * @brief Every constructor runs init() and records its result.
+         *
+         * A constructor cannot report failure, so the caller MUST check
+         * isInitialized() before using the window — a non-initialized
+         * LuxWindow has no native handle and every operation on it is a
+         * no-op. GLFW must already be up (see GlfwRuntime).
+        */
         LuxWindow(int width, int height, std::string title);
 
         LuxWindow(common::Size2D size, std::string title);
@@ -43,11 +66,19 @@ namespace lux::window
         explicit LuxWindow(const InitParameter& parameter);
 
         /**
-         * @brief call after calling bindContext
+         * @brief Idempotent; already run by the constructors. Public only so a
+         *        window whose first bring-up failed can be retried in place.
+         *        Failure is available through initError(); the platform layer
+         *        never chooses a logging sink.
         */
         [[nodiscard]] virtual bool init();
 
         [[nodiscard]] bool isInitialized() const;
+
+        [[nodiscard]] EWindowInitError initError() const noexcept
+        {
+            return init_error_;
+        }
 
         virtual ~LuxWindow();
 
@@ -100,8 +131,38 @@ namespace lux::window
 
         common::Size2D framebufferSize() const;
 
+        // ── Vulkan surface seam (backend-specific) ───────────────────
+        // These two are the ONLY sanctioned way for render/ui code to get a
+        // VkSurfaceKHR / the surface instance extensions. Non-backend code
+        // must not touch handle() or the windowing library directly — that
+        // is what keeps a future Android (ANativeWindow) backend a pure
+        // source swap of this class. See
+        // .internal/lux-engine-mobile-adaptation-investigation.md §3.
+
+        /// Create a Vulkan surface for this window using the active window
+        /// backend. Writes VK_NULL_HANDLE and returns false on failure.
+        [[nodiscard]] bool createVulkanSurface(VkInstance instance,
+                                               const VkAllocationCallbacks* allocator,
+                                               VkSurfaceKHR* out_surface);
+
+        /// Vulkan instance extensions the window backend needs for surface
+        /// creation (e.g. VK_KHR_surface + the platform surface extension).
+        /// Idempotently initializes the backend runtime so it is valid to
+        /// call before any window exists. The pointed-to strings have static
+        /// lifetime (owned by the backend); empty on failure.
+        [[nodiscard]] static std::span<const char* const> requiredVulkanInstanceExtensions();
+
+        // On Android there is deliberately NO way to hand a native window to
+        // this class. The OS's window arrives at APP_CMD_INIT_WINDOW and is
+        // taken back at APP_CMD_TERM_WINDOW, repeatedly within one session —
+        // its lifetime matches a SURFACE, not a window object. Routing it
+        // through here would tie every consumer of LuxWindow to that cycle.
+        //
+        // The handle goes straight to the surface instead, as a POD payload on
+        // the CreateSurfaceTarget command: see RenderSurface::initFromNative.
+
 #ifdef __PLATFORM_WIN32__
-        // Get windows 
+        // Get windows
         void* win32Handle();
 #endif
         static void pollEvents();
@@ -122,23 +183,31 @@ namespace lux::window
 
         bool vulkanSupported();
 
-        // ── Signals ──────────────────────────────────────────
-        lux::cxx::event::Signal<WindowResizeEvent>       on_resize;
-        lux::cxx::event::Signal<FramebufferResizeEvent>  on_framebuffer_resize;
-        lux::cxx::event::Signal<WindowCloseEvent>        on_close;
-        lux::cxx::event::Signal<WindowFocusEvent>        on_focus;
-        lux::cxx::event::Signal<WindowLostFocusEvent>    on_lost_focus;
-        lux::cxx::event::Signal<WindowMovedEvent>        on_moved;
-        lux::cxx::event::Signal<WindowMinimizedEvent>    on_minimized;
-        lux::cxx::event::Signal<CursorEnterEvent>        on_cursor_enter;
-        lux::cxx::event::Signal<CursorLeaveEvent>        on_cursor_leave;
-        lux::cxx::event::Signal<CursorMoveEvent>         on_cursor_move;
-        lux::cxx::event::Signal<MouseButtonEvent>        on_mouse_button;
-        lux::cxx::event::Signal<MouseScrollEvent>        on_mouse_scroll;
-        lux::cxx::event::Signal<KeyEvent>                on_key;
-        lux::cxx::event::Signal<DrawReadyEvent>          on_draw_ready;
-        lux::cxx::event::Signal<DrawFinishedEvent>       on_draw_finished;
-        lux::cxx::event::Signal<FileDropEvent>          on_file_drop;
+        // ── 回调缝(单槽)────────────────────────────────────
+        // 基础模块零事件概念(统一事件系统裁决③):每种窗口事实一个
+        // std::function 槽,装配层设置一次(`window.on_xxx = handler`),
+        // 置空即断开。**不做订阅表** —— Signal 本身就是一个小事件系统,
+        // 与统一总线冗余;真要扇出,装配层把回调翻译成总线事件(批G 的
+        // 窗口域事件正是这形状)。回调在 pollEvents 的线程(主线程)上跑。
+        template <class E>
+        using EventSlot = std::function<void(const E&)>;
+
+        EventSlot<WindowResizeEvent>       on_resize;
+        EventSlot<FramebufferResizeEvent>  on_framebuffer_resize;
+        EventSlot<WindowCloseEvent>        on_close;
+        EventSlot<WindowFocusEvent>        on_focus;
+        EventSlot<WindowLostFocusEvent>    on_lost_focus;
+        EventSlot<WindowMovedEvent>        on_moved;
+        EventSlot<WindowMinimizedEvent>    on_minimized;
+        EventSlot<CursorEnterEvent>        on_cursor_enter;
+        EventSlot<CursorLeaveEvent>        on_cursor_leave;
+        EventSlot<CursorMoveEvent>         on_cursor_move;
+        EventSlot<MouseButtonEvent>        on_mouse_button;
+        EventSlot<MouseScrollEvent>        on_mouse_scroll;
+        EventSlot<KeyEvent>                on_key;
+        EventSlot<DrawReadyEvent>          on_draw_ready;
+        EventSlot<DrawFinishedEvent>       on_draw_finished;
+        EventSlot<FileDropEvent>           on_file_drop;
 
     protected:
         virtual void newFrame();
@@ -169,6 +238,7 @@ namespace lux::window
         GLFWwindow*                     _glfw_window{nullptr};
         InitParameter                   _parameter;
         bool                            _init{ false };
+        EWindowInitError                init_error_{EWindowInitError::NONE};
         EExitBehavior                   _exit_behavior{ EExitBehavior::EXIT };
 
         // --- State for captureInputSnapshot() ----------------------------

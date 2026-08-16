@@ -9,10 +9,10 @@
  *   - a `lux::render::RenderSceneId` and main offscreen `ViewHandle`
  *   - all render features added during bring-up, in registration order, so
  *     teardown can undo them in reverse
- *   - the `lux::render_bridge::RenderableSystem` that bridges the World's
+ *   - the `lux::ecs::RenderSystem` that bridges the World's
  *     transform/mesh components into the renderer
  *
- * It does NOT own the `UIRenderSession` or the `AssetManager` — those are
+ * It does NOT own the `UIRenderFrameSession` or the `AssetManager` — those are
  * process-wide and survive scene swaps; references are stored.
  *
  * Lifecycle:
@@ -22,61 +22,105 @@
  *      commands and pumps frames until each reply lands
  *   3. each frame: `processPendingResize(session)` → `tick(dt, w, h)`
  *   4. `tearDown()` — explicit; issues async removeFeature /
- *      removeUIView / destroyScene and pumps once so the render thread
+ *      destroyRenderTarget / removeView / destroyScene and pumps once so the render thread
  *      drains them
  *   5. destruct (must be a no-op; async render teardown cannot complete
  *      from a destructor)
  *
- * Scene swapping is not yet wired through `LuxEditor`, but the contract above
- * is what makes it safe to add: `LuxEditor::loadScene(new_cfg)` will
- * `tearDown` the current `EditorScene`, replace the `unique_ptr`, then
- * `bringUp` the new one.
+ * Scene swapping rides exactly this contract — `SceneController::loadScene`
+ * tears down the current `EditorScene`, replaces the `unique_ptr`, then brings
+ * up the new one.
  */
 
 #include <lux/engine/editor/visibility.h>
 
-#include <lux/engine/asset/Asset.hpp>      // asset_id_t
+#include <lux/engine/runtime/assets/AssetLoadService.hpp>
+#include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/math/AABB.hpp>
 #include <lux/engine/meta/LuxObject.hpp>   // entity_id, null_entity
-#include <lux/engine/render/core/FeatureHandle.hpp>
-#include <lux/engine/render/core/RenderResourceHandle.hpp>
-#include <lux/engine/render/core/RenderSceneId.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
-#include <lux/engine/render/renderer/features/skinning/SkinningOperation.hpp>  // SkinningOperationIds
-#include <lux/engine/render/renderer/features/light/LightOperation.hpp>        // LightOperationIds
-#include <lux/pack/d3/world/components/SceneSettingsComponent.hpp>  // ensureSceneSettings return type
-#include <lux/engine/editor/scene/EditorSceneSystem.hpp>  // pluggable scene subsystems (de-hardcoded tick)
+#include <lux/engine/function/render/client/core/FeatureHandle.hpp>
+#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
+#include <lux/engine/function/render/client/core/RenderSceneId.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderLease.hpp>
+#include <lux/engine/function/render/client/genops/SkinningOperation.ops.hpp>  // SkinningOperationIds
+#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>        // LightOperationIds
+#include <lux/engine/function/render/client/FeatureCatalog.hpp>   // per-scene features_ (C2)
+#include <lux/engine/ecs/render/components/3d/SceneSettingsComponent.hpp>  // ensureSceneSettings return type
+#include <lux/engine/ecs/render/components/ViewPresentComponent.hpp>                  // viewport_slot_（按值持有）
+#include <lux/engine/ecs/ComponentTypeCatalog.hpp>
+#include <lux/engine/runtime/scene/SceneRuntime.hpp>
+#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp>
+#include <lux/engine/runtime/render/scene/RenderSceneIntegration.hpp>
+#include <lux/engine/runtime/scene/script/SceneScriptRuntime.hpp>
+#include <lux/engine/navigation/Navigation.hpp>
+#include <lux/engine/ecs/SystemPhase.hpp>          // 相位常量(宿主注册自己的系统时用)
+#include <lux/engine/editor/app/Selection.hpp>            // scene-domain Selection member (C11)
+#include <lux/engine/editor/scene/InstanceSpawnClient.hpp>
+#include <lux/engine/authoring/world/WorldSource.hpp>
+#include <lux/engine/authoring/world/WorldDescriptorIndex.hpp>
+#include <lux/engine/authoring/world/WorldAuthoringTransaction.hpp>
+#include <lux/engine/authoring/world/WorldTerrainAuthoring.hpp>
 #include <lux/engine/ui/ImGuiCommConfig.hpp>
 
 #include <cstdint>
 #include <filesystem>
-#include <functional>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
-namespace lux::asset    { class AssetManager; }
-namespace lux::ecs { class World; }
-namespace lux::input    { class ActionMapper; }
-namespace lux::render_bridge { class RenderableSystem; }
-namespace lux::ui       { class UIRenderSession; class SceneViewportPanel; }
+namespace lux::asset    { class AssetManager; class AssetVfs; }
+namespace lux::ecs { class ComponentTypeCatalog; class World; }
+namespace lux::input    { class ActionMapper; class InputActionRegistry; }
+namespace lux::ui       { class UIRenderFrameSession; class SceneViewportPanel; }
+namespace lux::exec     { class AsyncRuntime; }
 
 namespace lux::editor
 {
-    class EditorBuiltins;
     struct EditorRenderInfra;
-    class CameraSceneSystem;   // non-owning ptr below (cursor-capture forward)
+    class CameraSceneSystem;
+
+    struct WorldTerrainEditStats final
+    {
+        std::size_t loaded_pages{0u};
+        std::size_t dirty_pages{0u};
+        std::size_t undo_depth{0u};
+        std::size_t redo_depth{0u};
+        bool load_pending{false};
+        bool heightmap_io_pending{false};
+        std::string last_error;
+    };
+
+    struct WorldAuthoringResidencyStats final
+    {
+        std::size_t descriptor_pages{0u};
+        std::size_t descriptor_bytes{0u};
+        std::size_t instance_pages{0u};
+        std::size_t instances{0u};
+        std::size_t dirty_instance_pages{0u};
+        std::size_t pending_descriptor_pages{0u};
+        std::size_t pending_instance_pages{0u};
+    };
 
     struct BringUpConfig
     {
         std::string name           = "EditorScene";
         uint32_t    initial_width  = 1280;
         uint32_t    initial_height = 720;
+        /// Project-local cache for immutable Editor Play Cook products. Empty
+        /// uses a process temp fallback; Authoring source is never rewritten
+        /// merely to enter Play.
+        std::filesystem::path play_cache_root{};
 
-        /// Optional path to a `.luxscene` file. If non-empty and the file
+        /// Optional path to a `.luxworld` file. If non-empty and the file
         /// exists, `bringUp` loads the entity tree from it via
-        /// `lux::editor::Scene::load` after the World + RenderableSystem
+        /// the EntityScene publication path after the World + RenderSystem
         /// are wired but before features are stable, so component changes
         /// flow to the renderer through the usual adapter path.
         ///
@@ -90,11 +134,11 @@ namespace lux::editor
 
     /// Orbit-camera state — *just* the yaw/pitch/distance/target tuple plus
     /// auto-orbit speed. The camera entity carries its own intrinsic params
-    /// (fov / near / far / aspect / y_flip) on its `CameraComponent`; this
+    /// (fov / near / far / aspect) on its `Camera3DComponent`; this
     /// struct only describes "where the camera is around the target."
     ///
     /// Seeded once at bringUp (via writeOrbitToTransform) to place the camera;
-    /// thereafter `CameraSceneSystem`'s `UEEditorController` drives the camera
+    /// thereafter `CameraSceneSystem`'s `EditorCamera3DController` drives the camera
     /// entity from input each frame, so this is just the initial-pose tuple.
     struct OrbitCameraState
     {
@@ -106,22 +150,22 @@ namespace lux::editor
         float target_z             = 0.f;
     };
 
-    class StateRegistry;
-    class Selection;
+    class EditorAsyncService;
+    struct EntityScenePlayCookJob;
+    struct CookEntitySceneValue;
 
     class LUX_EDITOR_PUBLIC EditorScene
     {
     public:
-        /// @param request_load Injected async-load hook (LuxEditor wires
-        ///        EngineExecutor::requestLoad). Forwarded to the
-        ///        RenderableSystem bridge + the SkeletalAnimationResolver so
-        ///        both materialize absent assets through the engine executor.
-        EditorScene(lux::ui::UIRenderSession& session,
+        /// Asset loading is a typed process-domain service. This scene keeps
+        /// only its narrow client and the runtime that owns structured scopes.
+        EditorScene(lux::ui::UIRenderFrameSession& session,
                     lux::asset::AssetManager& assets,
-                    const EditorBuiltins&     builtins,
                     const EditorRenderInfra&  infra,
-                    StateRegistry&            states,
-                    std::function<void(const lux::asset::asset_id_t&)> request_load) noexcept;
+                    lux::asset_runtime::AssetClient asset_client,
+                    lux::exec::AsyncRuntime& async,
+                    EditorAsyncService& editor_async,
+                    const lux::ecs::ComponentTypeCatalog& components) noexcept;
 
         ~EditorScene();
 
@@ -140,7 +184,7 @@ namespace lux::editor
 
         /// Issue async teardown commands and pump one idle frame so the
         /// render thread dispatches them. Safe to call multiple times.
-        void tearDown() noexcept;
+        [[nodiscard]] bool tearDown() noexcept;
 
         // ── Per-frame ──────────────────────────────────────────────────
 
@@ -149,14 +193,14 @@ namespace lux::editor
         /// next frame is open.
         void queueResize(uint32_t width, uint32_t height) noexcept;
 
-        /// Flush a pending viewport resize via `session.resizeView`. No-op
+        /// Flush a pending viewport resize via `session.resizeTarget`. No-op
         /// if no resize is queued.
         void processPendingResize();
 
         /// Advance the world by `dt`, drive the UE-style camera controller
         /// from the editor-wide `ActionMapper`, refresh the aspect ratio
         /// from `content_w / content_h`, push the camera to the renderer,
-        /// then drive the RenderableSystem to bridge mesh updates.
+        /// then drive the RenderSystem to bridge mesh updates.
         ///
         /// @param mapper Per-frame action snapshot from `LuxEditor::run`.
         ///               Must outlive this call but not across calls; the
@@ -166,92 +210,329 @@ namespace lux::editor
 
         // ── Selection — drives F-focus + viewport picking ───────────────
         //
-        // Selection lives in the shared StateRegistry (one source of truth):
-        // this scene READS the `Selection` for F-focus + the gizmo and WRITES it
-        // from onPick. No per-scene selection state or callback.
+        // The Selection is SCENE-DOMAIN state: it points into
+        // this scene's World, so this scene owns it — born bound to the World
+        // at bringUp, cleared at tearDown, gone with the object. Panels hold a
+        // raw pointer refreshed through SceneController::setOnSceneChanged
+        // (null between scenes); scene systems get it via the tick context.
 
-        /// Resolve a screen-space click to an entity and write the shared
-        /// `Selection` state. Coordinates are content-rect-
+        /// Resolve a screen-space click to an entity and write this scene's
+        /// `Selection`. Coordinates are content-rect-
         /// local pixels, top-left = (0,0); @p cw / @p ch are the content size;
-        /// the projection is read from the active CameraComponent. Sets the
+        /// the projection is read from the active Camera3DComponent. Sets the
         /// hit entity (or null on miss). No-op when not live.
         void onPick(float cx, float cy, float cw, float ch);
+
+        /// Convert a content-rect-local viewport point to the 2D world position
+        /// under it (ortho screen→world through the editor camera's Camera2D
+        /// cache — the same math the 2D pick uses). Empty when the scene is not
+        /// live / not a 2D-camera scene. Used by "create HERE" (viewport
+        /// right-click → spawn at the tap).
+        [[nodiscard]] std::optional<lux::spatial::Position2D>
+            viewportToWorld2D(float cx, float cy, float cw, float ch) const;
+        [[nodiscard]] std::optional<lux::spatial::Position3D>
+            viewportFocus3D() const;
 
         /// True only while the camera is in fly mode (RMB held in the
         /// viewport). LuxEditor reads this each frame to flip the GLFW
         /// cursor between NORMAL and DISABLED.
         [[nodiscard]] bool cameraWantsCursorCapture() const noexcept;
 
+        // ── Edit/Play — Cooked Parity ─────────────────────────────────────
+
+        /// Capture immutable Authoring documents, enqueue a deterministic
+        /// Spatial3D EntityScene Cook, then start an independent SceneRuntime
+        /// from LXSC/LXES. The edit Registry is never used as the simulated
+        /// World. @p mapper has an editor-stable address; @p actions may be
+        /// null.
+        [[nodiscard]] bool enterPlay(const lux::input::ActionMapper&        mapper,
+                                     const lux::input::InputActionRegistry* actions);
+
+        /// Cancel an in-flight Cook or close the cooked Play Runtime, then
+        /// restore the edit Runtime's viewport camera. No-op when already idle.
+        void exitPlay();
+
+        /// True between enterPlay and exitPlay.
+        [[nodiscard]] bool isPlaying() const noexcept
+        { return play_cook_pending_ || play_runtime_ != nullptr; }
+
+        // ── Entity authoring — scene-domain actions ────────────
+
+        /// Asynchronously load/decode every model dependency, wait for mesh and
+        /// material GPU residency without waiting for a render frame, then
+        /// create the ECS tree at a main-thread safe point. The completion is
+        /// exactly once and carries a structured failure.
+        [[nodiscard]] lux::exec::AsyncSubmitResult spawnModel(
+            lux::asset::asset_id_t model_id,
+            InstanceSpawnClient::Completion completion = {});
+
+        // ── File binding — the .luxworld this edit session saves to ──
+        //
+        // Scene-domain state (moved in from SceneController):
+        // bound at bringUp from BringUpConfig::from_scene_file, re-bound by a
+        // successful saveTo. Empty = a new scene never saved anywhere yet.
+
+        [[nodiscard]] const std::filesystem::path& scenePath() const noexcept
+        { return scene_path_; }
+
+        /// Serialize this scene's World to @p file (active camera + assembly
+        /// plan ride in the header) and re-bind scenePath() on success.
+        [[nodiscard]] bool saveTo(const std::filesystem::path& file);
+
+        /// saveTo(scenePath()); false when the scene has no bound file yet
+        /// (the caller then routes through a Save-As dialog).
+        [[nodiscard]] bool save();
+
         // ── Accessors ──────────────────────────────────────────────────
 
-        lux::ecs::World&        world()       noexcept { return *world_; }
-        const lux::ecs::World&  world() const noexcept { return *world_; }
+        lux::ecs::World&        world()       noexcept { return runtime_->world(); }
+        const lux::ecs::World&  world() const noexcept { return runtime_->world(); }
 
-        lux::render::RenderSceneId   sceneId()   const noexcept { return scene_id_; }
-        lux::render::ViewHandle      mainView()  const noexcept { return main_view_; }
+        /// This scene's Selection (scene-domain): born bound to
+        /// the World at bringUp, cleared at tearDown. Pointers handed out live
+        /// exactly as long as this scene — consumers re-target on scene change.
+        [[nodiscard]] Selection&       selection()       noexcept { return selection_; }
+        [[nodiscard]] const Selection& selection() const noexcept { return selection_; }
+
+        [[nodiscard]] std::size_t indexedWorldActorCount() const noexcept;
+        [[nodiscard]] std::size_t materializedWorldActorCount() const noexcept
+        {
+            return materialized_actor_ids_.size();
+        }
+        [[nodiscard]] WorldAuthoringResidencyStats
+            worldAuthoringResidencyStats() const noexcept
+        {
+            return {
+                world_descriptor_pages_.size(),
+                descriptor_page_resident_bytes_,
+                authoring_instance_clusters_.size(),
+                authoring_instance_resident_count_,
+                dirty_instance_pages_.size(),
+                pending_viewport_descriptor_pages_.size(),
+                pending_instance_pages_.size()};
+        }
+        [[nodiscard]] lux::authoring::WorldSourceDocument*
+        worldSource() noexcept
+        {
+            return world_source_.get();
+        }
+
+        [[nodiscard]] const lux::authoring::WorldSourceDocument*
+        worldSource() const noexcept
+        {
+            return world_source_.get();
+        }
+        [[nodiscard]] std::optional<
+            lux::runtime::spatial3d::Physics3DSceneSnapshot>
+            physics3DDebugSnapshot() noexcept;
+        [[nodiscard]] std::optional<
+            lux::navigation::NavigationPathResult>
+        queryNavigationPath(
+            const lux::navigation::NavigationPathRequest& request) noexcept;
+        [[nodiscard]] std::vector<
+            lux::authoring::WorldDescriptorIndexActor> queryWorldActors(
+                std::string_view text,
+                std::size_t offset,
+                std::size_t maximum) const;
+        [[nodiscard]] bool requestWorldActorProxy(
+            lux::entity_scene::PersistentEntityId actor,
+            bool select = true);
+
+        [[nodiscard]] std::optional<lux::authoring::EditableWorldInstance>
+            worldInstance(lux::authoring::WorldInstanceId instance) const;
+        [[nodiscard]] lux::cxx::expected<void, std::string>
+            updateWorldInstance(
+                lux::authoring::EditableWorldInstance instance);
+        [[nodiscard]] lux::cxx::expected<
+            lux::authoring::WorldInstanceId,
+            std::string>
+            duplicateWorldInstance(lux::authoring::WorldInstanceId instance);
+        [[nodiscard]] lux::cxx::expected<void, std::string>
+            deleteWorldInstance(lux::authoring::WorldInstanceId instance);
+        [[nodiscard]] lux::cxx::expected<
+            lux::entity_scene::PersistentEntityId,
+            std::string>
+            convertWorldInstanceToActor(
+                lux::authoring::WorldInstanceId instance);
+        [[nodiscard]] lux::cxx::expected<
+            lux::authoring::WorldInstanceId,
+            std::string>
+            convertWorldActorToInstance(
+                lux::entity_scene::PersistentEntityId actor);
+        [[nodiscard]] const std::string& worldInstanceEditError() const noexcept
+        {
+            return instance_edit_error_;
+        }
+        [[nodiscard]] const std::string&
+            worldInstancePreviewStatus() const noexcept
+        {
+            return instance_preview_status_;
+        }
+
+        [[nodiscard]] bool requestWorldTerrainRegion(
+            lux::authoring::TerrainSetId terrain,
+            lux::authoring::PartitionSpaceId space,
+            std::vector<lux::authoring::WorldCellKey> cells);
+        [[nodiscard]] bool applyWorldTerrainBrush(
+            lux::authoring::TerrainSetId terrain,
+            std::span<const lux::authoring::WorldCellKey> cells,
+            const lux::spatial::Position3D& center,
+            const lux::authoring::WorldTerrainBrush& brush);
+        [[nodiscard]] bool undoWorldTerrainEdit();
+        [[nodiscard]] bool redoWorldTerrainEdit();
+        [[nodiscard]] lux::cxx::expected<
+            lux::authoring::WorldTerrainHeightmap16,
+            lux::authoring::WorldTerrainAuthoringFailure>
+        exportWorldTerrainHeightmap16(
+            lux::authoring::TerrainSetId terrain,
+            std::span<const lux::authoring::WorldCellKey> cells) const;
+        [[nodiscard]] bool importWorldTerrainHeightmap16(
+            lux::authoring::TerrainSetId terrain,
+            std::span<const lux::authoring::WorldCellKey> cells,
+            const lux::authoring::WorldTerrainHeightmap16& image);
+        [[nodiscard]] bool requestImportWorldTerrainHeightmap16(
+            lux::authoring::TerrainSetId terrain,
+            std::vector<lux::authoring::WorldCellKey> cells,
+            std::filesystem::path raw16_file);
+        [[nodiscard]] bool requestExportWorldTerrainHeightmap16(
+            lux::authoring::TerrainSetId terrain,
+            std::vector<lux::authoring::WorldCellKey> cells,
+            std::filesystem::path raw16_file);
+        [[nodiscard]] WorldTerrainEditStats worldTerrainEditStats() const;
+        [[nodiscard]] std::optional<lux::authoring::PartitionSpaceId>
+            defaultWorldTerrainSpace() const;
+        [[nodiscard]] std::optional<lux::spatial::Position3D>
+            makeWorldTerrainPosition(
+                lux::authoring::PartitionSpaceId space,
+                const lux::authoring::WorldCellKey& cell,
+                float local_x,
+                float local_z) const;
+
+        lux::render::RenderSceneId sceneId() const noexcept
+        {
+            const auto* active = play_runtime_ ? play_runtime_.get()
+                                               : runtime_.get();
+            const auto* render = active
+                ? lux::runtime::renderScene(*active)
+                : nullptr;
+            return render ? render->sceneId() : lux::render::RenderSceneId{};
+        }
+        // mainView() 删除(批 3):零调用点,而且「主视图」不再是运行时的一个字段 ——
+        // view 归相机所有,要查就查 `view<ViewPresentComponent, RenderViewBindingComponent>`。
+        /// 主视图的显式 SAMPLED 渲染目标(视口面板经 target sentinel 采样)。
+        lux::render::RenderTargetId  mainTarget() const noexcept { return main_target_.id(); }
+
+        // (曾有 features() 转发:场景级的特性目录副本。目录如今是进程域的
+        //  一份,面板经 LuxEditor::featureCatalog() 直取;每场景句柄住在
+        //  RenderSystem 的绑定表 —— 裁决二,副本消亡。)
 
         OrbitCameraState&            orbit()        noexcept { return orbit_; }
-        const OrbitCameraState&      orbit() const  noexcept { return orbit_; }
-
-        /// The camera entity. Has TransformComponent + WorldTransformComponent
-        /// + CameraComponent; CameraSystem rebuilds its view/proj each tick.
-        /// Returns `null_entity` before bringUp / after tearDown.
-        lux::meta::entity_id         cameraEntity() const noexcept { return camera_entity_; }
 
         /// True only between a successful `bringUp` and a `tearDown`.
         [[nodiscard]] bool isLive() const noexcept { return live_; }
 
-        /// The scene-global view/streaming settings singleton (the UE WorldSettings
-        /// model), creating it with struct defaults when the scene has none. The
-        /// Scene Settings panel edits this in place; `tick()` dirty-applies it to
-        /// streaming + the render SpatialCull.
-        /// Main-thread only (mutates the registry). Precondition: scene is live.
-        lux::pack::SceneSettingsComponent& ensureSceneSettings();
+        /// Capability selection comes only from the LXSC/LXWA contribution
+        /// list. There is no top-level 2D/3D scene discriminator.
+        [[nodiscard]] bool hasContribution(
+            std::string_view contribution) const noexcept;
 
-        /// Register a pluggable scene subsystem (streaming, anim resolve, camera,
-        /// gizmo, ...). Called during bringUp. tick() runs each registered system in
-        /// its phase(s) — a scene that doesn't want a capability simply omits it,
-        /// instead of the old hardcoded `if (member_)` god-tick. Order matters
-        /// (load-bearing); register in the intended run order.
-        void registerSceneSystem(std::unique_ptr<EditorSceneSystem> sys)
+        /// FQNs of component schemas installed in this editor process. Scene
+        /// contributions assemble behavior and services; they are deliberately
+        /// not a second component-type catalog. Recomputed on demand (only the
+        /// Add-Component menu asks).
+        [[nodiscard]] std::vector<std::string> availableComponentFqns() const
         {
-            if (sys) systems_.push_back(std::move(sys));
+            std::vector<std::string> result;
+            result.reserve(components_.all().size());
+            for (const auto& component : components_.all())
+                result.emplace_back(component.fullName());
+            return result;
         }
 
+        /// The scene-global Render View settings singleton. Spatial selection
+        /// policy belongs to the installed scene contributions/components.
+        /// Main-thread only (mutates the registry). Precondition: scene is live.
+        lux::ecs::SceneSettingsComponent& ensureSceneSettings();
+
     private:
-        lux::ui::UIRenderSession*           session_{nullptr};
-        lux::asset::AssetManager*           assets_{nullptr};
-        const EditorBuiltins*               builtins_{nullptr};
-        const EditorRenderInfra*            infra_{nullptr};
+        [[nodiscard]] CameraSceneSystem* cameraSystem() noexcept;
+        [[nodiscard]] const CameraSceneSystem* cameraSystem() const noexcept;
+        // Borrowed, never null: all three outlive the scene by construction
+        // (LuxEditor::init builds them before any scene exists and drops them
+        // after the last one is gone). References, so that stays checkable by
+        // the compiler rather than by a guard at every use site.
+        lux::ui::UIRenderFrameSession&           session_;
+        lux::asset::AssetManager&           assets_;
+        const EditorRenderInfra&            infra_;
+        lux::asset_runtime::AssetClient      asset_client_;
+        lux::exec::AsyncRuntime&              async_;
+        EditorAsyncService&                   editor_async_;
+        const lux::ecs::ComponentTypeCatalog& components_;
 
-        std::unique_ptr<lux::ecs::World>            world_;
-        std::unique_ptr<lux::render_bridge::RenderableSystem> renderable_system_;
+        /// The host-neutral scene runtime: render-scene orchestration, World
+        /// assembly, bridges, scene load, the three-phase tick and the
+        /// simulation lifecycle all live THERE now — this class is its editor
+        /// HOST (offscreen target, scaffolding camera, selection/pick,
+        /// Authoring session, panels). Constructed in bringUp, destroyed in
+        /// tearDown. Cooked Play owns a separate runtime below.
+        std::unique_ptr<lux::runtime::SceneRuntime> runtime_;
 
-        // Injected async-load hook (EngineExecutor::requestLoad), forwarded to the
-        // RenderableSystem + the registered scene systems (anim resolver, streaming)
-        // at bringUp.
-        std::function<void(const lux::asset::asset_id_t&)> request_load_{};
+        /// Scene-scoped async intent owner. Declared after runtime_ so passive
+        /// destruction closes it before the World; tearDown closes it actively
+        /// while AsyncRuntime/ResidencyAssembly are still available.
+        std::unique_ptr<InstanceSpawnClient> instance_spawn_;
+        std::vector<lux::asset::AssetRef> spawn_handoff_pins_;
 
-        // Pluggable scene subsystems, run by tick() in phase order (see
-        // EditorSceneSystem.hpp). Replaces the hardcoded `if (member_)` god-tick;
-        // each subsystem (camera, anim resolver, selection, world streaming, …) is
-        // registered in bringUp and owns its own long-lived state. A scene that
-        // doesn't want a capability simply omits its registration. Cleared in
-        // tearDown so the next bringUp starts fresh.
-        std::vector<std::unique_ptr<EditorSceneSystem>> systems_;
+        // Generation-checked observation into the runtime-owned Schedule.
+        lux::ecs::SystemHandle<CameraSceneSystem> camera_system_{};
 
-        // Non-owning back-pointer into systems_ for the one cross-cutting query the
-        // host still needs from EditorScene: cameraWantsCursorCapture() forwards here.
-        // Set when the CameraSceneSystem is registered (bringUp); nulled in tearDown.
-        CameraSceneSystem*                  camera_system_{nullptr};
+        [[nodiscard]] lux::meta::entity_id commitSpawnModel(
+            InstanceSpawnPlan&& plan);
+        [[nodiscard]] std::shared_ptr<const EntityScenePlayCookJob>
+            buildEntityScenePlayCookJob(
+                const std::filesystem::path& root_document);
+        void adoptCookedPlay(
+            CookEntitySceneValue value,
+            std::uint64_t generation) noexcept;
+        [[nodiscard]] bool closeCookedPlay() noexcept;
+        void updateAuthoringProxyWindow();
+        void requestAuthoringDescriptorPage(
+            const lux::authoring::WorldDescriptorPageReference& page);
+        void requestAuthoringInstancePage(
+            uuids::uuid descriptor_page,
+            const lux::authoring::WorldPageSourceDescriptor& page);
+        [[nodiscard]] lux::authoring::WorldDescriptorPageDocument*
+        cachedAuthoringDescriptorPage(uuids::uuid page) noexcept;
+        void cacheAuthoringDescriptorPage(
+            lux::authoring::WorldDescriptorPageDocument page);
+        void trimAuthoringDescriptorPageCache() noexcept;
+        [[nodiscard]] bool activateAuthoringInstancePage(
+            uuids::uuid descriptor_page,
+            lux::authoring::WorldPageSourceDescriptor descriptor,
+            lux::authoring::WorldInstancePageDocument page);
+        void clearAuthoringInstanceClusters() noexcept;
+        void restoreAuthoringViewpoint(
+            lux::meta::entity_id source_camera) noexcept;
 
-        // Mirrored from `infra_` for fast access — the render-side scene / view live
-        // for the editor process's lifetime; tearDown does NOT destroy them. (All
-        // feature op-ids — camera, skinning, light, sky, grid, line, tonemap — are
-        // NOT mirrored here; consumers look them up BY NAME from
-        // infra_->feature_registry, e.g. ops<ViewCameraOperationIds>("StandardViewCamera").)
-        lux::render::RenderSceneId          scene_id_{};
-        lux::render::ViewHandle             main_view_{};
+        // Pick strategy: bound once at bringUp next to
+        // the camera navigator; onPick calls it kind-blind and applies the
+        // shared root-promotion + selection epilogue.
+        lux::meta::entity_id (EditorScene::*pick_fn_)(float, float, float, float){nullptr};
+        lux::meta::entity_id pickImage2D(float cx, float cy, float cw, float ch);
+        lux::meta::entity_id pickMesh3D(float cx, float cy, float cw, float ch);
+
+        // The HOST-owned render target: bringUp creates the offscreen SAMPLED
+        // target the viewport panel samples, hands its id to the runtime
+        // (which composes the scene's view onto it) and tearDown destroys it
+        // AFTER the runtime released the view/scene. Scene/view/features are
+        // runtime-owned now.
+        lux::render::RenderTargetLease      main_target_{};
+
+        /// 视口那一路图的「出图槽位」（target / 层序 / 创建尺寸）。bringUp 记一次，
+        /// Play/Stop 在两台相机之间搬的就是它。存成成员而不是每次从世界里捞：
+        /// Play 且**没有**激活相机时，槽位被摘掉后世界里一份都不剩，Stop 就没有
+        /// 可还原的东西了 —— 那正是「无激活相机 → 黑屏」这条路径的回程。
+        lux::ecs::ViewPresentComponent      viewport_slot_{};
 
         // Resize coalescing — set by callback, consumed by processPendingResize.
         uint32_t pending_resize_w_{0};
@@ -263,18 +544,92 @@ namespace lux::editor
         OrbitCameraState                    orbit_{};
         float                               elapsed_{0.f};
 
-        // Shared editor selection state (ensured from the StateRegistry; held by
-        // shared_ptr so it lives while in use). onPick writes it; F-focus + the
-        // gizmo (both now in scene systems) read it via the tick context. Single
-        // source of truth.
-        std::shared_ptr<Selection>          sel_;
+        // THIS scene's Selection (scene-domain, C11): value member — its
+        // lifetime IS the scene's. onPick writes it; F-focus + the gizmo
+        // (scene systems) read it via the tick context; panels re-target
+        // their pointer on scene change. Single source of truth.
+        Selection                           selection_;
 
+        // File binding (C11, from SceneController): bound at bringUp, re-bound
+        // by saveTo. Empty = never saved.
+        std::filesystem::path               scene_path_;
+        std::filesystem::path               play_cache_root_;
+
+        /// Non-null only for the new LXWA Authoring path. Runtime never sees
+        /// this object: Editor parses/materializes it into an explicit
+        /// transient Runtime World, and Cook consumes the same root later.
+        std::unique_ptr<lux::authoring::WorldSourceDocument> world_source_;
+        std::unique_ptr<lux::authoring::WorldDescriptorIndex>
+            world_descriptor_index_;
+        struct CachedWorldDescriptorPage final
+        {
+            lux::authoring::WorldDescriptorPageDocument document;
+            std::size_t resident_bytes{0u};
+            std::uint64_t last_use{0u};
+        };
+        std::unordered_map<std::string, CachedWorldDescriptorPage>
+                                            world_descriptor_pages_;
+        std::unordered_map<
+            std::string,
+            lux::authoring::WorldActorSourceDescriptor>
+                                            materialized_actor_descriptors_;
+        std::size_t                         descriptor_page_resident_bytes_{0u};
+        std::uint64_t                       descriptor_page_cache_clock_{0u};
+        struct AuthoringEntityState final
+        {
+            std::vector<entt::entity> created_entities;
+            std::vector<lux::entity_scene::PersistentEntityId> world_entity_ids;
+            entt::entity primary_camera{entt::null};
+        }                                   authoring_load_result_{};
+        std::unordered_set<std::string>      pending_actor_proxies_;
+        std::unordered_set<std::string>      pending_descriptor_pages_;
+        std::unordered_set<std::string>
+                                            pending_viewport_descriptor_pages_;
+        std::unordered_set<std::string>      pending_instance_pages_;
+        std::unordered_set<std::string>      materialized_actor_ids_;
+        std::unordered_set<std::string>      dirty_actor_ids_;
+        struct AuthoringInstanceCluster final
+        {
+            uuids::uuid descriptor_page{};
+            lux::authoring::WorldPageSourceDescriptor descriptor;
+            lux::authoring::WorldInstancePageDocument page;
+        };
+        std::unordered_map<std::string, AuthoringInstanceCluster>
+                                            authoring_instance_clusters_;
+        std::unordered_set<std::string>      desired_instance_pages_;
+        std::unordered_set<std::string>      dirty_instance_pages_;
+        std::string                         instance_edit_error_;
+        std::string                         instance_preview_status_;
+        std::size_t                         authoring_instance_resident_count_{0u};
+        std::unordered_map<
+            std::string,
+            lux::authoring::WorldTerrainPageDocument> terrain_pages_;
+        std::unordered_set<std::string>      dirty_terrain_pages_;
+        std::vector<lux::authoring::WorldTerrainEditTransaction>
+                                            terrain_undo_stack_;
+        std::vector<lux::authoring::WorldTerrainEditTransaction>
+                                            terrain_redo_stack_;
+        std::string                         terrain_edit_error_;
+        bool                                terrain_load_pending_{false};
+        bool                                terrain_heightmap_io_pending_{false};
+        float                                next_proxy_window_update_{0.0f};
         // M2: per-mesh-asset local-space AABB cache. The serializer does
         // NOT pre-compute `Mesh::bounds` today, so the first picking call
         // that references a mesh scans its vertex positions; subsequent
         // picks hit the cache. Cleared on `tearDown`.
         std::unordered_map<lux::asset::asset_id_t, lux::math::AABB>
                                             mesh_aabb_cache_;
+
+        // ── Edit/Play state ──────────────────────────────────────────────
+        struct PlayCookControl;
+        std::shared_ptr<PlayCookControl>         play_cook_control_;
+        std::shared_ptr<const lux::asset::AssetVfs> play_section_vfs_;
+        std::unique_ptr<lux::runtime::SceneRuntime> play_runtime_;
+        std::unique_ptr<lux::runtime::SceneScriptRuntime> play_simulation_;
+        const lux::input::ActionMapper*          play_mapper_{nullptr};
+        const lux::input::InputActionRegistry*   play_actions_{nullptr};
+        std::uint64_t                            play_generation_{0u};
+        bool                                     play_cook_pending_{false};
 
         bool                                live_{false};
     };

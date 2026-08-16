@@ -5,7 +5,7 @@
 //    - Two offscreen views of one scene (main viewport + secondary panel)
 //    - Deferred rendering with shadows, point clouds, grid, skybox, tonemap
 //    - ImGui panels to control mesh transform, lights, point cloud gen/remove
-//    - Uses UIRenderServer + UIRenderSession (ImGui + content scene)
+//    - Uses UIRenderServer + UIRenderFrameSession (ImGui + content scene)
 //
 //  Requires a real GPU (Vulkan).  Opens a window; press ESC or close to exit.
 // ============================================================================
@@ -15,29 +15,33 @@
 #include <lux/engine/ui/Panel.hpp>
 #include <lux/engine/ui/SceneViewElement.hpp>
 #include <lux/engine/ui/UIRenderServer.hpp>
-#include <lux/engine/ui/UIRenderSession.hpp>
+#include <lux/engine/ui/UIRenderFrameSession.hpp>
 #include <lux/engine/ui/ImGuiCommConfig.hpp>
 #include <lux/engine/ui/ImGuiLuxWidgets.hpp>
 
 // ── Render comm ─────────────────────────────────────────────────────────
-#include <lux/engine/render/comm/RenderProtocol.hpp>
-#include <lux/engine/render/core/RenderTypes.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
+#include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>
 
 // ── Feature operations ──────────────────────────────────────────────────
-#include <lux/engine/render/renderer/features/deffer/DeferredGBufferOperation.hpp>
-#include <lux/engine/render/renderer/features/deffer/DeferredLightingOperation.hpp>
-#include <lux/engine/render/renderer/features/light/LightOperation.hpp>   // LightFeature / LightProxy / LightDescriptor
-#include <lux/engine/render/renderer/features/material/MaterialOperation.hpp> // kStandardMaterialFeatureFactory
-#include <lux/engine/render/renderer/features/meshstack/MeshStackOperation.hpp> // kStandardMeshStackFeatureFactory
-#include <lux/engine/render/renderer/features/shadow/ShadowMapOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/ShadowQualityParams.hpp>
-#include <lux/engine/render/renderer/features/FeatureParamsOperation.hpp>   // FeatureParamsProxy
-#include <lux/engine/render/renderer/features/shadow/MeshShadowOperation.hpp>
-#include <lux/engine/render/renderer/features/point_cloud/PointCloudOperation.hpp>
-#include <lux/engine/render/renderer/features/grid/GridOperation.hpp>
-#include <lux/engine/render/renderer/features/sky_box/SkyboxOperation.hpp>
-#include <lux/engine/render/renderer/features/postprocess/TonemapOperation.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
+#include <lux/engine/function/render/client/genops/DeferredGBufferOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/HzbOperation.ops.hpp>   // kHzbFeatureFactory / HzbCommTag
+#include <lux/engine/function/render/client/genops/DeferredLightingOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>   // LightFeature / LightProxy / LightDescriptor
+#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp> // kMaterialFeatureFactory
+#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp> // kMeshStackFeatureFactory
+#include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/client/features/shadow/ShadowQualityParams.hpp>
+#include <lux/engine/function/render/client/protocol/FeatureParamsOperation.hpp>   // FeatureParamsProxy
+#include <lux/engine/function/render/client/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/PointCloudOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/Grid3DOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/SkyboxOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/TonemapOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 
 // ── Resource descriptions ───────────────────────────────────────────────
 #include <lux/engine/description/Mesh.hpp>
@@ -47,15 +51,15 @@
 #include <Eigen/Geometry>
 
 // ── Graph material (W5a: rdesc::Material retired; materials are graph materials) ──
-#include <lux/engine/render/resources/material/GraphMaterialData.hpp>
+#include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
 #include "graph_test_helpers.hpp"   // lux::mgtest::makeColorGraph + compileGraphPass
 #include <span>
 #include <string>
 
 // ── Asset loading ───────────────────────────────────────────────────────
-#include <lux/engine/asset/AssetManager.hpp>
-#include <lux/engine/asset/TextureSerDeser.hpp>
-#include <lux/engine/asset/TextureAsset.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/resource/asset/TextureAsset.hpp>
 
 // ── Window ──────────────────────────────────────────────────────────────
 #include <lux/engine/window/LuxWindow.hpp>
@@ -560,7 +564,7 @@ private:
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Begin recording a frame — issue session commands after this.
-static void openFrame(lux::ui::UIRenderSession &session,
+static void openFrame(lux::ui::UIRenderFrameSession &session,
                       lux::ui::UISystem &ui)
 {
     lux::window::LuxWindow::pollEvents();
@@ -568,7 +572,7 @@ static void openFrame(lux::ui::UIRenderSession &session,
     while (!session.beginFrame())
     {
         // Drain any pending submission so beginFrame can succeed
-        session.submitFrame();
+        session.trySubmitFrame();
         session.pumpReplies();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         lux::window::LuxWindow::pollEvents();
@@ -576,16 +580,16 @@ static void openFrame(lux::ui::UIRenderSession &session,
 }
 
 /// End recording — submit ImGui draw data + frame, pump replies.
-static void closeFrame(lux::ui::UIRenderSession &session)
+static void closeFrame(lux::ui::UIRenderFrameSession &session)
 {
     auto *dd = ImGui::GetDrawData();
     session.submitImGuiDrawData(RenderSceneId{}, dd);
-    session.submitFrame();
+    session.trySubmitFrame();
     session.pumpReplies();
 }
 
 /// One empty frame (no user commands).
-static void pumpFrame(lux::ui::UIRenderSession &session,
+static void pumpFrame(lux::ui::UIRenderFrameSession &session,
                       lux::ui::UISystem &ui)
 {
     openFrame(session, ui);
@@ -594,13 +598,51 @@ static void pumpFrame(lux::ui::UIRenderSession &session,
 
 /// Pump frames until a pending request becomes ready.
 template<typename T>
-static T waitReady(lux::ui::UIRenderSession &session,
+static T waitReady(lux::ui::UIRenderFrameSession &session,
                    RenderRequest<T> req,
                    lux::ui::UISystem &ui)
 {
     while (!req.isReady())
         pumpFrame(session, ui);
-    return req.result();
+    return req.tryResult()->get();
+}
+
+template<typename T>
+static T waitReady(
+    RenderControlSession& control,
+    RenderRequest<T> request,
+    lux::ui::UISystem&
+)
+{
+    while (!request.isReady())
+        if (!control.waitAndPumpReplies())
+            break;
+    return request.tryResult()->get();
+}
+
+template<typename T>
+static T waitReady(
+    RenderUploadSession& upload,
+    RenderRequest<T> request,
+    lux::ui::UISystem&
+)
+{
+    while (!request.isReady())
+        if (!upload.waitAndPumpReplies())
+            break;
+    return request.tryResult()->get();
+}
+
+template<typename T>
+static T waitReady(
+    RenderUploadSession& upload,
+    UploadSubmitResult<T> submitted,
+    lux::ui::UISystem& ui
+)
+{
+    if (!submitted)
+        return {};
+    return waitReady(upload, std::move(submitted.value()), ui);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -631,19 +673,24 @@ int main()
     ControlPanel        ctrl_panel(state);
 
     lux::ui::UISystem ui(window);
-    ui.addPanel(&main_vp);
-    ui.addPanel(&sec_vp);
-    ui.addPanel(&ctrl_panel);
+    auto main_registration = ui.registerPanel(main_vp);
+    auto secondary_registration = ui.registerPanel(sec_vp);
+    auto control_registration = ui.registerPanel(ctrl_panel);
+    if (!main_registration || !secondary_registration || !control_registration)
+        return 1;
 
     // ── 2. Communication channel + render thread ────────────────────
-    auto channel = RenderProgramChannel<>::create();
+    auto channel = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel = RenderUploadChannel<>::create();
     auto sync    = std::make_shared<RenderChannelSync>();
 
     lux::ui::ImGuiOperationIds imgui_ops{};
     std::atomic<bool> server_running{false};
 
     std::thread render_thread([&] {
-        auto server = std::make_unique<lux::ui::UIRenderServer>(channel, sync);
+        auto server = std::make_unique<lux::ui::UIRenderServer>(
+            channel, control_channel, upload_channel, sync);
 
         lux::render::ServerConfig cfg;
         cfg.enable_validation = true;
@@ -676,38 +723,47 @@ int main()
     while (!server_running.load(std::memory_order_acquire))
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    auto session = std::make_unique<lux::ui::UIRenderSession>(channel, sync, imgui_ops);
-    lux::ui::ImGuiProxy imgui_proxy(*session, imgui_ops);
+    auto session = std::make_unique<lux::ui::UIRenderFrameSession>(channel, sync, imgui_ops);
+    RenderControlSession control(control_channel, sync);
+    RenderUploadSession upload(upload_channel, sync);
+    lux::render::testing::DirectRenderUploadClient upload_client{upload};
+
 
     std::printf("  Server running. Session created.\n");
 
     // ── 3. Create content scene ─────────────────────────────────────
     openFrame(*session, ui);
-    auto scene_req = session->createScene("IntegrationScene");
+    auto scene_req = control.createScene("IntegrationScene");
     closeFrame(*session);
-    auto scene_reply = waitReady(*session, std::move(scene_req), ui);
+    auto scene_reply = waitReady(control, std::move(scene_req), ui);
     auto scene_id = scene_reply.scene_id;
     std::printf("  Scene created (id=%u)\n", scene_id.index);
 
     openFrame(*session, ui);
-    auto active_req = session->setActiveScene(scene_id, true);
+    auto active_req = control.setActiveScene(scene_id, true);
     closeFrame(*session);
-    waitReady(*session, std::move(active_req), ui);
+    waitReady(control, std::move(active_req), ui);
 
-    // ── 4. Create two offscreen views via ImGuiProxy ────────────────
+    // ── 4. Create two offscreen views + SAMPLED targets ─────────────
     Eigen::Vector3f eye1(kCamRadius, kCamHeight, 0.f);
     Eigen::Vector3f target(0.f, 1.f, 0.f);
     Eigen::Vector3f up(0.f, 1.f, 0.f);
     Eigen::Matrix4f V1 = buildViewMatrix(eye1, target, up);
     Eigen::Matrix4f P1 = buildProjMatrix(60.f * kPi / 180.f, 800.f / 600.f, 0.1f, 200.f);
 
+    // RT 一等化:视图 + 显式 SAMPLED 目标 + setLayer(原 addUIView 命令面)。
     openFrame(*session, ui);
-    auto v1_req = imgui_proxy.addUIView(scene_id, {800, 600}, "MainView",
-                                        V1.data(), P1.data(), eye1.data());
+    auto v1_req = control.addView(scene_id, {800, 600}, "MainView");
+    auto t1_req = control.createOffscreenRenderTarget(
+        {800, 600}, lux::render::kTargetFlagSampled);
     closeFrame(*session);
-    auto view1_reply = waitReady(*session, std::move(v1_req), ui);
-    auto view1 = view1_reply.view;
+    auto view1 = waitReady(control, std::move(v1_req), ui).view;
+    auto target1 = waitReady(control, std::move(t1_req), ui).target;
+    openFrame(*session, ui);
+    control.setLayer(target1, 0, scene_id, view1);
+    closeFrame(*session);
     std::printf("  View 1 (main, rotating camera) created: handle=%u\n", view1.index);
+    (void)V1; (void)P1;   // camera matrices are pushed per-frame via ViewCameraProxy below
 
     // Secondary view — top-down angled
     Eigen::Vector3f eye2(0.f, 20.f, 10.f);
@@ -715,22 +771,27 @@ int main()
     Eigen::Matrix4f P2 = buildProjMatrix(60.f * kPi / 180.f, 400.f / 300.f, 0.1f, 200.f);
 
     openFrame(*session, ui);
-    auto v2_req = imgui_proxy.addUIView(scene_id, {400, 300}, "SecondaryView",
-                                        V2.data(), P2.data(), eye2.data());
+    auto v2_req = control.addView(scene_id, {400, 300}, "SecondaryView");
+    auto t2_req = control.createOffscreenRenderTarget(
+        {400, 300}, lux::render::kTargetFlagSampled);
     closeFrame(*session);
-    auto view2_reply = waitReady(*session, std::move(v2_req), ui);
-    auto view2 = view2_reply.view;
+    auto view2 = waitReady(control, std::move(v2_req), ui).view;
+    auto target2 = waitReady(control, std::move(t2_req), ui).target;
+    openFrame(*session, ui);
+    control.setLayer(target2, 0, scene_id, view2);
+    closeFrame(*session);
     std::printf("  View 2 (secondary, fixed camera) created: handle=%u\n", view2.index);
     std::printf("  Camera update order default: rotating(view1=%u) -> fixed(view2=%u)\n",
         view1.index, view2.index);
+    (void)V2; (void)P2;
 
     // Wire sentinel texture IDs to SceneViewElements
     main_vp.sceneView().setTextureID(
-        lux::ui::encodeSceneViewSentinel(scene_id, view1.index));
+        lux::ui::encodeRenderTargetSentinel(target1));
     sec_vp.sceneView().setTextureID(
-        lux::ui::encodeSceneViewSentinel(scene_id, view2.index));
+        lux::ui::encodeRenderTargetSentinel(target2));
 
-    // Resize callbacks — defer actual resizeView to in-frame processing
+    // Resize callbacks — defer actual resizeTarget to in-frame processing
     struct PendingResize { uint32_t w{0}, h{0}; bool pending{false}; };
     PendingResize pending_resize_v1, pending_resize_v2;
     main_vp.sceneView().setResizeCallback([&](uint32_t w, uint32_t h) {
@@ -742,32 +803,34 @@ int main()
 
     // ── 5. Register feature types (batched in one frame) ───────────
     openFrame(*session, ui);
-    auto view_cam_req = session->registerFeatureType(kStandardViewCameraFeatureFactory);
-    auto gbuf_req   = session->registerFeatureType(kDeferredGBufferFeatureFactory);
-    auto lit_req    = session->registerFeatureType(kDeferredLightingFeatureFactory);
-    auto light_req  = session->registerFeatureType(kLightFeatureFactory);
-    auto material_req = session->registerFeatureType(kStandardMaterialFeatureFactory);
-    auto mesh_stack_req = session->registerFeatureType(kStandardMeshStackFeatureFactory);
-    auto shmap_req  = session->registerFeatureType(kShadowMapFeatureFactory);
-    auto mshsw_req  = session->registerFeatureType(kMeshShadowFeatureFactory);
-    auto pc_req     = session->registerFeatureType(kPCFeatureSimpleFactory);
-    auto grid_req   = session->registerFeatureType(kGridFeatureFactory);
-    auto sky_req    = session->registerFeatureType(kSkyboxFeatureFactory);
-    auto tm_req0    = session->registerFeatureType(kTonemapFeatureFactory);
+    auto view_cam_req = control.registerFeatureType(kViewCameraFeatureFactory);
+    auto gbuf_req   = control.registerFeatureType(kDeferredGBufferFeatureFactory);
+    auto lit_req    = control.registerFeatureType(kDeferredLightingFeatureFactory);
+    auto light_req  = control.registerFeatureType(kLightFeatureFactory);
+    auto material_req = control.registerFeatureType(kMaterialFeatureFactory);
+    auto mesh_stack_req = control.registerFeatureType(kMeshStackFeatureFactory);
+    auto shmap_req  = control.registerFeatureType(kShadowMapFeatureFactory);
+    auto mshsw_req  = control.registerFeatureType(kMeshShadowFeatureFactory);
+    auto pc_req     = control.registerFeatureType(kPCFeatureSimpleFactory);
+    auto grid_req   = control.registerFeatureType(kGrid3DFeatureFactory);
+    auto sky_req    = control.registerFeatureType(kSkyboxFeatureFactory);
+    auto tm_req0    = control.registerFeatureType(kTonemapFeatureFactory);
+    auto hzb_req    = control.registerFeatureType(kHzbFeatureFactory);
     closeFrame(*session);
 
-    auto view_cam_reg = waitReady(*session, std::move(view_cam_req), ui);
-    auto gbuf_type  = waitReady(*session, std::move(gbuf_req), ui);
-    auto lit_type   = waitReady(*session, std::move(lit_req), ui);
-    auto light_reg  = waitReady(*session, std::move(light_req), ui);
-    auto material_reg = waitReady(*session, std::move(material_req), ui);
-    auto mesh_stack_reg = waitReady(*session, std::move(mesh_stack_req), ui);
-    auto shmap_type = waitReady(*session, std::move(shmap_req), ui);
-    auto mshsw_type = waitReady(*session, std::move(mshsw_req), ui);
-    auto pc_type    = waitReady(*session, std::move(pc_req), ui);
-    auto grid_type  = waitReady(*session, std::move(grid_req), ui);
-    auto sky_type   = waitReady(*session, std::move(sky_req), ui);
-    auto tm_type    = waitReady(*session, std::move(tm_req0), ui);
+    auto view_cam_reg = waitReady(control, std::move(view_cam_req), ui);
+    auto gbuf_type  = waitReady(control, std::move(gbuf_req), ui);
+    auto lit_type   = waitReady(control, std::move(lit_req), ui);
+    auto light_reg  = waitReady(control, std::move(light_req), ui);
+    auto material_reg = waitReady(control, std::move(material_req), ui);
+    auto mesh_stack_reg = waitReady(control, std::move(mesh_stack_req), ui);
+    auto shmap_type = waitReady(control, std::move(shmap_req), ui);
+    auto mshsw_type = waitReady(control, std::move(mshsw_req), ui);
+    auto pc_type    = waitReady(control, std::move(pc_req), ui);
+    auto grid_type  = waitReady(control, std::move(grid_req), ui);
+    auto sky_type   = waitReady(control, std::move(sky_req), ui);
+    auto tm_type    = waitReady(control, std::move(tm_req0), ui);
+    auto hzb_type   = waitReady(control, std::move(hzb_req), ui);
 
     ViewCameraOperationIds view_cam_ops = ViewCameraOperationIds::fromOps(view_cam_reg.ops, view_cam_reg.op_count);
     const TypeId shadow_params_op = shmap_type.op_count > 0 ? shmap_type.ops[0] : kInvalidTypeId;
@@ -805,9 +868,15 @@ int main()
     DeferredGBufferCommConfig gbcc{};
     gbcc.comm_config_version = kDeferredGBufferCommConfigVersion;
     gbcc.descriptor_layout_version = kDeferredGBufferDescriptorLayoutVersion;
+    // HZB occlusion culling ON. This test is the engine's only TWO-VIEW-ONE-SCENE
+    // configuration with DIFFERENT extents (800x600 + 400x300), which is exactly
+    // what per-view HZB has to get right: each view must cull against its OWN
+    // pyramid at its OWN size. With a scene-wide pyramid both views culled
+    // against whichever one was recorded last, at the first view's size.
+    gbcc.extension_flags |= EGpuDrivenMeshExt::HZB;
 
     DeferredLightingCommConfig dlcc{};
-    dlcc.read_mode       = 0; // SAMPLED
+    dlcc.read_mode       = lux::render::ELightingReadMode::SAMPLED;
     dlcc.enable_clustered = 1;
     dlcc.cluster_x = 16;
     dlcc.cluster_y = 9;
@@ -819,12 +888,12 @@ int main()
     pcsc.max_global_points  = 4'000'000;
     pcsc.max_octree_nodes   = 256;
 
-    GridCommConfig gcc{};
+    Grid3DCommConfig gcc{};
 
     SkyboxCommConfig skcc{};
 
     TonemapCommConfig tcc{};
-    tcc.tone_map_op     = 1; // ACES Filmic
+    tcc.tone_map_op     = lux::render::ETonemapOperator::ACES_FILMIC;
     tcc.exposure        = 1.0f;
     tcc.gamma           = 2.2f;
 
@@ -832,81 +901,89 @@ int main()
     // StandardViewCamera MUST attach before every camera consumer (DeferredGBuffer /
     // DeferredLighting / MeshShadow), which read the per-scene ViewCameraResource at
     // their own attach — owner-first ordering, so add it first.
-    struct EmptyViewCamCfg {} view_cam_cfg{};
+    lux::render::ViewCameraCommTag view_cam_cfg{};
     openFrame(*session, ui);
-    auto view_cam_freq = session->addFeature(scene_id, view_cam_reg.feature_type_id, view_cam_cfg);
+    auto view_cam_freq = control.addFeature(scene_id, view_cam_reg.feature_type_id, view_cam_cfg);
     closeFrame(*session);
-    auto view_cam_feat = waitReady(*session, std::move(view_cam_freq), ui);
+    auto view_cam_feat = waitReady(control, std::move(view_cam_freq), ui);
 
     // LightFeature MUST attach before ShadowMapFeature: ShadowMapFeature caches a raw
     // LightResources* at attach time, so the light data store must exist first.
-    struct EmptyLightCfg {} light_cfg{};
+    lux::render::LightCommTag light_cfg{};
     openFrame(*session, ui);
-    auto light_freq = session->addFeature(scene_id, light_reg.feature_type_id, light_cfg);
+    auto light_freq = control.addFeature(scene_id, light_reg.feature_type_id, light_cfg);
     closeFrame(*session);
-    auto light_feat = waitReady(*session, std::move(light_freq), ui);
+    auto light_feat = waitReady(control, std::move(light_freq), ui);
 
-    // StandardMaterialFeature owns the global material stack (ShadingModelRegistry +
+    // StandardMaterialFeature owns the global material stack (builtin shading models +
     // MaterialResources). StandardMeshStack's addMeshInstance reads the material slot,
     // and the material consumers bind MaterialResources, so it MUST attach BEFORE
     // StandardMeshStack (and before every material consumer).
-    struct EmptyMaterialCfg {} material_cfg{};
+    lux::render::MaterialCommTag material_cfg{};
     openFrame(*session, ui);
-    auto material_freq = session->addFeature(scene_id, material_reg.feature_type_id, material_cfg);
+    auto material_freq = control.addFeature(scene_id, material_reg.feature_type_id, material_cfg);
     closeFrame(*session);
-    auto material_feat = waitReady(*session, std::move(material_freq), ui);
+    auto material_feat = waitReady(control, std::move(material_freq), ui);
 
     // StandardMeshStack owns the scene mesh resources (InstanceResources /
     // VertexPoolRegistry); ShadowMap/MeshShadow/DeferredGBuffer CONSUME them at
     // their own attach, so it MUST be added BEFORE those mesh consumers.
-    struct EmptyMeshStackCfg {} mesh_stack_cfg{};
+    lux::render::MeshStackCommTag mesh_stack_cfg{};
     openFrame(*session, ui);
-    auto mesh_stack_freq = session->addFeature(scene_id, mesh_stack_reg.feature_type_id, mesh_stack_cfg);
+    auto mesh_stack_freq = control.addFeature(scene_id, mesh_stack_reg.feature_type_id, mesh_stack_cfg);
     closeFrame(*session);
-    auto mesh_stack_feat = waitReady(*session, std::move(mesh_stack_freq), ui);
+    auto mesh_stack_feat = waitReady(control, std::move(mesh_stack_freq), ui);
 
     openFrame(*session, ui);
-    auto shadow_freq = session->addFeature(scene_id, shmap_type.feature_type_id, smc);
+    auto shadow_freq = control.addFeature(scene_id, shmap_type.feature_type_id, smc);
     closeFrame(*session);
-    auto shadow_feat = waitReady(*session, std::move(shadow_freq), ui);
+    auto shadow_feat = waitReady(control, std::move(shadow_freq), ui);
 
     openFrame(*session, ui);
-    auto mesh_shadow_freq = session->addFeature(scene_id, mshsw_type.feature_type_id, msmc);
+    auto mesh_shadow_freq = control.addFeature(scene_id, mshsw_type.feature_type_id, msmc);
     closeFrame(*session);
-    auto mesh_shadow_feat = waitReady(*session, std::move(mesh_shadow_freq), ui);
+    auto mesh_shadow_feat = waitReady(control, std::move(mesh_shadow_freq), ui);
+
+    // HZB before the GBuffer: the GPU-driven cull find<>s HzbResources at attach.
+    openFrame(*session, ui);
+    auto hzb_freq = control.addFeature(scene_id, hzb_type.feature_type_id,
+                                        lux::render::HzbCommTag{});
+    closeFrame(*session);
+    auto hzb_feat = waitReady(control, std::move(hzb_freq), ui);
 
     openFrame(*session, ui);
-    auto gbuf_freq = session->addFeature(scene_id, gbuf_type.feature_type_id, gbcc);
+    auto gbuf_freq = control.addFeature(scene_id, gbuf_type.feature_type_id, gbcc);
     closeFrame(*session);
-    auto gbuf_feat = waitReady(*session, std::move(gbuf_freq), ui);
+    auto gbuf_feat = waitReady(control, std::move(gbuf_freq), ui);
 
     openFrame(*session, ui);
-    auto lit_freq = session->addFeature(scene_id, lit_type.feature_type_id, dlcc);
+    auto lit_freq = control.addFeature(scene_id, lit_type.feature_type_id, dlcc);
     closeFrame(*session);
-    auto lit_feat = waitReady(*session, std::move(lit_freq), ui);
+    auto lit_feat = waitReady(control, std::move(lit_freq), ui);
 
     openFrame(*session, ui);
-    auto pc_freq = session->addFeature(scene_id, pc_type.feature_type_id, pcsc);
+    auto pc_freq = control.addFeature(scene_id, pc_type.feature_type_id, pcsc);
     closeFrame(*session);
-    auto pc_feat = waitReady(*session, std::move(pc_freq), ui);
+    auto pc_feat = waitReady(control, std::move(pc_freq), ui);
 
     openFrame(*session, ui);
-    auto grid_freq = session->addFeature(scene_id, grid_type.feature_type_id, gcc);
+    auto grid_freq = control.addFeature(scene_id, grid_type.feature_type_id, gcc);
     closeFrame(*session);
-    auto grid_feat = waitReady(*session, std::move(grid_freq), ui);
+    auto grid_feat = waitReady(control, std::move(grid_freq), ui);
 
     openFrame(*session, ui);
-    auto sky_freq = session->addFeature(scene_id, sky_type.feature_type_id, skcc);
+    auto sky_freq = control.addFeature(scene_id, sky_type.feature_type_id, skcc);
     closeFrame(*session);
-    auto sky_feat = waitReady(*session, std::move(sky_freq), ui);
+    auto sky_feat = waitReady(control, std::move(sky_freq), ui);
 
     // Tonemap added after skybox texture upload (below)
     FeatureAddedReply tm_feat{};
 
     // Upload skybox texture
     {
-        auto tex_mgr = std::make_shared<lux::asset::AssetManager>();
-        lux::asset::TextureSerDeser tex_ser(tex_mgr);
+        auto tex_mgr = std::make_shared<lux::asset::AssetManager>(
+            lux::asset::runtimeAssetCodecCatalog());
+        lux::asset::TextureCodec tex_ser(tex_mgr);
         auto tex_res = tex_ser.fromLuxAsset(asset_dir / "textures" / "blue_nebulae_1.luxasset");
         if (tex_res)
         {
@@ -922,17 +999,14 @@ int main()
                     throw std::runtime_error("Unsupported skybox texture pixel format");
             }
 
-            openFrame(*session, ui);
-            auto sky_tex_req = [&]() -> RenderRequest<Texture2DCreatedReply>
+            auto sky_tex_submit = [&]() -> UploadSubmitResult<Texture2DCreatedReply>
             {
                 constexpr uint32_t kMaxUploadMips = 16u;
                 const uint32_t mip_count = std::min<uint32_t>(sky_tex.mipCount(), kMaxUploadMips);
-                const auto* texture_bytes = static_cast<const std::byte*>(sky_tex.data());
-
                 if (mip_count > 1u)
                 {
-                    std::array<RenderSession::Texture2DMipLevel, kMaxUploadMips> mip_levels{};
-                    uint32_t valid_mips = 0;
+                    std::vector<OwnedTextureMipLevel> mip_levels;
+                    mip_levels.reserve(mip_count);
                     for (uint32_t i = 0; i < mip_count; ++i)
                     {
                         const auto& range = sky_tex.mipRange(i);
@@ -941,39 +1015,53 @@ int main()
                         if (range.offset + range.size > sky_tex.size())
                             throw std::runtime_error("Skybox mip range exceeds texture payload size");
 
-                        mip_levels[valid_mips].pixels = texture_bytes + range.offset;
-                        mip_levels[valid_mips].byte_count = static_cast<uint32_t>(range.size);
-                        mip_levels[valid_mips].width = range.width;
-                        mip_levels[valid_mips].height = range.height;
-                        ++valid_mips;
+                        auto pixels = sky_tex.pixels().subspan(
+                            static_cast<std::size_t>(range.offset),
+                            static_cast<std::size_t>(range.size));
+                        if (pixels.size() != range.size)
+                            throw std::runtime_error("Skybox mip range has no owner");
+                        mip_levels.push_back(OwnedTextureMipLevel{
+                            std::move(pixels), range.width, range.height});
                     }
 
-                    if (valid_mips > 1u)
+                    if (mip_levels.size() > 1u)
                     {
-                        return session->createTexture2DMips(
-                            mip_levels.data(),
-                            valid_mips,
+                        return upload.tryCreateTexture2DMips(
+                            std::move(mip_levels),
                             sky_tex.channel(),
                             sky_tex.pixelFormat(),
                             /*generate_mips=*/false);
                     }
                 }
 
-                return session->createTexture2D(
-                    texture_bytes,
-                    static_cast<uint32_t>(sky_tex.size()),
+                return upload.tryCreateTexture2D(
+                    sky_tex.pixels(),
                     sky_tex.width(),
                     sky_tex.height(),
                     sky_tex.channel(),
                     sky_tex.pixelFormat(),
                     /*generate_mips=*/!lux::rdesc::isCompressedFormat(sky_tex.pixelFormat()));
             }();
-            closeFrame(*session);
-            auto sky_tex_reply = waitReady(*session, std::move(sky_tex_req), ui);
+            if (!sky_tex_submit)
+            {
+                std::fprintf(stderr, "  Skybox upload admission failed\n");
+                return 1;
+            }
+            auto sky_tex_reply = waitReady(
+                upload,
+                std::move(*sky_tex_submit),
+                ui
+            );
 
             SkyboxProxy skybox_proxy(*session, skybox_ops);
             openFrame(*session, ui);
-            skybox_proxy.setEquirect(scene_id, sky_feat.feature, sky_tex_reply.handle);
+            {
+                SkyboxSetEquirectPayload wire{};
+                wire.scene_id = scene_id;
+                wire.feature  = sky_feat.feature;
+                wire.texture  = sky_tex_reply.handle;
+                skybox_proxy.setEquirect(wire);
+            }
             closeFrame(*session);
             pumpFrame(*session, ui);   // let skybox upload complete
             std::printf("  Skybox texture uploaded\n");
@@ -986,9 +1074,9 @@ int main()
 
     // Now add tonemap (after skybox texture is uploaded)
     openFrame(*session, ui);
-    auto tm_freq = session->addFeature(scene_id, tm_type.feature_type_id, tcc);
+    auto tm_freq = control.addFeature(scene_id, tm_type.feature_type_id, tcc);
     closeFrame(*session);
-    tm_feat = waitReady(*session, std::move(tm_freq), ui);
+    tm_feat = waitReady(control, std::move(tm_freq), ui);
 
     std::printf("  Features added: 8/8\n");
 
@@ -1038,27 +1126,33 @@ int main()
     };
 
     openFrame(*session, ui);
-    auto mesh_req     = lux::render::MeshStackProxy(*session, mesh_stack_ops).uploadMesh(cube_mesh);
-    auto fmesh_req    = lux::render::MeshStackProxy(*session, mesh_stack_ops).uploadMesh(floor_mesh);
-    auto cube_sh_req  = session->compileShader(spvBytes(cube_spv),
+    auto mesh_req = lux::render::uploadMesh(
+        lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops), cube_mesh);
+    auto fmesh_req = lux::render::uploadMesh(
+        lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops), floor_mesh);
+    auto cube_sh_req  = control.compileShader(spvBytes(cube_spv),
         std::span<const std::byte>{cube_info.data(), cube_info.size()});
-    auto floor_sh_req = session->compileShader(spvBytes(floor_spv),
+    auto floor_sh_req = control.compileShader(spvBytes(floor_spv),
         std::span<const std::byte>{floor_info.data(), floor_info.size()});
     closeFrame(*session);
 
-    auto mesh_h   = waitReady(*session, std::move(mesh_req), ui);
-    auto fmesh_h  = waitReady(*session, std::move(fmesh_req), ui);
-    auto cube_sh  = waitReady(*session, std::move(cube_sh_req), ui);
-    auto floor_sh = waitReady(*session, std::move(floor_sh_req), ui);
+    auto mesh_h   = waitReady(upload, std::move(mesh_req), ui);
+    auto fmesh_h  = waitReady(upload, std::move(fmesh_req), ui);
+    auto cube_sh  = waitReady(control, std::move(cube_sh_req), ui);
+    auto floor_sh = waitReady(control, std::move(floor_sh_req), ui);
 
     lux::render::GraphMaterialData cube_gd{}, floor_gd{};
     openFrame(*session, ui);
-    auto mat_req  = MaterialProxy(*session, material_ops).uploadGraphMaterial(cube_gd,  cube_sh.shader,  lux::render::ShaderHandle{});
-    auto fmat_req = MaterialProxy(*session, material_ops).uploadGraphMaterial(floor_gd, floor_sh.shader, lux::render::ShaderHandle{});
+    auto mat_req = uploadGraphMaterial(
+        MaterialUploadClient(upload_client.client(), material_ops),
+        cube_gd, cube_sh.shader, lux::render::ShaderHandle{});
+    auto fmat_req = uploadGraphMaterial(
+        MaterialUploadClient(upload_client.client(), material_ops),
+        floor_gd, floor_sh.shader, lux::render::ShaderHandle{});
     closeFrame(*session);
 
-    auto mat_h   = waitReady(*session, std::move(mat_req), ui);
-    auto fmat_h  = waitReady(*session, std::move(fmat_req), ui);
+    auto mat_h   = waitReady(upload, std::move(mat_req), ui);
+    auto fmat_h  = waitReady(upload, std::move(fmat_req), ui);
 
     std::printf("  Meshes + graph materials uploaded\n");
 
@@ -1073,8 +1167,8 @@ int main()
 
     // Add mesh instances (scene-level) then make visible in BOTH views
     openFrame(*session, ui);
-    auto cube_inst_req  = MeshStackProxy(*session, mesh_stack_ops).addMeshInstance(scene_id, mesh_h.handle, mat_h.handle, cube_xform);
-    auto floor_inst_req = MeshStackProxy(*session, mesh_stack_ops).addMeshInstance(scene_id, fmesh_h.handle, fmat_h.handle, floor_xform);
+    auto cube_inst_req  = addTransientMeshInstance(MeshStackProxy(*session, mesh_stack_ops), scene_id, mesh_h.handle, mat_h.handle, cube_xform);
+    auto floor_inst_req = addTransientMeshInstance(MeshStackProxy(*session, mesh_stack_ops), scene_id, fmesh_h.handle, fmat_h.handle, floor_xform);
     closeFrame(*session);
 
     auto cube_inst = waitReady(*session, std::move(cube_inst_req), ui);
@@ -1084,10 +1178,10 @@ int main()
 
     // Register visibility in both views
     openFrame(*session, ui);
-    MeshStackProxy(*session, mesh_stack_ops).makeInstanceVisibleForView(scene_id, view1, cube_object);
-    MeshStackProxy(*session, mesh_stack_ops).makeInstanceVisibleForView(scene_id, view1, floor_object);
-    MeshStackProxy(*session, mesh_stack_ops).makeInstanceVisibleForView(scene_id, view2, cube_object);
-    MeshStackProxy(*session, mesh_stack_ops).makeInstanceVisibleForView(scene_id, view2, floor_object);
+    MeshStackProxy(*session, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene_id, .view = view1, .object = cube_object});
+    MeshStackProxy(*session, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene_id, .view = view1, .object = floor_object});
+    MeshStackProxy(*session, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene_id, .view = view2, .object = cube_object});
+    MeshStackProxy(*session, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene_id, .view = view2, .object = floor_object});
     closeFrame(*session);
 
     std::printf("  Mesh instances created (cube object idx=%u gen=%u)\n",
@@ -1131,9 +1225,9 @@ int main()
     pl2.shadow_normal_bias = 0.01f;
 
     openFrame(*session, ui);
-    auto dir_light_req = LightProxy(*session, light_ops).createLight(scene_id, LightDescriptor{dl});
-    auto pl1_req2      = LightProxy(*session, light_ops).createLight(scene_id, LightDescriptor{pl1});
-    auto pl2_req2      = LightProxy(*session, light_ops).createLight(scene_id, LightDescriptor{pl2});
+    auto dir_light_req = lightCreate(LightProxy(*session, light_ops), scene_id, LightDescriptor{dl});
+    auto pl1_req2      = lightCreate(LightProxy(*session, light_ops), scene_id, LightDescriptor{pl1});
+    auto pl2_req2      = lightCreate(LightProxy(*session, light_ops), scene_id, LightDescriptor{pl2});
     closeFrame(*session);
 
     auto dir_light = waitReady(*session, std::move(dir_light_req), ui);
@@ -1143,7 +1237,8 @@ int main()
     std::printf("  Lights created: 1 directional + 2 point\n");
 
     // ── 10. Point cloud proxy ───────────────────────────────────────
-    PointCloudProxy pc_proxy(*session, pc_ops);
+    PointCloudUploadClient pc_upload(upload_client.client(), pc_ops);
+    PointCloudControlClient pc_control(control, pc_ops);
     std::mt19937 rng(42);
     std::vector<uint32_t> active_chunks;
     std::vector<PointCloudPoint> pc_buf; // keep alive until submitFrame
@@ -1180,7 +1275,7 @@ int main()
 
         // Drain replies + flush any pending submission before starting a new frame
         session->pumpReplies();
-        session->submitFrame(true); // blocking — wait until server consumes
+        session->trySubmitFrame(); // blocking — wait until server consumes
 
         if (!session->beginFrame())
             continue;
@@ -1188,14 +1283,14 @@ int main()
         // ── Submit ImGui draw data ──────────────────────────────────
         session->submitImGuiDrawData(RenderSceneId{}, dd);
 
-        // ── Process deferred resizes ────────────────────────────────
+        // ── Process deferred resizes(M2c:直达目标图像池)──────────
         if (pending_resize_v1.pending) {
-            session->resizeView(scene_id, view1,
+            control.resizeTarget(target1,
                 {pending_resize_v1.w, pending_resize_v1.h});
             pending_resize_v1.pending = false;
         }
         if (pending_resize_v2.pending) {
-            session->resizeView(scene_id, view2,
+            control.resizeTarget(target2,
                 {pending_resize_v2.w, pending_resize_v2.h});
             pending_resize_v2.pending = false;
         }
@@ -1212,7 +1307,7 @@ int main()
             setTransformEuler(xform,
                 state.cube_pos[0], state.cube_pos[1], state.cube_pos[2],
                 rx, ry, rz);
-            MeshStackProxy(*session, mesh_stack_ops).updateTransform(scene_id, cube_object, xform);
+            updateTransientMeshTransform(MeshStackProxy(*session, mesh_stack_ops), scene_id, cube_object, xform);
         }
 
         // ── Update point lights ─────────────────────────────────────
@@ -1226,7 +1321,7 @@ int main()
             p.shadow_map_size   = 2048;
             p.shadow_bias       = 0.002f;
             p.shadow_normal_bias = 0.01f;
-            LightProxy(*session, light_ops).updateLight(scene_id, pl1_reply.handle, LightDescriptor{p});
+            lightUpdate(LightProxy(*session, light_ops), scene_id, pl1_reply.handle, LightDescriptor{p});
         }
         {
             PointLightDesc p{};
@@ -1238,7 +1333,7 @@ int main()
             p.shadow_map_size   = 2048;
             p.shadow_bias       = 0.002f;
             p.shadow_normal_bias = 0.01f;
-            LightProxy(*session, light_ops).updateLight(scene_id, pl2_reply.handle, LightDescriptor{p});
+            lightUpdate(LightProxy(*session, light_ops), scene_id, pl2_reply.handle, LightDescriptor{p});
         }
 
         // ── Update cameras ──────────────────────────────────────────
@@ -1335,13 +1430,13 @@ int main()
 
         if (rotate_view_first)
         {
-            ViewCameraProxy(*session, view_cam_ops).update(scene_id, view1, V_rot.data(), P_rot.data(), eye_rot.data());
-            ViewCameraProxy(*session, view_cam_ops).update(scene_id, view2, V_fixed.data(), P_fixed.data(), eye_fixed.data());
+            viewCameraUpdateTransient(ViewCameraProxy(*session, view_cam_ops), scene_id, view1, V_rot.data(), P_rot.data(), eye_rot.data());
+            viewCameraUpdateTransient(ViewCameraProxy(*session, view_cam_ops), scene_id, view2, V_fixed.data(), P_fixed.data(), eye_fixed.data());
         }
         else
         {
-            ViewCameraProxy(*session, view_cam_ops).update(scene_id, view2, V_fixed.data(), P_fixed.data(), eye_fixed.data());
-            ViewCameraProxy(*session, view_cam_ops).update(scene_id, view1, V_rot.data(), P_rot.data(), eye_rot.data());
+            viewCameraUpdateTransient(ViewCameraProxy(*session, view_cam_ops), scene_id, view2, V_fixed.data(), P_fixed.data(), eye_fixed.data());
+            viewCameraUpdateTransient(ViewCameraProxy(*session, view_cam_ops), scene_id, view1, V_rot.data(), P_rot.data(), eye_rot.data());
         }
 
         // ── Point cloud actions ─────────────────────────────────────
@@ -1351,8 +1446,15 @@ int main()
             state.gen_chunk = false;
             uint32_t cid = state.chunk_count;
             pc_buf = generateRandomChunk(cid, rng);
-            pc_proxy.uploadChunk(scene_id, cid,
-                std::span<const PointCloudPoint>(pc_buf.data(), pc_buf.size()));
+            {
+                        auto pc_span = std::span<const PointCloudPoint>(pc_buf.data(), pc_buf.size());
+                        lux::render::UploadPointCloudChunkPayload up{};
+                        up.scene_id    = scene_id;
+                        up.chunk_id    = cid;
+                        up.point_count = static_cast<uint32_t>(pc_span.size());
+                        (void)pc_upload.uploadChunk(up, std::as_bytes(pc_span),
+                                             alignof(lux::render::PointCloudPoint));
+                    }
             active_chunks.push_back(cid);
             state.chunk_count++;
             state.total_points += pc_buf.size();
@@ -1361,7 +1463,7 @@ int main()
         {
             state.remove_last = false;
             uint32_t cid = active_chunks.back();
-            pc_proxy.removeChunk(scene_id, cid);
+            pc_control.removeChunk({.scene_id = scene_id, .chunk_id = cid});
             active_chunks.pop_back();
             state.chunk_count--;
             state.total_points = static_cast<uint64_t>(state.chunk_count) * kPCPointsPerChunk;
@@ -1370,14 +1472,14 @@ int main()
         {
             state.clear_all = false;
             for (auto cid : active_chunks)
-                pc_proxy.removeChunk(scene_id, cid);
+                pc_control.removeChunk({.scene_id = scene_id, .chunk_id = cid});
             active_chunks.clear();
             state.chunk_count = 0;
             state.total_points = 0;
         }
 
         // ── Submit frame (blocking to stay in sync with server) ─────
-        session->submitFrame(true);
+        session->trySubmitFrame();
         session->pumpReplies();
 
         // ── FPS counter ─────────────────────────────────────────────

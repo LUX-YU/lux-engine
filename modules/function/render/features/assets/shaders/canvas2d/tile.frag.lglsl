@@ -1,0 +1,108 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+#extension GL_EXT_nonuniform_qualifier : require
+
+// Canvas2D tile fragment shader (A2-02: tile-index map + tileset atlas).
+//
+// The index map is R16_UNORM: each texel holds a tile ordinal encoded as
+// id/65535 (exact round-trip through the float sampler — the pixel-field
+// trick); texelFetch keeps neighbouring ids from bleeding. 0xFFFF is the
+// EMPTY sentinel → transparent (blends to nothing under premultiplied ONE /
+// ONE_MINUS_SRC_ALPHA, no discard).
+//
+// The ordinal maps onto the tileset's UNIFORM grid (cols × rows, row 0 at the
+// TOP of the atlas image, ordinals row-major — the standard tileset layout;
+// no margin/spacing in the MVP). Sampling insets by half an index-map texel
+// scaled into the tile's uv rect, so linear filtering never reads the
+// neighbouring tile's edge (bleed guard).
+
+uniform sampler2D uTex[];
+
+layout(location = 0) in vec2  vTile;
+layout(location = 1) in vec4  vColor;
+layout(location = 2) flat in uint vTilesetTex;
+layout(location = 3) flat in uint vIndexTex;
+layout(location = 4) flat in uvec2 vTiles;
+layout(location = 5) flat in uvec2 vGrid;
+layout(location = 6) flat in uvec2 vAtlas;
+
+layout(location = 0) out vec4 outColor;
+
+void main()
+{
+    if (vTilesetTex == 0xFFFFFFFFu || vIndexTex == 0xFFFFFFFFu ||
+        vGrid.x == 0u || vGrid.y == 0u)
+    {
+        outColor = vec4(0.0);   // not resolved yet → draw nothing
+        return;
+    }
+
+    const ivec2 cell = ivec2(clamp(ivec2(floor(vTile)),
+                                   ivec2(0), ivec2(vTiles) - ivec2(1)));
+    const float v  = texelFetch(
+        uTex[nonuniformEXT(vIndexTex)],
+        ivec2(vAtlas) + cell,
+        0).r;
+    const uint  id = uint(round(v * 65535.0));
+    if (id == 0xFFFFu)          // empty tile sentinel
+    {
+        outColor = vec4(0.0);
+        return;
+    }
+
+    const uint col = id % vGrid.x;
+    const uint row = id / vGrid.x;
+    if (row >= vGrid.y)         // ordinal beyond the tileset → content error, draw nothing
+    {
+        outColor = vec4(0.0);
+        return;
+    }
+
+    // ── ATLAS-SAFE sampling (same contract as image.frag) ──────────────────
+    //
+    // Three things must be right, and each has bitten us:
+    //
+    //  1. LOD from a CONTINUOUS uv proxy, never from the atlas `uv` itself: uv
+    //     jumps at every tile edge (fract + atlas cell hop), so an implicit
+    //     LOD sees an exploding derivative and drops to the smallest mip — on
+    //     a mipped atlas that is the whole-atlas average smeared into every
+    //     seam (the classic shimmering-grid-line artifact). vTile is smooth
+    //     across the map, so its derivatives are the honest footprint.
+    //  2. LOD BOUNDED so one texel can never span more than half a tile:
+    //     max_lod = log2(min tile extent in texels) - 1. Beyond that the inset
+    //     below would exceed the tile and its clamp would degenerate.
+    //  3. Sample point inset by half a texel OF THE SAMPLED LEVEL, +1 level
+    //     because trilinear blends the coarser neighbour too. A fixed mip-0
+    //     inset (what this shader used to do) is 2^lod times too small: at
+    //     lod 4 bilinear reaches 8 source texels into the next tile.
+    //
+    // Defence in depth: tileset assets should ALSO carry
+    // ETextureAssetFlags::NO_MIPS so no chain exists at all (the minified
+    // average of a tileset is meaningless). With NO_MIPS the maths below
+    // collapses to lod 0 and the classic half-texel inset.
+    const vec2  tile_size = vec2(1.0) / vec2(vGrid);
+    const vec2  tex_size  = vec2(textureSize(uTex[nonuniformEXT(vTilesetTex)], 0));
+    const vec2  duvdx     = dFdx(vTile) * tile_size * tex_size;
+    const vec2  duvdy     = dFdy(vTile) * tile_size * tex_size;
+    const float lod_raw   = 0.5 * log2(max(dot(duvdx, duvdx), dot(duvdy, duvdy)));
+    const float tile_texels = max(1.0, min(tile_size.x * tex_size.x,
+                                           tile_size.y * tex_size.y));
+    const float max_lod   = max(0.0, floor(log2(tile_texels)) - 1.0);
+    const float lod       = clamp(lod_raw, 0.0, max_lod);
+
+    // Position inside THIS tile in [0,1)², inset so filtering at `lod` (and the
+    // coarser level trilinear pairs it with) cannot reach the neighbouring tile.
+    // (Identical formulation to image.frag: the level bound above is what
+    // keeps `inset` ≤ 0.5, so this clamp always has a non-empty range.)
+    const vec2 half_texel = 0.5 * exp2(lod + 1.0) / tex_size;
+    const vec2 inset = half_texel / tile_size;
+    const vec2 local = clamp(fract(vTile), min(inset, vec2(1.0) - inset),
+                                            max(inset, vec2(1.0) - inset));
+
+    // Atlas v: ordinal rows run top-down while tile-space +y runs up — flip.
+    const vec2 uv = (vec2(col, row) + vec2(local.x, 1.0 - local.y)) * tile_size;
+    const vec4 texel = textureLod(uTex[nonuniformEXT(vTilesetTex)], uv, lod);
+    // Tileset atlases are straight-alpha authored art — premultiply to match
+    // the canvas blend contract (same as the image path).
+    outColor = vec4(texel.rgb * texel.a, texel.a) * vColor;
+}

@@ -1,12 +1,12 @@
 #include <lux/engine/editor/panels/AssetBrowser.hpp>
 
-#include <lux/engine/asset/AssetManager.hpp>
-#include <lux/engine/asset/AssetSerDeser.hpp>   // asset_magic_number_of
-#include <lux/engine/asset/AssetVfs.hpp>        // vfs->pathOf for tooltips
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/resource/asset/AssetSerDeser.hpp>   // asset_magic_number_of
+#include <lux/engine/resource/asset/AssetVfs.hpp>        // vfs->pathOf for tooltips
 #include <lux/engine/ui/AssetDragDrop.hpp>
 #include <lux/engine/editor/panels/AssetTypeRegistry.hpp>   // type chip/glyph metadata
 #include <lux/engine/editor/thumbnail/ThumbnailService.hpp> // GRID view requestThumbnail
-#include <lux/engine/asset/AssetHeaderProbe.hpp>            // shared readAssetHeader/assetTypeOfMagic
+#include <lux/engine/resource/asset/AssetHeaderProbe.hpp>            // shared readAssetHeader/assetTypeOfMagic
 
 #include <imgui.h>
 #include <imgui_stdlib.h>   // ImGui::InputTextWithHint(std::string)
@@ -15,7 +15,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
-#include <format>
+#include <lux/engine/platform/FormatCompat.h>
 #include <fstream>
 #include <string>
 #include <string_view>
@@ -31,7 +31,7 @@ namespace lux::editor
     namespace
     {
         // Header probe (readAssetHeader) + magic->type (assetTypeOfMagic) live
-        // in the asset module's <lux/engine/asset/AssetHeaderProbe.hpp> — the
+        // in the asset module's <lux/engine/resource/asset/AssetHeaderProbe.hpp> — the
         // SSOT shared with the AssetRegistry, import pipeline and pak cooker.
 
         // Type label + chip colour + glyph now come from
@@ -42,12 +42,12 @@ namespace lux::editor
         std::string formatSize(std::uint64_t b)
         {
             if (b >= 1024ull * 1024 * 1024)
-                return std::format("{:.2f} GB", static_cast<double>(b) / (1024.0 * 1024.0 * 1024.0));
+                return lux::format("{:.2f} GB", static_cast<double>(b) / (1024.0 * 1024.0 * 1024.0));
             if (b >= 1024ull * 1024)
-                return std::format("{:.2f} MB", static_cast<double>(b) / (1024.0 * 1024.0));
+                return lux::format("{:.2f} MB", static_cast<double>(b) / (1024.0 * 1024.0));
             if (b >= 1024)
-                return std::format("{:.2f} KB", static_cast<double>(b) / 1024.0);
-            return std::format("{} B", b);
+                return lux::format("{:.2f} KB", static_cast<double>(b) / 1024.0);
+            return lux::format("{} B", b);
         }
     } // namespace
 
@@ -91,6 +91,8 @@ namespace lux::editor
     void AssetBrowser::scanCwd()
     {
         entries_.clear();
+        ++scan_revision_;      // invalidates the fuzzy-filter cache (C8)
+        tree_cache_.clear();   // invalidates the folder-tree listings (C8)
         last_scan_ = std::chrono::steady_clock::now();
 
         std::error_code ec;
@@ -164,7 +166,7 @@ namespace lux::editor
         }
 
         // The folder tree (left) duplicates the breadcrumb + double-click-to-
-        // enter navigation, so it is FOLDED by default to give the entry grid
+        // enter folder navigation, so it is FOLDED by default to give the entry grid
         // the full width; the "Tree" toolbar button toggles it back on for
         // cross-folder jumps. When shown, a persistent 2-column splitter.
         if (show_folder_tree_)
@@ -214,13 +216,18 @@ namespace lux::editor
 
         if (open)
         {
-            std::vector<std::filesystem::path> subdirs;
-            for (const auto& de : std::filesystem::directory_iterator(dir, ec))
+            // CACHED (C8): the old code hit the DISK (directory_iterator) for
+            // every open node EVERY FRAME. Listings are cached per directory
+            // and invalidated whenever the browser rescans (folder navigation /
+            // Refresh / content_changed all route through scanCwd).
+            auto [it, fresh] = tree_cache_.try_emplace(dir.string());
+            if (fresh)
             {
-                if (de.is_directory(ec)) subdirs.push_back(de.path());
+                for (const auto& de : std::filesystem::directory_iterator(dir, ec))
+                    if (de.is_directory(ec)) it->second.push_back(de.path());
+                std::sort(it->second.begin(), it->second.end());
             }
-            std::sort(subdirs.begin(), subdirs.end());
-            for (const auto& sub : subdirs)
+            for (const auto& sub : it->second)
                 paintFolderTree(sub);
             ImGui::TreePop();
         }
@@ -290,15 +297,74 @@ namespace lux::editor
 
         // Filter the current folder by fuzzy match (empty query -> all entries,
         // in scan order). Survivors come back sorted by match score.
-        filtered_.clear();
-        filtered_.reserve(entries_.size());
-        for (const auto& m : search_index_.query(search_query_))
-            filtered_.push_back(m.index);
+        // CACHED (C8): re-run only when the query text or the folder contents
+        // changed — the old per-frame re-query rescanned every entry each frame.
+        if (search_query_ != last_query_ || last_scan_rev_ != scan_revision_)
+        {
+            filtered_.clear();
+            filtered_.reserve(entries_.size());
+            for (const auto& m : search_index_.query(search_query_))
+                filtered_.push_back(m.index);
+            last_query_    = search_query_;
+            last_scan_rev_ = scan_revision_;
+        }
 
         ImGui::Separator();
 
         if (view_mode_ == EViewMode::GRID) paintEntryGrid();
         else                               paintEntryList();
+
+        // Blank-area right-click → "New …" at the CURRENT folder (create
+        // where you clicked, the UE/Unity content-browser idiom). The
+        // NoOpenOverItems flag keeps per-item context menus (Create Material
+        // Instance) winning when the cursor is on an entry.
+        if (!cwd_.empty() &&
+            ImGui::BeginPopupContextWindow("##ab_new_asset",
+                ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+        {
+            if (ImGui::MenuItem("New Script (Lua)"))
+            {
+                if (create_asset_handler_)
+                    create_asset_handler_(CreateAssetCommand{
+                        lux::asset::EAssetType::SCRIPT,
+                        cwd_,
+                        {}
+                    });
+            }
+            // A-6: a C++ behavior becomes CONTENT via its manifest asset — the
+            // submenu lists the binary's registered behaviors; picking one
+            // authors a CppBehaviorScript asset referencing it.
+            if (cpp_script_names_ && ImGui::BeginMenu("New Script (C++)"))
+            {
+                const auto names = cpp_script_names_();
+                if (names.empty())
+                    ImGui::TextDisabled("(no registered behaviors)");
+                for (const auto n : names)
+                {
+                    std::string item(n);
+                    if (ImGui::MenuItem(item.c_str()))
+                    {
+                        if (create_asset_handler_)
+                            create_asset_handler_(CreateAssetCommand{
+                                lux::asset::EAssetType::SCRIPT,
+                                cwd_,
+                                std::move(item)
+                            });
+                    }
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::MenuItem("New Material"))
+            {
+                if (create_asset_handler_)
+                    create_asset_handler_(CreateAssetCommand{
+                        lux::asset::EAssetType::MATERIAL,
+                        cwd_,
+                        {}
+                    });
+            }
+            ImGui::EndPopup();
+        }
     }
 
     void AssetBrowser::paintEntryList()
@@ -307,10 +373,16 @@ namespace lux::editor
         //
         // Each row: [type chip] [name] [size, right-aligned]
         // Double-click on a directory enters it. Single-click selects.
-        for (std::uint32_t fi_ : filtered_)
+        // VIRTUALIZED (C8): uniform-height rows → only the visible window pays
+        // (draw + per-row string formatting); scrolled-out entries cost nothing.
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(filtered_.size()));
+        while (clipper.Step())
+        for (int row_i = clipper.DisplayStart; row_i < clipper.DisplayEnd; ++row_i)
         {
+            const std::uint32_t fi_ = filtered_[static_cast<std::size_t>(row_i)];
             const AssetBrowserEntry& e = entries_[fi_];
-            ImGui::PushID(e.abs_path.string().c_str());
+            ImGui::PushID(static_cast<int>(fi_));   // stable per scan; no path→string churn
 
             // Type icon: a colour-filled chip (quick class id) with a
             // code-drawn glyph on top (shape id), both from the
@@ -340,17 +412,45 @@ namespace lux::editor
                 lux::editor::assetTypeDesc(e.asset_type).draw_glyph(dl, tl, br, kGlyph);
 
             ImGui::Dummy(ImVec2(icon_sz + 6.0f, icon_sz));
+            // 驻留终态失败 → 标红 + 悬浮原因(T14 失败可见性:此前这类失败
+            // 只有一行 stderr,GUI 用户等于零反馈)。
+            const auto failed_it = e.is_directory
+                ? residency_failed_.end()
+                : residency_failed_.find(e.asset_id);
+            const bool residency_failed = failed_it != residency_failed_.end();
+
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s", e.is_directory
+            {
+                std::string tip = e.is_directory
                     ? "Folder"
-                    : lux::editor::assetTypeDesc(e.asset_type).name);
+                    : lux::editor::assetTypeDesc(e.asset_type).name;
+                // Hover-tooltip enrichment (list view shares the grid's describer).
+                if (!e.is_directory && describe_)
+                    for (const auto& line : describe_(e.asset_id, e.asset_type))
+                    {
+                        tip += "\n";
+                        tip += line;
+                    }
+                if (residency_failed)
+                {
+                    tip += "\n驻留失败: ";
+                    tip += failed_it->second;
+                }
+                ImGui::SetTooltip("%s", tip.c_str());
+            }
             ImGui::SameLine();
 
+            if (residency_failed)
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
             const bool selected = (selection_ == e.abs_path);
-            if (ImGui::Selectable(
+            const bool activated = ImGui::Selectable(
                     e.display_name.c_str(), selected,
                     ImGuiSelectableFlags_AllowDoubleClick,
-                    ImVec2(0, ImGui::GetTextLineHeight())))
+                    ImVec2(0, ImGui::GetTextLineHeight()));
+            if (residency_failed)
+                ImGui::PopStyleColor();
+            if (activated)
             {
                 selection_ = e.abs_path;
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
@@ -363,17 +463,39 @@ namespace lux::editor
                     }
                     else if (e.asset_type != lux::asset::EAssetType::UNKNOWN)
                     {
-                        activated.emit({e.asset_id, e.asset_type});
+                        if (activate_handler_)
+                            activate_handler_(ActivateAssetCommand{
+                                e.asset_id,
+                                e.asset_type
+                            });
                     }
                 }
             }
-            // Right-click a baked graph material -> author a Material Instance of it.
+            // Right-click menu:材质多一条 Create Instance;所有可识别资产
+            // 都有 Delete…(面板只发请求,引用者扫描/确认/强删在 shell)。
             if (!e.is_directory
-                && e.asset_type == lux::asset::EAssetType::MATERIAL
+                && e.asset_type != lux::asset::EAssetType::UNKNOWN
                 && ImGui::BeginPopupContextItem())
             {
-                if (ImGui::MenuItem("Create Material Instance"))
-                    create_instance_requested.emit({e.asset_id});
+                if ((e.asset_type == lux::asset::EAssetType::MATERIAL
+                     || e.asset_type == lux::asset::EAssetType::MATERIAL_INSTANCE)
+                    && ImGui::MenuItem("Create Material Instance"))
+                {
+                    if (create_instance_handler_)
+                        create_instance_handler_(CreateMaterialInstanceCommand{
+                            e.asset_id
+                        });
+                }
+                if (ImGui::MenuItem("Delete…"))
+                {
+                    if (delete_asset_handler_)
+                        delete_asset_handler_(DeleteAssetCommand{
+                            e.asset_id,
+                            e.asset_type,
+                            e.abs_path,
+                            e.display_name
+                        });
+                }
                 ImGui::EndPopup();
             }
 
@@ -445,11 +567,20 @@ namespace lux::editor
         constexpr ImU32 kGlyph = IM_COL32(28, 28, 28, 235);
         ImDrawList* dl = ImGui::GetWindowDrawList();
 
-        int col = 0;
-        for (std::uint32_t fi_ : filtered_)
+        // VIRTUALIZED (C8): clip whole tile ROWS — thumbnails/labels of
+        // scrolled-out tiles are neither requested nor drawn.
+        const int total_entries = static_cast<int>(filtered_.size());
+        const int grid_rows     = (total_entries + cols - 1) / cols;
+        ImGuiListClipper clipper;
+        clipper.Begin(grid_rows, cell_h + ImGui::GetStyle().ItemSpacing.y);
+        while (clipper.Step())
+        for (int row_i = clipper.DisplayStart; row_i < clipper.DisplayEnd; ++row_i)
+        for (int col_i = 0; col_i < cols && row_i * cols + col_i < total_entries; ++col_i)
         {
+            const std::uint32_t fi_ =
+                filtered_[static_cast<std::size_t>(row_i * cols + col_i)];
             const AssetBrowserEntry& e = entries_[fi_];
-            ImGui::PushID(e.abs_path.string().c_str());
+            ImGui::PushID(static_cast<int>(fi_));   // stable per scan; no path→string churn
 
             const ImVec2 cp       = ImGui::GetCursorScreenPos();
             const bool   selected = (selection_ == e.abs_path);
@@ -471,17 +602,39 @@ namespace lux::editor
                     }
                     else if (e.asset_type != lux::asset::EAssetType::UNKNOWN)
                     {
-                        activated.emit({e.asset_id, e.asset_type});
+                        if (activate_handler_)
+                            activate_handler_(ActivateAssetCommand{
+                                e.asset_id,
+                                e.asset_type
+                            });
                     }
                 }
             }
-            // Right-click a baked graph material -> author a Material Instance of it.
+            // Right-click menu(与 LIST 视图同款):材质多一条 Create Instance;
+            // 所有可识别资产都有 Delete…。
             if (!e.is_directory
-                && e.asset_type == lux::asset::EAssetType::MATERIAL
+                && e.asset_type != lux::asset::EAssetType::UNKNOWN
                 && ImGui::BeginPopupContextItem())
             {
-                if (ImGui::MenuItem("Create Material Instance"))
-                    create_instance_requested.emit({e.asset_id});
+                if ((e.asset_type == lux::asset::EAssetType::MATERIAL
+                     || e.asset_type == lux::asset::EAssetType::MATERIAL_INSTANCE)
+                    && ImGui::MenuItem("Create Material Instance"))
+                {
+                    if (create_instance_handler_)
+                        create_instance_handler_(CreateMaterialInstanceCommand{
+                            e.asset_id
+                        });
+                }
+                if (ImGui::MenuItem("Delete…"))
+                {
+                    if (delete_asset_handler_)
+                        delete_asset_handler_(DeleteAssetCommand{
+                            e.asset_id,
+                            e.asset_type,
+                            e.abs_path,
+                            e.display_name
+                        });
+                }
                 ImGui::EndPopup();
             }
 
@@ -516,6 +669,14 @@ namespace lux::editor
                             tip += "\n";
                             tip += *p;
                         }
+                // Hover-tooltip enrichment: type-specific lines from the host's
+                // describer (script kind + module, instance parent, mesh counts …).
+                if (!e.is_directory && describe_)
+                    for (const auto& line : describe_(e.asset_id, e.asset_type))
+                    {
+                        tip += "\n";
+                        tip += line;
+                    }
                 ImGui::SetTooltip("%s", tip.c_str());
             }
 
@@ -572,8 +733,8 @@ namespace lux::editor
 
             ImGui::PopID();
 
-            if (++col >= cols) col = 0;
-            else               ImGui::SameLine(0.0f, spacing);
+            if (col_i + 1 < cols && row_i * cols + col_i + 1 < total_entries)
+                ImGui::SameLine(0.0f, spacing);
         }
     }
 } // namespace lux::editor

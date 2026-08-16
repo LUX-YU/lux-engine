@@ -30,7 +30,7 @@
 #>
 param(
     [string]$BuildDir         = 'E:/SyncForder/CodeRepos/build/Debug/lux-engine',
-    [string]$ModuleSrc        = 'E:/SyncForder/CodeRepos/lux-engine/modules/function/render',
+    [string]$ModuleSrc        = 'E:/SyncForder/CodeRepos/lux-engine/modules/function/render/vulkan',
     [string]$RepresentativeTU = 'KernelRegistry.cpp'
 )
 

@@ -1,0 +1,71 @@
+//! lux-shader stage=vertex entry=main
+#version 450
+
+#include "view_common.glsl"
+#include "instance.glsl"
+
+layout(location = 0) in vec3 inPosition;
+
+layout(std430) readonly buffer ViewBuffer
+{
+    ViewGpuData views[];
+} uViews;
+
+layout(push_constant) uniform PickPush
+{
+    uint scene_index;
+    uint view_index;
+    uint instance_slot;
+    uint pick_token;
+    float normalized_x;
+    float normalized_y;
+    float maximum_distance;
+    float scene_time;
+    vec4 basis_local_x;
+    vec4 basis_local_y;
+    vec4 basis_local_z;
+    ivec3 page_delta;
+    uint spatial_flags;
+    float transition_start_time;
+    float transition_duration;
+    uint transition_seed;
+    uint transition_flags;
+} pc;
+
+layout(location = 0) out float vViewDistance;
+layout(location = 1) flat out float vTransitionCoverage;
+layout(location = 2) flat out uint vTransitionSeed;
+layout(location = 3) flat out uint vTransitionFadeOut;
+
+void main()
+{
+    InstanceTransform transform;
+    transform.basis_local_x = pc.basis_local_x;
+    transform.basis_local_y = pc.basis_local_y;
+    transform.basis_local_z = pc.basis_local_z;
+    transform.page_delta = pc.page_delta;
+    transform.flags = pc.spatial_flags;
+    ViewGpuData view_data = uViews.views[pc.view_index];
+    mat4 model = luxSpatialModel(
+        transform,
+        view_data.camera_page.xyz,
+        view_data.camera_local_page_size.xyz,
+        view_data.camera_local_page_size.w);
+    vec4 view_position = view_data.view * model * vec4(inPosition, 1.0);
+    vec4 clip = view_data.proj * view_position;
+    vec2 pick_ndc = vec2(
+        pc.normalized_x * 2.0 - 1.0,
+        pc.normalized_y * 2.0 - 1.0);
+    clip.xy -= pick_ndc * clip.w;
+    gl_Position = clip;
+    vViewDistance = length(view_position.xyz);
+    InstanceProperty property;
+    property.transition_start_time = pc.transition_start_time;
+    property.transition_duration = pc.transition_duration;
+    property.transition_seed = pc.transition_seed;
+    property.transition_flags = pc.transition_flags;
+    vTransitionCoverage = luxTransitionCoverage(property, pc.scene_time);
+    vTransitionSeed = pc.transition_seed;
+    vTransitionFadeOut =
+        (pc.transition_flags & LUX_TRANSITION_FADE_OUT) != 0u ? 1u : 0u;
+}

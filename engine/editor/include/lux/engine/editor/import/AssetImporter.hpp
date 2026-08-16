@@ -24,7 +24,7 @@
 
 #include <lux/engine/editor/visibility.h>
 
-#include <lux/engine/asset/Asset.hpp>   // asset_id_t
+#include <lux/engine/resource/asset/Asset.hpp>   // asset_id_t
 
 #include <filesystem>
 #include <memory>
@@ -95,16 +95,37 @@ namespace lux::editor
         std::shared_ptr<lux::asset::AssetManager> manager,
         const ImportOptions& options = {});
 
-    /// Return true if `importExternalFile` knows how to handle this
-    /// extension. Used by the editor's drop-target UI to filter what to
-    /// even try when the user drops a folder full of mixed files.
+    /// 批H2 池上导入核:与 importExternalFile 同一套物化+写盘,但对着一个
+    /// **散管理器**(池线程构造的临时 AssetManager,账本线程锚点即池线程,
+    /// 断言自然成立)—— 零活账本触碰(§8 总纪律)。产出只有盘上文件与
+    /// 报告;注册进活账本由主线程 registerImportedFiles 做。
+    /// ⚠️ 判重语义变化:散管理器没有活账本的确定性 id 碰撞闸 —— 调用方
+    /// (ImportController)在派发前做**盘上判重**。
     LUX_EDITOR_PUBLIC
-    [[nodiscard]] bool isImportableExtension(std::string_view extension);
+    ImportReport importExternalFileDetached(
+        const std::filesystem::path& source,
+        const std::filesystem::path& dest_root,
+        const ImportOptions& options = {});
+
+    /// 批H2 完成侧:把异步导入产出的文件注册进**活**管理器(账本线程调用)。
+    /// 逐文件走 Shells 惰性路径(工程打开同款;MODEL/SCRIPT/SHADER 自动回落
+    /// Eager)。已注册的 id(并发导入同源等)逐文件记日志跳过。返回成功数。
+    LUX_EDITOR_PUBLIC
+    std::size_t registerImportedFiles(
+        const std::vector<std::filesystem::path>& files,
+        std::shared_ptr<lux::asset::AssetManager> manager);
 
     /// True if @p extension is a 3D model format (so the editor knows to show
     /// the Import Options dialog before importing). Texture-only imports skip it.
     LUX_EDITOR_PUBLIC
     [[nodiscard]] bool isModelExtension(std::string_view extension);
+
+    /// The single source of truth for importable extensions (leading dot,
+    /// lowercased): the registry the dispatch + predicates derive from. The
+    /// file-dialog "Import" filter derives its list from this so the dialog
+    /// can never offer a format the importer then rejects (audit 7.2).
+    LUX_EDITOR_PUBLIC
+    [[nodiscard]] std::vector<std::string_view> importableExtensions();
 
     /// How `registerContentFolder` materializes each file into the manager.
     enum class ELoadMode : uint8_t
@@ -114,7 +135,7 @@ namespace lux::editor
         /// tool paths and as the regression fallback.
         Eager,
         /// Register an info-only SHELL (data()==null) for every lazily-loadable
-        /// type; the async path (EngineExecutor::requestLoad, fired by the
+        /// type; the async path (AssetClient::request, fired by the
         /// renderable bridge / thumbnail service on first use) streams the data
         /// in on demand — this is the large-world W2b streaming path. Types that
         /// cannot be shelled (MODEL / SCRIPT / SHADER) fall back to Eager

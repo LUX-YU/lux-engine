@@ -8,11 +8,11 @@ set(_COMPONENT_ASSET_TOOLS_INCLUDED_ TRUE)
 
 # -------------------------------------------------
 # add_asset
-#   定义资产打包对象
-#   必选: NAME OUT_DIR
-#   可选: PACKER TYPE INSPECT (ON/OFF)
-#   复数: ENTRIES "type|src|relout" ...
-#   开关: ECHO ALWAYS_REGENERATE
+#   Defines an asset-packing object.
+#   Required: NAME OUT_DIR
+#   Optional: PACKER TYPE INSPECT (ON/OFF)
+#   Multi-value: ENTRIES "type|src|relout" ...
+#   Flags: ECHO ALWAYS_REGENERATE
 function(add_asset)
     set(one_value_args
         NAME
@@ -39,14 +39,26 @@ function(add_asset)
         set(ASSET_INSPECT OFF)
     endif()
 
-    # 选择 packer：优先同工程 target，其次系统路径
+    # Pick the packer: prefer an in-tree target, fall back to a system path
     set(LUX_ASSET_PACKER_TARGET "")
     if(NOT ASSET_PACKER)
         if(TARGET lux_asset_packer)
             set(LUX_ASSET_PACKER "$<TARGET_FILE:lux_asset_packer>")
             set(LUX_ASSET_PACKER_TARGET "lux_asset_packer")
         else()
-            find_program(LUX_ASSET_PACKER lux_asset_packer REQUIRED)
+            if(COMMAND lux_find_host_program)
+                lux_find_host_program(
+                    LUX_ASSET_PACKER
+                    REQUIRED
+                    NAMES lux_asset_packer
+                )
+            elseif(CMAKE_CROSSCOMPILING)
+                message(FATAL_ERROR
+                    "[add_asset] Cross builds require lux_find_host_program"
+                )
+            else()
+                find_program(LUX_ASSET_PACKER lux_asset_packer REQUIRED)
+            endif()
             if(NOT LUX_ASSET_PACKER)
                 message(FATAL_ERROR "[add_asset] Could not find 'lux_asset_packer' executable")
             endif()
@@ -56,14 +68,14 @@ function(add_asset)
         set(LUX_ASSET_PACKER_TARGET "")
     endif()
 
-    # 占位 target
+    # Placeholder target
     if(NOT TARGET ${_asset_name})
         add_custom_target(${_asset_name} ALL
             COMMENT "[add_asset] Placeholder target for asset object '${_asset_name}'."
         )
     endif()
 
-    # 多条 entry 用换行拼接保存；每条形如 "type|src|relout"
+    # Multiple entries are stored joined by newlines; each one looks like "type|src|relout"
     if(ASSET_ENTRIES)
         string(JOIN "\n" _entries_joined ${ASSET_ENTRIES})
     else()
@@ -75,7 +87,7 @@ function(add_asset)
         ASSET_PACKER_TARGET    "${LUX_ASSET_PACKER_TARGET}"
         ASSET_OUT_DIR          "${ASSET_OUT_DIR}"
         ASSET_DEFAULT_TYPE     "${ASSET_TYPE}"
-        ASSET_ENTRIES_RAW      "${_entries_joined}"     # 换行分隔的原始字符串
+        ASSET_ENTRIES_RAW      "${_entries_joined}"     # newline-separated raw string
         ASSET_ECHO             "${ASSET_ECHO}"
         ASSET_ALWAYS_REGEN     "${ASSET_ALWAYS_REGENERATE}"
         ASSET_INSPECT          "${ASSET_INSPECT}"
@@ -84,8 +96,8 @@ endfunction()
 
 # -------------------------------------------------
 # _asset_normalize_texture_entries
-#   规范化纹理条目为: "texture|src|relout"
-#   支持输入: "src" / "src|relout" / "texture|src|relout"
+#   Normalizes a texture entry to: "texture|src|relout"
+#   Accepted input forms: "src" / "src|relout" / "texture|src|relout"
 function(_asset_normalize_texture_entries input_var out_var caller_name)
     set(_normalized "")
     foreach(_entry IN LISTS ${input_var})
@@ -122,9 +134,9 @@ endfunction()
 
 # -------------------------------------------------
 # add_texture_asset
-#   纹理资产专用定义
-#   ENTRIES 支持: "src" / "src|relout" / "texture|src|relout"
-#   可选: TEXTURE_FORMAT TEXTURE_COLOR_SPACE
+#   Texture-specific asset definition.
+#   ENTRIES accepts: "src" / "src|relout" / "texture|src|relout"
+#   Optional: TEXTURE_FORMAT TEXTURE_COLOR_SPACE
 function(add_texture_asset)
     set(one_value_args
         NAME
@@ -188,7 +200,7 @@ endfunction()
 
 # -------------------------------------------------
 # asset_add_files
-#   追加条目：ENTRIES "type|src|relout" ...
+#   Appends entries: ENTRIES "type|src|relout" ...
 function(asset_add_files)
     if("${ARGV0}" STREQUAL "")
         message(FATAL_ERROR "[asset_add_files] The first argument must be the AssetObjectName")
@@ -226,8 +238,8 @@ endfunction()
 
 # -------------------------------------------------
 # asset_add_textures
-#   追加纹理条目：ENTRIES "src|relout" ...
-#   可选更新纹理默认参数：TEXTURE_FORMAT / TEXTURE_COLOR_SPACE
+#   Appends texture entries: ENTRIES "src|relout" ...
+#   Optionally updates the default texture params: TEXTURE_FORMAT / TEXTURE_COLOR_SPACE
 function(asset_add_textures)
     if("${ARGV0}" STREQUAL "")
         message(FATAL_ERROR "[asset_add_textures] The first argument must be the AssetObjectName")
@@ -262,11 +274,11 @@ endfunction()
 
 # -------------------------------------------------
 # target_add_asset
-#   将资产构建接入某个目标：
-#     - 每条 "type|src|relout" 生成 .luxasset
-#     - 聚合为 <NAME>_gen
-#     - <TARGET> 依赖 <NAME>_gen
-#     - 若 packer 为 in-tree target，确保先构建
+#   Wires the asset build into a target:
+#     - each "type|src|relout" entry generates a .luxasset
+#     - all outputs are aggregated into <NAME>_gen
+#     - <TARGET> depends on <NAME>_gen
+#     - if the packer is an in-tree target, make sure it's built first
 function(target_add_asset)
     set(one_value_args NAME TARGET)
     set(optional_args ECHO ALWAYS_REGENERATE)
@@ -282,7 +294,7 @@ function(target_add_asset)
     set(_asset_name  "${ARGS_NAME}")
     set(_target_name "${ARGS_TARGET}")
 
-    # 读取配置
+    # Read the configuration
     get_target_property(_packer_path   ${_asset_name} ASSET_PACKER)
     get_target_property(_packer_target ${_asset_name} ASSET_PACKER_TARGET)
     get_target_property(_out_dir       ${_asset_name} ASSET_OUT_DIR)
@@ -308,12 +320,12 @@ function(target_add_asset)
         file(MAKE_DIRECTORY "${_out_dir}")
     endif()
 
-    # 按行提取
+    # Split into lines
     string(REPLACE "\r\n" "\n" _entries_raw_norm "${_entries_raw}")
     string(REPLACE "\r"   "\n" _entries_raw_norm "${_entries_raw_norm}")
     string(REGEX MATCHALL "[^\n]+" _entries_lines "${_entries_raw_norm}")
 
-    # 逐条目生成命令（用 '|' 作为行内分隔符）
+    # Generate a command per entry (using '|' as the in-line separator)
     set(_all_outputs "")
     list(LENGTH _entries_lines _elen_total)
     math(EXPR _last_idx "${_elen_total}-1")
@@ -321,7 +333,7 @@ function(target_add_asset)
     foreach(i RANGE 0 ${_last_idx})
         list(GET _entries_lines ${i} entry_line)
 
-        # "type|src|relout" -> 列表
+        # "type|src|relout" -> list
         string(REPLACE "|" ";" entry_fields "${entry_line}")
         list(LENGTH entry_fields _elen)
         if(_elen LESS 2)
@@ -382,21 +394,21 @@ function(target_add_asset)
         list(APPEND _all_outputs "${_out}")
     endforeach()
 
-    # 聚合生成目标
+    # Aggregate generation target
     set(_asset_gen_target "${_asset_name}_gen")
     add_custom_target("${_asset_gen_target}"
         DEPENDS ${_all_outputs}
     )
 
-    # 确保先生成 packer（若来自 in-tree target）
+    # Make sure the packer is built first (if it's an in-tree target)
     if(_packer_target)
         add_dependencies("${_asset_gen_target}" "${_packer_target}")
     endif()
 
-    # 用户 target 依赖资产
+    # The user's target depends on the assets
     add_dependencies("${_target_name}" "${_asset_gen_target}")
 
-    # ALWAYS_REGENERATE：可选，标记跳过缓存
+    # ALWAYS_REGENERATE: optional, marks outputs to skip caching
     if(ARGS_ALWAYS_REGENERATE OR _always)
         foreach(_of IN LISTS _all_outputs)
             set_property(SOURCE "${_of}" PROPERTY SKIP_CACHE TRUE)

@@ -1,0 +1,9 @@
+add_executable(tilemap_sparse_runtime_test tilemap_sparse_runtime_test.cpp)
+target_link_libraries(tilemap_sparse_runtime_test PRIVATE tilemap)
+add_test(NAME tilemap_sparse_runtime_test COMMAND tilemap_sparse_runtime_test)
+
+add_executable(tilemap_system_test tilemap_system_test.cpp)
+target_link_libraries(tilemap_system_test PRIVATE tilemap)
+add_test(NAME tilemap_system_test COMMAND tilemap_system_test)
+set_tests_properties(tilemap_system_test PROPERTIES
+    LABELS "cpu;tilemap;ecs" TIMEOUT 30)

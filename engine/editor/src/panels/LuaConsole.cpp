@@ -1,6 +1,8 @@
 #include <lux/engine/editor/panels/LuaConsole.hpp>
-#include <lux/engine/asset/AssetManager.hpp>
-#include <lux/engine/asset/AssetVfs.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/resource/asset/AssetVfs.hpp>
+#include <lux/engine/resource/asset/ScriptAsset.hpp>      // in-place SCRIPT editing
+#include <lux/engine/resource/asset/ScriptSerDeser.hpp>
 #include <lux/cxx/algorithm/string_operations.hpp>
 #include <imgui_stdlib.h>
 #include <sol/sol.hpp>
@@ -8,11 +10,16 @@
 #include <sstream>
 
 #ifdef LUX_EDITOR_HAS_GAMEPLAY_LUA
-// Generated aggregator (gameplay_meta's build include dir): registers every
-// gameplay sol2 binding — the neutral-core + 3D (lux::pack) components +
-// the LUX_FUNC() free functions (lux_debug_draw_line / lux_debug_draw_clear).
-#include <ecs_lua_registration.hpp>
-#include <pack_d3_lua_registration.hpp>
+// Generated aggregators (the meta sidecars' build include dirs): register every
+// sol2 binding — the ecs-core neutral types + the LUX_FUNC() free functions
+// (lux_debug_draw_line / lux_debug_draw_clear) + the 3D scene components.
+// (ecs kernel moved to ecs/core → the aggregator is now core_lua_registration.)
+#include <core_lua_registration.hpp>
+#include <render_components_lua_registration.hpp>
+#include <render_components_2d_lua_registration.hpp>
+#include <render_components_3d_lua_registration.hpp>
+#include <pixel_lua_registration.hpp>
+#include <animation_2d_lua_registration.hpp>
 #endif
 
 // ==========================================================================
@@ -80,8 +87,15 @@ namespace lux::editor
 			sol::state_view lua(L);
 			lua.open_libraries(sol::lib::base, sol::lib::math);
 #ifdef LUX_EDITOR_HAS_GAMEPLAY_LUA
-			LuxRegisterEcsMetas_LUA(lua);
-			LuxRegisterPack_d3Metas_LUA(lua);
+			LuxRegisterCoreMetas_LUA(lua);   // ecs kernel moved to ecs/core (slug: ecs→core)
+			// Schema registration follows component ownership. Neutral, 2D and
+			// 3D render schemas are independent; 3D animation owns no component
+			// schema of its own.
+			LuxRegisterRender_componentsMetas_LUA(lua);
+			LuxRegisterRender_components_2dMetas_LUA(lua);
+			LuxRegisterRender_components_3dMetas_LUA(lua);
+			LuxRegisterPixelMetas_LUA(lua);
+			LuxRegisterAnimation_2dMetas_LUA(lua);
 #endif
 		}
 
@@ -107,6 +121,7 @@ namespace lux::editor
 	{
 		if (!mgr)
 			return;
+		asset_mgr_ = mgr;   // kept for in-place SCRIPT asset editing
 
 		sol::state_view lua(state());
 
@@ -223,6 +238,66 @@ namespace lux::editor
 		ImGui::PopStyleVar(5);
 	}
 
+	void LuaConsole::openScriptAsset(const lux::asset::asset_id_t& id,
+	                                 std::filesystem::path         luxasset_path,
+	                                 std::string                   display_vpath)
+	{
+		if (!asset_mgr_ || id.is_nil())
+			return;
+		auto loaded = asset_mgr_->ensureAsset(id);
+		if (!loaded)
+		{
+			addLog("[error] SCRIPT asset load failed (err={})",
+			       static_cast<int>(loaded.error()));
+			return;
+		}
+		auto* sa = loaded.value()->as<lux::asset::ScriptAsset>();
+		if (!sa || !sa->data() ||
+		    !std::holds_alternative<lux::rdesc::LuaSourceScript>(sa->data()->body))
+		{
+			addLog("[error] not an editable Lua SCRIPT asset");
+			return;
+		}
+		const auto& payload = sa->payload();
+		code_buf_.assign(reinterpret_cast<const char*>(payload.data()), payload.size());
+		edit_asset_ = id;
+		edit_path_  = std::move(luxasset_path);
+		edit_name_  = display_vpath.empty() ? sa->data()->module_name
+		                                    : std::move(display_vpath);
+		addLog("# editing {}", edit_name_);
+	}
+
+	void LuaConsole::saveScriptAsset()
+	{
+		if (!asset_mgr_ || edit_asset_.is_nil())
+			return;
+		auto loaded = asset_mgr_->ensureAsset(edit_asset_);
+		if (!loaded)
+		{
+			addLog("[error] save failed: asset not loadable");
+			return;
+		}
+		auto* sa = loaded.value()->as<lux::asset::ScriptAsset>();
+		if (!sa)
+		{
+			addLog("[error] save failed: not a SCRIPT asset");
+			return;
+		}
+		// Buffer → payload → .luxasset. The Lua backend's compile cache keys on
+		// the source hash, so the next Play recompiles this asset automatically.
+		std::vector<std::byte> bytes(code_buf_.size());
+		std::memcpy(bytes.data(), code_buf_.data(), code_buf_.size());
+		sa->setPayload(std::move(bytes));
+
+		lux::asset::ScriptSerDeser ser(asset_mgr_);
+		const auto err = ser.exportAsLuxAsset(edit_asset_, edit_path_);
+		if (err != lux::asset::EAssetError::SUCCESS)
+			addLog("[error] save {} failed (err={})",
+			       edit_name_, static_cast<int>(err));
+		else
+			addLog("# saved -> {} — next Play picks it up", edit_name_);
+	}
+
 	void LuaConsole::paint()
 	{
 		if (!isVisible()) return;
@@ -231,6 +306,19 @@ namespace lux::editor
 		if (ImGui::Button("Run")) runCurrentScript();
 		ImGui::SameLine(); if (ImGui::Button("Clear Output")) clearLog();
 		ImGui::SameLine(); ImGui::Checkbox("Auto scroll", &auto_scroll_);
+		if (!edit_asset_.is_nil())
+		{
+			// In-place asset editing header: Save writes back to the asset +
+			// disk (Ctrl+S while the panel is focused does the same).
+			ImGui::SameLine();
+			if (ImGui::Button("Save"))
+				saveScriptAsset();
+			ImGui::SameLine();
+			ImGui::TextDisabled("editing: %s", edit_name_.c_str());
+			if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows) &&
+			    ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false))
+				saveScriptAsset();
+		}
 
 		// ------------------------------------------------ get region metrics
 		const float splitter_sz = 4.0f;

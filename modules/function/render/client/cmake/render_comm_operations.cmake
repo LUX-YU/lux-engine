@@ -1,0 +1,36 @@
+# The annotated operation headers are the single source of truth for both
+# halves of the generated render communication surface.  render_client owns
+# the installed proxy declarations and backend-neutral client bodies;
+# render_features owns only the server registrar/factory bodies.
+set(LUX_RENDER_COMM_OPERATION_HEADERS
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/grid/Grid3DOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/grid/Grid2DOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/gizmo/LineListOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/gizmo/TriOverlayOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/trajectory/TrajectoryOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/sky_box/SkyboxOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/skinning/SkinningOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/point_cloud/PointCloudOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/postprocess/TonemapOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/view_camera/ViewCameraOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/light/LightOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/meshstack/MeshStackOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/material/MaterialOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/deferred/DeferredLightingOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/DepthPrepassOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/forward/ForwardMeshOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/highlight/HighlightOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/streaming_feedback/StreamingFeedbackOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/hzb/HzbOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/postprocess/LinearDepthOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/postprocess/SsaoOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/postprocess/FogOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/canvas2d/Canvas2DOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/spatialcull/SpatialCullOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/render_cluster/RenderClusterOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/terrain/TerrainOperation.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../include/lux/engine/function/render/client/features/water/WaterOperation.hpp"
+)

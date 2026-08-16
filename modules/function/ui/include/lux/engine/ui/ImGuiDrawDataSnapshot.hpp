@@ -83,6 +83,11 @@ namespace lux::ui
         static constexpr double kGcSeconds = 20.0; ///< Purge unused entries after this many seconds
 
         CachedDrawList *findOrAddEntry(ImDrawList *src);
+        /// Free heap buffers owned by each ViewportFrameEntry.
+        /// ImVector::resize(0)/clear() won't call destructors, so we must
+        /// explicitly release draw_data.CmdLists and owned_cmd_lists.
+        /// (此前 sinclude/ 下有一份同拼写的重复头,唯一差异就是本方法的位置与注释;
+        ///  两个目录都在 include path 上,拿到哪份取决于目录顺序 —— ODR 地雷,已删。)
         void releaseViewportFrames();
         void snapDrawDataInto(ImDrawData *src, ImDrawData &dst, ImVector<ImDrawList *> &dst_lists, double current_time);
         void garbageCollect(double current_time);

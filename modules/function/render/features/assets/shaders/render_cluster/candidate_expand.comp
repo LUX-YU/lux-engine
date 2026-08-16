@@ -1,0 +1,129 @@
+#version 450
+
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer ClusterInstanceBuffer
+{
+    uvec2 instances[]; // x = stable instance slot, y = cluster index
+} uClusterInstances;
+
+layout(set = 0, binding = 1, std430) readonly buffer VisibilityBuffer
+{
+    uint visible[];
+} uVisibility;
+
+layout(set = 0, binding = 2, std430) readonly buffer DynamicSlotBuffer
+{
+    uint slots[];
+} uDynamicSlots;
+
+layout(set = 0, binding = 4, std430) writeonly buffer CandidateBuffer
+{
+    uint slots[];
+} uCandidates;
+
+layout(set = 0, binding = 5, std430) buffer DispatchBuffer
+{
+    uint requested;
+    uint accepted;
+    uint overflow;
+    uint reserved;
+    uint group_count_x;
+    uint group_count_y;
+    uint group_count_z;
+    uint dispatch_reserved;
+} uDispatch;
+
+layout(push_constant) uniform CandidateExpandPush
+{
+    uint scene_index;
+    uint view_index;
+    uint cluster_instance_count;
+    uint dynamic_count;
+    uint candidate_capacity;
+    uint cluster_count;
+    uint mode;
+    uint reserved2;
+} pc;
+
+shared uint sPrefix[64];
+shared uint sGroupBase;
+
+void main()
+{
+    if (pc.mode != 0u)
+    {
+        if (gl_LocalInvocationIndex == 0u)
+        {
+            uint capacity = min(
+                pc.candidate_capacity,
+                uint(uCandidates.slots.length()));
+            uint accepted = min(uDispatch.requested, capacity);
+            uDispatch.accepted = accepted;
+            uDispatch.overflow = uDispatch.requested - accepted;
+            uDispatch.group_count_x = (accepted + 63u) / 64u;
+            uDispatch.group_count_y = accepted == 0u ? 0u : 1u;
+            uDispatch.group_count_z = accepted == 0u ? 0u : 1u;
+            uDispatch.dispatch_reserved = 0u;
+        }
+        return;
+    }
+
+    uint index = gl_GlobalInvocationID.x;
+    uint cluster_instance_count = min(
+        pc.cluster_instance_count,
+        uint(uClusterInstances.instances.length()));
+    uint cluster_count = min(
+        pc.cluster_count,
+        uint(uVisibility.visible.length()));
+    uint dynamic_count = min(
+        pc.dynamic_count,
+        uint(uDynamicSlots.slots.length()));
+    uint selected_count = 0u;
+    uint first_slot = 0u;
+    uint second_slot = 0u;
+    if (index < cluster_instance_count)
+    {
+        uvec2 item = uClusterInstances.instances[index];
+        if (item.y < cluster_count && uVisibility.visible[item.y] != 0u)
+        {
+            first_slot = item.x;
+            selected_count = 1u;
+        }
+    }
+    if (index < dynamic_count)
+    {
+        uint slot = uDynamicSlots.slots[index];
+        if (selected_count == 0u)
+            first_slot = slot;
+        else
+            second_slot = slot;
+        ++selected_count;
+    }
+
+    uint lane = gl_LocalInvocationIndex;
+    sPrefix[lane] = selected_count;
+    barrier();
+    for (uint offset = 1u; offset < 64u; offset <<= 1u)
+    {
+        uint addend = lane >= offset ? sPrefix[lane - offset] : 0u;
+        barrier();
+        sPrefix[lane] += addend;
+        barrier();
+    }
+
+    uint inclusive = sPrefix[lane];
+    uint exclusive = inclusive - selected_count;
+    if (lane == 0u)
+        sGroupBase = atomicAdd(uDispatch.requested, sPrefix[63]);
+    barrier();
+
+    uint capacity = min(
+        pc.candidate_capacity,
+        uint(uCandidates.slots.length()));
+    uint output_index = sGroupBase + exclusive;
+    if (selected_count >= 1u && output_index < capacity)
+        uCandidates.slots[output_index] = first_slot;
+    if (selected_count == 2u && output_index + 1u < capacity)
+        uCandidates.slots[output_index + 1u] = second_slot;
+}

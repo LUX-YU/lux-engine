@@ -28,16 +28,18 @@
 //    [ESC] Exit
 // ============================================================================
 
-#include <lux/engine/render/comm/client/RenderSession.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include "RenderTask.hpp"            // relocated test-only coroutine support
 #include "RenderTaskScheduler.hpp"
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
 
-#include <lux/engine/render/renderer/features/gizmo/LineListOperation.hpp>
-#include <lux/engine/render/renderer/features/gizmo/TriOverlayOperation.hpp>
-#include <lux/engine/render/renderer/features/grid/GridOperation.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
+#include <lux/engine/function/render/client/genops/LineListOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/TriOverlayOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/Grid3DOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 
 #include <lux/engine/window/LuxWindow.hpp>
 #include <GLFW/glfw3.h>
@@ -74,14 +76,8 @@ static void check(bool cond, const char* name)
 
 static std::vector<const char*> getVulkanExtensions()
 {
-    glfwInit();
-    uint32_t count = 0;
-    const char** exts = glfwGetRequiredInstanceExtensions(&count);
-    std::vector<const char*> result;
-    result.reserve(count);
-    for (uint32_t i = 0; i < count; ++i)
-        result.emplace_back(exts[i]);
-    return result;
+    const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
+    return {exts.begin(), exts.end()};
 }
 
 // ── Matrix helpers ──────────────────────────────────────────────────────
@@ -309,13 +305,14 @@ static void appendTo(std::vector<GizmoVertex>& dst, const std::vector<GizmoVerte
 // ── Coroutine task ──────────────────────────────────────────────────────
 
 static RenderTask<void> gizmoTestTask(
-    RenderSession& session,
+    RenderFrameSession& session,
+    RenderControlSession& control,
     lux::window::LuxWindow& window)
 {
     // ─────────────────────────────────────────────────────────────────
     //  Phase 1: Create scene
     // ─────────────────────────────────────────────────────────────────
-    auto scene_reply = co_await session.createScene("GizmoTestScene");
+    auto scene_reply = co_await control.createScene("GizmoTestScene");
     auto scene_id = scene_reply.scene_id;
     check(true, "CreateScene — OK");
 
@@ -331,50 +328,50 @@ static RenderTask<void> gizmoTestTask(
     Eigen::Matrix4f P = buildProjMatrix(60.f * kPi / 180.f, 1280.f / 720.f, 0.1f, 200.f);
     Eigen::Matrix4f V0 = buildViewMatrix(init_eye, target, up);
 
-    auto active_req = session.setActiveScene(scene_id, true);
-    auto view_req = session.addView(scene_id, {1280, 720}, "MainView");
+    auto active_req = control.setActiveScene(scene_id, true);
+    auto view_req = control.addView(scene_id, {1280, 720}, "MainView");
     co_await active_req;
     auto view_reply = co_await view_req;
     auto view_handle = view_reply.view;
-    check(view_handle.valid(), "AddView — valid handle");
-    session.bindSwapchain(scene_id, view_handle);
+    check(view_handle.isValid(), "AddView — valid handle");
+    control.bindSwapchain(scene_id, view_handle);
 
     // ─────────────────────────────────────────────────────────────────
     //  StandardViewCamera feature — owns per-view camera matrices; MUST
     //  attach before every camera consumer. Per-frame updates go through
-    //  ViewCameraProxy (replaces the retired RenderSession::updateView).
+    //  ViewCameraProxy (replaces the retired RenderFrameSession::updateView).
     // ─────────────────────────────────────────────────────────────────
     co_await yield_frame();
 
-    auto view_cam_type_reply = co_await session.registerFeatureType(kStandardViewCameraFeatureFactory);
+    auto view_cam_type_reply = co_await control.registerFeatureType(kViewCameraFeatureFactory);
     auto view_cam_ops = ViewCameraOperationIds::fromOps(
         view_cam_type_reply.ops, view_cam_type_reply.op_count);
 
     co_await yield_frame();
 
-    struct EmptyViewCamCfg {} view_cam_cfg{};
-    co_await session.addFeature(scene_id, view_cam_type_reply.feature_type_id, view_cam_cfg);
+    lux::render::ViewCameraCommTag view_cam_cfg{};
+    co_await control.addFeature(scene_id, view_cam_type_reply.feature_type_id, view_cam_cfg);
 
     // ─────────────────────────────────────────────────────────────────
     //  Phase 3: Grid feature (reference plane)
     // ─────────────────────────────────────────────────────────────────
     co_await yield_frame();
 
-    auto grid_type_reply = co_await session.registerFeatureType(kGridFeatureFactory);
+    auto grid_type_reply = co_await control.registerFeatureType(kGrid3DFeatureFactory);
     check(grid_type_reply.feature_type_id > 0, "RegisterFeatureType Grid — OK");
 
     co_await yield_frame();
 
-    GridCommConfig gcc{};
-    auto grid_feat_reply = co_await session.addFeature(scene_id, grid_type_reply.feature_type_id, gcc);
-    check(grid_feat_reply.feature.valid(), "AddFeature Grid — OK");
+    Grid3DCommConfig gcc{};
+    auto grid_feat_reply = co_await control.addFeature(scene_id, grid_type_reply.feature_type_id, gcc);
+    check(grid_feat_reply.feature.isValid(), "AddFeature Grid — OK");
 
     // ─────────────────────────────────────────────────────────────────
     //  Phase 4: Register LineListTransientFeature
     // ─────────────────────────────────────────────────────────────────
     co_await yield_frame();
 
-    auto line_type_reply = co_await session.registerFeatureType(kLineListTransientFactory);
+    auto line_type_reply = co_await control.registerFeatureType(kLineListFeatureFactory);
     check(line_type_reply.feature_type_id > 0, "RegisterFeatureType LineList — OK");
     auto line_ops = LineListOperationIds::fromOps(
         line_type_reply.ops, line_type_reply.op_count);
@@ -387,17 +384,17 @@ static RenderTask<void> gizmoTestTask(
     LineListTransientCommConfig line_cc{};
     line_cc.line_width    = 1.0f;
     line_cc.max_vertices  = 100'000;
-    auto line_feat_reply = co_await session.addFeature(
+    auto line_feat_reply = co_await control.addFeature(
         scene_id, line_type_reply.feature_type_id, line_cc);
     auto line_handle = line_feat_reply.feature;
-    check(line_handle.valid(), "AddFeature LineList — valid handle");
+    check(line_handle.isValid(), "AddFeature LineList — valid handle");
 
     // ─────────────────────────────────────────────────────────────────
     //  Phase 5: Register TriOverlayTransientFeature
     // ─────────────────────────────────────────────────────────────────
     co_await yield_frame();
 
-    auto tri_type_reply = co_await session.registerFeatureType(kTriOverlayTransientFactory);
+    auto tri_type_reply = co_await control.registerFeatureType(kTriOverlayFeatureFactory);
     check(tri_type_reply.feature_type_id > 0, "RegisterFeatureType TriOverlay — OK");
     auto tri_ops = TriOverlayOperationIds::fromOps(
         tri_type_reply.ops, tri_type_reply.op_count);
@@ -405,14 +402,27 @@ static RenderTask<void> gizmoTestTask(
 
     TriOverlayProxy tri_proxy{session, tri_ops};
 
+    // A+ 生成 Proxy 收 (payload, bytes, align) 原始字节面 —— 测试侧一次打包,
+    // 上传回执本测试从不消费,helper 内显式丢弃。
+    auto upload_lines = [&](lux::render::RenderSceneId sid, std::span<const GizmoVertex> vs) {
+        UploadLineListPayload p{};
+        p.scene_id = sid; p.chunk_id = 0; p.vertex_count = static_cast<uint32_t>(vs.size());
+        (void)line_proxy.uploadLines(p, std::as_bytes(vs), alignof(GizmoVertex));
+    };
+    auto upload_tris = [&](lux::render::RenderSceneId sid, std::span<const GizmoVertex> vs) {
+        UploadTriOverlayPayload p{};
+        p.scene_id = sid; p.chunk_id = 0; p.vertex_count = static_cast<uint32_t>(vs.size());
+        (void)tri_proxy.uploadTriangles(p, std::as_bytes(vs), alignof(GizmoVertex));
+    };
+
     co_await yield_frame();
 
     TriOverlayTransientCommConfig tri_cc{};
     tri_cc.max_vertices = 100'000;
-    auto tri_feat_reply = co_await session.addFeature(
+    auto tri_feat_reply = co_await control.addFeature(
         scene_id, tri_type_reply.feature_type_id, tri_cc);
     auto tri_handle = tri_feat_reply.feature;
-    check(tri_handle.valid(), "AddFeature TriOverlay — valid handle");
+    check(tri_handle.isValid(), "AddFeature TriOverlay — valid handle");
 
     // ─────────────────────────────────────────────────────────────────
     //  Phase 6: Test — empty frame (no upload, must not crash)
@@ -430,8 +440,7 @@ static RenderTask<void> gizmoTestTask(
             1.0f, 1.0f, 0.0f); // yellow
         check(frustum.size() == 32, "Frustum geometry — 32 vertices (16 lines)");
 
-        line_proxy.uploadLines(scene_id, 0,
-            std::span<const GizmoVertex>(frustum.data(), frustum.size()));
+        upload_lines(scene_id, frustum);
         co_await yield_frame();
         check(true, "Frustum upload — rendered without crash");
     }
@@ -443,8 +452,7 @@ static RenderTask<void> gizmoTestTask(
         auto axes = buildAxesLines({0, 0, 0}, 3.0f);
         check(axes.size() == 6, "Axes geometry — 6 vertices (3 lines)");
 
-        line_proxy.uploadLines(scene_id, 0,
-            std::span<const GizmoVertex>(axes.data(), axes.size()));
+        upload_lines(scene_id, axes);
         co_await yield_frame();
         check(true, "Axes upload — rendered without crash");
     }
@@ -456,8 +464,7 @@ static RenderTask<void> gizmoTestTask(
         auto aabb = buildAABBLines({-2, 0, -2}, {2, 3, 2}, 0.0f, 1.0f, 1.0f);
         check(aabb.size() == 24, "AABB geometry — 24 vertices (12 edges)");
 
-        line_proxy.uploadLines(scene_id, 0,
-            std::span<const GizmoVertex>(aabb.data(), aabb.size()));
+        upload_lines(scene_id, aabb);
         co_await yield_frame();
         check(true, "AABB upload — rendered without crash");
     }
@@ -469,8 +476,7 @@ static RenderTask<void> gizmoTestTask(
         auto quad = buildOverlayQuad({0, 0.01f, 0}, 2.0f, 0.2f, 0.6f, 1.0f, 0.4f);
         check(quad.size() == 6, "Overlay quad — 6 vertices (2 triangles)");
 
-        tri_proxy.uploadTriangles(scene_id, 0,
-            std::span<const GizmoVertex>(quad.data(), quad.size()));
+        upload_tris(scene_id, quad);
         co_await yield_frame();
         check(true, "TriOverlay quad — rendered without crash");
     }
@@ -483,8 +489,7 @@ static RenderTask<void> gizmoTestTask(
                                      16, 1.0f, 0.3f, 0.1f, 0.3f);
         check(sector.size() == 48, "FOV sector — 48 vertices (16 triangles)");
 
-        tri_proxy.uploadTriangles(scene_id, 0,
-            std::span<const GizmoVertex>(sector.data(), sector.size()));
+        upload_tris(scene_id, sector);
         co_await yield_frame();
         check(true, "FOV sector overlay — rendered without crash");
     }
@@ -504,22 +509,21 @@ static RenderTask<void> gizmoTestTask(
     {
         // Upload data, then disable the feature, render, re-enable, render
         auto axes = buildAxesLines({0, 0, 0}, 3.0f);
-        line_proxy.uploadLines(scene_id, 0,
-            std::span<const GizmoVertex>(axes.data(), axes.size()));
+        upload_lines(scene_id, axes);
 
-        session.setFeatureEnabled(scene_id, line_handle, false);
+        control.setFeatureEnabled(scene_id, line_handle, false);
         co_await yield_frame();
         check(true, "LineList disabled — no crash");
 
-        session.setFeatureEnabled(scene_id, line_handle, true);
+        control.setFeatureEnabled(scene_id, line_handle, true);
         co_await yield_frame();
         check(true, "LineList re-enabled — no crash");
 
-        session.setFeatureEnabled(scene_id, tri_handle, false);
+        control.setFeatureEnabled(scene_id, tri_handle, false);
         co_await yield_frame();
         check(true, "TriOverlay disabled — no crash");
 
-        session.setFeatureEnabled(scene_id, tri_handle, true);
+        control.setFeatureEnabled(scene_id, tri_handle, true);
         co_await yield_frame();
         check(true, "TriOverlay re-enabled — no crash");
     }
@@ -535,8 +539,7 @@ static RenderTask<void> gizmoTestTask(
         appendTo(all_lines, buildAxesLines({0, 0, 0}, 3.0f));
         appendTo(all_lines, buildAABBLines({-2, 0, -2}, {2, 3, 2}, 0, 1, 1));
 
-        line_proxy.uploadLines(scene_id, 0,
-            std::span<const GizmoVertex>(all_lines.data(), all_lines.size()));
+        upload_lines(scene_id, all_lines);
 
         std::vector<GizmoVertex> all_tris;
         appendTo(all_tris, buildOverlayQuad({0, 0.01f, 0}, 2.0f,
@@ -545,8 +548,7 @@ static RenderTask<void> gizmoTestTask(
                                           90.f * kPi / 180.f, 16,
                                           1.0f, 0.3f, 0.1f, 0.3f));
 
-        tri_proxy.uploadTriangles(scene_id, 0,
-            std::span<const GizmoVertex>(all_tris.data(), all_tris.size()));
+        upload_tris(scene_id, all_tris);
 
         co_await yield_frame();
         check(true, "Combined scene — all gizmos rendered without crash");
@@ -585,7 +587,7 @@ static RenderTask<void> gizmoTestTask(
                 cam_dist * 0.5f,
                 cam_dist * std::sin(angle));
             Eigen::Matrix4f V = buildViewMatrix(eye, target, up);
-            ViewCameraProxy(session, view_cam_ops).update(scene_id, view_handle, V.data(), P.data(), eye.data());
+            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops), scene_id, view_handle, V.data(), P.data(), eye.data());
         }
 
         // ── Build line data for this frame ──
@@ -615,8 +617,7 @@ static RenderTask<void> gizmoTestTask(
                     0.0f, 1.0f, 1.0f));
             }
 
-            line_proxy.uploadLines(scene_id, 0,
-                std::span<const GizmoVertex>(lines.data(), lines.size()));
+            upload_lines(scene_id, lines);
         }
 
         // ── Build triangle data for this frame ──
@@ -638,8 +639,7 @@ static RenderTask<void> gizmoTestTask(
                 (60.f + 30.f * std::sin(elapsed)) * kPi / 180.f,
                 16, 1.0f, 0.3f, 0.1f, 0.25f));
 
-            tri_proxy.uploadTriangles(scene_id, 0,
-                std::span<const GizmoVertex>(tris.data(), tris.size()));
+            upload_tris(scene_id, tris);
         }
 
         co_await yield_frame();
@@ -656,12 +656,12 @@ static RenderTask<void> gizmoTestTask(
 
         if (keyPressed(GLFW_KEY_L)) {
             line_enabled = !line_enabled;
-            session.setFeatureEnabled(scene_id, line_handle, line_enabled);
+            control.setFeatureEnabled(scene_id, line_handle, line_enabled);
             std::cout << "  >> LineList " << (line_enabled ? "ON" : "OFF") << "\n";
         }
         if (keyPressed(GLFW_KEY_T)) {
             tri_enabled = !tri_enabled;
-            session.setFeatureEnabled(scene_id, tri_handle, tri_enabled);
+            control.setFeatureEnabled(scene_id, tri_handle, tri_enabled);
             std::cout << "  >> TriOverlay " << (tri_enabled ? "ON" : "OFF") << "\n";
         }
         if (keyPressed(GLFW_KEY_1)) {
@@ -696,7 +696,9 @@ int main()
               << "  Tests: registration, upload, transient semantics, enable/disable,\n"
               << "         combined scene, frustum/axes/AABB/overlay gizmos.\n\n";
 
-    auto channel = RenderProgramChannel<>::create();
+    auto channel = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel = RenderUploadChannel<>::create();
     auto sync = std::make_shared<RenderChannelSync>();
 
     auto surface_exts = getVulkanExtensions();
@@ -709,17 +711,17 @@ int main()
 
     std::thread server_thread([&]
     {
-        GeneralRenderServer server(channel, sync);
+        GeneralRenderServer server(channel, control_channel, upload_channel, sync);
         ServerConfig cfg;
         cfg.instance_extensions = surface_exts;
         if (auto r = server.init(std::move(cfg)); !r) {
-            std::cerr << "[Server] Init failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] Init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
         }
         if (auto r = server.attachToWindow(window); !r) {
-            std::cerr << "[Server] Attach failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] Attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
@@ -739,13 +741,15 @@ int main()
         return 0;
     }
 
-    RenderSession session(channel, sync);
+    RenderFrameSession session(channel, sync);
+    RenderControlSession control(control_channel, sync);
+    RenderUploadSession upload(upload_channel, sync);
 
     // ── Run coroutine via scheduler ─────────────────────────────────
-    RenderTaskScheduler scheduler(session);
-    auto task = gizmoTestTask(session, window);
+    RenderTaskScheduler scheduler(session, control);
+    auto task = gizmoTestTask(session, control, window);
     scheduler.run(
-        std::move(task), [&](RenderSession&) -> bool
+        std::move(task), [&](RenderFrameSession&) -> bool
         {
             window.pollEvents();
             return !window.shouldClose();

@@ -3,11 +3,12 @@
 #include <lux/engine/ui/AssetDragDrop.hpp>
 #include <lux/engine/ui/Panel.hpp>
 
-#include <lux/cxx/event/Signal.hpp>   // resized / picked / asset_dropped
+#include <functional>   // on_resized / on_picked / on_asset_dropped 单槽回调
 
 #include <imgui.h>
 
 #include <cstdint>
+#include <functional>
 
 namespace lux::ui
 {
@@ -72,20 +73,23 @@ namespace lux::ui
         /// After paint(), returns the actual content region size (in pixels).
         ImVec2 contentSize() const noexcept { return content_size_; }
 
-        // ── Viewport signals (replace the old std::function callbacks) ──────
+        // ── 回调缝(单槽;统一事件系统裁决③)──────────────────────────
         //
-        // `resized`       — content region size changed.
-        // `picked`        — a clean LMB click-release with NO camera interaction
-        //                   (see the pick-disambiguation block in paint()).
-        // `asset_dropped` — an AssetBrowser drag-source carrying
-        //                   kAssetDragPayloadTag was released over the image.
+        // `on_resized`       — content region size changed.
+        // `on_picked`        — a clean LMB click-release with NO camera
+        //                      interaction (see the pick-disambiguation block
+        //                      in paint()).
+        // `on_asset_dropped` — an AssetBrowser drag-source carrying
+        //                      kAssetDragPayloadTag was released over the image.
         //
-        // Signals (not single callbacks): any number of hosts may connect, and
-        // emitting with no subscribers is a harmless no-op. The host owns the
-        // connections; their lifetime must not outlive this panel.
-        lux::cxx::event::Signal<ViewportResized>      resized;
-        lux::cxx::event::Signal<ViewportPicked>       picked;
-        lux::cxx::event::Signal<ViewportAssetDropped> asset_dropped;
+        // 每种事实一个 std::function 槽,装配层设置一次、置空即断开;未设置
+        // 时事实被丢弃(旧 Signal 零订阅者同款语义)。**不做订阅表** ——
+        // Signal 本身就是一个小事件系统,与统一总线冗余;要扇出的话装配层
+        // 翻译成总线事件。(曾是 Signal;更早曾是 std::function —— 绕一圈
+        // 回来,差别是这次「多消费者」的答案固定为总线而不是订阅表。)
+        std::function<void(const ViewportResized&)>      on_resized;
+        std::function<void(const ViewportPicked&)>       on_picked;
+        std::function<void(const ViewportAssetDropped&)> on_asset_dropped;
 
         // ── M2: pointer / capture hooks for picking + UE-style camera ─────
 
@@ -107,6 +111,24 @@ namespace lux::ui
         /// Pointer state captured during the last paint() call. Valid after
         /// the panel has been painted at least once.
         [[nodiscard]] ViewportPointer pointer() const noexcept { return pointer_; }
+
+        // ── Context menu (RMB tap) ───────────────────────────────────────
+        //
+        // A clean RMB *tap* over the image (no drag, no camera ownership — the
+        // same disambiguation shape as the LMB pick) opens a popup; the hook is
+        // invoked INSIDE BeginPopup each frame it stays open and draws the menu
+        // CONTENT (menu items + click handling). A hook rather than a signal
+        // because a menu is drawn-over-frames UI, not a one-shot event; the
+        // panel stays generic — the host (editor) owns the menu semantics.
+        //
+        // The passed pointer snapshot is the state AT THE TAP (position where
+        // the menu should act, e.g. "create entity here"), not the live cursor.
+        //
+        // NOTE: in a scene whose camera flies on RMB-hold, camera ownership
+        // engages on press and suppresses the tap (by design — fly must win);
+        // the context menu is then reachable via the Hierarchy instead.
+        void setContextMenuHook(std::function<void(const ViewportPointer&)> fn)
+        { context_menu_hook_ = std::move(fn); }
 
         /// True when the host explicitly wants the panel to keep mouse input
         /// inside the viewport (e.g. RMB-fly camera is active). The host sets
@@ -133,6 +155,11 @@ namespace lux::ui
         bool              prev_owns_mouse_{false};  ///< edge-detect the end of camera ownership (RMB fly)
         int               pick_cooldown_{0};        ///< frames to keep suppressing pick after ownership ends
         bool              lmb_drag_latched_{false}; ///< this LMB hold passed the drag threshold → it's an orbit, not a click
+
+        // Context-menu (RMB tap) state — same latch shape as the LMB pick.
+        std::function<void(const ViewportPointer&)> context_menu_hook_;
+        bool              rmb_drag_latched_{false}; ///< this RMB hold passed the drag threshold → camera, not a tap
+        ViewportPointer   ctx_click_{};             ///< pointer snapshot at the tap that opened the menu
     };
 
 } // namespace lux::ui

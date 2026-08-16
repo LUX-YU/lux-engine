@@ -55,16 +55,10 @@ namespace lux::input
         //  Query API — call after update()                                    //
         // ------------------------------------------------------------------ //
 
-        [[deprecated("Use triggered() instead")]]
-        [[nodiscard]] bool  performed(ActionId id) const noexcept;
         [[nodiscard]] bool  ongoing  (ActionId id) const noexcept;
         [[nodiscard]] bool  canceled (ActionId id) const noexcept;
         [[nodiscard]] bool  active   (ActionId id) const noexcept;
         [[nodiscard]] bool  triggered(ActionId id) const noexcept;
-
-        /// Legacy scalar query — returns value.as1D().
-        [[deprecated("Use getValue(id).as1D() instead")]]
-        [[nodiscard]] float axis     (ActionId id) const noexcept;
 
         /// Multi-dimensional value query.
         [[nodiscard]] const InputValue& getValue(ActionId id) const noexcept;
@@ -84,12 +78,6 @@ namespace lux::input
 
         /// Inject a persistent value until overwritten next update().
         void injectValue(ActionId id, const InputValue& value);
-
-        // Legacy scalar injections — prefer injectTriggered/injectValue with InputValue.
-        [[deprecated("Use injectTriggered(id, InputValue) instead")]]
-        void injectPerformed(ActionId id, float value = 1.f);
-        [[deprecated("Use injectValue(id, InputValue) instead")]]
-        void injectAxis(ActionId id, float value);
 
     private:
         // ── Pipeline stages ─────────────────────────────────── //

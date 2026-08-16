@@ -15,7 +15,7 @@ namespace lux::rdesc
 		OP_END = 0xFF
 	};
 
-	// ================= 基础 buffer I/O（小端） =================
+	// ================= Basic buffer I/O (little-endian) =================
 	template<typename T>
 	static inline void appendLE(std::vector<std::byte>& out, const T& v) {
 		static_assert(std::is_trivially_copyable<T>::value, "POD only");
@@ -69,7 +69,7 @@ namespace lux::rdesc
 		return true;
 	}
 
-	// 小工具：构建一条记录的 payload，再打包 (opcode, size, payload)
+	// Small helper: build a record's payload, then pack it as (opcode, size, payload)
 	struct PayloadBuilder {
 		std::vector<std::byte> payload;
 		template<typename T> void put(const T& v) { appendLE(payload, v); }
@@ -126,7 +126,7 @@ namespace lux::rdesc
 			pb.put<uint8_t>(static_cast<uint8_t>(sc.default_value.kind));
 			pb.put<uint32_t>(sc.default_value.bit_width);
 
-			// 固定 8 字节槽
+			// Fixed 8-byte slot
 			switch (sc.default_value.kind) {
 			case SpecDefaultValue::Kind::Bool: {
 				pb.put<uint8_t>(sc.default_value.v.b8);
@@ -281,15 +281,15 @@ namespace lux::rdesc
 			} break;
 
 			default:
-				// 前向兼容：跳过未知记录
+				// Forward compatibility: skip unknown records
 				break;
 			}
 
-			// 消费掉本条 payload
+			// Advance past this record's payload
 			off = end;
 		}
 
-		// 归并 setBuckets => ShaderInfo.sets
+		// Merge setBuckets => ShaderInfo.sets
 		out.sets.clear();
 		out.sets.reserve(setBuckets.size());
 		for (auto& kv : setBuckets) {

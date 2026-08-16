@@ -52,19 +52,11 @@ namespace lux::ui
 			return suggest_size_;
 		}
 
-	protected:
-		UISystem* ui_system_{nullptr};
-
 	private:
 		void setID(size_t id) {
 			id_ = id;
 		}
 
-		void setUISystem(UISystem* ui_system) {
-			ui_system_ = ui_system;
-		}
-
-		virtual void onDelete();
 		virtual void beforePaint() {}
 		virtual void paint();
 		virtual void afterPaint() {}

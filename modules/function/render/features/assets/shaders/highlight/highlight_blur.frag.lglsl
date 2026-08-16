@@ -1,0 +1,39 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+// =========================================================================
+//  highlight_blur.frag — separable Gaussian blur of the R8 highlight mask.
+//
+//  Run TWICE: horizontally (mask -> blurH) then vertically (blurH -> blurV),
+//  driven by the push-constant direction. The blurred mask is the raw material
+//  for the outer halo: highlight_composite.frag subtracts the SHARP mask from
+//  this blurred field so the halo lands only OUTSIDE the silhouette.
+//
+//  9-tap (centre + 4 symmetric pairs) normalised Gaussian; the per-tap texel
+//  step is textureSize-derived (resolution-independent) and scaled by `radius`.
+//  Reuses the fullscreen tonemap.vert triangle (vUV at location 0).
+// =========================================================================
+// Resource + PC declarations are GENERATED from HighlightBlurPassParams.hpp
+// (L2-1): uBlurSrc + the PC block (shared head at 0/4, dir_x/dir_y/radius at
+// 8/12/16) live in the emitted header — C++ and GLSL share one source now.
+#include "HighlightBlurPassParams.glsl"
+
+layout(location = 0) in  vec2 vUV;
+layout(location = 0) out float outVal;
+
+// Normalised Gaussian weights (sigma ~= 2): centre + 4 pairs sum to 1.0.
+const float W[5] = float[](0.204164, 0.180174, 0.123832, 0.066282, 0.027631);
+
+void main()
+{
+    vec2 texel = 1.0 / vec2(textureSize(uBlurSrc, 0));
+    vec2 step  = vec2(uPC.dir_x, uPC.dir_y) * texel * uPC.radius;
+
+    float sum = texture(uBlurSrc, vUV).r * W[0];
+    for (int i = 1; i < 5; ++i)
+    {
+        float fi = float(i);
+        sum += texture(uBlurSrc, vUV + step * fi).r * W[i];
+        sum += texture(uBlurSrc, vUV - step * fi).r * W[i];
+    }
+    outVal = sum;
+}

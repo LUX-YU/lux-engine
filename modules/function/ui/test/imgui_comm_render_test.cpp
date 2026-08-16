@@ -2,13 +2,13 @@
  * @file imgui_comm_render_test.cpp
  * @brief End-to-end test for ImGui rendering through the comm pipeline.
  *
- * Exercises the full UIRenderServer + UIRenderSession architecture:
+ * Exercises the full UIRenderServer + UIRenderFrameSession architecture:
  *
  *   Main thread:
  *     LuxWindow::pollEvents()  →  UISystem::newFrame()
  *     session.beginFrame()
  *     session.submitImGuiDrawData(scene_id, ImGui::GetDrawData())
- *     session.submitFrame()
+ *     session.trySubmitFrame()
  *     session.pumpReplies()
  *
  *   Render thread:
@@ -22,16 +22,16 @@
 #include <lux/engine/ui/UISystem.hpp>
 #include <lux/engine/ui/Panel.hpp>
 #include <lux/engine/ui/UIRenderServer.hpp>
-#include <lux/engine/ui/UIRenderSession.hpp>
+#include <lux/engine/ui/UIRenderFrameSession.hpp>
 #include <lux/engine/ui/ImGuiCommConfig.hpp>
 #include <lux/engine/ui/ImGuiFeature.hpp>
 #include <lux/engine/ui/ImGuiLuxWidgets.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/window/GlfwRuntime.hpp>
 
-#include <lux/engine/render/comm/FrameProgram.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
-#include <lux/engine/render/core/RenderTypes.hpp>
+#include <lux/engine/function/render/client/FrameProgram.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>
 
 #include <imgui.h>
 
@@ -113,8 +113,8 @@ protected:
 
         ImGui::Separator();
         ImGui::TextWrapped(
-            "Architecture: UIRenderSession (main thread) → "
-            "RenderProgramChannel → UIRenderServer (render thread). "
+            "Architecture: UIRenderFrameSession (main thread) → "
+            "RenderFrameChannel → UIRenderServer (render thread). "
             "ImDrawData is snapshotted and sent as an owned attachment. "
             "UIRenderServer::tick() renders the swapchain with ImGui overlay.");
         ImGui::Separator();
@@ -179,13 +179,13 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main — manual loop: LuxWindow + UISystem + UIRenderSession + render thread
+// Main — manual loop: LuxWindow + UISystem + UIRenderFrameSession + render thread
 // ─────────────────────────────────────────────────────────────────────────────
 
 int main()
 {
     std::printf("=== ImGui Comm Pipeline Render Test ===\n");
-    std::printf("Main thread:   LuxWindow + UISystem + UIRenderSession\n");
+    std::printf("Main thread:   LuxWindow + UISystem + UIRenderFrameSession\n");
     std::printf("Render thread: UIRenderServer::tick()\n");
     std::printf("Press ESC or close window to exit.\n\n");
 
@@ -196,22 +196,27 @@ int main()
     if (!glfw.valid()) { std::fprintf(stderr, "glfwInit failed\n"); return 1; }
 
     // ── GLFW window + ImGui context ──────────────────────────────────────
-    lux::window::LuxWindow window(kWidth, kHeight, "ImGui Comm Render Test — UIRenderServer + UIRenderSession");
+    lux::window::LuxWindow window(kWidth, kHeight, "ImGui Comm Render Test — UIRenderServer + UIRenderFrameSession");
     lux::ui::UISystem ui(window);
 
     StatsPanel stats_panel(stats);
     DemoPanel  demo_panel;
-    ui.addPanel(&stats_panel);
-    ui.addPanel(&demo_panel);
+    auto stats_registration = ui.registerPanel(stats_panel);
+    auto demo_registration = ui.registerPanel(demo_panel);
+    if (!stats_registration || !demo_registration)
+        return 1;
 
     // ── Communication channel ────────────────────────────────────────────
-    auto channel = RenderProgramChannel<>::create();
+    auto channel = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel = RenderUploadChannel<>::create();
     auto sync    = std::make_shared<RenderChannelSync>();
     lux::ui::ImGuiOperationIds imgui_ops{};   // populated by render thread
 
     // ── Launch render thread ─────────────────────────────────────────────
     std::thread render_thread([&] {
-        auto server = std::make_unique<lux::ui::UIRenderServer>(channel, sync);
+        auto server = std::make_unique<lux::ui::UIRenderServer>(
+            channel, control_channel, upload_channel, sync);
         lux::render::ServerConfig cfg;
         for (auto* ext : lux::ui::UISystem::requiredVulkanExtensions())
             cfg.instance_extensions.emplace_back(ext);
@@ -246,7 +251,7 @@ int main()
     while (!stats.server_running.load(std::memory_order_acquire))
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    auto session = std::make_unique<lux::ui::UIRenderSession>(channel, sync, imgui_ops);
+    auto session = std::make_unique<lux::ui::UIRenderFrameSession>(channel, sync, imgui_ops);
 
     // ── Main loop ────────────────────────────────────────────────────────
     while (!window.shouldClose())
@@ -266,7 +271,7 @@ int main()
             session->submitImGuiDrawData(RenderSceneId{}, draw_data);
             stats.frames_submitted.fetch_add(1, std::memory_order_relaxed);
         }
-        session->submitFrame();
+        session->trySubmitFrame();
         session->pumpReplies();
     }
 

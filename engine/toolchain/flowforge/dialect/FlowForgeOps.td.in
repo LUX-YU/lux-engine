@@ -1,0 +1,140 @@
+//===- LuxFlow.td ------------------------------------------------*- tablegen -*-===//
+// Dialect for FlowForge graphs (region-aware version).
+//===----------------------------------------------------------------------===//
+
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/OpBase.td"
+include "FlowForgeCompatTraits.td"
+
+//==============================================================================
+// Type definitions (unchanged)
+//==============================================================================
+class FlowForge_Type<string name, string mnem>
+  : TypeDef<FlowForgeDialect, name> { let mnemonic = mnem; }
+
+def TokenType     : FlowForge_Type<"token",  "token">;
+def ObjectRefType : FlowForge_Type<"object", "object">;
+def StringType    : FlowForge_Type<"string", "string">;
+
+//==============================================================================
+// Base op class
+//==============================================================================
+class FlowForge_Op<string mnem, list<Trait> traits = [@FLOWFORGE_PURE_TRAIT_NAME@]>
+  : Op<FlowForgeDialect, mnem, traits>;
+
+/*-----------------------------------------------------------------------------
+ *  Terminators / helpers
+ *---------------------------------------------------------------------------*/
+// Generic value-yield terminator reused by the region ops. ReturnLike
+// implements RegionBranchTerminatorOpInterface (all operands forwarded to
+// the successor), which the RegionBranchOpInterface verifier needs to
+// type-check values along region control-flow edges.
+def YieldOp : FlowForge_Op<"yield", [@FLOWFORGE_PURE_TRAIT_NAME@, ReturnLike, Terminator,
+    ParentOneOf<["BranchOp", "ForLoopOp", "WhileLoopOp"]>]>
+{
+  let summary   = "Yield values from a region";
+  let arguments = (ins Variadic<AnyType>:$vals);
+  // Optional operand list → must use anchor (^) so tblgen knows what to repeat.
+  let assemblyFormat = [{ attr-dict ($vals^ `:` type($vals))? }];
+}
+
+// Terminator of a WhileLoop cond region: forwards the token and carries the
+// per-iteration loop condition. Only the token is a control-flow-edge
+// operand ($cond is the branch DECISION, not a forwarded value) — hence the
+// custom RegionBranchTerminatorOpInterface implementation.
+def CondYieldOp : FlowForge_Op<"cond_yield",
+    [@FLOWFORGE_PURE_TRAIT_NAME@, Terminator, HasParent<"WhileLoopOp">,
+     DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
+  let summary   = "terminator for while cond region";
+  let arguments = (ins TokenType:$tok, I1:$cond);
+  let assemblyFormat = "$tok `,` $cond attr-dict `:` type($tok)";
+}
+
+// Exits the innermost enclosing loop. Structurally a terminator anywhere;
+// the FlowForge -> CF lowering retargets it to the loop's exit block. The
+// builder guarantees it only appears nested inside a loop region.
+def BreakOp : FlowForge_Op<"break", [Terminator]> {
+  let summary   = "Exit the innermost enclosing loop";
+  let arguments = (ins TokenType:$in);
+}
+
+// Terminator placeholder for statically-unreachable fall-through: emitted
+// after a Branch whose legs BOTH exited (return/break) — the containing
+// block still needs a terminator in the structured form. The CF lowering
+// erases it together with its (by then provably unreachable) block.
+def UnreachableOp : FlowForge_Op<"unreachable", [Terminator]> {
+  let summary   = "Statically-unreachable fall-through marker";
+  let arguments = (ins TokenType:$in);
+}
+
+/*-----------------------------------------------------------------------------
+ *  Region-aware Flow-graph nodes
+ *---------------------------------------------------------------------------*/
+// ① Start --------------------------------------------------------------------
+def StartOp : FlowForge_Op<"start"> {
+  let summary = "Entry node: produce initial exec token";
+  let results = (outs TokenType:$exec);
+}
+
+// ② Branch -------------------------------------------------------------------
+// Regions end with flowforge.yield on the fall-through path, but may also
+// terminate with flowforge.return / flowforge.break (early exit) — hence
+// SingleBlock rather than SingleBlockImplicitTerminator.
+def BranchOp : FlowForge_Op<"branch",
+    [DeclareOpInterfaceMethods<RegionBranchOpInterface,
+        ["getEntrySuccessorOperands"]>,
+     SingleBlock]> {
+  let summary   = "Structured conditional branch";
+  let arguments = (ins TokenType:$in, I1:$cond);
+  let results   = (outs TokenType:$trueExec, TokenType:$falseExec);
+  let regions   = (region SizedRegion<1>:$thenRegion, SizedRegion<1>:$elseRegion);
+}
+
+// ③ For-loop -----------------------------------------------------------------
+// The body yields only the continuation token; the induction variable is a
+// loop-defined block-arg (same model as scf.for's IV) and is NOT part of the
+// region control-flow edges. `last` is EXCLUSIVE: the loop runs [first, last).
+def ForLoopOp : FlowForge_Op<"for_loop",
+    [DeclareOpInterfaceMethods<RegionBranchOpInterface,
+        ["getEntrySuccessorOperands"]>,
+     SingleBlock]> {
+  let summary   = "Structured for-loop node";
+  let arguments = (ins TokenType:$in, Index:$first, Index:$last);
+  let results   = (outs TokenType:$bodyExec, TokenType:$doneExec, Index:$iv);
+  let regions   = (region SizedRegion<1>:$body);
+}
+
+// ④ While-loop ---------------------------------------------------------------
+// The cond region re-evaluates the loop condition EVERY iteration and
+// terminates with flowforge.cond_yield; the body region does the work and
+// yields back to the cond region.
+def WhileLoopOp : FlowForge_Op<"while_loop",
+    [DeclareOpInterfaceMethods<RegionBranchOpInterface,
+        ["getEntrySuccessorOperands"]>,
+     SingleBlock]> {
+  let summary   = "Structured while-loop node";
+  let arguments = (ins TokenType:$in);
+  let results   = (outs TokenType:$bodyExec, TokenType:$doneExec);
+  let regions   = (region SizedRegion<1>:$condRegion, SizedRegion<1>:$bodyRegion);
+}
+
+// ⑤ Return -------------------------------------------------------------------
+def ReturnOp : FlowForge_Op<"return", [Terminator]> {
+  let summary   = "Graph final return";
+  let arguments = (ins TokenType:$in, Variadic<AnyType>:$rets);
+}
+
+// ⑥ TokenMerge --------------------------------------------------------------
+// Joins control tokens from convergent legs (e.g. both arms of a Branch
+// reaching the same downstream node). Exactly one input is live at runtime;
+// the result is "the surviving token". This is the dialect-level placeholder
+// for the LLVM-PHI that the FlowForge -> LLVM lowering pass will materialize
+// in the join basic block. No runtime cost.
+def TokenMergeOp : FlowForge_Op<"token_merge"> {
+  let summary   = "Merge convergent control tokens into one";
+  let arguments = (ins Variadic<TokenType>:$inputs);
+  let results   = (outs TokenType:$merged);
+  let assemblyFormat = [{ attr-dict ($inputs^ `:` type($inputs))? }];
+}

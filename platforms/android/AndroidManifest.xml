@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android bring-up shell for the lux engine — ZERO Java.
+
+  android.app.NativeActivity is supplied by the platform, so the APK contains
+  no .java/.kt and no compiled dex: the whole app is the native library named
+  by the android.app.lib_name meta-data, whose ANativeActivity_onCreate comes
+  from the NDK's native_app_glue.
+
+  What would force a Java shell later (none of it needed for bring-up):
+  soft-keyboard/IME, runtime permission dialogs, the storage access framework,
+  store/billing SDKs, the Android 12+ SplashScreen API. At that point the move
+  is GameActivity (AndroidX), whose native_app_glue-compatible layer keeps the
+  android_main lifecycle loop — only input handling changes.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="com.lux.engine.smoke">
+
+    <!-- Vulkan 1.3 is the engine's baseline tier (EFeatureLevel::Mobile), which
+         is what pinned ANDROID_PLATFORM to android-33: API 29's libvulkan does
+         not export the 1.2/1.3 entry points (sync2 / copy2 / BDA).
+         0x00403000 = 1.3.0 -->
+    <uses-feature android:name="android.hardware.vulkan.version"
+                  android:version="0x00403000"
+                  android:required="true" />
+    <uses-feature android:name="android.hardware.vulkan.level"
+                  android:version="1"
+                  android:required="false" />
+
+    <!-- extractNativeLibs=true: package.ps1 stores the .so entries COMPRESSED,
+         which is only legal when the platform is allowed to extract them at
+         install time. Leaving it false would require every lib to be stored
+         uncompressed and page-aligned (zipalign -p). -->
+    <application android:label="lux smoke"
+                 android:hasCode="false"
+                 android:extractNativeLibs="true"
+                 android:debuggable="true">
+        <activity android:name="android.app.NativeActivity"
+                  android:label="lux smoke"
+                  android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|density"
+                  android:exported="true">
+            <!-- Selects lib/<abi>/libluxsmoke.so and calls its
+                 ANativeActivity_onCreate. -->
+            <meta-data android:name="android.app.lib_name"
+                       android:value="luxsmoke" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

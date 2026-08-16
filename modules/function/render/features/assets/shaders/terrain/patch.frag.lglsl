@@ -1,0 +1,48 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+
+#include "gbuffer_encode.glsl"
+#include "transition_dither.glsl"
+
+layout(location = 0) in vec3 vWorldPosition;
+layout(location = 1) in vec3 vWorldNormal;
+layout(location = 2) in vec4 vColor;
+layout(location = 3) in float vHole;
+layout(location = 4) in float vTransitionCoverage;
+layout(location = 5) flat in uint vTransitionSeed;
+layout(location = 6) flat in uint vTransitionFadeOut;
+
+// Terrain parents and children overlap deliberately during a streaming
+// transition. The dither path contains discard, which otherwise disables
+// early depth rejection for the whole shader and shades every hidden layer.
+layout(early_fragment_tests) in;
+
+layout(location = 0) out vec4 gAlbedoMetallic;
+layout(location = 1) out vec4 gNormalRoughness;
+layout(location = 2) out vec4 gEmissiveAo;
+
+void main()
+{
+    if (vHole > 0.5)
+        discard;
+    if (vTransitionFadeOut != 0u)
+    {
+        // Coarse and fine heightfields are not the same projected surface.
+        // Complementary screen-space dither therefore cannot guarantee that
+        // a child fragment exists behind every discarded parent fragment,
+        // especially on steep slopes.  Keep the fading-out page as a complete
+        // continuity fallback until its transition reaches zero; the child
+        // still fades in deterministically above it.  Depth resolves overlap,
+        // while the final zero-coverage frame retires the parent normally.
+        if (vTransitionCoverage <= 0.0)
+            discard;
+    }
+    else
+    {
+        luxApplyDirectedTransitionCoverage(
+            vTransitionCoverage, vTransitionSeed, false);
+    }
+    gAlbedoMetallic = vec4(vColor.rgb, 0.0);
+    gNormalRoughness = packGNormalSM(vWorldNormal, LUX_SM_PBR, 0.92);
+    gEmissiveAo = vec4(0.0, 0.0, 0.0, 1.0);
+}

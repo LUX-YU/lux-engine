@@ -1,0 +1,2 @@
+add_subdirectory(physics2d_pixel)
+add_subdirectory(physics2d_script)

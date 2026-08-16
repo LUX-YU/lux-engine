@@ -55,9 +55,6 @@ namespace lux::input
         [[nodiscard]] bool canceled()  const noexcept { return (events & ActionEvent_Canceled)  != 0; }
         [[nodiscard]] bool active()    const noexcept { return down || trigger_state != ETriggerState::NONE; }
 
-        // Legacy alias — prefer triggered() for consistency with UE5 naming.
-        [[deprecated("Use triggered() instead")]]
-        [[nodiscard]] bool performed() const noexcept { return triggered(); }
     };
 
 } // namespace lux::input

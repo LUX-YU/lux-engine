@@ -1,42 +1,54 @@
 #pragma once
 /**
  * @file EditorEvents.hpp
- * @brief Editor-wide application events that have no single state home — the few
- *        that are genuinely many-to-many. Kept in the StateRegistry alongside
- *        Selection (`states.ensure<EditorEvents>()`), so any subsystem holding
- *        the registry can emit / subscribe without a central wiring class.
+ * @brief 编辑器域的应用级事件类型(统一事件系统条例②:事件 struct 是领域
+ *        词汇,定义在字段类型可见的最低层)。
  *
- * Scope note (deliberate): this hub holds ONLY `content_changed` today. Scene /
- * project lifecycle is intentionally NOT eventified here:
- *   - `ProjectController::openProject` is an ordered PIPELINE (register assets ->
- *     index -> mount vfs -> point browser -> load scene) whose steps have strict
- *     data dependencies; scattering it across subscribers would trade a clear
- *     sequential algorithm for fragile emit-order coupling.
+ * 这里只放**真正多对多**的编辑器事实。发布走进程域 lux::events::DomainEvents
+ * (面板属编辑器应用层,可直接 publish;订阅集中在装配层 —— LuxEditor 的
+ * subs_ 与 EditorShell 的 panel_subs_)。
+ *
+ * (曾有 `EditorEvents` 结构体:一个 Signal 集线器,LuxEditor 持 shared_ptr
+ *  经 events() 分发给生产者。事件批D 起 Signal 载体退役 —— 事件类型即通道,
+ *  集线器与访问器都不再需要。)
+ *
+ * Scope note (deliberate): scene / project lifecycle is intentionally NOT
+ * eventified here:
+ *   - `ProjectController::openProject` is an ordered PIPELINE (register assets
+ *     -> index -> mount vfs -> point browser -> load scene) whose steps have
+ *     strict data dependencies; scattering it across subscribers would trade a
+ *     clear sequential algorithm for fragile emit-order coupling.
  *   - Scene load/unload side-effects (viewport texture, selection rebind, the
  *     pick/resize forwarding) are already handled directly where they belong
  *     (SceneController), so a broadcast would add indirection for no gain.
  * Add an event here only when a real, ORDER-INDEPENDENT fan-out appears.
  */
 
-#include <lux/cxx/event/Signal.hpp>
+#include <lux/engine/resource/asset/AssetId.hpp>
+
+#include <cstdint>
+#include <filesystem>
 
 namespace lux::editor
 {
-    /// The project's on-disk asset set changed — an asset was imported, a
-    /// material instance authored, a graph material saved, … Subscribers refresh
-    /// their views (the AssetBrowser filesystem walk + the AssetRegistry index).
-    /// Carries no payload: the consumers do full, cheap re-scans.
-    ///
-    /// Why an event: producers (import / create-instance / save-material / the
-    /// CLI --import path) used to each call a DIFFERENT subset of {browser
-    /// rescan, registry refresh} — so a new texture might be missing from the
-    /// pickers, or a new material missing from the browser. Emitting one event
-    /// makes every producer refresh BOTH views consistently.
-    struct ContentChanged {};
-
-    struct EditorEvents
+    /// What was committed to the editor-visible on-disk asset catalogue.
+    enum class EEditorAssetChange : std::uint8_t
     {
-        lux::cxx::event::Signal<ContentChanged> content_changed;
+        ADDED,
+        CONTENT_UPDATED,
+        REMOVED
+    };
+
+    /// Precise, already-committed editor asset fact.  This is deliberately not
+    /// a generic "content changed" invalidation: consumers can ignore content
+    /// updates when their index depends only on id/type/path, and can use the
+    /// path to decide whether a visible directory is affected.
+    struct EditorAssetChanged
+    {
+        lux::asset::asset_id_t id;
+        EEditorAssetChange     change{EEditorAssetChange::CONTENT_UPDATED};
+        std::uint32_t          revision{0};
+        std::filesystem::path  path;
     };
 
 } // namespace lux::editor

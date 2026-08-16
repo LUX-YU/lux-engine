@@ -7,7 +7,6 @@
 #pragma once
 
 #include <cstdint>
-#include <sol/state_view.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -22,21 +21,10 @@
 #include <lux/cxx/reflection/runtime/Marker.hpp>
 #include <lux/cxx/algorithm/hash.hpp>
 #include <lux/cxx/container/SparseSet.hpp>
+#include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
 
 #include <lux/engine/core/visibility.h>
-
-/* --------------------------------------------------------------------------
- *  Annotation helper macros
- * -------------------------------------------------------------------------- */
-// All annotation macros are defined in MetaAnnotations.hpp.
-// Meta.hpp re-exports them here for backwards compatibility.
-#include "MetaAnnotations.hpp"
-
-namespace sol
-{
-    class state_view;
-}
 
 namespace lux::meta
 {
@@ -169,20 +157,34 @@ namespace lux::meta
                 const auto ws = raw.find_first_not_of(" \t");
                 if (ws == std::string_view::npos) break;
                 raw = raw.substr(ws);
-                // match "key="
+                // Match both `key=value` and the whitespace-preserving form
+                // emitted when the source annotation spells `key = value`.
+                // The generator deliberately retains source formatting, so
+                // consumers must not make the semantic key depend on it.
                 if (raw.size() > key.size() &&
-                    raw.substr(0, key.size()) == key &&
-                    raw[key.size()] == '=')
+                    raw.substr(0, key.size()) == key)
                 {
-                    auto val = raw.substr(key.size() + 1);
-                    const auto comma = val.find(',');
-                    if (comma != std::string_view::npos)
-                        val = val.substr(0, comma);
-                    // trim trailing whitespace
-                    const auto last = val.find_last_not_of(" \t");
-                    if (last != std::string_view::npos)
-                        val = val.substr(0, last + 1);
-                    return val;
+                    auto remainder = raw.substr(key.size());
+                    const auto separator =
+                        remainder.find_first_not_of(" \t");
+                    if (separator != std::string_view::npos &&
+                        remainder[separator] == '=')
+                    {
+                        auto val = remainder.substr(separator + 1);
+                        const auto value_start =
+                            val.find_first_not_of(" \t");
+                        if (value_start == std::string_view::npos)
+                            return std::string_view{};
+                        val = val.substr(value_start);
+                        const auto comma = val.find(',');
+                        if (comma != std::string_view::npos)
+                            val = val.substr(0, comma);
+                        // trim trailing whitespace
+                        const auto last = val.find_last_not_of(" \t");
+                        if (last != std::string_view::npos)
+                            val = val.substr(0, last + 1);
+                        return val;
+                    }
                 }
                 // not this key – skip to next comma
                 const auto next_comma = raw.find(',');
@@ -387,6 +389,30 @@ namespace lux::meta
     template<typename T>
     using MetaPool = lux::cxx::AutoSparseSet<std::unique_ptr<T>>;
 
+    enum class EReflectionRegistrationError : std::uint8_t
+    {
+        NONE,
+        REGISTRY_NOT_INITIALIZED,
+        DUPLICATE_CLASS,
+        CLASS_HASH_COLLISION,
+        DUPLICATE_ENUM,
+        DUPLICATE_FUNCTION,
+        DUPLICATE_INVOKABLE,
+        QUAL_TYPE_NOT_FOUND,
+        INVALID_QUAL_TYPE_FIX,
+        PUBLISH_INVARIANT_BROKEN
+    };
+
+    struct ReflectionRegistrationFailure final
+    {
+        EReflectionRegistrationError error{
+            EReflectionRegistrationError::NONE};
+        std::string name;
+        std::string conflicting_name;
+    };
+
+    class ReflectionRegistrationDraft;
+
     /**
      * @class ReflectionRegistry
      * @brief Stores and serves all runtime reflection metadata.
@@ -395,8 +421,35 @@ namespace lux::meta
     {
     public:
         static void initRegistry();
+
+        /// Register any module that chained itself in SINCE the last drain,
+        /// WITHOUT recreating the registry.
+        ///
+        /// This is what a plugin host calls after dlopen/LoadLibrary. A module
+        /// loaded at runtime runs its MetaModuleRegistrar constructors on load,
+        /// which only chain into the pending list — and initRegistry() already
+        /// emptied that list and would, if called again, build a NEW registry
+        /// and silently discard every type registered so far.
+        ///
+        /// Skipping this step fails quietly, which is the reason it exists as
+        /// its own entry point: an unregistered component type does not throw,
+        /// it makes Scene::load take its "skip if type unknown" branch for
+        /// every component the plugin owns — the file loads, the entity count
+        /// is right, and every entity owns nothing.
+        static void drainPending();
+
+        /// Drain the current pending module chain into an unpublished registry
+        /// overlay. Lookups in the overlay can see the live registry, while
+        /// live readers cannot see the overlay until the returned draft is
+        /// committed. This is the dynamic-extension registration boundary.
+        [[nodiscard]] static ReflectionRegistrationDraft drainPendingDraft();
+
         static void destroyRegistry();
         static ReflectionRegistry& instance() noexcept;
+        /// True after initRegistry()/meta_module_init(). instance() on an
+        /// uninitialized registry is a null dereference — callers that may
+        /// run in a host that forgot meta_module_init() should check first.
+        static bool initialized() noexcept;
 
         ReflectionRegistry(const ReflectionRegistry&) = delete;
         ReflectionRegistry& operator=(const ReflectionRegistry&) = delete;
@@ -430,7 +483,17 @@ namespace lux::meta
         const auto& invokables() const noexcept { return invokable_registry_; }
 
     private:
+        friend class ReflectionRegistrationDraft;
         ReflectionRegistry();
+        explicit ReflectionRegistry(ReflectionRegistry& fallback) noexcept;
+
+        void failRegistration(
+            EReflectionRegistrationError error,
+            std::string_view name = {},
+            std::string_view conflicting_name = {});
+        [[nodiscard]] bool publishDraft(ReflectionRegistry&& draft) noexcept;
+        [[nodiscard]] const RefClass* findClassByHash(
+            std::uint64_t hash) const noexcept;
 
         // pool storage
         MetaPool<RefClass>    class_pool_;
@@ -446,6 +509,13 @@ namespace lux::meta
         MetaMap enum_map_;
         FuncMap func_map_;
         MetaMap invokable_map_; // Maps full_name to index
+
+        ReflectionRegistry* fallback_{nullptr};
+        std::size_t class_index_base_{0u};
+        std::size_t enum_index_base_{0u};
+        std::size_t function_index_base_{0u};
+        std::size_t invokable_index_base_{0u};
+        std::optional<ReflectionRegistrationFailure> registration_failure_;
 
         // helper for pool insertion
         template<typename Map, typename Pool, typename Ptr>
@@ -470,10 +540,52 @@ namespace lux::meta
         }
     };
 
+    /// Move-only unpublished reflection registration. Destruction without
+    /// commit discards every generated metadata owner and leaves the live
+    /// registry unchanged.
+    class LUX_CORE_PUBLIC ReflectionRegistrationDraft final
+    {
+    public:
+        ReflectionRegistrationDraft() noexcept = default;
+        ~ReflectionRegistrationDraft() = default;
+        ReflectionRegistrationDraft(const ReflectionRegistrationDraft&) =
+            delete;
+        ReflectionRegistrationDraft& operator=(
+            const ReflectionRegistrationDraft&) = delete;
+        ReflectionRegistrationDraft(
+            ReflectionRegistrationDraft&&) noexcept = default;
+        ReflectionRegistrationDraft& operator=(
+            ReflectionRegistrationDraft&&) noexcept = default;
+
+        [[nodiscard]] explicit operator bool() const noexcept;
+        [[nodiscard]] const ReflectionRegistrationFailure& error() const
+            noexcept;
+        [[nodiscard]] lux::cxx::expected<
+            void,
+            ReflectionRegistrationFailure>
+        commit() noexcept;
+
+    private:
+        friend class ReflectionRegistry;
+        ReflectionRegistrationDraft(
+            ReflectionRegistry* target,
+            std::unique_ptr<ReflectionRegistry> draft) noexcept;
+
+        ReflectionRegistry* target_{nullptr};
+        std::unique_ptr<ReflectionRegistry> draft_;
+    };
+
     //--------------------------------------------------------------------------------------------------
     // 7.  Module‑lifetime helpers
     //--------------------------------------------------------------------------------------------------
     LUX_CORE_PUBLIC void meta_module_init();
+    /// Call after loading a module at RUNTIME (plugin dlopen/LoadLibrary) so
+    /// the types it brought become visible. See ReflectionRegistry::drainPending
+    /// — calling meta_module_init() a second time instead would discard every
+    /// type registered so far.
+    LUX_CORE_PUBLIC void meta_module_drain();
+    [[nodiscard]] LUX_CORE_PUBLIC ReflectionRegistrationDraft
+    meta_module_drain_draft();
     LUX_CORE_PUBLIC void meta_module_deinit();
 
 	// Use for generating meta data

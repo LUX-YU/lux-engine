@@ -1,0 +1,622 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+// =========================================================================
+//  mesh_cull_unified.comp
+//
+//  Unified mesh culling kernel for view and shadow modes.
+//  Shared 9-binding cull descriptor layout:
+//    binding 0: frustum plane UBO (view uses first 6 planes; shadow uses 6*slice)
+//    binding 1: InstanceCullMeta[]
+//    binding 2: draw-count buffer
+//    binding 3: indirect buffer
+//    binding 4: mesh-section table
+//    binding 5: instance properties
+//    binding 6: visible-instance payload buffer
+//    binding 7: MDC info buffer (view mode only: per-MDC offset+section pairs)
+//    binding 8: dense invocation-index -> stable instance-slot indirection
+// =========================================================================
+
+layout(local_size_x = 64) in;
+
+#include "instance.glsl"
+
+layout(constant_id = 0) const uint CULL_MODE = 0u;           // 0: view, 1: shadow
+layout(constant_id = 2) const uint DEFAULT_GEOMETRY_KIND_COUNT = 5u;
+layout(constant_id = 102) const uint HZB_MODE = 0u;          // Reserved for M4 D(HZB)
+
+const uint CULL_MODE_VIEW = 0u;
+const uint CULL_MODE_SHADOW = 1u;
+const float kDirectionalCascadeCullSlack = 6.0;
+
+// World-partition per-slot active mask, addressed by buffer-device-address carried in
+// the push-constant — replaces the old fixed descriptor binding 8. active_mask[gid]==0
+// means the instance's cell is dormant (outside streaming range). addr==0 in the PC
+// means large-world is disabled → no mask, every instance active.
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer ActiveMaskRef {
+    uint active_mask[];
+};
+
+layout(push_constant) uniform PC {
+    uint slot_count;
+    uint max_draws_per_bucket;
+    uint required_pass_mask;
+    uint required_geometry_kind;
+    uint geometry_kind_count_or_slice_count;
+    uint buckets_per_geometry_or_unused;
+    uint enabled_geometry_mask;
+    uint extension_flags;
+    uint reserved_input0;
+    uint reserved_input1;
+    uint64_t active_mask_addr;   // BDA of the world-partition active mask; 0 = none
+    uint64_t graph_material_addr;
+    uint64_t wanted_mip_addr;
+    uint graph_material_capacity;
+    uint texture_slot_capacity;
+} pc;
+
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer GraphMaterialRef {
+    uint words[];
+};
+
+layout(buffer_reference, std430, buffer_reference_align = 4) buffer TextureWantedMipRef {
+    uint wanted_mip[];
+};
+
+layout(set = 0, binding = 0, std430) readonly buffer CullPlanesBuf {
+    // View: 6 planes + origin_page + origin_local/page_size.
+    // Shadow: 6*S planes + S groups + S origin_page + S origin_local/page_size.
+    vec4 planes[];
+} uCull;
+
+layout(set = 0, binding = 1, std430) readonly buffer CullMetaBuf {
+#ifdef LUX_INSTANCE_PAGED
+    uint64_t leaf_addresses[];
+#else
+    InstanceCullMeta metas[];
+#endif
+} uCullMeta;
+
+layout(set = 0, binding = 2, std430) buffer DrawCountBuf {
+    uint draw_counts[];
+} uDrawCounts;
+
+layout(set = 0, binding = 3, std430) writeonly buffer IndirectBuf {
+    IndirectCmd commands[];
+} uIndirect;
+
+layout(set = 0, binding = 4, std430) readonly buffer MeshSectionBuf {
+    MeshSectionRecord sections[];
+} uSections;
+
+layout(set = 0, binding = 5, std430) readonly buffer PropertyBuf {
+#ifdef LUX_INSTANCE_PAGED
+    uint64_t leaf_addresses[];
+#else
+    InstanceProperty props[];
+#endif
+} uProps;
+
+layout(set = 0, binding = 6, std430) writeonly buffer VisibleBuf {
+    GpuVisibleInstance entries[];
+} uVisible;
+
+// Per-MDC info: interleaved {uint offset, uint section_id} + sentinel.
+// MDC i has visible_offset = uMdcInfo.data[i*2], section_id = uMdcInfo.data[i*2+1].
+// Capacity = uMdcInfo.data[(i+1)*2] - uMdcInfo.data[i*2].
+layout(set = 0, binding = 7, std430) readonly buffer MdcInfoBuf {
+    uint data[];
+} uMdcInfo;
+
+layout(set = 0, binding = 8, std430) readonly buffer AliveSlotBuf {
+    uint slots[];
+} uAliveSlots;
+
+bool frustumCull(uint slice_index, vec3 center, float radius)
+{
+    uint base = slice_index * 6u;
+    for (uint i = 0u; i < 6u; ++i)
+    {
+        vec4 p = uCull.planes[base + i];
+        if (dot(p.xyz, center) + p.w < -radius)
+            return false;
+    }
+    return true;
+}
+
+vec3 relativeCullCenter(
+    InstanceCullMeta meta,
+    ivec3 origin_page,
+    vec3 origin_local,
+    float page_size)
+{
+    return vec3(meta.bsphere_page.xyz - origin_page) * page_size
+         + meta.bsphere.xyz - origin_local;
+}
+
+vec3 viewRelativeCullCenter(InstanceCullMeta meta)
+{
+    ivec3 origin_page = floatBitsToInt(uCull.planes[6]).xyz;
+    vec4 origin_local_page_size = uCull.planes[7];
+    return relativeCullCenter(
+        meta,
+        origin_page,
+        origin_local_page_size.xyz,
+        origin_local_page_size.w
+    );
+}
+
+vec3 shadowRelativeCullCenter(
+    InstanceCullMeta meta,
+    uint slice_index,
+    uint slice_count)
+{
+    uint origin_page_base = slice_count * 7u;
+    uint origin_local_base = slice_count * 8u;
+    ivec3 origin_page = floatBitsToInt(
+        uCull.planes[origin_page_base + slice_index]
+    ).xyz;
+    vec4 origin_local_page_size = uCull.planes[origin_local_base + slice_index];
+    return relativeCullCenter(
+        meta,
+        origin_page,
+        origin_local_page_size.xyz,
+        origin_local_page_size.w
+    );
+}
+
+// Angular-size (radius/depth) thresholds: below kLodCoverage[i] drop to LOD i+1
+// (coarser = farther/smaller on screen). Global for now; per-mesh override later.
+const float kLodCoverage[3] = float[3](0.10, 0.035, 0.012);
+
+// Pick a discrete LOD for the bounding sphere from its on-screen coverage. View-
+// space depth ≈ signed distance to the near plane (Frustum::Near index 4; its
+// inward normal points down the view direction), so radius/depth is the angular
+// radius — resolution-independent and monotonic with camera distance.
+uint pickLod(vec3 center, float radius, uint lod_count)
+{
+    if (lod_count <= 1u) return 0u;
+    vec4  nearp = uCull.planes[4];
+    float depth = dot(nearp.xyz, center) + nearp.w;
+    float coverage = radius / max(depth, 1e-3);
+    uint  lod = 0u;
+    for (uint i = 0u; i + 1u < lod_count && i < 3u; ++i)
+    {
+        if (coverage < kLodCoverage[i]) lod = i + 1u;
+        else break;
+    }
+    return lod;
+}
+
+// Graph-family GPU records are currently 416 bytes = 104 uint words. Their
+// texture mask is header word 2 and the eight 16-byte TextureRefGPU records
+// start at word 72. Keeping these constants next to the CPU static_assert makes
+// this read explicit; a future material ABI change must update both.
+const uint kGraphMaterialFamily = 4u;
+const uint kGraphMaterialWordCount = 104u;
+const uint kGraphTextureBaseWord = 72u;
+
+// One workgroup aggregates both MDC appends and wanted-mip writes.  A visible
+// lane contributes at most one MDC key, hence the 128-entry MDC table cannot
+// saturate for a 64-lane workgroup.  A lane contributes at most eight texture
+// keys, so 512 entries cover the exact worst case.  Open addressing still has
+// a controlled direct-atomic fallback: the extra uint after the wanted-mip
+// array counts every fallback and is adopted with the normal fence-safe FIF
+// feedback snapshot.
+const uint kMdcAggregationTableSize = 128u;
+const uint kTextureAggregationTableSize = 512u;
+const uint kEmptyAggregationKey = 0xFFFFFFFFu;
+
+shared uint sMdcKeys[kMdcAggregationTableSize];
+shared uint sMdcCounts[kMdcAggregationTableSize];
+shared uint sMdcBases[kMdcAggregationTableSize];
+shared uint sMdcCursors[kMdcAggregationTableSize];
+shared uint sTextureKeys[kTextureAggregationTableSize];
+shared uint sTextureWanted[kTextureAggregationTableSize];
+
+uint aggregationHash(uint key, uint table_size)
+{
+    return (key * 2654435761u) & (table_size - 1u);
+}
+
+uint insertAggregationKey(
+    uint key,
+    uint table_size,
+    bool texture_table)
+{
+    uint index = aggregationHash(key, table_size);
+    for (uint probe = 0u; probe < table_size; ++probe)
+    {
+        uint previous = texture_table
+            ? atomicCompSwap(sTextureKeys[index], kEmptyAggregationKey, key)
+            : atomicCompSwap(sMdcKeys[index], kEmptyAggregationKey, key);
+        if (previous == kEmptyAggregationKey || previous == key)
+            return index;
+        index = (index + 1u) & (table_size - 1u);
+    }
+    return kEmptyAggregationKey;
+}
+
+void resetMdcAggregation()
+{
+    for (uint index = gl_LocalInvocationIndex;
+         index < kMdcAggregationTableSize;
+         index += gl_WorkGroupSize.x)
+    {
+        sMdcKeys[index] = kEmptyAggregationKey;
+        sMdcCounts[index] = 0u;
+        sMdcBases[index] = 0u;
+        sMdcCursors[index] = 0u;
+    }
+    barrier();
+}
+
+void resetTextureAggregation()
+{
+    for (uint index = gl_LocalInvocationIndex;
+         index < kTextureAggregationTableSize;
+         index += gl_WorkGroupSize.x)
+    {
+        sTextureKeys[index] = kEmptyAggregationKey;
+        sTextureWanted[index] = kEmptyAggregationKey;
+    }
+    barrier();
+}
+
+void noteAggregationFallback()
+{
+    if (pc.wanted_mip_addr == 0ul || pc.texture_slot_capacity == 0u)
+        return;
+    TextureWantedMipRef feedback = TextureWantedMipRef(pc.wanted_mip_addr);
+    atomicAdd(feedback.wanted_mip[pc.texture_slot_capacity], 1u);
+}
+
+void aggregateTextureWantedMips(
+    InstanceProperty prop,
+    vec3 center,
+    float radius)
+{
+    if (pc.graph_material_addr == 0ul || pc.wanted_mip_addr == 0ul ||
+        pc.graph_material_capacity == 0u || pc.texture_slot_capacity == 0u)
+        return;
+    if ((prop.material_type >> 12u) != kGraphMaterialFamily ||
+        prop.material_index >= pc.graph_material_capacity)
+        return;
+
+    float depth = dot(uCull.planes[4].xyz, center) + uCull.planes[4].w;
+    float coverage = radius / max(depth, 1e-3);
+    // Two texels of screen-radius slack keeps near objects at mip 0 while
+    // yielding progressively coarser requests for sub-pixel coverage.
+    uint wanted = uint(clamp(
+        floor(max(0.0, -log2(max(coverage, 1e-8)) - 2.0)),
+        0.0,
+        15.0));
+
+    GraphMaterialRef materials = GraphMaterialRef(pc.graph_material_addr);
+    TextureWantedMipRef feedback = TextureWantedMipRef(pc.wanted_mip_addr);
+    uint base = prop.material_index * kGraphMaterialWordCount;
+    uint mask = materials.words[base + 2u];
+    for (uint i = 0u; i < 8u; ++i)
+    {
+        if ((mask & (1u << i)) == 0u)
+            continue;
+        uint texture_slot = materials.words[
+            base + kGraphTextureBaseWord + i * 4u];
+        if (texture_slot >= pc.texture_slot_capacity)
+            continue;
+        uint entry = insertAggregationKey(
+            texture_slot,
+            kTextureAggregationTableSize,
+            true);
+        if (entry != kEmptyAggregationKey)
+        {
+            atomicMin(sTextureWanted[entry], wanted);
+        }
+        else
+        {
+            atomicMin(feedback.wanted_mip[texture_slot], wanted);
+            noteAggregationFallback();
+        }
+    }
+}
+
+void flushTextureAggregation()
+{
+    barrier();
+    if (pc.wanted_mip_addr != 0ul)
+    {
+        TextureWantedMipRef feedback = TextureWantedMipRef(pc.wanted_mip_addr);
+        for (uint index = gl_LocalInvocationIndex;
+             index < kTextureAggregationTableSize;
+             index += gl_WorkGroupSize.x)
+        {
+            uint key = sTextureKeys[index];
+            if (key != kEmptyAggregationKey)
+                atomicMin(feedback.wanted_mip[key], sTextureWanted[index]);
+        }
+    }
+}
+
+// ── HZB occlusion (Stage C) — compiled ONLY into the `hzb` build variant ──
+// set 1 = combined sampler over the PREVIOUS frame's max-Z pyramid + that
+// frame's view params. Wrapped in HZB_ENABLED so the `no_hzb` variant does NOT
+// declare set 1 at all. A spec-constant fold does NOT remove a statically-used
+// resource from the SPIR-V — Vulkan VUID-07988 still sees the OpLoad — so the
+// set-0-only cull pipelines (shadow / HZB-off view) must come from a variant
+// that never declares set 1. The HZB on/off split is therefore a build-time
+// shader variant (no_hzb / hzb), mirroring the PCF/EVSM shadow technique split.
+#ifdef HZB_ENABLED
+layout(set = 1, binding = 0) uniform sampler2D uHzb;
+layout(set = 1, binding = 1, std140) uniform HzbViewBuf {
+    mat4 view_proj;   // last frame's projection * rotation-only view
+    vec4 params;      // (hzb_width, hzb_height, mip_count, _pad)
+    ivec4 origin_page;
+    vec4 origin_local_page_size;
+} uHzbView;
+
+// Conservative max-Z occlusion test. Forward-Z (near=0/far=1): the pyramid
+// stores the FARTHEST visible depth, so a sphere is occluded only when its
+// NEAREST point is still behind the tile's max depth. Any degeneracy (crosses
+// the near plane, projection blows up) returns false = NOT occluded — never
+// over-cull (only ever miss a cull).
+bool hzbOccluded(InstanceCullMeta meta)
+{
+    if (uHzbView.params.z < 1.0) return false;  // HZB just (re)built / not ready → keep
+    vec3 c = relativeCullCenter(
+        meta,
+        uHzbView.origin_page.xyz,
+        uHzbView.origin_local_page_size.xyz,
+        uHzbView.origin_local_page_size.w
+    );
+    float r = meta.bsphere.w;
+    vec3 ndc_min = vec3( 1e30);
+    vec3 ndc_max = vec3(-1e30);
+    for (int i = 0; i < 8; ++i)
+    {
+        vec3 corner = c + r * vec3((i & 1) != 0 ? 1.0 : -1.0,
+                                   (i & 2) != 0 ? 1.0 : -1.0,
+                                   (i & 4) != 0 ? 1.0 : -1.0);
+        vec4 clip = uHzbView.view_proj * vec4(corner, 1.0);
+        if (clip.w <= 0.0) return false;            // crosses near plane → keep
+        vec3 ndc = clip.xyz / clip.w;
+        ndc_min = min(ndc_min, ndc);
+        ndc_max = max(ndc_max, ndc);
+    }
+    // y-flip is baked into proj → uv = ndc*0.5+0.5, do NOT flip Y again.
+    vec2 uv_min = clamp(ndc_min.xy * 0.5 + 0.5, 0.0, 1.0);
+    vec2 uv_max = clamp(ndc_max.xy * 0.5 + 0.5, 0.0, 1.0);
+    vec2  px  = (uv_max - uv_min) * uHzbView.params.xy;       // AABB in HZB texels
+    float mip = clamp(ceil(log2(max(max(px.x, px.y), 1.0))),
+                      0.0, uHzbView.params.z - 1.0);
+    vec2  uv_c     = (uv_min + uv_max) * 0.5;
+    float tileMaxZ = textureLod(uHzb, uv_c, mip).r;           // farthest in that tile
+    float sphereMinZ = ndc_min.z;                             // nearest point's NDC depth
+    return sphereMinZ > tileMaxZ;                             // fully behind → occluded
+}
+#endif // HZB_ENABLED
+
+uint shadowGroupIndex(uint slice_index, uint slice_count)
+{
+    // Slice-group map starts right after the planes region (6 vec4 per slice).
+    uint group_base = slice_count * 6u;
+    uint word = group_base + slice_index;
+    return floatBitsToUint(uCull.planes[word].x);
+}
+
+void appendAggregatedMdc(
+    uint entry,
+    uint mdc,
+    uint mdc_offset,
+    uint mdc_capacity,
+    GpuVisibleInstance instance_payload)
+{
+    if (entry != kEmptyAggregationKey)
+    {
+        uint local_slot = atomicAdd(sMdcCursors[entry], 1u);
+        uint slot = sMdcBases[entry] + local_slot;
+        if (slot < mdc_capacity)
+            uVisible.entries[mdc_offset + slot] = instance_payload;
+        return;
+    }
+
+    // Mathematically unreachable with the current table/workgroup sizes, but
+    // keep the fallback correct if either invariant changes in a future shader.
+    uint slot = atomicAdd(uDrawCounts.draw_counts[mdc], 1u);
+    if (slot < mdc_capacity)
+        uVisible.entries[mdc_offset + slot] = instance_payload;
+    noteAggregationFallback();
+}
+
+void reserveAggregatedMdcs()
+{
+    barrier();
+    for (uint index = gl_LocalInvocationIndex;
+         index < kMdcAggregationTableSize;
+         index += gl_WorkGroupSize.x)
+    {
+        uint key = sMdcKeys[index];
+        if (key != kEmptyAggregationKey)
+        {
+            sMdcBases[index] = atomicAdd(
+                uDrawCounts.draw_counts[key],
+                sMdcCounts[index]);
+        }
+    }
+    barrier();
+}
+
+void runViewCull(
+    bool valid,
+    uint instance_slot,
+    InstanceCullMeta meta,
+    InstanceProperty prop)
+{
+    resetMdcAggregation();
+    resetTextureAggregation();
+
+    vec3 center = vec3(0.0);
+    uint mdc = 0u;
+    uint mdc_offset = 0u;
+    uint mdc_capacity = 0u;
+    uint entry = kEmptyAggregationKey;
+    if (valid)
+    {
+        center = viewRelativeCullCenter(meta);
+        valid = frustumCull(0u, center, meta.bsphere.w);
+    }
+
+#ifdef HZB_ENABLED
+    if (valid && HZB_MODE == 1u && hzbOccluded(meta))
+        valid = false;
+#endif
+
+    if (valid)
+    {
+        aggregateTextureWantedMips(prop, center, meta.bsphere.w);
+        uint lod = pickLod(center, meta.bsphere.w, meta.lod_count);
+        mdc = meta.lod_mdc[lod];
+        mdc_offset = uMdcInfo.data[mdc * 2u];
+        mdc_capacity = uMdcInfo.data[(mdc + 1u) * 2u] - mdc_offset;
+        entry = insertAggregationKey(mdc, kMdcAggregationTableSize, false);
+        if (entry != kEmptyAggregationKey)
+            atomicAdd(sMdcCounts[entry], 1u);
+    }
+
+    reserveAggregatedMdcs();
+    flushTextureAggregation();
+    barrier();
+    if (valid)
+    {
+        appendAggregatedMdc(
+            entry,
+            mdc,
+            mdc_offset,
+            mdc_capacity,
+            GpuVisibleInstance(instance_slot, 0u));
+    }
+}
+
+void runShadowCull(
+    bool valid,
+    uint instance_slot,
+    InstanceCullMeta meta,
+    InstanceProperty prop)
+{
+    valid = valid && ((prop.flags & 0x1u) != 0u);
+    uint slice_count = pc.geometry_kind_count_or_slice_count;
+    uint view_mdc_count = pc.reserved_input0;
+    for (uint s = 0u; s < slice_count; ++s)
+    {
+        resetMdcAggregation();
+        bool slice_valid = valid;
+        uint shadow_mdc = 0u;
+        uint mdc_offset = 0u;
+        uint mdc_capacity = 0u;
+        uint entry = kEmptyAggregationKey;
+        if (slice_valid)
+        {
+            float cull_radius = meta.bsphere.w;
+            if (s < 4u)
+                cull_radius += kDirectionalCascadeCullSlack;
+            vec3 center = shadowRelativeCullCenter(meta, s, slice_count);
+            slice_valid = frustumCull(s, center, cull_radius);
+        }
+        if (slice_valid)
+        {
+            uint group = shadowGroupIndex(s, slice_count);
+            uint bias_group_count = pc.buckets_per_geometry_or_unused;
+            slice_valid = group < bias_group_count;
+            if (slice_valid)
+            {
+                // Shadows always cast from LOD0 for crisp silhouettes.
+                shadow_mdc = group * view_mdc_count + meta.lod_mdc[0];
+                mdc_offset = uMdcInfo.data[shadow_mdc * 2u];
+                mdc_capacity =
+                    uMdcInfo.data[(shadow_mdc + 1u) * 2u] - mdc_offset;
+                entry = insertAggregationKey(
+                    shadow_mdc,
+                    kMdcAggregationTableSize,
+                    false);
+                if (entry != kEmptyAggregationKey)
+                    atomicAdd(sMdcCounts[entry], 1u);
+            }
+        }
+        reserveAggregatedMdcs();
+        if (slice_valid)
+        {
+            appendAggregatedMdc(
+                entry,
+                shadow_mdc,
+                mdc_offset,
+                mdc_capacity,
+                GpuVisibleInstance(instance_slot, s));
+        }
+        barrier();
+    }
+}
+
+void main()
+{
+    uint gid = gl_GlobalInvocationID.x;
+    bool valid = gid < pc.slot_count;
+    uint instance_slot = kEmptyAggregationKey;
+    InstanceCullMeta meta;
+    InstanceProperty prop;
+
+    if (valid)
+    {
+        instance_slot = uAliveSlots.slots[gid];
+        // A coarse producer exposes a bounded candidate array. Unwritten
+        // entries stay UINT_MAX, so dispatching its capacity is safe.
+        valid = instance_slot != kEmptyAggregationKey;
+    }
+    if (valid && pc.active_mask_addr != 0ul)
+    {
+        valid = ActiveMaskRef(pc.active_mask_addr)
+            .active_mask[instance_slot] != 0u;
+    }
+    if (valid)
+    {
+#ifdef LUX_INSTANCE_PAGED
+        meta = luxLoadInstanceCullMeta(
+            uCullMeta.leaf_addresses[luxInstanceRootIndex(instance_slot)],
+            instance_slot);
+#else
+        meta = uCullMeta.metas[instance_slot];
+#endif
+        valid = meta.bsphere.w >= 0.0 && meta.lod_count != 0u;
+    }
+    if (valid)
+    {
+#ifdef LUX_INSTANCE_PAGED
+        prop = luxLoadInstanceProperty(
+            uProps.leaf_addresses[luxInstanceRootIndex(instance_slot)],
+            instance_slot);
+#else
+        prop = uProps.props[instance_slot];
+#endif
+        uint pass_mask = prop.pass_and_geometry & 0xFFFFu;
+        valid = (prop.flags & 0x4u) != 0u &&
+            (pass_mask & pc.required_pass_mask) != 0u;
+    }
+    if (valid)
+    {
+        uint geometry_kind = (prop.pass_and_geometry >> 16u) & 0xFFu;
+        uint geometry_kind_count = CULL_MODE == CULL_MODE_VIEW
+            ? pc.geometry_kind_count_or_slice_count
+            : DEFAULT_GEOMETRY_KIND_COUNT;
+        if (geometry_kind_count == 0u)
+            geometry_kind_count = DEFAULT_GEOMETRY_KIND_COUNT;
+        valid = geometry_kind < geometry_kind_count &&
+            (pc.required_geometry_kind == 0xFFFFFFFFu ||
+             geometry_kind == pc.required_geometry_kind) &&
+            ((pc.enabled_geometry_mask >> geometry_kind) & 1u) != 0u;
+    }
+
+    // CULL_MODE is a specialization constant, hence every invocation in the
+    // workgroup takes the same branch and reaches the same barriers.
+    if (CULL_MODE == CULL_MODE_VIEW)
+        runViewCull(valid, instance_slot, meta, prop);
+    else
+        runShadowCull(valid, instance_slot, meta, prop);
+}

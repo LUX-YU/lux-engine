@@ -2,30 +2,32 @@
 //  game_loop_test.cpp
 //
 //  Game-loop style end-to-end test for the render comm pipeline.
-//  Uses RenderSession for high-level semantic API instead of raw
+//  Uses RenderFrameSession for high-level semantic API instead of raw
 //  FrameProgramBuilder payload construction.
 // ============================================================================
 
-#include <lux/engine/render/comm/client/RenderSession.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
+#include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
 
-#include <lux/engine/render/renderer/features/forward/ForwardMeshOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/ShadowMapOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/MeshShadowOperation.hpp>
-#include <lux/engine/render/renderer/features/material/MaterialOperation.hpp>  // kStandardMaterialFeatureFactory (standard material stack; no config; attaches before StandardMeshStack)
-#include <lux/engine/render/renderer/features/meshstack/MeshStackOperation.hpp>  // kStandardMeshStackFeatureFactory (standard 3D mesh stack; no config)
-#include <lux/engine/render/renderer/features/light/LightOperation.hpp>  // LightFeature / LightProxy / LightOperationIds / LightDescriptor / DirectionalLightDesc / LIGHT_FLAG_CAST_SHADOW
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>  // kStandardViewCameraFeatureFactory / ViewCameraProxy / ViewCameraOperationIds (per-view camera data; no config; attaches before every camera consumer)
+#include <lux/engine/function/render/client/genops/ForwardMeshOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>  // kMaterialFeatureFactory (standard material stack; no config; attaches before StandardMeshStack)
+#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>  // kMeshStackFeatureFactory (standard 3D mesh stack; no config)
+#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>  // LightFeature / LightProxy / LightOperationIds / LightDescriptor / DirectionalLightDesc / LIGHT_FLAG_CAST_SHADOW
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>  // kViewCameraFeatureFactory / ViewCameraProxy / ViewCameraOperationIds (per-view camera data; no config; attaches before every camera consumer)
 
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
-#include <lux/engine/render/resources/material/GraphMaterialData.hpp>
+#include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
 
 #include "graph_test_helpers.hpp"
 
 #include <lux/engine/window/LuxWindow.hpp>
-#include <GLFW/glfw3.h>
 
 #include <Eigen/Geometry>  // Eigen::Vector3f::cross — no longer pulled in transitively via render headers
 
@@ -134,14 +136,8 @@ static void setTranslation(float m[16], float x, float y, float z)
 
 static std::vector<const char*> getVulkanExtensions()
 {
-    glfwInit();
-    uint32_t count = 0;
-    const char **exts = glfwGetRequiredInstanceExtensions(&count);
-    std::vector<const char*> result;
-    result.reserve(count);
-    for (uint32_t i = 0; i < count; ++i)
-        result.emplace_back(exts[i]);
-    return result;
+    const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
+    return {exts.begin(), exts.end()};
 }
 
 // ── Build look-at view matrix ───────────────────────────────────────────
@@ -240,6 +236,15 @@ static const char *phaseName(Phase p)
 
 // ── main ────────────────────────────────────────────────────────────────
 
+template <class Reply>
+static RenderRequest<Reply> acceptedUploadOrFailure(
+    UploadSubmitResult<Reply> submitted)
+{
+    if (!submitted)
+        return RenderRequestFactory<Reply>::makeImmediateFailure({});
+    return std::move(submitted.value());
+}
+
 int main()
 {
     std::cout << "=== Game Loop Test ===\n\n";
@@ -268,8 +273,10 @@ int main()
 
     // ── Channel + sync + window ─────────────────────────────────────────
 
-    auto channel = RenderProgramChannel<>::create();
-    auto sync = std::make_shared<RenderChannelSync>();
+    auto channel         = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel  = RenderUploadChannel<>::create();
+    auto sync             = std::make_shared<RenderChannelSync>();
 
     auto surface_exts = getVulkanExtensions();
     lux::window::LuxWindow window(1280, 720, "Game Loop Test");
@@ -281,20 +288,25 @@ int main()
 
     std::thread server_thread(
         [&]{
-            GeneralRenderServer server(channel, sync);
+            GeneralRenderServer server(
+                channel,
+                control_channel,
+                upload_channel,
+                sync
+            );
 
             ServerConfig cfg;
             cfg.instance_extensions = surface_exts;
             if (auto r = server.init(std::move(cfg)); !r)
             {
-                std::cerr << "[Server] Init failed: " << r.error().message() << "\n";
+                std::cerr << "[Server] Init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
                 server_failed.store(true, std::memory_order_release);
                 server_ready.store(true, std::memory_order_release);
                 return;
             }
             if (auto r = server.attachToWindow(window); !r)
             {
-                std::cerr << "[Server] Attach failed: " << r.error().message() << "\n";
+                std::cerr << "[Server] Attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
                 server_failed.store(true, std::memory_order_release);
                 server_ready.store(true, std::memory_order_release);
                 return;
@@ -316,7 +328,10 @@ int main()
         return 0;
     }
 
-    RenderSession session(channel, sync);
+    RenderFrameSession session(channel, sync);
+    RenderControlSession control(control_channel, sync);
+    RenderUploadSession upload(upload_channel, sync);
+    lux::render::testing::DirectRenderUploadClient upload_client{upload};
 
     // ════════════════════════════════════════════════════════════════════
     //  State — all variables that persist across frames
@@ -337,24 +352,24 @@ int main()
 
     // ViewCamera feature op ids — resolved from view_cam_reg_req once the
     // registration reply lands, then used by ViewCameraProxy for the per-view
-    // camera update. RenderSession::updateView is gone — the per-view camera data
+    // camera update. RenderFrameSession::updateView is gone — the per-view camera data
     // is a StandardViewCameraFeature domain now.
     ViewCameraOperationIds view_cam_ops{};
 
     // Light feature op ids — resolved from light_reg_req once the registration
     // reply lands, then used by LightProxy to create the directional light.
-    // (Light is a feature now: RenderSession::createLight is gone.)
+    // (Light is a feature now: RenderFrameSession::createLight is gone.)
     LightOperationIds light_ops{};
 
     // Mesh-stack feature op ids — resolved from mesh_stack_reg_req once the
     // registration reply lands, then used by MeshStackProxy for instance CRUD
-    // (add / per-view visibility / transform). RenderSession's mesh-instance
+    // (add / per-view visibility / transform). RenderFrameSession's mesh-instance
     // methods are gone — these ops are a StandardMeshStackFeature domain now.
     MeshStackOperationIds mesh_stack_ops{};
 
     // Material feature op ids — resolved from material_reg_req once the
     // registration reply lands, then used by MaterialProxy to upload graph
-    // materials. RenderSession::uploadGraphMaterial is gone — these ops are a
+    // materials. RenderFrameSession::uploadGraphMaterial is gone — these ops are a
     // StandardMaterialFeature domain now.
     MaterialOperationIds material_ops{};
 
@@ -392,23 +407,23 @@ int main()
             // ────────────────────────────────────────────────────────────
             case Phase::CreateScene:
             {
-                scene_req = session.createScene("GameScene");
+                scene_req = control.createScene("GameScene");
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
             case Phase::ActivateScene:
             {
-                active_req = session.setActiveScene(scene_req.result().scene_id, true);
-                view_req = session.addView(
-                    scene_req.result().scene_id, {1280, 720}, "MainView");
+                active_req = control.setActiveScene(scene_req.tryResult()->get().scene_id, true);
+                view_req = control.addView(
+                    scene_req.tryResult()->get().scene_id, {1280, 720}, "MainView");
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
             case Phase::BindSwapchain:
             {
-                session.bindSwapchain(scene_req.result().scene_id, view_req.result().view);
+                control.bindSwapchain(scene_req.tryResult()->get().scene_id, view_req.tryResult()->get().view);
                 break;
             }
 
@@ -418,16 +433,16 @@ int main()
                 // StandardViewCameraFeature owns the per-view 3D camera data; it
                 // MUST attach before every camera consumer (shadow / forward), so
                 // register it ahead of the rest — owner-first.
-                view_cam_reg_req = session.registerFeatureType(kStandardViewCameraFeatureFactory);
-                fwd_reg_req = session.registerFeatureType(kForwardMeshFeatureFactory);
-                shadow_reg_req = session.registerFeatureType(kShadowMapFeatureFactory);
-                mesh_shadow_reg_req = session.registerFeatureType(kMeshShadowFeatureFactory);
-                light_reg_req = session.registerFeatureType(kLightFeatureFactory);
+                view_cam_reg_req = control.registerFeatureType(kViewCameraFeatureFactory);
+                fwd_reg_req = control.registerFeatureType(kForwardMeshFeatureFactory);
+                shadow_reg_req = control.registerFeatureType(kShadowMapFeatureFactory);
+                mesh_shadow_reg_req = control.registerFeatureType(kMeshShadowFeatureFactory);
+                light_reg_req = control.registerFeatureType(kLightFeatureFactory);
                 // StandardMaterialFeature owns the global material stack; it MUST
                 // attach before StandardMeshStack (addMeshInstance reads the material
                 // slot) and every material consumer. Register it ahead of mesh-stack.
-                material_reg_req = session.registerFeatureType(kStandardMaterialFeatureFactory);
-                mesh_stack_reg_req = session.registerFeatureType(kStandardMeshStackFeatureFactory);
+                material_reg_req = control.registerFeatureType(kMaterialFeatureFactory);
+                mesh_stack_reg_req = control.registerFeatureType(kMeshStackFeatureFactory);
                 break;
             }
             // ────────────────────────────────────────────────────────────
@@ -436,50 +451,50 @@ int main()
                 // StandardViewCameraFeature owns the per-view 3D camera data that
                 // shadow/forward consume. It MUST attach before every camera
                 // consumer — owner-first. No comm config — empty struct param.
-                struct EmptyViewCamCfg {} view_cam_cfg{};
-                view_cam_feat_req = session.addFeature(
-                    scene_req.result().scene_id,
-                    view_cam_reg_req.result().feature_type_id, view_cam_cfg);
+                lux::render::ViewCameraCommTag view_cam_cfg{};
+                view_cam_feat_req = control.addFeature(
+                    scene_req.tryResult()->get().scene_id,
+                    view_cam_reg_req.tryResult()->get().feature_type_id, view_cam_cfg);
 
                 // Light feature MUST attach before ShadowMapFeature: the shadow
                 // feature caches a raw LightResources* at attach time.
-                struct EmptyLightCfg {} light_cfg{};
-                light_feat_req = session.addFeature(
-                    scene_req.result().scene_id,
-                    light_reg_req.result().feature_type_id, light_cfg);
+                lux::render::LightCommTag light_cfg{};
+                light_feat_req = control.addFeature(
+                    scene_req.tryResult()->get().scene_id,
+                    light_reg_req.tryResult()->get().feature_type_id, light_cfg);
 
                 // StandardMaterialFeature owns the global material stack
-                // (ShadingModelRegistry + MaterialResources). It MUST attach before
+                // (builtin shading models + MaterialResources). It MUST attach before
                 // StandardMeshStack (addMeshInstance reads the material slot) and
                 // every material consumer. No comm config — empty struct param.
-                struct EmptyMaterialCfg {} material_cfg{};
-                material_feat_req = session.addFeature(
-                    scene_req.result().scene_id,
-                    material_reg_req.result().feature_type_id, material_cfg);
+                lux::render::MaterialCommTag material_cfg{};
+                material_feat_req = control.addFeature(
+                    scene_req.tryResult()->get().scene_id,
+                    material_reg_req.tryResult()->get().feature_type_id, material_cfg);
 
                 // StandardMeshStackFeature owns the standard 3D mesh-stack scene
                 // resources (no longer built in RenderScene's ctor). It MUST attach
                 // before every mesh consumer (ShadowMap / MeshShadow / ForwardMesh)
                 // or the meshes don't render. No comm config — empty struct param.
-                struct EmptyMeshStackCfg {} mesh_stack_cfg{};
-                mesh_stack_feat_req = session.addFeature(
-                    scene_req.result().scene_id,
-                    mesh_stack_reg_req.result().feature_type_id, mesh_stack_cfg);
+                lux::render::MeshStackCommTag mesh_stack_cfg{};
+                mesh_stack_feat_req = control.addFeature(
+                    scene_req.tryResult()->get().scene_id,
+                    mesh_stack_reg_req.tryResult()->get().feature_type_id, mesh_stack_cfg);
 
                 ShadowMapCommConfig scc{};
                 scc.atlas_page_resolution = 2048;
                 scc.atlas_page_count = 2;
                 scc.max_shadow_slices = 64;
-                shadow_feat_req = session.addFeature(
-                    scene_req.result().scene_id,
-                    shadow_reg_req.result().feature_type_id, scc);
+                shadow_feat_req = control.addFeature(
+                    scene_req.tryResult()->get().scene_id,
+                    shadow_reg_req.tryResult()->get().feature_type_id, scc);
 
                 MeshShadowCommConfig mscc{};
                 mscc.comm_config_version = kMeshShadowCommConfigVersion;
                 mscc.descriptor_layout_version = kMeshShadowDescriptorLayoutVersion;
-                mesh_shadow_feat_req = session.addFeature(
-                    scene_req.result().scene_id,
-                    mesh_shadow_reg_req.result().feature_type_id, mscc);
+                mesh_shadow_feat_req = control.addFeature(
+                    scene_req.tryResult()->get().scene_id,
+                    mesh_shadow_reg_req.tryResult()->get().feature_type_id, mscc);
                 break;
             }
 
@@ -489,9 +504,9 @@ int main()
                 ForwardMeshCommConfig cc{};
                 cc.comm_config_version = kForwardMeshCommConfigVersion;
                 cc.descriptor_layout_version = kForwardMeshDescriptorLayoutVersion;
-                fwd_feat_req = session.addFeature(
-                    scene_req.result().scene_id,
-                    fwd_reg_req.result().feature_type_id, cc);
+                fwd_feat_req = control.addFeature(
+                    scene_req.tryResult()->get().scene_id,
+                    fwd_reg_req.tryResult()->get().feature_type_id, cc);
                 break;
             }
 
@@ -527,31 +542,41 @@ int main()
                     // syncCall submits the open frame, blocks for the reply, then
                     // begins a fresh frame — so a frame stays open for the
                     // uploadGraphMaterial calls + the loop's trailing submitFrame.
-                    const auto comp = session.syncCall(
-                        session.compileShader(
+                    auto comp = control.syncCall(
+                        control.compileShader(
                             bytes,
-                            std::span<const std::byte>{info.data(), info.size()}));
-                    return comp.shader;
+                            std::span<const std::byte>{
+                                info.data(), info.size()})
+                    );
+                    if (!comp)
+                        return ShaderHandle{};
+                    return comp->shader;
                 };
 
                 const ShaderHandle ground_frag = compileForwardColor(0.2f, 0.6f, 0.2f);
                 const ShaderHandle cube_frag    = compileForwardColor(0.85f, 0.45f, 0.1f);
 
                 GraphMaterialData ground_gd{};
-                ground_mat_req = MaterialProxy(session, material_ops).uploadGraphMaterial(
-                    ground_gd, ShaderHandle{}, ground_frag);
+                ground_mat_req = acceptedUploadOrFailure(uploadGraphMaterial(
+                    MaterialUploadClient(upload_client.client(), material_ops),
+                    ground_gd, ShaderHandle{}, ground_frag));
 
                 GraphMaterialData cube_gd{};
-                cube_mat_req = MaterialProxy(session, material_ops).uploadGraphMaterial(
-                    cube_gd, ShaderHandle{}, cube_frag);
+                cube_mat_req = acceptedUploadOrFailure(uploadGraphMaterial(
+                    MaterialUploadClient(upload_client.client(), material_ops),
+                    cube_gd, ShaderHandle{}, cube_frag));
                 break;
             }
 
             // ────────────────────────────────────────────────────────────
             case Phase::UploadMeshes:
             {
-                ground_mesh_req = lux::render::MeshStackProxy(session, mesh_stack_ops).uploadMesh(ground_mesh);
-                cube_mesh_req = lux::render::MeshStackProxy(session, mesh_stack_ops).uploadMesh(cube_mesh);
+                ground_mesh_req = acceptedUploadOrFailure(lux::render::uploadMesh(
+                    lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops),
+                    ground_mesh));
+                cube_mesh_req = acceptedUploadOrFailure(lux::render::uploadMesh(
+                    lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops),
+                    cube_mesh));
                 break;
             }
 
@@ -565,18 +590,18 @@ int main()
             {
                 float identity[16];
                 setIdentity(identity);
-                ground_inst_req = MeshStackProxy(session, mesh_stack_ops).addMeshInstance(
-                    scene_req.result().scene_id,
-                    ground_mesh_req.result().handle,
-                    ground_mat_req.result().handle,
+                ground_inst_req = addTransientMeshInstance(MeshStackProxy(session, mesh_stack_ops),
+                    scene_req.tryResult()->get().scene_id,
+                    ground_mesh_req.tryResult()->get().handle,
+                    ground_mat_req.tryResult()->get().handle,
                     identity);
 
                 float cube_xform[16];
                 setTranslation(cube_xform, 0.f, 0.5f, 0.f);
-                cube_inst_req = MeshStackProxy(session, mesh_stack_ops).addMeshInstance(
-                    scene_req.result().scene_id,
-                    cube_mesh_req.result().handle,
-                    cube_mat_req.result().handle,
+                cube_inst_req = addTransientMeshInstance(MeshStackProxy(session, mesh_stack_ops),
+                    scene_req.tryResult()->get().scene_id,
+                    cube_mesh_req.tryResult()->get().handle,
+                    cube_mat_req.tryResult()->get().handle,
                     cube_xform);
                 break;
             }
@@ -584,12 +609,8 @@ int main()
             // ────────────────────────────────────────────────────────────
             case Phase::CreateLight:
             {
-                MeshStackProxy(session, mesh_stack_ops).makeInstanceVisibleForView(
-                    scene_req.result().scene_id, view_req.result().view,
-                    ground_inst_req.result().object);
-                MeshStackProxy(session, mesh_stack_ops).makeInstanceVisibleForView(
-                    scene_req.result().scene_id, view_req.result().view,
-                    cube_inst_req.result().object);
+                MeshStackProxy(session, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene_req.tryResult()->get().scene_id, .view = view_req.tryResult()->get().view, .object = ground_inst_req.tryResult()->get().object});
+                MeshStackProxy(session, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene_req.tryResult()->get().scene_id, .view = view_req.tryResult()->get().view, .object = cube_inst_req.tryResult()->get().object});
 
                 DirectionalLightDesc dl{};
                 float dx = -0.5f, dy = -1.f, dz = -0.3f;
@@ -604,8 +625,7 @@ int main()
                 dl.cascade_count = 4;
                 dl.cascade_splits = {0.1f, 0.25f, 0.5f, 1.0f};
 
-                light_req = LightProxy(session, light_ops)
-                                .createLight(scene_req.result().scene_id, LightDescriptor{dl});
+                light_req = lightCreate(LightProxy(session, light_ops), scene_req.tryResult()->get().scene_id, LightDescriptor{dl});
                 break;
             }
 
@@ -629,10 +649,10 @@ int main()
                 cube_transform[13] = 0.5f;
                 cube_transform[15] = 1.f;
 
-                MeshStackProxy(session, mesh_stack_ops).updateTransform(scene_req.result().scene_id, cube_inst_req.result().object, cube_transform);
+                updateTransientMeshTransform(MeshStackProxy(session, mesh_stack_ops), scene_req.tryResult()->get().scene_id, cube_inst_req.tryResult()->get().object, cube_transform);
 
-                ViewCameraProxy(session, view_cam_ops).update(
-                    scene_req.result().scene_id, view_req.result().view,
+                viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops),
+                    scene_req.tryResult()->get().scene_id, view_req.tryResult()->get().view,
                     V.data(), P.data(),
                     eye.data());
                 break;
@@ -642,10 +662,12 @@ int main()
             // ════════════════════════════════════════════════════════════════
             //  Phase transition + validation
             // ════════════════════════════════════════════════════════════════
-            // session.removeView(scene_req.result().scene_id, view_req.result().view);
-            // session.destroyScene(scene_req.result().scene_id);
-            session.submitFrame(true);
+            // session.removeView(scene_req.tryResult()->get().scene_id, view_req.tryResult()->get().view);
+            // session.destroyScene(scene_req.tryResult()->get().scene_id);
+            session.trySubmitFrame();
             session.waitAndPumpReplies();
+            control.pumpReplies();
+            upload.pumpReplies();
 
             switch (phase)
             {
@@ -656,11 +678,11 @@ int main()
 
             case Phase::ActivateScene:
                 check(active_req.isReady(), "SetActiveScene — reply received");
-                check(active_req.result().code == 0, "SetActiveScene — code == 0");
+                check(active_req.tryResult()->get().code == 0, "SetActiveScene — code == 0");
                 check(view_req.isReady(), "AddView — reply received");
-                check(view_req.result().view.valid(), "AddView — handle valid");
+                check(view_req.tryResult()->get().view.isValid(), "AddView — handle valid");
                 if (!scene_req.isReady() || !view_req.isReady() ||
-                    !view_req.result().view.valid() || active_req.result().code != 0)
+                    !view_req.tryResult()->get().view.isValid() || active_req.tryResult()->get().code != 0)
                 {
                     std::cerr << "Critical setup failed; aborting.\n";
                     phase = Phase::Done;
@@ -678,44 +700,44 @@ int main()
 
             case Phase::RegisterFeatures:
                 check(fwd_reg_req.isReady(), "RegisterFeatureType ForwardMesh — OK");
-                check(fwd_reg_req.result().feature_type_id > 0, "RegisterFeatureType ForwardMesh — valid id");
+                check(fwd_reg_req.tryResult()->get().feature_type_id > 0, "RegisterFeatureType ForwardMesh — valid id");
                 check(shadow_reg_req.isReady(), "RegisterFeatureType ShadowMap — OK");
                 check(mesh_shadow_reg_req.isReady(), "RegisterFeatureType MeshShadow — OK");
                 check(light_reg_req.isReady(), "RegisterFeatureType Light — OK");
                 check(view_cam_reg_req.isReady(), "RegisterFeatureType StandardViewCamera — OK");
                 view_cam_ops = ViewCameraOperationIds::fromOps(
-                    view_cam_reg_req.result().ops, view_cam_reg_req.result().op_count);
+                    view_cam_reg_req.tryResult()->get().ops, view_cam_reg_req.tryResult()->get().op_count);
                 light_ops = LightOperationIds::fromOps(
-                    light_reg_req.result().ops, light_reg_req.result().op_count);
+                    light_reg_req.tryResult()->get().ops, light_reg_req.tryResult()->get().op_count);
                 mesh_stack_ops = MeshStackOperationIds::fromOps(
-                    mesh_stack_reg_req.result().ops, mesh_stack_reg_req.result().op_count);
+                    mesh_stack_reg_req.tryResult()->get().ops, mesh_stack_reg_req.tryResult()->get().op_count);
                 material_ops = MaterialOperationIds::fromOps(
-                    material_reg_req.result().ops, material_reg_req.result().op_count);
+                    material_reg_req.tryResult()->get().ops, material_reg_req.tryResult()->get().op_count);
                 phase = Phase::AddShadowFeatures;
                 break;
 
             case Phase::AddShadowFeatures:
                 check(view_cam_feat_req.isReady(), "AddFeature StandardViewCamera — OK");
-                check(view_cam_feat_req.result().feature.valid(), "AddFeature StandardViewCamera — valid handle");
+                check(view_cam_feat_req.tryResult()->get().feature.isValid(), "AddFeature StandardViewCamera — valid handle");
                 check(light_feat_req.isReady(), "AddFeature Light — OK");
-                check(light_feat_req.result().feature.valid(), "AddFeature Light — valid handle");
+                check(light_feat_req.tryResult()->get().feature.isValid(), "AddFeature Light — valid handle");
                 check(shadow_feat_req.isReady(), "AddFeature ShadowMap — OK");
-                check(shadow_feat_req.result().feature.valid(), "AddFeature ShadowMap — valid handle");
+                check(shadow_feat_req.tryResult()->get().feature.isValid(), "AddFeature ShadowMap — valid handle");
                 check(mesh_shadow_feat_req.isReady(), "AddFeature MeshShadow — OK");
-                check(mesh_shadow_feat_req.result().feature.valid(), "AddFeature MeshShadow — valid handle");
+                check(mesh_shadow_feat_req.tryResult()->get().feature.isValid(), "AddFeature MeshShadow — valid handle");
                 phase = Phase::AddForwardFeature;
                 break;
 
             case Phase::AddForwardFeature:
                 check(fwd_feat_req.isReady(), "AddFeature ForwardMesh — OK");
-                check(fwd_feat_req.result().feature.valid(), "AddFeature ForwardMesh — valid handle");
+                check(fwd_feat_req.tryResult()->get().feature.isValid(), "AddFeature ForwardMesh — valid handle");
                 phase = Phase::UploadMaterials;
                 break;
 
             case Phase::UploadMaterials:
-                check(ground_mat_req.isReady() && ground_mat_req.result().status == 0,
+                check(ground_mat_req.isReady() && ground_mat_req.tryResult()->get().status == 0,
                       "UploadMaterial ground — OK");
-                check(cube_mat_req.isReady() && cube_mat_req.result().status == 0,
+                check(cube_mat_req.isReady() && cube_mat_req.tryResult()->get().status == 0,
                       "UploadMaterial cube — OK");
                 phase = Phase::UploadMeshes;
                 break;
@@ -727,8 +749,8 @@ int main()
             case Phase::WaitMeshUpload:
                 if (ground_mesh_req.isReady() && cube_mesh_req.isReady())
                 {
-                    check(ground_mesh_req.result().status == 0 &&
-                              cube_mesh_req.result().status == 0,
+                    check(ground_mesh_req.tryResult()->get().status == 0 &&
+                              cube_mesh_req.tryResult()->get().status == 0,
                           "UploadMesh ground + cube — deferred reply OK");
                     phase = Phase::CreateInstances;
                 }
@@ -736,16 +758,16 @@ int main()
 
             case Phase::CreateInstances:
                 check(ground_inst_req.isReady() &&
-                          static_cast<bool>(ground_inst_req.result().object),
+                          static_cast<bool>(ground_inst_req.tryResult()->get().object),
                       "AddMeshInstance ground — valid object");
                 check(cube_inst_req.isReady() &&
-                          static_cast<bool>(cube_inst_req.result().object),
+                          static_cast<bool>(cube_inst_req.tryResult()->get().object),
                       "AddMeshInstance cube — valid object");
                 phase = Phase::CreateLight;
                 break;
 
             case Phase::CreateLight:
-                check(light_req.isReady() && light_req.result().status == 0,
+                check(light_req.isReady() && light_req.tryResult()->get().status == 0,
                       "CreateLight directional — OK");
                 start_time = std::chrono::steady_clock::now();
                 phase = Phase::Render;

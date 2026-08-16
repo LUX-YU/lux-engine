@@ -1,0 +1,96 @@
+//! lux-shader stage=vertex entry=main
+#version 450
+#ifdef LUX_INSTANCE_PAGED
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+#endif
+// =========================================================================
+//  highlight_mask.vert — highlight-outline MASK vertex shader (vertex-pool).
+//
+//  Draws the silhouette of highlighted (Step 1: ALL visible) instances. Mirrors
+//  forward_mesh_vp.vert (same set-0 ViewBuffer camera, set-1 instance, set-5
+//  visible, set-7 bindless vertex pool — so it draws BOTH static and SKINNED
+//  meshes in their live pose) but outputs ONLY gl_Position: the mask fragment
+//  shader reads no varyings, so a thinner interface keeps the SPIR-V validator
+//  free of OutputNotConsumed warnings (same rationale as shadow_depth_vp.vert).
+// =========================================================================
+
+// ========== SET 0: View Buffer (camera VP) ==========
+#include "view_common.glsl"
+layout(std430) readonly buffer ViewBuffer {
+    ViewGpuData views[];
+} uViews;
+
+#include "view_pc_prefix.glsl"
+layout(push_constant) uniform SharedPC {
+    LUX_VIEW_PC_PREFIX      // uint scene_index (0); uint view_index (4)
+} uPC;
+
+// ========== SET 1: Three-stream instance data ==========
+#include "instance.glsl"
+
+layout(std430) readonly buffer TransformBuf {
+#ifdef LUX_INSTANCE_PAGED
+    uint64_t leaf_addresses[];
+#else
+    InstanceTransform transforms[];
+#endif
+} uTransforms;
+
+layout(std430) readonly buffer PropertyBuf {
+#ifdef LUX_INSTANCE_PAGED
+    uint64_t leaf_addresses[];
+#else
+    InstanceProperty properties[];
+#endif
+} uProperties;
+
+layout(std430) readonly buffer VisibleInstanceBuf {
+    GpuVisibleInstance entries[];
+} uVisibleInstances;
+
+// ========== SET 7: Bindless vertex pools ==========
+#include "vertex_pool.glsl"
+
+// Per-instance flag word forwarded to the fragment shader, which discards
+// non-highlighted fragments. flat = no interpolation (per-instance constant).
+layout(location = 0) flat out uint vFlags;
+
+void main()
+{
+    uint visibleIndex = uint(gl_InstanceIndex);
+    uint drawSlot = uVisibleInstances.entries[visibleIndex].instance_slot;
+
+#ifdef LUX_INSTANCE_PAGED
+    InstanceProperty prop = luxLoadInstanceProperty(
+        uProperties.leaf_addresses[luxInstanceRootIndex(drawSlot)],
+        drawSlot);
+    InstanceTransform transform = luxLoadInstanceTransform(
+        uTransforms.leaf_addresses[luxInstanceRootIndex(drawSlot)],
+        drawSlot);
+#else
+    InstanceProperty prop = uProperties.properties[drawSlot];
+    InstanceTransform transform = uTransforms.transforms[drawSlot];
+#endif
+    vFlags = prop.flags;
+
+    // gl_VertexIndex == input_vertex_offset + local; subtract the bias so
+    // vertex_base stays the honest output base (mirrors forward_mesh_vp.vert).
+    uint localVertex = uint(gl_VertexIndex) - prop.input_vertex_offset;
+    MeshVertex mv = luxFetchMeshVertex(prop.vertex_pool_id,
+                                       prop.vertex_base,
+                                       localVertex);
+
+    ViewGpuData view_data = uViews.views[uPC.view_index];
+    mat4 model = luxSpatialModel(
+        transform,
+        view_data.camera_page.xyz,
+        view_data.camera_local_page_size.xyz,
+        view_data.camera_local_page_size.w
+    );
+    vec4 worldPos = model * vec4(mv.position, 1.0);
+
+    gl_Position = uViews.views[uPC.view_index].proj
+                * uViews.views[uPC.view_index].view
+                * worldPos;
+}

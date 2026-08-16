@@ -11,14 +11,15 @@ namespace lux::editor
         root_ = content_root;
         assets_.clear();
 
-        // The registry is a VIEW over the same LooseDirProvider the editor
+        // The registry is a VIEW over the same LooseAssetProvider the editor
         // mounts at /Game — one path->id table, not a second scan. Keep the
         // provider instance stable across refresh() so the AssetVfs mount
         // stays valid; only swap it when the root actually changes.
         if (!provider_ || provider_->rootDir() != content_root)
         {
             provider_ =
-                std::make_shared<lux::asset::LooseDirProvider>(content_root);
+                std::make_shared<lux::authoring::LooseAssetProvider>(
+                    content_root);
         }
         provider_->rescan();
 

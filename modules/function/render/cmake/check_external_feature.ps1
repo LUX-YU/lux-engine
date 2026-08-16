@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
   External-feature authoring probe — proves a third-party RenderFeature compiles
-  against the INSTALLED public surface alone (render/include + external SDKs),
+  against the INSTALLED Vulkan extension surface alone
+  (render/vulkan/include + external SDKs),
   with the module's internal dirs (sinclude / pinclude) STRIPPED.
 
   Complements check_install_surface.ps1: that one proves every public HEADER
@@ -25,7 +26,7 @@
 #>
 param(
     [string]$BuildDir         = 'E:/SyncForder/CodeRepos/build/Debug/lux-engine',
-    [string]$ModuleSrc        = 'E:/SyncForder/CodeRepos/lux-engine/modules/function/render',
+    [string]$ModuleSrc        = 'E:/SyncForder/CodeRepos/lux-engine/modules/function/render/vulkan',
     [string]$RepresentativeTU = 'KernelRegistry.cpp'
 )
 

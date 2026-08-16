@@ -19,6 +19,13 @@ add_component(
     SOURCE_FILES    ${LUX_INPUT_SRCS}
 )
 
+lux_classify_target(
+    TARGET input
+    LAYER FUNCTION
+    PRODUCT RUNTIME
+    ROLE DOMAIN
+)
+
 component_include_directories(
     input
     BUILD_TIME_EXPORT
@@ -43,4 +50,8 @@ component_add_transitive_commands(
     "find_package (lux-cxx              REQUIRED COMPONENTS container)"
 )
 
-add_subdirectory(test)
+# Interactive tests drive a GLFW window (GlfwRuntime) — desktop-only; the
+# Android backend has no GLFW and tests don't cross-compile anyway.
+if(NOT ANDROID)
+    add_subdirectory(test)
+endif()

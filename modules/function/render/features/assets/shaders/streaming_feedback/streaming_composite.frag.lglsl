@@ -1,0 +1,35 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+
+#include "StreamingFeedbackPassParams.glsl"
+
+layout(location = 0) in vec2 vUV;
+layout(location = 0) out vec4 outColor;
+
+float hash21(vec2 p)
+{
+    p = fract(p * vec2(123.34, 345.45));
+    p += dot(p, p + 34.345);
+    return fract(p.x * p.y);
+}
+
+void main()
+{
+    float inside = texture(uMask, vUV).r;
+    if (inside <= 0.0)
+        discard;
+
+    float tile = max(uPC.tile_size, 2.0);
+    vec2 cell = floor(gl_FragCoord.xy / tile);
+    float noise = hash21(cell);
+    float travel = uPC.time_seconds * uPC.speed;
+    float diagonal = fract((cell.x + cell.y) * 0.085 - travel);
+    float mosaic = smoothstep(0.22, 0.78, fract(noise + travel * 0.35));
+    float pattern = mix(mosaic, 1.0 - step(0.48, diagonal),
+                        step(0.5, uPC.pattern));
+    float dither = step(hash21(gl_FragCoord.xy), 0.38 + 0.55 * pattern);
+    float alpha = clamp(inside * uPC.intensity *
+                        mix(0.28, 1.0, dither), 0.0, 1.0);
+
+    outColor = vec4(uPC.color_r, uPC.color_g, uPC.color_b, alpha);
+}

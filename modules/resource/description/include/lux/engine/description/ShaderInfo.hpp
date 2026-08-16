@@ -8,7 +8,7 @@
 
 namespace lux::rdesc
 {
-    // 着色器阶段
+    // Shader stage
     enum class EShaderType : uint8_t {
         VERTEX, 
         FRAGMENT, 
@@ -25,7 +25,7 @@ namespace lux::rdesc
 		UNDEFINED
     };
 
-    // 与 VkDescriptorType 对齐的内部枚举
+    // Internal enum aligned with VkDescriptorType
     enum class EDescriptorType : uint8_t {
         SAMPLER,
         COMBINED_IMAGE_SAMPLER,
@@ -44,10 +44,10 @@ namespace lux::rdesc
         uint32_t       set = 0;
         uint32_t       binding = 0;
         EDescriptorType type = EDescriptorType::UNIFORM_BUFFER;
-        uint32_t       count = 1;        // 数组大小（未知时为 1）
-        std::string    name;             // 变量名
-        uint32_t       blockSize = 0;    // UBO/SSBO 字节大小；非块资源为 0
-        bool           writable = false; // 对 SSBO/StorageImage：是否可写
+        uint32_t       count = 1;        // Array size (1 if unknown)
+        std::string    name;             // Variable name
+        uint32_t       blockSize = 0;    // UBO/SSBO size in bytes; 0 for non-block resources
+        bool           writable = false; // For SSBO/StorageImage: whether it is writable
     };
 
     struct DescriptorSetLayoutInfo {
@@ -60,8 +60,8 @@ namespace lux::rdesc
         uint32_t size = 0;
     };
 
-    // —— 专用常量（Specialization Constant） ——
-    struct SpecDefaultValue 
+    // —— Specialization Constant ——
+    struct SpecDefaultValue
     {
         enum class Kind : uint8_t 
         { 
@@ -72,8 +72,8 @@ namespace lux::rdesc
             Double, 
             Unknown 
         } kind = Kind::Unknown;
-        uint32_t bit_width = 32; // 8/16/32/64 或 16/32/64 浮点
-        // 统一成 64-bit 容器，浮点用 f64 存
+        uint32_t bit_width = 32; // 8/16/32/64, or 16/32/64 for float
+        // Stored uniformly in a 64-bit container; floats use f64
         union {
             int64_t   i64;
             uint64_t  u64;
@@ -83,15 +83,15 @@ namespace lux::rdesc
     };
 
     struct SpecConstantInfo {
-        uint32_t    id = 0;     // SPIR-V ID（可调试）
+        uint32_t    id = 0;     // SPIR-V ID (for debugging)
         uint32_t    constant_id = 0;     // VkSpecializationMapEntry.constantID
         std::string name;
         SpecDefaultValue default_value;
-        uint32_t    vec_size = 1;        // 若为 composite，则记录维度
+        uint32_t    vec_size = 1;        // Records the dimension if this is a composite
         uint32_t    columns = 1;
     };
 
-    // 顶点输入，仅在 VERTEX 阶段有效
+    // Vertex input, only valid in the VERTEX stage
     enum class VertexScalarBase : uint8_t { Bool, Int, UInt, Float, Double, Unknown };
     struct VertexInputAttribute {
         uint32_t         location = 0;
@@ -151,6 +151,31 @@ namespace lux::rdesc
         std::vector<PushConstantRangeInfo>   push_constants;
         std::vector<SpecConstantInfo>        spec_constants;
         std::vector<VertexInputAttribute>    vertex_inputs;
+
+        /// Runtime-only flag, not serialized. Set when this reflection's descriptor
+        /// locations have already been relocated to the merged-domain layout by the
+        /// engine's frequency-domain remap table (set on the render side by
+        /// relocateShaderInfoByName; always false for offline-generated output).
+        ///
+        /// Why this needs an explicit flag instead of being inferred structurally:
+        /// Instance has offset 0 within the FEATURE domain, so its binding number is
+        /// identical whether you read it as canonical or as merged — reflection alone
+        /// cannot tell "an unmerged Instance set" apart from "a merged-domain set that
+        /// happens to contain only Instance", and the two require different, mutually
+        /// incompatible layouts. Pipeline layout routing dispatches on this flag.
+        bool merged_domain_layout{false};
+
+        /// Runtime-only data, not serialized. Records the relocation of private/explicit
+        /// sets as {set number before patching -> set number after patching}. The actual
+        /// allocation strategy only relocates non-engine sets whose slot number is > 3 or
+        /// that collide with a domain slot used by this shader (e.g. mesh's visible set5
+        /// -> 3, or caster's visible set2 colliding with the FEATURE domain slot -> 3);
+        /// everything else is left in place. Consumer: raw-slot bindings recorded at
+        /// record time (literal slot numbers such as bindTransientDS(5, ...)) are
+        /// translated through this table to the post-relocation slot, so call sites never
+        /// need to change their literals — when relocation isn't in effect the table is
+        /// empty and behavior is unchanged.
+        std::vector<std::pair<uint32_t, uint32_t>> private_set_remap;
 
         size_t findSet(uint32_t s) const {
             for (size_t i = 0; i < sets.size(); ++i) if (sets[i].set == s) return i;

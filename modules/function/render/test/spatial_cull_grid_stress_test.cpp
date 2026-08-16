@@ -1,5 +1,5 @@
 // ============================================================================
-//  spatial_cull_grid_stress_test.cpp — 工作流① 增量2 W1 粗剔数值验证 (headless GPU)
+//  spatial_cull_grid_stress_test.cpp — W1 coarse-cull numerical verification (headless GPU)
 //
 //  Proves the coarse-cull PAYOFF end-to-end on a real GPU mask buffer:
 //    - bring up a minimal headless render DeviceContext (VMA),
@@ -17,7 +17,7 @@
 // ============================================================================
 
 #include <lux/engine/render/scene/SpatialCullGrid.hpp>
-#include <lux/engine/render/core/VulkanContext.hpp>
+#include <lux/engine/render/gpu/VulkanContext.hpp>
 
 #include <vulkan/vulkan.h>
 

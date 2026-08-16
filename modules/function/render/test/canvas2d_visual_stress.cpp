@@ -3,11 +3,11 @@
 //  Canvas2D v2 under load, ON SCREEN (the 2D counterpart of deferred_stress_test).
 //
 //  What you see / what it proves:
-//    - 50,000 GPU-RESIDENT sprites (a rainbow galaxy disc) created ONCE — after
+//    - 50,000 GPU-RESIDENT images (a rainbow galaxy disc) created ONCE — after
 //      creation they cost ZERO wire per frame;
 //    - the camera orbits + zooms the whole time: the ENTIRE field moves with
-//      ONE camera op per frame (nothing per-sprite — the GPU-driven money shot);
-//    - a ring of 1,024 DYNAMIC sprites swirls on top: exactly one 1,024-entry
+//      ONE camera op per frame (nothing per-image — the GPU-driven money shot);
+//    - a ring of 1,024 DYNAMIC images swirls on top: exactly one 1,024-entry
 //      transform bulk per frame (wire ∝ change, ~40 KB);
 //    - every ~2 s a colour band's PRIORITY flips: the layer visibly pops in
 //      front/behind — a full 50k order rebuild, done in ~0.1 ms server-side;
@@ -19,9 +19,9 @@
 
 #include "DeviceRenderFixture.hpp"
 
-#include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeatureOps.hpp>
-#include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
+#include <lux/engine/function/render/client/genops/Canvas2DOperation.ops.hpp>
+#include <lux/engine/function/render/client/features/canvas2d/Canvas2DOperation.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 
 #include <chrono>
 #include <cmath>
@@ -33,11 +33,10 @@ using namespace lux::render;
 
 namespace
 {
-    struct EmptyConfig {};
 
     constexpr std::uint32_t W = 1280, H = 800;
-    constexpr std::uint32_t kStaticSprites  = 50'000;
-    constexpr std::uint32_t kDynamicSprites = 1'024;   // one bulk/frame, inside the ring budget
+    constexpr std::uint32_t kStaticImages  = 50'000;
+    constexpr std::uint32_t kDynamicImages = 1'024;   // one bulk/frame, inside the ring budget
     constexpr std::uint32_t kWaveBand       = 512;     // priority-flip band per wave
     constexpr float         kPi             = 3.14159265f;
 
@@ -63,15 +62,15 @@ int main()
     std::setbuf(stdout, nullptr);
     std::printf("=== canvas2d_visual_stress (GPU-driven v2) ===  (close the window to exit)\n");
 
-    lux::rendertest::DeviceRenderFixture fx(W, H, "Canvas2D Visual Stress — 50k GPU-resident sprites");
+    lux::rendertest::DeviceRenderFixture fx(W, H, "Canvas2D Visual Stress — 50k GPU-resident images");
     if (!fx.ok()) { std::printf("No Vulkan device. Skipping.\n"); return 0; }
 
     const auto sv = fx.makeSceneWithSwapchainView("Canvas2DVisualStress", "main");
 
-    const auto cam_reg = fx.await(fx.session().registerFeatureType(kStandardViewCameraFeatureFactory));
-    fx.await(fx.session().addFeature(sv.scene_id, cam_reg.feature_type_id, EmptyConfig{}));
-    const auto canvas_reg = fx.await(fx.session().registerFeatureType(kCanvas2DFeatureFactory));
-    fx.await(fx.session().addFeature(sv.scene_id, canvas_reg.feature_type_id, EmptyConfig{}));
+    const auto cam_reg = fx.awaitControl(fx.control().registerFeatureType(kViewCameraFeatureFactory));
+    fx.awaitControl(fx.control().addFeature(sv.scene_id, cam_reg.feature_type_id, lux::render::ViewCameraCommTag{}));
+    const auto canvas_reg = fx.awaitControl(fx.control().registerFeatureType(kCanvas2DFeatureFactory));
+    fx.awaitControl(fx.control().addFeature(sv.scene_id, canvas_reg.feature_type_id, lux::render::Canvas2DCommConfig{}));
 
     const auto cam_ops    = ViewCameraOperationIds::fromOps(cam_reg.ops, cam_reg.op_count);
     const auto canvas_ops = Canvas2DOperationIds::fromOps(canvas_reg.ops, canvas_reg.op_count);
@@ -80,26 +79,26 @@ int main()
     // ── Create the static galaxy ONCE (sunflower spiral, rainbow by angle) ──
     // Priorities cycle 0..5 by radial band, so the wave flip below visibly pops
     // one band above its neighbours.
-    std::printf("creating %u static sprites...\n", kStaticSprites);
-    std::vector<Sprite2DHandle> band_handles;   // the band whose priority the wave flips
+    std::printf("creating %u static images...\n", kStaticImages);
+    std::vector<Image2DHandle> band_handles;   // the band whose priority the wave flips
     band_handles.reserve(kWaveBand);
     {
         std::uint32_t created = 0, failed = 0;
-        for (std::uint32_t i = 0; i < kStaticSprites; ++i)
+        for (std::uint32_t i = 0; i < kStaticImages; ++i)
         {
             const float k = static_cast<float>(i);
-            const float r = 0.95f * std::sqrt(k / kStaticSprites);
+            const float r = 0.95f * std::sqrt(k / kStaticImages);
             const float a = k * 2.39996f;   // golden angle
-            Sprite2DInstanceData d{};
+            Image2DInstanceData d{};
             const float s = 0.0035f + 0.004f * (1.f - r);
             d.m[0] = s; d.m[3] = s;
             d.m[4] = r * std::cos(a);
             d.m[5] = r * std::sin(a);
             d.tint = rainbow(a / (2.f * kPi));
             const float prio = static_cast<float>(i % 6);
-            auto req = canvas.addSprite(sv.scene_id, d, prio);
+            auto req = addImage(canvas, sv.scene_id, d, prio);
             if (band_handles.size() < kWaveBand && (i % 97u) == 0u)
-                req.then([&band_handles](const Sprite2DSlotReply& rep)
+                req.then([&band_handles](const Image2DSlotReply& rep)
                 {
                     if (rep.status == ECanvas2DCreateStatus::Ok) band_handles.push_back(rep.handle);
                 });
@@ -113,27 +112,27 @@ int main()
     }
 
     // ── The dynamic swirl ring ──
-    std::vector<Sprite2DHandle> dyn;
-    dyn.reserve(kDynamicSprites);
-    for (std::uint32_t i = 0; i < kDynamicSprites; ++i)
+    std::vector<Image2DHandle> dyn;
+    dyn.reserve(kDynamicImages);
+    for (std::uint32_t i = 0; i < kDynamicImages; ++i)
     {
-        Sprite2DInstanceData d{};
+        Image2DInstanceData d{};
         d.m[0] = 0.012f; d.m[3] = 0.012f;
         d.tint = 0xFFFFFFFFu;
-        auto req = canvas.addSprite(sv.scene_id, d, /*priority=*/10.f);   // always on top
-        req.then([&dyn](const Sprite2DSlotReply& r)
+        auto req = addImage(canvas, sv.scene_id, d, /*priority=*/10.f);   // always on top
+        req.then([&dyn](const Image2DSlotReply& r)
         {
             if (r.status == ECanvas2DCreateStatus::Ok) dyn.push_back(r.handle);
         });
         if ((i % 512u) == 511u) fx.flush();
     }
-    for (int i = 0; i < 16 && dyn.size() < kDynamicSprites; ++i) fx.flush();
-    std::printf("dynamic ring: %u sprites — window up. Close to exit.\n",
+    for (int i = 0; i < 16 && dyn.size() < kDynamicImages; ++i) fx.flush();
+    std::printf("dynamic ring: %u images — window up. Close to exit.\n",
                 static_cast<unsigned>(dyn.size()));
 
     const float aspect = static_cast<float>(W) / static_cast<float>(H);
     const float eye[3] = {0, 0, 0};
-    std::vector<Sprite2DTransformEntry> batch(dyn.size());
+    std::vector<Image2DTransformEntry> batch(dyn.size());
 
     const auto t0 = std::chrono::steady_clock::now();
     auto  fps_mark   = t0;
@@ -145,13 +144,13 @@ int main()
     {
         const float t = std::chrono::duration<float>(std::chrono::steady_clock::now() - t0).count();
 
-        // ── ONE camera op moves all 50k sprites: orbit + breathe-zoom ──
+        // ── ONE camera op moves all 50k images: orbit + breathe-zoom ──
         const float zoom = 1.35f + 0.85f * std::sin(t * 0.35f);
         const float cx   = 0.30f * std::cos(t * 0.22f);
         const float cy   = 0.30f * std::sin(t * 0.17f);
         const float view[16] = { zoom,0,0,0,  0,zoom,0,0,  0,0,1,0,  -cx*zoom, -cy*zoom, 0, 1 };
         const float proj[16] = { 1.f/aspect,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,0,1 };
-        ViewCameraProxy(fx.session(), cam_ops).update(sv.scene_id, sv.view, view, proj, eye);
+        viewCameraUpdateTransient(ViewCameraProxy(fx.session(), cam_ops), sv.scene_id, sv.view, view, proj, eye);
 
         // ── ONE bulk updates the swirl ring (wire ∝ change) ──
         for (std::size_t i = 0; i < dyn.size(); ++i)
@@ -167,7 +166,7 @@ int main()
             e.m[4] = r * std::cos(a);
             e.m[5] = r * std::sin(a);
         }
-        canvas.updateTransforms(batch);
+        updateTransforms(canvas, batch);
 
         // ── Every ~2 s: flip the tracked band's priority → visible layer pop
         //    (a full-arena order rebuild, ~0.1 ms server-side) ──
@@ -176,7 +175,7 @@ int main()
             wave_up = !wave_up;
             const float prio = wave_up ? 8.f : 1.f;
             for (const auto& h : band_handles)
-                canvas.updateKey(sv.scene_id, h, prio, true);
+                updateKey(canvas, sv.scene_id, h, prio, true);
         }
 
         fx.flush();
@@ -186,8 +185,8 @@ int main()
         if (now - fps_mark >= std::chrono::seconds(1))
         {
             std::printf("fps=%d | static=%u (zero wire) | dynamic=%u (one bulk ≈ %u KB) | wave=%s\n",
-                        fps_frames, kStaticSprites, static_cast<unsigned>(dyn.size()),
-                        static_cast<unsigned>(dyn.size() * sizeof(Sprite2DTransformEntry) / 1024),
+                        fps_frames, kStaticImages, static_cast<unsigned>(dyn.size()),
+                        static_cast<unsigned>(dyn.size() * sizeof(Image2DTransformEntry) / 1024),
                         wave_up ? "up" : "down");
             fps_frames = 0;
             fps_mark   = now;

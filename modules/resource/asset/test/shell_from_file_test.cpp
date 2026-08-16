@@ -1,7 +1,7 @@
 //=============================================================================
 // shell_from_file_test.cpp
 // -----------------------------------------------------------------------------
-// Acceptance test for makeShellFromFile (大世界 W2b lazy startup registration).
+// Acceptance test for makeShellFromFile (open-world W2b lazy startup registration).
 //
 // makeShellFromFile reads ONLY a .luxasset file header (no data section) and
 // produces an info-only shell for lazily-loadable types, reusing the existing
@@ -15,8 +15,8 @@
 //   * a missing file → FILE_OPEN_FAIL
 //=============================================================================
 
-#include <lux/engine/asset/AssetSerDeser.hpp>   // makeShellFromFile + header structs
-#include <lux/engine/asset/MeshAsset.hpp>        // MeshAsset (the shelled concrete type)
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/MeshAsset.hpp>        // MeshAsset (the shelled concrete type)
 
 #include <cstring>
 #include <filesystem>
@@ -75,7 +75,7 @@ static void test_v2_mesh_shell()
                                 asset_magic_number_of<EAssetType::MESH>::value);
     const auto path = writeTemp("lux_shell_v2_mesh.luxasset", &h, sizeof(h));
 
-    auto r = makeShellFromFile(path);
+    auto r = makeShellFromFile(*runtimeAssetCodecCatalog(), path);
     check(r.has_value(), "makeShellFromFile succeeded");
     if (r.has_value())
     {
@@ -102,7 +102,7 @@ static void test_v1_upgrade_shell()
     v1.info.date    = 42ull;
     const auto path = writeTemp("lux_shell_v1_mesh.luxasset", &v1, sizeof(v1));
 
-    auto r = makeShellFromFile(path);
+    auto r = makeShellFromFile(*runtimeAssetCodecCatalog(), path);
     check(r.has_value(), "v1 makeShellFromFile succeeded");
     if (r.has_value())
     {
@@ -120,7 +120,7 @@ static void test_nonlazy_unsupported()
                                 asset_magic_number_of<EAssetType::MODEL>::value);
     const auto path = writeTemp("lux_shell_v2_model.luxasset", &h, sizeof(h));
 
-    auto r = makeShellFromFile(path);
+    auto r = makeShellFromFile(*runtimeAssetCodecCatalog(), path);
     check(!r.has_value(), "MODEL returns an error (no shell)");
     if (!r.has_value())
         check(r.error() == EAssetError::UNSUPPORTED, "error == UNSUPPORTED");
@@ -133,7 +133,7 @@ static void test_truncated()
     const std::uint32_t just_magic = asset_magic_number_of<EAssetType::MESH>::value;
     const auto path = writeTemp("lux_shell_trunc.luxasset", &just_magic, sizeof(just_magic));
 
-    auto r = makeShellFromFile(path);
+    auto r = makeShellFromFile(*runtimeAssetCodecCatalog(), path);
     check(!r.has_value(), "truncated returns an error");
     if (!r.has_value())
         check(r.error() == EAssetError::ABNORMAL_FILE_SIZE, "error == ABNORMAL_FILE_SIZE");
@@ -147,7 +147,7 @@ static void test_bad_version()
     h.version = 999999u;   // neither v1 nor current
     const auto path = writeTemp("lux_shell_badver.luxasset", &h, sizeof(h));
 
-    auto r = makeShellFromFile(path);
+    auto r = makeShellFromFile(*runtimeAssetCodecCatalog(), path);
     check(!r.has_value(), "bad version returns an error");
     if (!r.has_value())
         check(r.error() == EAssetError::UNSUPPORTED_VERSION, "error == UNSUPPORTED_VERSION");
@@ -158,6 +158,7 @@ static void test_missing_file()
 {
     banner("missing file -> FILE_OPEN_FAIL");
     auto r = makeShellFromFile(
+        *runtimeAssetCodecCatalog(),
         std::filesystem::temp_directory_path() / "lux_shell_does_not_exist.luxasset");
     check(!r.has_value(), "missing file returns an error");
     if (!r.has_value())

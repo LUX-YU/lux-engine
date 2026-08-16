@@ -1,0 +1,241 @@
+#version 450
+
+layout(local_size_x = 64) in;
+
+struct GpuPageMeta
+{
+    ivec4 origin_full_slot;
+    vec4 local_spacing;
+    vec4 height_extent;
+    uvec4 fallback_flags;
+    vec4 transition;
+    vec4 actual_height_bounds;
+};
+
+struct GpuTerrainPatch
+{
+    uvec4 page_lod_xy;
+    uvec4 slots_flags;
+};
+
+layout(set = 0, binding = 0, std430) readonly buffer PageMetadataBuffer
+{
+    GpuPageMeta pages[];
+} uPages;
+
+layout(set = 0, binding = 1, std430) buffer SelectionBuffer
+{
+    GpuTerrainPatch patches[];
+} uSelection;
+
+layout(set = 0, binding = 2, std430) buffer SelectionCountBuffer
+{
+    uint selected_patch_count;
+} uSelectionCount;
+
+layout(set = 0, binding = 3, std430) buffer IndirectCommandBuffer
+{
+    uint vertex_count;
+    uint instance_count;
+    uint first_vertex;
+    uint first_instance;
+} uIndirect;
+
+layout(push_constant) uniform TerrainSelectPush
+{
+    uint page_capacity;
+    uint maximum_patches;
+    uint view_index;
+    uint full_page_capacity;
+    ivec4 camera_page;
+    vec4 camera_local_page_size;
+    vec4 viewport_projection;
+    vec4 view_rotation_row_0;
+    vec4 view_rotation_row_1;
+    vec4 view_rotation_row_2;
+} pc;
+
+vec2 pageCenterRelative(GpuPageMeta page)
+{
+    vec3 relative = vec3(
+            page.origin_full_slot.xyz - pc.camera_page.xyz) *
+            pc.camera_local_page_size.w +
+        page.local_spacing.xyz - pc.camera_local_page_size.xyz;
+    return relative.xz + vec2(page.height_extent.z * 0.5);
+}
+
+vec3 pageOriginRelative(GpuPageMeta page)
+{
+    return vec3(
+            page.origin_full_slot.xyz - pc.camera_page.xyz) *
+            pc.camera_local_page_size.w +
+        page.local_spacing.xyz - pc.camera_local_page_size.xyz;
+}
+
+bool patchVisible(
+    GpuPageMeta page,
+    uint patches_per_edge,
+    uvec2 patch_coord)
+{
+    float patch_extent = page.height_extent.z /
+        float(patches_per_edge);
+    vec3 center = pageOriginRelative(page) + vec3(
+        (float(patch_coord.x) + 0.5) * patch_extent,
+        (page.actual_height_bounds.x +
+            page.actual_height_bounds.y) * 0.5,
+        (float(patch_coord.y) + 0.5) * patch_extent);
+    vec3 half_extent = vec3(
+        patch_extent * 0.5,
+        max((page.actual_height_bounds.y -
+            page.actual_height_bounds.x) * 0.5, 0.01),
+        patch_extent * 0.5);
+    vec3 view_center = vec3(
+        dot(pc.view_rotation_row_0.xyz, center),
+        dot(pc.view_rotation_row_1.xyz, center),
+        dot(pc.view_rotation_row_2.xyz, center));
+    vec3 view_extent = vec3(
+        dot(abs(pc.view_rotation_row_0.xyz), half_extent),
+        dot(abs(pc.view_rotation_row_1.xyz), half_extent),
+        dot(abs(pc.view_rotation_row_2.xyz), half_extent));
+
+    // The camera looks down -Z. Reject an AABB wholly behind the eye, then
+    // conservatively test its projected X/Y extent. Patches intersecting the
+    // near plane stay visible and are clipped by fixed-function rasterization.
+    if (view_center.z - view_extent.z >= 0.0)
+        return false;
+    float depth = max(-view_center.z, 0.0);
+    float clip_x_extent = view_extent.x * pc.viewport_projection.w +
+        view_extent.z;
+    float clip_y_extent = view_extent.y * pc.viewport_projection.y +
+        view_extent.z;
+    if (abs(view_center.x * pc.viewport_projection.w) >
+            depth + clip_x_extent ||
+        abs(view_center.y * pc.viewport_projection.y) >
+            depth + clip_y_extent)
+    {
+        return false;
+    }
+    return true;
+}
+
+uint desiredLod(GpuPageMeta page)
+{
+    if (page.origin_full_slot.w < 0)
+        return 0u;
+    float distance_to_center = max(length(pageCenterRelative(page)), 1.0);
+    float projected_page_pixels = page.height_extent.z /
+        distance_to_center * pc.viewport_projection.x *
+        pc.viewport_projection.y * 0.5;
+    float ratio = max(
+        projected_page_pixels / max(pc.viewport_projection.z, 1.0),
+        1.0);
+    return uint(clamp(ceil(log2(ratio)), 0.0, 3.0));
+}
+
+bool adjacent(GpuPageMeta left, GpuPageMeta right)
+{
+    vec3 delta = vec3(
+            right.origin_full_slot.xyz - left.origin_full_slot.xyz) *
+            pc.camera_local_page_size.w +
+        right.local_spacing.xyz - left.local_spacing.xyz;
+    float expected = (left.height_extent.z + right.height_extent.z) * 0.5;
+    float tolerance = max(left.local_spacing.w, right.local_spacing.w) * 0.25;
+    bool horizontal = abs(abs(delta.x) - expected) <= tolerance &&
+        abs(delta.z) <= tolerance;
+    bool vertical = abs(abs(delta.z) - expected) <= tolerance &&
+        abs(delta.x) <= tolerance;
+    return horizontal || vertical;
+}
+
+void main()
+{
+    // One workgroup owns the complete selection transaction.  Each lane walks
+    // a strided subset of page metadata, then all lanes meet before lane zero
+    // publishes the indirect command.  A cross-workgroup barrier does not
+    // exist in Vulkan GLSL, hence dispatching one invocation per page cannot
+    // safely combine patch production and command publication in one pass.
+    for (uint page_index = gl_LocalInvocationID.x;
+         page_index < pc.page_capacity;
+         page_index += gl_WorkGroupSize.x)
+    {
+        GpuPageMeta page = uPages.pages[page_index];
+        if (pc.maximum_patches == 0u ||
+            (page.fallback_flags.y & 5u) != 5u ||
+            page.fallback_flags.x >= pc.page_capacity)
+        {
+            continue;
+        }
+
+        bool full_slot_valid = page.origin_full_slot.w >= 0 &&
+            uint(page.origin_full_slot.w) < pc.full_page_capacity;
+
+        uint lod = desiredLod(page);
+        if (page.origin_full_slot.w >= 0)
+        {
+            for (uint other_index = 0u;
+                 other_index < pc.page_capacity;
+                 ++other_index)
+            {
+                if (other_index == page_index)
+                    continue;
+                GpuPageMeta other = uPages.pages[other_index];
+                if ((other.fallback_flags.y & 5u) != 5u ||
+                    !adjacent(page, other))
+                {
+                    continue;
+                }
+                uint other_lod = desiredLod(other);
+                if (other_lod > 0u)
+                    lod = max(lod, other_lod - 1u);
+            }
+        }
+
+        uint patches_per_edge = 1u << lod;
+        uint patch_count = patches_per_edge * patches_per_edge;
+        for (uint local_index = 0u; local_index < patch_count; ++local_index)
+        {
+            uvec2 patch_coord = uvec2(
+                local_index % patches_per_edge,
+                local_index / patches_per_edge);
+            if (!patchVisible(page, patches_per_edge, patch_coord))
+                continue;
+            uint output_index = atomicAdd(
+                uSelectionCount.selected_patch_count, 1u);
+            if (output_index >= pc.maximum_patches)
+                continue;
+            GpuTerrainPatch item;
+            item.page_lod_xy = uvec4(
+                page_index,
+                lod,
+                patch_coord);
+            item.slots_flags = uvec4(
+                full_slot_valid ? uint(page.origin_full_slot.w) : 0u,
+                page.fallback_flags.x,
+                full_slot_valid
+                    ? page.fallback_flags.y
+                    : (page.fallback_flags.y & ~2u),
+                page.fallback_flags.w);
+            uSelection.patches[output_index] = item;
+        }
+    }
+    // Exactly one invocation publishes the final indirect command only after
+    // every metadata invocation has completed writing its selected patches.
+    // Previously instance_count was also used as the atomic reservation
+    // counter, so rasterization was allowed to observe a non-zero indirect
+    // draw count before some SelectionBuffer entries were visible.  The
+    // resulting draw consumed stale rows from prior frames and produced giant
+    // triangles and apparently floating terrain.
+    memoryBarrierBuffer();
+    barrier();
+    if (gl_LocalInvocationID.x == 0u)
+    {
+        uSelectionCount.selected_patch_count = min(
+            uSelectionCount.selected_patch_count,
+            pc.maximum_patches);
+        uIndirect.vertex_count = 6936u;
+        uIndirect.instance_count =
+            uSelectionCount.selected_patch_count;
+        uIndirect.first_vertex = 0u;
+        uIndirect.first_instance = 0u;
+    }
+}

@@ -1,0 +1,75 @@
+{
+    "comment": [
+        "lux-engine 的上游源码清单。setup.py 读它来检查/拉取缺失的仓库。",
+        "",
+        "revision 留空 = 跟随各仓库的默认分支。整个 lux 项目集目前同步推进,",
+        "还没到钉版本的阶段;等某个组合被验证过、值得记下来时,再往这里填",
+        "commit。填了之后 setup.py 只在**首次 clone** 时用它,已存在的检出",
+        "一律不碰 —— 绝不 force-reset 别人的工作树。",
+        "",
+        "platforms 说明该仓库参与哪些平台的构建。Android 上 ui 模块与编辑器层",
+        "被顶层 CMakeLists 排除,所以 imgui 两个仓库只在 host 出现。"
+    ],
+    "repos": [
+        {
+            "name": "lux-cmake-toolset",
+            "url": "https://github.com/LUX-YU/lux-cmake-toolset.git",
+            "revision": "",
+            "platforms": ["host", "android"]
+        },
+        {
+            "name": "lux-cxx",
+            "url": "https://github.com/LUX-YU/lux-cxx.git",
+            "revision": "",
+            "platforms": ["host", "android"]
+        },
+        {
+            "name": "imgui",
+            "url": "https://github.com/LUX-YU/imgui.git",
+            "revision": "",
+            "platforms": ["host"]
+        },
+        {
+            "name": "imgui-node-editor",
+            "url": "https://github.com/LUX-YU/imgui-node-editor.git",
+            "revision": "",
+            "platforms": ["host"]
+        }
+    ],
+    "vcpkg_packages": [
+        {
+            "name": "recastnavigation",
+            "version": "1.6.0",
+            "platforms": ["host", "android"],
+            "why": "NavigationRegion3D：Toolchain 私有 Recast，算法后端私有 Detour"
+        }
+    ],
+    "tools": [
+        {
+            "name": "cmake",
+            "probe": "command",
+            "command": "cmake",
+            "why": "构建系统本身"
+        },
+        {
+            "name": "ninja",
+            "probe": "command",
+            "command": "ninja",
+            "why": "所有节点的 generator 都是 Ninja"
+        },
+        {
+            "name": "vcpkg",
+            "probe": "env_dir",
+            "env": "VCPKG_ROOT",
+            "why": "第三方依赖(Eigen/EnTT/standalone Asio/oneTBB/shaderc/LLVM…);配置里的 {vcpkg_path} 由它推出",
+            "platforms": ["host", "android"]
+        },
+        {
+            "name": "Android NDK",
+            "probe": "env_dir",
+            "env": "ANDROID_NDK_HOME",
+            "why": "cmake/triplets/arm64-android.cmake 用它钉 chainload 工具链",
+            "platforms": ["android"]
+        }
+    ]
+}

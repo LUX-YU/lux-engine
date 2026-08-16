@@ -9,38 +9,41 @@
 //    - Uses RenderServer server-side pre-initialization
 // ============================================================================
 
-#include <lux/engine/render/comm/client/RenderSession.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
+#include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
 #include "RenderTask.hpp"            // relocated test-only coroutine support
 #include "RenderTaskScheduler.hpp"
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
 
-#include <lux/engine/render/renderer/features/deffer/DeferredGBufferOperation.hpp>
-#include <lux/engine/render/renderer/features/deffer/DeferredLightingOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/ShadowMapOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/ShadowQualityParams.hpp>
-#include <lux/engine/render/renderer/features/FeatureParamsOperation.hpp>   // FeatureParamsProxy
-#include <lux/engine/render/renderer/features/shadow/MeshShadowOperation.hpp>
-#include <lux/engine/render/renderer/features/sky_box/SkyboxOperation.hpp>
-#include <lux/engine/render/renderer/features/grid/GridOperation.hpp>
+#include <lux/engine/function/render/client/genops/DeferredGBufferOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/DeferredLightingOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/client/features/shadow/ShadowQualityParams.hpp>
+#include <lux/engine/function/render/client/protocol/FeatureParamsOperation.hpp>   // FeatureParamsProxy
+#include <lux/engine/function/render/client/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/SkyboxOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/Grid3DOperation.ops.hpp>
 // LightFeature now owns scene light DATA; deferred/shadow CONSUME it. Brings in
 // LightDescriptor / DirectionalLightDesc / PointLightDesc / UpdateLightPayload /
 // LightCreatedReply / toUpdateLightPayload / LightProxy / LightOperationIds /
 // kLightFeatureFactory.
-#include <lux/engine/render/renderer/features/light/LightOperation.hpp>
-#include <lux/engine/render/renderer/features/material/MaterialOperation.hpp> // kStandardMaterialFeatureFactory
-#include <lux/engine/render/renderer/features/meshstack/MeshStackOperation.hpp> // kStandardMeshStackFeatureFactory
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp> // kStandardViewCameraFeatureFactory / ViewCameraProxy
+#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp> // kMaterialFeatureFactory
+#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp> // kMeshStackFeatureFactory
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp> // kViewCameraFeatureFactory / ViewCameraProxy
 
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
-#include <lux/engine/render/resources/material/GraphMaterialData.hpp>
+#include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
 
 #include "graph_test_helpers.hpp"
 
-#include <lux/engine/asset/AssetManager.hpp>
-#include <lux/engine/asset/TextureSerDeser.hpp>
-#include <lux/engine/asset/TextureAsset.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/resource/asset/TextureAsset.hpp>
 
 #include <lux/engine/window/LuxWindow.hpp>
 #include <GLFW/glfw3.h>
@@ -89,6 +92,20 @@ static constexpr float kPi               = 3.14159265f;
 static int  g_grid_side = kGridSide;
 static bool g_no_floor  = false;
 static bool g_use_evsm  = false;
+/// --validation: turn the layers on, INCLUDING synchronization validation.
+/// Off by default because this demo doubles as the perf reference.
+static bool g_validation = false;
+/// --vsync: present with FIFO instead of IMMEDIATE.
+///
+/// Default is OFF because this demo is the frame-time reference, but that means
+/// the default picks VK_PRESENT_MODE_IMMEDIATE_KHR — no vertical sync at all, so
+/// the presentation engine swaps images mid-scanout. At the frame rates this test
+/// reaches that is heavy tearing, which reads as a flickering picture and is most
+/// visible along high-contrast edges such as shadow boundaries. Turn this on
+/// before concluding that a flicker is a renderer bug.
+static bool g_vsync = false;
+/// --frames N: render N frames then exit (0 = run until the window closes).
+static std::uint64_t g_max_frames = 0;
 
 // ── Floor plane geometry ────────────────────────────────────────────────
 
@@ -222,14 +239,8 @@ static Eigen::Matrix4f buildProjMatrix(float fov_rad, float aspect,
 
 static std::vector<const char*> getVulkanExtensions()
 {
-    glfwInit();
-    uint32_t count = 0;
-    const char **exts = glfwGetRequiredInstanceExtensions(&count);
-    std::vector<const char*> result;
-    result.reserve(count);
-    for (uint32_t i = 0; i < count; ++i)
-        result.emplace_back(exts[i]);
-    return result;
+    const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
+    return {exts.begin(), exts.end()};
 }
 
 // ── Server pre-init result (shared between threads) ─────────────────────
@@ -249,7 +260,7 @@ struct ServerInitResult
     uint32_t      skybox_tid{0};
     uint32_t      grid_tid{0};
     SkyboxOperationIds    skybox_ops{};
-    GridOperationIds      grid_ops{};
+    Grid3DOperationIds      grid_ops{};
     TypeId        shadow_params_op{kInvalidTypeId}; // ShadowMap's reflected setParams op (FeatureParamsProxy)
     ViewCameraOperationIds view_cam_ops{}; // feature-scoped per-view camera update op (ViewCameraProxy)
     LightOperationIds     light_ops{};   // feature-scoped light CRUD ops (LightProxy)
@@ -260,13 +271,15 @@ struct ServerInitResult
 // ── Coroutine task ──────────────────────────────────────────────────────
 
 static RenderTask<void> stressTask(
-    RenderSession &session,
+    RenderFrameSession &session,
+    RenderControlSession &control,
+    RenderUploadClient upload,
     const fs::path &asset_dir,
     lux::window::LuxWindow &window,
     const ServerInitResult &srv)
 {
     // ── 1. Activate scene ───────────────────────────────────────────
-    co_await session.setActiveScene(srv.scene_id, true);
+    co_await control.setActiveScene(srv.scene_id, true);
     std::cout << "  Scene activated\n";
 
     // ── 2. Add features ─────────────────────────────────────────────
@@ -276,30 +289,30 @@ static RenderTask<void> stressTask(
     // view/proj matrices + frustum). Every camera consumer (shadow / gbuffer /
     // lighting) reads ViewCameraResource, so it MUST be added FIRST — owner-first,
     // like StandardMeshStack.
-    struct EmptyViewCamCfg {} view_cam_cfg{};
-    auto view_cam_feat = co_await session.addFeature(srv.scene_id, srv.view_cam_tid, view_cam_cfg);
-    std::cout << "  Feature: StandardViewCamera — " << (view_cam_feat.feature.valid() ? "OK" : "FAIL") << "\n";
+    lux::render::ViewCameraCommTag view_cam_cfg{};
+    auto view_cam_feat = co_await control.addFeature(srv.scene_id, srv.view_cam_tid, view_cam_cfg);
+    std::cout << "  Feature: StandardViewCamera — " << (view_cam_feat.feature.isValid() ? "OK" : "FAIL") << "\n";
 
     // LightFeature owns the scene light DATA; ShadowMap/DeferredLighting are its
     // CONSUMERS (find<LightResources>). ShadowMapFeature caches a raw
     // LightResources* at attach time, so Light MUST be added BEFORE shadow.
-    struct EmptyLightCfg {} light_cfg{};
-    auto light_feat = co_await session.addFeature(srv.scene_id, srv.light_tid, light_cfg);
-    std::cout << "  Feature: Light — " << (light_feat.feature.valid() ? "OK" : "FAIL") << "\n";
+    lux::render::LightCommTag light_cfg{};
+    auto light_feat = co_await control.addFeature(srv.scene_id, srv.light_tid, light_cfg);
+    std::cout << "  Feature: Light — " << (light_feat.feature.isValid() ? "OK" : "FAIL") << "\n";
 
-    // StandardMaterialFeature owns the global material stack (ShadingModelRegistry +
+    // StandardMaterialFeature owns the global material stack (builtin shading models +
     // MaterialResources). StandardMeshStack's addMeshInstance reads the material slot,
     // and the material consumers bind MaterialResources, so it MUST be added BEFORE
     // StandardMeshStack (and before every material consumer).
-    struct EmptyMaterialCfg {} material_cfg{};
-    co_await session.addFeature(srv.scene_id, srv.material_tid, material_cfg);
+    lux::render::MaterialCommTag material_cfg{};
+    co_await control.addFeature(srv.scene_id, srv.material_tid, material_cfg);
 
     // StandardMeshStack owns the scene mesh resources (InstanceResources /
     // VertexPoolRegistry); ShadowMap/MeshShadow/DeferredGBuffer CONSUME them at
     // their own attach, so it MUST be added BEFORE those mesh consumers.
-    struct EmptyMeshStackCfg {} mesh_stack_cfg{};
-    auto mesh_stack_feat = co_await session.addFeature(srv.scene_id, srv.mesh_stack_tid, mesh_stack_cfg);
-    std::cout << "  Feature: StandardMeshStack — " << (mesh_stack_feat.feature.valid() ? "OK" : "FAIL") << "\n";
+    lux::render::MeshStackCommTag mesh_stack_cfg{};
+    auto mesh_stack_feat = co_await control.addFeature(srv.scene_id, srv.mesh_stack_tid, mesh_stack_cfg);
+    std::cout << "  Feature: StandardMeshStack — " << (mesh_stack_feat.feature.isValid() ? "OK" : "FAIL") << "\n";
 
     ShadowMapCommConfig smc{};
     smc.atlas_page_resolution  = 4096;
@@ -313,25 +326,25 @@ static RenderTask<void> stressTask(
         ? lux::render::EShadowTechnique::EVSM
         : lux::render::EShadowTechnique::PCF;
     smc.non_directional_shadow_max_distance = 1200.0f;
-    auto shadow_feat = co_await session.addFeature(srv.scene_id, srv.shadowmap_tid, smc);
-    std::cout << "  Feature: ShadowMap — " << (shadow_feat.feature.valid() ? "OK" : "FAIL") << "\n";
+    auto shadow_feat = co_await control.addFeature(srv.scene_id, srv.shadowmap_tid, smc);
+    std::cout << "  Feature: ShadowMap — " << (shadow_feat.feature.isValid() ? "OK" : "FAIL") << "\n";
     std::cout << "  Shadow technique: " << (g_use_evsm ? "EVSM" : "PCF") << "\n";
     std::cout << "  Directional shadow mode: CSM ON (default)\n";
 
     MeshShadowCommConfig msmc{};
     msmc.comm_config_version = kMeshShadowCommConfigVersion;
     msmc.descriptor_layout_version = kMeshShadowDescriptorLayoutVersion;
-    auto mesh_shadow_feat = co_await session.addFeature(srv.scene_id, srv.meshshadow_tid, msmc);
-    std::cout << "  Feature: MeshShadow — " << (mesh_shadow_feat.feature.valid() ? "OK" : "FAIL") << "\n";
+    auto mesh_shadow_feat = co_await control.addFeature(srv.scene_id, srv.meshshadow_tid, msmc);
+    std::cout << "  Feature: MeshShadow — " << (mesh_shadow_feat.feature.isValid() ? "OK" : "FAIL") << "\n";
 
     DeferredGBufferCommConfig gbcc{};
     gbcc.comm_config_version = kDeferredGBufferCommConfigVersion;
     gbcc.descriptor_layout_version = kDeferredGBufferDescriptorLayoutVersion;
-    auto gbuf_feat = co_await session.addFeature(srv.scene_id, srv.gbuf_tid, gbcc);
-    std::cout << "  Feature: DeferredGBuffer — " << (gbuf_feat.feature.valid() ? "OK" : "FAIL") << "\n";
+    auto gbuf_feat = co_await control.addFeature(srv.scene_id, srv.gbuf_tid, gbcc);
+    std::cout << "  Feature: DeferredGBuffer — " << (gbuf_feat.feature.isValid() ? "OK" : "FAIL") << "\n";
 
     DeferredLightingCommConfig dlcc{};
-    dlcc.read_mode       = 0; // SAMPLED
+    dlcc.read_mode       = lux::render::ELightingReadMode::SAMPLED;
     dlcc.enable_clustered = 1;
     dlcc.cluster_x = 16;
     dlcc.cluster_y = 9;
@@ -343,23 +356,24 @@ static RenderTask<void> stressTask(
     dlcc.technique = g_use_evsm
         ? lux::render::EShadowTechnique::EVSM
         : lux::render::EShadowTechnique::PCF;
-    auto lit_feat = co_await session.addFeature(srv.scene_id, srv.lighting_tid, dlcc);
-    std::cout << "  Feature: DeferredLighting — " << (lit_feat.feature.valid() ? "OK" : "FAIL") << "\n";
+    auto lit_feat = co_await control.addFeature(srv.scene_id, srv.lighting_tid, dlcc);
+    std::cout << "  Feature: DeferredLighting — " << (lit_feat.feature.isValid() ? "OK" : "FAIL") << "\n";
 
-    GridCommConfig gcc{};
-    auto grid_feat = co_await session.addFeature(srv.scene_id, srv.grid_tid, gcc);
-    std::cout << "  Feature: Grid — " << (grid_feat.feature.valid() ? "OK" : "FAIL") << "\n";
+    Grid3DCommConfig gcc{};
+    auto grid_feat = co_await control.addFeature(srv.scene_id, srv.grid_tid, gcc);
+    std::cout << "  Feature: Grid — " << (grid_feat.feature.isValid() ? "OK" : "FAIL") << "\n";
 
     SkyboxCommConfig skcc{};
-    auto sky_feat = co_await session.addFeature(srv.scene_id, srv.skybox_tid, skcc);
-    std::cout << "  Feature: Skybox — " << (sky_feat.feature.valid() ? "OK" : "FAIL") << "\n";
+    auto sky_feat = co_await control.addFeature(srv.scene_id, srv.skybox_tid, skcc);
+    std::cout << "  Feature: Skybox — " << (sky_feat.feature.isValid() ? "OK" : "FAIL") << "\n";
 
     // ── 2b. Upload skybox equirectangular texture ───────────────────
     co_await yield_frame();
 
     // Load the texture .luxasset (packed by CMake alongside shaders)
-    auto tex_mgr = std::make_shared<lux::asset::AssetManager>();
-    lux::asset::TextureSerDeser tex_ser(tex_mgr);
+    auto tex_mgr = std::make_shared<lux::asset::AssetManager>(
+        lux::asset::runtimeAssetCodecCatalog());
+    lux::asset::TextureCodec tex_ser(tex_mgr);
     auto tex_res = tex_ser.fromLuxAsset(asset_dir / "textures" / "blue_nebulae_1.luxasset");
     if (!tex_res)
         throw std::runtime_error("Failed to load skybox texture");
@@ -376,16 +390,14 @@ static RenderTask<void> stressTask(
             throw std::runtime_error("Unsupported skybox texture pixel format");
     }
 
-    auto sky_tex_req = [&]() -> RenderRequest<Texture2DCreatedReply>
+    auto sky_tex_submit = [&]() -> UploadSubmitResult<Texture2DCreatedReply>
     {
         constexpr uint32_t kMaxUploadMips = 16u;
         const uint32_t mip_count = std::min<uint32_t>(sky_tex.mipCount(), kMaxUploadMips);
-        const auto* texture_bytes = static_cast<const std::byte*>(sky_tex.data());
-
         if (mip_count > 1u)
         {
-            std::array<RenderSession::Texture2DMipLevel, kMaxUploadMips> mip_levels{};
-            uint32_t valid_mips = 0;
+            std::vector<OwnedTextureMipLevel> mip_levels;
+            mip_levels.reserve(mip_count);
             for (uint32_t i = 0; i < mip_count; ++i)
             {
                 const auto& range = sky_tex.mipRange(i);
@@ -394,25 +406,25 @@ static RenderTask<void> stressTask(
                 if (range.offset + range.size > sky_tex.size())
                     throw std::runtime_error("Skybox mip range exceeds texture payload size");
 
-                mip_levels[valid_mips].pixels = texture_bytes + range.offset;
-                mip_levels[valid_mips].byte_count = static_cast<uint32_t>(range.size);
-                mip_levels[valid_mips].width = range.width;
-                mip_levels[valid_mips].height = range.height;
-                ++valid_mips;
+                auto pixels = sky_tex.pixels().subspan(
+                    static_cast<std::size_t>(range.offset),
+                    static_cast<std::size_t>(range.size));
+                if (pixels.size() != range.size)
+                    throw std::runtime_error("Skybox mip range has no owner");
+                mip_levels.push_back(OwnedTextureMipLevel{
+                    std::move(pixels), range.width, range.height});
             }
 
-            if (valid_mips > 1u)
-                return session.createTexture2DMips(
-                    mip_levels.data(),
-                    valid_mips,
+            if (mip_levels.size() > 1u)
+                return upload.tryCreateTexture2DMips(
+                    std::move(mip_levels),
                     sky_tex.channel(),
                     sky_tex.pixelFormat(),
                     /*generate_mips=*/false);
         }
 
-        return session.createTexture2D(
-            texture_bytes,
-            static_cast<uint32_t>(sky_tex.size()),
+        return upload.tryCreateTexture2D(
+            sky_tex.pixels(),
             sky_tex.width(),
             sky_tex.height(),
             sky_tex.channel(),
@@ -420,15 +432,28 @@ static RenderTask<void> stressTask(
             /*generate_mips=*/!lux::rdesc::isCompressedFormat(sky_tex.pixelFormat()));
     }();
 
+    if (!sky_tex_submit)
+    {
+        std::cerr << "Skybox texture upload admission failed\n";
+        co_return;
+    }
+    auto sky_tex_req = std::move(*sky_tex_submit);
+
     while (!sky_tex_req.isReady())
         co_await yield_frame();
 
-    auto sky_tex_reply = sky_tex_req.result();
+    auto sky_tex_reply = sky_tex_req.tryResult()->get();
     std::cout << "  Skybox texture uploaded (status=" << sky_tex_reply.status << ")\n";
 
     // Set the equirectangular texture on the skybox feature
     SkyboxProxy skybox_proxy(session, srv.skybox_ops);
-    skybox_proxy.setEquirect(srv.scene_id, sky_feat.feature, sky_tex_reply.handle);
+    {
+        SkyboxSetEquirectPayload wire{};
+        wire.scene_id = srv.scene_id;
+        wire.feature  = sky_feat.feature;
+        wire.texture  = sky_tex_reply.handle;
+        skybox_proxy.setEquirect(wire);
+    }
 
     // ── 3. Upload mesh + material ───────────────────────────────────
     co_await yield_frame();
@@ -507,15 +532,21 @@ static RenderTask<void> stressTask(
             spv.size() * sizeof(uint32_t)};
     };
 
-    auto cube_shader_req  = session.compileShader(
+    auto cube_shader_req  = control.compileShader(
         toBytes(cube_spv),  std::span<const std::byte>{cube_info.data(),  cube_info.size()});
-    auto floor_shader_req = session.compileShader(
+    auto floor_shader_req = control.compileShader(
         toBytes(floor_spv), std::span<const std::byte>{floor_info.data(), floor_info.size()});
-    auto light_shader_req = session.compileShader(
+    auto light_shader_req = control.compileShader(
         toBytes(light_spv), std::span<const std::byte>{light_info.data(), light_info.size()});
 
-    auto mesh_req       = lux::render::MeshStackProxy(session, srv.mesh_stack_ops).uploadMesh(cube_mesh);
-    auto floor_mesh_req = lux::render::MeshStackProxy(session, srv.mesh_stack_ops).uploadMesh(floor_mesh);
+    auto mesh_req = requireUploadAccepted(lux::render::uploadMesh(
+        lux::render::MeshStackUploadClient(upload, srv.mesh_stack_ops),
+        cube_mesh
+    ));
+    auto floor_mesh_req = requireUploadAccepted(lux::render::uploadMesh(
+        lux::render::MeshStackUploadClient(upload, srv.mesh_stack_ops),
+        floor_mesh
+    ));
 
     // Mesh uploads + shader compiles are deferred — may need multiple frames.
     while (!mesh_req.isReady() || !floor_mesh_req.isReady()
@@ -523,11 +554,11 @@ static RenderTask<void> stressTask(
         || !light_shader_req.isReady())
         co_await yield_frame();
 
-    auto mesh_reply       = mesh_req.result();
-    auto floor_mesh_reply = floor_mesh_req.result();
-    auto cube_shader      = cube_shader_req.result();
-    auto floor_shader     = floor_shader_req.result();
-    auto light_shader     = light_shader_req.result();
+    auto mesh_reply       = mesh_req.tryResult()->get();
+    auto floor_mesh_reply = floor_mesh_req.tryResult()->get();
+    auto cube_shader      = cube_shader_req.tryResult()->get();
+    auto floor_shader     = floor_shader_req.tryResult()->get();
+    auto light_shader     = light_shader_req.tryResult()->get();
 
     // Upload one graph material per frag (R1 per-material PSO; GBuffer => the
     // frag is the gbuffer slot, forward slot is empty).
@@ -535,19 +566,22 @@ static RenderTask<void> stressTask(
     lux::render::GraphMaterialData floor_gd{};
     lux::render::GraphMaterialData light_gd{};
     // Material upload is a feature op now (MaterialProxy) — uploadGraphMaterial was
-    // removed from RenderSession when materials became a feature.
-    MaterialProxy mat_proxy(session, srv.material_ops);
-    auto mat_req        = mat_proxy.uploadGraphMaterial(cube_gd,  cube_shader.shader,  lux::render::ShaderHandle{});
-    auto floor_mat_req  = mat_proxy.uploadGraphMaterial(floor_gd, floor_shader.shader, lux::render::ShaderHandle{});
-    auto light_cube_mat_req = mat_proxy.uploadGraphMaterial(light_gd, light_shader.shader, lux::render::ShaderHandle{});
+    // removed from RenderFrameSession when materials became a feature.
+    MaterialUploadClient material_upload(upload, srv.material_ops);
+    auto mat_req = requireUploadAccepted(uploadGraphMaterial(
+        material_upload, cube_gd, cube_shader.shader, lux::render::ShaderHandle{}));
+    auto floor_mat_req = requireUploadAccepted(uploadGraphMaterial(
+        material_upload, floor_gd, floor_shader.shader, lux::render::ShaderHandle{}));
+    auto light_cube_mat_req = requireUploadAccepted(uploadGraphMaterial(
+        material_upload, light_gd, light_shader.shader, lux::render::ShaderHandle{}));
 
     while (!mat_req.isReady() || !floor_mat_req.isReady()
         || !light_cube_mat_req.isReady())
         co_await yield_frame();
 
-    auto mat_reply        = mat_req.result();
-    auto floor_mat_reply  = floor_mat_req.result();
-    auto light_cube_mat_reply = light_cube_mat_req.result();
+    auto mat_reply        = mat_req.tryResult()->get();
+    auto floor_mat_reply  = floor_mat_req.tryResult()->get();
+    auto light_cube_mat_reply = light_cube_mat_req.tryResult()->get();
 
     std::cout << "  Mesh + material uploaded (mesh=" << mesh_reply.status
               << ", mat=" << mat_reply.status << ")\n";
@@ -559,7 +593,7 @@ static RenderTask<void> stressTask(
 
     // Mesh-instance CRUD now goes through the feature-scoped MeshStackProxy
     // (addMeshInstance / makeInstanceVisibleForView / updateTransforms were
-    // removed from RenderSession when the mesh stack became a feature).
+    // removed from RenderFrameSession when the mesh stack became a feature).
     MeshStackProxy mesh_proxy(session, srv.mesh_stack_ops);
 
     const float center = (g_grid_side - 1) * kCubeSpacing * 0.5f;
@@ -577,12 +611,11 @@ static RenderTask<void> stressTask(
             float pz = z * kCubeSpacing - center;
             float xform[16];
             setTranslation(xform, px, kCubeHalf + kModelLift, pz);
-            auto req = mesh_proxy.addMeshInstance(
-                srv.scene_id,
+            auto req = addTransientMeshInstance(mesh_proxy, srv.scene_id,
                 mesh_reply.handle, mat_reply.handle, xform);
             auto reply = co_await req;
             cube_infos.push_back({reply.object, px, pz, x, z});
-            mesh_proxy.makeInstanceVisibleForView(srv.scene_id, srv.view, reply.object);
+            mesh_proxy.makeInstanceVisibleForView({.scene_id = srv.scene_id, .view = srv.view, .object = reply.object});
         }
     }
 
@@ -591,11 +624,10 @@ static RenderTask<void> stressTask(
     {
         float xform[16];
         setTranslation(xform, 0.f, kModelLift, 0.f);
-        auto floor_inst = mesh_proxy.addMeshInstance(
-            srv.scene_id,
+        auto floor_inst = addTransientMeshInstance(mesh_proxy, srv.scene_id,
             floor_mesh_reply.handle, floor_mat_reply.handle, xform);
         auto floor_reply = co_await floor_inst;
-        mesh_proxy.makeInstanceVisibleForView(srv.scene_id, srv.view, floor_reply.object);
+        mesh_proxy.makeInstanceVisibleForView({.scene_id = srv.scene_id, .view = srv.view, .object = floor_reply.object});
     }
 
     co_await yield_frame();
@@ -626,10 +658,10 @@ static RenderTask<void> stressTask(
     dl.cascade_splits     = {12.f, 30.f, 60.f, 120.f};
 
     // Light CRUD now goes through the feature-scoped LightProxy (createLight /
-    // updateLights were removed from RenderSession when light became a feature).
+    // updateLights were removed from RenderFrameSession when light became a feature).
     LightProxy light_proxy(session, srv.light_ops);
 
-    auto dir_light_req = light_proxy.createLight(srv.scene_id, LightDescriptor{dl});
+    auto dir_light_req = lightCreate(light_proxy, srv.scene_id, LightDescriptor{dl});
 
     std::vector<RenderRequest<LightCreatedReply>> pl_reqs;
     pl_reqs.reserve(kNumPointLights);
@@ -642,8 +674,9 @@ static RenderTask<void> stressTask(
         float height = kLightHeight /* * (0.5f + 0.4f * ring)*/;
 
         PointLightDesc pl{};
-        pl.position = Eigen::Vector3f(
-            radius * std::cos(angle), height, radius * std::sin(angle));
+        pl.spatial_position.local[0] = radius * std::cos(angle);
+        pl.spatial_position.local[1] = height;
+        pl.spatial_position.local[2] = radius * std::sin(angle);
 
         // Each light gets a unique hue
         float hue = std::fmod(static_cast<float>(i) / kNumPointLights + ring * 0.17f, 1.f);
@@ -656,7 +689,7 @@ static RenderTask<void> stressTask(
         pl.shadow_bias      = 0.002f;
         pl.shadow_normal_bias = 0.01f;
 
-        pl_reqs.push_back(light_proxy.createLight(srv.scene_id, LightDescriptor{pl}));
+        pl_reqs.push_back(lightCreate(light_proxy, srv.scene_id, LightDescriptor{pl}));
     }
 
     co_await yield_frame();
@@ -683,10 +716,13 @@ static RenderTask<void> stressTask(
         std::move(lc_verts), std::move(lc_idx),
         lux::math::AABB(Eigen::Vector3f(-kLightCubeHalf, -kLightCubeHalf, -kLightCubeHalf),
                         Eigen::Vector3f( kLightCubeHalf,  kLightCubeHalf,  kLightCubeHalf))};
-    auto lc_mesh_req = lux::render::MeshStackProxy(session, srv.mesh_stack_ops).uploadMesh(lc_mesh);
+    auto lc_mesh_req = requireUploadAccepted(lux::render::uploadMesh(
+        lux::render::MeshStackUploadClient(upload, srv.mesh_stack_ops),
+        lc_mesh
+    ));
     while (!lc_mesh_req.isReady())
         co_await yield_frame();
-    auto lc_mesh_reply = lc_mesh_req.result();
+    auto lc_mesh_reply = lc_mesh_req.tryResult()->get();
 
     std::vector<RenderObjectHandle> light_cube_slots;
     light_cube_slots.reserve(kNumPointLights);
@@ -702,12 +738,11 @@ static RenderTask<void> stressTask(
         setTranslation(xform,
             radius * std::cos(angle), height, radius * std::sin(angle));
         constexpr uint32_t kLightCubeFlags = kInstanceFlagReceiveShadow | kInstanceFlagVisible;
-        auto req = mesh_proxy.addMeshInstance(
-            srv.scene_id,
+        auto req = addTransientMeshInstance(mesh_proxy, srv.scene_id,
             lc_mesh_reply.handle, light_cube_mat_reply.handle, xform, kLightCubeFlags);
         auto reply = co_await req;
         light_cube_slots.push_back(reply.object);
-        mesh_proxy.makeInstanceVisibleForView(srv.scene_id, srv.view, reply.object);
+        mesh_proxy.makeInstanceVisibleForView({.scene_id = srv.scene_id, .view = srv.view, .object = reply.object});
     }
     std::cout << "  Light cubes created: " << light_cube_slots.size() << "\n";
 
@@ -733,8 +768,15 @@ static RenderTask<void> stressTask(
 
     std::cout << "\n  === Rendering — ESC exit | 1-4 quality | 5 toggle CSM ===\n\n";
 
+    std::uint64_t rendered_frames = 0;
     while (!window.shouldClose())
     {
+        // --frames N turns this interactive demo into an unattended run: the
+        // shadow-atlas cross-frame hazard only reproduces with frames actually
+        // overlapping, so the diagnostic needs the real loop, not a fixture.
+        if (g_max_frames != 0 && ++rendered_frames > g_max_frames)
+            break;
+
         auto now = std::chrono::steady_clock::now();
         float elapsed = std::chrono::duration<float>(now - start).count();
         double dt = std::chrono::duration<double>(now - prev).count();
@@ -764,7 +806,7 @@ static RenderTask<void> stressTask(
             kCamRadius * std::sin(cam_angle));
         Eigen::Matrix4f V = buildViewMatrix(eye, target, up);
 
-        ViewCameraProxy(session, srv.view_cam_ops).update(srv.scene_id, srv.view, V.data(), P.data(), eye.data());
+        viewCameraUpdateTransient(ViewCameraProxy(session, srv.view_cam_ops), srv.scene_id, srv.view, V.data(), P.data(), eye.data());
 
         // ── Animate cubes (batched) ───────────────────────────────────
         std::vector<TransformWriteEntry> xform_batch;
@@ -781,11 +823,11 @@ static RenderTask<void> stressTask(
                              kCubeHalf + kModelLift + bob,
                              ci.base_z, rot);
             xform_batch[idx].object = ci.object;
-            std::memcpy(xform_batch[idx].transform, xform, sizeof(xform));
+            xform_batch[idx].transform = makeTransientRenderSpatialTransform3D(xform);
         }
         // Scene-stamping overload: every entry self-routes by scene_id (G-04 — the
         // server SKIPS null-scene entries; there is no SetActiveScene fallback).
-        mesh_proxy.updateTransforms(srv.scene_id, xform_batch);
+        updateTransforms(mesh_proxy, srv.scene_id, xform_batch);
 
         // ── Update point light positions (orbit, distinct colours) ───
         std::vector<UpdateLightPayload> light_batch;
@@ -804,8 +846,9 @@ static RenderTask<void> stressTask(
             float angle = base_angle + elapsed * speed;
 
             PointLightDesc pl{};
-            pl.position = Eigen::Vector3f(
-                radius * std::cos(angle), height, radius * std::sin(angle));
+            pl.spatial_position.local[0] = radius * std::cos(angle);
+            pl.spatial_position.local[1] = height;
+            pl.spatial_position.local[2] = radius * std::sin(angle);
 
             float hue = std::fmod(static_cast<float>(i) / kNumPointLights + ring * 0.17f, 1.f);
             pl.color     = hsvToRgb(hue, 0.85f, 1.0f);
@@ -823,12 +866,17 @@ static RenderTask<void> stressTask(
             TransformWriteEntry lc_tw{};
             lc_tw.object = light_cube_slots[i];
             float lc_xform[16];
-            setTranslation(lc_xform, pl.position.x(), pl.position.y(), pl.position.z());
-            std::memcpy(lc_tw.transform, lc_xform, sizeof(lc_xform));
+            setTranslation(
+                lc_xform,
+                pl.spatial_position.local[0],
+                pl.spatial_position.local[1],
+                pl.spatial_position.local[2]
+            );
+            lc_tw.transform = makeTransientRenderSpatialTransform3D(lc_xform);
             lc_xform_batch.push_back(lc_tw);
         }
         light_proxy.updateLights(light_batch);
-        mesh_proxy.updateTransforms(srv.scene_id, lc_xform_batch);
+        updateTransforms(mesh_proxy, srv.scene_id, lc_xform_batch);
 
         co_await yield_frame();
 
@@ -919,12 +967,18 @@ int main(int argc, char** argv)
     for (int i = 1; i < argc; ++i)   // single-lane overrides
     {
         const std::string a = argv[i];
-        if      (a == "--no-floor") g_no_floor = true;
-        else if (a == "--evsm")     g_use_evsm = true;
+        if      (a == "--no-floor")  g_no_floor  = true;
+        else if (a == "--evsm")      g_use_evsm  = true;
+        else if (a == "--validation") g_validation = true;
+        else if (a == "--vsync")      g_vsync      = true;
         else if (a == "--grid" && i + 1 < argc)
         {
             g_grid_side = std::atoi(argv[++i]);
             if (g_grid_side < 1) g_grid_side = 1;
+        }
+        else if (a == "--frames" && i + 1 < argc)
+        {
+            g_max_frames = std::strtoull(argv[++i], nullptr, 10);
         }
     }
 
@@ -937,8 +991,10 @@ int main(int argc, char** argv)
 
     // ── Channel + sync + window ─────────────────────────────────────
 
-    auto channel = RenderProgramChannel<>::create();
-    auto sync    = std::make_shared<RenderChannelSync>();
+    auto channel         = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel  = RenderUploadChannel<>::create();
+    auto sync             = std::make_shared<RenderChannelSync>();
 
     auto surface_exts = getVulkanExtensions();
     lux::window::LuxWindow window(1280, 720, "Deferred Stress Test");
@@ -951,22 +1007,27 @@ int main(int argc, char** argv)
 
     std::thread server_thread([&]
     {
-        GeneralRenderServer server(channel, sync);
+        GeneralRenderServer server(
+            channel,
+            control_channel,
+            upload_channel,
+            sync
+        );
 
         ServerConfig cfg;
         cfg.instance_extensions = surface_exts;
-        cfg.enable_vsync        = false;
-        cfg.enable_validation   = false;
+        cfg.enable_vsync        = g_vsync;
+        cfg.enable_validation   = g_validation;
         if (auto r = server.init(std::move(cfg)); !r)
         {
-            std::cerr << "[Server] Init failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] Init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
         }
         if (auto r = server.attachToWindow(window); !r)
         {
-            std::cerr << "[Server] Attach failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] Attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true, std::memory_order_release);
             server_ready.store(true, std::memory_order_release);
             return;
@@ -978,7 +1039,7 @@ int main(int argc, char** argv)
         // available for the ViewCameraProxy, and add it to the scene BEFORE every
         // camera consumer (see stressTask — owner-first).
         {
-            auto reply = server.addFeatureFactory(kStandardViewCameraFeatureFactory);
+            auto reply = server.addFeatureFactory(kViewCameraFeatureFactory);
             srv_init.view_cam_tid = reply.feature_type_id;
             srv_init.view_cam_ops = ViewCameraOperationIds::fromOps(reply.ops, reply.op_count);
         }
@@ -990,16 +1051,16 @@ int main(int argc, char** argv)
             srv_init.light_tid = light_reply.feature_type_id;
             srv_init.light_ops = LightOperationIds::fromOps(light_reply.ops, light_reply.op_count);
         }
-        // StandardMaterialFeature owns the global material stack (ShadingModelRegistry
+        // StandardMaterialFeature owns the global material stack (builtin shading models
         // + MaterialResources). It MUST be registered + added BEFORE StandardMeshStack
         // (addMeshInstance reads the material slot) and all material consumers.
         {
-            auto reply = server.addFeatureFactory(kStandardMaterialFeatureFactory);
+            auto reply = server.addFeatureFactory(kMaterialFeatureFactory);
             srv_init.material_tid = reply.feature_type_id;
             srv_init.material_ops = MaterialOperationIds::fromOps(reply.ops, reply.op_count);
         }
         {
-            auto reply = server.addFeatureFactory(kStandardMeshStackFeatureFactory);
+            auto reply = server.addFeatureFactory(kMeshStackFeatureFactory);
             srv_init.mesh_stack_tid = reply.feature_type_id;
             srv_init.mesh_stack_ops = MeshStackOperationIds::fromOps(reply.ops, reply.op_count);
         }
@@ -1017,9 +1078,9 @@ int main(int argc, char** argv)
             srv_init.skybox_ops  = SkyboxOperationIds::fromOps(reply.ops, reply.op_count);
         }
         {
-            auto reply = server.addFeatureFactory(kGridFeatureFactory);
+            auto reply = server.addFeatureFactory(kGrid3DFeatureFactory);
             srv_init.grid_tid    = reply.feature_type_id;
-            srv_init.grid_ops    = GridOperationIds::fromOps(reply.ops, reply.op_count);
+            srv_init.grid_ops    = Grid3DOperationIds::fromOps(reply.ops, reply.op_count);
         }
 
         std::cout << "  Feature factories registered (type_ids: light="
@@ -1076,13 +1137,23 @@ int main(int argc, char** argv)
 
     // ── Client session + coroutine ─────────────────────────────────
 
-    RenderSession session(channel, sync);
-    RenderTaskScheduler scheduler(session);
+    RenderFrameSession session(channel, sync);
+    RenderControlSession control(control_channel, sync);
+    RenderUploadSession upload(upload_channel, sync);
+    lux::render::testing::DirectRenderUploadClient upload_client{upload};
+    RenderTaskScheduler scheduler(session, control, &upload);
 
-    auto task = stressTask(session, asset_dir, window, srv_init);
+    auto task = stressTask(
+        session,
+        control,
+        upload_client.client(),
+        asset_dir,
+        window,
+        srv_init
+    );
     scheduler.run(
         std::move(task),
-        [&](RenderSession &) -> bool
+        [&](RenderFrameSession &) -> bool
         {
             window.pollEvents();
             return !window.shouldClose();

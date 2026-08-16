@@ -52,7 +52,7 @@ void SceneViewportPanel::paint()
     if ((w != pw || h != ph) && w > 0 && h > 0)
     {
         prev_content_size_ = display_size;
-        resized.emit({w, h});
+        if (on_resized) on_resized({w, h});
     }
 
     // Capture the image's screen position BEFORE rendering it, so we can
@@ -85,11 +85,12 @@ void SceneViewportPanel::paint()
                 AssetDragPayload payload{};
                 std::memcpy(&payload, p->Data, sizeof(payload));
                 const ImVec2 mp = ImGui::GetMousePos();
-                asset_dropped.emit({
-                    payload,
-                    mp.x - image_screen_pos.x,
-                    mp.y - image_screen_pos.y,
-                    display_size.x, display_size.y});
+                if (on_asset_dropped)
+                    on_asset_dropped({
+                        payload,
+                        mp.x - image_screen_pos.x,
+                        mp.y - image_screen_pos.y,
+                        display_size.x, display_size.y});
             }
         }
         ImGui::EndDragDropTarget();
@@ -157,8 +158,45 @@ void SceneViewportPanel::paint()
         !ImGui::IsMouseDown(ImGuiMouseButton_Middle) &&
         ImGui::IsMouseReleased(ImGuiMouseButton_Left))
     {
-        picked.emit({pointer_.pos_in_content.x, pointer_.pos_in_content.y,
-                     display_size.x, display_size.y});
+        if (on_picked)
+            on_picked({pointer_.pos_in_content.x, pointer_.pos_in_content.y,
+                       display_size.x, display_size.y});
+    }
+
+    // ── Context menu on RMB tap ──────────────────────────────────────────
+    //
+    // Same disambiguation as the pick above, for the RIGHT button: a clean
+    // tap (no drag latch, no camera ownership, cooldown drained) opens the
+    // popup at the tap position. In a camera scheme where RMB-hold flies,
+    // owns_mouse_ engages on press and wins — see the header note.
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+        rmb_drag_latched_ = false;          // fresh press → assume a tap until it drags
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
+    {
+        const ImVec2 d   = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right, 0.f);
+        const float  thr = io.MouseDragThreshold;
+        if (d.x * d.x + d.y * d.y >= thr * thr)
+            rmb_drag_latched_ = true;        // moved past the click radius → camera drag
+    }
+
+    if (context_menu_hook_ &&
+        pointer_.hovered &&
+        !owns_mouse_ &&
+        pick_cooldown_ == 0 &&
+        !rmb_drag_latched_ &&
+        !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+        !ImGui::IsMouseDown(ImGuiMouseButton_Middle) &&
+        ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+    {
+        ctx_click_ = pointer_;               // freeze the tap position for the menu
+        ImGui::OpenPopup("##scene_viewport_ctx");
+    }
+
+    if (ImGui::BeginPopup("##scene_viewport_ctx"))
+    {
+        if (context_menu_hook_)
+            context_menu_hook_(ctx_click_);
+        ImGui::EndPopup();
     }
 }
 

@@ -1,18 +1,18 @@
 #include "app/ProjectController.hpp"
-#include "app/SceneController.hpp"   // scene_.loadScene / unloadScene / setCurrentScenePath
+#include "app/SceneController.hpp"   // scene_.loadScene / unloadScene
 
 #include <lux/engine/editor/scene/EditorScene.hpp>        // BringUpConfig
 #include <lux/engine/editor/import/AssetImporter.hpp>     // registerContentFolder + ELoadMode
 #include <lux/engine/editor/content/EngineContentPath.hpp>// engine_content_path
 #include <lux/engine/editor/panels/AssetBrowser.hpp>      // setWorkingDirectory
 #include <lux/engine/editor/AssetRegistry.hpp>            // scan / size / provider
-#include <lux/engine/editor/app/PanelRegistry.hpp>        // windows()
+#include <lux/engine/editor/extensions/EditorTools.hpp>
 #include <lux/engine/ui/Panel.hpp>                        // setVisible / isVisible
 #include <lux/engine/ui/UISystem.hpp>                     // layout load/save/clear
-#include <lux/engine/asset/AssetManager.hpp>              // setVfs / registerContentFolder arg
-#include <lux/engine/asset/AssetVfs.hpp>                  // AssetVfs
-#include <lux/engine/asset/LooseDirProvider.hpp>          // /Engine provider
-#include <lux/engine/project/RecentProjects.hpp>          // pushRecentProject
+#include <lux/engine/resource/asset/AssetManager.hpp>              // setVfs / registerContentFolder arg
+#include <lux/engine/resource/asset/AssetVfs.hpp>                  // AssetVfs
+#include <lux/engine/authoring/assets/LooseAssetProvider.hpp>
+#include <lux/engine/authoring/project/RecentProjects.hpp>
 
 #include <cstdio>
 #include <filesystem>
@@ -33,17 +33,19 @@ namespace lux::editor
 
     ProjectController::ProjectController(
         SceneController&                          scene,
-        lux::ui::UISystem*                        ui_system,
+        lux::ui::UISystem&                        ui_system,
         std::shared_ptr<lux::asset::AssetManager> asset_mgr,
-        AssetRegistry*                            asset_registry,
-        AssetBrowser*                             asset_browser,
-        PanelRegistry&                            panels) noexcept
+        AssetRegistry&                            asset_registry,
+        AssetBrowser&                             asset_browser,
+        EditorToolHost&                           tools,
+        lux::extensions::EngineExtensions&       extensions) noexcept
         : scene_(scene)
         , ui_system_(ui_system)
         , asset_mgr_(std::move(asset_mgr))
         , asset_registry_(asset_registry)
         , asset_browser_(asset_browser)
-        , panel_registry_(panels)
+        , tools_(tools)
+        , extensions_(extensions)
     {
     }
 
@@ -64,13 +66,17 @@ namespace lux::editor
                 continue;
             saved.emplace(line.substr(0, eq), line.substr(eq + 1) != "0");
         }
-        for (const auto& w : panel_registry_.windows())
+        for (const auto& panel : tools_.snapshot())
         {
-            if (!w.panel)
+            if (!panel.active)
                 continue;
-            const auto it = saved.find(w.id);
-            w.panel->setVisible(it != saved.end() ? it->second : w.default_visible);
+            const auto it = saved.find(
+                std::string{panel.contribution.name()});
+            (void)tools_.facade().requestVisible(
+                panel.contribution.view(),
+                it != saved.end() ? it->second : panel.default_visible);
         }
+        (void)tools_.processSafePoint();
     }
 
     void ProjectController::saveWindowVisibility() const
@@ -85,14 +91,15 @@ namespace lux::editor
             return;
         f << "# Editor window visibility — auto-saved per project (no manual save).\n"
              "# <id>=<0|1>; a window not listed here uses its built-in default.\n";
-        for (const auto& w : panel_registry_.windows())
-            if (w.panel)
-                f << w.id << '=' << (w.panel->isVisible() ? '1' : '0') << '\n';
+        for (const auto& panel : tools_.snapshot())
+            if (panel.active)
+                f << panel.contribution.name() << '='
+                  << (panel.visible ? '1' : '0') << '\n';
     }
 
     bool ProjectController::openProject(const std::filesystem::path& luxproject_file)
     {
-        auto opened = Project::openFromDisk(luxproject_file);
+        auto opened = lux::authoring::Project::openFromDisk(luxproject_file);
         if (!opened)
         {
             std::fprintf(stderr, "[LuxEditor] openProject failed: %s\n",
@@ -102,19 +109,70 @@ namespace lux::editor
 
         closeProject(); // tears down current scene + drops current_project_
 
-        current_project_ = std::make_unique<Project>(std::move(*opened));
+        current_project_ = std::make_unique<lux::authoring::Project>(std::move(*opened));
+
+        std::vector<lux::extensions::ExtensionModuleRequirement> requirements;
+        requirements.reserve(current_project_->manifest().extensions.size());
+        for (const auto& entry : current_project_->manifest().extensions)
+        {
+            auto path = entry.path;
+            if (path.is_relative())
+                path = current_project_->root() / path;
+            requirements.push_back(
+                lux::extensions::ExtensionModuleRequirement::fromPath(
+                    entry.id,
+                    std::move(path),
+                    entry.target,
+                    entry.required_major,
+                    entry.minimum_minor));
+        }
+        if (auto added = extensions_.addRequirements(requirements); !added)
+        {
+            std::fprintf(
+                stderr,
+                "[LuxEditor] extension manifest rejected (%u)\n",
+                static_cast<unsigned>(added.error()));
+            current_project_.reset();
+            return false;
+        }
+        if (!requirements.empty())
+        {
+            PendingProjectOpen pending;
+            pending.luxproject_file = luxproject_file;
+            pending.modules.reserve(requirements.size());
+            for (const auto& requirement : requirements)
+                pending.modules.push_back(
+                    extensions_.requestLoad(requirement.id.view()));
+            pending_open_.emplace(std::move(pending));
+            return true;
+        }
+
+        return finishOpenProject(luxproject_file);
+    }
+
+    bool ProjectController::finishOpenProject(
+        const std::filesystem::path& luxproject_file)
+    {
+        if (!current_project_)
+            return false;
 
         // Per-project ImGui layout. The cache dir may not exist yet on
         // legacy projects; create it so the first autosave write
         // doesn't fail. Load is a no-op when the file is missing —
         // ImGui then falls back to per-window FirstUseEver defaults.
-        if (ui_system_)
         {
             const auto layout_path = current_project_->layoutPath();
             std::error_code mkdir_ec;
             std::filesystem::create_directories(layout_path.parent_path(), mkdir_ec);
-            ui_system_->loadLayoutFromFile(layout_path);
-            ui_system_->setAutosaveTarget(layout_path);
+            // 布局读不出来不该拦住开项目 —— 掉回 FirstUseEver 缺省即可,
+            // 但要说一声,否则用户只会看到"我的面板怎么全变了"。
+            if (const auto ec = ui_system_.loadLayoutFromFile(layout_path))
+            {
+                std::fprintf(stderr,
+                    "[LuxEditor] 布局读取失败,回落到默认布局:%s (%s)\n",
+                    layout_path.string().c_str(), ec.message().c_str());
+            }
+            ui_system_.setAutosaveTarget(layout_path);
         }
 
         // Restore this project's window visibility (which panels are shown) from
@@ -145,15 +203,12 @@ namespace lux::editor
 
         // Lightweight project asset index (header-only scan) for the editor's
         // pickers — the SampleTexture texture picker + a future global asset search.
-        if (asset_registry_)
-        {
-            asset_registry_->scan(current_project_->contentRoot());
-            std::fprintf(stderr, "[LuxEditor] asset registry indexed %zu assets\n",
-                         asset_registry_->size());
-        }
+        asset_registry_.scan(current_project_->contentRoot());
+        std::fprintf(stderr, "[LuxEditor] asset registry indexed %zu assets\n",
+                     asset_registry_.size());
 
         // VP-P4: rebuild the asset VFS for this project — /Game over the
-        // project content (the SAME LooseDirProvider the registry is a view
+        // project content (the SAME LooseAssetProvider the registry is a view
         // of) + /Engine over the baked engine content. findAssetByPath /
         // ensureAsset (and the script bindings) resolve against this. The
         // eager registerContentFolder load above is intentionally kept —
@@ -163,15 +218,17 @@ namespace lux::editor
         if (asset_mgr_)
         {
             auto vfs = std::make_shared<lux::asset::AssetVfs>();
-            if (asset_registry_ && asset_registry_->provider())
-                vfs->mount({ "/Game", asset_registry_->provider(), 0 });
+            // provider() IS nullable — the registry has none until a scan
+            // succeeds, and then /Game simply isn't mounted.
+            if (asset_registry_.provider())
+                vfs->mount({ "/Game", asset_registry_.provider(), 0 });
 
             std::error_code engine_ec;
             if (std::filesystem::is_directory(engine_content_path, engine_ec)
                 && !engine_ec)
             {
                 auto engine_provider =
-                    std::make_shared<lux::asset::LooseDirProvider>(
+                    std::make_shared<lux::authoring::LooseAssetProvider>(
                         engine_content_path);
                 engine_provider->rescan();
                 vfs->mount({ "/Engine", std::move(engine_provider), 0 });
@@ -182,33 +239,67 @@ namespace lux::editor
         // Re-target AssetBrowser at the project's Content root so the
         // panel shows the project's assets. The AssetBrowser legacy API
         // takes one root;
-        if (asset_browser_)
-            asset_browser_->setWorkingDirectory(current_project_->contentRoot());
+        asset_browser_.setWorkingDirectory(current_project_->contentRoot());
 
         // If the manifest specifies a default scene that exists on disk, open
         // it. Otherwise bring up an empty scene (just the editor camera + the
         // reference grid); the user opens/creates content from there.
-        const auto default_scene = current_project_->defaultScenePath();
+        const auto default_world = current_project_->defaultWorldPath();
         BringUpConfig cfg;
         cfg.name = current_project_->manifest().name;
-        if (!default_scene.empty())
-        {
-            cfg.from_scene_file = default_scene;
-            // Set the path BEFORE loadScene: its internal unloadScene early-
-            // returns (no scene yet, after closeProject above) so the path
-            // survives the bring-up.
-            scene_.setCurrentScenePath(default_scene);
-        }
+        cfg.play_cache_root =
+            current_project_->cacheRoot() / "cache" / "world-play";
+        if (!default_world.empty())
+            cfg.from_scene_file = default_world;
         const bool brought_up = scene_.loadScene(cfg);
         if (brought_up)
-            lux::project::pushRecentProject(luxproject_file);
+            lux::authoring::pushRecentProject(luxproject_file);
         return brought_up;
+    }
+
+    std::size_t ProjectController::processSafePoint() noexcept
+    {
+        if (!pending_open_)
+            return 0u;
+
+        bool all_ready = true;
+        for (const auto& ticket : pending_open_->modules)
+        {
+            const auto snapshot = ticket.snapshot();
+            if (snapshot.terminal ==
+                lux::extensions::EOperationTerminalState::FAILED ||
+                snapshot.terminal ==
+                lux::extensions::EOperationTerminalState::SUPERSEDED)
+            {
+                std::fprintf(
+                    stderr,
+                    "[LuxEditor] project extension load failed; project "
+                    "was not published\n");
+                pending_open_.reset();
+                closeProject();
+                return 1u;
+            }
+            all_ready = all_ready &&
+                snapshot.terminal ==
+                    lux::extensions::EOperationTerminalState::SUCCEEDED;
+        }
+        if (!all_ready)
+            return 0u;
+
+        auto manifest_path = pending_open_->luxproject_file;
+        pending_open_.reset();
+        if (!finishOpenProject(manifest_path))
+        {
+            closeProject();
+            return 1u;
+        }
+        return 1u;
     }
 
     bool ProjectController::newProject(const std::filesystem::path& root,
                                        std::string_view              project_name)
     {
-        auto created = Project::newOnDisk(root, project_name);
+        auto created = lux::authoring::Project::newOnDisk(root, project_name);
         if (!created)
         {
             std::fprintf(stderr, "[LuxEditor] newProject failed: %s\n",
@@ -223,6 +314,7 @@ namespace lux::editor
 
     void ProjectController::closeProject() noexcept
     {
+        pending_open_.reset();
         // Auto-save window visibility before we lose the project pointer — this is
         // what makes "remember which panels were open" work on close / project
         // switch / app exit (closeProject runs on all three), no manual save.
@@ -231,11 +323,17 @@ namespace lux::editor
         // Flush the project's ImGui layout before we lose the project
         // pointer; then disengage autosave and clear in-memory ini
         // state so the next project doesn't merge with the previous.
-        if (ui_system_ && current_project_)
+        if (current_project_)
         {
-            ui_system_->saveLayoutToFile(current_project_->layoutPath());
-            ui_system_->setAutosaveTarget({});
-            ui_system_->clearLayout();
+            // 关项目是最后一次落盘的机会:失败就是用户这一整轮的布局改动没了。
+            if (const auto ec = ui_system_.saveLayoutToFile(current_project_->layoutPath()))
+            {
+                std::fprintf(stderr,
+                    "[LuxEditor] 关闭项目时布局保存失败,本次布局改动已丢失:%s (%s)\n",
+                    current_project_->layoutPath().string().c_str(), ec.message().c_str());
+            }
+            ui_system_.setAutosaveTarget({});
+            ui_system_.clearLayout();
         }
 
         scene_.unloadScene();
@@ -248,8 +346,7 @@ namespace lux::editor
             asset_mgr_->setVfs(nullptr);
 
         // Empty AssetBrowser back to working directory.
-        if (asset_browser_)
-            asset_browser_->setWorkingDirectory(std::filesystem::current_path());
+        asset_browser_.setWorkingDirectory(std::filesystem::current_path());
     }
 
     bool ProjectController::saveProject()
@@ -270,8 +367,16 @@ namespace lux::editor
         }
         // Persist layout alongside the manifest so "Save Project" is
         // a single user action that captures both.
-        if (ui_system_)
-            ui_system_->saveLayoutToFile(current_project_->layoutPath());
+        //
+        // 布局写不进去 → 整个"保存项目"就没有完整完成,返回 false。清单存住了
+        // 而布局没有,报成功等于骗人:用户下次开项目会发现面板全回到了默认。
+        if (const auto ec = ui_system_.saveLayoutToFile(current_project_->layoutPath()))
+        {
+            std::fprintf(stderr,
+                "[LuxEditor] 保存项目:清单已写入,但布局保存失败:%s (%s)\n",
+                current_project_->layoutPath().string().c_str(), ec.message().c_str());
+            return false;
+        }
         return true;
     }
 

@@ -6,8 +6,10 @@
 ## subsystem that needs to dlopen() compiled artefacts at runtime) consumes.
 ##
 ## Backends:
-##   - Windows: LoadLibraryExW for path; per-process tmp-file with
-##     FILE_FLAG_DELETE_ON_CLOSE for memory loads. When
+##   - Windows: LoadLibraryExW for path; per-process tmp-file for memory
+##     loads (write→close→load: the loader shares no WRITE access, and
+##     DELETE_ON_CLOSE would make its open delete-pending — cleanup is
+##     explicit on unload + a dead-pid scratch-dir sweep per run). When
 ##     LUX_DYNAMIC_LIBRARY_USE_MEMORY_MODULE=ON, a bundled MemoryModule
 ##     PE-loader (third_party/MemoryModule, BSD-2-Clause) is used instead
 ##     for true zero-disk loading.
@@ -46,6 +48,13 @@ add_component(
     COMPONENT_NAME  dynamic_library
     NAMESPACE       lux::engine::platform
     SOURCE_FILES    ${LUX_DYNAMIC_LIBRARY_SRCS}
+)
+
+lux_classify_target(
+    TARGET  dynamic_library
+    LAYER   PLATFORM
+    PRODUCT RUNTIME
+    ROLE    FOUNDATION
 )
 
 component_include_directories(

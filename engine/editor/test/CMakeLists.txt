@@ -4,6 +4,77 @@
 ## default build doesn't compile or link them. Each test is a standalone
 ## executable runnable from the build tree.
 
+add_executable(
+    editor_tool_catalog_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/editor_tool_catalog_test.cpp
+)
+
+target_link_libraries(editor_tool_catalog_test PRIVATE editor)
+add_test(NAME editor_tool_catalog_test COMMAND editor_tool_catalog_test)
+set_tests_properties(
+    editor_tool_catalog_test
+    PROPERTIES LABELS "cpu;extensions" TIMEOUT 30
+)
+
+add_executable(
+    editor_camera_large_coordinate_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/editor_camera_large_coordinate_test.cpp
+)
+lux_classify_target(
+    TARGET  editor_camera_large_coordinate_test
+    LAYER   EDITOR
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+target_link_libraries(editor_camera_large_coordinate_test PRIVATE editor)
+add_test(
+    NAME editor_camera_large_coordinate_test
+    COMMAND editor_camera_large_coordinate_test
+)
+set_tests_properties(
+    editor_camera_large_coordinate_test
+    PROPERTIES LABELS "cpu;editor;world" TIMEOUT 30
+)
+
+# A real editor-only MODULE fixture. This locks the public SDK seam across a
+# DLL boundary: ABI descriptor -> editor registrar draft -> atomic catalog
+# publication -> panel factory, while proving it cannot satisfy Runtime.
+add_library(editor_extension_module MODULE editor_extension_module.cpp)
+lux_classify_target(
+    TARGET  editor_extension_module
+    LAYER   EDITOR
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+target_link_libraries(editor_extension_module PRIVATE editor)
+set_target_properties(
+    editor_extension_module
+    PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "org.lux.test.editor-module"
+)
+
+add_executable(
+    editor_extension_module_test
+    editor_extension_module_test.cpp
+)
+lux_classify_target(
+    TARGET  editor_extension_module_test
+    LAYER   EDITOR
+    PRODUCT TEST
+    ROLE    COMPOSITION
+)
+target_link_libraries(editor_extension_module_test PRIVATE editor)
+add_dependencies(editor_extension_module_test editor_extension_module)
+add_test(
+    NAME editor_extension_module_test
+    COMMAND editor_extension_module_test $<TARGET_FILE:editor_extension_module>
+)
+set_tests_properties(
+    editor_extension_module_test
+    PROPERTIES LABELS "cpu;extensions;editor-sdk" TIMEOUT 30
+)
+
 # ── Phase B smoke: Project + ProjectManifest round-trip ─────────────────
 add_executable(
     project_roundtrip_smoke
@@ -24,9 +95,7 @@ target_link_libraries(
     scene_roundtrip_smoke
     PRIVATE
         editor
-        lux::engine::function::ecs
-        lux::engine::function::render_bridge
-        pack_d3
+        lux::engine::toolchain::toolchain_spatial3d_scene_cook
 )
 
 # Force-include the gameplay meta sidecar so the reflection + component-type
@@ -35,31 +104,50 @@ target_link_libraries(
 if(TARGET ecs_meta)
     target_link_libraries(scene_roundtrip_smoke PRIVATE ecs_meta)
 endif()
-if(TARGET pack_d3_meta)
-    target_link_libraries(scene_roundtrip_smoke PRIVATE pack_d3_meta)
-endif()
+foreach(_sc
+        render_components_meta
+        render_components_2d_meta
+        render_components_3d_meta
+        spatial3d_components_meta
+        pixel_meta
+        animation_2d_meta
+        physics2d_meta)
+    if(TARGET ${_sc})
+        target_link_libraries(scene_roundtrip_smoke PRIVATE ${_sc})
+    endif()
+endforeach()
+add_test(NAME scene_roundtrip_smoke COMMAND scene_roundtrip_smoke)
+set_tests_properties(
+    scene_roundtrip_smoke
+    PROPERTIES LABELS "cpu;scene;extensions" TIMEOUT 30
+)
 
-# ── big_demo_baker: generate the large multi-light streaming demo scene ──
 add_executable(
-    big_demo_baker
-    ${CMAKE_CURRENT_SOURCE_DIR}/big_demo_baker.cpp
+    world_persistence_schema_closure_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/world_persistence_schema_closure_test.cpp
+)
+lux_classify_target(
+    TARGET  world_persistence_schema_closure_test
+    LAYER   EDITOR
+    PRODUCT TEST
+    ROLE    DOMAIN
 )
 target_link_libraries(
-    big_demo_baker
-    PRIVATE
-        editor
-        lux::engine::function::ecs
-        lux::engine::function::render_bridge
-        pack_d3
+    world_persistence_schema_closure_test
+    PRIVATE editor
 )
-# Force-load the gameplay meta sidecar so the component reflection registry is
-# populated before Scene::save runs.
-if(TARGET ecs_meta)
-    target_link_libraries(big_demo_baker PRIVATE ecs_meta)
-endif()
-if(TARGET pack_d3_meta)
-    target_link_libraries(big_demo_baker PRIVATE pack_d3_meta)
-endif()
+target_include_directories(
+    world_persistence_schema_closure_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+add_test(
+    NAME world_persistence_schema_closure_test
+    COMMAND world_persistence_schema_closure_test
+)
+set_tests_properties(
+    world_persistence_schema_closure_test
+    PROPERTIES LABELS "cpu;editor;world;extensions" TIMEOUT 30
+)
 
 # ── Thumbnail storage smoke: PNG codec + ThumbnailSet + payload round-trip ──
 add_executable(
@@ -72,7 +160,7 @@ target_link_libraries(
         editor
 )
 
-# ── Thumbnail GPU test: PreviewScene + renderers for texture/mesh/model/material ──
+# ── Thumbnail GPU test: ThumbnailService (私有预览 SceneRuntime) 全类型端到端 ──
 add_executable(
     thumbnail_render_gpu_test
     ${CMAKE_CURRENT_SOURCE_DIR}/thumbnail_render_gpu_test.cpp
@@ -81,7 +169,68 @@ target_link_libraries(
     thumbnail_render_gpu_test
     PRIVATE
         editor
-        lux::engine::function::render
+        runtime_render_scene_test_support
+        lux::engine::function::render_features
         lux::engine::platform::window
-        lux::engine::resource::asset
+        lux::engine::resource::asset_codecs
 )
+target_include_directories(
+    thumbnail_render_gpu_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+# ── Emissive palette SPIR-V identity: guards the "bake once, reuse" precondition ──
+#
+# 这条是 EditorBuiltins::registerEmissivePalette 去重的前提守卫,不是可选 smoke:
+# 去重成立当且仅当颜色不进着色器。所以它 add_test 进 ctest 的 cpu 档,跟着门禁跑。
+# 无设备无窗口,纯 CPU(lower + shaderc)。
+add_executable(
+    emissive_palette_spirv_identity_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/emissive_palette_spirv_identity_test.cpp
+)
+target_link_libraries(
+    emissive_palette_spirv_identity_test
+    PRIVATE
+        editor
+)
+# compileGraphToPayload 住在 editor 的私有 src/ 里(editor 只 PUBLIC 暴露 include/),
+# 测试要直接调它就得自己把 src/ 加进搜索路径。
+target_include_directories(
+    emissive_palette_spirv_identity_test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+add_test(NAME emissive_palette_spirv_identity_test
+         COMMAND emissive_palette_spirv_identity_test)
+set_tests_properties(emissive_palette_spirv_identity_test
+                     PROPERTIES LABELS cpu TIMEOUT 120)
+
+# ── 驻留 T9/T10 gpu 探针:材质双域端到端(真设备;无 Vulkan 自跳过)──
+#
+# 放这里的原因:烘焙入口 compileGraphToPayload 是 editor 私有 src 的能力
+# (同上一条的 include 说明);DeviceRenderFixture 经跨树 include 复用
+# (toolchain_shader_compiler/test 先例)。
+add_executable(
+    material_residency_gpu_probe
+    ${CMAKE_CURRENT_SOURCE_DIR}/material_residency_gpu_probe.cpp
+)
+target_link_libraries(
+    material_residency_gpu_probe
+    PRIVATE
+        editor
+        runtime_render_scene_test_support
+        lux::engine::runtime::runtime_execution
+        lux::engine::function::render_features
+        lux::engine::platform::window
+        lux::engine::resource::asset_codecs
+)
+target_include_directories(
+    material_residency_gpu_probe
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${CMAKE_SOURCE_DIR}/modules/function/render/test
+)
+add_test(NAME material_residency_gpu_probe
+         COMMAND material_residency_gpu_probe)
+set_tests_properties(material_residency_gpu_probe
+                     PROPERTIES LABELS gpu TIMEOUT 300)

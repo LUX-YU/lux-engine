@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <vector>
+#include <cstdio>
 #include <cstring>
 #include "lux/engine/gapi/vk/Object.hpp"
 #include "lux/engine/gapi/RenderInstance.hpp"
@@ -15,9 +16,27 @@ namespace lux::gapi::vk
 	public:
 		DebugReport() : debug_report(VK_NULL_HANDLE) {}
 
+		// VK_EXT_debug_report is an EXTENSION, so its entry points can legally be
+		// absent — vkGetInstanceProcAddr then returns null and calling it is a
+		// jump to address 0. That is not a hypothetical: the extension only
+		// exists when a validation layer provides it, so every stock Android
+		// device (no layers bundled in a release APK) lands here, and the
+		// extension is deprecated on desktop too in favour of debug_utils.
+		//
+		// Degrading to "no debug report" is the correct behaviour: the callback
+		// is a diagnostic aid, and losing it must not take the renderer down.
+		// The handle stays VK_NULL_HANDLE, which release() already tolerates.
+
 		DebugReport(VkInstance instance, PFN_vkDebugReportCallbackEXT cb, void* user_data = nullptr, VkAllocationCallbacks* allocator = nullptr)
+			: debug_report(VK_NULL_HANDLE)
 		{
 			auto vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
+			if (!vkCreateDebugReportCallbackEXT)
+			{
+				std::fprintf(stderr, "[Vulkan] VK_EXT_debug_report unavailable "
+					"(no validation layer present) — continuing without a debug report callback.\n");
+				return;
+			}
 			VkDebugReportCallbackCreateInfoEXT debug_report_ci = {};
 			debug_report_ci.sType		= VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
 			debug_report_ci.pNext		= nullptr;
@@ -28,8 +47,15 @@ namespace lux::gapi::vk
 		}
 
 		DebugReport(VkInstance instance, VkDebugReportCallbackCreateInfoEXT& ci, VkAllocationCallbacks* allocator = nullptr)
+			: debug_report(VK_NULL_HANDLE)
 		{
 			auto vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
+			if (!vkCreateDebugReportCallbackEXT)
+			{
+				std::fprintf(stderr, "[Vulkan] VK_EXT_debug_report unavailable "
+					"(no validation layer present) — continuing without a debug report callback.\n");
+				return;
+			}
 			VK_FUNC_INVOKE(vkCreateDebugReportCallbackEXT, "Failed to create DebugReport instance", instance, &ci, allocator, &debug_report);
 		}
 
@@ -54,7 +80,12 @@ namespace lux::gapi::vk
 			if (debug_report)
 			{
 				auto vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
-				vkDestroyDebugReportCallbackEXT(instance, debug_report, allocator);
+				// Symmetric null guard: a non-null handle implies create
+				// succeeded, so destroy should exist — but "should" is exactly
+				// what the create path also assumed.
+				if (vkDestroyDebugReportCallbackEXT)
+					vkDestroyDebugReportCallbackEXT(instance, debug_report, allocator);
+				debug_report = VK_NULL_HANDLE;
 			}
 		}
 
@@ -222,8 +253,38 @@ namespace lux::gapi::vk
 			return *this;
 		}
 
+		/// Request the validation layer + its debug extensions, IF THE RUNTIME
+		/// HAS THEM. Asking unconditionally is not safe: layers are a runtime
+		/// artifact, not a compile-time one, and vkCreateInstance answers a
+		/// missing one with VK_ERROR_LAYER_NOT_PRESENT — turning "I wanted
+		/// diagnostics" into "no instance at all".
+		///
+		/// That is not a corner case: a release Android APK bundles no layers,
+		/// so every stock device lands here. It cost a null-pointer crash on
+		/// device to find, because the failure was reported through a path
+		/// (stderr + assert-under-NDEBUG) that neither stops execution nor is
+		/// visible on Android.
 		inline InstanceBuilder& enableDebugReport() noexcept
 		{
+			uint32_t layer_count = 0;
+			vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
+			std::vector<VkLayerProperties> available(layer_count);
+			if (layer_count)
+				vkEnumerateInstanceLayerProperties(&layer_count, available.data());
+
+			bool have_validation = false;
+			for (const auto& p : available)
+				if (std::strcmp(p.layerName, "VK_LAYER_KHRONOS_validation") == 0)
+				{ have_validation = true; break; }
+
+			if (!have_validation)
+			{
+				std::fprintf(stderr,
+					"[Vulkan] VK_LAYER_KHRONOS_validation not installed — "
+					"continuing WITHOUT validation (%u layers available).\n", layer_count);
+				return *this;
+			}
+
 			layers.push_back("VK_LAYER_KHRONOS_validation");
 			extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 			// VK_EXT_debug_utils is needed for vkCmdBeginDebugUtilsLabelEXT (pass

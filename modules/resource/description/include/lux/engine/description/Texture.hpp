@@ -1,9 +1,12 @@
 #pragma once
 #include <lux/engine/resource/visibility.h>
+#include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/memory/SharedBytes.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <array>
 #include <type_traits>
+#include <utility>
 
 namespace lux::rdesc
 {
@@ -45,7 +48,7 @@ namespace lux::rdesc
         COMPRESSED = 1u << 0,
         PREMULTIPLIED_ALPHA = 1u << 1,
         /// The AUTHOR intends this texture to have NO mip chain: tileset
-        /// atlases, pixel-art sprite sheets, index/lookup textures — anything
+        /// atlases, pixel-art image sheets, index/lookup textures — anything
         /// whose minified average is meaningless or actively wrong.
         ///
         /// Why a flag and not `mip_count == 1`: mip_count describes the DATA
@@ -117,8 +120,12 @@ namespace lux::rdesc
         uint32_t mip_count{1};
         uint32_t flags{toUnderlying(ETextureAssetFlags::NONE)};
         std::array<TextureMipRange, kTextureMaxMipCount> mip_ranges{};
-        bool copy = false; ///< Whether the pixel data should be copied (true) or referenced (false)
-        bool owns_data = false; ///< Whether the Texture instance owns the pixel data and is responsible for freeing it
+    };
+
+    enum class ETextureCreateError : uint8_t
+    {
+        PIXEL_DATA_REQUIRED,
+        DIMENSIONS_INVALID
     };
 
     // for serialization/deserialization (POD – written directly into .luxasset)
@@ -158,38 +165,17 @@ namespace lux::rdesc
          * @param data Pointer to the texture pixel data
          * @param size Size of the texture data in bytes
          */
-        Texture(const TextureInfo& info, void* data, size_t size);
+        [[nodiscard]] static lux::cxx::expected<Texture, ETextureCreateError>
+        fromShared(TextureInfo info, lux::cxx::SharedBytes<> pixels) noexcept;
 
-        /**
-         * @brief Copy constructor for Texture.
-         * @param other The texture to copy from
-         */
-        Texture(const Texture& other);
-        
-        /**
-         * @brief Copy assignment operator for Texture.
-         * @param other The texture to copy from
-         * @return Reference to this texture
-         */
-        Texture& operator=(const Texture& other);
+        [[nodiscard]] static lux::cxx::expected<Texture, ETextureCreateError>
+        copyOf(TextureInfo info, std::span<const std::byte> pixels);
 
-        /**
-         * @brief Move constructor for Texture.
-         * @param other The texture to move from
-         */
-        Texture(Texture&& other) noexcept;
-        
-        /**
-         * @brief Move assignment operator for Texture.
-         * @param other The texture to move from
-         * @return Reference to this texture
-         */
-        Texture& operator=(Texture&& other) noexcept;
-
-        /**
-         * @brief Destructor for Texture.
-         */
-        ~Texture();
+        Texture(const Texture&) = default;
+        Texture& operator=(const Texture&) = default;
+        Texture(Texture&&) noexcept = default;
+        Texture& operator=(Texture&&) noexcept = default;
+        ~Texture() = default;
 
         /**
          * @brief Gets the width of the texture.
@@ -250,18 +236,24 @@ namespace lux::rdesc
          * @return Const pointer to the pixel data
          */
         [[nodiscard]] const void* data() const {
-			return data_;
+			return pixels_.data();
 		}
 
         [[nodiscard]] size_t size() const {
-			return size_;
+			return pixels_.size();
 		}
 
+        [[nodiscard]] const lux::cxx::SharedBytes<>& pixels() const noexcept
+        {
+            return pixels_;
+        }
+
     private:
-        TextureInfo  info_;
-        
-        void*        data_;
-        size_t       size_;
-        bool         owns_data_{false};
+        Texture(TextureInfo info, lux::cxx::SharedBytes<> pixels) noexcept
+            : info_(std::move(info)), pixels_(std::move(pixels))
+        {}
+
+        TextureInfo info_{};
+        lux::cxx::SharedBytes<> pixels_;
     };
 }

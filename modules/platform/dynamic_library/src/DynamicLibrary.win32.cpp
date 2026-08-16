@@ -2,6 +2,7 @@
 #include <lux/engine/dynamic_library/LibraryDecoration.hpp>
 
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -49,6 +50,46 @@ namespace lux::engine::platform
             return flags;
         }
 
+        /// Reap scratch dirs left behind by processes that died before their
+        /// DynamicLibrary destructors ran (crash / kill). Scratch files are
+        /// deleted explicitly on unload — DELETE_ON_CLOSE is NOT an option
+        /// here (see load_from_memory) — so a crashed process leaks its
+        /// %TEMP%/lux/<pid>/ dir; this sweep collects them on the next run.
+        void sweepStaleScratchDirs(const std::filesystem::path& lux_root)
+        {
+            std::error_code ec;
+            for (const auto& entry : std::filesystem::directory_iterator(lux_root, ec))
+            {
+                if (!entry.is_directory(ec)) continue;
+
+                const std::wstring name = entry.path().filename().wstring();
+                DWORD pid = 0;
+                for (const wchar_t c : name)
+                {
+                    if (c < L'0' || c > L'9') { pid = 0; break; }
+                    pid = pid * 10u + static_cast<DWORD>(c - L'0');
+                }
+                if (pid == 0 || pid == ::GetCurrentProcessId()) continue;
+
+                bool alive = false;
+                if (HANDLE h = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                                             FALSE, pid))
+                {
+                    DWORD code = 0;
+                    alive = ::GetExitCodeProcess(h, &code) && code == STILL_ACTIVE;
+                    ::CloseHandle(h);
+                }
+                else
+                {
+                    // Unopenable: ACCESS_DENIED means it exists but is
+                    // shielded — leave it alone. Anything else = dead pid.
+                    alive = ::GetLastError() == ERROR_ACCESS_DENIED;
+                }
+                if (!alive)
+                    std::filesystem::remove_all(entry.path(), ec);
+            }
+        }
+
         std::filesystem::path makeScratchPath(std::string_view hint)
         {
             wchar_t temp_dir[MAX_PATH];
@@ -57,6 +98,10 @@ namespace lux::engine::platform
                 ? std::filesystem::path(std::wstring(temp_dir, n))
                 : std::filesystem::path(L".");
             base /= L"lux";
+
+            static std::once_flag s_sweep_once;
+            std::call_once(s_sweep_once, [&base] { sweepStaleScratchDirs(base); });
+
             base /= std::to_wstring(::GetCurrentProcessId());
             std::error_code ec;
             std::filesystem::create_directories(base, ec);
@@ -84,15 +129,15 @@ namespace lux::engine::platform
     {
         // Either a path (default Windows path) or a MemoryModule handle.
         std::filesystem::path scratch_path;
-        HANDLE                file_handle = INVALID_HANDLE_VALUE; // FILE_FLAG_DELETE_ON_CLOSE handle.
 #if defined(LUX_DYNAMIC_LIBRARY_USE_MEMORY_MODULE)
         HMEMORYMODULE         mm_handle   = nullptr;
 #endif
 
         ~MemoryBacking()
         {
-            if (file_handle != INVALID_HANDLE_VALUE)
-                ::CloseHandle(file_handle);   // triggers DELETE_ON_CLOSE.
+            // Runs AFTER unload() called FreeLibrary — the image mapping is
+            // gone, so the delete succeeds. Crash-before-dtor leaks the file;
+            // sweepStaleScratchDirs reaps it on the next run.
             if (!scratch_path.empty())
             {
                 std::error_code ec;
@@ -175,18 +220,27 @@ namespace lux::engine::platform
         uses_memory_module_      = true;
         return true;
 #else
-        // Default Windows path: write to scratch file with DELETE_ON_CLOSE,
-        // then LoadLibraryExW. The OS reaps the file on process exit even
-        // if we crash before the destructor runs.
+        // Default Windows path: write the image to a per-process scratch
+        // file, CLOSE the writer, then LoadLibraryExW it.
+        //
+        // The writer handle must not stay open across the load: the loader
+        // opens the image without FILE_SHARE_WRITE, so a live GENERIC_WRITE
+        // handle turns every load into ERROR_SHARING_VIOLATION. And
+        // FILE_FLAG_DELETE_ON_CLOSE is no escape hatch — its delete
+        // disposition arms at that handle's cleanup, which makes the
+        // loader's subsequent open fail as delete-pending. Cleanup is
+        // explicit instead: unload() removes the file after FreeLibrary,
+        // and makeScratchPath sweeps dead processes' scratch dirs once per
+        // run (crash-leak recovery).
         auto path = makeScratchPath(hint_name);
 
         HANDLE fh = ::CreateFileW(
             path.wstring().c_str(),
-            GENERIC_READ | GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_DELETE,
+            GENERIC_WRITE,
+            FILE_SHARE_READ,
             nullptr,
             CREATE_ALWAYS,
-            FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE,
+            FILE_ATTRIBUTE_TEMPORARY,
             nullptr);
         if (fh == INVALID_HANDLE_VALUE)
         {
@@ -206,29 +260,28 @@ namespace lux::engine::platform
             {
                 last_error_ = lastWin32Error();
                 ::CloseHandle(fh);
+                std::error_code ec;
+                std::filesystem::remove(path, ec);
                 return false;
             }
             p         += written;
             remaining -= written;
         }
         ::FlushFileBuffers(fh);
+        ::CloseHandle(fh);   // release WRITE access BEFORE the loader opens it
 
-        // LoadLibraryExW reads the file independently; we keep the handle so
-        // DELETE_ON_CLOSE remains armed for the lifetime of the library.
         handle_ = ::LoadLibraryExW(path.wstring().c_str(), nullptr,
                                    LOAD_WITH_ALTERED_SEARCH_PATH);
         if (!handle_)
         {
             last_error_ = lastWin32Error();
-            ::CloseHandle(fh);
             std::error_code ec;
             std::filesystem::remove(path, ec);
             return false;
         }
 
-        backing_              = std::make_unique<MemoryBacking>();
+        backing_               = std::make_unique<MemoryBacking>();
         backing_->scratch_path = std::move(path);
-        backing_->file_handle  = fh;
         return true;
 #endif
     }

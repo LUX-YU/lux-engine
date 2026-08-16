@@ -1,30 +1,38 @@
 #pragma once
 // =============================================================================
-//  MaterialGraphContract.hpp  —  M0 契约（提案，待评审 2026-06-07）
+//  MaterialGraphContract.hpp — the M0 contract
 // -----------------------------------------------------------------------------
-//  材质图系统的【单一真相源】。定义三件事：
-//    (a) 表面属性 (MaterialAttributes) —— 图的 OutputSurface 节点产出的内容；
-//    (b) 着色输入 (MaterialInputs)     —— 通道骨架喂给 evalSurface() 的插值/几何量；
-//    (c) 着色模型选择器 (ShadingModel) —— 复用 description 的 ELightingTechnique。
+//  The SINGLE SOURCE OF TRUTH for the material-graph system. Defines three
+//  things:
+//    (a) Surface attributes (MaterialAttributes) — what the graph's
+//        OutputSurface node produces;
+//    (b) Shading inputs (MaterialInputs) — the interpolated/geometric
+//        quantities the pass skeleton feeds into evalSurface();
+//    (c) Shading-model selector (ShadingModel) — reuses description's
+//        existing ELightingTechnique.
 //
-//  material_graph（数据模型）与 material_graph_compiler（MLIR）都引用本头；
-//  GLSL 的 `MaterialAttributes` struct 与各通道骨架由 codegen 据此生成 / 保持同步。
+//  Both material_graph (the data model) and material_graph_compiler (MLIR)
+//  reference this header; the GLSL `MaterialAttributes` struct and each pass
+//  skeleton are generated from it by codegen and kept in sync with it.
 //
-//  放在 description 层（在 render 之下）：material_graph / compiler 因此无需依赖
-//  render-runtime；render-runtime 也只通过 ShadingModelRegistry 消费烘焙产物。
+//  Lives in the description layer (below render): this means material_graph
+//  / the compiler need not depend on render-runtime; render-runtime in turn
+//  only consumes the baked output through the immutable builtin shading-model table.
 //
-//  详见 .internal/plan/material-graph-mlir-implementation-guide.md（§3.1 / §11）。
+//  See .internal/plan/material-graph-mlir-implementation-guide.md (§3.1 / §11)
+//  for details.
 // =============================================================================
 
-#include "MaterialEnums.hpp"   // 复用 ELightingTechnique 作为着色模型选择器（删 Material.hpp 后仍存）
+#include "MaterialEnums.hpp"   // Reuses ELightingTechnique as the shading-model selector (still here after Material.hpp was removed)
 #include <cstddef>
 #include <cstdint>
 
 namespace lux::rdesc
 {
     /**
-     * @brief 图中一个值 / 属性 / 输入的标量-向量类型。
-     *        M0 先支持这四种；矩阵 / 整数等按需在末尾追加。
+     * @brief The scalar/vector type of a value / attribute / input in the graph.
+     *        M0 supports only these four to start; matrices / integers etc.
+     *        can be appended at the end as needed.
      */
     enum class EMatValueType : uint8_t
     {
@@ -35,29 +43,32 @@ namespace lux::rdesc
     };
 
     /**
-     * @brief 规范表面输出（PBR 超集；覆盖 Unlit / PBR / Stylized，LegacyLit 映射其上）。
+     * @brief The canonical surface output (a PBR superset covering Unlit /
+     *        PBR / Stylized; LegacyLit maps onto it).
      *
-     * 扩展规则（硬约束）：**只许在 COUNT 前追加 + 提供默认值**；
-     * 绝不重排 / 改义 —— 它同时是 codegen 缓存键与生成结构的 ABI。
+     * Extension rule (a hard constraint): **only ever append before COUNT,
+     * and always supply a default value**; never reorder or repurpose an
+     * entry — this enum doubles as both the codegen cache key and the ABI of
+     * the generated struct.
      */
     enum class EMaterialAttribute : uint8_t
     {
-        BaseColor = 0,     ///< Vec3  反照率 / unlit 颜色      默认 (1,1,1)
-        Opacity,           ///< Float alpha                    默认 1
-        Metallic,          ///< Float                          默认 0
-        Roughness,         ///< Float                          默认 1
-        NormalTS,          ///< Vec3  切线空间法线             默认 (0,0,1)
-        Emissive,          ///< Vec3  自发光                   默认 (0,0,0)
-        AmbientOcclusion,  ///< Float 环境光遮蔽               默认 1
+        BaseColor = 0,     ///< Vec3  albedo / unlit color      default (1,1,1)
+        Opacity,           ///< Float alpha                     default 1
+        Metallic,          ///< Float                           default 0
+        Roughness,         ///< Float                           default 1
+        NormalTS,          ///< Vec3  tangent-space normal       default (0,0,1)
+        Emissive,          ///< Vec3  emissive color             default (0,0,0)
+        AmbientOcclusion,  ///< Float ambient occlusion          default 1
         COUNT
     };
 
     struct MaterialAttributeDesc
     {
         EMaterialAttribute attribute;
-        const char*        glsl_name;  ///< 生成的 MaterialAttributes struct 中的字段名
+        const char*        glsl_name;  ///< The field name in the generated MaterialAttributes struct
         EMatValueType      type;
-        float              dflt[4];    ///< 默认常量（未用分量填 0）
+        float              dflt[4];    ///< Default constant (unused components filled with 0)
     };
 
     inline constexpr MaterialAttributeDesc kMaterialAttributes[] = {
@@ -77,17 +88,18 @@ namespace lux::rdesc
     );
 
     /**
-     * @brief 通道骨架提供给图 evalSurface() 的着色输入。
+     * @brief The shading inputs the pass skeleton feeds into the graph's evalSurface().
      *
-     * 资源访问（set 2 bindless 纹理、set 4 材质参数）走专用节点，不在此列举。
-     * 扩展同样【只许末尾追加】（如 UV1 / ViewDir）。
+     * Resource access (the set 2 bindless texture table, set 4 material
+     * params) goes through dedicated nodes and is not listed here. Extension
+     * is likewise **append-only, at the end** (e.g. UV1 / ViewDir).
      */
     enum class EMaterialInput : uint8_t
     {
         UV0 = 0,        ///< Vec2
         WorldPosition,  ///< Vec3
         WorldNormal,    ///< Vec3
-        WorldTangent,   ///< Vec4 (xyz + 手性 w)
+        WorldTangent,   ///< Vec4 (xyz + handedness w)
         VertexColor,    ///< Vec4
         COUNT
     };
@@ -114,9 +126,10 @@ namespace lux::rdesc
     );
 
     /**
-     * @brief codegen 把 evalSurface() 包进的通道骨架。
-     *        Forward / GBuffer 先做（M3）；Shadow 平凡；
-     *        VisBuffer 是 Nanite(T2) 交汇点 —— 见 nanite-implementation-guide.md。
+     * @brief The pass skeleton that codegen wraps evalSurface() into.
+     *        Forward / GBuffer come first (M3); Shadow is trivial;
+     *        VisBuffer is where Nanite (T2) intersects this — see
+     *        nanite-implementation-guide.md.
      */
     enum class EMaterialPass : uint8_t
     {
@@ -127,11 +140,11 @@ namespace lux::rdesc
         COUNT
     };
 
-    /// 着色模型选择器 = 复用 description 既有的 ELightingTechnique
-    /// (Unlit / LegacyLit / PbrMetallicRoughness / Stylized)。
+    /// Shading-model selector = reuses description's existing
+    /// ELightingTechnique (Unlit / LegacyLit / PbrMetallicRoughness / Stylized).
     using EMaterialShadingModel = ELightingTechnique;
 
-    /// 便捷查询。
+    /// Convenience lookup.
     inline constexpr EMatValueType attributeType(EMaterialAttribute a) noexcept
     {
         return kMaterialAttributes[static_cast<size_t>(a)].type;

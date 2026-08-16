@@ -1,220 +1,147 @@
-# LUX-ENGINE
+# lux-engine
 
-Layered experimental / learning-oriented game engine (Rendering & Architecture playground).
+`lux-engine` is a modern C++20 game-engine project focused on explicit ownership,
+deterministic ECS scheduling, asynchronous asset streaming, and a Vulkan renderer.
+The repository is intentionally split by **responsibility** and **shipped product**:
+runtime code cannot depend on authoring, toolchain, or editor code.
 
-> [中文文档 / Chinese Documentation](./doc/readme.zh-CN.md)
+> [中文说明](./doc/readme.zh-CN.md) · [active architecture work](./.internal/UNFINISHED-WORK.md)
 
-**Early stage project** (basic_version_dev branch). Focus is to explore modern engine architecture & real-time rendering while keeping modules cleanly layered: platform abstraction, event + reflection, resource & serialization, ECS + scripting, render pipeline (forward / deferred), visual flow (FlowForge), with future physics, animation, AI, tooling.
+## Architecture
 
-## 1. Architecture Overview
+The enforced source/target dependency DAG is:
 
-Top level is divided into Layers. Each layer exposes Components (CMake components) discoverable via find_package so higher layers depend declaratively.
-
-**Runtime layers (`modules/`):**
-1. **platform**: low-level platform & graphics API (common, gapi, window, dynamic_library)
-2. **core**: foundational utilities (math, meta/reflection, script)
-3. **resource**: asset system (description, asset: model / texture / material / shader / script asset & (de)serialization)
-4. **function**: higher-level engine features (render, flowforge, gameplay, ui)
-
-`function::ui` is a reusable ImGui UI framework — it depends only on imgui + render +
-window + meta, so it can be linked on its own to build standalone UI applications,
-without dragging in flowforge / script / asset / MLIR.
-
-**Editor tier (`engine/`):** the lux-engine editor, built on top of the runtime layers.
-It is not a `modules/` layer — `engine/` depends on `modules/*`, never the reverse.
-* **`engine::editor`** — engine-coupled editor panels (node graph editor, lua console, asset browser) + shell
-* **`engine::flowforge_compiler`** — FlowForge → MLIR → LLVM offline compiler; opt-in via `LUX_ENABLE_FLOWFORGE_MLIR`; the only target that links MLIR/LLVM
-* **`asset_pipeline`** — the `lux_asset_packer` build-time CLI tool (links only `resource::asset`; built unconditionally because the runtime build itself depends on it)
-
-Set `-DLUX_BUILD_EDITOR=OFF` for a runtime-only build (excludes `engine::editor` and
-`engine::flowforge_compiler`).
-
-**Rendering (function/render)**
-* Vulkan backend (through gapi + window)
-* GLSL to SPIR-V compilation (glslc) integrated in build
-* Forward & deferred shader sets (skeleton)
-* Asset conversion hookups (AssetConverter)
-
-**Scripting (core/script)**
-* LuaJIT runtime integration
-* Linked MLIR libs (IR, Dialect, Parser, Pass) for future DSL / IR experiments
-
-**Reflection & Serialization**
-* Powered by the [lux-cxx](../lux-cxx) toolchain. `reflection` (libclang-based codegen → compile-time `meta_info` + runtime `MetaUnit`) drives type metadata.
-* The [**serialization**](../lux-cxx/serialization/README.md) module turns any annotated type into **JSON / XML / command-line** with a single `LUX_META(serializable)` annotation — no per-type code, no third-party headers leaking into the build. Used for assets, config, and editor inspectors.
-
-**FlowForge (function/flowforge)**
-* Early IR node declarations hinting at a node/graph driven logic editor (not yet functional)
-
----
-
----
-
-## 2. External Dependencies
-
-**Toolchain:**
-* CMake >= 3.22
-* C++20 compiler (Clang / GCC / MSVC)
-* Ninja (recommended) or Make
-
-**Third-party libraries:**
-* **Vulkan SDK** (with glslc) — rendering & shader compilation
-* **GLFW3** — window & input
-* **Eigen3** — math
-* **Assimp** — model import
-* **stb** (header-only image loading) — must be available in include path or vendored
-* **stduuid** — UUID generation
-* **LuaJIT** — scripting runtime
-* **MLIR** (part of LLVM) — planned IR / compilation pipeline experiments
-* **fmt** (optional; probed quietly)
-* **PkgConfig** — assists library discovery
-
-**Project-internal (installed separately):**
-* **lux-cmake-toolset** — macro helpers (generate_visibility_header, add_component, etc.)
-* **lux-cxx** — custom metaprogramming, reflection & serialization (compile_time, reflection, serialization). Reflection-driven JSON/XML/CLI serialization: see [serialization docs](../lux-cxx/serialization/README.md)
-
-These must be installed so `find_package(... CONFIG)` succeeds, or adapt CMake to `add_subdirectory` them locally.
-
----
-
-## 3. Directory Structure
-
-```
-modules/       (runtime layers — what a shipped product may link)
-  platform/    (common, gapi, window, dynamic_library)
-  core/        (math, meta, script)
-  resource/    (description, asset)
-  function/    (render, flowforge, gameplay, ui)
-engine/        (editor tier — depends on modules/*, never the reverse)
-  editor/             (engine-coupled editor panels + shell)
-  flowforge_compiler/ (FlowForge MLIR/LLVM compiler; opt-in)
-  asset_pipeline/     (lux_asset_packer build-time tool)
-spir_v/        (SPIR-V shader outputs)
-cmake/         (Find*.cmake & helper scripts)
+```text
+Platform -> Core -> Resource -> Function -> ECS -> Runtime -> Host
+                         \-> Authoring -> Toolchain -> Editor
+                                      Runtime ----^       ^
 ```
 
----
+More precisely:
 
-## 4. Build (Linux Example)
+- `modules/platform` wraps OS, window, dynamic-library, file-watch and graphics-API entry points.
+- `modules/core` contains domain-neutral values and infrastructure: bytes,
+  serialization, events, logging, math, meta and the extension ABI.
+- `modules/resource` contains cooked runtime resource descriptions, asset identity,
+  the asset ledger, runtime codecs and pak reading.
+- `modules/function` contains reusable non-ECS domains such as rendering, scripting,
+  input, UI and FlowForge runtime vocabulary.
+- `ecs` contains components, `ISystem`, `IRenderSubsystem` and ECS-domain adapters.
+- `engine/runtime` composes asynchronous execution, assets, scenes, rendering,
+  extensions, frame coordination and runtime packs.
+- `engine/authoring` contains editable source documents and project data.
+- `engine/toolchain` converts authoring data into cooked runtime data. Assimp,
+  shaderc, SPIR-V reflection and MLIR/LLVM belong here and never in Player.
+- `engine/editor` contains editor-only controllers, panels and frameworks.
+- `engine/hosts` contains composition roots and main loops only.
+- `extensions` contains deployable `MODULE` libraries. Engine targets never link a
+  concrete extension implementation.
 
-Install: Vulkan SDK, glfw3, Eigen3, Assimp, LuaJIT, MLIR, stduuid, pkg-config, (fmt optional). MLIR often requires building LLVM with MLIR enabled.
+CMake targets declare `LAYER`, `PRODUCT`, and `ROLE`. Configuration fails on an
+illegal classified dependency, an unclassified production target, or a concrete
+extension linked back into the engine.
 
-**Illustrative (adjust per distro):**
-```bash
-# Install dependencies (example Ubuntu - actual packages may vary)
-sudo apt install build-essential ninja-build cmake pkg-config \
-  libvulkan-dev vulkan-tools glslang-tools \
-  libglfw3-dev libeigen3-dev libassimp-dev \
-  luajit libluajit-5.1-dev
+## Runtime model
 
-# stduuid (via package manager, vcpkg, or manual installation)
-# fmt (optional)
+- A scene owns a `World`, a topologically compiled `Schedule`, and at most one
+  top-level `RenderSystem`. Omitting the render pack produces a headless scene.
+- Frame, control, and persistent GPU upload use separate channels. A single transfer
+  pipeline owns transfer recording/submission without a queue-submit mutex.
+- `AsyncRuntime` uses registration-owned typed bounded queues, one standalone-Asio
+  coordinator, a small blocking-I/O compatibility executor, and oneTBB for CPU work.
+- `MainThreadMailbox` is the only cross-thread completion path into ECS,
+  `AssetManager`, UI state, and `DomainEvents`.
+- `DomainEvents` broadcasts already-committed facts; it is not a command bus or a
+  request/reply mechanism.
+- Runtime extension is split into module loading, contribution registration, and
+  per-world/render-scene/editor activation. Type identity does not use RTTI.
 
-# MLIR: usually requires building from LLVM source (provide MLIRConfig.cmake)
+The codebase forbids RTTI and exception-driven control flow in engine code. Fallible
+APIs use `expected`, ownership is expressed with RAII/owning packets, and hot paths
+avoid locks and unbounded queues.
 
-# Build & install lux-cxx + lux-cmake-toolset beforehand if not present
-# git clone ... && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build --target install
+## Render boundaries
 
-# Build this project
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+Rendering has four CMake components:
 
-# Optional: install
-cmake --install build --prefix /your/install/prefix
+- `lux::engine::function::render_client`: backend-neutral handles, protocols,
+  channels and Frame/Control/Upload sessions; public headers contain no Vulkan types.
+- `lux::engine::function::render_graph`: logical resources, passes, dependency
+  analysis and compiled logical plans; it can be tested without a Vulkan device.
+- `lux::engine::function::render_vulkan`: Vulkan server, resource managers, graph
+  lowering, queues and `GpuTransferPipeline`.
+- `lux::engine::function::render_features`: built-in Vulkan feature implementations
+  and their generated assets.
+
+ECS extraction and `FrameCoordinator` depend only on `render_client`. A headless
+`SceneRuntime` does not link the Vulkan backend.
+
+## Build profiles
+
+Configure with `LUX_BUILD_PROFILE`; the removed `LUX_BUILD_EDITOR` switch is not
+supported.
+
+| Profile | Contents |
+|---|---|
+| `DEVELOPER` | Runtime, Player, Editor and Toolchain |
+| `PLAYER` | Runtime and the reference Player; native or cross-compiled |
+| `EDITOR` | Runtime, Editor and Toolchain; no reference Player executable |
+| `TOOLCHAIN` | Offline tools and their minimum dependencies |
+
+The target platform comes from the CMake toolchain. For example, Android uses
+`LUX_BUILD_PROFILE=PLAYER` plus the Android triplet and an explicit
+`LUX_HOST_TOOLS_PREFIX`; platform names are not product profiles.
+
+Example with Ninja and vcpkg:
+
+```powershell
+cmake -S . -B ../build/RelWithDebInfo/lux-engine -G Ninja `
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+  -DLUX_BUILD_PROFILE=DEVELOPER `
+  -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+cmake --build ../build/RelWithDebInfo/lux-engine --target all -j 4 -k 0
+ctest --test-dir ../build/RelWithDebInfo/lux-engine --output-on-failure
 ```
 
-**Windows / macOS:** use corresponding Vulkan SDK; if MLIR is heavy and scripting is not needed initially, temporarily disable the script component in CMake.
+The sibling projects `lux-cmake-toolset`, `lux-cxx`, `imgui`, and
+`imgui-node-editor` must be discoverable through `CMAKE_PREFIX_PATH`. The bootstrap
+graph in `bootstrap/` can build that chain on a fresh machine.
 
----
+Do not run a build concurrently with device/attended validation. After a CMake
+change, build twice; the second pass must report no work. Changes to public
+`modules/*` headers must be synchronized to the Debug, RelWithDebInfo, and Android
+install prefixes because meta generation reads installed headers.
 
-## 5. Run / Quick Check
+## Products and export
 
-No consolidated demo executable yet. Optional test targets behind CMake options (e.g. `ENABLE_RENDER_TEST`, `ENABLE_SCRIPT_TEST`). Enable then build:
+The primary executables are:
 
-```bash
-cmake -B build -G Ninja -DENABLE_RENDER_TEST=ON
-cmake --build build
+```text
+lux_player
+lux_editor
+lux_launcher
+lux_asset_packer
+lux_shader_emitter
+lux_game_exporter
 ```
 
-Shaders auto-compile (glslc) to SPIR-V into `spir_v/` or the configured output directory.
+`lux_game_exporter` emits a cooked runtime directory containing the Player,
+runtime manifest, pak files, runtime libraries, and runtime extensions. Player does
+not support loose authoring/project content. Export rejects authoring-only payloads
+or Editor/Toolchain binaries in the runtime closure.
 
----
+Install/CPack components distinguish reusable layers from products, including
+`lux_runtime`, `lux_player`, `lux_editor`, `lux_toolchain`, and `lux_sdk`.
 
-## 6. Current Completion Snapshot
+## Current status
 
-| Module | State | Notes |
-|--------|-------|-------|
-| platform::window | Basic window + Vulkan flags | Input & multi-platform incomplete |
-| platform::gapi | Vulkan macro layer | Missing abstraction & backend switching |
-| platform::event | Interface only | Lacks dispatcher implementation |
-| core::math | Interface + Eigen | Needs transforms, SIMD optimizations |
-| core::meta | (not shown here) | Must integrate with assets, scripting, editor |
-| core::script | LuaJIT + MLIR linked | Missing VM mgmt, binding, hot reload, MLIR pipeline |
-| core::ecs | Referenced only | Not implemented (storage & scheduling) |
-| resource::asset | Asset types + (de)serialization skeleton | Missing ref counting, async loading, cache, dependency graph |
-| function::render | Pipeline skeleton + shader build | Missing frame/render graph, queues, material system, deferred lighting impl |
-| function::flowforge | Early IR headers | Needs node system UI, execution, save/load |
-| function::ui | ImGui UI framework (panels, docking, widgets, ImGui<->render bridge) | Reusable runtime-layer component; standalone-linkable |
-| engine::editor | Engine-coupled editor panels (node editor, lua console, asset browser) | ImGui-based; gated by LUX_BUILD_EDITOR |
+The large directory/target migration is active. The product profiles, dependency
+classification, runtime/editor host split, Render four-way target split, asset
+identity/core/codecs/pak split, authoring/toolchain trees, extension module, and
+runtime inventory/export checks are implemented. Some physical source splits and
+full platform validation remain; the authoritative list is
+[`.internal/UNFINISHED-WORK.md`](./.internal/UNFINISHED-WORK.md).
 
-**Overall:** Core runtime pillars (ECS, frame graph, resource streaming, reflection-editor loop) still WIP.
+## License
 
----
-
-## 7. Roadmap / TODO
-
-### Short Term
-1. Implement **core::ecs** (entity/comp storage, system scheduling, event bridge)
-2. Expand **event** into unified bus + input subsystem, ECS integration
-3. **Rendering**: frame graph / render graph abstraction; forward + deferred fleshed out (GBuffer, lighting); descriptor & material parameter system
-4. **Resource pipeline**: async loading (job system), ref counting, dependency tracking, caching (LRU)
-5. **Reflection integration**: unified type registry powering serialization + inspector
-6. **Scripting**: LuaJIT VM mgmt, ECS bindings, define MLIR direction (JIT optimizations vs DSL)
-
-### Mid Term
-7. **Editor (`engine::editor` + `function::ui`)**: ImGui docking workspace & panels (scene, assets, inspector, logs, render debug, FlowForge)
-8. **FlowForge**: node definitions (reflection-driven) → visual editing → serialization → runtime execution
-9. **Rendering features**: PBR, IBL, shadows, post-processing (Bloom, TAA, ToneMap), GPU profiler
-10. **Multi-platform**: Win/Linux parity; consider macOS via MoltenVK
-11. **Offline asset pipeline**: preprocessing, compression, shader reflection artifacts
-
-### Long Term
-12. **Physics** (Bullet/PhysX or custom), **animation** (skeletal, blend trees), **audio**, **AI** behavior trees
-13. **Hot reload** (assets, scripts, shaders), incremental asset builds
-14. **Multithread job system** orchestrating render & streaming
-15. **Unified scheduler**: ECS + frame graph + resource streaming
-16. **Plugin system** / modular runtime loading
-17. **Networking** experiments (optional)
-
-### Engineering / Quality
-18. **Unit & integration tests** (enable tests more directly)
-19. **Static analysis** (clang-tidy), coverage, sanitizers, CI
-20. **Documentation & samples** (minimal demo, scripting sample, FlowForge example)
-
----
-
-## 8. Contribution Suggestions
-
-* Focus on one layer at a time (e.g., ECS or frame graph) to avoid diffusion
-* Maintain dependency direction (platform → core → resource → function; the `engine/` editor tier sits above and depends on `modules/*`, never the reverse)
-* Each component should gain: rationale doc, minimal sample, public header inventory
-* Make shader / script generation reproducible (document paths, add helper scripts)
-
----
-
-## 9. License
-
-Not specified yet (recommend choosing MIT / Apache-2.0 etc. early for clarity).
-
----
-
-## 10. Status
-
-Early exploratory project; APIs / layout subject to change. Not production ready.
-
----
-
-Contributions / issues / discussions welcome. If you're building a learning engine too, sharing evolution notes & benchmarks is valuable.
-
-*(README auto-generated & translated from current CMake/layout snapshot; please update as structure evolves.)*
-
+See the repository license files.

@@ -20,29 +20,31 @@
 //  Self-checking: 0 = PASS (or skip if no Vulkan), 1 = FAIL.
 // ============================================================================
 
-#include <lux/engine/render/comm/client/RenderSession.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
+#include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
 
-#include <lux/engine/render/renderer/features/forward/ForwardMeshOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/ShadowMapOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/MeshShadowOperation.hpp>
-#include <lux/engine/render/renderer/features/light/LightOperation.hpp>  // LightFeature / LightProxy
-#include <lux/engine/render/renderer/features/meshstack/MeshStackOperation.hpp>
-#include <lux/engine/render/renderer/features/material/MaterialOperation.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>  // kStandardViewCameraFeatureFactory / ViewCameraProxy
-#include <lux/engine/render/core/LightDescriptor.hpp>
+#include <lux/engine/function/render/client/genops/ForwardMeshOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>  // LightFeature / LightProxy
+#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>  // kViewCameraFeatureFactory / ViewCameraProxy
+#include <lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp>
 
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/math/AABB.hpp>
-#include <lux/engine/render/resources/material/GraphMaterialData.hpp>
+#include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
 
 #include "graph_test_helpers.hpp"   // mgtest::makeColorGraph + compileGraphPass
 
 #include <lux/engine/window/LuxWindow.hpp>
-#include <GLFW/glfw3.h>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -63,14 +65,8 @@ using namespace lux::render;
 
 static std::vector<const char*> getVulkanExtensions()
 {
-    glfwInit();
-    uint32_t count = 0;
-    const char** exts = glfwGetRequiredInstanceExtensions(&count);
-    std::vector<const char*> result;
-    result.reserve(count);
-    for (uint32_t i = 0; i < count; ++i)
-        result.emplace_back(exts[i]);
-    return result;
+    const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
+    return {exts.begin(), exts.end()};
 }
 
 // ── Camera helpers (Vulkan Y-down, ZO depth) — same math as thumbnail test ──
@@ -174,109 +170,173 @@ static void makeTranslate(float out[16], float x, float y, float z)
 
 // Drive frames (blocking submit) until the (possibly deferred) reply resolves.
 template <class T>
-static T await(RenderSession& s, lux::window::LuxWindow& w, RenderRequest<T> req)
+static T await(RenderFrameSession& s, lux::window::LuxWindow& w, RenderRequest<T> req)
 {
-    s.submitFrame(/*blocking=*/true);
+    s.trySubmitFrame();
     s.waitAndPumpReplies();
     while (!req.isReady())
     {
         s.beginFrame({});
         w.pollEvents();
-        s.submitFrame(/*blocking=*/true);
+        s.trySubmitFrame();
         s.waitAndPumpReplies();
     }
-    return req.result();
+    return req.tryResult()->get();
+}
+
+template <class T>
+static T awaitControl(
+    RenderControlSession& control,
+    lux::window::LuxWindow& window,
+    RenderRequest<T> request
+)
+{
+    while (!request.isReady())
+    {
+        window.pollEvents();
+        if (!control.waitAndPumpReplies())
+            break;
+    }
+    return request.tryResult()->get();
+}
+
+template <class T>
+static T awaitUpload(
+    RenderUploadSession& upload,
+    lux::window::LuxWindow& window,
+    UploadSubmitResult<T> submitted)
+{
+    if (!submitted)
+        return {};
+    auto request = std::move(submitted.value());
+    while (!request.isReady())
+    {
+        window.pollEvents();
+        if (!upload.waitAndPumpReplies())
+            break;
+    }
+    return request.tryResult()->get();
 }
 
 struct SceneBundle
 {
-    RenderSceneId scene_id{};
-    ViewHandle    view{};
+    RenderSceneId  scene_id{};
+    ViewHandle     view{};
+    RenderTargetId target{};
     ViewCameraOperationIds view_cam_ops{};  // this scene's per-view camera update op (ViewCameraProxy)
 };
 
 // Build a self-contained scene: offscreen view + shadow/mesh-shadow/forward
 // features + ground (receiver) + sphere (occluder) + one cast-shadow
 // directional light pointing in `light_dir`.
-static SceneBundle buildScene(RenderSession& s, lux::window::LuxWindow& w,
+static SceneBundle buildScene(RenderFrameSession& s,
+                              RenderControlSession& control,
+                              RenderUploadSession& upload,
+                              lux::window::LuxWindow& w,
                               const char* name, uint32_t W, uint32_t H,
                               const Eigen::Vector3f& light_dir)
 {
-    s.beginFrame({});
-    const auto scene = await(s, w, s.createScene(name));
-    s.beginFrame({});
-    await(s, w, s.setActiveScene(scene.scene_id, true));
-    s.beginFrame({});
-    const auto view = await(s, w, s.addView(scene.scene_id, {W, H}, name));
+    lux::render::testing::DirectRenderUploadClient upload_client{upload};
+    const auto scene = awaitControl(control, w, control.createScene(name));
+    awaitControl(control, w, control.setActiveScene(scene.scene_id, true));
+    const auto view = awaitControl(
+        control,
+        w,
+        control.addView(scene.scene_id, {W, H}, name)
+    );
+    const auto target = awaitControl(
+        control,
+        w,
+        control.createOffscreenRenderTarget({W, H})
+    );
+    control.setLayer(target.target, 0, scene.scene_id, view.view);
 
     // StandardViewCameraFeature owns this scene's per-view 3D camera data (view/
     // proj matrices + frustum) that shadow/forward consume. MUST register +
     // addFeature for this scene BEFORE every camera consumer — owner-first.
     // (Per-scene: this helper runs once per scene, so each scene gets its own.)
-    s.beginFrame({});
-    const auto view_cam_reg = await(s, w, s.registerFeatureType(lux::render::kStandardViewCameraFeatureFactory));
+    const auto view_cam_reg = awaitControl(
+        control,
+        w,
+        control.registerFeatureType(lux::render::kViewCameraFeatureFactory)
+    );
     ViewCameraOperationIds view_cam_ops = ViewCameraOperationIds::fromOps(view_cam_reg.ops, view_cam_reg.op_count);
-    struct EmptyViewCamCfg {} view_cam_cfg{};
-    s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, view_cam_reg.feature_type_id, view_cam_cfg));
+    lux::render::ViewCameraCommTag view_cam_cfg{};
+    awaitControl(
+        control,
+        w,
+        control.addFeature(scene.scene_id, view_cam_reg.feature_type_id, view_cam_cfg)
+    );
 
     // LightFeature now owns scene light DATA; shadow/forward CONSUME it via
     // find<LightResources>. ShadowMapFeature caches a raw LightResources* at
     // attach, so Light MUST register + addFeature for this scene BEFORE shadow.
-    s.beginFrame({});
-    const auto light_reg = await(s, w, s.registerFeatureType(kLightFeatureFactory));
+    const auto light_reg = awaitControl(
+        control,
+        w,
+        control.registerFeatureType(kLightFeatureFactory)
+    );
     LightOperationIds light_ops = LightOperationIds::fromOps(light_reg.ops, light_reg.op_count);
-    struct EmptyLightCfg {} light_cfg{};
-    s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, light_reg.feature_type_id, light_cfg));
+    lux::render::LightCommTag light_cfg{};
+    awaitControl(
+        control,
+        w,
+        control.addFeature(scene.scene_id, light_reg.feature_type_id, light_cfg)
+    );
 
     // StandardMaterialFeature owns the standard material-stack resources (shading
     // model registry, material resources) that the mesh stack reads. Must attach
     // before StandardMeshStack. (Per-scene: this helper runs once per scene, so
     // each scene gets its own.)
-    s.beginFrame({});
-    const auto material_reg = await(s, w, s.registerFeatureType(lux::render::kStandardMaterialFeatureFactory));
+    const auto material_reg = awaitControl(
+        control,
+        w,
+        control.registerFeatureType(lux::render::kMaterialFeatureFactory)
+    );
     MaterialOperationIds material_ops = MaterialOperationIds::fromOps(material_reg.ops, material_reg.op_count);
-    struct EmptyMaterialCfg {} material_cfg{};
-    s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, material_reg.feature_type_id, material_cfg));
+    lux::render::MaterialCommTag material_cfg{};
+    awaitControl(
+        control,
+        w,
+        control.addFeature(scene.scene_id, material_reg.feature_type_id, material_cfg)
+    );
 
     // StandardMeshStackFeature owns the standard 3D mesh-stack resources (cull
     // layout, instance buffers, …) that every mesh consumer reads. Must attach
     // before any mesh feature or nothing renders. (Per-scene: this helper runs
     // once per scene, so each scene gets its own.)
-    s.beginFrame({});
-    const auto mesh_stack_reg = await(s, w, s.registerFeatureType(lux::render::kStandardMeshStackFeatureFactory));
+    const auto mesh_stack_reg = awaitControl(
+        control,
+        w,
+        control.registerFeatureType(lux::render::kMeshStackFeatureFactory)
+    );
     MeshStackOperationIds mesh_stack_ops = MeshStackOperationIds::fromOps(mesh_stack_reg.ops, mesh_stack_reg.op_count);
-    struct EmptyMeshStackCfg {} mesh_stack_cfg{};
-    s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, mesh_stack_reg.feature_type_id, mesh_stack_cfg));
+    lux::render::MeshStackCommTag mesh_stack_cfg{};
+    awaitControl(
+        control,
+        w,
+        control.addFeature(scene.scene_id, mesh_stack_reg.feature_type_id, mesh_stack_cfg)
+    );
 
-    s.beginFrame({});
-    const auto shadow_reg = await(s, w, s.registerFeatureType(kShadowMapFeatureFactory));
-    s.beginFrame({});
-    const auto mshsw_reg  = await(s, w, s.registerFeatureType(kMeshShadowFeatureFactory));
-    s.beginFrame({});
-    const auto fwd_reg    = await(s, w, s.registerFeatureType(kForwardMeshFeatureFactory));
+    const auto shadow_reg = awaitControl(control, w, control.registerFeatureType(kShadowMapFeatureFactory));
+    const auto mshsw_reg  = awaitControl(control, w, control.registerFeatureType(kMeshShadowFeatureFactory));
+    const auto fwd_reg    = awaitControl(control, w, control.registerFeatureType(kForwardMeshFeatureFactory));
 
     ShadowMapCommConfig scc{};
     scc.atlas_page_resolution = 2048;
     scc.atlas_page_count      = 2;
     scc.max_shadow_slices     = 64;
-    s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, shadow_reg.feature_type_id, scc));
+    awaitControl(control, w, control.addFeature(scene.scene_id, shadow_reg.feature_type_id, scc));
 
     MeshShadowCommConfig mscc{};
     mscc.comm_config_version       = kMeshShadowCommConfigVersion;
     mscc.descriptor_layout_version = kMeshShadowDescriptorLayoutVersion;
-    s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, mshsw_reg.feature_type_id, mscc));
+    awaitControl(control, w, control.addFeature(scene.scene_id, mshsw_reg.feature_type_id, mscc));
 
     ForwardMeshCommConfig fcc{};
     fcc.comm_config_version       = kForwardMeshCommConfigVersion;
     fcc.descriptor_layout_version = kForwardMeshDescriptorLayoutVersion;
-    s.beginFrame({});
-    await(s, w, s.addFeature(scene.scene_id, fwd_reg.feature_type_id, fcc));
+    awaitControl(control, w, control.addFeature(scene.scene_id, fwd_reg.feature_type_id, fcc));
 
     // Single neutral grey PBR graph reused by ground + sphere. PBR is required:
     // Unlit/LegacyLit do not sample the shadow atlas. Compiled for the Forward
@@ -296,31 +356,30 @@ static SceneBundle buildScene(RenderSession& s, lux::window::LuxWindow& w,
     const auto mat_bytes = std::span<const std::byte>{
         reinterpret_cast<const std::byte*>(mat_spirv.data()),
         mat_spirv.size() * sizeof(std::uint32_t)};
-    s.beginFrame({});
-    const auto mat_frag = await(s, w, s.compileShader(
+    const auto mat_frag = awaitControl(control, w, control.compileShader(
         mat_bytes, std::span<const std::byte>{mat_info.data(), mat_info.size()}));
 
     lux::render::GraphMaterialData mat_data{};
     s.beginFrame({});
-    const auto mat = await(s, w, MaterialProxy(s, material_ops).uploadGraphMaterial(mat_data, ShaderHandle{}, mat_frag.shader));
+    const auto mat = awaitUpload(upload, w, uploadGraphMaterial(MaterialUploadClient(upload_client.client(), material_ops), mat_data, ShaderHandle{}, mat_frag.shader));
 
     const lux::rdesc::Mesh ground = buildGroundMesh(4.f);
     s.beginFrame({});
-    const auto ground_mesh = await(s, w, lux::render::MeshStackProxy(s, mesh_stack_ops).uploadMesh(ground));
+    const auto ground_mesh = awaitUpload(upload, w, lux::render::uploadMesh(lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops), ground));
     const lux::rdesc::Mesh sphere = buildSphereMesh(0.6f, 48, 24);
     s.beginFrame({});
-    const auto sphere_mesh = await(s, w, lux::render::MeshStackProxy(s, mesh_stack_ops).uploadMesh(sphere));
+    const auto sphere_mesh = awaitUpload(upload, w, lux::render::uploadMesh(lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops), sphere));
 
     float ground_xform[16]; makeTranslate(ground_xform, 0.f, 0.f, 0.f);
     float sphere_xform[16]; makeTranslate(sphere_xform, 0.f, 0.9f, 0.f);
     s.beginFrame({});
-    const auto ground_inst = await(s, w, MeshStackProxy(s, mesh_stack_ops).addMeshInstance(scene.scene_id, ground_mesh.handle, mat.handle, ground_xform));
+    const auto ground_inst = await(s, w, addTransientMeshInstance(MeshStackProxy(s, mesh_stack_ops), scene.scene_id, ground_mesh.handle, mat.handle, ground_xform));
     s.beginFrame({});
-    const auto sphere_inst = await(s, w, MeshStackProxy(s, mesh_stack_ops).addMeshInstance(scene.scene_id, sphere_mesh.handle, mat.handle, sphere_xform));
+    const auto sphere_inst = await(s, w, addTransientMeshInstance(MeshStackProxy(s, mesh_stack_ops), scene.scene_id, sphere_mesh.handle, mat.handle, sphere_xform));
 
     s.beginFrame({});
-    MeshStackProxy(s, mesh_stack_ops).makeInstanceVisibleForView(scene.scene_id, view.view, ground_inst.object);
-    MeshStackProxy(s, mesh_stack_ops).makeInstanceVisibleForView(scene.scene_id, view.view, sphere_inst.object);
+    MeshStackProxy(s, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene.scene_id, .view = view.view, .object = ground_inst.object});
+    MeshStackProxy(s, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene.scene_id, .view = view.view, .object = sphere_inst.object});
 
     DirectionalLightDesc dl{};
     dl.direction = light_dir.normalized();
@@ -328,9 +387,9 @@ static SceneBundle buildScene(RenderSession& s, lux::window::LuxWindow& w,
     dl.intensity = 3.0f;
     dl.flags     = LIGHT_FLAG_CAST_SHADOW;
     s.beginFrame({});
-    await(s, w, LightProxy(s, light_ops).createLight(scene.scene_id, LightDescriptor{dl}));
+    await(s, w, lightCreate(LightProxy(s, light_ops), scene.scene_id, LightDescriptor{dl}));
 
-    return SceneBundle{scene.scene_id, view.view, view_cam_ops};
+    return SceneBundle{scene.scene_id, view.view, target.target, view_cam_ops};
 }
 
 int main()
@@ -340,8 +399,10 @@ int main()
 
     constexpr uint32_t W = 256, H = 256;
 
-    auto channel = RenderProgramChannel<>::create();
-    auto sync    = std::make_shared<RenderChannelSync>();
+    auto channel         = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel  = RenderUploadChannel<>::create();
+    auto sync             = std::make_shared<RenderChannelSync>();
     auto exts    = getVulkanExtensions();
 
     lux::window::LuxWindow window(static_cast<int>(W), static_cast<int>(H),
@@ -351,26 +412,30 @@ int main()
     std::atomic<bool> ready{false}, failed{false};
     std::thread server_thread([&]
     {
-        GeneralRenderServer server(channel, sync);
+        GeneralRenderServer server(
+            channel,
+            control_channel,
+            upload_channel,
+            sync
+        );
         ServerConfig cfg;
         cfg.instance_extensions = exts;
         if (auto r = server.init(std::move(cfg)); !r)
         {
-            std::cerr << "[Server] init failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             failed.store(true, std::memory_order_release);
             ready.store(true, std::memory_order_release);
             return;
         }
         if (auto r = server.attachToWindow(window); !r)
         {
-            std::cerr << "[Server] attach failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             failed.store(true, std::memory_order_release);
             ready.store(true, std::memory_order_release);
             return;
         }
         ready.store(true, std::memory_order_release);
-        try { while (server.tick()) {} }
-        catch (const std::exception& e) { std::cerr << "[Server] tick threw: " << e.what() << "\n"; }
+        while (server.tick()) {}
     });
 
     while (!ready.load(std::memory_order_acquire))
@@ -384,7 +449,9 @@ int main()
     }
     std::cout << "[2] server ready\n";
 
-    RenderSession session(channel, sync);
+    RenderFrameSession session(channel, sync);
+    RenderControlSession control(control_channel, sync);
+    RenderUploadSession upload(upload_channel, sync);
     auto& s = session;
     auto& w = window;
 
@@ -403,8 +470,8 @@ int main()
             s.beginFrame({});
             w.pollEvents();
             for (const auto& sc : scenes)
-                ViewCameraProxy(s, sc.view_cam_ops).update(sc.scene_id, sc.view, V.data(), P.data(), eye.data());
-            s.submitFrame(/*blocking=*/true);
+                viewCameraUpdateTransient(ViewCameraProxy(s, sc.view_cam_ops), sc.scene_id, sc.view, V.data(), P.data(), eye.data());
+            s.trySubmitFrame();
             s.waitAndPumpReplies();
         }
     };
@@ -413,12 +480,16 @@ int main()
     {
         out.assign(static_cast<std::size_t>(W) * H * 4, 0);
         s.beginFrame({});
-        const auto rb = await(s, w, s.readbackView(sc.scene_id, sc.view, out.data(), out.size()));
+        const auto rb = awaitControl(
+            control,
+            w,
+            control.readbackTarget(sc.target, out.data(), out.size())
+        );
         return rb;
     };
 
     // ── Scene A alone (light pointing one way) ──────────────────────────
-    const SceneBundle A = buildScene(s, w, "SceneA", W, H,
+    const SceneBundle A = buildScene(s, control, upload, w, "SceneA", W, H,
                                      Eigen::Vector3f(-1.0f, -1.2f, -0.35f));
     std::cout << "[3] scene A built (id=" << A.scene_id.index << ")\n";
     warmUp({A}, 12);
@@ -428,7 +499,7 @@ int main()
               << " bytes=" << rb0.bytes_written << "\n";
 
     // ── Scene B with the OPPOSITE light direction ───────────────────────
-    const SceneBundle B = buildScene(s, w, "SceneB", W, H,
+    const SceneBundle B = buildScene(s, control, upload, w, "SceneB", W, H,
                                      Eigen::Vector3f(+1.0f, -1.2f, +0.35f));
     std::cout << "[5] scene B built (id=" << B.scene_id.index << ")\n";
     warmUp({A, B}, 12);            // both scenes render each tick now

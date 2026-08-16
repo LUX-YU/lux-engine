@@ -1,0 +1,9 @@
+#pragma once
+
+namespace lux::toolchain
+{
+    inline constexpr const char* material_shaders_source_dir =
+        "@LUX_MATERIAL_SHADER_SOURCE_DIR@";
+    inline constexpr const char* material_shaders_emitted_dir =
+        "@LUX_MATERIAL_SHADER_EMITTED_DIR@";
+}

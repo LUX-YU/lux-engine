@@ -1,15 +1,15 @@
 // ============================================================================
 //  canvas2d_stress_test.cpp — PERMANENT (gpu tier): the GPU-driven Canvas2D v2
 //  under load. Numbers over feelings:
-//    A  bulk creation      — N sprites created through the command channel
+//    A  bulk creation      — N images created through the command channel
 //    B  static frames      — the v2 core claim: NO canvas commands at all are
 //                            issued client-side, the server re-draws GPU-resident
 //                            data (frame time = pure pipeline cost)
-//    C  dynamic frames     — K dirty sprites per frame ride ONE transform bulk
+//    C  dynamic frames     — K dirty images per frame ride ONE transform bulk
 //                            (wire ∝ change; K is bounded by the frame-ring
 //                            payload budget, ~1.6k entries — same ceiling the 3D
 //                            TransformBatch shares)
-//    D  key churn          — priority rewrites on K sprites per frame force an
+//    D  key churn          — priority rewrites on K images per frame force an
 //                            order rebuild every frame (the worst case v2 pays)
 //    E  churn storm        — remove/re-create waves (slot recycling + growth)
 //  Self-checking for CORRECTNESS (creation Ok, pixels drawn, churn sane);
@@ -19,9 +19,9 @@
 
 #include "DeviceRenderFixture.hpp"
 
-#include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeatureOps.hpp>
-#include <lux/engine/render/renderer/features/canvas2d/Canvas2DOperation.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>
+#include <lux/engine/function/render/client/genops/Canvas2DOperation.ops.hpp>
+#include <lux/engine/function/render/client/features/canvas2d/Canvas2DOperation.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 
 #include <chrono>
 #include <cmath>
@@ -41,10 +41,9 @@ using namespace lux::render;
 
 namespace
 {
-    struct EmptyConfig {};
 
     constexpr std::uint32_t W = 256, H = 256;
-    constexpr std::uint32_t kSprites       = 20'000;   // fits the default 65536 arena ceiling
+    constexpr std::uint32_t kImages       = 20'000;   // fits the default 65536 arena ceiling
     constexpr std::uint32_t kDirtyPerFrame = 1'024;    // ~40 KiB/frame bulk — inside the ring budget
     constexpr int           kStaticFrames  = 120;
     constexpr int           kDynamicFrames = 120;
@@ -65,10 +64,40 @@ int main()
     if (!fx.ok()) { std::puts("No Vulkan device. Skipping."); return 0; }
 
     const auto sv = fx.makeSceneWithView("Canvas2DStress", "main");
-    const auto cam_reg = fx.await(fx.session().registerFeatureType(kStandardViewCameraFeatureFactory));
-    fx.await(fx.session().addFeature(sv.scene_id, cam_reg.feature_type_id, EmptyConfig{}));
-    const auto canvas_reg = fx.await(fx.session().registerFeatureType(kCanvas2DFeatureFactory));
-    fx.await(fx.session().addFeature(sv.scene_id, canvas_reg.feature_type_id, EmptyConfig{}));
+    const auto cam_reg = fx.awaitControl(fx.control().registerFeatureType(kViewCameraFeatureFactory));
+    const auto cam_feature = fx.awaitControl(
+        fx.control().addFeature(
+            sv.scene_id,
+            cam_reg.feature_type_id,
+            lux::render::ViewCameraCommTag{}
+        )
+    );
+    if (!cam_feature.feature.isValid())
+    {
+        const auto message = lux::render::formatRenderError(
+            lux::render::renderErrorRegistry(),
+            cam_feature.error
+        );
+        std::fprintf(stderr, "FAIL addFeature(ViewCamera): %s\n", message.c_str());
+        return 1;
+    }
+    const auto canvas_reg = fx.awaitControl(fx.control().registerFeatureType(kCanvas2DFeatureFactory));
+    const auto canvas_feature = fx.awaitControl(
+        fx.control().addFeature(
+            sv.scene_id,
+            canvas_reg.feature_type_id,
+            lux::render::Canvas2DCommConfig{}
+        )
+    );
+    if (!canvas_feature.feature.isValid())
+    {
+        const auto message = lux::render::formatRenderError(
+            lux::render::renderErrorRegistry(),
+            canvas_feature.error
+        );
+        std::fprintf(stderr, "FAIL addFeature(Canvas2D): %s\n", message.c_str());
+        return 1;
+    }
 
     const auto cam_ops    = ViewCameraOperationIds::fromOps(cam_reg.ops, cam_reg.op_count);
     const auto canvas_ops = Canvas2DOperationIds::fromOps(canvas_reg.ops, canvas_reg.op_count);
@@ -78,19 +107,19 @@ int main()
     const float proj[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
     const float eye[3]   = {0,0,0};
     const auto frame = [&] {
-        ViewCameraProxy(fx.session(), cam_ops).update(sv.scene_id, sv.view, view, proj, eye);
+        viewCameraUpdateTransient(ViewCameraProxy(fx.session(), cam_ops), sv.scene_id, sv.view, view, proj, eye);
         fx.flush();
     };
 
     // ── A: bulk creation (handles collected via non-blocking continuations) ──
-    std::vector<Sprite2DHandle> handles;
-    handles.reserve(kSprites);
+    std::vector<Image2DHandle> handles;
+    handles.reserve(kImages);
     std::uint32_t failed = 0;
     {
         const auto t0 = std::chrono::steady_clock::now();
-        for (std::uint32_t i = 0; i < kSprites; ++i)
+        for (std::uint32_t i = 0; i < kImages; ++i)
         {
-            Sprite2DInstanceData d{};
+            Image2DInstanceData d{};
             const float fx01 = static_cast<float>(i % 141) / 141.f;
             const float fy01 = static_cast<float>((i / 141) % 141) / 141.f;
             d.m[0] = 0.01f; d.m[3] = 0.01f;
@@ -99,27 +128,27 @@ int main()
             d.tint = 0xFF000000u | (0xFFu << ((i % 3) * 8));   // r/g/b extremes
             // Fire-and-collect: the continuation lives in the reply store, so the
             // local request handle can simply go out of scope (dtor does NOT cancel).
-            auto req = canvas.addSprite(sv.scene_id, d, /*priority=*/static_cast<float>(i % 7));
-            req.then([&handles, &failed](const Sprite2DSlotReply& r)
+            auto req = addImage(canvas, sv.scene_id, d, /*priority=*/static_cast<float>(i % 7));
+            req.then([&handles, &failed](const Image2DSlotReply& r)
             {
-                if (r.status == ECanvas2DCreateStatus::Ok && r.handle.valid())
+                if (r.status == ECanvas2DCreateStatus::Ok && r.handle.isValid())
                     handles.push_back(r.handle);
                 else
                     ++failed;
             });
             if ((i % 512u) == 511u) frame(); // keep the frame ring drained
         }
-        for (int i = 0; i < 32 && handles.size() + failed < kSprites; ++i) frame();
-        std::printf("[A] created %u sprites in %.1f ms (failed=%u)\n",
+        for (int i = 0; i < 32 && handles.size() + failed < kImages; ++i) frame();
+        std::printf("[A] created %u images in %.1f ms (failed=%u)\n",
                     static_cast<unsigned>(handles.size()), msSince(t0), failed);
     }
     CHECK(failed == 0);
-    CHECK(handles.size() == kSprites);
+    CHECK(handles.size() == kImages);
 
     // Something is actually on screen.
     {
         frame();
-        const auto img = fx.readback(sv.scene_id, sv.view);
+        const auto img = fx.readback(sv);
         std::uint32_t lit = 0;
         for (std::size_t i = 0; i < img.size(); i += 4)
             lit += (img[i] | img[i + 1] | img[i + 2]) ? 1u : 0u;
@@ -131,13 +160,13 @@ int main()
     {
         const auto t0 = std::chrono::steady_clock::now();
         for (int i = 0; i < kStaticFrames; ++i) frame();
-        std::printf("[B] static  : %.3f ms/frame (%d frames, %u GPU-resident sprites)\n",
-                    msSince(t0) / kStaticFrames, kStaticFrames, kSprites);
+        std::printf("[B] static  : %.3f ms/frame (%d frames, %u GPU-resident images)\n",
+                    msSince(t0) / kStaticFrames, kStaticFrames, kImages);
     }
 
     // ── C: dynamic frames — kDirtyPerFrame transform deltas in ONE bulk ──
     {
-        std::vector<Sprite2DTransformEntry> batch(kDirtyPerFrame);
+        std::vector<Image2DTransformEntry> batch(kDirtyPerFrame);
         const auto t0 = std::chrono::steady_clock::now();
         for (int f = 0; f < kDynamicFrames; ++f)
         {
@@ -152,7 +181,7 @@ int main()
                 e.m[4] = std::cos(phase + i * 0.006f);
                 e.m[5] = std::sin(phase + i * 0.006f);
             }
-            canvas.updateTransforms(batch);
+            updateTransforms(canvas, batch);
             frame();
         }
         std::printf("[C] dynamic : %.3f ms/frame (%u dirty/frame, one bulk — wire ∝ change)\n",
@@ -165,11 +194,11 @@ int main()
         for (int f = 0; f < kChurnFrames; ++f)
         {
             for (std::uint32_t i = 0; i < kDirtyPerFrame; ++i)
-                canvas.updateKey(sv.scene_id, handles[i], static_cast<float>((f + i) % 13), true);
+                updateKey(canvas, sv.scene_id, handles[i], static_cast<float>((f + i) % 13), true);
             frame();
         }
         std::printf("[D] key churn: %.3f ms/frame (%u key writes/frame → full order rebuild of %u)\n",
-                    msSince(t0) / kChurnFrames, kDirtyPerFrame, kSprites);
+                    msSince(t0) / kChurnFrames, kDirtyPerFrame, kImages);
     }
 
     // ── E: churn storm — remove + re-create waves (recycling + growth paths) ──
@@ -179,15 +208,15 @@ int main()
         for (int wave = 0; wave < 4; ++wave)
         {
             for (std::uint32_t i = 0; i < 2'000; ++i)
-                canvas.removeSprite(sv.scene_id, handles[wave * 2'000 + i]);
+                removeImage(canvas, sv.scene_id, handles[wave * 2'000 + i]);
             frame();
             for (std::uint32_t i = 0; i < 2'000; ++i)
             {
-                Sprite2DInstanceData d{};
+                Image2DInstanceData d{};
                 d.m[0] = 0.01f; d.m[3] = 0.01f;
                 d.m[4] = 0.f; d.m[5] = 0.f;
-                auto req = canvas.addSprite(sv.scene_id, d, 1.f);
-                req.then([&](const Sprite2DSlotReply& r)
+                auto req = addImage(canvas, sv.scene_id, d, 1.f);
+                req.then([&](const Image2DSlotReply& r)
                 {
                     if (r.status == ECanvas2DCreateStatus::Ok) ++wave_created; else ++wave_failed;
                 });

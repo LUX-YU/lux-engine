@@ -1,20 +1,29 @@
 #include "panels/FlowGraphPanel.hpp"
 
+#include <algorithm>
+#include <cstring>
+#include <filesystem>
 #include <unordered_map>
 #include <utility>
 
 #include <imgui.h>
+#include <imgui_stdlib.h>
 
 #include <lux/engine/editor/panels/ConstantEditor.hpp>
-#include <lux/engine/flowforge/ControlNode.hpp>
-#include <lux/engine/flowforge/FunctionalNode.hpp>
-#include <lux/engine/flowforge/ObjectNode.hpp>
+#include <lux/engine/editor/AssetRegistry.hpp>
+#include <lux/engine/editor/app/EditorEvents.hpp>
+#include <lux/engine/authoring/assets/FlowGraphAsset.hpp>
+#include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/authoring/flowforge/ControlNode.hpp>
+#include <lux/engine/authoring/flowforge/FunctionalNode.hpp>
+#include <lux/engine/authoring/flowforge/ObjectNode.hpp>
 #include <lux/engine/ecs/DebugDraw.hpp>
+#include <lux/engine/ecs/script/systems/ScriptEventRegistry.hpp>   // ADR v2 §3.6: Event palette entries are data
 
 #if LUX_FLOWFORGE_HAS_MLIR
-#include <imgui_stdlib.h>
-#include <lux/engine/flowforge/mlir/IR.hpp>
-#include <lux/engine/flowforge/mlir/Passes.hpp>
+#include <lux/engine/toolchain/flowforge/mlir/IR.hpp>
+#include <lux/engine/toolchain/flowforge/mlir/Passes.hpp>
 #endif
 
 namespace
@@ -94,19 +103,6 @@ namespace lux::editor
             default:
                 return !static_cast<const ff::DataOutPin*>(pin)->linkPins().empty();
             }
-        }
-
-        /// Canvas-position record stored in NodeStorage.user_data — the flow
-        /// domain's editor-metadata slot (persisted by LFGR in P3).
-        struct FlowNodeEditorMeta
-        {
-            gk::GraphVec2 pos{};
-            bool          placed = false;
-        };
-
-        FlowNodeEditorMeta* metaOf(ff::NodeStorage& storage)
-        {
-            return static_cast<FlowNodeEditorMeta*>(storage.user_data.get());
         }
 
         std::uint32_t outPinIndexOf(const ff::Node* owner, const ff::Pin* pin)
@@ -231,19 +227,21 @@ namespace lux::editor
         }
     }
 
+    // Canvas positions live ON the domain node (Node::ui_placed/ui_pos) —
+    // the graph codec persists them with the graph, so a save/load round
+    // trip restores the layout (same model as MaterialGraph).
     std::optional<gk::GraphVec2> FlowGraphView::nodePos(gk::GraphNodeRef node) const
     {
         if (!graph_->hasNode(node.id))
         {
             return std::nullopt;
         }
-        const auto* meta = static_cast<const FlowNodeEditorMeta*>(
-            graph_->getNode(node.id).user_data.get());
-        if (!meta || !meta->placed)
+        const ff::Node* n = graph_->getNode(node.id).node.get();
+        if (!n || !n->ui_placed)
         {
             return std::nullopt;
         }
-        return meta->pos;
+        return gk::GraphVec2{ n->ui_pos[0], n->ui_pos[1] };
     }
 
     void FlowGraphView::setNodePos(gk::GraphNodeRef node, gk::GraphVec2 pos)
@@ -252,17 +250,14 @@ namespace lux::editor
         {
             return;
         }
-        ff::NodeStorage& storage = graph_->getNode(node.id);
-        FlowNodeEditorMeta* meta = metaOf(storage);
-        if (!meta)
+        ff::Node* n = graph_->getNode(node.id).node.get();
+        if (!n)
         {
-            storage.user_data = ff::NodeUserDataPtr(
-                new FlowNodeEditorMeta{},
-                [](void* p) { delete static_cast<FlowNodeEditorMeta*>(p); });
-            meta = metaOf(storage);
+            return;
         }
-        meta->pos    = pos;
-        meta->placed = true;
+        n->ui_pos[0] = pos.x;
+        n->ui_pos[1] = pos.y;
+        n->ui_placed = true;
     }
 
     gk::GraphNodeRef FlowGraphView::addNode(std::string_view template_id)
@@ -466,6 +461,13 @@ namespace lux::editor
         {
             seq->removeExecOutPin();
         }
+        else
+        {
+            return;
+        }
+        // Dynamic pins self-assign pointer-based ids at construction —
+        // re-derive every pin id from the node's STABLE id (ordinals shifted).
+        seq->assignStableId(seq->id());
     }
 
     void FlowSchema::drawNodeBody(gk::GraphNodeRef node, gk::IGraphView&,
@@ -617,6 +619,41 @@ namespace lux::editor
             registry_.registerNode(std::move(info));
         }
 
+        // ── Event entries: DATA-DRIVEN from the ScriptEventRegistry (the node
+        // palette is generated from data rather than hardcoded). Every
+        // registered script event — the lifecycle trio plus whatever modules
+        // register (Physics2D collision, …) — becomes a palette node
+        // automatically; the node's name + typed pins ARE the dispatch
+        // contract the Play backends bind by.
+        {
+            const auto& evreg = lux::ecs::scriptEventRegistry();
+            for (lux::ecs::ScriptEventId id = 0; id < evreg.count(); ++id)
+            {
+                const auto& desc = evreg.desc(id);
+                auto info      = std::make_unique<ff::NodeCreatInfo>();
+                info->name     = desc.name;
+                info->category = "Event";
+                std::string ev_name = desc.name;
+                std::vector<ff::FuncArgInfo> params;
+                params.reserve(desc.params.size());
+                for (const auto& p : desc.params)
+                    params.push_back(ff::FuncArgInfo{ p.type, p.name });
+                info->creator =
+                    [ev_name, params]() -> std::unique_ptr<ff::Node>
+                {
+                    auto params_copy = params;
+                    return std::make_unique<ff::OnEventNode>(
+                        ev_name, std::move(params_copy));
+                };
+                registry_.registerNode(std::move(info));
+            }
+        }
+
+        // Every reflected free function with a graph-mappable signature
+        // becomes a palette entry (called through its invoker trampoline —
+        // no hand-written RefFunction needed).
+        registry_.populateFromReflection(lux::meta::ReflectionRegistry::instance());
+
 #if LUX_FLOWFORGE_HAS_MLIR
         ir_context_   = std::make_unique<ff::IRContext>();
         mlir_builder_ = std::make_unique<ff::MLIRBuilder>(ir_context_.get());
@@ -627,20 +664,161 @@ namespace lux::editor
 
     FlowGraphPanel::~FlowGraphPanel() = default;
 
+    void FlowGraphPanel::setAssetServices(AssetRegistry* registry,
+                                          std::shared_ptr<lux::asset::AssetManager> manager,
+                                          lux::events::DomainEvents* events)
+    {
+        asset_registry_ = registry;
+        asset_manager_  = std::move(manager);
+        events_         = events;
+    }
+
+    bool FlowGraphPanel::saveAsAsset(const std::string& name, std::string* err)
+    {
+        const auto fail = [&](std::string m) { if (err) *err = std::move(m); return false; };
+        if (!asset_manager_ || !asset_registry_) return fail("asset services not wired");
+        if (asset_registry_->root().empty())     return fail("no project open");
+        if (name.empty())                        return fail("name required");
+
+        // Deep-copy the working graph into the asset payload (FlowGraph is
+        // move-only; the panel keeps editing its own copy).
+        auto payload = std::make_unique<lux::authoring::FlowGraphData>();
+        std::string cerr_msg;
+        if (!lux::authoring::FlowGraphSerDeser::cloneGraph(
+                graph_, payload->graph, &cerr_msg))
+            return fail("graph is not serializable: " + cerr_msg);
+
+        auto asset = asset_manager_->createAssetSeeded<lux::authoring::FlowGraphAsset>(
+            /*seed=*/std::string_view{}, std::move(payload));
+        if (auto* mi = asset->mutableInfo(); mi)
+        {
+            const std::size_t n = std::min(name.size(), sizeof(mi->display_name) - 1);
+            std::memcpy(mi->display_name, name.data(), n);
+            mi->display_name[n] = '\0';
+        }
+        const auto id = asset->id();
+        if (!asset_manager_->registerAsset(std::move(asset)))
+            return fail("registerAsset failed (id collision?)");
+
+        const std::filesystem::path dest =
+            asset_registry_->root() / "FlowGraphs" / (name + ".luxasset");
+        lux::authoring::FlowGraphSerDeser ser(asset_manager_);
+        if (const auto ec = ser.exportAsLuxAsset(id, dest);
+            ec != lux::asset::EAssetError::SUCCESS)
+            return fail("write failed (err=" + std::to_string(static_cast<int>(ec)) + ")");
+
+        if (events_)
+        {
+            events_->publish(EditorAssetChanged{
+                id,
+                EEditorAssetChange::ADDED,
+                asset_manager_->contentRevision(id),
+                dest
+            });
+        }
+        // Background precompile on save: warm the AOT cache so the next Play
+        // of this graph hits a ready dll instead of the sync-compile fallback.
+        if (precompile_hook_) precompile_hook_(*asset_manager_, id);
+        return true;
+    }
+
+    void FlowGraphPanel::openAsset(const lux::asset::asset_id_t& id)
+    {
+        if (!asset_manager_ || id.is_nil()) return;
+        const auto* info = asset_manager_->queryInfo(id);
+        if (!info || info->type != lux::asset::EAssetType::FLOW_GRAPH) return;
+        const auto* a =
+            asset_manager_->fetchAssetAs<lux::authoring::FlowGraphAsset>(id);
+        if (!a || !a->data()) return;
+
+        // The asset OWNS the graph — clone it into an editable working copy
+        // (FlowGraph is move-only; don't alias the asset's data).
+        lux::flowforge::FlowGraph copy;
+        std::string err;
+        if (!lux::authoring::FlowGraphSerDeser::cloneGraph(
+                a->data()->graph, copy, &err))
+        {
+            status_ = "open failed: " + err;
+            return;
+        }
+
+        graph_ = std::move(copy);
+        editor_.bind(&view_, &schema_);   // full reset (the view lenses graph_)
+        status_ = "opened flow graph";
+#if LUX_FLOWFORGE_HAS_MLIR
+        ir_buffer_.clear();
+        run_status_.clear();
+#endif
+        g_flow_run_output.clear();
+    }
+
+    // Modal "name + Save" popup. Drawn OUTSIDE the node-editor canvas (in paint()).
+    void FlowGraphPanel::drawSavePopup()
+    {
+        constexpr const char* kId = "Save Flow Graph##flowgraph";
+        if (save_popup_open_)
+        {
+            ImGui::OpenPopup(kId);
+            save_popup_open_ = false;
+        }
+        const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+        ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        if (!ImGui::BeginPopupModal(kId, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            return;
+
+        ImGui::TextUnformatted("Asset name:");
+        ImGui::SetNextItemWidth(300.0f);
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        const bool enter = ImGui::InputText("##flowsavename", &save_name_,
+                                            ImGuiInputTextFlags_EnterReturnsTrue);
+        if (!save_status_.empty())
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", save_status_.c_str());
+
+        const bool do_save = ImGui::Button("Save", ImVec2(120.0f, 0.0f)) || enter;
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f)))
+        {
+            save_status_.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        if (do_save)
+        {
+            std::string e;
+            if (saveAsAsset(save_name_, &e))
+            {
+                status_ = "saved flow graph '" + save_name_ + "'";
+                save_status_.clear();
+                ImGui::CloseCurrentPopup();
+            }
+            else
+            {
+                save_status_ = e;
+            }
+        }
+        ImGui::EndPopup();
+    }
+
     void FlowGraphPanel::buildHelloWorldGraph()
     {
         graph_ = ff::FlowGraph(); // fresh document (move-assign; address stable)
 
         auto start = std::make_unique<ff::StartNode>();
-        auto print = std::make_unique<ff::NativeFuncCall>(printRefFunction());
+        // Print goes through the registry creator so the node carries its
+        // creator name — the graph serializer re-instantiates native calls
+        // by that name, so a directly-constructed Print wouldn't save.
+        auto* print_info = registry_.findNodeByName("Print");
+        auto print = print_info && print_info->creator
+            ? print_info->creator()
+            : std::unique_ptr<ff::Node>(std::make_unique<ff::NativeFuncCall>(printRefFunction()));
+        auto* print_call = static_cast<ff::NativeFuncCall*>(print.get());
         auto ret   = std::make_unique<ff::ReturnNode>();
 
         ff::LastLink last{};
-        start->execOutPin().linkTo(&print->execInPin(), last);
-        print->execOutPin().linkTo(&ret->execInPin(), last);
-        if (!print->dataInPins().empty())
+        start->execOutPin().linkTo(&print_call->execInPin(), last);
+        print_call->execOutPin().linkTo(&ret->execInPin(), last);
+        if (!print_call->dataInPins().empty())
         {
-            print->dataInPins()[0]->setConstantData(lux::meta::RuntimeObject(42));
+            print_call->dataInPins()[0]->setConstantData(lux::meta::RuntimeObject(42));
         }
 
         const auto i_start = graph_.addNodes(std::move(start));
@@ -670,6 +848,11 @@ namespace lux::editor
             buildHelloWorldGraph(); // every new FlowGraph starts as Hello World
         }
         ImGui::SameLine();
+        if (ImGui::SmallButton("Save"))
+        {
+            save_popup_open_ = true;
+        }
+        ImGui::SameLine();
         ImGui::BeginDisabled(!commands.canUndo());
         if (ImGui::SmallButton("Undo"))
         {
@@ -693,19 +876,28 @@ namespace lux::editor
                             graph_.nodes().size());
 
 #if LUX_FLOWFORGE_HAS_MLIR
+        const auto describe_build_error = [&](const ff::FlowForgeFailure& e) {
+            std::string msg = e.message;
+            if (e.node_id != 0)
+            {
+                if (const auto* n = graph_.findNodeById(e.node_id))
+                    msg += " [node '" + n->name() + "' #"
+                        + std::to_string(e.node_id) + "]";
+            }
+            return msg;
+        };
+
         ImGui::SameLine();
         if (ImGui::SmallButton("Generate IR"))
         {
-            try
+            auto built = mlir_builder_->generateIR(graph_);
+            if (built)
             {
-                if (auto ir = mlir_builder_->generateIR(graph_))
-                {
-                    ir_buffer_ = ir->toString();
-                }
+                ir_buffer_ = built.value()->toString();
             }
-            catch (const std::exception& e)
+            else
             {
-                ir_buffer_ = std::string("Error: ") + e.what();
+                ir_buffer_ = "Error: " + describe_build_error(built.error());
             }
         }
         ImGui::SameLine();
@@ -715,13 +907,19 @@ namespace lux::editor
             // dialect by the JIT path, so each run gets its own IR; the pane
             // keeps the human-readable FlowForge dialect form).
             g_flow_run_output.clear();
-            try
+            auto built = mlir_builder_->generateIR(graph_);
+            if (!built)
             {
-                auto ir    = mlir_builder_->generateIR(graph_);
+                run_status_ = "Run failed: "
+                    + describe_build_error(built.error());
+            }
+            else
+            {
+                auto& ir = built.value();
                 ir_buffer_ = ir->toString();
                 // Host symbols for the graph's NATIVE_FUNC_CALL externs —
                 // names must match the RefFunction invokable names above.
-                const int rc = ff::runMainJIT(
+                auto executed = ff::runMainJIT(
                     *ir,
                     { ff::JitNativeSymbol{ "lux_flow_print",
                                            reinterpret_cast<void*>(&lux_flow_print) },
@@ -729,11 +927,12 @@ namespace lux::editor
                                            reinterpret_cast<void*>(&lux_debug_draw_line) },
                       ff::JitNativeSymbol{ "lux_debug_draw_clear",
                                            reinterpret_cast<void*>(&lux_debug_draw_clear) } });
-                run_status_ = "main() returned " + std::to_string(rc);
-            }
-            catch (const std::exception& e)
-            {
-                run_status_ = std::string("Run failed: ") + e.what();
+                if (executed)
+                    run_status_ = "main() returned "
+                        + std::to_string(executed.value());
+                else
+                    run_status_ = "Run failed: "
+                        + describe_build_error(executed.error());
             }
         }
         if (!ir_buffer_.empty() || !run_status_.empty())
@@ -747,21 +946,115 @@ namespace lux::editor
             }
         }
 
-        if (!run_status_.empty())
+        if (!run_status_.empty() || !g_flow_run_output.empty())
         {
-            ImGui::TextUnformatted(run_status_.c_str());
-        }
-        for (const std::string& line : g_flow_run_output)
-        {
-            ImGui::BulletText("%s", line.c_str());
+            ImGui::SeparatorText("Run Output");
+            if (ImGui::BeginChild(
+                    "##flow_run_output",
+                    ImVec2(-1.0f, 86.0f),
+                    ImGuiChildFlags_Borders))
+            {
+                if (!run_status_.empty())
+                {
+                    const bool failed = run_status_.starts_with("Run failed:");
+                    if (failed)
+                        ImGui::PushStyleColor(
+                            ImGuiCol_Text,
+                            ImVec4(0.95f, 0.35f, 0.35f, 1.0f)
+                        );
+                    ImGui::TextUnformatted(run_status_.c_str());
+                    if (failed)
+                        ImGui::PopStyleColor();
+                }
+                if (g_flow_run_output.empty() &&
+                    !run_status_.starts_with("Run failed:"))
+                    ImGui::TextDisabled("(no Print output)");
+                for (const std::string& line : g_flow_run_output)
+                    ImGui::TextUnformatted(line.c_str());
+            }
+            ImGui::EndChild();
         }
         if (!ir_buffer_.empty())
         {
-            ImGui::InputTextMultiline(
-                "##flow_ir", &ir_buffer_, ImVec2(-1.0f, 140.0f),
-                ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AllowTabInput);
+            if (ImGui::CollapsingHeader("Generated IR"))
+                ImGui::InputTextMultiline(
+                    "##flow_ir", &ir_buffer_, ImVec2(-1.0f, 140.0f),
+                    ImGuiInputTextFlags_ReadOnly |
+                        ImGuiInputTextFlags_AllowTabInput);
         }
 #endif
+
+        // ── graph variables (M-A minimal panel) ─────────────────────────────
+        if (ImGui::CollapsingHeader("Variables"))
+        {
+            // Spawning Get/Set nodes goes straight into the domain graph and
+            // re-binds the editor (full id-map re-sync). That DROPS the undo
+            // history — acceptable for the v1 variable panel; the proper
+            // command-stack integration lands with the asset-document work.
+            auto spawn_variable_node =
+                [&](const ff::FlowGraph::GraphVariable& var, bool setter) {
+                    ff::DataPinInfo info{ var.name, var.type };
+                    const size_t idx = setter
+                        ? graph_.addNodes(std::make_unique<ff::SetVariableNode>(var.id, info))
+                        : graph_.addNodes(std::make_unique<ff::GetVariableNode>(var.id, info));
+                    view_.setNodePos(gk::GraphNodeRef{ idx },
+                                     gk::GraphVec2{ 120.0f, 120.0f });
+                    editor_.bind(&view_, &schema_);
+                };
+
+            auto add_variable = [&](const char* base,
+                                    const lux::meta::RefType* type,
+                                    lux::meta::RuntimeObject def) {
+                graph_.addVariable(
+                    std::string(base) + std::to_string(graph_.variables().size() + 1),
+                    type, std::move(def));
+            };
+            if (ImGui::SmallButton("+ Int"))
+                add_variable("int_var_", &lux::meta::ref_type_of_v<int32_t>,
+                             lux::meta::RuntimeObject(int32_t{ 0 }));
+            ImGui::SameLine();
+            if (ImGui::SmallButton("+ Float"))
+                add_variable("float_var_", &lux::meta::ref_type_of_v<float>,
+                             lux::meta::RuntimeObject(float{ 0.0f }));
+            ImGui::SameLine();
+            if (ImGui::SmallButton("+ Bool"))
+                add_variable("bool_var_", &lux::meta::ref_type_of_v<bool>,
+                             lux::meta::RuntimeObject(bool{ false }));
+
+            uint64_t remove_id = 0;
+            for (auto& var : graph_.variables())
+            {
+                ImGui::PushID(static_cast<int>(var.id));
+                ImGui::SetNextItemWidth(120.0f);
+                ImGui::InputText("##name", &var.name);
+                ImGui::SameLine();
+                ImGui::TextDisabled("%.*s",
+                    var.type ? static_cast<int>(var.type->name.size()) : 1,
+                    var.type ? var.type->name.data() : "?");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(110.0f);
+                ConstantEditor::editConstant("##default", var.default_value);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Get")) spawn_variable_node(var, false);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Set")) spawn_variable_node(var, true);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("X")) remove_id = var.id;
+                ImGui::PopID();
+            }
+            if (remove_id != 0)
+            {
+                // Nodes still referencing the variable stay in the graph;
+                // compiling reports "graph variable not found" against them.
+                graph_.removeVariable(remove_id);
+            }
+        }
+
+        if (!status_.empty())
+        {
+            ImGui::TextDisabled("%s", status_.c_str());
+        }
+        drawSavePopup();
 
         ImGui::Separator();
 

@@ -1,34 +1,37 @@
 #include <lux/engine/editor/import/AssetImporter.hpp>
 
-#include <lux/engine/asset/AssetManager.hpp>
-#include <lux/engine/asset/AnimationClipAsset.hpp>
-#include <lux/engine/asset/AnimationClipSerDeser.hpp>
-#include <lux/engine/asset/AssetSerDeser.hpp>      // createSerDeserFor
-#include <lux/engine/asset/AssetHeaderProbe.hpp>   // readAssetHeader / assetTypeOfMagic
-#include <lux/engine/asset/MaterialSerDeser.hpp>
-#include <lux/engine/asset/MaterialInstanceAsset.hpp>
-#include <lux/engine/asset/MaterialInstanceSerDeser.hpp>
-#include <lux/engine/asset/MeshAsset.hpp>
-#include <lux/engine/asset/MeshSerDeser.hpp>
-#include <lux/engine/asset/ModelAsset.hpp>
-#include <lux/engine/asset/ModelSerDeser.hpp>
-#include <lux/engine/asset/SkeletonAsset.hpp>
-#include <lux/engine/asset/SkeletonSerDeser.hpp>
-#include <lux/engine/asset/TextureAsset.hpp>
-#include <lux/engine/asset/TextureSerDeser.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/resource/asset/AnimationClipAsset.hpp>
+#include <lux/engine/resource/asset/AnimationClipSerDeser.hpp>
+#include <lux/engine/resource/asset/AssetSerDeser.hpp>
+#include <lux/engine/resource/asset/AssetHeaderProbe.hpp>   // readAssetHeader / assetTypeOfMagic
+#include <lux/engine/resource/asset/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/MaterialInstanceSerDeser.hpp>
+#include <lux/engine/resource/asset/ScriptSerDeser.hpp>     // .lua -> SCRIPT asset
+#include <lux/engine/resource/asset/MeshAsset.hpp>
+#include <lux/engine/resource/asset/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/ModelAsset.hpp>
+#include <lux/engine/toolchain/asset/model/ModelImporter.hpp>
+#include <lux/engine/resource/asset/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/TextureAsset.hpp>
+#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
+#include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
 
 // import->graph (#50): editor/cook-tier auto-conversion of imported materials to
 // baked graph materials (always built with the editor — shadergen_glsl is forced on).
-#include "import/MaterialGraphBake.hpp"
-#include <lux/engine/description/material_graph/MaterialGraph.hpp>
-#include <lux/engine/shadergen/material/MaterialToGraph.hpp>
+#include <lux/engine/toolchain/asset/material/MaterialGraphCompiler.hpp>
+#include <lux/engine/authoring/assets/material/MaterialGraph.hpp>
+#include <lux/engine/toolchain/asset/material/MaterialToGraph.hpp>
 
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <format>
+#include <lux/engine/platform/FormatCompat.h>
 #include <fstream>
 #include <numbers>
 #include <string_view>
@@ -50,16 +53,37 @@ namespace lux::editor
             return out;
         }
 
-        bool isModelExt(std::string_view ext)
+        // ── importer registry: the SINGLE source of truth for "which
+        // extensions are importable and how" (editor ADR §7.3 audit 7.1/7.2).
+        // Adding a source family (audio, font) = one row here; the dispatch,
+        // the two public predicates, AND the file-dialog filters all derive
+        // from it, so they can never drift apart again.
+        enum class EImporterKind : std::uint8_t { Model, Texture, Script };
+        struct ImporterEntry { std::string_view ext; EImporterKind kind; };
+        constexpr ImporterEntry kImporters[] = {
+            {".glb", EImporterKind::Model},  {".gltf", EImporterKind::Model},
+            {".fbx", EImporterKind::Model},  {".obj",  EImporterKind::Model},
+            {".png", EImporterKind::Texture},{".jpg",  EImporterKind::Texture},
+            {".jpeg",EImporterKind::Texture},{".tga",  EImporterKind::Texture},
+            {".bmp", EImporterKind::Texture},{".dds",  EImporterKind::Texture},
+            {".ktx2",EImporterKind::Texture},{".hdr",  EImporterKind::Texture},
+            // Lua source scripts become SCRIPT assets (LuaSourceScript).
+            {".lua", EImporterKind::Script},
+        };
+        [[nodiscard]] const ImporterEntry* importerFor(std::string_view ext) noexcept
         {
-            return ext == ".glb" || ext == ".gltf" ||
-                   ext == ".fbx" || ext == ".obj";
+            for (const auto& e : kImporters) if (e.ext == ext) return &e;
+            return nullptr;
         }
-        bool isTextureExt(std::string_view ext)
+        bool isModelExt(std::string_view ext) noexcept
         {
-            return ext == ".png"  || ext == ".jpg" || ext == ".jpeg" ||
-                   ext == ".tga"  || ext == ".bmp" || ext == ".dds"  ||
-                   ext == ".ktx2" || ext == ".hdr";
+            const auto* e = importerFor(ext);
+            return e && e->kind == EImporterKind::Model;
+        }
+        bool isTextureExt(std::string_view ext) noexcept
+        {
+            const auto* e = importerFor(ext);
+            return e && e->kind == EImporterKind::Texture;
         }
 
         // Make a sanitized filename out of an arbitrary asset display
@@ -137,7 +161,7 @@ namespace lux::editor
             if (err != lux::asset::EAssetError::SUCCESS)
             {
                 report.result  = ImportResult::WriteFailed;
-                report.message = std::format(
+                report.message = lux::format(
                     "[AssetImporter] failed to write {} '{}' (err={})",
                     category_label, file.string(), static_cast<int>(err));
                 std::fprintf(stderr, "%s\n", report.message.c_str());
@@ -169,17 +193,17 @@ namespace lux::editor
             if (mkdir_ec)
             {
                 report.result  = ImportResult::DestUnwritable;
-                report.message = std::format(
+                report.message = lux::format(
                     "[AssetImporter] mkdir failed: {} ({})",
                     folder.string(), mkdir_ec.message());
                 return report;
             }
 
             // ── Phase 1: Assimp → in-memory ModelAsset + sub-assets ──────
-            // ModelSerDeser owns three loaders internally; importFromFile
+            // ModelImporter owns its sub-asset codecs; importFromFile
             // registers every produced asset into `manager` and returns the
             // top-level ModelAsset.
-            lux::asset::ModelSerDeser model_ser(manager);
+            lux::toolchain::ModelImporter model_importer(manager);
             // Deterministic ids: derive every sub-asset id from the canonical
             // SOURCE path (tech-debt §2.1). Re-importing the same source =>
             // same canonical path => same ids, so the on-disk reference graph
@@ -195,7 +219,8 @@ namespace lux::editor
                 auto canon = std::filesystem::weakly_canonical(source, can_ec);
                 if (can_ec || canon.empty())
                     canon = source.lexically_normal();
-                model_ser.config().deterministic_seed = canon.generic_string();
+                model_importer.config().deterministic_seed =
+                    canon.generic_string();
             }
 
             // Map Import Options → bake config. Euler degrees → quaternion
@@ -208,12 +233,13 @@ namespace lux::editor
                     Eigen::AngleAxisf(options.pre_rotate_z_deg * kDeg2Rad, Eigen::Vector3f::UnitZ()) *
                     Eigen::AngleAxisf(options.pre_rotate_y_deg * kDeg2Rad, Eigen::Vector3f::UnitY()) *
                     Eigen::AngleAxisf(options.pre_rotate_x_deg * kDeg2Rad, Eigen::Vector3f::UnitX());
-                model_ser.config().pre_rotate        = q;
-                model_ser.config().uniform_scale     =
+                model_importer.config().pre_rotate        = q;
+                model_importer.config().uniform_scale     =
                     (options.uniform_scale > 0.0f) ? options.uniform_scale : 1.0f;
-                model_ser.config().import_animations = options.import_animations;
+                model_importer.config().import_animations =
+                    options.import_animations;
             }
-            auto imported = model_ser.importFromFile(source);
+            auto imported = model_importer.importFromFile(source);
             if (!imported)
             {
                 report.result  = ImportResult::ImportFailed;
@@ -223,12 +249,12 @@ namespace lux::editor
                 // numeric code. True re-import (replace CPU data + evict the
                 // render bridge's GPU upload cache) is tech-debt §1.9.
                 if (imported.error() == lux::asset::EAssetError::ASSET_ALREADY_EXIST)
-                    report.message = std::format(
+                    report.message = lux::format(
                         "[AssetImporter] '{}' is already imported — re-import of "
                         "edited sources is not yet supported (§1.9).",
                         source.filename().string());
                 else
-                    report.message = std::format(
+                    report.message = lux::format(
                         "[AssetImporter] importFromFile failed (err={})",
                         static_cast<int>(imported.error()));
                 std::fprintf(stderr, "%s\n", report.message.c_str());
@@ -246,7 +272,7 @@ namespace lux::editor
             // own info section), but writing the manifest LAST means a
             // crash mid-import leaves a manifest-free directory that
             // re-import can safely overwrite without orphan manifests.
-            lux::asset::TextureSerDeser       tex_ser(manager);
+            lux::asset::TextureCodec          tex_ser(manager);
             lux::asset::MeshSerDeser          mesh_ser(manager);
             lux::asset::SkeletonSerDeser      skel_ser(manager);
             lux::asset::AnimationClipSerDeser clip_ser(manager);
@@ -256,7 +282,7 @@ namespace lux::editor
             const std::uint64_t src_mtime = sourceMtimeTicks(source);
 
             // Gather every TextureAsset id referenced by any imported-material desc
-            // (W5b: ModelSerDeser carries the per-desc texture-uuid lists on the model,
+            // ModelImporter carries per-desc texture UUID lists on the model,
             // keyed by desc ordinal; there are no closure MaterialAssets anymore).
             std::vector<lux::asset::asset_id_t> texture_ids;
             for (const auto& uuids : model->importedMaterialTextureUuids())
@@ -268,7 +294,7 @@ namespace lux::editor
             for (size_t i = 0; i < texture_ids.size(); ++i)
             {
                 const auto p = folder /
-                    std::format("Texture_{}.luxasset", i);
+                    lux::format("Texture_{}.luxasset", i);
                 if (!writeSub(tex_ser, *manager, texture_ids[i], p, "texture",
                               src_str, src_mtime, report))
                     return report;
@@ -278,7 +304,7 @@ namespace lux::editor
             for (size_t i = 0; i < model->meshAssetIds().size(); ++i)
             {
                 const auto p = folder /
-                    std::format("Mesh_{}.luxasset", i);
+                    lux::format("Mesh_{}.luxasset", i);
                 if (!writeSub(mesh_ser, *manager, model->meshAssetIds()[i],
                               p, "mesh", src_str, src_mtime, report))
                     return report;
@@ -293,14 +319,14 @@ namespace lux::editor
             for (size_t i = 0; i < model->animationClipAssetIds().size(); ++i)
             {
                 const auto p = folder /
-                    std::format("Anim_{}.luxasset", i);
+                    lux::format("Anim_{}.luxasset", i);
                 if (!writeSub(clip_ser, *manager, model->animationClipAssetIds()[i],
                               p, "animation clip", src_str, src_mtime, report))
                     return report;
             }
 
             // ── Phase 2.5: import->graph (W5b) ───────────────────────────
-            // ModelSerDeser emits ImportedMaterialDesc PODs (no closure MaterialAsset).
+            // ModelImporter emits ImportedMaterialDesc PODs.
             // Convert each to a graph + bake a GRAPH material, then FILL the model's
             // (empty) material-uuid vector positionally (== ModelMeshInfo::material_index)
             // so the Phase-3 manifest records MATERIAL uuids and the unified
@@ -333,12 +359,18 @@ namespace lux::editor
                     // graph texture slot s == ImportedTextureRef::texture_index == desc_tex[i][s].
                     std::vector<lux::asset::asset_id_t> slot_ids = desc_tex[i];
 
-                    const auto gp = folder / std::format("GraphMaterial_{}.luxasset", i);
+                    const auto gp = folder / lux::format("GraphMaterial_{}.luxasset", i);
                     const std::string gname =
-                        std::format("{}_GraphMat_{}", source.stem().string(), i);
+                        lux::format("{}_GraphMat_{}", source.stem().string(), i);
                     const std::string seed = canon_seed + "|graphmat|" + std::to_string(i);
 
-                    auto graph_id = bakeGraphMaterial(manager, graph, slot_ids, gname, gp, seed);
+                    auto graph_id = lux::toolchain::bakeGraphMaterial(
+                        manager,
+                        graph,
+                        slot_ids,
+                        gname,
+                        gp,
+                        seed);
                     if (!graph_id)
                     {
                         std::fprintf(stderr,
@@ -357,12 +389,12 @@ namespace lux::editor
                 (source.stem().string() + ".luxmodel");
             stampInfo(*manager, model_id, source.stem().string(),
                       src_str, src_mtime);
-            const auto manifest_err = model_ser.exportAsLuxAsset(
+            const auto manifest_err = model_importer.exportAsLuxAsset(
                 model_id, model_path);
             if (manifest_err != lux::asset::EAssetError::SUCCESS)
             {
                 report.result  = ImportResult::WriteFailed;
-                report.message = std::format(
+                report.message = lux::format(
                     "[AssetImporter] failed to write .luxmodel '{}' (err={})",
                     model_path.string(),
                     static_cast<int>(manifest_err));
@@ -372,7 +404,7 @@ namespace lux::editor
             report.written.push_back(model_path);
             report.primary_asset = model_id;
             report.result        = ImportResult::OK;
-            report.message       = std::format(
+            report.message       = lux::format(
                 "[AssetImporter] '{}' -> {} files under '{}' "
                 "(meshes={}, materials={}, textures={}, skeleton={}, clips={})",
                 source.filename().string(),
@@ -401,13 +433,13 @@ namespace lux::editor
             if (mkdir_ec)
             {
                 report.result  = ImportResult::DestUnwritable;
-                report.message = std::format(
+                report.message = lux::format(
                     "[AssetImporter] mkdir failed: {} ({})",
                     folder.string(), mkdir_ec.message());
                 return report;
             }
 
-            lux::asset::TextureSerDeser ser(manager);
+            lux::toolchain::TextureImporter ser(manager);
             // Deterministic id keyed on the canonical SOURCE path (tech-debt
             // §2.1), NOT the sanitized stem: distinct sources whose stems
             // sanitize to the same string (wood.png vs "wood ?.png") must not
@@ -419,12 +451,12 @@ namespace lux::editor
             if (can_ec || canon.empty())
                 canon = source.lexically_normal();
             ser.config().deterministic_seed =
-                std::format("{}|texture", canon.generic_string());
+                lux::format("{}|texture", canon.generic_string());
             auto imported = ser.importFromFile(source);
             if (!imported)
             {
                 report.result  = ImportResult::ImportFailed;
-                report.message = std::format(
+                report.message = lux::format(
                     "[AssetImporter] texture importFromFile failed (err={})",
                     static_cast<int>(imported.error()));
                 std::fprintf(stderr, "%s\n", report.message.c_str());
@@ -436,7 +468,61 @@ namespace lux::editor
                           source.string(), sourceMtimeTicks(source), report))
                 return report;
             report.primary_asset = tex_id;
-            report.message       = std::format(
+            report.message       = lux::format(
+                "[AssetImporter] '{}' -> '{}'",
+                source.filename().string(), p.string());
+            std::fprintf(stderr, "%s\n", report.message.c_str());
+            return report;
+        }
+
+        // .lua -> SCRIPT asset. Mirrors importTextureFile: import
+        // through the SerDeser (deterministic id keyed on the canonical source
+        // path, so RE-IMPORT keeps the id — that is the hot-reload identity),
+        // then persist the .luxasset under Scripts/.
+        ImportReport importScriptFile(
+            const std::filesystem::path& source,
+            const std::filesystem::path& dest_root,
+            std::shared_ptr<lux::asset::AssetManager> manager)
+        {
+            ImportReport report;
+
+            const auto folder = dest_root / "Scripts";
+            std::error_code mkdir_ec;
+            std::filesystem::create_directories(folder, mkdir_ec);
+            if (mkdir_ec)
+            {
+                report.result  = ImportResult::DestUnwritable;
+                report.message = lux::format(
+                    "[AssetImporter] mkdir failed: {} ({})",
+                    folder.string(), mkdir_ec.message());
+                return report;
+            }
+
+            lux::asset::ScriptSerDeser ser(manager);
+            const auto stem = sanitizeFilename(source.stem().string(), "Script");
+            std::error_code can_ec;
+            auto canon = std::filesystem::weakly_canonical(source, can_ec);
+            if (can_ec || canon.empty())
+                canon = source.lexically_normal();
+            ser.config().deterministic_seed =
+                lux::format("{}|script", canon.generic_string());
+            auto imported = ser.importFromFile(source);
+            if (!imported)
+            {
+                report.result  = ImportResult::ImportFailed;
+                report.message = lux::format(
+                    "[AssetImporter] script importFromFile failed (err={})",
+                    static_cast<int>(imported.error()));
+                std::fprintf(stderr, "%s\n", report.message.c_str());
+                return report;
+            }
+            const auto script_id = imported.value().second;
+            const auto p = folder / (stem + ".luxasset");
+            if (!writeSub(ser, *manager, script_id, p, "script",
+                          source.string(), sourceMtimeTicks(source), report))
+                return report;
+            report.primary_asset = script_id;
+            report.message       = lux::format(
                 "[AssetImporter] '{}' -> '{}'",
                 source.filename().string(), p.string());
             std::fprintf(stderr, "%s\n", report.message.c_str());
@@ -444,15 +530,17 @@ namespace lux::editor
         }
     } // namespace
 
-    bool isImportableExtension(std::string_view extension)
-    {
-        const auto lower = toLowerAscii(extension);
-        return isModelExt(lower) || isTextureExt(lower);
-    }
-
     bool isModelExtension(std::string_view extension)
     {
         return isModelExt(toLowerAscii(extension));
+    }
+
+    std::vector<std::string_view> importableExtensions()
+    {
+        std::vector<std::string_view> out;
+        out.reserve(std::size(kImporters));
+        for (const auto& e : kImporters) out.push_back(e.ext);
+        return out;
     }
 
     ImportReport importExternalFile(
@@ -466,7 +554,7 @@ namespace lux::editor
         if (!std::filesystem::exists(source))
         {
             report.result  = ImportResult::SourceNotFound;
-            report.message = std::format(
+            report.message = lux::format(
                 "[AssetImporter] source not found: '{}'", source.string());
             return report;
         }
@@ -478,13 +566,21 @@ namespace lux::editor
         }
 
         const auto ext = toLowerAscii(source.extension().string());
-        if (isModelExt(ext))
-            return importModelFile(source, dest_root, std::move(manager), options);
-        if (isTextureExt(ext))
-            return importTextureFile(source, dest_root, std::move(manager));
+        if (const auto* e = importerFor(ext))
+        {
+            switch (e->kind)
+            {
+            case EImporterKind::Model:
+                return importModelFile(source, dest_root, std::move(manager), options);
+            case EImporterKind::Texture:
+                return importTextureFile(source, dest_root, std::move(manager));
+            case EImporterKind::Script:
+                return importScriptFile(source, dest_root, std::move(manager));
+            }
+        }
 
         report.result  = ImportResult::UnsupportedFormat;
-        report.message = std::format(
+        report.message = lux::format(
             "[AssetImporter] unsupported extension '{}' for '{}'",
             ext, source.string());
         return report;
@@ -495,7 +591,7 @@ namespace lux::editor
     // -------------------------------------------------------------------------
     //
     // The first time a project opens, the editor's AssetManager is empty
-    // and any .luxscene references inside it would dangle. This walker
+    // and any World-document references inside it would dangle. This walker
     // mounts every persisted asset on disk so subsequent UUID lookups
     // (Inspector field reads, model -> mesh dereferences, ...) succeed.
     //
@@ -509,9 +605,9 @@ namespace lux::editor
         // Dispatch one `.luxasset` (or `.luxmodel`) to its matching SerDeser
         // by inspecting the file header magic — the .luxasset extension alone
         // is ambiguous (one extension covers every asset type). Both the
-        // magic->type table (assetTypeOfMagic) and the type->SerDeser factory
-        // (createSerDeserFor) live in the asset module, so this dispatcher
-        // can never drift from the on-disk format. Returns true when the file
+        // magic->type is a Runtime format primitive; the manager's product
+        // codec factory adds authored formats without coupling Resource to
+        // Editor/Toolchain. Returns true when the file
         // registered into the manager; false on any decode failure (logged).
         // Eager full-load of one file: deserialize info + data and self-register.
         bool registerOneFileEager(const std::filesystem::path& file,
@@ -527,7 +623,7 @@ namespace lux::editor
             }
 
             const auto type = lux::asset::assetTypeOfMagic(probe.magic);
-            auto serdeser   = lux::asset::createSerDeserFor(type, mgr_shared);
+            auto serdeser = mgr_shared->createSerDeser(type, mgr_shared);
             if (!serdeser)
             {
                 std::fprintf(stderr,
@@ -566,7 +662,10 @@ namespace lux::editor
         bool registerOneFileShell(const std::filesystem::path& file,
                                   std::shared_ptr<lux::asset::AssetManager> mgr_shared)
         {
-            auto shell = lux::asset::makeShellFromFile(file);
+            auto shell = lux::asset::makeShellFromFile(
+                mgr_shared->codecCatalog(),
+                file
+            );
             if (!shell.has_value())
             {
                 if (shell.error() == lux::asset::EAssetError::UNSUPPORTED)
@@ -594,6 +693,35 @@ namespace lux::editor
             return true;
         }
     } // namespace
+
+    ImportReport importExternalFileDetached(
+        const std::filesystem::path& source,
+        const std::filesystem::path& dest_root,
+        const ImportOptions& options)
+    {
+        // 池上专用(批H2):散管理器只为物化+写盘,随本调用消亡 —— 产物是
+        // 盘上文件;活账本注册在主线程(registerImportedFiles)。散管理器在
+        // 池线程构造,assertLedgerThread 的锚点即池线程,全程自洽。
+        auto scratch = std::make_shared<lux::asset::AssetManager>(
+            lux::authoring::authoringAssetCodecCatalog()
+        );
+        return importExternalFile(source, dest_root, std::move(scratch), options);
+    }
+
+    std::size_t registerImportedFiles(
+        const std::vector<std::filesystem::path>& files,
+        std::shared_ptr<lux::asset::AssetManager> manager)
+    {
+        if (!manager) return 0;
+        std::size_t ok = 0;
+        for (const auto& f : files)
+        {
+            const auto ext = f.extension().string();
+            if (ext != ".luxasset" && ext != ".luxmodel") continue;
+            if (registerOneFileShell(f, manager)) ++ok;
+        }
+        return ok;
+    }
 
     std::size_t registerContentFolder(
         const std::filesystem::path& content_root,

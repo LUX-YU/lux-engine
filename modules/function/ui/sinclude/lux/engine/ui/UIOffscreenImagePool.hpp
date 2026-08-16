@@ -45,8 +45,10 @@ namespace lux::ui
 
         void resize(VkExtent2D new_extent) override;
 
-        /// Collect both OffscreenImagePool and ImGui texture resources retired at resize/removal.
-        void collectRetired(uint64_t frame_id, uint32_t frames_in_flight);
+        /// Collect both OffscreenImagePool and ImGui texture resources retired at
+        /// resize/removal. Gated on the fence-proven completion watermark
+        /// (@p completed_serial), mirroring the base class.
+        void collectRetired(uint64_t frame_id, uint64_t completed_serial);
 
     private:
         void retireImGuiResources();

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android GAME shell for the lux engine — ZERO Java, same construction as the
+  smoke manifest (see AndroidManifest.xml for the full rationale). The only
+  differences: the package id, the label, and android.app.lib_name selecting
+  lib/<abi>/libluxgame.so (the NativeActivity → SceneRuntime front end).
+
+  Per-game package names / labels turn this into a COMPOSED artifact generated
+  by the packaging tool from the project manifest (binary_name) — that arrives
+  with the export-orchestration step; until then this is the engine's stock
+  game shell identity.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="com.lux.engine.game">
+
+    <uses-feature android:name="android.hardware.vulkan.version"
+                  android:version="0x00403000"
+                  android:required="true" />
+    <uses-feature android:name="android.hardware.vulkan.level"
+                  android:version="1"
+                  android:required="false" />
+
+    <application android:label="Lux Game"
+                 android:hasCode="false"
+                 android:extractNativeLibs="true"
+                 android:debuggable="true">
+        <activity android:name="android.app.NativeActivity"
+                  android:label="Lux Game"
+                  android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|density"
+                  android:exported="true">
+            <meta-data android:name="android.app.lib_name"
+                       android:value="luxgame" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

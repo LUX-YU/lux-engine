@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <optional>
+#include <limits>
 
 namespace lux::rdesc
 {
@@ -31,4 +32,29 @@ namespace lux::rdesc
         std::optional<lux::math::AABB> bounds; ///< Pre-computed AABB (set during asset loading)
         std::vector<MeshLod>    lods;     ///< LOD1..N (empty == single-LOD; static meshes only)
     };
+
+    [[nodiscard]] inline std::optional<std::size_t> meshRetainedBytes(
+        const Mesh& mesh
+    ) noexcept
+    {
+        std::size_t bytes = sizeof(Mesh);
+        const auto add = [&bytes](std::size_t count, std::size_t stride)
+        {
+            if (stride != 0 &&
+                count > (std::numeric_limits<std::size_t>::max() - bytes) /
+                            stride)
+                return false;
+            bytes += count * stride;
+            return true;
+        };
+
+        if (!add(mesh.vertices.capacity(), sizeof(Vertex)) ||
+            !add(mesh.indices.capacity(), sizeof(std::uint32_t)) ||
+            !add(mesh.lods.capacity(), sizeof(MeshLod)))
+            return std::nullopt;
+        for (const auto& lod : mesh.lods)
+            if (!add(lod.indices.capacity(), sizeof(std::uint32_t)))
+                return std::nullopt;
+        return bytes;
+    }
 }

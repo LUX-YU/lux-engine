@@ -1,0 +1,197 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+#extension GL_EXT_nonuniform_qualifier : enable
+
+layout(location = 0) in vec2 vUV;
+layout(location = 0) out vec4 outColor;
+
+uniform sampler2D uFogColor;
+uniform sampler2D uLinearDepth;
+
+struct WaterGpuSurface {
+    vec4 basis_local[3];
+    ivec4 page_delta;
+    vec4 half_rough_normal;
+    vec4 absorption_distance;
+    vec4 scroll_wave;
+    vec4 coverage_time;
+    uvec4 texture_seed_flags;
+};
+
+layout(std430) readonly buffer WaterSurfaceBuffer {
+    uint surface_count;
+    uint reserved0;
+    uint reserved1;
+    uint reserved2;
+    WaterGpuSurface surfaces[];
+} uWater;
+
+#include "view_common.glsl"
+layout(std430) readonly buffer ViewBuffer {
+    ViewGpuData views[];
+} uViews;
+
+uniform sampler2D uTex[];
+
+#include "view_pc_prefix.glsl"
+layout(push_constant) uniform PC {
+    LUX_VIEW_PC_PREFIX
+    float fog_color_r;
+    float fog_color_g;
+    float fog_color_b;
+    float fog_density;
+    float fog_start_distance;
+    float fog_reference_height;
+    float fog_height_falloff;
+    float fog_maximum_opacity;
+    uint fog_enabled;
+} uPC;
+
+#include "transition_dither.glsl"
+
+vec3 waterNormal(WaterGpuSurface surface, vec2 local_position)
+{
+    vec3 tangent = normalize(surface.basis_local[0].xyz);
+    vec3 normal = normalize(surface.basis_local[1].xyz);
+    vec3 bitangent = normalize(surface.basis_local[2].xyz);
+    float time = surface.coverage_time.z;
+    float scale = max(surface.coverage_time.x, 0.0001);
+    vec2 uv_a = local_position * scale + surface.scroll_wave.xy * time;
+    vec2 uv_b = local_position * (scale * 1.71) +
+        surface.scroll_wave.zw * time;
+
+    vec2 slope;
+    if (surface.texture_seed_flags.x != 0xffffffffu)
+    {
+        vec3 a = texture(
+            uTex[nonuniformEXT(surface.texture_seed_flags.x)], uv_a).xyz *
+            2.0 - 1.0;
+        vec3 b = texture(
+            uTex[nonuniformEXT(surface.texture_seed_flags.x)], uv_b).xyz *
+            2.0 - 1.0;
+        slope = (a.xy + b.xy) * 0.5;
+    }
+    else
+    {
+        slope = vec2(
+            sin(uv_a.x * 6.2831853 + uv_b.y * 4.7),
+            cos(uv_a.y * 6.2831853 - uv_b.x * 5.3)) * 0.35;
+    }
+    return normalize(
+        normal +
+        (tangent * slope.x + bitangent * slope.y) *
+            surface.half_rough_normal.w);
+}
+
+void main()
+{
+    vec4 source = texture(uFogColor, vUV);
+    if (uWater.surface_count == 0u)
+    {
+        outColor = source;
+        return;
+    }
+
+    ViewGpuData view_data = uViews.views[uPC.view_index];
+    vec2 ndc = vUV * 2.0 - 1.0;
+    vec4 view_position = view_data.inv_proj * vec4(ndc, 1.0, 1.0);
+    vec3 view_ray = normalize(view_position.xyz / view_position.w);
+    vec3 world_ray = normalize(mat3(view_data.inv_view) * view_ray);
+    float linear_depth = texture(uLinearDepth, vUV).r;
+    float scene_distance = linear_depth / max(abs(view_ray.z), 0.025);
+
+    float nearest_t = 3.402823e38;
+    uint nearest_index = 0xffffffffu;
+    vec2 nearest_local = vec2(0.0);
+    for (uint index = 0u; index < uWater.surface_count; ++index)
+    {
+        WaterGpuSurface surface = uWater.surfaces[index];
+        float coverage = clamp(surface.coverage_time.y, 0.0, 1.0);
+        float threshold = luxTransitionThreshold(
+            uvec2(gl_FragCoord.xy), surface.texture_seed_flags.y);
+        if (coverage <= 0.0 || threshold >= coverage)
+            continue;
+
+        vec3 center =
+            vec3(surface.page_delta.xyz - view_data.camera_page.xyz) *
+                view_data.camera_local_page_size.w +
+            vec3(
+                surface.basis_local[0].w,
+                surface.basis_local[1].w,
+                surface.basis_local[2].w) -
+            view_data.camera_local_page_size.xyz;
+        vec3 axis_x = surface.basis_local[0].xyz;
+        vec3 axis_z = surface.basis_local[2].xyz;
+        vec3 plane_normal = normalize(surface.basis_local[1].xyz);
+        float denominator = dot(world_ray, plane_normal);
+        if (abs(denominator) < 0.00001)
+            continue;
+        float t = dot(center, plane_normal) / denominator;
+        if (t <= 0.0 || t >= nearest_t || t >= scene_distance)
+            continue;
+
+        vec3 relative_hit = world_ray * t - center;
+        vec2 local_position = vec2(
+            dot(relative_hit, axis_x) / max(dot(axis_x, axis_x), 0.00001),
+            dot(relative_hit, axis_z) / max(dot(axis_z, axis_z), 0.00001));
+        if (any(greaterThan(
+                abs(local_position), surface.half_rough_normal.xy)))
+            continue;
+        nearest_t = t;
+        nearest_index = index;
+        nearest_local = local_position;
+    }
+
+    if (nearest_index == 0xffffffffu)
+    {
+        outColor = source;
+        return;
+    }
+
+    WaterGpuSurface surface = uWater.surfaces[nearest_index];
+    vec3 normal = waterNormal(surface, nearest_local);
+    float facing = clamp(dot(-world_ray, normal), 0.0, 1.0);
+    float fresnel = 0.02 + 0.98 * pow(1.0 - facing, 5.0);
+    fresnel = mix(fresnel, 0.2, clamp(surface.half_rough_normal.z, 0.0, 1.0));
+
+    vec2 refraction_offset = normal.xz *
+        surface.half_rough_normal.w * 0.012;
+    vec3 refracted = texture(
+        uFogColor,
+        clamp(vUV + refraction_offset, vec2(0.001), vec2(0.999))).rgb;
+    float thickness = max(scene_distance - nearest_t, 0.0);
+    float absorption = 1.0 - exp(
+        -thickness / max(surface.absorption_distance.w, 0.001));
+    vec3 transmitted = mix(
+        refracted,
+        surface.absorption_distance.rgb,
+        clamp(absorption, 0.0, 1.0));
+    vec3 sky_reflection = mix(
+        vec3(uPC.fog_color_r, uPC.fog_color_g, uPC.fog_color_b),
+        vec3(0.42, 0.55, 0.68),
+        clamp(normal.y, 0.0, 1.0));
+    vec3 water_color = mix(transmitted, sky_reflection, fresnel);
+
+    if (uPC.fog_enabled != 0u && uPC.fog_density > 0.0)
+    {
+        float camera_height =
+            float(view_data.camera_page.y) *
+                view_data.camera_local_page_size.w +
+            view_data.camera_local_page_size.y;
+        float sample_height = camera_height + world_ray.y * nearest_t;
+        float height_density = exp(clamp(
+            -uPC.fog_height_falloff *
+                (sample_height - uPC.fog_reference_height),
+            -20.0,
+            20.0));
+        float fog_distance = max(nearest_t - uPC.fog_start_distance, 0.0);
+        float fog_amount = 1.0 - exp(
+            -uPC.fog_density * fog_distance * height_density);
+        fog_amount = clamp(fog_amount, 0.0, uPC.fog_maximum_opacity);
+        water_color = mix(
+            water_color,
+            vec3(uPC.fog_color_r, uPC.fog_color_g, uPC.fog_color_b),
+            fog_amount);
+    }
+    outColor = vec4(water_color, source.a);
+}

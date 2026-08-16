@@ -1,10 +1,39 @@
 #pragma once
+// ============================================================================
+//  Ownership model for the lux::gapi::vk wrappers — read before "fixing" one.
+//
+//  Most legacy types in this folder are thin, non-owning handle carriers. New
+//  wrappers must make ownership explicit: low-cardinality objects may store the
+//  parent handle and own their resource (Swapchain/Semaphore); high-cardinality
+//  carriers need a consumer-level RAII owner that also stores the parent.
+//
+//  A type explicitly kept as a carrier contains only the Vulkan handle (plus
+//  create-time metadata a caller would otherwise re-query). Destroying it needs
+//  its VkDevice/VkInstance, so making every sampler, image view and per-slot
+//  object self-owning would grow the hot arrays that hold thousands of them.
+//  Those carriers stay handle-sized; their consumer-level owner stores the
+//  parent once and applies RAII to the whole collection.
+//
+//  A non-owning carrier obligates its CALLER to:
+//
+//    - own the lifetime explicitly. The caller knows the device, so the caller
+//      is where RAII belongs — wrap these in a type that does have a destructor
+//      (lux::render::RenderSurface and SwapchainImageViews are the shape: store
+//      the parent once and release from the owner destructor);
+//    - never move-assign onto a live handle. Move assignment overwrites without
+//      releasing — it cannot release, it has no device — so the old handle would
+//      leak. Reset or release first;
+//    - remember that a forgotten release is a SILENT leak here. There is no
+//      assert to catch it, by the same size argument.
+//
+//  A type that stores its parent handle is an owner instead: it must destroy in
+//  its destructor and make move-assignment release-before-adopt.
+// ============================================================================
 #include <vulkan/vulkan.h>
-#include <memory>
 #include <cassert>
 #include <cstdio>
 
-// 简单的 VkResult 转字符串；根据需要补全
+// A simple VkResult-to-string conversion; extend as needed
 static const char* vk_result_to_string(VkResult r) {
     switch (r) {
         case VK_SUCCESS: return "VK_SUCCESS";
@@ -29,48 +58,21 @@ static const char* vk_result_to_string(VkResult r) {
     }
 }
 
-#if defined LUX_PLATFORM_GAPI_DISABLE_EXCEPTION
-    /// Invoke a Vulkan API. Behaviour on a non-`VK_SUCCESS` result:
-    ///
-    /// - **`VK_ERROR_DEVICE_LOST`** — silently ignored. Once the device is
-    ///   lost, *every* subsequent Vulkan call on it returns the same code,
-    ///   so logging each one just spams stderr with N copies of the same
-    ///   fact, and asserting blocks shutdown without surfacing anything
-    ///   new. The intentionally-lost-device signal belongs to the layer
-    ///   that detected it (validation callback / debug utils messenger),
-    ///   not to a per-call macro. Enable
-    ///   `EditorConfig::enable_vulkan_validation = true` when actually
-    ///   hunting one of these — the debug callback fires before the
-    ///   cascade and gives you the specific spec violation.
-    /// - **anything else** — print a structured diagnostic, then assert.
-    ///   This still catches genuinely unexpected results (OOM, surface-
-    ///   lost, etc.) loudly during development.
-    #define VK_FUNC_INVOKE(func, error_msg, ...)                                 \
-    do {                                                                         \
-        VkResult err = func(__VA_ARGS__);                                        \
-        if (err != VK_SUCCESS && err != VK_ERROR_DEVICE_LOST) {                  \
-            std::fprintf(stderr,                                                 \
-                "[Vulkan] %s failed: %s (%d)\n  at %s:%d  call: %s\n",           \
-                #func, vk_result_to_string(err), (int)err,                       \
-                __FILE__, __LINE__, #func "(" #__VA_ARGS__ ")");                 \
-            /* 打印完再断言；NDEBUG 下可考虑改为 std::abort() */                 \
-            assert(false && "Vulkan call failed");                               \
-        }                                                                        \
-    } while (0);
-#else
-    #include <stdexcept>
-    #include <string>
-    #define VK_FUNC_INVOKE(func, error_msg, ...)                                 \
-    do {                                                                         \
-        VkResult err = func(__VA_ARGS__);                                        \
-        if (err != VK_SUCCESS) {                                                 \
-            char buf[256];                                                       \
-            std::snprintf(buf, sizeof(buf),                                      \
-                "%s: %s (%d) at %s:%d",                                          \
-                error_msg, vk_result_to_string(err), (int)err,                   \
-                __FILE__, __LINE__);                                             \
-            throw std::runtime_error(buf);                                       \
-        }                                                                        \
-    } while (0);
-#endif
+/// Legacy Vulkan invocation shim. It never throws: recoverable code must not
+/// use this macro at all and must return the exact VkResult through expected.
+/// Remaining uses are tracked by the exception-removal work package.
+///
+/// - `VK_ERROR_DEVICE_LOST` is left to the detecting layer to report once;
+/// - other failures print a diagnostic and assert in diagnostic builds.
+#define VK_FUNC_INVOKE(func, error_msg, ...)                                     \
+do {                                                                             \
+    VkResult err = func(__VA_ARGS__);                                            \
+    if (err != VK_SUCCESS && err != VK_ERROR_DEVICE_LOST) {                      \
+        std::fprintf(stderr,                                                     \
+            "[Vulkan] %s failed: %s (%d)\n  at %s:%d  call: %s\n",               \
+            #func, vk_result_to_string(err), (int)err,                           \
+            __FILE__, __LINE__, #func "(" #__VA_ARGS__ ")");                     \
+        assert(false && "Vulkan call failed");                                   \
+    }                                                                            \
+} while (0)
 

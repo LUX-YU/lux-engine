@@ -22,23 +22,36 @@
 #include <lux/engine/editor/visibility.h>
 #include <lux/engine/ui/Panel.hpp>
 #include <lux/engine/ui/WidgetDispatch.hpp>
+#include <lux/engine/authoring/world/WorldTerrainAuthoring.hpp>
+#include <lux/engine/editor/app/Selection.hpp>
+#include <lux/engine/ecs/render/components/3d/DirectionalLightComponent.hpp>
+#include <lux/engine/ecs/render/components/3d/HeightFogComponent.hpp>
+#include <lux/engine/ecs/render/components/3d/SkyboxComponent.hpp>
 
-#include <lux/engine/render/core/FeatureHandle.hpp>
-#include <lux/engine/render/core/RenderSceneId.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>          // RenderGraphDumpReply / QueryFeatureParamsReply
-#include <lux/engine/render/comm/client/RenderRequest.hpp>    // RenderRequest<>
-#include <lux/engine/render/comm/server/FeatureRegistry.hpp>   // feature name → setParams op
+#include <lux/engine/function/render/client/core/FeatureHandle.hpp>
+#include <lux/engine/function/render/client/core/RenderSceneId.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>          // RenderGraphDumpReply / QueryFeatureParamsReply
+#include <lux/engine/function/render/client/RenderRequest.hpp>    // RenderRequest<>
+#include <lux/engine/function/render/client/FeatureCatalog.hpp>   // feature name → setParams op
 
 #include <cstdint>
+#include <array>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace lux::meta   { struct RefClass; }
-namespace lux::render { class RenderSession; }
+namespace lux::render
+{
+    class RenderControlSession;
+    class RenderFrameSession;
+}
 
 namespace lux::editor
 {
+    class EditorScene;
+
     class LUX_EDITOR_PUBLIC SceneFeatureSettingPanel : public lux::ui::Panel
     {
     public:
@@ -49,11 +62,13 @@ namespace lux::editor
         /// outlives the panel) provides each feature's GENERIC setParams op BY NAME
         /// for the Apply path — so ANY param-exposing feature (incl. plugins) is
         /// editable, not just Tonemap (INC-B). Borrowed session.
-        void setTarget(lux::render::RenderSession* session,
+        void setTarget(lux::render::RenderFrameSession* frame,
+                       lux::render::RenderControlSession* control,
                        lux::render::RenderSceneId scene_id,
-                       const lux::render::FeatureRegistry* registry) noexcept
+                       const lux::render::FeatureCatalog* registry) noexcept
         {
-            session_         = session;
+            frame_           = frame;
+            control_         = control;
             scene_id_        = scene_id;
             registry_        = registry;
             query_requested_ = true;   // enumerate the scene's features on next tick
@@ -61,7 +76,7 @@ namespace lux::editor
 
         /// Frame-OPEN step: issue the render commands the UI requested this frame
         /// (feature enumerate query / Apply / Dump) and poll their replies. MUST
-        /// be called by the host between beginFrame() and submitFrame() — paint()
+        /// be called by the host between beginFrame() and trySubmitFrame() — paint()
         /// runs BEFORE beginFrame() (frame closed), so recording a command there
         /// would be wiped by the next begin(). Same contract the thumbnail/
         /// material-preview services follow. No-op until setTarget() wires a
@@ -78,16 +93,26 @@ namespace lux::editor
             scene_settings_accessor_ = std::move(getter);
         }
 
+        void setEditorScene(EditorScene* scene) noexcept
+        {
+            editor_scene_ = scene;
+            last_terrain_selection_.reset();
+            visual_state_loaded_ = false;
+        }
+
     private:
         void paint() override;
 
-        /// "Scene" tab: the scene-global view + streaming settings (cull_distance +
-        /// streaming ranges), edited generically via reflection. Edits apply live.
+        /// "Scene" tab: reflected Render View settings plus the generic
+        /// Authoring contribution inventory.
         void drawSceneTab();
 
         /// "Features" tab: the existing per-feature settings (left list + right
         /// reflected param editor + Apply).
         void drawFeaturesTab();
+        void drawTerrainTab();
+        void drawSceneContributions();
+        void drawVisualStateEditor();
 
         /// Right pane for the selected feature: generic reflected param table +
         /// Apply, or "No editable parameters." when the feature exposes none.
@@ -108,7 +133,7 @@ namespace lux::editor
         /// One enumerated feature + its local edit buffer.
         struct FeatureEntry
         {
-            lux::render::FeatureHandle id{};   // full generational handle (五-5)
+            lux::render::FeatureHandle id{};   // full generational handle
             bool                     enabled{false};
             std::string              name;          ///< display name
             std::string              struct_name;   ///< reflected param type, "" = no params
@@ -117,10 +142,27 @@ namespace lux::editor
 
         lux::ui::WidgetDispatch          dispatch_;
 
-        lux::render::RenderSession*         session_{nullptr};
+        lux::render::RenderFrameSession*   frame_{nullptr};
+        lux::render::RenderControlSession* control_{nullptr};
         lux::render::RenderSceneId          scene_id_{};
-        const lux::render::FeatureRegistry* registry_{nullptr};  ///< borrowed; feature name → setParams op
+        const lux::render::FeatureCatalog* registry_{nullptr};  ///< borrowed; feature name → setParams op
         std::function<void*()>              scene_settings_accessor_{};  ///< → current scene's SceneSettingsComponent (void*)
+        EditorScene*                        editor_scene_{nullptr};
+        std::array<char, 37u>               terrain_id_text_{};
+        std::int64_t                        terrain_cell_a_{0};
+        std::int64_t                        terrain_cell_b_{0};
+        int                                 terrain_neighbourhood_{1};
+        float                               terrain_local_x_{64.0f};
+        float                               terrain_local_z_{64.0f};
+        lux::authoring::WorldTerrainBrush   terrain_brush_{};
+        std::array<char, 512u>              terrain_raw16_path_{};
+        std::optional<TerrainSelection>
+                                            last_terrain_selection_;
+        lux::ecs::SkyboxComponent           skybox_edit_{};
+        lux::ecs::DirectionalLightComponent directional_light_edit_{};
+        lux::ecs::HeightFogComponent        height_fog_edit_{};
+        bool                                visual_state_loaded_{false};
+        std::array<char, 37u>               sky_texture_id_text_{};
 
         std::vector<FeatureEntry>        features_;             ///< enumerated from the scene
         int                              selected_feature_{0};  ///< index into features_

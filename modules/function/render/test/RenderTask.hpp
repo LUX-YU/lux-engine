@@ -3,10 +3,10 @@
 //  RenderTask.hpp — TEST-ONLY C++20 coroutine support for render client tests.
 //
 //  RELOCATED out of the production render API (modules/.../comm/client/) in the
-//  async-unification effort: stdexec senders (lux::exec::asSender, Phase B) are
-//  now the production async vocabulary over RenderRequest. The coroutine path was
-//  only ever a test driver (no production consumer), so it lives here as test
-//  scaffolding. Includes:
+//  async-unification effort. 生产侧的等待词汇如今是 trySyncCall/awaitAllReady
+//  与 .then 连续体(stdexec 适配 asSender 同为零生产消费者的能力占位)。The
+//  coroutine path was only ever a test driver (no production consumer), so it
+//  lives here as test scaffolding. Includes:
 //    - thread_local resume slots + operator co_await(RenderRequest<T>) (moved out
 //      of RenderRequest.hpp so the production reply primitive is coroutine-free)
 //    - co_await RenderRequest<T>  — suspend until server reply arrives
@@ -21,7 +21,7 @@
 #include <optional>
 #include <utility>
 
-#include <lux/engine/render/comm/client/RenderRequest.hpp>
+#include <lux/engine/function/render/client/RenderRequest.hpp>
 
 namespace lux::render
 {
@@ -65,7 +65,7 @@ namespace lux::render
                 });
             }
 
-            const T& await_resume() const noexcept { return req_.result(); }
+            const T& await_resume() const noexcept { return req_.tryResult()->get(); }
         };
         return RenderRequestAwaiter{req};
     }
@@ -92,7 +92,7 @@ namespace lux::render
                 });
             }
 
-            const T& await_resume() const noexcept { return req_.result(); }
+            const T& await_resume() const noexcept { return req_.tryResult()->get(); }
         };
         return RenderRequestAwaiter{std::move(req)};
     }

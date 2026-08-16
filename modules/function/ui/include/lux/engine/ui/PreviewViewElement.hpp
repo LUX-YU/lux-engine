@@ -1,7 +1,7 @@
 #pragma once
 #include <lux/engine/function/visibility_ui.h>
 #include <lux/engine/ui/SceneViewElement.hpp>
-#include <lux/engine/ui/ImGuiLuxWidgets.hpp>   // encodeSceneViewSentinel + lux::render::RenderSceneId
+#include <lux/engine/ui/ImGuiLuxWidgets.hpp>   // encodeRenderTargetSentinel + lux::render::RenderTargetId
 #include <imgui.h>
 
 #include <cstdint>
@@ -16,9 +16,9 @@ namespace lux::ui
      * (via the sentinel texture id) exactly like the base, and additionally
      * captures orbit-camera INPUT over that image, forwarding it as deltas through
      * a callback. It owns NO render scene and does NO session I/O — the host binds
-     * it to a view (`setView`) and routes its orbit/resize callbacks to whatever
-     * drives that view (e.g. `lux::editor::PreviewScene`). This keeps the element
-     * reusable for any live, rotatable preview (material now; mesh/model later).
+     * it to a target (`setTarget`) and routes its orbit/resize callbacks to whatever
+     * drives that view (e.g. the editor's MaterialPreviewHost). This keeps the
+     * element reusable for any live, rotatable preview (material now; mesh/model later).
      *
      * Use within a Panel's frame-CLOSED paint():
      * @code
@@ -31,11 +31,12 @@ namespace lux::ui
         explicit PreviewViewElement(std::string label = "Preview")
             : SceneViewElement(std::move(label)) {}
 
-        /// Bind the element to the live offscreen view it should display. The
-        /// view's color image is resolved each UI tick from the sentinel id.
-        void setView(lux::render::RenderSceneId scene_id, std::uint32_t view_id) noexcept
+        /// Bind the element to the live offscreen render target it should
+        /// display. The target's color image is resolved each UI tick from the
+        /// sentinel id.
+        void setTarget(lux::render::RenderTargetId target) noexcept
         {
-            setTextureID(encodeSceneViewSentinel(scene_id, view_id));
+            setTextureID(encodeRenderTargetSentinel(target));
         }
 
         /// (d_yaw, d_pitch, d_zoom) in the camera's own units (radians-ish, zoom

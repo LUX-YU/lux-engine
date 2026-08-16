@@ -16,22 +16,25 @@
 //
 //  WINDOWED: open a window and render until closed (close manually). The real
 //  rigged-model path (LUX_ANIMATION_TEST_MODEL via World + RenderableSystem)
-//  is a follow-up — RenderableSystem's synchronous addMeshInstance().result()
+//  is a follow-up — RenderableSystem's synchronous addTransientMeshInstance().tryResult()->get()
 //  needs an async-readiness fix before it can drive a windowed frame loop.
 // ============================================================================
 
-#include <lux/engine/render/comm/client/RenderSession.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
+#include <lux/engine/render/testing/DirectRenderUploadClient.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/render/comm/RenderProtocol.hpp>
+#include <lux/engine/function/render/client/RenderProtocol.hpp>
 
-#include <lux/engine/render/renderer/features/forward/ForwardMeshOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/ShadowMapOperation.hpp>
-#include <lux/engine/render/renderer/features/shadow/MeshShadowOperation.hpp>
-#include <lux/engine/render/renderer/features/material/MaterialOperation.hpp>  // kStandardMaterialFeatureFactory (standard material stack; no config; attaches before StandardMeshStack)
-#include <lux/engine/render/renderer/features/meshstack/MeshStackOperation.hpp>  // kStandardMeshStackFeatureFactory (standard 3D mesh stack; no config)
-#include <lux/engine/render/renderer/features/skinning/SkinningOperation.hpp>
-#include <lux/engine/render/renderer/features/light/LightOperation.hpp>  // LightFeature / LightProxy / LightOperationIds
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraOperation.hpp>  // StandardViewCamera (per-view camera op; replaces RenderSession::updateView)
+#include <lux/engine/function/render/client/genops/ForwardMeshOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>  // kMaterialFeatureFactory (standard material stack; no config; attaches before StandardMeshStack)
+#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>  // kMeshStackFeatureFactory (standard 3D mesh stack; no config)
+#include <lux/engine/function/render/client/genops/SkinningOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>  // LightFeature / LightProxy / LightOperationIds
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>  // StandardViewCamera (per-view camera op; replaces RenderFrameSession::updateView)
 
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
@@ -39,11 +42,10 @@
 #include <lux/engine/description/AnimationClip.hpp>
 #include <lux/engine/animation/PoseSampling.hpp>   // buildSkinningMatrices
 
-#include <lux/engine/render/resources/material/GraphMaterialData.hpp>
+#include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
 #include "graph_test_helpers.hpp"   // mgtest::makeColorGraph + compileGraphPass
 
 #include <lux/engine/window/LuxWindow.hpp>
-#include <GLFW/glfw3.h>
 
 #include <atomic>
 #include <chrono>
@@ -84,12 +86,8 @@ static Eigen::Matrix4f buildProjMatrix(float fov_rad, float aspect, float near_z
 
 static std::vector<const char*> getVulkanExtensions()
 {
-    glfwInit();
-    uint32_t count = 0;
-    const char** exts = glfwGetRequiredInstanceExtensions(&count);
-    std::vector<const char*> r;
-    for (uint32_t i = 0; i < count; ++i) r.emplace_back(exts[i]);
-    return r;
+    const auto exts = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
+    return {exts.begin(), exts.end()};
 }
 
 // ── Geometry ────────────────────────────────────────────────────────────
@@ -160,6 +158,15 @@ enum class Phase {
     WaitMeshUpload, CreateInstances, CreateLight, Render
 };
 
+template <class Reply>
+static RenderRequest<Reply> acceptedUploadOrFailure(
+    UploadSubmitResult<Reply> submitted)
+{
+    if (!submitted)
+        return RenderRequestFactory<Reply>::makeImmediateFailure({});
+    return std::move(submitted.value());
+}
+
 int main()
 {
     std::cout << "=== Skeletal Mesh Walk Test ===\n";
@@ -208,21 +215,28 @@ int main()
     Eigen::Matrix4f V = buildViewMatrix(eye, target, up);
     Eigen::Matrix4f P = buildProjMatrix(60.f * 3.14159265f / 180.f, 1280.f/720.f, 0.1f, 100.f);
 
-    auto channel = RenderProgramChannel<>::create();
-    auto sync = std::make_shared<RenderChannelSync>();
+    auto channel         = RenderFrameChannel<>::create();
+    auto control_channel = RenderControlChannel<>::create();
+    auto upload_channel  = RenderUploadChannel<>::create();
+    auto sync             = std::make_shared<RenderChannelSync>();
     auto surface_exts = getVulkanExtensions();
     lux::window::LuxWindow window(1280, 720, "Skeletal Mesh Walk Test");
 
     std::atomic<bool> server_ready{false}, server_failed{false};
     std::thread server_thread([&]{
-        GeneralRenderServer server(channel, sync);
+        GeneralRenderServer server(
+            channel,
+            control_channel,
+            upload_channel,
+            sync
+        );
         ServerConfig cfg; cfg.instance_extensions = surface_exts;
         if (auto r = server.init(std::move(cfg)); !r) {
-            std::cerr << "[Server] init failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] init failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true); server_ready.store(true); return;
         }
         if (auto r = server.attachToWindow(window); !r) {
-            std::cerr << "[Server] attach failed: " << r.error().message() << "\n";
+            std::cerr << "[Server] attach failed: " << formatRenderError(renderErrorRegistry(), r.error()) << "\n";
             server_failed.store(true); server_ready.store(true); return;
         }
         server_ready.store(true);
@@ -235,7 +249,10 @@ int main()
         sync->requestStop(); server_thread.join(); return 0;
     }
 
-    RenderSession session(channel, sync);
+    RenderFrameSession session(channel, sync);
+    RenderControlSession control(control_channel, sync);
+    RenderUploadSession upload(upload_channel, sync);
+    lux::render::testing::DirectRenderUploadClient upload_client{upload};
 
     Phase phase = Phase::CreateScene;
     RenderRequest<SceneCreatedReply> scene_req;
@@ -265,124 +282,131 @@ int main()
         switch (phase)
         {
         case Phase::CreateScene:
-            scene_req = session.createScene("SkelScene"); break;
+            scene_req = control.createScene("SkelScene"); break;
         case Phase::ActivateScene:
-            active_req = session.setActiveScene(scene_req.result().scene_id, true);
-            view_req = session.addView(scene_req.result().scene_id, {1280,720}, "MainView"); break;
+            active_req = control.setActiveScene(scene_req.tryResult()->get().scene_id, true);
+            view_req = control.addView(scene_req.tryResult()->get().scene_id, {1280,720}, "MainView"); break;
         case Phase::BindSwapchain:
-            session.bindSwapchain(scene_req.result().scene_id, view_req.result().view); break;
+            control.bindSwapchain(scene_req.tryResult()->get().scene_id, view_req.tryResult()->get().view); break;
         case Phase::RegisterFeatures:
             // StandardViewCamera owns the per-view camera matrices (frustum +
             // view/proj). It MUST attach before every camera consumer (Forward /
             // ShadowMap / MeshShadow), so register it up front.
-            view_cam_reg = session.registerFeatureType(kStandardViewCameraFeatureFactory);
-            fwd_reg = session.registerFeatureType(kForwardMeshFeatureFactory);
+            view_cam_reg = control.registerFeatureType(kViewCameraFeatureFactory);
+            fwd_reg = control.registerFeatureType(kForwardMeshFeatureFactory);
             // Light is registered with the other features; it MUST attach before
             // ShadowMapFeature (which caches a raw LightResources* at attach).
-            light_reg = session.registerFeatureType(kLightFeatureFactory);
+            light_reg = control.registerFeatureType(kLightFeatureFactory);
             // StandardMaterialFeature owns the global material stack; it MUST attach
             // before StandardMeshStack (addMeshInstance reads the material slot) and
             // every material consumer. Register it ahead of mesh-stack.
-            material_reg = session.registerFeatureType(kStandardMaterialFeatureFactory);
+            material_reg = control.registerFeatureType(kMaterialFeatureFactory);
             // StandardMeshStackFeature owns the standard 3D mesh-stack scene
             // resources (no longer built in RenderScene's ctor); it MUST attach
             // before every mesh consumer (Skinning / ShadowMap / MeshShadow /
             // ForwardMesh) or the meshes don't render. No comm config.
-            mesh_stack_reg = session.registerFeatureType(kStandardMeshStackFeatureFactory);
-            shadow_reg = session.registerFeatureType(kShadowMapFeatureFactory);
-            mesh_shadow_reg = session.registerFeatureType(kMeshShadowFeatureFactory);
-            skin_reg = session.registerFeatureType(kSkinningFeatureFactory); break;
+            mesh_stack_reg = control.registerFeatureType(kMeshStackFeatureFactory);
+            shadow_reg = control.registerFeatureType(kShadowMapFeatureFactory);
+            mesh_shadow_reg = control.registerFeatureType(kMeshShadowFeatureFactory);
+            skin_reg = control.registerFeatureType(kSkinningFeatureFactory); break;
         case Phase::AddShadowFeatures: {
             // StandardViewCamera MUST attach before every camera consumer
             // (Forward / ShadowMap / MeshShadow), so add it first. No comm
             // config — empty struct param.
-            struct EmptyViewCamCfg {} view_cam_cfg{};
-            view_cam_feat = session.addFeature(scene_req.result().scene_id, view_cam_reg.result().feature_type_id, view_cam_cfg);
+            lux::render::ViewCameraCommTag view_cam_cfg{};
+            view_cam_feat = control.addFeature(scene_req.tryResult()->get().scene_id, view_cam_reg.tryResult()->get().feature_type_id, view_cam_cfg);
             // Light MUST attach before ShadowMapFeature (shadow caches a raw
             // LightResources* at attach time).
-            struct EmptyLightCfg {} light_cfg{};
-            light_feat = session.addFeature(scene_req.result().scene_id, light_reg.result().feature_type_id, light_cfg);
+            lux::render::LightCommTag light_cfg{};
+            light_feat = control.addFeature(scene_req.tryResult()->get().scene_id, light_reg.tryResult()->get().feature_type_id, light_cfg);
             // StandardMaterialFeature owns the global material stack
-            // (ShadingModelRegistry + MaterialResources). It MUST attach before
+            // (builtin shading models + MaterialResources). It MUST attach before
             // StandardMeshStack (addMeshInstance reads the material slot) and every
             // material consumer. No comm config — empty struct param.
-            struct EmptyMaterialCfg {} material_cfg{};
-            material_feat = session.addFeature(scene_req.result().scene_id, material_reg.result().feature_type_id, material_cfg);
+            lux::render::MaterialCommTag material_cfg{};
+            material_feat = control.addFeature(scene_req.tryResult()->get().scene_id, material_reg.tryResult()->get().feature_type_id, material_cfg);
             // StandardMeshStackFeature MUST attach before every mesh consumer
             // (Skinning / ShadowMap / MeshShadow / ForwardMesh) or meshes don't
             // render. No comm config — empty struct param.
-            struct EmptyMeshStackCfg {} mesh_stack_cfg{};
-            mesh_stack_feat = session.addFeature(scene_req.result().scene_id, mesh_stack_reg.result().feature_type_id, mesh_stack_cfg);
+            lux::render::MeshStackCommTag mesh_stack_cfg{};
+            mesh_stack_feat = control.addFeature(scene_req.tryResult()->get().scene_id, mesh_stack_reg.tryResult()->get().feature_type_id, mesh_stack_cfg);
             ShadowMapCommConfig smc{};
-            shadow_feat = session.addFeature(scene_req.result().scene_id, shadow_reg.result().feature_type_id, smc);
+            shadow_feat = control.addFeature(scene_req.tryResult()->get().scene_id, shadow_reg.tryResult()->get().feature_type_id, smc);
             MeshShadowCommConfig msmc{};
-            mesh_shadow_feat = session.addFeature(scene_req.result().scene_id, mesh_shadow_reg.result().feature_type_id, msmc);
+            mesh_shadow_feat = control.addFeature(scene_req.tryResult()->get().scene_id, mesh_shadow_reg.tryResult()->get().feature_type_id, msmc);
             break;
         }
         case Phase::AddForwardFeature: {
             ForwardMeshCommConfig cc{};
             cc.comm_config_version = kForwardMeshCommConfigVersion;
             cc.descriptor_layout_version = kForwardMeshDescriptorLayoutVersion;
-            fwd_feat = session.addFeature(scene_req.result().scene_id, fwd_reg.result().feature_type_id, cc);
+            fwd_feat = control.addFeature(scene_req.tryResult()->get().scene_id, fwd_reg.tryResult()->get().feature_type_id, cc);
             break;
         }
         case Phase::AddSkinningFeature: {
             // SkinningFeature has no comm config — empty struct param.
-            struct Empty {} e{};
-            skin_feat = session.addFeature(scene_req.result().scene_id, skin_reg.result().feature_type_id, e);
+            lux::render::SkinningCommConfig e{};
+            skin_feat = control.addFeature(scene_req.tryResult()->get().scene_id, skin_reg.tryResult()->get().feature_type_id, e);
             // Skinning is feature-scoped now — read its dynamic bone-upload op-ids
             // from the registration reply (core protocol no longer names skinning).
             skin_ops = SkinningOperationIds::fromOps(
-                skin_reg.result().ops, skin_reg.result().op_count);
+                skin_reg.tryResult()->get().ops, skin_reg.tryResult()->get().op_count);
             // Light + mesh-stack op-ids: capture HERE (their RegisterFeatures
             // replies are long ready by this phase), NOT in RegisterFeatures
             // itself — there result() is read before the frame is submitted, so
             // the reply hasn't arrived and the ops would be kInvalidTypeId.
             light_ops = LightOperationIds::fromOps(
-                light_reg.result().ops, light_reg.result().op_count);
+                light_reg.tryResult()->get().ops, light_reg.tryResult()->get().op_count);
             mesh_stack_ops = MeshStackOperationIds::fromOps(
-                mesh_stack_reg.result().ops, mesh_stack_reg.result().op_count);
+                mesh_stack_reg.tryResult()->get().ops, mesh_stack_reg.tryResult()->get().op_count);
             material_ops = MaterialOperationIds::fromOps(
-                material_reg.result().ops, material_reg.result().op_count);
+                material_reg.tryResult()->get().ops, material_reg.tryResult()->get().op_count);
             view_cam_ops = ViewCameraOperationIds::fromOps(
-                view_cam_reg.result().ops, view_cam_reg.result().op_count);
+                view_cam_reg.tryResult()->get().ops, view_cam_reg.tryResult()->get().op_count);
             break;
         }
         case Phase::CompileShaders: {
             const auto ground_bytes = std::span<const std::byte>{
                 reinterpret_cast<const std::byte*>(ground_spv.data()),
                 ground_spv.size() * sizeof(uint32_t)};
-            ground_shader_req = session.compileShader(
+            ground_shader_req = control.compileShader(
                 ground_bytes, std::span<const std::byte>{ground_info.data(), ground_info.size()});
             const auto box_bytes = std::span<const std::byte>{
                 reinterpret_cast<const std::byte*>(box_spv.data()),
                 box_spv.size() * sizeof(uint32_t)};
-            box_shader_req = session.compileShader(
+            box_shader_req = control.compileShader(
                 box_bytes, std::span<const std::byte>{box_info.data(), box_info.size()});
             break;
         }
         case Phase::UploadMaterials: {
             // Forward scene: graph frag goes in the FORWARD arg, gbuffer arg empty.
             GraphMaterialData ground_gd{};
-            ground_mat_req = MaterialProxy(session, material_ops).uploadGraphMaterial(
-                ground_gd, ShaderHandle{}, ground_shader_req.result().shader);
+            ground_mat_req = acceptedUploadOrFailure(uploadGraphMaterial(
+                MaterialUploadClient(upload_client.client(), material_ops),
+                ground_gd, ShaderHandle{}, ground_shader_req.tryResult()->get().shader));
             GraphMaterialData box_gd{};
-            box_mat_req = MaterialProxy(session, material_ops).uploadGraphMaterial(
-                box_gd, ShaderHandle{}, box_shader_req.result().shader);
+            box_mat_req = acceptedUploadOrFailure(uploadGraphMaterial(
+                MaterialUploadClient(upload_client.client(), material_ops),
+                box_gd, ShaderHandle{}, box_shader_req.tryResult()->get().shader));
             break;
         }
         case Phase::UploadMeshes:
-            ground_mesh_req = lux::render::MeshStackProxy(session, mesh_stack_ops).uploadMesh(ground_mesh);
-            box_mesh_req = lux::render::MeshStackProxy(session, mesh_stack_ops).uploadMesh(box_mesh); break;
+            ground_mesh_req = acceptedUploadOrFailure(lux::render::uploadMesh(
+                lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops),
+                ground_mesh));
+            box_mesh_req = acceptedUploadOrFailure(lux::render::uploadMesh(
+                lux::render::MeshStackUploadClient(upload_client.client(), mesh_stack_ops),
+                box_mesh));
+            break;
         case Phase::WaitMeshUpload: break;  // give the async upload a frame
         case Phase::CreateInstances: {
             float gx[16]; std::memset(gx,0,sizeof(gx)); gx[0]=gx[5]=gx[10]=gx[15]=1.f;
-            ground_inst_req = MeshStackProxy(session, mesh_stack_ops).addMeshInstance(
-                scene_req.result().scene_id, ground_mesh_req.result().handle,
-                ground_mat_req.result().handle, gx);
-            box_mesh_handle = box_mesh_req.result().handle;
-            box_inst_req = MeshStackProxy(session, mesh_stack_ops).addMeshInstance(
-                scene_req.result().scene_id, box_mesh_handle, box_mat_req.result().handle, gx,
+            ground_inst_req = addTransientMeshInstance(MeshStackProxy(session, mesh_stack_ops),
+                scene_req.tryResult()->get().scene_id, ground_mesh_req.tryResult()->get().handle,
+                ground_mat_req.tryResult()->get().handle, gx);
+            box_mesh_handle = box_mesh_req.tryResult()->get().handle;
+            box_inst_req = addTransientMeshInstance(MeshStackProxy(session, mesh_stack_ops),
+                scene_req.tryResult()->get().scene_id, box_mesh_handle, box_mat_req.tryResult()->get().handle, gx,
                 kInstanceFlagCastShadow | kInstanceFlagReceiveShadow | kInstanceFlagVisible,
                 EGeometryKind::SkinnedMesh);
             break;
@@ -391,12 +415,13 @@ int main()
             DirectionalLightDesc dl{};
             dl.direction = Eigen::Vector3f(-0.5f,-1.f,-0.3f).normalized();
             dl.color = Eigen::Vector3f(1,1,1); dl.intensity = 1.f;
-            LightProxy(session, light_ops).createLight(scene_req.result().scene_id, LightDescriptor{dl});
+            // 回执(灯光句柄)本用例用不到 —— 它只验证灯建得起来、画面亮起来。
+            (void)lightCreate(LightProxy(session, light_ops), scene_req.tryResult()->get().scene_id, LightDescriptor{dl});
             // Resolve instance handles now that earlier requests are ready.
-            const RenderObjectHandle ground_object = ground_inst_req.result().object;
-            box_object = box_inst_req.result().object;
-            MeshStackProxy(session, mesh_stack_ops).makeInstanceVisibleForView(scene_req.result().scene_id, view_req.result().view, ground_object);
-            MeshStackProxy(session, mesh_stack_ops).makeInstanceVisibleForView(scene_req.result().scene_id, view_req.result().view, box_object);
+            const RenderObjectHandle ground_object = ground_inst_req.tryResult()->get().object;
+            box_object = box_inst_req.tryResult()->get().object;
+            MeshStackProxy(session, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene_req.tryResult()->get().scene_id, .view = view_req.tryResult()->get().view, .object = ground_object});
+            MeshStackProxy(session, mesh_stack_ops).makeInstanceVisibleForView({.scene_id = scene_req.tryResult()->get().scene_id, .view = view_req.tryResult()->get().view, .object = box_object});
             break;
         }
         case Phase::Render: {
@@ -414,18 +439,26 @@ int main()
             std::vector<Eigen::Matrix4f> palette;
             lux::animation::buildSkinningMatrices(pose, skeleton, palette);
 
-            SkinningProxy(session, skin_ops).uploadBonePalette(
-                scene_req.result().scene_id, box_object, box_mesh_handle,
-                palette.data(), static_cast<uint32_t>(palette.size()));
+            lux::render::UploadBonePalettePayload skin_wire{};
+            skin_wire.scene_id   = scene_req.tryResult()->get().scene_id;
+            skin_wire.object     = box_object;
+            skin_wire.mesh       = box_mesh_handle;
+            skin_wire.bone_count = static_cast<uint32_t>(palette.size());
+            SkinningProxy(session, skin_ops).uploadBonePalette(skin_wire,
+                std::span<const std::byte>{reinterpret_cast<const std::byte*>(palette.data()),
+                                           palette.size() * 64u},
+                16u);
 
-            ViewCameraProxy(session, view_cam_ops).update(
-                scene_req.result().scene_id, view_req.result().view,
+            viewCameraUpdateTransient(ViewCameraProxy(session, view_cam_ops),
+                scene_req.tryResult()->get().scene_id, view_req.tryResult()->get().view,
                 V.data(), P.data(), eye.data());
             break;
         }
         }
-        session.submitFrame(true);
+        session.trySubmitFrame();
         session.waitAndPumpReplies();
+        control.pumpReplies();
+        upload.pumpReplies();
 
         // Advance the phase machine until Render, then stay there.
         if (phase != Phase::Render)

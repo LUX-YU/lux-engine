@@ -17,7 +17,7 @@
 
 #include <imgui.h>
 
-#include <lux/engine/asset/Asset.hpp>   // EAssetType
+#include <lux/engine/resource/asset/Asset.hpp>   // EAssetType
 
 namespace lux::editor
 {
@@ -139,12 +139,15 @@ namespace lux::editor
     inline const AssetTypeDesc& assetTypeDesc(lux::asset::EAssetType type) noexcept
     {
         using lux::asset::EAssetType;
-        // Order MUST match the EAssetType enum (TEXTURE..UNKNOWN). Indexed by enum
+        // Order MUST match the EAssetType enum. Indexed by enum
         // value — an out-of-order row mis-labels EVERY chip after it, so a new
         // EAssetType requires a row INSERTED at its ordinal + the size bump.
-        // (W5c/W5d: the closure MATERIAL row was deleted and GRAPH_MATERIAL became
-        // MATERIAL at ordinal 9 — this table mirrors the surviving 12-entry enum.)
-        static const std::array<AssetTypeDesc, 14> table = { {
+        // The assert below is the §7.4 enum-append nail: the table must stay
+        // exactly aligned with every published enum ordinal.
+        static_assert(static_cast<std::size_t>(EAssetType::ENTITY_SECTION) + 1 == 17,
+            "EAssetType grew — add the new type's row to this table at its "
+            "ordinal and bump the array size");
+        static const std::array<AssetTypeDesc, 17> table = { {
             { "TEX", "Texture",          IM_COL32( 64, 180, 220, 255), &detail::glyphTexture   },
             { "MDL", "Model",            IM_COL32(255, 215,  60, 255), &detail::glyphModel     },
             { "SHD", "Shader",           IM_COL32(160, 200, 240, 255), &detail::glyphShader    },
@@ -156,12 +159,18 @@ namespace lux::editor
             { "ANM", "Animation",        IM_COL32(220, 100, 200, 255), &detail::glyphAnimation },
             { "MAT", "Material",         IM_COL32( 90, 200, 180, 255), &detail::glyphMaterial  },
             { "MTI", "Material Instance",IM_COL32(120, 170, 220, 255), &detail::glyphMaterial  },
-            { "SPA", "Sprite Atlas",     IM_COL32(240, 170,  90, 255), &detail::glyphTexture   },
-            { "SPC", "Sprite Anim Clip", IM_COL32(240, 140, 160, 255), &detail::glyphAnimation },
+            { "ATL", "Texture Atlas",     IM_COL32(240, 170,  90, 255), &detail::glyphTexture   },
+            { "FBC", "Flipbook Clip", IM_COL32(240, 140, 160, 255), &detail::glyphAnimation },
+            { "FLW", "Flow Graph",       IM_COL32(140, 220, 140, 255), &detail::glyphGeneric   },
             { "?",   "Unknown",          IM_COL32(120, 120, 120, 255), &detail::glyphGeneric   },
+            { "SCN", "Entity Scene",     IM_COL32(120, 190, 230, 255), &detail::glyphGeneric   },
+            { "SEC", "Entity Section",   IM_COL32(100, 160, 210, 255), &detail::glyphGeneric   },
         } };
         const auto i = static_cast<std::size_t>(type);
-        return (i < table.size()) ? table[i] : table.back();
+        // UNKNOWN is no longer the last row — fall back to it EXPLICITLY.
+        return (i < table.size())
+            ? table[i]
+            : table[static_cast<std::size_t>(EAssetType::UNKNOWN)];
     }
 
     /// Chip colour + glyph for a directory row (directories are not an

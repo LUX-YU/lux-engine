@@ -22,7 +22,7 @@
 extern "C" {% if register_function_macro %}{{ register_function_macro }}{% endif %}
 void {{ register_function_name }}_lua(sol::state_view& lua_state)
 {
-    // 用户可在 C++ 侧先 open 库： lua.open_libraries(sol::lib::base, …);
+    // Callers can open libraries on the C++ side first: lua.open_libraries(sol::lib::base, …);
     sol::table lux = lua_state["lux"].get_or_create<sol::table>();
 
     // ────────────────────────────────────────────────────────────────────

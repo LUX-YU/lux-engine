@@ -1,42 +1,36 @@
 #pragma once
-#include "lux/engine/gapi/vk/Object.hpp"
 #include <vulkan/vulkan.h>
+
+#include <utility>
 
 namespace lux::gapi::vk
 {
 	class CommandBuffer 
 	{
 	public:
-		CommandBuffer() : command_buffer(VK_NULL_HANDLE) {}
+		CommandBuffer() noexcept = default;
 
-		CommandBuffer(VkDevice device,  VkCommandPool pool, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+		/// Adopt an already-allocated handle. Allocation belongs to a factory that
+		/// can return VkResult and roll back the rest of its construction batch.
+		[[nodiscard]] static CommandBuffer adopt(VkCommandBuffer handle) noexcept
 		{
-			VkCommandBufferAllocateInfo info{
-				.sType				= VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-				.pNext				= nullptr,
-				.commandPool		= pool,
-				.level				= level,
-				.commandBufferCount = 1
-			};
-
-			VK_FUNC_INVOKE(vkAllocateCommandBuffers, "Failed to allocate CommandBuffer object", device, &info, &command_buffer);
+			CommandBuffer result;
+			result.command_buffer = handle;
+			return result;
 		}
 
 		CommandBuffer(const CommandBuffer&) = delete;
 		CommandBuffer& operator=(const CommandBuffer&) = delete;
 
 		CommandBuffer(CommandBuffer&& other) noexcept
+			: command_buffer(std::exchange(other.command_buffer, VkCommandBuffer{}))
 		{
-			command_buffer = other.command_buffer;
-			other.command_buffer = VK_NULL_HANDLE;
 		}
 
-		CommandBuffer& operator=(CommandBuffer&& other) noexcept
-		{
-			command_buffer = other.command_buffer;
-			other.command_buffer = VK_NULL_HANDLE;
-			return *this;
-		}
+		// Rebinding a live command-buffer owner needs the device and command pool
+		// that allocated its current handle. Assignment has no valid implementation
+		// with this type's state, and no caller needs it.
+		CommandBuffer& operator=(CommandBuffer&& other) noexcept = delete;
 
 		void release(VkDevice device, VkCommandPool pool)
 		{
@@ -58,22 +52,24 @@ namespace lux::gapi::vk
 		}
 
 		// begin command buffer
-		void begin(VkCommandBufferUsageFlags flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT)
+		[[nodiscard]] VkResult begin(
+			VkCommandBufferUsageFlags flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+		) noexcept
 		{
 			VkCommandBufferBeginInfo info{
 				.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 				.flags = flags
 			};
-			vkBeginCommandBuffer(command_buffer, &info);
+			return vkBeginCommandBuffer(command_buffer, &info);
 		}
 
 		// end command buffer
-		void end()
+		[[nodiscard]] VkResult end() noexcept
 		{
-			vkEndCommandBuffer(command_buffer);
+			return vkEndCommandBuffer(command_buffer);
 		}
 
-		VkResult reset(VkCommandBufferResetFlags flags = 0)
+		[[nodiscard]] VkResult reset(VkCommandBufferResetFlags flags = 0) noexcept
 		{
 			return vkResetCommandBuffer(command_buffer, flags);
 		}
@@ -118,6 +114,6 @@ namespace lux::gapi::vk
 		inline const VkCommandBuffer* handlePtr() const noexcept { return &command_buffer; }
 
 	private:
-		VkCommandBuffer command_buffer;
+		VkCommandBuffer command_buffer{VK_NULL_HANDLE};
 	};
 } // namespace lux::gapi::vk

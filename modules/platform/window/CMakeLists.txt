@@ -1,10 +1,29 @@
-find_package(glfw3   REQUIRED)
-find_package(lux-cxx REQUIRED COMPONENTS event)
+# Headers only: LuxWindow::createVulkanSurface needs the Vulkan types; the
+# entry point itself lives in the window backend (GLFW loads Vulkan dynamically).
+find_package(Vulkan  REQUIRED)
 
-set(WINDOW_SRCS
-    src/LuxWindow.cpp
-    src/GlfwRuntime.cpp
-)
+# Backend source selection — same pattern as dynamic_library (win32/posix):
+# one public header set (LuxWindow.hpp / InputSnapshot.hpp / ...), one backend
+# implementation chosen at configure time. An Android backend adds
+# src/LuxWindow.android.cpp (+ its runtime) here WITHOUT touching consumers —
+# see .internal/lux-engine-mobile-adaptation-investigation.md §3.
+if(ANDROID)
+    # Android backend. Deliberately thin: the Vulkan surface does NOT come from
+    # here (see LuxWindow::createVulkanSurface's comment — the native window's
+    # lifetime matches a surface, not a window object, so it goes straight to
+    # RenderSurface::initFromNative via the CreateSurfaceTarget command).
+    # The event pump is likewise out of scope: that belongs to the app's
+    # activity glue, not to an engine library.
+    set(WINDOW_SRCS
+        src/LuxWindow.android.cpp
+    )
+else()
+    find_package(glfw3 REQUIRED)
+    set(WINDOW_SRCS
+        src/LuxWindow.glfw.cpp
+        src/GlfwRuntime.cpp
+    )
+endif()
 
 if(WIN32)
 	list(APPEND WINDOW_SRCS src/TrayIconWin32.cpp)
@@ -22,11 +41,17 @@ generate_visibility_header(
 # Introduced dependencies:
 # glfw3
 # common
-# lux::cxx::event
 add_component(
     COMPONENT_NAME window
     NAMESPACE      lux::engine::platform
     SOURCE_FILES   ${WINDOW_SRCS}
+)
+
+lux_classify_target(
+    TARGET  window
+    LAYER   PLATFORM
+    PRODUCT RUNTIME
+    ROLE    FOUNDATION
 )
 
 component_include_directories(
@@ -48,10 +73,14 @@ target_compile_definitions(
 
 target_link_libraries(
     window
-    PUBLIC
-    glfw
-    lux::cxx::event
+    PRIVATE
+    Vulkan::Headers
 )
+
+# PUBLIC: interactive tests/tools still call GLFW directly (glfwGetKey etc.).
+if(NOT ANDROID)
+    target_link_libraries(window PUBLIC glfw)
+endif()
 
 component_add_internal_dependencies(
     window
@@ -60,8 +89,10 @@ component_add_internal_dependencies(
 
 component_add_transitive_commands(
     window
-    "find_package(glfw3 REQUIRED)"
-    "find_package(lux-cxx REQUIRED COMPONENTS event)"
+    "if(NOT ANDROID)"
+    "    find_package(glfw3 REQUIRED)"
+    "endif()"
+    "find_package(Vulkan REQUIRED)"
 )
 
 if(WIN32)

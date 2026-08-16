@@ -1,0 +1,145 @@
+{
+    "version": 2,
+    "global": { "build_type": "RelWithDebInfo" },
+
+    "variables": {
+        "lux_root": "{config_dir}/../..",
+        "build_root": "{config_dir}/../../build",
+        "install_root": "{config_dir}/../../install/{build_type}"
+    },
+
+    "nodes": [
+        {
+            "node_id": 1,
+            "title": "lux-cmake-toolset",
+            "pos_x": -900.0,
+            "pos_y": 0.0,
+            "cmake_options": [],
+            "project_path": "{lux_root}/lux-cmake-toolset",
+            "build_settings": {
+                "build_dir": "{build_root}/{build_type}/{project_name}",
+                "install_dir": "{install_root}",
+                "build_type": "RelWithDebInfo",
+                "prefix_path": "{install_root}",
+                "toolchain_file": "{vcpkg_path}/scripts/buildsystems/vcpkg.cmake",
+                "generator": "Ninja",
+                "c_compiler": "",
+                "cxx_compiler": ""
+            },
+            "code_before_build": "",
+            "code_after_install": "",
+            "build_system": "cmake",
+            "custom_commands": null
+        },
+        {
+            "node_id": 2,
+            "title": "lux-cxx",
+            "pos_x": -600.0,
+            "pos_y": 150.0,
+            "cmake_options": [ "-DENABLE_DYNAMIC_REFLECTION=ON" ],
+            "project_path": "{lux_root}/lux-cxx",
+            "build_settings": {
+                "build_dir": "{build_root}/{build_type}/{project_name}",
+                "install_dir": "{install_root}",
+                "build_type": "RelWithDebInfo",
+                "prefix_path": "{install_root}",
+                "toolchain_file": "{vcpkg_path}/scripts/buildsystems/vcpkg.cmake",
+                "generator": "Ninja",
+                "c_compiler": "",
+                "cxx_compiler": ""
+            },
+            "code_before_build": "",
+            "code_after_install": "",
+            "build_system": "cmake",
+            "custom_commands": null
+        },
+        {
+            "node_id": 3,
+            "title": "imgui",
+            "pos_x": -600.0,
+            "pos_y": -150.0,
+            "cmake_options": [
+                "-DIMGUI_GLFW_SUPPORT=ON",
+                "-DIMGUI_OPENGL3_SUPPORT=ON",
+                "-DIMGUI_VULKAN_SUPPORT=ON"
+            ],
+            "project_path": "{lux_root}/imgui",
+            "build_settings": {
+                "build_dir": "{build_root}/{build_type}/{project_name}",
+                "install_dir": "{install_root}",
+                "build_type": "RelWithDebInfo",
+                "prefix_path": "{install_root}",
+                "toolchain_file": "{vcpkg_path}/scripts/buildsystems/vcpkg.cmake",
+                "generator": "Ninja",
+                "c_compiler": "",
+                "cxx_compiler": ""
+            },
+            "code_before_build": "",
+            "code_after_install": "",
+            "build_system": "cmake",
+            "custom_commands": null
+        },
+        {
+            "node_id": 4,
+            "title": "imgui-node-editor",
+            "pos_x": -300.0,
+            "pos_y": -150.0,
+            "cmake_options": [],
+            "project_path": "{lux_root}/imgui-node-editor",
+            "build_settings": {
+                "build_dir": "{build_root}/{build_type}/{project_name}",
+                "install_dir": "{install_root}",
+                "build_type": "RelWithDebInfo",
+                "prefix_path": "{install_root}",
+                "toolchain_file": "{vcpkg_path}/scripts/buildsystems/vcpkg.cmake",
+                "generator": "Ninja",
+                "c_compiler": "",
+                "cxx_compiler": ""
+            },
+            "code_before_build": "",
+            "code_after_install": "",
+            "build_system": "cmake",
+            "custom_commands": null
+        },
+        {
+            "node_id": 5,
+            "title": "lux-engine",
+            "pos_x": 0.0,
+            "pos_y": 0.0,
+            "cmake_options": [
+                "-DENABLE_RENDER_TEST=ON",
+                "-DENABLE_UI_TEST=ON",
+                "-DENABLE_ASSET_TEST=ON",
+                "-DENABLE_EDITOR_TEST=ON",
+                "-DENABLE_SHADERGEN_TEST=ON",
+                "-DENABLE_SHADERGEN_GLSL_TEST=ON",
+                "-DLUX_BUILD_PROFILE=DEVELOPER",
+                "-DLUX_ENABLE_FLOWFORGE_MLIR=ON",
+                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+            ],
+            "project_path": "{lux_root}/lux-engine",
+            "build_settings": {
+                "build_dir": "{build_root}/{build_type}/{project_name}",
+                "install_dir": "{install_root}",
+                "build_type": "RelWithDebInfo",
+                "prefix_path": "{install_root}",
+                "toolchain_file": "{vcpkg_path}/scripts/buildsystems/vcpkg.cmake",
+                "generator": "Ninja",
+                "c_compiler": "",
+                "cxx_compiler": ""
+            },
+            "code_before_build": "",
+            "code_after_install": "",
+            "build_system": "cmake",
+            "custom_commands": null
+        }
+    ],
+
+    "edges": [
+        { "source_node_id": 1, "target_node_id": 2 },
+        { "source_node_id": 1, "target_node_id": 3 },
+        { "source_node_id": 3, "target_node_id": 4 },
+        { "source_node_id": 2, "target_node_id": 5 },
+        { "source_node_id": 4, "target_node_id": 5 }
+    ]
+}

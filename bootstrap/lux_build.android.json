@@ -1,0 +1,75 @@
+{
+    "version": 2,
+    "global": { "build_type": "RelWithDebInfo" },
+
+    "variables": {
+        "lux_root": "{config_dir}/../..",
+        "build_root": "{config_dir}/../../build",
+        "install_root": "{config_dir}/../../install/Android",
+        "host_install": "{config_dir}/../../install/RelWithDebInfo"
+    },
+
+    "nodes": [
+        {
+            "node_id": 1,
+            "title": "lux-cxx",
+            "pos_x": -400.0,
+            "pos_y": 0.0,
+            "cmake_options": [
+                "-DENABLE_DYNAMIC_REFLECTION=ON",
+                "-DVCPKG_TARGET_TRIPLET=arm64-android",
+                "-DVCPKG_OVERLAY_TRIPLETS={lux_root}/lux-engine/cmake/triplets",
+                "-DANDROID_ABI=arm64-v8a",
+                "-DANDROID_PLATFORM=android-33"
+            ],
+            "project_path": "{lux_root}/lux-cxx",
+            "build_settings": {
+                "build_dir": "{build_root}/Android/{project_name}",
+                "install_dir": "{install_root}/lux-cxx",
+                "build_type": "RelWithDebInfo",
+                "prefix_path": "{install_root}/lux-cxx;{host_install}",
+                "toolchain_file": "{vcpkg_path}/scripts/buildsystems/vcpkg.cmake",
+                "generator": "Ninja",
+                "c_compiler": "",
+                "cxx_compiler": ""
+            },
+            "code_before_build": "",
+            "code_after_install": "",
+            "build_system": "cmake",
+            "custom_commands": null
+        },
+        {
+            "node_id": 2,
+            "title": "lux-engine",
+            "pos_x": 0.0,
+            "pos_y": 0.0,
+            "cmake_options": [
+                "-DLUX_BUILD_PROFILE=PLAYER",
+                "-DLUX_HOST_TOOLS_PREFIX={host_install}",
+                "-DVCPKG_TARGET_TRIPLET=arm64-android",
+                "-DVCPKG_OVERLAY_TRIPLETS={lux_root}/lux-engine/cmake/triplets",
+                "-DANDROID_ABI=arm64-v8a",
+                "-DANDROID_PLATFORM=android-33"
+            ],
+            "project_path": "{lux_root}/lux-engine",
+            "build_settings": {
+                "build_dir": "{build_root}/Android/{project_name}",
+                "install_dir": "{install_root}/lux-engine",
+                "build_type": "RelWithDebInfo",
+                "prefix_path": "{install_root}/lux-cxx;{install_root}/luajit;{host_install}",
+                "toolchain_file": "{vcpkg_path}/scripts/buildsystems/vcpkg.cmake",
+                "generator": "Ninja",
+                "c_compiler": "",
+                "cxx_compiler": ""
+            },
+            "code_before_build": "",
+            "code_after_install": "",
+            "build_system": "cmake",
+            "custom_commands": null
+        }
+    ],
+
+    "edges": [
+        { "source_node_id": 1, "target_node_id": 2 }
+    ]
+}

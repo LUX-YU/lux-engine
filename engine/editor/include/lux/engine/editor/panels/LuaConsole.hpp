@@ -19,18 +19,20 @@
 
 #pragma once
 #include <lux/engine/editor/visibility.h>
-#include <lux/engine/script/lua/Lua.hpp>
+#include <lux/engine/function/script/lua/Lua.hpp>
 #include <lux/engine/ui/Panel.hpp>
+#include <lux/engine/resource/asset/Asset.hpp>   // asset_id_t — in-place SCRIPT asset editing
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
 #include <cstdarg>
 #include <sstream>
 #include <cstring>
-#include <lux/engine/editor/app/FormatCompat.h>
+#include <lux/engine/platform/FormatCompat.h>
 
 namespace lux::asset { class AssetManager; }
 
@@ -64,6 +66,21 @@ namespace lux::editor
          */
         void setAssetManager(std::shared_ptr<lux::asset::AssetManager> mgr);
 
+        /**
+         * Open a SCRIPT asset (LuaSource kind) for IN-PLACE editing.
+         * Loads the asset's payload (the Lua source) into the code buffer;
+         * Save (button / Ctrl+S) writes the buffer back into the asset AND its
+         * `.luxasset` on disk. The Lua backend keys its compile cache on the
+         * SOURCE HASH, so edit → Save → Play recompiles automatically — this
+         * is the in-editor hot-reload loop, no external file / re-import.
+         * Wired to AssetBrowser double-click (LuxEditor), like MaterialGraph.
+         */
+        /// @p display_vpath — what the header/save log show as "where this is":
+        /// the engine VIRTUAL path ("/Game/Scripts/Spin"), never a raw OS path.
+        void openScriptAsset(const lux::asset::asset_id_t& id,
+                             std::filesystem::path         luxasset_path,
+                             std::string                   display_vpath);
+
         /** Append a formatted line to the output pane */
         template<typename... Args>
         void addLog(lux::format_string<Args...> fmt, Args&&... args)
@@ -82,6 +99,9 @@ namespace lux::editor
         /** Execute whatever is currently in code_buf_ */
         void runCurrentScript();
 
+        /** Write the buffer back into the edited SCRIPT asset + its .luxasset. */
+        void saveScriptAsset();
+
         /** Allow Ctrl+Enter / Ctrl+R shortcuts to run the script */
         static int TextEditShortcutCallback(ImGuiInputTextCallbackData* data);
 
@@ -91,5 +111,12 @@ namespace lux::editor
         bool                     auto_scroll_{ true };
         bool                     scroll_to_bottom_{ false };
         float                    split_ratio_{ 0.6f };
+
+        // In-place SCRIPT asset editing state. Nil id = the panel
+        // is a plain console buffer (the pre-A behavior, still available).
+        std::shared_ptr<lux::asset::AssetManager> asset_mgr_;
+        lux::asset::asset_id_t   edit_asset_{};
+        std::filesystem::path    edit_path_;
+        std::string              edit_name_;
     };
 }

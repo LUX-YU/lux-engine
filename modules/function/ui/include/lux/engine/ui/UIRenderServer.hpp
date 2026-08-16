@@ -11,8 +11,8 @@
 
 #include <lux/engine/common/Size2D.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/render/core/RenderSceneId.hpp>
-#include <lux/engine/render/core/FeatureHandle.hpp>
+#include <lux/engine/function/render/client/core/RenderSceneId.hpp>
+#include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 #include <lux/engine/ui/ImGuiCommConfig.hpp>
 #include <lux/engine/function/visibility_ui.h>
 
@@ -28,7 +28,9 @@ namespace lux::ui
     {
     public:
         UIRenderServer(
-            std::shared_ptr<Channel> channel,
+            std::shared_ptr<Channel> frame_channel,
+            std::shared_ptr<lux::render::RenderControlChannel<>> control_channel,
+            std::shared_ptr<lux::render::RenderUploadChannel<>> upload_channel,
             std::shared_ptr<lux::render::RenderChannelSync> sync);
 
         ~UIRenderServer() override;
@@ -67,39 +69,13 @@ namespace lux::ui
         /// Safe to call when no swapchain scene is set (no-op).
         void clearSwapchainScene();
 
-        /// Whether a swapchain scene is currently configured.
-        [[nodiscard]] bool hasSwapchainScene() const noexcept;
-
-        // ─── Synchronous ImGui offscreen-view creation ───────────────────
-        //
-        // Server-side direct equivalent of the protocol-level `AddUIView`
-        // command. Creates an offscreen render target the editor's
-        // viewport panel can sample as an ImGui texture. Intended for
-        // use between init() and the first tick(), matching
-        // `GeneralRenderServer`'s other "before-tick" sync APIs.
-        //
-        // The scene must already exist (e.g. created via `createScene`).
-        // Returns an invalid `ViewHandle` (id == 0) on failure.
-
-        [[nodiscard]] lux::render::ViewHandle addUIView(
-            lux::render::RenderSceneId scene_id,
-            lux::common::Size2D        extent,
-            const char*                debug_name);
-
-        /// Reverse of `addUIView`. Removes the offscreen pool and the
-        /// view from the scene. Safe to call from the same "before-tick"
-        /// position (or, by symmetry, at shutdown right before the
-        /// server destructor runs).
-        void removeUIView(lux::render::RenderSceneId scene_id,
-                          lux::render::ViewHandle    view);
+        // (服务端直呼 addUIView / removeUIView 已消亡:UI 目标统一走
+        //  CreateOffscreenTarget(SAMPLED) + SetLayer 核心命令面。)
 
         /// Enable or disable ImGui overlay rendering on top of the swapchain.
         /// When disabled, only the swapchain scene (if any) renders to the
         /// swapchain surface.  Default: true.
         void setImGuiOverlayEnabled(bool enabled);
-
-        /// Whether ImGui overlay rendering is enabled.
-        [[nodiscard]] bool isImGuiOverlayEnabled() const noexcept;
 
     public:
         struct UIState;

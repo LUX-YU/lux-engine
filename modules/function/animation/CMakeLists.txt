@@ -16,6 +16,13 @@ add_component(
     SOURCE_FILES   ${LUX_ANIMATION_SRCS}
 )
 
+lux_classify_target(
+    TARGET animation
+    LAYER FUNCTION
+    PRODUCT RUNTIME
+    ROLE DOMAIN
+)
+
 target_compile_definitions(
     animation
     PRIVATE
@@ -35,13 +42,13 @@ target_link_libraries(
     animation
     PUBLIC
     lux::engine::core::math
-    lux::engine::resource::asset
+    lux::engine::resource::asset_core
 )
 
 component_add_transitive_commands(
     animation
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
 )
 
 set(ENABLE_ANIMATION_TEST OFF CACHE BOOL "Enable animation module tests")

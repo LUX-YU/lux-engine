@@ -2,8 +2,8 @@
 // ============================================================================
 //  RenderTaskScheduler.hpp — TEST-ONLY cooperative scheduler for RenderTask
 //  coroutines. RELOCATED out of the production render API alongside RenderTask.hpp
-//  (senders / lux::exec::asSender are the production async path now); this drives
-//  the render feature tests' coroutine harnesses.
+//  (生产侧如今是 trySyncCall/awaitAllReady;sender 适配同为零生产消费者的占位);
+//  this drives the render feature tests' coroutine harnesses.
 //
 //  Runs a RenderTask<void> inside the standard frame lifecycle:
 //    beginFrame → resume coroutine → submitFrame → waitAndPumpReplies
@@ -14,7 +14,9 @@
 //  next beginFrame() so the coroutine can safely push commands.
 // ============================================================================
 
-#include <lux/engine/render/comm/client/RenderSession.hpp>
+#include <lux/engine/function/render/client/RenderFrameSession.hpp>
+#include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include "RenderTask.hpp"   // relocated beside this header (test-only)
 
 #include <cassert>
@@ -24,11 +26,32 @@
 
 namespace lux::render
 {
+    /// Test-coroutine adapter. Production keeps the structured backpressure
+    /// result and retries at a main-thread safe point; these probes run below
+    /// saturation and convert rejection into a settled failure request.
+    template <class Reply>
+    [[nodiscard]] RenderRequest<Reply> requireUploadAccepted(
+        UploadSubmitResult<Reply> submitted)
+    {
+        if (!submitted)
+            return RenderRequestFactory<Reply>::makeImmediateFailure({});
+        return std::move(submitted.value());
+    }
+
     class RenderTaskScheduler
     {
     public:
-        explicit RenderTaskScheduler(RenderSession& session)
+        explicit RenderTaskScheduler(RenderFrameSession& session)
             : session_(session) {}
+
+        RenderTaskScheduler(
+            RenderFrameSession& frame,
+            RenderControlSession& control,
+            RenderUploadSession* upload = nullptr
+        ) noexcept
+            : session_(frame), control_(&control), upload_(upload)
+        {
+        }
 
         /// Run a coroutine task to completion, pumping frames as needed.
         ///
@@ -54,8 +77,12 @@ namespace lux::render
             {
                 // The coroutine has suspended — either at yield_frame()
                 // or at co_await RenderRequest (waiting for a reply).
-                session_.submitFrame(true);
+                session_.trySubmitFrame();
                 session_.waitAndPumpReplies();
+                if (control_)
+                    control_->pumpReplies();
+                if (upload_)
+                    upload_->pumpReplies();
 
                 // Per-frame callback (window poll, camera update, etc.)
                 if (!on_frame(session_))
@@ -88,8 +115,12 @@ namespace lux::render
             // Use non-blocking pump — if no frame was submitted (e.g. the
             // loop broke before beginFrame), there is no reply to wait for
             // and a blocking wait would deadlock.
-            session_.submitFrame(true);
+            session_.trySubmitFrame();
             session_.pumpReplies();
+            if (control_)
+                control_->pumpReplies();
+            if (upload_)
+                upload_->pumpReplies();
 
             // Clean up the global slot.
             g_waiting_render_reply = nullptr;
@@ -104,7 +135,9 @@ namespace lux::render
         }
 
     private:
-        RenderSession& session_;
+        RenderFrameSession& session_;
+        RenderControlSession* control_{nullptr};
+        RenderUploadSession* upload_{nullptr};
     };
 
 } // namespace lux::render

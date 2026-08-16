@@ -1,0 +1,14 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+
+layout(location = 0) flat in uint vFlags;
+layout(location = 0) out float outMask;
+
+const uint INSTANCE_FLAG_STREAMING_FEEDBACK = 16u;
+
+void main()
+{
+    if ((vFlags & INSTANCE_FLAG_STREAMING_FEEDBACK) == 0u)
+        discard;
+    outMask = 1.0;
+}

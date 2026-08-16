@@ -1,11 +1,11 @@
 #include <lux/engine/editor/thumbnail/ThumbnailSpecProvider.hpp>
-#include <lux/engine/editor/thumbnail/PreviewScene.hpp>
 
-#include <lux/engine/asset/AssetManager.hpp>
-#include <lux/engine/asset/MeshAsset.hpp>
-#include <lux/engine/asset/MaterialAsset.hpp>
-#include <lux/engine/asset/TextureAsset.hpp>
-#include <lux/engine/asset/ModelAsset.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/resource/asset/MeshAsset.hpp>
+#include <lux/engine/resource/asset/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/TextureAsset.hpp>
+#include <lux/engine/resource/asset/ModelAsset.hpp>
 #include <lux/engine/editor/content/ModelMaterialResolve.hpp>   // resolveModelSubmeshes
 
 #include <lux/engine/description/Mesh.hpp>
@@ -34,20 +34,6 @@ namespace lux::editor
             for (const auto& v : mesh.vertices)
                 b.merge(v.position);
             return b;
-        }
-
-        // Skinned-mesh detection for the unified vertex layout: a mesh is
-        // skinned when ANY vertex carries a nonzero bone weight. Returns the
-        // identity-palette size (max referenced bone id + 1; 0 = not skinned)
-        // so the service can render the BIND POSE.
-        std::uint32_t skinnedBoneCount(const lux::rdesc::Mesh& mesh)
-        {
-            int max_bone = -1;
-            for (const auto& v : mesh.vertices)
-                for (std::uint8_t k = 0; k < lux::rdesc::max_bone_influence; ++k)
-                    if (v.bone.weights[k] > 0.0f && v.bone.bone_ids[k] >= 0)
-                        max_bone = std::max(max_bone, v.bone.bone_ids[k]);
-            return static_cast<std::uint32_t>(max_bone + 1);
         }
 
         // Convert an uncompressed texture's mip 0 to tightly-packed RGBA8.
@@ -100,7 +86,7 @@ namespace lux::editor
         {
         public:
             ThumbnailSpec buildSpec(lux::asset::AssetManager& assets,
-                                    const PreviewScene&,
+                                    const lux::asset::asset_id_t&,
                                     const lux::asset::asset_id_t& id,
                                     const ThumbnailLoadFn& request_load) override
             {
@@ -124,20 +110,17 @@ namespace lux::editor
         {
         public:
             ThumbnailSpec buildSpec(lux::asset::AssetManager& assets,
-                                    const PreviewScene&,
+                                    const lux::asset::asset_id_t&,
                                     const lux::asset::asset_id_t& id,
                                     const ThumbnailLoadFn& request_load) override
             {
                 ThumbnailSpec spec;
                 const auto* asset = assets.fetchAssetAs<lux::asset::MeshAsset>(id);
                 if (!asset) return spec;                                  // unknown id
+                // 网格数据本体只为算 bounds(上传归资源解析器,它自己会再取)。
                 if (!asset->data()) { request_load(id); spec.pending = true; return spec; }
-                const auto& mesh = *asset->data();
-                ThumbnailInstanceSpec inst{&mesh, {}};       // default grey
-                inst.bone_count = skinnedBoneCount(mesh);
-                inst.skinned    = inst.bone_count > 0;
-                spec.instances.push_back(inst);
-                spec.bounds = computeBounds(mesh);
+                spec.instances.push_back(ThumbnailInstanceSpec{id, {}});  // 无材质 → PreviewGrey
+                spec.bounds = computeBounds(*asset->data());
                 spec.valid  = true;
                 return spec;
             }
@@ -147,7 +130,7 @@ namespace lux::editor
         {
         public:
             ThumbnailSpec buildSpec(lux::asset::AssetManager& assets,
-                                    const PreviewScene&,
+                                    const lux::asset::asset_id_t&,
                                     const lux::asset::asset_id_t& id,
                                     const ThumbnailLoadFn& request_load) override
             {
@@ -155,10 +138,15 @@ namespace lux::editor
                 const auto* model = assets.fetchAssetAs<lux::asset::ModelAsset>(id);
                 if (!model || model->meshAssetIds().empty()) return spec;
 
-                // 大世界 W2b:模型的 mesh/material/纹理 子资产现在都是按需流送的空壳。先确保
-                // 它们数据就位(缺则请求加载 + 报 pending 让服务稍后重试),否则首帧只能渲染
-                // 残缺/无纹理模型。材质的纹理槽需等材质本身就位后才能读到 —— 跨重试自然收敛:
-                // 先载 mesh+material,材质就位后再载其纹理,全齐才 build。
+                // Model mesh/material/texture sub-assets are now on-demand
+                // streaming shells. First make sure their data is resident
+                // (if missing, request a load and report pending so the
+                // service retries later) — the mesh data is needed for bounds
+                // and the material's texture slots can only be read once the
+                // material itself is resident, so this converges naturally
+                // across retries: load mesh+material first, then load its
+                // textures once the material is resident, and only build once
+                // everything is in place.
                 bool deps_pending = false;
                 for (const auto& mid : model->meshAssetIds())
                     if (!mid.is_nil() && !assets.hasData(mid)) { request_load(mid); deps_pending = true; }
@@ -192,13 +180,11 @@ namespace lux::editor
                 lux::math::AABB combined; // inverted → merge
                 for (std::size_t i = 0; i < model->meshAssetIds().size(); ++i)
                 {
-                    const auto* ma = assets.fetchAssetAs<lux::asset::MeshAsset>(
-                        model->meshAssetIds()[i]);
+                    const auto& mesh_id = model->meshAssetIds()[i];
+                    const auto* ma = assets.fetchAssetAs<lux::asset::MeshAsset>(mesh_id);
                     if (!ma || !ma->data()) continue;
-                    ThumbnailInstanceSpec inst{ ma->data(), materialFor(i) };
-                    inst.bone_count = skinnedBoneCount(*ma->data());
-                    inst.skinned    = inst.bone_count > 0;
-                    spec.instances.push_back(inst);
+                    spec.instances.push_back(
+                        ThumbnailInstanceSpec{mesh_id, materialFor(i)});
                     combined.merge(computeBounds(*ma->data()));
                 }
                 if (spec.instances.empty()) return spec;
@@ -212,7 +198,7 @@ namespace lux::editor
         {
         public:
             ThumbnailSpec buildSpec(lux::asset::AssetManager& assets,
-                                    const PreviewScene& preview,
+                                    const lux::asset::asset_id_t& sphere_mesh_id,
                                     const lux::asset::asset_id_t& id,
                                     const ThumbnailLoadFn& request_load) override
             {
@@ -220,10 +206,13 @@ namespace lux::editor
                 const auto* asset = assets.fetchAssetAs<lux::asset::MaterialAsset>(id);
                 if (!asset) return spec;                                  // unknown id
                 if (!asset->data()) { request_load(id); spec.pending = true; return spec; }
-                if (preview.sphereMesh().is_null()) return spec;
+                if (sphere_mesh_id.is_nil()) return spec;   // builtin sphere absent
 
-                // 大世界 W2b:材质引用的纹理槽也是流送空壳 —— 缺则请求加载 + 报 pending,
-                // 让缩略图等纹理就位再渲染(否则标准材质缩略图首版无纹理)。
+                // The texture slots a material references are also
+                // streaming shells — if missing, request a load and report
+                // pending, so the thumbnail waits for the texture to become
+                // resident before rendering (otherwise a standard-material
+                // thumbnail's first version would render without textures).
                 const lux::asset::MaterialData& payload = *asset->data();
                 bool tex_pending = false;
                 for (std::uint32_t s = 0; s < lux::asset::MaterialData::kMaxTextures; ++s)
@@ -233,14 +222,56 @@ namespace lux::editor
                 }
                 if (tex_pending) { spec.pending = true; return spec; }
 
-                // Just reference the asset by id — the service loads the baked
-                // SPIR-V + params + texture-slot UUIDs, compiles the frags, resolves
-                // textures to bindless, and uploads via uploadGraphMaterial so the
-                // preview sphere wears the real graph material (its own PSO).
-                // mesh_data == nullptr → the service binds PreviewScene's sphere.
-                ThumbnailInstanceSpec inst;
-                inst.graph_material_id = id;
-                spec.instances.push_back(std::move(inst));
+                // 球 + 该材质 —— job 实体 = MeshComponent{sphere, material}。
+                // 上传/编译/贴图解析都归资源解析器(ensureMaterial 按资产类型分派),
+                // 这里只引用 id。
+                spec.instances.push_back(ThumbnailInstanceSpec{sphere_mesh_id, id});
+                spec.bounds = lux::math::AABB(Eigen::Vector3f(-0.5f, -0.5f, -0.5f),
+                                              Eigen::Vector3f( 0.5f,  0.5f,  0.5f));
+                spec.valid  = true;
+                return spec;
+            }
+        };
+
+        // 材质实例:与模板 provider 同构(球 + 资产 id;上传/父级编译/贴图解析
+        // 都归 ensureMaterial 的类型分派 —— ensureMaterialInstance 自己解析
+        // parent,这里不用)。差异只在**驻留门**:实例数据 → 父材质数据 →
+        // 有效贴图槽(override 的槽用实例的,其余用父级的)三级都要就绪才发,
+        // 否则首版缩略图会在贴图/父级未驻留时渲出残样。
+        class MaterialInstanceThumbnailSpecProvider final : public IThumbnailSpecProvider
+        {
+        public:
+            ThumbnailSpec buildSpec(lux::asset::AssetManager& assets,
+                                    const lux::asset::asset_id_t& sphere_mesh_id,
+                                    const lux::asset::asset_id_t& id,
+                                    const ThumbnailLoadFn& request_load) override
+            {
+                ThumbnailSpec spec;
+                const auto* inst = assets.fetchAssetAs<lux::asset::MaterialInstanceAsset>(id);
+                if (!inst) return spec;                                   // unknown id
+                if (!inst->data()) { request_load(id); spec.pending = true; return spec; }
+                if (sphere_mesh_id.is_nil()) return spec;   // builtin sphere absent
+
+                const auto& idata = *inst->data();
+                if (idata.parent_material_id.is_nil()) return spec;       // 孤儿实例:回落字形
+
+                const auto* parent =
+                    assets.fetchAssetAs<lux::asset::MaterialAsset>(idata.parent_material_id);
+                if (!parent) return spec;
+                if (!parent->data())
+                { request_load(idata.parent_material_id); spec.pending = true; return spec; }
+
+                bool tex_pending = false;
+                for (std::uint32_t s = 0; s < lux::asset::MaterialData::kMaxTextures; ++s)
+                {
+                    const auto& tid = (idata.tex_override_mask & (1u << s))
+                                          ? idata.texture_slot_ids[s]
+                                          : parent->data()->texture_slot_ids[s];
+                    if (!tid.is_nil() && !assets.hasData(tid)) { request_load(tid); tex_pending = true; }
+                }
+                if (tex_pending) { spec.pending = true; return spec; }
+
+                spec.instances.push_back(ThumbnailInstanceSpec{sphere_mesh_id, id});
                 spec.bounds = lux::math::AABB(Eigen::Vector3f(-0.5f, -0.5f, -0.5f),
                                               Eigen::Vector3f( 0.5f,  0.5f,  0.5f));
                 spec.valid  = true;
@@ -268,6 +299,8 @@ namespace lux::editor
         reg.registerProvider(lux::asset::EAssetType::MESH,           std::make_unique<MeshThumbnailSpecProvider>());
         reg.registerProvider(lux::asset::EAssetType::MODEL,          std::make_unique<ModelThumbnailSpecProvider>());
         reg.registerProvider(lux::asset::EAssetType::MATERIAL, std::make_unique<GraphMaterialThumbnailSpecProvider>());
+        reg.registerProvider(lux::asset::EAssetType::MATERIAL_INSTANCE,
+                             std::make_unique<MaterialInstanceThumbnailSpecProvider>());
         return reg;
     }
 

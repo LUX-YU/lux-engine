@@ -25,8 +25,7 @@ namespace lux::authoring
         : public lux::asset::TAssetSerDeser<FlowGraphLoadConfig>
     {
     public:
-        explicit FlowGraphSerDeser(
-            std::shared_ptr<lux::asset::AssetManager> manager);
+        explicit FlowGraphSerDeser(std::shared_ptr<lux::asset::AssetManager> manager);
         ~FlowGraphSerDeser() override;
 
         /// Decode a complete .luxasset FLOW_GRAPH memory image into the pure

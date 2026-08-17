@@ -10,8 +10,7 @@ namespace lux::asset
     /**
      * @brief Constructs an AssetManager with default implementation.
      */
-    AssetManager::AssetManager(
-        std::shared_ptr<const AssetCodecCatalog> codecs)
+    AssetManager::AssetManager(std::shared_ptr<const AssetCodecCatalog> codecs)
     {
         if (!codecs)
             std::abort();

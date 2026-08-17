@@ -692,8 +692,7 @@ namespace lux::render
         }
     }
 
-    std::uint32_t RenderClusterResources::allocatePickToken(
-        std::uint64_t stable_pick_id)
+    std::uint32_t RenderClusterResources::allocatePickToken(std::uint64_t stable_pick_id)
     {
         std::uint32_t token = 0u;
         if (!free_pick_tokens_.empty())
@@ -970,8 +969,7 @@ namespace lux::render
         }
     }
 
-    bool RenderClusterResources::rebuildGpuCullCanonical(
-        const InstanceResources& instances)
+    bool RenderClusterResources::rebuildGpuCullCanonical(const InstanceResources& instances)
     {
         gpu_cull_clusters_.clear();
         gpu_cull_instances_.clear();

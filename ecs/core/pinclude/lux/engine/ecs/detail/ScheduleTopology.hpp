@@ -42,7 +42,6 @@ namespace lux::ecs::detail
     /// nodes). It deliberately uses deterministic linear lookup/dedup/ready
     /// selection instead of maintaining another hash index; no O(V+E)
     /// complexity claim is made for the complete routine.
-    [[nodiscard]] ScheduleTopologyAnalysis analyzeScheduleTopology(
-        std::span<const ScheduleTopologyNodeView> nodes);
+    [[nodiscard]] ScheduleTopologyAnalysis analyzeScheduleTopology(std::span<const ScheduleTopologyNodeView> nodes);
 
 } // namespace lux::ecs::detail

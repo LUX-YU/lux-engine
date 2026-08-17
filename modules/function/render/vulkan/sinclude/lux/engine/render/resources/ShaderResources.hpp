@@ -118,8 +118,7 @@ namespace lux::render
         ///
         /// 空句柄的 stage 视为调用方的错误(缺 shader 应在解析阶段就报出来),返回
         /// shader.handle_stale。
-        [[nodiscard]] Expected<PreparedPipelineStages> preparePipelineStages(
-            std::span<const ShaderHandle> stages);
+        [[nodiscard]] Expected<PreparedPipelineStages> preparePipelineStages(std::span<const ShaderHandle> stages);
 
         // (原先这里还有 `mergedOrOriginal(ShaderHandle) -> ShaderHandle`:切换到域合并
         //  布局,失败就把源句柄还给你。它是全模块最后一处**主动丢弃错误**的地方 ——

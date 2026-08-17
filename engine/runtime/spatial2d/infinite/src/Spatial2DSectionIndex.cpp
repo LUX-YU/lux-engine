@@ -199,8 +199,7 @@ namespace lux::runtime::spatial2d
         return result;
     }
 
-    Spatial2DSectionSource Spatial2DSectionSource::finite(
-        Spatial2DSectionIndex index)
+    Spatial2DSectionSource Spatial2DSectionSource::finite(Spatial2DSectionIndex index)
     {
         return Spatial2DSectionSource{
             std::optional<Spatial2DSectionIndex>{std::move(index)}, {}};

@@ -440,8 +440,7 @@ namespace lux::render
     }
 
     std::optional<std::uint64_t>
-    GpuTransferPipeline::submitGraphicsFinalize(
-        VkCommandBuffer command_buffer)
+    GpuTransferPipeline::submitGraphicsFinalize(VkCommandBuffer command_buffer)
     {
         const uint64_t timeline_value =
             timeline_counter_.fetch_add(1, std::memory_order_relaxed) + 1u;

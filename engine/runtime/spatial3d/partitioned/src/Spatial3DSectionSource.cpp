@@ -277,8 +277,7 @@ namespace lux::runtime::spatial3d
             : nullptr;
     }
 
-    Spatial3DSectionSource Spatial3DSectionSource::catalog(
-        Spatial3DSectionCatalog catalog)
+    Spatial3DSectionSource Spatial3DSectionSource::catalog(Spatial3DSectionCatalog catalog)
     {
         return Spatial3DSectionSource{
             std::optional<Spatial3DSectionCatalog>{std::move(catalog)}, {}};

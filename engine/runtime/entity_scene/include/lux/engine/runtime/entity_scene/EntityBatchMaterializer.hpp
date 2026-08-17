@@ -46,8 +46,7 @@ namespace lux::runtime::entity_scene
     public:
         /// Borrows the one sparse identity authority for the live registry.
         /// arm() rejects a registry which is not bound to that authority.
-        explicit EntityBatchMaterializer(
-            lux::ecs::PersistentEntityIndex& persistent_entities);
+        explicit EntityBatchMaterializer(lux::ecs::PersistentEntityIndex& persistent_entities);
         ~EntityBatchMaterializer();
         EntityBatchMaterializer(const EntityBatchMaterializer&) = delete;
         EntityBatchMaterializer& operator=(

@@ -1374,8 +1374,7 @@ namespace lux::editor
     //  The built-ins live beside their registry (SpawnRecipes.cpp);
     //  this shell only draws the menu and selects the spawn result.
     // ──────────────────────────────────────────────────────────────────
-    void LuxEditor::drawSpawnMenuItems(
-        const std::optional<lux::spatial::Position2D>& pos2d)
+    void LuxEditor::drawSpawnMenuItems(const std::optional<lux::spatial::Position2D>& pos2d)
     {
         auto* scene = currentScene();
         if (!scene)

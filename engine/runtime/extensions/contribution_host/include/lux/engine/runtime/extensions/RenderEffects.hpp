@@ -147,8 +147,7 @@ namespace lux::runtime
     class LUX_RUNTIME_CONTRIBUTION_PUBLIC RenderEffectTypeRegistry final
     {
     public:
-        explicit RenderEffectTypeRegistry(
-            lux::render::RenderControlSession& control);
+        explicit RenderEffectTypeRegistry(lux::render::RenderControlSession& control);
         ~RenderEffectTypeRegistry();
         RenderEffectTypeRegistry(const RenderEffectTypeRegistry&) = delete;
         RenderEffectTypeRegistry& operator=(

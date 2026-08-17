@@ -58,8 +58,7 @@ namespace lux::runtime
         [[nodiscard]] lux::ecs::EResourceDomain domain() const override;
 
         void submit(const lux::asset::asset_id_t& id, SubmitDone done) override;
-        void applyMipDemands(
-            const lux::render::TextureMipDemandsReply& demands);
+        void applyMipDemands(const lux::render::TextureMipDemandsReply& demands);
         void destroy(std::uint64_t handle_bits) noexcept override;
         [[nodiscard]] std::size_t pendingReplies() const noexcept override;
         [[nodiscard]] bool ownerControlsQuiescent() const noexcept override;

@@ -326,8 +326,7 @@ namespace lux::ecs
         }
     };
 
-    LuaScriptBackend::LuaScriptBackend(
-        const ComponentTypeCatalog& components)
+    LuaScriptBackend::LuaScriptBackend(const ComponentTypeCatalog& components)
         : impl_(std::make_unique<Impl>(components))
     {}
     LuaScriptBackend::~LuaScriptBackend() = default;

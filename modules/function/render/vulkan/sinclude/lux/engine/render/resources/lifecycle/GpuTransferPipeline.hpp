@@ -327,8 +327,7 @@ namespace lux::render
 
         /// Submit a render-thread-recorded graphics finalize batch and arrange
         /// an epoch wake when its timeline value retires.
-        [[nodiscard]] std::optional<std::uint64_t> submitGraphicsFinalize(
-            VkCommandBuffer command_buffer);
+        [[nodiscard]] std::optional<std::uint64_t> submitGraphicsFinalize(VkCommandBuffer command_buffer);
 
         /// Release a dedicated-transfer command-pool slot after the matching
         /// graphics queue-family acquire has been successfully queued.

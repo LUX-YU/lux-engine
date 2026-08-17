@@ -1097,8 +1097,7 @@
         return &found->second.document;
     }
 
-    void EditorScene::cacheAuthoringDescriptorPage(
-        lux::authoring::WorldDescriptorPageDocument page)
+    void EditorScene::cacheAuthoringDescriptorPage(lux::authoring::WorldDescriptorPageDocument page)
     {
         const auto key = uuids::to_string(page.id);
         const auto bytes = descriptorPageResidentBytes(page) +

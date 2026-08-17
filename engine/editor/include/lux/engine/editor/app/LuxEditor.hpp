@@ -398,8 +398,7 @@ namespace lux::editor
         // spawn + select on click) inside an already-open ImGui popup/menu.
         // @p pos2d — world position for "create HERE" (viewport right-click);
         // nullopt for position-less entry points (Hierarchy).
-        void drawSpawnMenuItems(
-            const std::optional<lux::spatial::Position2D>& pos2d);
+        void drawSpawnMenuItems(const std::optional<lux::spatial::Position2D>& pos2d);
 
 
         EditorConfig                                            config_;

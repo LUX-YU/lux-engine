@@ -486,8 +486,7 @@ namespace lux::editor
         // Generation-checked observation into the runtime-owned Schedule.
         lux::ecs::SystemHandle<CameraSceneSystem> camera_system_{};
 
-        [[nodiscard]] lux::meta::entity_id commitSpawnModel(
-            InstanceSpawnPlan&& plan);
+        [[nodiscard]] lux::meta::entity_id commitSpawnModel(InstanceSpawnPlan&& plan);
         [[nodiscard]] std::shared_ptr<const EntityScenePlayCookJob>
             buildEntityScenePlayCookJob(
                 const std::filesystem::path& root_document);
@@ -496,15 +495,13 @@ namespace lux::editor
             std::uint64_t generation) noexcept;
         [[nodiscard]] bool closeCookedPlay() noexcept;
         void updateAuthoringProxyWindow();
-        void requestAuthoringDescriptorPage(
-            const lux::authoring::WorldDescriptorPageReference& page);
+        void requestAuthoringDescriptorPage(const lux::authoring::WorldDescriptorPageReference& page);
         void requestAuthoringInstancePage(
             uuids::uuid descriptor_page,
             const lux::authoring::WorldPageSourceDescriptor& page);
         [[nodiscard]] lux::authoring::WorldDescriptorPageDocument*
         cachedAuthoringDescriptorPage(uuids::uuid page) noexcept;
-        void cacheAuthoringDescriptorPage(
-            lux::authoring::WorldDescriptorPageDocument page);
+        void cacheAuthoringDescriptorPage(lux::authoring::WorldDescriptorPageDocument page);
         void trimAuthoringDescriptorPageCache() noexcept;
         [[nodiscard]] bool activateAuthoringInstancePage(
             uuids::uuid descriptor_page,

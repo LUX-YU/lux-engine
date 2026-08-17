@@ -53,8 +53,7 @@ namespace lux::ecs::detail
         }
     }
 
-    ScheduleTopologyAnalysis analyzeScheduleTopology(
-        std::span<const ScheduleTopologyNodeView> nodes)
+    ScheduleTopologyAnalysis analyzeScheduleTopology(std::span<const ScheduleTopologyNodeView> nodes)
     {
         ScheduleTopologyAnalysis analysis;
         const std::size_t node_count = nodes.size();

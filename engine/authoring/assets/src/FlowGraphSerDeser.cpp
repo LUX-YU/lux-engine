@@ -23,8 +23,7 @@ namespace lux::authoring
     using lux::asset::LuxAsset;
     using lux::cxx::unexpected;
 
-    FlowGraphSerDeser::FlowGraphSerDeser(
-        std::shared_ptr<lux::asset::AssetManager> manager)
+    FlowGraphSerDeser::FlowGraphSerDeser(std::shared_ptr<lux::asset::AssetManager> manager)
         : TAssetSerDeser(std::move(manager))
     {
     }

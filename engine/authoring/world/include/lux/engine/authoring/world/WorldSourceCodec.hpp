@@ -53,8 +53,7 @@ namespace lux::authoring
     /// default Partition Space. Topology belongs to that space rather than to
     /// a top-level 2D/3D World discriminator.
     [[nodiscard]] LUX_ENGINE_AUTHORING_WORLD_PUBLIC
-    WorldSourceDocument makeWorldSourceDocument(
-        lux::authoring::EPartitionTopology topology);
+    WorldSourceDocument makeWorldSourceDocument(lux::authoring::EPartitionTopology topology);
 
     /// Canonical content-addressed location for one external Actor document.
     /// Keeping this in Authoring prevents Editor workflows from inventing

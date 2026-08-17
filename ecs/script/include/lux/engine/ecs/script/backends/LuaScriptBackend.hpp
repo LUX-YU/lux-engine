@@ -34,8 +34,7 @@ namespace lux::ecs
     class LUX_FUNCTION_PUBLIC LuaScriptBackend final : public IScriptBackend
     {
     public:
-        explicit LuaScriptBackend(
-            const ComponentTypeCatalog& components);
+        explicit LuaScriptBackend(const ComponentTypeCatalog& components);
         ~LuaScriptBackend() override;
 
         LuaScriptBackend(const LuaScriptBackend&)            = delete;

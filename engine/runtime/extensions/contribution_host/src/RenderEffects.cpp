@@ -203,8 +203,7 @@ namespace lux::runtime
         std::vector<Record> records;
     };
 
-    RenderEffectTypeRegistry::RenderEffectTypeRegistry(
-        lux::render::RenderControlSession& control)
+    RenderEffectTypeRegistry::RenderEffectTypeRegistry(lux::render::RenderControlSession& control)
         : impl_(std::make_unique<Impl>(control))
     {}
 

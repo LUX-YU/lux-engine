@@ -79,8 +79,7 @@ namespace lux::render
         }
     }
 
-    RenderRequest<SceneCreatedReply> RenderControlSession::createScene(
-        const CreateSceneConfig& config)
+    RenderRequest<SceneCreatedReply> RenderControlSession::createScene(const CreateSceneConfig& config)
     {
         return recordReply<SceneCreatedReply>(
             [&](Builder& builder, auto callback)
@@ -100,8 +99,7 @@ namespace lux::render
             });
     }
 
-    RenderRequest<SceneCreatedReply> RenderControlSession::createScene(
-        const char* name, std::uint32_t flags)
+    RenderRequest<SceneCreatedReply> RenderControlSession::createScene(const char* name, std::uint32_t flags)
     {
         return createScene(CreateSceneConfig{.name = name, .flags = flags});
     }
@@ -280,7 +278,11 @@ namespace lux::render
     }
 
     RenderRequest<ReadbackTargetReply> RenderControlSession::readbackTarget(
-        RenderTargetId target, void* dst, std::size_t capacity, TargetSlot slot)
+        RenderTargetId target,
+        void* dst,
+        std::size_t capacity,
+        TargetSlot slot
+    )
     {
         return recordReply<ReadbackTargetReply>(
             [&](Builder& builder, auto callback)
@@ -298,8 +300,12 @@ namespace lux::render
 
     RenderRequest<ReadbackTargetReply>
     RenderControlSession::readbackTargetAsync(
-        RenderTargetId target, void* dst, std::size_t capacity,
-        std::uint32_t settle_frames, TargetSlot slot)
+        RenderTargetId target,
+        void* dst,
+        std::size_t capacity,
+        std::uint32_t settle_frames,
+        TargetSlot slot
+    )
     {
         return recordReply<ReadbackTargetReply>(
             [&](Builder& builder, auto callback)
@@ -317,7 +323,10 @@ namespace lux::render
     }
 
     RenderRequest<RenderGraphDumpReply> RenderControlSession::dumpRenderGraph(
-        RenderSceneId scene, void* dst, std::size_t capacity)
+        RenderSceneId scene,
+        void* dst,
+        std::size_t capacity
+    )
     {
         return recordReply<RenderGraphDumpReply>(
             [&](Builder& builder, auto callback)
@@ -335,7 +344,8 @@ namespace lux::render
     RenderRequest<GpuTimingReply> RenderControlSession::queryGpuTiming(
         RenderSceneId scene,
         void* dst,
-        std::size_t capacity)
+        std::size_t capacity
+    )
     {
         return recordReply<GpuTimingReply>(
             [&](Builder& builder, auto callback)
@@ -355,7 +365,10 @@ namespace lux::render
 
     RenderRequest<QueryFeatureParamsReply>
     RenderControlSession::queryFeatureParams(
-        RenderSceneId scene, void* dst, std::size_t capacity)
+        RenderSceneId scene,
+        void* dst,
+        std::size_t capacity
+    )
     {
         return recordReply<QueryFeatureParamsReply>(
             [&](Builder& builder, auto callback)
@@ -370,8 +383,7 @@ namespace lux::render
             });
     }
 
-    RenderRequest<DeviceCapsReply> RenderControlSession::queryDeviceCaps(
-        DeviceCaps& output)
+    RenderRequest<DeviceCapsReply> RenderControlSession::queryDeviceCaps(DeviceCaps& output)
     {
         return recordReply<DeviceCapsReply>(
             [&](Builder& builder, auto callback)

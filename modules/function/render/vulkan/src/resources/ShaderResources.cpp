@@ -270,8 +270,7 @@ Expected<ShaderHandle> ShaderResources::addMergedLayoutVariant(
     return variant;
 }
 
-Expected<PreparedPipelineStages> ShaderResources::preparePipelineStages(
-    std::span<const ShaderHandle> stages)
+Expected<PreparedPipelineStages> ShaderResources::preparePipelineStages(std::span<const ShaderHandle> stages)
 {
     // 第一遍:把每个 stage 都切换过去。切换可能扩容 records_,所以这一遍只碰句柄,
     // 一个指针也不取。

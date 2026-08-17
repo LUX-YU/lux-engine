@@ -126,8 +126,7 @@ namespace lux::runtime::spatial3d
     Spatial3DSectionSource final
     {
     public:
-        [[nodiscard]] static Spatial3DSectionSource catalog(
-            Spatial3DSectionCatalog catalog);
+        [[nodiscard]] static Spatial3DSectionSource catalog(Spatial3DSectionCatalog catalog);
         [[nodiscard]] static lux::cxx::expected<
             Spatial3DSectionSource,
             Spatial3DSourceFailure>

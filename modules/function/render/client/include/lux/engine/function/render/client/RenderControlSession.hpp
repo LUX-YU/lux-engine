@@ -71,8 +71,7 @@ namespace lux::render
             std::int64_t scene_origin_page[3]{};
         };
 
-        [[nodiscard]] RenderRequest<SceneCreatedReply> createScene(
-            const CreateSceneConfig& config);
+        [[nodiscard]] RenderRequest<SceneCreatedReply> createScene(const CreateSceneConfig& config);
         [[nodiscard]] RenderRequest<SceneCreatedReply> createScene(
             const char* name, std::uint32_t flags = 0);
         [[nodiscard]] RenderSceneLease adoptScene(RenderSceneId scene) noexcept;
@@ -106,13 +105,36 @@ namespace lux::render
         void bindSwapchain(RenderSceneId scene, ViewHandle view);
 
         [[nodiscard]] RenderRequest<ReadbackTargetReply>
-        readbackTarget(RenderTargetId target, void* dst, std::size_t capacity, TargetSlot slot = TargetSlot::SCENE_COLOR);
+        readbackTarget(
+            RenderTargetId target,
+            void* dst,
+            std::size_t capacity,
+            TargetSlot slot = TargetSlot::SCENE_COLOR
+        );
 
         [[nodiscard]] RenderRequest<ReadbackTargetReply>
-        readbackTargetAsync(RenderTargetId target, void* dst, std::size_t capacity, std::uint32_t settle_frames = 3, TargetSlot slot = TargetSlot::SCENE_COLOR);
-        [[nodiscard]] RenderRequest<RenderGraphDumpReply> dumpRenderGraph(RenderSceneId scene, void* dst, std::size_t capacity);
-        [[nodiscard]] RenderRequest<GpuTimingReply> queryGpuTiming(RenderSceneId scene, void* dst, std::size_t capacity);
-        [[nodiscard]] RenderRequest<QueryFeatureParamsReply> queryFeatureParams(RenderSceneId scene, void* dst, std::size_t capacity);
+        readbackTargetAsync(
+            RenderTargetId target,
+            void* dst,
+            std::size_t capacity,
+            std::uint32_t settle_frames = 3,
+            TargetSlot slot = TargetSlot::SCENE_COLOR
+        );
+        [[nodiscard]] RenderRequest<RenderGraphDumpReply> dumpRenderGraph(
+            RenderSceneId scene,
+            void* dst,
+            std::size_t capacity
+        );
+        [[nodiscard]] RenderRequest<GpuTimingReply> queryGpuTiming(
+            RenderSceneId scene,
+            void* dst,
+            std::size_t capacity
+        );
+        [[nodiscard]] RenderRequest<QueryFeatureParamsReply> queryFeatureParams(
+            RenderSceneId scene,
+            void* dst,
+            std::size_t capacity
+        );
         [[nodiscard]] RenderRequest<DeviceCapsReply> queryDeviceCaps(DeviceCaps& output);
 
         [[nodiscard]] RenderRequest<ShaderCompiledReply> compileShader(

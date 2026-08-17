@@ -150,8 +150,7 @@ namespace lux::runtime::entity_scene
         }
     }
 
-    EntityBatchMaterializer::EntityBatchMaterializer(
-        lux::ecs::PersistentEntityIndex& persistent_entities)
+    EntityBatchMaterializer::EntityBatchMaterializer(lux::ecs::PersistentEntityIndex& persistent_entities)
         : impl_(std::make_unique<Impl>(persistent_entities))
     {}
 

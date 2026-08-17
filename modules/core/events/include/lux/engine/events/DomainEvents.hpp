@@ -476,8 +476,7 @@ namespace lux::events
                 channel->publish(std::move(event));
         }
 
-        [[nodiscard]] LUX_CORE_PUBLIC EventPump& createPump(
-            std::string_view name);
+        [[nodiscard]] LUX_CORE_PUBLIC EventPump& createPump(std::string_view name);
 
         template <DomainEvent Event, class Handler>
         [[nodiscard]] Subscription subscribe(

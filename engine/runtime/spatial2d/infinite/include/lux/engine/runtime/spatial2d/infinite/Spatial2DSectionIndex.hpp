@@ -130,8 +130,7 @@ namespace lux::runtime::spatial2d
     Spatial2DSectionSource final
     {
     public:
-        [[nodiscard]] static Spatial2DSectionSource finite(
-            Spatial2DSectionIndex index);
+        [[nodiscard]] static Spatial2DSectionSource finite(Spatial2DSectionIndex index);
         [[nodiscard]] static lux::cxx::expected<
             Spatial2DSectionSource,
             Spatial2DIndexFailure>

@@ -139,8 +139,7 @@ namespace lux::render
                 RenderObjectHandle,
                 std::uint32_t)>& visitor) const;
 
-        [[nodiscard]] std::uint32_t allocatePickToken(
-            std::uint64_t stable_pick_id);
+        [[nodiscard]] std::uint32_t allocatePickToken(std::uint64_t stable_pick_id);
         void cancelPickToken(std::uint32_t token) noexcept;
         [[nodiscard]] std::optional<std::uint64_t> resolvePickToken(
             std::uint32_t token) const noexcept;
@@ -294,8 +293,7 @@ namespace lux::render
             std::uint32_t capacity);
         void retireGpuCullFrames(
             std::vector<GpuCullFrame>& frames) noexcept;
-        [[nodiscard]] bool rebuildGpuCullCanonical(
-            const InstanceResources& instances);
+        [[nodiscard]] bool rebuildGpuCullCanonical(const InstanceResources& instances);
 
         std::unordered_map<std::string, Cluster> clusters_;
         std::unordered_map<std::string, std::uint64_t> latest_revision_;

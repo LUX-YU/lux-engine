@@ -432,8 +432,7 @@
             static_cast<double>(z)};
     }
 
-    void EditorScene::requestAuthoringDescriptorPage(
-        const lux::authoring::WorldDescriptorPageReference& page)
+    void EditorScene::requestAuthoringDescriptorPage(const lux::authoring::WorldDescriptorPageReference& page)
     {
         if (!live_ || !world_source_ || scene_path_.empty() ||
             page.id.is_nil())

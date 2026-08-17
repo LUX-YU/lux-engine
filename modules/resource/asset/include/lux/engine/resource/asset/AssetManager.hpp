@@ -40,8 +40,7 @@ namespace lux::asset
         /**
          * @brief Constructs a new AssetManager instance with default settings.
          */
-        explicit AssetManager(
-            std::shared_ptr<const AssetCodecCatalog> codecs);
+        explicit AssetManager(std::shared_ptr<const AssetCodecCatalog> codecs);
 
         /**
          * @brief Destructs the AssetManager instance and releases all managed resources.

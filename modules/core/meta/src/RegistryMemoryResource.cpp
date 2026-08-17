@@ -398,8 +398,7 @@ namespace lux::meta
         return upstream;
     }
 
-    std::shared_ptr<RegistryMemoryResource> RegistryMemoryResource::create(
-        IRegistryMemoryUpstream* upstream)
+    std::shared_ptr<RegistryMemoryResource> RegistryMemoryResource::create(IRegistryMemoryUpstream* upstream)
     {
         if (!upstream)
             upstream = &defaultRegistryMemoryUpstream();

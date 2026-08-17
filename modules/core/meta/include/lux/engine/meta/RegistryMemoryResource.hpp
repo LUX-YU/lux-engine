@@ -207,8 +207,7 @@ namespace lux::meta
     {
     public:
         /// The caller-owned upstream must outlive the returned resource.
-        [[nodiscard]] static std::shared_ptr<RegistryMemoryResource> create(
-            IRegistryMemoryUpstream* upstream = nullptr);
+        [[nodiscard]] static std::shared_ptr<RegistryMemoryResource> create(IRegistryMemoryUpstream* upstream = nullptr);
 
         ~RegistryMemoryResource() noexcept;
         RegistryMemoryResource(const RegistryMemoryResource&) = delete;

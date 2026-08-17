@@ -190,8 +190,7 @@ namespace lux::runtime
         );
     }
 
-    void TextureSubservice::applyMipDemands(
-        const lux::render::TextureMipDemandsReply& demands)
+    void TextureSubservice::applyMipDemands(const lux::render::TextureMipDemandsReply& demands)
     {
         std::uint32_t submitted_tasks = 0u;
         std::uint64_t submitted_bytes = 0u;

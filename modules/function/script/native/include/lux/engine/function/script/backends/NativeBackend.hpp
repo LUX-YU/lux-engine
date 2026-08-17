@@ -49,6 +49,5 @@ namespace lux::script::native_backend
      * module with unresolved imports is rejected. Without a resolver, such
      * modules fail to load (import-free modules are unaffected).
      */
-    LUX_FUNCTION_PUBLIC std::unique_ptr<IScriptBackend> create(
-        HostSymbolResolver resolver = {});
+    LUX_FUNCTION_PUBLIC std::unique_ptr<IScriptBackend> create(HostSymbolResolver resolver = {});
 }

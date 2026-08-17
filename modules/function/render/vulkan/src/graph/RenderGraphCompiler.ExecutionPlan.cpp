@@ -33,11 +33,15 @@ namespace lux::render
             for (uint32_t ri : write_list)
             {
                 if (ri >= readers_by_resource.size() || readers_by_resource[ri].empty())
+                {
                     continue;
+                }
                 // Found a consumed resource — locate which pass reads it (for error message)
                 for (uint32_t ci : readers_by_resource[ri])
                     if (ci != producer_pass_index)
+                    {
                         return {ci, ri};
+                    }
                 return {std::numeric_limits<uint32_t>::max(), ri};
             }
             return {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
@@ -124,15 +128,23 @@ namespace lux::render
                 hdr.lr_flags = 0x1;
                 hdr.lr_color_input_mask = group.lr_input_mask;
                 if (group.lr_depth_input)
+                {
                     hdr.lr_flags |= 0x2;
+                }
                 for (uint32_t s = 0; s < group.union_color_load_ops.size() && s < 8; ++s)
                     if (group.union_color_load_ops[s] == VK_ATTACHMENT_LOAD_OP_CLEAR)
+                    {
                         hdr.lr_color_clear_mask |= static_cast<uint8_t>(1u << s);
+                    }
                 for (uint32_t s = 0; s < group.union_color_store_ops.size() && s < 8; ++s)
                     if (group.union_color_store_ops[s] == VK_ATTACHMENT_STORE_OP_DONT_CARE)
+                    {
                         hdr.store_dontcare_mask |= static_cast<uint8_t>(1u << s);
+                    }
                 if (group.union_depth_store_op == VK_ATTACHMENT_STORE_OP_DONT_CARE)
+                {
                     hdr.lr_flags |= 0x4;
+                }
             }
             else if (group.passes.size() == 1)
             {
@@ -142,9 +154,13 @@ namespace lux::render
                 const auto& gp = group.passes.front();
                 for (uint32_t s = 0; s < gp.pass_color_store_ops.size() && s < 8; ++s)
                     if (gp.pass_color_store_ops[s] == VK_ATTACHMENT_STORE_OP_DONT_CARE)
+                    {
                         hdr.store_dontcare_mask |= static_cast<uint8_t>(1u << s);
+                    }
                 if (gp.pass_depth_store_op == VK_ATTACHMENT_STORE_OP_DONT_CARE)
+                {
                     hdr.lr_flags |= 0x4;
+                }
             }
 
             const uint32_t offset = static_cast<uint32_t>(e.program.command_data.size());
@@ -180,25 +196,38 @@ namespace lux::render
             const auto& rs = compiled.compiled_passes[pi].resources;
             auto touch = [&](uint32_t ri) {
                 if (ri < res_count)
+                {
                     idx.last_access_order[ri] = std::max(idx.last_access_order[ri], o);
+                }
             };
             for (uint32_t ri : rs.read_images)
             {
                 touch(ri);
-                if (ri < res_count) idx.readers[ri].push_back(pi);
+                if (ri < res_count)
+                {
+                    idx.readers[ri].push_back(pi);
+                }
             }
             for (uint32_t ri : rs.read_buffers)
             {
                 touch(ri);
-                if (ri < res_count) idx.readers[ri].push_back(pi);
+                if (ri < res_count)
+                {
+                    idx.readers[ri].push_back(pi);
+                }
             }
             for (uint32_t ri : rs.write_images)
             {
                 touch(ri);
-                if (ri < res_count) idx.image_writers[ri].push_back(pi);
+                if (ri < res_count)
+                {
+                    idx.image_writers[ri].push_back(pi);
+                }
             }
             for (uint32_t ri : rs.write_buffers)
+            {
                 touch(ri);
+            }
         }
         return idx;
     }
@@ -234,10 +263,15 @@ namespace lux::render
 
         auto derive_store_op = [&](uint32_t res_idx, uint32_t after_order) -> VkAttachmentStoreOp
         {
-            if (res_idx >= res_count) return VK_ATTACHMENT_STORE_OP_STORE;
+            if (res_idx >= res_count)
+            {
+                return VK_ATTACHMENT_STORE_OP_STORE;
+            }
             const auto& res = compiled.original_graph.resources[res_idx];
             if (res.lifetime != ERGResourceLifetime::TRANSIENT)
+            {
                 return VK_ATTACHMENT_STORE_OP_STORE;
+            }
             return last_access_order[res_idx] <= after_order
                 ? VK_ATTACHMENT_STORE_OP_DONT_CARE
                 : VK_ATTACHMENT_STORE_OP_STORE;
@@ -262,10 +296,19 @@ namespace lux::render
         std::vector<bool> group_visited(groups.size(), false);
         for (uint32_t pass_idx : compiled.execution_order)
         {
-            if (pass_idx >= compiled.render_pass_layout.pass_to_group.size()) continue;
+            if (pass_idx >= compiled.render_pass_layout.pass_to_group.size())
+            {
+                continue;
+            }
             const uint32_t group_idx = compiled.render_pass_layout.pass_to_group[pass_idx];
-            if (group_idx == std::numeric_limits<uint32_t>::max()) continue;
-            if (group_visited[group_idx]) continue;
+            if (group_idx == std::numeric_limits<uint32_t>::max())
+            {
+                continue;
+            }
+            if (group_visited[group_idx])
+            {
+                continue;
+            }
             group_visited[group_idx] = true;
 
             auto& group = groups[group_idx];
@@ -282,7 +325,10 @@ namespace lux::render
                 for (size_t s = 0; s < group.union_color_res.size(); ++s)
                 {
                     const uint32_t cr = group.union_color_res[s];
-                    if (cr >= res_count) continue;
+                    if (cr >= res_count)
+                    {
+                        continue;
+                    }
                     group.union_color_load_ops[s] =
                         cleared_color[cr] ? VK_ATTACHMENT_LOAD_OP_LOAD
                                           : VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -314,7 +360,9 @@ namespace lux::render
                     group.union_color_store_ops[s] =
                         derive_store_op(group.union_color_res[s], scope_end_order);
                 if (dr < res_count)
+                {
                     group.union_depth_store_op = derive_store_op(dr, scope_end_order);
+                }
 
                 // input-attachment 槽位掩码:一次聚合供 emit/serial 消费。
                 group.lr_input_mask  = 0;
@@ -324,9 +372,13 @@ namespace lux::render
                     for (uint32_t s = 0; s < gp.input_indices.size()
                          && s < RenderPassKey::kMaxColorAttachments; ++s)
                         if (gp.input_indices[s] != VK_ATTACHMENT_UNUSED)
+                        {
                             group.lr_input_mask |= static_cast<uint8_t>(1u << s);
+                        }
                     if (gp.depth_input_index != VK_ATTACHMENT_UNUSED)
+                    {
                         group.lr_depth_input = true;
+                    }
                 }
                 continue;
             }
@@ -341,7 +393,10 @@ namespace lux::render
                 gp.pass_depth_load_op = VK_ATTACHMENT_LOAD_OP_LOAD;
                 gp.pass_color_store_ops.clear();
                 gp.pass_depth_store_op = VK_ATTACHMENT_STORE_OP_STORE;
-                if (!cpass.pass) continue;
+                if (!cpass.pass)
+                {
+                    continue;
+                }
                 const uint32_t self_order =
                     gp.pass_index < order_of.size() ? order_of[gp.pass_index]
                                                     : std::numeric_limits<uint32_t>::max();
@@ -381,7 +436,9 @@ namespace lux::render
             {
                 const auto& first = group.passes.front();
                 if (!first.pass_color_load_ops.empty())
+                {
                     group.color_load_op = first.pass_color_load_ops.front();
+                }
                 group.depth_load_op = first.pass_depth_load_op;
             }
         }
@@ -397,27 +454,40 @@ namespace lux::render
             auto writer_in_lr_group_after = [&](uint32_t res, uint32_t after_order) {
                 for (uint32_t w : access.image_writers[res])
                 {
-                    if (access.order_of[w] <= after_order) continue;
+                    if (access.order_of[w] <= after_order)
+                    {
+                        continue;
+                    }
                     const uint32_t wg = w < p2g.size() ? p2g[w]
                                                        : std::numeric_limits<uint32_t>::max();
                     if (wg != std::numeric_limits<uint32_t>::max() && groups[wg].local_read)
+                    {
                         return true;
+                    }
                 }
                 return false;
             };
             for (const auto& group : groups)
             {
-                if (group.local_read) continue;
+                if (group.local_read)
+                {
+                    continue;
+                }
                 for (const auto& gp : group.passes)
                 {
                     const auto& cpass = compiled.compiled_passes[gp.pass_index];
-                    if (!cpass.condition || !cpass.pass) continue;
+                    if (!cpass.condition || !cpass.pass)
+                    {
+                        continue;
+                    }
                     const uint32_t self_order = access.order_of[gp.pass_index];
                     uint32_t decl = 0;
                     for (const auto& tr : cpass.pass->textures)
                     {
                         if (tr.role != lux::common::ETextureRole::COLOR_ATTACHMENT)
+                        {
                             continue;
+                        }
                         const uint32_t d = decl++;
                         if (d >= gp.pass_color_load_ops.size() ||
                             gp.pass_color_load_ops[d] != VK_ATTACHMENT_LOAD_OP_CLEAR)
@@ -475,31 +545,57 @@ namespace lux::render
         auto chain_classify = [&](const RGCompiledPass& cp) -> bool
         {
             const uint64_t tag = cp.pass ? cp.pass->condition_tag : 0u;
-            if (tag == 0u) return false;
+            if (tag == 0u)
+            {
+                return false;
+            }
             auto readers_ok = [&](uint32_t ri)
             {
                 for (uint32_t reader : readers_by_resource[ri])
                 {
-                    if (reader == cp.pass_index) continue;
+                    if (reader == cp.pass_index)
+                    {
+                        continue;
+                    }
                     const auto& rp = compiled.compiled_passes[reader];
                     if (!rp.condition || !rp.pass || rp.pass->condition_tag != tag)
+                    {
                         return false;
+                    }
                 }
                 return true;
             };
             for (uint32_t ri : cp.resources.write_images)
-                if (ri < resource_count && !readers_ok(ri)) return false;
+            {
+                if (ri < resource_count && !readers_ok(ri))
+                {
+                    return false;
+                }
+            }
             for (uint32_t ri : cp.resources.write_buffers)
-                if (ri < resource_count && !readers_ok(ri)) return false;
+            {
+                if (ri < resource_count && !readers_ok(ri))
+                {
+                    return false;
+                }
+            }
             for (uint32_t ri : cp.resources.read_images)
             {
-                if (ri >= resource_count) continue;
+                if (ri >= resource_count)
+                {
+                    continue;
+                }
                 for (uint32_t writer : image_writers_by_resource[ri])
                 {
-                    if (writer == cp.pass_index) continue;
+                    if (writer == cp.pass_index)
+                    {
+                        continue;
+                    }
                     const auto& wp = compiled.compiled_passes[writer];
                     if (!wp.condition || !wp.pass || wp.pass->condition_tag != tag)
+                    {
                         return false;
+                    }
                 }
             }
             return true;
@@ -602,15 +698,21 @@ namespace lux::render
         for (const auto& cpass : compiled.compiled_passes)
         {
             if (cpass.pass == nullptr)
+            {
                 continue;
+            }
             has_live_pass = true;
             if (cpass.execution_mode == EPassExecutionMode::RECORDER_FALLBACK)
+            {
                 return false;
+            }
             // 条件 pass 不进 fast path:executeFast 线性重放整个 program,
             // 没有逐 pass 跳过能力。(条件 pass 依然携带 span——serial 混合
             // 路径按 cond_skip 决定是否重放。)
             if (cpass.condition)
+            {
                 return false;
+            }
         }
         return has_live_pass;
     }
@@ -633,11 +735,16 @@ namespace lux::render
         for (uint32_t pi = 0; pi < static_cast<uint32_t>(compiled.compiled_passes.size()); ++pi)
         {
             const auto& cpass = compiled.compiled_passes[pi];
-            if (!cpass.pass) continue;
+            if (!cpass.pass)
+            {
+                continue;
+            }
 
             const auto* desc = KernelRegistry::instance().find(cpass.pass->kernel_id);
             if (desc && desc->contribute_mesh)
+            {
                 desc->contribute_mesh(pi, cpass, plan, pipeline_manager);
+            }
         }
 
         // Sort lanes by pass/pipeline and then IBO identity. Both pipeline and
@@ -645,11 +752,26 @@ namespace lux::render
         std::sort(plan.lanes.begin(), plan.lanes.end(),
             [](const MeshLane& a, const MeshLane& b)
             {
-                if (a.pass_index != b.pass_index)       return a.pass_index < b.pass_index;
-                if (a.pipeline   != b.pipeline)         return a.pipeline < b.pipeline;
-                if (a.ibo_segment != b.ibo_segment)     return a.ibo_segment < b.ibo_segment;
-                if (a.index_type != b.index_type)       return a.index_type < b.index_type;
-                if (a.geometry_kind != b.geometry_kind)  return a.geometry_kind < b.geometry_kind;
+                if (a.pass_index != b.pass_index)
+                {
+                    return a.pass_index < b.pass_index;
+                }
+                if (a.pipeline != b.pipeline)
+                {
+                    return a.pipeline < b.pipeline;
+                }
+                if (a.ibo_segment != b.ibo_segment)
+                {
+                    return a.ibo_segment < b.ibo_segment;
+                }
+                if (a.index_type != b.index_type)
+                {
+                    return a.index_type < b.index_type;
+                }
+                if (a.geometry_kind != b.geometry_kind)
+                {
+                    return a.geometry_kind < b.geometry_kind;
+                }
                 return a.bucket_id < b.bucket_id;
             }
         );
@@ -674,7 +796,9 @@ namespace lux::render
         // Size totals from max mdc_index
         uint32_t max_mdc = 0;
         for (const auto& lane : plan.lanes)
+        {
             max_mdc = std::max(max_mdc, lane.mdc_index + 1);
+        }
         plan.total_indirect_size = static_cast<VkDeviceSize>(max_mdc) * kIndirectCommandSize;
         plan.total_count_size    = static_cast<VkDeviceSize>(max_mdc) * sizeof(uint32_t);
 
@@ -740,7 +864,9 @@ namespace lux::render
             {
                 const auto* desc = KernelRegistry::instance().find(pass.kernel_id);
                 if (desc && desc->contribute_arena)
+                {
                     desc->contribute_arena(pass, arena_accum);
+                }
             }
 
             const VkDeviceSize frustum_total =
@@ -788,7 +914,9 @@ namespace lux::render
             const auto& sync = compiled.compiled_passes[pi].sync;
 
             if (sync.prebuilt_image_barriers.empty() && sync.prebuilt_buffer_barriers.empty())
+            {
                 continue;
+            }
 
             // First-view barriers: verbatim copy of prebuilt barriers
             {
@@ -869,7 +997,9 @@ namespace lux::render
                 for (uint32_t gi = 0; gi < static_cast<uint32_t>(groups.size()); ++gi)
                 {
                     if (groups[gi].pass_index < pass_count)
+                    {
                         idx[groups[gi].pass_index] = gi;
+                    }
                 }
                 return idx;
             };
@@ -894,7 +1024,10 @@ namespace lux::render
 
         auto makeSubmission = [&](ERGQueueType queue, const std::vector<uint32_t>& order)
         {
-            if (order.empty()) return;
+            if (order.empty())
+            {
+                return;
+            }
 
             QueueSubmitProgram::SubmissionTemplate tmpl{};
             tmpl.queue = queue;
@@ -952,9 +1085,14 @@ namespace lux::render
         {
             const uint32_t pi = compiled.execution_order[exec_idx];
             const auto& cpass = compiled.compiled_passes[pi];
-            if (!cpass.pass) continue;
-            if (cpass.execution_mode == EPassExecutionMode::RECORDER_FALLBACK)
+            if (!cpass.pass)
+            {
                 continue;
+            }
+            if (cpass.execution_mode == EPassExecutionMode::RECORDER_FALLBACK)
+            {
+                continue;
+            }
 
             const uint32_t span_start = static_cast<uint32_t>(program.commands.size());
 
@@ -976,7 +1114,9 @@ namespace lux::render
 
             // --- Begin rendering (with prebuilt template) ---
             if (cpass.render.begin_render_pass)
+            {
                 emitBeginRendering(emitter, pi, cpass, compiled);
+            }
 
             // --- Local-read merged-group sub-pass boundary ---
             // Every graphics pass inside a local_read group sets its attachment
@@ -1075,7 +1215,9 @@ namespace lux::render
                 // Registry dispatch — O(1) lookup, zero coupling to specific kernels.
                 const auto* desc = KernelRegistry::instance().find(cpass.pass->kernel_id);
                 if (desc && desc->emit)
+                {
                     desc->emit(emitter, pi, cpass, compiled);
+                }
             }
 
             // Safety net: if a pass is classified as native but no kernel body command
@@ -1109,9 +1251,13 @@ namespace lux::render
             for (const auto& cmd : program.commands)
             {
                 if (cmd.type == ExecutionProgram::Command::EType::BeginRendering)
+                {
                     inside_scope = true;
+                }
                 else if (cmd.type == ExecutionProgram::Command::EType::EndRendering)
+                {
                     inside_scope = false;
+                }
                 else if (cmd.type == ExecutionProgram::Command::EType::PipelineBarrier && inside_scope)
                 {
                     compatible = false;

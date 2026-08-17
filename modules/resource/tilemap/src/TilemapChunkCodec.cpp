@@ -24,7 +24,7 @@ namespace lux::tilemap
         }
     } // namespace
 
-    lux::cxx::expected<void, TilemapChunkCodecFailure>
+    TilemapChunkExp<void>
     validateTilemapChunkBlob(const TilemapChunkBlobV1& blob) noexcept
     {
         if (blob.tiles.size() != kTilemapChunkTileCount)
@@ -36,7 +36,7 @@ namespace lux::tilemap
         return {};
     }
 
-    lux::cxx::expected<std::vector<std::byte>, TilemapChunkCodecFailure>
+    TilemapChunkExp<std::vector<std::byte>>
     encodeTilemapChunkBlob(const TilemapChunkBlobV1& blob) noexcept
     {
         auto valid = validateTilemapChunkBlob(blob);
@@ -58,7 +58,7 @@ namespace lux::tilemap
         return std::move(writer).take();
     }
 
-    lux::cxx::expected<TilemapChunkBlobV1, TilemapChunkCodecFailure>
+    TilemapChunkExp<TilemapChunkBlobV1>
     decodeTilemapChunkBlob(std::span<const std::byte> bytes) noexcept
     {
         std::string reader_error;

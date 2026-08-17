@@ -50,19 +50,23 @@ namespace lux::tilemap
     struct TilemapChunkCodecFailure final
     {
         ETilemapChunkCodecError error{
-            ETilemapChunkCodecError::INVALID_LAYOUT};
+            ETilemapChunkCodecError::INVALID_LAYOUT
+        };
         std::string detail;
     };
 
+    template <typename T>
+    using TilemapChunkExp = lux::cxx::expected<T, TilemapChunkCodecFailure>;
+
     [[nodiscard]] LUX_ENGINE_RESOURCE_TILEMAP_PUBLIC
-    lux::cxx::expected<void, TilemapChunkCodecFailure>
+    TilemapChunkExp<void>
     validateTilemapChunkBlob(const TilemapChunkBlobV1& blob) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_TILEMAP_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>, TilemapChunkCodecFailure>
+    TilemapChunkExp<std::vector<std::byte>>
     encodeTilemapChunkBlob(const TilemapChunkBlobV1& blob) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_TILEMAP_PUBLIC
-    lux::cxx::expected<TilemapChunkBlobV1, TilemapChunkCodecFailure>
+    TilemapChunkExp<TilemapChunkBlobV1>
     decodeTilemapChunkBlob(std::span<const std::byte> bytes) noexcept;
 } // namespace lux::tilemap

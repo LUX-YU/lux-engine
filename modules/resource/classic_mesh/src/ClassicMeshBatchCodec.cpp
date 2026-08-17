@@ -73,7 +73,7 @@ namespace lux::classic_mesh
         }
     } // namespace
 
-    lux::cxx::expected<void, ClassicMeshBatchCodecFailure>
+    ClassicMeshBatchExp<void>
     validateClassicMeshBatchBlob(
         const ClassicMeshBatchBlobV1& blob,
         const ClassicMeshBatchCodecLimits& limits) noexcept
@@ -120,8 +120,7 @@ namespace lux::classic_mesh
         return {};
     }
 
-    lux::cxx::expected<std::vector<std::byte>,
-                       ClassicMeshBatchCodecFailure>
+    ClassicMeshBatchExp<std::vector<std::byte>>
     encodeClassicMeshBatchBlob(
         const ClassicMeshBatchBlobV1& blob,
         const ClassicMeshBatchCodecLimits& limits) noexcept
@@ -155,8 +154,7 @@ namespace lux::classic_mesh
         return std::move(writer).take();
     }
 
-    lux::cxx::expected<ClassicMeshBatchBlobV1,
-                       ClassicMeshBatchCodecFailure>
+    ClassicMeshBatchExp<ClassicMeshBatchBlobV1>
     decodeClassicMeshBatchBlob(
         std::span<const std::byte> bytes,
         const ClassicMeshBatchCodecLimits& limits) noexcept

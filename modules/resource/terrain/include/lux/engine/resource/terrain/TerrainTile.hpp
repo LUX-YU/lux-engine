@@ -76,19 +76,23 @@ namespace lux::terrain
     struct TerrainTileCodecFailure final
     {
         ETerrainTileCodecError error{
-            ETerrainTileCodecError::INVALID_ARGUMENT};
+            ETerrainTileCodecError::INVALID_ARGUMENT
+        };
         std::string detail;
     };
 
+    template <typename T>
+    using TerrainTileExp = lux::cxx::expected<T, TerrainTileCodecFailure>;
+
     [[nodiscard]] LUX_ENGINE_RESOURCE_TERRAIN_PUBLIC
-    lux::cxx::expected<void, TerrainTileCodecFailure>
+    TerrainTileExp<void>
     validateTerrainTileBlob(const TerrainTileBlobV1& blob) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_TERRAIN_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>, TerrainTileCodecFailure>
+    TerrainTileExp<std::vector<std::byte>>
     encodeTerrainTileBlob(const TerrainTileBlobV1& blob) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_TERRAIN_PUBLIC
-    lux::cxx::expected<TerrainTileBlobV1, TerrainTileCodecFailure>
+    TerrainTileExp<TerrainTileBlobV1>
     decodeTerrainTileBlob(std::span<const std::byte> bytes) noexcept;
 } // namespace lux::terrain

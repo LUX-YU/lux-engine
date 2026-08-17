@@ -98,26 +98,28 @@ namespace lux::classic_mesh
     struct ClassicMeshBatchCodecFailure final
     {
         EClassicMeshBatchCodecError error{
-            EClassicMeshBatchCodecError::INVALID_ARGUMENT};
+            EClassicMeshBatchCodecError::INVALID_ARGUMENT
+        };
         std::string detail;
     };
 
+    template <typename T>
+    using ClassicMeshBatchExp = lux::cxx::expected<T, ClassicMeshBatchCodecFailure>;
+
     [[nodiscard]] LUX_ENGINE_RESOURCE_CLASSIC_MESH_PUBLIC
-    lux::cxx::expected<void, ClassicMeshBatchCodecFailure>
+    ClassicMeshBatchExp<void>
     validateClassicMeshBatchBlob(
         const ClassicMeshBatchBlobV1& blob,
         const ClassicMeshBatchCodecLimits& limits = {}) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_CLASSIC_MESH_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>,
-                       ClassicMeshBatchCodecFailure>
+    ClassicMeshBatchExp<std::vector<std::byte>>
     encodeClassicMeshBatchBlob(
         const ClassicMeshBatchBlobV1& blob,
         const ClassicMeshBatchCodecLimits& limits = {}) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_CLASSIC_MESH_PUBLIC
-    lux::cxx::expected<ClassicMeshBatchBlobV1,
-                       ClassicMeshBatchCodecFailure>
+    ClassicMeshBatchExp<ClassicMeshBatchBlobV1>
     decodeClassicMeshBatchBlob(
         std::span<const std::byte> bytes,
         const ClassicMeshBatchCodecLimits& limits = {}) noexcept;

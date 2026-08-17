@@ -53,7 +53,7 @@ namespace lux::terrain
         }
     } // namespace
 
-    lux::cxx::expected<void, TerrainTileCodecFailure>
+    TerrainTileExp<void>
     validateTerrainTileBlob(const TerrainTileBlobV1& blob) noexcept
     {
         if (!std::isfinite(blob.height_min) ||
@@ -121,7 +121,7 @@ namespace lux::terrain
         return {};
     }
 
-    lux::cxx::expected<std::vector<std::byte>, TerrainTileCodecFailure>
+    TerrainTileExp<std::vector<std::byte>>
     encodeTerrainTileBlob(const TerrainTileBlobV1& blob) noexcept
     {
         auto valid = validateTerrainTileBlob(blob);
@@ -157,7 +157,7 @@ namespace lux::terrain
         return std::move(writer).take();
     }
 
-    lux::cxx::expected<TerrainTileBlobV1, TerrainTileCodecFailure>
+    TerrainTileExp<TerrainTileBlobV1>
     decodeTerrainTileBlob(std::span<const std::byte> bytes) noexcept
     {
         std::string reader_error;

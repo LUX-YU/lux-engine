@@ -70,10 +70,14 @@ namespace lux::ecs
             std::uint16_t layer) noexcept
         {
             if (layer == 0u || !std::has_single_bit(layer))
+            {
                 return std::nullopt;
+            }
             const auto index = std::countr_zero(layer);
             if (index >= 16)
+            {
                 return std::nullopt;
+            }
             return static_cast<JPH::ObjectLayer>(
                 (moving ? kMovingLayerBit : 0u) | index);
         }
@@ -152,7 +156,9 @@ namespace lux::ecs
                     name, color, this, function, dependencies);
                 JobHandle handle{job};
                 if (dependencies == 0u)
+                {
                     QueueJob(job);
+                }
                 return handle;
             }
 
@@ -173,7 +179,9 @@ namespace lux::ecs
             void QueueJobs(Job** jobs, JPH::uint count) override
             {
                 for (JPH::uint index = 0u; index < count; ++index)
+                {
                     QueueJob(jobs[index]);
+                }
             }
 
             void FreeJob(Job* job) override
@@ -208,7 +216,9 @@ namespace lux::ecs
                 JPH::BroadPhaseLayer broad) const override
             {
                 if (!movingLayer(layer))
+                {
                     return broad == kMovingBroadPhase;
+                }
                 return true;
             }
         };
@@ -227,12 +237,18 @@ namespace lux::ecs
                 std::uint16_t mask) noexcept
             {
                 if (layer == 0u || !std::has_single_bit(layer))
+                {
                     return false;
+                }
                 const auto index = std::countr_zero(layer);
                 if (index >= masks_.size())
+                {
                     return false;
+                }
                 if (assigned_[index])
+                {
                     return masks_[index] == mask;
+                }
                 assigned_[index] = true;
                 masks_[index] = mask;
                 return true;
@@ -243,7 +259,9 @@ namespace lux::ecs
                 JPH::ObjectLayer second) const override
             {
                 if (!movingLayer(first) && !movingLayer(second))
+                {
                     return false;
+                }
                 const auto first_index = first & kLogicalLayerMask;
                 const auto second_index = second & kLogicalLayerMask;
                 return (masks_[first_index] & logicalLayerBit(second)) != 0u &&
@@ -575,7 +593,9 @@ namespace lux::ecs
             characters.clear();
             body_to_entity.clear();
             if (!static_heightfields.empty())
+            {
                 std::abort();
+            }
             control->owner = nullptr;
             ++control->generation;
         }
@@ -600,7 +620,9 @@ namespace lux::ecs
             const lux::spatial::Position3D& target) noexcept
         {
             if (!lux::spatial::isFinite(target))
+            {
                 return false;
+            }
             const auto dx = std::abs(target.x - physics_origin.x);
             const auto dy = std::abs(target.y - physics_origin.y);
             const auto dz = std::abs(target.z - physics_origin.z);
@@ -635,7 +657,9 @@ namespace lux::ecs
                     next_origin,
                     kMaximumPhysicsExtent);
                 if (!relative_position)
+                {
                     return false;
+                }
                 rebased.push_back({
                     state.body, rotation, world, *relative_position});
             }
@@ -679,7 +703,9 @@ namespace lux::ecs
                     next_origin,
                     kMaximumPhysicsExtent);
                 if (!relative_position)
+                {
                     return false;
+                }
                 state.position = world;
                 rebased_characters.emplace_back(
                     state.character.GetPtr(), *relative_position);
@@ -710,7 +736,9 @@ namespace lux::ecs
                         return item.body == state.body;
                     });
                 if (found != rebased.end())
+                {
                     state.position = found->world;
+                }
             }
             return true;
         }
@@ -719,7 +747,9 @@ namespace lux::ecs
             const lux::spatial::Position3D& target) noexcept
         {
             if (!lux::spatial::isFinite(target))
+            {
                 return false;
+            }
             // Static adoption is budgeted by body count. Re-basing every live
             // dynamic/static/character owner here would smuggle unbounded
             // work into beginStaticHeightfieldStaging(). An empty scene can
@@ -798,20 +828,28 @@ namespace lux::ecs
             for (const auto entity : view)
             {
                 if (dynamic_bodies.contains(entity))
+                {
                     continue;
+                }
                 const auto* hierarchy = registry.try_get<ParentComponent>(
                     entity);
                 const auto& transform = view.get<Transform3DComponent>(entity);
                 if (hierarchy && hierarchy->parent() != lux::meta::null_entity)
+                {
                     continue;
+                }
 
                 if (!maybeRebase(transform.position))
+                {
                     continue;
+                }
                 const auto& collider = view.get<Collider3DComponent>(entity);
                 std::string shape_error;
                 auto shape = makeShape(collider, transform, shape_error);
                 if (!shape)
+                {
                     continue;
+                }
                 const auto& rigid = view.get<RigidBody3DComponent>(entity);
                 const auto rotation = transform.rotation.normalized();
                 const auto pose = makePhysicsRelativePose(
@@ -820,7 +858,9 @@ namespace lux::ecs
                     physics_origin,
                     kMaximumPhysicsExtent);
                 if (!pose)
+                {
                     continue;
+                }
                 const auto center = pose->position +
                     rotation * collider.offset;
                 const auto motion = rigid.motion == ERigidBody3DMotion::DYNAMIC ?
@@ -837,7 +877,9 @@ namespace lux::ecs
                 const auto object_layer = makeObjectLayer(
                     motion != JPH::EMotionType::Static, layer);
                 if (!object_layer || !object_pairs.registerFilter(layer, mask))
+                {
                     continue;
+                }
                 JPH::BodyCreationSettings settings{
                     shape,
                     JPH::RVec3{center.x(), center.y(), center.z()},
@@ -859,7 +901,9 @@ namespace lux::ecs
                 auto* const body = physics.GetBodyInterface().CreateBody(
                     settings);
                 if (!body)
+                {
                     continue;
+                }
                 const auto body_id = body->GetID();
                 physics.GetBodyInterface().AddBody(
                     body_id,
@@ -883,9 +927,13 @@ namespace lux::ecs
                 if (!dynamic_inserted || !mapping_inserted)
                 {
                     if (dynamic_inserted)
+                    {
                         dynamic_bodies.erase(dynamic_iterator);
+                    }
                     if (mapping_inserted)
+                    {
                         body_to_entity.erase(mapping_iterator);
+                    }
                     physics.GetBodyInterface().RemoveBody(body_id);
                     physics.GetBodyInterface().DestroyBody(body_id);
                     continue;
@@ -926,20 +974,30 @@ namespace lux::ecs
             for (const auto entity : view)
             {
                 if (characters.contains(entity))
+                {
                     continue;
+                }
                 if (registry.any_of<RigidBody3DComponent>(entity))
+                {
                     continue;
+                }
                 const auto* hierarchy = registry.try_get<ParentComponent>(
                     entity);
                 const auto& transform = view.get<Transform3DComponent>(entity);
                 if (hierarchy && hierarchy->parent() != lux::meta::null_entity)
+                {
                     continue;
+                }
                 const auto& collider = view.get<Collider3DComponent>(entity);
                 if (!maybeRebase(transform.position))
+                {
                     continue;
+                }
                 const auto relative_position = relative(transform.position);
                 if (!relative_position)
+                {
                     continue;
+                }
                 std::string shape_error;
                 // A CharacterController has capsule semantics regardless of
                 // the generic Collider shape selected for rigid bodies. This
@@ -951,7 +1009,9 @@ namespace lux::ecs
                 auto shape = makeShape(
                     character_collider, transform, shape_error);
                 if (!shape)
+                {
                     continue;
+                }
                 const auto& controller =
                     view.get<CharacterController3DComponent>(entity);
                 const auto* collision_filter = registry.try_get<
@@ -962,7 +1022,9 @@ namespace lux::ecs
                     collision_filter->mask : std::uint16_t{0xffffu};
                 const auto object_layer = makeObjectLayer(true, layer);
                 if (!object_layer || !object_pairs.registerFilter(layer, mask))
+                {
                     continue;
+                }
                 JPH::CharacterVirtualSettings settings;
                 settings.mShape = shape;
                 settings.mShapeOffset = JPH::Vec3{
@@ -1021,7 +1083,9 @@ namespace lux::ecs
             for (auto& [entity, state] : characters)
             {
                 if (!registry.valid(entity))
+                {
                     continue;
+                }
                 const auto broad_filter =
                     physics.GetDefaultBroadPhaseLayerFilter(
                         state.object_layer);
@@ -1032,7 +1096,9 @@ namespace lux::ecs
                 auto velocity = component.desired_velocity;
                 const auto current = state.character->GetLinearVelocity();
                 if (!state.character->IsSupported())
+                {
                     velocity.y() = current.GetY() + config.gravity.y() * fixed_dt;
+                }
                 else
                     velocity.y() = std::max(velocity.y(), 0.0f);
                 state.character->SetLinearVelocity(joltVector(velocity));
@@ -1065,7 +1131,9 @@ namespace lux::ecs
                     entity);
                 const auto relative_position = relative(transform.position);
                 if (!relative_position)
+                {
                     continue;
+                }
                 const auto center = *relative_position +
                     transform.rotation * state.collider_offset;
                 bodies.SetPositionAndRotation(
@@ -1116,7 +1184,9 @@ namespace lux::ecs
             for (auto& [entity, state] : characters)
             {
                 if (!registry.valid(entity))
+                {
                     continue;
+                }
                 const auto position = state.character->GetPosition();
                 auto world_position = absolute(position);
                 state.position = world_position;
@@ -1146,7 +1216,9 @@ namespace lux::ecs
                                          entt::entity entity) noexcept
             {
                 if (!registry.valid(entity))
+                {
                     return false;
+                }
                 const auto dynamic = dynamic_bodies.find(entity);
                 if (dynamic != dynamic_bodies.end() &&
                     dynamic->second.body == body)
@@ -1235,7 +1307,9 @@ namespace lux::ecs
         Physics3DStaticBatchLease&& other) noexcept
     {
         if (this == &other)
+        {
             return *this;
+        }
         retire();
         impl_ = std::move(other.impl_);
         return *this;
@@ -1263,7 +1337,9 @@ namespace lux::ecs
     void Physics3DStaticBatchLease::deactivate() noexcept
     {
         if (!impl_ || !impl_->active)
+        {
             return;
+        }
         const auto control = impl_->control.lock();
         if (!control || control->generation != impl_->generation ||
             !control->owner)
@@ -1271,7 +1347,9 @@ namespace lux::ecs
         auto* const owner = static_cast<Physics3DScene::Impl*>(
             control->owner);
         for (const auto body : impl_->bodies)
+        {
             owner->physics.GetBodyInterface().RemoveBody(body);
+        }
         impl_->active = false;
     }
 
@@ -1285,15 +1363,21 @@ namespace lux::ecs
         std::uint32_t maximum_units) noexcept
     {
         if (!impl_ || impl_->retired)
+        {
             return true;
+        }
         if (maximum_units == 0u)
+        {
             return false;
+        }
         const auto control = impl_->control.lock();
         if (!control || control->generation != impl_->generation ||
             !control->owner)
         {
             if (impl_->active)
+            {
                 std::abort();
+            }
             std::uint32_t retired = 0u;
             while (!impl_->bodies.empty() && retired < maximum_units)
             {
@@ -1309,7 +1393,9 @@ namespace lux::ecs
                     ++retired;
                 }
                 if (fields.empty())
+                {
                     impl_->discarded_prepared.reset();
+                }
             }
             impl_->retired = impl_->bodies.empty() &&
                 !impl_->discarded_prepared;
@@ -1318,7 +1404,9 @@ namespace lux::ecs
         auto* const owner = static_cast<Physics3DScene::Impl*>(
             control->owner);
         if (impl_->active)
+        {
             deactivate();
+        }
         std::uint32_t retired = 0u;
         while (!impl_->bodies.empty() && retired < maximum_units)
         {
@@ -1340,10 +1428,14 @@ namespace lux::ecs
                 ++retired;
             }
             if (fields.empty())
+            {
                 impl_->discarded_prepared.reset();
+            }
         }
         if (impl_->bodies.empty() && !impl_->discarded_prepared)
+        {
             impl_->retired = true;
+        }
         return impl_->retired;
     }
 
@@ -1363,13 +1455,17 @@ namespace lux::ecs
     Physics3DStaticBatchLease::remainingRetirementUnits() const noexcept
     {
         if (!impl_ || impl_->retired)
+        {
             return 0u;
+        }
         const auto fields = impl_->discarded_prepared
             ? impl_->discarded_prepared->impl_->fields.size()
             : 0u;
         const auto total = impl_->bodies.size() + fields;
         if (total > (std::numeric_limits<std::uint32_t>::max)())
+        {
             std::abort();
+        }
         return static_cast<std::uint32_t>(total);
     }
 
@@ -1407,7 +1503,9 @@ namespace lux::ecs
         if (impl_->failed)
         {
             if (!impl_->lease->retireSome(maximum_bodies))
+            {
                 return false;
+            }
             return lux::cxx::unexpected(std::move(impl_->failure));
         }
         const auto control = impl_->lease->impl_->control.lock();
@@ -1504,11 +1602,15 @@ namespace lux::ecs
     Physics3DStaticBatchStager::cancel() noexcept
     {
         if (!impl_)
+        {
             return {};
+        }
         if (impl_->prepared)
         {
             if (impl_->lease->impl_->discarded_prepared)
+            {
                 std::abort();
+            }
             impl_->lease->impl_->discarded_prepared =
                 std::move(impl_->prepared);
         }
@@ -1531,13 +1633,17 @@ namespace lux::ecs
     Physics3DStaticBatchStager::remainingBodies() const noexcept
     {
         if (!impl_)
+        {
             return 0u;
+        }
         if (impl_->failed)
         {
             return impl_->lease ? impl_->lease->remainingBodies() : 0u;
         }
         if (!impl_->prepared)
+        {
             return 0u;
+        }
         const auto remaining = impl_->prepared->impl_->fields.size();
         return static_cast<std::uint32_t>(remaining);
     }
@@ -1572,7 +1678,9 @@ namespace lux::ecs
         float frame_dt) noexcept
     {
         if (!impl_ || !std::isfinite(frame_dt) || frame_dt <= 0.0f)
+        {
             return;
+        }
         impl_->pruneBodies(registry);
         impl_->pruneCharacters(registry);
         impl_->ensureBodies(registry);
@@ -1701,7 +1809,9 @@ namespace lux::ecs
     {
         Physics3DMemorySnapshot result{};
         if (!impl_)
+        {
             return result;
+        }
 
         result.capacity_bytes = sizeof(Impl) +
             impl_->config.temporary_allocator_bytes;
@@ -1709,7 +1819,9 @@ namespace lux::ecs
         const auto addAllocation = [&result](std::uint64_t bytes) noexcept
         {
             if (bytes == 0u)
+            {
                 return;
+            }
             result.capacity_bytes += bytes;
             ++result.allocation_count;
         };

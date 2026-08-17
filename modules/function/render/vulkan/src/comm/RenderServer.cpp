@@ -113,7 +113,10 @@ namespace lux::render
     Expected<void> GeneralRenderServer::init(ServerConfig config)
     {
         auto result = impl_->init(std::move(config));
-        if (!result) return result;
+        if (!result)
+        {
+            return result;
+        }
         registerServerHandlers(impl_->dispatcher);
 
         // 分发失败接进自发错误通道。CommandFailedReply 只负责解除等回复请求的
@@ -147,14 +150,20 @@ namespace lux::render
 
     bool GeneralRenderServer::drainRequest()
     {
-        if (!acquireAndExecute(/*blocking=*/false, impl_.get())) return false;
+        if (!acquireAndExecute(/*blocking=*/false, impl_.get()))
+        {
+            return false;
+        }
         (void)impl_->processUploadCompletions();
         return finalizeReplies(/*blocking=*/false);
     }
 
     bool GeneralRenderServer::drainRequestBlocking()
     {
-        if (!acquireAndExecute(/*blocking=*/true, impl_.get())) return false;
+        if (!acquireAndExecute(/*blocking=*/true, impl_.get()))
+        {
+            return false;
+        }
         (void)impl_->processUploadCompletions();
         return finalizeReplies(/*blocking=*/true);
     }
@@ -170,7 +179,9 @@ namespace lux::render
     ) noexcept
     {
         if (request_id == UINT32_MAX)
+        {
             return;
+        }
 
         auto it = std::find_if(
             active_uploads_.begin(), active_uploads_.end(),
@@ -242,7 +253,9 @@ namespace lux::render
 
         it->state = state;
         if (!isUploadLifecycleTerminal(state))
+        {
             return;
+        }
 
         if (state == EUploadLifecycleState::Ready)
             ++upload_lifecycle_.terminal_ready;
@@ -259,7 +272,9 @@ namespace lux::render
         const TransferCompletion& completion) noexcept
     {
         if (completion.request_id == UINT32_MAX)
+        {
             return true;
+        }
 
         const auto it = std::find_if(
             active_uploads_.begin(), active_uploads_.end(),
@@ -364,7 +379,9 @@ namespace lux::render
                 { return reply.request_id == upload.request_id; }
             );
             if (already_has_reply)
+            {
                 continue;
+            }
 
             TransferCompletion completion{};
             completion.kind = upload.kind;
@@ -395,17 +412,25 @@ namespace lux::render
         {
             bool progressed = false;
             while (control_server_->drainAndDispatch(impl_.get()))
+            {
                 progressed = true;
+            }
             while (upload_server_->drainAndDispatch(impl_.get()))
+            {
                 progressed = true;
+            }
 
             const bool ingress_empty =
                 control_server_->endpoint().requests.empty() &&
                 upload_server_->endpoint().requests.empty();
             if (ingress_empty)
+            {
                 break;
+            }
             if (progressed)
+            {
                 continue;
+            }
 
             const auto observed = channelSync().work_epoch.load(
                 std::memory_order_acquire
@@ -436,7 +461,9 @@ namespace lux::render
                 (void)im.processUploadCompletions();
             }
             else if (upload_idle != VK_SUCCESS)
+            {
                 renderFatal("upload close wait-idle failed");
+            }
             // The first pass may have submitted the graphics-finalize batch;
             // wait for that queue work and then move its replies to the
             // publish list.
@@ -448,7 +475,9 @@ namespace lux::render
                 if (finalize_idle == VK_ERROR_DEVICE_LOST)
                     (void)im.processUploadCompletions();
                 else if (finalize_idle != VK_SUCCESS)
+                {
                     renderFatal("graphics-finalize close wait-idle failed");
+                }
                 (void)im.processUploadCompletions();
             }
         }
@@ -459,14 +488,18 @@ namespace lux::render
             const auto before = im.active_uploads_.size();
             flushDeferredRepliesOnly();
             if (im.active_uploads_.size() < before)
+            {
                 continue;
+            }
 
             const auto observed = channelSync().work_epoch.load(
                 std::memory_order_acquire
             );
             flushDeferredRepliesOnly();
             if (im.active_uploads_.size() < before)
+            {
                 continue;
+            }
             channelSync().work_epoch.wait(
                 observed,
                 std::memory_order_acquire
@@ -486,7 +519,9 @@ namespace lux::render
             // not leaked, and report Failed so the caller neither claims success nor
             // retires the staging again.
             if (c.stg_buf != VK_NULL_HANDLE)
+            {
                 vmaDestroyBuffer(dev_ctx_->vmaAllocator(), c.stg_buf, c.stg_alloc);
+            }
             return FinalizeDisposition::Failed;
         }
 
@@ -537,7 +572,9 @@ namespace lux::render
         if (!bcs.isTextureAlive(SlotHandle{c.texture.slot_index, c.resource_gen}))
         {
             if (replacement)
+            {
                 tr.endMipReplacement(handle);
+            }
             freeCompletionTextureGpu(c);
             return FinalizeDisposition::Failed;
         }
@@ -607,7 +644,9 @@ namespace lux::render
                     src_family, dst_family);
             }
             if (c.texture.needs_mip_gen)
+            {
                 bcs.pushDeferredMipGen(c.texture.slot_index);
+            }
             install();
         }
         tr.noteTextureResident(
@@ -732,7 +771,9 @@ namespace lux::render
                     c.logical_base_mip,
                     0u};
                 if (needs_graphics_finalize)
+                {
                     graphics_finalize_reply_batch_.push_back(reply);
+                }
                 else
                     pending_deferred_replies_.push_back(reply);
             }
@@ -817,8 +858,14 @@ namespace lux::render
         VkDevice dev = dev_ctx_->logicalDevice();
         vkDestroyImageView(dev, c.texture.view, nullptr);
         vkDestroySampler(dev, c.texture.sampler, nullptr);
-        if (c.texture.image != VK_NULL_HANDLE)   vmaDestroyImage(vma, c.texture.image, c.texture.image_alloc);
-        if (c.stg_buf != VK_NULL_HANDLE)         vmaDestroyBuffer(vma, c.stg_buf, c.stg_alloc);
+        if (c.texture.image != VK_NULL_HANDLE)
+        {
+            vmaDestroyImage(vma, c.texture.image, c.texture.image_alloc);
+        }
+        if (c.stg_buf != VK_NULL_HANDLE)
+        {
+            vmaDestroyBuffer(vma, c.stg_buf, c.stg_alloc);
+        }
     }
 
     void GeneralRenderServer::Impl::destroyUnfinalizedCompletion(const TransferCompletion& c)
@@ -828,7 +875,9 @@ namespace lux::render
         if (c.kind == TransferCompletion::Kind::MeshBuffer)
         {
             if (c.stg_buf != VK_NULL_HANDLE)
+            {
                 vmaDestroyBuffer(dev_ctx_->vmaAllocator(), c.stg_buf, c.stg_alloc);
+            }
         }
         else
         {
@@ -846,8 +895,10 @@ namespace lux::render
             pending_graphics_finalizes_,
             [&](PendingGraphicsFinalize& pending)
             {
-                if (pending.timeline_value > gpu_value)
-                    return false;
+            if (pending.timeline_value > gpu_value)
+            {
+                return false;
+            }
                 if (pending.command_buffer != VK_NULL_HANDLE)
                     vkFreeCommandBuffers(
                         device, pool, 1, &pending.command_buffer);
@@ -863,7 +914,9 @@ namespace lux::render
     bool GeneralRenderServer::Impl::submitGraphicsFinalizeBatch()
     {
         if (!graphics_finalize_required_)
+        {
             return false;
+        }
 
         graphics_finalize_required_ = false;
         const VkDevice device = dev_ctx_->logicalDevice().handle();
@@ -879,7 +932,9 @@ namespace lux::render
         const auto fail_batch = [&]()
         {
             if (command_buffer != VK_NULL_HANDLE)
+            {
                 vkFreeCommandBuffers(device, pool, 1, &command_buffer);
+            }
             for (auto& reply : graphics_finalize_reply_batch_)
             {
                 TransferCompletion completion{};
@@ -893,7 +948,9 @@ namespace lux::render
             graphics_finalize_reply_batch_.clear();
             graphics_finalize_staging_batch_.clear();
             for (const auto slot : graphics_finalize_slot_batch_)
+            {
                 transfer_pipeline_->releaseAfterGraphicsAcquire(slot);
+            }
             graphics_finalize_slot_batch_.clear();
             error_sink_.emit(
                 renderError<err::device::VulkanObjectCreationFailed>(),
@@ -951,7 +1008,9 @@ namespace lux::render
         // at this point may the transfer worker reset/reuse the command pools
         // that still contain their release barriers.
         for (const auto slot : graphics_finalize_slot_batch_)
+        {
             transfer_pipeline_->releaseAfterGraphicsAcquire(slot);
+        }
         graphics_finalize_slot_batch_.clear();
 
         for (const auto& reply : graphics_finalize_reply_batch_)
@@ -995,14 +1054,19 @@ namespace lux::render
             {
                 auto& completion = completion_buf_[i];
                 if (observeTransferResult(completion))
+                {
                     pending_completions_.push_back(completion);
+                }
                 else
                     destroyUnfinalizedCompletion(completion);
             }
             made_progress = fn != 0;
         }
 
-        if (!transfer_pipeline_) return made_progress;
+        if (!transfer_pipeline_)
+        {
+            return made_progress;
+        }
 
         // 2. Query GPU timeline value (non-blocking).
         uint64_t gpu_value = 0;
@@ -1034,13 +1098,18 @@ namespace lux::render
                 {
                     destroyUnfinalizedCompletion(c);
                     reclaimReservedSlot(c);
-                    if (c.request_id == UINT32_MAX) return;
+                    if (c.request_id == UINT32_MAX)
+                    {
+                        return;
+                    }
                     pending_deferred_replies_.push_back(
                         {c.request_id, c.kind, c.resource_handle,
                          c.resource_gen, c.logical_base_mip, 1u});
                 };
                 for (auto& c : pending_completions_)
+                {
                     abort_completion(c);
+                }
                 pending_completions_.clear();
                 // Also drain the transfer→render SPSC — those requests would otherwise
                 // never get a reply and their resources would leak.
@@ -1052,7 +1121,9 @@ namespace lux::render
                     {
                         auto& completion = completion_buf_[i];
                         if (observeTransferResult(completion))
+                        {
                             abort_completion(completion);
+                        }
                         else
                             destroyUnfinalizedCompletion(completion);
                     }
@@ -1098,7 +1169,9 @@ namespace lux::render
                 graphics_finalize_reply_batch_.clear();
                 graphics_finalize_staging_batch_.clear();
                 for (const auto slot : graphics_finalize_slot_batch_)
+                {
                     transfer_pipeline_->releaseAfterGraphicsAcquire(slot);
+                }
                 graphics_finalize_slot_batch_.clear();
                 graphics_finalize_required_ = false;
             }
@@ -1180,7 +1253,9 @@ namespace lux::render
         auto pc = PresentContext::create(*res_ctx_, std::move(surface),
                                          extent, enable_vsync_);
         if (!pc)
+        {
             return lux::cxx::unexpected(pc.error());
+        }
 
         // Surface target entry(空合成链;绑定经 SetLayer/bindSwapchain 入链)。
         RenderTargetEntry e{};
@@ -1198,13 +1273,17 @@ namespace lux::render
         // 前于渲染线程调用;运行期动态开窗走命令面)。
         RenderSurface surface;
         if (!surface.init(window, impl_->inst_ctx_->instance()))
+        {
             return renderFailure<err::internal::Unspecified>();
+        }
 
         const auto fb = window.framebufferSize();
         auto r = impl_->createSurfaceTargetInternal(
             std::move(surface), VkExtent2D{fb.width, fb.height});
         if (!r)
+        {
             return lux::cxx::unexpected(r.error());
+        }
         return {};
     }
 
@@ -1223,25 +1302,33 @@ namespace lux::render
                 [lane](const auto& reply)
                 { return requestLane(reply.request_id) == lane; });
             if (!has_lane)
+            {
                 return;
+            }
 
             // BoundedSpscFrameRing::tryBeginWrite() is idempotent for its
             // producer. Entering it here while the primary server owns an
             // unpublished slot would reuse and overwrite that slot, then leave
             // the primary server retrying a publication it no longer owns.
             if (primary_publication_pending)
+            {
                 return;
+            }
 
             auto* slot = responses.tryBeginWrite();
             if (slot == nullptr)
+            {
                 return;
+            }
 
             FrameReplyBuilder<64> builder(*slot);
             builder.begin();
             for (const auto& dr : im.pending_deferred_replies_)
             {
                 if (requestLane(dr.request_id) != lane)
+                {
                     continue;
+                }
                 using Kind = TransferCompletion::Kind;
                 switch (dr.kind)
                 {
@@ -1287,10 +1374,14 @@ namespace lux::render
             }
 
             if (!responses.publishWrite())
+            {
                 return;
+            }
             for (const auto& reply : im.pending_deferred_replies_)
                 if (requestLane(reply.request_id) == lane)
+                {
                     im.settleUploadReply(reply);
+                }
             std::erase_if(
                 im.pending_deferred_replies_,
                 [lane](const auto& reply)
@@ -1336,14 +1427,20 @@ namespace lux::render
         }
 
         if (sink.empty() && sink.dropped() == 0)
+        {
             return;
+        }
 
         if (hasPendingReplyPublication())
+        {
             return;
+        }
 
         auto* slot = channel().responses.tryBeginWrite();
         if (slot == nullptr)
+        {
             return;   // 回复环满:事件留在 sink 里,下 tick 重试
+        }
 
         const auto events = sink.pending();
 
@@ -1356,10 +1453,14 @@ namespace lux::render
                 .dropped = sink.dropped(),
             });
         for (const RenderErrorEvent& event : events)
+        {
             builder.push<RenderErrorEvent>(type_ids::ReplyErrorEvent, event);
+        }
 
         if (!channel().responses.publishWrite())
+        {
             return;   // 同上:没推出去就不清,信息不丢
+        }
 
         sink.clear();
         channelSync().notifyReplyProduced();
@@ -1372,7 +1473,10 @@ namespace lux::render
     bool GeneralRenderServer::stepPendingSurfaceReleases()
     {
         auto& im = *impl_;
-        if (im.pending_surface_releases_.empty()) return true;
+        if (im.pending_surface_releases_.empty())
+        {
+            return true;
+        }
 
         // 阶段一:fence 水位越过退休阈值 → 在飞帧全部走完,拆派生链
         // (sems → swapchain → surface,PresentContext 析构一体完成;呈现
@@ -1397,19 +1501,25 @@ namespace lux::render
             {
                 auto waited = im.frame_driver_->waitAllFences();
                 if (!waited)
+                {
                     return stopAfterFrameError(waited.error(), 2u);
+                }
                 gpu_completed = im.frame_driver_->gpuCompletedSerial();
             }
         }
         for (auto& r : im.pending_surface_releases_)
         {
             if (r.torn_down || gpu_completed < r.retire_serial)
+            {
                 continue;
+            }
             if (r.ctx)
             {
                 auto closed = r.ctx->close();
                 if (!closed)
+                {
                     return stopAfterFrameError(closed.error(), 3u);
+                }
             }
             r.ctx.reset();
             if (r.on_teardown)
@@ -1429,11 +1539,16 @@ namespace lux::render
         if (any_reply)
         {
             if (control_server_->hasPendingReplyPublication())
+            {
                 return true;
+            }
 
             auto& responses = control_server_->endpoint().responses;
             auto* slot = responses.tryBeginWrite();
-            if (!slot) return true;   // 环满——含内部释放在内统一下帧再清
+            if (!slot)
+            {
+                return true;   // 环满——含内部释放在内统一下帧再清
+            }
 
             FrameReplyBuilder<64> builder(*slot);
             builder.begin();
@@ -1443,7 +1558,10 @@ namespace lux::render
                         type_ids::ReplyTargetReleased,
                         TargetReleasedReply{r.target, 0u}, 0, r.request_id);
 
-            if (!responses.publishWrite()) return true;
+            if (!responses.publishWrite())
+            {
+                return true;
+            }
             channelSync().notifyReplyProduced();
         }
 
@@ -1476,9 +1594,13 @@ namespace lux::render
         VRAMBudgetGuard budget(dev_ctx_->vmaAllocator());
         auto snap = budget.snapshot();
         if (snap.nearFull(0.95f))
+        {
             expansion_suppressed_ = true;
+        }
         else if (!snap.nearFull(0.85f))
+        {
             expansion_suppressed_ = false;
+        }
     }
 
     void GeneralRenderServer::Impl::endTickFrame(bool uploads_recorded)
@@ -1492,7 +1614,9 @@ namespace lux::render
         if (uploads_recorded)
         {
             for (auto& sb : staging_pending_this_tick_)
+            {
                 async_deferred_staging_.emplace_back(current_stamp_.serial, std::move(sb));
+            }
             staging_pending_this_tick_.clear();
         }
 
@@ -1529,7 +1653,9 @@ namespace lux::render
                             handled_non_frame_work = true;
                         }
                         if (im.processUploadCompletions())
+                        {
                             handled_non_frame_work = true;
+                        }
                         // DestroyTarget is a control operation, while surface
                         // teardown used to advance only after a frame request.
                         // A closing host submits no further frame and waits for
@@ -1537,13 +1663,21 @@ namespace lux::render
                         // Advance the fence-proven release state machine in the
                         // same drain turn that accepted the control request.
                         if (!stepPendingSurfaceReleases())
+                        {
                             return false;
+                        }
                         if (handled_non_frame_work)
+                        {
                             flushDeferredRepliesOnly();
+                        }
                         if (drainRequest())
+                        {
                             return true;
+                        }
                         if (channelSync().isStopping())
+                        {
                             return false;
+                        }
 
                         const auto observed = channelSync().work_epoch.load(
                             std::memory_order_acquire);
@@ -1552,18 +1686,26 @@ namespace lux::render
                         // source. A producer that wins after this check changes
                         // the epoch, so atomic::wait returns immediately.
                         if (control_server_->drainAndDispatch(impl_.get()))
+                        {
                             continue;
+                        }
                         if (upload_server_->drainAndDispatch(impl_.get()))
+                        {
                             continue;
+                        }
                         if (im.processUploadCompletions())
                         {
                             flushDeferredRepliesOnly();
                             continue;
                         }
                         if (drainRequest())
+                        {
                             return true;
+                        }
                         if (channelSync().isStopping())
+                        {
                             return false;
+                        }
                         channelSync().work_epoch.wait(
                             observed, std::memory_order_acquire);
                     }
@@ -1600,7 +1742,9 @@ namespace lux::render
         }
         const auto start = *start_result;
         if (start == FrameOrchestrator::EFrameStart::NoTarget)
+        {
             return ETickStage::NoTarget;   // 未开帧,无需收尾记账
+        }
 
         im.current_stamp_ = orch.stamp();   // beginRenderFrame 里已 patch image_index
 
@@ -1633,11 +1777,15 @@ namespace lux::render
             fs
         );
         if (!ended)
+        {
             return stopAfterFrameError(ended.error(), 1u);
+        }
 
         // 两阶段销毁后半程:Surface 拆除步进 + TargetReleased 延迟回执。
         if (!stepPendingSurfaceReleases())
+        {
             return false;
+        }
 
         // 异步回读:结算 / 提交 / 轮询 + 发延迟回复。放在结帧之后,好让刚结算
         // 的拷贝在图形队列上排在本 tick 的渲染之后(与同步处理器同理)。
@@ -1669,7 +1817,9 @@ namespace lux::render
     bool GeneralRenderServer::tick()
     {
         if (!drainTick())
+        {
             return false;
+        }
 
         FrameTickState fs{};
         switch (beginRenderTick(fs))

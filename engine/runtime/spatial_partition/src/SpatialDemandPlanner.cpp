@@ -60,7 +60,7 @@ namespace lux::runtime::spatial_partition
         }
     }
 
-    lux::cxx::expected<SpatialDemandPlanner, SpatialPartitionFailure>
+    SpatialPartitionExp<SpatialDemandPlanner>
     SpatialDemandPlanner::create(
         EntitySectionRecordStore records,
         SpatialPartitionBudget budget)
@@ -73,7 +73,7 @@ namespace lux::runtime::spatial_partition
         return SpatialDemandPlanner{std::move(records), budget};
     }
 
-    lux::cxx::expected<SpatialDemandPlan, SpatialPartitionFailure>
+    SpatialPartitionExp<SpatialDemandPlan>
     SpatialDemandPlanner::prepareReplace(
         SpatialDemandSourceUpdate update) const
     {
@@ -187,7 +187,7 @@ namespace lux::runtime::spatial_partition
         return plan;
     }
 
-    lux::cxx::expected<SpatialDemandPlan, SpatialPartitionFailure>
+    SpatialPartitionExp<SpatialDemandPlan>
     SpatialDemandPlanner::prepareRemove(
         const SpatialDemandSourceId& source,
         std::uint64_t generation) const
@@ -231,7 +231,7 @@ namespace lux::runtime::spatial_partition
         return plan;
     }
 
-    lux::cxx::expected<void, SpatialPartitionFailure>
+    SpatialPartitionExp<void>
     SpatialDemandPlanner::rebuild(SpatialDemandPlan& plan) const
     {
         struct Aggregate final
@@ -307,7 +307,7 @@ namespace lux::runtime::spatial_partition
                 auto expand = [&](auto&& self,
                                   lux::entity_scene::EntitySectionId id,
                                   bool demanded)
-                    -> lux::cxx::expected<void, SpatialPartitionFailure>
+                    -> SpatialPartitionExp<void>
                 {
                     const auto* record = resolveRecord(id);
                     if (!record)
@@ -438,7 +438,7 @@ namespace lux::runtime::spatial_partition
         return {};
     }
 
-    lux::cxx::expected<void, SpatialPartitionFailure>
+    SpatialPartitionExp<void>
     SpatialDemandPlanner::commit(SpatialDemandPlan plan) noexcept
     {
         if (plan.base_revision_ != revision_)

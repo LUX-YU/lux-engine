@@ -93,7 +93,10 @@ namespace lux::runtime::spatial_partition
         std::uint64_t requested{0u};
         std::uint64_t available{0u};
         std::optional<
-            lux::runtime::entity_scene::EEntitySectionRequestError>
+        lux::runtime::entity_scene::EEntitySectionRequestError>
             loader_error;
     };
+
+    template <typename T>
+    using SpatialPartitionExp = lux::cxx::expected<T, SpatialPartitionFailure>;
 }

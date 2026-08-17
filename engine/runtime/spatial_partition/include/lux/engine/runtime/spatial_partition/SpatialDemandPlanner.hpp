@@ -81,9 +81,7 @@ namespace lux::runtime::spatial_partition
     SpatialDemandPlanner final
     {
     public:
-        [[nodiscard]] static lux::cxx::expected<
-            SpatialDemandPlanner,
-            SpatialPartitionFailure>
+        [[nodiscard]] static SpatialPartitionExp<SpatialDemandPlanner>
         create(
             EntitySectionRecordStore records,
             SpatialPartitionBudget budget);
@@ -95,19 +93,15 @@ namespace lux::runtime::spatial_partition
         SpatialDemandPlanner& operator=(const SpatialDemandPlanner&) =
             delete;
 
-        [[nodiscard]] lux::cxx::expected<
-            SpatialDemandPlan,
-            SpatialPartitionFailure>
+        [[nodiscard]] SpatialPartitionExp<SpatialDemandPlan>
         prepareReplace(SpatialDemandSourceUpdate update) const;
 
-        [[nodiscard]] lux::cxx::expected<
-            SpatialDemandPlan,
-            SpatialPartitionFailure>
+        [[nodiscard]] SpatialPartitionExp<SpatialDemandPlan>
         prepareRemove(
             const SpatialDemandSourceId& source,
             std::uint64_t generation) const;
 
-        [[nodiscard]] lux::cxx::expected<void, SpatialPartitionFailure>
+        [[nodiscard]] SpatialPartitionExp<void>
         commit(SpatialDemandPlan plan) noexcept;
 
         [[nodiscard]] std::span<const SpatialResidentDemand> residents()
@@ -130,7 +124,7 @@ namespace lux::runtime::spatial_partition
             snapshot_.maximum_entities = budget.maximum_entities;
         }
 
-        [[nodiscard]] lux::cxx::expected<void, SpatialPartitionFailure>
+        [[nodiscard]] SpatialPartitionExp<void>
         rebuild(SpatialDemandPlan& plan) const;
 
         EntitySectionRecordStore records_;

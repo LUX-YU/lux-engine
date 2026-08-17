@@ -47,10 +47,10 @@ namespace lux::runtime::spatial_partition
         SpatialPartitionSystem& operator=(const SpatialPartitionSystem&) =
             delete;
 
-        [[nodiscard]] lux::cxx::expected<void, SpatialPartitionFailure>
+        [[nodiscard]] SpatialPartitionExp<void>
         replaceDemandSource(SpatialDemandSourceUpdate update);
 
-        [[nodiscard]] lux::cxx::expected<void, SpatialPartitionFailure>
+        [[nodiscard]] SpatialPartitionExp<void>
         removeDemandSource(
             const SpatialDemandSourceId& source,
             std::uint64_t generation);
@@ -71,7 +71,7 @@ namespace lux::runtime::spatial_partition
     private:
         struct ResidentTicket;
 
-        [[nodiscard]] lux::cxx::expected<void, SpatialPartitionFailure>
+        [[nodiscard]] SpatialPartitionExp<void>
         apply(SpatialDemandPlan plan, bool removal);
         void recordFailure(ESpatialPartitionError error) noexcept;
         void requireOwnerThread() const noexcept;

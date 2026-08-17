@@ -57,7 +57,7 @@ namespace lux::runtime::spatial_partition
             ++stale_generation_rejections_;
     }
 
-    lux::cxx::expected<void, SpatialPartitionFailure>
+    SpatialPartitionExp<void>
     SpatialPartitionSystem::replaceDemandSource(
         SpatialDemandSourceUpdate update)
     {
@@ -81,7 +81,7 @@ namespace lux::runtime::spatial_partition
         return apply(std::move(*plan), false);
     }
 
-    lux::cxx::expected<void, SpatialPartitionFailure>
+    SpatialPartitionExp<void>
     SpatialPartitionSystem::removeDemandSource(
         const SpatialDemandSourceId& source,
         std::uint64_t generation)
@@ -106,7 +106,7 @@ namespace lux::runtime::spatial_partition
         return apply(std::move(*plan), true);
     }
 
-    lux::cxx::expected<void, SpatialPartitionFailure>
+    SpatialPartitionExp<void>
     SpatialPartitionSystem::apply(SpatialDemandPlan plan, bool removal)
     {
         std::vector<SpatialResidentDemand> desired{

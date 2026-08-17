@@ -285,12 +285,12 @@ namespace lux::runtime
             return std::max(peak, std::size_t{1u});
         }
 
-        using ClassicResult = lux::cxx::expected<
-            PreparedClassicMeshBatch,
-            SceneGeometryPrepareFailure>;
-        using TerrainResult = lux::cxx::expected<
-            PreparedTerrainTile,
-            SceneGeometryPrepareFailure>;
+        template <typename T>
+        using SceneGeometryPrepareExp =
+            lux::cxx::expected<T, SceneGeometryPrepareFailure>;
+
+        using ClassicResult = SceneGeometryPrepareExp<PreparedClassicMeshBatch>;
+        using TerrainResult = SceneGeometryPrepareExp<PreparedTerrainTile>;
 
         [[nodiscard]] SceneGeometryPrepareFailure failure(
             ESceneGeometryPrepareError code,

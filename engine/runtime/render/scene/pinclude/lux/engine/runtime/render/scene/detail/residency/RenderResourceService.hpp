@@ -96,8 +96,11 @@ namespace lux::runtime
         DomainUnavailable,
     };
 
-    using ResidentResourceAdoptResult = lux::cxx::expected<
-        ResidentResourceLease, EResidentResourceAdoptError>;
+    template <typename T>
+    using ResidentResourceAdoptExp =
+        lux::cxx::expected<T, EResidentResourceAdoptError>;
+
+    using ResidentResourceAdoptResult = ResidentResourceAdoptExp<ResidentResourceLease>;
 
     /// Domain-bound capability used by an owner-creating RPC continuation.
     /// It shares only a lifetime/generation control, not the service, session,
@@ -137,8 +140,8 @@ namespace lux::runtime
         lux::ecs::EResourceDomain domain_{lux::ecs::EResourceDomain::TEXTURE};
     };
 
-    using ResidentHandleReleaseEndpointResult = lux::cxx::expected<
-        ResidentHandleReleaseEndpoint, EResidentResourceAdoptError>;
+    using ResidentHandleReleaseEndpointResult =
+        ResidentResourceAdoptExp<ResidentHandleReleaseEndpoint>;
 
     /// 资源间依赖(域知识的申报形):材质→贴图槽/父级 这类「我要用它的
     /// 句柄」关系。编排据此在 submit 前把依赖带到**结算**(就绪或终败),

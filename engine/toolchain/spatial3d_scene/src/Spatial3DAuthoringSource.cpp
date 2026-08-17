@@ -50,7 +50,9 @@ namespace lux::toolchain
             std::uint64_t local_id) noexcept
         {
             if (set.is_nil() || local_id == 0u)
+            {
                 return 0u;
+            }
             std::array<std::byte, 24u> identity{};
             std::ranges::copy(set.as_bytes(), identity.begin());
             for (std::size_t index = 0u; index < sizeof(local_id); ++index)
@@ -76,7 +78,9 @@ namespace lux::toolchain
     {
         auto root = lux::authoring::loadWorldSource(root_document);
         if (!root)
+        {
             return lux::cxx::unexpected(root.error());
+        }
 
         Spatial3DAuthoringSource result;
         result.scene = lux::entity_scene::EntitySceneId{root->world.value()};
@@ -86,7 +90,9 @@ namespace lux::toolchain
         for (const auto& space : root->spaces)
         {
             if (!is3DSpace(space))
+            {
                 continue;
+            }
             const auto key = uuids::to_string(space.id.value());
             spaces.insert(key);
             result.spaces.push_back({
@@ -94,7 +100,8 @@ namespace lux::toolchain
                 space.topology == lux::authoring::EPartitionTopology::PLANAR_XZ
                     ? ESpatial3DSourceTopology::PLANAR_XZ
                     : ESpatial3DSourceTopology::VOLUMETRIC_XYZ,
-                static_cast<double>(space.cell_edge)});
+                static_cast<double>(space.cell_edge)
+            });
         }
         result.required_extensions = root->required_extensions;
 
@@ -103,18 +110,24 @@ namespace lux::toolchain
         for (const auto& reference : root->descriptor_pages)
         {
             if (!spaces.contains(uuids::to_string(reference.space.value())))
+            {
                 continue;
+            }
             auto page = lux::authoring::loadWorldDescriptorPage(
                 root_document, *root, reference);
             if (!page)
+            {
                 return lux::cxx::unexpected(page.error());
+            }
 
             for (const auto& descriptor : page->actors)
             {
                 auto document = lux::authoring::loadWorldActorDocument(
                     root_document, descriptor, actor_limits);
                 if (!document)
+                {
                     return lux::cxx::unexpected(document.error());
+                }
                 if (document->world != root->world ||
                     document->actor != descriptor.id ||
                     document->actor_class != descriptor.actor_class ||
@@ -126,14 +139,16 @@ namespace lux::toolchain
                     document->references != descriptor.references)
                 {
                     return lux::cxx::unexpected(std::string{
-                        "LXAD metadata does not match its LXAI descriptor"});
+                        "LXAD metadata does not match its LXAI descriptor"
+                    });
                 }
                 const auto* position = std::get_if<lux::spatial::Position3D>(
                     &document->position);
                 if (!position)
                 {
                     return lux::cxx::unexpected(std::string{
-                        "3D Descriptor Page contains a non-3D Actor"});
+                        "3D Descriptor Page contains a non-3D Actor"
+                    });
                 }
                 Spatial3DActorSource actor;
                 actor.id = document->actor;
@@ -142,7 +157,9 @@ namespace lux::toolchain
                 actor.transform_parent = document->transform_parent;
                 actor.data_layers.reserve(document->data_layers.size());
                 for (const auto& layer : document->data_layers)
+                {
                     actor.data_layers.emplace_back(layer.name());
+                }
                 actor.name_table = std::move(document->name_table);
                 actor.components.reserve(document->components.size());
                 for (auto& component : document->components)
@@ -150,7 +167,8 @@ namespace lux::toolchain
                     actor.components.push_back({
                         std::move(component.schema_name),
                         component.schema_version,
-                        std::move(component.tagged_payload)});
+                        std::move(component.tagged_payload)
+                    });
                 }
                 result.actors.push_back(std::move(actor));
             }
@@ -165,7 +183,9 @@ namespace lux::toolchain
                         descriptor.document_path,
                         *root);
                     if (!source)
+                    {
                         return lux::cxx::unexpected(source.error());
+                    }
                     const auto* owner = std::get_if<
                         lux::authoring::InstanceSetId>(&descriptor.owner);
                     if (source->world != root->world || !owner ||
@@ -174,13 +194,15 @@ namespace lux::toolchain
                         source->cell != descriptor.cell)
                     {
                         return lux::cxx::unexpected(std::string{
-                            "LXIP identity does not match its LXAI descriptor"});
+                            "LXIP identity does not match its LXAI descriptor"
+                        });
                     }
                     const auto cell = gridCoordinate(source->cell);
                     if (!cell)
                     {
                         return lux::cxx::unexpected(std::string{
-                            "3D Instance Page has a non-3D cell"});
+                            "3D Instance Page has a non-3D cell"
+                        });
                     }
                     std::map<
                         std::vector<std::string>,
@@ -190,7 +212,9 @@ namespace lux::toolchain
                         std::vector<std::string> data_layers;
                         data_layers.reserve(source_instance.data_layers.size());
                         for (const auto& layer : source_instance.data_layers)
+                        {
                             data_layers.emplace_back(layer.name());
+                        }
                         auto [group, inserted] = layer_groups.try_emplace(
                             data_layers);
                         if (inserted)
@@ -205,7 +229,8 @@ namespace lux::toolchain
                         if (!position)
                         {
                             return lux::cxx::unexpected(std::string{
-                                "3D Instance Page contains a non-3D position"});
+                                "3D Instance Page contains a non-3D position"
+                            });
                         }
                         const auto instance_id = uuids::uuid_name_generator{
                             source_instance.id.set.value()}(
@@ -221,10 +246,13 @@ namespace lux::toolchain
                             source_instance.rgba8,
                             stableInstancePickId(
                                 source_instance.id.set.value(),
-                                source_instance.id.local_id)});
+                                source_instance.id.local_id)
+                        });
                     }
                     for (auto& [_, group] : layer_groups)
+                    {
                         result.instance_pages.push_back(std::move(group));
+                    }
                     continue;
                 }
                 if (descriptor.kind !=
@@ -237,7 +265,9 @@ namespace lux::toolchain
                     descriptor.document_path,
                     *root);
                 if (!source)
+                {
                     return lux::cxx::unexpected(source.error());
+                }
                 const auto* owner = std::get_if<
                     lux::authoring::TerrainSetId>(&descriptor.owner);
                 if (source->world != root->world || !owner ||
@@ -246,13 +276,15 @@ namespace lux::toolchain
                     source->cell != descriptor.cell)
                 {
                     return lux::cxx::unexpected(std::string{
-                        "LXTP identity does not match its LXAI descriptor"});
+                        "LXTP identity does not match its LXAI descriptor"
+                    });
                 }
                 const auto cell = gridCoordinate(source->cell);
                 if (!cell)
                 {
                     return lux::cxx::unexpected(std::string{
-                        "3D Terrain Page has a non-3D cell"});
+                        "3D Terrain Page has a non-3D cell"
+                    });
                 }
                 result.terrain_pages.push_back({
                     source->terrain_set.value(),
@@ -264,7 +296,8 @@ namespace lux::toolchain
                     source->weight_layer_count,
                     std::move(source->heights),
                     std::move(source->weight_planes),
-                    std::move(source->holes)});
+                    std::move(source->holes)
+                });
             }
         }
         return result;

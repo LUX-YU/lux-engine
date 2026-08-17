@@ -41,7 +41,9 @@ namespace lux::tilemap
     {
         auto valid = validateTilemapChunkBlob(blob);
         if (!valid)
+        {
             return lux::cxx::unexpected(std::move(valid.error()));
+        }
 
         ByteWriter writer;
         writer.reserve(kEncodedBytes);
@@ -50,7 +52,9 @@ namespace lux::tilemap
         writer.u32(kTilemapChunkEdge);
         writer.u32(static_cast<std::uint32_t>(blob.tiles.size()));
         for (const auto tile : blob.tiles)
+        {
             writer.u16(tile);
+        }
         return std::move(writer).take();
     }
 

@@ -9,7 +9,9 @@ namespace
     void require(bool condition)
     {
         if (!condition)
+        {
             std::abort();
+        }
     }
 }
 
@@ -23,7 +25,9 @@ int main()
     TilemapChunkBlobV1 source;
     source.tiles.resize(kTilemapChunkTileCount);
     for (std::size_t index = 0u; index < source.tiles.size(); ++index)
+    {
         source.tiles[index] = static_cast<std::uint16_t>(index);
+    }
 
     auto encoded = encodeTilemapChunkBlob(source);
     require(encoded.has_value());

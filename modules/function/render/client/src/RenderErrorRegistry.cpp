@@ -1,4 +1,5 @@
 #include <lux/engine/function/render/client/core/RenderErrorRegistry.hpp>
+#include <lux/engine/platform/FormatCompat.h>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/function/render/client/core/EngineSetSlot.hpp>          // DescriptorSlot 实参槽
 #include <lux/engine/function/render/client/resources/EBuiltinShader.hpp>    // BuiltinShader 实参槽
@@ -97,9 +98,7 @@ namespace
 
         case EErrorArg::Hex:
         {
-            char buf[11]{};
-            std::snprintf(buf, sizeof(buf), "0x%X", value);
-            out += buf;
+            out += lux::format("0x{:X}", value);
             return;
         }
 

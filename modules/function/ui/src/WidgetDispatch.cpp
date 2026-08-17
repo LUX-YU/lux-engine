@@ -1,5 +1,7 @@
 #include <lux/engine/ui/WidgetDispatch.hpp>
 
+#include <lux/engine/platform/FormatCompat.h>
+
 #include <lux/cxx/compile_time/type_info.hpp>
 
 #include <imgui.h>
@@ -257,9 +259,8 @@ namespace lux::ui
         // Compose a TreeNode label that carries both the display text and a
         // stable per-field id so two fields with the same display name don't
         // collide ImGui-id-wise.
-        char header[256];
-        std::snprintf(header, sizeof(header), "%s%s", label_buf, id_buf);
-        const bool open = ImGui::TreeNodeEx(header,
+        const auto header = lux::format("{}{}", label_buf, id_buf);
+        const bool open = ImGui::TreeNodeEx(header.c_str(),
             ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DefaultOpen);
 
         ImGui::TableSetColumnIndex(1);

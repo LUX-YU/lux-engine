@@ -31,6 +31,7 @@
 
 #include <lux/engine/toolchain/asset/builtin/BuiltinGeometry.hpp>
 #include <lux/engine/toolchain/asset/material/MaterialGraphCompiler.hpp>
+#include <lux/engine/platform/FormatCompat.h>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
@@ -348,8 +349,7 @@ namespace
             return rc;
         for (int i = 0; i < kBuiltinEmissiveCount; ++i)
         {
-            char name[64];
-            std::snprintf(name, sizeof(name), "M_Emissive_%d.luxasset", i);
+            const auto name = lux::format("M_Emissive_{}.luxasset", i);
             if (int rc = exportOne(kBuiltinEmissiveIdStrs[i], mat_dir / name); rc != 0)
                 return rc;
         }

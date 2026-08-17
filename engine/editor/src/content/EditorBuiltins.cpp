@@ -1,4 +1,5 @@
 #include <lux/engine/editor/content/EditorBuiltins.hpp>
+#include <lux/engine/platform/FormatCompat.h>
 #include <lux/engine/toolchain/asset/builtin/BuiltinGeometry.hpp>
 #include <lux/engine/editor/content/EngineContentPath.hpp>
 #include <lux/engine/editor/content/RuntimeAssetPath.hpp>
@@ -476,12 +477,11 @@ namespace lux::editor
             if (!parseUuid(kBuiltinEmissiveIdStrs[i], parent))
                 return false;
 
-            char name[32];
-            std::snprintf(name, sizeof(name), "Emissive%d_Inst", i);
+            const auto name = lux::format("Emissive{}_Inst", i);
 
             lux::asset::asset_id_t inst{};   // 调用方不需要留着,场景按 UUID 引用
             if (!registerInstanceWrapper(mgr, kBuiltinEmissiveInstanceIdStrs[i],
-                                         parent, name, inst))
+                                         parent, name.c_str(), inst))
                 return false;
         }
 

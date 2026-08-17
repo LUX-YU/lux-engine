@@ -14,6 +14,8 @@
 
 #include "script/FlowForgeCompilerService.hpp"
 
+#include <lux/engine/platform/FormatCompat.h>
+
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/authoring/assets/FlowGraphAsset.hpp>
 #include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
@@ -54,10 +56,7 @@ namespace lux::editor
 
         std::string hex64(std::uint64_t v)
         {
-            char buf[17];
-            std::snprintf(buf, sizeof(buf), "%016llx",
-                          static_cast<unsigned long long>(v));
-            return buf;
+            return lux::format("{:016x}", v);
         }
 
         /// File-name-safe graph name (same alphabet the scratch loader uses).

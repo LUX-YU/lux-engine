@@ -32,12 +32,13 @@ namespace lux::render
         STOPPING
     };
 
-    template <class Reply>
-    using UploadSubmitResult = lux::cxx::expected<
-        RenderRequest<Reply>, ERenderUploadSubmitError>;
+    template <class T>
+    using UploadSubmitExp = lux::cxx::expected<T, ERenderUploadSubmitError>;
 
-    using UploadSubmitNoReplyResult =
-        lux::cxx::expected<void, ERenderUploadSubmitError>;
+    template <class Reply>
+    using UploadSubmitResult = UploadSubmitExp<RenderRequest<Reply>>;
+
+    using UploadSubmitNoReplyResult = UploadSubmitExp<void>;
 
     struct OwnedTextureMipLevel final
     {

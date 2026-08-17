@@ -16,12 +16,8 @@ namespace lux::gapi::vk
 	class SwapchainBuilder;
 	class Swapchain;
 
-	using SwapchainBuildResult = lux::cxx::expected<
-		Swapchain,
-		SwapchainBuildError>;
-	using SwapchainImagesResult = lux::cxx::expected<
-		std::vector<Image>,
-		SwapchainBuildError>;
+	using SwapchainBuildResult = SwapchainBuildExp<Swapchain>;
+	using SwapchainImagesResult = SwapchainBuildExp<std::vector<Image>>;
 
 	struct SwapchainBuildOps final
 	{

@@ -125,10 +125,8 @@ namespace lux::ecs
             return schema_id.name;
         }
 
-        [[nodiscard]] bool has(
-            lux::meta::EntityRegistryBase& registry,
-            entt::entity entity)
-            const noexcept
+        [[nodiscard]] bool has(lux::meta::EntityRegistryBase& registry,
+                               entt::entity entity) const noexcept
         {
             return operations.has && operations.has(registry, entity);
         }
@@ -147,7 +145,8 @@ namespace lux::ecs
     struct ComponentCatalogFailure final
     {
         EComponentCatalogError error{
-            EComponentCatalogError::INVALID_DESCRIPTOR};
+            EComponentCatalogError::INVALID_DESCRIPTOR
+        };
         std::string name;
         std::string conflicting_name;
     };
@@ -155,6 +154,12 @@ namespace lux::ecs
     class LUX_FUNCTION_PUBLIC ComponentTypeCatalog final
     {
     public:
+        template <typename T>
+        using ComponentCatalogExp   = lux::cxx::expected<T, ComponentCatalogFailure>;
+        using RegisterSchemaResult  = ComponentCatalogExp<const ComponentSchemaDescriptor*>;
+        using RegisterSchemasResult = ComponentCatalogExp<std::size_t>;
+        using ValidationResult      = ComponentCatalogExp<void>;
+
         ComponentTypeCatalog() = default;
         ComponentTypeCatalog(const ComponentTypeCatalog&) = delete;
         ComponentTypeCatalog& operator=(const ComponentTypeCatalog&) = delete;
@@ -163,49 +168,36 @@ namespace lux::ecs
         // successful registration. A rejected registration is a strict
         // transaction: it does not relocate entries or change either lookup
         // index.
-        [[nodiscard]] lux::cxx::expected<
-            const ComponentSchemaDescriptor*,
-            ComponentCatalogFailure>
-        registerSchema(ComponentSchemaDescriptor descriptor);
+        [[nodiscard]] RegisterSchemaResult registerSchema(ComponentSchemaDescriptor descriptor);
 
-        [[nodiscard]] lux::cxx::expected<void, ComponentCatalogFailure>
-        validateSchemas(
-            std::span<const ComponentSchemaDescriptor> descriptors) const;
+        [[nodiscard]] ValidationResult validateSchemas(std::span<const ComponentSchemaDescriptor> descriptors) const;
 
-        [[nodiscard]] lux::cxx::expected<
-            std::size_t,
-            ComponentCatalogFailure>
-        registerSchemas(std::span<const ComponentSchemaDescriptor> descriptors);
+        [[nodiscard]] RegisterSchemasResult registerSchemas(std::span<const ComponentSchemaDescriptor> descriptors);
 
-        [[nodiscard]] const ComponentSchemaDescriptor* findBySchema(
-            std::string_view name) const noexcept;
+        [[nodiscard]] const ComponentSchemaDescriptor* findBySchema(std::string_view name) const noexcept;
 
         /// C++ reflection/tooling lookup. Cooked EntityScene paths must use
         /// findBySchema() and never persist this implementation identity.
-        [[nodiscard]] const ComponentSchemaDescriptor* findByCppName(
-            std::string_view name) const noexcept;
+        [[nodiscard]] const ComponentSchemaDescriptor* findByCppName(std::string_view name) const noexcept;
 
-        [[nodiscard]] const ComponentSchemaDescriptor* findByType(
-            TypeToken type) const noexcept;
+        [[nodiscard]] const ComponentSchemaDescriptor* findByType(TypeToken type) const noexcept;
 
-        [[nodiscard]] std::span<const ComponentSchemaDescriptor> all()
-            const noexcept;
+        [[nodiscard]] std::span<const ComponentSchemaDescriptor> all() const noexcept;
 
     private:
-        [[nodiscard]] lux::cxx::expected<void, ComponentCatalogFailure>
-        validate(
+        [[nodiscard]] lux::cxx::expected<void, ComponentCatalogFailure> validate(
             const ComponentSchemaDescriptor& descriptor,
-            std::span<const ComponentSchemaDescriptor> pending = {}) const;
+            std::span<const ComponentSchemaDescriptor> pending = {}
+        ) const;
 
-        std::vector<ComponentSchemaDescriptor> entries_;
-        std::unordered_map<std::uint64_t, std::size_t> schema_index_;
-        std::unordered_map<std::uint64_t, std::size_t> type_index_;
+        std::vector<ComponentSchemaDescriptor>          entries_;
+        std::unordered_map<std::uint64_t, std::size_t>  schema_index_;
+        std::unordered_map<std::uint64_t, std::size_t>  type_index_;
     };
 
     /// Called only by generated reflection callbacks. This does not publish a
     /// component to any consumer; it appends to the main-thread pending chain.
-    LUX_FUNCTION_PUBLIC void queueGeneratedComponent(
-        ComponentSchemaDescriptor descriptor) noexcept;
+    LUX_FUNCTION_PUBLIC void queueGeneratedComponent(ComponentSchemaDescriptor descriptor) noexcept;
 
     /// Publish every descriptor queued by the most recent meta_module_init or
     /// meta_module_drain. On validation failure the pending chain is retained
@@ -224,10 +216,10 @@ namespace lux::ecs
 
     /// Pack declaration drift check. Diagnostics stay at composition call
     /// sites; this helper has no terminal-I/O side effects.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<
-        void,
-        ComponentCatalogFailure>
-    validateComponentSchemas(
-        const ComponentTypeCatalog& catalog,
-        std::span<const std::string_view> schema_names);
+    using ComponentCatalogValidationResult =
+        lux::cxx::expected<void, ComponentCatalogFailure>;
+
+    [[nodiscard]] LUX_FUNCTION_PUBLIC ComponentCatalogValidationResult
+    validateComponentSchemas(const ComponentTypeCatalog& catalog,
+                             std::span<const std::string_view> schema_names);
 }

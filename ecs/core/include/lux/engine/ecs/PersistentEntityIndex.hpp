@@ -34,8 +34,10 @@ namespace lux::ecs
         DUPLICATE_ID
     };
 
-    using PersistentEntityIdResult =
-        lux::cxx::expected<void, EPersistentEntityIdError>;
+    template <typename T>
+    using PersistentEntityIdExp = lux::cxx::expected<T, EPersistentEntityIdError>;
+
+    using PersistentEntityIdResult = PersistentEntityIdExp<void>;
 
     class PersistentEntityIndex;
 
@@ -87,9 +89,7 @@ namespace lux::ecs
         std::vector<lux::entity_scene::PersistentEntityId> ids_;
     };
 
-    using PersistentEntityIdClaimResult = lux::cxx::expected<
-        PersistentEntityIdClaim,
-        EPersistentEntityIdError>;
+    using PersistentEntityIdClaimResult = PersistentEntityIdExp<PersistentEntityIdClaim>;
 
     namespace detail
     {

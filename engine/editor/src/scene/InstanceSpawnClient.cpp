@@ -24,9 +24,7 @@ namespace lux::editor
     namespace
     {
         using PreparedPlan = std::shared_ptr<InstanceSpawnPlan>;
-        using PreparedOutcome = lux::cxx::expected<
-            PreparedPlan,
-            InstanceSpawnFailure>;
+        using PreparedOutcome = InstanceSpawnExp<PreparedPlan>;
 
         struct PreparedLoad final
         {

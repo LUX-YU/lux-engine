@@ -136,13 +136,14 @@ namespace lux::ecs
         return "unknown";
     }
 
-    template <class System>
-    using SystemAddResult =
-        lux::cxx::expected<SystemHandle<System>, EScheduleMutationError>;
+    template <class T>
+    using ScheduleMutationResult = lux::cxx::expected<T, EScheduleMutationError>;
 
     template <class System>
-    using SystemRemoveResult =
-        lux::cxx::expected<void, EScheduleMutationError>;
+    using SystemAddResult = ScheduleMutationResult<SystemHandle<System>>;
+
+    template <class System>
+    using SystemRemoveResult = ScheduleMutationResult<void>;
 
     struct SystemHandleAny final
     {
@@ -179,6 +180,9 @@ namespace lux::ecs
         SystemType subject{};
         SystemType related{};
     };
+
+    template <class T>
+    using ScheduleBatchResult = lux::cxx::expected<T, ScheduleBatchFailure>;
 
     class ScheduleMutationBatch final
     {
@@ -290,17 +294,13 @@ namespace lux::ecs
 
         [[nodiscard]] bool hasSystem(SystemType type) const noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            InstalledSystemBatch,
-            ScheduleBatchFailure>
-        installBatch(ScheduleMutationBatch&& batch);
+        [[nodiscard]] ScheduleBatchResult<InstalledSystemBatch> installBatch(
+            ScheduleMutationBatch&& batch);
 
         /// Install one topology mutation while retaining one handle batch per
         /// logical contribution. The whole topology is validated before any
         /// system is adopted or receives onAdded().
-        [[nodiscard]] lux::cxx::expected<
-            std::vector<InstalledSystemBatch>,
-            ScheduleBatchFailure>
+        [[nodiscard]] ScheduleBatchResult<std::vector<InstalledSystemBatch>>
         installBatchPartitioned(
             ScheduleMutationBatch&& batch,
             std::span<const std::size_t> partition_sizes);

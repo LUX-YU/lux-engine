@@ -87,9 +87,7 @@ namespace lux::ecs
             });
     }
 
-    lux::cxx::expected<
-        InstalledSceneServiceBatch,
-        ESceneServiceRegistrationError>
+    SceneServiceResult<InstalledSceneServiceBatch>
     SceneServices::install(SceneServiceMutationBatch&& batch)
     {
         const std::size_t partition_size = batch.states_.size();
@@ -102,9 +100,7 @@ namespace lux::ecs
         return std::move(installed->front());
     }
 
-    lux::cxx::expected<
-        std::vector<InstalledSceneServiceBatch>,
-        ESceneServiceRegistrationError>
+    SceneServiceResult<std::vector<InstalledSceneServiceBatch>>
     SceneServices::installPartitioned(
         SceneServiceMutationBatch&& batch,
         std::span<const std::size_t> partition_sizes)

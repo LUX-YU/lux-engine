@@ -50,12 +50,11 @@ namespace lux::exec
     };
 
     using AsyncFileBuffer = std::vector<std::byte>;
-    using AsyncFileReadResult = lux::cxx::expected<
-        AsyncFileBuffer,
-        AsyncFileFailure>;
-    using AsyncFileWriteResult = lux::cxx::expected<
-        std::size_t,
-        AsyncFileFailure>;
+    template <typename T>
+    using AsyncFileExp = lux::cxx::expected<T, AsyncFileFailure>;
+
+    using AsyncFileReadResult = AsyncFileExp<AsyncFileBuffer>;
+    using AsyncFileWriteResult = AsyncFileExp<std::size_t>;
 
     struct AsyncFileStatistics final
     {

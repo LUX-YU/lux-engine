@@ -201,7 +201,7 @@ namespace lux::ecs
         return false;
     }
 
-    lux::cxx::expected<InstalledSystemBatch, ScheduleBatchFailure>
+    ScheduleBatchResult<InstalledSystemBatch>
     Schedule::installBatch(ScheduleMutationBatch&& batch)
     {
         const std::size_t partition_size = batch.nodes_.size();
@@ -214,9 +214,7 @@ namespace lux::ecs
         return std::move(installed->front());
     }
 
-    lux::cxx::expected<
-        std::vector<InstalledSystemBatch>,
-        ScheduleBatchFailure>
+    ScheduleBatchResult<std::vector<InstalledSystemBatch>>
     Schedule::installBatchPartitioned(
         ScheduleMutationBatch&& batch,
         std::span<const std::size_t> partition_sizes)

@@ -18,12 +18,11 @@ namespace lux::runtime::entity_scene
 
     namespace
     {
-        using LoadResult = lux::cxx::expected<
-            EntitySectionLoadResult,
-            EEntitySectionLoadError>;
-        using OpenResult = lux::cxx::expected<
-            lux::asset::AssetBlob,
-            EEntitySectionLoadError>;
+        template <typename T>
+        using EntitySectionLoadExp = lux::cxx::expected<T, EEntitySectionLoadError>;
+
+        using LoadResult = EntitySectionLoadExp<EntitySectionLoadResult>;
+        using OpenResult = EntitySectionLoadExp<lux::asset::AssetBlob>;
 
         struct PendingLoad final
         {

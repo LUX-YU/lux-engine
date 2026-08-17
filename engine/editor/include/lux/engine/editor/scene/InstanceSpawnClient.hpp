@@ -71,9 +71,10 @@ namespace lux::editor
         std::uint32_t model_revision{0};
     };
 
-    using InstanceSpawnOutcome = lux::cxx::expected<
-        InstanceSpawnResult,
-        InstanceSpawnFailure>;
+    template <typename T>
+    using InstanceSpawnExp = lux::cxx::expected<T, InstanceSpawnFailure>;
+
+    using InstanceSpawnOutcome = InstanceSpawnExp<InstanceSpawnResult>;
 
     class InstanceSpawnClient final
     {

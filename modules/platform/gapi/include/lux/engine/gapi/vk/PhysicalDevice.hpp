@@ -35,25 +35,18 @@ namespace lux::gapi::vk
 		}
 	};
 
-	using SurfaceCapabilitiesResult = lux::cxx::expected<
-		VkSurfaceCapabilitiesKHR,
-		SwapchainBuildError>;
-	using SurfaceFormatsResult = lux::cxx::expected<
-		std::vector<VkSurfaceFormatKHR>,
-		SwapchainBuildError>;
-	using SurfacePresentModesResult = lux::cxx::expected<
-		std::vector<VkPresentModeKHR>,
-		SwapchainBuildError>;
-	using SwapChainSupportResult = lux::cxx::expected<
-		SwapChainSupportDetails,
-		SwapchainBuildError>;
+	template <typename T>
+	using SwapchainBuildExp = lux::cxx::expected<T, SwapchainBuildError>;
+
+	using SurfaceCapabilitiesResult = SwapchainBuildExp<VkSurfaceCapabilitiesKHR>;
+	using SurfaceFormatsResult = SwapchainBuildExp<std::vector<VkSurfaceFormatKHR>>;
+	using SurfacePresentModesResult = SwapchainBuildExp<std::vector<VkPresentModeKHR>>;
+	using SwapChainSupportResult = SwapchainBuildExp<SwapChainSupportDetails>;
 
 	namespace detail
 	{
 		template <class T, class QueryFn>
-		[[nodiscard]] lux::cxx::expected<
-			std::vector<T>,
-			SwapchainBuildError>
+		[[nodiscard]] SwapchainBuildExp<std::vector<T>>
 		enumerateSurfaceValues(
 			VkPhysicalDevice physical_device,
 			VkSurfaceKHR surface,

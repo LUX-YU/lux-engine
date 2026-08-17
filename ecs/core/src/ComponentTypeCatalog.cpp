@@ -120,9 +120,7 @@ namespace lux::ecs
         return {};
     }
 
-    lux::cxx::expected<
-        const ComponentSchemaDescriptor*,
-        ComponentCatalogFailure>
+    ComponentTypeCatalog::RegisterSchemaResult
     ComponentTypeCatalog::registerSchema(ComponentSchemaDescriptor descriptor)
     {
         const auto registered = registerSchemas(
@@ -132,9 +130,8 @@ namespace lux::ecs
         return &entries_.back();
     }
 
-    lux::cxx::expected<std::size_t, ComponentCatalogFailure>
-    ComponentTypeCatalog::registerSchemas(
-        std::span<const ComponentSchemaDescriptor> descriptors)
+    ComponentTypeCatalog::RegisterSchemasResult
+    ComponentTypeCatalog::registerSchemas(std::span<const ComponentSchemaDescriptor> descriptors)
     {
         std::vector<ComponentSchemaDescriptor> prepared;
         prepared.reserve(descriptors.size());
@@ -232,9 +229,8 @@ namespace lux::ecs
         return descriptors.size();
     }
 
-    lux::cxx::expected<void, ComponentCatalogFailure>
-    ComponentTypeCatalog::validateSchemas(
-        std::span<const ComponentSchemaDescriptor> descriptors) const
+    ComponentTypeCatalog::ValidationResult
+    ComponentTypeCatalog::validateSchemas(std::span<const ComponentSchemaDescriptor> descriptors) const
     {
         std::vector<ComponentSchemaDescriptor> prepared;
         prepared.reserve(descriptors.size());
@@ -290,8 +286,7 @@ namespace lux::ecs
             : nullptr;
     }
 
-    std::span<const ComponentSchemaDescriptor> ComponentTypeCatalog::all()
-        const noexcept
+    std::span<const ComponentSchemaDescriptor> ComponentTypeCatalog::all() const noexcept
     {
         return entries_;
     }
@@ -320,10 +315,9 @@ namespace lux::ecs
         return result;
     }
 
-    lux::cxx::expected<void, ComponentCatalogFailure>
-    validateComponentSchemas(
-        const ComponentTypeCatalog& catalog,
-        std::span<const std::string_view> schema_names)
+    ComponentCatalogValidationResult
+    validateComponentSchemas(const ComponentTypeCatalog& catalog,
+                             std::span<const std::string_view> schema_names)
     {
         for (const auto name : schema_names)
             if (!catalog.findBySchema(name))

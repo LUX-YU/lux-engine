@@ -78,8 +78,10 @@ namespace lux::ecs
     }
 
     template <class T>
-    using SceneServiceRegistration =
-        lux::cxx::expected<T*, ESceneServiceRegistrationError>;
+    using SceneServiceResult = lux::cxx::expected<T, ESceneServiceRegistrationError>;
+
+    template <class T>
+    using SceneServiceRegistration = SceneServiceResult<T*>;
 
     namespace detail
     {
@@ -484,19 +486,15 @@ namespace lux::ecs
 
         /// Publish a prevalidated dynamic batch. Its returned owner must be
         /// retained for as long as the services are installed.
-        [[nodiscard]] lux::cxx::expected<
-            InstalledSceneServiceBatch,
-            ESceneServiceRegistrationError>
-        install(SceneServiceMutationBatch&& batch);
+        [[nodiscard]] SceneServiceResult<InstalledSceneServiceBatch> install(
+            SceneServiceMutationBatch&& batch);
 
         /// Publish one prevalidated mutation batch while retaining separate
         /// lifetime owners for its logical contribution partitions. All
         /// result storage is reserved before the first service becomes live,
         /// so a dependency closure can be installed as one transaction and
         /// later removed contribution-by-contribution.
-        [[nodiscard]] lux::cxx::expected<
-            std::vector<InstalledSceneServiceBatch>,
-            ESceneServiceRegistrationError>
+        [[nodiscard]] SceneServiceResult<std::vector<InstalledSceneServiceBatch>>
         installPartitioned(
             SceneServiceMutationBatch&& batch,
             std::span<const std::size_t> partition_sizes);

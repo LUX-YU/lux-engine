@@ -54,7 +54,9 @@ namespace lux::ui
     static std::unordered_map<uint64_t, VkDescriptorSet> &getFrameTextureCache(TexResolverCtx &ctx)
     {
         if (ctx.texture_ds_cache_per_frame.empty())
+        {
             ctx.texture_ds_cache_per_frame.resize(1);
+        }
 
         const size_t slot = static_cast<size_t>(ctx.frame_index) % ctx.texture_ds_cache_per_frame.size();
         return ctx.texture_ds_cache_per_frame[slot];
@@ -73,7 +75,9 @@ namespace lux::ui
         for (const auto &[_, ds] : cache)
         {
             if (ds != VK_NULL_HANDLE)
+            {
                 ImGui_ImplVulkan_RemoveTextureEx(renderer, ds);
+            }
         }
         cache.clear();
     }
@@ -81,7 +85,9 @@ namespace lux::ui
     static void clearAllTextureCaches(ImGui_ImplVulkan_Renderer *renderer, TexResolverCtx &ctx)
     {
         for (auto &cache : ctx.texture_ds_cache_per_frame)
+        {
             clearTextureCacheSlot(renderer, cache);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -198,7 +204,9 @@ namespace lux::ui
             auto &frame_cache = getFrameTextureCache(*ctx);
             auto it = frame_cache.find(key);
             if (it != frame_cache.end())
+            {
                 return it->second;
+            }
 
             auto *tex_res = ctx->renderer->renderContext()
                 .globalRegistry()
@@ -241,12 +249,16 @@ namespace lux::ui
         uint32_t image_count)
     {
         if (image_count == 0)
+        {
             return {};
+        }
 
         auto &cfg = ui.imgui_cfg_;
 
         if (ui.imgui_vk_renderer_ && ui.imgui_swapchain_image_count_ == image_count)
+        {
             return {};
+        }
 
         if (ui.imgui_vk_renderer_)
         {
@@ -257,6 +269,7 @@ namespace lux::ui
             for (auto& [vd, vt] : ui.viewport_targets_)
             {
                 if (vt.target.isValid())
+                {
                     if (auto* target = reg.tryGet(vt.target);
                         target && target->present)
                     {
@@ -268,10 +281,13 @@ namespace lux::ui
                             );
                         }
                     }
+                }
                 ImGui_ImplVulkan_DestroyRenderBuffersEx(ui.imgui_vk_renderer_, vt.ring);
                 ImGui_ImplVulkan_DestroyViewportResourcesEx(ui.imgui_vk_renderer_, vd);
                 if (vt.target.isValid())
+                {
                     reg.erase(vt.target);
+                }
             }
             ui.viewport_targets_.clear();
             ImGui_ImplVulkan_DestroyRendererEx(ui.imgui_vk_renderer_);
@@ -333,10 +349,14 @@ namespace lux::ui
         // renderer 就位前建的 SAMPLED 目标此刻补挂 ImGui renderer
         //(uiMakeTargetPool 在 renderer 为空时挂的是 nullptr)。
         for (const auto key : reg.all().keys())
+        {
             if (auto* t = reg.tryGet(key);
                 t && t->pool && (t->flags & lux::render::kTargetFlagSampled))
+            {
                 static_cast<UIOffscreenImagePool*>(t->pool.get())
                     ->setImGuiRenderer(ui.imgui_vk_renderer_);
+            }
+        }
         return {};
     }
 
@@ -353,13 +373,17 @@ namespace lux::ui
             auto *ui = static_cast<UIRenderServer::UIState *>(
                 serverExtensionOf(ctx.user_state));
             if (!ui)
+            {
                 return;
+            }
 
             if (p.attachment_index < ctx.program.attachments.size())
             {
                 auto &att = ctx.program.attachments[p.attachment_index];
                 if (att.type_id == kImGuiDrawDataAttachment)
+                {
                     ui->pending_snapshot = static_cast<ImDrawDataSnapshot *>(att.object);
+                }
             }
         }
 
@@ -378,7 +402,9 @@ namespace lux::ui
         {
             auto *ui = static_cast<UIRenderServer::UIState *>(reg.userData());
             if (!ui || !(target_flags & lux::render::kTargetFlagSampled))
+            {
                 return nullptr;   // 非 SAMPLED:基类池
+            }
             auto pool = std::make_unique<UIOffscreenImagePool>(
                 reg.resourceContext(), layout, extent, reg.framesInFlight());
             pool->setImGuiRenderer(ui->imgui_vk_renderer_);
@@ -392,7 +418,9 @@ namespace lux::ui
         {
             auto *ui = static_cast<UIRenderServer::UIState *>(reg.userData());
             if (!ui || !(target_flags & lux::render::kTargetFlagSampled))
+            {
                 return false;     // 非 SAMPLED:基类 fence 水位延迟释放
+            }
             // SAMPLED 目标的池必为 UIOffscreenImagePool(uiMakeTargetPool /
             // handleAddUIView 建立的不变量)——转入 UI 侧退休列表,ImGui
             // 描述符在 renderer 存活期内释放。
@@ -409,7 +437,9 @@ namespace lux::ui
         {
             auto *ui = static_cast<UIRenderServer::UIState *>(extension);
             if (!ui || !ui->resolver_ctx_.targets)
+            {
                 return;
+            }
             // (UI 目标的池在 base handleDestroyScene 级联摘层时经统一退休
             //  入口 retireTargetPool 路由——SAMPLED flag 把 UI 池转入
             //  retired_ui_pools_,描述符退休语义保持在 UI 侧;此处无需插手。)
@@ -422,12 +452,14 @@ namespace lux::ui
             {
                 using Layer = lux::render::RenderTargetEntry::CompositeLayer;
                 for (size_t i = 0; i < st->layers.size(); ++i)
+                {
                     if (st->layers[i].kind == Layer::EKind::SceneView &&
                         st->layers[i].scene_id == scene_id)
                     {
                         st->layers.erase(st->layers.begin() + static_cast<ptrdiff_t>(i));
                         break;
                     }
+                }
             }
         }
 
@@ -457,7 +489,9 @@ namespace lux::ui
         using namespace lux::render;
         auto &d = *static_cast<GeneralRenderServer::Dispatcher *>(dispatcher);
         for (uint32_t i = 0; i < op_count; ++i)
+        {
             d.freeSlot(opcodes::CommandOp, ops[i]);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -527,7 +561,9 @@ namespace lux::ui
         clearSwapchainScene();
 
         if (ui_->imgui_vk_renderer_)
+        {
             clearAllTextureCaches(ui_->imgui_vk_renderer_, ui_->resolver_ctx_);
+        }
 
         // Destroy UIOffscreenImagePools BEFORE the ImGui renderer — they call
         // ImGui_ImplVulkan_RemoveTextureEx which requires a live renderer.
@@ -535,9 +571,13 @@ namespace lux::ui
         {
             const auto keys = targets().all().keys();   // 拷贝:循环内 erase
             for (const auto key : keys)
+            {
                 if (auto* t = targets().tryGet(key);
                     t && (t->flags & lux::render::kTargetFlagSampled))
+                {
                     targets().erase(key);
+                }
+            }
         }
         ui_->retired_ui_pools_.clear();
 
@@ -578,13 +618,17 @@ namespace lux::ui
         const auto &slot_images = binding.slot(lux::render::TargetSlot::SCENE_COLOR);
         if (cmd == VK_NULL_HANDLE || !renderer ||
             slot_images.images.empty() || slot_images.views.empty())
+        {
             return;
+        }
 
         const VkImage     image  = slot_images.images.front();
         const VkImageView view   = slot_images.views.front();
         const VkExtent2D  extent = binding.extent;
         if (image == VK_NULL_HANDLE || view == VK_NULL_HANDLE)
+        {
             return;
+        }
 
         // 非首层 = 图像已有内容(场景层在下)→ LOAD 且自 COLOR_ATTACHMENT 接力。
         const bool composite_over_scene = !phase.is_first;
@@ -597,9 +641,11 @@ namespace lux::ui
             const auto &desc =
                 binding.layout->slots[static_cast<size_t>(lux::render::TargetSlot::SCENE_COLOR)];
             if (desc.has_value())
+            {
                 final_layout = lux::render::toVkImageLayout(
                     desc->final_state
                 );
+            }
         }
 
         auto barrier2 = [&](VkImageLayout oldL, VkImageLayout newL,
@@ -654,7 +700,9 @@ namespace lux::ui
         vkCmdBeginRendering(cmd, &ri);
 
         if (data && data->Valid && data->TotalIdxCount > 0)
+        {
             ImGui_ImplVulkan_RenderDrawDataWithBuffersEx(renderer, data, cmd, render_buffers);
+        }
 
         vkCmdEndRendering(cmd);
 
@@ -681,7 +729,9 @@ namespace lux::ui
     {
         auto *ui = static_cast<UIRenderServer::UIState *>(user);
         if (!ui || !ui->imgui_vk_renderer_)
+        {
             return;
+        }
         recordImGuiOverlayLayer(
             cmd, binding, phase, ui->imgui_vk_renderer_,
             ui->pending_snapshot ? &ui->pending_snapshot->drawData() : nullptr,
@@ -696,7 +746,9 @@ namespace lux::ui
     {
         auto *vt = static_cast<UIRenderServer::UIState::ViewportTarget *>(user);
         if (!vt || !vt->owner || !vt->owner->imgui_vk_renderer_)
+        {
             return;
+        }
         auto *ui = vt->owner;
 
         ImDrawData *data = nullptr;
@@ -721,10 +773,14 @@ namespace lux::ui
         UIRenderServer::UIState *ui, void *vd)
     {
         if (!ui)
+        {
             return nullptr;
+        }
         auto it = ui->viewport_targets_.find(vd);
         if (it == ui->viewport_targets_.end() || !it->second.target.isValid())
+        {
             return nullptr;
+        }
         return reg.tryGet(it->second.target);
     }
 
@@ -751,32 +807,42 @@ namespace lux::ui
     {
         using Layer = lux::render::RenderTargetEntry::CompositeLayer;
         if (!ui)
+        {
             return;
+        }
 
         for (auto &[vd, vt] : ui->viewport_targets_)
         {
             if (!vt.target.isValid())
+            {
                 continue;                       // create 失败的占位
+            }
             auto *t = reg.tryGet(vt.target);
             if (!t)
+            {
                 continue;
+            }
 
             bool present_this_frame = false;
             if (ui->pending_snapshot)
             {
                 const auto &frames = ui->pending_snapshot->viewportFrames();
                 for (int i = 0; i < frames.Size; ++i)
+                {
                     if (frames[i].vd == vd)
                     {
                         present_this_frame = true;
                         break;
                     }
+                }
             }
 
             t->layers.clear();
             if (present_this_frame)
+            {
                 t->layers.push_back(
                     Layer::customRecord(&viewportOverlayRecordFn, &vt));
+            }
         }
     }
 
@@ -787,10 +853,16 @@ namespace lux::ui
         using Layer = lux::render::RenderTargetEntry::CompositeLayer;
         auto *t = targets.surfaceTarget();
         if (!t)
+        {
             return nullptr;
+        }
         for (auto &l : t->layers)
+        {
             if (l.kind == Layer::EKind::SceneView)
+            {
                 return &l;
+            }
+        }
         return nullptr;
     }
 
@@ -804,17 +876,25 @@ namespace lux::ui
         using Layer = lux::render::RenderTargetEntry::CompositeLayer;
         auto *t = targets.surfaceTarget();
         if (!t || !ui)
+        {
             return;
+        }
 
         std::optional<Layer> scene;
         if (auto *l = findSceneLayer(targets))
+        {
             scene = *l;
+        }
 
         t->layers.clear();
         if (scene.has_value())
+        {
             t->layers.push_back(*scene);
+        }
         if (ui->imgui_overlay_enabled_)
+        {
             t->layers.push_back(Layer::customRecord(&mainOverlayRecordFn, ui));
+        }
     }
 
     // (服务端直呼 addUIView / removeUIView 已消亡:UI 目标统一走
@@ -825,14 +905,20 @@ namespace lux::ui
         const lux::render::ViewHandle kInvalid{};
 
         if (!swapchainProvider())
+        {
             return kInvalid;  // no swapchain attached
+        }
 
         if (findSceneLayer(targets()))
+        {
             return kInvalid;  // already set — call clearSwapchainScene() first
+        }
 
         auto *scene = renderer().getScene(scene_id);
         if (!scene)
+        {
             return kInvalid;
+        }
 
         auto *sc = swapchainProvider();
         const auto sc_extent = sc->extent();
@@ -845,7 +931,9 @@ namespace lux::ui
         lux::render::ViewHandle view_id = scene->addView(ci);
         auto *view = scene->getView(view_id);
         if (!view)
+        {
             return kInvalid;
+        }
 
         // M4d:这里原本手写一份 scene_layout,并按"叠加开没开"选 final_layout
         //(COLOR_ATTACHMENT 交棒 / PRESENT 收尾)。那是**相位**,不是布局 ——
@@ -855,7 +943,9 @@ namespace lux::ui
 
         // Register with base class swapchain binding (unbind any previous first)
         if (hasSwapchainBinding())
+        {
             unbindSwapchain();
+        }
 
         // 交给基类的是 **swapchain 自己的终态布局**(final = PRESENT_SRC)——
         // target 的布局本就该是它的终态,链上每一层实际用的布局由相位导出。
@@ -882,28 +972,38 @@ namespace lux::ui
         auto *t = targets().surfaceTarget();
         auto *scene_layer = findSceneLayer(targets());
         if (!t || !scene_layer)
+        {
             return;
+        }
 
         const auto scene_id = scene_layer->scene_id;
         const auto view_id  = scene_layer->view_id;
 
         // 先摘层再删视图 —— 反过来的话中间态里链上挂着一个已死的视图。
         for (size_t i = 0; i < t->layers.size(); ++i)
+        {
             if (t->layers[i].kind == Layer::EKind::SceneView)
             {
                 t->layers.erase(t->layers.begin() + static_cast<ptrdiff_t>(i));
                 break;
             }
+        }
 
         if (view_id.isValid())
+        {
             if (auto *scene = renderer().getScene(scene_id))
+            {
                 (void)scene->removeView(view_id);   // 重复摘无害,swapchain 链不在乎
+            }
+        }
     }
 
     void UIRenderServer::setImGuiOverlayEnabled(bool enabled)
     {
         if (ui_->imgui_overlay_enabled_ == enabled)
+        {
             return;
+        }
 
         ui_->imgui_overlay_enabled_ = enabled;
 
@@ -924,7 +1024,9 @@ namespace lux::ui
         // 1. Base init — Vulkan stack, dispatcher, etc.
         auto r = GeneralRenderServer::init(std::move(config));
         if (!r)
+        {
             return r;
+        }
 
         // (1b. 原 RequestSwapchainScene 覆盖注册已随命令面消亡。)
 
@@ -954,7 +1056,9 @@ namespace lux::ui
     {
         auto r = GeneralRenderServer::attachToWindow(window);
         if (!r)
+        {
             return r;
+        }
 
         if (swapchainProvider())
         {
@@ -968,14 +1072,18 @@ namespace lux::ui
                 image_count
             );
             if (!rebuilt)
+            {
                 return lux::cxx::unexpected<lux::render::RenderError>(rebuilt.error());
+            }
 
             swapchainProvider()->setRebuildCallback(
                 [this]() -> lux::render::Expected<void>
                 {
                     auto *sc = swapchainProvider();
                     if (!sc)
+                    {
                         return {};
+                    }
                     // (叠加直录零重编——原 recompileImGuiOverlayGraph 已消亡。)
                     return rebuildImGuiRendererForSwapchain(
                         *ui_,
@@ -1007,7 +1115,9 @@ namespace lux::ui
         // 排空之后、开帧之前这个缝,是 UI 唯一能看到"本帧要画什么"的时刻 ——
         // 下面两个链同步必须落在这里。
         if (!drainTick())
+        {
             return false;
+        }
 
         // (可渲染性判定已归编排:beginRenderFrame 返回 NoTarget 即无事可做。
         //  判据也随之精确了一档 —— 此前是"有 swapchain 就算能渲",现在是
@@ -1093,7 +1203,9 @@ namespace lux::ui
                     // 重建扫描已归编排统一执行,它只认 entry;再在 UI 侧留一份
                     // resizing 就是两份记录必须同步的老毛病。
                     if (auto* t = viewportEntry(targets(), ui_.get(), evt.viewport_data))
+                    {
                         t->rebuild_suspended = true;
+                    }
                 }
                 else if (evt.type == ImGui_ImplVulkan_ViewportEvent::ResizeEnd)
                 {
@@ -1104,18 +1216,26 @@ namespace lux::ui
                     {
                         t->rebuild_suspended = false;
                         if (t->present)
+                        {
                             t->present->provider()->markNeedsRebuild();
+                        }
                     }
                 }
                 else if (evt.type == ImGui_ImplVulkan_ViewportEvent::Resized)
                 {
                     if (bad_extent)
+                    {
                         continue;
+                    }
                     auto* t = viewportEntry(targets(), ui_.get(), evt.viewport_data);
                     if (!t || !t->present)
+                    {
                         continue;
+                    }
                     if (t->rebuild_suspended)
+                    {
                         continue;   // 括号内:忽略中间尺寸,ResizeEnd 统一重建
+                    }
                     t->present->provider()->requestResize(
                         {static_cast<uint32_t>(evt.width),
                          static_cast<uint32_t>(evt.height)});
@@ -1124,15 +1244,21 @@ namespace lux::ui
                 {
                     auto it = ui_->viewport_targets_.find(evt.viewport_data);
                     if (it == ui_->viewport_targets_.end())
+                    {
                         continue;
+                    }
                     // 两阶段销毁:受理即停呈现(entry 除名),PresentContext
                     // + 顶点环 + vd 随在途账本等 fence 水位一并拆
                     // (request_id=0 → 内部释放不发回执)。
                     const auto tid = it->second.target;
                     std::unique_ptr<lux::render::PresentContext> pc;
                     if (tid.isValid())
+                    {
                         if (auto* t = targets().tryGet(tid); t)
+                        {
                             pc = std::move(t->present);
+                        }
+                    }
                     auto teardown =
                         [renderer = ui_->imgui_vk_renderer_,
                          ring = it->second.ring, vd = evt.viewport_data]()
@@ -1141,7 +1267,9 @@ namespace lux::ui
                         ImGui_ImplVulkan_DestroyViewportResourcesEx(renderer, vd);
                     };
                     if (tid.isValid())
+                    {
                         targets().erase(tid);
+                    }
                     ui_->viewport_targets_.erase(it);
                     deferSurfaceRelease(tid, std::move(pc), std::move(teardown));
                 }
@@ -1173,15 +1301,21 @@ namespace lux::ui
         if (start == ETickStage::NoTarget)
         {
             if (ui_->imgui_vk_renderer_)
+            {
                 clearAllTextureCaches(ui_->imgui_vk_renderer_, ui_->resolver_ctx_);
+            }
             // 派生 tick 也必须保持基类的两阶段 Surface 销毁契约：最后一个
             // target 已除名后不会再有 Ready 帧替我们发送 TargetReleased。
             return stepPendingSurfaceReleases();
         }
         if (start == ETickStage::Skipped)
+        {
             return stepPendingSurfaceReleases();
+        }
         if (start == ETickStage::Failed)
+        {
             return false;
+        }
 
         // ── UI 的帧前准备:采样前补描述符 + 换纹理缓存槽 ────────────────
         //
@@ -1189,9 +1323,13 @@ namespace lux::ui
         // (而不是原先夹在离屏循环之后)是因为池只在排水期增删,渲染阶段
         // 不再变化 —— 提前到渲染之前反而更早、更稳。
         for (const auto key : targets().all().keys())
+        {
             if (auto *t = targets().tryGet(key);
                 t && t->pool && (t->flags & lux::render::kTargetFlagSampled))
+            {
                 static_cast<UIOffscreenImagePool *>(t->pool.get())->ensureImGuiDescriptors();
+            }
+        }
 
         ui_->resolver_ctx_.frame_index = currentStamp().slotIndex();
         clearTextureCacheSlot(ui_->imgui_vk_renderer_, getFrameTextureCache(ui_->resolver_ctx_));
@@ -1221,7 +1359,9 @@ namespace lux::ui
         // 提交(含各副视口折入的 acquire/present 信号量)、逐 Surface 呈现、
         // 目标池老化、Surface 拆除步进、异步回读、收尾记账 —— 全在里面。
         if (!endRenderTick(fs))
+        {
             return false;
+        }
 
         // UI 自己那份退休池(SAMPLED 目标的池带 ImGui 描述符,退休语义在 UI
         // 侧)仍需按同一水位老化。
@@ -1239,11 +1379,15 @@ namespace lux::ui
 
             retired_it->ui_pool->collectRetired(serial, gpu_completed);
             if (retired_it->retire_frame == 0)
+            {
                 retired_it->retire_frame = serial;
+            }
 
             const bool aged_out = (retired_it->retire_frame <= gpu_completed);
             if (aged_out)
+            {
                 retired_it = ui_->retired_ui_pools_.erase(retired_it);
+            }
             else
                 ++retired_it;
         }

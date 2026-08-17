@@ -523,11 +523,13 @@ namespace lux::flowforge {
                     return mlir::success();
                 });
             if (mlir::failed(mlir::verify(bc.module)))
+            {
                 return lux::cxx::unexpected(FlowForgeFailure{
                     .code = EFlowForgeError::IR_VERIFICATION_FAILED,
                     .message = "generated MLIR module failed verification:\n"
                         + diag_text,
                 });
+            }
         }
 
         auto ir = std::make_unique<IR>();
@@ -715,7 +717,9 @@ namespace lux::flowforge {
     const Node* MLIRBuilderImpl::findPostDom(const Node* control) const
     {
         if (!control || control->operation() != ENodeOperation::BRANCH)
+        {
             return nullptr;
+        }
         const auto& br = static_cast<const BranchNode&>(*control);
 
         auto up_reach   = reachableFromPin(&br.execOutPinUp());
@@ -723,22 +727,50 @@ namespace lux::flowforge {
 
         std::unordered_set<const Node*> common;
         for (auto* n : up_reach)
-            if (down_reach.count(n)) common.insert(n);
-        if (common.empty()) return nullptr;
+        {
+            if (down_reach.count(n))
+            {
+                common.insert(n);
+            }
+        }
+        if (common.empty())
+        {
+            return nullptr;
+        }
 
         std::queue<const Node*> q;
         std::unordered_set<const Node*> visited{control};
-        if (auto* in = br.execOutPinUp().nextPin())   q.push(in->node());
-        if (auto* in = br.execOutPinDown().nextPin()) q.push(in->node());
+        if (auto* in = br.execOutPinUp().nextPin())
+        {
+            q.push(in->node());
+        }
+        if (auto* in = br.execOutPinDown().nextPin())
+        {
+            q.push(in->node());
+        }
         while (!q.empty()) {
             auto* n = q.front(); q.pop();
-            if (!visited.insert(n).second) continue;
-            if (common.count(n)) return n;
+            if (!visited.insert(n).second)
+            {
+                continue;
+            }
+            if (common.count(n))
+            {
+                return n;
+            }
             for (const Pin* p : n->outPins()) {
-                if (p->kind() != EPinKind::EXEC_OUT) continue;
+                if (p->kind() != EPinKind::EXEC_OUT)
+                {
+                    continue;
+                }
                 auto* ex = static_cast<const ExecOutPin*>(p);
                 if (auto* dst = ex->nextPin())
-                    if (!visited.count(dst->node())) q.push(dst->node());
+                {
+                    if (!visited.count(dst->node()))
+                    {
+                        q.push(dst->node());
+                    }
+                }
             }
         }
         return nullptr;
@@ -774,10 +806,19 @@ namespace lux::flowforge {
 
         while (true) {
             const ExecInPin* next_in = cur_pin->nextPin();
-            if (!next_in) return cur_tok;                  // chain ends
+            if (!next_in)
+            {
+                return cur_tok;                            // chain ends
+            }
             const Node* node = next_in->node();
-            if (external.count(node)) return cur_tok;      // outer scope handles
-            if (lowered.count(node))  return cur_tok;      // already lowered
+            if (external.count(node))
+            {
+                return cur_tok;                            // outer scope handles
+            }
+            if (lowered.count(node))
+            {
+                return cur_tok;                            // already lowered
+            }
             lowered.insert(node);
             bc.current_node = node;
 
@@ -832,7 +873,9 @@ namespace lux::flowforge {
                     const auto& call = static_cast<const GraphFuncCallNode&>(*node);
                     const FuncDefNode* callee = call.callee();
                     if (!callee)
+                    {
                         LUX_FF_FAIL(bc, "graph call has no callee");
+                    }
 
                     llvm::SmallVector<mlir::Value, 4> operands;
                     // Callee shares THIS instance's variables: forward the
@@ -855,12 +898,16 @@ namespace lux::flowforge {
                     }
                     llvm::SmallVector<mlir::Type, 2> ret_tys;
                     for (const auto& pin : call.resultPins())
+                    {
                         ret_tys.push_back(refTypeToMLIR(bc, *pin->info().type));
+                    }
 
                     auto callOp = bc.builder.create<mlir::func::CallOp>(
                         bc.loc, callee->name(), ret_tys, operands);
                     for (size_t i = 0; i < call.resultPins().size(); ++i)
+                    {
                         vm.exec_data[call.resultPins()[i]->id()] = callOp.getResult(i);
+                    }
 
                     vm.exec_tok[call.execOutPin().id()] = in_tok;
                     cur_tok = in_tok;
@@ -872,10 +919,14 @@ namespace lux::flowforge {
                 case ENodeOperation::SET_FIELD: {
                     const auto& sf = static_cast<const SetFieldNode&>(*node);
                     if (!sf.field())
+                    {
                         LUX_FF_FAIL(bc, "field access has no reflected field");
+                    }
                     LUX_FF_TRY_VALUE(obj, getOperand(sf.objectPin(), vm, bc));
                     if (!mlir::isa<mlir::LLVM::LLVMPointerType>(obj.getType()))
+                    {
                         LUX_FF_FAIL(bc, "field access needs an object pointer");
+                    }
                     mlir::Type fty = refTypeToMLIR(bc, sf.field()->type);
                     if (mlir::isa<mlir::LLVM::LLVMPointerType>(fty)
                         && !isPointerQual(sf.field()->type))
@@ -911,7 +962,9 @@ namespace lux::flowforge {
                     const auto* var =
                         bc.graph ? bc.graph->findVariable(sv.variableId()) : nullptr;
                     if (!var || !var->type)
+                    {
                         LUX_FF_FAIL(bc, "graph variable not found");
+                    }
 
                     LUX_FF_TRY_VALUE(
                         operand,
@@ -942,7 +995,10 @@ namespace lux::flowforge {
 
                     const Node* pd = findPostDom(node);
                     auto inner_ext = external;
-                    if (pd) inner_ext.insert(pd);
+                    if (pd)
+                    {
+                        inner_ext.insert(pd);
+                    }
 
                     auto op = bc.builder.create<mlir::flowforge::BranchOp>(
                         bc.loc, mlir::TypeRange{bc.token, bc.token},
@@ -969,7 +1025,9 @@ namespace lux::flowforge {
                             )
                         );
                         if (end)
+                        {
                             bc.builder.create<mlir::flowforge::YieldOp>(bc.loc, end);
+                        }
                         else
                             then_terminated = true;
                     }
@@ -992,7 +1050,9 @@ namespace lux::flowforge {
                             )
                         );
                         if (end)
+                        {
                             bc.builder.create<mlir::flowforge::YieldOp>(bc.loc, end);
+                        }
                         else
                             else_terminated = true;
                     }
@@ -1010,18 +1070,28 @@ namespace lux::flowforge {
                     auto up_reach   = reachableFromPin(&br.execOutPinUp());
                     auto down_reach = reachableFromPin(&br.execOutPinDown());
                     for (auto* n : up_reach) {
-                        if (n == pd) continue;
+                        if (n == pd)
+                        {
+                            continue;
+                        }
                         for (const Pin* p : n->outPins())
                             if (p->kind() == EPinKind::EXEC_OUT
                                 && vm.exec_tok.count(p->id()))
+                            {
                                 vm.exec_tok[p->id()] = op.getResult(0);
+                            }
                     }
                     for (auto* n : down_reach) {
-                        if (n == pd) continue;
+                        if (n == pd)
+                        {
+                            continue;
+                        }
                         for (const Pin* p : n->outPins())
                             if (p->kind() == EPinKind::EXEC_OUT
                                 && vm.exec_tok.count(p->id()))
+                            {
                                 vm.exec_tok[p->id()] = op.getResult(1);
+                            }
                     }
 
                     if (!pd) {
@@ -1052,7 +1122,9 @@ namespace lux::flowforge {
                             break;
                         }
                     if (!pd_exec_in || pd_exec_in->linkedPins().empty())
+                    {
                         LUX_FF_FAIL(bc, "post-dominator has no exec_in link");
+                    }
                     cur_pin = pd_exec_in->linkedPins().front();
                     LUX_FF_TRY_VALUE(
                         post_dom_token,
@@ -1070,10 +1142,15 @@ namespace lux::flowforge {
                     // integer values need an explicit index_cast.
                     auto toIndex = [&](mlir::Value v)
                         -> FlowForgeResult<mlir::Value> {
-                        if (v.getType() == idxTy) return v;
+                        if (v.getType() == idxTy)
+                        {
+                            return v;
+                        }
                         if (mlir::isa<mlir::IntegerType>(v.getType()))
+                        {
                             return bc.builder.create<mlir::arith::IndexCastOp>(
                                 bc.loc, idxTy, v).getResult();
+                        }
                         LUX_FF_FAIL(bc, "for-loop bound is not an integer");
                     };
                     LUX_FF_TRY_VALUE(
@@ -1172,7 +1249,9 @@ namespace lux::flowforge {
                             )
                         );
                         if (body_end)
+                        {
                             bc.builder.create<mlir::flowforge::YieldOp>(bc.loc, body_end);
+                        }
                     }
 
                     cur_tok = op.getResult(1);
@@ -1192,7 +1271,9 @@ namespace lux::flowforge {
                     llvm::SmallVector<const ExecOutPin*, 4> legs;
                     legs.push_back(&seq.execOutPin());
                     for (auto& extra : seq.execOutPins())
+                    {
                         legs.push_back(extra.get());
+                    }
 
                     mlir::Value tok = in_tok;
                     for (const ExecOutPin* leg : legs) {
@@ -1206,7 +1287,10 @@ namespace lux::flowforge {
                         // A leg that ended in Return/Break terminates the
                         // chain — remaining legs are unreachable (the
                         // runtime aborts the sequence there too).
-                        if (!end) return mlir::Value{};
+                        if (!end)
+                        {
+                            return mlir::Value{};
+                        }
                         tok = end;
                     }
 
@@ -1249,10 +1333,14 @@ namespace lux::flowforge {
 
         if (auto* src = in.linkedPin()) {
             if (auto it = vm.exec_data.find(src->id()); it != vm.exec_data.end())
+            {
                 return it->second;
+            }
             auto& scope = vm.pure_scopes.back();
             if (auto it = scope.find(src->id()); it != scope.end())
+            {
                 return it->second;
+            }
             return materializePureValue(*src, vm, bc);
         }
 
@@ -1279,7 +1367,9 @@ namespace lux::flowforge {
         auto& builder = bc.builder;
 
         if (is_seq)
+        {
             return TypeSizeMap<Bits>::getIndex(builder, obj);
+        }
 
         auto llvm_type = TypeSizeMap<Bits>::getLLVMType(builder);
         auto attr      = TypeSizeMap<Bits>::getAttr(builder, obj);
@@ -1427,7 +1517,9 @@ namespace lux::flowforge {
                 "non-trivially-copyable class constants are not yet supported");
         const auto& obj_type = *obj.type();
         if (obj_type.size == 0)
+        {
             LUX_FF_FAIL_AT_PIN(bc, "aggregate constant has zero size");
+        }
 
         return materializeBytesConstant(bc, obj_type.hash,
             llvm::StringRef(static_cast<const char*>(obj.data()), obj_type.size));
@@ -1484,7 +1576,9 @@ namespace lux::flowforge {
                 "source value not materialised (its producer has not run "
                 "on the exec chain yet)");
         if (!materializing_.insert(n).second)
+        {
             LUX_FF_FAIL(bc, "cycle detected in pure data graph");
+        }
         auto cycle_guard = llvm::make_scope_exit([&] { materializing_.erase(n); });
 
         // Error context: point at the pure node while we lower it.
@@ -1533,7 +1627,9 @@ namespace lux::flowforge {
                 const auto* var =
                     bc.graph ? bc.graph->findVariable(get.variableId()) : nullptr;
                 if (!var || !var->type)
+                {
                     LUX_FF_FAIL(bc, "graph variable not found");
+                }
                 LUX_FF_TRY_VALUE(
                     slot,
                     varSlotAddress(get.variableId(), bc)
@@ -1547,7 +1643,9 @@ namespace lux::flowforge {
             case ENodeOperation::GET_FIELD: {
                 const auto& gf = static_cast<const GetFieldNode&>(*n);
                 if (!gf.field())
+                {
                     LUX_FF_FAIL(bc, "field access has no reflected field");
+                }
                 LUX_FF_TRY_VALUE(obj, getOperand(gf.objectPin(), vm, bc));
                 if (!mlir::isa<mlir::LLVM::LLVMPointerType>(obj.getType()))
                     LUX_FF_FAIL_AT_PIN(bc,
@@ -1579,7 +1677,9 @@ namespace lux::flowforge {
         mlir::Type dst = refTypeToMLIR(bc, dst_rt);
         mlir::Type src = v.getType();
         if (src == dst)
+        {
             return v;
+        }
 
         auto& b = bc.builder;
         auto src_int = mlir::dyn_cast<mlir::IntegerType>(src);
@@ -1613,7 +1713,9 @@ namespace lux::flowforge {
         }
         if (src_flt && dst_flt) {
             if (src_flt.getWidth() < dst_flt.getWidth())
+            {
                 return b.create<mlir::arith::ExtFOp>(bc.loc, dst, v).getResult();
+            }
             return b.create<mlir::arith::TruncFOp>(bc.loc, dst, v).getResult();
         }
 
@@ -1632,7 +1734,9 @@ namespace lux::flowforge {
     {
         const auto* rt = bin.operandType();
         if (!rt)
+        {
             LUX_FF_FAIL(bc, "binary op node has no operand type");
+        }
 
         LUX_FF_TRY_VALUE(lhs_operand, getOperand(bin.lhs(), vm, bc));
         LUX_FF_TRY_VALUE(rhs_operand, getOperand(bin.rhs(), vm, bc));
@@ -1665,11 +1769,17 @@ namespace lux::flowforge {
                 return flt ? b.create<mlir::arith::MulFOp>(loc, lhs, rhs).getResult()
                            : b.create<mlir::arith::MulIOp>(loc, lhs, rhs).getResult();
             case ENodeOperation::DIVIDE:
-                if (flt) return b.create<mlir::arith::DivFOp>(loc, lhs, rhs).getResult();
+                if (flt)
+                {
+                    return b.create<mlir::arith::DivFOp>(loc, lhs, rhs).getResult();
+                }
                 return uns ? b.create<mlir::arith::DivUIOp>(loc, lhs, rhs).getResult()
                            : b.create<mlir::arith::DivSIOp>(loc, lhs, rhs).getResult();
             case ENodeOperation::MODULO:
-                if (flt) return b.create<mlir::arith::RemFOp>(loc, lhs, rhs).getResult();
+                if (flt)
+                {
+                    return b.create<mlir::arith::RemFOp>(loc, lhs, rhs).getResult();
+                }
                 return uns ? b.create<mlir::arith::RemUIOp>(loc, lhs, rhs).getResult()
                            : b.create<mlir::arith::RemSIOp>(loc, lhs, rhs).getResult();
 
@@ -1701,7 +1811,9 @@ namespace lux::flowforge {
     {
         const auto* rt = un.operandType();
         if (!rt)
+        {
             LUX_FF_FAIL(bc, "unary op node has no operand type");
+        }
 
         LUX_FF_TRY_VALUE(operand, getOperand(un.operand(), vm, bc));
         LUX_FF_TRY_VALUE(v, coerceScalar(bc, operand, *rt));
@@ -1711,7 +1823,9 @@ namespace lux::flowforge {
         switch (un.operation()) {
             case ENodeOperation::NEGATE: {
                 if (isFloatType(*rt))
+                {
                     return b.create<mlir::arith::NegFOp>(loc, v).getResult();
+                }
                 auto zero = b.create<mlir::arith::ConstantOp>(
                     loc, v.getType(), b.getIntegerAttr(v.getType(), 0));
                 return b.create<mlir::arith::SubIOp>(loc, zero, v).getResult();
@@ -1741,9 +1855,13 @@ namespace lux::flowforge {
     {
         const auto* field = bc.state_layout.find(var_id);
         if (!field)
+        {
             LUX_FF_FAIL(bc, "graph variable not found");
+        }
         if (!bc.state_ptr)
+        {
             LUX_FF_FAIL(bc, "function has no instance-state pointer");
+        }
 
         auto ptr_ty = mlir::LLVM::LLVMPointerType::get(bc.ctx);
         return bc.builder.create<mlir::LLVM::GEPOp>(
@@ -1759,18 +1877,25 @@ namespace lux::flowforge {
         BuilderContext& bc,
         const llvm::SmallVector<mlir::Value>& inputs) {
         if (inputs.empty())
+        {
             LUX_FF_FAIL(bc, "mergeExecTokens called with no inputs");
+        }
 
         // Fast path: all predecessors carry the same SSA value already
         // (no real divergence). Skip emitting a token_merge.
         mlir::Value unique;
         for (auto v : inputs) {
-            if (!v) continue;
+            if (!v)
+            {
+                continue;
+            }
             if (!unique) { unique = v; continue; }
             if (v != unique) { unique = {}; break; }
         }
         if (unique)
+        {
             return unique;
+        }
 
         return bc.builder.create<mlir::flowforge::TokenMergeOp>(
             bc.loc, bc.token, mlir::ValueRange{inputs}).getMerged();
@@ -1794,7 +1919,10 @@ namespace lux::flowforge {
         llvm::SmallVector<mlir::Value, 4> operands;
         operands.push_back(in_tok);
         for (auto* pin : n.inPins()) {
-            if (pin->kind() != EPinKind::DATA_IN) continue;
+            if (pin->kind() != EPinKind::DATA_IN)
+            {
+                continue;
+            }
             auto* dpin = static_cast<DataInPin*>(pin);
             LUX_FF_TRY_VALUE(v, getOperand(*dpin, vm, bc));
             if (dpin->info().type
@@ -1828,7 +1956,10 @@ namespace lux::flowforge {
             llvm::StringRef name, mlir::FunctionType ty)
         {
             auto it = bc.extern_funcs.find(name);
-            if (it != bc.extern_funcs.end()) return it->second;
+            if (it != bc.extern_funcs.end())
+            {
+                return it->second;
+            }
 
             mlir::OpBuilder::InsertionGuard guard(bc.builder);
             bc.builder.setInsertionPointToStart(bc.module.getBody());
@@ -1905,16 +2036,22 @@ namespace lux::flowforge {
             llvm::SmallVector<mlir::Type, 4> argTypes;
             argTypes.reserve(info.parameters.size());
             for (auto& param : info.parameters)
+            {
                 argTypes.push_back(refTypeToMLIR(bc, param.type));
+            }
             llvm::SmallVector<mlir::Type, 1> retTypes;
             if (!returns_void)
+            {
                 retTypes.push_back(refTypeToMLIR(bc, info.return_type));
+            }
 
             auto fnTy   = b.getFunctionType(argTypes, retTypes);
             auto funcOp = getOrDeclareExternFunc(bc, info.name, fnTy);
             auto callOp = b.create<mlir::func::CallOp>(loc, funcOp, operands);
             if (!returns_void && callOp.getNumResults() > 0)
+            {
                 result_value = callOp.getResult(0);
+            }
         } else {
             // ---- reflected function: call through the type-erased invoker
             // trampoline `void(void* obj, void** args, void* ret)`. args[i]
@@ -1973,12 +2110,16 @@ namespace lux::flowforge {
             b.create<mlir::func::CallOp>(
                 loc, funcOp, mlir::ValueRange{null_ptr, args_base, ret_slot});
             if (!returns_void)
+            {
                 result_value = b.create<mlir::LLVM::LoadOp>(loc, ret_ty, ret_slot);
+            }
         }
 
         // Map return value to the result DataOutPin (if not void).
         if (result_value)
+        {
             vm.exec_data[call.result().id()] = result_value;
+        }
 
         // Thread exec token through (sequential call): outTok = inTok.
         vm.exec_tok[call.execOutPin().id()] = in_tok;

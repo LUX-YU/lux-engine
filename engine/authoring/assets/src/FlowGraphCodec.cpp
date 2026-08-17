@@ -60,7 +60,10 @@ namespace lux::authoring::detail
         const ScalarTypeEntry* scalarByType(
             const lux::meta::RefType* type)
         {
-            if (!type) return nullptr;
+            if (!type)
+            {
+                return nullptr;
+            }
             for (const auto& entry : scalarTable())
             {
                 if (entry.type->hash == type->hash &&
@@ -76,7 +79,12 @@ namespace lux::authoring::detail
             lux::cxx::ScalarSchema schema)
         {
             for (const auto& entry : scalarTable())
-                if (entry.schema == schema) return &entry;
+            {
+                if (entry.schema == schema)
+                {
+                    return &entry;
+                }
+            }
             return nullptr;
         }
 
@@ -109,7 +117,10 @@ namespace lux::authoring::detail
             const lux::meta::RefType* type)
         {
             const auto* entry = scalarByType(type);
-            if (!entry) return false;
+            if (!entry)
+            {
+                return false;
+            }
             writeSchema(writer, entry->schema);
             return true;
         }
@@ -117,7 +128,10 @@ namespace lux::authoring::detail
         const lux::meta::RefType* readScalarType(ByteReader& reader)
         {
             lux::cxx::ScalarSchema schema;
-            if (!readSchema(reader, schema)) return nullptr;
+            if (!readSchema(reader, schema))
+            {
+                return nullptr;
+            }
             const auto* entry = scalarBySchema(schema);
             if (!entry)
             {
@@ -187,11 +201,17 @@ namespace lux::authoring::detail
         bool readConstant(ByteReader& c, lux::meta::RuntimeObject& out)
         {
             lux::cxx::ScalarSchema schema;
-            if (!readSchema(c, schema)) return false;
+            if (!readSchema(c, schema))
+            {
+                return false;
+            }
             if (schema.kind == lux::cxx::EScalarKind::UTF8)
             {
                 std::string s;
-                if (!c.str(s, kMaxFlowGraphName)) return false;
+                if (!c.str(s, kMaxFlowGraphName))
+                {
+                    return false;
+                }
                 out = lux::meta::RuntimeObject(std::move(s));
                 return true;
             }
@@ -199,7 +219,10 @@ namespace lux::authoring::detail
             if (!e) { c.fail("unknown constant type"); return false; }
             std::uint8_t raw[8]{};
             if (e->size > sizeof(raw)) { c.fail("constant too large"); return false; }
-            if (!c.bytes(raw, e->size)) return false;
+            if (!c.bytes(raw, e->size))
+            {
+                return false;
+            }
             out = makeScalarObject(schema, raw);
             if (!out.isValid()) { c.fail("unknown constant type"); return false; }
             return true;
@@ -270,7 +293,9 @@ namespace lux::authoring::detail
         {
             for (std::size_t i = 0; i < pins.size(); ++i)
                 if (pins[i] == pin)
+                {
                     return static_cast<std::uint16_t>(i);
+                }
             return static_cast<std::uint16_t>(kMaxFlowGraphPins);
         }
     } // namespace
@@ -293,14 +318,21 @@ namespace lux::authoring::detail
         w.u32(static_cast<std::uint32_t>(g.variables().size()));
         for (const auto& v : g.variables())
         {
-            if (!v.type) return fail("graph variable has no type");
+            if (!v.type)
+            {
+                return fail("graph variable has no type");
+            }
             w.u64(v.id);
             w.str(v.name);
             if (!writeScalarType(w, v.type))
+            {
                 return fail("graph variable has an unsupported type");
+            }
             std::string err;
             if (!writeConstant(w, v.default_value, &err))
+            {
                 return fail("variable default: unsupported constant");
+            }
         }
 
         // ── nodes, ascending stable id (deterministic bytes) ─────────────
@@ -308,7 +340,9 @@ namespace lux::authoring::detail
         nodes.reserve(g.nodes().size());
         for (const auto& storage : g.nodes())
             if (storage.node)
+            {
                 nodes.push_back(storage.node.get());
+            }
         std::sort(nodes.begin(), nodes.end(),
                   [](const ff::Node* a, const ff::Node* b) { return a->id() < b->id(); });
 
@@ -335,16 +369,26 @@ namespace lux::authoring::detail
             else if (isBinaryOp(op))
             {
                 const auto& bin = static_cast<const ff::BinaryOpNode&>(*n);
-                if (!bin.operandType()) return fail("binary op node has no operand type");
+                if (!bin.operandType())
+                {
+                    return fail("binary op node has no operand type");
+                }
                 if (!writeScalarType(w, bin.operandType()))
+                {
                     return fail("binary op node has an unsupported operand type");
+                }
             }
             else if (isUnaryOp(op))
             {
                 const auto& un = static_cast<const ff::UnaryOpNode&>(*n);
-                if (!un.operandType()) return fail("unary op node has no operand type");
+                if (!un.operandType())
+                {
+                    return fail("unary op node has no operand type");
+                }
                 if (!writeScalarType(w, un.operandType()))
+                {
                     return fail("unary op node has an unsupported operand type");
+                }
             }
             else if (op == ff::ENodeOperation::GET_VARIABLE)
             {
@@ -357,8 +401,10 @@ namespace lux::authoring::detail
             else if (op == ff::ENodeOperation::NATIVE_FUNC_CALL)
             {
                 if (n->creatorName().empty())
+                {
                     return fail("native call node was not created from the "
                                 "NodeRegistry; it cannot be serialized");
+                }
                 w.str(n->creatorName());
             }
             else if (op == ff::ENodeOperation::FUNC_DEF_START)
@@ -367,24 +413,37 @@ namespace lux::authoring::detail
                 w.u16(static_cast<std::uint16_t>(def.argInfos().size()));
                 for (const auto& a : def.argInfos())
                 {
-                    if (!a.type) return fail("function argument has no type");
+                    if (!a.type)
+                    {
+                        return fail("function argument has no type");
+                    }
                     if (!writeScalarType(w, a.type))
+                    {
                         return fail("function argument has an unsupported type");
+                    }
                     w.str(a.name);
                 }
                 w.u16(static_cast<std::uint16_t>(def.retInfos().size()));
                 for (const auto& r : def.retInfos())
                 {
-                    if (!r.type) return fail("function return value has no type");
+                    if (!r.type)
+                    {
+                        return fail("function return value has no type");
+                    }
                     if (!writeScalarType(w, r.type))
+                    {
                         return fail("function return value has an unsupported type");
+                    }
                     w.str(r.name);
                 }
             }
             else if (op == ff::ENodeOperation::FUNC_RETURN)
             {
                 const auto* def = static_cast<const ff::FuncReturnNode&>(*n).def();
-                if (!def) return fail("function return has no owning definition");
+                if (!def)
+                {
+                    return fail("function return has no owning definition");
+                }
                 w.u64(def->id());
             }
             else if (op == ff::ENodeOperation::GRAPH_FUNC_CALL)

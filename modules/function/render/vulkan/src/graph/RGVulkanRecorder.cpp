@@ -33,7 +33,9 @@ namespace lux::render
                                                        bool emit_barrier)
     {
         if (!fn_set_rendering_locations_ || !fn_set_rendering_inputs_)
+        {
             return;   // caps gate should prevent this; degrade to no-op
+        }
 
         if (emit_barrier)
         {
@@ -79,7 +81,9 @@ namespace lux::render
     VkImageView PassRecordContext::resolveTextureView(RGResourceHandle handle) const noexcept
     {
         if (!per_frame_views_)
+        {
             return VK_NULL_HANDLE;
+        }
         // ping-pong PREVIOUS phase redirects to the peer's earlier-frame copy view.
         uint32_t owner = handle.index;
         uint32_t fidx  = frame.frame_index;
@@ -90,7 +94,9 @@ namespace lux::render
             fidx  = tgt.second;
         }
         if (owner >= per_frame_views_->size())
+        {
             return VK_NULL_HANDLE;
+        }
         const auto& fv = (*per_frame_views_)[owner];
         return (fidx < static_cast<uint32_t>(fv.size())) ? fv[fidx] : VK_NULL_HANDLE;
     }
@@ -99,7 +105,9 @@ namespace lux::render
     VkImageView PassRecordContext::resolveTextureView(RGResourceHandle handle, uint32_t mip) const noexcept
     {
         if (!per_frame_views_by_mip_)
+        {
             return VK_NULL_HANDLE;
+        }
         uint32_t owner = handle.index;
         uint32_t fidx  = frame.frame_index;
         if (physical_resources_)
@@ -109,10 +117,14 @@ namespace lux::render
             fidx  = tgt.second;
         }
         if (owner >= per_frame_views_by_mip_->size())
+        {
             return VK_NULL_HANDLE;
+        }
         const auto& frames = (*per_frame_views_by_mip_)[owner];
         if (fidx >= frames.size())
+        {
             return VK_NULL_HANDLE;
+        }
         const auto& mips = frames[fidx];
         return (mip < mips.size()) ? mips[mip] : VK_NULL_HANDLE;
     }
@@ -120,10 +132,15 @@ namespace lux::render
     // ---------- PassRecordContext::resolveBufferHandle (out-of-line) ----------
     VkBuffer PassRecordContext::resolveBufferHandle(RGResourceHandle handle) const noexcept
     {
-        if (!physical_resources_) return VK_NULL_HANDLE;
+        if (!physical_resources_)
+        {
+            return VK_NULL_HANDLE;
+        }
         const auto tgt = resolveRingTarget(*physical_resources_, handle.index, frame.frame_index);
         if (auto* pr = physical_resources_->tryGet(tgt.first))
+        {
             return reinterpret_cast<VkBuffer>(pr->getHandle(tgt.second));
+        }
         return VK_NULL_HANDLE;
     }
 
@@ -132,7 +149,9 @@ namespace lux::render
     {
         const auto tgt = resolveRingTarget(physical_resources, resource_idx, frame_ctx.frame_index);
         if (auto* pr = physical_resources.tryGet(tgt.first))
+        {
             return reinterpret_cast<VkBuffer>(pr->getHandle(tgt.second));
+        }
         return VK_NULL_HANDLE;
     }
 
@@ -152,7 +171,9 @@ namespace lux::render
         {
             auto* user = static_cast<PipelineVariantBindUser*>(raw_user);
             if (user == nullptr || user->binding_state == nullptr)
+            {
                 return false;
+            }
 
             VkPipeline pipeline = VK_NULL_HANDLE;
             VkPipelineLayout layout = VK_NULL_HANDLE;
@@ -160,37 +181,51 @@ namespace lux::render
             if (!cpass.render.pipeline_variants.empty())
             {
                 if (variant_index >= cpass.render.pipeline_variants.size())
+                {
                     return false;
+                }
                 pipeline = cpass.render.pipeline_variants[variant_index];
                 if (variant_index < cpass.render.pipeline_variant_layouts.size())
+                {
                     layout = cpass.render.pipeline_variant_layouts[variant_index];
+                }
             }
             else
             {
                 if (variant_index != 0u)
+                {
                     return false;
+                }
                 pipeline = cpass.render.pipeline;
                 layout = cpass.render.pipeline_layout;
             }
 
             if (pipeline == VK_NULL_HANDLE)
+            {
                 return false;
+            }
 
             BindingState& bs = *user->binding_state;
             if (user->bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS)
             {
                 if (bs.last_graphics_pipeline != pipeline)
+                {
                     vkCmdBindPipeline(user->cmd, user->bind_point, pipeline);
+                }
                 bs.last_graphics_pipeline = pipeline;
             }
             else
             {
                 if (bs.last_compute_pipeline != pipeline)
+                {
                     vkCmdBindPipeline(user->cmd, user->bind_point, pipeline);
+                }
                 bs.last_compute_pipeline = pipeline;
             }
             if (layout != VK_NULL_HANDLE)
+            {
                 bs.last_pipeline_layout = layout;
+            }
             return true;
         }
 
@@ -200,15 +235,23 @@ namespace lux::render
             uint32_t pass_index)
         {
             if (groups == nullptr || group_index_by_pass == nullptr)
+            {
                 return nullptr;
+            }
             if (pass_index >= group_index_by_pass->size())
+            {
                 return nullptr;
+            }
 
             const uint32_t group_index = (*group_index_by_pass)[pass_index];
             if (group_index == RGCompiledGraph::kInvalidSlotIdx)
+            {
                 return nullptr;
+            }
             if (group_index >= groups->size())
+            {
                 return nullptr;
+            }
 
             return &(*groups)[group_index];
         }
@@ -228,11 +271,15 @@ namespace lux::render
             {
                 const auto& images = record_context.per_frame_images[owner];
                 if (fidx < images.size() && images[fidx] != VK_NULL_HANDLE)
+                {
                     return images[fidx];
+                }
             }
 
             if (auto* pr = physical_resources.tryGet(owner))
+            {
                 return reinterpret_cast<VkImage>(pr->getHandle(fidx));
+            }
             return VK_NULL_HANDLE;
         }
 
@@ -258,7 +305,9 @@ namespace lux::render
                     ri,
                     frame_index);
                 if (image == VK_NULL_HANDLE)
+                {
                     continue;
+                }
 
                 out.push_back(src[i]);
                 out.back().image = image;
@@ -274,7 +323,9 @@ namespace lux::render
                     for (size_t si = 0; si < kTargetSlotCount; ++si)
                     {
                         if (record_context.slot_resource_idx[si] != ri)
+                        {
                             continue;
+                        }
                         const auto s = static_cast<TargetSlot>(si);
                         if (record_context.target_layout->hasSlot(s))
                         {
@@ -311,10 +362,15 @@ namespace lux::render
             for (size_t i = 0; i < count; ++i)
             {
                 auto* pr = physical_resources.tryGet(patch_resource_idx[i]);
-                if (!pr) continue;
+                if (!pr)
+                {
+                    continue;
+                }
                 VkBuffer buffer = reinterpret_cast<VkBuffer>(pr->getHandle(frame_index));
                 if (buffer == VK_NULL_HANDLE)
+                {
                     continue;
+                }
 
                 out.push_back(src[i]);
                 out.back().buffer = buffer;
@@ -327,7 +383,9 @@ namespace lux::render
             const std::vector<VkBufferMemoryBarrier2>& buffer_barriers)
         {
             if (image_barriers.empty() && buffer_barriers.empty())
+            {
                 return;
+            }
 
             VkDependencyInfo dep_info{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
             dep_info.imageMemoryBarrierCount = static_cast<uint32_t>(image_barriers.size());
@@ -469,7 +527,9 @@ namespace lux::render
                 auto& per_frame =
                     context.transient_descriptor_sets[set_index];
                 if (frame_index >= per_frame.size())
+                {
                     continue;
+                }
 
                 std::vector<VkWriteDescriptorSet> writes;
                 std::vector<VkDescriptorImageInfo> images;
@@ -482,11 +542,15 @@ namespace lux::render
                 {
                     const auto resource_index = source.resource.index;
                     if (resource_index >= graph.original_graph.resources.size())
+                    {
                         continue;
+                    }
                     const auto& resource =
                         graph.original_graph.resources[resource_index];
                     if (!resource.import_info && !resource.import_buffer_info)
+                    {
                         continue;
+                    }
 
                     VkWriteDescriptorSet write{
                         VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
@@ -514,7 +578,9 @@ namespace lux::render
                                 [frame_index];
                         }
                         if (view == VK_NULL_HANDLE)
+                        {
                             continue;
+                        }
                         images.push_back(VkDescriptorImageInfo{
                             source.sampler,
                             view,
@@ -537,7 +603,9 @@ namespace lux::render
                                 [frame_index];
                         }
                         if (buffer == VK_NULL_HANDLE)
+                        {
                             continue;
+                        }
                         buffers.push_back(VkDescriptorBufferInfo{
                             buffer,
                             0u,
@@ -605,7 +673,9 @@ namespace lux::render
     RGVulkanRecorder::allocateRecordContext(const RGCompiledGraph& compiled_graph, const RGPhysicalResourceTable& physical_resources, VkExtent2D extent, uint32_t frames_in_flight)
     {
         if (!compiled_graph.valid)
+        {
             return renderFailure<err::graph::CompiledGraphInvalid>();
+        }
 
         RGRecordContext record_context{};
         // Ensure partially-created Vulkan objects are released on any early return.
@@ -685,9 +755,13 @@ namespace lux::render
         {
             // Dynamic rendering (Vulkan 1.3) — no VkRenderPass or VkFramebuffer needed.
             if (auto err = computeGroupExtents(record_context, compiled_graph, extent))
+            {
                 return lux::cxx::unexpected(*err);
+            }
             if (auto err = preCreateImageViews(record_context, compiled_graph, physical_resources, frames_in_flight))
+            {
                 return lux::cxx::unexpected(*err);
+            }
         }
 
         // ================================================================
@@ -728,7 +802,9 @@ namespace lux::render
                 alloc_ci.commandBufferCount = frames_in_flight;
 
                 if (vkAllocateCommandBuffers(device, &alloc_ci, record_context.compute_cmd_bufs.data()) != VK_SUCCESS)
+                {
                     return renderFailure<err::device::VulkanObjectCreationFailed>();
+                }
             }
 
             // Async transfer command pool + per-frame command buffers
@@ -749,7 +825,9 @@ namespace lux::render
                 alloc_ci.commandBufferCount = frames_in_flight;
 
                 if (vkAllocateCommandBuffers(device, &alloc_ci, record_context.transfer_cmd_bufs.data()) != VK_SUCCESS)
+                {
                     return renderFailure<err::device::VulkanObjectCreationFailed>();
+                }
             }
         }
 
@@ -765,7 +843,9 @@ namespace lux::render
             std::unordered_map<VkDescriptorType, uint32_t> type_counts;
             for (const auto& desc : tds_descs)
                 for (const auto& w : desc.writes)
+                {
                     type_counts[convertDescriptorType(w.descriptor_type)] += frames_in_flight;
+                }
 
             std::vector<VkDescriptorPoolSize> pool_sizes;
             pool_sizes.reserve(type_counts.size());
@@ -796,7 +876,9 @@ namespace lux::render
                 alloc_ci.pSetLayouts        = layouts.data();
 
                 if (vkAllocateDescriptorSets(device, &alloc_ci, per_frame.data()) != VK_SUCCESS)
+                {
                     return renderFailure<err::device::VulkanObjectCreationFailed>();
+                }
 
                 // Write descriptors for each frame
                 for (uint32_t fi = 0; fi < frames_in_flight; ++fi)
@@ -846,7 +928,9 @@ namespace lux::render
                             // Vulkan here; updateImportedTransientDescriptors()
                             // fills this binding after that injection.
                             if (dview == VK_NULL_HANDLE)
+                            {
                                 continue;
+                            }
                             VkDescriptorImageInfo ii{};
                             ii.imageView   = dview;
                             ii.imageLayout = convertImageLayout(w.image_layout);
@@ -864,7 +948,9 @@ namespace lux::render
                             VkDescriptorBufferInfo bi{};
                             bi.buffer = reinterpret_cast<VkBuffer>(physical_resources.at(buf_tgt.first).getHandle(buf_tgt.second));
                             if (bi.buffer == VK_NULL_HANDLE)
+                            {
                                 continue;
+                            }
                             bi.offset = 0;
                             bi.range  = VK_WHOLE_SIZE;
                             buffer_infos.push_back(bi);
@@ -989,9 +1075,16 @@ namespace lux::render
     {
         // 消费"被跳过首写者"登记:该资源本帧的 CLEAR 义务转移到本 pass。
         auto take_pending_clear = [&](uint32_t res_idx) -> bool {
-            if (!pending_clear) return false;
+            if (!pending_clear)
+            {
+                return false;
+            }
             for (auto it = pending_clear->begin(); it != pending_clear->end(); ++it)
-                if (*it == res_idx) { pending_clear->erase(it); return true; }
+                if (*it == res_idx)
+                {
+                    pending_clear->erase(it);
+                    return true;
+                }
             return false;
         };
         for (uint32_t ci = 0; ci < group.key.color_count; ++ci)
@@ -1011,7 +1104,10 @@ namespace lux::render
                                                        : VK_ATTACHMENT_STORE_OP_STORE;
         out_depth.clearValue.depthStencil = {1.0f, 0};
 
-        if (!sub_cpass.pass) return;
+        if (!sub_cpass.pass)
+        {
+            return;
+        }
         uint32_t color_idx  = 0;
         uint32_t color_decl = 0; // 本 pass 的 COLOR_ATTACHMENT 声明序,对齐 pass_color_load_ops
         for (const auto& tex_ref : sub_cpass.pass->textures)
@@ -1021,22 +1117,31 @@ namespace lux::render
             {
                 const auto& fv = record_ctx.per_frame_views[tex_ref.resource.index];
                 if (frame_index < fv.size())
+                {
                     view = fv[frame_index];
+                }
             }
 
             if (tex_ref.role == lux::common::ETextureRole::COLOR_ATTACHMENT)
             {
                 const uint32_t decl = color_decl++;
-                if (view == VK_NULL_HANDLE) continue;
+                if (view == VK_NULL_HANDLE)
+                {
+                    continue;
+                }
                 if (color_idx < group.key.color_count)
                 {
                     if (pass_info && decl < pass_info->pass_color_load_ops.size())
+                    {
                         out_color[color_idx].loadOp = pass_info->pass_color_load_ops[decl];
+                    }
                     if (out_color[color_idx].loadOp == VK_ATTACHMENT_LOAD_OP_LOAD &&
                         take_pending_clear(tex_ref.resource.index))
                         out_color[color_idx].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
                     if (pass_info && decl < pass_info->pass_color_store_ops.size())
+                    {
                         out_color[color_idx].storeOp = pass_info->pass_color_store_ops[decl];
+                    }
                     out_color[color_idx++].imageView = view;
                 }
             }
@@ -1066,30 +1171,43 @@ namespace lux::render
         {
             auto* phys_ptr = state.physical_resources.tryGet(ri);
             if (!phys_ptr)
+            {
                 continue;
+            }
 
             auto& phys = *phys_ptr;
             if (!phys.buffer_getter)
+            {
                 continue;
+            }
 
             std::array<VkBuffer, 8> new_buffers{};
             const uint32_t count = phys.buffer_getter(
                 new_buffers.data(), static_cast<uint32_t>(new_buffers.size()));
             if (count == 0)
+            {
                 continue;
+            }
 
             // §1.2: Short-circuit when handles are unchanged (common steady-state path).
             if (count == static_cast<uint32_t>(phys.physical_handles.size()))
             {
                 bool same = true;
                 for (uint32_t i = 0; i < count && same; ++i)
+                {
                     same = (phys.physical_handles[i] == reinterpret_cast<uintptr_t>(new_buffers[i]));
-                if (same) continue;
+                }
+                if (same)
+                {
+                    continue;
+                }
             }
 
             phys.physical_handles.resize(count);
             for (uint32_t i = 0; i < count; ++i)
+            {
                 phys.physical_handles[i] = reinterpret_cast<uintptr_t>(new_buffers[i]);
+            }
         }
     }
 
@@ -1116,7 +1234,9 @@ namespace lux::render
         ResourceRegistry* gpu_mgr)
     {
         if (!compiled_graph.execution_program.has_value())
+        {
             return;
+        }
 
         ExecutionReplayState replay_state{};
         replay_state.binding_state = &record_context.binding_states[frame_ctx.frame_index];
@@ -1150,7 +1270,9 @@ namespace lux::render
     {
         using ECmd = ExecutionProgram::Command::EType;
         if (!compiled_graph.execution_program.has_value() || replay_state.binding_state == nullptr)
+        {
             return;
+        }
 
         // skip_next_draw is a per-shadow-lane flag (set by kDrawLaneSetup, consumed
         // by that lane's DrawIndexedIndirectCount, and intentionally NOT self-cleared
@@ -1167,17 +1289,23 @@ namespace lux::render
         const uint32_t begin = std::min(first_command, command_count);
         const uint32_t end = std::min(one_past_last_command, command_count);
         if (begin >= end)
+        {
             return;
+        }
 
         BindingState& bs = *replay_state.binding_state;
         const PreBarrierGroupSelection pre_bsel = selectPreBarrierGroups(compiled_graph, frame_ctx);
 
         auto tryCallKernelFn = [&]() -> bool {
             if (replay_state.current_pass == UINT32_MAX)
+            {
                 return false;
+            }
             const auto& cpass = compiled_graph.compiled_passes[replay_state.current_pass];
             if (!cpass.pass || !cpass.pass->kernel_fn)
+            {
                 return false;
+            }
 
             VkExtent2D ext{};
             VkViewport kfn_vp{};
@@ -1202,8 +1330,12 @@ namespace lux::render
                 const auto& tmpl = pipeline_manager_.getTemplate(
                     cpass.render.pipeline_template_handle);
                 for (const auto& range : tmpl.push_constant_ranges)
+                {
                     if (range.offset < kViewPushPrefixSize && range.offset + range.size > 0u)
+                    {
                         pc_stages |= range.stageFlags;
+                    }
+                }
             }
 
             PipelineVariantBindUser pvbu{
@@ -1256,7 +1388,9 @@ namespace lux::render
 #if !defined(NDEBUG)
                 // Close the debug label for the previous pass (if any).
                 if (replay_state.current_pass != UINT32_MAX && fn_end_debug_label_)
+                {
                     fn_end_debug_label_(cmd);
+                }
 #endif
                 std::memcpy(&replay_state.current_pass, data, sizeof(uint32_t));
                 writePassTimestamp(
@@ -1290,7 +1424,9 @@ namespace lux::render
             case ECmd::PipelineBarrier:
             {
                 if (!replay_barriers)
+                {
                     break;
+                }
 
                 // phase field retained for wire-format stability; only PRE
                 // barriers are emitted now (split acquire/release removed).
@@ -1307,7 +1443,9 @@ namespace lux::render
             case ECmd::BeginRendering:
             {
                 if (!replay_render_scope)
+                {
                     break;
+                }
 
                 // Prebuilt template: header + per-attachment view patches.
                 // wire structs shared with the emit side — RGCompiledGraph.hpp.
@@ -1361,13 +1499,22 @@ namespace lux::render
                     {
                         const auto& fv = record_context.per_frame_views[vp.resource_index];
                         if (frame_ctx.frame_index < fv.size())
+                        {
                             view = fv[frame_ctx.frame_index];
+                        }
                     }
-                    if (view == VK_NULL_HANDLE) continue;
+                    if (view == VK_NULL_HANDLE)
+                    {
+                        continue;
+                    }
                     if (vp.is_depth)
+                    {
                         depth_attach.imageView = view;
+                    }
                     else if (vp.color_slot < hdr.color_count)
+                    {
                         color_attaches[vp.color_slot].imageView = view;
+                    }
                 }
 
                 VkRenderingInfo ri{};
@@ -1388,7 +1535,9 @@ namespace lux::render
             case ECmd::EndRendering:
             {
                 if (!replay_render_scope)
+                {
                     break;
+                }
                 vkCmdEndRendering(cmd);
                 break;
             }
@@ -1399,7 +1548,9 @@ namespace lux::render
                 // Sets this sub-pass's attachment-location / input-index remaps
                 // and (for sub-pass > 0) the by-region intra-scope barrier.
                 if (!replay_render_scope)
+                {
                     break;
+                }
 
                 // wire struct shared with the emit side (RGCompiledGraph.hpp).
                 using Boundary = ExecutionProgram::LocalReadBoundaryPayload;
@@ -1419,10 +1570,14 @@ namespace lux::render
                 std::memcpy(&bp, data, sizeof(bp));
                 vkCmdBindPipeline(cmd, replay_state.current_bp, bp.pipeline);
                 if (bp.layout != VK_NULL_HANDLE)
+                {
                     replay_state.current_layout = bp.layout;
+                }
                 bs.last_pipeline_layout = replay_state.current_layout;
                 if (replay_state.current_bp == VK_PIPELINE_BIND_POINT_GRAPHICS)
+                {
                     bs.last_graphics_pipeline = bp.pipeline;
+                }
                 else
                     bs.last_compute_pipeline = bp.pipeline;
                 break;
@@ -1452,7 +1607,9 @@ namespace lux::render
                     }
                 }
                 if (ds == VK_NULL_HANDLE || replay_state.current_layout == VK_NULL_HANDLE)
+                {
                     break;
+                }
 
                 vkCmdBindDescriptorSets(cmd, replay_state.current_bp, replay_state.current_layout,
                                         bd.slot, 1, &ds, 0, nullptr);
@@ -1471,7 +1628,9 @@ namespace lux::render
                     const auto& tmpl = pipeline_manager_.getTemplate(cpass.render.pipeline_template_handle);
                     for (const auto& range : tmpl.push_constant_ranges)
                         if (range.offset < kViewPushPrefixSize && range.offset + range.size > 0u)
+                        {
                             stages |= range.stageFlags;
+                        }
                 }
                 if (stages != 0 && replay_state.current_layout != VK_NULL_HANDLE)
                 {
@@ -1509,26 +1668,34 @@ namespace lux::render
             case ECmd::Dispatch:
             {
                 if (tryCallKernelFn())
+                {
                     break;
+                }
 
                 struct { uint32_t x, y, z; } d;
                 std::memcpy(&d, data, sizeof(d));
                 for (const auto& patch : program.patches)
                 {
                     if (patch.command_index != ci)
+                    {
                         continue;
+                    }
                     if (patch.source == ExecutionProgram::DynamicPatch::ESource::KernelPatch)
                     {
                         const KernelTypeId kid = static_cast<KernelTypeId>(patch.source_param >> 8);
                         const uint16_t sub_source = patch.source_param & 0xFF;
                         const auto* desc = KernelRegistry::instance().find(kid);
-                        if (desc && desc->resolve_patch)
-                            d.x = desc->resolve_patch(sub_source, frame_ctx);
+                    if (desc && desc->resolve_patch)
+                    {
+                        d.x = desc->resolve_patch(sub_source, frame_ctx);
+                    }
                     }
                 }
 
                 if (d.x > 0)
+                {
                     vkCmdDispatch(cmd, d.x, d.y, d.z);
+                }
                 break;
             }
 
@@ -1548,19 +1715,25 @@ namespace lux::render
                         physical->getHandle(frame_ctx.frame_index));
                 }
                 if (buffer != VK_NULL_HANDLE)
+                {
                     vkCmdDispatchIndirect(cmd, buffer, d.offset);
+                }
                 break;
             }
 
             case ECmd::DrawDirect:
             {
                 if (tryCallKernelFn())
+                {
                     break;
+                }
 
                 struct { uint32_t vtx_count, inst_count, first_vtx, first_inst; } d;
                 std::memcpy(&d, data, sizeof(d));
                 if (d.vtx_count > 0 && d.inst_count > 0)
+                {
                     vkCmdDraw(cmd, d.vtx_count, d.inst_count, d.first_vtx, d.first_inst);
+                }
                 break;
             }
 
@@ -1591,9 +1764,13 @@ namespace lux::render
                 VkBuffer indirect_buf = VK_NULL_HANDLE;
                 VkBuffer count_buf = VK_NULL_HANDLE;
                 if (auto* pr = physical_resources.tryGet(d.indirect_resource_idx))
+                {
                     indirect_buf = reinterpret_cast<VkBuffer>(pr->getHandle(frame_ctx.frame_index));
+                }
                 if (auto* pr = physical_resources.tryGet(d.count_resource_idx))
+                {
                     count_buf = reinterpret_cast<VkBuffer>(pr->getHandle(frame_ctx.frame_index));
+                }
 
                 if (indirect_buf != VK_NULL_HANDLE && count_buf != VK_NULL_HANDLE)
                 {
@@ -1621,7 +1798,9 @@ namespace lux::render
 
                 VkBuffer buf = VK_NULL_HANDLE;
                 if (auto* pr = physical_resources.tryGet(d.resource_idx))
+                {
                     buf = reinterpret_cast<VkBuffer>(pr->getHandle(frame_ctx.frame_index));
+                }
                 if (buf != VK_NULL_HANDLE && d.size > 0)
                 {
                     vkCmdFillBuffer(cmd, buf, d.offset, d.size, d.fill_value);
@@ -1688,7 +1867,9 @@ namespace lux::render
                 }
 
                 if (!all_buffers_valid || max_elements == 0)
+                {
                     break;
+                }
 
                 struct {
                     uint32_t element_count;
@@ -1718,7 +1899,9 @@ namespace lux::render
             case ECmd::CopyBuffer:
             {
                 if (tryCallKernelFn())
+                {
                     break;
+                }
                 break;
             }
 
@@ -1726,7 +1909,9 @@ namespace lux::render
             {
                 // Decode header: [KernelTypeId(1) | sub_cmd(1) | payload_size(2)]
                 if (entry.data_size < 4)
+                {
                     break;
+                }
                 struct Header { KernelTypeId kid; uint8_t sub; uint16_t psize; };
                 Header hdr;
                 std::memcpy(&hdr, data, sizeof(hdr));
@@ -1751,7 +1936,9 @@ namespace lux::render
 #if !defined(NDEBUG)
         // Close the debug label for the last pass (if the range emitted any).
         if (replay_state.current_pass != UINT32_MAX && fn_end_debug_label_)
+        {
             fn_end_debug_label_(cmd);
+        }
 #endif
         if (replay_state.current_pass != UINT32_MAX)
         {
@@ -1783,7 +1970,9 @@ namespace lux::render
 
         // Recorder fallback only executes callback-backed passes.
         if (!cpass.pass || !has_callback)
+        {
             return;
+        }
 
 #if !defined(NDEBUG)
         // ---- VK_EXT_debug_utils: label this pass in the command buffer ------
@@ -1792,7 +1981,13 @@ namespace lux::render
         {
             VkCommandBuffer                cmd;
             PFN_vkCmdEndDebugUtilsLabelEXT end_fn;
-            ~LabelScope() { if (end_fn) end_fn(cmd); }
+            ~LabelScope()
+            {
+                if (end_fn)
+                {
+                    end_fn(cmd);
+                }
+            }
         } label_scope{ cmd, fn_end_debug_label_ };
         if (fn_begin_debug_label_)
         {
@@ -1831,8 +2026,10 @@ namespace lux::render
             vkCmdBindPipeline(cmd, bind_point, pass_pipeline);
 
             // Track for per-slot DS layout-break detection
-            if (bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS)
-                bs.last_graphics_pipeline = pass_pipeline;
+                if (bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS)
+                {
+                    bs.last_graphics_pipeline = pass_pipeline;
+                }
             else
                 bs.last_compute_pipeline  = pass_pipeline;
             bs.last_pipeline_layout = pass_layout;
@@ -1852,9 +2049,13 @@ namespace lux::render
         {
             const auto& tmpl = pipeline_manager_.getTemplate(
                 cpass.render.pipeline_template_handle);
-            for (const auto& range : tmpl.push_constant_ranges)
-                if (range.offset < kViewPushPrefixSize && range.offset + range.size > 0u)
-                    shared_pc_stages |= range.stageFlags;
+                for (const auto& range : tmpl.push_constant_ranges)
+                {
+                    if (range.offset < kViewPushPrefixSize && range.offset + range.size > 0u)
+                    {
+                        shared_pc_stages |= range.stageFlags;
+                    }
+                }
         }
 
         if (!cpass.render.ds_bind_recipe.empty() && pass_layout != VK_NULL_HANDLE)
@@ -1864,7 +2065,10 @@ namespace lux::render
             for (const DSBindRecipe& recipe : cpass.render.ds_bind_recipe)
             {
                 const uint32_t slot = recipe.slot;
-                if (!shouldBindDescriptorSlot(bind_mask, slot)) continue;
+                if (!shouldBindDescriptorSlot(bind_mask, slot))
+                {
+                    continue;
+                }
 
                 VkDescriptorSet ds = VK_NULL_HANDLE;
                 if (recipe.resolve != nullptr)
@@ -1881,7 +2085,10 @@ namespace lux::render
                         transient_sets,
                         view_id);
                 }
-                if (ds == VK_NULL_HANDLE) continue;
+                if (ds == VK_NULL_HANDLE)
+                {
+                    continue;
+                }
 
                 vkCmdBindDescriptorSets(cmd, bind_point, pass_layout, slot, 1, &ds, 0, nullptr);
             }

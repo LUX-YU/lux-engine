@@ -522,9 +522,8 @@ namespace lux::ui
             {
                 ImGui::PushID(i);
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                char slot_id[8];
-                std::snprintf(slot_id, sizeof(slot_id), "##%d", i);
-                edited = ImGui::InputFloat(slot_id, &arr[i], 0.f, 0.f, "%.3f") || edited;
+                const auto slot_id = lux::format("##{}", i);
+                edited = ImGui::InputFloat(slot_id.c_str(), &arr[i], 0.f, 0.f, "%.3f") || edited;
                 ImGui::PopID();
             }
             ImGui::PopID();

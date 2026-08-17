@@ -1,4 +1,5 @@
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
+#include <lux/engine/platform/FormatCompat.h>
 #include <lux/engine/dynamic_library/LibraryDecoration.hpp>
 
 #include <atomic>
@@ -177,10 +178,9 @@ namespace lux::engine::platform
                 n -= static_cast<std::size_t>(w);
             }
 
-            char proc_path[64];
-            std::snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", fd);
+            const auto proc_path = lux::format("/proc/self/fd/{}", fd);
 
-            void* h = ::dlopen(proc_path, RTLD_NOW | RTLD_LOCAL);
+            void* h = ::dlopen(proc_path.c_str(), RTLD_NOW | RTLD_LOCAL);
             if (!h)
             {
                 const char* err = ::dlerror();

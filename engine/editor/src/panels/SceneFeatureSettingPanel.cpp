@@ -411,11 +411,9 @@ namespace lux::editor
                 fog_entity);
             const std::string sky = uuids::to_string(
                 skybox_edit_.equirect_texture_id);
-            std::snprintf(
-                sky_texture_id_text_.data(),
-                sky_texture_id_text_.size(),
-                "%s",
-                sky.c_str());
+            const auto sky_count = std::min(sky.size(), sky_texture_id_text_.size() - 1u);
+            std::ranges::copy_n(sky.begin(), sky_count, sky_texture_id_text_.begin());
+            sky_texture_id_text_[sky_count] = '\0';
             visual_state_loaded_ = true;
         }
 
@@ -643,11 +641,9 @@ namespace lux::editor
                     *last_terrain_selection_ != *terrain))
             {
                 const auto text = uuids::to_string(terrain->terrain);
-                std::snprintf(
-                    terrain_id_text_.data(),
-                    terrain_id_text_.size(),
-                    "%s",
-                    text.c_str());
+                const auto text_count = std::min(text.size(), terrain_id_text_.size() - 1u);
+                std::ranges::copy_n(text.begin(), text_count, terrain_id_text_.begin());
+                terrain_id_text_[text_count] = '\0';
                 if (const auto* cell = std::get_if<
                         lux::authoring::PlanarCellCoord>(
                             &terrain->page.coordinate))

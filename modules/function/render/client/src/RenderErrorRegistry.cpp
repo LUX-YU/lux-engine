@@ -179,9 +179,7 @@ namespace
         {
             // 低 32 位而已(见 EErrorArg::FeatureType),渲染层没有 id→名字 的反查表
             // ——注册表在 Renderer 那一侧。原样以十六进制给出,消费侧自行比对。
-            char buf[19]{};
-            std::snprintf(buf, sizeof(buf), "feature:0x%08X", value);
-            out += buf;
+            out += lux::format("feature:0x{:08X}", value);
             return;
         }
         }

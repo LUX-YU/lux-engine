@@ -286,8 +286,7 @@ namespace lux::runtime
         }
 
         template <typename T>
-        using SceneGeometryPrepareExp =
-            lux::cxx::expected<T, SceneGeometryPrepareFailure>;
+        using SceneGeometryPrepareExp = lux::cxx::expected<T, SceneGeometryPrepareFailure>;
 
         using ClassicResult = SceneGeometryPrepareExp<PreparedClassicMeshBatch>;
         using TerrainResult = SceneGeometryPrepareExp<PreparedTerrainTile>;

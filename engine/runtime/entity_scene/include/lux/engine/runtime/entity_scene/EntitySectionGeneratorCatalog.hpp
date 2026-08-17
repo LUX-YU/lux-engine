@@ -45,8 +45,9 @@ namespace lux::runtime::entity_scene
         std::string detail;
     };
 
-    using GenerateEntitySectionResult =
-        lux::cxx::expected<lux::entity_scene::EntitySectionImage, EntitySectionGeneratorFailure>;
+    template <typename T>
+    using EntitySectionGeneratorExp = lux::cxx::expected<T, EntitySectionGeneratorFailure>;
+    using GenerateEntitySectionResult = EntitySectionGeneratorExp<lux::entity_scene::EntitySectionImage>;
     using GenerateEntitySectionFn = GenerateEntitySectionResult (*)(
         const void* state,
         GeneratedEntitySectionRequest request) noexcept;

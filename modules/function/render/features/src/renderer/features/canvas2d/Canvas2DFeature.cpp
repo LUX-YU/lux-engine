@@ -15,6 +15,7 @@
 #include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp>                    // Expected / renderFailure
+#include <lux/engine/platform/FormatCompat.h>
 #include <lux/engine/function/render/client/resources/EBuiltinShader.hpp>
 #include <lux/engine/render/resources/TextureResources.hpp>     // bindless combined-sampler set (set 2)
 #include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
@@ -347,14 +348,10 @@ void Canvas2DFeature::addPasses(RGBuilder& builder)
     const std::uint32_t groups = std::min(cfg_.offscreen_groups, kMaxCanvas2DGroups);
     for (std::uint32_t g = 1; g <= groups; ++g)
     {
-        char rt_name[32];
-        std::snprintf(rt_name, sizeof(rt_name), "Canvas2DGroup%u", g);
-        char draw_name[40];
-        std::snprintf(draw_name, sizeof(draw_name), "Canvas2DGroup%uDraw", g);
-        char comp_name[40];
-        std::snprintf(comp_name, sizeof(comp_name), "Canvas2DGroup%uComposite", g);
-        char ds_name[48];
-        std::snprintf(ds_name, sizeof(ds_name), "Canvas2DGroup%uCompositeDS", g);
+        const auto rt_name = lux::format("Canvas2DGroup{}", g);
+        const auto draw_name = lux::format("Canvas2DGroup{}Draw", g);
+        const auto comp_name = lux::format("Canvas2DGroup{}Composite", g);
+        const auto ds_name = lux::format("Canvas2DGroup{}CompositeDS", g);
 
         RGTextureDescription rt_desc = RGTextureDescription::Relative(
             1.0f, 1.0f, lux::common::ETextureFormat::RGBA8_UNORM);

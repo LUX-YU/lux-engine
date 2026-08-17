@@ -1,5 +1,6 @@
 #include <lux/engine/render/targets/OffscreenImagePool.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/platform/FormatCompat.h>
 #include <vk_mem_alloc.h>
 
 #include <cassert>
@@ -160,11 +161,8 @@ bool OffscreenImagePool::allocate(VkExtent2D extent)
 
             if (name_object != nullptr)
             {
-                char name[96]{};
-                std::snprintf(
-                    name,
-                    sizeof(name),
-                    "OffscreenTarget.%s.fif%u.Image",
+                const auto name = lux::format(
+                    "OffscreenTarget.{}.fif{}.Image",
                     targetSlotName(slot_enum),
                     f);
                 VkDebugUtilsObjectNameInfoEXT info{
@@ -172,7 +170,7 @@ bool OffscreenImagePool::allocate(VkExtent2D extent)
                 info.objectType = VK_OBJECT_TYPE_IMAGE;
                 info.objectHandle = reinterpret_cast<std::uint64_t>(
                     images.back().image());
-                info.pObjectName = name;
+                info.pObjectName = name.c_str();
                 (void)name_object(dev, &info);
             }
 
@@ -185,18 +183,15 @@ bool OffscreenImagePool::allocate(VkExtent2D extent)
             views.push_back(view);
             if (name_object != nullptr)
             {
-                char name[96]{};
-                std::snprintf(
-                    name,
-                    sizeof(name),
-                    "OffscreenTarget.%s.fif%u.View",
+                const auto name = lux::format(
+                    "OffscreenTarget.{}.fif{}.View",
                     targetSlotName(slot_enum),
                     f);
                 VkDebugUtilsObjectNameInfoEXT info{
                     VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
                 info.objectType = VK_OBJECT_TYPE_IMAGE_VIEW;
                 info.objectHandle = reinterpret_cast<std::uint64_t>(view);
-                info.pObjectName = name;
+                info.pObjectName = name.c_str();
                 (void)name_object(dev, &info);
             }
         }

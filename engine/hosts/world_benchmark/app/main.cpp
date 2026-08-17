@@ -3,6 +3,7 @@
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/log/Log.hpp>
+#include <lux/engine/platform/FormatCompat.h>
 
 #include <algorithm>
 #include <array>
@@ -1025,14 +1026,10 @@ namespace
             }
             if (!capture->render_graph_dump.empty())
             {
-                char graph_filename[96]{};
-                std::snprintf(
-                    graph_filename,
-                    sizeof(graph_filename),
-                    "%02zu-%.*s-r%04u-render-graph.txt",
+                const auto graph_filename = lux::format(
+                    "{:02}-{}-r{:04}-render-graph.txt",
                     index,
-                    static_cast<int>(checkpoint.name.size()),
-                    checkpoint.name.data(),
+                    checkpoint.name,
                     checkpoint.route_frame);
                 std::ofstream graph_file(
                     capture_root / graph_filename,
@@ -1043,14 +1040,10 @@ namespace
                         capture->render_graph_dump.size()));
             }
             record.telemetry = *telemetry;
-            char filename[96]{};
-            std::snprintf(
-                filename,
-                sizeof(filename),
-                "%02zu-%.*s-r%04u.bmp",
+            const auto filename = lux::format(
+                "{:02}-{}-r{:04}.bmp",
                 index,
-                static_cast<int>(checkpoint.name.size()),
-                checkpoint.name.data(),
+                checkpoint.name,
                 checkpoint.route_frame);
             record.image = capture_root / filename;
             if (!writeCaptureBmp(record.image, *capture))

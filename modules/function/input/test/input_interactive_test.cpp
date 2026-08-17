@@ -14,12 +14,14 @@
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/input/ActionMapper.hpp>
+#include <lux/engine/platform/FormatCompat.h>
 
 #include <cassert>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <thread>
 
 using namespace lux::input;
@@ -55,27 +57,31 @@ struct ActionEntry { const char* name; ActionId id; };
 static const char* fmtValue(const InputValue& v)
 {
     // Two alternating buffers so we can format two values in the same printf.
-    static char bufs[2][128];
+    static std::string bufs[2];
     static int  idx = 0;
-    char* buf = bufs[idx];
+    std::string& buf = bufs[idx];
     idx = 1 - idx;
 
     switch (v.type) {
     case EInputValueType::BOOL:
-        std::snprintf(buf, 128, "%s", v.asBool() ? "true" : "false");
+        buf = lux::format("{}", v.asBool() ? "true" : "false");
         break;
     case EInputValueType::AXIS_1D:
-        std::snprintf(buf, 128, "%.3f", v.as1D());
+        buf = lux::format("{:.3f}", v.as1D());
         break;
     case EInputValueType::AXIS_2D:
-        std::snprintf(buf, 128, "(%.2f, %.2f)", v.as2D().x, v.as2D().y);
+        buf = lux::format("({:.2f}, {:.2f})", v.as2D().x, v.as2D().y);
         break;
     case EInputValueType::AXIS_3D:
-        std::snprintf(buf, 128, "(%.2f, %.2f, %.2f)",
-                      v.as3D().x, v.as3D().y, v.as3D().z);
+        buf = lux::format(
+            "({:.2f}, {:.2f}, {:.2f})",
+            v.as3D().x,
+            v.as3D().y,
+            v.as3D().z
+        );
         break;
     }
-    return buf;
+    return buf.c_str();
 }
 
 /// Build a compact event string from ActionState::events bitfield.

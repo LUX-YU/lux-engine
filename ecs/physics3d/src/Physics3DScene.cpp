@@ -398,9 +398,7 @@ namespace lux::ecs
         return impl_ ? static_cast<std::uint32_t>(impl_->fields.size()) : 0u;
     }
 
-    lux::cxx::expected<
-        std::unique_ptr<Physics3DPreparedStaticBatch>,
-        std::string>
+    Physics3DExp<std::unique_ptr<Physics3DPreparedStaticBatch>>
     preparePhysics3DStaticBatch(StaticHeightfieldBatch3D batch) noexcept
     {
         if (auto validated = validateStaticHeightfieldBatch(batch);
@@ -1606,9 +1604,7 @@ namespace lux::ecs
         impl_->scatter(registry);
     }
 
-    lux::cxx::expected<
-        std::unique_ptr<Physics3DStaticBatchStager>,
-        std::string>
+    Physics3DExp<std::unique_ptr<Physics3DStaticBatchStager>>
     Physics3DScene::beginStaticHeightfieldStaging(
         std::unique_ptr<Physics3DPreparedStaticBatch> prepared,
         entt::entity owner) noexcept

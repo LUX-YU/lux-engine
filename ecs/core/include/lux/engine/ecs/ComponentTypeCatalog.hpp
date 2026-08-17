@@ -151,14 +151,15 @@ namespace lux::ecs
         std::string conflicting_name;
     };
 
+    template <typename T>
+    using ComponentCatalogExp = lux::cxx::expected<T, ComponentCatalogFailure>;
+
     class LUX_FUNCTION_PUBLIC ComponentTypeCatalog final
     {
     public:
-        template <typename T>
-        using ComponentCatalogExp   = lux::cxx::expected<T, ComponentCatalogFailure>;
-        using RegisterSchemaResult  = ComponentCatalogExp<const ComponentSchemaDescriptor*>;
+        using RegisterSchemaResult = ComponentCatalogExp<const ComponentSchemaDescriptor*>;
         using RegisterSchemasResult = ComponentCatalogExp<std::size_t>;
-        using ValidationResult      = ComponentCatalogExp<void>;
+        using ValidationResult = ComponentCatalogExp<void>;
 
         ComponentTypeCatalog() = default;
         ComponentTypeCatalog(const ComponentTypeCatalog&) = delete;
@@ -202,9 +203,7 @@ namespace lux::ecs
     /// Publish every descriptor queued by the most recent meta_module_init or
     /// meta_module_drain. On validation failure the pending chain is retained
     /// and the destination catalogue remains unchanged.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<
-        std::size_t,
-        ComponentCatalogFailure>
+    [[nodiscard]] LUX_FUNCTION_PUBLIC ComponentCatalogExp<std::size_t>
     registerGeneratedComponents(ComponentTypeCatalog& catalog);
 
     /// Move the descriptors produced by the latest meta-module drain into a
@@ -216,7 +215,7 @@ namespace lux::ecs
 
     /// Pack declaration drift check. Diagnostics stay at composition call
     /// sites; this helper has no terminal-I/O side effects.
-    using ComponentCatalogValidationResult = lux::cxx::expected<void, ComponentCatalogFailure>;
+    using ComponentCatalogValidationResult = ComponentCatalogExp<void>;
 
     [[nodiscard]] LUX_FUNCTION_PUBLIC ComponentCatalogValidationResult validateComponentSchemas(
         const ComponentTypeCatalog& catalog,

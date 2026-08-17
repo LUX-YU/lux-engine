@@ -14,6 +14,9 @@
 
 namespace lux::ecs
 {
+    template <typename T>
+    using Physics3DExp = lux::cxx::expected<T, std::string>;
+
     struct Physics3DContactFact final
     {
         entt::entity first{entt::null};
@@ -38,9 +41,8 @@ namespace lux::ecs
     /// scene-owned Jolt PhysicsSystem and is therefore safe on a background
     /// CPU worker that owns @p batch.  Keep this as the first declaration so
     /// the friend below inherits the public DLL linkage on Windows.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<
-        std::unique_ptr<Physics3DPreparedStaticBatch>,
-        std::string>
+    [[nodiscard]] LUX_FUNCTION_PUBLIC Physics3DExp<
+        std::unique_ptr<Physics3DPreparedStaticBatch>>
     preparePhysics3DStaticBatch(
         StaticHeightfieldBatch3D batch) noexcept;
 
@@ -67,9 +69,8 @@ namespace lux::ecs
         friend class Physics3DScene;
         friend class Physics3DStaticBatchStager;
         friend class Physics3DStaticBatchLease;
-        friend LUX_FUNCTION_PUBLIC lux::cxx::expected<
-            std::unique_ptr<Physics3DPreparedStaticBatch>,
-            std::string>
+        friend LUX_FUNCTION_PUBLIC Physics3DExp<
+            std::unique_ptr<Physics3DPreparedStaticBatch>>
         preparePhysics3DStaticBatch(
             StaticHeightfieldBatch3D batch) noexcept;
         struct Impl;
@@ -164,9 +165,7 @@ namespace lux::ecs
     class LUX_FUNCTION_PUBLIC Physics3DScene final
     {
     public:
-        [[nodiscard]] static lux::cxx::expected<
-            std::shared_ptr<Physics3DScene>,
-            std::string>
+        [[nodiscard]] static Physics3DExp<std::shared_ptr<Physics3DScene>>
         create(Physics3DConfig config = {}) noexcept;
 
         ~Physics3DScene() noexcept;
@@ -177,9 +176,8 @@ namespace lux::ecs
             lux::meta::EntityRegistry& registry,
             float frame_dt) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            std::unique_ptr<Physics3DStaticBatchStager>,
-            std::string>
+        [[nodiscard]] Physics3DExp<
+            std::unique_ptr<Physics3DStaticBatchStager>>
         beginStaticHeightfieldStaging(
             std::unique_ptr<Physics3DPreparedStaticBatch> prepared,
             entt::entity owner) noexcept;

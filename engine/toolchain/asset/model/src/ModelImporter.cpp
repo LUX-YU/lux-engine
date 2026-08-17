@@ -51,18 +51,34 @@ namespace lux::toolchain
         bool baseColorHasTransparency(AssetManager& mgr, const asset_id_t& tex_id)
         {
             const auto* ta = mgr.fetchAssetAs<TextureAsset>(tex_id);
-            if (ta == nullptr || ta->data() == nullptr) return false;
+            if (ta == nullptr || ta->data() == nullptr)
+            {
+                return false;
+            }
             const rdesc::Texture& t = *ta->data();
             if (t.channel() < 4 || rdesc::isCompressedFormat(t.pixelFormat()))
+            {
                 return false;   // no alpha channel / not CPU-scannable -> assume opaque
+            }
             const auto* px = static_cast<const unsigned char*>(t.data());
-            if (px == nullptr) return false;
+            if (px == nullptr)
+            {
+                return false;
+            }
             const std::size_t n =
                 static_cast<std::size_t>(t.width()) * static_cast<std::size_t>(t.height());
-            if (n == 0 || t.size() < n * 4) return false;
+            if (n == 0 || t.size() < n * 4)
+            {
+                return false;
+            }
             std::size_t transparent = 0;
             for (std::size_t i = 0; i < n; ++i)
-                if (px[i * 4 + 3] < 128) ++transparent;   // alpha < 0.5
+            {
+                if (px[i * 4 + 3] < 128)
+                {
+                    ++transparent;   // alpha < 0.5
+                }
+            }
             return transparent > n / 200;                 // > 0.5% transparent -> cutout mask
         }
     } // namespace
@@ -223,7 +239,9 @@ namespace lux::toolchain
 
         // C++ API: Get all texture properties at once (internally calls C version aiGetMaterialTexture)
         if (AI_SUCCESS != mat->GetTexture((aiTextureType)type, index, &path, &mapping, &uvindex, &blend, &op, mapmode))
+        {
             return std::nullopt;  // No texture of this type
+        }
 
         // Parse path: external file or embedded "*N"
         std::optional<asset_id_t> texture_id;
@@ -231,7 +249,10 @@ namespace lux::toolchain
             // Embedded texture
             int embedded_index = 0;
             std::from_chars(path.C_Str() + 1, path.C_Str() + path.length, embedded_index);
-            if (embedded_index < 0 || embedded_index >= static_cast<int>(scene->mNumTextures)) return std::nullopt;
+            if (embedded_index < 0 || embedded_index >= static_cast<int>(scene->mNumTextures))
+            {
+                return std::nullopt;
+            }
 
             const aiTexture* embedded = scene->mTextures[embedded_index];
             std::filesystem::path key = std::string("embedded:") + path.C_Str();
@@ -242,7 +263,10 @@ namespace lux::toolchain
             auto abs = ctx.path.parent_path() / path.C_Str();
             texture_id = importTextureAsset(ctx, abs, nullptr, type);
         }
-        if (!texture_id) return std::nullopt;
+        if (!texture_id)
+        {
+            return std::nullopt;
+        }
 
         const uint32_t tex_idx = static_cast<uint32_t>(texture_ids.size());
         texture_ids.push_back(*texture_id);
@@ -351,8 +375,14 @@ namespace lux::toolchain
             if (AI_SUCCESS == aiGetMaterialString(m, AI_MATKEY_GLTF_ALPHAMODE, &am_str)) {
                 source_declared_alpha = true;
                 const std::string_view s(am_str.C_Str(), am_str.length);
-                if      (s == "MASK")  out.alpha_mode = EAlphaMode::Mask;
-                else if (s == "BLEND") out.alpha_mode = EAlphaMode::Blend;
+                if (s == "MASK")
+                {
+                    out.alpha_mode = EAlphaMode::Mask;
+                }
+                else if (s == "BLEND")
+                {
+                    out.alpha_mode = EAlphaMode::Blend;
+                }
                 else                   out.alpha_mode = EAlphaMode::Opaque;
             }
             aiGetMaterialFloat(m, AI_MATKEY_GLTF_ALPHACUTOFF, &out.alpha_cutoff);
@@ -463,7 +493,9 @@ namespace lux::toolchain
         rdesc::ImportedMaterialDesc desc;
         std::vector<asset_id_t> texture_ids;
         if (looksLikePBR(m))
+        {
             fillPBR(desc, m, ctx, ctx.scene, texture_ids);
+        }
         else
             fillLegacyLit(desc, m, ctx, ctx.scene, texture_ids);
 
@@ -485,7 +517,9 @@ namespace lux::toolchain
     std::uint32_t ModelImporter::ensureDefaultUnlit(LoadContext& ctx)
     {
         if (ctx.default_desc_index)
+        {
             return *ctx.default_desc_index;
+        }
         const std::uint32_t ord = static_cast<std::uint32_t>(ctx.material_descs.size());
         ctx.material_descs.emplace_back();              // default neutral white PBR desc
         ctx.material_desc_texture_uuids.emplace_back(); // no textures
@@ -506,7 +540,9 @@ namespace lux::toolchain
                                        std::optional<std::uint64_t> index) const
     {
         if (config().deterministic_seed.empty())
+        {
             return {};
+        }
         return index
             ? lux::format("{}|{}|{}", config().deterministic_seed, kind, *index)
             : lux::format("{}|{}", config().deterministic_seed, kind);
@@ -532,21 +568,29 @@ namespace lux::toolchain
             seedFor("model"), std::move(model_root));
         auto* model_asset = static_cast<ModelAsset*>(asset.get());
         for (auto& mid : mesh_ids)
+        {
             model_asset->addMeshAssetId(mid);
+        }
         // W5b: materialAssetIds() stays EMPTY here — the editor's AssetImporter bakes a
         // MaterialAsset per imported desc and fills it. Carry the transient descs.
         for (std::size_t i = 0; i < material_descs.size(); ++i)
             model_asset->addImportedMaterialDesc(std::move(material_descs[i]),
                                                  std::move(material_desc_tex[i]));
         if (skeleton_id)
+        {
             model_asset->setSkeletonAssetId(*skeleton_id);
+        }
         for (auto& cid : animation_clip_ids)
+        {
             model_asset->addAnimationClipAssetId(cid);
+        }
         const auto& id  = asset->id();
         const auto  ptr = asset.get();
 
         if (!submitAsset(std::move(asset)))
+        {
             return lux::cxx::unexpected(EAssetError::ASSET_ALREADY_EXIST);
+        }
 
         return AssetIDPair{ ptr, id };
     }
@@ -605,7 +649,10 @@ namespace lux::toolchain
                               const std::vector<asset_id_t>&  ids)
         {
             appendPod<uint32_t>(buf, static_cast<uint32_t>(ids.size()));
-            for (const auto& id : ids) appendUuid(buf, id);
+            for (const auto& id : ids)
+            {
+                appendUuid(buf, id);
+            }
         }
 
         // Cursor-based reader over a span of bytes (info section). Throws
@@ -620,7 +667,10 @@ namespace lux::toolchain
             template <typename T>
             std::optional<T> readPod() noexcept
             {
-                if (empty(sizeof(T))) return std::nullopt;
+                if (empty(sizeof(T)))
+                {
+                    return std::nullopt;
+                }
                 T v;
                 std::memcpy(&v, p, sizeof(T));
                 p += sizeof(T);
@@ -629,7 +679,10 @@ namespace lux::toolchain
 
             std::optional<asset_id_t> readUuid() noexcept
             {
-                if (empty(16)) return std::nullopt;
+                if (empty(16))
+                {
+                    return std::nullopt;
+                }
                 std::array<uint8_t, 16> bytes;
                 std::memcpy(bytes.data(), p, 16);
                 p += 16;
@@ -639,12 +692,18 @@ namespace lux::toolchain
             bool readUuidVector(std::vector<asset_id_t>& out) noexcept
             {
                 auto count = readPod<uint32_t>();
-                if (!count) return false;
+                if (!count)
+                {
+                    return false;
+                }
                 out.reserve(*count);
                 for (uint32_t i = 0; i < *count; ++i)
                 {
                     auto u = readUuid();
-                    if (!u) return false;
+                    if (!u)
+                    {
+                        return false;
+                    }
                     out.push_back(*u);
                 }
                 return true;
@@ -656,11 +715,17 @@ namespace lux::toolchain
         {
             ifs.seekg(0, std::ios::end);
             const std::streamoff n = ifs.tellg();
-            if (n < 0) return EAssetError::ABNORMAL_FILE_SIZE;
+            if (n < 0)
+            {
+                return EAssetError::ABNORMAL_FILE_SIZE;
+            }
             ifs.seekg(0, std::ios::beg);
 
             out.resize(static_cast<std::size_t>(n));
-            if (n == 0) return EAssetError::SUCCESS;
+            if (n == 0)
+            {
+                return EAssetError::SUCCESS;
+            }
             if (!ifs.read(reinterpret_cast<char*>(out.data()),
                           static_cast<std::streamsize>(out.size())))
             {
@@ -675,7 +740,9 @@ namespace lux::toolchain
     {
         std::vector<std::byte> file;
         if (auto ec = readAllStream(ifs, file); ec != EAssetError::SUCCESS)
+        {
             return lux::cxx::unexpected(ec);
+        }
 
         AssetFileHeader header{};
         if (auto ec = loadHeaderRaw<EAssetType::MODEL>(file, header);
@@ -684,15 +751,25 @@ namespace lux::toolchain
             return lux::cxx::unexpected(ec);
         }
         if (header.magic_number != asset_magic_number_of<EAssetType::MODEL>::value)
+        {
             return lux::cxx::unexpected(EAssetError::WRONG_FILE_HEADER);
+        }
         if (header.info_offset != sizeof(AssetFileHeader))
+        {
             return lux::cxx::unexpected(EAssetError::WRONG_FILE_HEADER);
+        }
         if (header.data_offset != header.info_offset + header.info_size)
+        {
             return lux::cxx::unexpected(EAssetError::WRONG_FILE_HEADER);
+        }
         if (header.data_size != 0)
+        {
             return lux::cxx::unexpected(EAssetError::WRONG_FILE_HEADER);
+        }
         if (file.size() < header.data_offset)
+        {
             return lux::cxx::unexpected(EAssetError::ABNORMAL_FILE_SIZE);
+        }
 
         InfoCursor cur{
             file.data() + header.info_offset,
@@ -701,14 +778,20 @@ namespace lux::toolchain
 
         const auto version = cur.readPod<uint32_t>();
         if (!version || *version != kLuxModelFormatVersion)
+        {
             return lux::cxx::unexpected(EAssetError::ASSET_DESERIALIZE_FAIL);
+        }
 
         const auto has_skel = cur.readPod<uint8_t>();
         if (!has_skel)
+        {
             return lux::cxx::unexpected(EAssetError::ASSET_DESERIALIZE_FAIL);
+        }
         const auto skel_id  = cur.readUuid();
         if (!skel_id)
+        {
             return lux::cxx::unexpected(EAssetError::ASSET_DESERIALIZE_FAIL);
+        }
 
         std::vector<asset_id_t> mesh_ids;
         std::vector<asset_id_t> mat_ids;
@@ -724,10 +807,22 @@ namespace lux::toolchain
 
         auto ainfo = std::make_unique<AssetInfo>(header.info);
         auto model = std::make_unique<ModelAsset>(std::move(ainfo));
-        for (const auto& id : mesh_ids) model->addMeshAssetId(id);
-        for (const auto& id : mat_ids)  model->addMaterialAssetId(id);
-        for (const auto& id : anim_ids) model->addAnimationClipAssetId(id);
-        if (*has_skel) model->setSkeletonAssetId(*skel_id);
+        for (const auto& id : mesh_ids)
+        {
+            model->addMeshAssetId(id);
+        }
+        for (const auto& id : mat_ids)
+        {
+            model->addMaterialAssetId(id);
+        }
+        for (const auto& id : anim_ids)
+        {
+            model->addAnimationClipAssetId(id);
+        }
+        if (*has_skel)
+        {
+            model->setSkeletonAssetId(*skel_id);
+        }
         // Textures are dangling references at this layer — Materials hold their
         // own texture id lists, so we just remember the count for diagnostics
         // (e.g. the editor can warn "manifest mentions 4 textures but only 3
@@ -741,7 +836,9 @@ namespace lux::toolchain
     {
         const auto* model = asset.as<ModelAsset>();
         if (!model)
+        {
             return EAssetError::FILE_TYPE_ERROR;
+        }
 
         // Compose the info section into a byte buffer first so we know its
         // size before writing the header.
@@ -790,11 +887,16 @@ namespace lux::toolchain
             | aiProcess_CalcTangentSpace;
 
         flags |= aiProcess_FlipUVs;
-        if (!config().is_right_handed)                    flags |= aiProcess_MakeLeftHanded;
+        if (!config().is_right_handed)
+        {
+            flags |= aiProcess_MakeLeftHanded;
+        }
 
         const aiScene* scene = importer.ReadFile(path.string().c_str(), flags);
         if (!scene || scene->mFlags == AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
+        {
             return EAssetError::UNKNOWN_ERROR;
+        }
 
         LoadContext ctx{ path, model_root, scene };
 
@@ -820,7 +922,9 @@ namespace lux::toolchain
         // bone_name_to_index is fully populated. Skipped when the import opted
         // out of animations.
         if (config().import_animations)
+        {
             extractAnimations(ctx);
+        }
 
         mesh_ids_out           = std::move(ctx.mesh_asset_ids);
         material_descs_out     = std::move(ctx.material_descs);
@@ -922,7 +1026,9 @@ namespace lux::toolchain
         {
             lux::math::AABB aabb;
             for (const auto& v : mesh_data->vertices)
+            {
                 aabb.merge(v.position);
+            }
             mesh_data->bounds = aabb;
         }
 
@@ -943,14 +1049,20 @@ namespace lux::toolchain
             {
                 const std::size_t target =
                     std::max<std::size_t>(3, static_cast<std::size_t>(base.size() * ratio));
-                if (target >= prev) break;
+                if (target >= prev)
+                {
+                    break;
+                }
                 std::vector<uint32_t> lod(base.size());
                 float err = 0.0f;
                 const std::size_t n = meshopt_simplify(
                     lod.data(), base.data(), base.size(),
                     pos, vcount, sizeof(Vertex),
                     target, kLodMaxError, /*options=*/0u, &err);
-                if (n == 0 || n >= prev) break;   // no meaningful reduction → stop
+                if (n == 0 || n >= prev)
+                {
+                    break;   // no meaningful reduction → stop
+                }
                 lod.resize(n);
                 mesh_data->lods.push_back({ std::move(lod), err });
                 prev = n;
@@ -996,12 +1108,20 @@ namespace lux::toolchain
         // Returns nullptr if not found.
         const aiNode* findNodeByName(const aiNode* root, const std::string& name)
         {
-            if (!root) return nullptr;
-            if (root->mName.C_Str() == name) return root;
+            if (!root)
+            {
+                return nullptr;
+            }
+            if (root->mName.C_Str() == name)
+            {
+                return root;
+            }
             for (uint32_t i = 0; i < root->mNumChildren; ++i)
             {
                 if (auto* hit = findNodeByName(root->mChildren[i], name))
+                {
                     return hit;
+                }
             }
             return nullptr;
         }
@@ -1021,7 +1141,9 @@ namespace lux::toolchain
             }
         }
         if (bone_offsets.empty())
+        {
             return; // static mesh — nothing to do
+        }
 
         // Handedness guard: this hand-written extraction copies
         // aiBone::mOffsetMatrix and node transforms verbatim and does NOT
@@ -1104,7 +1226,9 @@ namespace lux::toolchain
                     ? Eigen::Affine3f::Identity()
                     : Eigen::Affine3f(accum * toEigenAffine(n->mTransformation));
             for (uint32_t i = 0; i < n->mNumChildren; ++i)
+            {
                 walk(n->mChildren[i], child_parent, child_accum);
+            }
         };
         walk(ctx.scene->mRootNode, /*parent_bone_index=*/-1, Eigen::Affine3f::Identity());
 
@@ -1116,7 +1240,9 @@ namespace lux::toolchain
         // world transform — hence the whole skinned result becomes T * result.
         // This needs NO change to vertices, inv_bind_world, or animation tracks.
         if (ctx.has_import_xform)
+        {
             skeleton->global_transform = ctx.import_xform * skeleton->global_transform;
+        }
 
         auto skel_asset = manager().createAssetSeeded<SkeletonAsset>(
             seedFor("skeleton"), std::move(skeleton));
@@ -1140,14 +1266,22 @@ namespace lux::toolchain
             const aiBone* b = mesh->mBones[bi];
             auto it = ctx.bone_name_to_index.find(b->mName.C_Str());
             if (it == ctx.bone_name_to_index.end())
+            {
                 continue; // bone not in our skeleton — Assimp anomaly, skip
+            }
             const int32_t bone_index = it->second;
 
             for (uint32_t wi = 0; wi < b->mNumWeights; ++wi)
             {
                 const aiVertexWeight& w = b->mWeights[wi];
-                if (w.mVertexId >= mesh->mNumVertices) continue;
-                if (w.mWeight <= 0.0f)                continue;
+                if (w.mVertexId >= mesh->mNumVertices)
+                {
+                    continue;
+                }
+                if (w.mWeight <= 0.0f)
+                {
+                    continue;
+                }
                 per_vert[w.mVertexId].push_back({bone_index, w.mWeight});
             }
         }
@@ -1155,7 +1289,10 @@ namespace lux::toolchain
         for (uint32_t v = 0; v < mesh->mNumVertices; ++v)
         {
             auto& influences = per_vert[v];
-            if (influences.empty()) continue;
+            if (influences.empty())
+            {
+                continue;
+            }
 
             std::sort(influences.begin(), influences.end(),
                 [](const auto& a, const auto& b) { return a.second > b.second; });
@@ -1164,7 +1301,10 @@ namespace lux::toolchain
             const int kept = std::min<int>(lux::rdesc::max_bone_influence,
                                            static_cast<int>(influences.size()));
             float sum = 0.0f;
-            for (int i = 0; i < kept; ++i) sum += influences[i].second;
+            for (int i = 0; i < kept; ++i)
+            {
+                sum += influences[i].second;
+            }
             const float inv_sum = (sum > 0.0f) ? (1.0f / sum) : 0.0f;
 
             Vertex& vert = verts[v];
@@ -1178,8 +1318,14 @@ namespace lux::toolchain
 
     void ModelImporter::extractAnimations(LoadContext& ctx)
     {
-        if (ctx.scene->mNumAnimations == 0) return;
-        if (!ctx.skeleton_asset_id.has_value()) return; // no rig to target
+        if (ctx.scene->mNumAnimations == 0)
+        {
+            return;
+        }
+        if (!ctx.skeleton_asset_id.has_value())
+        {
+            return; // no rig to target
+        }
 
         for (uint32_t ai = 0; ai < ctx.scene->mNumAnimations; ++ai)
         {
@@ -1198,8 +1344,10 @@ namespace lux::toolchain
             {
                 const aiNodeAnim* na = a->mChannels[ci];
                 auto it = ctx.bone_name_to_index.find(na->mNodeName.C_Str());
-                if (it == ctx.bone_name_to_index.end())
-                    continue; // channel targets a non-bone node — skip
+            if (it == ctx.bone_name_to_index.end())
+            {
+                continue; // channel targets a non-bone node — skip
+            }
 
                 BoneTrack t;
                 t.bone_index = it->second;
@@ -1238,7 +1386,10 @@ namespace lux::toolchain
                 clip->tracks.push_back(std::move(t));
             }
 
-            if (clip->tracks.empty()) continue; // nothing useful in this aiAnimation
+            if (clip->tracks.empty())
+            {
+                continue; // nothing useful in this aiAnimation
+            }
 
             auto clip_asset = manager().createAssetSeeded<AnimationClipAsset>(
                 seedFor("clip", ctx.animation_clip_asset_ids.size()), std::move(clip));

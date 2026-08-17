@@ -21,8 +21,7 @@ namespace lux::runtime::entity_scene
 namespace lux::runtime::spatial_partition
 {
     struct SpatialDemandSourceIdTag final {};
-    using SpatialDemandSourceId =
-        lux::cxx::StableNameId<SpatialDemandSourceIdTag>;
+    using SpatialDemandSourceId = lux::cxx::StableNameId<SpatialDemandSourceIdTag>;
 
     struct SpatialDemandEntry final
     {

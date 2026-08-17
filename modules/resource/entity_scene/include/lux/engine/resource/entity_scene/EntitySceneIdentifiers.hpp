@@ -72,14 +72,10 @@ namespace lux::entity_scene
     struct SectionGeneratorIdTag final {};
     struct ComponentSchemaIdTag final {};
 
-    using ContentTypeId =
-        lux::cxx::StableNameId<ContentTypeIdTag>;
-    using DemandChannelId =
-        lux::cxx::StableNameId<DemandChannelIdTag>;
-    using SectionGeneratorId =
-        lux::cxx::StableNameId<SectionGeneratorIdTag>;
-    using ComponentSchemaId =
-        lux::cxx::StableNameId<ComponentSchemaIdTag>;
+    using ContentTypeId = lux::cxx::StableNameId<ContentTypeIdTag>;
+    using DemandChannelId = lux::cxx::StableNameId<DemandChannelIdTag>;
+    using SectionGeneratorId = lux::cxx::StableNameId<SectionGeneratorIdTag>;
+    using ComponentSchemaId = lux::cxx::StableNameId<ComponentSchemaIdTag>;
 
     template <class Tag>
     [[nodiscard]] bool isValidEntitySceneId(

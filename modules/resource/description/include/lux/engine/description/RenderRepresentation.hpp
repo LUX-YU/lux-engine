@@ -10,16 +10,10 @@ namespace lux::rdesc
     struct RenderRepresentationIdTag final {};
     struct TextureSamplingRepresentationIdTag final {};
 
-    using RenderRepresentationIdView =
-        lux::cxx::StableNameIdView<RenderRepresentationIdTag>;
-    using RenderRepresentationId =
-        lux::cxx::StableNameId<RenderRepresentationIdTag>;
-    using TextureSamplingRepresentationIdView =
-        lux::cxx::StableNameIdView<
-            TextureSamplingRepresentationIdTag>;
-    using TextureSamplingRepresentationId =
-        lux::cxx::StableNameId<
-            TextureSamplingRepresentationIdTag>;
+    using RenderRepresentationIdView = lux::cxx::StableNameIdView<RenderRepresentationIdTag>;
+    using RenderRepresentationId = lux::cxx::StableNameId<RenderRepresentationIdTag>;
+    using TextureSamplingRepresentationIdView = lux::cxx::StableNameIdView<TextureSamplingRepresentationIdTag>;
+    using TextureSamplingRepresentationId = lux::cxx::StableNameId<TextureSamplingRepresentationIdTag>;
 
     [[nodiscard]] constexpr RenderRepresentationIdView
     renderRepresentationId(std::string_view name) noexcept

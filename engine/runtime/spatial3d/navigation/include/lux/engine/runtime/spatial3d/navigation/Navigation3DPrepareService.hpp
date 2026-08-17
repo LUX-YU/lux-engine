@@ -63,8 +63,7 @@ namespace lux::runtime::spatial3d
         friend class Navigation3DPrepareService;
     };
 
-    using Navigation3DPrepareSender =
-        lux::exec::AsyncExecuteSender<BuildNavigationRegion3D>;
+    using Navigation3DPrepareSender = lux::exec::AsyncExecuteSender<BuildNavigationRegion3D>;
 
     class LUX_ENGINE_RUNTIME_SPATIAL3D_NAVIGATION_PUBLIC
         Navigation3DPrepareClient final

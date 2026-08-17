@@ -495,12 +495,9 @@ namespace lux::ecs
             bool consumed{false};
         };
 
-        using IdEntries =
-            std::vector<std::pair<uuids::uuid, entt::entity>>;
-        using EntityEntries =
-            std::vector<std::pair<entt::entity, uuids::uuid>>;
-        using PendingEntries =
-            std::vector<std::pair<uuids::uuid, std::uint64_t>>;
+        using IdEntries = std::vector<std::pair<uuids::uuid, entt::entity>>;
+        using EntityEntries = std::vector<std::pair<entt::entity, uuids::uuid>>;
+        using PendingEntries = std::vector<std::pair<uuids::uuid, std::uint64_t>>;
 
         [[nodiscard]] IdEntries::iterator findIdEntry(
             const uuids::uuid& id) noexcept

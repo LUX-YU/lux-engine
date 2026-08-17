@@ -158,8 +158,7 @@ namespace lux::runtime::spatial3d
         friend class StaticCollider3DPrepareService;
     };
 
-    using StaticCollider3DPrepareSender =
-        lux::exec::AsyncExecuteSender<BuildStaticCollider3D>;
+    using StaticCollider3DPrepareSender = lux::exec::AsyncExecuteSender<BuildStaticCollider3D>;
 
     class LUX_ENGINE_RUNTIME_SPATIAL3D_PHYSICS_PUBLIC
         StaticCollider3DPrepareClient final

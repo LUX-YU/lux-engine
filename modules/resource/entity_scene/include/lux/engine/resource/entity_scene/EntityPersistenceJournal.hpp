@@ -18,8 +18,7 @@
 namespace lux::entity_scene
 {
     struct PersistenceSchemaIdTag final {};
-    using PersistenceSchemaId =
-        lux::cxx::StableNameId<PersistenceSchemaIdTag>;
+    using PersistenceSchemaId = lux::cxx::StableNameId<PersistenceSchemaIdTag>;
 
     inline constexpr std::uint32_t kEntityPersistenceJournalVersion = 1u;
     inline constexpr std::uint64_t kMaximumPersistenceRecordBytes =

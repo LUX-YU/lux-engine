@@ -14,10 +14,8 @@
 namespace lux::deployment
 {
     struct CapacityDomainIdTag final {};
-    using CapacityDomainIdView =
-        lux::cxx::StableNameIdView<CapacityDomainIdTag>;
-    using CapacityDomainId =
-        lux::cxx::StableNameId<CapacityDomainIdTag>;
+    using CapacityDomainIdView = lux::cxx::StableNameIdView<CapacityDomainIdTag>;
+    using CapacityDomainId = lux::cxx::StableNameId<CapacityDomainIdTag>;
 
     [[nodiscard]] constexpr CapacityDomainIdView capacityDomainId(
         std::string_view name) noexcept

@@ -386,7 +386,8 @@ namespace lux::toolchain
                         first_point.z,
                         second_point.x,
                         second_point.y,
-                        second_point.z};
+                        second_point.z
+                    };
                     const auto selected_positions = selected_first
                         ? std::tuple{
                               selected_first->x,
@@ -394,7 +395,8 @@ namespace lux::toolchain
                               selected_first->z,
                               selected_second->x,
                               selected_second->y,
-                              selected_second->z}
+                              selected_second->z
+                          }
                         : decltype(positions){};
                     if (!selected_first || score < selected_score ||
                         (score == selected_score &&
@@ -597,7 +599,9 @@ namespace lux::toolchain
                     lux::ecs::typeToken<
                         lux::ecs::DirectionalLightComponent>().name),
                 lux::ecs::defaultComponentSchemaName(
-                    lux::ecs::typeToken<lux::ecs::HeightFogComponent>().name)};
+                    lux::ecs::typeToken<lux::ecs::HeightFogComponent>().name
+                )
+            };
             return std::ranges::any_of(
                 actor.components,
                 [&startup_schemas](const auto& record)
@@ -680,9 +684,11 @@ namespace lux::toolchain
                 }
                 lux::serialize::ArchiveReader reader{
                     record.tagged_payload.data(),
-                    record.tagged_payload.size()};
+                    record.tagged_payload.size()
+                };
                 lux::serialize::TaggedPropertyReader tagged{
-                    reader, source_names};
+                    reader, source_names
+                };
                 tagged.readObject(*descriptor->ref_class, value);
                 if (!reader.ok() || !reader.eof())
                 {
@@ -870,7 +876,8 @@ namespace lux::toolchain
                         result.heights[
                             sample + kTerrainTileSampleEdge],
                         result.heights[
-                            sample + kTerrainTileSampleEdge + 1u]};
+                            sample + kTerrainTileSampleEdge + 1u]
+                    };
                     const auto output =
                         static_cast<std::size_t>(y) * edge + x;
                     minima[output] = *std::ranges::min_element(values);
@@ -905,12 +912,14 @@ namespace lux::toolchain
                             minima[first],
                             minima[first + 1u],
                             minima[first + edge],
-                            minima[first + edge + 1u]};
+                            minima[first + edge + 1u]
+                        };
                         const std::array<std::uint16_t, 4u> child_maxima{
                             maxima[first],
                             maxima[first + 1u],
                             maxima[first + edge],
-                            maxima[first + edge + 1u]};
+                            maxima[first + edge + 1u]
+                        };
                         const auto output =
                             static_cast<std::size_t>(y) * parent_edge + x;
                         parent_minima[output] =
@@ -1066,7 +1075,8 @@ namespace lux::toolchain
             return lux::spatial::GridCoord3i64{
                 floorDivide(cell.x, edge) * edge,
                 0,
-                floorDivide(cell.z, edge) * edge};
+                floorDivide(cell.z, edge) * edge
+            };
         }
 
         [[nodiscard]] std::string visualLodKey(
@@ -1290,11 +1300,13 @@ namespace lux::toolchain
             std::array<double, 3u> minimum{
                 (std::numeric_limits<double>::max)(),
                 (std::numeric_limits<double>::max)(),
-                (std::numeric_limits<double>::max)()};
+                (std::numeric_limits<double>::max)()
+            };
             std::array<double, 3u> maximum{
                 (std::numeric_limits<double>::lowest)(),
                 (std::numeric_limits<double>::lowest)(),
-                (std::numeric_limits<double>::lowest)()};
+                (std::numeric_limits<double>::lowest)()
+            };
             std::vector<lux::spatial::Position3D> positions;
             positions.reserve(instances.size());
             for (const auto* instance : instances)
@@ -1310,11 +1322,13 @@ namespace lux::toolchain
                     std::abs(instance->scale[0]),
                     std::abs(instance->scale[1]),
                     std::abs(instance->scale[2]),
-                    1.0f}));
+                    1.0f
+                }));
                 const std::array values{
                     instance->position.x,
                     instance->position.y,
-                    instance->position.z};
+                    instance->position.z
+                };
                 for (std::size_t axis = 0u; axis < values.size(); ++axis)
                 {
                     minimum[axis] = std::min(
@@ -1326,7 +1340,8 @@ namespace lux::toolchain
             const lux::spatial::Position3D origin{
                 (minimum[0] + maximum[0]) * 0.5,
                 (minimum[1] + maximum[1]) * 0.5,
-                (minimum[2] + maximum[2]) * 0.5};
+                (minimum[2] + maximum[2]) * 0.5
+            };
             const auto half_x = (maximum[0] - minimum[0]) * 0.5;
             const auto half_y = (maximum[1] - minimum[1]) * 0.5;
             const auto half_z = (maximum[2] - minimum[2]) * 0.5;
@@ -1351,7 +1366,8 @@ namespace lux::toolchain
                 const std::array<double, 3u> local{
                     positions[index].x - origin.x,
                     positions[index].y - origin.y,
-                    positions[index].z - origin.z};
+                    positions[index].z - origin.z
+                };
                 for (std::size_t axis = 0u; axis < local.size(); ++axis)
                 {
                     if (!std::isfinite(local[axis]) ||
@@ -1647,11 +1663,13 @@ namespace lux::toolchain
                         instance->rotation[3],
                         instance->rotation[0],
                         instance->rotation[1],
-                        instance->rotation[2]};
+                        instance->rotation[2]
+                    };
                     const Eigen::Vector3f scale{
                         instance->scale[0],
                         instance->scale[1],
-                        instance->scale[2]};
+                        instance->scale[2]
+                    };
                     if (!rotation.coeffs().allFinite() ||
                         !scale.allFinite() || rotation.squaredNorm() < 1.0e-12f)
                     {
@@ -1672,7 +1690,8 @@ namespace lux::toolchain
                         static_cast<float>(instance->position.y -
                             result.batch.origin.y),
                         static_cast<float>(instance->position.z -
-                            result.batch.origin.z)};
+                            result.batch.origin.z)
+                    };
                     if (!translation.allFinite())
                     {
                         return lux::cxx::unexpected(failure(
@@ -1713,7 +1732,8 @@ namespace lux::toolchain
                         std::array<std::uint32_t, 3u> indices{
                             (*selected_indices)[triangle],
                             (*selected_indices)[triangle + 1u],
-                            (*selected_indices)[triangle + 2u]};
+                            (*selected_indices)[triangle + 2u]
+                        };
                         if (std::ranges::any_of(
                                 indices,
                                 [&source](std::uint32_t index)
@@ -2429,7 +2449,8 @@ namespace lux::toolchain
                 floorDivide(coordinate.y,
                     static_cast<std::int64_t>(factor)),
                 floorDivide(coordinate.z,
-                    static_cast<std::int64_t>(factor))};
+                    static_cast<std::int64_t>(factor))
+            };
             const auto key = std::to_string(node.level) + "/" +
                 visualLodKey(
                     node.space, node.cell, node.data_layers);
@@ -2567,7 +2588,8 @@ namespace lux::toolchain
         {
             const auto& first_page = source.terrain_pages[first_index];
             const auto found = navigation_pages_by_cell.find({
-                uuidKey(first_page.space), neighbor_x, neighbor_z});
+                uuidKey(first_page.space), neighbor_x, neighbor_z
+            });
             if (found == navigation_pages_by_cell.end())
                 return {};
             auto& first_descriptions =
@@ -2846,11 +2868,17 @@ namespace lux::toolchain
             spatial_catalog.bands.push_back(std::move(band));
             return index;
         };
-        const DemandChannelId fine_channel{std::string{
-            lux::spatial3d_scene::kSpatial3DResidentDemandChannelName}};
-        const DemandChannelId visual_lod_channel{std::string{
+        const DemandChannelId fine_channel{
+            std::string{
+            lux::spatial3d_scene::kSpatial3DResidentDemandChannelName
+            }
+        };
+        const DemandChannelId visual_lod_channel{
+            std::string{
             lux::spatial3d_scene::
-                kSpatial3DVisualLodDemandChannelName}};
+                kSpatial3DVisualLodDemandChannelName
+            }
+        };
         for (auto& [_, fine] : fine_sections)
         {
             const auto band = internBand({

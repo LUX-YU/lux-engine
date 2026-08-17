@@ -57,7 +57,9 @@ namespace
         lux::render::GraphMaterialData d{};
         uint32_t n = static_cast<uint32_t>(g.param_slots.size());
         if (n > lux::render::GraphMaterialData::kMaxParams)
+        {
             n = lux::render::GraphMaterialData::kMaxParams;
+        }
         d.param_count = n;
         for (uint32_t i = 0; i < n; ++i)
         {
@@ -121,11 +123,20 @@ namespace
     // scalar splat (float -> vecN). Widening a real vector needs a Construct node.
     bool isConvertibleType(rdesc::EMatValueType src, rdesc::EMatValueType dst)
     {
-        if (src == dst) return true;
+        if (src == dst)
+        {
+            return true;
+        }
         const int as = static_cast<int>(src) + 1;
         const int ad = static_cast<int>(dst) + 1;
-        if (as > ad) return true;                                       // truncate
-        if (src == rdesc::EMatValueType::Float && ad > 1) return true;  // splat
+        if (as > ad)
+        {
+            return true;                                               // truncate
+        }
+        if (src == rdesc::EMatValueType::Float && ad > 1)
+        {
+            return true;                                                // splat
+        }
         return false;
     }
 
@@ -142,13 +153,19 @@ namespace
         {
             ImGui::SameLine(0.0f, 2.0f);
             const bool sel = (static_cast<int>(cur) == t);
-            if (sel) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.50f, 0.80f, 1.0f));
+            if (sel)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.25f, 0.50f, 0.80f, 1.0f));
+            }
             if (ImGui::SmallButton(kShort[t]) && !sel)
             {
                 *out    = static_cast<rdesc::EMatValueType>(t);
                 changed = true;
             }
-            if (sel) ImGui::PopStyleColor();
+            if (sel)
+            {
+                ImGui::PopStyleColor();
+            }
         }
         return changed;
     }
@@ -204,7 +221,10 @@ namespace lux::editor
     {
         for (const auto& [id, n] : graph_->nodes())
         {
-            if (!n) continue;
+            if (!n)
+            {
+                continue;
+            }
             // MathNode::name() is the generic "Math"; append the operator so the
             // canvas header reads e.g. "Math: Multiply" instead of a bare "Math".
             if (const auto* mn = n->as<rdesc::MathNode>())
@@ -221,7 +241,10 @@ namespace lux::editor
                                               gk::EPinSide side) const
     {
         const rdesc::Node* n = graph_->node(node.id);
-        if (!n) return 0;
+        if (!n)
+        {
+            return 0;
+        }
         return static_cast<std::uint32_t>(
             side == gk::EPinSide::INPUT ? n->inputs().size() : n->outputs().size());
     }
@@ -232,10 +255,16 @@ namespace lux::editor
     {
         gk::GraphPinView out;
         const rdesc::Node* n = graph_->node(node.id);
-        if (!n) return out;
+        if (!n)
+        {
+            return out;
+        }
         const auto& pins =
             (side == gk::EPinSide::INPUT) ? n->inputs() : n->outputs();
-        if (index >= pins.size()) return out;
+        if (index >= pins.size())
+        {
+            return out;
+        }
         const rdesc::DataPin& p = pins[index];
 
         label_scratch_ = lux::format("{} : {}", p.name, valueTypeName(p.type));
@@ -256,11 +285,17 @@ namespace lux::editor
     {
         for (const auto& [id, n] : graph_->nodes())
         {
-            if (!n) continue;
+            if (!n)
+            {
+                continue;
+            }
             const auto& ins = n->inputs();
             for (std::uint32_t i = 0; i < ins.size(); ++i)
             {
-                if (!ins[i].source.valid()) continue;
+                if (!ins[i].source.valid())
+                {
+                    continue;
+                }
                 fn(gk::GraphLinkView{
                     gk::GraphPinRef{ gk::GraphNodeRef{ ins[i].source.node },
                                      gk::EPinSide::OUTPUT, ins[i].source.pin },
@@ -273,14 +308,20 @@ namespace lux::editor
     std::optional<gk::GraphVec2> MaterialGraphView::nodePos(gk::GraphNodeRef node) const
     {
         const rdesc::Node* n = graph_->node(node.id);
-        if (!n || !n->ui_placed) return std::nullopt;
+        if (!n || !n->ui_placed)
+        {
+            return std::nullopt;
+        }
         return gk::GraphVec2{ n->ui_pos[0], n->ui_pos[1] };
     }
 
     void MaterialGraphView::setNodePos(gk::GraphNodeRef node, gk::GraphVec2 pos)
     {
         rdesc::Node* n = graph_->node(node.id);
-        if (!n || !std::isfinite(pos.x) || !std::isfinite(pos.y)) return;
+        if (!n || !std::isfinite(pos.x) || !std::isfinite(pos.y))
+        {
+            return;
+        }
         n->ui_pos[0] = pos.x;
         n->ui_pos[1] = pos.y;
         n->ui_placed = true;
@@ -359,34 +400,51 @@ namespace lux::editor
     {
         auto holder = std::make_shared<std::unique_ptr<rdesc::Node>>(
             graph_->extractNode(node.id));
-        if (!*holder) return nullptr;
+        if (!*holder)
+        {
+            return nullptr;
+        }
         return holder;   // shared_ptr<void> type-erases the move-only payload
     }
 
     bool MaterialGraphView::attachNode(gk::GraphNodeRef original, gk::NodeCapture capture)
     {
         auto holder = std::static_pointer_cast<std::unique_ptr<rdesc::Node>>(capture);
-        if (!holder || !*holder) return false;
+        if (!holder || !*holder)
+        {
+            return false;
+        }
         return graph_->addNodeWithId(original.id, std::move(*holder)) != invalid_node;
     }
 
     bool MaterialGraphView::connect(gk::GraphPinRef from, gk::GraphPinRef to)
     {
         rdesc::Node* d = graph_->node(to.node.id);
-        if (!d || to.pin >= d->inputs().size()) return false;
+        if (!d || to.pin >= d->inputs().size())
+        {
+            return false;
+        }
         // Port contract (b): never implicitly sever — the command stack
         // pre-disconnects cap-1 pins itself (undoable replace-on-reconnect).
-        if (d->inputs()[to.pin].source.valid()) return false;
+        if (d->inputs()[to.pin].source.valid())
+        {
+            return false;
+        }
         return graph_->connect(from.node.id, from.pin, to.node.id, to.pin);
     }
 
     bool MaterialGraphView::disconnect(gk::GraphPinRef from, gk::GraphPinRef to)
     {
         rdesc::Node* d = graph_->node(to.node.id);
-        if (!d || to.pin >= d->inputs().size()) return false;
+        if (!d || to.pin >= d->inputs().size())
+        {
+            return false;
+        }
         const rdesc::PinLink& src = d->inputs()[to.pin].source;
         if (!src.valid() || src.node != from.node.id || src.pin != from.pin)
+        {
             return false;   // not THIS link — refuse to clear someone else's
+        }
         graph_->disconnect(to.node.id, to.pin);
         return true;
     }
@@ -406,7 +464,9 @@ namespace lux::editor
                                                       const gk::IGraphView&) const
     {
         if (from.node == to.node)
+        {
             return gk::ConnectResult::no("can't connect a node to itself");
+        }
 
         const rdesc::Node* s = graph_->node(from.node.id);
         const rdesc::Node* d = graph_->node(to.node.id);
@@ -460,7 +520,9 @@ namespace lux::editor
                                                      const gk::IGraphView&) const
     {
         if (const rdesc::Node* n = graph_->node(node.id))
+        {
             return gk::NodeStyleDesc{ headerColorFor(n->kind()), true };
+        }
         return {};
     }
 
@@ -468,7 +530,10 @@ namespace lux::editor
                                            gk::DeferredPopupQueue& popups)
     {
         rdesc::Node* raw = graph_->node(node.id);
-        if (!raw) return;
+        if (!raw)
+        {
+            return;
+        }
 
         // ── R3 实例模式:拓扑与烘焙量属于根图,节点体转 override 编辑面 ──
         if (instance_mode_)
@@ -479,7 +544,9 @@ namespace lux::editor
                 const int comps = static_cast<int>(c->value_type) + 1;
                 std::string t = "= ";
                 for (int k = 0; k < comps; ++k)
+                {
                     t += lux::format("{}{:.3g}", k ? ", " : "", c->value[k]);
+                }
                 ImGui::TextDisabled("%s", t.c_str());
             }
             if (auto* p = raw->as<ParamNode>())
@@ -489,9 +556,13 @@ namespace lux::editor
                 {
                     bool ov = inst_hooks_.param_overridden(lane);
                     if (ImGui::Checkbox("##ov", &ov) && inst_hooks_.param_toggle)
+                    {
                         inst_hooks_.param_toggle(lane, ov);
+                    }
                     if (ImGui::IsItemHovered())
+                    {
                         ImGui::SetTooltip("override(勾上从父有效值起步)");
+                    }
                     ImGui::SameLine();
                     float v[4]{};
                     inst_hooks_.param_effective(lane, v);
@@ -509,7 +580,9 @@ namespace lux::editor
                     ImGui::EndDisabled();
                     ImGui::PopItemWidth();
                     if (edited && ov && inst_hooks_.param_set)
+                    {
                         inst_hooks_.param_set(lane, v);
+                    }
                     if (comps >= 3)
                     {
                         ImGui::SameLine();
@@ -519,7 +592,9 @@ namespace lux::editor
                                 ImGuiColorEditFlags_NoDragDrop))
                         {
                             if (!ov && inst_hooks_.param_toggle)
+                            {
                                 inst_hooks_.param_toggle(lane, true);   // 点色板即开 override
+                            }
                             popups.push(gk::DeferredPopupRequest{ node, "color_picker", 0 });
                         }
                     }
@@ -530,9 +605,13 @@ namespace lux::editor
                 const std::uint32_t slot = st->texture_slot;
                 bool ov = inst_hooks_.tex_overridden && inst_hooks_.tex_overridden(slot);
                 if (ImGui::Checkbox("##tov", &ov) && inst_hooks_.tex_toggle)
+                {
                     inst_hooks_.tex_toggle(slot, ov);
+                }
                 if (ImGui::IsItemHovered())
+                {
                     ImGui::SetTooltip("override(勾上从父绑定起步)");
+                }
                 ImGui::SameLine();
                 const std::string bound =
                     bound_texture_name_ ? bound_texture_name_(slot) : std::string{};
@@ -544,7 +623,9 @@ namespace lux::editor
                         node, "texture_picker", slot });
                 ImGui::SameLine();
                 if (ImGui::SmallButton("x##texclr") && inst_hooks_.tex_clear)
+                {
                     inst_hooks_.tex_clear(slot);   // override + nil = 显式清槽
+                }
                 ImGui::EndDisabled();
             }
             if (auto* sw = raw->as<SwizzleNode>())
@@ -553,7 +634,9 @@ namespace lux::editor
                 const int outN = static_cast<int>(sw->out_type) + 1;
                 std::string picks;
                 for (int k = 0; k < outN; ++k)
+                {
                     picks += kComp[sw->components[k] & 3];
+                }
                 ImGui::TextDisabled("pick: %s", picks.c_str());
             }
             return;   // 实例模式不落任何 structure/param 直写
@@ -565,7 +648,11 @@ namespace lux::editor
         if (auto* c = raw->as<ConstantNode>())
         {
             rdesc::EMatValueType nt;
-            if (drawTypeSelector(c->value_type, &nt)) { c->setType(nt); structure_dirty = true; }
+            if (drawTypeSelector(c->value_type, &nt))
+            {
+                c->setType(nt);
+                structure_dirty = true;
+            }
             const int comps = static_cast<int>(c->value_type) + 1;
             ImGui::PushItemWidth(58.0f * static_cast<float>(comps));
             switch (comps)
@@ -576,7 +663,10 @@ namespace lux::editor
             default: ImGui::DragFloat4("##cval", c->value, 0.01f); break;
             }
             ImGui::PopItemWidth();
-            if (ImGui::IsItemDeactivatedAfterEdit()) structure_dirty = true;
+            if (ImGui::IsItemDeactivatedAfterEdit())
+            {
+                structure_dirty = true;
+            }
         }
 
         // Param body editor (set-4 uniform -> live preview update while
@@ -613,7 +703,9 @@ namespace lux::editor
                         popups.push(gk::DeferredPopupRequest{ node, "color_picker", 0 });
                 }
                 if (edited && on_params_dirty_)
+                {
                     on_params_dirty_();
+                }
             }
         }
 
@@ -669,7 +761,9 @@ namespace lux::editor
         }
 
         if (structure_dirty && on_structure_dirty_)
+        {
             on_structure_dirty_();
+        }
     }
 
     // =========================================================================
@@ -685,7 +779,10 @@ namespace lux::editor
         schema_.setOnParamsDirty(
             [this]
             {
-                if (preview_) preview_->updateGraphParams(buildGraphMaterial());
+                if (preview_)
+                {
+                    preview_->updateGraphParams(buildGraphMaterial());
+                }
             });
         schema_.setBoundTextureName(
             [this](std::uint32_t slot) { return boundTextureName(slot); });
@@ -881,7 +978,9 @@ namespace lux::editor
         job.graph = graph_.clone();
         for (const auto& [slot, bind] : slot_texture_)
             if (slot < lux::asset::MaterialData::kMaxTextures)
+            {
                 job.texture_slot_ids[slot] = bind.uuid;
+            }
 
         if (compile_dispatch_)
         {
@@ -907,7 +1006,9 @@ namespace lux::editor
         std::shared_ptr<MaterialCompileOutcome> outcome)
     {
         if (request_id != pending_compile_id_ || !outcome)
+        {
             return;   // 过期结果(已有更新的在途编译):丢弃
+        }
         pending_compile_id_ = 0;
         applyCompileOutcome(*outcome);
     }
@@ -936,7 +1037,10 @@ namespace lux::editor
     void MaterialGraphPanel::setPreviewHost(MaterialPreviewHost* preview)
     {
         preview_ = preview;
-        if (!preview_) return;
+        if (!preview_)
+        {
+            return;
+        }
         preview_element_.setTarget(preview_->target());
         preview_element_.setOrbitCallback(
             [p = preview_](float dy, float dp, float dz){ p->orbit(dy, dp, dz); });
@@ -964,16 +1068,28 @@ namespace lux::editor
                                          const std::filesystem::path& folder)
     {
         const auto fail = [&](std::string m) { if (err) *err = std::move(m); return false; };
-        if (!asset_manager_ || !registry_)        return fail("asset services not wired");
-        if (registry_->root().empty())            return fail("no project open");
-        if (name.empty())                         return fail("name required");
+        if (!asset_manager_ || !registry_)
+        {
+            return fail("asset services not wired");
+        }
+        if (registry_->root().empty())
+        {
+            return fail("no project open");
+        }
+        if (name.empty())
+        {
+            return fail("name required");
+        }
 
         // Graph texture slot i -> texture asset UUID (slot index == graph slot).
         std::vector<lux::asset::asset_id_t> slot_ids;
         for (const auto& [slot, bind] : slot_texture_)
             if (slot < lux::asset::MaterialData::kMaxTextures)
             {
-                if (slot >= slot_ids.size()) slot_ids.resize(slot + 1);
+                if (slot >= slot_ids.size())
+                {
+                    slot_ids.resize(slot + 1);
+                }
                 slot_ids[slot] = bind.uuid;
             }
 
@@ -996,7 +1112,9 @@ namespace lux::editor
             dest,
             /*seed=*/std::string_view{});
         if (!id)
+        {
             return fail(id.error());
+        }
 
         // Save As 之后当前图就「属于」新资产 —— 原地 Save 从此可用。
         open_asset_id_   = *id;
@@ -1007,7 +1125,10 @@ namespace lux::editor
         std::error_code rel_ec;
         std::filesystem::path shown =
             std::filesystem::relative(dest, registry_->root(), rel_ec);
-        if (rel_ec || shown.empty()) shown = dest.filename();
+        if (rel_ec || shown.empty())
+        {
+            shown = dest.filename();
+        }
         save_status_ = "saved -> /Game/" + shown.replace_extension().generic_string();
 
         // Announce the new on-disk asset: the host refreshes BOTH the registry
@@ -1035,27 +1156,43 @@ namespace lux::editor
     {
         const auto fail = [&](std::string m)
         { if (err) *err = std::move(m); return false; };
-        if (!asset_manager_)             return fail("asset services not wired");
-        if (open_asset_id_.is_nil())     return fail("no asset open — use Save As");
-        if (open_asset_path_.empty())    return fail("asset path unknown — use Save As");
+        if (!asset_manager_)
+        {
+            return fail("asset services not wired");
+        }
+        if (open_asset_id_.is_nil())
+        {
+            return fail("no asset open — use Save As");
+        }
+        if (open_asset_path_.empty())
+        {
+            return fail("asset path unknown — use Save As");
+        }
 
         std::vector<lux::asset::asset_id_t> slot_ids;
         for (const auto& [slot, bind] : slot_texture_)
             if (slot < lux::asset::MaterialData::kMaxTextures)
             {
-                if (slot >= slot_ids.size()) slot_ids.resize(slot + 1);
+                if (slot >= slot_ids.size())
+                {
+                    slot_ids.resize(slot + 1);
+                }
                 slot_ids[slot] = bind.uuid;
             }
 
         auto payload = lux::toolchain::compileGraphToPayload(graph_, slot_ids);
         if (!payload)
+        {
             return fail(payload.error());
+        }
 
         // shell 可能是 data-less(驱逐后):get-or-load 一次再装新数据。
         (void)asset_manager_->ensureAsset(open_asset_id_);
         auto* a = asset_manager_->fetchAssetAs<lux::asset::MaterialAsset>(open_asset_id_);
         if (!a)
+        {
             return fail("open asset no longer registered — use Save As");
+        }
         a->setData(std::make_unique<lux::asset::MaterialData>(std::move(*payload)));
         lux::authoring::attachMaterialGraph(*a, graph_);
 
@@ -1066,7 +1203,10 @@ namespace lux::editor
 
         // 旧缩略图作废(帧关也安全,见 ThumbnailService::invalidate)+ 广播
         // 内容变化(registry/browser 重扫 —— New Script 落盘同款出口)。
-        if (thumbnails_) thumbnails_->invalidate(open_asset_id_);
+        if (thumbnails_)
+        {
+            thumbnails_->invalidate(open_asset_id_);
+        }
         asset_manager_->notifyContentChanged(open_asset_id_);
         if (events_)
         {
@@ -1082,7 +1222,10 @@ namespace lux::editor
         std::filesystem::path shown = registry_
             ? std::filesystem::relative(open_asset_path_, registry_->root(), rel_ec)
             : open_asset_path_.filename();
-        if (rel_ec || shown.empty()) shown = open_asset_path_.filename();
+        if (rel_ec || shown.empty())
+        {
+            shown = open_asset_path_.filename();
+        }
         save_status_ = "saved -> /Game/" + shown.replace_extension().generic_string();
         return true;
     }
@@ -1090,7 +1233,9 @@ namespace lux::editor
     bool MaterialGraphPanel::createNewMaterialAssetAt(const std::filesystem::path& folder)
     {
         if (!asset_manager_ || !registry_ || folder.empty())
+        {
             return false;
+        }
 
         // Fresh default graph (the ctor's starting point), replacing the
         // current working graph — standard "New" semantics.
@@ -1107,7 +1252,9 @@ namespace lux::editor
             name = i == 0 ? "NewMaterial" : ("NewMaterial_" + std::to_string(i));
             std::error_code ec;
             if (!std::filesystem::exists(folder / (name + ".luxasset"), ec))
+            {
                 break;
+            }
         }
         std::string err;
         if (!saveAsAsset(name, &err, folder))
@@ -1129,7 +1276,9 @@ namespace lux::editor
     {
         if (registry_)
             if (const auto* m = registry_->find(id))
+            {
                 return m->name;
+            }
         return "texture";
     }
 
@@ -1139,9 +1288,15 @@ namespace lux::editor
     // upgrade on the next save.
     void MaterialGraphPanel::openAsset(const lux::asset::asset_id_t& id)
     {
-        if (!asset_manager_ || id.is_nil()) return;
+        if (!asset_manager_ || id.is_nil())
+        {
+            return;
+        }
         const auto* info = asset_manager_->queryInfo(id);
-        if (!info) return;
+        if (!info)
+        {
+            return;
+        }
 
         MaterialGraph g;
         std::unordered_map<std::uint32_t, TexBinding> slots;
@@ -1195,8 +1350,12 @@ namespace lux::editor
         open_asset_id_ = id;
         open_asset_path_.clear();
         if (registry_)
+        {
             if (const auto* m = registry_->find(id); m && !registry_->root().empty())
+            {
                 open_asset_path_ = registry_->root() / m->rel_path;
+            }
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -1225,8 +1384,12 @@ namespace lux::editor
         open_asset_id_ = id;
         open_asset_path_.clear();
         if (registry_)
+        {
             if (const auto* m = registry_->find(id); m && !registry_->root().empty())
+            {
                 open_asset_path_ = registry_->root() / m->rel_path;
+            }
+        }
         status_ = lux::format("instance: {} param lane(s), {} texture slot(s)",
                               inst_decls_.size(), inst_tex_decls_.size());
 
@@ -1260,53 +1423,88 @@ namespace lux::editor
     // 都是 data-less shell。
     bool MaterialGraphPanel::resolveInstanceChain(std::string* err)
     {
-        const auto fail = [&](std::string m) { if (err) *err = std::move(m); return false; };
-        if (!asset_manager_) return fail("asset services not wired");
+        const auto fail = [&](std::string m)
+        {
+            if (err)
+            {
+                *err = std::move(m);
+            }
+            return false;
+        };
+        if (!asset_manager_)
+        {
+            return fail("asset services not wired");
+        }
         constexpr int kMaxChainDepth = 8;   // 实例链深度守卫(驻留编排环检同族)
 
         std::vector<const lux::asset::MaterialInstanceData*> chain;
         lux::asset::asset_id_t cur = inst_edit_.parent_material_id;
         for (int depth = 0; ; ++depth)
         {
-            if (cur.is_nil())            return fail("instance has no parent");
-            if (depth > kMaxChainDepth)  return fail("parent chain too deep or cyclic");
+            if (cur.is_nil())
+            {
+                return fail("instance has no parent");
+            }
+            if (depth > kMaxChainDepth)
+            {
+                return fail("parent chain too deep or cyclic");
+            }
 
             const auto* info = asset_manager_->queryInfo(cur);
-            if (!info)                   return fail("a parent in the chain is not registered");
+            if (!info)
+            {
+                return fail("a parent in the chain is not registered");
+            }
             if (info->type == lux::asset::EAssetType::MATERIAL)
             {
                 inst_root_id_ = cur;
                 break;
             }
             if (info->type != lux::asset::EAssetType::MATERIAL_INSTANCE)
+            {
                 return fail("a parent in the chain is not a material");
+            }
 
             (void)asset_manager_->ensureAsset(cur);
             const auto* pa =
                 asset_manager_->fetchAssetAs<lux::asset::MaterialInstanceAsset>(cur);
-            if (!pa || !pa->data())      return fail("a parent instance failed to load");
+            if (!pa || !pa->data())
+            {
+                return fail("a parent instance failed to load");
+            }
             chain.push_back(pa->data());
             cur = pa->data()->parent_material_id;
         }
 
         (void)asset_manager_->ensureAsset(inst_root_id_);
         const auto* root = asset_manager_->fetchAssetAs<lux::asset::MaterialAsset>(inst_root_id_);
-        if (!root || !root->data())      return fail("root material failed to load");
+        if (!root || !root->data())
+        {
+            return fail("root material failed to load");
+        }
         const lux::asset::MaterialData& rp = *root->data();
         lux::rdesc::MaterialGraph root_graph;
         std::string graph_error;
         if (!lux::authoring::readMaterialGraph(*root, root_graph, &graph_error))
+        {
             return fail(graph_error);
+        }
 
         inst_decls_     = root_graph.param_slots;
         inst_tex_decls_ = root_graph.texture_slots;
 
         // 基线 = 根默认值,再从根向叶逐级应用 override(chain 收集序是叶→根)。
         for (std::uint32_t i = 0; i < lux::asset::MaterialInstanceData::kMaxParams; ++i)
+        {
             for (std::uint32_t j = 0; j < 4; ++j)
+            {
                 inst_parent_params_[i][j] = i < inst_decls_.size() ? inst_decls_[i].dflt[j] : 0.0f;
+            }
+        }
         for (std::uint32_t s = 0; s < lux::asset::MaterialInstanceData::kMaxTextures; ++s)
+        {
             inst_parent_tex_[s] = rp.texture_slot_ids[s];
+        }
         inst_parent_alpha_ = rp.alpha_mode;
         inst_parent_dbl_   = rp.double_sided;
 
@@ -1314,12 +1512,22 @@ namespace lux::editor
         {
             const auto& lvl = **it;
             for (std::uint32_t i = 0; i < lux::asset::MaterialInstanceData::kMaxParams; ++i)
+            {
                 if (lvl.param_override_mask & (1u << i))
+                {
                     for (std::uint32_t j = 0; j < 4; ++j)
+                    {
                         inst_parent_params_[i][j] = lvl.params[i][j];
+                    }
+                }
+            }
             for (std::uint32_t s = 0; s < lux::asset::MaterialInstanceData::kMaxTextures; ++s)
+            {
                 if (lvl.tex_override_mask & (1u << s))
+                {
                     inst_parent_tex_[s] = lvl.texture_slot_ids[s];
+                }
+            }
             if (lvl.render_state_override)
             {
                 inst_parent_alpha_ = lvl.alpha_mode;
@@ -1339,7 +1547,9 @@ namespace lux::editor
         {
             const bool ov = (inst_edit_.param_override_mask & (1u << i)) != 0u;
             for (std::uint32_t j = 0; j < 4; ++j)
+            {
                 gd.params[i][j] = ov ? inst_edit_.params[i][j] : inst_parent_params_[i][j];
+            }
         }
         if (preview_)
         {
@@ -1348,7 +1558,10 @@ namespace lux::editor
                 const auto& tid = (inst_edit_.tex_override_mask & (1u << s))
                                       ? inst_edit_.texture_slot_ids[s]
                                       : inst_parent_tex_[s];
-                if (tid.is_nil()) continue;
+                if (tid.is_nil())
+                {
+                    continue;
+                }
                 gd.tex_bindless[s] = preview_->resolveTextureIndex(tid);
                 gd.tex_mask |= (1u << s);
             }
@@ -1358,9 +1571,15 @@ namespace lux::editor
 
     void MaterialGraphPanel::pushInstancePreview()
     {
-        if (!preview_ || !asset_manager_ || inst_root_id_.is_nil()) return;
+        if (!preview_ || !asset_manager_ || inst_root_id_.is_nil())
+        {
+            return;
+        }
         const auto* root = asset_manager_->fetchAssetAs<lux::asset::MaterialAsset>(inst_root_id_);
-        if (!root || !root->data()) return;
+        if (!root || !root->data())
+        {
+            return;
+        }
         const lux::asset::MaterialData& rp = *root->data();
 
         // Compose a cooked preview payload. Instances never compile or retain an
@@ -1400,22 +1619,46 @@ namespace lux::editor
 
     bool MaterialGraphPanel::saveInstanceInPlace(std::string* err)
     {
-        const auto fail = [&](std::string m) { if (err) *err = std::move(m); return false; };
-        if (!asset_manager_)          return fail("asset services not wired");
-        if (open_asset_id_.is_nil())  return fail("no instance open");
-        if (open_asset_path_.empty()) return fail("asset path unknown");
+        const auto fail = [&](std::string m)
+        {
+            if (err)
+            {
+                *err = std::move(m);
+            }
+            return false;
+        };
+        if (!asset_manager_)
+        {
+            return fail("asset services not wired");
+        }
+        if (open_asset_id_.is_nil())
+        {
+            return fail("no instance open");
+        }
+        if (open_asset_path_.empty())
+        {
+            return fail("asset path unknown");
+        }
 
         (void)asset_manager_->ensureAsset(open_asset_id_);
         auto* a = asset_manager_->fetchAssetAs<lux::asset::MaterialInstanceAsset>(open_asset_id_);
-        if (!a) return fail("instance no longer registered");
+        if (!a)
+        {
+            return fail("instance no longer registered");
+        }
         a->setData(std::make_unique<lux::asset::MaterialInstanceData>(inst_edit_));
 
         lux::asset::MaterialInstanceSerDeser ser(asset_manager_);
         if (const auto e = ser.exportAsLuxAsset(open_asset_id_, open_asset_path_);
             e != lux::asset::EAssetError::SUCCESS)
-            return fail(lux::format("export failed (err={})", static_cast<int>(e)));
+            {
+                return fail(lux::format("export failed (err={})", static_cast<int>(e)));
+            }
 
-        if (thumbnails_) thumbnails_->invalidate(open_asset_id_);   // 随时可调(帧关延迟归还)
+        if (thumbnails_)
+        {
+            thumbnails_->invalidate(open_asset_id_);   // 随时可调(帧关延迟归还)
+        }
         asset_manager_->notifyContentChanged(open_asset_id_);
         if (events_)
         {
@@ -1447,7 +1690,9 @@ namespace lux::editor
         }
         ImGui::SameLine();
         if (ImGui::Button("Revert"))
+        {
             openInstanceAsset(open_asset_id_);   // 重读数据 + 重推预览
+        }
         ImGui::SameLine();
         if (ImGui::Button("Close"))
         {
@@ -1463,11 +1708,19 @@ namespace lux::editor
         {
             std::string parent_name = "?";
             if (registry_)
+            {
                 if (const auto* m = registry_->find(inst_edit_.parent_material_id))
+                {
                     parent_name = m->name;
+                }
+            }
             ImGui::TextDisabled("parent: %s", parent_name.c_str());
         }
-        if (!status_.empty()) { ImGui::SameLine(); ImGui::TextUnformatted(status_.c_str()); }
+        if (!status_.empty())
+        {
+            ImGui::SameLine();
+            ImGui::TextUnformatted(status_.c_str());
+        }
 
         bool content_dirty = false;   // 换刀(render-state 影响 PSO)
 
@@ -1504,12 +1757,17 @@ namespace lux::editor
         // 参数/贴图 override 的快路径推送在 schema 钩子里(instanceParamsChanged);
         // 贴图 bindless 翻转的补推在 paint() 共用尾段;预览在共用预览窗。
         if (content_dirty)
+        {
             pushInstancePreview();
+        }
     }
 
     void MaterialGraphPanel::instanceParamsChanged()
     {
-        if (!preview_) return;
+        if (!preview_)
+        {
+            return;
+        }
         const auto gd = buildInstanceEffective();
         std::memcpy(last_tex_bindless_, gd.tex_bindless, sizeof(last_tex_bindless_));
         preview_->updateGraphParams(gd);
@@ -1527,15 +1785,22 @@ namespace lux::editor
         const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
         if (!ImGui::BeginPopupModal(kId, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
             return;
+        }
 
         ImGui::TextUnformatted("Asset name:");
         ImGui::SetNextItemWidth(300.0f);
-        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        if (ImGui::IsWindowAppearing())
+        {
+            ImGui::SetKeyboardFocusHere();
+        }
         const bool enter = ImGui::InputText("##savename", &save_name_,
                                              ImGuiInputTextFlags_EnterReturnsTrue);
         if (!save_status_.empty())
+        {
             ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", save_status_.c_str());
+        }
 
         // Destination preview — the user always sees WHERE this will land, as
         // the engine virtual path (the /Game mount over the content root).
@@ -1576,7 +1841,10 @@ namespace lux::editor
         {
             for (const auto& [slot, bind] : slot_texture_)
             {
-                if (slot >= lux::render::GraphMaterialData::kMaxTextures) continue;
+                if (slot >= lux::render::GraphMaterialData::kMaxTextures)
+                {
+                    continue;
+                }
                 d.tex_bindless[slot] = preview_->resolveTextureIndex(bind.uuid);
                 d.tex_mask |= (1u << slot);
             }
@@ -1590,15 +1858,23 @@ namespace lux::editor
         if (mode_ == EEditMode::INSTANCE)
         {
             if (slot >= lux::asset::MaterialInstanceData::kMaxTextures)
+            {
                 return {};
+            }
             const bool ov = (inst_edit_.tex_override_mask & (1u << slot)) != 0u;
             const auto& tid = ov ? inst_edit_.texture_slot_ids[slot]
                                  : inst_parent_tex_[slot];
             if (tid.is_nil())
+            {
                 return {};
+            }
             if (registry_)
+            {
                 if (const auto* m = registry_->find(tid))
+                {
                     return m->name;
+                }
+            }
             return "(texture)";
         }
         const auto it = slot_texture_.find(slot);
@@ -1610,7 +1886,10 @@ namespace lux::editor
     // record the slot->texture binding; the per-frame push streams it live.
     void MaterialGraphPanel::openTexturePicker(std::uint32_t slot)
     {
-        if (!registry_) return;
+        if (!registry_)
+        {
+            return;
+        }
         std::vector<std::string>            names;
         std::vector<lux::asset::asset_id_t> uuids;
         for (std::uint32_t idx : registry_->ofType(lux::asset::EAssetType::TEXTURE))
@@ -1624,7 +1903,9 @@ namespace lux::editor
             [this, slot, uuids, names](std::uint32_t picked)
             {
                 if (picked >= uuids.size())
+                {
                     return;
+                }
                 if (mode_ == EEditMode::INSTANCE)
                 {
                     // R3:实例模式选图 = 写贴图 override(picker 只在
@@ -1644,25 +1925,35 @@ namespace lux::editor
         auto& commands = editor_.commands();
 
         if (ImGui::Button("Compile"))
+        {
             compile();
+        }
         ImGui::SameLine();
         ImGui::BeginDisabled(!commands.canUndo());
         if (ImGui::Button("Undo"))
+        {
             editor_.undo();
+        }
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::BeginDisabled(!commands.canRedo());
         if (ImGui::Button("Redo"))
+        {
             editor_.redo();
+        }
         ImGui::EndDisabled();
         ImGui::SameLine();
         if (ImGui::Button("Frame"))
+        {
             editor_.navigateToContent();
+        }
         ImGui::SameLine();
         ImGui::Checkbox("GLSL", &show_glsl_);
         ImGui::SameLine();
         if (ImGui::Button(show_preview_ ? "Hide Preview" : "Show Preview"))
+        {
             show_preview_ = !show_preview_;
+        }
 
         // "Save" — in-place overwrite of the OPEN asset (id + path recorded by
         // openAsset / saveAsAsset); disabled on the default graph. Ctrl+S while
@@ -1678,12 +1969,16 @@ namespace lux::editor
         {
             std::string err;
             if (!saveInPlace(&err))
+            {
                 save_status_ = "save failed: " + err;
+            }
             status_ = save_status_;
         }
         ImGui::EndDisabled();
         if (!can_save_in_place && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        {
             ImGui::SetTooltip("No asset open — use Save as Asset first.");
+        }
 
         // "Save as Asset" — only when a project is open (we write under its
         // content root) and the manager is wired.
@@ -1692,7 +1987,10 @@ namespace lux::editor
         ImGui::BeginDisabled(!can_save);
         if (ImGui::Button("Save as Asset"))
         {
-            if (save_name_.empty()) save_name_ = "GraphMaterial";
+            if (save_name_.empty())
+            {
+                save_name_ = "GraphMaterial";
+            }
             save_status_.clear();
             save_popup_open_ = true;
         }
@@ -1721,7 +2019,9 @@ namespace lux::editor
             ImGui::SetNextItemWidth(120.0f);
             ImGui::SliderFloat("cutoff", &rs.alpha_cutoff, 0.0f, 1.0f);
             if (ImGui::IsItemDeactivatedAfterEdit())
+            {
                 recompile = true;   // the cutoff is a baked literal in the discard
+            }
         }
         ImGui::SameLine();
         ImGui::Checkbox("double sided", &rs.double_sided);  // pure PSO state — no re-bake
@@ -1732,7 +2032,9 @@ namespace lux::editor
         }
 
         if (recompile)
+        {
             compile();
+        }
     }
 
     void MaterialGraphPanel::paint()
@@ -1764,9 +2066,13 @@ namespace lux::editor
         for (const auto& req : editor_.takeDeferredPopups())
         {
             if (req.kind == "texture_picker")
+            {
                 openTexturePicker(static_cast<std::uint32_t>(req.arg));
+            }
             else if (req.kind == "color_picker")
+            {
                 color_pick_node_ = static_cast<rdesc::node_id>(req.node.id);
+            }
         }
 
         // Bake-on-edit: any STRUCTURAL change (add/remove/connect/disconnect,
@@ -1809,7 +2115,10 @@ namespace lux::editor
                 {
                     ImGui::TextUnformatted(slot.name.c_str());
                     ImGuiColorEditFlags f = ImGuiColorEditFlags_Float;
-                    if (nameLooksLikeEmissive(slot.name)) f |= ImGuiColorEditFlags_HDR;
+                    if (nameLooksLikeEmissive(slot.name))
+                    {
+                        f |= ImGuiColorEditFlags_HDR;
+                    }
                     const int comps = static_cast<int>(slot.type) + 1;
                     if (mode_ == EEditMode::INSTANCE)
                     {
@@ -1836,7 +2145,9 @@ namespace lux::editor
                             ? ImGui::ColorPicker4("##pick", slot.dflt, f)
                             : ImGui::ColorPicker3("##pick", slot.dflt, f);
                         if (ch && preview_)
+                        {
                             preview_->updateGraphParams(buildGraphMaterial());
+                        }
                     }
                 }
                 ImGui::End();
@@ -1846,7 +2157,9 @@ namespace lux::editor
                 open = false;
             }
             if (!open)
+            {
                 color_pick_node_ = lux::rdesc::invalid_node;
+            }
         }
 
         // The texture picker popup — panel space (anchored at the mouse).

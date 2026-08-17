@@ -32,6 +32,9 @@ namespace lux::runtime
         RUNTIME_JOIN_FAILED
     };
 
+    template <typename T>
+    using MainCloseExp = lux::cxx::expected<T, EMainCloseError>;
+
     class LUX_FRAME_RUNTIME_PUBLIC MainCloseDriver final
     {
     public:
@@ -41,59 +44,39 @@ namespace lux::runtime
             std::chrono::steady_clock::duration watchdog =
                 std::chrono::seconds{30}) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            SceneCloseReport,
-            EMainCloseError>
+        [[nodiscard]] MainCloseExp<SceneCloseReport>
         close(SceneRuntimeCloseSender sender) noexcept;
-        [[nodiscard]] lux::cxx::expected<
-            SceneCloseReport,
-            EMainCloseError>
+        [[nodiscard]] MainCloseExp<SceneCloseReport>
         close(SceneRuntime& owner) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            ResidencyCloseReport,
-            EMainCloseError>
+        [[nodiscard]] MainCloseExp<ResidencyCloseReport>
         close(ResidencyCloseSender sender) noexcept;
-        [[nodiscard]] lux::cxx::expected<
-            ResidencyCloseReport,
-            EMainCloseError>
+        [[nodiscard]] MainCloseExp<ResidencyCloseReport>
         close(ResidencyAssembly& owner) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            AsyncRenderUploadCloseReport,
-            EMainCloseError>
+        [[nodiscard]] MainCloseExp<AsyncRenderUploadCloseReport>
         close(AsyncRenderUploadCloseSender sender) noexcept;
-        [[nodiscard]] lux::cxx::expected<
-            AsyncRenderUploadCloseReport,
-            EMainCloseError>
+        [[nodiscard]] MainCloseExp<AsyncRenderUploadCloseReport>
         close(AsyncRenderUploadService& owner) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, EMainCloseError>
+        [[nodiscard]] MainCloseExp<void>
         close(lux::logging::LogRouterCloseSender sender) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EMainCloseError>
+        [[nodiscard]] MainCloseExp<void>
         close(lux::logging::LogRouter& owner) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, EMainCloseError>
+        [[nodiscard]] MainCloseExp<void>
         close(lux::exec::AsyncScopeCloseSender sender) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EMainCloseError>
+        [[nodiscard]] MainCloseExp<void>
         close(lux::exec::AsyncScope& owner) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            lux::extensions::EngineExtensionsCloseReport,
-            EMainCloseError>
+        [[nodiscard]] MainCloseExp<lux::extensions::EngineExtensionsCloseReport>
         close(lux::extensions::EngineExtensionsCloseSender sender) noexcept;
-        [[nodiscard]] lux::cxx::expected<
-            lux::extensions::EngineExtensionsCloseReport,
-            EMainCloseError>
+        [[nodiscard]] MainCloseExp<lux::extensions::EngineExtensionsCloseReport>
         close(lux::extensions::EngineExtensions& owner) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            lux::exec::AsyncCloseReport,
-            EMainCloseError>
+        [[nodiscard]] MainCloseExp<lux::exec::AsyncCloseReport>
         close(lux::exec::AsyncRuntimeCloseSender sender) noexcept;
-        [[nodiscard]] lux::cxx::expected<
-            lux::exec::AsyncCloseReport,
-            EMainCloseError>
+        [[nodiscard]] MainCloseExp<lux::exec::AsyncCloseReport>
         close(lux::exec::AsyncRuntime& owner) noexcept;
 
     private:

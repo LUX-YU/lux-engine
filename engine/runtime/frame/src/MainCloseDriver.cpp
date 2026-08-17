@@ -75,7 +75,7 @@ namespace lux::runtime
         };
 
         template <class Result, class Sender>
-        [[nodiscard]] lux::cxx::expected<Result, EMainCloseError> drive(
+        [[nodiscard]] MainCloseExp<Result> drive(
             FrameCoordinator& coordinator,
             Sender sender,
             std::chrono::steady_clock::duration watchdog) noexcept
@@ -159,7 +159,7 @@ namespace lux::runtime
         };
 
         template <class Sender>
-        [[nodiscard]] lux::cxx::expected<void, EMainCloseError> driveVoid(
+        [[nodiscard]] MainCloseExp<void> driveVoid(
             FrameCoordinator& coordinator,
             Sender sender,
             std::chrono::steady_clock::duration watchdog) noexcept
@@ -200,46 +200,46 @@ namespace lux::runtime
         , watchdog_(watchdog)
     {}
 
-    lux::cxx::expected<SceneCloseReport, EMainCloseError>
+    MainCloseExp<SceneCloseReport>
     MainCloseDriver::close(SceneRuntimeCloseSender sender) noexcept
     {
         return drive<SceneCloseReport>(
             coordinator_, std::move(sender), watchdog_);
     }
 
-    lux::cxx::expected<SceneCloseReport, EMainCloseError>
+    MainCloseExp<SceneCloseReport>
     MainCloseDriver::close(SceneRuntime& owner) noexcept
     {
         return close(owner.closeAsync());
     }
 
-    lux::cxx::expected<ResidencyCloseReport, EMainCloseError>
+    MainCloseExp<ResidencyCloseReport>
     MainCloseDriver::close(ResidencyCloseSender sender) noexcept
     {
         return drive<ResidencyCloseReport>(
             coordinator_, std::move(sender), watchdog_);
     }
 
-    lux::cxx::expected<ResidencyCloseReport, EMainCloseError>
+    MainCloseExp<ResidencyCloseReport>
     MainCloseDriver::close(ResidencyAssembly& owner) noexcept
     {
         return close(owner.closeAsync());
     }
 
-    lux::cxx::expected<AsyncRenderUploadCloseReport, EMainCloseError>
+    MainCloseExp<AsyncRenderUploadCloseReport>
     MainCloseDriver::close(AsyncRenderUploadCloseSender sender) noexcept
     {
         return drive<AsyncRenderUploadCloseReport>(
             coordinator_, std::move(sender), watchdog_);
     }
 
-    lux::cxx::expected<AsyncRenderUploadCloseReport, EMainCloseError>
+    MainCloseExp<AsyncRenderUploadCloseReport>
     MainCloseDriver::close(AsyncRenderUploadService& owner) noexcept
     {
         return close(owner.closeAsync());
     }
 
-    lux::cxx::expected<void, EMainCloseError>
+    MainCloseExp<void>
     MainCloseDriver::close(lux::logging::LogRouterCloseSender sender) noexcept
     {
         auto report = drive<lux::logging::LogRouterStatistics>(
@@ -249,27 +249,25 @@ namespace lux::runtime
         return {};
     }
 
-    lux::cxx::expected<void, EMainCloseError>
+    MainCloseExp<void>
     MainCloseDriver::close(lux::logging::LogRouter& owner) noexcept
     {
         return close(owner.closeAsync());
     }
 
-    lux::cxx::expected<void, EMainCloseError>
+    MainCloseExp<void>
     MainCloseDriver::close(lux::exec::AsyncScopeCloseSender sender) noexcept
     {
         return driveVoid(coordinator_, std::move(sender), watchdog_);
     }
 
-    lux::cxx::expected<void, EMainCloseError>
+    MainCloseExp<void>
     MainCloseDriver::close(lux::exec::AsyncScope& owner) noexcept
     {
         return close(owner.closeAsync());
     }
 
-    lux::cxx::expected<
-        lux::extensions::EngineExtensionsCloseReport,
-        EMainCloseError>
+    MainCloseExp<lux::extensions::EngineExtensionsCloseReport>
     MainCloseDriver::close(
         lux::extensions::EngineExtensionsCloseSender sender) noexcept
     {
@@ -277,16 +275,14 @@ namespace lux::runtime
             coordinator_, std::move(sender), watchdog_);
     }
 
-    lux::cxx::expected<
-        lux::extensions::EngineExtensionsCloseReport,
-        EMainCloseError>
+    MainCloseExp<lux::extensions::EngineExtensionsCloseReport>
     MainCloseDriver::close(
         lux::extensions::EngineExtensions& owner) noexcept
     {
         return close(owner.closeAsync());
     }
 
-    lux::cxx::expected<lux::exec::AsyncCloseReport, EMainCloseError>
+    MainCloseExp<lux::exec::AsyncCloseReport>
     MainCloseDriver::close(lux::exec::AsyncRuntimeCloseSender sender) noexcept
     {
         auto report = drive<lux::exec::AsyncCloseReport>(
@@ -300,7 +296,7 @@ namespace lux::runtime
         return std::move(*report);
     }
 
-    lux::cxx::expected<lux::exec::AsyncCloseReport, EMainCloseError>
+    MainCloseExp<lux::exec::AsyncCloseReport>
     MainCloseDriver::close(lux::exec::AsyncRuntime& owner) noexcept
     {
         return close(owner.closeAsync());

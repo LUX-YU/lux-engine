@@ -28,9 +28,8 @@ namespace lux::runtime::spatial3d::detail
             : config(value)
         {}
 
-        [[nodiscard]] lux::cxx::expected<
-            std::shared_ptr<StaticCollider3DPrepareReservation>,
-            lux::exec::EAsyncSubmitError>
+        [[nodiscard]] StaticCollider3DSubmitExp<
+            std::shared_ptr<StaticCollider3DPrepareReservation>>
         reserve(
             std::uint64_t client_generation,
             std::size_t bytes) noexcept;
@@ -141,9 +140,8 @@ namespace lux::runtime::spatial3d::detail
         bool request_slot{true};
     };
 
-    lux::cxx::expected<
-        std::shared_ptr<StaticCollider3DPrepareReservation>,
-        lux::exec::EAsyncSubmitError>
+    StaticCollider3DSubmitExp<
+        std::shared_ptr<StaticCollider3DPrepareReservation>>
     StaticCollider3DPrepareControl::reserve(
         std::uint64_t client_generation,
         std::size_t bytes) noexcept
@@ -212,9 +210,8 @@ namespace lux::runtime::spatial3d
             return {error, std::move(detail)};
         }
 
-        [[nodiscard]] lux::cxx::expected<
-            lux::ecs::StaticHeightfieldBatch3D,
-            StaticCollider3DPrepareFailure>
+        [[nodiscard]] StaticCollider3DPrepareExp<
+            lux::ecs::StaticHeightfieldBatch3D>
         materializeBatch(
             lux::physics3d::StaticColliderBatch3DBlobV1 blob,
             const lux::ecs::ResolvedTransform3DComponent& transform)
@@ -396,9 +393,7 @@ namespace lux::runtime::spatial3d
             static_cast<bool>(operation_);
     }
 
-    lux::cxx::expected<
-        StaticCollider3DPrepareSender,
-        lux::exec::EAsyncSubmitError>
+    StaticCollider3DSubmitExp<StaticCollider3DPrepareSender>
     StaticCollider3DPrepareClient::execute(
         BuildStaticCollider3D request) const noexcept
     {
@@ -431,9 +426,7 @@ namespace lux::runtime::spatial3d
             lux::exec::AsyncSubmitOptions{.accounted_bytes = *accounted});
     }
 
-    lux::cxx::expected<
-        StaticCollider3DPrepareService,
-        lux::exec::AsyncAssemblyFailure>
+    StaticCollider3DAssemblyExp<StaticCollider3DPrepareService>
     StaticCollider3DPrepareService::addTo(
         lux::exec::AsyncRuntimeBuilder& builder,
         StaticCollider3DPrepareQueueConfig config)

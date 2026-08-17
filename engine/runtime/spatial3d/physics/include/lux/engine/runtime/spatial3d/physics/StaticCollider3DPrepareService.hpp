@@ -46,6 +46,18 @@ namespace lux::runtime::spatial3d
         std::string detail;
     };
 
+    template <typename T>
+    using StaticCollider3DPrepareExp =
+        lux::cxx::expected<T, StaticCollider3DPrepareFailure>;
+
+    template <typename T>
+    using StaticCollider3DSubmitExp =
+        lux::cxx::expected<T, lux::exec::EAsyncSubmitError>;
+
+    template <typename T>
+    using StaticCollider3DAssemblyExp =
+        lux::cxx::expected<T, lux::exec::AsyncAssemblyFailure>;
+
     struct StaticCollider3DPrepareServiceSnapshot final
     {
         std::size_t active_requests{0u};
@@ -155,9 +167,7 @@ namespace lux::runtime::spatial3d
     public:
         StaticCollider3DPrepareClient() noexcept = default;
 
-        [[nodiscard]] lux::cxx::expected<
-            StaticCollider3DPrepareSender,
-            lux::exec::EAsyncSubmitError>
+        [[nodiscard]] StaticCollider3DSubmitExp<StaticCollider3DPrepareSender>
         execute(BuildStaticCollider3D request) const noexcept;
 
         [[nodiscard]] explicit operator bool() const noexcept;
@@ -179,9 +189,8 @@ namespace lux::runtime::spatial3d
         StaticCollider3DPrepareService final
     {
     public:
-        [[nodiscard]] static lux::cxx::expected<
-            StaticCollider3DPrepareService,
-            lux::exec::AsyncAssemblyFailure>
+        [[nodiscard]] static StaticCollider3DAssemblyExp<
+            StaticCollider3DPrepareService>
         addTo(
             lux::exec::AsyncRuntimeBuilder& builder,
             StaticCollider3DPrepareQueueConfig config = {});

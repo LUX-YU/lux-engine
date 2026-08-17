@@ -126,7 +126,9 @@ namespace lux::authoring
         {
             auto encoded = encodeWorldSource(source);
             if (!encoded)
+            {
                 return lux::cxx::unexpected(std::move(encoded.error()));
+            }
             return lux::cxx::algorithm::Sha256::hash(*encoded);
         }
 
@@ -137,10 +139,14 @@ namespace lux::authoring
         {
             std::ifstream stream(path, std::ios::binary | std::ios::ate);
             if (!stream)
+            {
                 return lux::cxx::unexpected(std::string{"index object is absent"});
+            }
             const auto end = stream.tellg();
             if (end < 0 || static_cast<std::uint64_t>(end) > maximum_bytes)
+            {
                 return lux::cxx::unexpected(std::string{"index object is too large"});
+            }
             std::vector<std::byte> bytes(static_cast<std::size_t>(end));
             stream.seekg(0);
             if (!bytes.empty() && !stream.read(
@@ -249,7 +255,9 @@ namespace lux::authoring
         {
             const auto normalized = lower(value);
             if (normalized.empty())
+            {
                 return;
+            }
             const auto width = std::min<std::size_t>(3u, normalized.size());
             for (std::size_t offset = 0u;
                  offset + width <= normalized.size(); ++offset)
@@ -278,7 +286,9 @@ namespace lux::authoring
             const SearchRow& right) noexcept
         {
             if (left.token != right.token)
+            {
                 return left.token < right.token;
+            }
             return std::ranges::lexicographical_compare(
                 left.actor.value().as_bytes(),
                 right.actor.value().as_bytes());
@@ -314,7 +324,9 @@ namespace lux::authoring
                 const lux::spatial::Position2D value{
                     reader.readPod<double>(), reader.readPod<double>()};
                 if (!reader.ok() || !lux::spatial::isFinite(value))
+                {
                     return false;
+                }
                 position = value;
                 return true;
             }
@@ -325,7 +337,9 @@ namespace lux::authoring
                     reader.readPod<double>(),
                     reader.readPod<double>()};
                 if (!reader.ok() || !lux::spatial::isFinite(value))
+                {
                     return false;
+                }
                 position = value;
                 return true;
             }
@@ -343,11 +357,15 @@ namespace lux::authoring
             writer.writeUuid(actor.space.value());
             writePosition(writer, actor.position);
             for (const auto value : actor.bounds_half_extent)
+            {
                 writer.writePod(value);
+            }
             writer.writePod(
                 static_cast<std::uint32_t>(actor.data_layers.size()));
             for (const auto& layer : actor.data_layers)
+            {
                 writer.writeString(layer.name());
+            }
         }
 
         [[nodiscard]] bool readActor(
@@ -372,13 +390,17 @@ namespace lux::authoring
                 reader.readPod<float>()};
             const auto layer_count = reader.readPod<std::uint32_t>();
             if (!reader.ok() || layer_count > kMaximumLayersPerActor)
+            {
                 return false;
+            }
             actor.data_layers.reserve(layer_count);
             for (std::uint32_t layer = 0u; layer < layer_count; ++layer)
             {
                 lux::authoring::DataLayerId id{reader.readString()};
                 if (!id.valid())
+                {
                     return false;
+                }
                 actor.data_layers.push_back(std::move(id));
             }
             return reader.ok();
@@ -408,7 +430,9 @@ namespace lux::authoring
                 actor.space,
                 &lux::authoring::PartitionSpaceDescriptor::id);
             if (space == source.spaces.end())
+            {
                 return std::nullopt;
+            }
             lux::authoring::WorldCellKey cell;
             cell.topology = space->topology;
             const auto coordinate = [&](double value)
@@ -416,14 +440,18 @@ namespace lux::authoring
             {
                 if (!std::isfinite(value) ||
                     !lux::authoring::isValidCellEdge(space->cell_edge))
+                {
                     return std::nullopt;
+                }
                 const auto result = std::floor(
                     value / static_cast<double>(space->cell_edge));
                 if (result < static_cast<double>(
                         std::numeric_limits<std::int64_t>::min()) ||
                     result > static_cast<double>(
                         std::numeric_limits<std::int64_t>::max()))
+                {
                     return std::nullopt;
+                }
                 return static_cast<std::int64_t>(result);
             };
             if (space->topology ==
@@ -432,11 +460,15 @@ namespace lux::authoring
                 const auto* position = std::get_if<
                     lux::spatial::Position2D>(&actor.position);
                 if (!position)
+                {
                     return std::nullopt;
+                }
                 const auto x = coordinate(position->x);
                 const auto y = coordinate(position->y);
                 if (!x || !y)
+                {
                     return std::nullopt;
+                }
                 cell.coordinate = lux::authoring::PlanarCellCoord{*x, *y};
             }
             else if (space->topology ==
@@ -445,11 +477,15 @@ namespace lux::authoring
                 const auto* position = std::get_if<
                     lux::spatial::Position3D>(&actor.position);
                 if (!position)
+                {
                     return std::nullopt;
+                }
                 const auto x = coordinate(position->x);
                 const auto z = coordinate(position->z);
                 if (!x || !z)
+                {
                     return std::nullopt;
+                }
                 cell.coordinate = lux::authoring::PlanarCellCoord{*x, *z};
             }
             else
@@ -457,12 +493,16 @@ namespace lux::authoring
                 const auto* position = std::get_if<
                     lux::spatial::Position3D>(&actor.position);
                 if (!position)
+                {
                     return std::nullopt;
+                }
                 const auto x = coordinate(position->x);
                 const auto y = coordinate(position->y);
                 const auto z = coordinate(position->z);
                 if (!x || !y || !z)
+                {
                     return std::nullopt;
+                }
                 cell.coordinate = lux::authoring::VolumeCellCoord{*x, *y, *z};
             }
             return lux::authoring::macroCoordOf(
@@ -532,10 +572,14 @@ namespace lux::authoring
             writer.writeUuid(page);
             writer.writePod(static_cast<std::uint32_t>(actors.size()));
             for (const auto& actor : actors)
+            {
                 writeActor(writer, actor);
+            }
             if (bytes.size() > kMaximumObjectBytes)
+            {
                 return lux::cxx::unexpected(
                     std::string{"Descriptor Index object is too large"});
+            }
             return bytes;
         }
 
@@ -573,7 +617,9 @@ namespace lux::authoring
             {
                 WorldDescriptorIndexActor actor;
                 if (!readActor(reader, actor))
+                {
                     break;
+                }
                 actors.push_back(std::move(actor));
             }
             if (!reader.ok() || !reader.eof() || actors.size() != count ||
@@ -606,11 +652,15 @@ namespace lux::authoring
         {
             auto encoded = encodeObject(kind, bucket, page, std::move(actors));
             if (!encoded)
+            {
                 return lux::cxx::unexpected(std::move(encoded.error()));
+            }
             const auto digest = lux::cxx::algorithm::Sha256::hash(*encoded);
             auto written = atomicWrite(objectPath(cache_file, digest), *encoded);
             if (!written)
+            {
                 return lux::cxx::unexpected(std::move(written.error()));
+            }
             ArchiveReader reader(encoded->data(), encoded->size());
             (void)reader.readPod<std::uint32_t>();
             (void)reader.readPod<std::uint32_t>();
@@ -720,11 +770,15 @@ namespace lux::authoring
         {
             auto encoded = encodeSearchObject(bucket, std::move(rows));
             if (!encoded)
+            {
                 return lux::cxx::unexpected(std::move(encoded.error()));
+            }
             const auto digest = lux::cxx::algorithm::Sha256::hash(*encoded);
             auto written = atomicWrite(objectPath(cache_file, digest), *encoded);
             if (!written)
+            {
                 return lux::cxx::unexpected(std::move(written.error()));
+            }
             ArchiveReader reader(encoded->data(), encoded->size());
             (void)reader.readPod<std::uint32_t>();
             (void)reader.readPod<std::uint32_t>();
@@ -807,21 +861,29 @@ namespace lux::authoring
             auto bytes = readFile(
                 objectPath(cache_file, reference.digest), kMaximumObjectBytes);
             if (!bytes)
+            {
                 return lux::cxx::unexpected(std::move(bytes.error()));
+            }
             if (lux::cxx::algorithm::Sha256::hash(*bytes) != reference.digest)
+            {
                 return lux::cxx::unexpected(
                     std::string{"Descriptor Index object digest mismatch"});
+            }
             auto decoded = decodeObject(
                 *bytes, kind, bucket, page, reference.actor_count);
             if (!decoded)
+            {
                 return lux::cxx::unexpected(std::move(decoded.error()));
+            }
             const WorldDescriptorPageReference* expected_page = nullptr;
             if (kind == EObjectKind::PAGE)
             {
                 const auto found = page_by_id.find(idKey(page));
                 if (found == page_by_id.end())
+                {
                     return lux::cxx::unexpected(
                         std::string{"Descriptor Index object names an absent Page"});
+                }
                 expected_page = &source.descriptor_pages[found->second];
             }
             std::unordered_set<std::string> ids;
@@ -847,7 +909,9 @@ namespace lux::authoring
             auto owned = std::make_shared<const
                 std::vector<WorldDescriptorIndexActor>>(std::move(*decoded));
             if (bytes->size() > kActorObjectCacheBytes)
+            {
                 return owned;
+            }
             object_lru.push_front(key);
             object_cache.emplace(
                 key, CachedObject{owned, bytes->size(), object_lru.begin()});
@@ -881,7 +945,9 @@ namespace lux::authoring
             auto bytes = readFile(
                 objectPath(cache_file, reference.digest), kMaximumObjectBytes);
             if (!bytes)
+            {
                 return lux::cxx::unexpected(std::move(bytes.error()));
+            }
             if (lux::cxx::algorithm::Sha256::hash(*bytes) != reference.digest)
             {
                 return lux::cxx::unexpected(
@@ -890,11 +956,15 @@ namespace lux::authoring
             auto decoded = decodeSearchObject(
                 *bytes, bucket, reference.actor_count);
             if (!decoded)
+            {
                 return lux::cxx::unexpected(std::move(decoded.error()));
+            }
             auto owned = std::make_shared<const std::vector<SearchRow>>(
                 std::move(*decoded));
             if (bytes->size() > kSearchObjectCacheBytes)
+            {
                 return owned;
+            }
             search_lru.push_front(bucket);
             search_cache.emplace(
                 bucket,
@@ -928,7 +998,9 @@ namespace lux::authoring
             data->source = source;
             data->cache_file = cache_file;
             for (const auto& page : source.descriptor_pages)
+            {
                 data->actor_count += page.actor_count;
+            }
             data->rebuildPageMaps();
             return data;
         }
@@ -982,13 +1054,17 @@ namespace lux::authoring
             }
             std::uint32_t bucket_count = 0u;
             for (const auto& bucket : data.actor_buckets)
+            {
                 bucket_count += bucket.has_value() ? 1u : 0u;
+            }
             writer.writePod(bucket_count);
             for (std::uint16_t bucket = 0u;
                  bucket < data.actor_buckets.size(); ++bucket)
             {
                 if (!data.actor_buckets[bucket])
+                {
                     continue;
+                }
                 writer.writePod(bucket);
                 writer.writeBytes(
                     data.actor_buckets[bucket]->digest.data(),
@@ -997,13 +1073,17 @@ namespace lux::authoring
             }
             std::uint32_t search_bucket_count = 0u;
             for (const auto& bucket : data.search_buckets)
+            {
                 search_bucket_count += bucket.has_value() ? 1u : 0u;
+            }
             writer.writePod(search_bucket_count);
             for (std::uint16_t bucket = 0u;
                  bucket < data.search_buckets.size(); ++bucket)
             {
                 if (!data.search_buckets[bucket])
+                {
                     continue;
+                }
                 writer.writePod(bucket);
                 writer.writeBytes(
                     data.search_buckets[bucket]->digest.data(),
@@ -1023,12 +1103,16 @@ namespace lux::authoring
         {
             auto digest = computeSourceDigest(source);
             if (!digest)
+            {
                 return lux::cxx::unexpected(std::move(digest.error()));
+            }
             auto data = WorldDescriptorIndexAccess::makeData(
                 source, cache_file, *digest);
             if (data->actor_count > kMaximumIndexActors)
+            {
                 return lux::cxx::unexpected(
                     std::string{"World has too many Actor descriptors"});
+            }
 
             const auto nonce = std::chrono::steady_clock::now()
                 .time_since_epoch().count();
@@ -1037,8 +1121,10 @@ namespace lux::authoring
             std::error_code error;
             std::filesystem::create_directories(staging, error);
             if (error)
+            {
                 return lux::cxx::unexpected(
                     std::string{"cannot create Descriptor Index staging directory"});
+            }
 
             std::array<bool, kActorBucketCount> used_buckets{};
             std::array<bool, kSearchBucketCount> used_search_buckets{};
@@ -1065,7 +1151,9 @@ namespace lux::authoring
                         path, std::ios::binary | std::ios::trunc);
                 }
                 if (!*stream)
+                {
                     return nullptr;
+                }
                 return stream.get();
             };
 
@@ -1073,7 +1161,9 @@ namespace lux::authoring
             {
                 auto page = load_page(reference);
                 if (!page)
+                {
                     return lux::cxx::unexpected(std::move(page.error()));
+                }
                 if (page->id != reference.id ||
                     page->actors.size() != reference.actor_count)
                 {
@@ -1086,8 +1176,10 @@ namespace lux::authoring
                 {
                     auto indexed = indexActor(actor, page->id);
                     if (!validActor(source, indexed, reference))
+                    {
                         return lux::cxx::unexpected(
                             std::string{"Descriptor Page has invalid spatial metadata"});
+                    }
                     page_actors.push_back(indexed);
                     for (const auto token : searchTokens(indexed))
                     {
@@ -1158,15 +1250,21 @@ namespace lux::authoring
                     page->id,
                     std::move(page_actors));
                 if (!page_object)
+                {
                     return lux::cxx::unexpected(std::move(page_object.error()));
+                }
                 data->page_objects.emplace(
                     idKey(page->id), std::move(*page_object));
             }
 
             for (auto& stream : actor_shards)
+            {
                 stream.reset();
+            }
             for (auto& stream : search_shards)
+            {
                 stream.reset();
+            }
 
             for (std::size_t shard = 0u;
                  shard < kStagingShardCount; ++shard)
@@ -1174,7 +1272,9 @@ namespace lux::authoring
                 const auto path = staging /
                     ("actor-shard-" + std::to_string(shard) + ".rows");
                 if (!std::filesystem::exists(path))
+                {
                     continue;
+                }
                 std::ifstream stream(path, std::ios::binary);
                 std::array<
                     std::vector<WorldDescriptorIndexActor>,
@@ -1212,7 +1312,9 @@ namespace lux::authoring
                     const auto bucket = static_cast<std::uint16_t>(
                         shard * kBucketsPerStagingShard + local);
                     if (!used_buckets[bucket])
+                    {
                         continue;
+                    }
                     auto object = writeObject(
                         cache_file,
                         EObjectKind::ACTOR_BUCKET,
@@ -1234,7 +1336,9 @@ namespace lux::authoring
                 const auto path = staging /
                     ("search-shard-" + std::to_string(shard) + ".rows");
                 if (!std::filesystem::exists(path))
+                {
                     continue;
+                }
                 std::ifstream stream(path, std::ios::binary);
                 std::array<
                     std::vector<SearchRow>,
@@ -1272,7 +1376,9 @@ namespace lux::authoring
                     const auto bucket = static_cast<std::uint16_t>(
                         shard * kBucketsPerStagingShard + local);
                     if (!used_search_buckets[bucket])
+                    {
                         continue;
+                    }
                     auto object = writeSearchObject(
                         cache_file, bucket, std::move(shard_rows[local]));
                     if (!object)
@@ -1286,10 +1392,14 @@ namespace lux::authoring
 
             auto root = encodeRoot(*data);
             if (!root)
+            {
                 return lux::cxx::unexpected(std::move(root.error()));
+            }
             auto committed = atomicWrite(cache_file, *root);
             if (!committed)
+            {
                 return lux::cxx::unexpected(std::move(committed.error()));
+            }
             std::filesystem::remove_all(staging, error);
 
             return WorldDescriptorIndexAccess::adopt(std::move(data));
@@ -1336,7 +1446,9 @@ namespace lux::authoring
             by_id;
         by_id.reserve(pages.size());
         for (const auto& page : pages)
+        {
             by_id.emplace(idKey(page.id), &page);
+        }
         return buildIndex(
             source,
             cache_file,
@@ -1345,8 +1457,10 @@ namespace lux::authoring
             {
                 const auto found = by_id.find(idKey(reference.id));
                 if (found == by_id.end())
+                {
                     return lux::cxx::unexpected(
                         std::string{"Descriptor Index input is incomplete"});
+                }
                 return *found->second;
             });
     }
@@ -1358,10 +1472,14 @@ namespace lux::authoring
     {
         auto expected_digest = computeSourceDigest(source);
         if (!expected_digest)
+        {
             return lux::cxx::unexpected(std::move(expected_digest.error()));
+        }
         auto bytes = readFile(cache_file, kMaximumRootBytes);
         if (!bytes)
+        {
             return lux::cxx::unexpected(std::move(bytes.error()));
+        }
         ArchiveReader reader(bytes->data(), bytes->size());
         if (reader.readPod<std::uint32_t>() != kWorldDescriptorIndexMagic ||
             reader.readPod<std::uint32_t>() != kWorldDescriptorIndexVersion)
@@ -1386,8 +1504,10 @@ namespace lux::authoring
         auto data = WorldDescriptorIndexAccess::makeData(
             source, cache_file, source_digest);
         if (data->actor_count != actor_count)
+        {
             return lux::cxx::unexpected(
                 std::string{"World Descriptor Index Actor count mismatch"});
+        }
         for (std::uint32_t index = 0u; index < page_count; ++index)
         {
             const auto page = reader.readUuid();
@@ -1409,8 +1529,10 @@ namespace lux::authoring
         }
         const auto bucket_count = reader.readPod<std::uint32_t>();
         if (!reader.ok() || bucket_count > kActorBucketCount)
+        {
             return lux::cxx::unexpected(
                 std::string{"malformed Descriptor Index bucket table"});
+        }
         std::uint64_t bucket_actors = 0u;
         for (std::uint32_t index = 0u; index < bucket_count; ++index)
         {
@@ -1455,8 +1577,10 @@ namespace lux::authoring
             data->search_buckets[bucket] = std::move(reference);
         }
         if (!reader.ok() || !reader.eof() || bucket_actors != actor_count)
+        {
             return lux::cxx::unexpected(
                 std::string{"malformed World Descriptor Index root"});
+        }
         return WorldDescriptorIndexAccess::adopt(std::move(data));
     }
 
@@ -1466,11 +1590,15 @@ namespace lux::authoring
         std::span<const WorldDescriptorPageDocument> changed_pages)
     {
         if (!data_ || data_->cache_file.empty() || source.world != data_->world)
+        {
             return lux::cxx::unexpected(
                 std::string{"Descriptor Index update has no durable root"});
+        }
         auto digest = computeSourceDigest(source);
         if (!digest)
+        {
             return lux::cxx::unexpected(std::move(digest.error()));
+        }
         auto next = WorldDescriptorIndexAccess::makeData(
             source, data_->cache_file, *digest);
         next->page_objects = data_->page_objects;
@@ -1497,7 +1625,9 @@ namespace lux::authoring
         for (const auto& [page, _] : data_->page_objects)
         {
             if (!next->page_by_id.contains(page))
+            {
                 replacements.emplace(page, nullptr);
+            }
         }
         for (const auto& page : source.descriptor_pages)
         {
@@ -1536,13 +1666,17 @@ namespace lux::authoring
                 auto actors = data_->loadObject(
                     EObjectKind::PAGE, 0u, page_id, old_reference->second);
                 if (!actors)
+                {
                     return lux::cxx::unexpected(std::move(actors.error()));
+                }
                 for (const auto& actor : **actors)
                 {
                     affected_buckets.insert(actorBucket(actor.actor));
                     removed_actor_ids.insert(idKey(actor.actor.value()));
                     for (const auto token : searchTokens(actor))
+                    {
                         affected_search_buckets.insert(searchBucket(token));
+                    }
                 }
             }
             if (replacement)
@@ -1552,7 +1686,9 @@ namespace lux::authoring
                     affected_buckets.insert(actorBucket(actor.id));
                     const auto indexed = indexActor(actor, replacement->id);
                     for (const auto token : searchTokens(indexed))
+                    {
                         affected_search_buckets.insert(searchBucket(token));
+                    }
                 }
             }
         }
@@ -1568,7 +1704,9 @@ namespace lux::authoring
                     {},
                     *data_->actor_buckets[bucket]);
                 if (!old)
+                {
                     return lux::cxx::unexpected(std::move(old.error()));
+                }
                 for (const auto& actor : **old)
                 {
                     if (!replaced_page_ids.contains(
@@ -1581,11 +1719,15 @@ namespace lux::authoring
             for (const auto& [_, replacement] : replacements)
             {
                 if (!replacement)
+                {
                     continue;
+                }
                 for (const auto& actor : replacement->actors)
                 {
                     if (actorBucket(actor.id) == bucket)
+                    {
                         actors.push_back(indexActor(actor, replacement->id));
+                    }
                 }
             }
             if (actors.empty())
@@ -1600,7 +1742,9 @@ namespace lux::authoring
                 {},
                 std::move(actors));
             if (!object)
+            {
                 return lux::cxx::unexpected(std::move(object.error()));
+            }
             next->actor_buckets[bucket] = std::move(*object);
         }
 
@@ -1612,7 +1756,9 @@ namespace lux::authoring
                 auto old = data_->loadSearchObject(
                     bucket, *data_->search_buckets[bucket]);
                 if (!old)
+                {
                     return lux::cxx::unexpected(std::move(old.error()));
+                }
                 rows.reserve((*old)->size());
                 for (const auto& row : **old)
                 {
@@ -1626,7 +1772,9 @@ namespace lux::authoring
             for (const auto& [_, replacement] : replacements)
             {
                 if (!replacement)
+                {
                     continue;
+                }
                 for (const auto& actor : replacement->actors)
                 {
                     const auto indexed = indexActor(actor, replacement->id);
@@ -1645,7 +1793,9 @@ namespace lux::authoring
             auto object = writeSearchObject(
                 next->cache_file, bucket, std::move(rows));
             if (!object)
+            {
                 return lux::cxx::unexpected(std::move(object.error()));
+            }
             next->search_buckets[bucket] = std::move(*object);
         }
 
@@ -1680,16 +1830,22 @@ namespace lux::authoring
                 replacement->id,
                 std::move(actors));
             if (!object)
+            {
                 return lux::cxx::unexpected(std::move(object.error()));
+            }
             next->page_objects[page_key] = std::move(*object);
         }
 
         auto root = encodeRoot(*next);
         if (!root)
+        {
             return lux::cxx::unexpected(std::move(root.error()));
+        }
         auto committed = atomicWrite(next->cache_file, *root);
         if (!committed)
+        {
             return lux::cxx::unexpected(std::move(committed.error()));
+        }
         data_ = std::move(next);
         return {};
     }
@@ -1698,17 +1854,23 @@ namespace lux::authoring
         lux::entity_scene::PersistentEntityId actor) const
     {
         if (!data_ || actor.empty())
+        {
             return std::nullopt;
+        }
         const auto bucket = actorBucket(actor);
         if (!data_->actor_buckets[bucket])
+        {
             return std::nullopt;
+        }
         const auto loaded = data_->loadObject(
             EObjectKind::ACTOR_BUCKET,
             bucket,
             {},
             *data_->actor_buckets[bucket]);
         if (!loaded)
+        {
             return std::nullopt;
+        }
         const auto found = std::lower_bound(
             (*loaded)->begin(),
             (*loaded)->end(),
@@ -1728,7 +1890,9 @@ namespace lux::authoring
         uuids::uuid page_id) const noexcept
     {
         if (!data_)
+        {
             return nullptr;
+        }
         const auto found = data_->page_by_id.find(idKey(page_id));
         return found == data_->page_by_id.end()
             ? nullptr
@@ -1740,7 +1904,9 @@ namespace lux::authoring
         const lux::authoring::WorldMacroCoord& macro) const noexcept
     {
         if (!data_)
+        {
             return nullptr;
+        }
         const auto found = data_->page_by_macro.find(macroKey(space, macro));
         return found == data_->page_by_macro.end()
             ? nullptr
@@ -1752,17 +1918,25 @@ namespace lux::authoring
     {
         std::vector<lux::entity_scene::PersistentEntityId> result;
         if (!data_)
+        {
             return result;
+        }
         const auto reference = data_->page_objects.find(idKey(page_id));
         if (reference == data_->page_objects.end())
+        {
             return result;
+        }
         const auto loaded = data_->loadObject(
             EObjectKind::PAGE, 0u, page_id, reference->second);
         if (!loaded)
+        {
             return result;
+        }
         result.reserve((*loaded)->size());
         for (const auto& actor : **loaded)
+        {
             result.push_back(actor.actor);
+        }
         return result;
     }
 
@@ -1773,20 +1947,26 @@ namespace lux::authoring
     {
         std::vector<WorldDescriptorIndexActor> result;
         if (!data_ || maximum == 0u)
+        {
             return result;
+        }
         result.reserve(maximum);
         const auto needle = lower(text);
         if (!needle.empty())
         {
             if (needle.size() > kMaximumIndexedTextBytes)
+            {
                 return result;
+            }
             std::vector<std::uint64_t> tokens;
             appendSearchTokens(needle, tokens);
             std::ranges::sort(tokens);
             tokens.erase(
                 std::unique(tokens.begin(), tokens.end()), tokens.end());
             if (tokens.empty())
+            {
                 return result;
+            }
             std::optional<std::uint64_t> selected_token;
             std::uint32_t selected_cost =
                 (std::numeric_limits<std::uint32_t>::max)();
@@ -1795,7 +1975,9 @@ namespace lux::authoring
                 const auto& reference =
                     data_->search_buckets[searchBucket(token)];
                 if (!reference)
+                {
                     return result;
+                }
                 if (reference->actor_count < selected_cost)
                 {
                     selected_token = token;
@@ -1806,7 +1988,9 @@ namespace lux::authoring
             const auto loaded = data_->loadSearchObject(
                 bucket, *data_->search_buckets[bucket]);
             if (!loaded)
+            {
                 return result;
+            }
             auto row = std::lower_bound(
                 (*loaded)->begin(),
                 (*loaded)->end(),
@@ -1829,10 +2013,14 @@ namespace lux::authoring
                     continue;
                 }
                 if (skipped++ < offset)
+                {
                     continue;
+                }
                 result.push_back(std::move(*actor));
                 if (result.size() == maximum)
+                {
                     break;
+                }
             }
             return result;
         }
@@ -1846,18 +2034,26 @@ namespace lux::authoring
             }
             const auto reference = data_->page_objects.find(idKey(page.id));
             if (reference == data_->page_objects.end())
+            {
                 continue;
+            }
             const auto loaded = data_->loadObject(
                 EObjectKind::PAGE, 0u, page.id, reference->second);
             if (!loaded)
+            {
                 continue;
+            }
             for (const auto& actor : **loaded)
             {
                 if (skipped++ < offset)
+                {
                     continue;
+                }
                 result.push_back(actor);
                 if (result.size() == maximum)
+                {
                     return result;
+                }
             }
         }
         return result;
@@ -1888,7 +2084,9 @@ namespace lux::authoring
     WorldDescriptorIndexStats WorldDescriptorIndex::stats() const noexcept
     {
         if (!data_)
+        {
             return {};
+        }
         return {
             data_->actor_count,
             data_->source.descriptor_pages.size(),

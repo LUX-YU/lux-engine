@@ -1295,9 +1295,8 @@ namespace lux::ecs
             if (!failure.reported)
             {
                 diagnoseRenderBridge(
-                    "[PixelField2DSubsystem] %.*s was refused (status %u); %s",
-                    static_cast<int>(operation.size()),
-                    operation.data(),
+                    "[PixelField2DSubsystem] {} was refused (status {}); {}",
+                    operation,
                     static_cast<unsigned>(status),
                     transient
                         ? "retrying after bounded backoff"
@@ -1318,10 +1317,9 @@ namespace lux::ecs
             if (!failure.reported)
             {
                 diagnoseRenderBridge(
-                    "[PixelField2DSubsystem] %.*s produced an invalid request; "
+                    "[PixelField2DSubsystem] {} produced an invalid request; "
                     "current input generation is latched",
-                    static_cast<int>(operation.size()),
-                    operation.data()
+                    operation
                 );
                 failure.reported = true;
             }
@@ -1390,10 +1388,9 @@ namespace lux::ecs
             {
                 diagnoseRenderBridge(
                     "[PixelField2DSubsystem] atlas slot protocol violation "
-                    "(slot %u): %.*s",
+                    "(slot {}): {}",
                     static_cast<unsigned>(slot),
-                    static_cast<int>(reason.size()),
-                    reason.data()
+                    reason
                 );
             }
         }

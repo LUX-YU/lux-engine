@@ -321,7 +321,7 @@ namespace lux::ecs
                                 {
                                     diagnoseRenderBridge(
                                         "[MeshInstanceSubsystem] add mesh instance "
-                                        "was refused (status %u); %s",
+                                        "was refused (status {}); {}",
                                         static_cast<unsigned>(reply.status),
                                         transient
                                             ? "retrying after bounded backoff"

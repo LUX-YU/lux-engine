@@ -540,7 +540,7 @@ namespace lux::ecs
                                 {
                                     diagnoseRenderBridge(
                                         "[Image2DSubsystem] add image was refused "
-                                        "(status %u); %s",
+                                        "(status {}); {}",
                                         static_cast<unsigned>(reply.status),
                                         transient
                                             ? "retrying after bounded backoff"

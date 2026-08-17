@@ -87,9 +87,8 @@ namespace lux::runtime::detail
             {
                 lux::ecs::diagnoseRenderBridge(
                     "[PrimaryViewPresentationSystem] command enqueue "
-                    "failed: %.*s",
-                    static_cast<int>(lux::ecs::toString(accepted.error()).size()),
-                    lux::ecs::toString(accepted.error()).data());
+                    "failed: {}",
+                    lux::ecs::toString(accepted.error()));
                 presentation_->snapshot_.command_pending = false;
                 dirty_ = true;
                 return;

@@ -1,5 +1,9 @@
 #pragma once
 
+#include <lux/engine/platform/FormatCompat.h>
+
+#include <utility>
+
 #include <cstddef>
 #include <cstdio>
 #include <functional>
@@ -36,32 +40,19 @@ namespace lux::ecs
     ) noexcept;
 
     template <class... Args>
-    void diagnoseRenderBridge(const char* format, Args... args) noexcept
+    void diagnoseRenderBridge(lux::format_string<Args...> format, Args&&... args) noexcept
     {
         if (!renderBridgeDiagnosticsEnabled())
             return;
 
-        char buffer[320];
-#if defined(__clang__) || defined(__GNUC__)
-#   pragma GCC diagnostic push
-#   pragma GCC diagnostic ignored "-Wformat-security"
-#   pragma GCC diagnostic ignored "-Wformat-nonliteral"
-#endif
-        const int count = std::snprintf(
-            buffer,
-            sizeof(buffer),
-            format,
-            args...
-        );
-#if defined(__clang__) || defined(__GNUC__)
-#   pragma GCC diagnostic pop
-#endif
-        if (count <= 0)
-            return;
-
-        const auto length = static_cast<std::size_t>(count) < sizeof(buffer)
-            ? static_cast<std::size_t>(count)
-            : sizeof(buffer) - 1;
-        emitRenderBridgeDiagnostic({buffer, length});
+        try
+        {
+            const auto message = lux::format(format, std::forward<Args>(args)...);
+            emitRenderBridgeDiagnostic(message);
+        }
+        catch (...)
+        {
+            // Diagnostics must never affect the render bridge operation.
+        }
     }
 } // namespace lux::ecs

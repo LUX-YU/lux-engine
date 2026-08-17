@@ -60,7 +60,7 @@ namespace lux::ecs
                 {
                     diagnoseRenderBridge(
                         "[SkyboxSubsystem] expected at most one "
-                        "SkyboxComponent, found %zu",
+                        "SkyboxComponent, found {}",
                         count);
                     duplicate_reported_ = true;
                 }

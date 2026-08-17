@@ -213,7 +213,7 @@ namespace lux::ecs
                         if (malformed_success)
                         {
                             diagnoseRenderBridge(
-                                "[%s] create pooled slot returned success with "
+                                "[{}] create pooled slot returned success with "
                                 "a null handle; identical input is latched",
                                 T::feature
                             );
@@ -221,8 +221,8 @@ namespace lux::ecs
                         else
                         {
                             diagnoseRenderBridge(
-                                "[%s] create pooled slot was rejected (status %u); "
-                                "retrying after %d drives",
+                                "[{}] create pooled slot was rejected (status {}); "
+                                "retrying after {} drives",
                                 T::feature,
                                 static_cast<unsigned>(completion.reply.status),
                                 kTransientRetryDrives
@@ -354,7 +354,7 @@ namespace lux::ecs
                     if (!failure.reply_reported)
                     {
                         diagnoseRenderBridge(
-                            "[%s] create pooled slot produced an invalid request; "
+                            "[{}] create pooled slot produced an invalid request; "
                             "identical input is latched",
                             T::feature
                         );

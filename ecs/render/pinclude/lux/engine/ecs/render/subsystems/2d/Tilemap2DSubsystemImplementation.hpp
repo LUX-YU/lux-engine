@@ -928,9 +928,8 @@ namespace lux::ecs
             if (!gate.reported)
             {
                 diagnoseRenderBridge(
-                    "[Tilemap2DSubsystem] %.*s failed; current generation is latched",
-                    static_cast<int>(operation.size()),
-                    operation.data());
+                    "[Tilemap2DSubsystem] {} failed; current generation is latched",
+                    operation);
                 gate.reported = true;
             }
         }

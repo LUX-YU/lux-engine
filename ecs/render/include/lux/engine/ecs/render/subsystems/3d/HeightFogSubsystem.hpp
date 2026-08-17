@@ -46,7 +46,7 @@ namespace lux::ecs
                 {
                     diagnoseRenderBridge(
                         "[HeightFogSubsystem] expected at most one "
-                        "HeightFogComponent, found %zu",
+                        "HeightFogComponent, found {}",
                         count);
                     duplicate_reported_ = true;
                 }

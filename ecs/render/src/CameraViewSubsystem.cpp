@@ -110,7 +110,7 @@ namespace lux::ecs
             // 唯一可能:系统还没被 addSystem 收下(没有 writer)。响亮说出来 ——
             // 静默丢弃的后果是「这台相机永远没有 view」,症状是黑屏零报错。
             diagnoseRenderBridge(
-                "[CameraViewSubsystem] %s command dropped — the subsystem has no "
+                "[CameraViewSubsystem] {} command dropped — the subsystem has no "
                 "command writer (not installed into a Schedule?)", what);
         }
 
@@ -216,8 +216,8 @@ namespace lux::ecs
                     //   零层,症状是黑屏零报错。这里是唯一能说出「为什么」的时刻。
                     const auto reason = req.failed() ? req.error() : req.tryResult()->get().error;
                     diagnoseRenderBridge(
-                        "[CameraViewSubsystem] addView %s for camera entity %u — this "
-                        "camera will never present (no view, no layer): %s",
+                        "[CameraViewSubsystem] addView {} for camera entity {} — this "
+                        "camera will never present (no view, no layer): {}",
                         req.failed() ? "failed in dispatch" : "was rejected",
                         static_cast<unsigned>(entt::to_integral(e)),
                         lux::render::formatRenderError(
@@ -230,8 +230,8 @@ namespace lux::ecs
                     {
                         if (ok.code != 0)
                             diagnoseRenderBridge(
-                                "[CameraViewSubsystem] view lease release(view %u) "
-                                "was rejected: %s",
+                                "[CameraViewSubsystem] view lease release(view {}) "
+                                "was rejected: {}",
                                 static_cast<unsigned>(view.index),
                                 lux::render::formatRenderError(
                                     lux::render::renderErrorRegistry(),

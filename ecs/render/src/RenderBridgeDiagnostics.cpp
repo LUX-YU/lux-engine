@@ -58,11 +58,9 @@ namespace lux::ecs
         if (error.ok())
         {
             diagnoseRenderBridge(
-                "[%.*s] %.*s dispatch failed without a structured RenderError",
-                static_cast<int>(source.size()),
-                source.data(),
-                static_cast<int>(operation.size()),
-                operation.data()
+                "[{}] {} dispatch failed without a structured RenderError",
+                source,
+                operation
             );
             return recovery;
         }
@@ -72,12 +70,10 @@ namespace lux::ecs
             error
         );
         diagnoseRenderBridge(
-            "[%.*s] %.*s dispatch failed: %s",
-            static_cast<int>(source.size()),
-            source.data(),
-            static_cast<int>(operation.size()),
-            operation.data(),
-            text.c_str()
+            "[{}] {} dispatch failed: {}",
+            source,
+            operation,
+            text
         );
         return recovery;
     }

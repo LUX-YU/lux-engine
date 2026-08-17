@@ -43,7 +43,9 @@ namespace lux::ui
             auto sv_min = annot.get("min");
             auto sv_max = annot.get("max");
             if (!sv_min.has_value() || !sv_max.has_value())
+            {
                 return false;
+            }
             return parse_float(*sv_min, out_min) && parse_float(*sv_max, out_max);
         }
 
@@ -51,7 +53,10 @@ namespace lux::ui
         static void maybe_tooltip(const lux::meta::AnnotationView& annot) noexcept
         {
             auto tt = annot.get("tooltip");
-            if (!tt.has_value()) return;
+            if (!tt.has_value())
+            {
+                return;
+            }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             {
                 char buf[256];
@@ -76,13 +81,16 @@ namespace lux::ui
             {
                 auto comma = sv.find(',');
                 auto tok   = (comma == std::string_view::npos) ? sv : sv.substr(0, comma);
-                while (!tok.empty() && tok.front() == ' ') tok.remove_prefix(1);
-                while (!tok.empty() && tok.back()  == ' ') tok.remove_suffix(1);
+                while (!tok.empty() && tok.front() == ' ')
+                    tok.remove_prefix(1);
+                while (!tok.empty() && tok.back()  == ' ')
+                    tok.remove_suffix(1);
                 const std::size_t len = std::min(tok.size(), std::size_t{7});
                 std::memcpy(bufs[count], tok.data(), len);
                 bufs[count][len] = '\0';
                 ++count;
-                if (comma == std::string_view::npos) break;
+                if (comma == std::string_view::npos)
+                    break;
                 sv = sv.substr(comma + 1);
             }
             return count;
@@ -127,8 +135,10 @@ namespace lux::ui
             // Measure total space consumed by [label + pad + gap] so the
             // remaining width can be divided equally among the drag inputs.
             float total_label_w = 0.f;
-            for (int i = 0; i < n; ++i) {
-                if (i > 0) total_label_w += kGap;
+            for (int i = 0; i < n; ++i)
+            {
+                if (i > 0)
+                    total_label_w += kGap;
                 total_label_w += ImGui::CalcTextSize(labels[i]).x + kLabelPad;
             }
             const float avail  = ImGui::GetContentRegionAvail().x;
@@ -137,17 +147,23 @@ namespace lux::ui
 
             bool changed = false;
             ImGui::PushID(group_id);
-            for (int i = 0; i < n; ++i) {
-                if (i > 0) ImGui::SameLine(0.f, kGap);
+            for (int i = 0; i < n; ++i)
+            {
+                if (i > 0)
+                    ImGui::SameLine(0.f, kGap);
                 ImGui::PushStyleColor(ImGuiCol_Text, kColors[i]);
                 ImGui::TextUnformatted(labels[i]);
                 ImGui::PopStyleColor();
                 ImGui::SameLine(0.f, kLabelPad);
                 ImGui::SetNextItemWidth(drag_w);   // overrides outer SetNextItemWidth
                 if (has_range)
+                {
                     changed |= ImGui::DragFloat(kIds[i], &arr[i], speed, vmin, vmax, "%.3f");
+                }
                 else
+                {
                     changed |= ImGui::DragFloat(kIds[i], &arr[i], speed, 0.f, 0.f, "%.3f");
+                }
             }
             ImGui::PopID();
             return changed;
@@ -175,7 +191,8 @@ namespace lux::ui
             base != lux::meta::EBaseType::Void)
         {
             const auto& fn = prim_table_[lux::meta::p_to_underlying(base)];
-            if (!fn) return false;
+            if (!fn)
+                return false;
             fn_ptr = &fn;
         }
         else if (base == lux::meta::EBaseType::Record)
@@ -222,7 +239,8 @@ namespace lux::ui
         void* data = static_cast<uint8_t*>(component_base) + field.offset;
         WidgetContext ctx{ id_buf, data, annot };
         const bool edited = (*fn_ptr)(ctx);
-        if (out_edited) *out_edited = *out_edited || edited;
+        if (out_edited)
+            *out_edited = *out_edited || edited;
         return true;
     }
 
@@ -238,7 +256,8 @@ namespace lux::ui
         std::string full_name(field.type.name);
         const lux::meta::RefClass* rc =
             lux::meta::ReflectionRegistry::instance().findClass(full_name);
-        if (!rc) return false;
+        if (!rc)
+            return false;
 
         // --- label row: TreeNode header in col 0, type hint in col 1 ----
         auto annot   = field.annotations();
@@ -268,7 +287,8 @@ namespace lux::ui
             static_cast<int>(rc->fields.size()),
             rc->fields.size() == 1 ? "" : "s");
 
-        if (!open) return true;
+        if (!open)
+            return true;
 
         // Sub-fields: each rendered as its own row. `field.offset` already
         // applied at the parent dispatch; we're walking inside the same
@@ -278,7 +298,9 @@ namespace lux::ui
         for (const auto& sub_field : rc->fields)
         {
             if (sub_field.visibility != lux::meta::EVisibility::Public)
+            {
                 continue;
+            }
             // Recurse via the public dispatch — this picks up registered
             // widgets for primitives + supports further nesting.
             draw(sub_field, sub_base, out_edited);
@@ -331,11 +353,17 @@ namespace lux::ui
             bool edited = false;
             float vmin = 0.f, vmax = 0.f;
             if (annotation_range(ctx.annot, vmin, vmax))
+            {
                 edited = ImGui::DragFloat(ctx.id, &f, (vmax - vmin) * 0.005f, vmin, vmax, "%.3f");
+            }
             else
+            {
                 edited = ImGui::InputFloat(ctx.id, &f, 0.f, 0.f, "%.4f");
-            if (edited)   // write back only on a real edit — the old unconditional
+            }
+            if (edited)
+            {
                 *d = static_cast<double>(f);   // write truncated doubles every DISPLAY frame
+            }
             maybe_tooltip(ctx.annot);
             return edited;
         });
@@ -346,10 +374,14 @@ namespace lux::ui
             bool edited = false;
             float vmin = 0.f, vmax = 0.f;
             if (annotation_range(ctx.annot, vmin, vmax))
+            {
                 edited = ImGui::DragInt(ctx.id, v, 1.f,
                                static_cast<int>(vmin), static_cast<int>(vmax));
+            }
             else
+            {
                 edited = ImGui::InputInt(ctx.id, v);
+            }
             maybe_tooltip(ctx.annot);
             return edited;
         });
@@ -373,7 +405,9 @@ namespace lux::ui
                 edited = ImGui::DragScalar(ctx.id, ImGuiDataType_U32, u, 1.f, &umin, &umax);
             }
             else
+            {
                 edited = ImGui::InputScalar(ctx.id, ImGuiDataType_U32, u);
+            }
             maybe_tooltip(ctx.annot);
             return edited;
         });
@@ -402,7 +436,10 @@ namespace lux::ui
             const char* kLabels[2] = {"X", "Y"};
             auto labels_sv = ctx.annot.get("labels");
             if (labels_sv.has_value() && parse_label_list(*labels_sv, label_bufs, 2) == 2)
-                for (int i = 0; i < 2; ++i) kLabels[i] = label_bufs[i];
+            {
+                for (int i = 0; i < 2; ++i)
+                    kLabels[i] = label_bufs[i];
+            }
 
             bool edited = false;
             if (draw_vec_components(ctx.id, arr, 2, kLabels, speed, vmin, vmax, has_range))
@@ -441,7 +478,10 @@ namespace lux::ui
                 const char* kLabels[3] = {"X", "Y", "Z"};
                 auto labels_sv = ctx.annot.get("labels");
                 if (labels_sv.has_value() && parse_label_list(*labels_sv, label_bufs, 3) == 3)
-                    for (int i = 0; i < 3; ++i) kLabels[i] = label_bufs[i];
+                {
+                    for (int i = 0; i < 3; ++i)
+                        kLabels[i] = label_bufs[i];
+                }
 
                 if (draw_vec_components(ctx.id, arr, 3, kLabels, speed, vmin, vmax, has_range))
                 {
@@ -479,7 +519,10 @@ namespace lux::ui
                 const char* kLabels[4] = {"X", "Y", "Z", "W"};
                 auto labels_sv = ctx.annot.get("labels");
                 if (labels_sv.has_value() && parse_label_list(*labels_sv, label_bufs, 4) == 4)
-                    for (int i = 0; i < 4; ++i) kLabels[i] = label_bufs[i];
+                {
+                    for (int i = 0; i < 4; ++i)
+                        kLabels[i] = label_bufs[i];
+                }
 
                 if (draw_vec_components(ctx.id, arr, 4, kLabels, speed, vmin, vmax, has_range))
                 {

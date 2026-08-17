@@ -36,20 +36,29 @@ namespace lux::rdesc
 
 	static inline void appendStr(std::vector<std::byte>& out, const std::string& s) {
 		appendU32(out, static_cast<uint32_t>(s.size()));
-		if (!s.empty()) appendBytes(out, s.data(), s.size());
+		if (!s.empty())
+		{
+			appendBytes(out, s.data(), s.size());
+		}
 	}
 
 	template<typename T>
 	static inline bool readLE(std::span<const std::byte> buf, size_t& off, T& v) {
 		static_assert(std::is_trivially_copyable<T>::value, "POD only");
-		if (off + sizeof(T) > buf.size()) return false;
+		if (off + sizeof(T) > buf.size())
+		{
+			return false;
+		}
 		std::memcpy(&v, buf.data() + off, sizeof(T));
 		off += sizeof(T);
 		return true;
 	}
 
 	static inline bool readBytes(std::span<const std::byte> buf, size_t& off, void* dst, size_t n) {
-		if (off + n > buf.size()) return false;
+		if (off + n > buf.size())
+		{
+			return false;
+		}
 		std::memcpy(dst, buf.data() + off, n);
 		off += n;
 		return true;
@@ -62,8 +71,15 @@ namespace lux::rdesc
 	static inline bool readF64(std::span<const std::byte> b, size_t& o, double& v) { return readLE(b, o, v); }
 
 	static inline bool readStr(std::span<const std::byte> b, size_t& o, std::string& s) {
-		uint32_t n = 0; if (!readU32(b, o, n)) return false;
-		if (o + n > b.size()) return false;
+		uint32_t n = 0;
+		if (!readU32(b, o, n))
+		{
+			return false;
+		}
+		if (o + n > b.size())
+		{
+			return false;
+		}
 		s.assign(reinterpret_cast<const char*>(b.data() + o), n);
 		o += n;
 		return true;
@@ -79,7 +95,10 @@ namespace lux::rdesc
 		void flush(std::vector<std::byte>& out, uint8_t opcode) {
 			appendU8(out, opcode);
 			appendU32(out, static_cast<uint32_t>(payload.size()));
-			if (!payload.empty()) out.insert(out.end(), payload.begin(), payload.end());
+			if (!payload.empty())
+			{
+				out.insert(out.end(), payload.begin(), payload.end());
+			}
 			payload.clear();
 		}
 	};
@@ -91,15 +110,18 @@ namespace lux::rdesc
 		PayloadBuilder pb;
 
 		// entry points
-		for (const auto& ep : info.entry_points) {
+		for (const auto& ep : info.entry_points)
+		{
 			pb.putStr(ep.name);
 			pb.put<uint8_t>(static_cast<uint8_t>(ep.stage));
 			pb.flush(out, OP_ENTRY_POINT);
 		}
 
 		// bindings
-		for (const auto& set : info.sets) {
-			for (const auto& b : set.bindings) {
+		for (const auto& set : info.sets)
+		{
+			for (const auto& b : set.bindings)
+			{
 				pb.put<uint32_t>(b.set);
 				pb.put<uint32_t>(b.binding);
 				pb.put<uint8_t>(static_cast<uint8_t>(b.type));
@@ -112,14 +134,16 @@ namespace lux::rdesc
 		}
 
 		// push constants
-		for (const auto& pc : info.push_constants) {
+		for (const auto& pc : info.push_constants)
+		{
 			pb.put<uint32_t>(pc.offset);
 			pb.put<uint32_t>(pc.size);
 			pb.flush(out, OP_PUSH_CONST);
 		}
 
 		// spec constants
-		for (const auto& sc : info.spec_constants) {
+		for (const auto& sc : info.spec_constants)
+		{
 			pb.put<uint32_t>(sc.id);
 			pb.put<uint32_t>(sc.constant_id);
 			pb.putStr(sc.name);
@@ -147,7 +171,8 @@ namespace lux::rdesc
 		}
 
 		// vertex inputs
-		for (const auto& vi : info.vertex_inputs) {
+		for (const auto& vi : info.vertex_inputs)
+		{
 			pb.put<uint32_t>(vi.location);
 			pb.putStr(vi.name);
 			pb.put<uint8_t>(static_cast<uint8_t>(vi.base));
@@ -167,23 +192,48 @@ namespace lux::rdesc
 
 	bool ShaderInfo::deserialize(std::span<const std::byte> buffer, ShaderInfo& out, std::string* err)
 	{
-		auto fail = [&](const char* m) { if (err) *err = m; return false; };
+		auto fail = [&](const char* m)
+		{
+			if (err)
+			{
+				*err = m;
+			}
+			return false;
+		};
 
 		size_t off = 0;
 		std::map<uint32_t, std::vector<EDescriptorBindingInfo>> setBuckets;
 
-		while (true) {
-			if (off + 1 + 4 > buffer.size()) return fail("truncated opcode/size");
-			uint8_t  op = 0;  uint32_t sz = 0;
-			if (!readU8(buffer, off, op))  return fail("read opcode");
-			if (!readU32(buffer, off, sz)) return fail("read size");
+		while (true)
+		{
+			if (off + 1 + 4 > buffer.size())
+			{
+				return fail("truncated opcode/size");
+			}
+			uint8_t op = 0;
+			uint32_t sz = 0;
+			if (!readU8(buffer, off, op))
+			{
+				return fail("read opcode");
+			}
+			if (!readU32(buffer, off, sz))
+			{
+				return fail("read size");
+			}
 
-			if (op == OP_END) {
-				if (sz != 0) return fail("OP_END size must be 0");
+			if (op == OP_END)
+			{
+				if (sz != 0)
+				{
+					return fail("OP_END size must be 0");
+				}
 				break;
 			}
 
-			if (off + sz > buffer.size()) return fail("payload out of range");
+			if (off + sz > buffer.size())
+			{
+				return fail("payload out of range");
+			}
 
 			size_t p = off, end = off + sz;
 			auto left = [&] { return end - p; };
@@ -198,85 +248,184 @@ namespace lux::rdesc
 			{
 			case OP_ENTRY_POINT: {
 				EntryPointInfo ep{};
-				if (!rdStr(ep.name)) return fail("ep.name");
-				uint8_t st = 0; if (!rdU8(st)) return fail("ep.stage");
+				if (!rdStr(ep.name))
+				{
+					return fail("ep.name");
+				}
+				uint8_t st = 0;
+				if (!rdU8(st))
+				{
+					return fail("ep.stage");
+				}
 				ep.stage = static_cast<EShaderType>(st);
 				out.entry_points.push_back(std::move(ep));
 			} break;
 
 			case OP_BINDING: {
 				EDescriptorBindingInfo b{};
-				if (!rdU32(b.set))     return fail("binding.set");
-				if (!rdU32(b.binding)) return fail("binding.binding");
-				uint8_t ty = 0; if (!rdU8(ty)) return fail("binding.type");
+				if (!rdU32(b.set))
+				{
+					return fail("binding.set");
+				}
+				if (!rdU32(b.binding))
+				{
+					return fail("binding.binding");
+				}
+				uint8_t ty = 0;
+				if (!rdU8(ty))
+				{
+					return fail("binding.type");
+				}
 				b.type = static_cast<EDescriptorType>(ty);
-				if (!rdU32(b.count))   return fail("binding.count");
-				if (!rdStr(b.name))    return fail("binding.name");
-				if (!rdU32(b.blockSize)) return fail("binding.blockSize");
-				uint8_t wr = 0; if (!rdU8(wr)) return fail("binding.writable");
+				if (!rdU32(b.count))
+				{
+					return fail("binding.count");
+				}
+				if (!rdStr(b.name))
+				{
+					return fail("binding.name");
+				}
+				if (!rdU32(b.blockSize))
+				{
+					return fail("binding.blockSize");
+				}
+				uint8_t wr = 0;
+				if (!rdU8(wr))
+				{
+					return fail("binding.writable");
+				}
 				b.writable = (wr != 0);
 				setBuckets[b.set].push_back(std::move(b));
 			} break;
 
 			case OP_PUSH_CONST: {
 				PushConstantRangeInfo pc{};
-				if (!rdU32(pc.offset)) return fail("pc.offset");
-				if (!rdU32(pc.size))   return fail("pc.size");
+				if (!rdU32(pc.offset))
+				{
+					return fail("pc.offset");
+				}
+				if (!rdU32(pc.size))
+				{
+					return fail("pc.size");
+				}
 				out.push_constants.push_back(pc);
 			} break;
 
 			case OP_SPEC_CONST: {
 				SpecConstantInfo sc{};
-				if (!rdU32(sc.id))          return fail("sc.id");
-				if (!rdU32(sc.constant_id)) return fail("sc.constant_id");
-				if (!rdStr(sc.name))        return fail("sc.name");
+				if (!rdU32(sc.id))
+				{
+					return fail("sc.id");
+				}
+				if (!rdU32(sc.constant_id))
+				{
+					return fail("sc.constant_id");
+				}
+				if (!rdStr(sc.name))
+				{
+					return fail("sc.name");
+				}
 
-				uint8_t kind = 0; if (!rdU8(kind)) return fail("sc.kind");
+				uint8_t kind = 0;
+				if (!rdU8(kind))
+				{
+					return fail("sc.kind");
+				}
 				sc.default_value.kind = static_cast<SpecDefaultValue::Kind>(kind);
 
-				if (!rdU32(sc.default_value.bit_width)) return fail("sc.bit_width");
+				if (!rdU32(sc.default_value.bit_width))
+				{
+					return fail("sc.bit_width");
+				}
 
 				switch (sc.default_value.kind) {
 				case SpecDefaultValue::Kind::Bool: {
-					uint8_t b = 0; if (!rdU8(b)) return fail("sc.bool");
+					uint8_t b = 0;
+					if (!rdU8(b))
+					{
+						return fail("sc.bool");
+					}
 					sc.default_value.v.b8 = b;
-					if (left() < 7) return fail("sc.bool pad");
+					if (left() < 7)
+					{
+						return fail("sc.bool pad");
+					}
 					p += 7; // skip pad
 				} break;
 				case SpecDefaultValue::Kind::Int: {
-					int64_t v = 0; if (!rdI64(v)) return fail("sc.i64");
+					int64_t v = 0;
+					if (!rdI64(v))
+					{
+						return fail("sc.i64");
+					}
 					sc.default_value.v.i64 = v;
 				} break;
 				case SpecDefaultValue::Kind::UInt: {
-					uint64_t v = 0; if (!rdU64(v)) return fail("sc.u64");
+					uint64_t v = 0;
+					if (!rdU64(v))
+					{
+						return fail("sc.u64");
+					}
 					sc.default_value.v.u64 = v;
 				} break;
 				case SpecDefaultValue::Kind::Float:
 				case SpecDefaultValue::Kind::Double: {
-					double v = 0; if (!rdF64(v)) return fail("sc.f64");
+					double v = 0;
+					if (!rdF64(v))
+					{
+						return fail("sc.f64");
+					}
 					sc.default_value.v.f64 = v;
 				} break;
 				default: {
-					if (left() < 8) return fail("sc.unknown payload");
+					if (left() < 8)
+					{
+						return fail("sc.unknown payload");
+					}
 					p += 8; // skip
 				} break;
 				}
 
-				if (!rdU32(sc.vec_size)) return fail("sc.vec_size");
-				if (!rdU32(sc.columns)) return fail("sc.columns");
+				if (!rdU32(sc.vec_size))
+				{
+					return fail("sc.vec_size");
+				}
+				if (!rdU32(sc.columns))
+				{
+					return fail("sc.columns");
+				}
 
 				out.spec_constants.push_back(std::move(sc));
 			} break;
 
 			case OP_VERTEX_INPUT: {
 				VertexInputAttribute vi{};
-				if (!rdU32(vi.location)) return fail("vi.location");
-				if (!rdStr(vi.name))     return fail("vi.name");
-				uint8_t base = 0; if (!rdU8(base)) return fail("vi.base");
+				if (!rdU32(vi.location))
+				{
+					return fail("vi.location");
+				}
+				if (!rdStr(vi.name))
+				{
+					return fail("vi.name");
+				}
+				uint8_t base = 0;
+				if (!rdU8(base))
+				{
+					return fail("vi.base");
+				}
 				vi.base = static_cast<VertexScalarBase>(base);
-				if (!rdU32(vi.vec_size))  return fail("vi.vec_size");
-				if (!rdU32(vi.columns))  return fail("vi.columns");
-				if (!rdU32(vi.array_size))return fail("vi.array_size");
+				if (!rdU32(vi.vec_size))
+				{
+					return fail("vi.vec_size");
+				}
+				if (!rdU32(vi.columns))
+				{
+					return fail("vi.columns");
+				}
+				if (!rdU32(vi.array_size))
+				{
+					return fail("vi.array_size");
+				}
 				out.vertex_inputs.push_back(std::move(vi));
 			} break;
 
@@ -292,7 +441,8 @@ namespace lux::rdesc
 		// Merge setBuckets => ShaderInfo.sets
 		out.sets.clear();
 		out.sets.reserve(setBuckets.size());
-		for (auto& kv : setBuckets) {
+		for (auto& kv : setBuckets)
+		{
 			DescriptorSetLayoutInfo s{};
 			s.set = kv.first;
 			s.bindings = std::move(kv.second);

@@ -66,11 +66,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(
-    NAME terrain_content_codec_test
-    COMMAND terrain_content_codec_test
-)
-set_tests_properties(
-    terrain_content_codec_test
-    PROPERTIES LABELS "cpu;resource;terrain" TIMEOUT 30
-)

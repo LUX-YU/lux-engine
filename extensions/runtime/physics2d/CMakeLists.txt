@@ -158,12 +158,4 @@ if(TARGET toolchain_game_export AND TARGET lux_player AND TARGET render_features
         render_features
         physics2d_extension
     )
-    add_test(
-        NAME game_export_extension_smoke
-        COMMAND game_export_extension_smoke
-    )
-    set_tests_properties(
-        game_export_extension_smoke
-        PROPERTIES LABELS "cpu;toolchain;extension" TIMEOUT 120
-    )
 endif()

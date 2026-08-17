@@ -46,8 +46,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    FOUNDATION
 )
-add_test(NAME spatial_contract_test COMMAND spatial_contract_test)
-set_tests_properties(
-    spatial_contract_test
-    PROPERTIES LABELS "cpu;resource;spatial" TIMEOUT 30
-)

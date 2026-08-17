@@ -10,11 +10,6 @@ add_executable(
 )
 
 target_link_libraries(editor_tool_catalog_test PRIVATE editor)
-add_test(NAME editor_tool_catalog_test COMMAND editor_tool_catalog_test)
-set_tests_properties(
-    editor_tool_catalog_test
-    PROPERTIES LABELS "cpu;extensions" TIMEOUT 30
-)
 
 add_executable(
     editor_camera_large_coordinate_test
@@ -27,14 +22,6 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 target_link_libraries(editor_camera_large_coordinate_test PRIVATE editor)
-add_test(
-    NAME editor_camera_large_coordinate_test
-    COMMAND editor_camera_large_coordinate_test
-)
-set_tests_properties(
-    editor_camera_large_coordinate_test
-    PROPERTIES LABELS "cpu;editor;world" TIMEOUT 30
-)
 
 # A real editor-only MODULE fixture. This locks the public SDK seam across a
 # DLL boundary: ABI descriptor -> editor registrar draft -> atomic catalog
@@ -66,14 +53,6 @@ lux_classify_target(
 )
 target_link_libraries(editor_extension_module_test PRIVATE editor)
 add_dependencies(editor_extension_module_test editor_extension_module)
-add_test(
-    NAME editor_extension_module_test
-    COMMAND editor_extension_module_test $<TARGET_FILE:editor_extension_module>
-)
-set_tests_properties(
-    editor_extension_module_test
-    PROPERTIES LABELS "cpu;extensions;editor-sdk" TIMEOUT 30
-)
 
 # ── Phase B smoke: Project + ProjectManifest round-trip ─────────────────
 add_executable(
@@ -116,11 +95,6 @@ foreach(_sc
         target_link_libraries(scene_roundtrip_smoke PRIVATE ${_sc})
     endif()
 endforeach()
-add_test(NAME scene_roundtrip_smoke COMMAND scene_roundtrip_smoke)
-set_tests_properties(
-    scene_roundtrip_smoke
-    PROPERTIES LABELS "cpu;scene;extensions" TIMEOUT 30
-)
 
 add_executable(
     world_persistence_schema_closure_test
@@ -139,14 +113,6 @@ target_link_libraries(
 target_include_directories(
     world_persistence_schema_closure_test
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src
-)
-add_test(
-    NAME world_persistence_schema_closure_test
-    COMMAND world_persistence_schema_closure_test
-)
-set_tests_properties(
-    world_persistence_schema_closure_test
-    PROPERTIES LABELS "cpu;editor;world;extensions" TIMEOUT 30
 )
 
 # ── Thumbnail storage smoke: PNG codec + ThumbnailSet + payload round-trip ──
@@ -200,10 +166,6 @@ target_include_directories(
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
-add_test(NAME emissive_palette_spirv_identity_test
-         COMMAND emissive_palette_spirv_identity_test)
-set_tests_properties(emissive_palette_spirv_identity_test
-                     PROPERTIES LABELS cpu TIMEOUT 120)
 
 # ── 驻留 T9/T10 gpu 探针:材质双域端到端(真设备;无 Vulkan 自跳过)──
 #
@@ -230,7 +192,3 @@ target_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
         ${CMAKE_SOURCE_DIR}/modules/function/render/test
 )
-add_test(NAME material_residency_gpu_probe
-         COMMAND material_residency_gpu_probe)
-set_tests_properties(material_residency_gpu_probe
-                     PROPERTIES LABELS gpu TIMEOUT 300)

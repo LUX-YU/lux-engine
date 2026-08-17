@@ -177,7 +177,7 @@ namespace lux::ecs
     PixelFieldHandle PixelFieldRuntime::create(const PixelFieldDesc& desc)
     {
         if (static_cast<std::uint8_t>(desc.extent) >
-                static_cast<std::uint8_t>(EPixelFieldExtent::INFINITE) ||
+                static_cast<std::uint8_t>(EPixelFieldExtent::INFINITE_FIELD) ||
             (desc.extent == EPixelFieldExtent::BOUNDED &&
              !desc.bounds.valid()))
         {
@@ -301,7 +301,7 @@ namespace lux::ecs
         const Field& field,
         PixelChunkCoord coordinate) noexcept
     {
-        return field.desc.extent == EPixelFieldExtent::INFINITE ||
+        return field.desc.extent == EPixelFieldExtent::INFINITE_FIELD ||
             field.desc.bounds.contains(coordinate);
     }
 
@@ -892,7 +892,7 @@ namespace lux::ecs
             const auto maximum_cell = worldToCell(field.frame, maximum);
             if (!minimum_cell || !maximum_cell)
                 continue;
-            bool intersects = field.desc.extent == EPixelFieldExtent::INFINITE;
+            bool intersects = field.desc.extent == EPixelFieldExtent::INFINITE_FIELD;
             if (!intersects)
             {
                 const auto minimum_chunk = chunkOf(*minimum_cell);

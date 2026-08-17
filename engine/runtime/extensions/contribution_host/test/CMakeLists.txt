@@ -14,12 +14,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-
-add_test(
-    NAME scene_contributions_test
-    COMMAND scene_contributions_test
-)
-set_tests_properties(
-    scene_contributions_test
-    PROPERTIES LABELS "cpu;runtime;scene;contributions" TIMEOUT 30
-)

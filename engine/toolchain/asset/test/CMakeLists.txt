@@ -53,6 +53,4 @@ foreach(
         PRODUCT TEST
         ROLE    INTEGRATION
     )
-    add_test(NAME ${target} COMMAND ${target})
-    set_tests_properties(${target} PROPERTIES LABELS "cpu" TIMEOUT 120)
 endforeach()

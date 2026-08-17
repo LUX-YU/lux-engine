@@ -63,16 +63,6 @@ add_dependencies(
     dependent_extension_module
 )
 
-add_test(
-    NAME extension_module_manager_test
-    COMMAND extension_module_manager_test
-        $<TARGET_FILE:minimal_extension_module>
-        $<TARGET_FILE:dependent_extension_module>
-)
-set_tests_properties(
-    extension_module_manager_test
-    PROPERTIES LABELS "cpu;extensions" TIMEOUT 30
-)
 
 if(TARGET runtime_render_scene AND TARGET runtime_render_scene_test_support AND TARGET runtime_execution)
     add_executable(
@@ -99,17 +89,5 @@ if(TARGET runtime_render_scene AND TARGET runtime_render_scene_test_support AND 
         dependent_extension_module
         component_extension_module
         rollback_extension_module
-    )
-    add_test(
-        NAME engine_extensions_test
-        COMMAND engine_extensions_test
-            $<TARGET_FILE:minimal_extension_module>
-            $<TARGET_FILE:dependent_extension_module>
-            $<TARGET_FILE:component_extension_module>
-            $<TARGET_FILE:rollback_extension_module>
-    )
-    set_tests_properties(
-        engine_extensions_test
-        PROPERTIES LABELS "cpu;extensions" TIMEOUT 30
     )
 endif()

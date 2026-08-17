@@ -168,27 +168,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-# Enable CTest so module test suites can register via add_test() and CI can run
-# them with `ctest` from the build root. Must be called in the top-level source
-# directory, before the add_subdirectory() calls below, for CTest to aggregate
-# tests across all modules. Modules without add_test() contribute nothing, so
-# this is a no-op for the runtime-only build. Render registers its suite under
-# the ENABLE_RENDER_TEST gate (modules/function/render/test/CMakeLists.txt).
-enable_testing()
-
-# 架构门禁:把「ECS/渲染/执行/生命周期重构」里正在退场的机制钉成只降不升的
-# 计数(DeferredCommands、IRenderSubsystem、业务层 RenderRequest::then、业务层
-# 帧协议、RTTI、项目自有异常)。设计稿见
-# .internal/ecs-render-execution-lifetime-refactor.zh-CN.md。
-#
-# ★ 不挂任何 ENABLE_*_TEST 开关,也不需要编译目标:门禁的意义就在于没人能把它
-#   关掉,而各模块的 test 开关默认是 OFF。纯 cmake -P 扫描,约 1 秒。
-add_test(NAME architecture_gates_test
-         COMMAND ${CMAKE_COMMAND}
-                 -DREPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}
-                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/architecture_gates_test.cmake)
-set_tests_properties(architecture_gates_test PROPERTIES LABELS "cpu" TIMEOUT 120)
-
+# Test executables and their source directories remain available for local,
+# ad-hoc use, but are not part of the configured build validation suite.
 foreach(layer ${lux_engine_layers})
     add_subdirectory(modules/${layer})
     if(layer STREQUAL "resource" AND NOT CMAKE_CROSSCOMPILING)

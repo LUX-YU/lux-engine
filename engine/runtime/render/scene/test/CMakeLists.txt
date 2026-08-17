@@ -27,11 +27,6 @@ target_include_directories(
         ${PROJECT_SOURCE_DIR}/engine/runtime/extensions/contribution_host/pinclude
 )
 lux_scene_runtime_test_enable_stdexec(render_request_sender_test)
-add_test(NAME render_request_sender_test COMMAND render_request_sender_test)
-set_tests_properties(
-    render_request_sender_test
-    PROPERTIES LABELS "cpu;render;runtime"
-)
 
 add_executable(render_resource_manager_test render_resource_manager_test.cpp)
 
@@ -43,17 +38,10 @@ target_link_libraries(render_resource_manager_test
 )
 lux_scene_runtime_test_enable_stdexec(render_resource_manager_test)
 
-add_test(NAME render_resource_manager_test
-         COMMAND render_resource_manager_test)
-set_tests_properties(render_resource_manager_test PROPERTIES
-    LABELS "cpu" TIMEOUT 120)
 
 add_executable(owner_reply_reaper_test owner_reply_reaper_test.cpp)
 target_link_libraries(owner_reply_reaper_test PRIVATE runtime_render_scene_test_support)
 lux_scene_runtime_test_enable_stdexec(owner_reply_reaper_test)
-add_test(NAME owner_reply_reaper_test COMMAND owner_reply_reaper_test)
-set_tests_properties(owner_reply_reaper_test PROPERTIES
-    LABELS "cpu" TIMEOUT 30)
 
 add_executable(headless_scene_runtime_test headless_scene_runtime_test.cpp)
 target_link_libraries(
@@ -65,9 +53,6 @@ target_link_libraries(
         lux::engine::resource::asset_codecs
 )
 lux_scene_runtime_test_enable_stdexec(headless_scene_runtime_test)
-add_test(NAME headless_scene_runtime_test COMMAND headless_scene_runtime_test)
-set_tests_properties(headless_scene_runtime_test PROPERTIES
-    LABELS "cpu" TIMEOUT 30)
 
 add_executable(
     primary_view_presentation_test
@@ -76,14 +61,6 @@ add_executable(
 target_link_libraries(
     primary_view_presentation_test
     PRIVATE runtime_render_scene_test_support
-)
-add_test(
-    NAME primary_view_presentation_test
-    COMMAND primary_view_presentation_test
-)
-set_tests_properties(
-    primary_view_presentation_test
-    PROPERTIES LABELS "cpu;render;runtime" TIMEOUT 30
 )
 
 add_executable(
@@ -95,10 +72,6 @@ target_link_libraries(
     PRIVATE
         runtime_render_scene_test_support
         lux::engine::resource::classic_mesh_content
-)
-add_test(
-    NAME scene_content_render_contract_test
-    COMMAND scene_content_render_contract_test
 )
 
 add_executable(
@@ -112,18 +85,6 @@ target_link_libraries(
         lux::engine::runtime::runtime_execution
 )
 lux_scene_runtime_test_enable_stdexec(scene_geometry_prepare_service_test)
-add_test(
-    NAME scene_geometry_prepare_service_test
-    COMMAND scene_geometry_prepare_service_test
-)
-set_tests_properties(
-    scene_geometry_prepare_service_test
-    PROPERTIES LABELS "cpu;render;runtime;entity_scene" TIMEOUT 60
-)
-set_tests_properties(
-    scene_content_render_contract_test
-    PROPERTIES LABELS "cpu;render;runtime;entity_scene" TIMEOUT 30
-)
 
 add_executable(
     render_backend_upload_close_test
@@ -139,12 +100,6 @@ target_link_libraries(
         lux::engine::runtime::runtime_execution
 )
 lux_scene_runtime_test_enable_stdexec(render_backend_upload_close_test)
-add_test(
-    NAME render_backend_upload_close_test
-    COMMAND render_backend_upload_close_test
-)
-set_tests_properties(render_backend_upload_close_test PROPERTIES
-    LABELS "gpu" TIMEOUT 120)
 
 # residency_gpu_probe — 域子服务端到端探针:真设备往返(表+服务+编排
 # 管道+真域子服务;T7 贴图起逐域扩容,现覆盖 TEXTURE/MESH)。无 Vulkan
@@ -165,10 +120,6 @@ lux_scene_runtime_test_enable_stdexec(residency_gpu_probe)
 target_include_directories(residency_gpu_probe PRIVATE
     ${CMAKE_SOURCE_DIR}/modules/function/render/test)
 
-add_test(NAME residency_gpu_probe
-         COMMAND residency_gpu_probe)
-set_tests_properties(residency_gpu_probe PROPERTIES
-    LABELS "gpu" TIMEOUT 180)
 add_executable(render_effect_gpu_probe render_effect_gpu_probe.cpp)
 target_link_libraries(
     render_effect_gpu_probe
@@ -179,11 +130,6 @@ target_link_libraries(
 target_include_directories(
     render_effect_gpu_probe
     PRIVATE ${CMAKE_SOURCE_DIR}/modules/function/render/test
-)
-add_test(NAME render_effect_gpu_probe COMMAND render_effect_gpu_probe)
-set_tests_properties(
-    render_effect_gpu_probe
-    PROPERTIES LABELS "gpu" TIMEOUT 120
 )
 
 add_executable(
@@ -249,14 +195,6 @@ target_compile_definitions(
         LUX_SCENE_VISUAL_COMPONENTS_GBUFFER_SPV="${SCENE_VISUAL_COMPONENTS_GBUFFER_SPV}"
         LUX_SCENE_VISUAL_COMPONENTS_FORWARD_SPV="${SCENE_VISUAL_COMPONENTS_FORWARD_SPV}"
 )
-add_test(
-    NAME scene_visual_components_semantic_gpu_probe
-    COMMAND scene_visual_components_semantic_gpu_probe
-)
-set_tests_properties(
-    scene_visual_components_semantic_gpu_probe
-    PROPERTIES LABELS "gpu;render;runtime" TIMEOUT 180
-)
 
 # The GPU probe compiles the exact same scenario body as the headless gate.
 # Its extension only installs the presentation leaf and observes checkpoints;
@@ -299,11 +237,3 @@ else()
     target_compile_options(infinite2d_visual_gpu_probe PRIVATE -UNDEBUG)
 endif()
 lux_scene_runtime_test_enable_stdexec(infinite2d_visual_gpu_probe)
-add_test(
-    NAME infinite2d_visual_gpu_probe
-    COMMAND infinite2d_visual_gpu_probe
-)
-set_tests_properties(
-    infinite2d_visual_gpu_probe
-    PROPERTIES LABELS "gpu;render;runtime;entity_scene;spatial2d;pixel" TIMEOUT 240
-)

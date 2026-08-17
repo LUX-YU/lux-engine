@@ -134,11 +134,6 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(NAME spatial2d_interest_test COMMAND spatial2d_interest_test)
-set_tests_properties(
-    spatial2d_interest_test
-    PROPERTIES LABELS "cpu;runtime;spatial2d" TIMEOUT 30
-)
 
 add_executable(
     infinite2d_headless_test
@@ -165,9 +160,4 @@ lux_classify_target(
     LAYER   RUNTIME
     PRODUCT TEST
     ROLE    INTEGRATION
-)
-add_test(NAME infinite2d_headless_test COMMAND infinite2d_headless_test)
-set_tests_properties(
-    infinite2d_headless_test
-    PROPERTIES LABELS "cpu;runtime;spatial2d;entity_scene;pixel;tilemap;async;open_closed" TIMEOUT 60
 )

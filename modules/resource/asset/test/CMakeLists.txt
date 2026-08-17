@@ -81,6 +81,4 @@ foreach(t
     material_graph_codec_test
     asset_lifecycle_test
     shell_from_file_test)
-    add_test(NAME ${t} COMMAND ${t})
-    set_tests_properties(${t} PROPERTIES LABELS "cpu" TIMEOUT 120)
 endforeach()

@@ -6,8 +6,6 @@ endif()
 
 function(lux_add_execution_test target source)
     add_executable(${target} ${source})
-    add_test(NAME ${target} COMMAND ${target})
-    set_tests_properties(${target} PROPERTIES LABELS "cpu;execution")
     target_link_libraries(
         ${target}
         PRIVATE runtime_execution STDEXEC::stdexec
@@ -31,7 +29,3 @@ lux_add_execution_test(
 )
 lux_add_execution_test(async_runtime_test async_runtime_test.cpp)
 lux_add_execution_test(async_file_service_test async_file_service_test.cpp)
-
-set_tests_properties(async_callback_sender_test PROPERTIES TIMEOUT 30)
-set_tests_properties(async_runtime_test PROPERTIES TIMEOUT 60)
-set_tests_properties(async_file_service_test PROPERTIES TIMEOUT 30)

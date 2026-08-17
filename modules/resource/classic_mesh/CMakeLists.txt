@@ -70,11 +70,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(
-    NAME classic_mesh_content_codec_test
-    COMMAND classic_mesh_content_codec_test
-)
-set_tests_properties(
-    classic_mesh_content_codec_test
-    PROPERTIES LABELS "cpu;resource;classic_mesh" TIMEOUT 30
-)

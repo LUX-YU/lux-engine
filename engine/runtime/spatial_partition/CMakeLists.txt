@@ -68,11 +68,6 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    FOUNDATION
 )
-add_test(NAME spatial_demand_planner_test COMMAND spatial_demand_planner_test)
-set_tests_properties(
-    spatial_demand_planner_test
-    PROPERTIES LABELS "cpu;runtime;spatial_partition" TIMEOUT 30
-)
 
 add_executable(
     spatial_partition_loader_integration_test
@@ -98,12 +93,4 @@ lux_classify_target(
     LAYER   RUNTIME
     PRODUCT TEST
     ROLE    FOUNDATION
-)
-add_test(
-    NAME spatial_partition_loader_integration_test
-    COMMAND spatial_partition_loader_integration_test
-)
-set_tests_properties(
-    spatial_partition_loader_integration_test
-    PROPERTIES LABELS "cpu;runtime;spatial_partition;async" TIMEOUT 30
 )

@@ -178,7 +178,7 @@ namespace lux::ecs
         if (!binding)
         {
             PixelFieldDesc description;
-            description.extent = EPixelFieldExtent::INFINITE;
+            description.extent = EPixelFieldExtent::INFINITE_FIELD;
             const auto handle = impl_->runtime->create(description);
             if (!handle.isValid())
                 return;
@@ -197,7 +197,7 @@ namespace lux::ecs
             binding->owned_by_system)
         {
             PixelFieldDesc description;
-            description.extent = EPixelFieldExtent::INFINITE;
+            description.extent = EPixelFieldExtent::INFINITE_FIELD;
             const auto handle = impl_->runtime->create(description);
             if (!handle.isValid())
                 return;

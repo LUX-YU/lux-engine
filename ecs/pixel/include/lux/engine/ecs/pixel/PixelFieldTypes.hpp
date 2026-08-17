@@ -88,7 +88,7 @@ namespace lux::ecs
     enum class EPixelFieldExtent : std::uint8_t
     {
         BOUNDED,
-        INFINITE
+        INFINITE_FIELD
     };
 
     struct PixelFieldFrame final

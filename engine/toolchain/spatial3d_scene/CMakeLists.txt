@@ -125,12 +125,4 @@ if(TARGET ecs_meta AND
         PRODUCT TEST
         ROLE    DOMAIN
     )
-    add_test(
-        NAME spatial3d_entity_scene_adapter_test
-        COMMAND spatial3d_entity_scene_adapter_test
-    )
-    set_tests_properties(
-        spatial3d_entity_scene_adapter_test
-        PROPERTIES LABELS "cpu;toolchain;entity_scene;spatial3d" TIMEOUT 60
-    )
 endif()

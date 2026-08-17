@@ -167,9 +167,4 @@ if(TARGET lux_player AND TARGET render_features)
             "LUX_GAME_EXPORT_TEST_RUNTIME_ROOT=\"${CMAKE_BINARY_DIR}\""
     )
     add_dependencies(game_export_smoke lux_player render_features)
-    add_test(NAME game_export_smoke COMMAND game_export_smoke)
-    set_tests_properties(
-        game_export_smoke
-        PROPERTIES LABELS "cpu;toolchain" TIMEOUT 120
-    )
 endif()

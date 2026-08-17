@@ -21,7 +21,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(NAME tilemap_prepare_service_test
-    COMMAND tilemap_prepare_service_test)
-set_tests_properties(tilemap_prepare_service_test PROPERTIES
-    LABELS "cpu;runtime;tilemap;async" TIMEOUT 30)

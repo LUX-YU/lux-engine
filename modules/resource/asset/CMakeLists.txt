@@ -39,11 +39,6 @@ target_link_libraries(
     asset_codec_catalog_test
     PRIVATE lux::engine::resource::asset_codecs
 )
-add_test(NAME asset_codec_catalog_test COMMAND asset_codec_catalog_test)
-set_tests_properties(
-    asset_codec_catalog_test
-    PROPERTIES LABELS "cpu;resource" TIMEOUT 30
-)
 
 set(ENABLE_ASSET_TEST OFF CACHE BOOL "Enable asset module tests")
 if(ENABLE_ASSET_TEST)

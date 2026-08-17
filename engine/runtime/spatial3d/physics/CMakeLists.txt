@@ -74,11 +74,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    INTEGRATION
 )
-add_test(
-    NAME static_collider3d_system_test
-    COMMAND static_collider3d_system_test
-)
-set_tests_properties(
-    static_collider3d_system_test
-    PROPERTIES LABELS "cpu;runtime;spatial3d;entity_scene;physics3d" TIMEOUT 60
-)

@@ -41,7 +41,7 @@ int main()
     const auto infinite = runtime.create({
         PixelFieldId{
             uuid("80000000-0000-4000-8000-000000000001")},
-        EPixelFieldExtent::INFINITE,
+        EPixelFieldExtent::INFINITE_FIELD,
         {},
         0u});
     assert(!infinite.isNull());
@@ -193,7 +193,7 @@ int main()
     const auto recycled = runtime.create({
         PixelFieldId{
             uuid("80000000-0000-4000-8000-000000000003")},
-        EPixelFieldExtent::INFINITE,
+        EPixelFieldExtent::INFINITE_FIELD,
         {},
         0u});
     assert(!recycled.isNull());

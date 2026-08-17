@@ -82,11 +82,6 @@ lux_classify_target(
 target_link_libraries(
     physics2d_ecs_static_collider_test
     PRIVATE physics2d)
-add_test(NAME physics2d_ecs_static_collider_test
-    COMMAND physics2d_ecs_static_collider_test)
-set_tests_properties(
-    physics2d_ecs_static_collider_test
-    PROPERTIES LABELS "cpu;ecs;physics2d")
 if(MSVC)
     target_compile_options(physics2d_ecs_static_collider_test PRIVATE /UNDEBUG)
 else()

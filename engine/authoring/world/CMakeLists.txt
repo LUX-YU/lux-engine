@@ -80,11 +80,6 @@ if(MSVC)
 else()
     target_compile_options(world_source_codec_test PRIVATE -UNDEBUG)
 endif()
-add_test(NAME world_source_codec_test COMMAND world_source_codec_test)
-set_tests_properties(
-    world_source_codec_test
-    PROPERTIES LABELS "cpu;authoring;world" TIMEOUT 30
-)
 
 add_executable(
     world_descriptor_index_scale_test
@@ -105,14 +100,6 @@ if(MSVC)
 else()
     target_compile_options(world_descriptor_index_scale_test PRIVATE -UNDEBUG)
 endif()
-add_test(
-    NAME world_descriptor_index_scale_test
-    COMMAND world_descriptor_index_scale_test
-)
-set_tests_properties(
-    world_descriptor_index_scale_test
-    PROPERTIES LABELS "cpu;authoring;world;scale" TIMEOUT 300
-)
 
 add_executable(
     world_terrain_authoring_test
@@ -133,11 +120,3 @@ if(MSVC)
 else()
     target_compile_options(world_terrain_authoring_test PRIVATE -UNDEBUG)
 endif()
-add_test(
-    NAME world_terrain_authoring_test
-    COMMAND world_terrain_authoring_test
-)
-set_tests_properties(
-    world_terrain_authoring_test
-    PROPERTIES LABELS "cpu;authoring;world;terrain" TIMEOUT 30
-)

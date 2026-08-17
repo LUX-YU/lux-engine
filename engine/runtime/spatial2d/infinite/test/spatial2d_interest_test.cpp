@@ -41,8 +41,7 @@ namespace
     }
 
     void addWindow(
-        std::vector<lux::runtime::spatial2d::Spatial2DSectionIndexEntry>&
-            entries,
+        std::vector<lux::runtime::spatial2d::Spatial2DSectionIndexEntry>& entries,
         lux::spatial::GridCoord2i64 center,
         std::uint64_t& ordinal)
     {
@@ -92,10 +91,9 @@ int main()
     assert((ten_k_cells->center == lux::spatial::GridCoord2i64{39, 39}));
 
     constexpr double kFar = 64.0 * 1'000'000.0;
-    const auto far = index->window({kFar, -kFar}, 64.0);
-    assert(far);
-    assert((far->center ==
-        lux::spatial::GridCoord2i64{1'000'000, -1'000'000}));
+    const auto far_window = index->window({kFar, -kFar}, 64.0);
+    assert(far_window);
+    assert((far_window->center == lux::spatial::GridCoord2i64{1'000'000, -1'000'000}));
 
     auto procedural = spatial2d::Spatial2DSectionSource::procedural(
         [](lux::spatial::GridCoord2i64 coordinate)
@@ -108,27 +106,29 @@ int main()
             return record;
         });
     assert(procedural);
-    const auto arbitrary = procedural->window(
-        {64.0 * 7'654'321.0, 64.0 * -6'543'210.0}, 64.0);
+    const auto arbitrary = procedural->window({64.0 * 7'654'321.0, 64.0 * -6'543'210.0}, 64.0);
     assert(arbitrary);
-    assert((arbitrary->center == lux::spatial::GridCoord2i64{
-        7'654'321, -6'543'210}));
+    assert((arbitrary->center == lux::spatial::GridCoord2i64{7'654'321, -6'543'210}));
     assert(std::ranges::all_of(
         arbitrary->entries,
-        [](const auto& entry) { return entry.record.has_value(); }));
+        [](const auto& entry) 
+        { 
+            return entry.record.has_value(); 
+        })
+    );
 
-    const auto non_finite = index->window(
-        {std::numeric_limits<double>::infinity(), 0.0}, 64.0);
+    const auto non_finite = index->window({std::numeric_limits<double>::infinity(), 0.0}, 64.0);
     assert(!non_finite);
-    assert(non_finite.error().code ==
-        spatial2d::ESpatial2DIndexError::INVALID_POSITION);
+    assert(non_finite.error().code == spatial2d::ESpatial2DIndexError::INVALID_POSITION);
 
     auto duplicate_entries = std::vector<
         spatial2d::Spatial2DSectionIndexEntry>{
             {{0, 0}, sectionId(500u)},
-            {{0, 0}, sectionId(501u)}};
+            {{0, 0}, sectionId(501u)}
+        };
     const auto duplicate = spatial2d::Spatial2DSectionIndex::create(
-        std::move(duplicate_entries));
+        std::move(duplicate_entries)
+    );
     assert(!duplicate);
     assert(duplicate.error().code ==
         spatial2d::ESpatial2DIndexError::DUPLICATE_COORDINATE);

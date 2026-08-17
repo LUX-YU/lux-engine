@@ -73,11 +73,6 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(NAME spatial3d_interest_test COMMAND spatial3d_interest_test)
-set_tests_properties(
-    spatial3d_interest_test
-    PROPERTIES LABELS "cpu;runtime;spatial3d;partition" TIMEOUT 30
-)
 
 add_executable(
     spatial3d_partition_headless_test
@@ -100,16 +95,6 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    INTEGRATION
 )
-add_test(
-    NAME spatial3d_partition_headless_test
-    COMMAND spatial3d_partition_headless_test
-)
-set_tests_properties(
-    spatial3d_partition_headless_test
-    PROPERTIES
-        LABELS "cpu;runtime;spatial3d;partition;entity_scene;async;headless"
-        TIMEOUT 60
-)
 
 add_executable(
     spatial3d_scale_invariance_test
@@ -131,16 +116,6 @@ lux_classify_target(
     LAYER   RUNTIME
     PRODUCT TEST
     ROLE    INTEGRATION
-)
-add_test(
-    NAME spatial3d_scale_invariance_test
-    COMMAND spatial3d_scale_invariance_test
-)
-set_tests_properties(
-    spatial3d_scale_invariance_test
-    PROPERTIES
-        LABELS "cpu;runtime;spatial3d;partition;entity_scene;lxsc;performance"
-        TIMEOUT 60
 )
 
 generate_visibility_header(

@@ -41,14 +41,14 @@ namespace lux::authoring
     {
         LOCAL,
         REQUIRED,
-        OPTIONAL
+        OPTIONAL_REFERENCE
     };
 
     struct WorldActorSourceReference final
     {
         lux::entity_scene::PersistentEntityId target;
         EWorldActorReferenceKind kind{
-            EWorldActorReferenceKind::OPTIONAL};
+            EWorldActorReferenceKind::OPTIONAL_REFERENCE};
 
         friend bool operator==(
             const WorldActorSourceReference&,

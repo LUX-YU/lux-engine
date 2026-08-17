@@ -92,7 +92,7 @@ namespace lux::exec
                     STOP_DURING_START,
                     ACTIVE,
                     VALUE,
-                    ERROR,
+                    ERROR_VALUE,
                     STOPPED
                 };
 
@@ -237,7 +237,7 @@ namespace lux::exec
 
                     void completeError(std::string reason) noexcept
                     {
-                        const auto source = claimCompletion(EPhase::ERROR);
+                        const auto source = claimCompletion(EPhase::ERROR_VALUE);
                         if (!source)
                             return;
                         disarmStop(*source);

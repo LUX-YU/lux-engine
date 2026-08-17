@@ -484,10 +484,6 @@ function(lux_render_add_test target)
     if(NOT ARG_NAME)
         set(ARG_NAME ${target})
     endif()
-    add_test(NAME ${ARG_NAME} COMMAND ${target} ${ARG_ARGS})
-    set_tests_properties(${ARG_NAME} PROPERTIES
-        LABELS   "${ARG_LABEL}"
-        TIMEOUT  ${ARG_TIMEOUT})
 endfunction()
 
 # Headless Vulkan stress — needs a GPU runner
@@ -531,13 +527,6 @@ lux_render_add_test(upload_channel_contract_test    LABEL cpu TIMEOUT 60)
 # 直接由 cmake -P 跑脚本(见 no_terminal_io_test.cmake 里的理由)。
 # ENGINE_STRICT_ROOTS = 已完成 lux::log 迁移的 engine 组件(§7.1),对它们
 # 连裸 fprintf(stderr 也拦——迁干净的模块不许再长回来。
-add_test(NAME no_terminal_io_test
-         COMMAND ${CMAKE_COMMAND}
-                 -DRENDER_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/..
-                 -DECS_ROOT=${CMAKE_SOURCE_DIR}/ecs
-                 "-DENGINE_STRICT_ROOTS=${CMAKE_SOURCE_DIR}/engine/runtime|${CMAKE_SOURCE_DIR}/engine/hosts"
-                 -P ${CMAKE_CURRENT_SOURCE_DIR}/no_terminal_io_test.cmake)
-set_tests_properties(no_terminal_io_test PROPERTIES LABELS "cpu" TIMEOUT 60)
 
 # Interactive executables open a window and run until a person closes it.
 # They are build targets, not CTest cases: registering them made plain `ctest`

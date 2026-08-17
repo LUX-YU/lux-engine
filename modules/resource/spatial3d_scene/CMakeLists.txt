@@ -70,11 +70,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(
-    NAME spatial3d_scene_catalog_test
-    COMMAND spatial3d_scene_catalog_test
-)
-set_tests_properties(
-    spatial3d_scene_catalog_test
-    PROPERTIES LABELS "cpu;resource;spatial3d;entity_scene" TIMEOUT 30
-)

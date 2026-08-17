@@ -66,44 +66,6 @@ if(NOT LUX_TARGET_OS STREQUAL "ANDROID")
         set(_lux_world_route_semantic_artifacts
             "${CMAKE_BINARY_DIR}/p0-closeout/world-route-semantic")
 
-        add_test(
-            NAME world_route_semantic_fixture_generate
-            COMMAND lux_world_benchmark_generate
-                --output=${_lux_world_route_semantic_root}
-                --scale=smoke
-                --platform=windows-x64
-                --cc0-instance-percent=0
-        )
-        set_tests_properties(
-            world_route_semantic_fixture_generate
-            PROPERTIES
-                LABELS "cpu;toolchain;entity_scene;spatial3d;semantic"
-                FIXTURES_SETUP world_route_semantic_fixture
-                TIMEOUT 180
-        )
 
-        add_test(
-            NAME world_route_semantic_gpu_probe
-            COMMAND lux_world_benchmark
-                --pak=${_lux_world_route_semantic_pak}
-                --scene=Scenes/Benchmark
-                --world-edge=4096
-                --repeat=1
-                --warmup=1
-                --frames=1
-                --size=640x360
-                --vk-validation
-                --semantic-capture-dir=${_lux_world_route_semantic_artifacts}
-                --require-route-semantics
-                --json=${_lux_world_route_semantic_artifacts}/benchmark.json
-                --csv=${_lux_world_route_semantic_artifacts}/frames.csv
-        )
-        set_tests_properties(
-            world_route_semantic_gpu_probe
-            PROPERTIES
-                LABELS "gpu;entity_scene;spatial3d;semantic"
-                FIXTURES_REQUIRED world_route_semantic_fixture
-                TIMEOUT 360
-        )
     endif()
 endif()

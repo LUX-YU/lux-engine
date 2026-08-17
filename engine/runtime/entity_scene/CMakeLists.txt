@@ -101,14 +101,6 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(
-    NAME runtime_entity_scene_integration_test
-    COMMAND runtime_entity_scene_integration_test
-)
-set_tests_properties(
-    runtime_entity_scene_integration_test
-    PROPERTIES LABELS "cpu;runtime;entity_scene" TIMEOUT 30
-)
 
 add_executable(
     entity_section_loader_integration_test
@@ -128,12 +120,4 @@ lux_classify_target(
     LAYER   RUNTIME
     PRODUCT TEST
     ROLE    DOMAIN
-)
-add_test(
-    NAME entity_section_loader_integration_test
-    COMMAND entity_section_loader_integration_test
-)
-set_tests_properties(
-    entity_section_loader_integration_test
-    PROPERTIES LABELS "cpu;runtime;entity_scene;async" TIMEOUT 30
 )

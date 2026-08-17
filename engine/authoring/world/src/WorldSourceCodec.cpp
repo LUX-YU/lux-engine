@@ -506,7 +506,7 @@ namespace lux::authoring
                     lux::entity_scene::PersistentEntityId>(reader);
                 const auto kind = reader.readPod<std::uint8_t>();
                 if (kind > static_cast<std::uint8_t>(
-                        EWorldActorReferenceKind::OPTIONAL))
+                        EWorldActorReferenceKind::OPTIONAL_REFERENCE))
                     return false;
                 reference.kind = static_cast<EWorldActorReferenceKind>(kind);
                 actor.references.push_back(reference);

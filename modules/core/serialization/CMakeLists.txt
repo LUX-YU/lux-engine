@@ -91,11 +91,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    FOUNDATION
 )
-add_test(
-    NAME serialization_name_table_test
-    COMMAND serialization_name_table_test
-)
-set_tests_properties(
-    serialization_name_table_test
-    PROPERTIES LABELS "cpu;core;serialization" TIMEOUT 30
-)

@@ -21,7 +21,7 @@ namespace lux::platform
 
         void handleFileAction(efsw::WatchID /*id*/, const std::string& dir,
                               const std::string& filename, efsw::Action action,
-                              std::string old_filename) override
+                              const std::string& old_filename) override
         {
             FileEvent ev;
             ev.path = std::filesystem::path(dir) / filename;

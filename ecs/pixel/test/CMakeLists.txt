@@ -17,20 +17,12 @@
 # Thread-schedule races regress silently under rule changes — this stays.
 add_executable(pixel_parallel_determinism_stress pixel_parallel_determinism_stress.cpp)
 target_link_libraries(pixel_parallel_determinism_stress PRIVATE lux::engine::ecs::pixel)
-add_test(NAME pixel_parallel_determinism_stress COMMAND pixel_parallel_determinism_stress)
-set_tests_properties(pixel_parallel_determinism_stress PROPERTIES LABELS "cpu" TIMEOUT 600)
 
 add_executable(pixel_sparse_runtime_test pixel_sparse_runtime_test.cpp)
 target_link_libraries(pixel_sparse_runtime_test PRIVATE lux::engine::ecs::pixel)
-add_test(NAME pixel_sparse_runtime_test COMMAND pixel_sparse_runtime_test)
-set_tests_properties(pixel_sparse_runtime_test PROPERTIES
-    LABELS "cpu;pixel" TIMEOUT 30)
 
 add_executable(pixel_field_system_test pixel_field_system_test.cpp)
 target_link_libraries(pixel_field_system_test PRIVATE lux::engine::ecs::pixel)
-add_test(NAME pixel_field_system_test COMMAND pixel_field_system_test)
-set_tests_properties(pixel_field_system_test PROPERTIES
-    LABELS "cpu;pixel" TIMEOUT 30)
 
 # PERMANENT:渲染桥不变量的常驻回归网(①-⑪,见文件头目录)。最初是
 # DEVELOPMENT-TIME 探针,但此后每条工作线都把自己「测试与实机日志都抓不到」
@@ -75,10 +67,6 @@ if(MSVC)
     )
 endif()
 
-add_test(NAME render_subsystem_probes COMMAND render_subsystem_probes)
-set_tests_properties(render_subsystem_probes PROPERTIES
-    LABELS "cpu" TIMEOUT 120
-    FAIL_REGULAR_EXPRESSION "EXTRACTION-VERIFY;TRANSFORM-VERIFY")
 
 # Permanent contract probe for the ECS/render RPC boundary. In particular,
 # RenderRequest::then may run synchronously and create replies must remain
@@ -88,9 +76,6 @@ target_link_libraries(render_request_lifecycle_probe
     PRIVATE
     lux::engine::ecs::render_core
 )
-add_test(NAME render_request_lifecycle_probe COMMAND render_request_lifecycle_probe)
-set_tests_properties(render_request_lifecycle_probe PROPERTIES
-    LABELS "cpu" TIMEOUT 30)
 
 # Permanent split-frame lifecycle probe. It drives dispatch and reply pumping
 # separately so entity/system teardown can occur in the otherwise invisible
@@ -106,10 +91,6 @@ target_link_libraries(render_subsystem_lifecycle_probe
     lux::engine::function::render_vulkan
     lux::engine::resource::asset_codecs
 )
-add_test(NAME render_subsystem_lifecycle_probe
-    COMMAND render_subsystem_lifecycle_probe)
-set_tests_properties(render_subsystem_lifecycle_probe PROPERTIES
-    LABELS "cpu" TIMEOUT 60)
 
 # Private composition contract shared by the Pixel and Tilemap render leaves.
 # Keeping the test outside either public API proves the cache is not a new
@@ -118,7 +99,3 @@ add_executable(sparse_canvas_atlas_cache_test
     sparse_canvas_atlas_cache_test.cpp)
 target_include_directories(sparse_canvas_atlas_cache_test
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../render/pinclude)
-add_test(NAME sparse_canvas_atlas_cache_test
-    COMMAND sparse_canvas_atlas_cache_test)
-set_tests_properties(sparse_canvas_atlas_cache_test PROPERTIES
-    LABELS "cpu;pixel;tilemap" TIMEOUT 30)

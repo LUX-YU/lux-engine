@@ -60,7 +60,7 @@
                 reference.target == document.actor ||
                 static_cast<std::uint8_t>(reference.kind) >
                     static_cast<std::uint8_t>(
-                        EWorldActorReferenceKind::OPTIONAL) ||
+                        EWorldActorReferenceKind::OPTIONAL_REFERENCE) ||
                 (index != 0u && document.references[index - 1u].target ==
                     reference.target))
             {
@@ -222,7 +222,7 @@
                 lux::entity_scene::PersistentEntityId>(reader);
             const auto kind = reader.readPod<std::uint8_t>();
             if (kind > static_cast<std::uint8_t>(
-                    EWorldActorReferenceKind::OPTIONAL))
+                    EWorldActorReferenceKind::OPTIONAL_REFERENCE))
             {
                 return lux::cxx::unexpected(
                     std::string{"LXAD has a malformed Actor reference"});

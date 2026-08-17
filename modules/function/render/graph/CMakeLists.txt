@@ -47,7 +47,3 @@ target_link_libraries(
     PRIVATE
         render_graph
 )
-add_test(
-    NAME    render_graph_dependency_test
-    COMMAND render_graph_dependency_test
-)

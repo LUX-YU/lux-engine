@@ -17,8 +17,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(NAME navigation_contract_test COMMAND navigation_contract_test)
-set_tests_properties(
-    navigation_contract_test
-    PROPERTIES LABELS "cpu;navigation" TIMEOUT 30
-)

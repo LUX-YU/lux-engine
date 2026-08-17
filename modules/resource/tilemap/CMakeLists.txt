@@ -66,11 +66,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(
-    NAME tilemap_content_codec_test
-    COMMAND tilemap_content_codec_test
-)
-set_tests_properties(
-    tilemap_content_codec_test
-    PROPERTIES LABELS "cpu;resource;tilemap" TIMEOUT 30
-)

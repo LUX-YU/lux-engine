@@ -150,7 +150,7 @@ int main()
     // A leaf can explicitly bind an already-created backing handle. The fold
     // command must adopt it, never create a duplicate or claim ownership.
     PixelFieldDesc leaf_description;
-    leaf_description.extent = EPixelFieldExtent::INFINITE;
+    leaf_description.extent = EPixelFieldExtent::INFINITE_FIELD;
     const auto leaf_handle = runtime.create(leaf_description);
     assert(leaf_handle.valid());
     const auto leaf = registry.create();

@@ -1,10 +1,9 @@
-add_library(
-    physics2d_pixel_integration STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/PixelCollisionProbe.cpp
-)
-add_library(
-    lux::engine::ecs::physics2d_pixel_integration
-    ALIAS physics2d_pixel_integration
+add_component(
+    COMPONENT_NAME  physics2d_pixel_integration
+    NAMESPACE       lux::engine::ecs
+    STATIC
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/PixelCollisionProbe.cpp
 )
 
 lux_classify_target(
@@ -14,12 +13,14 @@ lux_classify_target(
     ROLE    INTEGRATION
 )
 
-target_include_directories(
+component_include_directories(
     physics2d_pixel_integration
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    BUILD_TIME_EXPORT
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    INSTALL_TIME
+        include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 target_link_libraries(
     physics2d_pixel_integration
@@ -27,4 +28,9 @@ target_link_libraries(
         lux::engine::ecs::core
         lux::engine::ecs::physics
         lux::engine::ecs::pixel
+)
+
+component_add_transitive_commands(
+    physics2d_pixel_integration
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core physics pixel)"
 )

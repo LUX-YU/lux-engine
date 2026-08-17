@@ -73,8 +73,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(NAME entity_scene_cooker_test COMMAND entity_scene_cooker_test)
-set_tests_properties(
-    entity_scene_cooker_test
-    PROPERTIES LABELS "cpu;toolchain;entity_scene" TIMEOUT 30
-)

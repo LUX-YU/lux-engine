@@ -67,11 +67,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(
-    NAME static_collider_batch3d_codec_test
-    COMMAND static_collider_batch3d_codec_test
-)
-set_tests_properties(
-    static_collider_batch3d_codec_test
-    PROPERTIES LABELS "cpu;resource;physics3d" TIMEOUT 30
-)

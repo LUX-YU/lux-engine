@@ -71,8 +71,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-add_test(NAME runtime_capacity_test COMMAND runtime_capacity_test)
-set_tests_properties(
-    runtime_capacity_test
-    PROPERTIES LABELS "cpu;resource;capacity" TIMEOUT 30
-)

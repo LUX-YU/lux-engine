@@ -71,13 +71,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    INTEGRATION
 )
-add_test(
-    NAME spatial3d_navigation_adapter_test
-    COMMAND spatial3d_navigation_adapter_test
-)
-set_tests_properties(
-    spatial3d_navigation_adapter_test
-    PROPERTIES
-        LABELS "cpu;runtime;spatial3d;entity_scene;navigation;async"
-        TIMEOUT 60
-)

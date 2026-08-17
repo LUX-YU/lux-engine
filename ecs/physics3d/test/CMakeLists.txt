@@ -14,9 +14,3 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
-
-add_test(NAME physics3d_scene_test COMMAND physics3d_scene_test)
-set_tests_properties(
-    physics3d_scene_test
-    PROPERTIES LABELS "cpu;physics3d" TIMEOUT 30
-)

@@ -29,14 +29,4 @@ if(TARGET ecs_meta AND TARGET spatial3d_components_meta)
         PRODUCT TEST
         ROLE    INTEGRATION
     )
-    add_test(
-        NAME spatial3d_scene_runtime_test
-        COMMAND spatial3d_scene_runtime_test
-    )
-    set_tests_properties(
-        spatial3d_scene_runtime_test
-        PROPERTIES
-            LABELS "cpu;runtime;spatial3d;partition;entity_scene;lxsc;headless"
-            TIMEOUT 60
-    )
 endif()

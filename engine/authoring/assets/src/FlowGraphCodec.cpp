@@ -449,7 +449,10 @@ namespace lux::authoring::detail
             else if (op == ff::ENodeOperation::GRAPH_FUNC_CALL)
             {
                 const auto* def = static_cast<const ff::GraphFuncCallNode&>(*n).callee();
-                if (!def) return fail("graph call has no callee");
+                if (!def)
+                {
+                    return fail("graph call has no callee");
+                }
                 w.u64(def->id());
             }
             else if (op == ff::ENodeOperation::GET_FIELD
@@ -467,7 +470,10 @@ namespace lux::authoring::detail
                     const auto& sf = static_cast<const ff::SetFieldNode&>(*n);
                     cls = sf.ownerClass(); field = sf.field();
                 }
-                if (!cls || !field) return fail("field node has no reflection info");
+                if (!cls || !field)
+                {
+                    return fail("field node has no reflection info");
+                }
                 w.str(cls->full_name);
                 w.str(field->name);
             }
@@ -477,9 +483,14 @@ namespace lux::authoring::detail
                 w.u16(static_cast<std::uint16_t>(ev.paramInfos().size()));
                 for (const auto& p : ev.paramInfos())
                 {
-                    if (!p.type) return fail("event parameter has no type");
+                    if (!p.type)
+                    {
+                        return fail("event parameter has no type");
+                    }
                     if (!writeScalarType(w, p.type))
+                    {
                         return fail("event parameter has an unsupported type");
+                    }
                     w.str(p.name);
                 }
             }
@@ -545,9 +556,15 @@ namespace lux::authoring::detail
             const auto& ins = n->inPins();
             for (std::size_t i = 0; i < ins.size(); ++i)
             {
-                if (ins[i]->kind() != ff::EPinKind::DATA_IN) continue;
+                if (ins[i]->kind() != ff::EPinKind::DATA_IN)
+                {
+                    continue;
+                }
                 const auto* dpin = static_cast<const ff::DataInPin*>(ins[i]);
-                if (!dpin->validConstant()) continue;
+                if (!dpin->validConstant())
+                {
+                    continue;
+                }
                 consts.push_back(WireConst{
                     dpin, n->id(), static_cast<std::uint16_t>(i) });
             }
@@ -559,7 +576,9 @@ namespace lux::authoring::detail
             w.u16(cst.ord);
             std::string err;
             if (!writeConstant(w, cst.pin->constantData(), &err))
+            {
                 return fail("pin constant: unsupported constant type");
+            }
         }
 
         w.u32(kFlowGraphTrailer);
@@ -574,11 +593,20 @@ namespace lux::authoring::detail
         ByteReader c{blob, error_out};
 
         std::uint32_t magic = 0, endian = 0, version = 0;
-        if (!c.u32(magic))   return false;
+        if (!c.u32(magic))
+        {
+            return false;
+        }
         if (magic != kFlowGraphMagic)      { c.fail("bad magic");      return false; }
-        if (!c.u32(endian))  return false;
+        if (!c.u32(endian))
+        {
+            return false;
+        }
         if (endian != kFlowGraphEndianTag) { c.fail("bad endian tag"); return false; }
-        if (!c.u32(version)) return false;
+        if (!c.u32(version))
+        {
+            return false;
+        }
         if (version != kFlowGraphVersion)
         {
             c.fail("schema version mismatch");
@@ -589,18 +617,33 @@ namespace lux::authoring::detail
 
         // ── variables ─────────────────────────────────────────────────────
         std::uint32_t vcount = 0;
-        if (!c.u32(vcount)) return false;
+        if (!c.u32(vcount))
+        {
+            return false;
+        }
         if (vcount > kMaxFlowGraphPins) { c.fail("variable count too large"); return false; }
         for (std::uint32_t i = 0; i < vcount; ++i)
         {
             std::uint64_t id = 0;
             std::string   name;
-            if (!c.u64(id)) return false;
-            if (!c.str(name, kMaxFlowGraphName)) return false;
+            if (!c.u64(id))
+            {
+                return false;
+            }
+            if (!c.str(name, kMaxFlowGraphName))
+            {
+                return false;
+            }
             const auto* type = readScalarType(c);
-            if (!type) return false;
+            if (!type)
+            {
+                return false;
+            }
             lux::meta::RuntimeObject dflt;
-            if (!readConstant(c, dflt)) return false;
+            if (!readConstant(c, dflt))
+            {
+                return false;
+            }
 
             if (!g.addVariableWithId(
                     id, std::move(name), type, std::move(dflt)))
@@ -612,7 +655,10 @@ namespace lux::authoring::detail
 
         // ── nodes ─────────────────────────────────────────────────────────
         std::uint32_t ncount = 0;
-        if (!c.u32(ncount)) return false;
+        if (!c.u32(ncount))
+        {
+            return false;
+        }
         if (ncount > kMaxFlowGraphNodes) { c.fail("node count too large"); return false; }
 
         std::unordered_map<std::uint64_t, ff::Node*> by_id;
@@ -628,7 +674,9 @@ namespace lux::authoring::detail
             ff::Node* raw = node.get();
             g.addNodesWithId(id, std::move(node));
             if (!by_id.emplace(id, raw).second)
+            {
                 return nullptr;  // duplicate id
+            }
             return raw;
         };
 
@@ -648,14 +696,23 @@ namespace lux::authoring::detail
         // Shared signature reader (FUNC_DEF_START args/rets, ON_EVENT params).
         auto readSig = [&](std::vector<ff::FuncArgInfo>& sig) -> bool {
             std::uint16_t count = 0;
-            if (!c.u16(count)) return false;
+            if (!c.u16(count))
+            {
+                return false;
+            }
             if (count > kMaxFlowGraphPins) { c.fail("signature too large"); return false; }
             for (std::uint16_t k = 0; k < count; ++k)
             {
                 std::string   pname;
                 const auto* type = readScalarType(c);
-                if (!type) return false;
-                if (!c.str(pname, kMaxFlowGraphName)) return false;
+                if (!type)
+                {
+                    return false;
+                }
+                if (!c.str(pname, kMaxFlowGraphName))
+                {
+                    return false;
+                }
                 sig.push_back(ff::FuncArgInfo{type, std::move(pname)});
             }
             return true;
@@ -668,12 +725,30 @@ namespace lux::authoring::detail
             std::string   display;
             std::uint8_t  placed = 0;
             float         x = 0.0f, y = 0.0f;
-            if (!c.u64(id)) return false;
-            if (!c.u16(op_raw)) return false;
-            if (!c.str(display, kMaxFlowGraphName)) return false;
-            if (!c.u8(placed)) return false;
-            if (!c.f32(x)) return false;
-            if (!c.f32(y)) return false;
+            if (!c.u64(id))
+            {
+                return false;
+            }
+            if (!c.u16(op_raw))
+            {
+                return false;
+            }
+            if (!c.str(display, kMaxFlowGraphName))
+            {
+                return false;
+            }
+            if (!c.u8(placed))
+            {
+                return false;
+            }
+            if (!c.f32(x))
+            {
+                return false;
+            }
+            if (!c.f32(y))
+            {
+                return false;
+            }
 
             const auto op = static_cast<ff::ENodeOperation>(op_raw);
             std::unique_ptr<ff::Node> node;
@@ -685,19 +760,29 @@ namespace lux::authoring::detail
             else if (op == ff::ENodeOperation::SEQUENCE)
             {
                 std::uint16_t extra = 0;
-                if (!c.u16(extra)) return false;
+                if (!c.u16(extra))
+                {
+                    return false;
+                }
                 if (extra > kMaxFlowGraphPins) { c.fail("sequence pin count too large"); return false; }
                 auto seq = std::make_unique<ff::SequenceNode>();
                 for (std::uint16_t k = 0; k < extra; ++k)
+                {
                     seq->addExecOutPin();
+                }
                 node = std::move(seq);
             }
             else if (isBinaryOp(op) || isUnaryOp(op))
             {
                 const auto* type = readScalarType(c);
-                if (!type) return false;
+                if (!type)
+                {
+                    return false;
+                }
                 if (isBinaryOp(op))
+                {
                     node = std::make_unique<ff::BinaryOpNode>(op, type);
+                }
                 else
                     node = std::make_unique<ff::UnaryOpNode>(op, type);
             }
@@ -705,19 +790,27 @@ namespace lux::authoring::detail
                   || op == ff::ENodeOperation::SET_VARIABLE)
             {
                 std::uint64_t var_id = 0;
-                if (!c.u64(var_id)) return false;
+                if (!c.u64(var_id))
+                {
+                    return false;
+                }
                 const auto* var = g.findVariable(var_id);
                 if (!var) { c.fail("node references an unknown variable"); return false; }
                 const ff::DataPinInfo info{ var->name, var->type };
                 if (op == ff::ENodeOperation::GET_VARIABLE)
+                {
                     node = std::make_unique<ff::GetVariableNode>(var_id, info);
+                }
                 else
                     node = std::make_unique<ff::SetVariableNode>(var_id, info);
             }
             else if (op == ff::ENodeOperation::NATIVE_FUNC_CALL)
             {
                 std::string creator;
-                if (!c.str(creator, kMaxFlowGraphName)) return false;
+                if (!c.str(creator, kMaxFlowGraphName))
+                {
+                    return false;
+                }
                 ff::NodeCreatInfo* info = registry.findNodeByName(creator);
                 if (!info || !info->creator)
                 {
@@ -734,23 +827,38 @@ namespace lux::authoring::detail
             else if (op == ff::ENodeOperation::FUNC_DEF_START)
             {
                 std::vector<ff::FuncArgInfo> args, rets;
-                if (!readSig(args)) return false;
-                if (!readSig(rets)) return false;
+                if (!readSig(args))
+                {
+                    return false;
+                }
+                if (!readSig(rets))
+                {
+                    return false;
+                }
                 node = std::make_unique<ff::FuncDefNode>(
                     display, std::move(args), std::move(rets));
             }
             else if (op == ff::ENodeOperation::ON_EVENT)
             {
                 std::vector<ff::FuncArgInfo> params;
-                if (!readSig(params)) return false;
+                if (!readSig(params))
+                {
+                    return false;
+                }
                 node = std::make_unique<ff::OnEventNode>(display, std::move(params));
             }
             else if (op == ff::ENodeOperation::GET_FIELD
                   || op == ff::ENodeOperation::SET_FIELD)
             {
                 std::string cls_name, field_name;
-                if (!c.str(cls_name, kMaxFlowGraphName)) return false;
-                if (!c.str(field_name, kMaxFlowGraphName)) return false;
+                if (!c.str(cls_name, kMaxFlowGraphName))
+                {
+                    return false;
+                }
+                if (!c.str(field_name, kMaxFlowGraphName))
+                {
+                    return false;
+                }
                 const auto* cls =
                     lux::meta::ReflectionRegistry::instance().findClass(cls_name);
                 if (!cls) { c.fail("field node references an unregistered class"); return false; }
@@ -759,7 +867,9 @@ namespace lux::authoring::detail
                     if (f.name == field_name) { field = &f; break; }
                 if (!field) { c.fail("field node references an unknown field"); return false; }
                 if (op == ff::ENodeOperation::GET_FIELD)
+                {
                     node = std::make_unique<ff::GetFieldNode>(*cls, *field);
+                }
                 else
                     node = std::make_unique<ff::SetFieldNode>(*cls, *field);
             }
@@ -767,7 +877,10 @@ namespace lux::authoring::detail
                   || op == ff::ENodeOperation::GRAPH_FUNC_CALL)
             {
                 std::uint64_t def_id = 0;
-                if (!c.u64(def_id)) return false;
+                if (!c.u64(def_id))
+                {
+                    return false;
+                }
                 deferred.push_back(DeferredRec{ id, op, display, placed, x, y, def_id });
                 continue;
             }
@@ -798,7 +911,9 @@ namespace lux::authoring::detail
             const auto& def = static_cast<const ff::FuncDefNode&>(*it->second);
             std::unique_ptr<ff::Node> node;
             if (rec.op == ff::ENodeOperation::FUNC_RETURN)
+            {
                 node = std::make_unique<ff::FuncReturnNode>(def);
+            }
             else
                 node = std::make_unique<ff::GraphFuncCallNode>(def);
             if (!adopt(rec.id, std::move(node), rec.display, rec.placed, rec.x, rec.y))
@@ -810,16 +925,31 @@ namespace lux::authoring::detail
 
         // ── links ─────────────────────────────────────────────────────────
         std::uint32_t lcount = 0;
-        if (!c.u32(lcount)) return false;
+        if (!c.u32(lcount))
+        {
+            return false;
+        }
         if (lcount > kMaxFlowGraphNodes) { c.fail("link count too large"); return false; }
         for (std::uint32_t i = 0; i < lcount; ++i)
         {
             std::uint64_t src_node = 0, dst_node = 0;
             std::uint16_t src_ord = 0, dst_ord = 0;
-            if (!c.u64(src_node)) return false;
-            if (!c.u16(src_ord)) return false;
-            if (!c.u64(dst_node)) return false;
-            if (!c.u16(dst_ord)) return false;
+            if (!c.u64(src_node))
+            {
+                return false;
+            }
+            if (!c.u16(src_ord))
+            {
+                return false;
+            }
+            if (!c.u64(dst_node))
+            {
+                return false;
+            }
+            if (!c.u16(dst_ord))
+            {
+                return false;
+            }
 
             auto s_it = by_id.find(src_node);
             auto d_it = by_id.find(dst_node);
@@ -845,16 +975,28 @@ namespace lux::authoring::detail
 
         // ── data-in constants ─────────────────────────────────────────────
         std::uint32_t ccount = 0;
-        if (!c.u32(ccount)) return false;
+        if (!c.u32(ccount))
+        {
+            return false;
+        }
         if (ccount > kMaxFlowGraphNodes) { c.fail("constant count too large"); return false; }
         for (std::uint32_t i = 0; i < ccount; ++i)
         {
             std::uint64_t node_id = 0;
             std::uint16_t ord = 0;
-            if (!c.u64(node_id)) return false;
-            if (!c.u16(ord)) return false;
+            if (!c.u64(node_id))
+            {
+                return false;
+            }
+            if (!c.u16(ord))
+            {
+                return false;
+            }
             lux::meta::RuntimeObject value;
-            if (!readConstant(c, value)) return false;
+            if (!readConstant(c, value))
+            {
+                return false;
+            }
 
             auto it = by_id.find(node_id);
             if (it == by_id.end()) { c.fail("constant references an unknown node"); return false; }
@@ -873,9 +1015,15 @@ namespace lux::authoring::detail
         }
 
         std::uint32_t trailer = 0;
-        if (!c.u32(trailer)) return false;
+        if (!c.u32(trailer))
+        {
+            return false;
+        }
         if (trailer != kFlowGraphTrailer) { c.fail("bad trailer"); return false; }
-        if (!c.ok()) return false;
+        if (!c.ok())
+        {
+            return false;
+        }
 
         out = std::move(g);
         return true;

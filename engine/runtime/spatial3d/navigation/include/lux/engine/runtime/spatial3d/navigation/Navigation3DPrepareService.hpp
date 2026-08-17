@@ -17,12 +17,10 @@
 namespace lux::runtime::spatial3d
 {
     template <typename T>
-    using Navigation3DSubmitExp =
-        lux::cxx::expected<T, lux::exec::EAsyncSubmitError>;
+    using Navigation3DSubmitExp = lux::cxx::expected<T, lux::exec::EAsyncSubmitError>;
 
     template <typename T>
-    using Navigation3DAssemblyExp =
-        lux::cxx::expected<T, lux::exec::AsyncAssemblyFailure>;
+    using Navigation3DAssemblyExp = lux::cxx::expected<T, lux::exec::AsyncAssemblyFailure>;
 
     inline constexpr std::size_t kNavigation3DPrepareQueueCapacity = 16u;
     inline constexpr std::size_t kNavigation3DPrepareByteBudget =

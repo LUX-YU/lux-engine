@@ -42,21 +42,19 @@ namespace lux::runtime::spatial3d
     struct StaticCollider3DPrepareFailure final
     {
         EStaticCollider3DPrepareError error{
-            EStaticCollider3DPrepareError::INVALID_REQUEST};
+            EStaticCollider3DPrepareError::INVALID_REQUEST
+        };
         std::string detail;
     };
 
     template <typename T>
-    using StaticCollider3DPrepareExp =
-        lux::cxx::expected<T, StaticCollider3DPrepareFailure>;
+    using StaticCollider3DPrepareExp = lux::cxx::expected<T, StaticCollider3DPrepareFailure>;
 
     template <typename T>
-    using StaticCollider3DSubmitExp =
-        lux::cxx::expected<T, lux::exec::EAsyncSubmitError>;
+    using StaticCollider3DSubmitExp = lux::cxx::expected<T, lux::exec::EAsyncSubmitError>;
 
     template <typename T>
-    using StaticCollider3DAssemblyExp =
-        lux::cxx::expected<T, lux::exec::AsyncAssemblyFailure>;
+    using StaticCollider3DAssemblyExp = lux::cxx::expected<T, lux::exec::AsyncAssemblyFailure>;
 
     struct StaticCollider3DPrepareServiceSnapshot final
     {

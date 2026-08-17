@@ -60,7 +60,12 @@ namespace
                                                        uint32_t set) noexcept
     {
         for (const auto& rs : refl.reflected_sets)
-            if (rs.set == set) return &rs;
+        {
+            if (rs.set == set)
+            {
+                return &rs;
+            }
+        }
         return nullptr;   // this slot is a reflection hole / a slot explicitly declared but not referenced by this pipeline's shader
     }
 
@@ -73,7 +78,9 @@ namespace
     {
         for (const auto& e : rdesc::kLayoutContractV0)
             if (e.engine_set && e.canonical_set == set && e.canonical_binding == binding)
+            {
                 return e.name;
+            }
         return nullptr;
     }
 
@@ -86,7 +93,9 @@ namespace
     void fillFromEngineShape(PlannedSet& dst, uint32_t canonical_set)
     {
         if (canonical_set >= kEngineSetShapes.size())
+        {
             return;
+        }
 
         const EngineSetShape& shape = kEngineSetShapes[canonical_set];
         dst.update_after_bind = shape.update_after_bind;
@@ -100,11 +109,15 @@ namespace
             pb.binding_flags = b.binding_flags;
             pb.count         = (b.count_source == EBindingCountSource::Fixed) ? b.count : 0u;
             if (const char* n = canonicalName(canonical_set, b.binding))
+            {
                 pb.name = n;
+            }
             dst.bindings.push_back(std::move(pb));
 
             if (shape.expand_by_count_source)
+            {
                 break;   // template-style set (per-family Material): only record the template entry
+            }
         }
     }
 
@@ -119,7 +132,9 @@ namespace
         {
             const auto* e = rdesc::findLogicalResource(b.name);
             if (!e)
+            {
                 continue;
+            }
 
             const auto f = e->binding_flags;
             if (f & static_cast<uint8_t>(rdesc::EBindingFlags::UPDATE_AFTER_BIND))
@@ -128,16 +143,31 @@ namespace
                 set.update_after_bind = true;
             }
             if (f & static_cast<uint8_t>(rdesc::EBindingFlags::PARTIALLY_BOUND))
+            {
                 b.binding_flags |= VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+            }
             if (f & static_cast<uint8_t>(rdesc::EBindingFlags::VARIABLE_COUNT))
+            {
                 b.binding_flags |= VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+            }
 
             VkShaderStageFlags contract_stages = 0;
-            if (e->stages & static_cast<uint8_t>(rdesc::EStageBits::VERTEX))   contract_stages |= VK_SHADER_STAGE_VERTEX_BIT;
-            if (e->stages & static_cast<uint8_t>(rdesc::EStageBits::FRAGMENT)) contract_stages |= VK_SHADER_STAGE_FRAGMENT_BIT;
-            if (e->stages & static_cast<uint8_t>(rdesc::EStageBits::COMPUTE))  contract_stages |= VK_SHADER_STAGE_COMPUTE_BIT;
+            if (e->stages & static_cast<uint8_t>(rdesc::EStageBits::VERTEX))
+            {
+                contract_stages |= VK_SHADER_STAGE_VERTEX_BIT;
+            }
+            if (e->stages & static_cast<uint8_t>(rdesc::EStageBits::FRAGMENT))
+            {
+                contract_stages |= VK_SHADER_STAGE_FRAGMENT_BIT;
+            }
+            if (e->stages & static_cast<uint8_t>(rdesc::EStageBits::COMPUTE))
+            {
+                contract_stages |= VK_SHADER_STAGE_COMPUTE_BIT;
+            }
             if (contract_stages != 0)
+            {
                 b.stages = contract_stages;
+            }
 
             set.frequency = e->frequency;
         }
@@ -235,7 +265,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
     {
         for (auto& s : plan.sets)
             if (s.kind == kind && s.set == set && s.owner_key == owner)
+            {
                 return s;
+            }
         PlannedSet ns{};
         ns.set       = set;
         ns.kind      = kind;
@@ -283,7 +315,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
         // No reflection = a legacy-path pipeline (the caller supplies its own
         // pipeline_layout); its layout isn't managed here.
         if (!refl || refl->slots.empty())
+        {
             return;
+        }
 
         for (const auto& slot : refl->slots)
         {
@@ -298,13 +332,17 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                 // otherwise it would generate an empty fake EngineShared entry
                 // that pollutes both aggregation and plan_hash.
                 if (slot.logical_set >= kEngineSetShapes.size())
+                {
                     break;
+                }
                 // Identity is the canonical number; the shape comes from the
                 // engine table, not from reflection (see the file header).
                 PlannedSet& dst = findOrAdd(EPlannedSetKind::EngineShared,
                                             slot.logical_set, 0);
                 if (dst.bindings.empty())
+                {
                     fillFromEngineShape(dst, slot.logical_set);
+                }
                 // layout is simply the engine-shared layout for this canonical
                 // slot — it was already resolved at registration time
                 // (including device-derived bindless capacity), so it's reused
@@ -322,7 +360,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                                             reinterpret_cast<uint64_t>(slot.layout));
                 dst.layout = slot.layout;
                 if (const auto* rs = findReflectedSet(*refl, slot.slot))
+                {
                     mergeReflectedInto(dst, *rs);
+                }
                 break;
             }
             case ESlotSource::PipelinePrivate:
@@ -333,7 +373,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                                             slot.slot, owner);
                 dst.layout = slot.layout;
                 if (const auto* rs = findReflectedSet(*refl, slot.slot))
+                {
                     mergeReflectedInto(dst, *rs);
+                }
                 break;
             }
             case ESlotSource::DomainMerged:
@@ -352,15 +394,23 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                 // domain layout) is taken directly from slot.layout in the
                 // DomainMerged branch of layoutForSlot, bypassing the Plan.
                 const auto* rs = findReflectedSet(*refl, slot.slot);
-                if (!rs) break;
+                if (!rs)
+                {
+                    break;
+                }
                 for (const auto& b : rs->bindings)
                 {
                     const auto* e = engineOwnedResource(b.name);
-                    if (!e) continue;   // domain-mode registration already guarantees this can't happen; defensive only
+                    if (!e)
+                    {
+                        continue;   // domain-mode registration already guarantees this can't happen; defensive only
+                    }
                     PlannedSet& dst = findOrAdd(EPlannedSetKind::EngineShared,
                                                 e->canonical_set, 0);
                     if (dst.bindings.empty())
+                    {
                         fillFromEngineShape(dst, e->canonical_set);
+                    }
                 }
                 break;
             }
@@ -383,30 +433,45 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
     const auto checkVariantCoherence = [&](const RGPassDescription& pass, std::uint32_t pass_index)
     {
         if (pass.additional_pipelines.empty() || !pass.pipeline_template.valid())
+        {
             return;
+        }
         const auto* base = pipeline_manager.templateReflection(pass.pipeline_template);
         if (!base || base->slots.empty())
+        {
             return;
+        }
 
         for (const auto& extra : pass.additional_pipelines)
         {
-            if (!extra.valid()) continue;
+            if (!extra.valid())
+            {
+                continue;
+            }
             const auto* var = pipeline_manager.templateReflection(extra);
-            if (!var || var->slots.empty()) continue;
+            if (!var || var->slots.empty())
+            {
+                continue;
+            }
 
             const std::size_t common = std::min(base->slots.size(), var->slots.size());
             for (std::size_t i = 0; i < common; ++i)
             {
-                if (base->slots[i].layout == var->slots[i].layout) continue;
+                if (base->slots[i].layout == var->slots[i].layout)
+                {
+                    continue;
+                }
                 plan.warnings.push_back(renderError<err::graph::VariantLayoutIncompatible>(
                     pass_index, static_cast<std::uint32_t>(i)));
                 break;   // one diagnostic per pass is enough; later slots would necessarily be incompatible too
             }
             if (base->slots.size() != var->slots.size())
+            {
                 plan.warnings.push_back(renderError<err::graph::VariantSetCountMismatch>(
                     pass_index,
                     static_cast<std::uint32_t>(base->slots.size()),
                     static_cast<std::uint32_t>(var->slots.size())));
+            }
         }
     };
 
@@ -416,17 +481,25 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
         const auto& pass = compiled.original_graph.passes[pass_index];
 
         if (pass.pipeline_template.valid())
+        {
             absorb(pipeline_manager.templateReflection(pass.pipeline_template),
                    graphicsOwnerKey(pass.pipeline_template.index));
+        }
 
         for (const auto& extra : pass.additional_pipelines)
+        {
             if (extra.valid())
+            {
                 absorb(pipeline_manager.templateReflection(extra),
                        graphicsOwnerKey(extra.index));
+            }
+        }
 
         if (pass.compute_pipeline_handle.valid())
+        {
             absorb(pipeline_manager.computeReflection(pass.compute_pipeline_handle),
                    computeOwnerKey(pass.compute_pipeline_handle.index));
+        }
 
         checkVariantCoherence(pass, pass_index);
     }
@@ -442,8 +515,14 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
     }
     std::sort(plan.sets.begin(), plan.sets.end(),
               [](const PlannedSet& a, const PlannedSet& b) {
-                  if (a.kind != b.kind) return a.kind < b.kind;
-                  if (a.set != b.set)   return a.set < b.set;
+                  if (a.kind != b.kind)
+                  {
+                      return a.kind < b.kind;
+                  }
+                  if (a.set != b.set)
+                  {
+                      return a.set < b.set;
+                  }
                   return a.owner_key < b.owner_key;
               });
 
@@ -473,7 +552,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
         for (auto& s : plan.sets)
         {
             if (s.kind != EPlannedSetKind::EngineShared || s.set >= kEngineSetShapes.size())
+            {
                 continue;
+            }
             s.domain                = kEngineSetShapes[s.set].frequency;
             s.domain_binding_offset = engineSetDomainOffset(s.set);
             s.domain_binding_count  = engineSetOccupancy(s.set);
@@ -486,7 +567,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
         for (auto& s : plan.sets)
         {
             if (s.kind == EPlannedSetKind::EngineShared)
+            {
                 continue;
+            }
             s.domain = (s.kind == EPlannedSetKind::FeatureExplicit)
                      ? rdesc::EBindFrequency::FEATURE
                      : rdesc::EBindFrequency::PASS_LOCAL;
@@ -501,11 +584,17 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
         for (std::size_t i = 0; i < plan.sets.size(); ++i)
         {
             const auto& a = plan.sets[i];
-            if (a.kind != EPlannedSetKind::EngineShared) continue;
+            if (a.kind != EPlannedSetKind::EngineShared)
+            {
+                continue;
+            }
             for (std::size_t j = i + 1; j < plan.sets.size(); ++j)
             {
                 const auto& b = plan.sets[j];
-                if (b.kind != EPlannedSetKind::EngineShared || b.domain != a.domain) continue;
+                if (b.kind != EPlannedSetKind::EngineShared || b.domain != a.domain)
+                {
+                    continue;
+                }
                 const bool overlap =
                     a.domain_binding_offset < b.domain_binding_offset + b.domain_binding_count &&
                     b.domain_binding_offset < a.domain_binding_offset + a.domain_binding_count;
@@ -590,8 +679,17 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                             {
                                 bool dup = false;
                                 for (auto m : sd.members)
-                                    if (m == e->canonical_set) { dup = true; break; }
-                                if (!dup) sd.members.push_back(e->canonical_set);
+                                {
+                                    if (m == e->canonical_set)
+                                    {
+                                        dup = true;
+                                        break;
+                                    }
+                                }
+                                if (!dup)
+                                {
+                                    sd.members.push_back(e->canonical_set);
+                                }
                             }
                 diag.slots.push_back(std::move(sd));
             }
@@ -601,7 +699,12 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
         const auto recordGraphics = [&](GraphicsPipelineHandle handle)
         {
             for (auto i : seen_gfx)
-                if (i == handle.index) return;
+            {
+                if (i == handle.index)
+                {
+                    return;
+                }
+            }
             seen_gfx.push_back(handle.index);
             const auto& t = pipeline_manager.getTemplate(handle);
             record(pipeline_manager.templateReflection(handle),
@@ -612,15 +715,27 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
         for (const auto& pass : compiled.original_graph.passes)
         {
             if (pass.pipeline_template.valid())
+            {
                 recordGraphics(pass.pipeline_template);
+            }
             for (const auto& extra : pass.additional_pipelines)
+            {
                 if (extra.valid())
+                {
                     recordGraphics(extra);
+                }
+            }
             if (pass.compute_pipeline_handle.valid())
             {
                 bool seen = false;
                 for (auto i : seen_comp)
-                    if (i == pass.compute_pipeline_handle.index) { seen = true; break; }
+                {
+                    if (i == pass.compute_pipeline_handle.index)
+                    {
+                        seen = true;
+                        break;
+                    }
+                }
                 if (!seen)
                 {
                     seen_comp.push_back(pass.compute_pipeline_handle.index);
@@ -658,7 +773,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
             // failing to find it would make the whole template give up on
             // write-back.
             if (slot.logical_set >= kEngineSetShapes.size())
+            {
                 return slot.layout;
+            }
             ps = plan.find(slot.logical_set, EPlannedSetKind::EngineShared, 0);
             break;
         case ESlotSource::FeatureExplicit:
@@ -683,7 +800,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
     {
         const auto* refl = pipeline_manager.templateReflection(handle);
         if (!refl || refl->slots.empty())
+        {
             return;   // legacy-path pipeline (caller supplies its own layout), not managed by the Plan
+        }
 
         lux::cxx::SmallVector<VkDescriptorSetLayout, 8> layouts;
         const uint64_t owner = graphicsOwnerKey(handle.index);
@@ -695,7 +814,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
             // guess, leave the template as-is (the return on the next line
             // abandons write-back for this template).
             if (l == VK_NULL_HANDLE)
+            {
                 return;
+            }
             layouts.push_back(l);
         }
         auto changed = pipeline_manager.rebuildTemplateLayout(
@@ -718,18 +839,31 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
             if (slot.source == ESlotSource::DomainMerged)
             {
                 const auto* rs = findReflectedSet(*refl, slot.slot);
-                if (!rs) continue;
+                if (!rs)
+                {
+                    continue;
+                }
                 for (const auto& b : rs->bindings)
                 {
                     const auto* e = engineOwnedResource(b.name);
                     if (!e || e->canonical_set >= kDescriptorSetCount)
+                    {
                         continue;
+                    }
                     const auto logical = static_cast<EDescriptorSetSlot>(e->canonical_set);
                     bool seen = false;
                     for (const auto& [ls, li] : derived)
-                        if (ls == logical && li == slot.slot) { seen = true; break; }
+                    {
+                        if (ls == logical && li == slot.slot)
+                        {
+                            seen = true;
+                            break;
+                        }
+                    }
                     if (!seen)
+                    {
                         derived.push_back({logical, slot.slot});
+                    }
                 }
                 continue;
             }
@@ -737,7 +871,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                 slot.source != ESlotSource::ReflectionHole)
                 continue;
             if (slot.logical_set >= kDescriptorSetCount)
+            {
                 continue;
+            }
             derived.push_back({static_cast<EDescriptorSetSlot>(slot.logical_set), slot.slot});
         }
 
@@ -748,7 +884,12 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                               : gtmpl.debug_name;
         const auto contains = [](const auto& list, EDescriptorSetSlot s, uint32_t idx) {
             for (const auto& [ls, li] : list)
-                if (ls == s && li == idx) return true;
+            {
+                if (ls == s && li == idx)
+                {
+                    return true;
+                }
+            }
             return false;
         };
         // For domain-mode pipelines, translate the hand-authored semantics
@@ -763,27 +904,40 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
         const bool merged_pipeline = refl->merged_domain_layout;
         const auto authoredOkInMergedMode = [&](EDescriptorSetSlot s, uint32_t idx) {
             const auto canonical = static_cast<uint32_t>(s);
-            if (canonical >= kEngineSetShapes.size()) return false;
+            if (canonical >= kEngineSetShapes.size())
+            {
+                return false;
+            }
             return idx == domainSetSlot(kEngineSetShapes[canonical].frequency);
         };
         for (const auto& [s, idx] : authored)
+        {
             if (!contains(derived, s, idx) &&
                 !(merged_pipeline && authoredOkInMergedMode(s, idx)))
                 plan.warnings.push_back(renderError<err::graph::AuthoredDerivedSlotMismatch>(
                     static_cast<std::uint32_t>(s), idx, 0u));
+        }
         for (const auto& [s, idx] : derived)
+        {
             if (!contains(authored, s, idx))
                 plan.warnings.push_back(renderError<err::graph::AuthoredDerivedSlotMismatch>(
                     static_cast<std::uint32_t>(s), idx, 1u));
+        }
     };
 
     for (const auto& pass : compiled.original_graph.passes)
     {
         if (pass.pipeline_template.valid())
+        {
             writeBack(pass.pipeline_template);
+        }
         for (const auto& extra : pass.additional_pipelines)
+        {
             if (extra.valid())
+            {
                 writeBack(extra);
+            }
+        }
     }
 
     // -- 5. <=4-set feasibility projection (computed but not used yet, see the note in LayoutPlan) --
@@ -817,7 +971,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                              uint32_t                     pass_index)
     {
         if (!refl || refl->slots.empty())
+        {
             return;
+        }
 
         plan.max_sets_current =
             std::max(plan.max_sets_current, static_cast<uint32_t>(refl->slots.size()));
@@ -836,14 +992,26 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
             if (slot.source == ESlotSource::FeatureExplicit)
             {
                 bool seen = false;
-                for (auto l : explicit_sets) if (l == slot.layout) { seen = true; break; }
-                if (!seen) explicit_sets.push_back(slot.layout);
+                for (auto l : explicit_sets)
+                {
+                    if (l == slot.layout)
+                    {
+                        seen = true;
+                        break;
+                    }
+                }
+                if (!seen)
+                {
+                    explicit_sets.push_back(slot.layout);
+                }
             }
         }
 
         uint32_t projected = 0;
         for (bool used : domain_used)
+        {
             projected += used ? 1u : 0u;
+        }
 
         // Conservative accounting: pull feature-owned sets out of the FEATURE
         // domain and count them separately. If this pipeline's FEATURE domain
@@ -900,7 +1068,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                                 const char* pass_name)
     {
         if (!refl || refl->slots.empty())
+        {
             return;
+        }
 
         LayoutPlan::StageUsage v{}, f{}, c{};
         // Under the pre-merge accounting, a merged domain slot is equivalent
@@ -916,7 +1086,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
             case ESlotSource::EngineShared:
             case ESlotSource::ReflectionHole:
                 if (const auto* ps = plan.find(slot.logical_set, EPlannedSetKind::EngineShared, 0))
+                {
                     slot_sets.push_back(ps);
+                }
                 break;
             case ESlotSource::FeatureExplicit:
                 if (const auto* ps = plan.find(slot.slot, EPlannedSetKind::FeatureExplicit,
@@ -925,7 +1097,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                 break;
             case ESlotSource::PipelinePrivate:
                 if (const auto* ps = plan.find(slot.slot, EPlannedSetKind::PipelinePrivate, owner))
+                {
                     slot_sets.push_back(ps);
+                }
                 break;
             case ESlotSource::DomainMerged:
                 if (const auto* rs = findReflectedSet(*refl, slot.slot))
@@ -936,7 +1110,10 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                             {
                                 bool seen = false;
                                 for (const auto* p : slot_sets) if (p == ps) { seen = true; break; }
-                                if (!seen) slot_sets.push_back(ps);
+                                if (!seen)
+                                {
+                                    slot_sets.push_back(ps);
+                                }
                             }
                 break;
             }
@@ -945,16 +1122,27 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
             for (const auto& b : ps->bindings)
             {
                 if (b.binding_flags & VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT)
+                {
                     continue;   // falls under the UAB limit, doesn't count against this budget
+                }
                 // count==0 means "runtime array, capacity determined by the
                 // engine" — this kind is necessarily UAB and has already been
                 // filtered out above; any remaining 0 is treated as 1 so
                 // nothing is missed.
                 const uint32_t n = b.count == 0 ? 1u : b.count;
 
-                if (b.stages & VK_SHADER_STAGE_VERTEX_BIT)   addDescriptorToUsage(v, b.type, n);
-                if (b.stages & VK_SHADER_STAGE_FRAGMENT_BIT) addDescriptorToUsage(f, b.type, n);
-                if (b.stages & VK_SHADER_STAGE_COMPUTE_BIT)  addDescriptorToUsage(c, b.type, n);
+                if (b.stages & VK_SHADER_STAGE_VERTEX_BIT)
+                {
+                    addDescriptorToUsage(v, b.type, n);
+                }
+                if (b.stages & VK_SHADER_STAGE_FRAGMENT_BIT)
+                {
+                    addDescriptorToUsage(f, b.type, n);
+                }
+                if (b.stages & VK_SHADER_STAGE_COMPUTE_BIT)
+                {
+                    addDescriptorToUsage(c, b.type, n);
+                }
             }
         }
 
@@ -1064,24 +1252,40 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                 s.set < kEngineSetShapes.size()
                     ? kEngineSetShapes[s.set].frequency : rdesc::EBindFrequency::FEATURE);
         else if (s.kind == EPlannedSetKind::FeatureExplicit)
+        {
             domain = static_cast<std::size_t>(rdesc::EBindFrequency::FEATURE);
+        }
         else
             continue;
 
         for (const auto& b : s.bindings)
         {
             if (b.binding_flags & VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT)
+            {
                 continue;
+            }
             const uint32_t n = b.count == 0 ? 1u : b.count;
-            if (b.stages & VK_SHADER_STAGE_VERTEX_BIT)   addDescriptorToUsage(domain_v[domain], b.type, n);
-            if (b.stages & VK_SHADER_STAGE_FRAGMENT_BIT) addDescriptorToUsage(domain_f[domain], b.type, n);
-            if (b.stages & VK_SHADER_STAGE_COMPUTE_BIT)  addDescriptorToUsage(domain_c[domain], b.type, n);
+            if (b.stages & VK_SHADER_STAGE_VERTEX_BIT)
+            {
+                addDescriptorToUsage(domain_v[domain], b.type, n);
+            }
+            if (b.stages & VK_SHADER_STAGE_FRAGMENT_BIT)
+            {
+                addDescriptorToUsage(domain_f[domain], b.type, n);
+            }
+            if (b.stages & VK_SHADER_STAGE_COMPUTE_BIT)
+            {
+                addDescriptorToUsage(domain_c[domain], b.type, n);
+            }
         }
     }
 
     const auto mergedFor = [&](const PipelineReflectedInfo* refl, uint64_t owner)
     {
-        if (!refl || refl->slots.empty()) return;
+        if (!refl || refl->slots.empty())
+        {
+            return;
+        }
 
         bool touches[4] = {false, false, false, false};
         LayoutPlan::StageUsage v{}, f{}, c{};
@@ -1095,14 +1299,29 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                 // tally sites (this one used to only accumulate the total,
                 // which skewed the per-type readings).
                 const PlannedSet* ps = plan.find(slot.slot, EPlannedSetKind::PipelinePrivate, owner);
-                if (!ps) continue;
+                if (!ps)
+                {
+                    continue;
+                }
                 for (const auto& b : ps->bindings)
                 {
-                    if (b.binding_flags & VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT) continue;
+                    if (b.binding_flags & VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT)
+                    {
+                        continue;
+                    }
                     const uint32_t n = b.count == 0 ? 1u : b.count;
-                    if (b.stages & VK_SHADER_STAGE_VERTEX_BIT)   addDescriptorToUsage(v, b.type, n);
-                    if (b.stages & VK_SHADER_STAGE_FRAGMENT_BIT) addDescriptorToUsage(f, b.type, n);
-                    if (b.stages & VK_SHADER_STAGE_COMPUTE_BIT)  addDescriptorToUsage(c, b.type, n);
+                    if (b.stages & VK_SHADER_STAGE_VERTEX_BIT)
+                    {
+                        addDescriptorToUsage(v, b.type, n);
+                    }
+                    if (b.stages & VK_SHADER_STAGE_FRAGMENT_BIT)
+                    {
+                        addDescriptorToUsage(f, b.type, n);
+                    }
+                    if (b.stages & VK_SHADER_STAGE_COMPUTE_BIT)
+                    {
+                        addDescriptorToUsage(c, b.type, n);
+                    }
                 }
                 continue;
             }
@@ -1136,7 +1355,9 @@ bool RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compile
                       graphicsOwnerKey(pass.pipeline_template.index));
         for (const auto& extra : pass.additional_pipelines)
             if (extra.valid())
+            {
                 mergedFor(pipeline_manager.templateReflection(extra), graphicsOwnerKey(extra.index));
+            }
         if (pass.compute_pipeline_handle.valid())
             mergedFor(pipeline_manager.computeReflection(pass.compute_pipeline_handle),
                       computeOwnerKey(pass.compute_pipeline_handle.index));

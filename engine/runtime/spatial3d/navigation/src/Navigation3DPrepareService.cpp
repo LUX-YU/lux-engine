@@ -20,9 +20,8 @@ namespace lux::runtime::spatial3d::detail
             : config(value)
         {}
 
-        [[nodiscard]] lux::cxx::expected<
-            std::shared_ptr<Navigation3DPrepareReservation>,
-            lux::exec::EAsyncSubmitError>
+        [[nodiscard]] Navigation3DSubmitExp<
+            std::shared_ptr<Navigation3DPrepareReservation>>
         reserve(std::uint64_t client_generation, std::size_t bytes) noexcept;
 
         [[nodiscard]] bool accepts(std::uint64_t client_generation) const
@@ -48,7 +47,9 @@ namespace lux::runtime::spatial3d::detail
         {
             std::lock_guard lock{mutex};
             if (closing)
+            {
                 return;
+            }
             closing = true;
             ++generation;
             if (generation == 0u)
@@ -59,7 +60,9 @@ namespace lux::runtime::spatial3d::detail
         {
             std::lock_guard lock{mutex};
             if (active_requests == 0u || active_bytes < bytes)
+            {
                 std::abort();
+            }
             --active_requests;
             active_bytes -= bytes;
         }
@@ -83,15 +86,17 @@ namespace lux::runtime::spatial3d::detail
         ~Navigation3DPrepareReservation()
         {
             if (owner)
+            {
                 owner->release(bytes);
+            }
         }
 
         std::shared_ptr<Navigation3DPrepareControl> owner;
         std::size_t bytes{0u};
     };
 
-    lux::cxx::expected<std::shared_ptr<Navigation3DPrepareReservation>,
-                       lux::exec::EAsyncSubmitError>
+    Navigation3DSubmitExp<
+        std::shared_ptr<Navigation3DPrepareReservation>>
     Navigation3DPrepareControl::reserve(
         std::uint64_t client_generation, std::size_t bytes) noexcept
     {
@@ -147,7 +152,9 @@ namespace lux::runtime::spatial3d
             void settle(PrepareResult result) noexcept
             {
                 if (settled.exchange(true, std::memory_order_acq_rel))
+                {
                     return;
+                }
                 admission.reset();
                 if (result)
                 {
@@ -163,7 +170,9 @@ namespace lux::runtime::spatial3d
             void stop() noexcept
             {
                 if (settled.exchange(true, std::memory_order_acq_rel))
+                {
                     return;
+                }
                 admission.reset();
                 completion.failRuntime(lux::exec::EAsyncSubmitError::STOPPING);
             }
@@ -192,8 +201,7 @@ namespace lux::runtime::spatial3d
                static_cast<bool>(operation_);
     }
 
-    lux::cxx::expected<Navigation3DPrepareSender,
-                       lux::exec::EAsyncSubmitError>
+    Navigation3DSubmitExp<Navigation3DPrepareSender>
     Navigation3DPrepareClient::execute(
         BuildNavigationRegion3D request) const noexcept
     {
@@ -206,7 +214,9 @@ namespace lux::runtime::spatial3d
         const auto bytes = request.blob.payload.size();
         auto admission = control->reserve(generation_, bytes);
         if (!admission)
+        {
             return lux::cxx::unexpected(admission.error());
+        }
         request.admission_ = std::move(*admission);
         return lux::exec::execute(
             operation_,
@@ -214,8 +224,7 @@ namespace lux::runtime::spatial3d
             lux::exec::AsyncSubmitOptions{.accounted_bytes = bytes});
     }
 
-    lux::cxx::expected<Navigation3DPrepareService,
-                       lux::exec::AsyncAssemblyFailure>
+    Navigation3DAssemblyExp<Navigation3DPrepareService>
     Navigation3DPrepareService::addTo(lux::exec::AsyncRuntimeBuilder& builder,
                                       Navigation3DPrepareQueueConfig config)
     {
@@ -271,13 +280,17 @@ namespace lux::runtime::spatial3d
                              { pending->settle(std::move(result)); }) |
                     ex::upon_stopped([pending]() noexcept { pending->stop(); });
                 if (!lux::exec::spawn(context.scope(), std::move(work)))
+                {
                     pending->stop();
+                }
             },
             {},
             lux::exec::AsyncOperationQueueConfig{
                 config.capacity, config.byte_budget, config.drain_batch});
         if (!operation)
+        {
             return lux::cxx::unexpected(operation.error());
+        }
         return Navigation3DPrepareService{std::move(control),
                                           std::move(*operation)};
     }
@@ -301,7 +314,9 @@ namespace lux::runtime::spatial3d
         Navigation3DPrepareService&& other) noexcept
     {
         if (this == &other)
+        {
             return *this;
+        }
         close();
         control_ = std::move(other.control_);
         operation_ = std::move(other.operation_);
@@ -326,10 +341,14 @@ namespace lux::runtime::spatial3d
     void Navigation3DPrepareService::close() noexcept
     {
         if (closed_)
+        {
             return;
+        }
         closed_ = true;
         if (control_)
+        {
             control_->closeAdmission();
+        }
         operation_ = {};
     }
 } // namespace lux::runtime::spatial3d

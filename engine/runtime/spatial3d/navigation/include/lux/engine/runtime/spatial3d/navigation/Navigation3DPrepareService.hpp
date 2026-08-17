@@ -16,6 +16,14 @@
 
 namespace lux::runtime::spatial3d
 {
+    template <typename T>
+    using Navigation3DSubmitExp =
+        lux::cxx::expected<T, lux::exec::EAsyncSubmitError>;
+
+    template <typename T>
+    using Navigation3DAssemblyExp =
+        lux::cxx::expected<T, lux::exec::AsyncAssemblyFailure>;
+
     inline constexpr std::size_t kNavigation3DPrepareQueueCapacity = 16u;
     inline constexpr std::size_t kNavigation3DPrepareByteBudget =
         256u * 1024u * 1024u;
@@ -75,9 +83,7 @@ namespace lux::runtime::spatial3d
         /// before an AsyncRuntime sender can be created.  The reservation is
         /// carried by the typed request until its terminal completion, so a
         /// drained endpoint queue cannot make background work unbounded.
-        [[nodiscard]] lux::cxx::expected<
-            Navigation3DPrepareSender,
-            lux::exec::EAsyncSubmitError>
+        [[nodiscard]] Navigation3DSubmitExp<Navigation3DPrepareSender>
         execute(BuildNavigationRegion3D request) const noexcept;
 
         [[nodiscard]] explicit operator bool() const noexcept;
@@ -99,8 +105,7 @@ namespace lux::runtime::spatial3d
         Navigation3DPrepareService final
     {
       public:
-        [[nodiscard]] static lux::cxx::expected<Navigation3DPrepareService,
-                                                lux::exec::AsyncAssemblyFailure>
+        [[nodiscard]] static Navigation3DAssemblyExp<Navigation3DPrepareService>
         addTo(lux::exec::AsyncRuntimeBuilder& builder,
               Navigation3DPrepareQueueConfig config = {});
 

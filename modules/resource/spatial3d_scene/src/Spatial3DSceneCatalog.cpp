@@ -106,7 +106,7 @@ namespace lux::spatial3d_scene
         }
     }
 
-    lux::cxx::expected<void, Spatial3DSceneCatalogFailure>
+    Spatial3DSceneCatalogExp<void>
     validateSpatial3DSceneCatalog(
         const Spatial3DSceneCatalogConfig& config,
         const Spatial3DSceneCatalogCodecLimits& limits) noexcept
@@ -204,8 +204,7 @@ namespace lux::spatial3d_scene
         return {};
     }
 
-    lux::cxx::expected<std::vector<std::byte>,
-                       Spatial3DSceneCatalogFailure>
+    Spatial3DSceneCatalogExp<std::vector<std::byte>>
     encodeSpatial3DSceneCatalog(
         Spatial3DSceneCatalogConfig config,
         const Spatial3DSceneCatalogCodecLimits& limits) noexcept
@@ -259,8 +258,7 @@ namespace lux::spatial3d_scene
         return bytes;
     }
 
-    lux::cxx::expected<Spatial3DSceneCatalogConfig,
-                       Spatial3DSceneCatalogFailure>
+    Spatial3DSceneCatalogExp<Spatial3DSceneCatalogConfig>
     decodeSpatial3DSceneCatalog(
         std::span<const std::byte> bytes,
         const Spatial3DSceneCatalogCodecLimits& limits) noexcept

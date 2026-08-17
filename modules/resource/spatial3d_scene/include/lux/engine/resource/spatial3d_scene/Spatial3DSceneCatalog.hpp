@@ -117,12 +117,16 @@ namespace lux::spatial3d_scene
     struct Spatial3DSceneCatalogFailure final
     {
         ESpatial3DSceneCatalogError error{
-            ESpatial3DSceneCatalogError::INVALID_ARGUMENT};
+            ESpatial3DSceneCatalogError::INVALID_ARGUMENT
+        };
         std::string detail;
     };
 
+    template <typename T>
+    using Spatial3DSceneCatalogExp = lux::cxx::expected<T, Spatial3DSceneCatalogFailure>;
+
     [[nodiscard]] LUX_ENGINE_RESOURCE_SPATIAL3D_SCENE_PUBLIC
-    lux::cxx::expected<void, Spatial3DSceneCatalogFailure>
+    Spatial3DSceneCatalogExp<void>
     validateSpatial3DSceneCatalog(
         const Spatial3DSceneCatalogConfig& config,
         const Spatial3DSceneCatalogCodecLimits& limits = {}) noexcept;
@@ -130,15 +134,13 @@ namespace lux::spatial3d_scene
     /// Encoding canonicalizes a private copy. Decoding rejects non-canonical
     /// wire order, so one logical catalog has exactly one byte image.
     [[nodiscard]] LUX_ENGINE_RESOURCE_SPATIAL3D_SCENE_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>,
-                       Spatial3DSceneCatalogFailure>
+    Spatial3DSceneCatalogExp<std::vector<std::byte>>
     encodeSpatial3DSceneCatalog(
         Spatial3DSceneCatalogConfig config,
         const Spatial3DSceneCatalogCodecLimits& limits = {}) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_SPATIAL3D_SCENE_PUBLIC
-    lux::cxx::expected<Spatial3DSceneCatalogConfig,
-                       Spatial3DSceneCatalogFailure>
+    Spatial3DSceneCatalogExp<Spatial3DSceneCatalogConfig>
     decodeSpatial3DSceneCatalog(
         std::span<const std::byte> bytes,
         const Spatial3DSceneCatalogCodecLimits& limits = {}) noexcept;

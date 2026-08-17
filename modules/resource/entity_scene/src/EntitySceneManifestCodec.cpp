@@ -320,7 +320,7 @@ namespace lux::entity_scene
         }
     }
 
-    lux::cxx::expected<std::vector<std::byte>, EntitySceneCodecFailure>
+    EntitySceneCodecExp<std::vector<std::byte>>
     encodeEntitySceneManifest(
         const EntitySceneManifest& manifest,
         const EntitySceneCodecLimits& limits) noexcept
@@ -373,7 +373,7 @@ namespace lux::entity_scene
             }
             return std::move(writer).take();
     }
-    lux::cxx::expected<EntitySceneManifest, EntitySceneCodecFailure>
+    EntitySceneCodecExp<EntitySceneManifest>
     decodeEntitySceneManifest(
         std::span<const std::byte> bytes,
         const EntitySceneCodecLimits& limits) noexcept

@@ -61,9 +61,13 @@ namespace lux::entity_scene
     struct EntitySceneCodecFailure final
     {
         EEntitySceneCodecError error{
-            EEntitySceneCodecError::INVALID_ARGUMENT};
+            EEntitySceneCodecError::INVALID_ARGUMENT
+        };
         std::string detail;
     };
+
+    template <typename T>
+    using EntitySceneCodecExp = lux::cxx::expected<T, EntitySceneCodecFailure>;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_ENTITY_SCENE_PUBLIC
     lux::cxx::algorithm::Sha256Digest entitySceneContentDigest(
@@ -79,43 +83,43 @@ namespace lux::entity_scene
         std::span<const std::byte> bytes) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_ENTITY_SCENE_PUBLIC
-    lux::cxx::expected<void, EntitySceneCodecFailure>
+    EntitySceneCodecExp<void>
     validateEntitySectionRecord(
         const EntitySectionRecord& record,
         const EntitySceneCodecLimits& limits = {}) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_ENTITY_SCENE_PUBLIC
-    lux::cxx::expected<void, EntitySceneCodecFailure>
+    EntitySceneCodecExp<void>
     validateEntitySceneManifest(
         const EntitySceneManifest& manifest,
         const EntitySceneCodecLimits& limits = {}) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_ENTITY_SCENE_PUBLIC
-    lux::cxx::expected<void, EntitySceneCodecFailure>
+    EntitySceneCodecExp<void>
     validateEntitySectionImage(
         const EntitySectionImage& image,
         const EntitySceneCodecLimits& limits = {}) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_ENTITY_SCENE_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>, EntitySceneCodecFailure>
+    EntitySceneCodecExp<std::vector<std::byte>>
     encodeEntitySceneManifest(
         const EntitySceneManifest& manifest,
         const EntitySceneCodecLimits& limits = {}) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_ENTITY_SCENE_PUBLIC
-    lux::cxx::expected<EntitySceneManifest, EntitySceneCodecFailure>
+    EntitySceneCodecExp<EntitySceneManifest>
     decodeEntitySceneManifest(
         std::span<const std::byte> bytes,
         const EntitySceneCodecLimits& limits = {}) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_ENTITY_SCENE_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>, EntitySceneCodecFailure>
+    EntitySceneCodecExp<std::vector<std::byte>>
     encodeEntitySectionImage(
         const EntitySectionImage& image,
         const EntitySceneCodecLimits& limits = {}) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_ENTITY_SCENE_PUBLIC
-    lux::cxx::expected<EntitySectionImage, EntitySceneCodecFailure>
+    EntitySceneCodecExp<EntitySectionImage>
     decodeEntitySectionImage(
         std::span<const std::byte> bytes,
         const EntitySceneCodecLimits& limits = {}) noexcept;

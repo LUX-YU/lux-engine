@@ -83,7 +83,7 @@ namespace lux::entity_scene
                        }) == values.end();
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EntitySceneCodecFailure>
+        [[nodiscard]] EntitySceneCodecExp<void>
         validateRequirements(
             std::span<const RequiredExtension> extensions,
             std::span<const RequiredComponentSchema> components,
@@ -156,7 +156,7 @@ namespace lux::entity_scene
             return {};
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EntitySceneCodecFailure>
+        [[nodiscard]] EntitySceneCodecExp<void>
         validateSectionRecordImpl(
             const EntitySectionRecord& section,
             const EntitySceneCodecLimits& limits)
@@ -279,7 +279,7 @@ namespace lux::entity_scene
                 limits);
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EntitySceneCodecFailure>
+        [[nodiscard]] EntitySceneCodecExp<void>
         validateManifestImpl(
             const EntitySceneManifest& manifest,
             const EntitySceneCodecLimits& limits)
@@ -453,7 +453,7 @@ namespace lux::entity_scene
                 limits);
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EntitySceneCodecFailure>
+        [[nodiscard]] EntitySceneCodecExp<void>
         validateSectionImpl(
             const EntitySectionImage& image,
             const EntitySceneCodecLimits& limits)
@@ -927,14 +927,14 @@ namespace lux::entity_scene
         return {hasher.digest()};
     }
 
-    lux::cxx::expected<void, EntitySceneCodecFailure>
+    EntitySceneCodecExp<void>
     validateEntitySectionRecord(
         const EntitySectionRecord& record,
         const EntitySceneCodecLimits& limits) noexcept
     {
         return validateSectionRecordImpl(record, limits);
     }
-    lux::cxx::expected<void, EntitySceneCodecFailure>
+    EntitySceneCodecExp<void>
     validateEntitySceneManifest(
         const EntitySceneManifest& manifest,
         const EntitySceneCodecLimits& limits) noexcept
@@ -943,7 +943,7 @@ namespace lux::entity_scene
         // input and schema failures remain explicit expected values.
         return validateManifestImpl(manifest, limits);
     }
-    lux::cxx::expected<void, EntitySceneCodecFailure>
+    EntitySceneCodecExp<void>
     validateEntitySectionImage(
         const EntitySectionImage& image,
         const EntitySceneCodecLimits& limits) noexcept

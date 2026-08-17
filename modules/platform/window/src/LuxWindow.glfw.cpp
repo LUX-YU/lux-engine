@@ -49,12 +49,30 @@ namespace lux::window
     static ModifierKey glfwModifierKeyMaskConvert(int mods)
     {
         int result = 0;
-        if (mods & GLFW_MOD_SHIFT)     result |= ModifierKey::KEY_MOD_SHIFT;
-        if (mods & GLFW_MOD_CONTROL)   result |= ModifierKey::KEY_MOD_CONTROL;
-        if (mods & GLFW_MOD_ALT)       result |= ModifierKey::KEY_MOD_ALT;
-        if (mods & GLFW_MOD_SUPER)     result |= ModifierKey::KEY_MOD_SUPER;
-        if (mods & GLFW_MOD_CAPS_LOCK) result |= ModifierKey::KEY_MOD_CAPS_LOCK;
-        if (mods & GLFW_MOD_NUM_LOCK)  result |= ModifierKey::KEY_MOD_NUM_LOCK;
+        if (mods & GLFW_MOD_SHIFT)
+        {
+            result |= ModifierKey::KEY_MOD_SHIFT;
+        }
+        if (mods & GLFW_MOD_CONTROL)
+        {
+            result |= ModifierKey::KEY_MOD_CONTROL;
+        }
+        if (mods & GLFW_MOD_ALT)
+        {
+            result |= ModifierKey::KEY_MOD_ALT;
+        }
+        if (mods & GLFW_MOD_SUPER)
+        {
+            result |= ModifierKey::KEY_MOD_SUPER;
+        }
+        if (mods & GLFW_MOD_CAPS_LOCK)
+        {
+            result |= ModifierKey::KEY_MOD_CAPS_LOCK;
+        }
+        if (mods & GLFW_MOD_NUM_LOCK)
+        {
+            result |= ModifierKey::KEY_MOD_NUM_LOCK;
+        }
         return static_cast<ModifierKey>(result);
     }
 
@@ -132,7 +150,10 @@ namespace lux::window
 
     bool LuxWindow::init()
     {
-        if (_init) return true;
+        if (_init)
+        {
+            return true;
+        }
 
         // GLFW must already be initialized via GlfwRuntime before creating a window.
 
@@ -190,7 +211,9 @@ namespace lux::window
     {
         *out_surface = VK_NULL_HANDLE;
         if (!_init || _glfw_window == nullptr)
+        {
             return false;
+        }
         const VkResult result = glfwCreateWindowSurface(instance, _glfw_window, allocator, out_surface);
         if (result != VK_SUCCESS || *out_surface == VK_NULL_HANDLE)
         {
@@ -203,11 +226,15 @@ namespace lux::window
     std::span<const char* const> LuxWindow::requiredVulkanInstanceExtensions()
     {
         if (glfwInit() != GLFW_TRUE)  // idempotent when already initialized
+        {
             return {};
+        }
         uint32_t count = 0;
         const char** extensions = glfwGetRequiredInstanceExtensions(&count);
         if (extensions == nullptr)
+        {
             return {};
+        }
         return {extensions, count};
     }
 
@@ -236,7 +263,8 @@ namespace lux::window
 
     bool LuxWindow::setRawMouseMotion(bool enable)
     {
-        if (!glfwRawMouseMotionSupported()) {
+        if (!glfwRawMouseMotionSupported())
+        {
             return false;
         }
         glfwSetInputMode(_glfw_window, GLFW_RAW_MOUSE_MOTION, enable ? GLFW_TRUE : GLFW_FALSE);
@@ -329,7 +357,10 @@ namespace lux::window
                     glfwModifierKeyMaskConvert(mods)
                 };
                 self->_pending_events.emplace_back(data);
-                if (self->on_key) self->on_key(KeyEvent{data});
+                if (self->on_key)
+                {
+                    self->on_key(KeyEvent{data});
+                }
             }
         );
     }
@@ -341,7 +372,10 @@ namespace lux::window
             [](GLFWwindow* window, double xpos, double ypos)
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                if (self->on_cursor_move) self->on_cursor_move(CursorMoveEvent{xpos, ypos});
+                if (self->on_cursor_move)
+                {
+                    self->on_cursor_move(CursorMoveEvent{xpos, ypos});
+                }
             }
         );
     }
@@ -357,7 +391,10 @@ namespace lux::window
                 self->_pending_events.emplace_back(data);
                 self->_pending_scroll_dx += xoffset;
                 self->_pending_scroll_dy += yoffset;
-                if (self->on_mouse_scroll) self->on_mouse_scroll(MouseScrollEvent{data});
+                if (self->on_mouse_scroll)
+                {
+                    self->on_mouse_scroll(MouseScrollEvent{data});
+                }
             }
         );
     }
@@ -372,8 +409,13 @@ namespace lux::window
                 FileDropEvent ev;
                 ev.paths.reserve(static_cast<size_t>(count));
                 for (int i = 0; i < count; ++i)
+                {
                     ev.paths.emplace_back(paths[i]); // GLFW gives absolute paths
-                if (self->on_file_drop) self->on_file_drop(ev);
+                }
+                if (self->on_file_drop)
+                {
+                    self->on_file_drop(ev);
+                }
             }
         );
     }
@@ -420,7 +462,10 @@ namespace lux::window
                     glfwModifierKeyMaskConvert(mods)
                 };
                 self->_pending_events.emplace_back(data);
-                if (self->on_mouse_button) self->on_mouse_button(MouseButtonEvent{data});
+                if (self->on_mouse_button)
+                {
+                    self->on_mouse_button(MouseButtonEvent{data});
+                }
             }
         );
     }
@@ -432,7 +477,12 @@ namespace lux::window
             [](GLFWwindow* window, int width, int height)
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                if (self->on_resize) self->on_resize(WindowResizeEvent{common::Size2D{(uint32_t)width, (uint32_t)height}});
+                if (self->on_resize)
+                {
+                    self->on_resize(WindowResizeEvent{
+                        common::Size2D{(uint32_t)width, (uint32_t)height}
+                    });
+                }
             }
         );
     }
@@ -444,7 +494,12 @@ namespace lux::window
             [](GLFWwindow* window, int width, int height)
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                if (self->on_framebuffer_resize) self->on_framebuffer_resize(FramebufferResizeEvent{common::Size2D{(uint32_t)width, (uint32_t)height}});
+                if (self->on_framebuffer_resize)
+                {
+                    self->on_framebuffer_resize(FramebufferResizeEvent{
+                        common::Size2D{(uint32_t)width, (uint32_t)height}
+                    });
+                }
             }
         );
     }
@@ -502,11 +557,17 @@ namespace lux::window
 
             glfwPollEvents();
 
-            if (on_draw_ready) on_draw_ready(DrawReadyEvent{});
+            if (on_draw_ready)
+            {
+                on_draw_ready(DrawReadyEvent{});
+            }
 
             newFrame();
 
-            if (on_draw_finished) on_draw_finished(DrawFinishedEvent{});
+            if (on_draw_finished)
+            {
+                on_draw_finished(DrawFinishedEvent{});
+            }
         }
 
         return 0;

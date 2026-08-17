@@ -72,8 +72,14 @@ namespace lux::window
 
     void LuxWindow::getCursorPos(double* x, double* y) const
     {
-        if (x) *x = 0.0;
-        if (y) *y = 0.0;
+        if (x)
+        {
+            *x = 0.0;
+        }
+        if (y)
+        {
+            *y = 0.0;
+        }
     }
 
     void LuxWindow::setCursorPos(double, double) {}
@@ -118,7 +124,10 @@ namespace lux::window
         // reached through the CreateSurfaceTarget command. Callers on Android
         // must use it; this returning false is what keeps them from silently
         // going through the desktop-shaped door.
-        if (out_surface) *out_surface = VK_NULL_HANDLE;
+        if (out_surface)
+        {
+            *out_surface = VK_NULL_HANDLE;
+        }
         return false;
     }
 

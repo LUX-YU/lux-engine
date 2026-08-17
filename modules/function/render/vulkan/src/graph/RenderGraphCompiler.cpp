@@ -24,23 +24,31 @@ namespace lux::render
         EPassExecutionMode classifyPassExecutionMode(const RGPassDescription* pass_desc) noexcept
         {
             if (pass_desc == nullptr)
+            {
                 return EPassExecutionMode::RECORDER_FALLBACK;
+            }
             // 注意:condition 不降级执行模式。降级曾让"纯 setKernel + 条件"
             // 的 pass(高亮链的 Cull/MaskDraw)拿不到 span,而 fallback 路径
             // 对无 recorder/kernel_fn 的 pass 是 no-op —— 链"运行"却什么都
             // 不录(选中高亮整链失效)。条件跳过由 serial 路径的 cond_skip
             // 快照负责;fast path 由 canBuildFastPath 显式排除条件图。
             if (!pass_desc->hasKernel())
+            {
                 return EPassExecutionMode::RECORDER_FALLBACK;
+            }
 
             // Prefer callback execution when a pass provides kernel_fn.
             if (pass_desc->kernel_fn)
+            {
                 return EPassExecutionMode::COMPILED_CALLBACK;
+            }
 
             // CompiledNative iff the kernel has a registered emit function.
             const auto* desc = KernelRegistry::instance().find(pass_desc->kernel_id);
             if (desc && desc->emit)
+            {
                 return EPassExecutionMode::COMPILED_NATIVE;
+            }
 
             return EPassExecutionMode::RECORDER_FALLBACK;
         }
@@ -101,20 +109,28 @@ namespace lux::render
                 }
 
                 if (res.lifetime != ERGResourceLifetime::IMPORTED)
+                {
                     continue;
+                }
 
                 const bool has_dynamic_getter =
                     (res.import_info && res.import_info->image_getter != nullptr) ||
                     (res.import_buffer_info && res.import_buffer_info->buffer_getter != nullptr);
                 if (has_dynamic_getter)
+                {
                     compiled.dynamic_external_resources.push_back(ri);
+                }
 
                 if (!res.import_info || !res.import_info->slot.has_value())
+                {
                     continue;
+                }
 
                 const size_t slot_idx = static_cast<size_t>(*res.import_info->slot);
                 if (slot_idx >= kTargetSlotCount)
+                {
                     continue;
+                }
 
                 if (!added_to_relative[i])
                 {
@@ -123,7 +139,9 @@ namespace lux::render
                 }
 
                 if (compiled.valid_resources[ri])
+                {
                     compiled.slot_resource_idx[slot_idx] = ri;
+                }
             }
         }
 
@@ -169,19 +187,27 @@ namespace lux::render
             for (const auto& pass : graph.passes)
                 for (const auto& ref : pass.textures)
                     if (ref.resource.index < role_union.size())
+                    {
                         role_union[ref.resource.index] |= usageBitsForRole(ref.role);
+                    }
 
             for (size_t i = 0; i < graph.resources.size(); ++i)
             {
                 auto& res = graph.resources[i];
                 if (res.type != ERGResourceType::TEXTURE)
+                {
                     continue;
+                }
                 auto* tex = std::get_if<RGTextureDescription>(&res.desc);
                 if (tex == nullptr)
+                {
                     continue;
+                }
                 // 导入资源的物理镜像不归图分配,usage 由导入方定 —— 不动。
                 if (res.import_info)
+                {
                     continue;
+                }
 
                 ERGTextureUsageFlags add = role_union[i] & ~tex->usage;
                 if (add == ERGTextureUsageFlags{0})
@@ -233,7 +259,9 @@ namespace lux::render
 
         // 1) Global analysis: dependencies, lifetimes, resource validity, render pass layout
         if (!buildGlobalInfo(compiled, options))
+        {
             return compiled;
+        }
 
         // 1.5) Auto-fill transient-DS image layouts from each binding pass's resource
         //      role, so the descriptor layout always equals the layout computeBarriers
@@ -253,11 +281,15 @@ namespace lux::render
         //      builds the PSOs and snapshots tmpl.pipeline_layout into the
         //      compiled pass.
         if (!computeGraphDescriptorLayouts(compiled, pipeline_manager))
+        {
             return compiled;
+        }
 
         // 2) Build compilation info for each pass (render pass / framebuffer / pipeline / resource mapping)
         if (!buildCompiledPasses(compiled, pipeline_manager))
+        {
             return compiled;
+        }
 
         // 3) Execution order = topological order
         computeExecutionOrder(compiled);
@@ -281,7 +313,9 @@ namespace lux::render
         //      the graph needs a queue-family ownership transfer we cannot emit.
         computeCrossQueueDependencies(compiled);
         if (!compiled.compile_error.ok())
+        {
             return compiled; // cross-queue EXCLUSIVE resource sharing needs unimplemented QFOT
+        }
 
         // 4) Based on execution order, compute Begin/End RenderPass for each graphics pass
         computeRenderPassBoundaries(compiled);
@@ -293,7 +327,9 @@ namespace lux::render
         // 4.5) Classify conditional passes as elective (intra-group additive)
         //      so the binding plan steps can conservatively reset after them.
         if (!classifyElectivePasses(compiled, access_index))
+        {
             return compiled;
+        }
 
         // 5) Based on execution order and render pass boundaries, compute minimum necessary BindPipeline timing
         computePipelineBindingPlan(compiled);
@@ -307,7 +343,9 @@ namespace lux::render
         // include that read instead of describing only the following writes.
         computeAttachmentOps(compiled, access_index);
         if (!compiled.compile_error.ok())
+        {
             return compiled;   // F13 guard: conditional CLEAR in an lr write chain
+        }
 
         // 6) Compute Barriers
         computeBarriers(compiled);
@@ -492,7 +530,9 @@ namespace lux::render
         for (uint32_t pass_idx = 0; pass_idx < pass_count; ++pass_idx)
         {
             if (!buildSinglePass(compiled, pass_idx, pipeline_manager))
+            {
                 return false;
+            }
         }
         return true;
     }
@@ -507,7 +547,9 @@ namespace lux::render
 
         // Propagate conditional execution pointers
         if (pass_desc.condition)
+        {
             cpass.condition = &pass_desc.condition;
+        }
 
         // Graphics pass: setup render pass / framebuffer / pipeline
         if (pass_desc.type == ERGPassType::GRAPHICS)
@@ -519,7 +561,9 @@ namespace lux::render
               || pass_desc.type == ERGPassType::ASYNC_COMPUTE)
         {
             if (!setupComputePass(compiled, cpass, pass_desc, pipeline_manager))
+            {
                 return false;
+            }
         }
 
         // Resource mapping: map logical handles to physical handles
@@ -533,11 +577,15 @@ namespace lux::render
         const auto &layout = compiled.render_pass_layout;
 
         if (pass_index >= layout.pass_to_group.size())
+        {
             return;
+        }
 
         const uint32_t group_index = layout.pass_to_group[pass_index];
         if (group_index == std::numeric_limits<uint32_t>::max())
+        {
             return; // No layout, meaning this pass has no valid render pass configuration
+        }
 
         cpass.render.render_pass.index = group_index;
         cpass.render.framebuffer.index = group_index; // 1:1 for now, can be differentiated by swapchain image etc. in the future
@@ -557,13 +605,17 @@ namespace lux::render
             const auto variantFeatureMask = [&](uint32_t variant_index) -> uint32_t
             {
                 if (variant_index < pass_desc.pipeline_variant_features.size())
+                {
                     return pass_desc.pipeline_variant_features[variant_index];
+                }
                 return 0u;
             };
 
             uint32_t subpass_index = 0;
             if (pass_index < layout.pass_to_subpass.size())
+            {
                 subpass_index = layout.pass_to_subpass[pass_index];
+            }
 
             const auto &group = layout.groups[group_index];
 
@@ -587,7 +639,9 @@ namespace lux::render
             auto push_variant = [&](GraphicsPipelineHandle handle, VkPipeline vk_pipeline, VkPipelineLayout vk_layout)
             {
                 if (!handle.valid() || vk_pipeline == VK_NULL_HANDLE || vk_layout == VK_NULL_HANDLE)
+                {
                     return;
+                }
                 cpass.render.pipeline_variant_handles.push_back(handle);
                 cpass.render.pipeline_variants.push_back(vk_pipeline);
                 cpass.render.pipeline_variant_layouts.push_back(vk_layout);
@@ -675,7 +729,9 @@ namespace lux::render
         {
             const uint32_t res_idx = tex_ref.resource.index;
             if (res_idx >= compiled.valid_resources.size() || !compiled.valid_resources[res_idx])
+            {
                 continue;
+            }
 
             const bool is_read =
                 tex_ref.usage == ERGResourceUsage::READ ||
@@ -686,9 +742,13 @@ namespace lux::render
                 tex_ref.usage == ERGResourceUsage::READ_WRITE;
 
             if (is_read)
+            {
                 cpass.resources.read_images.push_back(res_idx);
+            }
             if (is_write)
+            {
                 cpass.resources.write_images.push_back(res_idx);
+            }
         }
     }
 
@@ -700,7 +760,9 @@ namespace lux::render
         {
             const uint32_t res_idx = buf_ref.resource.index;
             if (res_idx >= compiled.valid_resources.size() || !compiled.valid_resources[res_idx])
+            {
                 continue;
+            }
 
             const bool is_read =
                 buf_ref.usage == ERGResourceUsage::READ ||
@@ -711,9 +773,13 @@ namespace lux::render
                 buf_ref.usage == ERGResourceUsage::READ_WRITE;
 
             if (is_read)
+            {
                 cpass.resources.read_buffers.push_back(res_idx);
+            }
             if (is_write)
+            {
                 cpass.resources.write_buffers.push_back(res_idx);
+            }
         }
     }
 
@@ -754,17 +820,24 @@ namespace lux::render
         for (uint32_t i = 0; i < resource_count; ++i)
         {
             if (graph.resources[i].lifetime == ERGResourceLifetime::FORWARD_REFERENCE)
+            {
                 forward_refs.push_back(i);
+            }
             else
                 actual_resources[graph.resources[i].name] = i;
         }
 
-        if (forward_refs.empty()) return;
+        if (forward_refs.empty())
+        {
+            return;
+        }
 
         // Step 2: Build forward-ref index → actual index mapping
         std::vector<uint32_t> remap(resource_count);
         for (uint32_t i = 0; i < resource_count; ++i)
+        {
             remap[i] = i; // identity by default
+        }
 
         for (uint32_t fwd_idx : forward_refs)
         {
@@ -787,12 +860,16 @@ namespace lux::render
             for (auto& tex : pass.textures)
             {
                 if (remap[tex.resource.index] != tex.resource.index)
+                {
                     tex.resource.index = remap[tex.resource.index];
+                }
             }
             for (auto& buf : pass.buffers)
             {
                 if (remap[buf.resource.index] != buf.resource.index)
+                {
                     buf.resource.index = remap[buf.resource.index];
+                }
             }
         }
 
@@ -824,17 +901,24 @@ namespace lux::render
             for (const auto& bind : pass.ds_bindings)
             {
                 if (bind.source != EDSBindingSource::Resource)
+                {
                     continue;
+                }
                 const uint32_t ri = bind.declared_consume.index;
                 if (ri >= resource_count)
+                {
                     continue;   // not declared (invalid handle) — relies on markSideEffect
+                }
 
                 if (bind.consume_type == ERGResourceType::TEXTURE)
                 {
                     bool exists = false;
                     for (const auto& t : pass.textures)
                         if (t.resource.index == ri) { exists = true; break; }
-                    if (exists) continue;   // already declared via .read()/.write()
+                    if (exists)
+                    {
+                        continue;   // already declared via .read()/.write()
+                    }
 
                     RGPassTextureRef ref{};
                     ref.resource = bind.declared_consume;
@@ -847,7 +931,10 @@ namespace lux::render
                     bool exists = false;
                     for (const auto& b : pass.buffers)
                         if (b.resource.index == ri) { exists = true; break; }
-                    if (exists) continue;
+                    if (exists)
+                    {
+                        continue;
+                    }
 
                     RGPassBufferRef ref{};
                     ref.resource = bind.declared_consume;
@@ -865,7 +952,10 @@ namespace lux::render
     {
         auto& graph = compiled.original_graph;
         const uint32_t tds_count = static_cast<uint32_t>(graph.transient_descriptor_sets.size());
-        if (tds_count == 0) return;
+        if (tds_count == 0)
+        {
+            return;
+        }
         const uint32_t resource_count = static_cast<uint32_t>(graph.resources.size());
 
         // Map each transient DS to the first pass that binds it (in practice a DS
@@ -886,7 +976,10 @@ namespace lux::render
         for (uint32_t ti = 0; ti < tds_count; ++ti)
         {
             const uint32_t pi = tds_to_pass[ti];
-            if (pi == kNoPass) continue;   // unbound DS — nothing to derive a layout from
+            if (pi == kNoPass)
+            {
+                continue;   // unbound DS — nothing to derive a layout from
+            }
             const RGPassDescription& pass = graph.passes[pi];
             auto& tds = graph.transient_descriptor_sets[ti];
 
@@ -915,7 +1008,9 @@ namespace lux::render
                         for (const auto& t : pass.textures)
                             if (t.resource.index == ri) { ref = &t; break; }
                         if (ref != nullptr)
+                        {
                             w.image_layout = convertVkImageLayout(determineTextureState(*ref, *tex_desc, pass.type).layout);
+                        }
                     }
                 }
 
@@ -955,14 +1050,20 @@ namespace lux::render
         {
             const auto& pass = graph.passes[pass_index];
             if (pass.has_side_effect)
+            {
                 continue;   // explicit opt-out (legacy markSideEffect path)
+            }
 
             for (const auto& bind : pass.ds_bindings)
             {
                 if (bind.source != EDSBindingSource::Resource)
+                {
                     continue;
+                }
                 if (bind.declared_consume.index < rc)
+                {
                     continue;   // declared — the graph sees the consumption
+                }
 
                 compiled.diagnostics.push_back(
                     renderError<err::graph::ResourceBindingConsumeMissing>(
@@ -1002,7 +1103,10 @@ namespace lux::render
         auto& graph = compiled.original_graph;
         const uint32_t pass_count     = static_cast<uint32_t>(graph.passes.size());
         const uint32_t resource_count = static_cast<uint32_t>(graph.resources.size());
-        if (pass_count == 0) return;
+        if (pass_count == 0)
+        {
+            return;
+        }
 
         // Seed: UNRESOLVED FORWARD REFERENCES only.
         //
@@ -1038,16 +1142,26 @@ namespace lux::render
             const auto& pass = graph.passes[pi];
             for (const auto& tex : pass.textures)
             {
-                if (tex.resource.index >= resource_count) continue;
+                if (tex.resource.index >= resource_count)
+                {
+                    continue;
+                }
                 if (tex.usage == ERGResourceUsage::WRITE || tex.usage == ERGResourceUsage::READ_WRITE)
+                {
                     resource_writers[tex.resource.index].push_back(pi);
+                }
                 pass_touches[pi].push_back(tex.resource.index);
             }
             for (const auto& buf : pass.buffers)
             {
-                if (buf.resource.index >= resource_count) continue;
+                if (buf.resource.index >= resource_count)
+                {
+                    continue;
+                }
                 if (buf.usage == ERGResourceUsage::WRITE || buf.usage == ERGResourceUsage::READ_WRITE)
+                {
                     resource_writers[buf.resource.index].push_back(pi);
+                }
                 pass_touches[pi].push_back(buf.resource.index);
             }
         }
@@ -1060,10 +1174,16 @@ namespace lux::render
 
             for (uint32_t pi = 0; pi < pass_count; ++pi)
             {
-                if (starved[pi] || !graph.passes[pi].enabled) continue;
+                if (starved[pi] || !graph.passes[pi].enabled)
+                {
+                    continue;
+                }
                 for (uint32_t ri : pass_touches[pi])
                 {
-                    if (!unavailable[ri]) continue;
+                    if (!unavailable[ri])
+                    {
+                        continue;
+                    }
                     starved[pi] = true;
                     changed     = true;
                     // Name BOTH the pass and the resource: "which effect went
@@ -1080,7 +1200,10 @@ namespace lux::render
             // none inside the graph and is perfectly available.
             for (uint32_t ri = 0; ri < resource_count; ++ri)
             {
-                if (unavailable[ri] || resource_writers[ri].empty()) continue;
+                if (unavailable[ri] || resource_writers[ri].empty())
+                {
+                    continue;
+                }
                 bool all_starved = true;
                 for (uint32_t w : resource_writers[ri])
                     if (!starved[w]) { all_starved = false; break; }
@@ -1092,7 +1215,10 @@ namespace lux::render
         new_order.reserve(compiled.execution_order.size());
         for (uint32_t pi : compiled.execution_order)
         {
-            if (!starved[pi]) new_order.push_back(pi);
+            if (!starved[pi])
+            {
+                new_order.push_back(pi);
+            }
             else              graph.passes[pi].enabled = false;
         }
         compiled.execution_order = std::move(new_order);
@@ -1122,7 +1248,10 @@ namespace lux::render
         const uint32_t pass_count     = static_cast<uint32_t>(graph.passes.size());
         const uint32_t resource_count = static_cast<uint32_t>(graph.resources.size());
 
-        if (pass_count == 0) return;
+        if (pass_count == 0)
+        {
+            return;
+        }
 
         // -------------------------------------------------------------------
         // Step 1: Identify "exported" resources that must be produced.
@@ -1148,10 +1277,14 @@ namespace lux::render
             {
                 // Imported texture with a required final layout (e.g. swapchain → PRESENT_SRC)
                 if (res.import_info && res.import_info->final_layout != VK_IMAGE_LAYOUT_UNDEFINED)
+                {
                     resource_is_exported[i] = true;
+                }
                 // Imported buffer (assumed needed by CPU / external system)
                 if (res.import_buffer_info)
+                {
                     resource_is_exported[i] = true;
+                }
             }
         }
 
@@ -1167,16 +1300,24 @@ namespace lux::render
             for (const auto& tex : pass.textures)
             {
                 if (tex.usage == ERGResourceUsage::WRITE || tex.usage == ERGResourceUsage::READ_WRITE)
+                {
                     resource_writers[tex.resource.index].push_back(pi);
+                }
                 if (tex.usage == ERGResourceUsage::READ  || tex.usage == ERGResourceUsage::READ_WRITE)
+                {
                     pass_reads[pi].push_back(tex.resource.index);
+                }
             }
             for (const auto& buf : pass.buffers)
             {
                 if (buf.usage == ERGResourceUsage::WRITE || buf.usage == ERGResourceUsage::READ_WRITE)
+                {
                     resource_writers[buf.resource.index].push_back(pi);
+                }
                 if (buf.usage == ERGResourceUsage::READ  || buf.usage == ERGResourceUsage::READ_WRITE)
+                {
                     pass_reads[pi].push_back(buf.resource.index);
+                }
             }
         }
 
@@ -1194,7 +1335,9 @@ namespace lux::render
                 const auto peer = static_cast<uint32_t>(res.pingpong_peer);
                 if (peer < resource_count)
                     for (uint32_t w : resource_writers[peer])
+                    {
                         resource_writers[i].push_back(w);
+                    }
             }
         }
 
@@ -1211,7 +1354,10 @@ namespace lux::render
 
         for (uint32_t ri = 0; ri < resource_count; ++ri)
         {
-            if (!resource_is_exported[ri]) continue;
+            if (!resource_is_exported[ri])
+            {
+                continue;
+            }
             for (uint32_t writer_pass : resource_writers[ri])
             {
                 if (!pass_alive[writer_pass])
@@ -1292,7 +1438,10 @@ namespace lux::render
     {
         for (auto& cpass : compiled.compiled_passes)
         {
-            if (!cpass.pass) continue;
+            if (!cpass.pass)
+            {
+                continue;
+            }
 
             switch (cpass.pass->type)
             {
@@ -1368,7 +1517,9 @@ namespace lux::render
     static VkPipelineStageFlags2 writeStageForBuffer(ERGBufferRole role, ERGPassType pt)
     {
         if (pt == ERGPassType::TRANSFER || pt == ERGPassType::ASYNC_TRANSFER)
+        {
             return VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+        }
         switch (role) {
         case ERGBufferRole::STORAGE: return shaderStageForPass(pt);
         default: return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
@@ -1378,7 +1529,9 @@ namespace lux::render
     static VkPipelineStageFlags2 readStageForBuffer(ERGBufferRole role, ERGPassType pt)
     {
         if (pt == ERGPassType::TRANSFER || pt == ERGPassType::ASYNC_TRANSFER)
+        {
             return VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+        }
         switch (role) {
         case ERGBufferRole::VERTEX:   return VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
         case ERGBufferRole::INDEX:    return VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
@@ -1421,7 +1574,10 @@ namespace lux::render
         }
 
         mq.has_async_work = !mq.compute_order.empty() || !mq.transfer_order.empty();
-        if (!mq.has_async_work) return;
+        if (!mq.has_async_work)
+        {
+            return;
+        }
 
         // 2) Walk execution order and detect cross-queue dependencies
         //    For each pass that reads a resource whose last writer was on a
@@ -1443,18 +1599,33 @@ namespace lux::render
         {
             auto& cpass       = compiled.compiled_passes[pi];
             const auto* desc  = cpass.pass;
-            if (!desc) continue;
+            if (!desc)
+            {
+                continue;
+            }
 
             // --- Check reads for cross-queue producer dependency ---
             // H: consumer_stage parameter enables precise semaphore wait masks.
             auto check_cross_queue_read = [&](uint32_t res_idx,
                                               VkPipelineStageFlags2 consumer_stage)
             {
-                if (!compiled.compile_error.ok()) return; // already rejected — stop analysis
-                if (res_idx >= resource_count) return;
+                if (!compiled.compile_error.ok())
+                {
+                    return; // already rejected — stop analysis
+                }
+                if (res_idx >= resource_count)
+                {
+                    return;
+                }
                 const auto& writer = last_writer[res_idx];
-                if (writer.pass_index == UINT32_MAX) return;
-                if (writer.queue == cpass.queue_type) return; // same queue — no sync needed
+                if (writer.pass_index == UINT32_MAX)
+                {
+                    return;
+                }
+                if (writer.queue == cpass.queue_type)
+                {
+                    return; // same queue — no sync needed
+                }
 
                 // fail-fast guard — genuine cross-queue resource dependency.
                 // A resource written on one queue and read on another needs a queue-
@@ -1543,7 +1714,9 @@ namespace lux::render
                     auto& w = last_writer[tex.resource.index];
                     const auto ws = writeStageForTexture(tex.role, desc->type);
                     if (w.pass_index == pi)
+                    {
                         w.write_stage |= ws; // same pass, accumulate
+                    }
                     else
                         w = { pi, cpass.queue_type, ws };
                 }
@@ -1554,7 +1727,9 @@ namespace lux::render
                     auto& w = last_writer[buf.resource.index];
                     const auto ws = writeStageForBuffer(buf.role, desc->type);
                     if (w.pass_index == pi)
+                    {
                         w.write_stage |= ws;
+                    }
                     else
                         w = { pi, cpass.queue_type, ws };
                 }
@@ -1572,7 +1747,9 @@ namespace lux::render
         const uint32_t count = static_cast<uint32_t>(order.size());
 
         if (count == 0)
+        {
             return;
+        }
 
         for (auto &cpass : compiled.compiled_passes)
         {
@@ -1586,7 +1763,9 @@ namespace lux::render
             RGCompiledPass &curr = compiled.compiled_passes[curr_idx];
 
             if (curr.pass->type != ERGPassType::GRAPHICS)
+            {
                 continue;
+            }
 
             const uint32_t curr_rp = curr.render.render_pass.index;
 
@@ -1633,7 +1812,9 @@ namespace lux::render
         const uint32_t count = static_cast<uint32_t>(order.size());
 
         if (count == 0)
+        {
             return;
+        }
 
         VkPipeline last_bound_pipeline = VK_NULL_HANDLE;
 
@@ -1682,7 +1863,9 @@ namespace lux::render
             // unpredictable — the pass may or may not have executed.  Reset
             // tracking so the next pass conservatively re-binds.
             if (curr.elective_kind != EElectiveKind::NONE)
+            {
                 last_bound_pipeline = VK_NULL_HANDLE;
+            }
         }
     }
 

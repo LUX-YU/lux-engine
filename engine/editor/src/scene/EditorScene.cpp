@@ -116,13 +116,9 @@ namespace lux::editor
     }
 
 #include "EditorScene.WorldEditing.inl"
-
 #include "EditorScene.WorldDomains.inl"
-
 #include "EditorScene.Lifecycle.inl"
-
 #include "EditorScene.PlayCook.inl"
-
 #include "EditorScene.Interaction.inl"
 
 } // namespace lux::editor

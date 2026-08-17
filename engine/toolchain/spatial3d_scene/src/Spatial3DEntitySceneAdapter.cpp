@@ -2012,14 +2012,12 @@ namespace lux::toolchain
             config.fine_active_priority == 0u ||
             !std::isfinite(config.visual_lod_enter_error_pixels) ||
             !std::isfinite(config.visual_lod_exit_error_pixels) ||
-            config.visual_lod_enter_error_pixels <
-                config.visual_lod_exit_error_pixels ||
+            config.visual_lod_enter_error_pixels < config.visual_lod_exit_error_pixels ||
             config.visual_lod_exit_error_pixels < 0.0f ||
             !std::isfinite(config.visual_lod_triangle_ratio) ||
             config.visual_lod_triangle_ratio <= 0.0f ||
             config.visual_lod_triangle_ratio >= 1.0f ||
-            !std::isfinite(
-                config.visual_lod_max_simplification_error) ||
+            !std::isfinite(config.visual_lod_max_simplification_error) ||
             config.visual_lod_max_simplification_error <= 0.0f ||
             config.visual_lod_max_simplification_error > 1.0f ||
             config.visual_lod_max_source_instances == 0u ||
@@ -2029,8 +2027,7 @@ namespace lux::toolchain
             !std::isfinite(config.visual_lod_active_scale) ||
             config.visual_lod_active_scale < 1.0 ||
             !std::isfinite(config.visual_lod_resident_scale) ||
-            config.visual_lod_resident_scale <
-                config.visual_lod_active_scale)
+            config.visual_lod_resident_scale < config.visual_lod_active_scale)
         {
             return lux::cxx::unexpected(failure(
                 AdapterError::INVALID_ARGUMENT,
@@ -2176,8 +2173,7 @@ namespace lux::toolchain
                 return lux::cxx::unexpected(std::move(materialized.error()));
             if (actor.transform_parent)
             {
-                const auto parent = actor_indices.find(
-                    uuidKey(actor.transform_parent->value()));
+                const auto parent = actor_indices.find(uuidKey(actor.transform_parent->value()));
                 if (parent == actor_indices.end() ||
                     actor_placements[parent->second].section !=
                         actor_placements[index].section)

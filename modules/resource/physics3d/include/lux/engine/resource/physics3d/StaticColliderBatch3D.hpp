@@ -92,20 +92,17 @@ namespace lux::physics3d
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_PHYSICS3D_PUBLIC
     lux::cxx::expected<void, StaticColliderBatch3DCodecFailure>
-    validateStaticColliderBatch3DBlob(
-        const StaticColliderBatch3DBlobV1& blob) noexcept;
+    validateStaticColliderBatch3DBlob(const StaticColliderBatch3DBlobV1& blob) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_PHYSICS3D_PUBLIC
     lux::cxx::expected<
         std::vector<std::byte>,
         StaticColliderBatch3DCodecFailure>
-    encodeStaticColliderBatch3DBlob(
-        const StaticColliderBatch3DBlobV1& blob) noexcept;
+    encodeStaticColliderBatch3DBlob(const StaticColliderBatch3DBlobV1& blob) noexcept;
 
     [[nodiscard]] LUX_ENGINE_RESOURCE_PHYSICS3D_PUBLIC
     lux::cxx::expected<
         StaticColliderBatch3DBlobV1,
         StaticColliderBatch3DCodecFailure>
-    decodeStaticColliderBatch3DBlob(
-        std::span<const std::byte> bytes) noexcept;
+    decodeStaticColliderBatch3DBlob(std::span<const std::byte> bytes) noexcept;
 } // namespace lux::physics3d

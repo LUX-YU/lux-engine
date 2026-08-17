@@ -216,10 +216,10 @@ namespace lux::ecs
 
     /// Pack declaration drift check. Diagnostics stay at composition call
     /// sites; this helper has no terminal-I/O side effects.
-    using ComponentCatalogValidationResult =
-        lux::cxx::expected<void, ComponentCatalogFailure>;
+    using ComponentCatalogValidationResult = lux::cxx::expected<void, ComponentCatalogFailure>;
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC ComponentCatalogValidationResult
-    validateComponentSchemas(const ComponentTypeCatalog& catalog,
-                             std::span<const std::string_view> schema_names);
+    [[nodiscard]] LUX_FUNCTION_PUBLIC ComponentCatalogValidationResult validateComponentSchemas(
+        const ComponentTypeCatalog& catalog,
+        std::span<const std::string_view> schema_names
+    );
 }

@@ -463,9 +463,7 @@ namespace lux::runtime
         template <class Operation>
         struct PendingPrepare final
         {
-            using Result = lux::cxx::expected<
-                typename Operation::Value,
-                typename Operation::Error>;
+            using Result = lux::cxx::expected<typename Operation::Value, typename Operation::Error>;
 
             PendingPrepare(
                 lux::exec::AsyncOperationCompletion<Operation> value,

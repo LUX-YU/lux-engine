@@ -125,9 +125,13 @@ namespace lux::runtime::spatial3d
 
     namespace
     {
-        using PrepareResult = lux::cxx::expected<
-            lux::navigation::detour3d::PreparedNavigationRegion3D,
+        template <typename T>
+        using NavigationPrepareExp = lux::cxx::expected<
+            T,
             lux::navigation::detour3d::NavigationRegion3DFailure>;
+
+        using PrepareResult = NavigationPrepareExp<
+            lux::navigation::detour3d::PreparedNavigationRegion3D>;
 
         struct PendingPrepare final
         {

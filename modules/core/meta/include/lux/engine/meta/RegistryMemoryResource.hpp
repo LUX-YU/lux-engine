@@ -197,9 +197,10 @@ namespace lux::meta
         void* token_{nullptr};
     };
 
-    using RegistryPublicationReservationResult = lux::cxx::expected<
-        RegistryPublicationReservation,
-        ERegistryPublicationReservationError>;
+    template <typename T>
+    using RegistryPublicationExp = lux::cxx::expected<T, ERegistryPublicationReservationError>;
+
+    using RegistryPublicationReservationResult = RegistryPublicationExp<RegistryPublicationReservation>;
 
     class LUX_CORE_PUBLIC RegistryMemoryResource final
         : public std::enable_shared_from_this<RegistryMemoryResource>

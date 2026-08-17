@@ -388,8 +388,7 @@ namespace lux::game
         std::size_t pumpSafePoint();
 
         /// Pump once, then wait on the shared progress epoch for at most max_wait.
-        std::size_t pumpIdleFor(
-            std::chrono::steady_clock::duration max_wait);
+        std::size_t pumpIdleFor(std::chrono::steady_clock::duration max_wait);
 
         /// Installs the platform event-loop wake. The application also wakes
         /// render request settlement, so adapters only wake their native loop.

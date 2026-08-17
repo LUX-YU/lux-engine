@@ -188,9 +188,7 @@ namespace lux::runtime::spatial3d
         constexpr std::size_t kPreparedOwnerFixedBytes = 16u * 1024u * 1024u;
         constexpr std::size_t kPreparedOwnerExpansion = 8u;
 
-        using PrepareResult = lux::cxx::expected<
-            PreparedStaticCollider3D,
-            StaticCollider3DPrepareFailure>;
+        using PrepareResult = lux::cxx::expected<PreparedStaticCollider3D, StaticCollider3DPrepareFailure>;
 
         [[nodiscard]] std::optional<std::size_t> conservativeOwnerBytes(
             std::size_t encoded_bytes) noexcept

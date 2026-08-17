@@ -16,9 +16,7 @@ namespace lux::runtime::spatial2d
 
     namespace
     {
-        using PrepareResult = lux::cxx::expected<
-            PreparedInfinite2DPixelChunk,
-            EInfinite2DPixelPrepareError>;
+        using PrepareResult = lux::cxx::expected<PreparedInfinite2DPixelChunk, EInfinite2DPixelPrepareError>;
 
         struct PendingPrepare final
         {

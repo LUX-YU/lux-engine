@@ -256,9 +256,7 @@ namespace lux::editor
         /// Create an empty LXWA scene with one explicit presentation
         /// contribution, then open it. The bool is only a New-Scene template
         /// choice; no dimension discriminator is written to the document.
-        [[nodiscard]] bool newScene(
-            const std::filesystem::path& luxscene_file,
-            bool spatial_2d);
+        [[nodiscard]] bool newScene(const std::filesystem::path& luxscene_file, bool spatial_2d);
 
         /// Save the current scene to its tracked path (the one passed
         /// to the most recent `openScene` / `saveSceneAs`). Returns

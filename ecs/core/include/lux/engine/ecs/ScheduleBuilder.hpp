@@ -118,8 +118,7 @@ namespace lux::ecs
         Schedule::SortReport topology{};
     };
 
-    using ScheduleCommitResult =
-        lux::cxx::expected<void, ScheduleCommitFailure>;
+    using ScheduleCommitResult = lux::cxx::expected<void, ScheduleCommitFailure>;
 
     struct ScheduleBuilderInstalledRange final
     {

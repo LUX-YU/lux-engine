@@ -45,11 +45,11 @@ namespace lux::runtime::entity_scene
         std::string detail;
     };
 
-    using GenerateEntitySectionFn = lux::cxx::expected<
-        lux::entity_scene::EntitySectionImage,
-        EntitySectionGeneratorFailure> (*)(
-            const void* state,
-            GeneratedEntitySectionRequest request) noexcept;
+    using GenerateEntitySectionResult =
+        lux::cxx::expected<lux::entity_scene::EntitySectionImage, EntitySectionGeneratorFailure>;
+    using GenerateEntitySectionFn = GenerateEntitySectionResult (*)(
+        const void* state,
+        GeneratedEntitySectionRequest request) noexcept;
 
     struct EntitySectionGeneratorDescriptor final
     {

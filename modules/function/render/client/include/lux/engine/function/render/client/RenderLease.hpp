@@ -39,8 +39,7 @@ namespace lux::render
         Stopping
     };
 
-    using RenderTargetCloseResult = lux::cxx::expected<
-        RenderRequest<TargetReleasedReply>, ERenderTargetCloseError>;
+    using RenderTargetCloseResult = lux::cxx::expected<RenderRequest<TargetReleasedReply>, ERenderTargetCloseError>;
 
     enum class ERenderLeaseCloseStatus
     {

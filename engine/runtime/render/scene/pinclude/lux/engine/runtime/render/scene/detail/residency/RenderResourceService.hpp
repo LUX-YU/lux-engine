@@ -97,8 +97,7 @@ namespace lux::runtime
     };
 
     template <typename T>
-    using ResidentResourceAdoptExp =
-        lux::cxx::expected<T, EResidentResourceAdoptError>;
+    using ResidentResourceAdoptExp = lux::cxx::expected<T, EResidentResourceAdoptError>;
 
     using ResidentResourceAdoptResult = ResidentResourceAdoptExp<ResidentResourceLease>;
 

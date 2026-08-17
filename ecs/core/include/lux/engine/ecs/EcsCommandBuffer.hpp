@@ -103,8 +103,7 @@ namespace lux::ecs
         return "unknown";
     }
 
-    using CommandEnqueueResult =
-        lux::cxx::expected<void, ECommandEnqueueError>;
+    using CommandEnqueueResult = lux::cxx::expected<void, ECommandEnqueueError>;
 
     /// Conservative bytes for this many possible sparse-page allocation
     /// events across the storages touched by one command. Command types use

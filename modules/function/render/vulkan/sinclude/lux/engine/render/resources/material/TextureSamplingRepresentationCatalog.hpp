@@ -24,12 +24,11 @@ namespace lux::render
         MISSING_SHADER_IMPLEMENTATION
     };
 
-    using ResolveTextureSamplingReferenceFn = lux::cxx::expected<
-        TextureRefGPU,
-        std::string> (*)(
-            std::uint32_t resource_index,
-            std::uint32_t aux,
-            std::uint32_t flags) noexcept;
+    using ResolveTextureSamplingReferenceResult = lux::cxx::expected<TextureRefGPU, std::string>;
+    using ResolveTextureSamplingReferenceFn = ResolveTextureSamplingReferenceResult (*)(
+        std::uint32_t resource_index,
+        std::uint32_t aux,
+        std::uint32_t flags) noexcept;
 
     struct TextureSamplingRepresentationDescriptor final
     {

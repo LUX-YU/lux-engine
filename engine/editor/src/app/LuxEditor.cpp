@@ -1504,9 +1504,7 @@ namespace lux::editor
             std::move(play_cache_root));
     }
 
-    bool LuxEditor::newScene(
-        const std::filesystem::path& luxscene_file,
-        bool spatial_2d)
+    bool LuxEditor::newScene(const std::filesystem::path& luxscene_file, bool spatial_2d)
     {
         auto source = lux::authoring::makeWorldSourceDocument(
             spatial_2d

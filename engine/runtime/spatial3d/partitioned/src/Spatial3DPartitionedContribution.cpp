@@ -42,9 +42,7 @@ namespace lux::runtime
 
     namespace
     {
-        using BuildResult = lux::cxx::expected<
-            void,
-            SceneContributionBuildFailure>;
+        using BuildResult = lux::cxx::expected<void, SceneContributionBuildFailure>;
 
         [[nodiscard]] SceneContributionBuildFailure invalidConfig() noexcept
         {

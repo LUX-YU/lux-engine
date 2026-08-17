@@ -15,9 +15,7 @@ namespace lux::runtime::spatial2d
 
     namespace
     {
-        using PrepareResult = lux::cxx::expected<
-            PreparedTilemapChunk,
-            ETilemapPrepareError>;
+        using PrepareResult = lux::cxx::expected<PreparedTilemapChunk, ETilemapPrepareError>;
 
         struct PendingPrepare final
         {

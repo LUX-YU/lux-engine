@@ -136,9 +136,7 @@ namespace lux::exec
     };
 
     template <AsyncOperation Operation>
-    using AsyncOutcome = lux::cxx::expected<
-        typename Operation::Value,
-        AsyncFailure<typename Operation::Error>>;
+    using AsyncOutcome = lux::cxx::expected<typename Operation::Value, AsyncFailure<typename Operation::Error>>;
 
     class AsyncOperationContext final
     {

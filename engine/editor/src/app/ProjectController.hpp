@@ -78,8 +78,7 @@ namespace lux::editor
         // so reopening remembers the last setup with no manual action.
         void loadWindowVisibility();
         void saveWindowVisibility() const;
-        [[nodiscard]] bool finishOpenProject(
-            const std::filesystem::path& luxproject_file);
+        [[nodiscard]] bool finishOpenProject(const std::filesystem::path& luxproject_file);
 
         struct PendingProjectOpen final
         {

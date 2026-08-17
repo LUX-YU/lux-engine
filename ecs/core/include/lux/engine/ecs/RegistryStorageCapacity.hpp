@@ -34,9 +34,7 @@ namespace lux::ecs
         SIZE_OVERFLOW
     };
 
-    using RegistryPublicationBudgetResult = lux::cxx::expected<
-        std::size_t,
-        ERegistryPublicationBudgetError>;
+    using RegistryPublicationBudgetResult = lux::cxx::expected<std::size_t, ERegistryPublicationBudgetError>;
 
     /// One component insertion can allocate one entity sparse page and can
     /// grow the vector which owns sparse-page pointers.  Entity indices are
@@ -101,9 +99,10 @@ namespace lux::ecs
         }
     };
 
-    using StorageCapacityReservationResult = lux::cxx::expected<
-        StorageCapacityReservation,
-        EStorageCapacityReservationError>;
+    template <typename T>
+    using StorageCapacityExp = lux::cxx::expected<T, EStorageCapacityReservationError>;
+
+    using StorageCapacityReservationResult = StorageCapacityExp<StorageCapacityReservation>;
 
     [[nodiscard]] inline bool checkedAdditionalCapacity(
         std::size_t current,

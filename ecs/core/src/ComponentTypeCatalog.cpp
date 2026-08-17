@@ -315,9 +315,10 @@ namespace lux::ecs
         return result;
     }
 
-    ComponentCatalogValidationResult
-    validateComponentSchemas(const ComponentTypeCatalog& catalog,
-                             std::span<const std::string_view> schema_names)
+    ComponentCatalogValidationResult validateComponentSchemas(
+        const ComponentTypeCatalog& catalog,
+        std::span<const std::string_view> schema_names
+    )
     {
         for (const auto name : schema_names)
             if (!catalog.findBySchema(name))

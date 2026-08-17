@@ -150,8 +150,7 @@ namespace lux::editor
         return finishOpenProject(luxproject_file);
     }
 
-    bool ProjectController::finishOpenProject(
-        const std::filesystem::path& luxproject_file)
+    bool ProjectController::finishOpenProject(const std::filesystem::path& luxproject_file)
     {
         if (!current_project_)
             return false;

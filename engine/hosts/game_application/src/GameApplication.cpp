@@ -834,8 +834,7 @@ namespace lux::game
             impl_->runtime->isReady();
     }
 
-    std::size_t GameApplication::pumpIdleFor(
-        std::chrono::steady_clock::duration max_wait)
+    std::size_t GameApplication::pumpIdleFor(std::chrono::steady_clock::duration max_wait)
     {
         if (!impl_ || !impl_->frame_coordinator)
             return 0u;

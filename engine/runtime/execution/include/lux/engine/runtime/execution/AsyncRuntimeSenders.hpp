@@ -322,9 +322,7 @@ namespace lux::exec
     {
     public:
         using sender_concept = stdexec::sender_t;
-        using Result = lux::cxx::expected<
-            AsyncOperationBundleCloseReport,
-            EAsyncOperationBundleCloseError>;
+        using Result = lux::cxx::expected<AsyncOperationBundleCloseReport, EAsyncOperationBundleCloseError>;
         using completion_signatures = stdexec::completion_signatures<
             stdexec::set_value_t(Result)>;
 

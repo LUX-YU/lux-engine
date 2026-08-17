@@ -42,9 +42,7 @@ namespace lux::asset
         TYPE_HASH_COLLISION
     };
 
-    using AssetDataDecodeFn = lux::cxx::expected<
-        AssetDataInjector,
-        EAssetError> (*)(lux::cxx::SharedBytes<>) noexcept;
+    using AssetDataDecodeFn = lux::cxx::expected<AssetDataInjector, EAssetError> (*)(lux::cxx::SharedBytes<>) noexcept;
 
     using AssetShellCreateFn = std::unique_ptr<LuxAsset> (*)(
         std::unique_ptr<AssetInfo>

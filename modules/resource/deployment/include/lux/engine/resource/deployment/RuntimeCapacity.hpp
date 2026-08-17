@@ -129,8 +129,7 @@ namespace lux::deployment
     class LUX_ENGINE_RESOURCE_DEPLOYMENT_PUBLIC CapacityDomainCatalog final
     {
     public:
-        [[nodiscard]] lux::cxx::expected<void, ECapacityCatalogError> add(
-            CapacityDomainDescriptor descriptor);
+        [[nodiscard]] lux::cxx::expected<void, ECapacityCatalogError> add(CapacityDomainDescriptor descriptor);
         [[nodiscard]] const CapacityDomainDescriptor* find(
             CapacityDomainIdView id) const noexcept;
         [[nodiscard]] std::span<const CapacityDomainDescriptor> all()

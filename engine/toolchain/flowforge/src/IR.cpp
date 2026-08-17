@@ -142,7 +142,10 @@ namespace lux::flowforge {
                                         uint64_t a, uint64_t b = 0) {
         std::ostringstream oss;
         oss << "_lf_" << std::hex << bc.module_id << '_' << kind << '_' << a;
-        if (b) oss << '_' << b;
+        if (b)
+        {
+            oss << '_' << b;
+        }
         return oss.str();
     }
 
@@ -170,7 +173,9 @@ namespace lux::flowforge {
         using lux::meta::EBaseType;
         auto& b = bc.builder;
         if (isPointerQual(rt))
+        {
             return mlir::LLVM::LLVMPointerType::get(bc.ctx);
+        }
         switch (static_cast<EBaseType>(rt.qtype.base)) {
             case EBaseType::Bool:   return b.getI1Type();
             case EBaseType::Int8:
@@ -250,7 +255,9 @@ namespace lux::flowforge {
                 requireExecTok(uint64_t pin_id, BuilderContext& bc) const {
                 auto it = exec_tok.find(pin_id);
                 if (it == exec_tok.end() || !it->second)
+                {
                     LUX_FF_FAIL(bc, "exec token not materialised");
+                }
                 return it->second;
             }
 
@@ -260,7 +267,9 @@ namespace lux::flowforge {
                 for (auto* ex : in.linkedPins()) {
                     auto it = exec_tok.find(ex->id());
                     if (it == exec_tok.end() || !it->second)
+                    {
                         LUX_FF_FAIL_AT_PIN(bc, "exec token not materialised");
+                    }
                     preds.push_back(it->second);
                 }
                 return preds;
@@ -438,7 +447,9 @@ namespace lux::flowforge {
             std::string layout_error;
             bc.state_layout = computeStateLayout(g, &layout_error);
             if (!layout_error.empty())
+            {
                 LUX_FF_FAIL(bc, std::move(layout_error));
+            }
         }
 
         // Collect entries: at most one START (-> @main) plus any number of
@@ -452,25 +463,35 @@ namespace lux::flowforge {
             switch (n->operation()) {
                 case ENodeOperation::START:
                     if (start)
+                    {
                         LUX_FF_FAIL(bc, "graph has more than one Start node");
+                    }
                     start = n;
                     entries.push_back(n);
                     break;
                 case ENodeOperation::FUNC_DEF_START: {
                     bc.current_node = n;
                     if (n->name().empty())
+                    {
                         LUX_FF_FAIL(bc, "graph function has no name");
+                    }
                     if (n->name() == "main")
+                    {
                         LUX_FF_FAIL(bc, "'main' is reserved for the Start entry");
+                    }
                     if (!func_names.insert(n->name()).second)
+                    {
                         LUX_FF_FAIL(bc, "duplicate graph function name");
+                    }
                     entries.push_back(n);
                     break;
                 }
                 case ENodeOperation::ON_EVENT: {
                     bc.current_node = n;
                     if (n->name().empty())
+                    {
                         LUX_FF_FAIL(bc, "event entry has no name");
+                    }
                     // Uniqueness on the SANITIZED symbol — two display names
                     // that collapse to the same symbol would collide.
                     if (!func_names.insert(
@@ -483,10 +504,14 @@ namespace lux::flowforge {
             }
         }
         if (entries.empty())
+        {
             LUX_FF_FAIL(bc, "no entry node found");
+        }
 
         for (const Node* entry : entries)
+        {
             LUX_FF_TRY(lowerFunction(bc, *entry));
+        }
 
         // Verify before handing the module out and retain MLIR diagnostics.
         {
@@ -547,12 +572,16 @@ namespace lux::flowforge {
             fn_name = def->name();
             for (const auto& a : def->argInfos()) {
                 if (!a.type)
+                {
                     LUX_FF_FAIL(bc, "function argument has no type");
+                }
                 arg_tys.push_back(refTypeToMLIR(bc, *a.type));
             }
             for (const auto& r : def->retInfos()) {
                 if (!r.type)
+                {
                     LUX_FF_FAIL(bc, "function return value has no type");
+                }
                 ret_tys.push_back(refTypeToMLIR(bc, *r.type));
             }
             entry_pin = &def->execOutPin();
@@ -561,7 +590,9 @@ namespace lux::flowforge {
             fn_name = FlowScriptInstance::eventSymbol(event->name());
             for (const auto& p : event->paramInfos()) {
                 if (!p.type)
+                {
                     LUX_FF_FAIL(bc, "event parameter has no type");
+                }
                 arg_tys.push_back(refTypeToMLIR(bc, *p.type));
             }
             entry_pin = &event->execOutPin();
@@ -592,12 +623,16 @@ namespace lux::flowforge {
         if (def) {
             const auto& arg_pins = def->argPins();
             for (size_t i = 0; i < arg_pins.size(); ++i)
+            {
                 vm.exec_data[arg_pins[i]->id()] = entry_block->getArgument(i + 1);
+            }
         }
         if (event) {
             const auto& param_pins = event->paramPins();
             for (size_t i = 0; i < param_pins.size(); ++i)
+            {
                 vm.exec_data[param_pins[i]->id()] = entry_block->getArgument(i + 1);
+            }
         }
 
         LUX_FF_TRY_VALUE(
@@ -632,20 +667,35 @@ namespace lux::flowforge {
     MLIRBuilderImpl::reachableFromPin(const ExecOutPin* pin) const
     {
         std::unordered_set<const Node*> reach;
-        if (!pin) return reach;
+        if (!pin)
+        {
+            return reach;
+        }
         const ExecInPin* in = pin->nextPin();
-        if (!in) return reach;
+        if (!in)
+        {
+            return reach;
+        }
 
         // Explicit worklist — editor graphs can be deep enough that a
         // recursive DFS risks blowing the stack.
         llvm::SmallVector<const Node*, 16> worklist{in->node()};
         while (!worklist.empty()) {
             const Node* n = worklist.pop_back_val();
-            if (!reach.insert(n).second) continue;
+            if (!reach.insert(n).second)
+            {
+                continue;
+            }
             for (const Pin* p : n->outPins()) {
-                if (p->kind() != EPinKind::EXEC_OUT) continue;
+                if (p->kind() != EPinKind::EXEC_OUT)
+                {
+                    continue;
+                }
                 auto* ex = static_cast<const ExecOutPin*>(p);
-                if (auto* dst = ex->nextPin()) worklist.push_back(dst->node());
+                if (auto* dst = ex->nextPin())
+                {
+                    worklist.push_back(dst->node());
+                }
             }
         }
         return reach;

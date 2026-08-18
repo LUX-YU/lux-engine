@@ -28,11 +28,11 @@ namespace lux::runtime
             ERenderEffectActivationError,
             RenderEffectActivationResult>;
 
-        [[nodiscard]] bool sameContribution(
-            const lux::extensions::ContributionId& lhs,
-            lux::extensions::ContributionIdView rhs) noexcept
+        [[nodiscard]] bool sameEffect(
+            const lux::render::RenderEffectId& lhs,
+            lux::render::RenderEffectIdView rhs) noexcept
         {
-            return lux::extensions::sameStableId(lhs.view(), rhs);
+            return lhs.view() == rhs;
         }
 
         [[nodiscard]] bool sameFeatureType(
@@ -45,23 +45,23 @@ namespace lux::runtime
     }
 
     lux::cxx::expected<void, ERenderEffectCatalogError>
-    RenderEffectCatalog::add(RenderEffectContributionDescriptor descriptor)
+    RenderEffectCatalog::add(RenderEffectDescriptor descriptor)
     {
-        std::vector<RenderEffectContributionDescriptor> batch;
+        std::vector<RenderEffectDescriptor> batch;
         batch.push_back(std::move(descriptor));
         return addBatch(std::move(batch));
     }
 
     lux::cxx::expected<void, ERenderEffectCatalogError>
     RenderEffectCatalog::validateBatch(
-        std::span<const RenderEffectContributionDescriptor> descriptors)
+        std::span<const RenderEffectDescriptor> descriptors)
         const noexcept
     {
         for (std::size_t index = 0u; index < descriptors.size(); ++index)
         {
             const auto& descriptor = descriptors[index];
             if (!descriptor.id.isValid() || !descriptor.provider.isValid() ||
-                !lux::extensions::isCanonicalStableName(
+                !lux::render::isValidRenderEffectIdName(
                     descriptor.id.name()) ||
                 !lux::extensions::isCanonicalStableName(
                     descriptor.provider.name()))
@@ -77,25 +77,25 @@ namespace lux::runtime
             }
             for (const auto& existing : descriptors_)
             {
-                if (lux::extensions::stableIdCollision(
+                if (lux::render::renderEffectIdCollision(
                         existing.id.view(), descriptor.id.view()))
                     return lux::cxx::unexpected(
                         ERenderEffectCatalogError::ID_COLLISION);
-                if (sameContribution(existing.id, descriptor.id.view()))
+                if (sameEffect(existing.id, descriptor.id.view()))
                     return lux::cxx::unexpected(
-                        ERenderEffectCatalogError::DUPLICATE_CONTRIBUTION);
+                        ERenderEffectCatalogError::DUPLICATE_EFFECT);
             }
             for (std::size_t other = 0u; other < index; ++other)
             {
-                if (lux::extensions::stableIdCollision(
+                if (lux::render::renderEffectIdCollision(
                         descriptors[other].id.view(), descriptor.id.view()))
                     return lux::cxx::unexpected(
                         ERenderEffectCatalogError::ID_COLLISION);
-                if (sameContribution(
+                if (sameEffect(
                         descriptors[other].id,
                         descriptor.id.view()))
                     return lux::cxx::unexpected(
-                        ERenderEffectCatalogError::DUPLICATE_CONTRIBUTION);
+                        ERenderEffectCatalogError::DUPLICATE_EFFECT);
             }
         }
         return {};
@@ -103,7 +103,7 @@ namespace lux::runtime
 
     lux::cxx::expected<void, ERenderEffectCatalogError>
     RenderEffectCatalog::addBatch(
-        std::vector<RenderEffectContributionDescriptor> descriptors)
+        std::vector<RenderEffectDescriptor> descriptors)
     {
         if (auto checked = validateBatch(descriptors); !checked)
             return checked;
@@ -113,25 +113,25 @@ namespace lux::runtime
         return {};
     }
 
-    RenderEffectContributionDescriptor* RenderEffectCatalog::find(
-        lux::extensions::ContributionIdView id) noexcept
+    RenderEffectDescriptor* RenderEffectCatalog::find(
+        lux::render::RenderEffectIdView id) noexcept
     {
         for (auto& descriptor : descriptors_)
-            if (sameContribution(descriptor.id, id))
+            if (sameEffect(descriptor.id, id))
                 return &descriptor;
         return nullptr;
     }
 
-    const RenderEffectContributionDescriptor* RenderEffectCatalog::find(
-        lux::extensions::ContributionIdView id) const noexcept
+    const RenderEffectDescriptor* RenderEffectCatalog::find(
+        lux::render::RenderEffectIdView id) const noexcept
     {
         for (const auto& descriptor : descriptors_)
-            if (sameContribution(descriptor.id, id))
+            if (sameEffect(descriptor.id, id))
                 return &descriptor;
         return nullptr;
     }
 
-    std::span<const RenderEffectContributionDescriptor> RenderEffectCatalog::all()
+    std::span<const RenderEffectDescriptor> RenderEffectCatalog::all()
         const noexcept
     {
         return descriptors_;
@@ -141,7 +141,7 @@ namespace lux::runtime
     {
         struct Record final
         {
-            lux::extensions::ContributionId contribution;
+            lux::render::RenderEffectId effect;
             std::string feature_name;
             lux::render::FeatureTypeId stable_type{
                 lux::render::kInvalidFeatureTypeId};
@@ -157,10 +157,10 @@ namespace lux::runtime
         {}
 
         [[nodiscard]] Record* find(
-            lux::extensions::ContributionIdView id) noexcept
+            lux::render::RenderEffectIdView id) noexcept
         {
             for (auto& record : records)
-                if (sameContribution(record.contribution, id))
+                if (sameEffect(record.effect, id))
                     return &record;
             return nullptr;
         }
@@ -210,7 +210,7 @@ namespace lux::runtime
     RenderEffectTypeRegistry::~RenderEffectTypeRegistry() = default;
 
     RenderEffectTypeSnapshot RenderEffectTypeRegistry::ensure(
-        const RenderEffectContributionDescriptor& descriptor) noexcept
+        const RenderEffectDescriptor& descriptor) noexcept
     {
         if (auto* record = impl_->find(descriptor.id.view()))
         {
@@ -228,7 +228,7 @@ namespace lux::runtime
         }
 
         Impl::Record record;
-        record.contribution = descriptor.id;
+        record.effect = descriptor.id;
         record.feature_name = descriptor.factory.name;
         record.stable_type = descriptor.factory.descriptor.type;
         record.phase = ERenderEffectTypePhase::REGISTERING;
@@ -261,7 +261,7 @@ namespace lux::runtime
         {
             RenderEffectCommand(
                 ERenderEffectCommandKind value_kind,
-                lux::extensions::ContributionId value_id,
+                lux::render::RenderEffectId value_id,
                 ContributionConfig value_config,
                 EActivationPersistence value_persistence,
                 std::uint64_t value_generation)
@@ -277,7 +277,7 @@ namespace lux::runtime
 
             ERenderEffectCommandKind kind{
                 ERenderEffectCommandKind::ENABLE};
-            lux::extensions::ContributionId id;
+            lux::render::RenderEffectId id;
             ContributionConfig config;
             EActivationPersistence persistence{
                 EActivationPersistence::SCENE};
@@ -294,7 +294,7 @@ namespace lux::runtime
 
             [[nodiscard]] RenderEffectOperationTicket submit(
                 ERenderEffectCommandKind kind,
-                lux::extensions::ContributionIdView id,
+                lux::render::RenderEffectIdView id,
                 ContributionConfig config_value,
                 EActivationPersistence persistence)
             {
@@ -303,7 +303,7 @@ namespace lux::runtime
                     std::memory_order_relaxed);
                 RenderEffectCommand command{
                     kind,
-                    lux::extensions::ContributionId{id.name()},
+                    lux::render::RenderEffectId{id.name()},
                     std::move(config_value),
                     persistence,
                     generation};
@@ -317,7 +317,7 @@ namespace lux::runtime
                 if (!id.isValid())
                 {
                     command.publisher.fail(
-                        ERenderEffectActivationError::UNKNOWN_CONTRIBUTION);
+                        ERenderEffectActivationError::UNKNOWN_EFFECT);
                     return ticket;
                 }
 
@@ -366,7 +366,7 @@ namespace lux::runtime
     {}
 
     RenderEffectOperationTicket RenderEffects::requestEnable(
-        lux::extensions::ContributionIdView id,
+        lux::render::RenderEffectIdView id,
         ContributionConfig config,
         EActivationPersistence persistence) const
     {
@@ -387,7 +387,7 @@ namespace lux::runtime
     }
 
     RenderEffectOperationTicket RenderEffects::requestDisable(
-        lux::extensions::ContributionIdView id) const
+        lux::render::RenderEffectIdView id) const
     {
         if (endpoint_)
         {
@@ -415,7 +415,7 @@ namespace lux::runtime
     {
         struct Active final
         {
-            lux::extensions::ContributionId id;
+            lux::render::RenderEffectId id;
             ContributionConfig config;
             EActivationPersistence persistence{
                 EActivationPersistence::SCENE};
@@ -506,10 +506,10 @@ namespace lux::runtime
         }
 
         [[nodiscard]] std::size_t findActive(
-            lux::extensions::ContributionIdView id) const noexcept
+            lux::render::RenderEffectIdView id) const noexcept
         {
             for (std::size_t index = 0u; index < active.size(); ++index)
-                if (sameContribution(active[index].id, id))
+                if (sameEffect(active[index].id, id))
                     return index;
             return active.size();
         }
@@ -544,7 +544,7 @@ namespace lux::runtime
         }
 
         [[nodiscard]] bool adoptFeatureType(
-            const RenderEffectContributionDescriptor& descriptor,
+            const RenderEffectDescriptor& descriptor,
             const RenderEffectTypeSnapshot& registration)
         {
             const auto current = feature_catalog.typeId(
@@ -569,15 +569,15 @@ namespace lux::runtime
         }
 
         [[nodiscard]] bool dependenciesReady(
-            const RenderEffectContributionDescriptor& descriptor) const
+            const RenderEffectDescriptor& descriptor) const
             noexcept
         {
-            if (descriptor.required_scene_contributions.empty())
+            if (descriptor.required_scene_features.empty())
                 return true;
             if (!scene_contributions)
                 return false;
             return std::ranges::all_of(
-                descriptor.required_scene_contributions,
+                descriptor.required_scene_features,
                 [this](const auto& dependency) noexcept
                 {
                     return scene_contributions->active(dependency.view());
@@ -590,7 +590,7 @@ namespace lux::runtime
             if (!descriptor)
             {
                 failPending(
-                    ERenderEffectActivationError::UNKNOWN_CONTRIBUTION);
+                    ERenderEffectActivationError::UNKNOWN_EFFECT);
                 return true;
             }
 
@@ -615,7 +615,7 @@ namespace lux::runtime
                 {
                     failPending(
                         ERenderEffectActivationError::
-                            MISSING_WORLD_CONTRIBUTION);
+                            MISSING_SCENE_FEATURE);
                     return true;
                 }
                 pending->command.publisher.setPhase(
@@ -782,7 +782,7 @@ namespace lux::runtime
                 if (!descriptor)
                 {
                     failPending(
-                        ERenderEffectActivationError::UNKNOWN_CONTRIBUTION);
+                        ERenderEffectActivationError::UNKNOWN_EFFECT);
                     return true;
                 }
                 pending->command.publisher.setPhase(
@@ -928,7 +928,7 @@ namespace lux::runtime
     }
 
     bool RenderEffectHost::active(
-        lux::extensions::ContributionIdView id) const noexcept
+        lux::render::RenderEffectIdView id) const noexcept
     {
         return impl_->findActive(id) != impl_->active.size();
     }

@@ -14,3 +14,20 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
+
+add_executable(
+    render_effect_catalog_test
+    render_effect_catalog_test.cpp
+)
+
+target_link_libraries(
+    render_effect_catalog_test
+    PRIVATE lux::engine::runtime::runtime_render_effects
+)
+
+lux_classify_target(
+    TARGET  render_effect_catalog_test
+    LAYER   RUNTIME
+    PRODUCT TEST
+    ROLE    DOMAIN
+)

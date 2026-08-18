@@ -49,7 +49,7 @@ namespace lux::extensions
         std::vector<lux::ecs::ComponentSchemaDescriptor> components;
         std::vector<lux::runtime::SceneContributionDescriptor>
             scene_contributions;
-        std::vector<lux::runtime::RenderEffectContributionDescriptor>
+        std::vector<lux::runtime::RenderEffectDescriptor>
             render_effects;
         lux::exec::AsyncOperationBundle async_operations;
     };
@@ -98,7 +98,7 @@ namespace lux::extensions
     {
     public:
         [[nodiscard]] lux::cxx::expected<void, EContributionDraftError> add(
-            lux::runtime::RenderEffectContributionDescriptor descriptor);
+            lux::runtime::RenderEffectDescriptor descriptor);
 
     private:
         friend class RuntimeContributionRegistrar;

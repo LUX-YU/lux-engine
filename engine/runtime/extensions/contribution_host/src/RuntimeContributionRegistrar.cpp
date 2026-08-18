@@ -56,7 +56,7 @@ namespace lux::extensions
 
     lux::cxx::expected<void, EContributionDraftError>
     RenderEffectRegistrar::add(
-        lux::runtime::RenderEffectContributionDescriptor descriptor)
+        lux::runtime::RenderEffectDescriptor descriptor)
     {
         if (unavailable(finished_, module_))
         {

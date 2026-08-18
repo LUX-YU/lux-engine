@@ -7,6 +7,7 @@
 #include <lux/engine/runtime/extensions/OperationTicket.hpp>
 #include <lux/engine/core/extension_abi/StableId.hpp>
 #include <lux/engine/function/render/client/RenderProtocol.hpp>
+#include <lux/engine/function/render/RenderEffectId.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/runtime/extensions/ContributionConfig.hpp>
 #include <lux/engine/runtime/extensions/contribution_visibility.h>
@@ -42,7 +43,7 @@ namespace lux::runtime
     enum class ERenderEffectCatalogError : std::uint8_t
     {
         INVALID_DESCRIPTOR,
-        DUPLICATE_CONTRIBUTION,
+        DUPLICATE_EFFECT,
         ID_COLLISION,
         INVALID_FACTORY
     };
@@ -66,23 +67,23 @@ namespace lux::runtime
         const lux::ecs::SceneServices& services;
     };
 
-    struct RenderEffectContributionDescriptor final
+    struct RenderEffectDescriptor final
     {
-        RenderEffectContributionDescriptor() = default;
-        RenderEffectContributionDescriptor(
-            const RenderEffectContributionDescriptor&) = delete;
-        RenderEffectContributionDescriptor& operator=(
-            const RenderEffectContributionDescriptor&) = delete;
-        RenderEffectContributionDescriptor(
-            RenderEffectContributionDescriptor&&) noexcept = default;
-        RenderEffectContributionDescriptor& operator=(
-            RenderEffectContributionDescriptor&&) noexcept = default;
+        RenderEffectDescriptor() = default;
+        RenderEffectDescriptor(
+            const RenderEffectDescriptor&) = delete;
+        RenderEffectDescriptor& operator=(
+            const RenderEffectDescriptor&) = delete;
+        RenderEffectDescriptor(
+            RenderEffectDescriptor&&) noexcept = default;
+        RenderEffectDescriptor& operator=(
+            RenderEffectDescriptor&&) noexcept = default;
 
-        lux::extensions::ContributionId id;
+        lux::render::RenderEffectId id;
         std::string display_name;
         lux::render::FeatureFactory factory{};
         std::vector<lux::extensions::ContributionId>
-            required_scene_contributions;
+            required_scene_features;
         std::uint32_t config_schema_version{0u};
         ContributionConfig default_config;
         lux::cxx::move_only_function<
@@ -106,22 +107,22 @@ namespace lux::runtime
             default;
 
         [[nodiscard]] lux::cxx::expected<void, ERenderEffectCatalogError> add(
-            RenderEffectContributionDescriptor descriptor);
+            RenderEffectDescriptor descriptor);
         [[nodiscard]] lux::cxx::expected<void, ERenderEffectCatalogError>
         validateBatch(
-            std::span<const RenderEffectContributionDescriptor> descriptors)
+            std::span<const RenderEffectDescriptor> descriptors)
             const noexcept;
         [[nodiscard]] lux::cxx::expected<void, ERenderEffectCatalogError>
-        addBatch(std::vector<RenderEffectContributionDescriptor> descriptors);
-        [[nodiscard]] RenderEffectContributionDescriptor* find(
-            lux::extensions::ContributionIdView id) noexcept;
-        [[nodiscard]] const RenderEffectContributionDescriptor* find(
-            lux::extensions::ContributionIdView id) const noexcept;
-        [[nodiscard]] std::span<const RenderEffectContributionDescriptor> all()
+        addBatch(std::vector<RenderEffectDescriptor> descriptors);
+        [[nodiscard]] RenderEffectDescriptor* find(
+            lux::render::RenderEffectIdView id) noexcept;
+        [[nodiscard]] const RenderEffectDescriptor* find(
+            lux::render::RenderEffectIdView id) const noexcept;
+        [[nodiscard]] std::span<const RenderEffectDescriptor> all()
             const noexcept;
 
     private:
-        std::vector<RenderEffectContributionDescriptor> descriptors_;
+        std::vector<RenderEffectDescriptor> descriptors_;
     };
 
     enum class ERenderEffectTypePhase : std::uint8_t
@@ -154,7 +155,7 @@ namespace lux::runtime
             const RenderEffectTypeRegistry&) = delete;
 
         [[nodiscard]] RenderEffectTypeSnapshot ensure(
-            const RenderEffectContributionDescriptor& descriptor) noexcept;
+            const RenderEffectDescriptor& descriptor) noexcept;
         void clear() noexcept;
 
     private:
@@ -181,9 +182,9 @@ namespace lux::runtime
         QUEUE_FULL,
         BYTE_BUDGET_EXHAUSTED,
         STOPPING,
-        UNKNOWN_CONTRIBUTION,
+        UNKNOWN_EFFECT,
         CONFIG_VERSION_MISMATCH,
-        MISSING_WORLD_CONTRIBUTION,
+        MISSING_SCENE_FEATURE,
         FEATURE_TYPE_REGISTRATION_FAILED,
         FEATURE_CATALOG_CONFLICT,
         ADD_FEATURE_FAILED,
@@ -197,7 +198,7 @@ namespace lux::runtime
 
     struct RenderEffectActivationResult final
     {
-        lux::extensions::ContributionId contribution;
+        lux::render::RenderEffectId effect;
         std::uint64_t generation{0u};
         bool active{false};
     };
@@ -209,14 +210,14 @@ namespace lux::runtime
 
     struct RenderEffectStateChanged final
     {
-        lux::extensions::ContributionId contribution;
+        lux::render::RenderEffectId effect;
         std::uint64_t generation{0u};
         bool active{false};
     };
 
     struct RenderEffectActivationSnapshot final
     {
-        lux::extensions::ContributionId contribution;
+        lux::render::RenderEffectId effect;
         ContributionConfig config;
         EActivationPersistence persistence{EActivationPersistence::SCENE};
         lux::extensions::ExtensionId provider;
@@ -240,12 +241,12 @@ namespace lux::runtime
         RenderEffects() noexcept = default;
 
         [[nodiscard]] RenderEffectOperationTicket requestEnable(
-            lux::extensions::ContributionIdView id,
+            lux::render::RenderEffectIdView id,
             ContributionConfig config = {},
             EActivationPersistence persistence =
                 EActivationPersistence::SCENE) const;
         [[nodiscard]] RenderEffectOperationTicket requestDisable(
-            lux::extensions::ContributionIdView id) const;
+            lux::render::RenderEffectIdView id) const;
         [[nodiscard]] explicit operator bool() const noexcept;
 
     private:
@@ -291,7 +292,7 @@ namespace lux::runtime
         [[nodiscard]] std::size_t processSafePoint(
             std::size_t budget = 16u) noexcept;
         [[nodiscard]] bool active(
-            lux::extensions::ContributionIdView id) const noexcept;
+            lux::render::RenderEffectIdView id) const noexcept;
         [[nodiscard]] std::vector<RenderEffectActivationSnapshot>
         activationSnapshot() const;
         [[nodiscard]] RenderEffectCloseReport close() noexcept;

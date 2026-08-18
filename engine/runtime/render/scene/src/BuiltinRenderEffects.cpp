@@ -13,8 +13,8 @@ namespace lux::runtime
     addGrid3DRenderEffect(RenderEffectCatalog& catalog)
     {
         lux::render::Grid3DCommConfig config{};
-        RenderEffectContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        RenderEffectDescriptor descriptor;
+        descriptor.id = lux::render::RenderEffectId{
             "org.lux.render.grid3d.effect"};
         descriptor.display_name = "Grid 3D";
         descriptor.factory = lux::render::kGrid3DFeatureFactory;

@@ -121,13 +121,13 @@ int main()
         types);
 
     auto enabled = host.facade().requestEnable(
-        lux::extensions::contributionId(
+        lux::render::renderEffectId(
             "org.lux.render.grid3d.effect"));
     const bool enable_ok = drive(host, fixture.control(), enabled);
     if (!enable_ok)
     {
         const auto* descriptor = catalog.find(
-            lux::extensions::contributionId(
+            lux::render::renderEffectId(
                 "org.lux.render.grid3d.effect"));
         const auto direct = fixture.awaitControl(
             fixture.control().addFeatureRaw(
@@ -149,7 +149,7 @@ int main()
     }
     expect(
         enable_ok &&
-            host.active(lux::extensions::contributionId(
+            host.active(lux::render::renderEffectId(
                 "org.lux.render.grid3d.effect")),
         "enable registers the type, creates the scene instance, and installs extraction");
     expect(
@@ -160,11 +160,11 @@ int main()
         "the rebuilt execution plan exposes Grid3D without a second ISystem");
 
     auto disabled = host.facade().requestDisable(
-        lux::extensions::contributionId(
+        lux::render::renderEffectId(
             "org.lux.render.grid3d.effect"));
     expect(
         drive(host, fixture.control(), disabled) &&
-            !host.active(lux::extensions::contributionId(
+            !host.active(lux::render::renderEffectId(
                 "org.lux.render.grid3d.effect")),
         "disable removes extraction before the render-thread feature instance");
     expect(

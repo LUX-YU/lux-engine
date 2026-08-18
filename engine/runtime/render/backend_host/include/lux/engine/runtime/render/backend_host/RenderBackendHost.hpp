@@ -255,7 +255,7 @@ namespace lux::runtime
                 std::make_unique<RenderEffectTypeRegistry>(
                     *control_session_);
             if (!render_effect_catalog_.find(
-                    lux::extensions::contributionId(
+                    lux::render::renderEffectId(
                         "org.lux.render.grid3d.effect")))
             {
                 const auto added = addGrid3DRenderEffect(

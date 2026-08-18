@@ -13,7 +13,7 @@
 
 #include <lux/engine/hosts/player/visibility.h>
 #include <lux/engine/runtime/extensions/ExtensionModuleManager.hpp>
-#include <lux/engine/resource/deployment/RuntimeCapacity.hpp>
+#include <lux/engine/function/render/Capacity.hpp>
 
 #include <cstdint>
 #include <filesystem>
@@ -37,8 +37,8 @@ namespace lux::game
         /// Cooked game pak mounted at /Game.
         std::filesystem::path pak_file;
 
-        /// Optional cooked engine pak mounted at /Engine.
-        std::filesystem::path engine_pak_file;
+        /// Optional cooked base-content pak mounted at the legacy /Engine VFS root.
+        std::filesystem::path base_pak_file;
 
         /// EntityScene virtual path inside the pak ("Scenes/BigDemo"). Empty
         /// selects the pak's single ENTITY_SCENE entry.
@@ -47,7 +47,7 @@ namespace lux::game
         /// Writable save root selected by the platform adapter.
         std::filesystem::path save_root;
 
-        lux::deployment::RuntimeCapacityRequest capacity_request{};
+        lux::render::CapacityRequest capacity_request{};
 
         /// Enable the Vulkan validation layer (its messages go to stderr).
         bool enable_validation = false;
@@ -57,7 +57,7 @@ namespace lux::game
         /// dumpRenderGraph the Android bring-up harness relies on).
         bool dump_graph = false;
 
-        /// Explicit deployed runtime modules from RuntimeLaunchManifest.
+        /// Explicit deployed runtime modules from LaunchManifest.
         std::vector<lux::extensions::ExtensionModuleRequirement> extensions;
     };
 

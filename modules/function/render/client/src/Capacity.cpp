@@ -1,10 +1,10 @@
-#include <lux/engine/resource/deployment/RuntimeCapacity.hpp>
+#include <lux/engine/function/render/Capacity.hpp>
 
 #include <algorithm>
 #include <limits>
 #include <string_view>
 
-namespace lux::deployment
+namespace lux::render
 {
     namespace
     {
@@ -13,7 +13,7 @@ namespace lux::deployment
             return CapacityDomainId{id.name()};
         }
 
-        [[nodiscard]] bool isCanonicalCapacityDomainName(
+        [[nodiscard]] bool isValidCapacityDomainNameImpl(
             std::string_view name) noexcept
         {
             if (name.empty() || name.front() == '.' || name.back() == '.')
@@ -68,7 +68,7 @@ namespace lux::deployment
         }
 
         [[nodiscard]] constexpr std::uint64_t availableBudget(
-            const RuntimeDeviceCapabilities& device) noexcept
+            const DeviceCapabilities& device) noexcept
         {
             if (device.vram_budget_bytes == 0u)
                 return std::numeric_limits<std::uint64_t>::max();
@@ -95,8 +95,8 @@ namespace lux::deployment
 
         [[nodiscard]] CapacityShortfall failure(
             CapacityDomainIdView domain,
-            ECapacityPlanError error,
-            ECapacityPlanReason reason,
+            CapacityPlanError error,
+            CapacityPlanReason reason,
             std::uint64_t requested,
             std::uint64_t effective,
             std::uint64_t bytes,
@@ -113,9 +113,14 @@ namespace lux::deployment
         }
     } // namespace
 
-    void RuntimeCapacityRequest::set(
+    bool isValidCapacityDomainName(std::string_view name) noexcept
+    {
+        return isValidCapacityDomainNameImpl(name);
+    }
+
+    void CapacityRequest::set(
         CapacityDomainIdView domain,
-        RuntimeCapacityValue value)
+        CapacityValue value)
     {
         for (auto& entry : domains)
         {
@@ -125,10 +130,10 @@ namespace lux::deployment
                 return;
             }
         }
-        domains.push_back(RuntimeCapacityRequestEntry{own(domain), value});
+        domains.push_back(CapacityRequestEntry{own(domain), value});
     }
 
-    const RuntimeCapacityValue* RuntimeCapacityRequest::find(
+    const CapacityValue* CapacityRequest::find(
         CapacityDomainIdView domain) const noexcept
     {
         for (const auto& entry : domains)
@@ -137,11 +142,11 @@ namespace lux::deployment
         return nullptr;
     }
 
-    lux::cxx::expected<void, ECapacityCatalogError>
-    CapacityDomainCatalog::add(CapacityDomainDescriptor descriptor)
+    lux::cxx::expected<void, CapacityCatalogError>
+    CapacityCatalog::add(CapacityDomainDescriptor descriptor)
     {
         if (!descriptor.id.isValid() ||
-            !isCanonicalCapacityDomainName(descriptor.id.name()) ||
+            !isValidCapacityDomainName(descriptor.id.name()) ||
             descriptor.device_limit == 0u ||
             descriptor.protocol_limit == 0u ||
             descriptor.automatic_target == 0u ||
@@ -152,28 +157,28 @@ namespace lux::deployment
             descriptor.minimum > descriptor.protocol_limit)
         {
             return lux::cxx::unexpected(
-                ECapacityCatalogError::INVALID_DESCRIPTOR);
+                CapacityCatalogError::INVALID_DESCRIPTOR);
         }
         for (const auto& current : descriptors_)
         {
             if (current.id.view() == descriptor.id.view())
             {
                 return lux::cxx::unexpected(
-                    ECapacityCatalogError::DUPLICATE_DOMAIN);
+                    CapacityCatalogError::DUPLICATE_DOMAIN);
             }
             if (isCapacityDomainCollision(
                     current.id.view(),
                     descriptor.id.view()))
             {
                 return lux::cxx::unexpected(
-                    ECapacityCatalogError::ID_COLLISION);
+                    CapacityCatalogError::ID_COLLISION);
             }
         }
         descriptors_.push_back(std::move(descriptor));
         return {};
     }
 
-    const CapacityDomainDescriptor* CapacityDomainCatalog::find(
+    const CapacityDomainDescriptor* CapacityCatalog::find(
         CapacityDomainIdView id) const noexcept
     {
         for (const auto& descriptor : descriptors_)
@@ -182,7 +187,7 @@ namespace lux::deployment
         return nullptr;
     }
 
-    const RuntimeCapacityDomainPlan* RuntimeCapacityPlan::find(
+    const CapacityDomainPlan* CapacityPlan::find(
         CapacityDomainIdView domain) const noexcept
     {
         for (const auto& entry : domains)
@@ -191,18 +196,18 @@ namespace lux::deployment
         return nullptr;
     }
 
-    std::uint64_t RuntimeCapacityPlan::effective(
+    std::uint64_t CapacityPlan::effective(
         CapacityDomainIdView domain) const noexcept
     {
         const auto* entry = find(domain);
         return entry ? entry->effective : 0u;
     }
 
-    lux::cxx::expected<RuntimeCapacityPlan, CapacityShortfall>
-    makeRuntimeCapacityPlan(
-        const RuntimeCapacityRequest& request,
-        const RuntimeDeviceCapabilities& device,
-        const CapacityDomainCatalog& catalog)
+    lux::cxx::expected<CapacityPlan, CapacityShortfall>
+    makeCapacityPlan(
+        const CapacityRequest& request,
+        const DeviceCapabilities& device,
+        const CapacityCatalog& catalog)
     {
         const auto available = availableBudget(device);
 
@@ -210,14 +215,14 @@ namespace lux::deployment
         {
             const auto& entry = request.domains[index];
             if (!entry.domain.isValid() ||
-                !isCanonicalCapacityDomainName(entry.domain.name()) ||
-                (entry.value.mode == ECapacityRequestMode::EXPLICIT &&
+                !isValidCapacityDomainName(entry.domain.name()) ||
+                (entry.value.mode == CapacityRequestMode::EXPLICIT &&
                  entry.value.value == 0u))
             {
                 return lux::cxx::unexpected(failure(
                     entry.domain.view(),
-                    ECapacityPlanError::INVALID_REQUEST,
-                    ECapacityPlanReason::PROTOCOL_CLAMP,
+                    CapacityPlanError::INVALID_REQUEST,
+                    CapacityPlanReason::PROTOCOL_CLAMP,
                     entry.value.value,
                     0u,
                     0u,
@@ -231,8 +236,8 @@ namespace lux::deployment
                 {
                     return lux::cxx::unexpected(failure(
                         entry.domain.view(),
-                        ECapacityPlanError::DUPLICATE_REQUEST,
-                        ECapacityPlanReason::PROTOCOL_CLAMP,
+                        CapacityPlanError::DUPLICATE_REQUEST,
+                        CapacityPlanReason::PROTOCOL_CLAMP,
                         entry.value.value,
                         0u,
                         0u,
@@ -243,8 +248,8 @@ namespace lux::deployment
             {
                 return lux::cxx::unexpected(failure(
                     entry.domain.view(),
-                    ECapacityPlanError::UNKNOWN_DOMAIN,
-                    ECapacityPlanReason::PROTOCOL_CLAMP,
+                    CapacityPlanError::UNKNOWN_DOMAIN,
+                    CapacityPlanReason::PROTOCOL_CLAMP,
                     entry.value.value,
                     0u,
                     0u,
@@ -264,7 +269,7 @@ namespace lux::deployment
                 return descriptor->id.name();
             });
 
-        RuntimeCapacityPlan result{};
+        CapacityPlan result{};
         result.device = device;
         result.domains.reserve(ordered.size());
         std::uint64_t explicit_bytes = 0u;
@@ -275,23 +280,23 @@ namespace lux::deployment
             const auto* requested = request.find(descriptor->id.view());
             const auto value = requested
                 ? *requested
-                : RuntimeCapacityValue::automatic();
-            RuntimeCapacityDomainPlan plan{};
+                : CapacityValue::automatic();
+            CapacityDomainPlan plan{};
             plan.domain = CapacityDomainId{descriptor->id.name()};
-            plan.requested = value.mode == ECapacityRequestMode::EXPLICIT
+            plan.requested = value.mode == CapacityRequestMode::EXPLICIT
                 ? value.value
                 : 0u;
             plan.device_limit = descriptor->device_limit;
             plan.protocol_limit = descriptor->protocol_limit;
 
-            if (value.mode == ECapacityRequestMode::EXPLICIT)
+            if (value.mode == CapacityRequestMode::EXPLICIT)
             {
                 if (value.value > descriptor->protocol_limit)
                 {
                     return lux::cxx::unexpected(failure(
                         descriptor->id.view(),
-                        ECapacityPlanError::PROTOCOL_LIMIT,
-                        ECapacityPlanReason::PROTOCOL_CLAMP,
+                        CapacityPlanError::PROTOCOL_LIMIT,
+                        CapacityPlanReason::PROTOCOL_CLAMP,
                         value.value,
                         descriptor->protocol_limit,
                         estimateBytes(value.value, *descriptor),
@@ -301,15 +306,15 @@ namespace lux::deployment
                 {
                     return lux::cxx::unexpected(failure(
                         descriptor->id.view(),
-                        ECapacityPlanError::DEVICE_LIMIT,
-                        ECapacityPlanReason::DEVICE_CLAMP,
+                        CapacityPlanError::DEVICE_LIMIT,
+                        CapacityPlanReason::DEVICE_CLAMP,
                         value.value,
                         descriptor->device_limit,
                         estimateBytes(value.value, *descriptor),
                         available));
                 }
                 plan.effective = value.value;
-                plan.reason = ECapacityPlanReason::REQUESTED;
+                plan.reason = CapacityPlanReason::REQUESTED;
             }
             else
             {
@@ -324,11 +329,11 @@ namespace lux::deployment
                     return lux::cxx::unexpected(failure(
                         descriptor->id.view(),
                         protocol_won
-                            ? ECapacityPlanError::PROTOCOL_LIMIT
-                            : ECapacityPlanError::DEVICE_LIMIT,
+                            ? CapacityPlanError::PROTOCOL_LIMIT
+                            : CapacityPlanError::DEVICE_LIMIT,
                         protocol_won
-                            ? ECapacityPlanReason::PROTOCOL_CLAMP
-                            : ECapacityPlanReason::DEVICE_CLAMP,
+                            ? CapacityPlanReason::PROTOCOL_CLAMP
+                            : CapacityPlanReason::DEVICE_CLAMP,
                         descriptor->automatic_target,
                         plan.effective,
                         estimateBytes(descriptor->minimum, *descriptor),
@@ -336,14 +341,14 @@ namespace lux::deployment
                 }
                 plan.reason = plan.effective < descriptor->automatic_target
                     ? (descriptor->device_limit < descriptor->protocol_limit
-                        ? ECapacityPlanReason::DEVICE_CLAMP
-                        : ECapacityPlanReason::PROTOCOL_CLAMP)
-                    : ECapacityPlanReason::AUTO_DEFAULT;
+                        ? CapacityPlanReason::DEVICE_CLAMP
+                        : CapacityPlanReason::PROTOCOL_CLAMP)
+                    : CapacityPlanReason::AUTO_DEFAULT;
             }
             plan.estimated_bytes = estimateBytes(
                 plan.effective,
                 *descriptor);
-            if (value.mode == ECapacityRequestMode::EXPLICIT)
+            if (value.mode == CapacityRequestMode::EXPLICIT)
                 explicit_bytes = saturatedAdd(
                     explicit_bytes,
                     plan.estimated_bytes);
@@ -362,15 +367,15 @@ namespace lux::deployment
                 {
                     const auto* value = request.find(plan.domain.view());
                     return value &&
-                        value->mode == ECapacityRequestMode::EXPLICIT;
+                        value->mode == CapacityRequestMode::EXPLICIT;
                 });
             const auto& plan = found != result.domains.end()
                 ? *found
                 : result.domains.front();
             return lux::cxx::unexpected(failure(
                 plan.domain.view(),
-                ECapacityPlanError::BUDGET_LIMIT,
-                ECapacityPlanReason::BUDGET_REJECT,
+                CapacityPlanError::BUDGET_LIMIT,
+                CapacityPlanReason::BUDGET_REJECT,
                 plan.requested,
                 0u,
                 explicit_bytes,
@@ -385,7 +390,7 @@ namespace lux::deployment
         for (std::size_t index = 0u; index < result.domains.size(); ++index)
         {
             const auto* value = request.find(result.domains[index].domain.view());
-            if (value && value->mode == ECapacityRequestMode::EXPLICIT)
+            if (value && value->mode == CapacityRequestMode::EXPLICIT)
                 continue;
             minimum_bytes = saturatedAdd(
                 minimum_bytes,
@@ -399,12 +404,12 @@ namespace lux::deployment
                 {
                     const auto* value = request.find(plan.domain.view());
                     return !value ||
-                        value->mode == ECapacityRequestMode::AUTO;
+                        value->mode == CapacityRequestMode::AUTO;
                 }) - result.domains.begin();
             return lux::cxx::unexpected(failure(
                 result.domains[index].domain.view(),
-                ECapacityPlanError::BUDGET_LIMIT,
-                ECapacityPlanReason::BUDGET_REJECT,
+                CapacityPlanError::BUDGET_LIMIT,
+                CapacityPlanReason::BUDGET_REJECT,
                 0u,
                 0u,
                 minimum_bytes,
@@ -421,7 +426,7 @@ namespace lux::deployment
         {
             auto& plan = result.domains[index];
             const auto* value = request.find(plan.domain.view());
-            if (value && value->mode == ECapacityRequestMode::EXPLICIT)
+            if (value && value->mode == CapacityRequestMode::EXPLICIT)
                 continue;
             const auto minimum = ordered[index]->minimum;
             plan.effective = minimum + static_cast<std::uint64_t>(
@@ -429,7 +434,7 @@ namespace lux::deployment
             plan.estimated_bytes = estimateBytes(
                 plan.effective,
                 *ordered[index]);
-            plan.reason = ECapacityPlanReason::BUDGET_REJECT;
+            plan.reason = CapacityPlanReason::BUDGET_REJECT;
             automatic_bytes = saturatedAdd(
                 automatic_bytes,
                 plan.estimated_bytes);
@@ -446,7 +451,7 @@ namespace lux::deployment
             {
                 auto& plan = result.domains[index];
                 const auto* value = request.find(plan.domain.view());
-                if ((value && value->mode == ECapacityRequestMode::EXPLICIT) ||
+                if ((value && value->mode == CapacityRequestMode::EXPLICIT) ||
                     plan.effective <= ordered[index]->minimum)
                     continue;
                 const auto next = std::max(
@@ -475,8 +480,8 @@ namespace lux::deployment
         {
             return lux::cxx::unexpected(failure(
                 result.domains.front().domain.view(),
-                ECapacityPlanError::BUDGET_LIMIT,
-                ECapacityPlanReason::BUDGET_REJECT,
+                CapacityPlanError::BUDGET_LIMIT,
+                CapacityPlanReason::BUDGET_REJECT,
                 0u,
                 0u,
                 automatic_bytes,
@@ -484,4 +489,4 @@ namespace lux::deployment
         }
         return result;
     }
-} // namespace lux::deployment
+} // namespace lux::render

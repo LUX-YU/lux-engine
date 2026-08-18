@@ -14,7 +14,7 @@
 // MeshCpuRecord (bounds + BVH) is defined here — zero Vulkan dependencies.
 #include <lux/engine/render/resources/mesh/MeshCpuData.hpp>
 #include <lux/engine/render/resources/mesh/StableRecordPages.hpp>
-#include <lux/engine/resource/deployment/RuntimeCapacity.hpp>
+#include <lux/engine/function/render/Capacity.hpp>
 namespace lux::render { class TransferScheduler; }
 #include <vector>
 #include <array>
@@ -319,7 +319,7 @@ namespace lux::render
         uint32_t        vertexStride(MeshHandle h)const { return alive(h) ? gpu_records_[h.index].vertex_stride : 0u; }
 		uint32_t        indexCount(MeshHandle h)  const { return alive(h) ? gpu_records_[h.index].index_count : 0u; }
         EIndexType      indexType(MeshHandle h)   const { return alive(h) ? gpu_records_[h.index].index_type : EIndexType::None; }
-        [[nodiscard]] const std::optional<lux::deployment::CapacityShortfall>&
+        [[nodiscard]] const std::optional<lux::render::CapacityShortfall>&
         lastCapacityShortfall() const noexcept
         {
             return last_capacity_shortfall_;
@@ -457,12 +457,12 @@ namespace lux::render
         ///        让 GPU 跳过该网格,等 markReady() 补真值);false = 立即写真值。
         Expected<MeshAllocResult> prepareMesh(const MeshCreateInfo& ci, bool defer_index_count);
         void setCapacityShortfall(
-            lux::deployment::CapacityDomainIdView domain,
+            lux::render::CapacityDomainIdView domain,
             std::uint64_t requested,
             std::uint64_t effective,
             std::uint64_t bytes,
             std::uint64_t available_bytes,
-            lux::deployment::ECapacityPlanReason reason) noexcept;
+            lux::render::CapacityPlanReason reason) noexcept;
         bool destroyNow(MeshHandle h);
 
         /// 把 IBO 字节范围换算成索引下标(可用作 VkDrawIndexedIndirectCommand::firstIndex)。
@@ -498,7 +498,7 @@ namespace lux::render
         ChainedArenaAllocator                ibo_arena_;
         std::uint64_t                        ibo_topology_serial_{0u};
         std::uint64_t                        geometry_capacity_bytes_{0u};
-        std::optional<lux::deployment::CapacityShortfall>
+        std::optional<lux::render::CapacityShortfall>
                                                 last_capacity_shortfall_;
 
         // Segment table SSBO (geometry segment info; material related fields filled by upper layer later or use default on GPU side)

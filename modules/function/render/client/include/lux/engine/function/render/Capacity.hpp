@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/resource/deployment/visibility.h>
+#include <lux/engine/function/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/StableNameId.hpp>
@@ -11,32 +11,35 @@
 #include <type_traits>
 #include <vector>
 
-namespace lux::deployment
+namespace lux::render
 {
     struct CapacityDomainIdTag final {};
     using CapacityDomainIdView = lux::cxx::StableNameIdView<CapacityDomainIdTag>;
     using CapacityDomainId = lux::cxx::StableNameId<CapacityDomainIdTag>;
 
-    [[nodiscard]] constexpr CapacityDomainIdView capacityDomainId(
+    [[nodiscard]] constexpr CapacityDomainIdView capacityId(
         std::string_view name) noexcept
     {
         return CapacityDomainIdView{name};
     }
 
-    inline constexpr auto kActiveRenderInstancesCapacity =
-        capacityDomainId("lux.render.instances");
-    inline constexpr auto kClassicMeshRecordsCapacity =
-        capacityDomainId("lux.render.classic_mesh.records");
-    inline constexpr auto kClassicMeshGeometryBytesCapacity =
-        capacityDomainId("lux.render.classic_mesh.geometry_bytes");
+    [[nodiscard]] LUX_FUNCTION_PUBLIC bool isValidCapacityDomainName(
+        std::string_view name) noexcept;
 
-    enum class ECapacityRequestMode : std::uint8_t
+    inline constexpr auto kActiveInstancesCapacity =
+        capacityId("lux.render.instances");
+    inline constexpr auto kClassicMeshRecordsCapacity =
+        capacityId("lux.render.classic_mesh.records");
+    inline constexpr auto kClassicMeshGeometryBytesCapacity =
+        capacityId("lux.render.classic_mesh.geometry_bytes");
+
+    enum class CapacityRequestMode : std::uint8_t
     {
         AUTO,
         EXPLICIT
     };
 
-    enum class ECapacityPlanReason : std::uint8_t
+    enum class CapacityPlanReason : std::uint8_t
     {
         AUTO_DEFAULT,
         REQUESTED,
@@ -45,14 +48,14 @@ namespace lux::deployment
         BUDGET_REJECT
     };
 
-    enum class ECapacityCatalogError : std::uint8_t
+    enum class CapacityCatalogError : std::uint8_t
     {
         INVALID_DESCRIPTOR,
         DUPLICATE_DOMAIN,
         ID_COLLISION,
     };
 
-    enum class ECapacityPlanError : std::uint8_t
+    enum class CapacityPlanError : std::uint8_t
     {
         INVALID_REQUEST,
         DUPLICATE_REQUEST,
@@ -62,47 +65,47 @@ namespace lux::deployment
         BUDGET_LIMIT,
     };
 
-    struct RuntimeCapacityValue final
+    struct CapacityValue final
     {
-        ECapacityRequestMode mode{ECapacityRequestMode::AUTO};
+        CapacityRequestMode mode{CapacityRequestMode::AUTO};
         std::uint64_t value{0u};
 
-        [[nodiscard]] static constexpr RuntimeCapacityValue automatic()
+        [[nodiscard]] static constexpr CapacityValue automatic()
             noexcept
         {
             return {};
         }
 
-        [[nodiscard]] static constexpr RuntimeCapacityValue exact(
+        [[nodiscard]] static constexpr CapacityValue exact(
             std::uint64_t requested) noexcept
         {
-            return {ECapacityRequestMode::EXPLICIT, requested};
+            return {CapacityRequestMode::EXPLICIT, requested};
         }
     };
 
-    struct RuntimeCapacityRequestEntry final
+    struct CapacityRequestEntry final
     {
         CapacityDomainId domain;
-        RuntimeCapacityValue value{};
+        CapacityValue value{};
     };
 
     /// Recipe-owned requests. Absence means AUTO. Programmatic composition may
     /// use set(); disk decoders must reject duplicate keys before calling it.
-    struct RuntimeCapacityRequest final
+    struct CapacityRequest final
     {
-        std::vector<RuntimeCapacityRequestEntry> domains;
+        std::vector<CapacityRequestEntry> domains;
 
-        LUX_ENGINE_RESOURCE_DEPLOYMENT_PUBLIC void set(
+        LUX_FUNCTION_PUBLIC void set(
             CapacityDomainIdView domain,
-            RuntimeCapacityValue value);
-        [[nodiscard]] LUX_ENGINE_RESOURCE_DEPLOYMENT_PUBLIC
-        const RuntimeCapacityValue* find(
+            CapacityValue value);
+        [[nodiscard]] LUX_FUNCTION_PUBLIC
+        const CapacityValue* find(
             CapacityDomainIdView domain) const noexcept;
     };
 
     /// Raw device facts. Domain-specific limits are contributed separately to
-    /// CapacityDomainCatalog before the immutable plan is resolved.
-    struct RuntimeDeviceCapabilities final
+    /// CapacityCatalog before the immutable plan is resolved.
+    struct DeviceCapabilities final
     {
         std::uint64_t vram_budget_bytes{0u};
         std::uint64_t vram_usage_bytes{0u};
@@ -124,10 +127,10 @@ namespace lux::deployment
         std::uint64_t bytes_per_granule{0u};
     };
 
-    class LUX_ENGINE_RESOURCE_DEPLOYMENT_PUBLIC CapacityDomainCatalog final
+    class LUX_FUNCTION_PUBLIC CapacityCatalog final
     {
     public:
-        [[nodiscard]] lux::cxx::expected<void, ECapacityCatalogError> add(CapacityDomainDescriptor descriptor);
+        [[nodiscard]] lux::cxx::expected<void, CapacityCatalogError> add(CapacityDomainDescriptor descriptor);
         [[nodiscard]] const CapacityDomainDescriptor* find(
             CapacityDomainIdView id) const noexcept;
         [[nodiscard]] std::span<const CapacityDomainDescriptor> all()
@@ -140,7 +143,7 @@ namespace lux::deployment
         std::vector<CapacityDomainDescriptor> descriptors_;
     };
 
-    struct RuntimeCapacityDomainPlan final
+    struct CapacityDomainPlan final
     {
         CapacityDomainId domain;
         std::uint64_t requested{0u};
@@ -148,18 +151,18 @@ namespace lux::deployment
         std::uint64_t protocol_limit{0u};
         std::uint64_t effective{0u};
         std::uint64_t estimated_bytes{0u};
-        ECapacityPlanReason reason{ECapacityPlanReason::AUTO_DEFAULT};
+        CapacityPlanReason reason{CapacityPlanReason::AUTO_DEFAULT};
     };
 
-    struct RuntimeCapacityPlan final
+    struct CapacityPlan final
     {
-        RuntimeDeviceCapabilities device{};
-        std::vector<RuntimeCapacityDomainPlan> domains;
+        DeviceCapabilities device{};
+        std::vector<CapacityDomainPlan> domains;
 
-        [[nodiscard]] LUX_ENGINE_RESOURCE_DEPLOYMENT_PUBLIC
-        const RuntimeCapacityDomainPlan* find(
+        [[nodiscard]] LUX_FUNCTION_PUBLIC
+        const CapacityDomainPlan* find(
             CapacityDomainIdView domain) const noexcept;
-        [[nodiscard]] LUX_ENGINE_RESOURCE_DEPLOYMENT_PUBLIC
+        [[nodiscard]] LUX_FUNCTION_PUBLIC
         std::uint64_t effective(
             CapacityDomainIdView domain) const noexcept;
     };
@@ -167,8 +170,8 @@ namespace lux::deployment
     struct CapacityShortfall final
     {
         CapacityDomainId domain;
-        ECapacityPlanError error{ECapacityPlanError::BUDGET_LIMIT};
-        ECapacityPlanReason reason{ECapacityPlanReason::BUDGET_REJECT};
+        CapacityPlanError error{CapacityPlanError::BUDGET_LIMIT};
+        CapacityPlanReason reason{CapacityPlanReason::BUDGET_REJECT};
         std::uint64_t requested{0u};
         std::uint64_t effective{0u};
         std::uint64_t bytes{0u};
@@ -176,7 +179,7 @@ namespace lux::deployment
     };
 
     /// Trivially-copyable form carried by render operation replies. The hash is
-    /// resolved through the already-frozen CapacityDomainCatalog; consumers
+    /// resolved through the already-frozen CapacityCatalog; consumers
     /// still compare the catalog's full canonical name before using the ID.
     struct CapacityShortfallWire final
     {
@@ -185,8 +188,8 @@ namespace lux::deployment
         std::uint64_t effective{0u};
         std::uint64_t bytes{0u};
         std::uint64_t available_bytes{0u};
-        ECapacityPlanError error{ECapacityPlanError::BUDGET_LIMIT};
-        ECapacityPlanReason reason{ECapacityPlanReason::BUDGET_REJECT};
+        CapacityPlanError error{CapacityPlanError::BUDGET_LIMIT};
+        CapacityPlanReason reason{CapacityPlanReason::BUDGET_REJECT};
         bool present{false};
     };
     static_assert(std::is_trivially_copyable_v<CapacityShortfallWire>);
@@ -208,10 +211,10 @@ namespace lux::deployment
     /// Resolve every registered domain. Explicit requests are admitted first
     /// and never clamp. AUTO domains may shrink proportionally, but never below
     /// their registered minimum. Results are sorted by canonical domain name.
-    [[nodiscard]] LUX_ENGINE_RESOURCE_DEPLOYMENT_PUBLIC
-    lux::cxx::expected<RuntimeCapacityPlan, CapacityShortfall>
-    makeRuntimeCapacityPlan(
-        const RuntimeCapacityRequest& request,
-        const RuntimeDeviceCapabilities& device,
-        const CapacityDomainCatalog& catalog);
-} // namespace lux::deployment
+    [[nodiscard]] LUX_FUNCTION_PUBLIC
+    lux::cxx::expected<CapacityPlan, CapacityShortfall>
+    makeCapacityPlan(
+        const CapacityRequest& request,
+        const DeviceCapabilities& device,
+        const CapacityCatalog& catalog);
+} // namespace lux::render

@@ -101,7 +101,7 @@ target_link_libraries(luxgame
     PRIVATE
         lux_native_app_glue
         lux::engine::host::game_application # Runtime/scene/render/close owner
-        lux::engine::resource::deployment # packaged launch manifest parser
+        lux::game::deployment                  # packaged launch manifest parser
         lux::engine::platform::window        # Vulkan extension list
         lux::engine::core::log               # Logcat process outlet
         android

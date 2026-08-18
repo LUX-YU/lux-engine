@@ -30,6 +30,14 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/extensions/api/CMakeLists.txt)
     add_subdirectory(extensions/api)
 endif()
 
+
+# The cooked game-launch protocol is shared by Player front ends and the
+# offline exporter. It is an Engine product contract, not a Resource format.
+if((LUX_PROFILE_HAS_RUNTIME OR LUX_PROFILE_HAS_TOOLCHAIN) AND
+   EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/game/deployment/CMakeLists.txt)
+    add_subdirectory(game/deployment)
+endif()
+
 # Runtime foundation comes before every runtime domain.  A TOOLCHAIN-only
 # product consumes Resource formats and Authoring models directly; it does not
 # configure the game scheduler, renderer integration or scene lifecycle.
@@ -82,8 +90,8 @@ endif()
 # target-level Player cleanliness.
 if(LUX_PROFILE_HAS_EDITOR OR LUX_PROFILE_HAS_TOOLCHAIN)
     # Source-workspace data is shared by Editor and Toolchain. Player and
-    # Android consumes the Resource deployment contract and never configures
-    # this desktop-host subtree.
+    # Android consume only cooked game contracts and never configure this
+    # desktop-host subtree.
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/authoring/CMakeLists.txt)
         add_subdirectory(authoring)
     endif()

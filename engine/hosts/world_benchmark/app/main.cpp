@@ -97,7 +97,7 @@ namespace
         std::vector<lux::runtime::FrameTrace> frame_traces;
         std::vector<SystemFrameSample> system_frames;
         std::vector<StabilitySnapshot> stability_snapshots;
-        lux::deployment::RuntimeCapacityPlan capacity_plan{};
+        lux::render::CapacityPlan capacity_plan{};
         lux::game::GameApplicationTelemetry telemetry{};
         bool has_telemetry{false};
         std::string gpu_json{"{\"available\":false,\"reason\":\"not sampled\"}"};
@@ -1444,7 +1444,7 @@ namespace
         lux::game::GameApplicationConfig config;
         config.title = "lux World Benchmark";
         config.game_pak_file = options.pak;
-        config.engine_pak_file = options.engine_pak;
+        config.base_pak_file = options.engine_pak;
         config.boot_scene = options.scene;
         config.save_root = options.json.parent_path() /
             "Saves" /
@@ -1455,11 +1455,11 @@ namespace
                 ("run-" + std::to_string(run));
         config.enable_validation = options.validation;
         config.capacity_request.set(
-            lux::deployment::kActiveRenderInstancesCapacity,
-            lux::deployment::RuntimeCapacityValue::exact(100'000u));
+            lux::render::kActiveInstancesCapacity,
+            lux::render::CapacityValue::exact(100'000u));
         config.capacity_request.set(
-            lux::deployment::kClassicMeshRecordsCapacity,
-            lux::deployment::RuntimeCapacityValue::exact(100'000u));
+            lux::render::kClassicMeshRecordsCapacity,
+            lux::render::CapacityValue::exact(100'000u));
         const auto required =
             lux::window::LuxWindow::requiredVulkanInstanceExtensions();
         for (const auto* extension : required)
@@ -1812,10 +1812,10 @@ namespace
 
     void writeCapacityPlan(
         std::ostream& output,
-        const lux::deployment::RuntimeCapacityPlan& plan)
+        const lux::render::CapacityPlan& plan)
     {
         const auto writeDomain = [&output](
-            const lux::deployment::RuntimeCapacityDomainPlan& domain)
+            const lux::render::CapacityDomainPlan& domain)
         {
             output << "{\"id\":\"" << domain.domain.name()
                 << "\",\"requested\":" << domain.requested

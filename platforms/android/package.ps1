@@ -41,7 +41,7 @@ param(
     [string]$EnginePak   = "",
     # Must be produced by the shared Resource deployment writer. The current
     # Android adapter accepts the canonical packaged names game.luxpak and
-    # engine.luxpak; extension asset staging is not implemented yet.
+    # base.luxpak; extension asset staging is not implemented yet.
     [string]$RuntimeManifest = "",
     [string]$Sdk         = "D:\Development\Android\SDK",
     [string]$BuildTools  = "36.0.0",
@@ -86,8 +86,8 @@ if ($Target -eq 'game') {
         throw "Android extension asset staging is not implemented; RuntimeManifest must not contain extensions"
     }
     if ($EnginePak -and
-        $runtimeText -notmatch '(?m)^\s*engine_pak\s*=\s*"engine\.luxpak"\s*$') {
-        throw 'Android RuntimeManifest must name engine_pak = "engine.luxpak" when -EnginePak is supplied'
+        $runtimeText -notmatch '(?m)^\s*base_pak\s*=\s*"base\.luxpak"\s*$') {
+        throw 'Android RuntimeManifest must name base_pak = "base.luxpak" when the legacy -EnginePak input is supplied'
     }
 }
 
@@ -169,9 +169,9 @@ try {
         Write-Host "      assets/game.luxpak <- $GamePak"
         if ($EnginePak -and (Test-Path $EnginePak)) {
             [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-                $zip, (Resolve-Path $EnginePak), "assets/engine.luxpak",
+                $zip, (Resolve-Path $EnginePak), "assets/base.luxpak",
                 [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
-            Write-Host "      assets/engine.luxpak <- $EnginePak"
+            Write-Host "      assets/base.luxpak <- $EnginePak"
         } else {
             Write-Warning "no -EnginePak: builtin meshes/materials will not resolve"
         }

@@ -22,7 +22,6 @@ target_link_libraries(
         lux::engine::runtime::runtime_render_scene
         lux::engine::function::render_features
         lux::engine::core::log
-        lux::engine::resource::deployment
 )
 
 lux_classify_target(
@@ -37,5 +36,4 @@ component_add_transitive_commands(
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_render_scene)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_features)"
     "find_package(lux-engine-core REQUIRED COMPONENTS log)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS deployment)"
 )

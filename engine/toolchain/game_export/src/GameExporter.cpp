@@ -7,7 +7,7 @@
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/ScriptSerDeser.hpp>
-#include <lux/engine/resource/deployment/RuntimeLaunchManifest.hpp>
+#include <lux/game/LaunchManifest.hpp>
 #include <lux/engine/resource/entity_scene/EntityScene.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
@@ -1410,7 +1410,7 @@ namespace lux::toolchain
             ));
         }
 
-        std::vector<lux::deployment::RuntimeExtensionEntry>
+        std::vector<lux::game::ExtensionRequirement>
             exported_extensions;
         for (const auto& extension : receipt->extensions)
         {
@@ -1492,7 +1492,7 @@ namespace lux::toolchain
                 deployed_files.insert(normalized);
             }
             exported_extensions.push_back(
-                lux::deployment::RuntimeExtensionEntry{
+                lux::game::ExtensionRequirement{
                     extension.id,
                     relative,
                     extension.required_major,
@@ -1500,22 +1500,22 @@ namespace lux::toolchain
             );
         }
 
-        std::filesystem::path engine_pak_relative;
-        const std::array engine_pak_candidates{
+        std::filesystem::path base_pak_relative;
+        const std::array base_pak_candidates{
             request.runtime_root / "share" / "lux-engine" / "engine.luxpak",
             request.runtime_root / "engine.luxpak"
         };
-        for (const auto& candidate : engine_pak_candidates)
+        for (const auto& candidate : base_pak_candidates)
         {
             if (!std::filesystem::is_regular_file(candidate, error) || error)
             {
                 error.clear();
                 continue;
             }
-            engine_pak_relative = "engine.luxpak";
+            base_pak_relative = "base.luxpak";
             if (auto copied = copyFile(
                     candidate,
-                    request.output_directory / engine_pak_relative);
+                    request.output_directory / base_pak_relative);
                 !copied)
             {
                 return lux::cxx::unexpected(std::move(copied.error()));
@@ -1525,12 +1525,12 @@ namespace lux::toolchain
 
         const auto runtime_manifest = request.output_directory /
             (receipt->binary_name + ".luxruntime.toml");
-        lux::deployment::RuntimeLaunchManifest manifest;
+        lux::game::LaunchManifest manifest;
         manifest.title = request.binary.metadata.display_name.empty()
             ? receipt->title
             : request.binary.metadata.display_name;
         manifest.game_pak = receipt->game_pak;
-        manifest.engine_pak = engine_pak_relative;
+        manifest.base_pak = base_pak_relative;
         manifest.boot_scene = receipt->boot_scene;
         manifest.extensions = std::move(exported_extensions);
         if (auto written = manifest.saveToFile(runtime_manifest); !written)

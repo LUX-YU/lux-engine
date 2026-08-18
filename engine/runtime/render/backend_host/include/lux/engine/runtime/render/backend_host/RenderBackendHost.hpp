@@ -58,9 +58,9 @@ namespace lux::runtime
     {
         std::vector<const char*> instance_extensions;
         bool                     enable_validation = false;
-        lux::deployment::RuntimeCapacityRequest capacity_request{};
-        lux::deployment::RuntimeCapacityPlan* capacity_plan_output{nullptr};
-        lux::deployment::CapacityShortfall* capacity_shortfall_output{
+        lux::render::CapacityRequest capacity_request{};
+        lux::render::CapacityPlan* capacity_plan_output{nullptr};
+        lux::render::CapacityShortfall* capacity_shortfall_output{
             nullptr};
         std::atomic<int>* validation_error_counter{nullptr};
         decltype(lux::render::ServerConfig{}.validation_message_sink)

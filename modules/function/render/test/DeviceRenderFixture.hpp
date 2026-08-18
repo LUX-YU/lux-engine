@@ -64,7 +64,7 @@ namespace lux::rendertest
             /// pipeline — descriptor set counts above all — has to be measured
             /// at the tier it will actually run at.
             lux::render::EFeatureLevel preferred_level{lux::render::EFeatureLevel::Desktop};
-            lux::deployment::RuntimeCapacityRequest capacity_request{};
+            lux::render::CapacityRequest capacity_request{};
         };
 
         DeviceRenderFixture(std::uint32_t width, std::uint32_t height, const char* name,

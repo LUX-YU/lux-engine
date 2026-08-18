@@ -244,32 +244,35 @@ namespace lux::game
         );
         vfs->mount({"/Game", game_pak.value(), 0});
 
-        if (!application.config.engine_pak_file.empty())
+        if (!application.config.base_pak_file.empty())
         {
             if (!std::filesystem::exists(
-                    application.config.engine_pak_file))
+                    application.config.base_pak_file))
             {
                 lux::log::error(
                     "game_application",
-                    "engine pak '{}' is missing",
-                    application.config.engine_pak_file.string()
+                    "base-content pak '{}' is missing",
+                    application.config.base_pak_file.string()
                 );
                 return false;
             }
-            auto engine_pak = lux::asset::PakAssetProvider::loadFromFile(
-                application.config.engine_pak_file
+            auto base_pak = lux::asset::PakAssetProvider::loadFromFile(
+                application.config.base_pak_file
             );
-            if (!engine_pak)
+            if (!base_pak)
             {
                 lux::log::error(
                     "game_application",
-                    "engine pak '{}' was rejected: {}",
-                    application.config.engine_pak_file.string(),
-                    engine_pak.error()
+                    "base-content pak '{}' was rejected: {}",
+                    application.config.base_pak_file.string(),
+                    base_pak.error()
                 );
                 return false;
             }
-            vfs->mount({"/Engine", engine_pak.value(), 0});
+            // Cooked assets still use the legacy /Engine virtual root. The public
+            // launch/configuration vocabulary is product-neutral; migrating persisted
+            // virtual paths is a separate format transition.
+            vfs->mount({"/Engine", base_pak.value(), 0});
         }
         application.assets->setVfs(std::move(vfs));
 
@@ -974,13 +977,13 @@ namespace lux::game
             : std::vector<lux::runtime::FrameTrace>{};
     }
 
-    const lux::deployment::RuntimeCapacityPlan&
+    const lux::render::CapacityPlan&
     GameApplication::capacityPlan() const noexcept
     {
         return impl_->capacity_plan;
     }
 
-    const std::optional<lux::deployment::CapacityShortfall>&
+    const std::optional<lux::render::CapacityShortfall>&
     GameApplication::capacityShortfall() const noexcept
     {
         return impl_->capacity_shortfall;

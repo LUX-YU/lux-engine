@@ -5,7 +5,7 @@
 
 #include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>   // TypeId
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>       // RMeshHandle
-#include <lux/engine/resource/deployment/RuntimeCapacity.hpp>
+#include <lux/engine/function/render/Capacity.hpp>
 
 #include <cstdint>
 #include <type_traits>
@@ -29,7 +29,7 @@ namespace lux::render
         uint32_t status{0}; // 0 = success
         /// Present on admission/allocation failure; the previous published
         /// mesh/revision remains valid.
-        lux::deployment::CapacityShortfallWire capacity_shortfall{};
+        lux::render::CapacityShortfallWire capacity_shortfall{};
     };
     static_assert(std::is_trivially_copyable_v<MeshUploadedReply>);
 

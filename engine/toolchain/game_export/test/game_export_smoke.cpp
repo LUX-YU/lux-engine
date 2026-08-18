@@ -9,7 +9,7 @@
 #include <lux/engine/resource/asset/MeshSerDeser.hpp>
 #include <lux/engine/resource/asset/PakAssetProvider.hpp>
 #include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
-#include <lux/engine/resource/deployment/RuntimeLaunchManifest.hpp>
+#include <lux/game/LaunchManifest.hpp>
 
 #include <chrono>
 #include <atomic>
@@ -727,7 +727,7 @@ int main()
         return 11;
 #endif
 
-    auto launch_manifest = lux::deployment::RuntimeLaunchManifest::loadFromFile(
+    auto launch_manifest = lux::game::LaunchManifest::loadFromFile(
         assembled->runtime_manifest);
     if (!launch_manifest ||
         launch_manifest->game_pak != "ExporterSmoke.luxpak" ||

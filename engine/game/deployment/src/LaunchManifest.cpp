@@ -1,4 +1,4 @@
-#include <lux/engine/resource/deployment/RuntimeLaunchManifest.hpp>
+#include <lux/game/LaunchManifest.hpp>
 
 #undef TOML_HEADER_ONLY
 #define TOML_HEADER_ONLY 1
@@ -13,7 +13,7 @@
 #include <optional>
 #include <sstream>
 
-namespace lux::deployment
+namespace lux::game
 {
     namespace
     {
@@ -55,23 +55,23 @@ namespace lux::deployment
             return static_cast<std::uint16_t>(*value);
         }
 
-        lux::cxx::expected<RuntimeCapacityValue, std::string> readCapacity(
+        lux::cxx::expected<lux::render::CapacityValue, std::string> readCapacity(
             const toml::table& table,
             std::string_view field,
             const std::filesystem::path& manifest_path) noexcept
         {
             const auto node = table[field];
             if (!node)
-                return RuntimeCapacityValue::automatic();
+                return lux::render::CapacityValue::automatic();
             if (const auto mode = node.value<std::string>(); mode)
             {
                 if (*mode == "auto" || *mode == "AUTO")
-                    return RuntimeCapacityValue::automatic();
+                    return lux::render::CapacityValue::automatic();
             }
             if (const auto value = node.value<std::int64_t>();
                 value && *value > 0)
             {
-                return RuntimeCapacityValue::exact(
+                return lux::render::CapacityValue::exact(
                     static_cast<std::uint64_t>(*value));
             }
             return lux::cxx::unexpected(
@@ -81,7 +81,7 @@ namespace lux::deployment
         }
 
         lux::cxx::expected<void, std::string> validateForWrite(
-            const RuntimeLaunchManifest& manifest,
+            const LaunchManifest& manifest,
             const std::filesystem::path& path) noexcept
         {
             if (manifest.game_pak.empty())
@@ -90,20 +90,20 @@ namespace lux::deployment
                     std::string{"runtime manifest '"} + path.string() +
                     "' cannot be written without game_pak");
             }
-            const auto capacityFitsToml = [](RuntimeCapacityValue value)
+            const auto capacityFitsToml = [](lux::render::CapacityValue value)
             {
-                return value.mode != ECapacityRequestMode::EXPLICIT ||
+                return value.mode != lux::render::CapacityRequestMode::EXPLICIT ||
                     (value.value != 0u &&
                      value.value <= static_cast<std::uint64_t>(
                          std::numeric_limits<std::int64_t>::max()));
             };
             for (std::size_t index = 0u;
-                 index < manifest.capacity.domains.size();
+                 index < manifest.render_capacity.domains.size();
                  ++index)
             {
-                const auto& entry = manifest.capacity.domains[index];
+                const auto& entry = manifest.render_capacity.domains[index];
                 if (!entry.domain.isValid() ||
-                    !lux::extensions::isCanonicalStableName(
+                    !lux::render::isValidCapacityDomainName(
                         entry.domain.name()) ||
                     !capacityFitsToml(entry.value))
                 {
@@ -116,7 +116,7 @@ namespace lux::deployment
                      ++previous)
                 {
                     const auto& existing =
-                        manifest.capacity.domains[previous].domain;
+                        manifest.render_capacity.domains[previous].domain;
                     if (existing.hash() != entry.domain.hash())
                         continue;
                     return lux::cxx::unexpected(
@@ -156,8 +156,8 @@ namespace lux::deployment
         }
     } // namespace
 
-    lux::cxx::expected<RuntimeLaunchManifest, std::string>
-    RuntimeLaunchManifest::loadFromFile(
+    lux::cxx::expected<LaunchManifest, std::string>
+    LaunchManifest::loadFromFile(
         const std::filesystem::path& path) noexcept
     {
         auto text = readText(path);
@@ -185,14 +185,16 @@ namespace lux::deployment
         }
 
         const auto schema = (*runtime)["schema"].value<std::int64_t>();
-        if (!schema || *schema != kSchemaVersion)
+        if (!schema ||
+            (*schema != kSchemaVersion &&
+             *schema != kLegacySchemaVersion))
         {
             return lux::cxx::unexpected(
                 std::string{"runtime manifest '"} + path.string() +
                 "' has an unsupported runtime.schema");
         }
 
-        RuntimeLaunchManifest result;
+        LaunchManifest result;
         if (const auto title = (*runtime)["title"].value<std::string>())
             result.title = *title;
 
@@ -205,11 +207,13 @@ namespace lux::deployment
         }
         result.game_pak = std::filesystem::path{*game_pak};
 
-        if (const auto engine_pak =
-                (*runtime)["engine_pak"].value<std::string>())
-        {
-            result.engine_pak = std::filesystem::path{*engine_pak};
-        }
+        // Schema 5 uses the product-neutral key. Schema 4 is accepted so
+        // deployed games can be upgraded without regenerating every package.
+        auto base_pak = (*runtime)["base_pak"].value<std::string>();
+        if (!base_pak && *schema == kLegacySchemaVersion)
+            base_pak = (*runtime)["engine_pak"].value<std::string>();
+        if (base_pak)
+            result.base_pak = std::filesystem::path{*base_pak};
         if (const auto scene = (*runtime)["boot_scene"].value<std::string>())
             result.boot_scene = *scene;
 
@@ -222,7 +226,7 @@ namespace lux::deployment
                     std::string{"runtime manifest '"} + path.string() +
                     "' is missing [[capacity.domains]]");
             }
-            result.capacity.domains.reserve(domains->size());
+            result.render_capacity.domains.reserve(domains->size());
             for (const auto& node : *domains)
             {
                 const auto* table = node.as_table();
@@ -230,7 +234,7 @@ namespace lux::deployment
                     ? (*table)["id"].value<std::string>()
                     : std::optional<std::string>{};
                 if (!table || !id ||
-                    !lux::extensions::isCanonicalStableName(*id))
+                    !lux::render::isValidCapacityDomainName(*id))
                 {
                     return lux::cxx::unexpected(
                         std::string{"runtime manifest '"} + path.string() +
@@ -239,8 +243,8 @@ namespace lux::deployment
                 auto value = readCapacity(*table, "value", path);
                 if (!value)
                     return lux::cxx::unexpected(std::move(value.error()));
-                CapacityDomainId parsed_id{*id};
-                for (const auto& existing : result.capacity.domains)
+                lux::render::CapacityDomainId parsed_id{*id};
+                for (const auto& existing : result.render_capacity.domains)
                 {
                     if (existing.domain.hash() != parsed_id.hash())
                         continue;
@@ -251,8 +255,8 @@ namespace lux::deployment
                              : "' contains a capacity hash collision at '") +
                         *id + "'");
                 }
-                result.capacity.domains.push_back(
-                    RuntimeCapacityRequestEntry{
+                result.render_capacity.domains.push_back(
+                    lux::render::CapacityRequestEntry{
                         std::move(parsed_id),
                         *value});
             }
@@ -297,7 +301,7 @@ namespace lux::deployment
                         *id + "'");
                 }
 
-                result.extensions.push_back(RuntimeExtensionEntry{
+                result.extensions.push_back(ExtensionRequirement{
                     std::move(parsed_id),
                     std::filesystem::path{*module_path},
                     *major,
@@ -309,7 +313,7 @@ namespace lux::deployment
     }
 
     lux::cxx::expected<void, std::string>
-    RuntimeLaunchManifest::saveToFile(
+    LaunchManifest::saveToFile(
         const std::filesystem::path& path) const noexcept
     {
         if (auto valid = validateForWrite(*this, path); !valid)
@@ -319,16 +323,16 @@ namespace lux::deployment
             {"schema", static_cast<std::int64_t>(kSchemaVersion)},
             {"title", title},
             {"game_pak", game_pak.generic_string()},
-            {"engine_pak", engine_pak.generic_string()},
+            {"base_pak", base_pak.generic_string()},
             {"boot_scene", boot_scene}};
         toml::table root{{"runtime", std::move(runtime)}};
 
         toml::table capacity;
         toml::array capacity_domains;
-        for (const auto& entry : this->capacity.domains)
+        for (const auto& entry : this->render_capacity.domains)
         {
             toml::table domain{{"id", entry.domain.name()}};
-            if (entry.value.mode == ECapacityRequestMode::EXPLICIT)
+            if (entry.value.mode == lux::render::CapacityRequestMode::EXPLICIT)
             {
                 domain.insert(
                     "value",
@@ -387,4 +391,4 @@ namespace lux::deployment
         }
         return {};
     }
-} // namespace lux::deployment
+} // namespace lux::game

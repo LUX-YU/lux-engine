@@ -4,7 +4,7 @@
 // installed game_application component shared with desktop and future games.
 
 #include <lux/engine/hosts/game_application/GameApplication.hpp>
-#include <lux/engine/resource/deployment/RuntimeLaunchManifest.hpp>
+#include <lux/game/LaunchManifest.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/log/Log.hpp>
 
@@ -173,7 +173,7 @@ namespace
         if (!extractAsset(asset_manager, kManifestAsset, manifest_path))
             return false;
 
-        auto manifest = lux::deployment::RuntimeLaunchManifest::loadFromFile(
+        auto manifest = lux::game::LaunchManifest::loadFromFile(
             manifest_path
         );
         if (!manifest)
@@ -185,8 +185,8 @@ namespace
             return false;
         }
         if (!isDeploymentRelative(manifest->game_pak) ||
-            (!manifest->engine_pak.empty() &&
-             !isDeploymentRelative(manifest->engine_pak)))
+            (!manifest->base_pak.empty() &&
+             !isDeploymentRelative(manifest->base_pak)))
         {
             LOGE("runtime pak paths must be APK-relative");
             return false;
@@ -204,16 +204,16 @@ namespace
             return false;
         }
 
-        std::filesystem::path engine_pak_path;
-        if (!manifest->engine_pak.empty())
+        std::filesystem::path base_pak_path;
+        if (!manifest->base_pak.empty())
         {
-            engine_pak_path = deployment / manifest->engine_pak;
-            const auto engine_pak_asset =
-                manifest->engine_pak.generic_string();
+            base_pak_path = deployment / manifest->base_pak;
+            const auto base_pak_asset =
+                manifest->base_pak.generic_string();
             if (!extractAsset(
                     asset_manager,
-                    engine_pak_asset.c_str(),
-                    engine_pak_path
+                    base_pak_asset.c_str(),
+                    base_pak_path
                 ))
             {
                 return false;
@@ -255,7 +255,7 @@ namespace
 
         config.title = manifest->title;
         config.game_pak_file = game_pak_path;
-        config.engine_pak_file = engine_pak_path;
+        config.base_pak_file = base_pak_path;
         config.boot_scene = manifest->boot_scene;
         config.blocking_io_threads = 2u;
         config.background_cpu_concurrency = 2u;

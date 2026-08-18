@@ -106,7 +106,7 @@ namespace lux::render
         si.descriptor_svc   = &ctx.descriptorService();
         si.arena            = &sc.descriptorArena();
         const auto instance_capacity = ctx.capacityPlan().effective(
-            lux::deployment::kActiveRenderInstancesCapacity);
+            lux::render::kActiveInstancesCapacity);
         if (instance_capacity == 0u || instance_capacity > 0xffffffffull)
             return renderFailure<err::internal::Unspecified>();
         si.max_capacity = static_cast<std::uint32_t>(instance_capacity);

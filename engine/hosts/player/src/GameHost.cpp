@@ -78,7 +78,7 @@ namespace lux::game
         GameApplicationConfig application_config;
         application_config.title = config.title;
         application_config.game_pak_file = config.pak_file;
-        application_config.engine_pak_file = config.engine_pak_file;
+        application_config.base_pak_file = config.base_pak_file;
         application_config.boot_scene = config.scene_vpath;
         application_config.save_root = config.save_root;
         application_config.capacity_request = config.capacity_request;

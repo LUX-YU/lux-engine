@@ -72,7 +72,7 @@ target_link_libraries(
     lux_player
     PRIVATE
         player_host
-        lux::engine::resource::deployment
+        lux::game::deployment
 )
 
 # Reflection sidecars: each carries `/INCLUDE:<func>_meta` INTERFACE link

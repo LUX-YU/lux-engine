@@ -24,7 +24,7 @@
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
-#include <lux/engine/resource/deployment/RuntimeCapacity.hpp>
+#include <lux/engine/function/render/Capacity.hpp>
 
 namespace lux::window { class LuxWindow; }
 // rdesc::Mesh is a struct (see description/Mesh.hpp) — keyword must match the
@@ -1036,8 +1036,8 @@ namespace lux::render
         /// the mobile implementation variants on a desktop GPU for testing
         /// (mobile-adaptation topic ①, item 1-3).
         EFeatureLevel preferred_level{EFeatureLevel::Desktop};
-        lux::deployment::RuntimeCapacityRequest capacity_request{};
-        lux::deployment::CapacityShortfall* capacity_shortfall_output{
+        lux::render::CapacityRequest capacity_request{};
+        lux::render::CapacityShortfall* capacity_shortfall_output{
             nullptr};
         /// Optional (requires enable_validation): incremented once per
         /// validation ERROR by the built-in debug callback. Lets lifecycle
@@ -1135,7 +1135,7 @@ namespace lux::render
         /// 面完全一致 —— 引擎不再替上层在延迟/前向、local-read/采样之间选路,那上层
         /// 就必须先看得见设备能做什么。装 feature 之前问它。
         [[nodiscard]] Expected<DeviceCaps> deviceCaps() const noexcept;
-        [[nodiscard]] const lux::deployment::RuntimeCapacityPlan&
+        [[nodiscard]] const lux::render::CapacityPlan&
         capacityPlan() const noexcept;
 
         /// Parameter for creating a view (always offscreen).

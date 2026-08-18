@@ -15,7 +15,7 @@
 #include <lux/engine/runtime/render/scene/TextureStreamingBudget.hpp>
 #include <lux/engine/runtime/frame/FrameCoordinator.hpp>
 #include <lux/engine/navigation/Navigation.hpp>
-#include <lux/engine/resource/deployment/RuntimeCapacity.hpp>
+#include <lux/engine/function/render/Capacity.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/common/Size2D.hpp>
 #include <lux/engine/ecs/render/components/3d/DirectionalLightComponent.hpp>
@@ -124,7 +124,7 @@ namespace lux::game
         std::filesystem::path game_pak_file;
 
         /// Optional cooked engine pak mounted at /Engine.
-        std::filesystem::path engine_pak_file;
+        std::filesystem::path base_pak_file;
 
         /// Explicit boot EntityScene vpath. Empty selects the pak's only
         /// EntityScene entry.
@@ -143,7 +143,7 @@ namespace lux::game
         std::size_t blocking_io_threads{0};
         std::size_t background_cpu_concurrency{0};
         lux::runtime::TextureStreamingBudget texture_streaming{};
-        lux::deployment::RuntimeCapacityRequest capacity_request{};
+        lux::render::CapacityRequest capacity_request{};
         bool enable_validation{false};
     };
 
@@ -406,9 +406,9 @@ namespace lux::game
         [[nodiscard]] std::vector<lux::runtime::FrameTrace>
         frameTraceHistory() const;
 
-        [[nodiscard]] const lux::deployment::RuntimeCapacityPlan&
+        [[nodiscard]] const lux::render::CapacityPlan&
         capacityPlan() const noexcept;
-        [[nodiscard]] const std::optional<lux::deployment::CapacityShortfall>&
+        [[nodiscard]] const std::optional<lux::render::CapacityShortfall>&
         capacityShortfall() const noexcept;
 
         /// Owner-main-thread automation seam. Updates the active camera's

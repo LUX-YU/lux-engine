@@ -2,7 +2,7 @@
 // .luxproject, a cooked .luxworld, or a source Content directory.
 
 #include <lux/engine/hosts/player/GameHost.hpp>
-#include <lux/engine/resource/deployment/RuntimeLaunchManifest.hpp>
+#include <lux/game/LaunchManifest.hpp>
 
 #include <lux/cxx/arguments/Arguments.hpp>
 
@@ -132,7 +132,7 @@ int main(int argc, char** argv)
         manifest_path.replace_extension(".luxruntime.toml");
     }
 
-    auto manifest = lux::deployment::RuntimeLaunchManifest::loadFromFile(
+    auto manifest = lux::game::LaunchManifest::loadFromFile(
         manifest_path);
     if (!manifest)
     {
@@ -155,20 +155,20 @@ int main(int argc, char** argv)
     config.pak_file    = *game_pak;
     config.scene_vpath = manifest->boot_scene;
     config.save_root   = deployment_root / "Saves";
-    config.capacity_request = manifest->capacity;
+    config.capacity_request = manifest->render_capacity;
 
-    if (!manifest->engine_pak.empty())
+    if (!manifest->base_pak.empty())
     {
-        const auto engine_pak = deploymentPath(
+        const auto base_pak = deploymentPath(
             deployment_root,
-            manifest->engine_pak);
-        if (!engine_pak)
+            manifest->base_pak);
+        if (!base_pak)
         {
             std::fprintf(stderr,
-                         "runtime.engine_pak must be a deployment-relative path\n");
+                         "runtime.base_pak must be a deployment-relative path\n");
             return 2;
         }
-        config.engine_pak_file = *engine_pak;
+        config.base_pak_file = *base_pak;
     }
 
     config.extensions.reserve(manifest->extensions.size());

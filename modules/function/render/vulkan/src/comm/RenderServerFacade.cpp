@@ -109,10 +109,10 @@ namespace lux::render
         return impl_->dev_ctx_->caps();
     }
 
-    const lux::deployment::RuntimeCapacityPlan&
+    const lux::render::CapacityPlan&
     GeneralRenderServer::capacityPlan() const noexcept
     {
-        static const lux::deployment::RuntimeCapacityPlan empty{};
+        static const lux::render::CapacityPlan empty{};
         return impl_->render_ctx_
             ? impl_->render_ctx_->capacityPlan()
             : empty;

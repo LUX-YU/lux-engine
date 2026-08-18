@@ -77,21 +77,21 @@ namespace lux::render
 {
     namespace
     {
-        [[nodiscard]] lux::deployment::CapacityDomainId ownCapacityId(
-            lux::deployment::CapacityDomainIdView id)
+        [[nodiscard]] lux::render::CapacityDomainId ownCapacityId(
+            lux::render::CapacityDomainIdView id)
         {
-            return lux::deployment::CapacityDomainId{
+            return lux::render::CapacityDomainId{
                 id.name()};
         }
 
         [[nodiscard]] lux::cxx::expected<
-            lux::deployment::CapacityDomainCatalog,
-            lux::deployment::ECapacityCatalogError>
+            lux::render::CapacityCatalog,
+            lux::render::CapacityCatalogError>
         makeCapacityCatalog(
-            const lux::deployment::RuntimeDeviceCapabilities& device)
+            const lux::render::DeviceCapabilities& device)
         {
-            using namespace lux::deployment;
-            CapacityDomainCatalog catalog;
+            using namespace lux::render;
+            CapacityCatalog catalog;
 
             const auto instance_device_limit =
                 device.buffer_device_address && device.shader_int64
@@ -100,7 +100,7 @@ namespace lux::render
                     0xffffffffull,
                     device.max_storage_buffer_range / 80u);
             if (auto result = catalog.add(CapacityDomainDescriptor{
-                    .id = ownCapacityId(kActiveRenderInstancesCapacity),
+                    .id = ownCapacityId(kActiveInstancesCapacity),
                     .device_limit = instance_device_limit,
                     .protocol_limit = 0xffffffffull,
                     .automatic_target = 65'536u,
@@ -270,7 +270,7 @@ namespace lux::render
         const auto vram = VRAMBudgetGuard(
             dev_ctx_->vmaAllocator()).snapshot();
         const auto& device_caps = dev_ctx_->caps();
-        const lux::deployment::RuntimeDeviceCapabilities capacity_caps{
+        const lux::render::DeviceCapabilities capacity_caps{
             .vram_budget_bytes = vram.total_budget,
             .vram_usage_bytes = vram.total_usage,
             .max_storage_buffer_range =
@@ -282,7 +282,7 @@ namespace lux::render
         auto capacity_catalog = makeCapacityCatalog(capacity_caps);
         if (!capacity_catalog)
             return renderFailure<err::internal::Unspecified>();
-        auto capacity_plan = lux::deployment::makeRuntimeCapacityPlan(
+        auto capacity_plan = lux::render::makeCapacityPlan(
             cfg.capacity_request,
             capacity_caps,
             *capacity_catalog);

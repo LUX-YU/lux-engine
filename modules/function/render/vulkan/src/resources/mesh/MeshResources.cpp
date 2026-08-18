@@ -12,17 +12,17 @@
 namespace lux::render
 {
     void MeshResources::setCapacityShortfall(
-        lux::deployment::CapacityDomainIdView domain,
+        lux::render::CapacityDomainIdView domain,
         std::uint64_t requested,
         std::uint64_t effective,
         std::uint64_t bytes,
         std::uint64_t available_bytes,
-        lux::deployment::ECapacityPlanReason reason) noexcept
+        lux::render::CapacityPlanReason reason) noexcept
     {
-        last_capacity_shortfall_ = lux::deployment::CapacityShortfall{
-            lux::deployment::CapacityDomainId{
+        last_capacity_shortfall_ = lux::render::CapacityShortfall{
+            lux::render::CapacityDomainId{
                 domain.name()},
-            lux::deployment::ECapacityPlanError::BUDGET_LIMIT,
+            lux::render::CapacityPlanError::BUDGET_LIMIT,
             reason,
             requested,
             effective,
@@ -210,12 +210,12 @@ namespace lux::render
                 sizeof(MeshGpuRecord) + sizeof(std::uint32_t) * 3u +
                 sizeof(std::uint8_t);
             setCapacityShortfall(
-                lux::deployment::kClassicMeshRecordsCapacity,
+                lux::render::kClassicMeshRecordsCapacity,
                 static_cast<std::uint64_t>(cpu_records_.size()) + 1u,
                 mesh_max_count_,
                 record_bytes,
                 0u,
-                lux::deployment::ECapacityPlanReason::BUDGET_REJECT);
+                lux::render::CapacityPlanReason::BUDGET_REJECT);
             return renderFailure<err::memory::OutOfMemory>();
         }
 
@@ -257,14 +257,14 @@ namespace lux::render
             committed_geometry > geometry_capacity_bytes_ - growth_bytes)
         {
             setCapacityShortfall(
-                lux::deployment::kClassicMeshGeometryBytesCapacity,
+                lux::render::kClassicMeshGeometryBytesCapacity,
                 committed_geometry + growth_bytes,
                 geometry_capacity_bytes_,
                 growth_bytes,
                 geometry_capacity_bytes_ > committed_geometry
                     ? geometry_capacity_bytes_ - committed_geometry
                     : 0u,
-                lux::deployment::ECapacityPlanReason::BUDGET_REJECT);
+                lux::render::CapacityPlanReason::BUDGET_REJECT);
             return renderFailure<err::memory::OutOfMemory>();
         }
         if (growth_bytes != 0u)
@@ -274,14 +274,14 @@ namespace lux::render
             {
                 const auto snapshot = budget.snapshot();
                 setCapacityShortfall(
-                    lux::deployment::kClassicMeshGeometryBytesCapacity,
+                    lux::render::kClassicMeshGeometryBytesCapacity,
                     committed_geometry + growth_bytes,
                     geometry_capacity_bytes_,
                     growth_bytes,
                     snapshot.total_budget > snapshot.total_usage
                         ? snapshot.total_budget - snapshot.total_usage
                         : 0u,
-                    lux::deployment::ECapacityPlanReason::BUDGET_REJECT);
+                    lux::render::CapacityPlanReason::BUDGET_REJECT);
                 return renderFailure<err::memory::OutOfMemory>();
             }
         }
@@ -367,7 +367,7 @@ namespace lux::render
                 old_vbo_segments,
                 old_ibo_segments);
             setCapacityShortfall(
-                lux::deployment::kClassicMeshRecordsCapacity,
+                lux::render::kClassicMeshRecordsCapacity,
                 static_cast<std::uint64_t>(cpu_records_.size()) + 1u,
                 mesh_max_count_,
                 sizeof(MeshInfoGpu) * segments_ssbo_.slices(),
@@ -375,7 +375,7 @@ namespace lux::render
                     ? (mesh_max_count_ - cpu_records_.size()) *
                         sizeof(MeshInfoGpu) * segments_ssbo_.slices()
                     : 0u,
-                lux::deployment::ECapacityPlanReason::BUDGET_REJECT);
+                lux::render::CapacityPlanReason::BUDGET_REJECT);
             return renderFailure<err::memory::OutOfMemory>();
         }
 
@@ -521,14 +521,14 @@ namespace lux::render
                 committed_geometry > geometry_capacity_bytes_ - grow_bytes)
             {
                 setCapacityShortfall(
-                    lux::deployment::kClassicMeshGeometryBytesCapacity,
+                    lux::render::kClassicMeshGeometryBytesCapacity,
                     committed_geometry + grow_bytes,
                     geometry_capacity_bytes_,
                     grow_bytes,
                     geometry_capacity_bytes_ > committed_geometry
                         ? geometry_capacity_bytes_ - committed_geometry
                         : 0u,
-                    lux::deployment::ECapacityPlanReason::BUDGET_REJECT);
+                    lux::render::CapacityPlanReason::BUDGET_REJECT);
                 return renderFailure<err::memory::OutOfMemory>();
             }
 
@@ -537,14 +537,14 @@ namespace lux::render
             {
                 const auto snapshot = budget.snapshot();
                 setCapacityShortfall(
-                    lux::deployment::kClassicMeshGeometryBytesCapacity,
+                    lux::render::kClassicMeshGeometryBytesCapacity,
                     committed_geometry + grow_bytes,
                     geometry_capacity_bytes_,
                     grow_bytes,
                     snapshot.total_budget > snapshot.total_usage
                         ? snapshot.total_budget - snapshot.total_usage
                         : 0u,
-                    lux::deployment::ECapacityPlanReason::BUDGET_REJECT);
+                    lux::render::CapacityPlanReason::BUDGET_REJECT);
                 return renderFailure<err::memory::OutOfMemory>();
             }
 
@@ -556,14 +556,14 @@ namespace lux::render
             {
                 const auto snapshot = budget.snapshot();
                 setCapacityShortfall(
-                    lux::deployment::kClassicMeshGeometryBytesCapacity,
+                    lux::render::kClassicMeshGeometryBytesCapacity,
                     committed_geometry + grow_bytes,
                     geometry_capacity_bytes_,
                     grow_bytes,
                     snapshot.total_budget > snapshot.total_usage
                         ? snapshot.total_budget - snapshot.total_usage
                         : 0u,
-                    lux::deployment::ECapacityPlanReason::BUDGET_REJECT);
+                    lux::render::CapacityPlanReason::BUDGET_REJECT);
                 return renderFailure<err::memory::OutOfMemory>();
             }
 
@@ -841,9 +841,9 @@ namespace lux::render
             .frames_in_flight      = ctx.framesInFlight(),
             .mesh_max_count        = static_cast<std::uint32_t>(
                 ctx.capacityPlan().effective(
-                    lux::deployment::kClassicMeshRecordsCapacity)),
+                    lux::render::kClassicMeshRecordsCapacity)),
             .geometry_capacity_bytes = ctx.capacityPlan().effective(
-                lux::deployment::kClassicMeshGeometryBytesCapacity),
+                lux::render::kClassicMeshGeometryBytesCapacity),
             .segments_ssbo_cfg     = SSBOInitConfig{
                 .device_context         = &ctx.deviceContext(),
                 .initial_dense_capacity = 16384,

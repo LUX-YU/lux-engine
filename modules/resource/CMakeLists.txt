@@ -30,7 +30,6 @@ install_components(
 	COMPONENTS		description
                     spatial
                     spatial3d_scene
-                    deployment
                     entity_scene
                     classic_mesh_content
                     terrain_content

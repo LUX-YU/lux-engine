@@ -343,7 +343,7 @@ namespace lux::render
         bool serverUploadMesh(void* user_state, const lux::rdesc::Mesh& mesh,
                                VertexLayoutId layout, std::uint64_t request_id,
                                std::shared_ptr<const void> data_owner,
-                               lux::deployment::CapacityShortfallWire*
+                               lux::render::CapacityShortfallWire*
                                    shortfall_output)
         {
             auto* rctx = lookupRenderContext(user_state);
@@ -416,7 +416,7 @@ namespace lux::render
             {
                 if (shortfall_output && mesh_res.lastCapacityShortfall())
                 {
-                    *shortfall_output = lux::deployment::capacityShortfallWire(
+                    *shortfall_output = lux::render::capacityShortfallWire(
                         *mesh_res.lastCapacityShortfall());
                 }
                 return false;  // synchronous failure — handler replies
@@ -1036,7 +1036,7 @@ namespace lux::render
             const auto* mesh = reinterpret_cast<const lux::rdesc::Mesh*>(view.bytes.data());
             // Success replies are DEFERRED by the shared upload worker (MeshUploadedReply,
             // request-id correlated). Only a synchronous allocate failure replies here.
-            lux::deployment::CapacityShortfallWire shortfall{};
+            lux::render::CapacityShortfallWire shortfall{};
             if (!serverUploadMesh(
                     ctx.user_state,
                     *mesh,

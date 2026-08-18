@@ -16,11 +16,11 @@ pwsh platforms/android/package.ps1 -Run
 pwsh platforms/android/package.ps1 -Target game \
   -GamePak <game.luxpak> \
   -RuntimeManifest <game.luxruntime.toml> \
-  -EnginePak <engine.luxpak>
+  -EnginePak <engine.luxpak>  # staged as base.luxpak
 ```
 
 Runtime manifest 必须由共享的 Resource deployment writer 生成，并为 APK 使用
-`game.luxpak`/`engine.luxpak` 相对名。当前 Android adapter 尚未 stage 动态 extension，manifest
+`game.luxpak`/`base.luxpak` 相对名。当前 Android adapter 尚未 stage 动态 extension，manifest
 含 extension 时会硬失败。
 
 > `platforms/` 不是 `modules/platform/`。后者是引擎**链接**的平台抽象层

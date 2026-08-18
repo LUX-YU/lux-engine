@@ -18,8 +18,8 @@
         lux::common::Size2D surface_extent{};
         lux::common::Size2D diagnostic_capture_extent{};
         bool backend_started{false};
-        lux::deployment::RuntimeCapacityPlan capacity_plan{};
-        std::optional<lux::deployment::CapacityShortfall> capacity_shortfall{};
+        lux::render::CapacityPlan capacity_plan{};
+        std::optional<lux::render::CapacityShortfall> capacity_shortfall{};
         std::atomic<int> validation_error_count{0};
 
         std::shared_ptr<lux::asset::AssetManager> assets;

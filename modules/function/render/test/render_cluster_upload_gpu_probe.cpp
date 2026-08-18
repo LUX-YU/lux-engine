@@ -208,11 +208,11 @@ int main()
     fixture_options.enable_validation = true;
     fixture_options.validation_errors = &validation_errors;
     fixture_options.capacity_request.set(
-        lux::deployment::kActiveRenderInstancesCapacity,
-        lux::deployment::RuntimeCapacityValue::exact(100'000u));
+        lux::render::kActiveInstancesCapacity,
+        lux::render::CapacityValue::exact(100'000u));
     fixture_options.capacity_request.set(
-        lux::deployment::kClassicMeshRecordsCapacity,
-        lux::deployment::RuntimeCapacityValue::exact(100'000u));
+        lux::render::kClassicMeshRecordsCapacity,
+        lux::render::CapacityValue::exact(100'000u));
     lux::rendertest::DeviceRenderFixture fixture(
         128u,
         128u,

@@ -6,7 +6,7 @@
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 #include <lux/engine/render/gpu/ExternalInterop.hpp>   // 外部内存互操作的返回结构(同层)
 #include <lux/engine/function/render/client/core/Errors.hpp>
-#include <lux/engine/resource/deployment/RuntimeCapacity.hpp>
+#include <lux/engine/function/render/Capacity.hpp>
 #include <lux/engine/render/core/RenderErrorSink.hpp>   // 自发上报汇集器(非拥有)
 #include <lux/engine/render/resources/material/TextureSamplingRepresentationCatalog.hpp>
 #include <lux/engine/function/visibility.h>
@@ -54,7 +54,7 @@ namespace lux::render
             std::unique_ptr<GeneralDescriptorSetLayout> descriptor_layouts;
             std::unique_ptr<ResourceRegistry>     global_resources;
             uint32_t                                    frames_in_flight{2};
-            lux::deployment::RuntimeCapacityPlan capacity_plan{};
+            lux::render::CapacityPlan capacity_plan{};
         };
 
         [[nodiscard]] static Expected<std::shared_ptr<RenderContext>> create(
@@ -122,7 +122,7 @@ namespace lux::render
         [[nodiscard]] uint32_t
         framesInFlight() const noexcept { return frames_in_flight_; }
 
-        [[nodiscard]] const lux::deployment::RuntimeCapacityPlan&
+        [[nodiscard]] const lux::render::CapacityPlan&
         capacityPlan() const noexcept { return capacity_plan_; }
 
         [[nodiscard]] const TextureSamplingRepresentationCatalog&
@@ -196,7 +196,7 @@ namespace lux::render
         std::unique_ptr<ResourceRegistry>     global_registry_;
 
         uint32_t                                    frames_in_flight_;
-        lux::deployment::RuntimeCapacityPlan        capacity_plan_{};
+        lux::render::CapacityPlan        capacity_plan_{};
         TextureSamplingRepresentationCatalog       texture_sampling_catalog_;
          ///< Cached: high-frequency access, zero-cost uint64 cache
         VkDevice                                    vk_device_{VK_NULL_HANDLE};

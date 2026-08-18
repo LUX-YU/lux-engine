@@ -1,6 +1,7 @@
 find_package(lux-cxx REQUIRED COMPONENTS core compile_time container concurrent memory)
 
 set(RENDER_CLIENT_SRCS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Capacity.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Canvas2DOperationClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FeatureParamsClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LightOperationClient.cpp
@@ -50,7 +51,6 @@ target_link_libraries(
         lux::engine::core::math
         lux::engine::core::meta
         lux::engine::resource::description
-        lux::engine::resource::deployment
 )
 
 component_add_transitive_commands(
@@ -58,7 +58,7 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time container concurrent memory)"
     "find_package(lux-engine-platform REQUIRED COMPONENTS common)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math meta)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS deployment description)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 
 lux_classify_target(
@@ -80,4 +80,24 @@ engine_add_comm_ops(
     CLIENT_TARGET  render_client
     INCLUDE_PREFIX lux/engine/function/render/client/genops
     TARGET_FILES   ${LUX_RENDER_COMM_OPERATION_HEADERS}
+)
+
+add_executable(
+    render_capacity_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/capacity_test.cpp
+)
+target_link_libraries(
+    render_capacity_test
+    PRIVATE lux::engine::function::render_client
+)
+if(MSVC)
+    target_compile_options(render_capacity_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(render_capacity_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  render_capacity_test
+    LAYER   FUNCTION
+    PRODUCT TEST
+    ROLE    DOMAIN
 )

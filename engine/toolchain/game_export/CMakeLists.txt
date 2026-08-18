@@ -42,12 +42,17 @@ target_link_libraries(
         lux::engine::toolchain::toolchain_asset_cook
         lux::engine::toolchain::toolchain_texture_importer
         lux::engine::resource::asset_codecs
-        lux::engine::resource::deployment
+        lux::game::deployment
     PRIVATE
         lux::engine::toolchain::toolchain_spatial3d_scene_cook
         lux::engine::ecs::core
         lux::engine::core::meta
         tomlplusplus::tomlplusplus
+)
+
+component_add_transitive_commands(
+    toolchain_game_export
+    "find_package(lux-game REQUIRED COMPONENTS deployment)"
 )
 
 # GameExporter executables are Toolchain composition roots: the Spatial3D

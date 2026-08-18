@@ -25,7 +25,7 @@ namespace lux::editor
     makePreviewWorldContribution()
     {
         lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             std::string{kPreviewWorldContributionName}};
         descriptor.display_name = "Editor preview 3D";
         descriptor.required_services = {
@@ -98,9 +98,9 @@ namespace lux::editor
 
         lux::entity_scene::EntitySceneManifest manifest;
         manifest.id = lux::entity_scene::EntitySceneId{ids(scene_name)};
-        manifest.contributions.push_back(
+        manifest.features.push_back(
             lux::entity_scene::SceneContribution{
-                lux::extensions::ContributionId{
+                lux::scene::SceneFeatureId{
                     std::string{kPreviewWorldContributionName}},
                 0u,
                 {}}

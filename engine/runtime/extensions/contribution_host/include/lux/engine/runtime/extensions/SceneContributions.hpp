@@ -7,6 +7,7 @@
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/runtime/extensions/ModuleLifetime.hpp>
 #include <lux/engine/runtime/extensions/OperationTicket.hpp>
+#include <lux/engine/scene/SceneFeatureId.hpp>
 #include <lux/engine/core/extension_abi/StableId.hpp>
 #include <lux/engine/runtime/extensions/ContributionConfig.hpp>
 #include <lux/engine/runtime/extensions/contribution_visibility.h>
@@ -35,7 +36,7 @@ namespace lux::runtime
     enum class ESceneContributionCatalogError : std::uint8_t
     {
         INVALID_DESCRIPTOR,
-        DUPLICATE_CONTRIBUTION,
+        DUPLICATE_FEATURE,
         ID_COLLISION,
         MISSING_BUILD_CALLBACK,
         MISSING_DEPENDENCY
@@ -245,7 +246,7 @@ namespace lux::runtime
 
     enum class ESceneContributionAssemblyError : std::uint8_t
     {
-        UNKNOWN_CONTRIBUTION,
+        UNKNOWN_FEATURE,
         MISSING_DEPENDENCY,
         DEPENDENCY_CYCLE,
         CONFIG_VERSION_MISMATCH,
@@ -258,7 +259,7 @@ namespace lux::runtime
     {
         ESceneContributionAssemblyError code{
             ESceneContributionAssemblyError::BUILD_FAILED};
-        lux::extensions::ContributionId contribution;
+        lux::scene::SceneFeatureId feature;
         SceneContributionBuildFailure build{};
     };
 
@@ -267,7 +268,7 @@ namespace lux::runtime
     /// use their descriptor defaults.
     struct SceneContributionSelection final
     {
-        lux::extensions::ContributionId id;
+        lux::scene::SceneFeatureId id;
         ContributionConfig config;
     };
 
@@ -283,9 +284,9 @@ namespace lux::runtime
         SceneContributionDescriptor& operator=(
             SceneContributionDescriptor&&) noexcept = default;
 
-        lux::extensions::ContributionId id;
+        lux::scene::SceneFeatureId id;
         std::string display_name;
-        std::vector<lux::extensions::ContributionId> required_contributions;
+        std::vector<lux::scene::SceneFeatureId> required_contributions;
         std::vector<lux::ecs::TypeToken> required_services;
         std::vector<lux::ecs::TypeToken> provided_services;
         std::uint32_t config_schema_version{0u};
@@ -321,7 +322,7 @@ namespace lux::runtime
 
         struct Entry final
         {
-            lux::extensions::ContributionId id;
+            lux::scene::SceneFeatureId id;
             ContributionConfig config;
             EActivationPersistence persistence{
                 EActivationPersistence::SCENE};
@@ -353,9 +354,24 @@ namespace lux::runtime
         [[nodiscard]] lux::cxx::expected<void, ESceneContributionCatalogError> addBatch(
             std::vector<SceneContributionDescriptor> descriptors);
         [[nodiscard]] SceneContributionDescriptor* find(
-            lux::extensions::ContributionIdView id) noexcept;
+            lux::scene::SceneFeatureIdView id) noexcept;
         [[nodiscard]] const SceneContributionDescriptor* find(
-            lux::extensions::ContributionIdView id) const noexcept;
+            lux::scene::SceneFeatureIdView id) const noexcept;
+
+        /// Temporary adapter for the LXSC v1 manifest and extensions compiled
+        /// against the pre-domain-ID API. New runtime code must use
+        /// SceneFeatureIdView directly.
+        [[nodiscard]] SceneContributionDescriptor* find(
+            lux::extensions::ContributionIdView legacy_id) noexcept
+        {
+            return find(lux::scene::sceneFeatureId(legacy_id.name()));
+        }
+        [[nodiscard]] const SceneContributionDescriptor* find(
+            lux::extensions::ContributionIdView legacy_id) const noexcept
+        {
+            return find(lux::scene::sceneFeatureId(legacy_id.name()));
+        }
+
         [[nodiscard]] std::span<const SceneContributionDescriptor> all()
             const noexcept;
 
@@ -370,7 +386,7 @@ namespace lux::runtime
             SceneContributionAssemblyFailure>
         assembleDefaults(
             lux::ecs::ScheduleBuilder& assembly,
-            std::span<const lux::extensions::ContributionIdView> selected);
+            std::span<const lux::scene::SceneFeatureIdView> selected);
 
         /// Assemble a manifest-authored contribution set into the caller's
         /// unpublished transaction. An explicitly selected contribution uses
@@ -413,7 +429,7 @@ namespace lux::runtime
         QUEUE_FULL,
         BYTE_BUDGET_EXHAUSTED,
         STOPPING,
-        UNKNOWN_CONTRIBUTION,
+        UNKNOWN_FEATURE,
         MISSING_DEPENDENCY,
         DEPENDENCY_CYCLE,
         CONFIG_VERSION_MISMATCH,
@@ -421,14 +437,14 @@ namespace lux::runtime
         SERVICE_CONFLICT,
         BUILD_FAILED,
         SCHEDULE_REJECTED,
-        REQUIRED_BY_OTHER_CONTRIBUTION,
+        REQUIRED_BY_OTHER_FEATURE,
         NOT_ACTIVE,
         ROLLBACK_FAILED
     };
 
     struct SceneContributionActivationResult final
     {
-        lux::extensions::ContributionId contribution;
+        lux::scene::SceneFeatureId feature;
         std::uint64_t generation{0u};
         bool active{false};
     };
@@ -440,14 +456,14 @@ namespace lux::runtime
 
     struct SceneContributionStateChanged final
     {
-        lux::extensions::ContributionId contribution;
+        lux::scene::SceneFeatureId feature;
         std::uint64_t generation{0u};
         bool active{false};
     };
 
     struct SceneContributionActivationSnapshot final
     {
-        lux::extensions::ContributionId contribution;
+        lux::scene::SceneFeatureId feature;
         ContributionConfig config;
         EActivationPersistence persistence{EActivationPersistence::SCENE};
         lux::extensions::ExtensionId provider;
@@ -478,14 +494,39 @@ namespace lux::runtime
         SceneContributions() noexcept = default;
 
         [[nodiscard]] SceneContributionOperationTicket requestEnable(
-            lux::extensions::ContributionIdView id,
+            lux::scene::SceneFeatureIdView id,
             ContributionConfig config = {},
             EActivationPersistence persistence =
                 EActivationPersistence::SCENE) const;
         [[nodiscard]] SceneContributionOperationTicket requestDisable(
-            lux::extensions::ContributionIdView id,
+            lux::scene::SceneFeatureIdView id,
             EContributionDisableMode mode =
                 EContributionDisableMode::REJECT_DEPENDENTS) const;
+
+        /// Source-compatibility adapters for callers still using the old
+        /// extension-owned identity. They perform an explicit name-boundary
+        /// conversion and are removed with the LXSC v1 compatibility surface.
+        [[nodiscard]] SceneContributionOperationTicket requestEnable(
+            lux::extensions::ContributionIdView legacy_id,
+            ContributionConfig config = {},
+            EActivationPersistence persistence =
+                EActivationPersistence::SCENE) const
+        {
+            return requestEnable(
+                lux::scene::sceneFeatureId(legacy_id.name()),
+                std::move(config),
+                persistence);
+        }
+        [[nodiscard]] SceneContributionOperationTicket requestDisable(
+            lux::extensions::ContributionIdView legacy_id,
+            EContributionDisableMode mode =
+                EContributionDisableMode::REJECT_DEPENDENTS) const
+        {
+            return requestDisable(
+                lux::scene::sceneFeatureId(legacy_id.name()),
+                mode);
+        }
+
         [[nodiscard]] explicit operator bool() const noexcept;
 
     private:
@@ -526,7 +567,12 @@ namespace lux::runtime
         [[nodiscard]] std::size_t processSafePoint(
             std::size_t budget = 32u) noexcept;
         [[nodiscard]] bool active(
-            lux::extensions::ContributionIdView id) const noexcept;
+            lux::scene::SceneFeatureIdView id) const noexcept;
+        [[nodiscard]] bool active(
+            lux::extensions::ContributionIdView legacy_id) const noexcept
+        {
+            return active(lux::scene::sceneFeatureId(legacy_id.name()));
+        }
         [[nodiscard]] const lux::ecs::SceneServices& services() const noexcept;
         [[nodiscard]] std::vector<SceneContributionActivationSnapshot>
         activationSnapshot() const;

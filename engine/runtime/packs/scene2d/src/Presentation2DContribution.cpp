@@ -54,13 +54,13 @@ namespace lux::runtime
         }
 
         SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             std::string{kPresentation2DContributionName}};
         descriptor.display_name = "2D presentation";
         descriptor.required_contributions = {
-            lux::extensions::ContributionId{
+            lux::scene::SceneFeatureId{
                 std::string{kSimulation2DContributionName}},
-            lux::extensions::ContributionId{
+            lux::scene::SceneFeatureId{
                 std::string{kSpatial2DTransformContributionName}}};
         descriptor.required_services = {
             typeToken<Simulation2DSystem>(),

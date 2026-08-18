@@ -24,7 +24,7 @@ namespace lux::runtime
         }
 
         SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             std::string{kSpatial3DTransformContributionName}};
         descriptor.display_name = "3D transform resolution";
         descriptor.provided_services = {

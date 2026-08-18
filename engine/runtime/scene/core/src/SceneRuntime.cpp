@@ -103,22 +103,22 @@ namespace lux::runtime
         {
             const auto activations =
                 scene_contribution_host_->activationSnapshot();
-            std::vector<lux::extensions::ContributionId> provider_closure;
+            std::vector<lux::scene::SceneFeatureId> provider_closure;
             const auto addProviderClosure = [&](
                 auto&& self,
-                lux::extensions::ContributionIdView contribution) -> void
+                lux::scene::SceneFeatureIdView feature) -> void
             {
                 if (!scene_contribution_catalog_ ||
                     std::ranges::any_of(
                         provider_closure,
-                        [contribution](const auto& visited)
+                        [feature](const auto& visited)
                         {
-                            return lux::extensions::sameStableId(
-                                visited.view(), contribution);
+                            return lux::scene::sameSceneFeatureId(
+                                visited.view(), feature);
                         }))
                     return;
                 const auto* descriptor =
-                    scene_contribution_catalog_->find(contribution);
+                    scene_contribution_catalog_->find(feature);
                 if (!descriptor)
                     return;
                 provider_closure.push_back(descriptor->id);
@@ -137,14 +137,15 @@ namespace lux::runtime
                         EActivationPersistence::TRANSIENT)
                     continue;
                 result.contributions.push_back({
-                    activation.contribution,
+                    lux::extensions::ContributionId{
+                        activation.feature.name()},
                     activation.config.schema_version,
                     std::vector<std::byte>{
                         activation.config.bytes.view().begin(),
                         activation.config.bytes.view().end()}});
                 addProviderClosure(
                     addProviderClosure,
-                    activation.contribution.view());
+                    activation.feature.view());
             }
         }
 
@@ -384,7 +385,7 @@ namespace lux::runtime
             for (const auto& contribution : manifest.contributions)
             {
                 selected.push_back(SceneContributionSelection{
-                    contribution.id,
+                    lux::scene::SceneFeatureId{contribution.id.name()},
                     ContributionConfig{
                         contribution.config_schema_version,
                         lux::cxx::SharedBytes<>::copyOf(
@@ -399,7 +400,7 @@ namespace lux::runtime
                     "scene",
                     "scene contribution assembly failed for '{}' "
                     "(status={})",
-                    assembled.error().contribution.name(),
+                    assembled.error().feature.name(),
                     static_cast<unsigned>(assembled.error().code));
                 return failBringUp();
             }

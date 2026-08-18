@@ -31,7 +31,7 @@ namespace lux::runtime
         }
 
         SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             std::string{kNavigation3DContributionName}};
         descriptor.display_name = "3D navigation";
         descriptor.required_services = {

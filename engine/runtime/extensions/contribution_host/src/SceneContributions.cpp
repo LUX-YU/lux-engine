@@ -20,11 +20,11 @@ namespace lux::runtime
             ESceneContributionActivationError,
             SceneContributionActivationResult>;
 
-        [[nodiscard]] bool sameContribution(
-            const lux::extensions::ContributionId& lhs,
-            lux::extensions::ContributionIdView rhs) noexcept
+        [[nodiscard]] bool sameFeature(
+            const lux::scene::SceneFeatureId& lhs,
+            lux::scene::SceneFeatureIdView rhs) noexcept
         {
-            return lux::extensions::sameStableId(lhs.view(), rhs);
+            return lhs.view() == rhs;
         }
 
     }
@@ -50,24 +50,24 @@ namespace lux::runtime
         const noexcept
     {
         const auto locate = [this, descriptors](
-            lux::extensions::ContributionIdView id) noexcept
+            lux::scene::SceneFeatureIdView id) noexcept
             -> ESceneContributionCatalogError
         {
             for (const auto& existing : descriptors_)
             {
-                if (lux::extensions::stableIdCollision(
+                if (lux::scene::sceneFeatureIdCollision(
                         existing.id.view(), id))
                     return ESceneContributionCatalogError::ID_COLLISION;
-                if (lux::extensions::sameStableId(existing.id.view(), id))
-                    return ESceneContributionCatalogError::DUPLICATE_CONTRIBUTION;
+                if (lux::scene::sameSceneFeatureId(existing.id.view(), id))
+                    return ESceneContributionCatalogError::DUPLICATE_FEATURE;
             }
             for (const auto& pending : descriptors)
             {
-                if (lux::extensions::stableIdCollision(
+                if (lux::scene::sceneFeatureIdCollision(
                         pending.id.view(), id))
                     return ESceneContributionCatalogError::ID_COLLISION;
-                if (lux::extensions::sameStableId(pending.id.view(), id))
-                    return ESceneContributionCatalogError::DUPLICATE_CONTRIBUTION;
+                if (lux::scene::sameSceneFeatureId(pending.id.view(), id))
+                    return ESceneContributionCatalogError::DUPLICATE_FEATURE;
             }
             return ESceneContributionCatalogError::MISSING_DEPENDENCY;
         };
@@ -76,7 +76,7 @@ namespace lux::runtime
         {
             const auto& descriptor = descriptors[index];
             if (!descriptor.id.isValid() || !descriptor.provider.isValid() ||
-                !lux::extensions::isCanonicalStableName(
+                !lux::scene::isValidSceneFeatureIdName(
                     descriptor.id.name()) ||
                 !lux::extensions::isCanonicalStableName(
                     descriptor.provider.name()))
@@ -90,25 +90,25 @@ namespace lux::runtime
 
             for (const auto& existing : descriptors_)
             {
-                if (lux::extensions::stableIdCollision(
+                if (lux::scene::sceneFeatureIdCollision(
                         existing.id.view(), descriptor.id.view()))
                     return lux::cxx::unexpected(
                         ESceneContributionCatalogError::ID_COLLISION);
-                if (lux::extensions::sameStableId(
+                if (lux::scene::sameSceneFeatureId(
                         existing.id.view(), descriptor.id.view()))
                     return lux::cxx::unexpected(
-                        ESceneContributionCatalogError::DUPLICATE_CONTRIBUTION);
+                        ESceneContributionCatalogError::DUPLICATE_FEATURE);
             }
             for (std::size_t other = 0u; other < index; ++other)
             {
-                if (lux::extensions::stableIdCollision(
+                if (lux::scene::sceneFeatureIdCollision(
                         descriptors[other].id.view(), descriptor.id.view()))
                     return lux::cxx::unexpected(
                         ESceneContributionCatalogError::ID_COLLISION);
-                if (lux::extensions::sameStableId(
+                if (lux::scene::sameSceneFeatureId(
                         descriptors[other].id.view(), descriptor.id.view()))
                     return lux::cxx::unexpected(
-                        ESceneContributionCatalogError::DUPLICATE_CONTRIBUTION);
+                        ESceneContributionCatalogError::DUPLICATE_FEATURE);
             }
 
             for (const auto& dependency :
@@ -119,7 +119,7 @@ namespace lux::runtime
                     return lux::cxx::unexpected(status);
                 if (status == ESceneContributionCatalogError::MISSING_DEPENDENCY)
                     return lux::cxx::unexpected(status);
-                // DUPLICATE_CONTRIBUTION means the exact dependency exists.
+                // DUPLICATE_FEATURE means the exact dependency exists.
             }
         }
         return {};
@@ -138,19 +138,19 @@ namespace lux::runtime
     }
 
     SceneContributionDescriptor* SceneContributionCatalog::find(
-        lux::extensions::ContributionIdView id) noexcept
+        lux::scene::SceneFeatureIdView id) noexcept
     {
         for (auto& descriptor : descriptors_)
-            if (sameContribution(descriptor.id, id))
+            if (sameFeature(descriptor.id, id))
                 return &descriptor;
         return nullptr;
     }
 
     const SceneContributionDescriptor* SceneContributionCatalog::find(
-        lux::extensions::ContributionIdView id) const noexcept
+        lux::scene::SceneFeatureIdView id) const noexcept
     {
         for (const auto& descriptor : descriptors_)
-            if (sameContribution(descriptor.id, id))
+            if (sameFeature(descriptor.id, id))
                 return &descriptor;
         return nullptr;
     }
@@ -164,7 +164,7 @@ namespace lux::runtime
     lux::cxx::expected<void, SceneContributionAssemblyFailure>
     SceneContributionCatalog::assembleDefaults(
         lux::ecs::ScheduleBuilder& assembly,
-        std::span<const lux::extensions::ContributionIdView> selected)
+        std::span<const lux::scene::SceneFeatureIdView> selected)
     {
         std::vector<SceneContributionSelection> configured;
         configured.reserve(selected.size());
@@ -172,7 +172,7 @@ namespace lux::runtime
         {
             const auto* descriptor = find(id);
             configured.push_back(SceneContributionSelection{
-                lux::extensions::ContributionId{id.name()},
+                lux::scene::SceneFeatureId{id.name()},
                 descriptor ? descriptor->default_config
                            : ContributionConfig{}});
         }
@@ -219,22 +219,22 @@ namespace lux::runtime
         }
 
         std::vector<SceneContributionDescriptor*> order;
-        std::vector<lux::extensions::ContributionId> visiting;
-        std::vector<lux::extensions::ContributionId> visited;
+        std::vector<lux::scene::SceneFeatureId> visiting;
+        std::vector<lux::scene::SceneFeatureId> visited;
 
         const auto fail = [](
             ESceneContributionAssemblyError code,
-            lux::extensions::ContributionIdView id,
+            lux::scene::SceneFeatureIdView id,
             SceneContributionBuildFailure build = {})
         {
             return lux::cxx::unexpected(SceneContributionAssemblyFailure{
                 code,
-                lux::extensions::ContributionId{id.name()},
+                lux::scene::SceneFeatureId{id.name()},
                 build});
         };
 
         const auto visit = [&](auto&& self,
-                               lux::extensions::ContributionIdView id,
+                               lux::scene::SceneFeatureIdView id,
                                bool dependency)
             -> lux::cxx::expected<void, SceneContributionAssemblyFailure>
         {
@@ -242,14 +242,14 @@ namespace lux::runtime
                     visited,
                     [id](const auto& value) noexcept
                     {
-                        return sameContribution(value, id);
+                        return sameFeature(value, id);
                     }))
                 return {};
             if (std::ranges::any_of(
                     visiting,
                     [id](const auto& value) noexcept
                     {
-                        return sameContribution(value, id);
+                        return sameFeature(value, id);
                     }))
                 return fail(
                     ESceneContributionAssemblyError::DEPENDENCY_CYCLE,
@@ -260,7 +260,7 @@ namespace lux::runtime
                 return fail(
                     dependency
                         ? ESceneContributionAssemblyError::MISSING_DEPENDENCY
-                        : ESceneContributionAssemblyError::UNKNOWN_CONTRIBUTION,
+                        : ESceneContributionAssemblyError::UNKNOWN_FEATURE,
                     id);
             visiting.push_back(descriptor->id);
             for (const auto& dependency : descriptor->required_contributions)
@@ -318,7 +318,7 @@ namespace lux::runtime
                 selected,
                 [descriptor](const SceneContributionSelection& value)
                 {
-                    return sameContribution(
+                    return sameFeature(
                         value.id, descriptor->id.view());
                 });
             auto config = explicit_config == selected.end()
@@ -413,7 +413,7 @@ namespace lux::runtime
         {
             SceneContributionCommand(
                 ESceneContributionCommandKind value_kind,
-                lux::extensions::ContributionId value_id,
+                lux::scene::SceneFeatureId value_id,
                 ContributionConfig value_config,
                 EActivationPersistence value_persistence,
                 EContributionDisableMode value_disable_mode,
@@ -428,7 +428,7 @@ namespace lux::runtime
             {}
 
             ESceneContributionCommandKind kind{ESceneContributionCommandKind::ENABLE};
-            lux::extensions::ContributionId id;
+            lux::scene::SceneFeatureId id;
             ContributionConfig config;
             EActivationPersistence persistence{EActivationPersistence::SCENE};
             EContributionDisableMode disable_mode{
@@ -446,7 +446,7 @@ namespace lux::runtime
 
             [[nodiscard]] SceneContributionOperationTicket submit(
                 ESceneContributionCommandKind kind,
-                lux::extensions::ContributionIdView id,
+                lux::scene::SceneFeatureIdView id,
                 ContributionConfig config_value,
                 EActivationPersistence persistence,
                 EContributionDisableMode disable_mode)
@@ -456,7 +456,7 @@ namespace lux::runtime
                     std::memory_order_relaxed);
                 SceneContributionCommand command{
                     kind,
-                    lux::extensions::ContributionId{id.name()},
+                    lux::scene::SceneFeatureId{id.name()},
                     std::move(config_value),
                     persistence,
                     disable_mode,
@@ -470,7 +470,7 @@ namespace lux::runtime
                 if (!id.isValid())
                 {
                     command.publisher.fail(
-                        ESceneContributionActivationError::UNKNOWN_CONTRIBUTION);
+                        ESceneContributionActivationError::UNKNOWN_FEATURE);
                     return ticket;
                 }
 
@@ -517,7 +517,7 @@ namespace lux::runtime
     {}
 
     SceneContributionOperationTicket SceneContributions::requestEnable(
-        lux::extensions::ContributionIdView id,
+        lux::scene::SceneFeatureIdView id,
         ContributionConfig config,
         EActivationPersistence persistence) const
     {
@@ -537,7 +537,7 @@ namespace lux::runtime
     }
 
     SceneContributionOperationTicket SceneContributions::requestDisable(
-        lux::extensions::ContributionIdView id,
+        lux::scene::SceneFeatureIdView id,
         EContributionDisableMode mode) const
     {
         if (!endpoint_)
@@ -565,7 +565,7 @@ namespace lux::runtime
     {
         struct Active final
         {
-            lux::extensions::ContributionId id;
+            lux::scene::SceneFeatureId id;
             ContributionConfig config;
             EActivationPersistence persistence{
                 EActivationPersistence::SCENE};
@@ -597,10 +597,10 @@ namespace lux::runtime
         }
 
         [[nodiscard]] std::size_t findActive(
-            lux::extensions::ContributionIdView id) const noexcept
+            lux::scene::SceneFeatureIdView id) const noexcept
         {
             for (std::size_t index = 0u; index < active.size(); ++index)
-                if (sameContribution(active[index].id, id))
+                if (sameFeature(active[index].id, id))
                     return index;
             return active.size();
         }
@@ -641,7 +641,7 @@ namespace lux::runtime
 
         [[nodiscard]] bool dependsOn(
             const Active& candidate,
-            lux::extensions::ContributionIdView dependency) const noexcept
+            lux::scene::SceneFeatureIdView dependency) const noexcept
         {
             const auto* descriptor = catalog.find(candidate.id.view());
             if (!descriptor)
@@ -650,7 +650,7 @@ namespace lux::runtime
                 descriptor->required_contributions,
                 [dependency](const auto& required) noexcept
                 {
-                    return lux::extensions::sameStableId(
+                    return lux::scene::sameSceneFeatureId(
                         required.view(), dependency);
                 });
         }
@@ -661,11 +661,11 @@ namespace lux::runtime
             command.publisher.setPhase(
                 ESceneContributionActivationPhase::RESOLVING_DEPENDENCIES);
             std::vector<SceneContributionDescriptor*> order;
-            std::vector<lux::extensions::ContributionId> visiting;
-            std::vector<lux::extensions::ContributionId> visited;
+            std::vector<lux::scene::SceneFeatureId> visiting;
+            std::vector<lux::scene::SceneFeatureId> visited;
 
             const auto visit = [&](auto&& self,
-                                   lux::extensions::ContributionIdView id)
+                                   lux::scene::SceneFeatureIdView id)
                 -> std::optional<ESceneContributionActivationError>
             {
                 if (findActive(id) != active.size())
@@ -674,14 +674,14 @@ namespace lux::runtime
                         visiting,
                         [id](const auto& value) noexcept
                         {
-                            return sameContribution(value, id);
+                            return sameFeature(value, id);
                         }))
                     return ESceneContributionActivationError::DEPENDENCY_CYCLE;
                 if (std::ranges::any_of(
                         visited,
                         [id](const auto& value) noexcept
                         {
-                            return sameContribution(value, id);
+                            return sameFeature(value, id);
                         }))
                     return std::nullopt;
                 auto* descriptor = catalog.find(id);
@@ -735,7 +735,7 @@ namespace lux::runtime
 
             for (auto* descriptor : order)
             {
-                const bool root = lux::extensions::sameStableId(
+                const bool root = lux::scene::sameSceneFeatureId(
                     descriptor->id.view(), command.id.view());
                 ContributionConfig config = root
                     ? command.config
@@ -908,7 +908,7 @@ namespace lux::runtime
                 if (command.disable_mode != EContributionDisableMode::CASCADE)
                 {
                     return ESceneContributionActivationError::
-                        REQUIRED_BY_OTHER_CONTRIBUTION;
+                        REQUIRED_BY_OTHER_FEATURE;
                 }
                 const auto failure = removeAt(dependent);
                 if (failure != ESceneContributionActivationError::NONE)
@@ -1053,7 +1053,7 @@ namespace lux::runtime
     }
 
     bool SceneContributionHost::active(
-        lux::extensions::ContributionIdView id) const noexcept
+        lux::scene::SceneFeatureIdView id) const noexcept
     {
         return impl_ && !impl_->closed &&
                impl_->findActive(id) != impl_->active.size();

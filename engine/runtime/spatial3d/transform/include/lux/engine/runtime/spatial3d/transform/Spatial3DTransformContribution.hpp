@@ -16,10 +16,10 @@ namespace lux::runtime
     inline constexpr std::string_view kSpatial3DTransformContributionName =
         "org.lux.builtin.spatial3d.transform";
 
-    [[nodiscard]] constexpr lux::extensions::ContributionIdView
+    [[nodiscard]] constexpr lux::scene::SceneFeatureIdView
     spatial3DTransformContributionId() noexcept
     {
-        return lux::extensions::contributionId(
+        return lux::scene::sceneFeatureId(
             kSpatial3DTransformContributionName);
     }
 

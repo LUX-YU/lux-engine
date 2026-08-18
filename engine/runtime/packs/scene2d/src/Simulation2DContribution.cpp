@@ -17,7 +17,7 @@ namespace lux::runtime
     {
         using namespace lux::ecs;
         SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             std::string{kSimulation2DContributionName}};
         descriptor.display_name = "2D fixed-step simulation";
         descriptor.provided_services = {

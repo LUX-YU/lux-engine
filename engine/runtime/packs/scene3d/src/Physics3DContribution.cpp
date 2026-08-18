@@ -36,7 +36,7 @@ namespace lux::runtime
         }
 
         SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             std::string{kPhysics3DContributionName}};
         descriptor.display_name = "3D physics";
         descriptor.required_contributions.emplace_back(

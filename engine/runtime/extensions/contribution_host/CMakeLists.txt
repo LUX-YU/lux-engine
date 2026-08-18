@@ -46,6 +46,7 @@ target_link_libraries(
     runtime_scene_contributions
     PUBLIC
         lux::engine::runtime::runtime_extension_loader
+        lux::engine::scene::scene_api
         lux::engine::ecs::core
         lux::cxx::memory
         lux::engine::core::events
@@ -59,6 +60,7 @@ component_add_transitive_commands(
     "find_package(concurrentqueue CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS memory)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_extension_loader)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_api)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
     "find_package(lux-engine-core REQUIRED COMPONENTS events)"
 )

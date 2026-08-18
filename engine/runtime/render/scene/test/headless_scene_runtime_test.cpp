@@ -300,7 +300,7 @@ namespace
         RuntimeCloseProbe& probe)
     {
         lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             "org.test.scene.runtime_close"};
         descriptor.display_name = "SceneRuntime close ownership probe";
         descriptor.provided_services = {
@@ -383,7 +383,7 @@ namespace
         CrossPhaseBlobCloseProbe& probe)
     {
         lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             "org.test.scene.cross_phase_blob_close"};
         descriptor.display_name = "Cross-phase blob close probe";
         descriptor.config_schema_version = 0u;
@@ -551,8 +551,8 @@ int main(int argc, char** argv)
         uuid("10000000-0000-4000-8000-000000000001")};
     manifest.startup_sections.push_back(record.id);
     manifest.sections.push_back(record);
-    manifest.contributions.push_back({
-        lux::extensions::ContributionId{
+    manifest.features.push_back({
+        lux::scene::SceneFeatureId{
             "org.test.scene.cross_phase_blob_close"},
         0u,
         {}});
@@ -740,7 +740,7 @@ int main(int argc, char** argv)
     ordered_close_config.transient_scene = EntitySceneManifest{
         EntitySceneId{uuid("10000000-0000-4000-8000-000000000004")}};
     ordered_close_config.transient_scene->contributions.push_back({
-        lux::extensions::ContributionId{
+        lux::scene::SceneFeatureId{
             "org.test.scene.runtime_close"},
         0u,
         {}});
@@ -749,7 +749,7 @@ int main(int argc, char** argv)
         check(
             ordered_close_scene != nullptr &&
                 runtime_close_probe.child_admitted &&
-                runtime_close_probe.contribution_service_alive,
+                runtime_close_probe.feature_service_alive,
             "SceneRuntime installs an externally-owned close scope");
     if (ordered_close_scene)
     {
@@ -758,8 +758,8 @@ int main(int argc, char** argv)
         check(
             ordered_close_scene->hasActiveContribution(
                 "org.test.scene.runtime_close") &&
-                persistence.contributions.size() == 1u &&
-                persistence.contributions.front().id.name() ==
+                persistence.features.size() == 1u &&
+                persistence.features.front().id.name() ==
                     "org.test.scene.runtime_close",
             "manifest contribution is adopted as the authoritative persistent root");
         std::size_t completions = 0u;
@@ -774,7 +774,7 @@ int main(int argc, char** argv)
             runtime_close_probe.trace ==
                     std::vector<int>{20, 10, -20, -10} &&
                 !runtime_close_probe.system_destroyed_after_service &&
-                !runtime_close_probe.contribution_service_alive,
+                !runtime_close_probe.feature_service_alive,
             "SceneRuntime destroys systems before contribution services");
         ordered_close_scene.reset();
     }

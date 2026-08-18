@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 #include <vector>
 
 namespace
@@ -209,7 +210,7 @@ namespace
         std::vector<int>& trace)
     {
         lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{"org.test.scene.root"};
+        descriptor.id = lux::scene::SceneFeatureId{"org.test.scene.root"};
         descriptor.display_name = "Root";
         descriptor.provided_services = {
             lux::ecs::typeToken<RootSystem>()};
@@ -233,10 +234,10 @@ namespace
         std::vector<int>& trace)
     {
         lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{"org.test.scene.leaf"};
+        descriptor.id = lux::scene::SceneFeatureId{"org.test.scene.leaf"};
         descriptor.display_name = "Leaf";
         descriptor.required_contributions.push_back(
-            lux::extensions::ContributionId{"org.test.scene.root"});
+            lux::scene::SceneFeatureId{"org.test.scene.root"});
         descriptor.required_services = {
             lux::ecs::typeToken<RootSystem>()};
         descriptor.config_schema_version = 0u;
@@ -266,11 +267,11 @@ namespace
     lux::runtime::SceneContributionDescriptor makeBrokenLeaf()
     {
         lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             "org.test.scene.broken_leaf"};
         descriptor.display_name = "Broken leaf";
         descriptor.required_contributions.push_back(
-            lux::extensions::ContributionId{"org.test.scene.root"});
+            lux::scene::SceneFeatureId{"org.test.scene.root"});
         descriptor.required_services = {
             lux::ecs::typeToken<RootSystem>()};
         descriptor.config_schema_version = 0u;
@@ -300,11 +301,11 @@ namespace
     lux::runtime::SceneContributionDescriptor makeFailingAfterStage()
     {
         lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             "org.test.scene.failing_after_stage"};
         descriptor.display_name = "Fails after staging";
         descriptor.required_contributions.push_back(
-            lux::extensions::ContributionId{"org.test.scene.root"});
+            lux::scene::SceneFeatureId{"org.test.scene.root"});
         descriptor.required_services = {
             lux::ecs::typeToken<RootSystem>()};
         descriptor.config_schema_version = 0u;
@@ -334,7 +335,7 @@ namespace
     lux::runtime::SceneContributionDescriptor makeUndeclaredService()
     {
         lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             "org.test.scene.undeclared_service"};
         descriptor.display_name = "Publishes an undeclared service";
         descriptor.config_schema_version = 0u;
@@ -359,7 +360,7 @@ namespace
         std::vector<int>& trace)
     {
         lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             "org.test.scene.bounded_close"};
         descriptor.display_name = "Bounded close";
         descriptor.config_schema_version = 0u;
@@ -386,14 +387,47 @@ namespace
 
 int main()
 {
+    static_assert(!std::is_same_v<
+        lux::scene::SceneFeatureId,
+        lux::extensions::ContributionId>);
+
     std::vector<int> trace;
     lux::runtime::SceneContributionCatalog catalog;
     expect(catalog.add(makeRoot(trace)).has_value(),
            "catalog accepts the root contribution");
     expect(catalog.add(makeLeaf(trace)).has_value(),
            "catalog accepts the dependent contribution");
-    expect(!catalog.add(makeLeaf(trace)).has_value(),
-           "catalog rejects duplicate stable ids");
+    expect(catalog.find(
+               lux::extensions::contributionId(
+                   "org.test.scene.root")) != nullptr,
+           "legacy ContributionId lookup crosses the compatibility adapter");
+    const auto duplicate = catalog.add(makeLeaf(trace));
+    expect(!duplicate && duplicate.error() ==
+               lux::runtime::ESceneContributionCatalogError::
+                   DUPLICATE_FEATURE,
+           "catalog rejects duplicate SceneFeatureId values");
+
+    {
+        lux::runtime::SceneContributionDescriptor invalid;
+        invalid.id = lux::scene::SceneFeatureId{
+            "Org.test.scene.invalid"};
+        invalid.provider = lux::extensions::ExtensionId{
+            "org.test.invalid"};
+        invalid.build = [](
+            lux::runtime::SceneContributionBatchBuilder&,
+            const lux::runtime::SceneContributionBuildContext&,
+            lux::runtime::ContributionConfig)
+            -> lux::cxx::expected<
+                void, lux::runtime::SceneContributionBuildFailure>
+        {
+            return {};
+        };
+        const auto rejected = catalog.add(std::move(invalid));
+        expect(!rejected && rejected.error() ==
+                   lux::runtime::ESceneContributionCatalogError::
+                       INVALID_DESCRIPTOR,
+               "catalog rejects non-canonical SceneFeatureId values");
+    }
 
     // Cold-start assembly uses the same descriptors but writes into the
     // caller's single unpublished ScheduleBuilder transaction. Services and
@@ -405,7 +439,7 @@ int main()
         lux::ecs::ScheduleBuilder cold_builder(cold_schedule, cold_services);
         const std::array selected{
             lux::runtime::SceneContributionSelection{
-                lux::extensions::ContributionId{"org.test.scene.leaf"},
+                lux::scene::SceneFeatureId{"org.test.scene.leaf"},
                 {}}};
         auto assembled = catalog.stageBootstrap(
             cold_builder,
@@ -432,10 +466,10 @@ int main()
         expect(trace == std::vector<int>{1, 2},
                "cold contribution closure preserves dependency order");
         auto disable_leaf = cold_host.facade().requestDisable(
-            lux::extensions::contributionId("org.test.scene.leaf"));
+            lux::scene::sceneFeatureId("org.test.scene.leaf"));
         (void)cold_host.processSafePoint();
         auto disable_root = cold_host.facade().requestDisable(
-            lux::extensions::contributionId("org.test.scene.root"));
+            lux::scene::sceneFeatureId("org.test.scene.root"));
         (void)cold_host.processSafePoint();
         expect(disable_leaf.snapshot().terminal ==
                        lux::extensions::EOperationTerminalState::SUCCEEDED &&
@@ -464,7 +498,7 @@ int main()
             rollback_schedule,
             rollback_services);
         constexpr std::array selected{
-            lux::extensions::contributionId(
+            lux::scene::sceneFeatureId(
                 "org.test.scene.failing_after_stage")};
         const auto assembled = rollback_catalog.assembleDefaults(
             rollback_builder,
@@ -493,7 +527,7 @@ int main()
             undeclared_services);
         const std::array selected{
             lux::runtime::SceneContributionSelection{
-                lux::extensions::ContributionId{
+                lux::scene::SceneFeatureId{
                     "org.test.scene.undeclared_service"},
                 {}}};
         const auto assembled = undeclared_catalog.stageBootstrap(
@@ -518,7 +552,7 @@ int main()
             dynamic_services,
             undeclared_catalog);
         auto enabled = dynamic_host.facade().requestEnable(
-            lux::extensions::contributionId(
+            lux::scene::sceneFeatureId(
                 "org.test.scene.undeclared_service"));
         (void)dynamic_host.processSafePoint();
         expect(
@@ -544,7 +578,7 @@ int main()
 
     auto facade = host.facade();
     auto enabled = facade.requestEnable(
-        lux::extensions::contributionId("org.test.scene.leaf"));
+        lux::scene::sceneFeatureId("org.test.scene.leaf"));
     expect(enabled.snapshot().terminal ==
                lux::extensions::EOperationTerminalState::PENDING,
            "request returns a non-blocking pending ticket");
@@ -552,9 +586,9 @@ int main()
            "owner safe point drains one typed command");
     expect(enabled.snapshot().terminal ==
                lux::extensions::EOperationTerminalState::SUCCEEDED &&
-               host.active(lux::extensions::contributionId(
+               host.active(lux::scene::sceneFeatureId(
                    "org.test.scene.root")) &&
-               host.active(lux::extensions::contributionId(
+               host.active(lux::scene::sceneFeatureId(
                    "org.test.scene.leaf")),
            "dependency closure activates atomically before the next tick");
     const auto root_service = host.services().find<RootSystem>();
@@ -566,25 +600,25 @@ int main()
            "steady-state schedule remains one topological pointer walk");
 
     auto rejected = facade.requestDisable(
-        lux::extensions::contributionId("org.test.scene.root"));
+        lux::scene::sceneFeatureId("org.test.scene.root"));
     (void)host.processSafePoint();
     expect(rejected.snapshot().terminal ==
                lux::extensions::EOperationTerminalState::FAILED &&
                rejected.snapshot().error ==
                    lux::runtime::ESceneContributionActivationError::
-                       REQUIRED_BY_OTHER_CONTRIBUTION,
+                       REQUIRED_BY_OTHER_FEATURE,
            "disable refuses a contribution with active dependents");
 
     trace.clear();
     auto disabled = facade.requestDisable(
-        lux::extensions::contributionId("org.test.scene.root"),
+        lux::scene::sceneFeatureId("org.test.scene.root"),
         lux::runtime::EContributionDisableMode::CASCADE);
     (void)host.processSafePoint();
     expect(disabled.snapshot().terminal ==
                lux::extensions::EOperationTerminalState::SUCCEEDED &&
-               !host.active(lux::extensions::contributionId(
+               !host.active(lux::scene::sceneFeatureId(
                    "org.test.scene.root")) &&
-               !host.active(lux::extensions::contributionId(
+               !host.active(lux::scene::sceneFeatureId(
                    "org.test.scene.leaf")),
            "explicit cascade removes the dependency closure");
     expect(trace == std::vector<int>{-2, -1},
@@ -607,7 +641,7 @@ int main()
             rejected_catalog);
         auto rejected_facade = rejected_host.facade();
         auto broken = rejected_facade.requestEnable(
-            lux::extensions::contributionId(
+            lux::scene::sceneFeatureId(
                 "org.test.scene.broken_leaf"));
         (void)rejected_host.processSafePoint();
         expect(broken.snapshot().terminal ==
@@ -617,8 +651,8 @@ int main()
                            SCHEDULE_REJECTED,
                "invalid aggregate topology rejects the complete dependency closure");
         expect(!rejected_host.active(
-                   lux::extensions::contributionId("org.test.scene.root")) &&
-                   !rejected_host.active(lux::extensions::contributionId(
+                   lux::scene::sceneFeatureId("org.test.scene.root")) &&
+                   !rejected_host.active(lux::scene::sceneFeatureId(
                        "org.test.scene.broken_leaf")) &&
                    !rejected_host.services().find<RootSystem>() &&
                    rejected_schedule.systemCount() == 0u,
@@ -646,7 +680,7 @@ int main()
             close_schedule, close_services, close_catalog);
         auto close_facade = close_host.facade();
         auto enabled_close = close_facade.requestEnable(
-            lux::extensions::contributionId(
+            lux::scene::sceneFeatureId(
                 "org.test.scene.bounded_close"));
         (void)close_host.processSafePoint();
         expect(enabled_close.snapshot().terminal ==

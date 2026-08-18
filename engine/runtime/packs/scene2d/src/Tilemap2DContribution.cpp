@@ -32,7 +32,7 @@ namespace lux::runtime
         }
 
         SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             std::string{kTilemap2DContributionName}};
         descriptor.display_name = "2D tilemap content";
         descriptor.required_services = {

@@ -91,7 +91,7 @@ namespace lux::extensions::physics2d
             std::as_bytes(std::span{&defaults, 1u}));
 
         lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             "org.lux.physics2d.world"};
         descriptor.display_name = "Physics 2D";
         descriptor.provided_services = {

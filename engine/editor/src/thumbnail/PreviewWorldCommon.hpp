@@ -29,10 +29,10 @@ namespace lux::editor
     inline constexpr std::string_view kPreviewWorldContributionName =
         "org.lux.editor.preview3d";
 
-    [[nodiscard]] constexpr lux::extensions::ContributionIdView
+    [[nodiscard]] constexpr lux::scene::SceneFeatureIdView
     previewWorldContributionId() noexcept
     {
-        return lux::extensions::contributionId(
+        return lux::scene::sceneFeatureId(
             kPreviewWorldContributionName);
     }
 

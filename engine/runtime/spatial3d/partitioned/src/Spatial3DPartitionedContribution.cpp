@@ -225,7 +225,7 @@ namespace lux::runtime
         }
 
         SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             std::string{
                 lux::spatial3d_scene::kSpatial3DContributionName}};
         descriptor.display_name = "Partitioned 3D spatial residency";

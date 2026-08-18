@@ -40,13 +40,13 @@ namespace lux::runtime
         }
 
         SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             std::string{kPhysics2DContributionName}};
         descriptor.display_name = "2D physics";
         descriptor.required_contributions = {
-            lux::extensions::ContributionId{
+            lux::scene::SceneFeatureId{
                 std::string{kSimulation2DContributionName}},
-            lux::extensions::ContributionId{
+            lux::scene::SceneFeatureId{
                 std::string{kSpatial2DTransformContributionName}}};
         descriptor.required_services = {typeToken<Simulation2DSystem>()};
         descriptor.provided_services = {typeToken<Physics2DSystem>()};
@@ -91,13 +91,13 @@ namespace lux::runtime
     {
         using namespace lux::ecs;
         SceneContributionDescriptor descriptor;
-        descriptor.id = lux::extensions::ContributionId{
+        descriptor.id = lux::scene::SceneFeatureId{
             std::string{kDemoPhysics2DContributionName}};
         descriptor.display_name = "2D demo swept physics";
         descriptor.required_contributions = {
-            lux::extensions::ContributionId{
+            lux::scene::SceneFeatureId{
                 std::string{kSimulation2DContributionName}},
-            lux::extensions::ContributionId{
+            lux::scene::SceneFeatureId{
                 std::string{kSpatial2DTransformContributionName}}};
         descriptor.required_services = {
             typeToken<Simulation2DSystem>(),

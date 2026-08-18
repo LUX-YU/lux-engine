@@ -316,12 +316,20 @@ namespace lux::runtime
                 ? scene_contribution_host_->facade()
                 : SceneContributions{};
         }
-        [[nodiscard]] bool hasActiveContribution(
-            std::string_view contribution) const noexcept
+        [[nodiscard]] bool hasActiveFeature(
+            std::string_view feature) const noexcept
         {
             return scene_contribution_host_ &&
                 scene_contribution_host_->active(
-                    lux::extensions::contributionId(contribution));
+                    lux::scene::sceneFeatureId(feature));
+        }
+
+        /// Compatibility spelling retained until SceneContribution* types are
+        /// renamed to SceneFeature*. New code should use hasActiveFeature().
+        [[nodiscard]] bool hasActiveContribution(
+            std::string_view contribution) const noexcept
+        {
+            return hasActiveFeature(contribution);
         }
         /// Domain-neutral loading telemetry. Capability contributions receive
         /// only EntitySectionClient/ContentBlobClient values and cannot mutate

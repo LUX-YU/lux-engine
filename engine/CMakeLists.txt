@@ -30,6 +30,12 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/extensions/api/CMakeLists.txt)
     add_subdirectory(extensions/api)
 endif()
 
+# Stable Scene-domain contracts are configured before Runtime, Authoring, and
+# Toolchain so those layers share one identity vocabulary without depending on
+# a concrete Scene owner or scheduler.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/scene/CMakeLists.txt)
+    add_subdirectory(scene)
+endif()
 
 # The cooked game-launch protocol is shared by Player front ends and the
 # offline exporter. It is an Engine product contract, not a Resource format.

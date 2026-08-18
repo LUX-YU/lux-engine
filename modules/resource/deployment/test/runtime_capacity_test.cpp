@@ -59,6 +59,36 @@ int main()
         kClassicMeshRecordsCapacity,
         RuntimeCapacityValue::exact(100'000u));
     const auto catalog = makeCatalog();
+
+    CapacityDomainCatalog invalid_catalog;
+    const auto invalid_domain = invalid_catalog.add(CapacityDomainDescriptor{
+        .id = CapacityDomainId{"Lux.render.invalid"},
+        .device_limit = 1u,
+        .protocol_limit = 1u,
+        .automatic_target = 1u,
+        .minimum = 1u,
+        .units_per_granule = 1u,
+        .bytes_per_granule = 1u,
+    });
+    assert(!invalid_domain);
+    assert(invalid_domain.error() ==
+        ECapacityCatalogError::INVALID_DESCRIPTOR);
+
+    auto duplicate_catalog = makeCatalog();
+    const auto duplicate_domain = duplicate_catalog.add(
+        CapacityDomainDescriptor{
+            .id = own(kActiveRenderInstancesCapacity),
+            .device_limit = 100'000u,
+            .protocol_limit = 0xffffffffull,
+            .automatic_target = 65'536u,
+            .minimum = 1'000u,
+            .units_per_granule = 16'384u,
+            .bytes_per_granule = 16'384u * 280u,
+        });
+    assert(!duplicate_domain);
+    assert(duplicate_domain.error() ==
+        ECapacityCatalogError::DUPLICATE_DOMAIN);
+
     const auto exact_plan = makeRuntimeCapacityPlan(exact, device, catalog);
     assert(exact_plan);
     assert(exact_plan->effective(kActiveRenderInstancesCapacity) == 100'000u);
@@ -76,9 +106,8 @@ int main()
         device,
         device_catalog);
     assert(!device_failure);
-    assert(lux::extensions::sameStableId(
-        device_failure.error().domain.view(),
-        kActiveRenderInstancesCapacity));
+    assert(device_failure.error().domain.view() ==
+        kActiveRenderInstancesCapacity);
     assert(device_failure.error().reason ==
         ECapacityPlanReason::DEVICE_CLAMP);
 

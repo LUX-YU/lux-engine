@@ -3,7 +3,7 @@
 #include <lux/engine/resource/deployment/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/core/extension_abi/StableId.hpp>
+#include <lux/cxx/core/StableNameId.hpp>
 
 #include <cstdint>
 #include <span>

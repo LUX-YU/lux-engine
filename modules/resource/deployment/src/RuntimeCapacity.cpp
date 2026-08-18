@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <string_view>
 
 namespace lux::deployment
 {
@@ -10,6 +11,41 @@ namespace lux::deployment
         [[nodiscard]] CapacityDomainId own(CapacityDomainIdView id)
         {
             return CapacityDomainId{id.name()};
+        }
+
+        [[nodiscard]] bool isCanonicalCapacityDomainName(
+            std::string_view name) noexcept
+        {
+            if (name.empty() || name.front() == '.' || name.back() == '.')
+                return false;
+
+            bool has_dot = false;
+            bool previous_dot = false;
+            for (const char value : name)
+            {
+                const bool dot = value == '.';
+                if (dot)
+                {
+                    if (previous_dot)
+                        return false;
+                    has_dot = true;
+                }
+                else if (!((value >= 'a' && value <= 'z') ||
+                           (value >= '0' && value <= '9') ||
+                           value == '_' || value == '-'))
+                {
+                    return false;
+                }
+                previous_dot = dot;
+            }
+            return has_dot;
+        }
+
+        [[nodiscard]] bool isCapacityDomainCollision(
+            CapacityDomainIdView left,
+            CapacityDomainIdView right) noexcept
+        {
+            return left.hash() == right.hash() && left.name() != right.name();
         }
 
         [[nodiscard]] constexpr std::uint64_t saturatedAdd(
@@ -83,7 +119,7 @@ namespace lux::deployment
     {
         for (auto& entry : domains)
         {
-            if (lux::extensions::sameStableId(entry.domain.view(), domain))
+            if (entry.domain.view() == domain)
             {
                 entry.value = value;
                 return;
@@ -96,7 +132,7 @@ namespace lux::deployment
         CapacityDomainIdView domain) const noexcept
     {
         for (const auto& entry : domains)
-            if (lux::extensions::sameStableId(entry.domain.view(), domain))
+            if (entry.domain.view() == domain)
                 return &entry.value;
         return nullptr;
     }
@@ -105,7 +141,7 @@ namespace lux::deployment
     CapacityDomainCatalog::add(CapacityDomainDescriptor descriptor)
     {
         if (!descriptor.id.isValid() ||
-            !lux::extensions::isCanonicalStableName(descriptor.id.name()) ||
+            !isCanonicalCapacityDomainName(descriptor.id.name()) ||
             descriptor.device_limit == 0u ||
             descriptor.protocol_limit == 0u ||
             descriptor.automatic_target == 0u ||
@@ -120,14 +156,12 @@ namespace lux::deployment
         }
         for (const auto& current : descriptors_)
         {
-            if (lux::extensions::sameStableId(
-                    current.id.view(),
-                    descriptor.id.view()))
+            if (current.id.view() == descriptor.id.view())
             {
                 return lux::cxx::unexpected(
                     ECapacityCatalogError::DUPLICATE_DOMAIN);
             }
-            if (lux::extensions::stableIdCollision(
+            if (isCapacityDomainCollision(
                     current.id.view(),
                     descriptor.id.view()))
             {
@@ -143,7 +177,7 @@ namespace lux::deployment
         CapacityDomainIdView id) const noexcept
     {
         for (const auto& descriptor : descriptors_)
-            if (lux::extensions::sameStableId(descriptor.id.view(), id))
+            if (descriptor.id.view() == id)
                 return &descriptor;
         return nullptr;
     }
@@ -152,7 +186,7 @@ namespace lux::deployment
         CapacityDomainIdView domain) const noexcept
     {
         for (const auto& entry : domains)
-            if (lux::extensions::sameStableId(entry.domain.view(), domain))
+            if (entry.domain.view() == domain)
                 return &entry;
         return nullptr;
     }
@@ -176,7 +210,7 @@ namespace lux::deployment
         {
             const auto& entry = request.domains[index];
             if (!entry.domain.isValid() ||
-                !lux::extensions::isCanonicalStableName(entry.domain.name()) ||
+                !isCanonicalCapacityDomainName(entry.domain.name()) ||
                 (entry.value.mode == ECapacityRequestMode::EXPLICIT &&
                  entry.value.value == 0u))
             {
@@ -193,9 +227,7 @@ namespace lux::deployment
                  other < request.domains.size();
                  ++other)
             {
-                if (lux::extensions::sameStableId(
-                        entry.domain.view(),
-                        request.domains[other].domain.view()))
+                if (entry.domain.view() == request.domains[other].domain.view())
                 {
                     return lux::cxx::unexpected(failure(
                         entry.domain.view(),

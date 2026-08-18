@@ -389,7 +389,7 @@ static RenderTask<void> pointCloudTask(
         if (m != 0)
         {
             co_await yield_frame();
-            (void)control.setFeatureEnabled(scene_id, feat_handles[m], false);
+            control.setFeatureEnabled(scene_id, feat_handles[m], false);
         }
     }
 
@@ -551,8 +551,8 @@ static RenderTask<void> pointCloudTask(
         {
             if (keyPressed(GLFW_KEY_1 + m) && m != active_mode)
             {
-                (void)control.setFeatureEnabled(scene_id, feat_handles[active_mode], false);
-                (void)control.setFeatureEnabled(scene_id, feat_handles[m], true);
+                control.setFeatureEnabled(scene_id, feat_handles[active_mode], false);
+                control.setFeatureEnabled(scene_id, feat_handles[m], true);
                 co_await yield_frame();
 
                 mode_enabled[active_mode] = false;
@@ -567,7 +567,7 @@ static RenderTask<void> pointCloudTask(
         if (keyPressed(GLFW_KEY_G) && grid_handle.isValid())
         {
             grid_visible = !grid_visible;
-            (void)control.setFeatureEnabled(scene_id, grid_handle, grid_visible);
+            control.setFeatureEnabled(scene_id, grid_handle, grid_visible);
             co_await yield_frame();
             std::cout << "  >> Grid " << (grid_visible ? "ON" : "OFF") << "\n";
         }

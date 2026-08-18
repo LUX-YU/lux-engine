@@ -99,11 +99,13 @@ namespace lux::runtime::spatial3d
         lux::exec::AsyncOperationClient<BuildNavigationRegion3D> operation_;
     };
 
-    class LUX_ENGINE_RUNTIME_SPATIAL3D_NAVIGATION_PUBLIC Navigation3DPrepareService final
+    class LUX_ENGINE_RUNTIME_SPATIAL3D_NAVIGATION_PUBLIC
+        Navigation3DPrepareService final
     {
       public:
         [[nodiscard]] static Navigation3DAssemblyExp<Navigation3DPrepareService>
-        addTo(lux::exec::AsyncRuntimeBuilder& builder, Navigation3DPrepareQueueConfig config = {});
+        addTo(lux::exec::AsyncRuntimeBuilder& builder,
+              Navigation3DPrepareQueueConfig config = {});
 
         Navigation3DPrepareService(const Navigation3DPrepareService&) = delete;
         Navigation3DPrepareService&
@@ -119,8 +121,8 @@ namespace lux::runtime::spatial3d
       private:
         Navigation3DPrepareService(
             std::shared_ptr<detail::Navigation3DPrepareControl> control,
-            lux::exec::AsyncOperationClient<BuildNavigationRegion3D> operation
-        ) noexcept;
+            lux::exec::AsyncOperationClient<BuildNavigationRegion3D>
+                operation) noexcept;
 
         std::shared_ptr<detail::Navigation3DPrepareControl> control_;
         lux::exec::AsyncOperationClient<BuildNavigationRegion3D> operation_;

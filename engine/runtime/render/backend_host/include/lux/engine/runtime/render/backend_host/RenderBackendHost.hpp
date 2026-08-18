@@ -245,19 +245,27 @@ namespace lux::runtime
                 return false;
             }
 
-            control_session_     = std::make_unique<lux::render::RenderControlSession>(endpoints_.control, endpoints_.sync);
-            upload_session_      = std::make_unique<lux::render::RenderUploadSession>(endpoints_.upload, endpoints_.sync);
-            render_effect_types_ = std::make_unique<RenderEffectTypeRegistry>(*control_session_);
-            if (!render_effect_catalog_.find(lux::extensions::contributionId("org.lux.render.grid3d.effect")))
+            control_session_ =
+                std::make_unique<lux::render::RenderControlSession>(
+                    endpoints_.control, endpoints_.sync);
+            upload_session_ =
+                std::make_unique<lux::render::RenderUploadSession>(
+                    endpoints_.upload, endpoints_.sync);
+            render_effect_types_ =
+                std::make_unique<RenderEffectTypeRegistry>(
+                    *control_session_);
+            if (!render_effect_catalog_.find(
+                    lux::extensions::contributionId(
+                        "org.lux.render.grid3d.effect")))
             {
-                const auto added = addGrid3DRenderEffect(render_effect_catalog_);
+                const auto added = addGrid3DRenderEffect(
+                    render_effect_catalog_);
                 if (!added)
                 {
                     lux::log::error(
                         "render",
                         "RenderBackendHost: failed to register the built-in "
-                        "Grid3D render-effect contribution"
-                    );
+                        "Grid3D render-effect contribution");
                     (void)stop();
                     return false;
                 }
@@ -345,7 +353,7 @@ namespace lux::runtime
         }
 
         [[nodiscard]] lux::render::RenderFrameSession& session() noexcept
-        requires std::same_as<ServerT, lux::render::GeneralRenderServer>
+            requires std::same_as<ServerT, lux::render::GeneralRenderServer>
         { return *session_; }
 
         [[nodiscard]] lux::render::RenderControlSession& controlSession() noexcept
@@ -385,18 +393,19 @@ namespace lux::runtime
         }
 
     private:
-        RenderBackendEndpoints                               endpoints_{};
+        RenderBackendEndpoints                              endpoints_{};
         std::thread                                          thread_;
         std::atomic<bool>                                    thread_done_{true};
-        std::atomic<ERenderBackendStartState>                start_state_{ERenderBackendStartState::IDLE};
+        std::atomic<ERenderBackendStartState>                start_state_{
+            ERenderBackendStartState::IDLE};
         RenderBackendCloseReport                             close_report_{};
-        std::unique_ptr<lux::render::RenderFrameSession>     session_;   // GeneralRenderServer branch only
+        std::unique_ptr<lux::render::RenderFrameSession>          session_;   // GeneralRenderServer branch only
         std::unique_ptr<lux::render::RenderControlSession>   control_session_;
         std::unique_ptr<lux::render::RenderUploadSession>    upload_session_;
         lux::render::FeatureCatalog                          feature_catalog_;
         std::vector<lux::render::FeatureAttach>              feature_plan_;
         RenderEffectCatalog                                  render_effect_catalog_;
-        std::unique_ptr<RenderEffectTypeRegistry>            render_effect_types_;
+        std::unique_ptr<RenderEffectTypeRegistry>             render_effect_types_;
     };
 
 } // namespace lux::runtime

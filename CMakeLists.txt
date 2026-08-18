@@ -85,6 +85,10 @@ else()
     )
 endif()
 
+# (std::format 兼容层已下沉到 modules/platform/common —— 生成与安装随
+#  组件走,消费方链接 lux::engine::platform::common 即得 lux::format;
+#  此前这里的全局 include_directories 挂法与编辑器私有复制均已收编。)
+
 # Product profiles are explicit: a Boolean "editor on/off" cannot express a
 # toolchain-only host, Android's host-tool split, or a runtime-clean Player
 # built in the same developer tree as the Editor.

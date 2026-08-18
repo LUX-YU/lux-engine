@@ -11,7 +11,8 @@ namespace lux::editor
 {
     class EditorPanelCatalog;
 
-    class LUX_EDITOR_PUBLIC ExtensionMonitorPanel final : public lux::ui::Panel
+    class LUX_EDITOR_PUBLIC ExtensionMonitorPanel final
+        : public lux::ui::Panel
     {
     public:
         ExtensionMonitorPanel(
@@ -19,8 +20,7 @@ namespace lux::editor
             lux::extensions::EngineExtensions& extensions,
             const lux::runtime::SceneContributionCatalog& scene_contributions,
             const lux::runtime::RenderEffectCatalog& render_effects,
-            const EditorPanelCatalog& editor_panels
-        );
+            const EditorPanelCatalog& editor_panels);
 
     private:
         void paint() override;

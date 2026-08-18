@@ -253,7 +253,7 @@ static RenderTask<void> transientTestTask(
     check(simple_handle.isValid(), "AddFeature Simple — valid handle");
 
     // Simple starts disabled; Transient is the default
-    (void)control.setFeatureEnabled(scene_id, simple_handle, false);
+    control.setFeatureEnabled(scene_id, simple_handle, false);
 
     // ── Phase 6: Upload static ground plane into Simple mode ────────
     co_await yield_frame();
@@ -334,8 +334,8 @@ static RenderTask<void> transientTestTask(
         // T — switch to Transient
         if (keyPressed(GLFW_KEY_T) && !use_transient)
         {
-            (void)control.setFeatureEnabled(scene_id, simple_handle, false);
-            (void)control.setFeatureEnabled(scene_id, transient_handle, true);
+            control.setFeatureEnabled(scene_id, simple_handle, false);
+            control.setFeatureEnabled(scene_id, transient_handle, true);
             use_transient = true;
             std::cout << "  >> Switched to Transient mode\n";
         }
@@ -343,8 +343,8 @@ static RenderTask<void> transientTestTask(
         // S — switch to Simple (accumulative)
         if (keyPressed(GLFW_KEY_S) && use_transient)
         {
-            (void)control.setFeatureEnabled(scene_id, transient_handle, false);
-            (void)control.setFeatureEnabled(scene_id, simple_handle, true);
+            control.setFeatureEnabled(scene_id, transient_handle, false);
+            control.setFeatureEnabled(scene_id, simple_handle, true);
             use_transient = false;
             std::cout << "  >> Switched to Simple mode (static ground plane)\n";
         }

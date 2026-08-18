@@ -68,7 +68,7 @@ namespace lux::render
         }
 
         [[nodiscard]] constexpr std::uint64_t availableBudget(
-            const DeviceCapabilities& device) noexcept
+            const CapacityDeviceFacts& device) noexcept
         {
             if (device.vram_budget_bytes == 0u)
                 return std::numeric_limits<std::uint64_t>::max();
@@ -206,7 +206,7 @@ namespace lux::render
     lux::cxx::expected<CapacityPlan, CapacityShortfall>
     makeCapacityPlan(
         const CapacityRequest& request,
-        const DeviceCapabilities& device,
+        const CapacityDeviceFacts& device,
         const CapacityCatalog& catalog)
     {
         const auto available = availableBudget(device);

@@ -101,3 +101,18 @@ lux_classify_target(
     PRODUCT TEST
     ROLE    DOMAIN
 )
+
+add_executable(
+    render_capacity_windows_macro_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/capacity_windows_macro_test.cpp
+)
+target_link_libraries(
+    render_capacity_windows_macro_test
+    PRIVATE lux::engine::function::render_client
+)
+lux_classify_target(
+    TARGET  render_capacity_windows_macro_test
+    LAYER   FUNCTION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)

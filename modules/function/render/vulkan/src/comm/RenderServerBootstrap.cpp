@@ -88,7 +88,7 @@ namespace lux::render
         [[nodiscard]] lux::cxx::expected<
             lux::render::CapacityCatalog,
             lux::render::CapacityCatalogError>
-        makeCapacityCatalog(const DeviceCapabilities& device)
+        makeCapacityCatalog(const CapacityDeviceFacts& device)
         {
             using namespace lux::render;
             CapacityCatalog catalog;
@@ -275,7 +275,7 @@ namespace lux::render
         const auto vram = VRAMBudgetGuard(
             dev_ctx_->vmaAllocator()).snapshot();
         const auto& device_caps = dev_ctx_->caps();
-        const DeviceCapabilities capacity_caps{
+        const CapacityDeviceFacts capacity_caps{
             .vram_budget_bytes = vram.total_budget,
             .vram_usage_bytes = vram.total_usage,
             .max_storage_buffer_range =

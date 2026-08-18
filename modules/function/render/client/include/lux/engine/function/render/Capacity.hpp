@@ -105,7 +105,7 @@ namespace lux::render
 
     /// Raw device facts. Domain-specific limits are contributed separately to
     /// CapacityCatalog before the immutable plan is resolved.
-    struct DeviceCapabilities final
+    struct CapacityDeviceFacts final
     {
         std::uint64_t vram_budget_bytes{0u};
         std::uint64_t vram_usage_bytes{0u};
@@ -156,7 +156,7 @@ namespace lux::render
 
     struct CapacityPlan final
     {
-        DeviceCapabilities device{};
+        CapacityDeviceFacts device{};
         std::vector<CapacityDomainPlan> domains;
 
         [[nodiscard]] LUX_FUNCTION_PUBLIC
@@ -215,6 +215,6 @@ namespace lux::render
     lux::cxx::expected<CapacityPlan, CapacityShortfall>
     makeCapacityPlan(
         const CapacityRequest& request,
-        const DeviceCapabilities& device,
+        const CapacityDeviceFacts& device,
         const CapacityCatalog& catalog);
 } // namespace lux::render

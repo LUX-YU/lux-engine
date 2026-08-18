@@ -42,7 +42,7 @@ int main()
 {
     using namespace lux::render;
 
-    DeviceCapabilities device{};
+    CapacityDeviceFacts device{};
     device.vram_budget_bytes = 1ull << 30u;
     device.max_storage_buffer_range = 8ull << 20u;
 

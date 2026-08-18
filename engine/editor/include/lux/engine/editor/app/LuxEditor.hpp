@@ -91,7 +91,6 @@ namespace lux::editor
     class EditorBuiltins;
     class EditorScene;
     class EditorShell;
-    class FlowForgeCompilerService;
     class HierarchyPanel;
     class InspectorPanel;
     class ThumbnailService;
@@ -388,7 +387,7 @@ namespace lux::editor
 
         /// AOT 缓存随工程走:open/newProject 成功后把 FlowForge 缓存目录重指到
         /// <工程根>/.lux/cache/flowforge(init 期没有工程,先落 cwd 兜底)。
-        void repointFlowforgeCache();
+        void repointFlowGraphCache();
 
         /// 帧 OPEN 段(frame_pump_->drain() 之前):工程根就绪/切换时 (re)watch,
         /// 随后把 OS 文件事件直接交给唯一的资产 reload controller。

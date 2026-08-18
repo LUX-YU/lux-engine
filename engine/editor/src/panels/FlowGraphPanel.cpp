@@ -124,7 +124,7 @@ namespace lux::editor
     void FlowGraphView::forEachNode(
         const std::function<void(gk::GraphNodeRef, std::string_view)>& fn) const
     {
-        for (const ff::NodeStorage& storage : graph_->nodes())
+        for (const ff::NodeStorage& storage : graph_.nodes())
         {
             if (!storage.node)
             {
@@ -139,22 +139,22 @@ namespace lux::editor
 
     std::uint32_t FlowGraphView::pinCount(gk::GraphNodeRef node, gk::EPinSide side) const
     {
-        if (!graph_->hasNode(node.id))
+        if (!graph_.hasNode(node.id))
         {
             return 0;
         }
-        const ff::Node* n = graph_->getNode(node.id).node.get();
+        const ff::Node* n = graph_.getNode(node.id).node.get();
         return static_cast<std::uint32_t>(side == gk::EPinSide::INPUT ? n->inPins().size()
                                                                       : n->outPins().size());
     }
 
     ff::Pin* FlowGraphView::pinAt(gk::GraphPinRef ref) const
     {
-        if (!ref.valid() || !graph_->hasNode(ref.node.id))
+        if (!ref.valid() || !graph_.hasNode(ref.node.id))
         {
             return nullptr;
         }
-        ff::Node* n = graph_->getNode(ref.node.id).node.get();
+        ff::Node* n = graph_.getNode(ref.node.id).node.get();
         auto& pins = ref.side == gk::EPinSide::INPUT ? n->inPins() : n->outPins();
         return ref.pin < pins.size() ? pins[ref.pin] : nullptr;
     }
@@ -175,7 +175,7 @@ namespace lux::editor
     {
         // Pins hold raw Node* back-refs; resolve owners to sparse indices once.
         std::unordered_map<const ff::Node*, std::size_t> owner_index;
-        for (const ff::NodeStorage& storage : graph_->nodes())
+        for (const ff::NodeStorage& storage : graph_.nodes())
         {
             owner_index.emplace(storage.node.get(), storage.index);
         }
@@ -198,7 +198,7 @@ namespace lux::editor
                 gk::GraphPinRef{ gk::GraphNodeRef{ dst_index }, gk::EPinSide::INPUT, dst_pin } });
         };
 
-        for (const ff::NodeStorage& storage : graph_->nodes())
+        for (const ff::NodeStorage& storage : graph_.nodes())
         {
             const auto& ins = storage.node->inPins();
             for (std::uint32_t i = 0; i < ins.size(); ++i)
@@ -232,11 +232,11 @@ namespace lux::editor
     // trip restores the layout (same model as MaterialGraph).
     std::optional<gk::GraphVec2> FlowGraphView::nodePos(gk::GraphNodeRef node) const
     {
-        if (!graph_->hasNode(node.id))
+        if (!graph_.hasNode(node.id))
         {
             return std::nullopt;
         }
-        const ff::Node* n = graph_->getNode(node.id).node.get();
+        const ff::Node* n = graph_.getNode(node.id).node.get();
         if (!n || !n->ui_placed)
         {
             return std::nullopt;
@@ -246,11 +246,11 @@ namespace lux::editor
 
     void FlowGraphView::setNodePos(gk::GraphNodeRef node, gk::GraphVec2 pos)
     {
-        if (!graph_->hasNode(node.id))
+        if (!graph_.hasNode(node.id))
         {
             return;
         }
-        ff::Node* n = graph_->getNode(node.id).node.get();
+        ff::Node* n = graph_.getNode(node.id).node.get();
         if (!n)
         {
             return;
@@ -262,7 +262,7 @@ namespace lux::editor
 
     gk::GraphNodeRef FlowGraphView::addNode(std::string_view template_id)
     {
-        ff::NodeCreatInfo* info = registry_->findNodeByName(std::string(template_id));
+        ff::NodeCreatInfo* info = registry_.findNodeByName(std::string(template_id));
         if (!info || !info->creator)
         {
             return {};
@@ -272,13 +272,13 @@ namespace lux::editor
         {
             return {};
         }
-        return gk::GraphNodeRef{ graph_->addNodes(std::move(node)) };
+        return gk::GraphNodeRef{ graph_.addNodes(std::move(node)) };
     }
 
     gk::NodeCapture FlowGraphView::detachNode(gk::GraphNodeRef node)
     {
         ff::NodeStorage storage{ nullptr, 0, ff::NodeUserDataPtr(nullptr, [](void*) {}) };
-        if (!graph_->extractNode(node.id, storage))
+        if (!graph_.extractNode(node.id, storage))
         {
             return nullptr;
         }
@@ -294,7 +294,7 @@ namespace lux::editor
         }
         // insertNodeAt checks occupancy BEFORE moving the arguments, so a
         // failed attach leaves the capture intact.
-        return graph_->insertNodeAt(original.id, std::move(storage->node),
+        return graph_.insertNodeAt(original.id, std::move(storage->node),
                                     std::move(storage->user_data));
     }
 
@@ -326,9 +326,9 @@ namespace lux::editor
 
     void FlowGraphView::reconstructNode(gk::GraphNodeRef node)
     {
-        if (graph_->hasNode(node.id))
+        if (graph_.hasNode(node.id))
         {
-            graph_->getNode(node.id).node->reconstruct();
+            graph_.getNode(node.id).node->reconstruct();
         }
     }
 
@@ -337,8 +337,8 @@ namespace lux::editor
     gk::ConnectResult FlowSchema::canConnect(gk::GraphPinRef from, gk::GraphPinRef to,
                                              const gk::IGraphView&) const
     {
-        ff::Pin* from_pin = view_->pinAt(from);
-        ff::Pin* to_pin   = view_->pinAt(to);
+        ff::Pin* from_pin = view_.pinAt(from);
+        ff::Pin* to_pin   = view_.pinAt(to);
         if (!from_pin || !to_pin)
         {
             return gk::ConnectResult::no("stale pin");
@@ -364,7 +364,7 @@ namespace lux::editor
     {
         if (palette_cache_.empty())
         {
-            for (const auto& info : registry_->node_creators())
+            for (const auto& info : registry_.node_creators())
             {
                 palette_cache_.push_back(
                     gk::NodeTemplate{ info->name, info->name, info->category });
@@ -399,11 +399,11 @@ namespace lux::editor
         // Per-kind header tints (the FlowForge half of the shared blueprint
         // chrome): endpoints red, control flow slate, native calls blue,
         // object access green, everything else neutral.
-        if (graph_->hasNode(node.id))
+        if (graph_.hasNode(node.id))
         {
             // No RTTI: every concrete node maps 1:1 to an ENodeOperation, so the
             // header tint keys off operation() instead of probing types.
-            ff::Node*  n  = graph_->getNode(node.id).node.get();
+            ff::Node*  n  = graph_.getNode(node.id).node.get();
             const auto op = n ? n->operation() : ff::ENodeOperation::INVALID;
             using EOp = ff::ENodeOperation;
             if (op == EOp::START || op == EOp::RETURN)
@@ -423,9 +423,9 @@ namespace lux::editor
                                                             const gk::IGraphView&) const
     {
         actions_cache_.clear();
-        if (graph_->hasNode(node.id))
+        if (graph_.hasNode(node.id))
         {
-            ff::Node* raw = graph_->getNode(node.id).node.get();
+            ff::Node* raw = graph_.getNode(node.id).node.get();
             if (auto* seq = (raw && raw->operation() == ff::ENodeOperation::SEQUENCE)
                                 ? static_cast<ff::SequenceNode*>(raw) : nullptr)
             {
@@ -442,11 +442,11 @@ namespace lux::editor
     void FlowSchema::runNodeAction(gk::GraphNodeRef node, std::string_view action_id,
                                    gk::IGraphView&)
     {
-        if (!graph_->hasNode(node.id))
+        if (!graph_.hasNode(node.id))
         {
             return;
         }
-        ff::Node* raw = graph_->getNode(node.id).node.get();
+        ff::Node* raw = graph_.getNode(node.id).node.get();
         auto* seq = (raw && raw->operation() == ff::ENodeOperation::SEQUENCE)
                         ? static_cast<ff::SequenceNode*>(raw) : nullptr;
         if (!seq)
@@ -477,11 +477,11 @@ namespace lux::editor
         // retired NodePainter). ConstantEditor uses plain Drag/Input widgets,
         // which are canvas-safe; popup-shaped editors would go through the
         // deferred queue instead.
-        if (!graph_->hasNode(node.id))
+        if (!graph_.hasNode(node.id))
         {
             return;
         }
-        ff::Node* n = graph_->getNode(node.id).node.get();
+        ff::Node* n = graph_.getNode(node.id).node.get();
         for (ff::Pin* p : n->inPins())
         {
             if (p->kind() != ff::EPinKind::DATA_IN)
@@ -570,8 +570,17 @@ namespace lux::editor
 
     FlowGraphPanel::FlowGraphPanel(
         std::string title,
-        FlowGraphPanelContext context)
-        : Panel(std::move(title)), context_(std::move(context))
+        AssetRegistry& asset_registry,
+        std::shared_ptr<lux::asset::AssetManager> assets,
+        lux::events::DomainEvents& events,
+        lux::flowforge::NodeRegistry& nodes,
+        FlowGraphCompiler& compiler)
+        : Panel(std::move(title)),
+          asset_registry_(asset_registry),
+          assets_(std::move(assets)),
+          events_(events),
+          registry_(nodes),
+          compiler_(compiler)
     {
         // Make Print creatable from the palette too (the builtin registry only
         // carries the control-flow nodes).
@@ -669,8 +678,8 @@ namespace lux::editor
     bool FlowGraphPanel::saveAsAsset(const std::string& name, std::string* err)
     {
         const auto fail = [&](std::string m) { if (err) *err = std::move(m); return false; };
-        if (!context_.asset_manager) return fail("asset services unavailable");
-        if (context_.asset_registry.root().empty())
+        if (!assets_) return fail("asset services unavailable");
+        if (asset_registry_.root().empty())
             return fail("no project open");
         if (name.empty()) return fail("name required");
 
@@ -682,7 +691,7 @@ namespace lux::editor
                 graph_, payload->graph, &cerr_msg))
             return fail("graph is not serializable: " + cerr_msg);
 
-        auto asset = context_.asset_manager->createAssetSeeded<lux::authoring::FlowGraphAsset>(
+        auto asset = assets_->createAssetSeeded<lux::authoring::FlowGraphAsset>(
             /*seed=*/std::string_view{}, std::move(payload));
         if (auto* mi = asset->mutableInfo(); mi)
         {
@@ -691,35 +700,35 @@ namespace lux::editor
             mi->display_name[n] = '\0';
         }
         const auto id = asset->id();
-        if (!context_.asset_manager->registerAsset(std::move(asset)))
+        if (!assets_->registerAsset(std::move(asset)))
             return fail("registerAsset failed (id collision?)");
 
         const std::filesystem::path dest =
-            context_.asset_registry.root() / "FlowGraphs" / (name + ".luxasset");
-        lux::authoring::FlowGraphSerDeser ser(context_.asset_manager);
+            asset_registry_.root() / "FlowGraphs" / (name + ".luxasset");
+        lux::authoring::FlowGraphSerDeser ser(assets_);
         if (const auto ec = ser.exportAsLuxAsset(id, dest);
             ec != lux::asset::EAssetError::SUCCESS)
             return fail("write failed (err=" + std::to_string(static_cast<int>(ec)) + ")");
 
-        context_.events.publish(EditorAssetChanged{
+        events_.publish(EditorAssetChanged{
             id,
             EEditorAssetChange::ADDED,
-            context_.asset_manager->contentRevision(id),
+            assets_->contentRevision(id),
             dest
         });
         // Background precompile on save: warm the AOT cache so the next Play
         // of this graph hits a ready dll instead of the sync-compile fallback.
-        context_.compiler.precompile(*context_.asset_manager, id);
+        compiler_.precompile(*assets_, id);
         return true;
     }
 
     void FlowGraphPanel::openAsset(const lux::asset::asset_id_t& id)
     {
-        if (!context_.asset_manager || id.is_nil()) return;
-        const auto* info = context_.asset_manager->queryInfo(id);
+        if (!assets_ || id.is_nil()) return;
+        const auto* info = assets_->queryInfo(id);
         if (!info || info->type != lux::asset::EAssetType::FLOW_GRAPH) return;
         const auto* a =
-            context_.asset_manager->fetchAssetAs<lux::authoring::FlowGraphAsset>(id);
+            assets_->fetchAssetAs<lux::authoring::FlowGraphAsset>(id);
         if (!a || !a->data()) return;
 
         // The asset OWNS the graph — clone it into an editable working copy

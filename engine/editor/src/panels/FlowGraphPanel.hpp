@@ -14,9 +14,13 @@
 //  not installed).
 // ============================================================================
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <lux/engine/resource/asset/Asset.hpp>   // asset_id_t, EAssetType
@@ -24,7 +28,7 @@
 #include <lux/engine/authoring/flowforge/FlowGraph.hpp>
 #include <lux/engine/authoring/flowforge/NodeRegistry.hpp>
 #include <lux/engine/editor/framework/graphkit/GraphEditor.hpp>
-#include "script/FlowForgeCompilerService.hpp"
+#include "flow/FlowGraphCompiler.hpp"
 #include <lux/engine/ui/Panel.hpp>
 
 #if LUX_FLOWFORGE_HAS_MLIR
@@ -36,14 +40,6 @@ namespace lux::asset { class AssetManager; }
 namespace lux::editor
 {
     class AssetRegistry;
-
-    struct FlowGraphPanelContext final
-    {
-        AssetRegistry&                            asset_registry;
-        std::shared_ptr<lux::asset::AssetManager> asset_manager;
-        lux::events::DomainEvents&                events;
-        FlowForgeCompilerService&                 compiler;
-    };
 
     /// IGraphView adapter over a borrowed flowforge::FlowGraph.
     ///  - GraphNodeRef.id  = the FlowGraph sparse-set INDEX (NodeStorage.index;
@@ -59,7 +55,7 @@ namespace lux::editor
     public:
         FlowGraphView(lux::flowforge::FlowGraph& graph,
                       lux::flowforge::NodeRegistry& registry)
-            : graph_(&graph), registry_(&registry)
+            : graph_(graph), registry_(registry)
         {
         }
 
@@ -91,8 +87,8 @@ namespace lux::editor
         lux::flowforge::Pin* pinAt(lux::graphkit::GraphPinRef ref) const;
 
     private:
-        lux::flowforge::FlowGraph*    graph_;
-        lux::flowforge::NodeRegistry* registry_;
+        lux::flowforge::FlowGraph&    graph_;
+        lux::flowforge::NodeRegistry& registry_;
     };
 
     /// IGraphSchema adapter: connection legality DELEGATES to the existing
@@ -105,7 +101,7 @@ namespace lux::editor
     public:
         FlowSchema(lux::flowforge::FlowGraph& graph, lux::flowforge::NodeRegistry& registry,
                    FlowGraphView& view)
-            : graph_(&graph), registry_(&registry), view_(&view)
+            : graph_(graph), registry_(registry), view_(view)
         {
         }
 
@@ -128,9 +124,9 @@ namespace lux::editor
                           lux::graphkit::DeferredPopupQueue& popups) override;
 
     private:
-        lux::flowforge::FlowGraph*    graph_;
-        lux::flowforge::NodeRegistry* registry_;
-        FlowGraphView*                view_;
+        lux::flowforge::FlowGraph&    graph_;
+        lux::flowforge::NodeRegistry& registry_;
+        FlowGraphView&                view_;
 
         mutable std::vector<lux::graphkit::NodeTemplate> palette_cache_;
         mutable std::vector<lux::graphkit::NodeAction>   actions_cache_;
@@ -139,7 +135,13 @@ namespace lux::editor
     class FlowGraphPanel : public lux::ui::Panel
     {
     public:
-        FlowGraphPanel(std::string title, FlowGraphPanelContext context);
+        FlowGraphPanel(
+            std::string title,
+            AssetRegistry& asset_registry,
+            std::shared_ptr<lux::asset::AssetManager> assets,
+            lux::events::DomainEvents& events,
+            lux::flowforge::NodeRegistry& nodes,
+            FlowGraphCompiler& compiler);
         ~FlowGraphPanel() override;
 
         /// The graph the MLIR compiler consumes (generateIR reads the SSOT
@@ -166,12 +168,15 @@ namespace lux::editor
         bool saveAsAsset(const std::string& name, std::string* err);
         void drawSavePopup();
 
-        FlowGraphPanelContext         context_;
-        lux::flowforge::FlowGraph     graph_;
-        // The PROCESS-WIDE registry: the graph serializer re-instantiates
-        // native-call nodes by creator name through NodeRegistry::global(),
-        // so the panel registers its natives there (not in a private copy).
-        lux::flowforge::NodeRegistry& registry_ = lux::flowforge::NodeRegistry::global();
+        AssetRegistry&                            asset_registry_;
+        std::shared_ptr<lux::asset::AssetManager> assets_;
+        lux::events::DomainEvents&                events_;
+        lux::flowforge::NodeRegistry&             registry_;
+        FlowGraphCompiler&                        compiler_;
+
+        lux::flowforge::FlowGraph graph_;
+        // The composition root supplies the process registry used by the
+        // current FlowGraph codec. The panel never reaches a global registry.
         FlowGraphView                 view_{ graph_, registry_ };
         FlowSchema                    schema_{ graph_, registry_, view_ };
         lux::graphkit::GraphEditor    editor_;

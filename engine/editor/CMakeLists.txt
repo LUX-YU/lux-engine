@@ -98,8 +98,8 @@ set(LUX_EDITOR_SRCS
     # extensions/
     ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/EditorTools.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/EditorContributionRegistrar.cpp
-    # script/ — editor-side script backends (A-5 flow-graph JIT)
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/script/FlowForgeCompilerService.cpp
+    # flow/ — editor-side FlowGraph compile coordination
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/flow/FlowGraphCompiler.cpp
     # content/
     ${CMAKE_CURRENT_SOURCE_DIR}/src/content/EditorBuiltins.cpp
     # import/

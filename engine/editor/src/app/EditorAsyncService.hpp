@@ -13,7 +13,7 @@
 #include "app/EditorAsyncTypes.hpp"
 #include "app/ImportController.hpp"
 #include "panels/MaterialGraphPanel.hpp"
-#include "script/FlowForgeCompilerService.hpp"
+#include "flow/FlowGraphCompile.hpp"
 
 #include <lux/engine/authoring/world/WorldSource.hpp>
 #include <lux/engine/authoring/world/WorldDescriptorIndex.hpp>
@@ -332,11 +332,7 @@ namespace lux::editor
         [[nodiscard]] bool compileMaterial(
             CompileMaterialOperation operation,
             Completion<CompileMaterialOperation> completion);
-        [[nodiscard]] bool compileFlowForge(
-            CompileFlowForgeOperation operation,
-            Completion<CompileFlowForgeOperation> completion);
-
-        [[nodiscard]] FlowForgeCompileClient flowForgeCompileClient() const noexcept;
+        [[nodiscard]] FlowGraphCompileClient flowGraphCompileClient() const noexcept;
     private:
         struct State;
 

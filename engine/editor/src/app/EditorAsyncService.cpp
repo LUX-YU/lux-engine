@@ -320,7 +320,7 @@ namespace lux::editor
             terrain_heightmap_file;
         lux::exec::AsyncOperationClient<ReloadAssetOperation> reload;
         lux::exec::AsyncOperationClient<CompileMaterialOperation> material;
-        lux::exec::AsyncOperationClient<CompileFlowForgeOperation> flowforge;
+        lux::exec::AsyncOperationClient<CompileFlowGraph> flow_graph;
         bool closing{false};
 
         template <lux::exec::AsyncOperation Operation>
@@ -367,7 +367,7 @@ namespace lux::editor
             else if constexpr (std::is_same_v<Operation, CompileMaterialOperation>)
                 return material;
             else
-                return flowforge;
+                return flow_graph;
         }
 
         template <lux::exec::AsyncOperation Operation>
@@ -430,10 +430,10 @@ namespace lux::editor
             return lux::exec::spawn(*scope, std::move(pipeline));
         }
 
-        static bool submitFlowForge(
+        static bool submitFlowGraph(
             void* raw,
-            CompileFlowForgeOperation operation,
-            FlowForgeCompileClient::Completion completion)
+            CompileFlowGraph operation,
+            FlowGraphCompileClient::Completion completion)
         {
             return static_cast<State*>(raw)->submit(
                 std::move(operation),
@@ -442,8 +442,8 @@ namespace lux::editor
 
     };
 
-    bool FlowForgeCompileClient::submit(
-        CompileFlowForgeOperation operation,
+    bool FlowGraphCompileClient::submit(
+        CompileFlowGraph operation,
         Completion completion) const
     {
         if (!submit_)
@@ -1480,10 +1480,10 @@ namespace lux::editor
         if (!material)
             return lux::cxx::unexpected(material.error());
 
-        auto flowforge = builder.addOperation<CompileFlowForgeOperation>(
-            [](CompileFlowForgeOperation&& operation,
+        auto flow_graph = builder.addOperation<CompileFlowGraph>(
+            [](CompileFlowGraph&& operation,
                lux::exec::AsyncOperationContext& context,
-               lux::exec::AsyncOperationCompletion<CompileFlowForgeOperation>&& completion) noexcept
+               lux::exec::AsyncOperationCompletion<CompileFlowGraph>&& completion) noexcept
             {
                 auto sender = ex::schedule(
                         lux::exec::backgroundCpuScheduler(context.runtime()))
@@ -1491,18 +1491,18 @@ namespace lux::editor
                           [job = std::move(operation.job)]() noexcept
                           {
                               return job
-                                  ? compileFlowForgeJob(*job)
-                                  : FlowForgeCompileResult{
-                                        .error = "missing FlowForge compile job"};
+                                  ? compileFlowGraphJob(*job)
+                                  : FlowGraphCompileResult{
+                                        .error = "missing FlowGraph compile job"};
                           });
-                launch<CompileFlowForgeOperation>(
+                launch<CompileFlowGraph>(
                     std::move(sender), context, std::move(completion));
             }, {}, lux::exec::AsyncOperationQueueConfig{
                 .capacity = 128,
                 .byte_budget = 64u * 1024u * 1024u,
                 .drain_batch = 16});
-        if (!flowforge)
-            return lux::cxx::unexpected(flowforge.error());
+        if (!flow_graph)
+            return lux::cxx::unexpected(flow_graph.error());
 
         auto state = std::make_shared<State>();
         state->import = std::move(*import);
@@ -1518,7 +1518,7 @@ namespace lux::editor
             std::move(*terrain_heightmap_file);
         state->reload = std::move(*reload);
         state->material = std::move(*material);
-        state->flowforge = std::move(*flowforge);
+        state->flow_graph = std::move(*flow_graph);
         return EditorAsyncService{std::move(state)};
     }
 
@@ -1560,15 +1560,15 @@ namespace lux::editor
         return state_->scope->closeAsync();
     }
 
-    FlowForgeCompileClient
-    EditorAsyncService::flowForgeCompileClient() const noexcept
+    FlowGraphCompileClient
+    EditorAsyncService::flowGraphCompileClient() const noexcept
     {
         if (!state_)
             return {};
-        return FlowForgeCompileClient{
+        return FlowGraphCompileClient{
             state_,
             state_.get(),
-            &State::submitFlowForge};
+            &State::submitFlowGraph};
     }
 
     bool EditorAsyncService::importAsset(
@@ -1662,14 +1662,6 @@ namespace lux::editor
     bool EditorAsyncService::compileMaterial(
         CompileMaterialOperation operation,
         Completion<CompileMaterialOperation> completion)
-    {
-        return state_ && state_->submit(
-            std::move(operation), std::move(completion));
-    }
-
-    bool EditorAsyncService::compileFlowForge(
-        CompileFlowForgeOperation operation,
-        Completion<CompileFlowForgeOperation> completion)
     {
         return state_ && state_->submit(
             std::move(operation), std::move(completion));

@@ -28,8 +28,9 @@
 #include <lux/engine/filewatch/FileWatcher.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/ui/ImGuiCommConfig.hpp>
-#include "script/FlowForgeCompilerService.hpp"    // private Authoring cook service
-#include "panels/FlowGraphPanel.hpp"            // private (engine/editor/src) — precompile hook wiring
+#include "flow/FlowGraphCompiler.hpp" // private Authoring compile coordinator
+#include "panels/FlowGraphPanel.hpp" // private editor panel
+#include <lux/engine/authoring/flowforge/NodeRegistry.hpp>
 #include <lux/engine/authoring/project/Project.hpp>
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>   // clampFrameDt (§2.4)
@@ -220,6 +221,10 @@ namespace lux::editor
         // active panel and operation can carry a ModuleLease.
         lux::extensions::ExtensionModuleManager                 extension_modules_;
         lux::ecs::ComponentTypeCatalog                          component_types_;
+        // Transitional process registry. FlowGraph codecs still require the
+        // legacy global instance; consumers receive it explicitly from here.
+        lux::flowforge::NodeRegistry&                            flow_nodes_{
+            lux::flowforge::NodeRegistry::global()};
         lux::runtime::SceneContributionCatalog                  scene_contribution_catalog_;
         std::unique_ptr<lux::events::DomainEvents>              events_;
         lux::events::EventPump*                                 frame_pump_{nullptr};
@@ -245,6 +250,9 @@ namespace lux::editor
         std::unique_ptr<lux::runtime::spatial3d::StaticCollider3DPrepareService> physics_preparation_;
         std::unique_ptr<lux::runtime::spatial2d::TilemapPrepareService>     tilemap_preparation_;
         std::unique_ptr<EditorAsyncService>                     editor_async_;
+        // Panels borrow this coordinator. Declaring it before every UI owner
+        // guarantees those borrowers disappear first during reverse teardown.
+        std::unique_ptr<FlowGraphCompiler>                      flow_graph_compiler_;
         std::unique_ptr<lux::ui::UISystem>                      ui_system_;
         std::unique_ptr<lux::ui::UIRenderFrameSession>          session_;
         std::unique_ptr<lux::runtime::FrameCoordinator>         frame_coordinator_;
@@ -282,7 +290,6 @@ namespace lux::editor
         // Values containing closures/subscriptions are last so their captures
         // are released before any target above.
         SpawnRegistry                                       spawn_registry_;
-        std::unique_ptr<FlowForgeCompilerService>           flowforge_compiler_;
         std::vector<std::function<void()>>                  pending_actions_;
         ToastQueue                                          toasts_;
         lux::events::SubscriptionGroup                      subs_;
@@ -413,7 +420,7 @@ namespace lux::editor
         // 1b. Register the editor's built-in demo script(s) into the process-wide
         //     script registry (TEMPORARY smoke affordance — see anon namespace).
         //     The flow-graph compiler gets the AOT dll cache。此时还没有
-        //     openProject,先落 cwd/.lux 兜底;工程一开 repointFlowforgeCache()
+        //     openProject,先落 cwd/.lux 兜底;工程一开 repointFlowGraphCache()
         //     就把它搬到 <工程根>/.lux/cache/flowforge(此前恒落 cwd 是被已删的
         //     EditorConfig::project_root 恒空字段藏住的缺口,清理批补上重指)。
         registerBuiltinDemoScripts(runtime_->component_types_);
@@ -613,12 +620,13 @@ namespace lux::editor
         runtime_->navigation_preparation_       = std::make_unique<lux::runtime::spatial3d::Navigation3DPrepareService>(std::move(*navigation_preparation));
         runtime_->physics_preparation_          = std::make_unique<lux::runtime::spatial3d::StaticCollider3DPrepareService>(std::move(*physics_preparation));
         runtime_->tilemap_preparation_          = std::make_unique<lux::runtime::spatial2d::TilemapPrepareService>(std::move(*tilemap_preparation));
-        runtime_->render_infra_.entity_sections =runtime_->entity_sections_->loadClient();
+        runtime_->render_infra_.entity_sections =
+            runtime_->entity_sections_->loadClient();
         runtime_->editor_async_                 = std::make_unique<EditorAsyncService>(std::move(*editor_async));
         runtime_->editor_async_->bind(*runtime_->async_);
-        runtime_->flowforge_compiler_ = std::make_unique<FlowForgeCompilerService>(
+        runtime_->flow_graph_compiler_ = std::make_unique<FlowGraphCompiler>(
             std::filesystem::current_path() / ".lux" / "cache" / "flowforge",
-            runtime_->editor_async_->flowForgeCompileClient()
+            runtime_->editor_async_->flowGraphCompileClient()
         );
 
         runtime_->render_infra_.feature_catalog = runtime_->render_thread_host_->featureCatalog();
@@ -695,11 +703,11 @@ namespace lux::editor
         runtime_->shell_ = std::make_unique<EditorShell>();
         if (!runtime_->shell_->buildPanels(
                 *this,
-                FlowGraphPanelContext{
-                    *runtime_->asset_registry_,
-                    runtime_->asset_mgr_,
-                    *runtime_->events_,
-                    *runtime_->flowforge_compiler_}))
+                *runtime_->asset_registry_,
+                runtime_->asset_mgr_,
+                *runtime_->events_,
+                runtime_->flow_nodes_,
+                *runtime_->flow_graph_compiler_))
         {
             shutdown();
             return false;
@@ -1387,7 +1395,7 @@ namespace lux::editor
     {
         const bool ok =
             runtime_->project_controller_ && runtime_->project_controller_->openProject(luxproject_file);
-        if (ok) repointFlowforgeCache();
+        if (ok) repointFlowGraphCache();
         return ok;
     }
 
@@ -1396,18 +1404,18 @@ namespace lux::editor
     {
         const bool ok =
             runtime_->project_controller_ && runtime_->project_controller_->newProject(root, project_name);
-        if (ok) repointFlowforgeCache();
+        if (ok) repointFlowGraphCache();
         return ok;
     }
 
-    void LuxEditor::repointFlowforgeCache()
+    void LuxEditor::repointFlowGraphCache()
     {
         // AOT 缓存随工程走(init 期还没有工程,只能先落 cwd/.lux —— 见 init 里
         // 的成因注释)。工程一开就搬到工程根,换工程各用各的缓存。
         const auto* proj = runtime_->project_controller_ ? runtime_->project_controller_->currentProject()
                                                : nullptr;
-        if (proj && runtime_->flowforge_compiler_)
-            runtime_->flowforge_compiler_->setCacheDir(
+        if (proj && runtime_->flow_graph_compiler_)
+            runtime_->flow_graph_compiler_->setCacheDir(
                 proj->root() / ".lux" / "cache" / "flowforge");
     }
 

@@ -27,6 +27,8 @@
 #include <memory>
 #include <string>
 
+namespace lux::asset { class AssetManager; }
+namespace lux::flowforge { class NodeRegistry; }
 namespace lux::ui { class Panel; class UISystem; class SceneViewportPanel; }
 
 namespace lux::editor
@@ -43,7 +45,7 @@ namespace lux::editor
     class AssetRegistry;
     class MaterialPreviewHost;
     class ThumbnailService;
-    struct FlowGraphPanelContext;
+    class FlowGraphCompiler;
 
     class EditorShell
     {
@@ -56,7 +58,13 @@ namespace lux::editor
 
         /// Phase 1 (original init step 5): construct the default panels, the
         /// Create-menu hooks, and register every panel as a toggleable window.
-        [[nodiscard]] bool buildPanels(LuxEditor& host, FlowGraphPanelContext flow_graph_context);
+        [[nodiscard]] bool buildPanels(
+            LuxEditor& host,
+            AssetRegistry& asset_registry,
+            std::shared_ptr<lux::asset::AssetManager> assets,
+            lux::events::DomainEvents& events,
+            lux::flowforge::NodeRegistry& flow_nodes,
+            FlowGraphCompiler& compiler);
 
         /// Phase 2 (original init steps 7b-8): the wiring that needs the render
         /// session + asset services — thumbnail hookup, Inspector asset fields,

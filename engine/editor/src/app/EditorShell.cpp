@@ -183,7 +183,11 @@ namespace lux::editor
     // ─────────────────────────────────────────────────────────────────────────
     bool EditorShell::buildPanels(
         LuxEditor& host,
-        FlowGraphPanelContext flow_graph_context)
+        AssetRegistry& asset_registry,
+        std::shared_ptr<lux::asset::AssetManager> assets,
+        lux::events::DomainEvents& events,
+        lux::flowforge::NodeRegistry& flow_nodes,
+        FlowGraphCompiler& compiler)
     {
         auto add = [this](EditorPanelContributionDescriptor descriptor)
         {
@@ -301,15 +305,21 @@ namespace lux::editor
             return false;
 
         descriptor = base(kFlowGraph.name(), "Flow Graph");
-        descriptor.create = [flow_graph_context](const EditorPanelCreateContext&)
-        {
-            return lux::cxx::expected<
-                std::unique_ptr<lux::ui::Panel>,
-                EEditorPanelCreateError>{
-                std::make_unique<FlowGraphPanel>(
-                    "Flow Graph",
-                    flow_graph_context)};
-        };
+        descriptor.create =
+            [&asset_registry, assets, &events, &flow_nodes, &compiler](
+                const EditorPanelCreateContext&)
+            {
+                return lux::cxx::expected<
+                    std::unique_ptr<lux::ui::Panel>,
+                    EEditorPanelCreateError>{
+                    std::make_unique<FlowGraphPanel>(
+                        "Flow Graph",
+                        asset_registry,
+                        assets,
+                        events,
+                        flow_nodes,
+                        compiler)};
+            };
         if (!add(std::move(descriptor)))
             return false;
 

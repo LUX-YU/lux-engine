@@ -1,5 +1,5 @@
 // ============================================================================
-//  FlowForgeCompilerService.cpp — editor-side FlowGraph precompile/cook cache.
+//  FlowGraphCompiler.cpp — editor-side FlowGraph precompile/cook cache.
 //
 //  Pipeline per graph asset:
 //    1. content hash = fnv1a64(FlowGraphCodec bytes)  → cache stem "<name>_<hash>"
@@ -9,10 +9,10 @@
 //       STARTING until that typed async operation is adopted on the main thread.
 //    3. hit  → reuse the cooked native module during export.
 //
-//  The JIT path is editor tooling only. lld-link missing = loud failure.
+//  This ahead-of-time path is editor tooling only. Missing lld-link is a loud failure.
 // ============================================================================
 
-#include "script/FlowForgeCompilerService.hpp"
+#include "flow/FlowGraphCompiler.hpp"
 
 #include <lux/engine/platform/FormatCompat.h>
 
@@ -21,9 +21,12 @@
 #include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>     // LUX_SCRIPT_ABI_VERSION
 
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -116,24 +119,23 @@ namespace lux::editor
 
     } // namespace
 
-    struct FlowForgeCompileJob final
+    struct FlowGraphCompileJob final
     {
         std::filesystem::path      cache_dir;
         std::string               stem;
         std::string               module_name;
-        std::string               graph_id;
-        std::uint64_t             content_hash{0};
+        lux::asset::asset_id_t    asset{};
         lux::flowforge::FlowGraph graph;
     };
 
-    struct FlowForgeCompilerService::Impl
+    struct FlowGraphCompiler::Impl
     {
         std::filesystem::path      cache_dir;
 
         // ── compile coordination ────────────────────────────────────────────
         // Main-thread pending/failed sets coalesce each cache stem. The actual
         // compiler receives an immutable job on AsyncRuntime's CPU pool.
-        FlowForgeCompileClient compile_client;
+        FlowGraphCompileClient compile_client;
         std::unordered_set<std::string> pending;
         std::unordered_set<std::string> failed;
 
@@ -144,7 +146,7 @@ namespace lux::editor
 
         Impl(
             std::filesystem::path dir,
-            FlowForgeCompileClient client)
+            FlowGraphCompileClient client)
             : cache_dir(std::move(dir)), compile_client(std::move(client))
         {
         }
@@ -160,6 +162,25 @@ namespace lux::editor
             std::error_code ec;
             return std::filesystem::exists(dllPath(stem), ec)
                 && std::filesystem::exists(sidecarPath(stem), ec);
+        }
+
+        /// Adopt one terminal result on the main thread. This lives on the
+        /// shared state rather than FlowGraphCompiler itself so callbacks can
+        /// lock a weak observer without retaining or dereferencing the owner.
+        void adopt(FlowGraphCompileResult result)
+        {
+            pending.erase(result.stem);
+            if (result.ok)
+            {
+                failed.erase(result.stem);
+                return;
+            }
+            failed.insert(result.stem);
+            std::fprintf(
+                stderr,
+                "[FlowGraphCompiler] precompile of graph %s FAILED: %s\n",
+                uuids::to_string(result.asset).c_str(),
+                result.error.c_str());
         }
 
         /// True = the caller claimed the stem and MUST compile (then call
@@ -237,12 +258,12 @@ namespace lux::editor
 
     };
 
-    FlowForgeCompileResult compileFlowForgeJob(
-        const FlowForgeCompileJob& job) noexcept
+    FlowGraphCompileResult compileFlowGraphJob(
+        const FlowGraphCompileJob& job) noexcept
     {
-        FlowForgeCompileResult result{
-            .stem = job.stem,
-            .graph_id = job.graph_id};
+        FlowGraphCompileResult result{
+            .asset = job.asset,
+            .stem = job.stem};
         std::error_code exists_error;
         const bool cached = std::filesystem::exists(
                 job.cache_dir / (job.stem + ".dll"),
@@ -255,7 +276,7 @@ namespace lux::editor
             result.ok = true;
             return result;
         }
-        result.ok = FlowForgeCompilerService::Impl::compileAndStore(
+        result.ok = FlowGraphCompiler::Impl::compileAndStore(
             job.cache_dir,
             job.stem,
             job.module_name,
@@ -264,18 +285,18 @@ namespace lux::editor
         return result;
     }
 
-    FlowForgeCompilerService::FlowForgeCompilerService(
+    FlowGraphCompiler::FlowGraphCompiler(
         std::filesystem::path cache_dir,
-        FlowForgeCompileClient compile_client)
-        : impl_(std::make_unique<Impl>(
+        FlowGraphCompileClient compile_client)
+        : impl_(std::make_shared<Impl>(
               std::move(cache_dir),
               std::move(compile_client)))
     {
     }
 
-    FlowForgeCompilerService::~FlowForgeCompilerService() = default;
+    FlowGraphCompiler::~FlowGraphCompiler() = default;
 
-    void FlowForgeCompilerService::setCacheDir(std::filesystem::path dir)
+    void FlowGraphCompiler::setCacheDir(std::filesystem::path dir)
     {
         // openProject 把 AOT 缓存挪到工程根(此前恒落 cwd/.lux —— 换工程不换
         // 缓存,是被已删的 EditorConfig::project_root 恒空字段藏住的缺口)。
@@ -287,20 +308,20 @@ namespace lux::editor
         /// Resolve a FLOW_GRAPH asset and derive its cache identity.
         /// Fails loudly through the returned bool; outputs are the decoded
         /// graph (borrowed from the asset), display name and content hash.
-        bool resolveGraph(lux::asset::AssetManager& assets,
-                          const std::string&        graph_id,
-                          const lux::flowforge::FlowGraph** graph_out,
-                          std::string*  module_name_out,
-                          std::uint64_t* hash_out)
+        bool resolveGraph(
+            lux::asset::AssetManager& assets,
+            const lux::asset::asset_id_t& id,
+            const lux::flowforge::FlowGraph** graph_out,
+            std::string* module_name_out,
+            std::uint64_t* hash_out)
         {
-            const auto id = uuids::uuid::from_string(graph_id);
-            if (!id) return false;
-            auto loaded = assets.ensureAsset(*id);
+            auto loaded = assets.ensureAsset(id);
             if (!loaded)
             {
-                std::fprintf(stderr,
-                    "[FlowForgeCompilerService] FLOW_GRAPH %s failed to load\n",
-                    graph_id.c_str());
+                std::fprintf(
+                    stderr,
+                    "[FlowGraphCompiler] FLOW_GRAPH %s failed to load\n",
+                    uuids::to_string(id).c_str());
                 return false;
             }
             const auto* fga =
@@ -314,13 +335,13 @@ namespace lux::editor
             if (blob.empty())
             {
                 std::fprintf(stderr,
-                    "[FlowForgeCompilerService] graph %s is not serializable: %s\n",
-                    graph_id.c_str(), err.c_str());
+                    "[FlowGraphCompiler] graph %s is not serializable: %s\n",
+                    uuids::to_string(id).c_str(), err.c_str());
                 return false;
             }
 
             std::string display = "graph";
-            if (const auto* info = assets.queryInfo(*id);
+            if (const auto* info = assets.queryInfo(id);
                 info && info->display_name[0] != '\0')
                 display = info->display_name;
 
@@ -331,17 +352,17 @@ namespace lux::editor
         }
     } // namespace
 
-    void FlowForgeCompilerService::precompile(lux::asset::AssetManager& assets,
-                                            const lux::asset::asset_id_t& id)
+    void FlowGraphCompiler::precompile(
+        lux::asset::AssetManager& assets,
+        const lux::asset::asset_id_t& id)
     {
         if (impl_->cache_dir.empty() || id.is_nil())
             return;
 
-        const std::string graph_id = uuids::to_string(id);
         const lux::flowforge::FlowGraph* graph = nullptr;
         std::string   module_name;
         std::uint64_t hash = 0;
-        if (!resolveGraph(assets, graph_id, &graph, &module_name, &hash))
+        if (!resolveGraph(assets, id, &graph, &module_name, &hash))
             return;
 
         const std::string stem = module_name + "_" + hex64(hash);
@@ -350,12 +371,11 @@ namespace lux::editor
             return;
 
         // 池任务要自己的图克隆(资产那份留在主线程)。
-        auto job = std::make_shared<FlowForgeCompileJob>();
+        auto job = std::make_shared<FlowGraphCompileJob>();
         job->cache_dir    = impl_->cache_dir;
         job->stem         = stem;
         job->module_name  = module_name;
-        job->graph_id     = graph_id;
-        job->content_hash = hash;
+        job->asset        = id;
         std::string err;
         if (!lux::authoring::FlowGraphSerDeser::cloneGraph(
                 *graph, job->graph, &err))
@@ -368,68 +388,57 @@ namespace lux::editor
                 impl_->warned_no_client = true;
                 std::fprintf(
                     stderr,
-                    "[FlowForgeCompilerService] async precompile client is "
+                    "[FlowGraphCompiler] async precompile client is "
                     "unavailable\n");
             }
             return;
         }
         impl_->pending.insert(stem);
         const auto failed_stem = stem;
-        const auto failed_graph_id = graph_id;
+        const auto failed_asset = id;
+        const std::weak_ptr<Impl> state = impl_;
         if (!impl_->compile_client.submit(
-                CompileFlowForgeOperation{std::move(job)},
-                [this, failed_stem, failed_graph_id](auto outcome) mutable noexcept
+                CompileFlowGraph{std::move(job)},
+                [state, failed_stem, failed_asset](auto outcome) mutable noexcept
                 {
+                    auto locked = state.lock();
+                    if (!locked)
+                        return;
                     if (!outcome)
                     {
-                        adoptPrecompileResult(FlowForgeCompileResult{
+                        locked->adopt(FlowGraphCompileResult{
+                            .asset = failed_asset,
                             .stem = failed_stem,
-                            .graph_id = failed_graph_id,
-                            .error = "FlowForge compile operation failed"});
+                            .error = "FlowGraph compile operation failed"});
                         return;
                     }
-                    adoptPrecompileResult(std::move(*outcome));
+                    locked->adopt(std::move(*outcome));
                 }))
-            impl_->pending.erase(stem);
-    }
-
-    void FlowForgeCompilerService::adoptPrecompileResult(
-        FlowForgeCompileResult result)
-    {
-        impl_->pending.erase(result.stem);
-        if (result.ok)
         {
-            impl_->failed.erase(result.stem);
-            return;
+            impl_->pending.erase(stem);
         }
-        impl_->failed.insert(result.stem);
-        std::fprintf(
-            stderr,
-            "[FlowForgeCompilerService] precompile of graph %s FAILED: %s\n",
-            result.graph_id.c_str(),
-            result.error.c_str());
     }
 
 #else // !LUX_FLOWFORGE_HAS_MLIR — loud no-op stub (compiler disabled)
 
-    struct FlowForgeCompilerService::Impl {};
-    FlowForgeCompilerService::FlowForgeCompilerService(
+    struct FlowGraphCompiler::Impl {};
+    FlowGraphCompiler::FlowGraphCompiler(
         std::filesystem::path,
-        FlowForgeCompileClient)
-        : impl_(std::make_unique<Impl>()) {}
-    FlowForgeCompilerService::~FlowForgeCompilerService() = default;
-    void FlowForgeCompilerService::setCacheDir(std::filesystem::path) {}
+        FlowGraphCompileClient)
+        : impl_(std::make_shared<Impl>()) {}
+    FlowGraphCompiler::~FlowGraphCompiler() = default;
+    void FlowGraphCompiler::setCacheDir(std::filesystem::path) {}
 
-    void FlowForgeCompilerService::precompile(lux::asset::AssetManager&,
-                                            const lux::asset::asset_id_t&) {}
-
-    void FlowForgeCompilerService::adoptPrecompileResult(
-        FlowForgeCompileResult) {}
-
-    FlowForgeCompileResult compileFlowForgeJob(
-        const FlowForgeCompileJob&) noexcept
+    void FlowGraphCompiler::precompile(
+        lux::asset::AssetManager&,
+        const lux::asset::asset_id_t&)
     {
-        return FlowForgeCompileResult{
+    }
+
+    FlowGraphCompileResult compileFlowGraphJob(
+        const FlowGraphCompileJob&) noexcept
+    {
+        return FlowGraphCompileResult{
             .error = "FlowForge MLIR compiler is disabled"};
     }
 

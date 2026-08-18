@@ -29,7 +29,7 @@ int main()
     auto production = builtinTextureSamplingRepresentationCatalog();
     assert(production.descriptors().size() == 1u);
     const auto* bindless = production.find(
-        lux::rdesc::kBindlessTextureSamplingRepresentation);
+        kBindlessTextureSamplingRepresentation);
     assert(bindless && bindless->representation_index == 0u);
     const auto bindless_reference = bindless->resolve_reference(
         123u, 7u, 9u);
@@ -42,8 +42,8 @@ int main()
     auto descriptors = std::vector<TextureSamplingRepresentationDescriptor>{
         production.descriptors().front()};
     descriptors.push_back({
-        lux::rdesc::ownTextureSamplingRepresentationId(
-            lux::rdesc::textureSamplingRepresentationId(
+        ownTextureSamplingRepresentationId(
+            textureSamplingRepresentationId(
                 "test.render.texture.checker")),
         1u,
         &resolveChecker,
@@ -61,5 +61,37 @@ int main()
         checker_reference->resource_index == 0u &&
         checker_reference->aux == 1u &&
         checker_reference->flags == 0x00ff8040u);
+
+    auto invalid = TextureSamplingRepresentationCatalog::build({
+        TextureSamplingRepresentationDescriptor{
+            ownTextureSamplingRepresentationId(
+                textureSamplingRepresentationId("not-canonical")),
+            0u,
+            &resolveChecker,
+            {},
+            "test.invalid"}});
+    assert(!invalid &&
+        invalid.error() == ETextureSamplingCatalogError::INVALID_ID);
+
+    auto duplicate = TextureSamplingRepresentationCatalog::build({
+        TextureSamplingRepresentationDescriptor{
+            ownTextureSamplingRepresentationId(
+                textureSamplingRepresentationId(
+                    "test.render.texture.duplicate")),
+            0u,
+            &resolveChecker,
+            {},
+            "test.duplicate.0"},
+        TextureSamplingRepresentationDescriptor{
+            ownTextureSamplingRepresentationId(
+                textureSamplingRepresentationId(
+                    "test.render.texture.duplicate")),
+            1u,
+            &resolveChecker,
+            {},
+            "test.duplicate.1"}});
+    assert(!duplicate &&
+        duplicate.error() == ETextureSamplingCatalogError::DUPLICATE_ID);
+
     static_assert(sizeof(TextureRefGPU) == 16u);
 }

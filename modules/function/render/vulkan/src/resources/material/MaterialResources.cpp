@@ -54,7 +54,7 @@ namespace lux::render
 		if (info.texture_sampling_catalog == nullptr)
 			return false;
 		const auto* bindless = info.texture_sampling_catalog->find(
-			lux::rdesc::kBindlessTextureSamplingRepresentation);
+			kBindlessTextureSamplingRepresentation);
 		if (bindless == nullptr)
 			return false;
 		texture_representation_index_ = bindless->representation_index;

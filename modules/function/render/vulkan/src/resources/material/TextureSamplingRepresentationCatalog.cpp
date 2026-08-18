@@ -2,11 +2,47 @@
 
 #include <algorithm>
 #include <exception>
+#include <string_view>
 
 namespace lux::render
 {
     namespace
     {
+        [[nodiscard]] bool isCanonicalTextureSamplingName(
+            std::string_view name) noexcept
+        {
+            if (name.empty() || name.front() == '.' || name.back() == '.')
+                return false;
+            bool has_dot = false;
+            bool previous_dot = false;
+            for (const char value : name)
+            {
+                const bool dot = value == '.';
+                if (dot)
+                {
+                    if (previous_dot)
+                        return false;
+                    has_dot = true;
+                }
+                else if (!((value >= 'a' && value <= 'z') ||
+                           (value >= '0' && value <= '9') ||
+                           value == '_' || value == '-'))
+                {
+                    return false;
+                }
+                previous_dot = dot;
+            }
+            return has_dot;
+        }
+
+        template <class Tag>
+        [[nodiscard]] bool stableIdCollision(
+            lux::cxx::StableNameIdView<Tag> lhs,
+            lux::cxx::StableNameIdView<Tag> rhs) noexcept
+        {
+            return lhs.hash() == rhs.hash() && lhs.name() != rhs.name();
+        }
+
         lux::cxx::expected<TextureRefGPU, std::string> resolveBindless(
             std::uint32_t resource_index,
             std::uint32_t aux,
@@ -27,8 +63,7 @@ namespace lux::render
         for (const auto& descriptor : descriptors)
         {
             if (!descriptor.id.isValid() ||
-                !lux::extensions::isCanonicalStableName(
-                    descriptor.id.name()))
+                !isCanonicalTextureSamplingName(descriptor.id.name()))
             {
                 return lux::cxx::unexpected<ETextureSamplingCatalogError>(
                     ETextureSamplingCatalogError::INVALID_ID);
@@ -73,12 +108,12 @@ namespace lux::render
         {
             const auto previous = by_id[index - 1u].id.view();
             const auto current = by_id[index].id.view();
-            if (lux::extensions::stableIdCollision(previous, current))
+            if (stableIdCollision(previous, current))
             {
                 return lux::cxx::unexpected<ETextureSamplingCatalogError>(
                     ETextureSamplingCatalogError::HASH_COLLISION);
             }
-            if (lux::extensions::sameStableId(previous, current))
+            if (previous == current)
             {
                 return lux::cxx::unexpected<ETextureSamplingCatalogError>(
                     ETextureSamplingCatalogError::DUPLICATE_ID);
@@ -90,11 +125,11 @@ namespace lux::render
 
     const TextureSamplingRepresentationDescriptor*
     TextureSamplingRepresentationCatalog::find(
-        lux::rdesc::TextureSamplingRepresentationIdView id) const noexcept
+        TextureSamplingRepresentationIdView id) const noexcept
     {
         for (const auto& descriptor : descriptors_)
         {
-            if (lux::extensions::sameStableId(descriptor.id.view(), id))
+            if (descriptor.id.view() == id)
                 return &descriptor;
         }
         return nullptr;
@@ -114,8 +149,8 @@ namespace lux::render
     {
         std::vector<TextureSamplingRepresentationDescriptor> descriptors;
         descriptors.push_back({
-            lux::rdesc::ownTextureSamplingRepresentationId(
-                lux::rdesc::kBindlessTextureSamplingRepresentation),
+            ownTextureSamplingRepresentationId(
+                kBindlessTextureSamplingRepresentation),
             0u,
             &resolveBindless,
             {"sampled_image_2d", "sampler"},

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/description/RenderRepresentation.hpp>
+#include <lux/cxx/core/StableNameId.hpp>
 #include <lux/engine/render/resources/material/MaterialGpuTypes.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -9,10 +9,33 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace lux::render
 {
+    struct TextureSamplingRepresentationIdTag final {};
+    using TextureSamplingRepresentationIdView =
+        lux::cxx::StableNameIdView<TextureSamplingRepresentationIdTag>;
+    using TextureSamplingRepresentationId =
+        lux::cxx::StableNameId<TextureSamplingRepresentationIdTag>;
+
+    [[nodiscard]] constexpr TextureSamplingRepresentationIdView
+    textureSamplingRepresentationId(std::string_view name) noexcept
+    {
+        return TextureSamplingRepresentationIdView{name};
+    }
+
+    inline constexpr auto kBindlessTextureSamplingRepresentation =
+        textureSamplingRepresentationId("lux.render.texture.bindless");
+
+    [[nodiscard]] inline TextureSamplingRepresentationId
+    ownTextureSamplingRepresentationId(
+        TextureSamplingRepresentationIdView id)
+    {
+        return TextureSamplingRepresentationId{id.name()};
+    }
+
     enum class ETextureSamplingCatalogError : std::uint8_t
     {
         INVALID_ID,
@@ -32,7 +55,7 @@ namespace lux::render
 
     struct TextureSamplingRepresentationDescriptor final
     {
-        lux::rdesc::TextureSamplingRepresentationId id;
+        TextureSamplingRepresentationId id;
         std::uint32_t representation_index{0u};
         ResolveTextureSamplingReferenceFn resolve_reference{};
         std::vector<std::string> semantic_bindings;
@@ -60,7 +83,7 @@ namespace lux::render
             noexcept;
 
         [[nodiscard]] const TextureSamplingRepresentationDescriptor* find(
-            lux::rdesc::TextureSamplingRepresentationIdView id) const
+            TextureSamplingRepresentationIdView id) const
             noexcept;
         [[nodiscard]] const TextureSamplingRepresentationDescriptor* find(
             std::uint32_t representation_index) const noexcept;

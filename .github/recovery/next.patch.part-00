@@ -1,0 +1,220 @@
+From 11f59e111b9d043d06f86ed8018a2c00df9bbffe Mon Sep 17 00:00:00 2001
+From: OpenAI Architecture Agent <noreply@openai.com>
+Date: Tue, 18 Aug 2026 18:39:56 +0000
+Subject: [PATCH] refactor(editor): make FlowGraph dependencies explicit
+
+---
+ engine/editor/CMakeLists.txt                  |   4 +-
+ .../lux/engine/editor/app/LuxEditor.hpp       |   3 +-
+ engine/editor/src/app/EditorAsyncService.cpp  |  50 +++---
+ engine/editor/src/app/EditorAsyncService.hpp  |   8 +-
+ engine/editor/src/app/EditorShell.cpp         |  30 ++--
+ engine/editor/src/app/EditorShell.hpp         |  12 +-
+ engine/editor/src/app/LuxEditor.cpp           |  42 +++--
+ engine/editor/src/flow/FlowGraphCompile.hpp   |  85 +++++++++
+ .../FlowGraphCompiler.cpp}                    | 169 +++++++++---------
+ engine/editor/src/flow/FlowGraphCompiler.hpp  |  50 ++++++
+ engine/editor/src/panels/FlowGraphPanel.cpp   |  93 +++++-----
+ engine/editor/src/panels/FlowGraphPanel.hpp   |  51 +++---
+ .../src/script/FlowForgeCompilerService.hpp   | 139 --------------
+ 13 files changed, 384 insertions(+), 352 deletions(-)
+ create mode 100644 engine/editor/src/flow/FlowGraphCompile.hpp
+ rename engine/editor/src/{script/FlowForgeCompilerService.cpp => flow/FlowGraphCompiler.cpp} (77%)
+ create mode 100644 engine/editor/src/flow/FlowGraphCompiler.hpp
+ delete mode 100644 engine/editor/src/script/FlowForgeCompilerService.hpp
+
+diff --git a/engine/editor/CMakeLists.txt b/engine/editor/CMakeLists.txt
+index f8eedb4..46132e5 100644
+--- a/engine/editor/CMakeLists.txt
++++ b/engine/editor/CMakeLists.txt
+@@ -98,8 +98,8 @@ set(LUX_EDITOR_SRCS
+     # extensions/
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/EditorTools.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/EditorContributionRegistrar.cpp
+-    # script/ — editor-side script backends (A-5 flow-graph JIT)
+-    ${CMAKE_CURRENT_SOURCE_DIR}/src/script/FlowForgeCompilerService.cpp
++    # flow/ — editor-side FlowGraph compile coordination
++    ${CMAKE_CURRENT_SOURCE_DIR}/src/flow/FlowGraphCompiler.cpp
+     # content/
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/content/EditorBuiltins.cpp
+     # import/
+diff --git a/engine/editor/include/lux/engine/editor/app/LuxEditor.hpp b/engine/editor/include/lux/engine/editor/app/LuxEditor.hpp
+index cdb399a..460eddc 100644
+--- a/engine/editor/include/lux/engine/editor/app/LuxEditor.hpp
++++ b/engine/editor/include/lux/engine/editor/app/LuxEditor.hpp
+@@ -91,7 +91,6 @@ namespace lux::editor
+     class EditorBuiltins;
+     class EditorScene;
+     class EditorShell;
+-    class FlowForgeCompilerService;
+     class HierarchyPanel;
+     class InspectorPanel;
+     class ThumbnailService;
+@@ -388,7 +387,7 @@ namespace lux::editor
+ 
+         /// AOT 缓存随工程走:open/newProject 成功后把 FlowForge 缓存目录重指到
+         /// <工程根>/.lux/cache/flowforge(init 期没有工程,先落 cwd 兜底)。
+-        void repointFlowforgeCache();
++        void repointFlowGraphCache();
+ 
+         /// 帧 OPEN 段(frame_pump_->drain() 之前):工程根就绪/切换时 (re)watch,
+         /// 随后把 OS 文件事件直接交给唯一的资产 reload controller。
+diff --git a/engine/editor/src/app/EditorAsyncService.cpp b/engine/editor/src/app/EditorAsyncService.cpp
+index 52d98e5..0eb3238 100644
+--- a/engine/editor/src/app/EditorAsyncService.cpp
++++ b/engine/editor/src/app/EditorAsyncService.cpp
+@@ -320,7 +320,7 @@ namespace lux::editor
+             terrain_heightmap_file;
+         lux::exec::AsyncOperationClient<ReloadAssetOperation> reload;
+         lux::exec::AsyncOperationClient<CompileMaterialOperation> material;
+-        lux::exec::AsyncOperationClient<CompileFlowForgeOperation> flowforge;
++        lux::exec::AsyncOperationClient<CompileFlowGraph> flow_graph;
+         bool closing{false};
+ 
+         template <lux::exec::AsyncOperation Operation>
+@@ -367,7 +367,7 @@ namespace lux::editor
+             else if constexpr (std::is_same_v<Operation, CompileMaterialOperation>)
+                 return material;
+             else
+-                return flowforge;
++                return flow_graph;
+         }
+ 
+         template <lux::exec::AsyncOperation Operation>
+@@ -430,10 +430,10 @@ namespace lux::editor
+             return lux::exec::spawn(*scope, std::move(pipeline));
+         }
+ 
+-        static bool submitFlowForge(
++        static bool submitFlowGraph(
+             void* raw,
+-            CompileFlowForgeOperation operation,
+-            FlowForgeCompileClient::Completion completion)
++            CompileFlowGraph operation,
++            FlowGraphCompileClient::Completion completion)
+         {
+             return static_cast<State*>(raw)->submit(
+                 std::move(operation),
+@@ -442,8 +442,8 @@ namespace lux::editor
+ 
+     };
+ 
+-    bool FlowForgeCompileClient::submit(
+-        CompileFlowForgeOperation operation,
++    bool FlowGraphCompileClient::submit(
++        CompileFlowGraph operation,
+         Completion completion) const
+     {
+         if (!submit_)
+@@ -1480,10 +1480,10 @@ namespace lux::editor
+         if (!material)
+             return lux::cxx::unexpected(material.error());
+ 
+-        auto flowforge = builder.addOperation<CompileFlowForgeOperation>(
+-            [](CompileFlowForgeOperation&& operation,
++        auto flow_graph = builder.addOperation<CompileFlowGraph>(
++            [](CompileFlowGraph&& operation,
+                lux::exec::AsyncOperationContext& context,
+-               lux::exec::AsyncOperationCompletion<CompileFlowForgeOperation>&& completion) noexcept
++               lux::exec::AsyncOperationCompletion<CompileFlowGraph>&& completion) noexcept
+             {
+                 auto sender = ex::schedule(
+                         lux::exec::backgroundCpuScheduler(context.runtime()))
+@@ -1491,18 +1491,18 @@ namespace lux::editor
+                           [job = std::move(operation.job)]() noexcept
+                           {
+                               return job
+-                                  ? compileFlowForgeJob(*job)
+-                                  : FlowForgeCompileResult{
+-                                        .error = "missing FlowForge compile job"};
++                                  ? compileFlowGraphJob(*job)
++                                  : FlowGraphCompileResult{
++                                        .error = "missing FlowGraph compile job"};
+                           });
+-                launch<CompileFlowForgeOperation>(
++                launch<CompileFlowGraph>(
+                     std::move(sender), context, std::move(completion));
+             }, {}, lux::exec::AsyncOperationQueueConfig{
+                 .capacity = 128,
+                 .byte_budget = 64u * 1024u * 1024u,
+                 .drain_batch = 16});
+-        if (!flowforge)
+-            return lux::cxx::unexpected(flowforge.error());
++        if (!flow_graph)
++            return lux::cxx::unexpected(flow_graph.error());
+ 
+         auto state = std::make_shared<State>();
+         state->import = std::move(*import);
+@@ -1518,7 +1518,7 @@ namespace lux::editor
+             std::move(*terrain_heightmap_file);
+         state->reload = std::move(*reload);
+         state->material = std::move(*material);
+-        state->flowforge = std::move(*flowforge);
++        state->flow_graph = std::move(*flow_graph);
+         return EditorAsyncService{std::move(state)};
+     }
+ 
+@@ -1560,15 +1560,15 @@ namespace lux::editor
+         return state_->scope->closeAsync();
+     }
+ 
+-    FlowForgeCompileClient
+-    EditorAsyncService::flowForgeCompileClient() const noexcept
++    FlowGraphCompileClient
++    EditorAsyncService::flowGraphCompileClient() const noexcept
+     {
+         if (!state_)
+             return {};
+-        return FlowForgeCompileClient{
++        return FlowGraphCompileClient{
+             state_,
+             state_.get(),
+-            &State::submitFlowForge};
++            &State::submitFlowGraph};
+     }
+ 
+     bool EditorAsyncService::importAsset(
+@@ -1667,12 +1667,4 @@ namespace lux::editor
+             std::move(operation), std::move(completion));
+     }
+ 
+-    bool EditorAsyncService::compileFlowForge(
+-        CompileFlowForgeOperation operation,
+-        Completion<CompileFlowForgeOperation> completion)
+-    {
+-        return state_ && state_->submit(
+-            std::move(operation), std::move(completion));
+-    }
+-
+ }
+diff --git a/engine/editor/src/app/EditorAsyncService.hpp b/engine/editor/src/app/EditorAsyncService.hpp
+index 34af312..7279b86 100644
+--- a/engine/editor/src/app/EditorAsyncService.hpp
++++ b/engine/editor/src/app/EditorAsyncService.hpp
+@@ -13,7 +13,7 @@
+ #include "app/EditorAsyncTypes.hpp"
+ #include "app/ImportController.hpp"
+ #include "panels/MaterialGraphPanel.hpp"
+-#include "script/FlowForgeCompilerService.hpp"
++#include "flow/FlowGraphCompile.hpp"
+ 
+ #include <lux/engine/authoring/world/WorldSource.hpp>
+ #include <lux/engine/authoring/world/WorldDescriptorIndex.hpp>
+@@ -332,11 +332,7 @@ namespace lux::editor
+         [[nodiscard]] bool compileMaterial(
+             CompileMaterialOperation operation,
+             Completion<CompileMaterialOperation> completion);
+-        [[nodiscard]] bool compileFlowForge(
+-            CompileFlowForgeOperation operation,
+-            Completion<CompileFlowForgeOperation> completion);
+-
+-        [[nodiscard]] FlowForgeCompileClient flowForgeCompileClient() const noexcept;
++        [[nodiscard]] FlowGraphCompileClient flowGraphCompileClient() const noexcept;
+     private:
+         struct State;
+ 
+diff --git a/engine/editor/src/app/EditorShell.cpp b/engine/editor/src/app/EditorShell.cpp
+index ad0c010..be49def 100644
+--- a/engine/editor/src/app/EditorShell.cpp
++++ b/engine/editor/src/app/EditorShell.cpp
+@@ -183,7 +183,11 @@ namespace lux::editor

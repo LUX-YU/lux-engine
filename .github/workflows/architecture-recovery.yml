@@ -36,7 +36,11 @@ jobs:
         if: steps.patch.outputs.present == 'true'
         shell: bash
         run: |
-          if [[ -f .github/recovery/next.patch.gz.b64 ]]; then
+          if compgen -G '.github/recovery/next.patch.gz.b64.part-*' > /dev/null; then
+            cat .github/recovery/next.patch.gz.b64.part-* \
+              | base64 --decode \
+              | gzip --decompress > "$RUNNER_TEMP/next.patch"
+          elif [[ -f .github/recovery/next.patch.gz.b64 ]]; then
             base64 --decode .github/recovery/next.patch.gz.b64 \
               | gzip --decompress > "$RUNNER_TEMP/next.patch"
           else
@@ -49,6 +53,7 @@ jobs:
           git rm -f --ignore-unmatch \
             .github/recovery/READY \
             .github/recovery/next.patch.gz.b64 \
+            .github/recovery/next.patch.gz.b64.part-* \
             .github/recovery/next.patch.part-*
           git commit --amend --no-edit
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"

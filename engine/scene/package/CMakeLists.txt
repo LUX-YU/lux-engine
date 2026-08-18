@@ -1,0 +1,75 @@
+# Engine-owned LXSC scene package contract. The public API speaks in
+# SceneFeatureId and ECS scene-format identities; the historical Resource
+# manifest is used only by the private compatibility adapter while migration is
+# in progress.
+
+find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time core)
+
+add_component(
+    COMPONENT_NAME scene_package
+    NAMESPACE      lux::engine::scene
+    OUTPUT_NAME    lux_engine_scene_package
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScenePackageCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/LegacyEntitySceneAdapter.cpp
+)
+
+component_include_directories(
+    scene_package
+    BUILD_TIME_EXPORT
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${LUX_GENERATE_HEADER_DIR}
+    INSTALL_TIME include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(
+    scene_package
+    PUBLIC
+        lux::cxx::algorithm
+        lux::cxx::compile_time
+        lux::cxx::core
+        lux::engine::scene::scene_api
+        lux::engine::ecs::identity
+        lux::engine::ecs::scene_format
+        lux::engine::extensions::extension_api
+    PRIVATE
+        lux::engine::resource::entity_scene
+)
+
+component_add_transitive_commands(
+    scene_package
+    "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time core)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_api)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS identity scene_format)"
+    "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"
+)
+
+lux_classify_target(
+    TARGET  scene_package
+    LAYER   RUNTIME
+    PRODUCT RUNTIME
+    ROLE    DOMAIN
+)
+
+add_executable(
+    scene_package_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/scene_package_contract_test.cpp
+)
+target_link_libraries(
+    scene_package_contract_test
+    PRIVATE
+        lux::engine::scene::scene_package
+        lux::engine::resource::entity_scene
+)
+if(MSVC)
+    target_compile_options(scene_package_contract_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(scene_package_contract_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  scene_package_contract_test
+    LAYER   RUNTIME
+    PRODUCT TEST
+    ROLE    INTEGRATION
+)

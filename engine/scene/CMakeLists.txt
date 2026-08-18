@@ -3,10 +3,11 @@
 ## World, Schedule, renderer, or product lifecycle state.
 
 add_subdirectory(api)
+add_subdirectory(package)
 
 install_components(
     PROJECT_NAME    lux-engine-scene
     VERSION         0.0.1
     NAMESPACE       lux::engine::scene
-    COMPONENTS      scene_api
+    COMPONENTS      scene_api scene_package
 )

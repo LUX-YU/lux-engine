@@ -9,6 +9,41 @@ permissions:
   contents: read
 
 jobs:
+  apply-reviewed-patch:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Detect prepared patch
+        id: patch
+        shell: bash
+        run: |
+          if [[ -f .github/recovery/READY ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Apply prepared patch
+        if: steps.patch.outputs.present == 'true'
+        shell: bash
+        run: |
+          cat .github/recovery/next.patch.part-* > "$RUNNER_TEMP/next.patch"
+          git config user.name "OpenAI Architecture Agent"
+          git config user.email "noreply@openai.com"
+          git am "$RUNNER_TEMP/next.patch"
+          git rm .github/recovery/READY .github/recovery/next.patch.part-*
+          git commit --amend --no-edit
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+
   source-snapshot:
     runs-on: ubuntu-22.04
     steps:

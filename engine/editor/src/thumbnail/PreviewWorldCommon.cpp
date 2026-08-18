@@ -98,9 +98,9 @@ namespace lux::editor
 
         lux::entity_scene::EntitySceneManifest manifest;
         manifest.id = lux::entity_scene::EntitySceneId{ids(scene_name)};
-        manifest.features.push_back(
+        manifest.contributions.push_back(
             lux::entity_scene::SceneContribution{
-                lux::scene::SceneFeatureId{
+                lux::extensions::ContributionId{
                     std::string{kPreviewWorldContributionName}},
                 0u,
                 {}}

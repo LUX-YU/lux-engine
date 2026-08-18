@@ -204,8 +204,8 @@ namespace lux::editor
         // compact LXWA root references that page and is committed last.
         auto source = lux::authoring::makeWorldSourceDocument(
             lux::authoring::EPartitionTopology::PLANAR_XZ);
-        source.features.push_back({
-            lux::scene::SceneFeatureId{
+        source.contributions.push_back({
+            lux::extensions::ContributionId{
                 "org.lux.builtin.presentation3d"},
             0u,
             {}});

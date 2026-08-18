@@ -318,8 +318,8 @@ int main()
     entity_scene::EntitySceneManifest manifest;
     manifest.id = entity_scene::EntitySceneId{
         uuid("50000000-0000-4000-8000-000000000001")};
-    manifest.features.push_back({
-        lux::scene::SceneFeatureId{
+    manifest.contributions.push_back({
+        lux::extensions::ContributionId{
             std::string{spatial3d_scene::kSpatial3DContributionName}},
         spatial3d_scene::kSpatial3DSceneCatalogSchemaVersion,
         std::move(*encoded_config)});

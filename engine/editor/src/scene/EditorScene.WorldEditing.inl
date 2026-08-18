@@ -205,7 +205,7 @@
             lux::entity_scene::EntitySceneManifest manifest;
             manifest.id = lux::entity_scene::EntitySceneId{
                 source.world.value()};
-            manifest.features = source.features;
+            manifest.contributions = source.contributions;
             manifest.required_extensions = source.required_extensions;
             return manifest;
         }
@@ -218,14 +218,14 @@
         [[nodiscard]] bool ensurePresentationContribution(
             lux::authoring::WorldSourceDocument& source)
         {
-            if (!source.features.empty() || source.spaces.empty())
+            if (!source.contributions.empty() || source.spaces.empty())
                 return false;
 
             const bool is_2d =
                 source.spaces.front().topology ==
                 lux::authoring::EPartitionTopology::PLANAR_XY;
-            source.features.push_back({
-                lux::scene::SceneFeatureId{
+            source.contributions.push_back({
+                lux::extensions::ContributionId{
                     is_2d
                         ? "org.lux.builtin.presentation2d"
                         : "org.lux.builtin.presentation3d"},

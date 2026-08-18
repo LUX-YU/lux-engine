@@ -1,6 +1,7 @@
 #include <lux/engine/render/comm/server/RenderServerImpl.hpp>
 // (InitialViewCamera.hpp retired — initial camera is a StandardViewCamera op now.)
 #include <lux/engine/function/render/client/RenderProtocol.hpp>
+#include <lux/engine/function/render/Capacity.hpp>
 #include <lux/engine/render/comm/RenderTickPipeline.hpp>
 
 // VMA — readback staging buffer uses raw vmaCreateBuffer/vmaInvalidateAllocation
@@ -87,18 +88,22 @@ namespace lux::render
         [[nodiscard]] lux::cxx::expected<
             lux::render::CapacityCatalog,
             lux::render::CapacityCatalogError>
-        makeCapacityCatalog(
-            const lux::render::DeviceCapabilities& device)
+        makeCapacityCatalog(const DeviceCapabilities& device)
         {
             using namespace lux::render;
             CapacityCatalog catalog;
 
-            const auto instance_device_limit =
+            constexpr std::uint64_t kInstanceProtocolLimit = 0xffffffffull;
+            constexpr std::uint64_t kInstanceRecordBytes = 80u;
+            const std::uint64_t storage_range =
+                static_cast<std::uint64_t>(
+                    device.max_storage_buffer_range);
+            const std::uint64_t instance_device_limit =
                 device.buffer_device_address && device.shader_int64
-                ? 0xffffffffull
-                : std::min<std::uint64_t>(
-                    0xffffffffull,
-                    device.max_storage_buffer_range / 80u);
+                ? kInstanceProtocolLimit
+                : std::min(
+                    kInstanceProtocolLimit,
+                    storage_range / kInstanceRecordBytes);
             if (auto result = catalog.add(CapacityDomainDescriptor{
                     .id = ownCapacityId(kActiveInstancesCapacity),
                     .device_limit = instance_device_limit,
@@ -270,7 +275,7 @@ namespace lux::render
         const auto vram = VRAMBudgetGuard(
             dev_ctx_->vmaAllocator()).snapshot();
         const auto& device_caps = dev_ctx_->caps();
-        const lux::render::DeviceCapabilities capacity_caps{
+        const DeviceCapabilities capacity_caps{
             .vram_budget_bytes = vram.total_budget,
             .vram_usage_bytes = vram.total_usage,
             .max_storage_buffer_range =

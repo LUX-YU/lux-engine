@@ -1,0 +1,37 @@
+name: architecture-recovery
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify checked-out revision
+        run: |
+          git status --short
+          git rev-parse HEAD
+
+      - name: Pack review worktree
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude=lux-engine-source.tar.gz \
+            -czf lux-engine-source.tar.gz .
+
+      - name: Upload review worktree
+        uses: actions/upload-artifact@v4
+        with:
+          name: lux-engine-source-${{ github.event.pull_request.head.sha || github.sha }}
+          path: lux-engine-source.tar.gz
+          if-no-files-found: error
+          retention-days: 3

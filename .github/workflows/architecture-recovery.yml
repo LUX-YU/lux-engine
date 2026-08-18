@@ -36,11 +36,20 @@ jobs:
         if: steps.patch.outputs.present == 'true'
         shell: bash
         run: |
-          cat .github/recovery/next.patch.part-* > "$RUNNER_TEMP/next.patch"
+          if [[ -f .github/recovery/next.patch.gz.b64 ]]; then
+            base64 --decode .github/recovery/next.patch.gz.b64 \
+              | gzip --decompress > "$RUNNER_TEMP/next.patch"
+          else
+            cat .github/recovery/next.patch.part-* > "$RUNNER_TEMP/next.patch"
+          fi
+
           git config user.name "OpenAI Architecture Agent"
           git config user.email "noreply@openai.com"
           git am "$RUNNER_TEMP/next.patch"
-          git rm .github/recovery/READY .github/recovery/next.patch.part-*
+          git rm -f --ignore-unmatch \
+            .github/recovery/READY \
+            .github/recovery/next.patch.gz.b64 \
+            .github/recovery/next.patch.part-*
           git commit --amend --no-edit
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
 

@@ -25,12 +25,13 @@ jobs:
         run: |
           tar \
             --exclude=.git \
-            -czf ../lux-engine-source.tar.gz .
+            -czf "$RUNNER_TEMP/lux-engine-source.tar.gz" .
+          cp "$RUNNER_TEMP/lux-engine-source.tar.gz" ./lux-engine-source.tar.gz
 
       - name: Upload review worktree
         uses: actions/upload-artifact@v4
         with:
           name: lux-engine-source-${{ github.event.pull_request.head.sha || github.sha }}
-          path: ../lux-engine-source.tar.gz
+          path: lux-engine-source.tar.gz
           if-no-files-found: error
           retention-days: 3

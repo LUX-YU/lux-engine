@@ -1,7 +1,6 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 
 #include <lux/cxx/algorithm/hash.hpp>
-#include <lux/engine/core/extension_abi/StableId.hpp>
 
 #include <algorithm>
 #include <type_traits>
@@ -56,11 +55,8 @@ namespace lux::ecs
         const ComponentSchemaDescriptor& descriptor,
         std::span<const ComponentSchemaDescriptor> pending) const
     {
-        if (!descriptor.cpp_type || !descriptor.schema_id ||
-            !lux::extensions::isCanonicalStableName(
-                descriptor.schema_id.name) ||
-            descriptor.schema_id.hash != lux::cxx::algorithm::fnv1a(
-                descriptor.schema_id.name) ||
+        if (!descriptor.cpp_type ||
+            !isValidComponentSchemaId(descriptor.schema_id) ||
             descriptor.schema_version == 0u ||
             !descriptor.operations.has || !descriptor.operations.get ||
             !descriptor.operations.emplace || !descriptor.operations.remove ||

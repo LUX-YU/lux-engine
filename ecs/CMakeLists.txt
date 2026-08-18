@@ -17,6 +17,11 @@ message("-------- ECS Layer --------")
 #  SceneServices — is inherited by the runtime contribution host).
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Stable identities are configured first. The ECS kernel and the LXES format
+# both depend on them, but neither depends on the other.
+add_subdirectory(identity)
+add_subdirectory(scene_format)
+
 # Explicit dependency order: core (kernel + 共享组件) → dimensional render targets.
 # Explicit rather than subdirectory_list so this ordering is guaranteed.
 #
@@ -39,6 +44,8 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     add_subdirectory(render)
 
     set(LUX_ECS_COMPONENTS
+        identity
+        scene_format
         core
         spatial3d_components
         terrain_components
@@ -65,6 +72,8 @@ else()
     add_subdirectory(integration) # 显式叶节点：可选 ECS 领域之间的组合，不被领域反向依赖
 
     set(LUX_ECS_COMPONENTS
+        identity
+        scene_format
         core transform spatial2d_components spatial3d_components
         tilemap pixel terrain_components
         scripting scripting_lua scripting_native

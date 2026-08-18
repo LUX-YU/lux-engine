@@ -11,6 +11,7 @@
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/ecs/ComponentSchemaId.hpp>
 #include <lux/engine/ecs/TypeToken.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/meta/LuxObject.hpp>
@@ -35,16 +36,6 @@ namespace lux::ecs
     [[nodiscard]] LUX_FUNCTION_PUBLIC std::string
     defaultComponentSchemaName(std::string_view cpp_name);
 
-    struct ComponentSchemaId final
-    {
-        std::uint64_t hash{};
-        std::string name;
-
-        [[nodiscard]] explicit operator bool() const noexcept
-        {
-            return hash != 0u && !name.empty();
-        }
-    };
 
     struct OwnedComponentTypeToken final
     {

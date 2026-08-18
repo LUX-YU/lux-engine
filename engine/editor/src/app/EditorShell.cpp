@@ -43,21 +43,21 @@ namespace lux::editor
 {
     namespace
     {
-        constexpr auto kViewport = lux::extensions::contributionId(
+        constexpr auto kViewport = panelId(
             "org.lux.editor.viewport");
-        constexpr auto kHierarchy = lux::extensions::contributionId(
+        constexpr auto kHierarchy = panelId(
             "org.lux.editor.hierarchy");
-        constexpr auto kInspector = lux::extensions::contributionId(
+        constexpr auto kInspector = panelId(
             "org.lux.editor.inspector");
-        constexpr auto kSceneSettings = lux::extensions::contributionId(
+        constexpr auto kSceneSettings = panelId(
             "org.lux.editor.scene-settings");
-        constexpr auto kAssetBrowser = lux::extensions::contributionId(
+        constexpr auto kAssetBrowser = panelId(
             "org.lux.editor.asset-browser");
-        constexpr auto kMaterialGraph = lux::extensions::contributionId(
+        constexpr auto kMaterialGraph = panelId(
             "org.lux.editor.material-graph");
-        constexpr auto kFlowGraph = lux::extensions::contributionId(
+        constexpr auto kFlowGraph = panelId(
             "org.lux.editor.flow-graph");
-        constexpr auto kScriptEditor = lux::extensions::contributionId(
+        constexpr auto kScriptEditor = panelId(
             "org.lux.editor.script-editor");
 
         // ── Hover enrichment: per-type asset description ─────────────────────
@@ -196,7 +196,7 @@ namespace lux::editor
         auto base = [](std::string_view id, std::string display_name)
         {
             EditorPanelContributionDescriptor descriptor;
-            descriptor.id = lux::extensions::ContributionId{std::string{id}};
+            descriptor.id = PanelId{std::string{id}};
             descriptor.display_name = std::move(display_name);
             descriptor.provider = lux::extensions::ExtensionId{
                 "org.lux.editor.core"};
@@ -355,9 +355,9 @@ namespace lux::editor
             &host.events());
 
         auto tools = tool_host_->facade();
-        for (const auto& contribution : panel_catalog_.all())
+        for (const auto& panel : panel_catalog_.all())
         {
-            auto ticket = tools.requestOpen(contribution.id.view());
+            auto ticket = tools.requestOpen(panel.id.view());
             (void)tool_host_->processSafePoint();
             if (ticket.snapshot().terminal !=
                 lux::extensions::EOperationTerminalState::SUCCEEDED)

@@ -915,7 +915,7 @@ namespace lux::editor
             }
 
             lux::editor::EditorPanelContributionDescriptor descriptor;
-            descriptor.id = lux::extensions::ContributionId{
+            descriptor.id = PanelId{
                 "org.lux.editor.extension-monitor"};
             descriptor.display_name = "Extension Monitor";
             descriptor.default_visible = true;
@@ -968,7 +968,7 @@ namespace lux::editor
                 return false;
             }
             const auto ticket = runtime_->shell_->tools().requestOpen(
-                lux::extensions::contributionId(
+                panelId(
                     "org.lux.editor.extension-monitor"));
             (void)runtime_->shell_->processToolSafePoint();
             if (ticket.snapshot().terminal !=

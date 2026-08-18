@@ -71,7 +71,7 @@ int main(int argc, char** argv)
         "the module becomes READY only after catalog publication");
 
     auto* descriptor = catalog.find(
-        lux::extensions::contributionId(
+        lux::editor::panelId(
             "org.lux.test.editor-module.panel"));
     expect(descriptor != nullptr, "the cross-module panel is discoverable");
     if (!descriptor)

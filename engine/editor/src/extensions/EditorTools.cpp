@@ -13,10 +13,10 @@ namespace lux::editor
     namespace
     {
         [[nodiscard]] bool sameId(
-            const lux::extensions::ContributionId& lhs,
-            lux::extensions::ContributionIdView rhs) noexcept
+            const PanelId& lhs,
+            PanelIdView rhs) noexcept
         {
-            return lux::extensions::sameStableId(lhs.view(), rhs);
+            return lhs.view() == rhs;
         }
 
         using TicketPublisher = lux::extensions::OperationTicketPublisher<
@@ -34,14 +34,14 @@ namespace lux::editor
         struct EditorToolCommand final
         {
             ECommandKind kind{ECommandKind::OPEN};
-            lux::extensions::ContributionId id;
+            PanelId id;
             bool visible{true};
             std::uint64_t generation{0u};
             TicketPublisher publisher{EEditorToolPhase::QUEUED, 0u};
 
             EditorToolCommand(
                 ECommandKind command_kind,
-                lux::extensions::ContributionId command_id,
+                PanelId command_id,
                 bool command_visible,
                 std::uint64_t command_generation)
                 : kind(command_kind),
@@ -102,8 +102,7 @@ namespace lux::editor
         {
             const auto& descriptor = descriptors[index];
             if (!descriptor.id.isValid() || !descriptor.provider.isValid() ||
-                !lux::extensions::isCanonicalStableName(
-                    descriptor.id.name()) ||
+                !isValidPanelIdName(descriptor.id.name()) ||
                 !lux::extensions::isCanonicalStableName(
                     descriptor.provider.name()))
             {
@@ -115,23 +114,23 @@ namespace lux::editor
                     EEditorPanelCatalogError::MISSING_CREATE_CALLBACK);
             for (const auto& current : descriptors_)
             {
-                if (lux::extensions::stableIdCollision(
+                if (panelIdCollision(
                         current.id.view(), descriptor.id.view()))
                     return lux::cxx::unexpected(
                         EEditorPanelCatalogError::ID_COLLISION);
                 if (sameId(current.id, descriptor.id.view()))
                     return lux::cxx::unexpected(
-                        EEditorPanelCatalogError::DUPLICATE_CONTRIBUTION);
+                        EEditorPanelCatalogError::DUPLICATE_PANEL);
             }
             for (std::size_t other = 0u; other < index; ++other)
             {
-                if (lux::extensions::stableIdCollision(
+                if (panelIdCollision(
                         descriptors[other].id.view(), descriptor.id.view()))
                     return lux::cxx::unexpected(
                         EEditorPanelCatalogError::ID_COLLISION);
                 if (sameId(descriptors[other].id, descriptor.id.view()))
                     return lux::cxx::unexpected(
-                        EEditorPanelCatalogError::DUPLICATE_CONTRIBUTION);
+                        EEditorPanelCatalogError::DUPLICATE_PANEL);
             }
         }
         return {};
@@ -150,7 +149,7 @@ namespace lux::editor
     }
 
     EditorPanelContributionDescriptor* EditorPanelCatalog::find(
-        lux::extensions::ContributionIdView id) noexcept
+        PanelIdView id) noexcept
     {
         const auto found = std::ranges::find_if(
             descriptors_,
@@ -162,7 +161,7 @@ namespace lux::editor
     }
 
     const EditorPanelContributionDescriptor* EditorPanelCatalog::find(
-        lux::extensions::ContributionIdView id) const noexcept
+        PanelIdView id) const noexcept
     {
         const auto found = std::ranges::find_if(
             descriptors_,
@@ -190,7 +189,7 @@ namespace lux::editor
 
             [[nodiscard]] EditorToolTicket submit(
                 ECommandKind kind,
-                lux::extensions::ContributionIdView id,
+                PanelIdView id,
                 bool visible)
             {
                 const auto generation = next_generation.fetch_add(
@@ -198,7 +197,7 @@ namespace lux::editor
                     std::memory_order_relaxed);
                 EditorToolCommand command{
                     kind,
-                    lux::extensions::ContributionId{id.name()},
+                    PanelId{id.name()},
                     visible,
                     generation};
                 auto ticket = command.publisher.ticket();
@@ -210,7 +209,7 @@ namespace lux::editor
                 if (!id.isValid())
                 {
                     command.publisher.fail(
-                        EEditorToolError::UNKNOWN_CONTRIBUTION);
+                        EEditorToolError::UNKNOWN_PANEL);
                     return ticket;
                 }
                 auto count = queued.fetch_add(1u, std::memory_order_acq_rel);
@@ -244,7 +243,7 @@ namespace lux::editor
     {}
 
     EditorToolTicket EditorTools::requestOpen(
-        lux::extensions::ContributionIdView id) const
+        PanelIdView id) const
     {
         if (endpoint_)
             return endpoint_->submit(ECommandKind::OPEN, id, true);
@@ -255,7 +254,7 @@ namespace lux::editor
     }
 
     EditorToolTicket EditorTools::requestVisible(
-        lux::extensions::ContributionIdView id,
+        PanelIdView id,
         bool visible) const
     {
         if (endpoint_)
@@ -267,7 +266,7 @@ namespace lux::editor
     }
 
     EditorToolTicket EditorTools::requestDeactivate(
-        lux::extensions::ContributionIdView id) const
+        PanelIdView id) const
     {
         if (endpoint_)
             return endpoint_->submit(ECommandKind::DEACTIVATE, id, false);
@@ -298,7 +297,7 @@ namespace lux::editor
             // The module lease is declared first and therefore destroyed last.
             // Panel vtables and the UI registration disappear before code can.
             lux::extensions::ModuleLease module;
-            lux::extensions::ContributionId id;
+            PanelId id;
             std::unique_ptr<lux::ui::Panel> panel;
             lux::ui::PanelRegistration registration;
             std::uint64_t generation{0u};
@@ -319,7 +318,7 @@ namespace lux::editor
         {}
 
         [[nodiscard]] std::size_t findActive(
-            lux::extensions::ContributionIdView id) const noexcept
+            PanelIdView id) const noexcept
         {
             for (std::size_t index = 0u; index < active.size(); ++index)
                 if (sameId(active[index]->id, id))
@@ -360,7 +359,7 @@ namespace lux::editor
                 if (!descriptor)
                 {
                     command.publisher.fail(
-                        EEditorToolError::UNKNOWN_CONTRIBUTION);
+                        EEditorToolError::UNKNOWN_PANEL);
                     return;
                 }
                 for (const auto service : descriptor->required_editor_services)
@@ -482,7 +481,7 @@ namespace lux::editor
         std::size_t processed = 0u;
         EditorToolCommand command{
             ECommandKind::OPEN,
-            lux::extensions::ContributionId{},
+            PanelId{},
             false,
             0u};
         while (processed < budget && impl_->endpoint->queue.try_dequeue(command))
@@ -513,7 +512,7 @@ namespace lux::editor
     }
 
     lux::ui::Panel* EditorToolHost::activePanel(
-        lux::extensions::ContributionIdView id) noexcept
+        PanelIdView id) noexcept
     {
         const auto index = impl_->findActive(id);
         return index == impl_->active.size()
@@ -529,7 +528,7 @@ namespace lux::editor
         impl_->endpoint->host.store(nullptr, std::memory_order_release);
         EditorToolCommand command{
             ECommandKind::OPEN,
-            lux::extensions::ContributionId{},
+            PanelId{},
             false,
             0u};
         while (impl_->endpoint->queue.try_dequeue(command))

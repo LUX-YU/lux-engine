@@ -4,6 +4,7 @@
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/ecs/TypeToken.hpp>
 #include <lux/engine/editor/visibility.h>
+#include <lux/engine/editor/PanelId.hpp>
 #include <lux/engine/runtime/extensions/ModuleLifetime.hpp>
 #include <lux/engine/runtime/extensions/OperationTicket.hpp>
 #include <lux/engine/core/extension_abi/StableId.hpp>
@@ -122,7 +123,7 @@ namespace lux::editor
         EditorPanelContributionDescriptor& operator=(
             EditorPanelContributionDescriptor&&) noexcept = default;
 
-        lux::extensions::ContributionId id;
+        PanelId id;
         std::string display_name;
         bool default_visible{true};
         /// Some process-composition panels are borrowed by long-lived
@@ -142,7 +143,7 @@ namespace lux::editor
     enum class EEditorPanelCatalogError : std::uint8_t
     {
         INVALID_DESCRIPTOR,
-        DUPLICATE_CONTRIBUTION,
+        DUPLICATE_PANEL,
         ID_COLLISION,
         MISSING_CREATE_CALLBACK
     };
@@ -159,9 +160,9 @@ namespace lux::editor
         [[nodiscard]] lux::cxx::expected<void, EEditorPanelCatalogError>
         addBatch(std::vector<EditorPanelContributionDescriptor> descriptors);
         [[nodiscard]] EditorPanelContributionDescriptor* find(
-            lux::extensions::ContributionIdView id) noexcept;
+            PanelIdView id) noexcept;
         [[nodiscard]] const EditorPanelContributionDescriptor* find(
-            lux::extensions::ContributionIdView id) const noexcept;
+            PanelIdView id) const noexcept;
         [[nodiscard]] std::span<const EditorPanelContributionDescriptor> all()
             const noexcept;
 
@@ -185,7 +186,7 @@ namespace lux::editor
         NONE,
         QUEUE_FULL,
         STOPPING,
-        UNKNOWN_CONTRIBUTION,
+        UNKNOWN_PANEL,
         REQUIRED_SERVICE_MISSING,
         CREATE_FAILED,
         UI_REGISTRATION_FAILED,
@@ -195,7 +196,7 @@ namespace lux::editor
 
     struct EditorToolResult final
     {
-        lux::extensions::ContributionId contribution;
+        PanelId panel;
         std::uint64_t generation{0u};
         bool active{false};
         bool visible{false};
@@ -208,7 +209,7 @@ namespace lux::editor
 
     struct EditorToolStateChanged final
     {
-        lux::extensions::ContributionId contribution;
+        PanelId panel;
         std::uint64_t generation{0u};
         bool active{false};
         bool visible{false};
@@ -216,7 +217,7 @@ namespace lux::editor
 
     struct EditorToolSnapshot final
     {
-        lux::extensions::ContributionId contribution;
+        PanelId panel;
         std::string display_name;
         bool default_visible{true};
         bool active{false};
@@ -234,12 +235,12 @@ namespace lux::editor
         EditorTools() noexcept = default;
 
         [[nodiscard]] EditorToolTicket requestOpen(
-            lux::extensions::ContributionIdView id) const;
+            PanelIdView id) const;
         [[nodiscard]] EditorToolTicket requestVisible(
-            lux::extensions::ContributionIdView id,
+            PanelIdView id,
             bool visible) const;
         [[nodiscard]] EditorToolTicket requestDeactivate(
-            lux::extensions::ContributionIdView id) const;
+            PanelIdView id) const;
         [[nodiscard]] std::vector<EditorToolSnapshot> snapshot() const;
         [[nodiscard]] explicit operator bool() const noexcept;
 
@@ -279,7 +280,7 @@ namespace lux::editor
             std::size_t budget = 32u) noexcept;
         [[nodiscard]] std::vector<EditorToolSnapshot> snapshot() const;
         [[nodiscard]] lux::ui::Panel* activePanel(
-            lux::extensions::ContributionIdView id) noexcept;
+            PanelIdView id) noexcept;
         [[nodiscard]] std::size_t close() noexcept;
 
     private:

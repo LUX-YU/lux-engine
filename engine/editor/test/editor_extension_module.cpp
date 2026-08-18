@@ -46,7 +46,7 @@ luxRegisterEditorContributionsV4(
     lux::extensions::EditorContributionRegistrar& registrar) noexcept
 {
     lux::editor::EditorPanelContributionDescriptor panel;
-    panel.id = lux::extensions::ContributionId{
+    panel.id = lux::editor::PanelId{
         "org.lux.test.editor-module.panel"};
     panel.display_name = "Cross-module fixture";
     panel.create = [](const lux::editor::EditorPanelCreateContext&)

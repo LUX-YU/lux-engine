@@ -320,7 +320,7 @@ namespace lux::editor
                             &visible))
                     {
                         (void)tools.requestVisible(
-                            panel.contribution.view(),
+                            panel.panel.view(),
                             visible);
                     }
                 }

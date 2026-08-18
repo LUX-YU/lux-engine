@@ -71,9 +71,9 @@ namespace lux::editor
             if (!panel.active)
                 continue;
             const auto it = saved.find(
-                std::string{panel.contribution.name()});
+                std::string{panel.panel.name()});
             (void)tools_.facade().requestVisible(
-                panel.contribution.view(),
+                panel.panel.view(),
                 it != saved.end() ? it->second : panel.default_visible);
         }
         (void)tools_.processSafePoint();
@@ -93,7 +93,7 @@ namespace lux::editor
              "# <id>=<0|1>; a window not listed here uses its built-in default.\n";
         for (const auto& panel : tools_.snapshot())
             if (panel.active)
-                f << panel.contribution.name() << '='
+                f << panel.panel.name() << '='
                   << (panel.visible ? '1' : '0') << '\n';
     }
 

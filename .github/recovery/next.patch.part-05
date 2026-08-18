@@ -1,0 +1,220 @@
+         // deferred queue instead.
+-        if (!graph_->hasNode(node.id))
++        if (!graph_.hasNode(node.id))
+         {
+             return;
+         }
+-        ff::Node* n = graph_->getNode(node.id).node.get();
++        ff::Node* n = graph_.getNode(node.id).node.get();
+         for (ff::Pin* p : n->inPins())
+         {
+             if (p->kind() != ff::EPinKind::DATA_IN)
+@@ -570,8 +570,17 @@ namespace lux::editor
+ 
+     FlowGraphPanel::FlowGraphPanel(
+         std::string title,
+-        FlowGraphPanelContext context)
+-        : Panel(std::move(title)), context_(std::move(context))
++        AssetRegistry& asset_registry,
++        std::shared_ptr<lux::asset::AssetManager> assets,
++        lux::events::DomainEvents& events,
++        lux::flowforge::NodeRegistry& nodes,
++        FlowGraphCompiler& compiler)
++        : Panel(std::move(title)),
++          asset_registry_(asset_registry),
++          assets_(std::move(assets)),
++          events_(events),
++          registry_(nodes),
++          compiler_(compiler)
+     {
+         // Make Print creatable from the palette too (the builtin registry only
+         // carries the control-flow nodes).
+@@ -669,8 +678,8 @@ namespace lux::editor
+     bool FlowGraphPanel::saveAsAsset(const std::string& name, std::string* err)
+     {
+         const auto fail = [&](std::string m) { if (err) *err = std::move(m); return false; };
+-        if (!context_.asset_manager) return fail("asset services unavailable");
+-        if (context_.asset_registry.root().empty())
++        if (!assets_) return fail("asset services unavailable");
++        if (asset_registry_.root().empty())
+             return fail("no project open");
+         if (name.empty()) return fail("name required");
+ 
+@@ -682,7 +691,7 @@ namespace lux::editor
+                 graph_, payload->graph, &cerr_msg))
+             return fail("graph is not serializable: " + cerr_msg);
+ 
+-        auto asset = context_.asset_manager->createAssetSeeded<lux::authoring::FlowGraphAsset>(
++        auto asset = assets_->createAssetSeeded<lux::authoring::FlowGraphAsset>(
+             /*seed=*/std::string_view{}, std::move(payload));
+         if (auto* mi = asset->mutableInfo(); mi)
+         {
+@@ -691,35 +700,35 @@ namespace lux::editor
+             mi->display_name[n] = '\0';
+         }
+         const auto id = asset->id();
+-        if (!context_.asset_manager->registerAsset(std::move(asset)))
++        if (!assets_->registerAsset(std::move(asset)))
+             return fail("registerAsset failed (id collision?)");
+ 
+         const std::filesystem::path dest =
+-            context_.asset_registry.root() / "FlowGraphs" / (name + ".luxasset");
+-        lux::authoring::FlowGraphSerDeser ser(context_.asset_manager);
++            asset_registry_.root() / "FlowGraphs" / (name + ".luxasset");
++        lux::authoring::FlowGraphSerDeser ser(assets_);
+         if (const auto ec = ser.exportAsLuxAsset(id, dest);
+             ec != lux::asset::EAssetError::SUCCESS)
+             return fail("write failed (err=" + std::to_string(static_cast<int>(ec)) + ")");
+ 
+-        context_.events.publish(EditorAssetChanged{
++        events_.publish(EditorAssetChanged{
+             id,
+             EEditorAssetChange::ADDED,
+-            context_.asset_manager->contentRevision(id),
++            assets_->contentRevision(id),
+             dest
+         });
+         // Background precompile on save: warm the AOT cache so the next Play
+         // of this graph hits a ready dll instead of the sync-compile fallback.
+-        context_.compiler.precompile(*context_.asset_manager, id);
++        compiler_.precompile(*assets_, id);
+         return true;
+     }
+ 
+     void FlowGraphPanel::openAsset(const lux::asset::asset_id_t& id)
+     {
+-        if (!context_.asset_manager || id.is_nil()) return;
+-        const auto* info = context_.asset_manager->queryInfo(id);
++        if (!assets_ || id.is_nil()) return;
++        const auto* info = assets_->queryInfo(id);
+         if (!info || info->type != lux::asset::EAssetType::FLOW_GRAPH) return;
+         const auto* a =
+-            context_.asset_manager->fetchAssetAs<lux::authoring::FlowGraphAsset>(id);
++            assets_->fetchAssetAs<lux::authoring::FlowGraphAsset>(id);
+         if (!a || !a->data()) return;
+ 
+         // The asset OWNS the graph — clone it into an editable working copy
+diff --git a/engine/editor/src/panels/FlowGraphPanel.hpp b/engine/editor/src/panels/FlowGraphPanel.hpp
+index d52b0b5..feae95f 100644
+--- a/engine/editor/src/panels/FlowGraphPanel.hpp
++++ b/engine/editor/src/panels/FlowGraphPanel.hpp
+@@ -14,9 +14,13 @@
+ //  not installed).
+ // ============================================================================
+ 
++#include <cstdint>
+ #include <functional>
+ #include <memory>
++#include <optional>
++#include <span>
+ #include <string>
++#include <string_view>
+ #include <vector>
+ 
+ #include <lux/engine/resource/asset/Asset.hpp>   // asset_id_t, EAssetType
+@@ -24,7 +28,7 @@
+ #include <lux/engine/authoring/flowforge/FlowGraph.hpp>
+ #include <lux/engine/authoring/flowforge/NodeRegistry.hpp>
+ #include <lux/engine/editor/framework/graphkit/GraphEditor.hpp>
+-#include "script/FlowForgeCompilerService.hpp"
++#include "flow/FlowGraphCompiler.hpp"
+ #include <lux/engine/ui/Panel.hpp>
+ 
+ #if LUX_FLOWFORGE_HAS_MLIR
+@@ -37,14 +41,6 @@ namespace lux::editor
+ {
+     class AssetRegistry;
+ 
+-    struct FlowGraphPanelContext final
+-    {
+-        AssetRegistry&                            asset_registry;
+-        std::shared_ptr<lux::asset::AssetManager> asset_manager;
+-        lux::events::DomainEvents&                events;
+-        FlowForgeCompilerService&                 compiler;
+-    };
+-
+     /// IGraphView adapter over a borrowed flowforge::FlowGraph.
+     ///  - GraphNodeRef.id  = the FlowGraph sparse-set INDEX (NodeStorage.index;
+     ///    recycled on delete — the GraphKit bimap purges eagerly).
+@@ -59,7 +55,7 @@ namespace lux::editor
+     public:
+         FlowGraphView(lux::flowforge::FlowGraph& graph,
+                       lux::flowforge::NodeRegistry& registry)
+-            : graph_(&graph), registry_(&registry)
++            : graph_(graph), registry_(registry)
+         {
+         }
+ 
+@@ -91,8 +87,8 @@ namespace lux::editor
+         lux::flowforge::Pin* pinAt(lux::graphkit::GraphPinRef ref) const;
+ 
+     private:
+-        lux::flowforge::FlowGraph*    graph_;
+-        lux::flowforge::NodeRegistry* registry_;
++        lux::flowforge::FlowGraph&    graph_;
++        lux::flowforge::NodeRegistry& registry_;
+     };
+ 
+     /// IGraphSchema adapter: connection legality DELEGATES to the existing
+@@ -105,7 +101,7 @@ namespace lux::editor
+     public:
+         FlowSchema(lux::flowforge::FlowGraph& graph, lux::flowforge::NodeRegistry& registry,
+                    FlowGraphView& view)
+-            : graph_(&graph), registry_(&registry), view_(&view)
++            : graph_(graph), registry_(registry), view_(view)
+         {
+         }
+ 
+@@ -128,9 +124,9 @@ namespace lux::editor
+                           lux::graphkit::DeferredPopupQueue& popups) override;
+ 
+     private:
+-        lux::flowforge::FlowGraph*    graph_;
+-        lux::flowforge::NodeRegistry* registry_;
+-        FlowGraphView*                view_;
++        lux::flowforge::FlowGraph&    graph_;
++        lux::flowforge::NodeRegistry& registry_;
++        FlowGraphView&                view_;
+ 
+         mutable std::vector<lux::graphkit::NodeTemplate> palette_cache_;
+         mutable std::vector<lux::graphkit::NodeAction>   actions_cache_;
+@@ -139,7 +135,13 @@ namespace lux::editor
+     class FlowGraphPanel : public lux::ui::Panel
+     {
+     public:
+-        FlowGraphPanel(std::string title, FlowGraphPanelContext context);
++        FlowGraphPanel(
++            std::string title,
++            AssetRegistry& asset_registry,
++            std::shared_ptr<lux::asset::AssetManager> assets,
++            lux::events::DomainEvents& events,
++            lux::flowforge::NodeRegistry& nodes,
++            FlowGraphCompiler& compiler);
+         ~FlowGraphPanel() override;
+ 
+         /// The graph the MLIR compiler consumes (generateIR reads the SSOT
+@@ -166,12 +168,15 @@ namespace lux::editor
+         bool saveAsAsset(const std::string& name, std::string* err);
+         void drawSavePopup();
+ 
+-        FlowGraphPanelContext         context_;
+-        lux::flowforge::FlowGraph     graph_;
+-        // The PROCESS-WIDE registry: the graph serializer re-instantiates
+-        // native-call nodes by creator name through NodeRegistry::global(),
+-        // so the panel registers its natives there (not in a private copy).
+-        lux::flowforge::NodeRegistry& registry_ = lux::flowforge::NodeRegistry::global();
++        AssetRegistry&                            asset_registry_;
++        std::shared_ptr<lux::asset::AssetManager> assets_;
++        lux::events::DomainEvents&                events_;
++        lux::flowforge::NodeRegistry&             registry_;
++        FlowGraphCompiler&                        compiler_;
++
++        lux::flowforge::FlowGraph graph_;
++        // The composition root supplies the process registry used by the
++        // current FlowGraph codec. The panel never reaches a global registry.
+         FlowGraphView                 view_{ graph_, registry_ };
+         FlowSchema                    schema_{ graph_, registry_, view_ };
+         lux::graphkit::GraphEditor    editor_;
+diff --git a/engine/editor/src/script/FlowForgeCompilerService.hpp b/engine/editor/src/script/FlowForgeCompilerService.hpp
+deleted file mode 100644
+index 0dc0293..0000000

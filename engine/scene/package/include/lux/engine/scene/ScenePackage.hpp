@@ -10,7 +10,7 @@
 
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/cxx/core/StableNameId.hpp>
-#include <lux/engine/extensions/ExtensionAbi.hpp>
+#include <lux/engine/extensions/ExtensionId.hpp>
 #include <lux/engine/ecs/ComponentSchemaId.hpp>
 #include <lux/engine/ecs/scene_format/Identifiers.hpp>
 #include <lux/engine/scene/SceneFeatureId.hpp>
@@ -38,13 +38,13 @@ namespace lux::scene
     [[nodiscard]] constexpr lux::cxx::StableNameIdView<DemandChannelIdTag>
     demandChannelId(std::string_view name) noexcept
     {
-        return {name};
+        return lux::cxx::StableNameIdView<DemandChannelIdTag>{name};
     }
 
     [[nodiscard]] constexpr lux::cxx::StableNameIdView<SectionGeneratorIdTag>
     sectionGeneratorId(std::string_view name) noexcept
     {
-        return {name};
+        return lux::cxx::StableNameIdView<SectionGeneratorIdTag>{name};
     }
 
     enum class SectionCompression : std::uint8_t

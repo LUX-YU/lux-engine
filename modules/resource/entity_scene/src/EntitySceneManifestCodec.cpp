@@ -327,8 +327,10 @@ namespace lux::entity_scene
     {
         const auto valid = validateEntitySceneManifest(manifest, limits);
         if (!valid)
+        {
             return lux::cxx::unexpected(valid.error());
-            const auto names = manifestNames(manifest);
+        }
+        const auto names = manifestNames(manifest);
             if (names.size() > limits.maximum_names)
             {
                 return lux::cxx::unexpected(failure(

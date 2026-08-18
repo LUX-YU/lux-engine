@@ -24,10 +24,14 @@
 
 #include <lux/engine/resource/asset/Asset.hpp>                 // asset_id_t
 #include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/runtime/execution/AsyncOperation.hpp>
+#include "app/EditorAsyncTypes.hpp"
 
 #include <filesystem>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace lux::asset { class AssetManager; }
 
@@ -43,6 +47,52 @@ namespace lux::editor
         bool ok{false};
     };
 
+    struct CompileFlowForgeOperation final
+    {
+        using Value = FlowForgeCompileResult;
+        using Error = EEditorAsyncError;
+
+        std::shared_ptr<const FlowForgeCompileJob> job;
+    };
+
+    class FlowForgeCompileClient final
+    {
+    public:
+        using Completion = lux::cxx::move_only_function<void(
+            lux::exec::AsyncOutcome<CompileFlowForgeOperation>)>;
+
+        FlowForgeCompileClient() noexcept = default;
+
+        [[nodiscard]] bool submit(
+            CompileFlowForgeOperation operation,
+            Completion completion) const;
+
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return submit_ != nullptr;
+        }
+
+    private:
+        using SubmitFn = bool(*)(
+            void*,
+            CompileFlowForgeOperation,
+            Completion);
+
+        FlowForgeCompileClient(
+            std::shared_ptr<void> owner,
+            void* context,
+            SubmitFn submit) noexcept
+            : owner_(std::move(owner)), context_(context), submit_(submit)
+        {
+        }
+
+        friend class EditorAsyncService;
+
+        std::shared_ptr<void> owner_;
+        void*                context_{nullptr};
+        SubmitFn             submit_{nullptr};
+    };
+
     /// Pure worker entry point. The job owns its graph and cache-directory
     /// snapshot; this function never touches AssetManager, ECS, UI or the
     /// backend's main-thread state.
@@ -55,19 +105,18 @@ namespace lux::editor
         /// @param cache_dir The AOT cache directory (…/.lux/cache/flowforge).
         ///                  Created on first use; empty = cache disabled and
         ///                  every graph-script Play fails loudly.
-        explicit FlowForgeCompilerService(std::filesystem::path cache_dir);
+        /// @param compile_client The typed editor operation client. Its
+        ///                  admission closes with EditorAsyncService.
+        explicit FlowForgeCompilerService(
+            std::filesystem::path cache_dir,
+            FlowForgeCompileClient compile_client
+        );
+        
         ~FlowForgeCompilerService();
 
         /// 重指缓存目录(openProject → <工程根>/.lux/cache/flowforge)。主线程调;
         /// 在途的后台编译按取任务时的快照落旧目录(无害,冷缓存)。
         void setCacheDir(std::filesystem::path dir);
-
-        /// Single-consumer command seam installed by the composition root.
-        /// The job is an owning immutable snapshot and the dispatch must return
-        /// without waiting. Empty dispatch means precompile admission is closed.
-        using PrecompileDispatch = lux::cxx::move_only_function<bool(
-            std::shared_ptr<const FlowForgeCompileJob>)>;
-        void setPrecompileDispatch(PrecompileDispatch dispatch);
 
         /// MainThreadScheduler completion target. Updates only coordinator-derived
         /// main-thread bookkeeping; failed stems are remembered until content
@@ -78,12 +127,11 @@ namespace lux::editor
         /// asset and queue a background compile+link on a cache miss. No-op on
         /// hit / unloadable asset / MLIR off.
         /// @param assets The manager to resolve @p id through (the panel's).
-        void precompile(lux::asset::AssetManager&     assets,
-                        const lux::asset::asset_id_t& id);
+        void precompile(lux::asset::AssetManager& assets, const lux::asset::asset_id_t& id);
 
     private:
-        friend FlowForgeCompileResult compileFlowForgeJob(
-            const FlowForgeCompileJob& job) noexcept;
+        friend FlowForgeCompileResult compileFlowForgeJob(const FlowForgeCompileJob& job) noexcept;
+
         struct Impl;                    // MLIR + cache guts — pimpl keeps the
         std::unique_ptr<Impl> impl_;    // compiler out of every includer
     };

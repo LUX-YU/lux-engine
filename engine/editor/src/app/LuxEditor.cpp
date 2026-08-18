@@ -219,46 +219,36 @@ namespace lux::editor
         // Must be destroyed last: every catalogue descriptor, factory,
         // active panel and operation can carry a ModuleLease.
         lux::extensions::ExtensionModuleManager                 extension_modules_;
-        lux::ecs::ComponentTypeCatalog                         component_types_;
-        lux::runtime::SceneContributionCatalog                       scene_contribution_catalog_;
+        lux::ecs::ComponentTypeCatalog                          component_types_;
+        lux::runtime::SceneContributionCatalog                  scene_contribution_catalog_;
         std::unique_ptr<lux::events::DomainEvents>              events_;
-        lux::events::EventPump*                             frame_pump_{nullptr};
-        lux::events::EventPump*                             ui_pump_{nullptr};
+        lux::events::EventPump*                                 frame_pump_{nullptr};
+        lux::events::EventPump*                                 ui_pump_{nullptr};
 
         // Already stopped by LuxEditor::shutdown(); its storage intentionally
         // outlives window/GLFW just as in the previous explicit teardown order.
-        std::unique_ptr<
-            lux::runtime::RenderBackendHost<lux::ui::UIRenderServer>
-        > render_thread_host_;
+        using RenderBackend = lux::runtime::RenderBackendHost<lux::ui::UIRenderServer>;
+        std::unique_ptr<RenderBackend>                          render_thread_host_;
 
-        std::unique_ptr<lux::window::GlfwRuntime>           glfw_;
-        std::unique_ptr<lux::window::LuxWindow>             window_;
+        std::unique_ptr<lux::window::GlfwRuntime>               glfw_;
+        std::unique_ptr<lux::window::LuxWindow>                 window_;
 
-        std::shared_ptr<lux::asset::AssetManager>           asset_mgr_;
-        std::unique_ptr<lux::exec::AsyncRuntime>            async_;
+        std::shared_ptr<lux::asset::AssetManager>               asset_mgr_;
+        std::unique_ptr<lux::exec::AsyncRuntime>                async_;
         std::unique_ptr<lux::runtime::AsyncRenderUploadService>
-                                                            upload_service_;
-        std::unique_ptr<lux::logging::LogRouter>               log_router_;
-        std::unique_ptr<lux::asset_runtime::AssetLoadService>
-                                                             asset_load_;
-        std::unique_ptr<lux::runtime::entity_scene::EntitySectionService>
-                                                             entity_sections_;
-        std::unique_ptr<lux::runtime::SceneGeometryPrepareService>
-                                                     geometry_preparation_;
-        std::unique_ptr<
-            lux::runtime::spatial3d::Navigation3DPrepareService>
-                                                    navigation_preparation_;
-        std::unique_ptr<
-            lux::runtime::spatial3d::StaticCollider3DPrepareService>
-                                                       physics_preparation_;
-        std::unique_ptr<
-            lux::runtime::spatial2d::TilemapPrepareService>
-                                                        tilemap_preparation_;
-        std::unique_ptr<EditorAsyncService>                  editor_async_;
-        std::unique_ptr<lux::ui::UISystem>                  ui_system_;
-        std::unique_ptr<lux::ui::UIRenderFrameSession>           session_;
-        std::unique_ptr<lux::runtime::FrameCoordinator>      frame_coordinator_;
-        std::unique_ptr<lux::runtime::MainCloseDriver>       close_driver_;
+                                                                upload_service_;
+        std::unique_ptr<lux::logging::LogRouter>                log_router_;
+        std::unique_ptr<lux::asset_runtime::AssetLoadService>   asset_load_;
+        std::unique_ptr<lux::runtime::entity_scene::EntitySectionService> entity_sections_;
+        std::unique_ptr<lux::runtime::SceneGeometryPrepareService> geometry_preparation_;
+        std::unique_ptr<lux::runtime::spatial3d::Navigation3DPrepareService> navigation_preparation_;
+        std::unique_ptr<lux::runtime::spatial3d::StaticCollider3DPrepareService> physics_preparation_;
+        std::unique_ptr<lux::runtime::spatial2d::TilemapPrepareService>     tilemap_preparation_;
+        std::unique_ptr<EditorAsyncService>                     editor_async_;
+        std::unique_ptr<lux::ui::UISystem>                      ui_system_;
+        std::unique_ptr<lux::ui::UIRenderFrameSession>          session_;
+        std::unique_ptr<lux::runtime::FrameCoordinator>         frame_coordinator_;
+        std::unique_ptr<lux::runtime::MainCloseDriver>          close_driver_;
 
         // Process-domain render resources. Preview hosts are declared after
         // these services and therefore disappear before them.
@@ -292,7 +282,7 @@ namespace lux::editor
         // Values containing closures/subscriptions are last so their captures
         // are released before any target above.
         SpawnRegistry                                       spawn_registry_;
-        std::unique_ptr<FlowForgeCompilerService>             flowforge_compiler_;
+        std::unique_ptr<FlowForgeCompilerService>           flowforge_compiler_;
         std::vector<std::function<void()>>                  pending_actions_;
         ToastQueue                                          toasts_;
         lux::events::SubscriptionGroup                      subs_;
@@ -427,10 +417,6 @@ namespace lux::editor
         //     就把它搬到 <工程根>/.lux/cache/flowforge(此前恒落 cwd 是被已删的
         //     EditorConfig::project_root 恒空字段藏住的缺口,清理批补上重指)。
         registerBuiltinDemoScripts(runtime_->component_types_);
-        runtime_->flowforge_compiler_ =
-            std::make_unique<FlowForgeCompilerService>(
-                std::filesystem::current_path() / ".lux" / "cache" / "flowforge");
-
         // 2. GLFW + window.
         runtime_->glfw_ = std::make_unique<lux::window::GlfwRuntime>();
         if (!runtime_->glfw_->valid())
@@ -528,9 +514,7 @@ namespace lux::editor
         //     next drainMainThreadCompletions() (run() pumps it each frame). Created here so its
         //     requestLoad closure is available when loadScene builds an EditorScene.
         lux::exec::AsyncRuntimeBuilder async_builder;
-        auto asset_load = lux::asset_runtime::AssetLoadService::addTo(
-            async_builder,
-            *runtime_->asset_mgr_);
+        auto asset_load = lux::asset_runtime::AssetLoadService::addTo(async_builder, *runtime_->asset_mgr_);
         if (!asset_load)
         {
             std::fprintf(stderr, "[LuxEditor] asset async assembly failed\n");
@@ -572,18 +556,17 @@ namespace lux::editor
             shutdown();
             return false;
         }
-        auto navigation_preparation = lux::runtime::spatial3d::
-            Navigation3DPrepareService::addTo(async_builder);
+        auto navigation_preparation = lux::runtime::spatial3d::Navigation3DPrepareService::addTo(async_builder);
         if (!navigation_preparation)
         {
             std::fprintf(
                 stderr,
-                "[LuxEditor] navigation preparation assembly failed\n");
+                "[LuxEditor] navigation preparation assembly failed\n"
+            );
             shutdown();
             return false;
         }
-        auto physics_preparation = lux::runtime::spatial3d::
-            StaticCollider3DPrepareService::addTo(async_builder);
+        auto physics_preparation = lux::runtime::spatial3d::StaticCollider3DPrepareService::addTo(async_builder);
         if (!physics_preparation)
         {
             std::fprintf(
@@ -592,8 +575,7 @@ namespace lux::editor
             shutdown();
             return false;
         }
-        auto tilemap_preparation = lux::runtime::spatial2d::
-            TilemapPrepareService::addTo(async_builder);
+        auto tilemap_preparation = lux::runtime::spatial2d::TilemapPrepareService::addTo(async_builder);
         if (!tilemap_preparation)
         {
             std::fprintf(
@@ -609,13 +591,9 @@ namespace lux::editor
             shutdown();
             return false;
         }
-        runtime_->async_ = std::make_unique<lux::exec::AsyncRuntime>(
-            std::move(*async_plan));
-        runtime_->upload_service_ = std::make_unique<
-            lux::runtime::AsyncRenderUploadService>(
-                std::move(*upload_service));
-        runtime_->log_router_ = std::make_unique<lux::logging::LogRouter>(
-            *runtime_->async_);
+        runtime_->async_                        = std::make_unique<lux::exec::AsyncRuntime>(std::move(*async_plan));
+        runtime_->upload_service_               = std::make_unique<lux::runtime::AsyncRenderUploadService>(std::move(*upload_service));
+        runtime_->log_router_                   = std::make_unique<lux::logging::LogRouter>(*runtime_->async_);
         runtime_->log_router_->install(
             [this](const lux::log::LogRecord& record)
             {
@@ -627,65 +605,57 @@ namespace lux::editor
                 runtime_->toasts_.push(
                     std::string(message, length),
                     ToastLevel::Error);
-            });
-        runtime_->asset_load_ = std::make_unique<
-            lux::asset_runtime::AssetLoadService>(
-                std::move(*asset_load));
-        runtime_->entity_sections_ = std::make_unique<
-            lux::runtime::entity_scene::EntitySectionService>(
-                std::move(*entity_sections));
-        runtime_->geometry_preparation_ = std::make_unique<
-            lux::runtime::SceneGeometryPrepareService>(
-                std::move(*geometry_preparation));
-        runtime_->navigation_preparation_ = std::make_unique<
-            lux::runtime::spatial3d::Navigation3DPrepareService>(
-                std::move(*navigation_preparation));
-        runtime_->physics_preparation_ = std::make_unique<
-            lux::runtime::spatial3d::StaticCollider3DPrepareService>(
-                std::move(*physics_preparation));
-        runtime_->tilemap_preparation_ = std::make_unique<
-            lux::runtime::spatial2d::TilemapPrepareService>(
-                std::move(*tilemap_preparation));
-        runtime_->render_infra_.entity_sections =
-            runtime_->entity_sections_->loadClient();
-        runtime_->editor_async_ = std::make_unique<EditorAsyncService>(
-            std::move(*editor_async));
+            }
+        );
+        runtime_->asset_load_                   = std::make_unique<lux::asset_runtime::AssetLoadService>(std::move(*asset_load));
+        runtime_->entity_sections_              = std::make_unique<lux::runtime::entity_scene::EntitySectionService>(std::move(*entity_sections));
+        runtime_->geometry_preparation_         = std::make_unique<lux::runtime::SceneGeometryPrepareService>(std::move(*geometry_preparation));
+        runtime_->navigation_preparation_       = std::make_unique<lux::runtime::spatial3d::Navigation3DPrepareService>(std::move(*navigation_preparation));
+        runtime_->physics_preparation_          = std::make_unique<lux::runtime::spatial3d::StaticCollider3DPrepareService>(std::move(*physics_preparation));
+        runtime_->tilemap_preparation_          = std::make_unique<lux::runtime::spatial2d::TilemapPrepareService>(std::move(*tilemap_preparation));
+        runtime_->render_infra_.entity_sections =runtime_->entity_sections_->loadClient();
+        runtime_->editor_async_                 = std::make_unique<EditorAsyncService>(std::move(*editor_async));
         runtime_->editor_async_->bind(*runtime_->async_);
+        runtime_->flowforge_compiler_ = std::make_unique<FlowForgeCompilerService>(
+            std::filesystem::current_path() / ".lux" / "cache" / "flowforge",
+            runtime_->editor_async_->flowForgeCompileClient()
+        );
 
-        runtime_->render_infra_.feature_catalog =
-            runtime_->render_thread_host_->featureCatalog();
-        runtime_->render_infra_.feature_plan =
-            runtime_->render_thread_host_->featurePlan();
-        runtime_->render_infra_.control =
-            &runtime_->render_thread_host_->controlSession();
-        runtime_->render_infra_.render_effect_catalog =
-            &runtime_->render_thread_host_->renderEffectCatalog();
-        runtime_->render_infra_.render_effect_types =
-            &runtime_->render_thread_host_->renderEffectTypes();
-        runtime_->render_infra_.scene_contribution_catalog =
-            &runtime_->scene_contribution_catalog_;
-        runtime_->render_infra_.extension_modules =
-            &runtime_->extension_modules_;
+        runtime_->render_infra_.feature_catalog = runtime_->render_thread_host_->featureCatalog();
+        runtime_->render_infra_.feature_plan    = runtime_->render_thread_host_->featurePlan();
+        runtime_->render_infra_.control         = &runtime_->render_thread_host_->controlSession();
+        runtime_->render_infra_.render_effect_catalog = &runtime_->render_thread_host_->renderEffectCatalog();
+        runtime_->render_infra_.render_effect_types = &runtime_->render_thread_host_->renderEffectTypes();
+        runtime_->render_infra_.scene_contribution_catalog = &runtime_->scene_contribution_catalog_;
+        runtime_->render_infra_.extension_modules = &runtime_->extension_modules_;
 
         runtime_->session_ = std::make_unique<lux::ui::UIRenderFrameSession>(
             runtime_->render_thread_host_->channel(),
             runtime_->render_thread_host_->sync(),
-            runtime_->imgui_ops_);
+            runtime_->imgui_ops_
+        );
+        
         lux::runtime::installRenderErrorLogging(
             *runtime_->session_,
             *runtime_->events_,
             *runtime_->frame_pump_,
-            runtime_->subs_);
+            runtime_->subs_
+        );
+
         runtime_->frame_coordinator_ =
             std::make_unique<lux::runtime::FrameCoordinator>(
                 *runtime_->session_,
                 runtime_->render_thread_host_->controlSession(),
                 *runtime_->frame_pump_,
-                *runtime_->async_);
+                *runtime_->async_
+            );
+
         runtime_->close_driver_ =
             std::make_unique<lux::runtime::MainCloseDriver>(
                 *runtime_->frame_coordinator_,
-                *runtime_->async_);
+                *runtime_->async_
+            );
+
         runtime_->render_infra_.close_driver = runtime_->close_driver_.get();
 
         if (!runtime_->upload_service_->bind(
@@ -721,8 +691,15 @@ namespace lux::editor
                 }
             }));
 
+        runtime_->asset_registry_ = std::make_unique<AssetRegistry>();
         runtime_->shell_ = std::make_unique<EditorShell>();
-        if (!runtime_->shell_->buildPanels(*this))
+        if (!runtime_->shell_->buildPanels(
+                *this,
+                FlowGraphPanelContext{
+                    *runtime_->asset_registry_,
+                    runtime_->asset_mgr_,
+                    *runtime_->events_,
+                    *runtime_->flowforge_compiler_}))
         {
             shutdown();
             return false;
@@ -750,35 +727,6 @@ namespace lux::editor
                             mg->onCompiled(request_id, std::move(*outcome));
                         });
                 });
-        }
-
-        // Background precompile on save warms the cook/export AOT cache.
-        if (runtime_->flowforge_compiler_)
-        {
-            runtime_->flowforge_compiler_->setPrecompileDispatch(
-                [this, compiler = runtime_->flowforge_compiler_.get()](
-                    std::shared_ptr<const FlowForgeCompileJob> job)
-                {
-                    return runtime_->editor_async_->compileFlowForge(
-                        CompileFlowForgeOperation{std::move(job)},
-                        [compiler](auto outcome) mutable noexcept
-                        {
-                            if (!outcome)
-                            {
-                                compiler->adoptPrecompileResult(
-                                    FlowForgeCompileResult{
-                                        .error = "FlowForge compile operation failed"});
-                                return;
-                            }
-                            compiler->adoptPrecompileResult(
-                                std::move(*outcome));
-                        });
-                });
-            runtime_->shell_->flowGraphPanel()->setPrecompileHook(
-                [compiler = runtime_->flowforge_compiler_.get()](
-                    lux::asset::AssetManager& mgr,
-                    const lux::asset::asset_id_t& id)
-                { compiler->precompile(mgr, id); });
         }
 
         // Create-menu wiring: the recipes live in runtime_->spawn_registry_
@@ -1150,13 +1098,6 @@ namespace lux::editor
             shutdown();
             return false;
         }
-
-        // Project asset index — the editor's "find any asset" foundation. The
-        // Inspector's asset-reference fields (material / mesh pickers + name
-        // resolution), the material-graph SampleTexture picker, and future
-        // global search all read it. Created unconditionally. Scanned at
-        // openProject; shell wiring below hands it to the consuming panels.
-        runtime_->asset_registry_ = std::make_unique<AssetRegistry>();
 
         // 7c. Live material-graph preview — the editor's SECOND private preview
         //     SceneRuntime (装配归属 ADR 工作线三批 2), brought up now (blocking
@@ -1802,14 +1743,12 @@ namespace lux::editor
     }
 
     // -------------------------------------------------------------------------
-    lux::exec::AsyncSubmitResult LuxEditor::spawnModelEntity(
-        lux::asset::asset_id_t model_id,
-        InstanceSpawnClient::Completion completion)
+    lux::exec::AsyncSubmitResult 
+    LuxEditor::spawnModelEntity(lux::asset::asset_id_t model_id, InstanceSpawnClient::Completion completion)
     {
         auto* scene = currentScene();
         if (!scene)
-            return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::STOPPING);
+            return lux::cxx::unexpected(lux::exec::EAsyncSubmitError::STOPPING);
         return scene->spawnModel(model_id, std::move(completion));
     }
 
@@ -1852,12 +1791,6 @@ namespace lux::editor
         if (runtime_->material_preview_)
             if (!runtime_->material_preview_->releaseGpu())
                 return;
-
-        // Close every producer that can enqueue work before the final render
-        // safe points. The backend outlives this Runtime, so its executor seam
-        // must be disconnected explicitly.
-        if (runtime_->flowforge_compiler_)
-            runtime_->flowforge_compiler_->setPrecompileDispatch({});
 
         // Built-in panels are owned by EditorToolHost. Destroy every
         // controller which borrows a panel before close() clears that host's

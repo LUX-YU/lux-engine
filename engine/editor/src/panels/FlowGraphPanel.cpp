@@ -568,8 +568,10 @@ namespace lux::editor
         }
     } // namespace
 
-    FlowGraphPanel::FlowGraphPanel(std::string title)
-        : Panel(std::move(title))
+    FlowGraphPanel::FlowGraphPanel(
+        std::string title,
+        FlowGraphPanelContext context)
+        : Panel(std::move(title)), context_(std::move(context))
     {
         // Make Print creatable from the palette too (the builtin registry only
         // carries the control-flow nodes).
@@ -664,21 +666,13 @@ namespace lux::editor
 
     FlowGraphPanel::~FlowGraphPanel() = default;
 
-    void FlowGraphPanel::setAssetServices(AssetRegistry* registry,
-                                          std::shared_ptr<lux::asset::AssetManager> manager,
-                                          lux::events::DomainEvents* events)
-    {
-        asset_registry_ = registry;
-        asset_manager_  = std::move(manager);
-        events_         = events;
-    }
-
     bool FlowGraphPanel::saveAsAsset(const std::string& name, std::string* err)
     {
         const auto fail = [&](std::string m) { if (err) *err = std::move(m); return false; };
-        if (!asset_manager_ || !asset_registry_) return fail("asset services not wired");
-        if (asset_registry_->root().empty())     return fail("no project open");
-        if (name.empty())                        return fail("name required");
+        if (!context_.asset_manager) return fail("asset services unavailable");
+        if (context_.asset_registry.root().empty())
+            return fail("no project open");
+        if (name.empty()) return fail("name required");
 
         // Deep-copy the working graph into the asset payload (FlowGraph is
         // move-only; the panel keeps editing its own copy).
@@ -688,7 +682,7 @@ namespace lux::editor
                 graph_, payload->graph, &cerr_msg))
             return fail("graph is not serializable: " + cerr_msg);
 
-        auto asset = asset_manager_->createAssetSeeded<lux::authoring::FlowGraphAsset>(
+        auto asset = context_.asset_manager->createAssetSeeded<lux::authoring::FlowGraphAsset>(
             /*seed=*/std::string_view{}, std::move(payload));
         if (auto* mi = asset->mutableInfo(); mi)
         {
@@ -697,38 +691,35 @@ namespace lux::editor
             mi->display_name[n] = '\0';
         }
         const auto id = asset->id();
-        if (!asset_manager_->registerAsset(std::move(asset)))
+        if (!context_.asset_manager->registerAsset(std::move(asset)))
             return fail("registerAsset failed (id collision?)");
 
         const std::filesystem::path dest =
-            asset_registry_->root() / "FlowGraphs" / (name + ".luxasset");
-        lux::authoring::FlowGraphSerDeser ser(asset_manager_);
+            context_.asset_registry.root() / "FlowGraphs" / (name + ".luxasset");
+        lux::authoring::FlowGraphSerDeser ser(context_.asset_manager);
         if (const auto ec = ser.exportAsLuxAsset(id, dest);
             ec != lux::asset::EAssetError::SUCCESS)
             return fail("write failed (err=" + std::to_string(static_cast<int>(ec)) + ")");
 
-        if (events_)
-        {
-            events_->publish(EditorAssetChanged{
-                id,
-                EEditorAssetChange::ADDED,
-                asset_manager_->contentRevision(id),
-                dest
-            });
-        }
+        context_.events.publish(EditorAssetChanged{
+            id,
+            EEditorAssetChange::ADDED,
+            context_.asset_manager->contentRevision(id),
+            dest
+        });
         // Background precompile on save: warm the AOT cache so the next Play
         // of this graph hits a ready dll instead of the sync-compile fallback.
-        if (precompile_hook_) precompile_hook_(*asset_manager_, id);
+        context_.compiler.precompile(*context_.asset_manager, id);
         return true;
     }
 
     void FlowGraphPanel::openAsset(const lux::asset::asset_id_t& id)
     {
-        if (!asset_manager_ || id.is_nil()) return;
-        const auto* info = asset_manager_->queryInfo(id);
+        if (!context_.asset_manager || id.is_nil()) return;
+        const auto* info = context_.asset_manager->queryInfo(id);
         if (!info || info->type != lux::asset::EAssetType::FLOW_GRAPH) return;
         const auto* a =
-            asset_manager_->fetchAssetAs<lux::authoring::FlowGraphAsset>(id);
+            context_.asset_manager->fetchAssetAs<lux::authoring::FlowGraphAsset>(id);
         if (!a || !a->data()) return;
 
         // The asset OWNS the graph — clone it into an editable working copy

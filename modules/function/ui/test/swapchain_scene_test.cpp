@@ -498,7 +498,7 @@ int main()
 
         // Drain replies + flush pending submission before starting new frame
         session->pumpReplies();
-        session->trySubmitFrame();
+        (void)session->trySubmitFrame();
 
         if (!session->beginFrame())
             continue;
@@ -598,7 +598,7 @@ int main()
     }
 
     // ── 9. Shutdown ──────────────────────────────────────────────────
-    session->trySubmitFrame();
+    (void)session->trySubmitFrame();
     sync->requestStop();
     render_thread.join();
     session.reset();

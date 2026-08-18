@@ -41,14 +41,20 @@ namespace lux::render
         template <class Reply>
         [[nodiscard]] Expected<Reply> syncCall(RenderRequest<Reply> request)
         {
-            if (!request.valid())
+            if (!request.valid()){
                 return renderFailure<err::comm::RequestInvalid>();
-            while (!request.isReady())
-                if (!waitAndPumpReplies())
+            }
+                
+            while (!request.isReady()){
+                if (!waitAndPumpReplies()){
                     return renderFailure<err::comm::ChannelStopping>();
+                }
+            }
+                
             auto result = request.tryResult();
-            if (!result)
+            if (!result){
                 return lux::cxx::unexpected<RenderError>(result.error());
+            }
             return result->get();
         }
 
@@ -65,8 +71,7 @@ namespace lux::render
         {
             const char*   name{""};
             std::uint32_t flags{0};
-            lux::common::ETextureFormat lit_color_format{
-                lux::common::ETextureFormat::RGBA16_SFLOAT};
+            lux::common::ETextureFormat lit_color_format{lux::common::ETextureFormat::RGBA16_SFLOAT};
             double coordinate_page_size{1024.0};
             std::int64_t scene_origin_page[3]{};
         };

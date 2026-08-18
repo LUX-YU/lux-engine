@@ -1,4 +1,4 @@
-#include <lux/engine/core/extension_abi/ModuleAbi.hpp>
+#include <lux/engine/extensions/ExtensionAbi.hpp>
 #include <lux/engine/editor/extensions/EditorContributionRegistrar.hpp>
 #include <lux/engine/ui/Panel.hpp>
 

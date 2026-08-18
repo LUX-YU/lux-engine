@@ -126,8 +126,8 @@ namespace lux::editor
     {
         /// Dedicated control-plane endpoint. Scene/view/target/feature
         /// lifetime operations are legal independently of the lexical frame.
-        lux::render::RenderControlSession* control{nullptr};
-        lux::render::RenderUploadClient    upload;
+        lux::render::RenderControlSession*          control{nullptr};
+        lux::render::RenderUploadClient             upload;
         lux::runtime::entity_scene::EntitySectionLoadClient entity_sections;
 
         // Name-keyed feature TYPE catalog: dynamic op-ids by name —
@@ -136,37 +136,36 @@ namespace lux::editor
         // Catalog declarations are cold-path mutable at the main-thread
         // RenderEffect activation safe point. Editor consumers otherwise hold
         // a const RenderInfra view and perform read-only lookups each frame.
-        mutable lux::render::FeatureCatalog feature_catalog;
+        mutable lux::render::FeatureCatalog         feature_catalog;
 
         /// Per-scene attach plan, in attach order (Light before Shadow, …).
         /// Plugins append their own feature here.
-        std::vector<lux::render::FeatureAttach> feature_plan;
+        std::vector<lux::render::FeatureAttach>     feature_plan;
 
         /// 进程域驻留三件套装配 —— **非拥有指针**(所有权在
         /// LuxEditor::Runtime::residency_,不可拷贝的对象不进这个值容器)。三个
         /// SceneRuntime 宿主从这里取,填进各自 SceneRuntime::Config::residency;
         /// 预览面板经它 request/peekReadyBits(贴图槽)。
-        lux::runtime::ResidencyAssembly* residency{nullptr};
-        lux::runtime::RenderEffectCatalog* render_effect_catalog{nullptr};
-        lux::runtime::RenderEffectTypeRegistry* render_effect_types{nullptr};
-        lux::runtime::SceneContributionCatalog*       scene_contribution_catalog{nullptr};
-        const lux::extensions::ExtensionModuleManager*
-                                               extension_modules{nullptr};
-        const lux::ecs::ComponentTypeCatalog*   components{nullptr};
+        lux::runtime::ResidencyAssembly*            residency{nullptr};
+        lux::runtime::RenderEffectCatalog*          render_effect_catalog{nullptr};
+        lux::runtime::RenderEffectTypeRegistry*     render_effect_types{nullptr};
+        lux::runtime::SceneContributionCatalog*     scene_contribution_catalog{nullptr};
+        const lux::extensions::ExtensionModuleManager* extension_modules{nullptr};
+        const lux::ecs::ComponentTypeCatalog*       components{nullptr};
 
         /// 进程域事件总线(统一事件系统批B)—— 同为**非拥有指针**(所有权在
         /// LuxEditor::Runtime::events_)。三个 SceneRuntime 宿主从这里取,填进各自
         /// SceneRuntime::Config::events —— 全进程同一个 DomainEvents,离屏 runtime
         /// 不另建(设计稿 §7.95)。
-        lux::events::DomainEvents*          events{nullptr};
+        lux::events::DomainEvents*                  events{nullptr};
 
         /// frame 泵(批E):动态生命周期的订阅者(MaterialPreviewHost 的懒建
         /// 宿主)经 infra 拿它自订阅 —— §7.95 的「动态生命周期例外」。
-        lux::events::EventPump*         frame_pump{nullptr};
+        lux::events::EventPump*                     frame_pump{nullptr};
 
         /// Sole blocking adapter for child close senders. Scene and preview
         /// owners borrow it instead of implementing private pump/retry loops.
-        lux::runtime::MainCloseDriver* close_driver{nullptr};
+        lux::runtime::MainCloseDriver*              close_driver{nullptr};
 
         // (曾有 `imgui_ops{}` 字段:orchestrator 写、无人读 —— UIRenderFrameSession
         //  用的是 LuxEditor 自己的 imgui_ops_ 成员。只写字段已删。)
@@ -233,7 +232,7 @@ namespace lux::editor
         /// (`Content/`, `Worlds/`, `Source/`, `Plugins/`, `Config/`,
         /// `.lux/`) + manifest are written by `Project::newOnDisk`.
         [[nodiscard]] bool newProject(const std::filesystem::path& root,
-                                       std::string_view              project_name);
+                                    std::string_view project_name);
 
         /// Close the current project + tear down the current scene. The
         /// editor stays running with no scene (viewport is blank). Safe
@@ -246,7 +245,6 @@ namespace lux::editor
         [[nodiscard]] bool saveProject();
 
         // ── Scene file I/O — operate on `currentScene()`'s World ──────
-
         /// Open a `.luxworld` file by path. Tears down the current
         /// scene and brings up a new one whose World is populated from
         /// the file. Tracks the path internally so a subsequent
@@ -304,18 +302,19 @@ namespace lux::editor
         /// 主线程进程域事实分发器。生产者提交权威状态后发布带 id、revision
         /// 与 change kind 的事实；单消费者命令不经过这里。
         /// 订阅集中在装配层(subs_ / EditorShell::panel_subs_)。
-        lux::events::DomainEvents&  events() noexcept;
+
+        lux::events::DomainEvents&      events() noexcept;
         /// frame 泵(帧 OPEN 段排空)—— EditorShell 的装配订阅绑它。
-        lux::events::EventPump&     framePump()        noexcept;
+        lux::events::EventPump&         framePump()        noexcept;
         // Panel accessors — the panels live on the EditorShell (split out
         // into its own shell object); out-of-line because the shell is a
         // src-private type.
-        AssetBrowser&                assetBrowser()   noexcept;
+        AssetBrowser&                   assetBrowser()   noexcept;
 
         /// May return nullptr after `unloadScene()` or a failed `loadScene`.
         /// (Forwards to the SceneController, which owns the live scene.)
-        EditorScene*                currentScene()       noexcept;
-        const EditorScene*          currentScene() const noexcept;
+        EditorScene*                    currentScene()       noexcept;
+        const EditorScene*              currentScene() const noexcept;
 
         // ── M3 spawn helpers ─────────────────────────────────────────────
 
@@ -324,7 +323,8 @@ namespace lux::editor
         /// final ECS commit returns to the game thread.
         [[nodiscard]] lux::exec::AsyncSubmitResult spawnModelEntity(
             lux::asset::asset_id_t model_id,
-            InstanceSpawnClient::Completion completion = {});
+            InstanceSpawnClient::Completion completion = {}
+        );
 
         /// May return nullptr when no project is open. (Forwards to the
         /// ProjectController, which owns the open project.)

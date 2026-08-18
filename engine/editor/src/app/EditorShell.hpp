@@ -43,6 +43,7 @@ namespace lux::editor
     class AssetRegistry;
     class MaterialPreviewHost;
     class ThumbnailService;
+    struct FlowGraphPanelContext;
 
     class EditorShell
     {
@@ -55,7 +56,7 @@ namespace lux::editor
 
         /// Phase 1 (original init step 5): construct the default panels, the
         /// Create-menu hooks, and register every panel as a toggleable window.
-        [[nodiscard]] bool buildPanels(LuxEditor& host);
+        [[nodiscard]] bool buildPanels(LuxEditor& host, FlowGraphPanelContext flow_graph_context);
 
         /// Phase 2 (original init steps 7b-8): the wiring that needs the render
         /// session + asset services — thumbnail hookup, Inspector asset fields,
@@ -78,9 +79,9 @@ namespace lux::editor
         SceneFeatureSettingPanel*    sceneSettingsPanel() noexcept;
         FlowGraphPanel*              flowGraphPanel() noexcept;
         MaterialGraphPanel*          materialGraphPanel() noexcept;
-        EditorToolHost&               toolHost()          noexcept { return *tool_host_; }
-        EditorTools                   tools() const noexcept { return tool_host_->facade(); }
-        EditorPanelCatalog&           panelCatalog() noexcept
+        EditorToolHost&              toolHost()          noexcept { return *tool_host_; }
+        EditorTools                  tools() const noexcept { return tool_host_->facade(); }
+        EditorPanelCatalog&          panelCatalog() noexcept
         {
             return panel_catalog_;
         }

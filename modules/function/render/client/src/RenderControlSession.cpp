@@ -54,10 +54,8 @@ namespace lux::render
         return true;
     }
 
-    bool RenderControlSession::publishPacket(
-        OperationPacket<>&& packet,
-        bool blocking
-    )
+    bool RenderControlSession::publishPacket(OperationPacket<>&& packet,
+                                             bool blocking)
     {
         for (;;)
         {
@@ -487,8 +485,7 @@ namespace lux::render
             });
     }
 
-    RenderRequest<QueryTypeIdReply> RenderControlSession::queryTypeId(
-        const char* name)
+    RenderRequest<QueryTypeIdReply> RenderControlSession::queryTypeId(const char* name)
     {
         return recordReply<QueryTypeIdReply>(
             [&](Builder& builder, auto callback)
@@ -502,14 +499,16 @@ namespace lux::render
             });
     }
 
-    RenderRequest<FeatureAddedReply> RenderControlSession::addFeatureRaw(
-        RenderSceneId scene, std::uint32_t feature_type_id,
-        std::span<const std::byte> config)
+    RenderRequest<FeatureAddedReply> 
+    RenderControlSession::addFeatureRaw(RenderSceneId scene, 
+                                        std::uint32_t feature_type_id, 
+                                        std::span<const std::byte> config)
     {
         return addFeatureRaw(
             scene,
             feature_type_id,
-            lux::cxx::SharedBytes<>::copyOf(config));
+            lux::cxx::SharedBytes<>::copyOf(config)
+        );
     }
 
     RenderRequest<FeatureAddedReply> RenderControlSession::addFeatureRaw(
@@ -546,8 +545,8 @@ namespace lux::render
             });
     }
 
-    RenderRequest<GenericOkReply> RenderControlSession::setFeatureEnabled(
-        RenderSceneId scene, FeatureHandle feature, bool enabled)
+    RenderRequest<GenericOkReply> 
+    RenderControlSession::setFeatureEnabled(RenderSceneId scene, FeatureHandle feature, bool enabled)
     {
         return recordReply<GenericOkReply>(
             [&](Builder& builder, auto callback)
@@ -559,7 +558,8 @@ namespace lux::render
                 builder.pushWithReply(
                     opcodes::CommandOp, type_ids::SetFeatureEnabled,
                     payload, std::move(callback));
-            });
+            }
+        );
     }
 
     void RenderControlSession::destroyTexture(RTextureHandle handle)

@@ -1,8 +1,12 @@
 #include <lux/engine/runtime/extensions/ExtensionModuleManager.hpp>
 
+#include <cstddef>
 #include <cstdio>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -29,11 +33,49 @@ namespace
 
 int main(int argc, char** argv)
 {
+    using namespace lux::extensions;
+
     static_assert(lux::extensions::kExtensionAbiV4 == 4u);
     static_assert(sizeof(lux::cxx::AbiFingerprint) == 32u);
     static_assert(
         lux::extensions::kEngineExtensionAbiFingerprint ==
         lux::cxx::AbiBuildInfo::fingerprint());
+    static_assert(std::is_standard_layout_v<ExtensionDependencyView>);
+    static_assert(std::is_standard_layout_v<ExtensionModuleDescriptorV4>);
+    static_assert(offsetof(ExtensionDependencyView, id) == 0u);
+    static_assert(
+        offsetof(ExtensionDependencyView, required_major) ==
+        sizeof(lux::cxx::AbiStringView));
+    static_assert(
+        offsetof(ExtensionDependencyView, minimum_minor) ==
+        sizeof(lux::cxx::AbiStringView) + sizeof(std::uint16_t));
+    static_assert(offsetof(ExtensionModuleDescriptorV4, struct_size) == 0u);
+    static_assert(
+        offsetof(ExtensionModuleDescriptorV4, extension_abi) ==
+        sizeof(std::uint32_t));
+    static_assert(
+        offsetof(ExtensionModuleDescriptorV4, engine_abi_fingerprint) ==
+        sizeof(std::uint32_t) * 2u);
+    static_assert(
+        offsetof(ExtensionModuleDescriptorV4, id) ==
+        offsetof(ExtensionModuleDescriptorV4, engine_abi_fingerprint) +
+            sizeof(lux::cxx::AbiFingerprint));
+    static_assert(
+        offsetof(ExtensionModuleDescriptorV4, version) ==
+        offsetof(ExtensionModuleDescriptorV4, id) +
+            sizeof(lux::cxx::AbiStringView));
+    static_assert(
+        offsetof(ExtensionModuleDescriptorV4, target) >=
+        offsetof(ExtensionModuleDescriptorV4, version) +
+            sizeof(ExtensionVersion));
+    static_assert(
+        offsetof(ExtensionModuleDescriptorV4, dependencies) >=
+        offsetof(ExtensionModuleDescriptorV4, target) +
+            sizeof(EExtensionModuleTarget));
+    static_assert(
+        offsetof(ExtensionModuleDescriptorV4, dependency_count) >=
+        offsetof(ExtensionModuleDescriptorV4, dependencies) +
+            sizeof(const ExtensionDependencyView*));
 
     int failures = 0;
     const auto check = [&failures](bool condition, const char* message)
@@ -47,11 +89,22 @@ int main(int argc, char** argv)
         }
     };
 
+    check(
+        std::string_view{kGetExtensionModuleV4Symbol} ==
+            "luxGetExtensionModuleV4",
+        "v4 module symbol remains compatible");
+    check(
+        std::string_view{kRegisterRuntimeContributionsV4Symbol} ==
+            "luxRegisterRuntimeContributionsV4",
+        "v4 runtime registration symbol remains compatible");
+    check(
+        std::string_view{kRegisterEditorContributionsV4Symbol} ==
+            "luxRegisterEditorContributionsV4",
+        "v4 editor registration symbol remains compatible");
     check(argc == 3, "test module paths supplied");
     if (argc != 3)
         return 1;
 
-    using namespace lux::extensions;
     const ExtensionModuleRequirement requirement =
         ExtensionModuleRequirement::fromPath(
         ExtensionId{"org.lux.test.minimal"},

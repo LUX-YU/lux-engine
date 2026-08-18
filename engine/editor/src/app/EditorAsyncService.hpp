@@ -10,6 +10,7 @@
  */
 
 #include "app/AssetFileWatcher.hpp"
+#include "app/EditorAsyncTypes.hpp"
 #include "app/ImportController.hpp"
 #include "panels/MaterialGraphPanel.hpp"
 #include "script/FlowForgeCompilerService.hpp"
@@ -40,11 +41,6 @@ namespace lux::exec {
 
 namespace lux::editor
 {
-    enum class EEditorAsyncError : std::uint8_t
-    {
-        EXECUTION_FAILED
-    };
-
     struct ImportAssetValue final
     {
         std::shared_ptr<ImportReport> report;
@@ -278,14 +274,6 @@ namespace lux::editor
         std::shared_ptr<const MaterialCompileJob> job;
     };
 
-    struct CompileFlowForgeOperation final
-    {
-        using Value = FlowForgeCompileResult;
-        using Error = EEditorAsyncError;
-
-        std::shared_ptr<const FlowForgeCompileJob> job;
-    };
-
     class EditorAsyncService final
     {
     public:
@@ -347,6 +335,8 @@ namespace lux::editor
         [[nodiscard]] bool compileFlowForge(
             CompileFlowForgeOperation operation,
             Completion<CompileFlowForgeOperation> completion);
+
+        [[nodiscard]] FlowForgeCompileClient flowForgeCompileClient() const noexcept;
     private:
         struct State;
 

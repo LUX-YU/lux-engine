@@ -6,7 +6,7 @@
 
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
-#include <lux/engine/core/extension_abi/ModuleAbi.hpp>
+#include <lux/engine/extensions/ExtensionAbi.hpp>
 
 #include <cstddef>
 #include <cstdint>

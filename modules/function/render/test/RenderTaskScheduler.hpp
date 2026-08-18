@@ -78,7 +78,7 @@ namespace lux::render
                 // The coroutine has suspended — either at yield_frame()
                 // or at co_await RenderRequest (waiting for a reply).
                 session_.trySubmitFrame();
-                session_.waitAndPumpReplies();
+                (void)session_.waitAndPumpReplies();
                 if (control_)
                     control_->pumpReplies();
                 if (upload_)
@@ -135,9 +135,9 @@ namespace lux::render
         }
 
     private:
-        RenderFrameSession& session_;
+        RenderFrameSession&   session_;
         RenderControlSession* control_{nullptr};
-        RenderUploadSession* upload_{nullptr};
+        RenderUploadSession*  upload_{nullptr};
     };
 
 } // namespace lux::render

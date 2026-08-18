@@ -1,4 +1,4 @@
-#include <lux/engine/core/extension_abi/ModuleAbi.hpp>
+#include <lux/engine/extensions/ExtensionAbi.hpp>
 
 #include <array>
 

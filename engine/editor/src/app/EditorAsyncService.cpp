@@ -430,7 +430,26 @@ namespace lux::editor
             return lux::exec::spawn(*scope, std::move(pipeline));
         }
 
+        static bool submitFlowForge(
+            void* raw,
+            CompileFlowForgeOperation operation,
+            FlowForgeCompileClient::Completion completion)
+        {
+            return static_cast<State*>(raw)->submit(
+                std::move(operation),
+                std::move(completion));
+        }
+
     };
+
+    bool FlowForgeCompileClient::submit(
+        CompileFlowForgeOperation operation,
+        Completion completion) const
+    {
+        if (!submit_)
+            return false;
+        return submit_(context_, std::move(operation), std::move(completion));
+    }
 
     lux::cxx::expected<EditorAsyncService, lux::exec::AsyncAssemblyFailure>
     EditorAsyncService::addTo(lux::exec::AsyncRuntimeBuilder& builder)
@@ -1539,6 +1558,17 @@ namespace lux::editor
             return {};
         state_->closing = true;
         return state_->scope->closeAsync();
+    }
+
+    FlowForgeCompileClient
+    EditorAsyncService::flowForgeCompileClient() const noexcept
+    {
+        if (!state_)
+            return {};
+        return FlowForgeCompileClient{
+            state_,
+            state_.get(),
+            &State::submitFlowForge};
     }
 
     bool EditorAsyncService::importAsset(

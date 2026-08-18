@@ -181,7 +181,9 @@ namespace lux::editor
     // ─────────────────────────────────────────────────────────────────────────
     //  Phase 1 — original init step 5: panels + window registrations.
     // ─────────────────────────────────────────────────────────────────────────
-    bool EditorShell::buildPanels(LuxEditor& host)
+    bool EditorShell::buildPanels(
+        LuxEditor& host,
+        FlowGraphPanelContext flow_graph_context)
     {
         auto add = [this](EditorPanelContributionDescriptor descriptor)
         {
@@ -299,12 +301,14 @@ namespace lux::editor
             return false;
 
         descriptor = base(kFlowGraph.name(), "Flow Graph");
-        descriptor.create = [](const EditorPanelCreateContext&)
+        descriptor.create = [flow_graph_context](const EditorPanelCreateContext&)
         {
             return lux::cxx::expected<
                 std::unique_ptr<lux::ui::Panel>,
                 EEditorPanelCreateError>{
-                std::make_unique<FlowGraphPanel>("Flow Graph")};
+                std::make_unique<FlowGraphPanel>(
+                    "Flow Graph",
+                    flow_graph_context)};
         };
         if (!add(std::move(descriptor)))
             return false;
@@ -640,12 +644,6 @@ namespace lux::editor
                             script->setVisible(true);
                         }
                     });
-        }
-
-        if (auto* fg = flowGraphPanel())
-        {
-            fg->setAssetServices(asset_registry, host.assetManagerShared(),
-                                 &host.events());
         }
 
         // Asset activation has exactly one command consumer. The shell routes

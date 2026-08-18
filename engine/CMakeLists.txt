@@ -23,6 +23,13 @@ generate_visibility_header(
     GENERATE_FILE_PATH      lux/engine/editor/visibility.h
 )
 
+# CORE-001: establish the Engine-owned Extension API target before moving the
+# ABI headers out of modules/core. The compatibility implementation remains
+# lux::engine::core::extension_abi until CORE-002..005 are complete.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/extensions/api/CMakeLists.txt)
+    add_subdirectory(extensions/api)
+endif()
+
 # Runtime foundation comes before every runtime domain.  A TOOLCHAIN-only
 # product consumes Resource formats and Authoring models directly; it does not
 # configure the game scheduler, renderer integration or scene lifecycle.

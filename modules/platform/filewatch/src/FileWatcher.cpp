@@ -19,9 +19,9 @@ namespace lux::platform
         std::vector<efsw::WatchID>      watch_ids;
         std::vector<std::filesystem::path> watched_dirs;
 
-        void handleFileAction(efsw::WatchID /*id*/, const std::string& dir,
-                              const std::string& filename, efsw::Action action,
-                              const std::string& old_filename) override
+	    void handleFileAction(efsw::WatchID watchid, const std::string& dir,
+							const std::string& filename, efsw::Action action,
+							std::string old_filename = "" ) override
         {
             FileEvent ev;
             ev.path = std::filesystem::path(dir) / filename;

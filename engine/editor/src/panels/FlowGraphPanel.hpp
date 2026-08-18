@@ -24,6 +24,7 @@
 #include <lux/engine/authoring/flowforge/FlowGraph.hpp>
 #include <lux/engine/authoring/flowforge/NodeRegistry.hpp>
 #include <lux/engine/editor/framework/graphkit/GraphEditor.hpp>
+#include "script/FlowForgeCompilerService.hpp"
 #include <lux/engine/ui/Panel.hpp>
 
 #if LUX_FLOWFORGE_HAS_MLIR
@@ -35,6 +36,15 @@ namespace lux::asset { class AssetManager; }
 namespace lux::editor
 {
     class AssetRegistry;
+
+    struct FlowGraphPanelContext final
+    {
+        AssetRegistry&                            asset_registry;
+        std::shared_ptr<lux::asset::AssetManager> asset_manager;
+        lux::events::DomainEvents&                events;
+        FlowForgeCompilerService&                 compiler;
+    };
+
     /// IGraphView adapter over a borrowed flowforge::FlowGraph.
     ///  - GraphNodeRef.id  = the FlowGraph sparse-set INDEX (NodeStorage.index;
     ///    recycled on delete — the GraphKit bimap purges eagerly).
@@ -129,32 +139,17 @@ namespace lux::editor
     class FlowGraphPanel : public lux::ui::Panel
     {
     public:
-        explicit FlowGraphPanel(std::string title);
+        FlowGraphPanel(std::string title, FlowGraphPanelContext context);
         ~FlowGraphPanel() override;
 
         /// The graph the MLIR compiler consumes (generateIR reads the SSOT
         /// directly — never through the GraphKit port).
         const lux::flowforge::FlowGraph& graph() const { return graph_; }
 
-        /// Wire the project asset index + asset manager (for "Save as
-        /// Asset" / openAsset) + process DomainEvents (to announce a committed
-        /// saved graph). registry/events borrowed (owned by host); manager shared.
-        void setAssetServices(AssetRegistry* registry,
-                              std::shared_ptr<lux::asset::AssetManager> manager,
-                              lux::events::DomainEvents* events);
-
         /// Open a FLOW_GRAPH asset in the editor (double-click in the asset
         /// browser). The persisted graph carries node positions, so the
         /// layout is restored.
         void openAsset(const lux::asset::asset_id_t& id);
-
-        /// Background precompile on save: called with the saved asset's id right
-        /// after a successful Save-as-Asset, so the AOT cache is warm before
-        /// the next Play. Wired by the host to FlowForgeCompilerService.
-        using PrecompileHook =
-            std::function<void(lux::asset::AssetManager&,
-                               const lux::asset::asset_id_t&)>;
-        void setPrecompileHook(PrecompileHook hook) { precompile_hook_ = std::move(hook); }
 
     private:
         void paint() override;
@@ -171,6 +166,7 @@ namespace lux::editor
         bool saveAsAsset(const std::string& name, std::string* err);
         void drawSavePopup();
 
+        FlowGraphPanelContext         context_;
         lux::flowforge::FlowGraph     graph_;
         // The PROCESS-WIDE registry: the graph serializer re-instantiates
         // native-call nodes by creator name through NodeRegistry::global(),
@@ -179,12 +175,6 @@ namespace lux::editor
         FlowGraphView                 view_{ graph_, registry_ };
         FlowSchema                    schema_{ graph_, registry_, view_ };
         lux::graphkit::GraphEditor    editor_;
-
-        // Asset services (borrowed/shared; may be null when no project).
-        AssetRegistry*                             asset_registry_{ nullptr };
-        std::shared_ptr<lux::asset::AssetManager>  asset_manager_;
-        lux::events::DomainEvents*                 events_{ nullptr };
-        PrecompileHook                             precompile_hook_;
 
         bool        save_popup_open_{ false };
         std::string save_name_;

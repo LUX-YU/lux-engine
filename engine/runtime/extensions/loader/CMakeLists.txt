@@ -41,7 +41,7 @@ target_link_libraries(
         lux::cxx::algorithm
         lux::cxx::compile_time
         lux::cxx::memory
-        lux::engine::core::extension_abi
+        lux::engine::extensions::extension_api
         lux::engine::platform::dynamic_library
 )
 
@@ -49,7 +49,7 @@ component_add_transitive_commands(
     runtime_extension_loader
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time memory)"
     "find_package(lux-engine-platform REQUIRED COMPONENTS dynamic_library)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS extension_abi)"
+    "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"
 )
 
 if(ENABLE_EXECUTION_TEST)

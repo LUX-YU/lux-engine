@@ -1,7 +1,7 @@
 #include <lux/engine/extensions/physics2d/Physics2D.hpp>
 
 #include <lux/engine/ecs/physics2d/systems/Physics2DSystem.hpp>
-#include <lux/engine/core/extension_abi/ModuleAbi.hpp>
+#include <lux/engine/extensions/ExtensionAbi.hpp>
 #include <lux/engine/runtime/extensions/RuntimeContributionRegistrar.hpp>
 #include <lux/engine/runtime/extensions/SceneContributions.hpp>
 

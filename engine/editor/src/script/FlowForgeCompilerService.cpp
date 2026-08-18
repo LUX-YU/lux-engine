@@ -133,17 +133,19 @@ namespace lux::editor
         // ── compile coordination ────────────────────────────────────────────
         // Main-thread pending/failed sets coalesce each cache stem. The actual
         // compiler receives an immutable job on AsyncRuntime's CPU pool.
-        FlowForgeCompilerService::PrecompileDispatch precompile_dispatch;
+        FlowForgeCompileClient compile_client;
         std::unordered_set<std::string> pending;
         std::unordered_set<std::string> failed;
 
         // No private queue, worker or lock lives here. Admission/coalescing is
         // main-owned; CPU scheduling and terminal delivery belong to
         // AsyncRuntime/EditorAsyncService.
-        bool warned_no_dispatch{false};
+        bool warned_no_client{false};
 
-        Impl(std::filesystem::path dir)
-            : cache_dir(std::move(dir))
+        Impl(
+            std::filesystem::path dir,
+            FlowForgeCompileClient client)
+            : cache_dir(std::move(dir)), compile_client(std::move(client))
         {
         }
 
@@ -262,8 +264,12 @@ namespace lux::editor
         return result;
     }
 
-    FlowForgeCompilerService::FlowForgeCompilerService(std::filesystem::path cache_dir)
-        : impl_(std::make_unique<Impl>(std::move(cache_dir)))
+    FlowForgeCompilerService::FlowForgeCompilerService(
+        std::filesystem::path cache_dir,
+        FlowForgeCompileClient compile_client)
+        : impl_(std::make_unique<Impl>(
+              std::move(cache_dir),
+              std::move(compile_client)))
     {
     }
 
@@ -355,27 +361,36 @@ namespace lux::editor
                 *graph, job->graph, &err))
             return;   // resolveGraph already proved serializability; defensive
 
-        if (!impl_->precompile_dispatch)
+        if (!impl_->compile_client.valid())
         {
-            if (!impl_->warned_no_dispatch)
+            if (!impl_->warned_no_client)
             {
-                impl_->warned_no_dispatch = true;
+                impl_->warned_no_client = true;
                 std::fprintf(
                     stderr,
-                    "[FlowForgeCompilerService] async precompile dispatch is "
-                    "not installed\n");
+                    "[FlowForgeCompilerService] async precompile client is "
+                    "unavailable\n");
             }
             return;
         }
         impl_->pending.insert(stem);
-        if (!impl_->precompile_dispatch(std::move(job)))
+        const auto failed_stem = stem;
+        const auto failed_graph_id = graph_id;
+        if (!impl_->compile_client.submit(
+                CompileFlowForgeOperation{std::move(job)},
+                [this, failed_stem, failed_graph_id](auto outcome) mutable noexcept
+                {
+                    if (!outcome)
+                    {
+                        adoptPrecompileResult(FlowForgeCompileResult{
+                            .stem = failed_stem,
+                            .graph_id = failed_graph_id,
+                            .error = "FlowForge compile operation failed"});
+                        return;
+                    }
+                    adoptPrecompileResult(std::move(*outcome));
+                }))
             impl_->pending.erase(stem);
-    }
-
-    void FlowForgeCompilerService::setPrecompileDispatch(
-        PrecompileDispatch dispatch)
-    {
-        impl_->precompile_dispatch = std::move(dispatch);
     }
 
     void FlowForgeCompilerService::adoptPrecompileResult(
@@ -398,7 +413,9 @@ namespace lux::editor
 #else // !LUX_FLOWFORGE_HAS_MLIR — loud no-op stub (compiler disabled)
 
     struct FlowForgeCompilerService::Impl {};
-    FlowForgeCompilerService::FlowForgeCompilerService(std::filesystem::path)
+    FlowForgeCompilerService::FlowForgeCompilerService(
+        std::filesystem::path,
+        FlowForgeCompileClient)
         : impl_(std::make_unique<Impl>()) {}
     FlowForgeCompilerService::~FlowForgeCompilerService() = default;
     void FlowForgeCompilerService::setCacheDir(std::filesystem::path) {}
@@ -406,8 +423,6 @@ namespace lux::editor
     void FlowForgeCompilerService::precompile(lux::asset::AssetManager&,
                                             const lux::asset::asset_id_t&) {}
 
-    void FlowForgeCompilerService::setPrecompileDispatch(
-        PrecompileDispatch) {}
     void FlowForgeCompilerService::adoptPrecompileResult(
         FlowForgeCompileResult) {}
 

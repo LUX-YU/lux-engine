@@ -1,4 +1,4 @@
-#include <lux/engine/core/extension_abi/ModuleAbi.hpp>
+#include <lux/engine/extensions/ExtensionAbi.hpp>
 
 #if defined(_WIN32)
 #define LUX_TEST_EXTENSION_EXPORT __declspec(dllexport)

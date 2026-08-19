@@ -2,7 +2,7 @@
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/navigation/components/NavigationRegion3DComponent.hpp>
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
@@ -55,15 +55,15 @@ namespace
 
     struct StoredRegion final
     {
-        lux::entity_scene::ContentBlobRef reference;
+        lux::ecs::scene_format::ContentBlobRef reference;
         lux::runtime::entity_scene::ContentBlobLease owner;
     };
 
-    [[nodiscard]] lux::entity_scene::EntitySectionAttachment
+    [[nodiscard]] lux::ecs::scene_format::EntitySectionAttachment
     makeAttachment(
         lux::navigation::detour3d::NavigationRegion3DBlob blob)
     {
-        using namespace lux::entity_scene;
+        using namespace lux::ecs::scene_format;
         EntitySectionAttachment attachment;
         attachment.reference.type = ContentTypeId{std::string{
             lux::navigation::detour3d::kNavigationRegion3DContentTypeName}};
@@ -78,12 +78,12 @@ namespace
         return attachment;
     }
 
-    [[nodiscard]] lux::entity_scene::EntitySectionImage
+    [[nodiscard]] lux::ecs::scene_format::EntitySectionImage
     makeAttachmentImage(
-        lux::entity_scene::EntitySectionId section,
-        lux::entity_scene::EntitySectionAttachment attachment)
+        lux::ecs::scene_format::EntitySectionId section,
+        lux::ecs::scene_format::EntitySectionAttachment attachment)
     {
-        lux::entity_scene::EntitySectionImage image;
+        lux::ecs::scene_format::EntitySectionImage image;
         image.section = section;
         image.component_names = {""};
         image.attachments.push_back(std::move(attachment));
@@ -92,8 +92,8 @@ namespace
 
     [[nodiscard]] StoredRegion storeAttachment(
         lux::runtime::entity_scene::SectionBlobStore& store,
-        lux::entity_scene::EntitySectionAttachment attachment,
-        lux::entity_scene::EntitySectionId section,
+        lux::ecs::scene_format::EntitySectionAttachment attachment,
+        lux::ecs::scene_format::EntitySectionId section,
         std::uint64_t generation)
     {
         auto acquired =
@@ -106,16 +106,16 @@ namespace
     [[nodiscard]] StoredRegion storeCookedRegion(
         lux::runtime::entity_scene::SectionBlobStore& store,
         lux::navigation::detour3d::NavigationRegion3DBlob blob,
-        lux::entity_scene::EntitySectionId section,
+        lux::ecs::scene_format::EntitySectionId section,
         std::uint64_t generation)
     {
         auto image = makeAttachmentImage(
             section, makeAttachment(std::move(blob)));
         auto encoded =
-            lux::entity_scene::encodeEntitySectionImage(image);
+            lux::ecs::scene_format::encodeEntitySectionImage(image);
         assert(encoded);
         auto decoded =
-            lux::entity_scene::decodeEntitySectionImage(*encoded);
+            lux::ecs::scene_format::decodeEntitySectionImage(*encoded);
         assert(decoded);
         assert(decoded->attachments.size() == 1u);
         return storeAttachment(store,
@@ -126,11 +126,11 @@ namespace
 
     struct GeneratedRegionState final
     {
-        lux::entity_scene::EntitySectionAttachment attachment;
+        lux::ecs::scene_format::EntitySectionAttachment attachment;
     };
 
     lux::cxx::expected<
-        lux::entity_scene::EntitySectionImage,
+        lux::ecs::scene_format::EntitySectionImage,
         lux::runtime::entity_scene::EntitySectionGeneratorFailure>
     generateRegion(
         const void* opaque,
@@ -139,13 +139,15 @@ namespace
     {
         const auto& state =
             *static_cast<const GeneratedRegionState*>(opaque);
-        return makeAttachmentImage(request.record.id, state.attachment);
+        return makeAttachmentImage(
+            request.record.id,
+            state.attachment);
     }
 
     [[nodiscard]] StoredRegion storeGeneratedRegion(
         lux::runtime::entity_scene::SectionBlobStore& store,
         lux::navigation::detour3d::NavigationRegion3DBlob blob,
-        lux::entity_scene::EntitySectionId section,
+        lux::ecs::scene_format::EntitySectionId section,
         std::uint64_t generation)
     {
         constexpr auto generator_name = "org.lux.test.navigation_region3d";
@@ -153,7 +155,7 @@ namespace
             GeneratedRegionState{makeAttachment(std::move(blob))});
         auto catalog = lux::runtime::entity_scene::
             EntitySectionGeneratorCatalog::create({
-                {lux::entity_scene::SectionGeneratorId{generator_name},
+                {lux::scene::SectionGeneratorId{generator_name},
                  &generateRegion,
                  std::shared_ptr<const void>{state},
                  {}}});
@@ -162,16 +164,16 @@ namespace
         auto expected_image =
             makeAttachmentImage(section, state->attachment);
         auto expected_bytes =
-            lux::entity_scene::encodeEntitySectionImage(expected_image);
+            lux::ecs::scene_format::encodeEntitySectionImage(expected_image);
         assert(expected_bytes);
-        lux::entity_scene::EntitySectionRecord record;
+        lux::scene::SectionRecord record;
         record.id = section;
-        record.source = lux::entity_scene::GeneratedSectionSource{
-            lux::entity_scene::SectionGeneratorId{generator_name},
+        record.source = lux::scene::GeneratedSectionSource{
+            lux::scene::SectionGeneratorId{generator_name},
             0x1234u,
             {std::byte{0x2au}}};
         record.content_digest =
-            lux::entity_scene::entitySceneContentDigest(*expected_bytes);
+            lux::ecs::scene_format::entitySectionContentDigest(*expected_bytes);
         record.encoded_bytes = expected_bytes->size();
         record.decoded_bytes = expected_bytes->size();
         auto generated = (*catalog)->generate(
@@ -294,13 +296,13 @@ int main()
     auto stored = storeCookedRegion(
         blobs,
         makeRegion({11u, 101u}, 100'000.0, 75'000.0),
-        lux::entity_scene::EntitySectionId{
+        lux::ecs::scene_format::EntitySectionId{
             uuid("71000000-0000-4000-8000-000000000001")},
         1u);
     auto generated = storeGeneratedRegion(
         blobs,
         makeRegion({12u, 102u}, 200'000.0, 175'000.0),
-        lux::entity_scene::EntitySectionId{
+        lux::ecs::scene_format::EntitySectionId{
             uuid("71000000-0000-4000-8000-000000000002")},
         1u);
     const auto stored_reference = stored.reference;
@@ -369,7 +371,7 @@ int main()
         auto stale = storeCookedRegion(
             blobs,
             makeRegion({13u, 103u}, 300'000.0, 275'000.0),
-            lux::entity_scene::EntitySectionId{
+            lux::ecs::scene_format::EntitySectionId{
                 uuid("71000000-0000-4000-8000-000000000003")},
             1u);
         const auto stale_reference = stale.reference;
@@ -399,7 +401,7 @@ int main()
         auto closing = storeGeneratedRegion(
             blobs,
             makeRegion({14u, 104u}, 400'000.0, 375'000.0),
-            lux::entity_scene::EntitySectionId{
+            lux::ecs::scene_format::EntitySectionId{
                 uuid("71000000-0000-4000-8000-000000000004")},
             1u);
         const auto closing_entity = registry.create();

@@ -1,6 +1,7 @@
 #include <lux/engine/toolchain/entity_scene/EntitySceneCooker.hpp>
 
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 
 #include <algorithm>
 #include <map>
@@ -29,18 +30,28 @@ namespace lux::toolchain
 
         using ExtensionMap = std::map<
             std::string,
-            lux::entity_scene::RequiredExtension,
+            lux::scene::RequiredExtension,
             std::less<>>;
         using ComponentMap = std::map<
             std::string,
-            lux::entity_scene::RequiredComponentSchema,
+            lux::scene::RequiredComponentSchema,
             std::less<>>;
 
         [[nodiscard]] lux::cxx::expected<void, EntitySceneCookFailure>
         mergeExtension(
             ExtensionMap& destination,
-            lux::entity_scene::RequiredExtension requirement) noexcept
+            lux::scene::RequiredExtension requirement) noexcept
         {
+            if (!requirement.id.isValid() ||
+                !lux::extensions::isCanonicalStableName(
+                    requirement.id.name()) ||
+                requirement.required_major == 0u)
+            {
+                return lux::cxx::unexpected(failure(
+                    EEntitySceneCookError::INVALID_ARGUMENT,
+                    "extension requirement is invalid"));
+            }
+
             const auto name = std::string{requirement.id.name()};
             const auto [found, inserted] = destination.emplace(
                 name, requirement);
@@ -64,15 +75,23 @@ namespace lux::toolchain
         [[nodiscard]] lux::cxx::expected<void, EntitySceneCookFailure>
         mergeComponent(
             ComponentMap& destination,
-            lux::entity_scene::RequiredComponentSchema requirement) noexcept
+            lux::scene::RequiredComponentSchema requirement) noexcept
         {
-            const auto name = std::string{requirement.id.name()};
+            if (!lux::ecs::isValidComponentSchemaId(requirement.id) ||
+                requirement.schema_version == 0u)
+            {
+                return lux::cxx::unexpected(failure(
+                    EEntitySceneCookError::INVALID_ARGUMENT,
+                    "component requirement is invalid"));
+            }
+
+            const auto name = requirement.id.name;
             const auto [found, inserted] = destination.emplace(
                 name, requirement);
             if (inserted)
                 return {};
-            if (found->second.id.hash() != requirement.id.hash() ||
-                found->second.id.name() != requirement.id.name() ||
+            if (found->second.id.hash != requirement.id.hash ||
+                found->second.id.name != requirement.id.name ||
                 found->second.schema_version != requirement.schema_version)
             {
                 return lux::cxx::unexpected(failure(
@@ -84,11 +103,10 @@ namespace lux::toolchain
         }
 
         [[nodiscard]] lux::cxx::expected<
-            std::vector<lux::entity_scene::RequiredExtension>,
+            std::vector<lux::scene::RequiredExtension>,
             EntitySceneCookFailure>
         canonicalExtensions(
-            std::vector<lux::entity_scene::RequiredExtension> requirements)
-            noexcept
+            std::vector<lux::scene::RequiredExtension> requirements) noexcept
         {
             ExtensionMap merged;
             for (auto& requirement : requirements)
@@ -99,24 +117,24 @@ namespace lux::toolchain
                     return lux::cxx::unexpected(result.error());
                 }
             }
-            std::vector<lux::entity_scene::RequiredExtension> result;
+            std::vector<lux::scene::RequiredExtension> result;
             result.reserve(merged.size());
             for (auto& [name, requirement] : merged)
                 result.push_back(std::move(requirement));
             return result;
         }
-    }
+    } // namespace
 
-    lux::cxx::expected<CookedEntitySceneBundle, EntitySceneCookFailure>
-    cookEntityScene(EntitySceneCookInput input) noexcept
+    lux::cxx::expected<CookedScenePackageBundle, EntitySceneCookFailure>
+    cookScenePackage(ScenePackageCookInput input) noexcept
     {
-        using namespace lux::entity_scene;
+        using lux::ecs::scene_format::EntitySectionId;
 
         if (input.id.empty())
         {
             return lux::cxx::unexpected(failure(
                 EEntitySceneCookError::INVALID_ARGUMENT,
-                "EntityScene cook input has a nil scene id"));
+                "ScenePackage cook input has a nil package id"));
         }
 
         std::sort(
@@ -128,9 +146,10 @@ namespace lux::toolchain
                 return uuidLess(lhs.image.section, rhs.image.section);
             });
         std::sort(
-            input.contributions.begin(),
-            input.contributions.end(),
-            [](const SceneContribution& lhs, const SceneContribution& rhs)
+            input.features.begin(),
+            input.features.end(),
+            [](const lux::scene::SceneFeatureRequest& lhs,
+               const lux::scene::SceneFeatureRequest& rhs)
             {
                 return lhs.id.name() < rhs.id.name();
             });
@@ -139,35 +158,37 @@ namespace lux::toolchain
             input.startup_sections.end(),
             uuidLess<EntitySectionId>);
 
-        ExtensionMap scene_extensions;
+        ExtensionMap package_extensions;
         for (auto& requirement : input.required_extensions)
         {
             if (auto merged = mergeExtension(
-                    scene_extensions, std::move(requirement)); !merged)
+                    package_extensions, std::move(requirement)); !merged)
             {
                 return lux::cxx::unexpected(merged.error());
             }
         }
-        ComponentMap scene_components;
+        ComponentMap package_components;
         for (auto& requirement : input.required_components)
         {
             if (auto merged = mergeComponent(
-                    scene_components, std::move(requirement)); !merged)
+                    package_components, std::move(requirement)); !merged)
             {
                 return lux::cxx::unexpected(merged.error());
             }
         }
 
-        CookedEntitySceneBundle bundle;
-        bundle.manifest.id = input.id;
-        bundle.manifest.contributions = std::move(input.contributions);
-        bundle.manifest.startup_sections = std::move(input.startup_sections);
+        CookedScenePackageBundle bundle;
+        bundle.package.id = input.id;
+        bundle.package.features = std::move(input.features);
+        bundle.package.startup_sections = std::move(input.startup_sections);
         bundle.sections.reserve(input.sections.size());
-        bundle.manifest.sections.reserve(input.sections.size());
+        bundle.package.sections.reserve(input.sections.size());
 
         for (auto& section : input.sections)
         {
-            const auto valid_image = validateEntitySectionImage(section.image);
+            const auto valid_image =
+                lux::ecs::scene_format::validateEntitySectionImage(
+                    section.image);
             if (!valid_image)
             {
                 return lux::cxx::unexpected(failure(
@@ -175,7 +196,8 @@ namespace lux::toolchain
                     "EntitySection image rejected before cook: " +
                         valid_image.error().detail));
             }
-            auto encoded = encodeEntitySectionImage(section.image);
+            auto encoded = lux::ecs::scene_format::encodeEntitySectionImage(
+                section.image);
             if (!encoded)
             {
                 return lux::cxx::unexpected(failure(
@@ -184,11 +206,12 @@ namespace lux::toolchain
                         encoded.error().detail));
             }
 
-            EntitySectionRecord record;
+            lux::scene::SectionRecord record;
             record.id = section.image.section;
             record.source = std::move(section.source);
-            record.content_digest = entitySceneContentDigest(*encoded);
-            record.compression = EEntitySectionCompression::NONE;
+            record.content_digest =
+                lux::ecs::scene_format::entitySectionContentDigest(*encoded);
+            record.compression = lux::scene::SectionCompression::None;
             record.encoded_bytes = encoded->size();
             record.decoded_bytes = encoded->size();
             record.entity_count = static_cast<std::uint32_t>(
@@ -202,7 +225,8 @@ namespace lux::toolchain
             std::sort(
                 record.demand_channels.begin(),
                 record.demand_channels.end(),
-                [](const DemandChannelId& lhs, const DemandChannelId& rhs)
+                [](const lux::scene::DemandChannelId& lhs,
+                   const lux::scene::DemandChannelId& rhs)
                 {
                     return lhs.name() < rhs.name();
                 });
@@ -215,7 +239,7 @@ namespace lux::toolchain
             for (const auto& requirement : record.required_extensions)
             {
                 if (auto merged = mergeExtension(
-                        scene_extensions, requirement); !merged)
+                        package_extensions, requirement); !merged)
                 {
                     return lux::cxx::unexpected(merged.error());
                 }
@@ -224,63 +248,63 @@ namespace lux::toolchain
             record.required_components.reserve(section.image.schemas.size());
             for (const auto& schema : section.image.schemas)
             {
-                RequiredComponentSchema requirement{
+                lux::scene::RequiredComponentSchema requirement{
                     schema.id,
                     schema.schema_version};
                 record.required_components.push_back(requirement);
                 if (auto merged = mergeComponent(
-                        scene_components, std::move(requirement)); !merged)
+                        package_components, std::move(requirement)); !merged)
                 {
                     return lux::cxx::unexpected(merged.error());
                 }
             }
 
-            const auto valid_record = validateEntitySectionRecord(record);
+            const auto valid_record = lux::scene::validateSectionRecord(record);
             if (!valid_record)
             {
                 return lux::cxx::unexpected(failure(
                     EEntitySceneCookError::CONTRACT_REJECTED,
-                    "derived EntitySection record rejected: " +
+                    "derived Section record rejected: " +
                         valid_record.error().detail));
             }
-            bundle.manifest.sections.push_back(record);
+            bundle.package.sections.push_back(record);
             bundle.sections.push_back({
                 std::move(record),
                 std::move(section.image),
                 std::move(*encoded)});
         }
 
-        bundle.manifest.required_extensions.reserve(scene_extensions.size());
-        for (auto& [name, requirement] : scene_extensions)
+        bundle.package.required_extensions.reserve(package_extensions.size());
+        for (auto& [name, requirement] : package_extensions)
         {
-            bundle.manifest.required_extensions.push_back(
+            bundle.package.required_extensions.push_back(
                 std::move(requirement));
         }
-        bundle.manifest.required_components.reserve(scene_components.size());
-        for (auto& [name, requirement] : scene_components)
+        bundle.package.required_components.reserve(package_components.size());
+        for (auto& [name, requirement] : package_components)
         {
-            bundle.manifest.required_components.push_back(
+            bundle.package.required_components.push_back(
                 std::move(requirement));
         }
 
-        const auto valid_manifest = validateEntitySceneManifest(
-            bundle.manifest);
-        if (!valid_manifest)
+        const auto valid_package = lux::scene::validateScenePackage(
+            bundle.package);
+        if (!valid_package)
         {
             return lux::cxx::unexpected(failure(
                 EEntitySceneCookError::CONTRACT_REJECTED,
-                "derived EntityScene manifest rejected: " +
-                    valid_manifest.error().detail));
+                "derived ScenePackage rejected: " +
+                    valid_package.error().detail));
         }
-        auto encoded_manifest = encodeEntitySceneManifest(bundle.manifest);
-        if (!encoded_manifest)
+        auto encoded_package = lux::scene::encodeScenePackage(bundle.package);
+        if (!encoded_package)
         {
             return lux::cxx::unexpected(failure(
                 EEntitySceneCookError::ENCODE_FAILED,
-                "cannot encode EntityScene manifest: " +
-                    encoded_manifest.error().detail));
+                "cannot encode ScenePackage: " +
+                    encoded_package.error().detail));
         }
-        bundle.encoded_manifest = std::move(*encoded_manifest);
+        bundle.encoded_package = std::move(*encoded_package);
         return bundle;
     }
-}
+} // namespace lux::toolchain

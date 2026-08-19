@@ -4,7 +4,7 @@
  * @brief Runtime-only state and diagnostics for LXES EntitySection batches.
  */
 
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
+#include <lux/engine/ecs/scene_format/Identifiers.hpp>
 
 #include <entt/entity/entity.hpp>
 
@@ -38,7 +38,7 @@ namespace lux::runtime::entity_scene
     struct EntityBatchFailure final
     {
         EEntityBatchError error{EEntityBatchError::INVALID_ARGUMENT};
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
         std::uint64_t generation{0u};
         std::string schema;
         std::string detail;

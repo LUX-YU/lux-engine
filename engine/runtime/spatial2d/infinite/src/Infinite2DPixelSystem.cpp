@@ -42,7 +42,7 @@ namespace lux::runtime::spatial2d
             lux::ecs::PixelFieldHandle field;
             lux::spatial::GridCoord2i64 coordinate;
             lux::ecs::PersistentEntityRef field_reference;
-            lux::entity_scene::ContentBlobRef content_reference;
+            lux::ecs::scene_format::ContentBlobRef content_reference;
             lux::runtime::entity_scene::ContentBlobLease content;
             bool active{false};
             bool adopted{false};
@@ -166,7 +166,7 @@ namespace lux::runtime::spatial2d
                     generation}));
                 return;
             }
-            std::optional<lux::entity_scene::PersistenceJournalRecord>
+            std::optional<lux::ecs::scene_format::PersistenceJournalRecord>
                 persistence_record;
             if (const auto* record = persistence->latest(chunk.coordinate))
                 persistence_record.emplace(*record);

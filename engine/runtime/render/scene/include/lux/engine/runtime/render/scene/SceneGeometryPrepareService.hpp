@@ -8,7 +8,7 @@
 #include <lux/engine/function/render/client/features/render_cluster/RenderClusterOperation.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
 #include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/render/scene/visibility.h>
@@ -129,7 +129,7 @@ namespace lux::runtime
         PrepareClassicMeshBatch() noexcept = default;
         PrepareClassicMeshBatch(
             lux::cxx::SharedBytes<> content_value,
-            lux::entity_scene::ContentBlobRef reference_value,
+            lux::ecs::scene_format::ContentBlobRef reference_value,
             std::uint64_t generation_value) noexcept
             : content(std::move(content_value)),
               reference(std::move(reference_value)),
@@ -143,7 +143,7 @@ namespace lux::runtime
             delete;
 
         lux::cxx::SharedBytes<> content;
-        lux::entity_scene::ContentBlobRef reference;
+        lux::ecs::scene_format::ContentBlobRef reference;
         std::uint64_t request_generation{0u};
 
     private:
@@ -161,7 +161,7 @@ namespace lux::runtime
         PrepareTerrainTile() noexcept = default;
         PrepareTerrainTile(
             lux::cxx::SharedBytes<> content_value,
-            lux::entity_scene::ContentBlobRef reference_value,
+            lux::ecs::scene_format::ContentBlobRef reference_value,
             std::uint64_t generation_value) noexcept
             : content(std::move(content_value)),
               reference(std::move(reference_value)),
@@ -174,7 +174,7 @@ namespace lux::runtime
         PrepareTerrainTile& operator=(const PrepareTerrainTile&) = delete;
 
         lux::cxx::SharedBytes<> content;
-        lux::entity_scene::ContentBlobRef reference;
+        lux::ecs::scene_format::ContentBlobRef reference;
         std::uint64_t request_generation{0u};
 
     private:

@@ -12,6 +12,12 @@ namespace lux::scene::detail
         const lux::entity_scene::EntitySceneCodecFailure& failure);
 
     [[nodiscard]] ScenePackageCodecResult<
+        lux::entity_scene::EntitySectionRecord>
+    toLegacySectionRecord(
+        const SectionRecord& record,
+        const ScenePackageCodecLimits& limits) noexcept;
+
+    [[nodiscard]] ScenePackageCodecResult<
         lux::entity_scene::EntitySceneManifest>
     toLegacyManifest(
         const ScenePackage& package,

@@ -16,7 +16,7 @@
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>   // RenderTargetId
 #include <lux/engine/common/Size2D.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>                 // asset_id_t
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 
 #include <Eigen/Core>
 
@@ -47,8 +47,8 @@ namespace lux::editor
     /// Build the transient LXSC value for one private preview world. Registering
     /// the descriptor in a catalog is not activation: the manifest must select
     /// it so SceneRuntime installs the mesh resolver and extraction subsystem.
-    [[nodiscard]] lux::entity_scene::EntitySceneManifest
-    makePreviewSceneManifest(std::string_view scene_name);
+    [[nodiscard]] lux::scene::ScenePackage
+    makePreviewScenePackage(std::string_view scene_name);
 
     /// 常驻 key light(方向/暖白/强度/投影与旧手写预览场景的常驻灯同参)。
     lux::meta::entity_id createPreviewKeyLight(lux::ecs::World& world);

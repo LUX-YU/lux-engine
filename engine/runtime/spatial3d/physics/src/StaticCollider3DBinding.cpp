@@ -41,7 +41,7 @@ namespace lux::runtime::spatial3d
         return generation_;
     }
 
-    const lux::entity_scene::ContentBlobRef&
+    const lux::ecs::scene_format::ContentBlobRef&
     StaticCollider3DBinding::content() const noexcept
     {
         return content_.reference();

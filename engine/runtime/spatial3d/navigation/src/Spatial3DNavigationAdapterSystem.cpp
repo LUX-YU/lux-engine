@@ -33,7 +33,7 @@ namespace lux::runtime::spatial3d
             EOwnedRequestState state{EOwnedRequestState::FREE};
             entt::entity entity{entt::null};
             std::uint64_t navigation_generation{0u};
-            lux::entity_scene::ContentBlobRef reference;
+            lux::ecs::scene_format::ContentBlobRef reference;
             lux::runtime::entity_scene::ContentBlobLease content;
             std::optional<lux::navigation::detour3d::PreparedNavigationRegion3D>
                 prepared;

@@ -31,9 +31,10 @@ target_link_libraries(
     runtime_spatial3d_partitioned
     PUBLIC
         lux::engine::ecs::core
+        lux::engine::ecs::scene_format
         lux::engine::ecs::spatial3d_components
         lux::engine::ecs::transform
-        lux::engine::resource::entity_scene
+        lux::engine::scene::scene_package
         lux::engine::resource::spatial
         lux::engine::runtime::runtime_spatial_partition
         lux::cxx::compile_time
@@ -41,8 +42,9 @@ target_link_libraries(
 
 component_add_transitive_commands(
     runtime_spatial3d_partitioned
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core spatial3d_components transform)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS entity_scene spatial)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format spatial3d_components transform)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS spatial)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_spatial_partition)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )

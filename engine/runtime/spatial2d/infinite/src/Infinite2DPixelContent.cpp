@@ -3,7 +3,8 @@
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 
 #include <algorithm>
 #include <array>
@@ -23,12 +24,6 @@ namespace lux::runtime::spatial2d
         {
             lux::spatial::GridCoord2i64 coordinate;
         };
-
-        [[nodiscard]] lux::entity_scene::PersistentEntityId
-        toWirePersistentId(const lux::ecs::PersistentEntityId& id) noexcept
-        {
-            return lux::entity_scene::PersistentEntityId{id.value()};
-        }
 
         [[nodiscard]] std::vector<std::byte> encodeParameters(
             lux::spatial::GridCoord2i64 coordinate)
@@ -55,7 +50,7 @@ namespace lux::runtime::spatial2d
                 version == kInfinite2DPixelChunkContentVersion;
         }
 
-        [[nodiscard]] lux::entity_scene::EntitySectionId makeSectionId(
+        [[nodiscard]] lux::ecs::scene_format::EntitySectionId makeSectionId(
             const Infinite2DPixelSectionConfig& config,
             lux::spatial::GridCoord2i64 coordinate)
         {
@@ -80,7 +75,7 @@ namespace lux::runtime::spatial2d
                 (bytes[6] & 0x0fu) | 0x50u);
             bytes[8] = static_cast<std::uint8_t>(
                 (bytes[8] & 0x3fu) | 0x80u);
-            return lux::entity_scene::EntitySectionId{uuids::uuid{bytes}};
+            return lux::ecs::scene_format::EntitySectionId{uuids::uuid{bytes}};
         }
 
         [[nodiscard]] std::vector<std::byte> encodeCoordinate(
@@ -131,12 +126,12 @@ namespace lux::runtime::spatial2d
             return result;
         }
 
-        [[nodiscard]] lux::entity_scene::EntitySectionImage makeImage(
+        [[nodiscard]] lux::ecs::scene_format::EntitySectionImage makeImage(
             const Infinite2DPixelSectionConfig& config,
-            lux::entity_scene::EntitySectionId section,
+            lux::ecs::scene_format::EntitySectionId section,
             lux::spatial::GridCoord2i64 coordinate)
         {
-            using namespace lux::entity_scene;
+            using namespace lux::ecs::scene_format;
             EntitySectionImage image;
             image.section = section;
             image.component_names = {
@@ -159,7 +154,7 @@ namespace lux::runtime::spatial2d
                 0u,
                 0u,
                 3u,
-                toWirePersistentId(config.field)});
+                config.field});
 
             EntitySectionAttachment attachment;
             attachment.reference.type = config.content_type;
@@ -197,10 +192,10 @@ namespace lux::runtime::spatial2d
     bool Infinite2DPixelSectionConfig::valid() const noexcept
     {
         return !field.empty() &&
-            lux::entity_scene::isValidEntitySceneId(generator) &&
-            lux::entity_scene::isValidEntitySceneId(chunk_schema) &&
-            lux::entity_scene::isValidEntitySceneId(content_type) &&
-            lux::entity_scene::isValidEntitySceneId(demand_channel) &&
+            lux::scene::isValidSectionGeneratorId(generator) &&
+            lux::ecs::isValidComponentSchemaId(chunk_schema) &&
+            lux::ecs::scene_format::isValidStableId(content_type) &&
+            lux::scene::isValidDemandChannelId(demand_channel) &&
             foreground_material != lux::ecs::kEmptyMaterial &&
             landmark_material != lux::ecs::kEmptyMaterial &&
             sand_material != lux::ecs::kEmptyMaterial &&
@@ -234,12 +229,12 @@ namespace lux::runtime::spatial2d
             const void* opaque,
             GeneratedEntitySectionRequest request) noexcept
             -> lux::cxx::expected<
-                lux::entity_scene::EntitySectionImage,
+                lux::ecs::scene_format::EntitySectionImage,
                 EntitySectionGeneratorFailure>
         {
             const auto& state = *static_cast<const State*>(opaque);
             const auto* source = std::get_if<
-                lux::entity_scene::GeneratedSectionSource>(
+                lux::scene::GeneratedSectionSource>(
                     &request.record.source);
             ChunkParameters parameters;
             if (!source || source->generator != state.config.generator ||
@@ -273,34 +268,39 @@ namespace lux::runtime::spatial2d
     }
 
     lux::cxx::expected<
-        lux::entity_scene::EntitySectionRecord,
+        lux::scene::SectionRecord,
         Infinite2DPixelContentFailure>
     Infinite2DPixelSectionSource::record(
         lux::spatial::GridCoord2i64 coordinate) const
     {
-        using namespace lux::entity_scene;
-        EntitySectionRecord result;
+        lux::scene::SectionRecord result;
         result.id = makeSectionId(state_->config, coordinate);
-        result.source = GeneratedSectionSource{
+        result.source = lux::scene::GeneratedSectionSource{
             state_->config.generator,
             state_->config.seed,
             encodeParameters(coordinate)};
-        auto image = makeImage(state_->config, result.id, coordinate);
-        auto encoded = encodeEntitySectionImage(image);
+        auto image = makeImage(
+            state_->config,
+            result.id,
+            coordinate);
+        auto encoded = lux::ecs::scene_format::encodeEntitySectionImage(
+            image);
         if (!encoded)
         {
             return lux::cxx::unexpected(Infinite2DPixelContentFailure{
                 EInfinite2DPixelContentError::ENCODE_FAILED,
                 coordinate});
         }
-        result.content_digest = entitySceneContentDigest(*encoded);
-        result.compression = EEntitySectionCompression::NONE;
+        result.content_digest =
+            lux::ecs::scene_format::entitySectionContentDigest(*encoded);
+        result.compression = lux::scene::SectionCompression::None;
         result.encoded_bytes = encoded->size();
         result.decoded_bytes = encoded->size();
         result.entity_count = 1u;
         result.demand_channels.push_back(state_->config.demand_channel);
         result.required_components.push_back({
-            state_->config.chunk_schema, 1u});
+            state_->config.chunk_schema,
+            1u});
         return result;
     }
 
@@ -311,7 +311,7 @@ namespace lux::runtime::spatial2d
         return [state = std::move(state)](
             lux::spatial::GridCoord2i64 coordinate)
             -> lux::cxx::expected<
-                lux::entity_scene::EntitySectionRecord,
+                lux::scene::SectionRecord,
                 Spatial2DIndexFailure>
         {
             Infinite2DPixelSectionSource source{state};
@@ -352,7 +352,7 @@ namespace lux::runtime::spatial2d
         Infinite2DPixelContentFailure>
     decodeInfinite2DPixelChunk(
         lux::cxx::SharedBytes<> bytes,
-        lux::entity_scene::ContentBlobRef reference)
+        lux::ecs::scene_format::ContentBlobRef reference)
     {
         if (bytes.empty() || !reference.valid())
         {
@@ -380,7 +380,7 @@ namespace lux::runtime::spatial2d
             sand == lux::ecs::kEmptyMaterial ||
             water == lux::ecs::kEmptyMaterial ||
             player == lux::ecs::kEmptyMaterial ||
-            lux::entity_scene::makeContentBlobId(
+            lux::ecs::scene_format::makeContentBlobId(
                 reference.type,
                 reference.schema_version,
                 bytes.view()) != reference.id)

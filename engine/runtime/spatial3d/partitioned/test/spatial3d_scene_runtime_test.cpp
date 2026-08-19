@@ -1,13 +1,15 @@
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
 #include <lux/engine/ecs/transform/systems/Transform3DSystem.hpp>
 #include <lux/engine/input/ActionMapper.hpp>
 #include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
@@ -122,7 +124,7 @@ namespace
 
     struct SectionFixture final
     {
-        lux::entity_scene::EntitySectionRecord record;
+        lux::scene::SectionRecord record;
         lux::ecs::PersistentEntityId entity;
         StoredImage stored;
     };
@@ -134,22 +136,22 @@ namespace
         std::string path,
         std::string_view channel)
     {
-        using namespace lux::entity_scene;
-        EntitySectionImage image;
-        image.section = EntitySectionId{uuid(section_id)};
+        namespace format = lux::ecs::scene_format;
+        namespace scene = lux::scene;
+
+        format::EntitySectionImage image;
+        image.section = format::EntitySectionId{uuid(section_id)};
         image.component_names = {""};
         image.archetypes.push_back({});
         const lux::ecs::PersistentEntityId persistent{uuid(entity_id)};
-        image.entities.push_back({
-            0u,
-            lux::entity_scene::PersistentEntityId{persistent.value()}});
-        auto encoded = encodeEntitySectionImage(image);
+        image.entities.push_back({0u, persistent});
+        auto encoded = format::encodeEntitySectionImage(image);
         assert(encoded);
 
-        EntitySectionRecord record;
+        scene::SectionRecord record;
         record.id = image.section;
-        record.source = StoredSectionSource{"/Game/" + path};
-        record.content_digest = entitySceneContentDigest(*encoded);
+        record.source = scene::StoredSectionSource{"/Game/" + path};
+        record.content_digest = format::entitySectionContentDigest(*encoded);
         record.encoded_bytes = encoded->size();
         record.decoded_bytes = encoded->size();
         record.entity_count = 1u;
@@ -308,36 +310,40 @@ int main()
 
     spatial3d_scene::Spatial3DSceneCatalogConfig spatial_config;
     spatial_config.bands = {fine_band, coarse_band};
+    const auto legacySectionId = [](const auto& id)
+    {
+        return entity_scene::EntitySectionId{id.value()};
+    };
     spatial_config.entries = {
-        {{0, 0, 0}, 0u, fine_origin.record.id},
-        {{1, 0, 0}, 0u, fine_next.record.id},
-        {{0, 0, 0}, 1u, coarse_origin.record.id},
-        {{1, 0, 0}, 1u, coarse_next.record.id}};
+        {{0, 0, 0}, 0u, legacySectionId(fine_origin.record.id)},
+        {{1, 0, 0}, 0u, legacySectionId(fine_next.record.id)},
+        {{0, 0, 0}, 1u, legacySectionId(coarse_origin.record.id)},
+        {{1, 0, 0}, 1u, legacySectionId(coarse_next.record.id)}};
     auto encoded_config =
         spatial3d_scene::encodeSpatial3DSceneCatalog(spatial_config);
     assert(encoded_config);
 
-    entity_scene::EntitySceneManifest manifest;
-    manifest.id = entity_scene::EntitySceneId{
+    lux::scene::ScenePackage package;
+    package.id = lux::scene::ScenePackageId{
         uuid("50000000-0000-4000-8000-000000000001")};
-    manifest.contributions.push_back({
-        lux::extensions::ContributionId{
+    package.features.push_back({
+        lux::scene::SceneFeatureId{
             std::string{spatial3d_scene::kSpatial3DContributionName}},
         spatial3d_scene::kSpatial3DSceneCatalogSchemaVersion,
         std::move(*encoded_config)});
-    manifest.sections = {
+    package.sections = {
         fine_origin.record,
         fine_next.record,
         coarse_origin.record,
         coarse_next.record};
     std::ranges::sort(
-        manifest.sections,
+        package.sections,
         [](const auto& left, const auto& right)
         {
             return uuidLess(left.id.value(), right.id.value());
         });
-    auto manifest_bytes = entity_scene::encodeEntitySceneManifest(manifest);
-    assert(manifest_bytes);
+    auto package_bytes = lux::scene::encodeScenePackage(package);
+    assert(package_bytes);
 
     std::vector<StoredImage> stored;
     stored.push_back(std::move(fine_origin.stored));
@@ -382,10 +388,10 @@ int main()
     lux::runtime::SceneRuntime::Config scene_config;
     scene_config.name = "Spatial3D LXSC integration";
     scene_config.scene_origin = "/Game/spatial3d_scene_lxsc";
-    scene_config.scene_manifest_image = lux::asset::AssetBlob::fromShared(
+    scene_config.scene_package_image = lux::asset::AssetBlob::fromShared(
         lux::cxx::SharedBytes<>::copyOf(
             std::span<const std::byte>{
-                manifest_bytes->data(), manifest_bytes->size()}));
+                package_bytes->data(), package_bytes->size()}));
     scene_config.section_vfs = vfs;
     auto scene = lux::runtime::SceneRuntime::create(
         dependencies, scene_config);
@@ -464,22 +470,22 @@ int main()
     // The opaque catalog is an exact index over LXSC, not an optional hint.
     // A spatial-channel record with no source/band/cell entry rejects the
     // whole scene before any entity reaches the live registry.
-    auto unmatched_manifest = manifest;
-    auto unmatched_record = unmatched_manifest.sections.front();
-    unmatched_record.id = entity_scene::EntitySectionId{
+    auto unmatched_package = package;
+    auto unmatched_record = unmatched_package.sections.front();
+    unmatched_record.id = lux::ecs::scene_format::EntitySectionId{
         uuid("51000000-0000-4000-8000-000000000005")};
-    unmatched_manifest.sections.push_back(std::move(unmatched_record));
+    unmatched_package.sections.push_back(std::move(unmatched_record));
     std::ranges::sort(
-        unmatched_manifest.sections,
+        unmatched_package.sections,
         [](const auto& left, const auto& right)
         {
             return uuidLess(left.id.value(), right.id.value());
         });
-    auto unmatched_bytes = entity_scene::encodeEntitySceneManifest(
-        unmatched_manifest);
+    auto unmatched_bytes = lux::scene::encodeScenePackage(
+        unmatched_package);
     assert(unmatched_bytes);
     auto rejected_config = scene_config;
-    rejected_config.scene_manifest_image = lux::asset::AssetBlob::fromShared(
+    rejected_config.scene_package_image = lux::asset::AssetBlob::fromShared(
         lux::cxx::SharedBytes<>::copyOf(
             std::span<const std::byte>{
                 unmatched_bytes->data(), unmatched_bytes->size()}));

@@ -45,7 +45,7 @@ target_link_libraries(
         lux::cxx::algorithm
         lux::engine::resource::asset_core
         lux::engine::resource::description
-        lux::engine::resource::entity_scene
+        lux::engine::ecs::scene_format
         lux::engine::resource::spatial
         lux::engine::core::meta
         lux::cxx::container
@@ -53,10 +53,10 @@ target_link_libraries(
 
 component_add_transitive_commands(
     tilemap
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm container)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core description entity_scene spatial)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core description spatial)"
 )
 
 add_subdirectory(test)

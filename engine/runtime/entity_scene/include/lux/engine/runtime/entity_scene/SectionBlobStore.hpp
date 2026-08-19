@@ -5,7 +5,7 @@
  */
 
 #include <lux/cxx/memory/SharedBytes.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchTypes.hpp>
 #include <lux/engine/runtime/entity_scene/visibility.h>
 
@@ -51,7 +51,7 @@ namespace lux::runtime::entity_scene
         ContentBlobLease& operator=(const ContentBlobLease&) = delete;
 
         [[nodiscard]] explicit operator bool() const noexcept;
-        [[nodiscard]] const lux::entity_scene::ContentBlobRef& reference()
+        [[nodiscard]] const lux::ecs::scene_format::ContentBlobRef& reference()
             const noexcept;
         [[nodiscard]] lux::cxx::SharedBytes<> bytes() const noexcept;
 
@@ -80,7 +80,7 @@ namespace lux::runtime::entity_scene
             ContentBlobLease,
             EContentBlobLookupError>
         resolve(
-            const lux::entity_scene::ContentBlobRef& reference) const noexcept;
+            const lux::ecs::scene_format::ContentBlobRef& reference) const noexcept;
 
         [[nodiscard]] explicit operator bool() const noexcept;
 
@@ -111,8 +111,8 @@ namespace lux::runtime::entity_scene
             ContentBlobLease,
             EntityBatchFailure>
         acquire(
-            lux::entity_scene::EntitySectionAttachment attachment,
-            const lux::entity_scene::EntitySectionId& section,
+            lux::ecs::scene_format::EntitySectionAttachment attachment,
+            const lux::ecs::scene_format::EntitySectionId& section,
             std::uint64_t generation) noexcept;
 
         [[nodiscard]] ContentBlobClient client() const noexcept;

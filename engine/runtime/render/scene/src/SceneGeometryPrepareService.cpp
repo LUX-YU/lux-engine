@@ -1,7 +1,7 @@
 #include <lux/engine/runtime/render/scene/SceneGeometryPrepareService.hpp>
 
 #include <lux/engine/function/render/client/features/terrain/TerrainOperation.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/resource/terrain/TerrainTile.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 
@@ -299,7 +299,7 @@ namespace lux::runtime
         }
 
         [[nodiscard]] bool matchesClassicMesh(
-            const lux::entity_scene::ContentBlobRef& reference,
+            const lux::ecs::scene_format::ContentBlobRef& reference,
             std::span<const std::byte> bytes) noexcept
         {
             return reference.valid() &&
@@ -307,14 +307,14 @@ namespace lux::runtime
                     lux::classic_mesh::kClassicMeshBatchContentTypeName &&
                 reference.schema_version ==
                     lux::classic_mesh::kClassicMeshBatchSchemaVersion &&
-                lux::entity_scene::makeContentBlobId(
+                lux::ecs::scene_format::makeContentBlobId(
                     reference.type,
                     reference.schema_version,
                     bytes) == reference.id;
         }
 
         [[nodiscard]] bool matchesTerrain(
-            const lux::entity_scene::ContentBlobRef& reference,
+            const lux::ecs::scene_format::ContentBlobRef& reference,
             std::span<const std::byte> bytes) noexcept
         {
             return reference.valid() &&
@@ -322,7 +322,7 @@ namespace lux::runtime
                     lux::terrain::kTerrainTileContentTypeName &&
                 reference.schema_version ==
                     lux::terrain::kTerrainTileSchemaVersion &&
-                lux::entity_scene::makeContentBlobId(
+                lux::ecs::scene_format::makeContentBlobId(
                     reference.type,
                     reference.schema_version,
                     bytes) == reference.id;

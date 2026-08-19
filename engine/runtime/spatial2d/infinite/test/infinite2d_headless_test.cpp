@@ -16,7 +16,9 @@
 #include <lux/engine/ecs/tilemap/systems/TilemapSystem.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/resource/tilemap/TilemapChunk.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
@@ -86,12 +88,12 @@ namespace
 
     lux::runtime::entity_scene::EntitySceneCatalog emptyCatalog()
     {
-        lux::entity_scene::EntitySceneManifest manifest;
-        manifest.id = lux::entity_scene::EntitySceneId{
+        lux::scene::ScenePackage package;
+        package.id = lux::scene::ScenePackageId{
             uuids::uuid::from_string(
                 "85000000-0000-4000-8000-000000000001").value()};
         auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(
-            std::move(manifest));
+            std::move(package));
         assert(result);
         return std::move(*result);
     }
@@ -285,7 +287,7 @@ namespace
                 lux::meta::RefField{
                     "content",
                     lux::meta::ref_type_of_v<
-                        lux::entity_scene::ContentBlobRef>,
+                        lux::ecs::scene_format::ContentBlobRef>,
                     lux::meta::EVisibility::Public,
                     &chunk,
                     static_cast<std::uint32_t>(offsetof(
@@ -316,7 +318,7 @@ namespace
                 lux::meta::RefField{
                     "content",
                     lux::meta::ref_type_of_v<
-                        lux::entity_scene::ContentBlobRef>,
+                        lux::ecs::scene_format::ContentBlobRef>,
                     lux::meta::EVisibility::Public,
                     &tile_chunk,
                     static_cast<std::uint32_t>(offsetof(
@@ -397,7 +399,7 @@ namespace
 
     struct FieldSection final
     {
-        lux::entity_scene::EntitySectionRecord record;
+        lux::scene::SectionRecord record;
         lux::asset::asset_id_t asset;
         std::vector<std::byte> bytes;
         std::string path;
@@ -407,7 +409,7 @@ namespace
         const lux::ecs::PersistentEntityId& field_id,
         const FieldFacts& facts)
     {
-        using namespace lux::entity_scene;
+        using namespace lux::ecs::scene_format;
         EntitySectionImage image;
         image.section = EntitySectionId{ordinalUuid(100u)};
         image.component_names = {
@@ -419,20 +421,21 @@ namespace
             "simulation_enabled",
             "visible"};
         image.schemas.push_back({
-            ComponentSchemaId{std::string{kPixelFieldSchema}},
+            lux::ecs::componentSchemaId(kPixelFieldSchema),
             1u,
             EEntityComponentStorage::DATA});
         image.archetypes.push_back({{0u}});
         image.entities.push_back({
             0u,
-            lux::entity_scene::PersistentEntityId{field_id.value()}});
+            field_id});
         auto payload = fieldPayload(facts);
         image.columns.push_back({
             0u,
             0u,
             {0u, static_cast<std::uint32_t>(payload.size())},
             std::move(payload)});
-        auto encoded = encodeEntitySectionImage(image);
+        auto encoded =
+            lux::ecs::scene_format::encodeEntitySectionImage(image);
         assert(encoded);
 
         FieldSection result;
@@ -440,14 +443,16 @@ namespace
         result.bytes = std::move(*encoded);
         result.path = "Sections/PixelField_lxes";
         result.record.id = image.section;
-        result.record.source = StoredSectionSource{
+        result.record.source = lux::scene::StoredSectionSource{
             "/Game/" + result.path};
-        result.record.content_digest = entitySceneContentDigest(result.bytes);
+        result.record.content_digest =
+            lux::ecs::scene_format::entitySectionContentDigest(result.bytes);
         result.record.encoded_bytes = result.bytes.size();
         result.record.decoded_bytes = result.bytes.size();
         result.record.entity_count = 1u;
         result.record.required_components.push_back({
-            ComponentSchemaId{std::string{kPixelFieldSchema}}, 1u});
+            lux::ecs::componentSchemaId(kPixelFieldSchema),
+            1u});
         return result;
     }
 
@@ -525,15 +530,15 @@ namespace
     struct TilemapProofState final
     {
         lux::ecs::PersistentEntityId tilemap;
-        lux::entity_scene::SectionGeneratorId generator{
+        lux::scene::SectionGeneratorId generator{
             "lux.tilemap.infinite2d.chunk.test"};
-        lux::entity_scene::ComponentSchemaId schema{
-            std::string{kTileChunkSchema}};
-        lux::entity_scene::ContentTypeId content_type{
+        lux::ecs::ComponentSchemaId schema{
+            lux::ecs::componentSchemaId(kTileChunkSchema)};
+        lux::ecs::scene_format::ContentTypeId content_type{
             std::string{lux::tilemap::kTilemapChunkContentTypeName}};
     };
 
-    lux::entity_scene::EntitySectionId tileProofSectionId(
+    lux::ecs::scene_format::EntitySectionId tileProofSectionId(
         lux::spatial::GridCoord2i64 coordinate)
     {
         std::uint64_t hash = 1469598103934665603ull;
@@ -547,7 +552,7 @@ namespace
         };
         append(static_cast<std::uint64_t>(coordinate.x));
         append(static_cast<std::uint64_t>(coordinate.y));
-        return lux::entity_scene::EntitySectionId{ordinalUuid(hash)};
+        return lux::ecs::scene_format::EntitySectionId{ordinalUuid(hash)};
     }
 
     std::vector<std::byte> tileProofParameters(
@@ -602,12 +607,12 @@ namespace
         return result;
     }
 
-    lux::entity_scene::EntitySectionImage makeTileProofImage(
+    lux::ecs::scene_format::EntitySectionImage makeTileProofImage(
         const TilemapProofState& state,
-        lux::entity_scene::EntitySectionId section,
+        lux::ecs::scene_format::EntitySectionId section,
         lux::spatial::GridCoord2i64 coordinate)
     {
-        using namespace lux::entity_scene;
+        using namespace lux::ecs::scene_format;
         EntitySectionImage image;
         image.section = section;
         image.component_names = {
@@ -626,7 +631,7 @@ namespace
             0u,
             0u,
             3u,
-            lux::entity_scene::PersistentEntityId{state.tilemap.value()}});
+            state.tilemap});
 
         EntitySectionAttachment attachment;
         attachment.reference.type = state.content_type;
@@ -657,12 +662,12 @@ namespace
             const void* opaque,
             GeneratedEntitySectionRequest request) noexcept
             -> lux::cxx::expected<
-                lux::entity_scene::EntitySectionImage,
+                lux::ecs::scene_format::EntitySectionImage,
                 EntitySectionGeneratorFailure>
         {
             const auto& state = *static_cast<const TilemapProofState*>(opaque);
             const auto* source = std::get_if<
-                lux::entity_scene::GeneratedSectionSource>(
+                lux::scene::GeneratedSectionSource>(
                     &request.record.source);
             lux::spatial::GridCoord2i64 coordinate;
             if (!source || source->generator != state.generator ||
@@ -676,28 +681,36 @@ namespace
                     "invalid independent Tilemap proof source"});
             }
             return makeTileProofImage(
-                state, request.record.id, coordinate);
+                state,
+                request.record.id,
+                coordinate);
         };
         return result;
     }
 
-    lux::entity_scene::EntitySectionRecord tileProofRecord(
+    lux::scene::SectionRecord tileProofRecord(
         const TilemapProofState& state,
         lux::spatial::GridCoord2i64 coordinate)
     {
-        using namespace lux::entity_scene;
-        EntitySectionRecord result;
+        lux::scene::SectionRecord result;
         result.id = tileProofSectionId(coordinate);
-        result.source = GeneratedSectionSource{
+        result.source = lux::scene::GeneratedSectionSource{
             state.generator, 0u, tileProofParameters(coordinate)};
-        auto image = makeTileProofImage(state, result.id, coordinate);
-        auto encoded = encodeEntitySectionImage(image);
+        auto image = makeTileProofImage(
+            state,
+            result.id,
+            coordinate);
+        auto encoded =
+            lux::ecs::scene_format::encodeEntitySectionImage(image);
         assert(encoded);
-        result.content_digest = entitySceneContentDigest(*encoded);
+        result.content_digest =
+            lux::ecs::scene_format::entitySectionContentDigest(*encoded);
         result.encoded_bytes = encoded->size();
         result.decoded_bytes = encoded->size();
         result.entity_count = 1u;
-        result.required_components.push_back({state.schema, 1u});
+        result.required_components.push_back({
+            lux::ecs::componentSchemaId(state.schema.name),
+            1u});
         return result;
     }
 
@@ -705,22 +718,27 @@ namespace
         const TilemapProofState& state,
         lux::spatial::GridCoord2i64 coordinate)
     {
-        using namespace lux::entity_scene;
         FieldSection result;
         result.asset = ordinalUuid(201u);
         result.path = "Sections/StoredTilemapProof_lxes";
-        const EntitySectionId section{ordinalUuid(200u)};
+        const lux::ecs::scene_format::EntitySectionId section{
+            ordinalUuid(200u)};
         auto image = makeTileProofImage(state, section, coordinate);
-        auto encoded = encodeEntitySectionImage(image);
+        auto encoded =
+            lux::ecs::scene_format::encodeEntitySectionImage(image);
         assert(encoded);
         result.bytes = std::move(*encoded);
         result.record.id = section;
-        result.record.source = StoredSectionSource{"/Game/" + result.path};
-        result.record.content_digest = entitySceneContentDigest(result.bytes);
+        result.record.source = lux::scene::StoredSectionSource{
+            "/Game/" + result.path};
+        result.record.content_digest =
+            lux::ecs::scene_format::entitySectionContentDigest(result.bytes);
         result.record.encoded_bytes = result.bytes.size();
         result.record.decoded_bytes = result.bytes.size();
         result.record.entity_count = 1u;
-        result.record.required_components.push_back({state.schema, 1u});
+        result.record.required_components.push_back({
+            lux::ecs::componentSchemaId(state.schema.name),
+            1u});
         return result;
     }
 
@@ -995,13 +1013,12 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
 
     auto generated = spatial2d::Infinite2DPixelSectionSource::create({
         .field = field_id,
-        .generator = lux::entity_scene::SectionGeneratorId{
+        .generator = lux::scene::SectionGeneratorId{
             "lux.pixel.infinite2d.chunk"},
-        .chunk_schema = lux::entity_scene::ComponentSchemaId{
-            std::string{kPixelChunkSchema}},
-        .content_type = lux::entity_scene::ContentTypeId{
+        .chunk_schema = lux::ecs::componentSchemaId(kPixelChunkSchema),
+        .content_type = lux::ecs::scene_format::ContentTypeId{
             "lux.pixel.chunk"},
-        .demand_channel = lux::entity_scene::DemandChannelId{
+        .demand_channel = lux::scene::DemandChannelId{
             std::string{kDemandChannel}},
         .seed = 0x4c55583244494e46ull,
         .foreground_material = kForegroundMaterial,
@@ -1145,7 +1162,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
             std::move(*spatial_source),
             spatial2d::SpatialInterest2DConfig{
                 .section_world_size = 64.0,
-                .channel = lux::entity_scene::DemandChannelId{
+                .channel = lux::scene::DemandChannelId{
                     std::string{kDemandChannel}},
                 .resident_priority = 1u,
                 .maximum_sources = 2u});
@@ -1220,7 +1237,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     }
     assert(schedule.compile().valid());
 
-    assert(lux::entity_scene::validateEntitySectionRecord(field_record));
+    assert(lux::scene::validateSectionRecord(field_record));
     assert(loader_owner->client());
     assert(section_service->loadClient());
     assert(section_service->loadClient().supports(field_record));
@@ -1330,10 +1347,10 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         lux::ecs::encodePixelChunkPersistence(expected_origin_delta);
     assert(domain_record);
     const auto generic_wire =
-        lux::entity_scene::encodePersistenceJournalRecord(*domain_record);
+        lux::ecs::scene_format::encodePersistenceJournalRecord(*domain_record);
     assert(generic_wire);
     const auto generic_roundtrip =
-        lux::entity_scene::decodePersistenceJournalRecord(*generic_wire);
+        lux::ecs::scene_format::decodePersistenceJournalRecord(*generic_wire);
     assert(generic_roundtrip && *generic_roundtrip == *domain_record);
     auto& tilemap_owner = registry.emplace<lux::ecs::TilemapComponent>(
         field_entity);

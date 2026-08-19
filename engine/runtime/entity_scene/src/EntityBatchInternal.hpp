@@ -4,7 +4,7 @@
 #include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/meta/LuxObject.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
 #include <lux/engine/runtime/entity_scene/PreparedEntityBatch.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
@@ -17,28 +17,21 @@
 
 namespace lux::runtime::entity_scene::detail
 {
-    [[nodiscard]] inline lux::ecs::PersistentEntityId
-    toRuntimePersistentId(
-        const lux::entity_scene::PersistentEntityId& id) noexcept
-    {
-        return lux::ecs::PersistentEntityId{id.value()};
-    }
-
     struct ResolvedReferenceRelocation final
     {
         std::uint32_t schema{0u};
-        lux::entity_scene::EntityOrdinal source{
-            lux::entity_scene::kInvalidEntityOrdinal};
-        lux::entity_scene::EntityOrdinal target{
-            lux::entity_scene::kInvalidEntityOrdinal};
+        lux::ecs::scene_format::EntityOrdinal source{
+            lux::ecs::scene_format::kInvalidEntityOrdinal};
+        lux::ecs::scene_format::EntityOrdinal target{
+            lux::ecs::scene_format::kInvalidEntityOrdinal};
         std::uint32_t field_offset{0u};
     };
 
     struct ResolvedBlobRelocation final
     {
         std::uint32_t schema{0u};
-        lux::entity_scene::EntityOrdinal source{
-            lux::entity_scene::kInvalidEntityOrdinal};
+        lux::ecs::scene_format::EntityOrdinal source{
+            lux::ecs::scene_format::kInvalidEntityOrdinal};
         std::uint32_t attachment_index{0u};
         std::uint32_t field_offset{0u};
     };
@@ -46,8 +39,8 @@ namespace lux::runtime::entity_scene::detail
     struct ResolvedPersistentReferenceRelocation final
     {
         std::uint32_t schema{0u};
-        lux::entity_scene::EntityOrdinal source{
-            lux::entity_scene::kInvalidEntityOrdinal};
+        lux::ecs::scene_format::EntityOrdinal source{
+            lux::ecs::scene_format::kInvalidEntityOrdinal};
         lux::ecs::PersistentEntityId target;
         std::uint32_t field_offset{0u};
     };
@@ -112,7 +105,7 @@ namespace lux::runtime::entity_scene::detail
 
     [[nodiscard]] inline EntityBatchFailure makeFailure(
         EEntityBatchError error,
-        const lux::entity_scene::EntitySectionId& section,
+        const lux::ecs::scene_format::EntitySectionId& section,
         std::uint64_t generation,
         std::string detail,
         std::string schema = {})

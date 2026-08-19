@@ -3,8 +3,7 @@
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/ecs/physics3d/components/Physics3DComponents.hpp>
 #include <lux/engine/ecs/physics3d/systems/Physics3DSystem.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/resource/physics3d/StaticColliderBatch3D.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
@@ -40,7 +39,7 @@ namespace
 
     struct StoredBatch final
     {
-        lux::entity_scene::ContentBlobRef reference;
+        lux::ecs::scene_format::ContentBlobRef reference;
         lux::runtime::entity_scene::ContentBlobLease owner;
         lux::cxx::SharedBytes<> bytes;
     };
@@ -66,20 +65,20 @@ namespace
             lux::physics3d::encodeStaticColliderBatch3DBlob(blob);
         assert(encoded);
 
-        lux::entity_scene::EntitySectionAttachment attachment;
-        attachment.reference.type = lux::entity_scene::ContentTypeId{
+        lux::ecs::scene_format::EntitySectionAttachment attachment;
+        attachment.reference.type = lux::ecs::scene_format::ContentTypeId{
             std::string{
                 lux::physics3d::kStaticColliderBatch3DContentTypeName}};
         attachment.reference.schema_version =
             lux::physics3d::kStaticColliderBatch3DSchemaVersion;
         attachment.payload = std::move(*encoded);
-        attachment.reference.id = lux::entity_scene::makeContentBlobId(
+        attachment.reference.id = lux::ecs::scene_format::makeContentBlobId(
             attachment.reference.type,
             attachment.reference.schema_version,
             attachment.payload);
         auto acquired = store.acquire(
             std::move(attachment),
-            lux::entity_scene::EntitySectionId{uuid(section_id)},
+            lux::ecs::scene_format::EntitySectionId{uuid(section_id)},
             1u);
         assert(acquired);
         const auto reference = acquired->reference();
@@ -274,7 +273,7 @@ int main()
             entity,
             [](auto& component)
             {
-                component.content.type = lux::entity_scene::ContentTypeId{
+                component.content.type = lux::ecs::scene_format::ContentTypeId{
                     std::string{"lux.physics3d.unsupported"}};
             });
         schedule.tick(0.0f);

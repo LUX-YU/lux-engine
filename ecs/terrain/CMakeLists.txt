@@ -23,15 +23,15 @@ target_link_libraries(
     INTERFACE
         lux::engine::ecs::core
         lux::engine::core::meta
-        lux::engine::resource::entity_scene
+        lux::engine::ecs::scene_format
         lux::engine::resource::spatial
 )
 
 component_add_transitive_commands(
     terrain_components
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS entity_scene spatial)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS spatial)"
 )
 
 if(LUX_BUILD_COMPONENT_META)

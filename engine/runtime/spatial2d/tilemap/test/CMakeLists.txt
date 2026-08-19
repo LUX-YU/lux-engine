@@ -7,7 +7,6 @@ target_link_libraries(
     PRIVATE
         lux::engine::runtime::runtime_spatial2d_tilemap
         lux::engine::runtime::runtime_execution
-        lux::engine::resource::entity_scene
         lux::engine::resource::tilemap_content
 )
 if(MSVC)

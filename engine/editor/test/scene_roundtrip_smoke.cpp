@@ -1,7 +1,8 @@
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/editor/scene/DemoSceneTemplate.hpp>
 #include <lux/engine/editor/scene/WorldActorEcsAdapter.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
@@ -335,20 +336,20 @@ int main()
     }
     expect(cooked_demo && !cooked_demo->sections.empty(),
         "demo Authoring World cooked through LXAD -> LXSC/LXES");
-    auto decoded_manifest = cooked_demo
-        ? lux::entity_scene::decodeEntitySceneManifest(
-              cooked_demo->encoded_manifest)
-        : decltype(lux::entity_scene::decodeEntitySceneManifest({})){};
+    auto decoded_package = cooked_demo
+        ? lux::scene::decodeScenePackage(cooked_demo->encoded_package)
+        : decltype(lux::scene::decodeScenePackage({})){};
     expect(
-        decoded_manifest && cooked_demo &&
-            decoded_manifest->id == cooked_demo->manifest.id,
-        "cooked LXSC manifest decodes with the expected Scene identity");
+        decoded_package && cooked_demo &&
+            decoded_package->id == cooked_demo->package.id,
+        "cooked LXSC package decodes with the expected Scene identity");
     bool sections_decode = cooked_demo.has_value();
     if (cooked_demo)
     {
         for (const auto& section : cooked_demo->sections)
         {
-            auto decoded = lux::entity_scene::decodeEntitySectionImage(
+            auto decoded =
+                lux::ecs::scene_format::decodeEntitySectionImage(
                 section.encoded_image);
             if (!decoded || decoded->section != section.record.id)
             {
@@ -359,7 +360,7 @@ int main()
     }
     expect(
         sections_decode,
-        "every cooked LXES image decodes with its manifest Section identity");
+        "every cooked LXES image decodes with its package Section identity");
 
     fs::remove_all(temp_root, error);
     lux::meta::meta_module_deinit();

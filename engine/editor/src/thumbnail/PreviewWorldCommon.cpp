@@ -88,24 +88,24 @@ namespace lux::editor
         return descriptor;
     }
 
-    lux::entity_scene::EntitySceneManifest
-    makePreviewSceneManifest(std::string_view scene_name)
+    lux::scene::ScenePackage
+    makePreviewScenePackage(std::string_view scene_name)
     {
         static const auto preview_namespace = uuids::uuid::from_string(
             "34bb613e-67ec-5f7d-ad21-232394516043"
         ).value();
         uuids::uuid_name_generator ids{preview_namespace};
 
-        lux::entity_scene::EntitySceneManifest manifest;
-        manifest.id = lux::entity_scene::EntitySceneId{ids(scene_name)};
-        manifest.contributions.push_back(
-            lux::entity_scene::SceneContribution{
-                lux::extensions::ContributionId{
+        lux::scene::ScenePackage package;
+        package.id = lux::scene::ScenePackageId{ids(scene_name)};
+        package.features.push_back(
+            lux::scene::SceneFeatureRequest{
+                lux::scene::SceneFeatureId{
                     std::string{kPreviewWorldContributionName}},
                 0u,
                 {}}
         );
-        return manifest;
+        return package;
     }
 
     lux::meta::entity_id createPreviewKeyLight(lux::ecs::World& world)

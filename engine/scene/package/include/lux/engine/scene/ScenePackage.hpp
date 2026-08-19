@@ -47,6 +47,20 @@ namespace lux::scene
         return lux::cxx::StableNameIdView<SectionGeneratorIdTag>{name};
     }
 
+    [[nodiscard]] inline bool isValidDemandChannelId(
+        const DemandChannelId& id) noexcept
+    {
+        return id.isValid() &&
+            lux::ecs::scene_format::isCanonicalStableName(id.name());
+    }
+
+    [[nodiscard]] inline bool isValidSectionGeneratorId(
+        const SectionGeneratorId& id) noexcept
+    {
+        return id.isValid() &&
+            lux::ecs::scene_format::isCanonicalStableName(id.name());
+    }
+
     enum class SectionCompression : std::uint8_t
     {
         None,

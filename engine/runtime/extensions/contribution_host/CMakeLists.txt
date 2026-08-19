@@ -1,3 +1,4 @@
+find_package(lux-cxx REQUIRED COMPONENTS core memory)
 find_package(EnTT CONFIG REQUIRED)
 if(NOT TARGET STDEXEC::stdexec)
     find_package(stdexec CONFIG REQUIRED)
@@ -46,8 +47,10 @@ target_link_libraries(
     runtime_scene_contributions
     PUBLIC
         lux::engine::runtime::runtime_extension_loader
+        lux::engine::extensions::extension_api
         lux::engine::scene::scene_api
         lux::engine::ecs::core
+        lux::cxx::core
         lux::cxx::memory
         lux::engine::core::events
         EnTT::EnTT
@@ -58,8 +61,9 @@ component_add_transitive_commands(
     runtime_scene_contributions
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(concurrentqueue CONFIG REQUIRED)"
-    "find_package(lux-cxx REQUIRED COMPONENTS memory)"
+    "find_package(lux-cxx REQUIRED COMPONENTS core memory)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_extension_loader)"
+    "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_api)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
     "find_package(lux-engine-core REQUIRED COMPONENTS events)"
@@ -114,7 +118,7 @@ target_link_libraries(
 component_add_transitive_commands(
     runtime_render_effects
     "find_package(concurrentqueue CONFIG REQUIRED)"
-    "find_package(lux-cxx REQUIRED COMPONENTS memory)"
+    "find_package(lux-cxx REQUIRED COMPONENTS core memory)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_scene_contributions)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS render_core)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"

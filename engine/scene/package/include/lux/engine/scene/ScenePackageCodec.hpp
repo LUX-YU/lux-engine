@@ -58,6 +58,11 @@ namespace lux::scene
         lux::cxx::expected<T, ScenePackageCodecFailure>;
 
     [[nodiscard]] LUX_ENGINE_SCENE_PACKAGE_PUBLIC
+    ScenePackageCodecResult<void> validateSectionRecord(
+        const SectionRecord& record,
+        const ScenePackageCodecLimits& limits = {}) noexcept;
+
+    [[nodiscard]] LUX_ENGINE_SCENE_PACKAGE_PUBLIC
     ScenePackageCodecResult<void> validateScenePackage(
         const ScenePackage& package,
         const ScenePackageCodecLimits& limits = {}) noexcept;

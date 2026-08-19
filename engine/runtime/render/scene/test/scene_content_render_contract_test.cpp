@@ -4,7 +4,7 @@
 #include <lux/engine/function/render/client/features/render_cluster/RenderClusterOperation.hpp>
 #include <lux/engine/meta/LuxObject.hpp>
 #include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 
 #include <array>
 #include <cstddef>
@@ -94,9 +94,9 @@ int main()
     if (!decoded || decoded->instances.size() != kInstanceCount)
         return 5;
 
-    lux::entity_scene::ContentBlobRef content;
+    lux::ecs::scene_format::ContentBlobRef content;
     content.id.digest[0] = std::byte{0x42u};
-    content.type = lux::entity_scene::ContentTypeId{std::string{
+    content.type = lux::ecs::scene_format::ContentTypeId{std::string{
         lux::classic_mesh::kClassicMeshBatchContentTypeName}};
     content.schema_version =
         lux::classic_mesh::kClassicMeshBatchSchemaVersion;

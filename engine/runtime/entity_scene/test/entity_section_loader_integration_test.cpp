@@ -4,7 +4,8 @@
 #include <lux/engine/ecs/SystemPhase.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/components/ParentComponent.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/StartupSectionSystem.hpp>
@@ -171,20 +172,20 @@ namespace
 
     struct SectionFixture final
     {
-        lux::entity_scene::EntitySectionRecord record;
+        lux::scene::SectionRecord record;
         lux::asset::asset_id_t asset;
         std::vector<std::byte> bytes;
     };
 
-    lux::entity_scene::EntitySectionImage makeMarkerImage(
-        lux::entity_scene::EntitySectionId section)
+    lux::ecs::scene_format::EntitySectionImage makeMarkerImage(
+        lux::ecs::scene_format::EntitySectionId section)
     {
-        using namespace lux::entity_scene;
+        using namespace lux::ecs::scene_format;
         EntitySectionImage image;
         image.section = section;
         image.component_names = {""};
         image.schemas.push_back({
-            ComponentSchemaId{"org.lux.test.marker"},
+            lux::ecs::componentSchemaId("org.lux.test.marker"),
             1u,
             EEntityComponentStorage::TAG});
         image.archetypes.push_back({{0u}});
@@ -194,7 +195,7 @@ namespace
     }
 
     lux::cxx::expected<
-        lux::entity_scene::EntitySectionImage,
+        lux::ecs::scene_format::EntitySectionImage,
         lux::runtime::entity_scene::EntitySectionGeneratorFailure>
     generateMarkerSection(
         const void*,
@@ -209,15 +210,18 @@ namespace
         const char* asset_id,
         std::string path)
     {
-        using namespace lux::entity_scene;
-        auto image = makeMarkerImage(EntitySectionId{uuid(section_id)});
-        auto encoded = encodeEntitySectionImage(image);
+        const lux::ecs::scene_format::EntitySectionId section{
+            uuid(section_id)};
+        auto image = makeMarkerImage(section);
+        auto encoded =
+            lux::ecs::scene_format::encodeEntitySectionImage(image);
         assert(encoded);
 
-        EntitySectionRecord record;
-        record.id = image.section;
-        record.source = StoredSectionSource{std::move(path)};
-        record.content_digest = entitySceneContentDigest(*encoded);
+        lux::scene::SectionRecord record;
+        record.id = section;
+        record.source = lux::scene::StoredSectionSource{std::move(path)};
+        record.content_digest =
+            lux::ecs::scene_format::entitySectionContentDigest(*encoded);
         record.encoded_bytes = encoded->size();
         record.decoded_bytes = encoded->size();
         record.entity_count = 2u;
@@ -483,7 +487,7 @@ int main()
     lux::exec::AsyncRuntimeBuilder builder;
     auto generators = runtime::EntitySectionGeneratorCatalog::create({
         runtime::EntitySectionGeneratorDescriptor{
-            lux::entity_scene::SectionGeneratorId{
+            lux::scene::SectionGeneratorId{
                 "org.lux.test.generator"},
             &generateMarkerSection,
             {},
@@ -539,18 +543,18 @@ int main()
     auto* fixed_owner = fixed_loader.get();
     assert(fixed_schedule.addSystem(
         std::move(fixed_loader), lux::ecs::kPhaseSceneLoading));
-    lux::entity_scene::EntitySceneManifest fixed_manifest;
-    fixed_manifest.id = lux::entity_scene::EntitySceneId{
+    lux::scene::ScenePackage fixed_package;
+    fixed_package.id = lux::scene::ScenePackageId{
         uuid("70000000-0000-4000-8000-000000000001")};
-    fixed_manifest.contributions.push_back({
-        lux::extensions::ContributionId{"org.lux.test.headless"},
+    fixed_package.features.push_back({
+        lux::scene::SceneFeatureId{"org.lux.test.headless"},
         1u,
         {}});
-    fixed_manifest.startup_sections.push_back(fixed_leaf.record.id);
-    fixed_manifest.sections.push_back(common.record);
-    fixed_manifest.sections.push_back(fixed_leaf.record);
+    fixed_package.startup_sections.push_back(fixed_leaf.record.id);
+    fixed_package.sections.push_back(common.record);
+    fixed_package.sections.push_back(fixed_leaf.record);
     auto fixed_catalog_result = runtime::EntitySceneCatalog::create(
-        std::move(fixed_manifest));
+        std::move(fixed_package));
     assert(fixed_catalog_result);
     auto fixed_catalog = std::move(*fixed_catalog_result);
     auto fixed_scene_result = runtime::StartupSectionSystem::create(
@@ -561,7 +565,7 @@ int main()
     assert(fixed_scene_owner->state() ==
         runtime::EEntitySceneState::LOADING);
     assert(fixed_scene_owner->revision() == 0u);
-    assert(fixed_scene_owner->contributions().size() == 1u);
+    assert(fixed_scene_owner->features().size() == 1u);
     assert(fixed_schedule.addSystem(
         std::move(fixed_scene), lux::ecs::kPhaseSceneLoading));
     assert(fixed_schedule.compile().valid());
@@ -601,7 +605,7 @@ int main()
          ++index)
     {
         auto record = common.record;
-        record.id = lux::entity_scene::EntitySectionId{
+        record.id = lux::ecs::scene_format::EntitySectionId{
             ordinalUuid(10'000u + index)};
         auto ticket = manual_owner->client().acquire(std::move(record));
         assert(ticket);
@@ -701,7 +705,7 @@ int main()
     // A request that can never fit the operation budget fails at acquire;
     // it must not enter an endless WAITING_ADMISSION retry loop.
     auto oversized = common.record;
-    oversized.id = lux::entity_scene::EntitySectionId{
+    oversized.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000004")};
     oversized.encoded_bytes = 300u * 1024u * 1024u;
     auto rejected = manual_owner->client().acquire(std::move(oversized));
@@ -710,10 +714,10 @@ int main()
         runtime::EEntitySectionRequestError::INVALID_REQUEST);
 
     auto compressed = common.record;
-    compressed.id = lux::entity_scene::EntitySectionId{
+    compressed.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000011")};
     compressed.compression =
-        lux::entity_scene::EEntitySectionCompression::ZSTD;
+        lux::scene::SectionCompression::Zstd;
     compressed.encoded_bytes = 140u * 1024u * 1024u;
     compressed.decoded_bytes = 140u * 1024u * 1024u;
     auto compressed_rejected = manual_owner->client().acquire(
@@ -726,7 +730,7 @@ int main()
     // decoded copies, so the same declaration is admissible below the queue
     // budget. The deliberately short provider payload then fails normally.
     auto uncompressed = common.record;
-    uncompressed.id = lux::entity_scene::EntitySectionId{
+    uncompressed.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000012")};
     uncompressed.encoded_bytes = 200u * 1024u * 1024u;
     uncompressed.decoded_bytes = uncompressed.encoded_bytes;
@@ -750,10 +754,10 @@ int main()
         });
 
     auto unknown_compression = common.record;
-    unknown_compression.id = lux::entity_scene::EntitySectionId{
+    unknown_compression.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000013")};
     unknown_compression.compression = static_cast<
-        lux::entity_scene::EEntitySectionCompression>(0xffu);
+        lux::scene::SectionCompression>(0xffu);
     auto unknown_rejected = manual_owner->client().acquire(
         std::move(unknown_compression));
     assert(!unknown_rejected);
@@ -764,7 +768,7 @@ int main()
     // internal pin and cannot arm before that dependency is ACTIVE. Dropping
     // the caller's dependency ticket does not retire it under the dependent.
     auto dependent = common.record;
-    dependent.id = lux::entity_scene::EntitySectionId{
+    dependent.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000014")};
     dependent.dependencies.push_back(common.record.id);
     auto dependent_ticket = manual_owner->client().acquire(dependent);
@@ -788,10 +792,10 @@ int main()
     assert(manual_world.registry().view<MarkerComponent>().empty());
 
     auto missing_dependency = dependent;
-    missing_dependency.id = lux::entity_scene::EntitySectionId{
+    missing_dependency.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000017")};
     missing_dependency.dependencies.front() =
-        lux::entity_scene::EntitySectionId{
+        lux::ecs::scene_format::EntitySectionId{
             uuid("71000000-0000-4000-8000-000000000099")};
     const auto missing_dependency_result =
         manual_owner->client().acquire(std::move(missing_dependency));
@@ -803,7 +807,7 @@ int main()
     // supplied; component requirements can be proven against the catalogue.
 
     auto extension_required = common.record;
-    extension_required.id = lux::entity_scene::EntitySectionId{
+    extension_required.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000015")};
     extension_required.required_extensions.push_back({
         lux::extensions::ExtensionId{"org.lux.test.extension"}, 1u, 0u});
@@ -814,10 +818,10 @@ int main()
         runtime::EEntitySectionRequestError::REQUIREMENT_UNAVAILABLE);
 
     auto component_required = common.record;
-    component_required.id = lux::entity_scene::EntitySectionId{
+    component_required.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000016")};
     component_required.required_components.push_back({
-        lux::entity_scene::ComponentSchemaId{"org.lux.test.marker"}, 2u});
+        lux::ecs::componentSchemaId("org.lux.test.marker"), 2u});
     auto unavailable_component = manual_owner->client().acquire(
         std::move(component_required));
     assert(!unavailable_component);
@@ -828,18 +832,18 @@ int main()
     // background CPU arena. Its output still passes the exact same LXES,
     // digest, record and materialization checks as stored content.
     auto generated_valid = common.record;
-    generated_valid.id = lux::entity_scene::EntitySectionId{
+    generated_valid.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000018")};
-    generated_valid.source = lux::entity_scene::GeneratedSectionSource{
-        lux::entity_scene::SectionGeneratorId{"org.lux.test.generator"},
+    generated_valid.source = lux::scene::GeneratedSectionSource{
+        lux::scene::SectionGeneratorId{"org.lux.test.generator"},
         9u,
         {std::byte{0x2au}}};
     auto generated_image = makeMarkerImage(generated_valid.id);
     auto generated_bytes =
-        lux::entity_scene::encodeEntitySectionImage(generated_image);
+        lux::ecs::scene_format::encodeEntitySectionImage(generated_image);
     assert(generated_bytes);
     generated_valid.content_digest =
-        lux::entity_scene::entitySceneContentDigest(*generated_bytes);
+        lux::ecs::scene_format::entitySectionContentDigest(*generated_bytes);
     generated_valid.encoded_bytes = generated_bytes->size();
     generated_valid.decoded_bytes = generated_bytes->size();
     generated_valid.entity_count = generated_image.entities.size();
@@ -862,11 +866,11 @@ int main()
     manual_schedule.tick(0.0f, lux::ecs::kPhaseSceneLoading);
 
     auto unknown_generator = generated_valid;
-    unknown_generator.id = lux::entity_scene::EntitySectionId{
+    unknown_generator.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000019")};
-    std::get<lux::entity_scene::GeneratedSectionSource>(
+    std::get<lux::scene::GeneratedSectionSource>(
         unknown_generator.source).generator =
-            lux::entity_scene::SectionGeneratorId{
+            lux::scene::SectionGeneratorId{
                 "org.lux.test.unknown_generator"};
     auto unavailable_source =
         manual_owner->client().acquire(std::move(unknown_generator));
@@ -879,10 +883,10 @@ int main()
     // MainThreadScheduler hop, and its terminal generation remains stable
     // while tickets still refer to it.
     auto generated_mismatch = common.record;
-    generated_mismatch.id = lux::entity_scene::EntitySectionId{
+    generated_mismatch.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000005")};
-    generated_mismatch.source = lux::entity_scene::GeneratedSectionSource{
-        lux::entity_scene::SectionGeneratorId{"org.lux.test.generator"},
+    generated_mismatch.source = lux::scene::GeneratedSectionSource{
+        lux::scene::SectionGeneratorId{"org.lux.test.generator"},
         7u,
         {}};
     auto mismatch_ticket =
@@ -935,7 +939,7 @@ int main()
     for (std::uint64_t ordinal = 0u; ordinal < 256u; ++ordinal)
     {
         auto transient = common.record;
-        transient.id = lux::entity_scene::EntitySectionId{
+        transient.id = lux::ecs::scene_format::EntitySectionId{
             ordinalUuid(1000u + ordinal)};
         auto ticket = manual_owner->client().acquire(std::move(transient));
         assert(ticket);
@@ -995,15 +999,15 @@ int main()
     auto* rejected_loader_owner = rejected_loader.get();
     assert(rejected_schedule.addSystem(
         std::move(rejected_loader), lux::ecs::kPhaseSceneLoading));
-    lux::entity_scene::EntitySceneManifest rejected_manifest;
-    rejected_manifest.id = lux::entity_scene::EntitySceneId{
+    lux::scene::ScenePackage rejected_package;
+    rejected_package.id = lux::scene::ScenePackageId{
         uuid("70000000-0000-4000-8000-000000000002")};
-    rejected_manifest.startup_sections.push_back(common.record.id);
-    rejected_manifest.sections.push_back(common.record);
-    rejected_manifest.required_components.push_back({
-        lux::entity_scene::ComponentSchemaId{"org.lux.test.unknown"}, 1u});
+    rejected_package.startup_sections.push_back(common.record.id);
+    rejected_package.sections.push_back(common.record);
+    rejected_package.required_components.push_back({
+        lux::ecs::componentSchemaId("org.lux.test.unknown"), 1u});
     auto rejected_catalog_result = runtime::EntitySceneCatalog::create(
-        std::move(rejected_manifest));
+        std::move(rejected_package));
     assert(rejected_catalog_result);
     auto rejected_catalog = std::move(*rejected_catalog_result);
     auto rejected_scene_result = runtime::StartupSectionSystem::create(

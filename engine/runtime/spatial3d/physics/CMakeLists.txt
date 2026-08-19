@@ -36,13 +36,14 @@ target_link_libraries(
         lux::engine::runtime::runtime_entity_scene
         lux::engine::runtime::runtime_execution
         lux::engine::ecs::physics3d
+        lux::engine::ecs::scene_format
         lux::engine::resource::physics3d_content
 )
 
 component_add_transitive_commands(
     runtime_spatial3d_physics
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_execution)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS physics3d)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS physics3d scene_format)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS physics3d_content)"
 )
 

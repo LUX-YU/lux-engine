@@ -5,7 +5,8 @@
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
 #include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 
 #include <cassert>
 #include <cstddef>
@@ -79,11 +80,11 @@ namespace
         return source;
     }
 
-    lux::entity_scene::EntitySectionImage emptyImage(
+    lux::ecs::scene_format::EntitySectionImage emptyImage(
         const char* id)
     {
         lux::toolchain::EntitySectionImageBuilder builder{
-            lux::entity_scene::EntitySectionId{uuid(id)}};
+            lux::ecs::scene_format::EntitySectionId{uuid(id)}};
         auto image = std::move(builder).build();
         assert(image);
         return std::move(*image);
@@ -92,7 +93,7 @@ namespace
 
 int main()
 {
-    using namespace lux::entity_scene;
+    using namespace lux::scene;
     using namespace lux::toolchain;
 
     TaggedPayloadSource nested_source;
@@ -138,26 +139,27 @@ int main()
     assert(!canonicalTaggedPayloadNames(
         std::span<const TaggedPayloadSource>{&malformed, 1u}));
 
-    const EntitySectionId section_id{
+    const lux::ecs::scene_format::EntitySectionId section_id{
         uuid("20000000-0000-4000-8000-000000000001")};
     EntitySectionImageBuilder builder{section_id};
     const auto z_attachment = builder.addAttachment({
-        ContentTypeId{"lux.test.z_blob"},
+        lux::ecs::scene_format::ContentTypeId{"lux.test.z_blob"},
         1u,
         pod<std::uint32_t>(11u)});
     const auto a_attachment = builder.addAttachment({
-        ContentTypeId{"lux.test.a_blob"},
+        lux::ecs::scene_format::ContentTypeId{"lux.test.a_blob"},
         1u,
         pod<std::uint32_t>(22u)});
     assert(z_attachment && *z_attachment == 0u);
     assert(a_attachment && *a_attachment == 1u);
 
     EntityCookInput parent;
-    parent.persistent_id = PersistentEntityId{
+    parent.persistent_id = lux::ecs::PersistentEntityId{
         uuid("30000000-0000-4000-8000-000000000001")};
     EntityComponentCookInput parent_tag;
-    parent_tag.schema = ComponentSchemaId{"lux.test.b_tag"};
-    parent_tag.storage = EEntityComponentStorage::TAG;
+    parent_tag.schema = lux::ecs::componentSchemaId("lux.test.b_tag");
+    parent_tag.storage =
+        lux::ecs::scene_format::EEntityComponentStorage::TAG;
     parent.components.push_back(std::move(parent_tag));
     const auto parent_ordinal = builder.addEntity(std::move(parent));
     assert(parent_ordinal && *parent_ordinal == 0u);
@@ -165,28 +167,29 @@ int main()
     EntityCookInput child;
     child.parent = *parent_ordinal;
     EntityComponentCookInput data;
-    data.schema = ComponentSchemaId{"lux.test.a_data"};
+    data.schema = lux::ecs::componentSchemaId("lux.test.a_data");
     data.value = referencePayload();
     data.local_references.push_back({"target", *parent_ordinal});
     data.persistent_references.push_back({
         "persistent",
-        PersistentEntityId{
+        lux::ecs::PersistentEntityId{
             uuid("30000000-0000-4000-8000-000000000099")}});
     data.blob_references.push_back({"blob", *z_attachment});
     child.components.push_back(std::move(data));
     EntityComponentCookInput child_tag;
-    child_tag.schema = ComponentSchemaId{"lux.test.b_tag"};
-    child_tag.storage = EEntityComponentStorage::TAG;
+    child_tag.schema = lux::ecs::componentSchemaId("lux.test.b_tag");
+    child_tag.storage =
+        lux::ecs::scene_format::EEntityComponentStorage::TAG;
     child.components.push_back(std::move(child_tag));
     const auto child_ordinal = builder.addEntity(std::move(child));
     assert(child_ordinal && *child_ordinal == 1u);
 
     auto image = std::move(builder).build();
     assert(image);
-    assert(validateEntitySectionImage(*image));
+    assert(lux::ecs::scene_format::validateEntitySectionImage(*image));
     assert(image->schemas.size() == 2u);
-    assert(image->schemas[0u].id.name() == "lux.test.a_data");
-    assert(image->schemas[1u].id.name() == "lux.test.b_tag");
+    assert(image->schemas[0u].id.name == "lux.test.a_data");
+    assert(image->schemas[1u].id.name == "lux.test.b_tag");
     assert(image->archetypes.size() == 2u);
     assert((image->archetypes[0u].schemas ==
         std::vector<std::uint32_t>{0u, 1u}));
@@ -204,45 +207,49 @@ int main()
     assert(image->attachments[1u].reference.type.name() ==
         "lux.test.z_blob");
 
-    EntitySceneCookInput scene;
-    scene.id = EntitySceneId{
+    ScenePackageCookInput scene;
+    scene.id = ScenePackageId{
         uuid("10000000-0000-4000-8000-000000000001")};
-    scene.contributions.push_back({
-        lux::extensions::ContributionId{"lux.test.presentation"},
+    scene.features.push_back({
+        SceneFeatureId{"lux.test.presentation"},
         1u,
         {}});
-    scene.startup_sections.push_back(section_id);
+    scene.startup_sections.push_back(
+        lux::ecs::scene_format::EntitySectionId{section_id.value()});
 
     EntitySectionCookInput later;
     later.image = emptyImage(
         "20000000-0000-4000-8000-000000000002");
-    later.source = StoredSectionSource{
+    later.source = lux::scene::StoredSectionSource{
         "/Game/EntitySections/20000000_0000_4000_8000_000000000002"};
-    later.dependencies.push_back(section_id);
+    later.dependencies.push_back(
+        lux::ecs::scene_format::EntitySectionId{section_id.value()});
     scene.sections.push_back(std::move(later));
 
     EntitySectionCookInput startup;
     startup.image = std::move(*image);
-    startup.source = StoredSectionSource{
+    startup.source = lux::scene::StoredSectionSource{
         "/Game/EntitySections/20000000_0000_4000_8000_000000000001"};
     startup.demand_channels.push_back(
-        DemandChannelId{"lux.test.startup"});
+        lux::scene::DemandChannelId{"lux.test.startup"});
     scene.sections.push_back(std::move(startup));
 
-    auto cooked = cookEntityScene(std::move(scene));
+    auto cooked = cookScenePackage(std::move(scene));
     assert(cooked);
-    assert(validateEntitySceneManifest(cooked->manifest));
+    assert(validateScenePackage(cooked->package));
     assert(cooked->sections.size() == 2u);
-    assert(cooked->sections[0u].record.id == section_id);
-    assert(cooked->manifest.sections[0u] ==
+    assert(cooked->sections[0u].record.id ==
+        lux::ecs::scene_format::EntitySectionId{section_id.value()});
+    assert(cooked->package.sections[0u] ==
         cooked->sections[0u].record);
     assert(cooked->sections[0u].record.content_digest ==
-        entitySceneContentDigest(cooked->sections[0u].encoded_image));
+        lux::ecs::scene_format::entitySectionContentDigest(
+            cooked->sections[0u].encoded_image));
     assert(cooked->sections[0u].record.required_components.size() == 2u);
-    assert(cooked->manifest.required_components.size() == 2u);
-    const auto decoded_manifest = decodeEntitySceneManifest(
-        cooked->encoded_manifest);
-    assert(decoded_manifest && *decoded_manifest == cooked->manifest);
+    assert(cooked->package.required_components.size() == 2u);
+    const auto decoded_package = decodeScenePackage(
+        cooked->encoded_package);
+    assert(decoded_package && *decoded_package == cooked->package);
 
     return 0;
 }

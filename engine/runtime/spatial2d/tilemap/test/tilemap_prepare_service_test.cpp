@@ -1,4 +1,4 @@
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/resource/tilemap/TilemapChunk.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
@@ -48,9 +48,9 @@ int main()
     source.tiles.assign(lux::tilemap::kTilemapChunkTileCount, 19u);
     auto encoded = lux::tilemap::encodeTilemapChunkBlob(source);
     assert(encoded);
-    const auto type = lux::entity_scene::ContentTypeId{
+    const auto type = lux::ecs::scene_format::ContentTypeId{
         std::string{lux::tilemap::kTilemapChunkContentTypeName}};
-    const auto digest = lux::entity_scene::makeContentBlobId(
+    const auto digest = lux::ecs::scene_format::makeContentBlobId(
         type,
         lux::tilemap::kTilemapChunkSchemaVersion,
         *encoded).digest;

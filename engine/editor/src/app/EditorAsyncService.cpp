@@ -4,7 +4,6 @@
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
 #include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
@@ -149,9 +148,9 @@ namespace lux::editor
             const lux::toolchain::CookedSpatial3DEntitySceneBundle& bundle)
         {
             const auto content_digest = lux::cxx::algorithm::Sha256::hash(
-                bundle.encoded_manifest);
+                bundle.encoded_package);
             return root_document.parent_path() / "entity-scene-play-images" /
-                (uuids::to_string(bundle.manifest.id.value()) + "-" +
+                (uuids::to_string(bundle.package.id.value()) + "-" +
                     lux::cxx::algorithm::toHex(content_digest) +
                     ".luxpak");
         }
@@ -171,7 +170,7 @@ namespace lux::editor
         }
 
         [[nodiscard]] lux::cxx::expected<
-            lux::entity_scene::EntitySceneId,
+            lux::scene::ScenePackageId,
             std::string>
         publishPlayEntityScenePak(
             lux::toolchain::CookedSpatial3DEntitySceneBundle bundle,
@@ -181,19 +180,19 @@ namespace lux::editor
             entries.reserve(
                 1u + bundle.sections.size() +
                 bundle.generated_meshes.size());
-            const auto scene_id = bundle.manifest.id;
+            const auto scene_id = bundle.package.id;
             entries.push_back({
                 scene_id.value(),
                 lux::asset::EAssetType::ENTITY_SCENE,
                 "Scenes/Play",
-                ownBytes(std::move(bundle.encoded_manifest))});
+                ownBytes(std::move(bundle.encoded_package))});
             for (auto& section : bundle.sections)
             {
                 const auto key = uuids::to_string(section.record.id.value());
                 const auto expected_source =
                     "/Game/EntitySections/" + key;
                 const auto* stored = std::get_if<
-                    lux::entity_scene::StoredSectionSource>(
+                    lux::scene::StoredSectionSource>(
                         &section.record.source);
                 if (stored == nullptr ||
                     stored->content_path != expected_source)

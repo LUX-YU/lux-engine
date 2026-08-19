@@ -31,7 +31,7 @@ namespace lux::runtime::spatial3d
 
         [[nodiscard]] bool active() const noexcept;
         [[nodiscard]] std::uint64_t generation() const noexcept;
-        [[nodiscard]] const lux::entity_scene::ContentBlobRef&
+        [[nodiscard]] const lux::ecs::scene_format::ContentBlobRef&
         content() const noexcept;
 
         /// Immediate backend hide used by on_destroy.  Backend allocation and

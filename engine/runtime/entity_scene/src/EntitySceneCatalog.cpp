@@ -7,60 +7,53 @@ namespace lux::runtime::entity_scene
     namespace
     {
         [[nodiscard]] bool sectionIdLess(
-            const lux::entity_scene::EntitySectionId& lhs,
-            const lux::entity_scene::EntitySectionId& rhs) noexcept
+            const lux::ecs::scene_format::EntitySectionId& lhs,
+            const lux::ecs::scene_format::EntitySectionId& rhs) noexcept
         {
             const auto left = lhs.value().as_bytes();
             const auto right = rhs.value().as_bytes();
             return std::lexicographical_compare(
                 left.begin(), left.end(), right.begin(), right.end());
         }
-    }
+    } // namespace
 
     lux::cxx::expected<
         EntitySceneCatalog,
-        lux::entity_scene::EntitySceneCodecFailure>
-    EntitySceneCatalog::create(
-        lux::entity_scene::EntitySceneManifest manifest) noexcept
+        lux::scene::ScenePackageCodecFailure>
+    EntitySceneCatalog::create(lux::scene::ScenePackage package) noexcept
     {
-        if (auto valid =
-                lux::entity_scene::validateEntitySceneManifest(manifest);
-            !valid)
-        {
+        if (auto valid = lux::scene::validateScenePackage(package); !valid)
             return lux::cxx::unexpected(std::move(valid.error()));
-        }
-        return EntitySceneCatalog{std::move(manifest)};
+        return EntitySceneCatalog{std::move(package)};
     }
 
-    const lux::entity_scene::EntitySectionRecord*
-    EntitySceneCatalog::findSection(
-        lux::entity_scene::EntitySectionId id) const noexcept
+    const lux::scene::SectionRecord* EntitySceneCatalog::findSection(
+        lux::ecs::scene_format::EntitySectionId id) const noexcept
     {
         const auto found = std::lower_bound(
-            manifest_.sections.begin(),
-            manifest_.sections.end(),
+            package_.sections.begin(),
+            package_.sections.end(),
             id,
-            [](const lux::entity_scene::EntitySectionRecord& record,
-               const lux::entity_scene::EntitySectionId& target)
+            [](const lux::scene::SectionRecord& record,
+               const lux::ecs::scene_format::EntitySectionId& target)
             {
                 return sectionIdLess(record.id, target);
             });
-        return found == manifest_.sections.end() || found->id != id
+        return found == package_.sections.end() || found->id != id
             ? nullptr
             : &*found;
     }
 
-    const lux::entity_scene::SceneContribution*
-    EntitySceneCatalog::findContribution(
+    const lux::scene::SceneFeatureRequest* EntitySceneCatalog::findFeature(
         lux::scene::SceneFeatureIdView id) const noexcept
     {
         const auto found = std::find_if(
-            manifest_.contributions.begin(),
-            manifest_.contributions.end(),
-            [id](const lux::entity_scene::SceneContribution& contribution)
+            package_.features.begin(),
+            package_.features.end(),
+            [id](const lux::scene::SceneFeatureRequest& feature)
             {
-                return contribution.id.name() == id.name();
+                return feature.id.view() == id;
             });
-        return found == manifest_.contributions.end() ? nullptr : &*found;
+        return found == package_.features.end() ? nullptr : &*found;
     }
-}
+} // namespace lux::runtime::entity_scene

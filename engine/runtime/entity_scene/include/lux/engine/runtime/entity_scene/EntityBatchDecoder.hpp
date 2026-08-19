@@ -5,7 +5,7 @@
  */
 
 #include <lux/cxx/memory/SharedBytes.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchTypes.hpp>
 #include <lux/engine/runtime/entity_scene/visibility.h>
 
@@ -25,7 +25,7 @@ namespace lux::runtime::entity_scene
         DecodedEntityBatch(const DecodedEntityBatch&) = delete;
         DecodedEntityBatch& operator=(const DecodedEntityBatch&) = delete;
 
-        [[nodiscard]] const lux::entity_scene::EntitySectionId& section()
+        [[nodiscard]] const lux::ecs::scene_format::EntitySectionId& section()
             const noexcept
         {
             return image_.section;
@@ -52,7 +52,7 @@ namespace lux::runtime::entity_scene
         friend class EntityBatchMaterializer;
 
         DecodedEntityBatch(
-            lux::entity_scene::EntitySectionImage image,
+            lux::ecs::scene_format::EntitySectionImage image,
             std::uint64_t generation,
             std::size_t encoded_bytes) noexcept
             : image_(std::move(image)),
@@ -60,7 +60,7 @@ namespace lux::runtime::entity_scene
               encoded_bytes_(encoded_bytes)
         {}
 
-        lux::entity_scene::EntitySectionImage image_;
+        lux::ecs::scene_format::EntitySectionImage image_;
         std::uint64_t generation_{0u};
         std::size_t encoded_bytes_{0u};
     };

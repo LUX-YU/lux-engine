@@ -19,7 +19,7 @@ namespace lux::runtime::spatial_partition
 {
     struct SpatialResidentDemand final
     {
-        lux::entity_scene::EntitySectionRecord record;
+        lux::scene::SectionRecord record;
         std::size_t source_references{0u};
         std::uint32_t priority{0u};
     };
@@ -66,9 +66,9 @@ namespace lux::runtime::spatial_partition
         {
             SpatialDemandSourceId id;
             std::uint64_t generation{0u};
-            lux::entity_scene::DemandChannelId channel;
+            lux::scene::DemandChannelId channel;
             std::vector<SpatialDemandEntry> demands;
-            std::vector<lux::entity_scene::EntitySectionRecord> records;
+            std::vector<lux::scene::SectionRecord> records;
         };
 
         std::uint64_t base_revision_{0u};

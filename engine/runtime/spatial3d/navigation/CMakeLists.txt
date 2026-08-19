@@ -33,13 +33,14 @@ target_link_libraries(
         lux::engine::runtime::runtime_execution
         lux::engine::runtime::runtime_entity_scene
         lux::engine::ecs::navigation3d
+        lux::engine::ecs::scene_format
         lux::engine::function::navigation_detour3d
 )
 
 component_add_transitive_commands(
     runtime_spatial3d_navigation_adapter
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_entity_scene)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS navigation3d)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS navigation3d scene_format)"
     "find_package(lux-engine-function REQUIRED COMPONENTS navigation_detour3d)"
 )
 
@@ -58,7 +59,6 @@ target_link_libraries(
     spatial3d_navigation_adapter_test
     PRIVATE
         lux::engine::runtime::runtime_spatial3d_navigation_adapter
-        lux::engine::resource::entity_scene
 )
 if(MSVC)
     target_compile_options(spatial3d_navigation_adapter_test PRIVATE /UNDEBUG)

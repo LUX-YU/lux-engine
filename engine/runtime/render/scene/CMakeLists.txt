@@ -91,6 +91,7 @@ target_link_libraries(
     lux::engine::runtime::runtime_scene_core
     lux::engine::runtime::runtime_entity_scene
     lux::engine::ecs::core             # World / ScheduleBuilder / SceneServices
+    lux::engine::ecs::scene_format     # ContentBlobRef public contract
     # ★ 这里此前链着 `lux::engine::ecs::scene`（两个 pack 的配方）。删掉了：本运行时
     #   一行都没 include 过 addSceneXxx —— 「装哪些 pack」是**宿主**的决定，经
     #   `Config::packs` 传进来。留着那条链接等于「运行时认识引擎自带的那两个 pack」，
@@ -139,7 +140,7 @@ component_add_transitive_commands(
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(Eigen3 REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm memory)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core render_core render_3d terrain_components)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format render_core render_3d terrain_components)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core classic_mesh_content terrain_content)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_features)"
     "find_package(lux-engine-core REQUIRED COMPONENTS log events)"

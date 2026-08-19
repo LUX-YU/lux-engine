@@ -50,7 +50,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] bool supportedContent(
-            const lux::entity_scene::ContentBlobRef& content) noexcept
+            const lux::ecs::scene_format::ContentBlobRef& content) noexcept
         {
             return content.valid() &&
                    content.type.name() ==
@@ -69,7 +69,7 @@ namespace lux::ecs
         struct Entry final
         {
             entt::entity entity{entt::null};
-            lux::entity_scene::ContentBlobRef content;
+            lux::ecs::scene_format::ContentBlobRef content;
             std::uint64_t generation{0u};
             ENavigationRegion3DState state{
                 ENavigationRegion3DState::WAITING_BACKGROUND};

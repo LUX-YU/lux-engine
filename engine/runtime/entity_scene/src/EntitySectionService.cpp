@@ -1,6 +1,7 @@
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 
@@ -89,7 +90,7 @@ namespace lux::runtime::entity_scene
 
         [[nodiscard]] LoadResult decodeLoaded(
             lux::asset::AssetBlob blob,
-            lux::entity_scene::EntitySectionRecord record,
+            lux::scene::SectionRecord record,
             std::uint64_t request_generation) noexcept
         {
             if (!blob || blob.bytes.size() != record.encoded_bytes)
@@ -98,86 +99,86 @@ namespace lux::runtime::entity_scene
                     EEntitySectionLoadError::ENCODED_SIZE_MISMATCH);
             }
 
-                lux::cxx::SharedBytes<> decoded_bytes;
-                if (record.compression ==
-                    lux::entity_scene::EEntitySectionCompression::NONE)
-                {
-                    decoded_bytes = std::move(blob.bytes);
-                }
-                else if (record.compression ==
-                    lux::entity_scene::EEntitySectionCompression::ZSTD)
-                {
-                    if (record.decoded_bytes == 0u ||
-                        record.decoded_bytes >
-                            std::numeric_limits<std::size_t>::max())
-                    {
-                        return lux::cxx::unexpected(
-                            EEntitySectionLoadError::DECODED_SIZE_MISMATCH);
-                    }
-                    const auto decoded_size = static_cast<std::size_t>(
-                        record.decoded_bytes);
-                    auto owner = std::shared_ptr<std::byte[]>{
-                        new std::byte[decoded_size]};
-                    const auto actual = ZSTD_decompress(
-                        owner.get(),
-                        decoded_size,
-                        blob.bytes.data(),
-                        blob.bytes.size());
-                    if (ZSTD_isError(actual))
-                    {
-                        return lux::cxx::unexpected(
-                            EEntitySectionLoadError::DECOMPRESSION_FAILED);
-                    }
-                    if (actual != decoded_size)
-                    {
-                        return lux::cxx::unexpected(
-                            EEntitySectionLoadError::DECODED_SIZE_MISMATCH);
-                    }
-                    auto shared_owner =
-                        std::shared_ptr<const std::byte[]>{std::move(owner)};
-                    auto owned = lux::cxx::SharedBytes<>::fromOwner(
-                        shared_owner,
-                        std::span<const std::byte>{
-                            shared_owner.get(), decoded_size});
-                    if (owned.empty())
-                    {
-                        return lux::cxx::unexpected(
-                            EEntitySectionLoadError::DECOMPRESSION_FAILED);
-                    }
-                    decoded_bytes = std::move(owned);
-                }
-                else
-                {
-                    return lux::cxx::unexpected(
-                        EEntitySectionLoadError::DECOMPRESSION_FAILED);
-                }
-
-                if (decoded_bytes.size() != record.decoded_bytes)
+            lux::cxx::SharedBytes<> decoded_bytes;
+            if (record.compression ==
+                lux::scene::SectionCompression::None)
+            {
+                decoded_bytes = std::move(blob.bytes);
+            }
+            else if (record.compression ==
+                lux::scene::SectionCompression::Zstd)
+            {
+                if (record.decoded_bytes == 0u ||
+                    record.decoded_bytes >
+                        std::numeric_limits<std::size_t>::max())
                 {
                     return lux::cxx::unexpected(
                         EEntitySectionLoadError::DECODED_SIZE_MISMATCH);
                 }
-                if (lux::entity_scene::entitySceneContentDigest(
-                        decoded_bytes.view()) != record.content_digest)
+                const auto decoded_size = static_cast<std::size_t>(
+                    record.decoded_bytes);
+                auto owner = std::shared_ptr<std::byte[]>{
+                    new std::byte[decoded_size]};
+                const auto actual = ZSTD_decompress(
+                    owner.get(),
+                    decoded_size,
+                    blob.bytes.data(),
+                    blob.bytes.size());
+                if (ZSTD_isError(actual))
                 {
                     return lux::cxx::unexpected(
-                        EEntitySectionLoadError::DIGEST_MISMATCH);
+                        EEntitySectionLoadError::DECOMPRESSION_FAILED);
                 }
+                if (actual != decoded_size)
+                {
+                    return lux::cxx::unexpected(
+                        EEntitySectionLoadError::DECODED_SIZE_MISMATCH);
+                }
+                auto shared_owner =
+                    std::shared_ptr<const std::byte[]>{std::move(owner)};
+                auto owned = lux::cxx::SharedBytes<>::fromOwner(
+                    shared_owner,
+                    std::span<const std::byte>{
+                        shared_owner.get(), decoded_size});
+                if (owned.empty())
+                {
+                    return lux::cxx::unexpected(
+                        EEntitySectionLoadError::DECOMPRESSION_FAILED);
+                }
+                decoded_bytes = std::move(owned);
+            }
+            else
+            {
+                return lux::cxx::unexpected(
+                    EEntitySectionLoadError::DECOMPRESSION_FAILED);
+            }
 
-                EntityBatchDecoder decoder;
-                auto decoded = decoder.decode(
-                    std::move(decoded_bytes), request_generation);
-                if (!decoded)
-                {
-                    return lux::cxx::unexpected(
-                        EEntitySectionLoadError::DECODE_FAILED);
-                }
-                if (decoded->section() != record.id ||
-                    decoded->entityCount() != record.entity_count)
-                {
-                    return lux::cxx::unexpected(
-                        EEntitySectionLoadError::RECORD_MISMATCH);
-                }
+            if (decoded_bytes.size() != record.decoded_bytes)
+            {
+                return lux::cxx::unexpected(
+                    EEntitySectionLoadError::DECODED_SIZE_MISMATCH);
+            }
+            if (lux::ecs::scene_format::entitySectionContentDigest(
+                    decoded_bytes.view()) != record.content_digest)
+            {
+                return lux::cxx::unexpected(
+                    EEntitySectionLoadError::DIGEST_MISMATCH);
+            }
+
+            EntityBatchDecoder decoder;
+            auto decoded = decoder.decode(
+                std::move(decoded_bytes), request_generation);
+            if (!decoded)
+            {
+                return lux::cxx::unexpected(
+                    EEntitySectionLoadError::DECODE_FAILED);
+            }
+            if (decoded->section() != record.id ||
+                decoded->entityCount() != record.entity_count)
+            {
+                return lux::cxx::unexpected(
+                    EEntitySectionLoadError::RECORD_MISMATCH);
+            }
             return EntitySectionLoadResult{
                 request_generation, std::move(*decoded)};
         }
@@ -192,7 +193,7 @@ namespace lux::runtime::entity_scene
         [[nodiscard]] LoadResult generateLoaded(
             const std::shared_ptr<const EntitySectionGeneratorCatalog>&
                 generators,
-            lux::entity_scene::EntitySectionRecord record,
+            lux::scene::SectionRecord record,
             std::uint64_t request_generation) noexcept
         {
             if (!generators)
@@ -207,7 +208,8 @@ namespace lux::runtime::entity_scene
                 return lux::cxx::unexpected(
                     mapGeneratorError(image.error().error));
             }
-            auto encoded = lux::entity_scene::encodeEntitySectionImage(*image);
+            auto encoded =
+                lux::ecs::scene_format::encodeEntitySectionImage(*image);
             if (!encoded)
             {
                 return lux::cxx::unexpected(
@@ -231,7 +233,7 @@ namespace lux::runtime::entity_scene
 
     LoadEntitySection EntitySectionLoadClient::loadOperation(
         std::shared_ptr<const lux::asset::AssetVfs> vfs,
-        lux::entity_scene::EntitySectionRecord record,
+        lux::scene::SectionRecord record,
         std::uint64_t request_generation) const noexcept
     {
         return {
@@ -247,7 +249,7 @@ namespace lux::runtime::entity_scene
     }
 
     bool EntitySectionLoadClient::supports(
-        const lux::entity_scene::EntitySectionRecord& record) const noexcept
+        const lux::scene::SectionRecord& record) const noexcept
     {
         const auto control = control_.lock();
         if (!control || control->closing.load(std::memory_order_acquire) ||
@@ -255,13 +257,13 @@ namespace lux::runtime::entity_scene
         {
             return false;
         }
-        if (std::holds_alternative<lux::entity_scene::StoredSectionSource>(
+        if (std::holds_alternative<lux::scene::StoredSectionSource>(
                 record.source))
         {
             return true;
         }
         const auto& generated =
-            std::get<lux::entity_scene::GeneratedSectionSource>(
+            std::get<lux::scene::GeneratedSectionSource>(
                 record.source);
         return control->generators &&
             control->generators->contains(generated.generator);
@@ -293,7 +295,7 @@ namespace lux::runtime::entity_scene
                     return;
                 }
                 if (request.request_generation == 0u ||
-                    !lux::entity_scene::validateEntitySectionRecord(
+                    !lux::scene::validateSectionRecord(
                         request.record))
                 {
                     pending->settle(lux::cxx::unexpected(
@@ -301,7 +303,7 @@ namespace lux::runtime::entity_scene
                     return;
                 }
                 const auto* stored = std::get_if<
-                    lux::entity_scene::StoredSectionSource>(
+                    lux::scene::StoredSectionSource>(
                         &request.record.source);
                 if (!stored)
                 {
@@ -344,7 +346,7 @@ namespace lux::runtime::entity_scene
 
                 auto vfs = std::move(request.vfs);
                 auto record = std::move(request.record);
-                auto path = std::get<lux::entity_scene::StoredSectionSource>(
+                auto path = std::get<lux::scene::StoredSectionSource>(
                     record.source).content_path;
                 const auto generation = request.request_generation;
                 auto work = ex::schedule(

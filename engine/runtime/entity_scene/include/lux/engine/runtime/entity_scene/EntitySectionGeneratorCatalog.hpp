@@ -1,14 +1,13 @@
 #pragma once
 /**
  * @file EntitySectionGeneratorCatalog.hpp
- * @brief Frozen, domain-neutral dispatch for GeneratedSectionSource.
+ * @brief Frozen dispatch for Engine-owned GeneratedSectionSource recipes.
  */
 
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
-#include <lux/engine/runtime/entity_scene/visibility.h>
-
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/runtime/entity_scene/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -21,10 +20,10 @@ namespace lux::runtime::entity_scene
 {
     struct GeneratedEntitySectionRequest final
     {
-        // Owning record lets a leaf generator derive identity and content
-        // from the same canonical source descriptor validated by the loader.
-        // The callback must not retain views into this request.
-        lux::entity_scene::EntitySectionRecord record;
+        // Owning record lets a leaf generator derive identity and content from
+        // one canonical source recipe. The callback must not retain views into
+        // this request.
+        lux::scene::SectionRecord record;
     };
 
     enum class EEntitySectionGeneratorError : std::uint8_t
@@ -40,33 +39,35 @@ namespace lux::runtime::entity_scene
     {
         EEntitySectionGeneratorError error{
             EEntitySectionGeneratorError::INVALID_DESCRIPTOR};
-        lux::entity_scene::SectionGeneratorId generator;
+        lux::scene::SectionGeneratorId generator;
         std::string conflicting_name;
         std::string detail;
     };
 
     template <typename T>
-    using EntitySectionGeneratorExp = lux::cxx::expected<T, EntitySectionGeneratorFailure>;
-    using GenerateEntitySectionResult = EntitySectionGeneratorExp<lux::entity_scene::EntitySectionImage>;
+    using EntitySectionGeneratorExp =
+        lux::cxx::expected<T, EntitySectionGeneratorFailure>;
+
+    using GenerateEntitySectionResult = EntitySectionGeneratorExp<
+        lux::ecs::scene_format::EntitySectionImage>;
     using GenerateEntitySectionFn = GenerateEntitySectionResult (*)(
         const void* state,
         GeneratedEntitySectionRequest request) noexcept;
 
     struct EntitySectionGeneratorDescriptor final
     {
-        lux::entity_scene::SectionGeneratorId id;
+        lux::scene::SectionGeneratorId id;
         GenerateEntitySectionFn generate{nullptr};
         // Immutable provider state. The noexcept callback may run concurrently
         // on the background CPU arena and must treat this state as read-only.
         std::shared_ptr<const void> state;
-        // Optional module/code lifetime pin, separate from provider state.
+        // Optional code-lifetime pin, separate from provider state.
         std::shared_ptr<const void> lifetime;
     };
 
-    /// Created in one validation transaction and immutable thereafter. A leaf
-    /// pack adds a generator by supplying one descriptor to create(); the
-    /// EntitySection service only compares the full canonical ID and invokes
-    /// the selected callback. It never switches on a domain type.
+    /// Created in one validation transaction and immutable thereafter. The
+    /// loader compares full canonical IDs and invokes the selected callback; it
+    /// never switches on a domain type.
     class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC
     EntitySectionGeneratorCatalog final
     {
@@ -77,15 +78,11 @@ namespace lux::runtime::entity_scene
         create(std::vector<EntitySectionGeneratorDescriptor> descriptors)
             noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            lux::entity_scene::EntitySectionImage,
-            EntitySectionGeneratorFailure>
-        generate(
+        [[nodiscard]] GenerateEntitySectionResult generate(
             GeneratedEntitySectionRequest request) const noexcept;
 
         [[nodiscard]] bool contains(
-            const lux::entity_scene::SectionGeneratorId& generator) const
-            noexcept;
+            const lux::scene::SectionGeneratorId& generator) const noexcept;
 
         [[nodiscard]] std::size_t size() const noexcept
         {
@@ -101,4 +98,4 @@ namespace lux::runtime::entity_scene
 
         std::vector<EntitySectionGeneratorDescriptor> descriptors_;
     };
-}
+} // namespace lux::runtime::entity_scene

@@ -1,9 +1,11 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
@@ -35,7 +37,7 @@ namespace
 
     struct SectionFixture final
     {
-        lux::entity_scene::EntitySectionRecord record;
+        lux::scene::SectionRecord record;
         lux::asset::asset_id_t asset;
         std::vector<std::byte> bytes;
         std::string provider_path;
@@ -46,20 +48,22 @@ namespace
         const char* asset_id,
         std::string provider_path)
     {
-        using namespace lux::entity_scene;
-        EntitySectionImage image;
-        image.section = EntitySectionId{uuid(section_id)};
+        namespace format = lux::ecs::scene_format;
+        namespace scene = lux::scene;
+
+        format::EntitySectionImage image;
+        image.section = format::EntitySectionId{uuid(section_id)};
         image.component_names = {""};
         image.archetypes.push_back({{}});
         image.entities.push_back({0u, std::nullopt});
-        auto bytes = encodeEntitySectionImage(image);
+        auto bytes = format::encodeEntitySectionImage(image);
         assert(bytes);
 
-        EntitySectionRecord record;
+        scene::SectionRecord record;
         record.id = image.section;
-        record.source = StoredSectionSource{
+        record.source = scene::StoredSectionSource{
             "/Game/" + provider_path};
-        record.content_digest = entitySceneContentDigest(*bytes);
+        record.content_digest = format::entitySectionContentDigest(*bytes);
         record.encoded_bytes = bytes->size();
         record.decoded_bytes = bytes->size();
         record.entity_count = 1u;
@@ -159,14 +163,14 @@ namespace
     lux::runtime::spatial_partition::SpatialDemandSourceUpdate demand(
         std::string source,
         std::uint64_t generation,
-        std::initializer_list<lux::entity_scene::EntitySectionId> sections)
+        std::initializer_list<lux::ecs::scene_format::EntitySectionId> sections)
     {
         lux::runtime::spatial_partition::SpatialDemandSourceUpdate result;
         result.source =
             lux::runtime::spatial_partition::SpatialDemandSourceId{
                 std::move(source)};
         result.generation = generation;
-        result.channel = lux::entity_scene::DemandChannelId{
+        result.channel = lux::scene::DemandChannelId{
             "org.lux.test.visible"};
         for (const auto section : sections)
             result.demands.push_back({section, 1u});
@@ -226,7 +230,7 @@ namespace
     }
 
     lux::runtime::entity_scene::EntitySceneCatalog catalog(
-        std::vector<lux::entity_scene::EntitySectionRecord> records)
+        std::vector<lux::scene::SectionRecord> records)
     {
         std::sort(
             records.begin(), records.end(),
@@ -234,12 +238,12 @@ namespace
             {
                 return lhs.id.value() < rhs.id.value();
             });
-        lux::entity_scene::EntitySceneManifest manifest;
-        manifest.id = lux::entity_scene::EntitySceneId{uuid(
+        lux::scene::ScenePackage package;
+        package.id = lux::scene::ScenePackageId{uuid(
             "82000000-0000-4000-8000-000000000001")};
-        manifest.sections = std::move(records);
+        package.sections = std::move(records);
         auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(
-            std::move(manifest));
+            std::move(package));
         assert(result);
         return std::move(*result);
     }

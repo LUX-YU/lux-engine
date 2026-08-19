@@ -5,6 +5,13 @@
 
 find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time core)
 
+generate_visibility_header(
+    ENABLE_MACRO_NAME       LUX_ENGINE_SCENE_PACKAGE_LIBRARY
+    PUBLIC_MACRO_NAME       LUX_ENGINE_SCENE_PACKAGE_PUBLIC
+    DISABLE_DLL_MACRO_NAME  LUX_ENGINE_SCENE_PACKAGE_DLL_DISABLE
+    GENERATE_FILE_PATH      lux/engine/scene/package/visibility.h
+)
+
 add_component(
     COMPONENT_NAME scene_package
     NAMESPACE      lux::engine::scene
@@ -21,6 +28,11 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_compile_definitions(
+    scene_package
+    PRIVATE LUX_ENGINE_SCENE_PACKAGE_LIBRARY
 )
 
 target_link_libraries(

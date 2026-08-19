@@ -9,6 +9,13 @@ permissions:
   contents: read
 
 jobs:
+  scene-feature-identity:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Scene Feature identity boundary
+        run: python3 tools/architecture/check_scene_feature_identity.py
+
   apply-reviewed-patch:
     if: >-
       github.event_name == 'pull_request' &&

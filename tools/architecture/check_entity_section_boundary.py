@@ -174,6 +174,49 @@ def scan_runtime_staging_contract() -> list[str]:
     return violations
 
 
+def scan_test_dependency_ownership() -> list[str]:
+    """Prevent tests from resolving undeclared dependencies via install trees."""
+    violations: list[str] = []
+
+    wire_rel = Path(
+        "engine/runtime/entity_scene/test/entity_section_wire_compatibility_test.cpp")
+    wire_text = read(ROOT / wire_rel)
+    for token in (
+        "PersistentEntityIdComponent.hpp",
+        "lux::ecs::PersistentEntityIdComponent",
+        "lux/engine/ecs/components/",
+    ):
+        if token in wire_text:
+            violations.append(
+                f"{wire_rel}: wire-only test contains runtime ECS contract `{token}`")
+
+    public_rel = Path(
+        "engine/runtime/entity_scene/test/entity_section_public_contract_test.cpp")
+    public_text = read(ROOT / public_rel)
+    for token in (
+        "PersistentEntityIdComponent.hpp",
+        "const lux::ecs::PersistentEntityId&",
+    ):
+        if token not in public_text:
+            violations.append(
+                f"{public_rel}: missing declared runtime component contract `{token}`")
+
+    cmake_rel = Path("engine/runtime/entity_scene/CMakeLists.txt")
+    cmake_text = read(ROOT / cmake_rel)
+    wire_block = cmake_text.split(
+        "add_executable(\n    entity_section_wire_compatibility_test",
+        maxsplit=1,
+    )
+    if len(wire_block) != 2:
+        violations.append(f"{cmake_rel}: missing wire compatibility target")
+    else:
+        target_tail = wire_block[1].split("lux_classify_target(", maxsplit=1)[0]
+        if "lux::engine::ecs::core" in target_tail:
+            violations.append(
+                f"{cmake_rel}: wire-only target must not acquire ecs/core just to satisfy a header")
+    return violations
+
+
 def scan_compatibility_scope() -> list[str]:
     """Ensure the temporary Spatial3D exception remains a tiny adapter."""
     violations: list[str] = []
@@ -198,6 +241,7 @@ def main() -> int:
         + scan_toolchain_target()
         + scan_public_contracts()
         + scan_runtime_staging_contract()
+        + scan_test_dependency_ownership()
         + scan_compatibility_scope()
     )
     if violations:

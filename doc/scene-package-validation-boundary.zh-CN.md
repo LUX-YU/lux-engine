@@ -13,13 +13,14 @@
   requirement、Component schema requirement、Section dependency graph 与
   startup policy。
 - `ScenePackageCodec.cpp` 暂时仍通过 `LegacyEntitySceneAdapter` 复用 LXSC v1
-  encoder/decoder，以保证本阶段不改变字节格式。
+  encoder/decoder，以保证本阶段不改变字节格式；编码前与解码转换后都必须
+  经过 canonical `validateScenePackage()`。
 - `LegacyEntitySceneAdapter` 只负责新旧模型转换和 codec error 映射；它不再
   是 `validateScenePackage()` 的实现入口。
 
 ## 不变量
 
-1. ScenePackage 验证不得 include 或构造 `lux::entity_scene` DTO。
+1. ScenePackage 验证不得 include 或构造 `lux::entity_scene` 数据传输对象。
 2. Stored Section path 必须通过 Asset `VirtualPath` 的唯一 parser；不得在
    Scene 领域复制路径 grammar。
 3. Feature、Extension、Component、Demand Channel 与 Generator 的 ID 必须由
@@ -28,6 +29,16 @@
    canonical ordering，且不得有重复项。
 5. Section dependency 必须引用同一 Package 内的 Section，且图必须无环。
 6. 目录/所有权迁移不得与 LXSC wire version 变化合并。
+
+## 验证目标
+
+- `scene_package_validation_test` 只链接 Engine `scene_package`，覆盖合法模型、
+  非法 VirtualPath、重复 Feature、缺失 startup Section 与依赖环。
+- `scene_package_contract_test` 继续链接冻结的 legacy component，只负责新旧
+  LXSC v1 编码逐字节兼容和交叉解码。
+- `scene_package_public_link_test` 验证共享库导出与安装链接闭包。
+- `check_entity_section_boundary.py` 阻止验证逻辑重新进入 wire adapter，或
+  canonical validation test 重新 include legacy Resource 模型。
 
 ## 后续删除闸门
 

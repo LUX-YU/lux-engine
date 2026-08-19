@@ -16,6 +16,13 @@ jobs:
       - name: Check Scene Feature identity boundary
         run: python3 tools/architecture/check_scene_feature_identity.py
 
+  persistent-entity-identity:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check persistent entity identity boundary
+        run: python3 tools/architecture/check_persistent_entity_identity.py
+
   apply-reviewed-patch:
     if: >-
       github.event_name == 'pull_request' &&

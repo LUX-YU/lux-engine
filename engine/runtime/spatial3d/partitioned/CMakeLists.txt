@@ -161,14 +161,14 @@ target_link_libraries(
         lux::engine::runtime::runtime_entity_scene
         lux::engine::runtime::runtime_scene_contributions
         lux::engine::runtime::runtime_pack_spatial3d_transform
-        lux::engine::resource::spatial3d_scene
+        lux::engine::spatial3d::scene_catalog
         lux::engine::ecs::core
 )
 
 component_add_transitive_commands(
     runtime_pack_spatial3d_partitioned
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS spatial3d_scene)"
+    "find_package(lux-engine-spatial3d REQUIRED COMPONENTS scene_catalog)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_scene_contributions runtime_pack_spatial3d_transform runtime_spatial_partition runtime_spatial3d_partitioned)"
 )
 

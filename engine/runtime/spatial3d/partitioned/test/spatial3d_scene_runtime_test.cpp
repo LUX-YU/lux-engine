@@ -10,7 +10,7 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/scene/ScenePackageCodec.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
+#include <lux/engine/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
@@ -209,17 +209,16 @@ namespace
 
 int main()
 {
-    namespace entity_scene = lux::entity_scene;
     namespace partition = lux::runtime::spatial_partition;
     namespace spatial3d = lux::runtime::spatial3d;
-    namespace spatial3d_scene = lux::spatial3d_scene;
+    namespace catalog = lux::spatial3d;
 
     lux::meta::meta_module_init();
     lux::ecs::ComponentTypeCatalog components;
     assert(lux::ecs::registerGeneratedComponents(components));
 
     constexpr auto channel =
-        spatial3d_scene::kSpatial3DVisualLodDemandChannelName;
+        catalog::kVisualLodDemandChannelName;
     auto fine_origin = makeSection(
         "51000000-0000-4000-8000-000000000001",
         "52000000-0000-4000-8000-000000000001",
@@ -245,16 +244,16 @@ int main()
         "coarse_next_lxes",
         channel);
 
-    spatial3d_scene::Spatial3DSceneCatalogBand fine_band{
-        spatial3d_scene::Spatial3DSourceId{"lux.spatial3d.source.test"},
-        entity_scene::DemandChannelId{std::string{channel}},
+    catalog::SceneCatalogBand fine_band{
+        catalog::SourceId{"lux.spatial3d.source.test"},
+        lux::scene::DemandChannelId{std::string{channel}},
         0u,
         64.0,
         1.0,
         1.0};
-    spatial3d_scene::Spatial3DSceneCatalogBand coarse_band{
-        spatial3d_scene::Spatial3DSourceId{"lux.spatial3d.source.test"},
-        entity_scene::DemandChannelId{std::string{channel}},
+    catalog::SceneCatalogBand coarse_band{
+        catalog::SourceId{"lux.spatial3d.source.test"},
+        lux::scene::DemandChannelId{std::string{channel}},
         1u,
         128.0,
         1.0,
@@ -264,10 +263,10 @@ int main()
     const auto coarse_namespace =
         lux::runtime::spatial3DDemandSourceNamespace(coarse_band);
     assert(fine_namespace != coarse_namespace);
-    const spatial3d_scene::Spatial3DSceneCatalogBand unrelated_band{
-        spatial3d_scene::Spatial3DSourceId{"lux.spatial3d.source.aaa"},
-        entity_scene::DemandChannelId{
-            std::string{spatial3d_scene::kSpatial3DResidentDemandChannelName}},
+    const catalog::SceneCatalogBand unrelated_band{
+        catalog::SourceId{"lux.spatial3d.source.aaa"},
+        lux::scene::DemandChannelId{
+            std::string{catalog::kResidentDemandChannelName}},
         0u,
         32.0,
         1.0,
@@ -276,7 +275,7 @@ int main()
         fine_namespace);
     assert(lux::runtime::spatial3DDemandSourceNamespace(unrelated_band) !=
         fine_namespace);
-    std::vector<spatial3d_scene::Spatial3DSceneCatalogBand>
+    std::vector<catalog::SceneCatalogBand>
         bands_with_unrelated{fine_band, coarse_band};
     bands_with_unrelated.insert(
         bands_with_unrelated.begin(), unrelated_band);
@@ -291,16 +290,16 @@ int main()
     assert(relocated_fine != bands_with_unrelated.end());
     assert(lux::runtime::spatial3DDemandSourceNamespace(*relocated_fine) ==
         fine_namespace);
-    const spatial3d_scene::Spatial3DSceneCatalogBand ambiguous_left{
-        spatial3d_scene::Spatial3DSourceId{"a.b"},
-        entity_scene::DemandChannelId{"c.d.e"},
+    const catalog::SceneCatalogBand ambiguous_left{
+        catalog::SourceId{"a.b"},
+        lux::scene::DemandChannelId{"c.d.e"},
         0u,
         64.0,
         1.0,
         1.0};
-    const spatial3d_scene::Spatial3DSceneCatalogBand ambiguous_right{
-        spatial3d_scene::Spatial3DSourceId{"a.b.c"},
-        entity_scene::DemandChannelId{"d.e"},
+    const catalog::SceneCatalogBand ambiguous_right{
+        catalog::SourceId{"a.b.c"},
+        lux::scene::DemandChannelId{"d.e"},
         0u,
         64.0,
         1.0,
@@ -308,19 +307,15 @@ int main()
     assert(lux::runtime::spatial3DDemandSourceNamespace(ambiguous_left) !=
         lux::runtime::spatial3DDemandSourceNamespace(ambiguous_right));
 
-    spatial3d_scene::Spatial3DSceneCatalogConfig spatial_config;
+    catalog::SceneCatalog spatial_config;
     spatial_config.bands = {fine_band, coarse_band};
-    const auto legacySectionId = [](const auto& id)
-    {
-        return entity_scene::EntitySectionId{id.value()};
-    };
     spatial_config.entries = {
-        {{0, 0, 0}, 0u, legacySectionId(fine_origin.record.id)},
-        {{1, 0, 0}, 0u, legacySectionId(fine_next.record.id)},
-        {{0, 0, 0}, 1u, legacySectionId(coarse_origin.record.id)},
-        {{1, 0, 0}, 1u, legacySectionId(coarse_next.record.id)}};
+        {{0, 0, 0}, 0u, fine_origin.record.id},
+        {{1, 0, 0}, 0u, fine_next.record.id},
+        {{0, 0, 0}, 1u, coarse_origin.record.id},
+        {{1, 0, 0}, 1u, coarse_next.record.id}};
     auto encoded_config =
-        spatial3d_scene::encodeSpatial3DSceneCatalog(spatial_config);
+        catalog::encodeSceneCatalog(spatial_config);
     assert(encoded_config);
 
     lux::scene::ScenePackage package;
@@ -328,8 +323,8 @@ int main()
         uuid("50000000-0000-4000-8000-000000000001")};
     package.features.push_back({
         lux::scene::SceneFeatureId{
-            std::string{spatial3d_scene::kSpatial3DContributionName}},
-        spatial3d_scene::kSpatial3DSceneCatalogSchemaVersion,
+            std::string{catalog::kPartitionedFeatureName}},
+        catalog::kSceneCatalogSchemaVersion,
         std::move(*encoded_config)});
     package.sections = {
         fine_origin.record,

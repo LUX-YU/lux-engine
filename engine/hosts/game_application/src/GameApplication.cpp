@@ -1089,7 +1089,7 @@ namespace lux::game
 
         constexpr auto spatial3d_feature =
             lux::scene::sceneFeatureId(
-                lux::spatial3d_scene::kSpatial3DContributionName);
+                lux::spatial3d::kPartitionedFeatureName);
         telemetry.spatial3d_catalog_present =
             impl_->runtime->entityScene().findFeature(
                 spatial3d_feature) != nullptr;

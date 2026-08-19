@@ -15,7 +15,7 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
-#include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
+#include <lux/engine/spatial3d/SceneCatalog.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -125,7 +125,7 @@ namespace lux::toolchain
         double visual_lod_resident_scale{4.0};
         /// Cooked, fixed resident-set admission.  It does not scale with the
         /// number of distant catalog entries.
-        lux::spatial3d_scene::Spatial3DResidencyCapacity residency;
+        lux::spatial3d::ResidencyCapacity residency;
         std::vector<lux::scene::SceneFeatureRequest>
             additional_features;
     };

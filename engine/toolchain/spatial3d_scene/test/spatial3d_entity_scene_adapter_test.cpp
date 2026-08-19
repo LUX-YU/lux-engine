@@ -22,7 +22,7 @@
 #include <lux/engine/resource/asset/MeshSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/resource/physics3d/StaticColliderBatch3D.hpp>
-#include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
+#include <lux/engine/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/resource/terrain/TerrainTile.hpp>
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
 
@@ -383,16 +383,16 @@ int main()
     }
     const auto spatial3d = std::ranges::find(
         first->package.features,
-        lux::spatial3d_scene::kSpatial3DContributionName,
+        lux::spatial3d::kPartitionedFeatureName,
         [](const auto& feature)
         {
             return feature.id.name();
         });
     assert(spatial3d != first->package.features.end());
     assert(spatial3d->config_schema_version ==
-        lux::spatial3d_scene::kSpatial3DSceneCatalogSchemaVersion);
+        lux::spatial3d::kSceneCatalogSchemaVersion);
     const auto catalog =
-        lux::spatial3d_scene::decodeSpatial3DSceneCatalog(
+        lux::spatial3d::decodeSceneCatalog(
             spatial3d->config);
     assert(catalog);
     assert(catalog->bands.size() == 2u);
@@ -671,7 +671,7 @@ int main()
     assert(portal_bundle);
     const auto portal_feature = std::ranges::find(
         portal_bundle->package.features,
-        lux::spatial3d_scene::kSpatial3DContributionName,
+        lux::spatial3d::kPartitionedFeatureName,
         [](const auto& feature)
         {
             return feature.id.name();
@@ -679,7 +679,7 @@ int main()
     assert(portal_feature !=
            portal_bundle->package.features.end());
     const auto portal_catalog =
-        lux::spatial3d_scene::decodeSpatial3DSceneCatalog(
+        lux::spatial3d::decodeSceneCatalog(
             portal_feature->config);
     assert(portal_catalog);
     struct CookedNavigationRegion final

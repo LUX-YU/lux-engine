@@ -26,9 +26,8 @@
 #include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/MeshSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
 #include <lux/engine/resource/physics3d/StaticColliderBatch3D.hpp>
-#include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
+#include <lux/engine/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/resource/terrain/TerrainTile.hpp>
 
 #include <Eigen/Core>
@@ -84,14 +83,14 @@ namespace lux::toolchain
             return uuids::to_string(value);
         }
 
-        [[nodiscard]] lux::spatial3d_scene::Spatial3DSourceId
+        [[nodiscard]] lux::spatial3d::SourceId
         spatialSourceId(const uuids::uuid& space)
         {
             auto identity = uuidKey(space);
             identity.erase(
                 std::remove(identity.begin(), identity.end(), '-'),
                 identity.end());
-            return lux::spatial3d_scene::Spatial3DSourceId{
+            return lux::spatial3d::SourceId{
                 "lux.spatial3d.source." + identity};
         }
 
@@ -194,19 +193,6 @@ namespace lux::toolchain
             }
             section.attachments.emplace(std::move(key), *added);
             return *added;
-        }
-
-        [[nodiscard]] lux::entity_scene::DemandChannelId
-        legacyDemandChannel(const lux::scene::DemandChannelId& id)
-        {
-            return lux::entity_scene::DemandChannelId{std::string{id.name()}};
-        }
-
-        [[nodiscard]] lux::entity_scene::EntitySectionId
-        legacySectionId(
-            const lux::ecs::scene_format::EntitySectionId& id) noexcept
-        {
-            return lux::entity_scene::EntitySectionId{id.value()};
         }
 
         [[nodiscard]] lux::navigation::NavigationRegionId
@@ -2063,7 +2049,7 @@ namespace lux::toolchain
         {
             FineSection(
                 EntitySectionId id,
-                lux::spatial3d_scene::Spatial3DSourceId source_value,
+                lux::spatial3d::SourceId source_value,
                 lux::spatial::GridCoord3i64 coordinate_value,
                 double cell_world_size_value)
                 : section(id),
@@ -2073,7 +2059,7 @@ namespace lux::toolchain
             {}
 
             EntitySectionAssembly section;
-            lux::spatial3d_scene::Spatial3DSourceId source;
+            lux::spatial3d::SourceId source;
             lux::spatial::GridCoord3i64 coordinate;
             double cell_world_size{0.0};
         };
@@ -2398,7 +2384,7 @@ namespace lux::toolchain
         {
             CoarseSection(
                 EntitySectionId id,
-                lux::spatial3d_scene::Spatial3DSourceId source_value,
+                lux::spatial3d::SourceId source_value,
                 lux::spatial::GridCoord3i64 coordinate_value,
                 std::uint8_t level_value,
                 double cell_world_size_value)
@@ -2410,7 +2396,7 @@ namespace lux::toolchain
             {}
 
             EntitySectionAssembly section;
-            lux::spatial3d_scene::Spatial3DSourceId source;
+            lux::spatial3d::SourceId source;
             lux::spatial::GridCoord3i64 coordinate;
             std::uint8_t level{1u};
             double cell_world_size{0.0};
@@ -2863,10 +2849,10 @@ namespace lux::toolchain
         if (!startup_added)
             return lux::cxx::unexpected(std::move(startup_added.error()));
 
-        lux::spatial3d_scene::Spatial3DSceneCatalogConfig spatial_catalog;
+        lux::spatial3d::SceneCatalog spatial_catalog;
         spatial_catalog.residency = config.residency;
         const auto internBand = [&spatial_catalog](
-            lux::spatial3d_scene::Spatial3DSceneCatalogBand band)
+            lux::spatial3d::SceneCatalogBand band)
             -> std::uint32_t
         {
             const auto found = std::ranges::find(
@@ -2882,27 +2868,20 @@ namespace lux::toolchain
             return index;
         };
         const DemandChannelId fine_channel{
-            std::string{
-            lux::spatial3d_scene::kSpatial3DResidentDemandChannelName
-            }
-        };
+            std::string{lux::spatial3d::kResidentDemandChannelName}};
         const DemandChannelId visual_lod_channel{
-            std::string{
-            lux::spatial3d_scene::
-                kSpatial3DVisualLodDemandChannelName
-            }
-        };
+            std::string{lux::spatial3d::kVisualLodDemandChannelName}};
         for (auto& [_, fine] : fine_sections)
         {
             const auto band = internBand({
                 fine.source,
-                legacyDemandChannel(fine_channel),
+                fine_channel,
                 0u,
                 fine.cell_world_size,
                 1.0,
                 1.0});
             spatial_catalog.entries.push_back({
-                fine.coordinate, band, legacySectionId(fine.section.id)});
+                fine.coordinate, band, fine.section.id});
             const auto added = appendSection(
                 fine.section, fine_channel);
             if (!added)
@@ -2919,13 +2898,13 @@ namespace lux::toolchain
                 config.visual_lod_resident_scale * level_scale);
             const auto band = internBand({
                 coarse.source,
-                legacyDemandChannel(visual_lod_channel),
+                visual_lod_channel,
                 coarse.level,
                 coarse.cell_world_size,
                 active_scale,
                 resident_scale});
             spatial_catalog.entries.push_back({
-                coarse.coordinate, band, legacySectionId(coarse.section.id)});
+                coarse.coordinate, band, coarse.section.id});
             const auto added = appendSection(
                 coarse.section, visual_lod_channel);
             if (!added)
@@ -2934,7 +2913,7 @@ namespace lux::toolchain
         if (!spatial_catalog.entries.empty())
         {
             auto encoded =
-                lux::spatial3d_scene::encodeSpatial3DSceneCatalog(
+                lux::spatial3d::encodeSceneCatalog(
                     std::move(spatial_catalog));
             if (!encoded)
             {
@@ -2946,10 +2925,8 @@ namespace lux::toolchain
                 cook.features,
                 lux::scene::SceneFeatureRequest{
                     lux::scene::SceneFeatureId{std::string{
-                        lux::spatial3d_scene::
-                            kSpatial3DContributionName}},
-                    lux::spatial3d_scene::
-                        kSpatial3DSceneCatalogSchemaVersion,
+                        lux::spatial3d::kPartitionedFeatureName}},
+                    lux::spatial3d::kSceneCatalogSchemaVersion,
                     std::move(*encoded)});
             if (!added)
                 return lux::cxx::unexpected(std::move(added.error()));

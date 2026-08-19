@@ -1,6 +1,5 @@
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/scene_format/PersistenceJournal.hpp>
-#include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
 #include <lux/engine/resource/entity_scene/EntityPersistenceJournal.hpp>
 #include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
 
@@ -9,7 +8,6 @@
 #include <span>
 #include <string_view>
 #include <type_traits>
-#include <utility>
 #include <vector>
 
 namespace
@@ -27,16 +25,15 @@ int main()
     namespace legacy = lux::entity_scene;
     namespace format = lux::ecs::scene_format;
 
+    // The compatibility test owns only the frozen wire models. Runtime ECS
+    // component contracts are checked by entity_section_public_contract_test,
+    // whose target declares the ecs/core dependency explicitly.
     static_assert(!std::is_same_v<
         legacy::PersistentEntityId,
         lux::ecs::PersistentEntityId>);
     static_assert(!std::is_convertible_v<
         legacy::PersistentEntityId,
         lux::ecs::PersistentEntityId>);
-
-    static_assert(std::is_same_v<
-        decltype(std::declval<const lux::ecs::PersistentEntityIdComponent&>().id()),
-        const lux::ecs::PersistentEntityId&>);
 
     const auto section_uuid =
         uuid("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");

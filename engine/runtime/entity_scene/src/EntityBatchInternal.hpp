@@ -59,15 +59,18 @@ namespace lux::runtime::entity_scene::detail
 
     struct PreparedEntityBatchImpl final
     {
-        explicit PreparedEntityBatchImpl(DecodedEntityBatch decoded_batch)
+        PreparedEntityBatchImpl(
+            DecodedEntityBatch decoded_batch,
+            SectionBlobStore& blob_store_value)
             : decoded(std::move(decoded_batch)),
-              staging(std::make_unique<lux::meta::EntityRegistry>())
+              staging(std::make_unique<lux::meta::EntityRegistry>()),
+              blob_store(blob_store_value)
         {}
 
         DecodedEntityBatch decoded;
         std::unique_ptr<lux::meta::EntityRegistry> staging;
+        SectionBlobStore& blob_store;
         lux::serialize::NameTable names;
-        SectionBlobStore* blob_store{nullptr};
 
         // Own the exact descriptor snapshot used to validate this batch.
         // ComponentTypeCatalog supports later append-only registration and

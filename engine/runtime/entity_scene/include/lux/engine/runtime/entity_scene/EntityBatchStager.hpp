@@ -20,7 +20,7 @@ namespace lux::runtime::entity_scene
     public:
         explicit EntityBatchStager(
             const lux::ecs::ComponentTypeCatalog& components) noexcept
-            : components_(&components)
+            : components_(components)
         {}
 
         [[nodiscard]] lux::cxx::expected<
@@ -38,6 +38,6 @@ namespace lux::runtime::entity_scene
             const EntityBatchStageBudget& budget) const noexcept;
 
     private:
-        const lux::ecs::ComponentTypeCatalog* components_{nullptr};
+        const lux::ecs::ComponentTypeCatalog& components_;
     };
 }

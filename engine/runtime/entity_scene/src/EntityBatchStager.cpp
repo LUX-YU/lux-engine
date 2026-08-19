@@ -172,7 +172,7 @@ namespace lux::runtime::entity_scene
     {
         const auto section = decoded.section();
         const auto generation = decoded.generation();
-        if (!components_ || section.empty() || generation == 0u)
+        if (section.empty() || generation == 0u)
         {
             return lux::cxx::unexpected(detail::makeFailure(
                 EEntityBatchError::INVALID_ARGUMENT,
@@ -182,9 +182,8 @@ namespace lux::runtime::entity_scene
         }
 
         auto impl = std::make_unique<detail::PreparedEntityBatchImpl>(
-            std::move(decoded));
+            std::move(decoded), blobs);
         auto& image = impl->decoded.image_;
-        impl->blob_store = &blobs;
         impl->schemas.reserve(image.schemas.size());
         impl->schema_counts.assign(image.schemas.size(), 0u);
         impl->archetype_first.resize(image.archetypes.size(), 0u);
@@ -210,8 +209,8 @@ namespace lux::runtime::entity_scene
 
         for (const auto& schema : image.schemas)
         {
-            const auto* descriptor = components_->findBySchema(
-                schema.id.name());
+            const auto* descriptor = components_.findBySchema(
+                schema.id.name);
             if (!descriptor)
             {
                 return lux::cxx::unexpected(detail::makeFailure(
@@ -219,10 +218,10 @@ namespace lux::runtime::entity_scene
                     section,
                     generation,
                     "component schema is not registered",
-                    std::string{schema.id.name()}));
+                    std::string{schema.id.name}));
             }
-            if (descriptor->schema_id.hash != schema.id.hash() ||
-                descriptor->schema_id.name != schema.id.name() ||
+            if (descriptor->schema_id.hash != schema.id.hash ||
+                descriptor->schema_id.name != schema.id.name ||
                 descriptor->schema_version != schema.schema_version)
             {
                 return lux::cxx::unexpected(detail::makeFailure(
@@ -230,7 +229,7 @@ namespace lux::runtime::entity_scene
                     section,
                     generation,
                     "component schema identity or version does not match",
-                    std::string{schema.id.name()}));
+                    std::string{schema.id.name}));
             }
             if (descriptor->serialization ==
                 lux::ecs::EComponentSerializationPolicy::TRANSIENT)
@@ -240,7 +239,7 @@ namespace lux::runtime::entity_scene
                     section,
                     generation,
                     "transient component cannot appear in LXES",
-                    std::string{schema.id.name()}));
+                    std::string{schema.id.name}));
             }
             if (!descriptor->operations.get ||
                 !descriptor->operations.emplace ||
@@ -256,7 +255,7 @@ namespace lux::runtime::entity_scene
                     section,
                     generation,
                     "component does not satisfy cooked staging contract",
-                    std::string{schema.id.name()}));
+                    std::string{schema.id.name}));
             }
             impl->schemas.push_back(*descriptor);
         }
@@ -550,7 +549,7 @@ namespace lux::runtime::entity_scene
                         continue;
                     }
                     {
-                        auto lease = prepared.blob_store->acquire(
+                        auto lease = prepared.blob_store.acquire(
                             std::move(image.attachments[prepared.attachment]),
                             section,
                             generation);

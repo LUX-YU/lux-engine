@@ -268,8 +268,8 @@ namespace lux::runtime::entity_scene
         {
             if (!image.entities[ordinal].persistent_id)
                 continue;
-            persistent_ids.push_back(detail::toRuntimePersistentId(
-                *image.entities[ordinal].persistent_id));
+            persistent_ids.push_back(
+                *image.entities[ordinal].persistent_id);
             persistent_ordinals.push_back(ordinal);
         }
         const auto persistent_count = persistent_ids.size();

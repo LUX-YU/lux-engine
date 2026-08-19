@@ -140,6 +140,40 @@ def scan_public_contracts() -> list[str]:
     return violations
 
 
+def scan_runtime_staging_contract() -> list[str]:
+    violations: list[str] = []
+
+    stager_header = ROOT / "engine" / "runtime" / "entity_scene" / "include" / \
+        "lux" / "engine" / "runtime" / "entity_scene" / "EntityBatchStager.hpp"
+    stager_text = read(stager_header)
+    if "const lux::ecs::ComponentTypeCatalog& components_;" not in stager_text:
+        violations.append(
+            f"{relative(stager_header)}: required ComponentTypeCatalog is not stored by reference")
+    if "ComponentTypeCatalog* components_" in stager_text:
+        violations.append(
+            f"{relative(stager_header)}: required ComponentTypeCatalog regressed to a pointer")
+
+    internal = ROOT / "engine" / "runtime" / "entity_scene" / "src" / \
+        "EntityBatchInternal.hpp"
+    internal_text = read(internal)
+    if "SectionBlobStore& blob_store;" not in internal_text:
+        violations.append(
+            f"{relative(internal)}: required SectionBlobStore is not initialized as a reference")
+    if "SectionBlobStore* blob_store" in internal_text:
+        violations.append(
+            f"{relative(internal)}: required SectionBlobStore regressed to a pointer")
+
+    for rel in (
+        Path("engine/runtime/entity_scene/src/EntityBatchStager.cpp"),
+        Path("engine/runtime/entity_scene/src/EntityBatchMaterializer.cpp"),
+    ):
+        text = read(ROOT / rel)
+        for token in ("schema.id.name()", "schema.id.hash()", "toRuntimePersistentId("):
+            if token in text:
+                violations.append(f"{rel}: stale canonical-contract token `{token}`")
+    return violations
+
+
 def scan_compatibility_scope() -> list[str]:
     """Ensure the temporary Spatial3D exception remains a tiny adapter."""
     violations: list[str] = []
@@ -163,6 +197,7 @@ def main() -> int:
         + scan_runtime_target()
         + scan_toolchain_target()
         + scan_public_contracts()
+        + scan_runtime_staging_contract()
         + scan_compatibility_scope()
     )
     if violations:

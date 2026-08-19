@@ -75,6 +75,41 @@ namespace lux::runtime
                 return lux::cxx::unexpected(
                     ERenderEffectCatalogError::INVALID_FACTORY);
             }
+            for (std::size_t dependency_index = 0u;
+                 dependency_index < descriptor.required_scene_features.size();
+                 ++dependency_index)
+            {
+                const auto& dependency =
+                    descriptor.required_scene_features[dependency_index];
+                if (!dependency.isValid() ||
+                    !lux::scene::isValidSceneFeatureIdName(
+                        dependency.name()))
+                {
+                    return lux::cxx::unexpected(
+                        ERenderEffectCatalogError::
+                            INVALID_SCENE_FEATURE_DEPENDENCY);
+                }
+                for (std::size_t other_dependency = 0u;
+                     other_dependency < dependency_index;
+                     ++other_dependency)
+                {
+                    const auto& other = descriptor.required_scene_features[
+                        other_dependency];
+                    if (lux::scene::sceneFeatureIdCollision(
+                            other.view(), dependency.view()))
+                    {
+                        return lux::cxx::unexpected(
+                            ERenderEffectCatalogError::
+                                SCENE_FEATURE_DEPENDENCY_ID_COLLISION);
+                    }
+                    if (other.view() == dependency.view())
+                    {
+                        return lux::cxx::unexpected(
+                            ERenderEffectCatalogError::
+                                DUPLICATE_SCENE_FEATURE_DEPENDENCY);
+                    }
+                }
+            }
             for (const auto& existing : descriptors_)
             {
                 if (lux::render::renderEffectIdCollision(
@@ -460,7 +495,7 @@ namespace lux::runtime
             lux::render::FeatureCatalog& value_feature_catalog,
             RenderEffectCatalog& value_catalog,
             RenderEffectTypeRegistry& value_type_registry,
-            const SceneContributionHost* value_scene_contributions,
+            const SceneContributionHost* value_scene_features,
             lux::events::DomainEvents* value_events,
             lux::cxx::move_only_function<void()> value_progress,
             RenderEffectQueueConfig queue)
@@ -471,7 +506,7 @@ namespace lux::runtime
             , feature_catalog(value_feature_catalog)
             , catalog(value_catalog)
             , type_registry(value_type_registry)
-            , scene_contributions(value_scene_contributions)
+            , scene_features(value_scene_features)
             , events(value_events)
             , progress(std::move(value_progress))
             , endpoint(std::make_shared<detail::RenderEffectEndpoint>(queue))
@@ -574,13 +609,14 @@ namespace lux::runtime
         {
             if (descriptor.required_scene_features.empty())
                 return true;
-            if (!scene_contributions)
+            if (!scene_features)
                 return false;
             return std::ranges::all_of(
                 descriptor.required_scene_features,
-                [this](const auto& dependency) noexcept
+                [this](
+                    const lux::scene::SceneFeatureId& dependency) noexcept
                 {
-                    return scene_contributions->active(dependency.view());
+                    return scene_features->active(dependency.view());
                 });
         }
 
@@ -852,7 +888,7 @@ namespace lux::runtime
         lux::render::FeatureCatalog& feature_catalog;
         RenderEffectCatalog& catalog;
         RenderEffectTypeRegistry& type_registry;
-        const SceneContributionHost* scene_contributions{nullptr};
+        const SceneContributionHost* scene_features{nullptr};
         lux::events::DomainEvents* events{nullptr};
         lux::cxx::move_only_function<void()> progress;
         std::shared_ptr<detail::RenderEffectEndpoint> endpoint;
@@ -869,7 +905,7 @@ namespace lux::runtime
         lux::render::FeatureCatalog& feature_catalog,
         RenderEffectCatalog& catalog,
         RenderEffectTypeRegistry& type_registry,
-        const SceneContributionHost* scene_contributions,
+        const SceneContributionHost* scene_features,
         lux::events::DomainEvents* events,
         lux::cxx::move_only_function<void()> progress,
         RenderEffectQueueConfig queue)
@@ -881,7 +917,7 @@ namespace lux::runtime
               feature_catalog,
               catalog,
               type_registry,
-              scene_contributions,
+              scene_features,
               events,
               std::move(progress),
               queue))

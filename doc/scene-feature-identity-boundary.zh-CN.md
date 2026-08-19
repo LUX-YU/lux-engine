@@ -30,7 +30,7 @@ Engine Scene / Runtime Scene Feature
 - `engine/scene/package/src/LegacyEntitySceneAdapter.cpp`；
 - 仍负责读取旧 LXSC DTO 的受控 Runtime 边界。
 
-Scene Feature Catalog、动态启停命令、Ticket、Snapshot、状态事件和产品调用点不得接收 `ContributionIdView`。
+Scene Feature Catalog、动态启停命令、Ticket、Snapshot、状态事件和产品调用点不得接收 `ContributionIdView`。Render Effect 对 Scene Feature 的依赖列表同样必须拥有 `SceneFeatureId`，不能借用 Extension `ContributionId`。
 
 ## 已实施的编译约束
 
@@ -44,6 +44,7 @@ Scene Feature Catalog、动态启停命令、Ticket、Snapshot、状态事件和
 lux::extensions::contributionId(...)
 ContributionIdView legacy_id
 failure.contribution
+std::vector<lux::extensions::ContributionId>
 ```
 
 该检查在 `architecture-recovery` 工作流中执行。

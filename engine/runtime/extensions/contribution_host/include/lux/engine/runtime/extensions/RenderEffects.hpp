@@ -5,9 +5,10 @@
 #include <lux/engine/ecs/render/RenderSystemBuilder.hpp>
 #include <lux/engine/runtime/extensions/ModuleLifetime.hpp>
 #include <lux/engine/runtime/extensions/OperationTicket.hpp>
-#include <lux/engine/core/extension_abi/StableId.hpp>
+#include <lux/engine/extensions/ExtensionId.hpp>
 #include <lux/engine/function/render/client/RenderProtocol.hpp>
 #include <lux/engine/function/render/RenderEffectId.hpp>
+#include <lux/engine/scene/SceneFeatureId.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/runtime/extensions/ContributionConfig.hpp>
 #include <lux/engine/runtime/extensions/contribution_visibility.h>
@@ -45,7 +46,10 @@ namespace lux::runtime
         INVALID_DESCRIPTOR,
         DUPLICATE_EFFECT,
         ID_COLLISION,
-        INVALID_FACTORY
+        INVALID_FACTORY,
+        INVALID_SCENE_FEATURE_DEPENDENCY,
+        DUPLICATE_SCENE_FEATURE_DEPENDENCY,
+        SCENE_FEATURE_DEPENDENCY_ID_COLLISION
     };
 
     enum class ERenderExtractionBuildError : std::uint8_t
@@ -82,8 +86,7 @@ namespace lux::runtime
         lux::render::RenderEffectId id;
         std::string display_name;
         lux::render::FeatureFactory factory{};
-        std::vector<lux::extensions::ContributionId>
-            required_scene_features;
+        std::vector<lux::scene::SceneFeatureId> required_scene_features;
         std::uint32_t config_schema_version{0u};
         ContributionConfig default_config;
         lux::cxx::move_only_function<
@@ -280,7 +283,7 @@ namespace lux::runtime
             lux::render::FeatureCatalog& feature_catalog,
             RenderEffectCatalog& catalog,
             RenderEffectTypeRegistry& type_registry,
-            const SceneContributionHost* scene_contributions = nullptr,
+            const SceneContributionHost* scene_features = nullptr,
             lux::events::DomainEvents* events = nullptr,
             lux::cxx::move_only_function<void()> progress = {},
             RenderEffectQueueConfig queue = {});

@@ -20,6 +20,7 @@ FORBIDDEN_TEXT = (
     "lux::extensions::contributionId(",
     "ContributionIdView legacy_id",
     "failure.contribution",
+    "std::vector<lux::extensions::ContributionId>",
 )
 
 

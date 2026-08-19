@@ -10,7 +10,6 @@ explicit value conversion at the wire boundary.
 from __future__ import annotations
 
 from pathlib import Path
-import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -66,7 +65,8 @@ def scan_runtime_identity() -> list[str]:
                     # A production wire producer may construct the legacy UUID
                     # only from an ECS ID's value. Keep this exception exact and
                     # local instead of allowing a whole runtime directory.
-                    window = "\n".join(lines[max(0, line_number - 2):line_number + 3])
+                    window = "\n".join(
+                        lines[max(0, line_number - 2):line_number + 3])
                     if rel in EXPLICIT_RUNTIME_ADAPTERS and ".value()" in window:
                         continue
                     violations.append(f"{rel}:{line_number}: {token}")
@@ -94,7 +94,7 @@ def scan_ecs_core() -> list[str]:
 
 
 def scan_explicit_adapter() -> list[str]:
-    """Keep the Authoring↔ECS conversion visible and typed."""
+    """Keep the Authoring-to-ECS conversion visible and typed."""
     path = ROOT / "engine/editor/src/scene/WorldActorEcsAdapter.cpp"
     text = path.read_text(encoding="utf-8")
     required = (
@@ -103,8 +103,11 @@ def scan_explicit_adapter() -> list[str]:
         "toRuntimeId(document.actor)",
         "toAuthoringId(stable->id())",
     )
-    return [f"{relative(path)}: missing explicit boundary `{token}`"
-            for token in required if token not in text]
+    return [
+        f"{relative(path)}: missing explicit boundary `{token}`"
+        for token in required
+        if token not in text
+    ]
 
 
 def main() -> int:

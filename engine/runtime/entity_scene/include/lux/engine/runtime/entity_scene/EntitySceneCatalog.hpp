@@ -8,6 +8,7 @@
 #include <lux/engine/resource/entity_scene/EntityScene.hpp>
 #include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
 #include <lux/engine/runtime/entity_scene/visibility.h>
+#include <lux/engine/scene/SceneFeatureId.hpp>
 
 #include <span>
 #include <utility>
@@ -49,7 +50,7 @@ namespace lux::runtime::entity_scene
 
         [[nodiscard]] const lux::entity_scene::SceneContribution*
         findContribution(
-            lux::extensions::ContributionIdView id) const noexcept;
+            lux::scene::SceneFeatureIdView id) const noexcept;
 
     private:
         explicit EntitySceneCatalog(

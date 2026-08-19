@@ -398,9 +398,9 @@ int main()
     expect(catalog.add(makeLeaf(trace)).has_value(),
            "catalog accepts the dependent contribution");
     expect(catalog.find(
-               lux::extensions::contributionId(
+               lux::scene::sceneFeatureId(
                    "org.test.scene.root")) != nullptr,
-           "legacy ContributionId lookup crosses the compatibility adapter");
+           "catalog lookup uses the Scene-owned feature identity");
     const auto duplicate = catalog.add(makeLeaf(trace));
     expect(!duplicate && duplicate.error() ==
                lux::runtime::ESceneContributionCatalogError::

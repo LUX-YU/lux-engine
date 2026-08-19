@@ -1,7 +1,5 @@
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 
-#include <lux/engine/core/extension_abi/StableId.hpp>
-
 #include <algorithm>
 
 namespace lux::runtime::entity_scene
@@ -54,15 +52,14 @@ namespace lux::runtime::entity_scene
 
     const lux::entity_scene::SceneContribution*
     EntitySceneCatalog::findContribution(
-        lux::extensions::ContributionIdView id) const noexcept
+        lux::scene::SceneFeatureIdView id) const noexcept
     {
         const auto found = std::find_if(
             manifest_.contributions.begin(),
             manifest_.contributions.end(),
             [id](const lux::entity_scene::SceneContribution& contribution)
             {
-                return lux::extensions::sameStableId(
-                    contribution.id.view(), id);
+                return contribution.id.name() == id.name();
             });
         return found == manifest_.contributions.end() ? nullptr : &*found;
     }

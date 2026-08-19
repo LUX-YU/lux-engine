@@ -358,20 +358,6 @@ namespace lux::runtime
         [[nodiscard]] const SceneContributionDescriptor* find(
             lux::scene::SceneFeatureIdView id) const noexcept;
 
-        /// Temporary adapter for the LXSC v1 manifest and extensions compiled
-        /// against the pre-domain-ID API. New runtime code must use
-        /// SceneFeatureIdView directly.
-        [[nodiscard]] SceneContributionDescriptor* find(
-            lux::extensions::ContributionIdView legacy_id) noexcept
-        {
-            return find(lux::scene::sceneFeatureId(legacy_id.name()));
-        }
-        [[nodiscard]] const SceneContributionDescriptor* find(
-            lux::extensions::ContributionIdView legacy_id) const noexcept
-        {
-            return find(lux::scene::sceneFeatureId(legacy_id.name()));
-        }
-
         [[nodiscard]] std::span<const SceneContributionDescriptor> all()
             const noexcept;
 
@@ -503,30 +489,6 @@ namespace lux::runtime
             EContributionDisableMode mode =
                 EContributionDisableMode::REJECT_DEPENDENTS) const;
 
-        /// Source-compatibility adapters for callers still using the old
-        /// extension-owned identity. They perform an explicit name-boundary
-        /// conversion and are removed with the LXSC v1 compatibility surface.
-        [[nodiscard]] SceneContributionOperationTicket requestEnable(
-            lux::extensions::ContributionIdView legacy_id,
-            ContributionConfig config = {},
-            EActivationPersistence persistence =
-                EActivationPersistence::SCENE) const
-        {
-            return requestEnable(
-                lux::scene::sceneFeatureId(legacy_id.name()),
-                std::move(config),
-                persistence);
-        }
-        [[nodiscard]] SceneContributionOperationTicket requestDisable(
-            lux::extensions::ContributionIdView legacy_id,
-            EContributionDisableMode mode =
-                EContributionDisableMode::REJECT_DEPENDENTS) const
-        {
-            return requestDisable(
-                lux::scene::sceneFeatureId(legacy_id.name()),
-                mode);
-        }
-
         [[nodiscard]] explicit operator bool() const noexcept;
 
     private:
@@ -568,11 +530,6 @@ namespace lux::runtime
             std::size_t budget = 32u) noexcept;
         [[nodiscard]] bool active(
             lux::scene::SceneFeatureIdView id) const noexcept;
-        [[nodiscard]] bool active(
-            lux::extensions::ContributionIdView legacy_id) const noexcept
-        {
-            return active(lux::scene::sceneFeatureId(legacy_id.name()));
-        }
         [[nodiscard]] const lux::ecs::SceneServices& services() const noexcept;
         [[nodiscard]] std::vector<SceneContributionActivationSnapshot>
         activationSnapshot() const;

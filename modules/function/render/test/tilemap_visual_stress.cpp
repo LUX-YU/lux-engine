@@ -38,6 +38,7 @@
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
 #include <lux/engine/ecs/render/components/2d/Image2DComponent.hpp>
+#include <lux/engine/scene/SceneFeatureId.hpp>
 #include <lux/engine/runtime/packs/spatial2d/Presentation2DContribution.hpp>
 #include <lux/engine/runtime/packs/spatial2d/Simulation2DContribution.hpp>
 #include <lux/engine/runtime/packs/spatial2d/Transform2DContribution.hpp>
@@ -311,11 +312,11 @@ int main(int argc, char** argv)
     if (!contributions.addBatch(std::move(descriptors)))
         return 1;
     constexpr std::array selected{
-        lux::extensions::contributionId(
+        lux::scene::sceneFeatureId(
             lux::runtime::kPresentation2DContributionName)};
     if (!contributions.assembleDefaults(assembly, selected))
     {
-        std::printf("scene contribution assembly failed\n");
+        std::printf("scene feature assembly failed\n");
         return 1;
     }
     auto render_plan = std::move(render_builder).compile();

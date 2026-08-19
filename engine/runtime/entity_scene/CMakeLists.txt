@@ -52,6 +52,7 @@ target_link_libraries(
         lux::engine::resource::entity_scene
         lux::engine::resource::asset_core
         lux::engine::runtime::runtime_execution
+        lux::engine::scene::scene_api
         EnTT::EnTT
         STDEXEC::stdexec
     PRIVATE
@@ -68,6 +69,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS entity_scene asset_core)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_api)"
     "find_package(stdexec CONFIG REQUIRED)"
     "find_package(zstd CONFIG REQUIRED)"
 )
@@ -142,6 +144,29 @@ else()
 endif()
 lux_classify_target(
     TARGET  entity_section_wire_compatibility_test
+    LAYER   RUNTIME
+    PRODUCT TEST
+    ROLE    INTEGRATION
+)
+
+add_executable(
+    entity_scene_catalog_identity_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/entity_scene_catalog_identity_test.cpp
+)
+target_link_libraries(
+    entity_scene_catalog_identity_test
+    PRIVATE
+        lux::engine::runtime::runtime_entity_scene
+        lux::engine::extensions::extension_api
+        lux::engine::scene::scene_api
+)
+if(MSVC)
+    target_compile_options(entity_scene_catalog_identity_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(entity_scene_catalog_identity_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  entity_scene_catalog_identity_test
     LAYER   RUNTIME
     PRODUCT TEST
     ROLE    INTEGRATION

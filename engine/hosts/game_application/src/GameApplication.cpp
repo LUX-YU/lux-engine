@@ -1,5 +1,6 @@
 #include <lux/engine/hosts/game_application/GameApplication.hpp>
 
+#include <lux/engine/scene/SceneFeatureId.hpp>
 #include <lux/engine/runtime/frame/FrameCoordinator.hpp>
 #include <lux/engine/runtime/frame/MainCloseDriver.hpp>
 #include <lux/engine/runtime/scene/script/SceneScriptRuntime.hpp>
@@ -1086,12 +1087,12 @@ namespace lux::game
             }
         }
 
-        constexpr auto spatial3d_contribution =
-            lux::extensions::contributionId(
+        constexpr auto spatial3d_feature =
+            lux::scene::sceneFeatureId(
                 lux::spatial3d_scene::kSpatial3DContributionName);
         telemetry.spatial3d_catalog_present =
             impl_->runtime->entityScene().findContribution(
-                spatial3d_contribution) != nullptr;
+                spatial3d_feature) != nullptr;
         if (const auto* interest = impl_->runtime->services().get<
                 lux::runtime::spatial3d::SpatialInterest3DSystem>())
         {

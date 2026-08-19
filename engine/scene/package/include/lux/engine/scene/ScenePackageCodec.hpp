@@ -6,6 +6,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/package/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -56,16 +57,18 @@ namespace lux::scene
     using ScenePackageCodecResult =
         lux::cxx::expected<T, ScenePackageCodecFailure>;
 
-    [[nodiscard]] ScenePackageCodecResult<void> validateScenePackage(
+    [[nodiscard]] LUX_ENGINE_SCENE_PACKAGE_PUBLIC
+    ScenePackageCodecResult<void> validateScenePackage(
         const ScenePackage& package,
         const ScenePackageCodecLimits& limits = {}) noexcept;
 
-    [[nodiscard]] ScenePackageCodecResult<std::vector<std::byte>>
-    encodeScenePackage(
+    [[nodiscard]] LUX_ENGINE_SCENE_PACKAGE_PUBLIC
+    ScenePackageCodecResult<std::vector<std::byte>> encodeScenePackage(
         const ScenePackage& package,
         const ScenePackageCodecLimits& limits = {}) noexcept;
 
-    [[nodiscard]] ScenePackageCodecResult<ScenePackage> decodeScenePackage(
+    [[nodiscard]] LUX_ENGINE_SCENE_PACKAGE_PUBLIC
+    ScenePackageCodecResult<ScenePackage> decodeScenePackage(
         std::span<const std::byte> bytes,
         const ScenePackageCodecLimits& limits = {}) noexcept;
 } // namespace lux::scene

@@ -30,6 +30,13 @@ jobs:
       - name: Check EntitySection runtime boundary
         run: python3 tools/architecture/check_entity_section_boundary.py
 
+  spatial3d-catalog-boundary:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Spatial3D scene-catalog boundary
+        run: python3 tools/architecture/check_spatial3d_catalog_boundary.py
+
   apply-reviewed-patch:
     if: >-
       github.event_name == 'pull_request' &&

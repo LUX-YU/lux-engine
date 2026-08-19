@@ -227,6 +227,77 @@ def scan_test_dependency_ownership() -> list[str]:
     return violations
 
 
+
+def scan_scene_package_validation_ownership() -> list[str]:
+    """Keep canonical validation in Engine Scene and wire I/O behind adapter."""
+    violations: list[str] = []
+
+    validation_rel = Path(
+        "engine/scene/package/src/ScenePackageValidation.cpp")
+    validation_path = ROOT / validation_rel
+    if not validation_path.is_file():
+        return [f"{validation_rel}: missing Engine-owned ScenePackage validator"]
+
+    validation_text = read(validation_path)
+    for token in (
+        "validateSectionRecord(",
+        "validateScenePackage(",
+        "lux::asset::VirtualPath::parse(",
+    ):
+        if token not in validation_text:
+            violations.append(
+                f"{validation_rel}: missing canonical validation contract `{token}`")
+    for token in (LEGACY_INCLUDE, "lux::entity_scene"):
+        if token in validation_text:
+            violations.append(
+                f"{validation_rel}: native validation depends on legacy model `{token}`")
+
+    codec_rel = Path("engine/scene/package/src/ScenePackageCodec.cpp")
+    codec_text = read(ROOT / codec_rel)
+    for token in ("validateSectionRecord(", "ScenePackageCodecResult<void> validateScenePackage("):
+        if token in codec_text:
+            violations.append(
+                f"{codec_rel}: validation implementation must not remain in wire adapter translation unit")
+    for token in (
+        "const auto validated = validateScenePackage(package, limits);",
+        "auto package = detail::fromLegacyManifest(*decoded);",
+    ):
+        if token not in codec_text:
+            violations.append(
+                f"{codec_rel}: missing canonical post/pre-wire validation `{token}`")
+
+    validation_test_rel = Path(
+        "engine/scene/package/test/scene_package_validation_test.cpp")
+    validation_test_path = ROOT / validation_test_rel
+    if not validation_test_path.is_file():
+        violations.append(
+            f"{validation_test_rel}: missing canonical validation test")
+    else:
+        validation_test_text = read(validation_test_path)
+        for token in (LEGACY_INCLUDE, "lux::entity_scene"):
+            if token in validation_test_text:
+                violations.append(
+                    f"{validation_test_rel}: canonical validation test depends on legacy model `{token}`")
+        for token in (
+            "validateScenePackage(package)",
+            "ScenePackageCodecError::DuplicateId",
+            "ScenePackageCodecError::InvalidReference",
+        ):
+            if token not in validation_test_text:
+                violations.append(
+                    f"{validation_test_rel}: missing validation case `{token}`")
+
+    cmake_rel = Path("engine/scene/package/CMakeLists.txt")
+    cmake_text = read(ROOT / cmake_rel)
+    for token in (
+        "src/ScenePackageValidation.cpp",
+        "scene_package_validation_test",
+    ):
+        if token not in cmake_text:
+            violations.append(
+                f"{cmake_rel}: missing native validation target input `{token}`")
+    return violations
+
 def scan_compatibility_scope() -> list[str]:
     """Ensure the temporary Spatial3D exception remains a tiny adapter."""
     violations: list[str] = []
@@ -252,6 +323,7 @@ def main() -> int:
         + scan_public_contracts()
         + scan_runtime_staging_contract()
         + scan_test_dependency_ownership()
+        + scan_scene_package_validation_ownership()
         + scan_compatibility_scope()
     )
     if violations:

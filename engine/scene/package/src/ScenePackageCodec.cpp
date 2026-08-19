@@ -4,30 +4,14 @@
 
 namespace lux::scene
 {
-    ScenePackageCodecResult<void> validateSectionRecord(
-        const SectionRecord& record,
-        const ScenePackageCodecLimits& limits) noexcept
-    {
-        auto legacy = detail::toLegacySectionRecord(record, limits);
-        if (!legacy)
-            return lux::cxx::unexpected(std::move(legacy.error()));
-        return {};
-    }
-
-    ScenePackageCodecResult<void> validateScenePackage(
-        const ScenePackage& package,
-        const ScenePackageCodecLimits& limits) noexcept
-    {
-        auto legacy = detail::toLegacyManifest(package, limits);
-        if (!legacy)
-            return lux::cxx::unexpected(legacy.error());
-        return {};
-    }
-
     ScenePackageCodecResult<std::vector<std::byte>> encodeScenePackage(
         const ScenePackage& package,
         const ScenePackageCodecLimits& limits) noexcept
     {
+        const auto validated = validateScenePackage(package, limits);
+        if (!validated)
+            return lux::cxx::unexpected(validated.error());
+
         auto legacy = detail::toLegacyManifest(package, limits);
         if (!legacy)
             return lux::cxx::unexpected(legacy.error());
@@ -50,6 +34,11 @@ namespace lux::scene
         if (!decoded)
             return lux::cxx::unexpected(
                 detail::packageFailure(decoded.error()));
-        return detail::fromLegacyManifest(*decoded);
+
+        auto package = detail::fromLegacyManifest(*decoded);
+        const auto validated = validateScenePackage(package, limits);
+        if (!validated)
+            return lux::cxx::unexpected(validated.error());
+        return package;
     }
 } // namespace lux::scene

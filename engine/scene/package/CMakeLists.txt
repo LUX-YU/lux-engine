@@ -18,6 +18,7 @@ add_component(
     OUTPUT_NAME    lux_engine_scene_package
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScenePackageCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScenePackageValidation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/LegacyEntitySceneAdapter.cpp
 )
 
@@ -46,6 +47,7 @@ target_link_libraries(
         lux::engine::ecs::scene_format
         lux::engine::extensions::extension_api
     PRIVATE
+        lux::engine::resource::asset_core
         lux::engine::resource::entity_scene
 )
 
@@ -86,6 +88,28 @@ lux_classify_target(
     LAYER   RUNTIME
     PRODUCT TEST
     ROLE    INTEGRATION
+)
+
+# Canonical model validation test: links only the Engine ScenePackage target
+# and exercises model invariants without including the legacy Resource DTO.
+add_executable(
+    scene_package_validation_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/scene_package_validation_test.cpp
+)
+target_link_libraries(
+    scene_package_validation_test
+    PRIVATE lux::engine::scene::scene_package
+)
+if(MSVC)
+    target_compile_options(scene_package_validation_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(scene_package_validation_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  scene_package_validation_test
+    LAYER   RUNTIME
+    PRODUCT TEST
+    ROLE    DOMAIN
 )
 
 # Compatibility contract: this test additionally links the frozen Resource

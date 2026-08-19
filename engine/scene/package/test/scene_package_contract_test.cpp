@@ -94,11 +94,5 @@ int main()
         *package_bytes);
     assert(legacy_roundtrip && *legacy_roundtrip == old);
 
-    auto invalid = package;
-    invalid.sections.front().required_components.front().id.hash += 1u;
-    const auto rejected = scene::validateScenePackage(invalid);
-    assert(!rejected);
-    assert(rejected.error().error ==
-        scene::ScenePackageCodecError::InvalidArgument);
     return 0;
 }

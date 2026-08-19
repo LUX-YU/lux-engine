@@ -195,11 +195,21 @@ def scan_test_dependency_ownership() -> list[str]:
     public_text = read(ROOT / public_rel)
     for token in (
         "PersistentEntityIdComponent.hpp",
+        "lux::ecs::PersistentEntityIdComponent",
+    ):
+        if token in public_text:
+            violations.append(
+                f"{public_rel}: runtime loading contract contains ECS component detail `{token}`")
+
+    ecs_rel = Path("ecs/core/test/persistent_entity_index_test.cpp")
+    ecs_text = read(ROOT / ecs_rel)
+    for token in (
+        "lux::ecs::PersistentEntityIdComponent",
         "const lux::ecs::PersistentEntityId&",
     ):
-        if token not in public_text:
+        if token not in ecs_text:
             violations.append(
-                f"{public_rel}: missing declared runtime component contract `{token}`")
+                f"{ecs_rel}: missing ECS-owned component contract `{token}`")
 
     cmake_rel = Path("engine/runtime/entity_scene/CMakeLists.txt")
     cmake_text = read(ROOT / cmake_rel)

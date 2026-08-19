@@ -11,7 +11,7 @@
 
 namespace
 {
-    lux::entity_scene::EntitySectionId sectionId(std::uint64_t ordinal)
+    lux::ecs::scene_format::EntitySectionId sectionId(std::uint64_t ordinal)
     {
         std::array<std::uint8_t, 16u> bytes{};
         bytes[6] = 0x40u;
@@ -21,10 +21,10 @@ namespace
             bytes[15u - index] = static_cast<std::uint8_t>(
                 ordinal >> (index * 8u));
         }
-        return lux::entity_scene::EntitySectionId{uuids::uuid{bytes}};
+        return lux::ecs::scene_format::EntitySectionId{uuids::uuid{bytes}};
     }
 
-    lux::entity_scene::EntitySectionId coordinateSectionId(
+    lux::ecs::scene_format::EntitySectionId coordinateSectionId(
         lux::spatial::GridCoord2i64 coordinate)
     {
         auto mix = [](std::uint64_t value) noexcept
@@ -98,10 +98,10 @@ int main()
     auto procedural = spatial2d::Spatial2DSectionSource::procedural(
         [](lux::spatial::GridCoord2i64 coordinate)
             -> lux::cxx::expected<
-                lux::entity_scene::EntitySectionRecord,
+                lux::scene::SectionRecord,
                 spatial2d::Spatial2DIndexFailure>
         {
-            lux::entity_scene::EntitySectionRecord record;
+            lux::scene::SectionRecord record;
             record.id = coordinateSectionId(coordinate);
             return record;
         });

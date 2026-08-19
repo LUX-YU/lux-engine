@@ -466,9 +466,27 @@
             return {};
         }
         auto persistence = runtime_->persistenceSnapshot(*persisted_schemas);
-        source.contributions = std::move(persistence.contributions);
-        source.required_extensions =
-            std::move(persistence.required_extensions);
+        source.contributions.clear();
+        source.contributions.reserve(persistence.features.size());
+        for (auto& feature : persistence.features)
+        {
+            source.contributions.push_back({
+                lux::extensions::ContributionId{
+                    std::string{feature.id.name()}},
+                feature.config_schema_version,
+                std::move(feature.config)});
+        }
+        source.required_extensions.clear();
+        source.required_extensions.reserve(
+            persistence.required_extensions.size());
+        for (const auto& requirement : persistence.required_extensions)
+        {
+            source.required_extensions.push_back({
+                lux::extensions::ExtensionId{
+                    std::string{requirement.id.name()}},
+                requirement.required_major,
+                requirement.minimum_minor});
+        }
 
         job->source = std::move(source);
         return job;

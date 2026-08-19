@@ -318,7 +318,7 @@ namespace lux::editor
 
         lux::runtime::SceneRuntime::Config rcfg;
         rcfg.name            = "Thumbnail";
-        rcfg.transient_scene = makePreviewSceneManifest(rcfg.name);
+        rcfg.transient_package = makePreviewScenePackage(rcfg.name);
         rcfg.events          = infra_.events;      // 进程域同一个 bus(批B,可空)
         // ★ 批 D2:守卫在这里,因为 `RenderInfra::residency` 按设计可空 —— 详见
         //   `EditorScene::bringUp` 同位置的说明。

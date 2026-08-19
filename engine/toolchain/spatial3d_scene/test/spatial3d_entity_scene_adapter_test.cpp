@@ -21,7 +21,6 @@
 #include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
 #include <lux/engine/resource/asset/MeshSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
 #include <lux/engine/resource/physics3d/StaticColliderBatch3D.hpp>
 #include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
 #include <lux/engine/resource/terrain/TerrainTile.hpp>
@@ -140,7 +139,7 @@ namespace
     [[nodiscard]] lux::toolchain::Spatial3DAuthoringSource sourceFixture()
     {
         lux::toolchain::Spatial3DAuthoringSource source;
-        source.scene = lux::entity_scene::EntitySceneId{
+        source.scene = lux::scene::ScenePackageId{
             uuid("10000000-0000-4000-8000-000000000001")};
         const auto space =
             uuid("12000000-0000-4000-8000-000000000001");
@@ -150,7 +149,7 @@ namespace
             256.0});
 
         lux::toolchain::Spatial3DActorSource actor;
-        actor.id = lux::entity_scene::PersistentEntityId{
+        actor.id = lux::ecs::PersistentEntityId{
             uuid("13000000-0000-4000-8000-000000000001")};
         actor.space = space;
         actor.position = {10'000.25, 64.5, -20'000.75};
@@ -196,7 +195,7 @@ namespace
         }
         source.actors.push_back(std::move(actor));
         auto spatial_actor = source.actors.front();
-        spatial_actor.id = lux::entity_scene::PersistentEntityId{
+        spatial_actor.id = lux::ecs::PersistentEntityId{
             uuid("13000000-0000-4000-8000-000000000002")};
         spatial_actor.position = {-16.0, 8.0, 32.0};
         const auto primary_schema = lux::ecs::defaultComponentSchemaName(
@@ -214,7 +213,7 @@ namespace
         instance_page.space = space;
         instance_page.cell = {0, 0, 0};
         lux::toolchain::Spatial3DInstanceSource instance;
-        instance.id = lux::entity_scene::PersistentEntityId{
+        instance.id = lux::ecs::PersistentEntityId{
             uuid("14000000-0000-4000-8000-000000000001")};
         instance.position = {32.0, 4.0, 48.0};
         instance.mesh =
@@ -227,7 +226,7 @@ namespace
         auto second_instance_page = source.instance_pages.front();
         second_instance_page.cell = {1, 0, 0};
         second_instance_page.instances.front().id =
-            lux::entity_scene::PersistentEntityId{
+            lux::ecs::PersistentEntityId{
                 uuid("14000000-0000-4000-8000-000000000002")};
         second_instance_page.instances.front().position =
             {288.0, 4.0, 48.0};
@@ -236,7 +235,7 @@ namespace
         auto negative_instance_page = source.instance_pages.front();
         negative_instance_page.cell = {-1, 0, 0};
         negative_instance_page.instances.front().id =
-            lux::entity_scene::PersistentEntityId{
+            lux::ecs::PersistentEntityId{
                 uuid("14000000-0000-4000-8000-000000000003")};
         negative_instance_page.instances.front().position =
             {-32.0, 4.0, 48.0};
@@ -310,7 +309,7 @@ int main()
     const auto second = lux::toolchain::adaptSpatial3DEntityScene(
         source, components, mesh_assets);
     assert(first && second);
-    assert(first->encoded_manifest == second->encoded_manifest);
+    assert(first->encoded_package == second->encoded_package);
     assert(first->generated_meshes.size() == 1u);
     assert(second->generated_meshes.size() == 1u);
     assert(first->generated_meshes.front().id ==
@@ -365,9 +364,9 @@ int main()
         assert(first->sections[index].encoded_image ==
             second->sections[index].encoded_image);
     }
-    assert(first->manifest.id == source.scene);
-    assert(first->manifest.startup_sections.size() == 1u);
-    assert(first->manifest.contributions.size() == 5u);
+    assert(first->package.id.value() == source.scene.value());
+    assert(first->package.startup_sections.size() == 1u);
+    assert(first->package.features.size() == 5u);
     for (const auto name : {
              "org.lux.builtin.animation3d",
              "org.lux.builtin.presentation3d",
@@ -375,21 +374,21 @@ int main()
              "org.lux.builtin.navigation3d"})
     {
         assert(std::ranges::find(
-                   first->manifest.contributions,
+                   first->package.features,
                    name,
-                   [](const auto& contribution)
+                   [](const auto& feature)
                    {
-                       return contribution.id.name();
-                   }) != first->manifest.contributions.end());
+                       return feature.id.name();
+                   }) != first->package.features.end());
     }
     const auto spatial3d = std::ranges::find(
-        first->manifest.contributions,
+        first->package.features,
         lux::spatial3d_scene::kSpatial3DContributionName,
-        [](const auto& contribution)
+        [](const auto& feature)
         {
-            return contribution.id.name();
+            return feature.id.name();
         });
-    assert(spatial3d != first->manifest.contributions.end());
+    assert(spatial3d != first->package.features.end());
     assert(spatial3d->config_schema_version ==
         lux::spatial3d_scene::kSpatial3DSceneCatalogSchemaVersion);
     const auto catalog =
@@ -408,7 +407,7 @@ int main()
 
     const auto startup = std::ranges::find(
         first->sections,
-        first->manifest.startup_sections.front(),
+        first->package.startup_sections.front(),
         [](const auto& section)
         {
             return section.record.id;
@@ -420,11 +419,11 @@ int main()
         startup->image.schemas,
         [](const auto& schema)
         {
-            return schema.id.name() ==
+            return schema.id.name ==
                 schemaName<lux::ecs::ClassicMeshBatchComponent>() ||
-                schema.id.name() ==
+                schema.id.name ==
                     schemaName<lux::ecs::TerrainTileComponent>() ||
-                schema.id.name() ==
+                schema.id.name ==
                     schemaName<lux::ecs::StaticColliderBatch3DComponent>();
         }));
 
@@ -433,14 +432,16 @@ int main()
     {
         assert(entry.band < catalog->bands.size());
         catalog_sections.insert(uuids::to_string(entry.section.value()));
-        const auto record = std::ranges::find(
-            first->manifest.sections,
-            entry.section,
-            &lux::entity_scene::EntitySectionRecord::id);
-        assert(record != first->manifest.sections.end());
+        const auto record = std::ranges::find_if(
+            first->package.sections,
+            [&entry](const lux::scene::SectionRecord& value)
+            {
+                return value.id.value() == entry.section.value();
+            });
+        assert(record != first->package.sections.end());
         assert(record->demand_channels.size() == 1u);
-        assert(record->demand_channels.front() ==
-            catalog->bands[entry.band].demand_channel);
+        assert(record->demand_channels.front().name() ==
+            catalog->bands[entry.band].demand_channel.name());
         assert(catalog->bands[entry.band].source.name() ==
             "lux.spatial3d.source.12000000000040008000000000000001");
     }
@@ -476,8 +477,8 @@ int main()
     for (const auto& section : first->sections)
     {
         assert(section.record.source ==
-            lux::entity_scene::EntitySectionSource{
-                lux::entity_scene::StoredSectionSource{
+            lux::scene::SectionSource{
+                lux::scene::StoredSectionSource{
                     "/Game/EntitySections/" + uuids::to_string(
                         section.record.id.value())}});
         assert(std::ranges::is_sorted(section.image.component_names));
@@ -485,7 +486,7 @@ int main()
         persistent_relocations +=
             section.image.persistent_reference_relocations.size();
         for (const auto& schema : section.image.schemas)
-            schemas.emplace(schema.id.name());
+            schemas.emplace(schema.id.name);
         saw_exact_actor_defaults = saw_exact_actor_defaults ||
             (std::ranges::find(
                  section.image.component_names,
@@ -501,7 +502,7 @@ int main()
                 section.image.component_names, "rotation_radians") !=
                 section.image.component_names.end();
         if (section.record.id !=
-            first->manifest.startup_sections.front())
+            first->package.startup_sections.front())
         {
             assert(catalog_sections.contains(
                 uuids::to_string(section.record.id.value())));
@@ -510,7 +511,7 @@ int main()
         for (const auto& attachment : section.image.attachments)
         {
             assert(attachment.reference.id ==
-                lux::entity_scene::makeContentBlobId(
+                lux::ecs::scene_format::makeContentBlobId(
                     attachment.reference.type,
                     attachment.reference.schema_version,
                     attachment.payload));
@@ -621,8 +622,8 @@ int main()
     for (const auto& section : custom->sections)
     {
         assert(section.record.source ==
-            lux::entity_scene::EntitySectionSource{
-                lux::entity_scene::StoredSectionSource{
+            lux::scene::SectionSource{
+                lux::scene::StoredSectionSource{
                     "/Game/TestEntitySections/" + uuids::to_string(
                         section.record.id.value())}});
     }
@@ -668,18 +669,18 @@ int main()
     const auto portal_bundle = lux::toolchain::adaptSpatial3DEntityScene(
         portal_source, components, mesh_assets);
     assert(portal_bundle);
-    const auto portal_contribution = std::ranges::find(
-        portal_bundle->manifest.contributions,
+    const auto portal_feature = std::ranges::find(
+        portal_bundle->package.features,
         lux::spatial3d_scene::kSpatial3DContributionName,
-        [](const auto& contribution)
+        [](const auto& feature)
         {
-            return contribution.id.name();
+            return feature.id.name();
         });
-    assert(portal_contribution !=
-           portal_bundle->manifest.contributions.end());
+    assert(portal_feature !=
+           portal_bundle->package.features.end());
     const auto portal_catalog =
         lux::spatial3d_scene::decodeSpatial3DSceneCatalog(
-            portal_contribution->config);
+            portal_feature->config);
     assert(portal_catalog);
     struct CookedNavigationRegion final
     {
@@ -690,10 +691,12 @@ int main()
     std::vector<CookedNavigationRegion> cooked_regions;
     for (const auto& section : portal_bundle->sections)
     {
-        const auto catalog_entry = std::ranges::find(
+        const auto catalog_entry = std::ranges::find_if(
             portal_catalog->entries,
-            section.record.id,
-            &lux::spatial3d_scene::Spatial3DSceneCatalogEntry::section);
+            [&section](const auto& entry)
+            {
+                return entry.section.value() == section.record.id.value();
+            });
         if (catalog_entry == portal_catalog->entries.end())
             continue;
         for (const auto& attachment : section.image.attachments)

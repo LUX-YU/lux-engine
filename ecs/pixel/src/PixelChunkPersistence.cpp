@@ -57,23 +57,22 @@ namespace lux::ecs
         }
 
         [[nodiscard]] bool sameSchema(
-            const lux::entity_scene::PersistenceSchemaId& schema) noexcept
+            const lux::ecs::scene_format::PersistenceSchemaId& schema) noexcept
         {
             const auto expected = pixelChunkPersistenceSchema();
-            return lux::extensions::sameStableId(
-                schema.view(), expected.view());
+            return schema.view() == expected.view();
         }
     }
 
-    lux::entity_scene::PersistenceSchemaId
+    lux::ecs::scene_format::PersistenceSchemaId
     pixelChunkPersistenceSchema()
     {
-        return lux::entity_scene::PersistenceSchemaId{
+        return lux::ecs::scene_format::PersistenceSchemaId{
             "lux.pixel.chunk_delta"};
     }
 
     lux::cxx::expected<
-        lux::entity_scene::PersistenceJournalRecord,
+        lux::ecs::scene_format::PersistenceJournalRecord,
         EPixelChunkPersistenceError>
     encodePixelChunkPersistence(
         const PixelChunkDeltaSnapshot& snapshot) noexcept
@@ -104,7 +103,7 @@ namespace lux::ecs
             appendPod(payload, edit.y);
             appendPod(payload, edit.material);
         }
-        auto record = lux::entity_scene::makePersistenceJournalRecord(
+        auto record = lux::ecs::scene_format::makePersistenceJournalRecord(
             pixelChunkPersistenceSchema(),
             kPixelChunkPersistenceSchemaVersion,
             snapshot.base_digest,
@@ -122,7 +121,7 @@ namespace lux::ecs
         PixelChunkDeltaSnapshot,
         EPixelChunkPersistenceError>
     decodePixelChunkPersistence(
-        const lux::entity_scene::PersistenceJournalRecord& record) noexcept
+        const lux::ecs::scene_format::PersistenceJournalRecord& record) noexcept
     {
         if (!record.valid() || !sameSchema(record.schema) ||
             record.schema_version != kPixelChunkPersistenceSchemaVersion)
@@ -183,7 +182,7 @@ namespace lux::ecs
     lux::cxx::expected<void, EPixelChunkPersistenceError>
     mergePixelChunkPersistence(
         PixelChunkLoad& base,
-        const lux::entity_scene::PersistenceJournalRecord& record) noexcept
+        const lux::ecs::scene_format::PersistenceJournalRecord& record) noexcept
     {
         auto decoded = decodePixelChunkPersistence(record);
         if (!decoded)
@@ -234,13 +233,13 @@ namespace lux::ecs
         {
             found = journals_.emplace(
                 coordinate,
-                lux::entity_scene::PersistenceJournal{}).first;
+                lux::ecs::scene_format::PersistenceJournal{}).first;
         }
         auto compacted = found->second.compact(std::move(*record));
         if (!compacted)
         {
             if (compacted.error() ==
-                lux::entity_scene::EEntityPersistenceJournalError::
+                lux::ecs::scene_format::EEntityPersistenceJournalError::
                     BASE_MISMATCH)
             {
                 ++base_mismatches_;
@@ -275,7 +274,7 @@ namespace lux::ecs
         return true;
     }
 
-    const lux::entity_scene::PersistenceJournalRecord*
+    const lux::ecs::scene_format::PersistenceJournalRecord*
     PixelChunkPersistenceStore::latest(
         PixelChunkCoord coordinate) const noexcept
     {

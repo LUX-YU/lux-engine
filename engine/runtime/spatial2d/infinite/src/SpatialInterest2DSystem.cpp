@@ -19,7 +19,7 @@ namespace lux::runtime::spatial2d
     {
         return std::isfinite(section_world_size) &&
             section_world_size > 0.0 &&
-            lux::entity_scene::isValidEntitySceneId(channel) &&
+            lux::scene::isValidDemandChannelId(channel) &&
             resident_priority != 0u && maximum_sources != 0u;
     }
 
@@ -262,8 +262,8 @@ namespace lux::runtime::spatial2d
         Spatial2DSectionSource source;
         SpatialInterest2DConfig config;
         std::vector<TrackedSource> tracked;
-        std::vector<lux::entity_scene::EntitySectionId> active_scratch;
-        std::vector<lux::entity_scene::EntitySectionId> resident_scratch;
+        std::vector<lux::ecs::scene_format::EntitySectionId> active_scratch;
+        std::vector<lux::ecs::scene_format::EntitySectionId> resident_scratch;
         lux::meta::EntityRegistry* registry{nullptr};
         SpatialInterest2DSnapshot snapshot;
         bool closing{false};

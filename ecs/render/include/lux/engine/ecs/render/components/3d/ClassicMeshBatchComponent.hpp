@@ -5,7 +5,7 @@
  */
 
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 
 #include <Eigen/Core>
 
@@ -19,7 +19,7 @@ namespace lux::ecs
         LUX_MEMBER(display_name=Content,
                    readonly=true,
                    cooked_relocation=content_blob_ref)
-        lux::entity_scene::ContentBlobRef content;
+        lux::ecs::scene_format::ContentBlobRef content;
 
         LUX_MEMBER(display_name=Local Bounds Center)
         Eigen::Vector3f local_bounds_center{Eigen::Vector3f::Zero()};

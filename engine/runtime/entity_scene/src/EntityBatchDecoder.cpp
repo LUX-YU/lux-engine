@@ -1,6 +1,6 @@
 #include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
 
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 
 #include "EntityBatchInternal.hpp"
 
@@ -22,7 +22,7 @@ namespace lux::runtime::entity_scene
                 "LXES bytes and a non-zero runtime generation are required"));
         }
 
-        auto image = lux::entity_scene::decodeEntitySectionImage(
+        auto image = lux::ecs::scene_format::decodeEntitySectionImage(
             encoded.view());
         if (!image)
         {

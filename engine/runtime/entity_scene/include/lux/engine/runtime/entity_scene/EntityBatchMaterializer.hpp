@@ -29,7 +29,7 @@ namespace lux::runtime::entity_scene
         SectionCommitReceipt(const SectionCommitReceipt&) = delete;
         SectionCommitReceipt& operator=(const SectionCommitReceipt&) = delete;
 
-        [[nodiscard]] const lux::entity_scene::EntitySectionId& section()
+        [[nodiscard]] const lux::ecs::scene_format::EntitySectionId& section()
             const noexcept;
         [[nodiscard]] std::uint64_t generation() const noexcept;
         [[nodiscard]] std::span<const entt::entity> entities() const noexcept;
@@ -73,12 +73,12 @@ namespace lux::runtime::entity_scene
             lux::meta::EntityRegistry& live) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, EntityBatchFailure> deactivate(
-            const lux::entity_scene::EntitySectionId& section,
+            const lux::ecs::scene_format::EntitySectionId& section,
             std::uint64_t generation,
             lux::meta::EntityRegistry& live) noexcept;
 
         [[nodiscard]] const SectionCommitReceipt* find(
-            const lux::entity_scene::EntitySectionId& section) const noexcept;
+            const lux::ecs::scene_format::EntitySectionId& section) const noexcept;
         [[nodiscard]] EntityBatchMaterializerSnapshot snapshot() const noexcept;
 
     private:

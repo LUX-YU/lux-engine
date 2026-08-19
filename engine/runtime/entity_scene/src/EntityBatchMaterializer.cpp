@@ -19,7 +19,7 @@ namespace lux::runtime::entity_scene
 {
     struct SectionCommitReceipt::Impl final
     {
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
         std::uint64_t generation{0u};
         std::vector<entt::entity> entities;
         std::vector<ContentBlobLease> blob_leases;
@@ -34,7 +34,7 @@ namespace lux::runtime::entity_scene
 
     SectionCommitReceipt::~SectionCommitReceipt() = default;
 
-    const lux::entity_scene::EntitySectionId& SectionCommitReceipt::section()
+    const lux::ecs::scene_format::EntitySectionId& SectionCommitReceipt::section()
         const noexcept
     {
         return impl_->section;
@@ -126,7 +126,7 @@ namespace lux::runtime::entity_scene
     {
         [[nodiscard]] EntityBatchFailure materializerFailure(
             EEntityBatchError error,
-            const lux::entity_scene::EntitySectionId& section,
+            const lux::ecs::scene_format::EntitySectionId& section,
             std::uint64_t generation,
             std::string detail)
         {
@@ -590,7 +590,7 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<void, EntityBatchFailure>
     EntityBatchMaterializer::deactivate(
-        const lux::entity_scene::EntitySectionId& section,
+        const lux::ecs::scene_format::EntitySectionId& section,
         std::uint64_t generation,
         lux::meta::EntityRegistry& live) noexcept
     {
@@ -642,7 +642,7 @@ namespace lux::runtime::entity_scene
     }
 
     const SectionCommitReceipt* EntityBatchMaterializer::find(
-        const lux::entity_scene::EntitySectionId& section) const noexcept
+        const lux::ecs::scene_format::EntitySectionId& section) const noexcept
     {
         const auto found = impl_->slots.find(section.value());
         return found != impl_->slots.end() &&

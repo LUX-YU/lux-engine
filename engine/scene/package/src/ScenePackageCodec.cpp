@@ -4,6 +4,16 @@
 
 namespace lux::scene
 {
+    ScenePackageCodecResult<void> validateSectionRecord(
+        const SectionRecord& record,
+        const ScenePackageCodecLimits& limits) noexcept
+    {
+        auto legacy = detail::toLegacySectionRecord(record, limits);
+        if (!legacy)
+            return lux::cxx::unexpected(std::move(legacy.error()));
+        return {};
+    }
+
     ScenePackageCodecResult<void> validateScenePackage(
         const ScenePackage& package,
         const ScenePackageCodecLimits& limits) noexcept

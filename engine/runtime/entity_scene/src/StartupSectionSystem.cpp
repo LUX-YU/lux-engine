@@ -1,7 +1,5 @@
 #include <lux/engine/runtime/entity_scene/StartupSectionSystem.hpp>
 
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
-
 #include <algorithm>
 #include <cstdlib>
 #include <utility>
@@ -11,8 +9,8 @@ namespace lux::runtime::entity_scene
     namespace
     {
         [[nodiscard]] bool sectionIdLess(
-            const lux::entity_scene::EntitySectionId& lhs,
-            const lux::entity_scene::EntitySectionId& rhs) noexcept
+            const lux::ecs::scene_format::EntitySectionId& lhs,
+            const lux::ecs::scene_format::EntitySectionId& rhs) noexcept
         {
             const auto left = lhs.value().as_bytes();
             const auto right = rhs.value().as_bytes();
@@ -46,17 +44,17 @@ namespace lux::runtime::entity_scene
         EntitySectionLoaderSystem& loader,
         lux::exec::AsyncRuntime& runtime) noexcept
     {
-        const auto& manifest = catalog.manifest();
+        const auto& package = catalog.package();
 
-        const auto findSection = [&manifest](
-            const lux::entity_scene::EntitySectionId& id)
+        const auto findSection = [&package](
+            const lux::ecs::scene_format::EntitySectionId& id)
         {
             return std::lower_bound(
-                manifest.sections.begin(),
-                manifest.sections.end(),
+                package.sections.begin(),
+                package.sections.end(),
                 id,
-                [](const lux::entity_scene::EntitySectionRecord& record,
-                   const lux::entity_scene::EntitySectionId& target)
+                [](const lux::scene::SectionRecord& record,
+                   const lux::ecs::scene_format::EntitySectionId& target)
                 {
                     return sectionIdLess(record.id, target);
                 });
@@ -65,24 +63,24 @@ namespace lux::runtime::entity_scene
         // Deterministic iterative DFS over canonical startup/dependency lists.
         // Postorder is a topological acquire order: every dependency is
         // admitted before the Section that pins it.
-        std::vector<const lux::entity_scene::EntitySectionRecord*> startup;
-        std::vector<std::uint8_t> state(manifest.sections.size(), 0u);
+        std::vector<const lux::scene::SectionRecord*> startup;
+        std::vector<std::uint8_t> state(package.sections.size(), 0u);
         std::vector<std::pair<std::size_t, std::size_t>> stack;
-        for (const auto& id : manifest.startup_sections)
+        for (const auto& id : package.startup_sections)
         {
             const auto found = findSection(id);
             // validateEntitySceneManifest() already proved this. Keeping the
             // branch makes the factory fail closed if that contract drifts.
-            if (found == manifest.sections.end() || found->id != id)
+            if (found == package.sections.end() || found->id != id)
             {
                 return lux::cxx::unexpected(EntitySceneFailure{
-                    EEntitySceneError::INVALID_MANIFEST,
+                    EEntitySceneError::INVALID_PACKAGE,
                     id,
                     {},
-                    "startup Section is absent from the validated manifest"});
+                    "startup Section is absent from the validated package"});
             }
             const auto root = static_cast<std::size_t>(
-                found - manifest.sections.begin());
+                found - package.sections.begin());
             if (state[root] == 2u)
                 continue;
             stack.emplace_back(root, 0u);
@@ -90,30 +88,30 @@ namespace lux::runtime::entity_scene
             while (!stack.empty())
             {
                 auto& [section_index, dependency_index] = stack.back();
-                const auto& record = manifest.sections[section_index];
+                const auto& record = package.sections[section_index];
                 if (dependency_index < record.dependencies.size())
                 {
                     const auto dependency =
                         findSection(record.dependencies[dependency_index++]);
-                    if (dependency == manifest.sections.end() ||
+                    if (dependency == package.sections.end() ||
                         dependency->id !=
                             record.dependencies[dependency_index - 1u])
                     {
                         return lux::cxx::unexpected(EntitySceneFailure{
-                            EEntitySceneError::INVALID_MANIFEST,
+                            EEntitySceneError::INVALID_PACKAGE,
                             record.id,
                             {},
-                            "dependency is absent from the validated manifest"});
+                            "dependency is absent from the validated package"});
                     }
                     const auto dependency_slot = static_cast<std::size_t>(
-                        dependency - manifest.sections.begin());
+                        dependency - package.sections.begin());
                     if (state[dependency_slot] == 1u)
                     {
                         return lux::cxx::unexpected(EntitySceneFailure{
-                            EEntitySceneError::INVALID_MANIFEST,
+                            EEntitySceneError::INVALID_PACKAGE,
                             dependency->id,
                             {},
-                            "dependency cycle escaped manifest validation"});
+                            "dependency cycle escaped package validation"});
                     }
                     if (state[dependency_slot] == 0u)
                     {
@@ -144,7 +142,7 @@ namespace lux::runtime::entity_scene
         const EntitySceneCatalog& catalog,
         EntitySectionLoaderSystem& loader,
         lux::exec::AsyncRuntime& runtime,
-        std::vector<const lux::entity_scene::EntitySectionRecord*> startup,
+        std::vector<const lux::scene::SectionRecord*> startup,
         std::vector<EntitySectionTicket> tickets,
         std::vector<ReleasedGeneration> released) noexcept
         : catalog_(&catalog),
@@ -203,16 +201,16 @@ namespace lux::runtime::entity_scene
 
         if (!preflighted_)
         {
-            const auto manifest_requirements = client_.validateRequirements(
-                catalog_->manifest().required_extensions,
-                catalog_->manifest().required_components);
-            if (!manifest_requirements)
+            const auto package_requirements = client_.validateRequirements(
+                catalog_->package().required_extensions,
+                catalog_->package().required_components);
+            if (!package_requirements)
             {
                 fail(
-                    sceneError(manifest_requirements.error()),
-                    "EntityScene manifest requirement is unavailable",
+                    sceneError(package_requirements.error()),
+                    "EntityScene package requirement is unavailable",
                     {},
-                    manifest_requirements.error());
+                    package_requirements.error());
                 return;
             }
             for (const auto* section : startup_)
@@ -348,7 +346,7 @@ namespace lux::runtime::entity_scene
         result.state = state_;
         result.revision = revision_;
         result.startup_sections = startup_.size();
-        result.contributions = catalog_->manifest().contributions.size();
+        result.features = catalog_->package().features.size();
         for (const auto& ticket : tickets_)
         {
             const auto ticket_state = ticket.state();
@@ -366,22 +364,22 @@ namespace lux::runtime::entity_scene
         return failure_;
     }
 
-    const lux::entity_scene::EntitySceneId& StartupSectionSystem::sceneId()
+    const lux::scene::ScenePackageId& StartupSectionSystem::packageId()
         const noexcept
     {
-        return catalog_->manifest().id;
+        return catalog_->package().id;
     }
 
-    std::span<const lux::entity_scene::SceneContribution>
-    StartupSectionSystem::contributions() const noexcept
+    std::span<const lux::scene::SceneFeatureRequest>
+    StartupSectionSystem::features() const noexcept
     {
-        return catalog_->manifest().contributions;
+        return catalog_->package().features;
     }
 
     void StartupSectionSystem::fail(
         EEntitySceneError error,
         std::string detail,
-        lux::entity_scene::EntitySectionId section,
+        lux::ecs::scene_format::EntitySectionId section,
         std::optional<EEntitySectionRequestError> request_error) noexcept
     {
         if (state_ != EEntitySceneState::LOADING)

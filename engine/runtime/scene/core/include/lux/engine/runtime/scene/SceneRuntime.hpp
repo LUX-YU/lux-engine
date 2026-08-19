@@ -1,11 +1,11 @@
 #pragma once
 /**
  * @file SceneRuntime.hpp
- * @brief Domain-blind owner of one ECS registry, Schedule and EntityScene.
+ * @brief Domain-blind owner of one ECS registry, Schedule and ScenePackage.
  *
- * SceneRuntime decodes one LXSC manifest, assembles its contributions, publishes
- * startup LXES Sections through the unique ECS command barrier, and closes the
- * resulting registry. Optional domains are
+ * SceneRuntime decodes one Engine ScenePackage, enables its requested features,
+ * publishes startup LXES Sections through the unique ECS command barrier, and
+ * closes the resulting registry. Optional domains are
  * installed through ISceneRuntimeIntegration during the unpublished assembly
  * transaction. The core never names render sessions, views, physics backends,
  * script backends, editor UI, or their concrete systems.
@@ -20,7 +20,7 @@
 #include <lux/engine/runtime/entity_scene/StartupSectionSystem.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/SceneServices.hpp>
 #include <lux/engine/ecs/TypeToken.hpp>
@@ -190,15 +190,14 @@ namespace lux::runtime
         }
     };
 
-    /// Cold Authoring export of the currently selected EntityScene behavior.
-    /// This is rebuilt from persistent live contribution roots and the final
-    /// serialized component-schema closure supplied by the Authoring capture;
-    /// it is never consumed to publish runtime entities.
+    /// Cold Authoring export of the currently selected Scene behavior. This is
+    /// rebuilt from persistent live feature roots and the final serialized
+    /// component-schema closure supplied by Authoring capture; it is never
+    /// consumed to publish runtime entities.
     struct SceneRuntimePersistenceSnapshot final
     {
-        std::vector<lux::entity_scene::SceneContribution> contributions;
-        std::vector<lux::entity_scene::RequiredExtension>
-            required_extensions;
+        std::vector<lux::scene::SceneFeatureRequest> features;
+        std::vector<lux::scene::RequiredExtension> required_extensions;
     };
 
     namespace detail
@@ -235,7 +234,7 @@ namespace lux::runtime
         struct Config
         {
             std::string           name{"Scene"};
-            lux::asset::AssetBlob scene_manifest_image{};
+            lux::asset::AssetBlob scene_package_image{};
             std::string           scene_origin{};
             /// Immutable provider used by stored LXES Section records. Asset
             /// references still resolve through AssetManager's process VFS.
@@ -243,9 +242,8 @@ namespace lux::runtime
             /// without mutating the process-wide Authoring asset namespace.
             std::shared_ptr<const lux::asset::AssetVfs> section_vfs{};
             /// Host-created scenes (preview, tests and tools) provide the same
-            /// validated manifest value consumed by the cooked LXSC path.
-            std::optional<lux::entity_scene::EntitySceneManifest>
-                transient_scene{};
+            /// validated package value consumed by the cooked LXSC path.
+            std::optional<lux::scene::ScenePackage> transient_package{};
             lux::events::DomainEvents* events{nullptr};
         };
 
@@ -331,7 +329,7 @@ namespace lux::runtime
         {
             return hasActiveFeature(contribution);
         }
-        /// Domain-neutral loading telemetry. Capability contributions receive
+        /// Domain-neutral loading telemetry. Scene Features receive
         /// only EntitySectionClient/ContentBlobClient values and cannot mutate
         /// or inspect the concrete loader system.
         [[nodiscard]] entity_scene::EntitySectionLoaderSnapshot

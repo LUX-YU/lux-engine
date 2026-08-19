@@ -1,10 +1,10 @@
 #pragma once
 /**
  * @file Spatial3DEntitySceneAdapter.hpp
- * @brief Toolchain-only LXWA v4 to LXSC/LXES bridge for 3D data.
+ * @brief Toolchain-only LXWA v4 to ScenePackage/LXES bridge for 3D data.
  *
  * The input is the owning, page-free Spatial3D Authoring model. The result
- * contains exclusively EntityScene records and domain-owned content blobs;
+ * contains exclusively ScenePackage records and domain-owned content blobs;
  * no Runtime target needs a legacy cooked-World reader for this path.
  */
 
@@ -63,7 +63,7 @@ namespace lux::toolchain
     /// Spatial3D-specific cook result.  The generic EntityScene bundle stays
     /// domain blind; generated geometry belongs to this Toolchain leaf.
     struct CookedSpatial3DEntitySceneBundle final
-        : CookedEntitySceneBundle
+        : CookedScenePackageBundle
     {
         std::vector<CookedSpatial3DMeshAsset> generated_meshes;
     };
@@ -73,26 +73,26 @@ namespace lux::toolchain
     struct Spatial3DEntitySceneAdapterConfig final
     {
         /// Empty preserves the Authoring scene UUID in the cooked Scene.
-        lux::entity_scene::EntitySceneId scene_id;
+        lux::scene::ScenePackageId scene_id;
         /// Explicit domain leaves selected for a general 3D scene. Tools may
         /// remove Presentation for a headless cook, or omit Physics/
         /// Navigation when the authored product does not use them. There is
         /// deliberately no top-level dimension or Scene3D contribution.
-        std::vector<lux::entity_scene::SceneContribution>
-            selected_contributions{
-                {lux::extensions::ContributionId{
+        std::vector<lux::scene::SceneFeatureRequest>
+            selected_features{
+                {lux::scene::SceneFeatureId{
                      "org.lux.builtin.animation3d"},
                  0u,
                  {}},
-                {lux::extensions::ContributionId{
+                {lux::scene::SceneFeatureId{
                      "org.lux.builtin.presentation3d"},
                  0u,
                  {}},
-                {lux::extensions::ContributionId{
+                {lux::scene::SceneFeatureId{
                      "org.lux.builtin.physics3d"},
                  0u,
                  {}},
-                {lux::extensions::ContributionId{
+                {lux::scene::SceneFeatureId{
                      "org.lux.builtin.navigation3d"},
                  0u,
                  {}}};
@@ -126,8 +126,8 @@ namespace lux::toolchain
         /// Cooked, fixed resident-set admission.  It does not scale with the
         /// number of distant catalog entries.
         lux::spatial3d_scene::Spatial3DResidencyCapacity residency;
-        std::vector<lux::entity_scene::SceneContribution>
-            additional_contributions;
+        std::vector<lux::scene::SceneFeatureRequest>
+            additional_features;
     };
 
     enum class ESpatial3DEntitySceneAdapterError : std::uint8_t

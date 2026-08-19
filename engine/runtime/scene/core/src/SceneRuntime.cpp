@@ -11,7 +11,7 @@
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -26,7 +26,7 @@ namespace lux::runtime
     namespace
     {
         void addRequiredExtension(
-            std::vector<lux::entity_scene::RequiredExtension>& requirements,
+            std::vector<lux::scene::RequiredExtension>& requirements,
             const lux::extensions::ExtensionId& provider,
             const lux::extensions::ExtensionModuleManager* modules)
         {
@@ -51,18 +51,18 @@ namespace lux::runtime
         }
 
         [[nodiscard]] lux::cxx::expected<
-            lux::entity_scene::EntitySceneManifest,
+            lux::scene::ScenePackage,
             std::string>
-        openEntitySceneManifest(const SceneRuntime::Config& config) noexcept
+        openScenePackage(const SceneRuntime::Config& config) noexcept
         {
             const auto source_count = static_cast<unsigned>(
-                static_cast<bool>(config.scene_manifest_image)) +
-                static_cast<unsigned>(config.transient_scene.has_value());
+                static_cast<bool>(config.scene_package_image)) +
+                static_cast<unsigned>(config.transient_package.has_value());
             if (source_count > 1u)
             {
                 return lux::cxx::unexpected(std::string{
                     "SceneRuntime accepts at most one LXSC or transient "
-                    "EntityScene manifest"});
+                    "ScenePackage"});
             }
 
             if (source_count == 0u)
@@ -72,26 +72,26 @@ namespace lux::runtime
                         "797ce40a-1ed7-5e90-87f5-99fcdfc10ee2")
                         .value();
                 uuids::uuid_name_generator ids{transient_namespace};
-                lux::entity_scene::EntitySceneManifest empty;
-                empty.id = lux::entity_scene::EntitySceneId{
+                lux::scene::ScenePackage empty;
+                empty.id = lux::scene::ScenePackageId{
                     ids(config.name)};
                 return empty;
             }
 
-            if (config.scene_manifest_image)
+            if (config.scene_package_image)
             {
-                auto decoded = lux::entity_scene::decodeEntitySceneManifest(
-                    config.scene_manifest_image.bytes.view());
+                auto decoded = lux::scene::decodeScenePackage(
+                    config.scene_package_image.bytes.view());
                 if (!decoded)
                     return lux::cxx::unexpected(decoded.error().detail);
                 return std::move(*decoded);
             }
 
-            const auto valid = lux::entity_scene::validateEntitySceneManifest(
-                *config.transient_scene);
+            const auto valid = lux::scene::validateScenePackage(
+                *config.transient_package);
             if (!valid)
                 return lux::cxx::unexpected(valid.error().detail);
-            return *config.transient_scene;
+            return *config.transient_package;
         }
     }
 
@@ -136,8 +136,8 @@ namespace lux::runtime
                 if (!activation.root || activation.persistence ==
                         EActivationPersistence::TRANSIENT)
                     continue;
-                result.contributions.push_back({
-                    lux::extensions::ContributionId{
+                result.features.push_back({
+                    lux::scene::SceneFeatureId{
                         activation.feature.name()},
                     activation.config.schema_version,
                     std::vector<std::byte>{
@@ -161,7 +161,7 @@ namespace lux::runtime
         }
 
         std::ranges::sort(
-            result.contributions,
+            result.features,
             {},
             [](const auto& value) { return value.id.name(); });
         std::ranges::sort(
@@ -226,23 +226,23 @@ namespace lux::runtime
             return true;
         events_ = config.events;
 
-        auto manifest_result = openEntitySceneManifest(config);
-        if (!manifest_result)
+        auto package_result = openScenePackage(config);
+        if (!package_result)
         {
             lux::log::error(
                 "scene",
-                "bringUp: failed to open EntityScene '{}': {}",
+                "bringUp: failed to open ScenePackage '{}': {}",
                 config.scene_origin,
-                manifest_result.error());
+                package_result.error());
             return failBringUp();
         }
         auto catalog_result = entity_scene::EntitySceneCatalog::create(
-            std::move(*manifest_result));
+            std::move(*package_result));
         if (!catalog_result)
         {
             lux::log::error(
                 "scene",
-                "bringUp: EntityScene catalog rejected '{}': {}",
+                "bringUp: ScenePackage catalog rejected '{}': {}",
                 config.scene_origin,
                 catalog_result.error().detail);
             return failBringUp();
@@ -251,9 +251,9 @@ namespace lux::runtime
             entity_scene::EntitySceneCatalog>(
                 std::move(*catalog_result));
         auto* const catalog = catalog_owner.get();
-        const auto& manifest = catalog->manifest();
+        const auto& package = catalog->package();
 
-        for (const auto& requirement : manifest.required_extensions)
+        for (const auto& requirement : package.required_extensions)
         {
             if (!extension_modules_)
             {
@@ -308,7 +308,7 @@ namespace lux::runtime
         {
             lux::log::error(
                 "scene",
-                "failed to publish immutable EntityScene catalog service");
+                "failed to publish immutable ScenePackage catalog service");
             return failBringUp();
         }
 
@@ -371,25 +371,25 @@ namespace lux::runtime
         }
 
         std::optional<SceneContributionBootstrap> contribution_bootstrap;
-        if (!manifest.contributions.empty())
+        if (!package.features.empty())
         {
             if (!scene_contribution_catalog_)
             {
                 lux::log::error(
                     "scene",
-                    "EntityScene contributions require a catalog");
+                    "ScenePackage features require a catalog");
                 return failBringUp();
             }
             std::vector<SceneContributionSelection> selected;
-            selected.reserve(manifest.contributions.size());
-            for (const auto& contribution : manifest.contributions)
+            selected.reserve(package.features.size());
+            for (const auto& feature : package.features)
             {
                 selected.push_back(SceneContributionSelection{
-                    lux::scene::SceneFeatureId{contribution.id.name()},
+                    lux::scene::SceneFeatureId{feature.id.name()},
                     ContributionConfig{
-                        contribution.config_schema_version,
+                        feature.config_schema_version,
                         lux::cxx::SharedBytes<>::copyOf(
-                            contribution.config)}});
+                            feature.config)}});
             }
             auto assembled = scene_contribution_catalog_->stageBootstrap(
                 builder,
@@ -398,7 +398,7 @@ namespace lux::runtime
             {
                 lux::log::error(
                     "scene",
-                    "scene contribution assembly failed for '{}' "
+                    "scene feature assembly failed for '{}' "
                     "(status={})",
                     assembled.error().feature.name(),
                     static_cast<unsigned>(assembled.error().code));

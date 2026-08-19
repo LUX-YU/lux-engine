@@ -1,7 +1,7 @@
 #include <lux/engine/runtime/spatial_partition/SpatialDemandPlanner.hpp>
 
-#include <lux/engine/core/extension_abi/StableId.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 
 #include <algorithm>
 #include <cstdlib>
@@ -16,8 +16,8 @@ namespace lux::runtime::spatial_partition
     namespace
     {
         [[nodiscard]] bool uuidLess(
-            const lux::entity_scene::EntitySectionId& lhs,
-            const lux::entity_scene::EntitySectionId& rhs) noexcept
+            const lux::ecs::scene_format::EntitySectionId& lhs,
+            const lux::ecs::scene_format::EntitySectionId& rhs) noexcept
         {
             return lhs.value() < rhs.value();
         }
@@ -26,26 +26,25 @@ namespace lux::runtime::spatial_partition
             const SpatialDemandSourceId& source) noexcept
         {
             return source.isValid() &&
-                lux::extensions::isCanonicalStableName(source.name());
+                lux::ecs::scene_format::isCanonicalStableName(source.name());
         }
 
         [[nodiscard]] bool validChannel(
-            const lux::entity_scene::DemandChannelId& channel) noexcept
+            const lux::scene::DemandChannelId& channel) noexcept
         {
-            return lux::entity_scene::isValidEntitySceneId(channel);
+            return lux::scene::isValidDemandChannelId(channel);
         }
 
         [[nodiscard]] bool recordHasChannel(
-            const lux::entity_scene::EntitySectionRecord& record,
-            const lux::entity_scene::DemandChannelId& channel) noexcept
+            const lux::scene::SectionRecord& record,
+            const lux::scene::DemandChannelId& channel) noexcept
         {
             return std::any_of(
                 record.demand_channels.begin(),
                 record.demand_channels.end(),
                 [&channel](const auto& value)
                 {
-                    return lux::extensions::sameStableId(
-                        value.view(), channel.view());
+                    return value.view() == channel.view();
                 });
         }
 
@@ -120,7 +119,7 @@ namespace lux::runtime::spatial_partition
             });
         for (const auto& record : update.records)
         {
-            if (!lux::entity_scene::validateEntitySectionRecord(record))
+            if (!lux::scene::validateSectionRecord(record))
             {
                 return lux::cxx::unexpected(SpatialPartitionFailure{
                     .code = ESpatialPartitionError::INVALID_DYNAMIC_RECORD,
@@ -236,7 +235,7 @@ namespace lux::runtime::spatial_partition
     {
         struct Aggregate final
         {
-            lux::entity_scene::EntitySectionRecord record;
+            lux::scene::SectionRecord record;
             std::size_t references{0u};
             std::uint32_t priority{0u};
         };
@@ -244,7 +243,7 @@ namespace lux::runtime::spatial_partition
         std::map<uuids::uuid, Aggregate> aggregate;
         std::map<
             uuids::uuid,
-            const lux::entity_scene::EntitySectionRecord*> dynamic_records;
+            const lux::scene::SectionRecord*> dynamic_records;
         for (const auto& source : plan.sources_)
         {
             for (const auto& record : source.records)
@@ -284,8 +283,8 @@ namespace lux::runtime::spatial_partition
             // semantics. Overlapping sources simply publish the same
             // canonical record independently (validated above).
             const auto resolveRecord = [this, &source](
-                lux::entity_scene::EntitySectionId id) noexcept
-                -> const lux::entity_scene::EntitySectionRecord*
+                lux::ecs::scene_format::EntitySectionId id) noexcept
+                -> const lux::scene::SectionRecord*
             {
                 const auto generated = std::lower_bound(
                     source.records.begin(), source.records.end(), id,
@@ -305,7 +304,7 @@ namespace lux::runtime::spatial_partition
             {
                 std::set<uuids::uuid> visiting;
                 auto expand = [&](auto&& self,
-                                  lux::entity_scene::EntitySectionId id,
+                                  lux::ecs::scene_format::EntitySectionId id,
                                   bool demanded)
                     -> SpatialPartitionExp<void>
                 {
@@ -374,7 +373,7 @@ namespace lux::runtime::spatial_partition
             for (const auto& [id, priority] : source_closure)
             {
                 const auto* record = resolveRecord(
-                    lux::entity_scene::EntitySectionId{id});
+                    lux::ecs::scene_format::EntitySectionId{id});
                 if (!record)
                     std::abort();
                 auto found = aggregate.try_emplace(

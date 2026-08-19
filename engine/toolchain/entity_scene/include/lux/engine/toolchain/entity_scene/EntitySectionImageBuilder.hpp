@@ -7,7 +7,7 @@
 #include <lux/engine/toolchain/entity_scene/EntitySceneCookError.hpp>
 #include <lux/engine/toolchain/entity_scene/TaggedPayloadTranscoder.hpp>
 
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -21,14 +21,14 @@ namespace lux::toolchain
     struct EntityLocalReferenceCookInput final
     {
         std::string property;
-        lux::entity_scene::EntityOrdinal target{
-            lux::entity_scene::kInvalidEntityOrdinal};
+        lux::ecs::scene_format::EntityOrdinal target{
+            lux::ecs::scene_format::kInvalidEntityOrdinal};
     };
 
     struct EntityPersistentReferenceCookInput final
     {
         std::string property;
-        lux::entity_scene::PersistentEntityId target;
+        lux::ecs::PersistentEntityId target;
     };
 
     struct EntityBlobReferenceCookInput final
@@ -40,10 +40,10 @@ namespace lux::toolchain
 
     struct EntityComponentCookInput final
     {
-        lux::entity_scene::ComponentSchemaId schema;
+        lux::ecs::ComponentSchemaId schema;
         std::uint32_t schema_version{1u};
-        lux::entity_scene::EEntityComponentStorage storage{
-            lux::entity_scene::EEntityComponentStorage::DATA};
+        lux::ecs::scene_format::EEntityComponentStorage storage{
+            lux::ecs::scene_format::EEntityComponentStorage::DATA};
         /// DATA components carry one complete tagged-property object. TAG
         /// components must leave this value empty/defaulted.
         TaggedPayloadSource value;
@@ -55,16 +55,16 @@ namespace lux::toolchain
 
     struct EntityCookInput final
     {
-        std::optional<lux::entity_scene::PersistentEntityId> persistent_id;
+        std::optional<lux::ecs::PersistentEntityId> persistent_id;
         /// Refers to the insertion ordinal returned by addEntity(). Parents
         /// may be inserted before or after their children.
-        std::optional<lux::entity_scene::EntityOrdinal> parent;
+        std::optional<lux::ecs::scene_format::EntityOrdinal> parent;
         std::vector<EntityComponentCookInput> components;
     };
 
     struct EntityAttachmentCookInput final
     {
-        lux::entity_scene::ContentTypeId type;
+        lux::ecs::scene_format::ContentTypeId type;
         std::uint32_t schema_version{1u};
         std::vector<std::byte> payload;
     };
@@ -78,7 +78,7 @@ namespace lux::toolchain
     {
     public:
         explicit EntitySectionImageBuilder(
-            lux::entity_scene::EntitySectionId section) noexcept;
+            lux::ecs::scene_format::EntitySectionId section) noexcept;
 
         [[nodiscard]] lux::cxx::expected<
             std::uint32_t,
@@ -86,17 +86,17 @@ namespace lux::toolchain
         addAttachment(EntityAttachmentCookInput attachment);
 
         [[nodiscard]] lux::cxx::expected<
-            lux::entity_scene::EntityOrdinal,
+            lux::ecs::scene_format::EntityOrdinal,
             EntitySceneCookFailure>
         addEntity(EntityCookInput entity);
 
         [[nodiscard]] lux::cxx::expected<
-            lux::entity_scene::EntitySectionImage,
+            lux::ecs::scene_format::EntitySectionImage,
             EntitySceneCookFailure>
         build() && noexcept;
 
     private:
-        lux::entity_scene::EntitySectionId section_;
+        lux::ecs::scene_format::EntitySectionId section_;
         std::vector<EntityAttachmentCookInput> attachments_;
         std::vector<EntityCookInput> entities_;
     };

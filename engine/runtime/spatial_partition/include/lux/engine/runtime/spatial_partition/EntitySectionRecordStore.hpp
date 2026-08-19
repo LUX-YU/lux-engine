@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file EntitySectionRecordStore.hpp
- * @brief Immutable lookup table for an EntityScene's Section records.
+ * @brief Immutable lookup table for one ScenePackage's Section records.
  */
 
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
@@ -9,7 +9,7 @@
 
 namespace lux::runtime::spatial_partition
 {
-    /// Non-owning, immutable view over the scene's sole decoded manifest.
+    /// Non-owning, immutable view over the scene's decoded package.
     /// The EntitySceneCatalog SceneService outlives every partition system.
     class LUX_ENGINE_RUNTIME_SPATIAL_PARTITION_PUBLIC
     EntitySectionRecordStore final
@@ -21,8 +21,8 @@ namespace lux::runtime::spatial_partition
             : catalog_(&catalog)
         {}
 
-        [[nodiscard]] const lux::entity_scene::EntitySectionRecord* find(
-            lux::entity_scene::EntitySectionId id) const noexcept
+        [[nodiscard]] const lux::scene::SectionRecord* find(
+            lux::ecs::scene_format::EntitySectionId id) const noexcept
         {
             return catalog_->findSection(id);
         }

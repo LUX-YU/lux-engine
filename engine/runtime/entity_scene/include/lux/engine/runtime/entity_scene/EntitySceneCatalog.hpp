@@ -1,30 +1,29 @@
 #pragma once
 /**
  * @file EntitySceneCatalog.hpp
- * @brief Scene-scoped immutable owner of one validated LXSC manifest.
+ * @brief Scene-scoped immutable owner of one validated Engine ScenePackage.
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 #include <lux/engine/runtime/entity_scene/visibility.h>
-#include <lux/engine/scene/SceneFeatureId.hpp>
 
 #include <span>
 #include <utility>
 
 namespace lux::runtime::entity_scene
 {
-    /// The sole runtime owner of decoded EntityScene metadata. Domain
-    /// contributions borrow records from this SceneService; none of them
-    /// builds a parallel manifest or copies the Section catalog.
+    /// The sole runtime owner of decoded scene-package metadata. Runtime
+    /// loading code borrows immutable Section records from this catalog; the
+    /// historical Resource EntityScene DTO is confined to ScenePackage's
+    /// private compatibility adapter.
     class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC EntitySceneCatalog final
     {
     public:
         [[nodiscard]] static lux::cxx::expected<
             EntitySceneCatalog,
-            lux::entity_scene::EntitySceneCodecFailure>
-        create(lux::entity_scene::EntitySceneManifest manifest) noexcept;
+            lux::scene::ScenePackageCodecFailure>
+        create(lux::scene::ScenePackage package) noexcept;
 
         EntitySceneCatalog(EntitySceneCatalog&&) noexcept = default;
         EntitySceneCatalog& operator=(EntitySceneCatalog&&) noexcept =
@@ -32,32 +31,28 @@ namespace lux::runtime::entity_scene
         EntitySceneCatalog(const EntitySceneCatalog&) = delete;
         EntitySceneCatalog& operator=(const EntitySceneCatalog&) = delete;
 
-        [[nodiscard]] const lux::entity_scene::EntitySceneManifest& manifest()
+        [[nodiscard]] const lux::scene::ScenePackage& package() const noexcept
+        {
+            return package_;
+        }
+
+        [[nodiscard]] std::span<const lux::scene::SectionRecord> sections()
             const noexcept
         {
-            return manifest_;
+            return package_.sections;
         }
 
-        [[nodiscard]] std::span<
-            const lux::entity_scene::EntitySectionRecord>
-        sections() const noexcept
-        {
-            return manifest_.sections;
-        }
+        [[nodiscard]] const lux::scene::SectionRecord* findSection(
+            lux::ecs::scene_format::EntitySectionId id) const noexcept;
 
-        [[nodiscard]] const lux::entity_scene::EntitySectionRecord* findSection(
-            lux::entity_scene::EntitySectionId id) const noexcept;
-
-        [[nodiscard]] const lux::entity_scene::SceneContribution*
-        findContribution(
+        [[nodiscard]] const lux::scene::SceneFeatureRequest* findFeature(
             lux::scene::SceneFeatureIdView id) const noexcept;
 
     private:
-        explicit EntitySceneCatalog(
-            lux::entity_scene::EntitySceneManifest manifest) noexcept
-            : manifest_(std::move(manifest))
+        explicit EntitySceneCatalog(lux::scene::ScenePackage package) noexcept
+            : package_(std::move(package))
         {}
 
-        lux::entity_scene::EntitySceneManifest manifest_;
+        lux::scene::ScenePackage package_;
     };
-}
+} // namespace lux::runtime::entity_scene

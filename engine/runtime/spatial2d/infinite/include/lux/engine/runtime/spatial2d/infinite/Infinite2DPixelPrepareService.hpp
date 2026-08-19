@@ -6,8 +6,8 @@
 
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
-#include <lux/engine/resource/entity_scene/EntityPersistenceJournal.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/PersistenceJournal.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/pixel_visibility.h>
@@ -46,10 +46,10 @@ namespace lux::runtime::spatial2d
         using Error = EInfinite2DPixelPrepareError;
 
         lux::cxx::SharedBytes<> content;
-        lux::entity_scene::ContentBlobRef reference;
+        lux::ecs::scene_format::ContentBlobRef reference;
         lux::spatial::GridCoord2i64 expected_coordinate;
         lux::ecs::PixelChunkPreparationContext preparation;
-        std::optional<lux::entity_scene::PersistenceJournalRecord>
+        std::optional<lux::ecs::scene_format::PersistenceJournalRecord>
             persistence;
         std::uint64_t request_generation{0u};
     };

@@ -20,7 +20,7 @@ namespace lux::runtime::spatial3d
         if (!source_namespace.isValid() ||
             !lux::extensions::isCanonicalStableName(
                 source_namespace.name()) ||
-            !lux::entity_scene::isValidEntitySceneId(channel) ||
+            !lux::scene::isValidDemandChannelId(channel) ||
             !std::isfinite(cell_world_size) || cell_world_size <= 0.0 ||
             !std::isfinite(active_distance_scale) ||
             active_distance_scale <= 0.0 ||
@@ -116,7 +116,7 @@ namespace lux::runtime::spatial3d
             struct Entry final
             {
                 lux::spatial::GridCoord3i64 coordinate;
-                lux::entity_scene::EntitySectionId section;
+                lux::ecs::scene_format::EntitySectionId section;
                 bool active{false};
             };
 
@@ -478,8 +478,8 @@ namespace lux::runtime::spatial3d
         std::size_t maximum_sources{0u};
         bool config_valid{false};
         std::vector<BandState> bands;
-        std::vector<lux::entity_scene::EntitySectionId> active_scratch;
-        std::vector<lux::entity_scene::EntitySectionId> resident_scratch;
+        std::vector<lux::ecs::scene_format::EntitySectionId> active_scratch;
+        std::vector<lux::ecs::scene_format::EntitySectionId> resident_scratch;
         std::vector<entt::id_type> entity_scratch;
         lux::meta::EntityRegistry* registry{nullptr};
         SpatialInterest3DSnapshot snapshot;

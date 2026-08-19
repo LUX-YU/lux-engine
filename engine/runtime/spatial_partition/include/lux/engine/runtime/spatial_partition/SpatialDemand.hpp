@@ -4,8 +4,9 @@
  * @brief Dimension-neutral EntitySection residency demand values.
  */
 
-#include <lux/engine/core/extension_abi/StableId.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/cxx/core/StableNameId.hpp>
+#include <lux/engine/ecs/scene_format/Identifiers.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -25,7 +26,7 @@ namespace lux::runtime::spatial_partition
 
     struct SpatialDemandEntry final
     {
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
         std::uint32_t priority{0u};
 
         friend bool operator==(
@@ -37,15 +38,15 @@ namespace lux::runtime::spatial_partition
     {
         SpatialDemandSourceId source;
         std::uint64_t generation{0u};
-        lux::entity_scene::DemandChannelId channel;
+        lux::scene::DemandChannelId channel;
         std::vector<SpatialDemandEntry> demands;
         /// Source-owned records for procedurally addressable Sections. They
         /// participate in the same prospective transaction as `demands` and
         /// disappear when this source is replaced/removed. Two live sources
         /// may publish the same record only when every cooked field matches.
-        /// Stored manifest records remain in EntitySectionRecordStore and do
+        /// Stored package records remain in EntitySectionRecordStore and do
         /// not need to be repeated here.
-        std::vector<lux::entity_scene::EntitySectionRecord> records;
+        std::vector<lux::scene::SectionRecord> records;
     };
 
     struct SpatialPartitionBudget final
@@ -89,7 +90,7 @@ namespace lux::runtime::spatial_partition
     {
         ESpatialPartitionError code{ESpatialPartitionError::INVALID_SOURCE};
         SpatialDemandSourceId source;
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
         std::uint64_t requested{0u};
         std::uint64_t available{0u};
         std::optional<

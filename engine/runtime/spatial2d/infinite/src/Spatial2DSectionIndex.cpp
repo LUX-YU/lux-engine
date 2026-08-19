@@ -141,7 +141,7 @@ namespace lux::runtime::spatial2d
         return Spatial2DSectionIndex{std::move(entries)};
     }
 
-    const lux::entity_scene::EntitySectionId* Spatial2DSectionIndex::find(
+    const lux::ecs::scene_format::EntitySectionId* Spatial2DSectionIndex::find(
         lux::spatial::GridCoord2i64 coordinate) const noexcept
     {
         const Spatial2DSectionIndexEntry key{coordinate, {}};
@@ -270,7 +270,7 @@ namespace lux::runtime::spatial2d
                 result.entries[write++] = Spatial2DWindowEntry{
                     coordinate,
                     section,
-                    std::optional<lux::entity_scene::EntitySectionRecord>{
+                    std::optional<lux::scene::SectionRecord>{
                         std::move(*record)},
                     std::abs(x) <= kSpatial2DActiveRadius &&
                         std::abs(y) <= kSpatial2DActiveRadius};

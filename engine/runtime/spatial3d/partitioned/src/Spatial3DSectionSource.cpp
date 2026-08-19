@@ -1,6 +1,7 @@
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
 
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -401,7 +402,7 @@ namespace lux::runtime::spatial3d
                     failure.coordinate = coordinate;
                     return lux::cxx::unexpected(std::move(failure));
                 }
-                if (!lux::entity_scene::validateEntitySectionRecord(*record))
+                if (!lux::scene::validateSectionRecord(*record))
                 {
                     return lux::cxx::unexpected(Spatial3DSourceFailure{
                         .code = ESpatial3DSourceError::INVALID_RECORD,

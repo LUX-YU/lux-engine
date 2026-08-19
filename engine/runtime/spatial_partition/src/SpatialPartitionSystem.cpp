@@ -9,15 +9,15 @@ namespace lux::runtime::spatial_partition
 {
     struct SpatialPartitionSystem::ResidentTicket final
     {
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
         lux::runtime::entity_scene::EntitySectionTicket ticket;
     };
 
     namespace
     {
         [[nodiscard]] bool sectionLess(
-            const lux::entity_scene::EntitySectionId& lhs,
-            const lux::entity_scene::EntitySectionId& rhs) noexcept
+            const lux::ecs::scene_format::EntitySectionId& lhs,
+            const lux::ecs::scene_format::EntitySectionId& rhs) noexcept
         {
             return lhs.value() < rhs.value();
         }

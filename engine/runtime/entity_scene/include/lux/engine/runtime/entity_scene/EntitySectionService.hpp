@@ -5,7 +5,7 @@
  */
 
 #include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/visibility.h>
@@ -65,7 +65,7 @@ namespace lux::runtime::entity_scene
         using Error = EEntitySectionLoadError;
 
         std::shared_ptr<const lux::asset::AssetVfs> vfs;
-        lux::entity_scene::EntitySectionRecord record;
+        lux::scene::SectionRecord record;
         std::uint64_t request_generation{0u};
     };
 
@@ -85,7 +85,7 @@ namespace lux::runtime::entity_scene
 
         [[nodiscard]] LoadEntitySection loadOperation(
             std::shared_ptr<const lux::asset::AssetVfs> vfs,
-            lux::entity_scene::EntitySectionRecord record,
+            lux::scene::SectionRecord record,
             std::uint64_t request_generation) const noexcept;
 
         [[nodiscard]] const lux::exec::AsyncOperationClient<
@@ -101,7 +101,7 @@ namespace lux::runtime::entity_scene
         /// generated source requires its full canonical ID in the frozen
         /// catalog.
         [[nodiscard]] bool supports(
-            const lux::entity_scene::EntitySectionRecord& record) const
+            const lux::scene::SectionRecord& record) const
             noexcept;
 
     private:

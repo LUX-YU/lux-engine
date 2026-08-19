@@ -5,7 +5,7 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/visibility.h>
@@ -31,7 +31,7 @@ namespace lux::runtime::spatial3d
             source_namespace;
         Spatial3DSectionSource sections;
         double cell_world_size{64.0};
-        lux::entity_scene::DemandChannelId channel{
+        lux::scene::DemandChannelId channel{
             "lux.spatial3d.resident"};
         double active_distance_scale{1.0};
         double resident_distance_scale{1.0};

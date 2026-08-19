@@ -1,23 +1,20 @@
 #pragma once
 /**
  * @file StartupSectionSystem.hpp
- * @brief Manifest-driven fixed startup EntitySection selector.
+ * @brief ScenePackage-driven fixed startup EntitySection selector.
  *
  * This system selects startup EntitySections and observes their publication;
- * it does not install scene contributions or know any presentation domain.
- * The caller validates/installs the returned contribution descriptors before
- * gameplay is opened. All registry mutation remains in the loader's one ECS
- * command barrier.
+ * it does not install scene features or know any presentation domain. The
+ * composition root validates and installs the returned feature requests before
+ * gameplay opens. All registry mutation remains in the loader's ECS barrier.
  */
 
+#include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
+#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/visibility.h>
 #include <lux/engine/runtime/execution/AsyncScope.hpp>
-
-#include <lux/cxx/compile_time/expected.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -40,7 +37,7 @@ namespace lux::runtime::entity_scene
 
     enum class EEntitySceneError : std::uint8_t
     {
-        INVALID_MANIFEST,
+        INVALID_PACKAGE,
         LOADER_UNAVAILABLE,
         SOURCE_UNAVAILABLE,
         REQUIREMENT_UNAVAILABLE,
@@ -51,8 +48,8 @@ namespace lux::runtime::entity_scene
 
     struct EntitySceneFailure final
     {
-        EEntitySceneError error{EEntitySceneError::INVALID_MANIFEST};
-        lux::entity_scene::EntitySectionId section;
+        EEntitySceneError error{EEntitySceneError::INVALID_PACKAGE};
+        lux::ecs::scene_format::EntitySectionId section;
         std::optional<EEntitySectionRequestError> request_error;
         std::string detail;
     };
@@ -64,12 +61,12 @@ namespace lux::runtime::entity_scene
         std::size_t startup_sections{0u};
         std::size_t active_startup_sections{0u};
         std::size_t failed_startup_sections{0u};
-        std::size_t contributions{0u};
+        std::size_t features{0u};
     };
 
-    /// The fixed-content selector for one already-decoded LXSC manifest.
+    /// Fixed-content selector for one validated Engine ScenePackage.
     /// Construction and onAdded perform no VFS access. The first update
-    /// preflights every requirement before it acquires any startup ticket.
+    /// preflights the complete startup closure before acquiring any ticket.
     class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC StartupSectionSystem final
         : public lux::ecs::ISystem
     {
@@ -95,9 +92,6 @@ namespace lux::runtime::entity_scene
         [[nodiscard]] std::span<const Type> runsAfter() const noexcept
             override;
 
-        /// Stops this selector's admission, drops only its own startup
-        /// tickets, and lets unshared generations retire through the unique
-        /// ECS barrier. The shared loader remains owned by composition root.
         void requestClose() noexcept override;
         void requestClose(lux::ecs::SystemCloseProgressSink progress)
             noexcept override;
@@ -110,18 +104,18 @@ namespace lux::runtime::entity_scene
         [[nodiscard]] EntitySceneSnapshot snapshot() const noexcept;
         [[nodiscard]] const std::optional<EntitySceneFailure>& failure()
             const noexcept;
-        [[nodiscard]] const lux::entity_scene::EntitySceneId& sceneId()
+        [[nodiscard]] const lux::scene::ScenePackageId& packageId()
             const noexcept;
 
-        /// Validated assembly requests only. This runtime never installs or
-        /// switches on a concrete contribution ID.
-        [[nodiscard]] std::span<const lux::entity_scene::SceneContribution>
-        contributions() const noexcept;
+        /// Validated assembly requests only. This selector never installs or
+        /// switches on a concrete feature ID.
+        [[nodiscard]] std::span<const lux::scene::SceneFeatureRequest>
+        features() const noexcept;
 
     private:
         struct ReleasedGeneration final
         {
-            lux::entity_scene::EntitySectionId section;
+            lux::ecs::scene_format::EntitySectionId section;
             std::uint64_t generation{0u};
         };
 
@@ -129,14 +123,14 @@ namespace lux::runtime::entity_scene
             const EntitySceneCatalog& catalog,
             EntitySectionLoaderSystem& loader,
             lux::exec::AsyncRuntime& runtime,
-            std::vector<const lux::entity_scene::EntitySectionRecord*> startup,
+            std::vector<const lux::scene::SectionRecord*> startup,
             std::vector<EntitySectionTicket> tickets,
             std::vector<ReleasedGeneration> released) noexcept;
 
         void fail(
             EEntitySceneError error,
             std::string detail,
-            lux::entity_scene::EntitySectionId section = {},
+            lux::ecs::scene_format::EntitySectionId section = {},
             std::optional<EEntitySectionRequestError> request_error = {})
             noexcept;
         [[nodiscard]] bool releasesSettled() const noexcept;
@@ -146,7 +140,7 @@ namespace lux::runtime::entity_scene
 
         const EntitySceneCatalog* catalog_{};
         EntitySectionClient client_;
-        std::vector<const lux::entity_scene::EntitySectionRecord*> startup_;
+        std::vector<const lux::scene::SectionRecord*> startup_;
         std::vector<EntitySectionTicket> tickets_;
         std::vector<ReleasedGeneration> released_;
         std::optional<EntitySceneFailure> failure_;
@@ -161,4 +155,4 @@ namespace lux::runtime::entity_scene
         bool close_scope_closed_{false};
         lux::ecs::SystemCloseProgressSink close_progress_;
     };
-}
+} // namespace lux::runtime::entity_scene

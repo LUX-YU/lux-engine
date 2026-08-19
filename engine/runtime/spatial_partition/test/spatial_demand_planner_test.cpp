@@ -16,15 +16,15 @@ namespace
         return uuids::uuid::from_string(value).value();
     }
 
-    lux::entity_scene::EntitySectionRecord record(
+    lux::scene::SectionRecord record(
         const char* id,
         std::uint64_t decoded_bytes,
         std::uint32_t entity_count,
         std::string channel = "org.lux.test.visible")
     {
-        lux::entity_scene::EntitySectionRecord value;
-        value.id = lux::entity_scene::EntitySectionId{uuid(id)};
-        value.source = lux::entity_scene::StoredSectionSource{
+        lux::scene::SectionRecord value;
+        value.id = lux::ecs::scene_format::EntitySectionId{uuid(id)};
+        value.source = lux::scene::StoredSectionSource{
             "/Game/Sections/Test_lxes"};
         value.content_digest[0] = std::byte{1u};
         value.encoded_bytes = decoded_bytes;
@@ -45,12 +45,12 @@ namespace
             lux::runtime::spatial_partition::SpatialDemandSourceId{
                 std::move(source)},
             generation,
-            lux::entity_scene::DemandChannelId{std::move(channel)},
+            lux::scene::DemandChannelId{std::move(channel)},
             {demands}};
     }
 
     lux::runtime::entity_scene::EntitySceneCatalog catalog(
-        std::vector<lux::entity_scene::EntitySectionRecord> records)
+        std::vector<lux::scene::SectionRecord> records)
     {
         std::sort(
             records.begin(), records.end(),
@@ -58,12 +58,12 @@ namespace
             {
                 return lhs.id.value() < rhs.id.value();
             });
-        lux::entity_scene::EntitySceneManifest manifest;
-        manifest.id = lux::entity_scene::EntitySceneId{uuid(
+        lux::scene::ScenePackage package;
+        package.id = lux::scene::ScenePackageId{uuid(
             "80000000-0000-4000-8000-000000000001")};
-        manifest.sections = std::move(records);
+        package.sections = std::move(records);
         auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(
-            std::move(manifest));
+            std::move(package));
         assert(result);
         return std::move(*result);
     }
@@ -72,7 +72,7 @@ namespace
 int main()
 {
     namespace partition = lux::runtime::spatial_partition;
-    using lux::entity_scene::EntitySectionId;
+    using lux::ecs::scene_format::EntitySectionId;
 
     auto first = record(
         "81000000-0000-4000-8000-000000000001", 60u, 6u);
@@ -194,8 +194,8 @@ int main()
     // identical record; a conflicting digest fails without changing state.
     auto generated = record(
         "81000000-0000-4000-8000-000000000005", 12u, 1u);
-    generated.source = lux::entity_scene::GeneratedSectionSource{
-        lux::entity_scene::SectionGeneratorId{"org.lux.test.generator"},
+    generated.source = lux::scene::GeneratedSectionSource{
+        lux::scene::SectionGeneratorId{"org.lux.test.generator"},
         99u,
         {std::byte{1u}, std::byte{2u}}};
     const auto generated_id = generated.id;

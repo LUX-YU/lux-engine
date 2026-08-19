@@ -6,7 +6,8 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/engine/ecs/scene_format/Identifiers.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/visibility.h>
 
@@ -22,13 +23,13 @@ namespace lux::runtime::spatial3d
     struct Spatial3DSectionCatalogEntry final
     {
         lux::spatial::GridCoord3i64 coordinate;
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
     };
 
     struct Spatial3DWindowEntry final
     {
         lux::spatial::GridCoord3i64 coordinate;
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
         bool active{false};
     };
 
@@ -41,7 +42,7 @@ namespace lux::runtime::spatial3d
         /// are moved into one prospective partition transaction. Catalog
         /// windows leave this empty because their records already live in the
         /// immutable EntitySectionRecordStore.
-        std::vector<lux::entity_scene::EntitySectionRecord> records;
+        std::vector<lux::scene::SectionRecord> records;
         std::size_t active_sections{0u};
     };
 
@@ -74,7 +75,7 @@ namespace lux::runtime::spatial3d
     {
         ESpatial3DSourceError code{ESpatial3DSourceError::INVALID_REQUEST};
         lux::spatial::GridCoord3i64 coordinate;
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
         std::size_t requested_sections{0u};
         std::size_t maximum_sections{0u};
     };
@@ -117,7 +118,7 @@ namespace lux::runtime::spatial3d
 
     using Spatial3DSectionRecordRule = lux::cxx::move_only_function<
         lux::cxx::expected<
-            lux::entity_scene::EntitySectionRecord,
+            lux::scene::SectionRecord,
             Spatial3DSourceFailure>(lux::spatial::GridCoord3i64)>;
 
     /// A leaf source is either a finite cooked catalog or an unbounded rule

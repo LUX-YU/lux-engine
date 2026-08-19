@@ -856,10 +856,10 @@ namespace
             return true;
         };
         if (!add_bytes(
-                bundle.manifest.id.value(),
+                bundle.package.id.value(),
                 lux::asset::EAssetType::ENTITY_SCENE,
                 "Scenes/Benchmark",
-                bundle.encoded_manifest))
+                bundle.encoded_package))
             return false;
         for (const auto& section : bundle.sections)
         {
@@ -867,7 +867,7 @@ namespace
             const auto expected_source =
                 "/Game/EntitySections/" + key;
             const auto* stored = std::get_if<
-                lux::entity_scene::StoredSectionSource>(
+                lux::scene::StoredSectionSource>(
                     &section.record.source);
             if (!stored || stored->content_path != expected_source ||
                 !add_bytes(

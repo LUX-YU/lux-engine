@@ -5,7 +5,7 @@
 #include <lux/engine/ecs/components/ParentComponent.hpp>
 #include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
 #include <lux/engine/meta/Meta.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchMaterializer.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchStager.hpp>
@@ -33,7 +33,7 @@ namespace
         std::int32_t value{0};
         entt::entity target{entt::null};
         lux::ecs::PersistentEntityRef persistent_target;
-        lux::entity_scene::ContentBlobRef content;
+        lux::ecs::scene_format::ContentBlobRef content;
     };
 
     uuids::uuid uuid(const char* value)
@@ -146,7 +146,7 @@ namespace
             lux::meta::RefField{
                 "content",
                 lux::meta::ref_type_of_v<
-                    lux::entity_scene::ContentBlobRef>,
+                    lux::ecs::scene_format::ContentBlobRef>,
                 lux::meta::EVisibility::Public,
                 &result,
                 static_cast<std::uint32_t>(
@@ -231,23 +231,23 @@ namespace
         return bytes;
     }
 
-    lux::entity_scene::EntitySectionImage sectionImage(
+    lux::ecs::scene_format::EntitySectionImage sectionImage(
         ETestPayloadShape second_payload = ETestPayloadShape::EXACT)
     {
-        using namespace lux::entity_scene;
+        using namespace lux::ecs::scene_format;
         EntitySectionImage image;
         image.section = EntitySectionId{
             uuid("50000000-0000-4000-8000-000000000001")};
         image.component_names = {
             "", "content", "persistent_target", "target", "value"};
         image.schemas.push_back({
-            ComponentSchemaId{"org.lux.test.link"},
+            lux::ecs::componentSchemaId("org.lux.test.link"),
             1u,
             EEntityComponentStorage::DATA});
         image.archetypes.push_back({{0u}});
         image.entities = {
             {0u,
-             PersistentEntityId{
+             lux::ecs::PersistentEntityId{
                  uuid("60000000-0000-4000-8000-000000000001")}},
             {0u, std::nullopt}};
 
@@ -268,7 +268,7 @@ namespace
         image.relocations = {
             {0u, 0u, 3u, 1u},
             {0u, 1u, 3u, 0u}};
-        const PersistentEntityId persistent_target{
+        const lux::ecs::PersistentEntityId persistent_target{
             uuid("60000000-0000-4000-8000-000000000099")};
         image.persistent_reference_relocations = {
             {0u, 0u, 2u, persistent_target},
@@ -290,9 +290,9 @@ namespace
         return image;
     }
 
-    lux::entity_scene::EntitySectionImage emptyComponentSectionImage()
+    lux::ecs::scene_format::EntitySectionImage emptyComponentSectionImage()
     {
-        using namespace lux::entity_scene;
+        using namespace lux::ecs::scene_format;
         EntitySectionImage image;
         image.section = EntitySectionId{
             uuid("50000000-0000-4000-8000-000000000002")};
@@ -333,9 +333,9 @@ namespace
     }
 
     std::vector<std::byte> encode(
-        const lux::entity_scene::EntitySectionImage& image)
+        const lux::ecs::scene_format::EntitySectionImage& image)
     {
-        auto encoded = lux::entity_scene::encodeEntitySectionImage(image);
+        auto encoded = lux::ecs::scene_format::encodeEntitySectionImage(image);
         assert(encoded);
         return std::move(*encoded);
     }
@@ -394,11 +394,11 @@ int main()
     const auto good_bytes = encode(good_image);
     const auto expectRelocationRejected =
         [&stager](
-            lux::entity_scene::EntitySectionImage image,
+            lux::ecs::scene_format::EntitySectionImage image,
             std::uint64_t generation)
         {
             const auto encoded =
-                lux::entity_scene::encodeEntitySectionImage(image);
+                lux::ecs::scene_format::encodeEntitySectionImage(image);
             assert(encoded);
             runtime::EntityBatchDecoder decoder;
             auto decoded = decoder.decode(
@@ -476,16 +476,16 @@ int main()
     // other batch remains accounted.
     {
         auto first_image = good_image;
-        first_image.section = lux::entity_scene::EntitySectionId{
+        first_image.section = lux::ecs::scene_format::EntitySectionId{
             uuid("50000000-0000-4000-8000-000000000010")};
         first_image.entities.front().persistent_id =
-            lux::entity_scene::PersistentEntityId{
+            lux::ecs::PersistentEntityId{
                 uuid("60000000-0000-4000-8000-000000000010")};
         auto second_image = good_image;
-        second_image.section = lux::entity_scene::EntitySectionId{
+        second_image.section = lux::ecs::scene_format::EntitySectionId{
             uuid("50000000-0000-4000-8000-000000000011")};
         second_image.entities.front().persistent_id =
-            lux::entity_scene::PersistentEntityId{
+            lux::ecs::PersistentEntityId{
                 uuid("60000000-0000-4000-8000-000000000011")};
 
         runtime::SectionBlobStore armed_blobs;
@@ -598,7 +598,7 @@ int main()
                 std::byte{0x5au},
                 std::byte{0xa5u}};
             attachment.reference.id =
-                lux::entity_scene::makeContentBlobId(
+                lux::ecs::scene_format::makeContentBlobId(
                     attachment.reference.type,
                     attachment.reference.schema_version,
                     attachment.payload);
@@ -690,7 +690,7 @@ int main()
     {
         auto cyclic = good_image;
         cyclic.parents = {{0u, 1u}, {1u, 0u}};
-        assert(!lux::entity_scene::encodeEntitySectionImage(cyclic));
+        assert(!lux::ecs::scene_format::encodeEntitySectionImage(cyclic));
     }
 
     // Every cooked strong-reference field in every column value requires one
@@ -719,21 +719,21 @@ int main()
         auto duplicate = good_image;
         duplicate.relocations.insert(
             duplicate.relocations.begin(), duplicate.relocations.front());
-        assert(!lux::entity_scene::encodeEntitySectionImage(duplicate));
+        assert(!lux::ecs::scene_format::encodeEntitySectionImage(duplicate));
     }
     {
         auto duplicate = good_image;
         duplicate.persistent_reference_relocations.insert(
             duplicate.persistent_reference_relocations.begin(),
             duplicate.persistent_reference_relocations.front());
-        assert(!lux::entity_scene::encodeEntitySectionImage(duplicate));
+        assert(!lux::ecs::scene_format::encodeEntitySectionImage(duplicate));
     }
     {
         auto duplicate = good_image;
         duplicate.blob_relocations.insert(
             duplicate.blob_relocations.begin(),
             duplicate.blob_relocations.front());
-        assert(!lux::entity_scene::encodeEntitySectionImage(duplicate));
+        assert(!lux::ecs::scene_format::encodeEntitySectionImage(duplicate));
     }
 
     // A key placed in the wrong strong-reference table is not a substitute
@@ -806,8 +806,8 @@ int main()
     {
         auto unknown_schema = good_image;
         unknown_schema.schemas.front().id =
-            lux::entity_scene::ComponentSchemaId{
-                "org.lux.test.unknown_link"};
+            lux::ecs::componentSchemaId(
+                "org.lux.test.unknown_link");
         runtime::EntityBatchDecoder decoder;
         auto decoded = decoder.decode(
             lux::cxx::SharedBytes<>::copyOf(encode(unknown_schema)), 58u);

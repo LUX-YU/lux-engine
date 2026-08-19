@@ -8,7 +8,6 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/ScriptSerDeser.hpp>
 #include <lux/game/LaunchManifest.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
@@ -580,18 +579,18 @@ namespace lux::toolchain
             relative.replace_extension();
             const auto scene_vpath =
                 (std::filesystem::path{"Scenes"} / relative).generic_string();
-            auto manifest_path = generated_root / "Scenes" / relative;
-            manifest_path += ".luxscene";
+            auto package_path = generated_root / "Scenes" / relative;
+            package_path += ".luxscene";
             if (auto written = writeStagedImage(
-                    manifest_path, cooked->encoded_manifest); !written)
+                    package_path, cooked->encoded_package); !written)
             {
                 return written;
             }
             entries.push_back(PakCookFileEntry{
-                cooked->manifest.id.value(),
+                cooked->package.id.value(),
                 lux::asset::EAssetType::ENTITY_SCENE,
                 scene_vpath,
-                manifest_path});
+                package_path});
 
             for (const auto& section : cooked->sections)
             {
@@ -599,7 +598,7 @@ namespace lux::toolchain
                 const auto expected_source =
                     "/Game/EntitySections/" + key;
                 const auto* stored = std::get_if<
-                    lux::entity_scene::StoredSectionSource>(
+                    lux::scene::StoredSectionSource>(
                         &section.record.source);
                 if (stored == nullptr ||
                     stored->content_path != expected_source)

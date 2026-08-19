@@ -8,7 +8,7 @@
 #include <lux/engine/runtime/extensions/ModuleLifetime.hpp>
 #include <lux/engine/runtime/extensions/OperationTicket.hpp>
 #include <lux/engine/scene/SceneFeatureId.hpp>
-#include <lux/engine/core/extension_abi/StableId.hpp>
+#include <lux/engine/extensions/ExtensionId.hpp>
 #include <lux/engine/runtime/extensions/ContributionConfig.hpp>
 #include <lux/engine/runtime/extensions/contribution_visibility.h>
 

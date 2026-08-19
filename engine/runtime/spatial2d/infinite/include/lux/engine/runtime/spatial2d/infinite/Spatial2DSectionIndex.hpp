@@ -6,7 +6,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/visibility.h>
 
@@ -27,7 +27,7 @@ namespace lux::runtime::spatial2d
     struct Spatial2DSectionIndexEntry final
     {
         lux::spatial::GridCoord2i64 coordinate;
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
 
         friend bool operator==(
             const Spatial2DSectionIndexEntry&,
@@ -37,11 +37,11 @@ namespace lux::runtime::spatial2d
     struct Spatial2DWindowEntry final
     {
         lux::spatial::GridCoord2i64 coordinate;
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
         /// Present only for procedurally addressed Sections. The generic
         /// partition owns this record with the demand source and releases it
         /// when that source moves or closes.
-        std::optional<lux::entity_scene::EntitySectionRecord> record;
+        std::optional<lux::scene::SectionRecord> record;
         bool active{false};
     };
 
@@ -68,7 +68,7 @@ namespace lux::runtime::spatial2d
     {
         ESpatial2DIndexError code{ESpatial2DIndexError::EMPTY_INDEX};
         lux::spatial::GridCoord2i64 coordinate;
-        lux::entity_scene::EntitySectionId section;
+        lux::ecs::scene_format::EntitySectionId section;
     };
 
     /// Cheap position-to-grid conversion used by interest tracking before a
@@ -92,7 +92,7 @@ namespace lux::runtime::spatial2d
             Spatial2DIndexFailure>
         create(std::vector<Spatial2DSectionIndexEntry> entries);
 
-        [[nodiscard]] const lux::entity_scene::EntitySectionId* find(
+        [[nodiscard]] const lux::ecs::scene_format::EntitySectionId* find(
             lux::spatial::GridCoord2i64 coordinate) const noexcept;
 
         [[nodiscard]] lux::cxx::expected<
@@ -119,7 +119,7 @@ namespace lux::runtime::spatial2d
 
     using Spatial2DSectionRecordFactory = lux::cxx::move_only_function<
         lux::cxx::expected<
-            lux::entity_scene::EntitySectionRecord,
+            lux::scene::SectionRecord,
             Spatial2DIndexFailure>(lux::spatial::GridCoord2i64)>;
 
     /// One dimensional leaf source can be finite (cooked index) or

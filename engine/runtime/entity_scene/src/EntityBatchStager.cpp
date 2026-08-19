@@ -85,7 +85,7 @@ namespace lux::runtime::entity_scene
 
         void advanceComponentCursor(
             detail::PreparedEntityBatchImpl& batch,
-            const lux::entity_scene::EntitySectionImage& image) noexcept
+            const lux::ecs::scene_format::EntitySectionImage& image) noexcept
         {
             while (batch.component_archetype < image.archetypes.size())
             {
@@ -105,7 +105,7 @@ namespace lux::runtime::entity_scene
                     const auto schema = archetype.schemas[
                         batch.component_schema_position];
                     if (image.schemas[schema].storage ==
-                        lux::entity_scene::EEntityComponentStorage::DATA)
+                        lux::ecs::scene_format::EEntityComponentStorage::DATA)
                     {
                         ++batch.component_column;
                     }
@@ -183,232 +183,232 @@ namespace lux::runtime::entity_scene
 
         auto impl = std::make_unique<detail::PreparedEntityBatchImpl>(
             std::move(decoded));
-            auto& image = impl->decoded.image_;
-            impl->blob_store = &blobs;
-            impl->schemas.reserve(image.schemas.size());
-            impl->schema_counts.assign(image.schemas.size(), 0u);
-            impl->archetype_first.resize(image.archetypes.size(), 0u);
-            impl->archetype_counts.resize(image.archetypes.size(), 0u);
-            impl->blob_leases.reserve(image.attachments.size());
-            impl->staging_entities.assign(image.entities.size(), entt::null);
-            impl->publication_entities.assign(
-                image.entities.size(), entt::null);
+        auto& image = impl->decoded.image_;
+        impl->blob_store = &blobs;
+        impl->schemas.reserve(image.schemas.size());
+        impl->schema_counts.assign(image.schemas.size(), 0u);
+        impl->archetype_first.resize(image.archetypes.size(), 0u);
+        impl->archetype_counts.resize(image.archetypes.size(), 0u);
+        impl->blob_leases.reserve(image.attachments.size());
+        impl->staging_entities.assign(image.entities.size(), entt::null);
+        impl->publication_entities.assign(
+            image.entities.size(), entt::null);
 
-            for (std::uint32_t index = 0u;
-                 index < image.component_names.size();
-                 ++index)
+        for (std::uint32_t index = 0u;
+             index < image.component_names.size();
+             ++index)
+        {
+            if (impl->names.intern(image.component_names[index]) != index)
             {
-                if (impl->names.intern(image.component_names[index]) != index)
-                {
-                    return lux::cxx::unexpected(detail::makeFailure(
-                        EEntityBatchError::INVALID_ARGUMENT,
-                        section,
-                        generation,
-                        "LXES component NameTable is not canonical"));
-                }
+                return lux::cxx::unexpected(detail::makeFailure(
+                    EEntityBatchError::INVALID_ARGUMENT,
+                    section,
+                    generation,
+                    "LXES component NameTable is not canonical"));
             }
+        }
 
-            for (const auto& schema : image.schemas)
+        for (const auto& schema : image.schemas)
+        {
+            const auto* descriptor = components_->findBySchema(
+                schema.id.name());
+            if (!descriptor)
             {
-                const auto* descriptor = components_->findBySchema(
-                    schema.id.name());
-                if (!descriptor)
-                {
-                    return lux::cxx::unexpected(detail::makeFailure(
-                        EEntityBatchError::MISSING_SCHEMA,
-                        section,
-                        generation,
-                        "component schema is not registered",
-                        std::string{schema.id.name()}));
-                }
-                if (descriptor->schema_id.hash != schema.id.hash() ||
-                    descriptor->schema_id.name != schema.id.name() ||
-                    descriptor->schema_version != schema.schema_version)
-                {
-                    return lux::cxx::unexpected(detail::makeFailure(
-                        EEntityBatchError::SCHEMA_VERSION_MISMATCH,
-                        section,
-                        generation,
-                        "component schema identity or version does not match",
-                        std::string{schema.id.name()}));
-                }
-                if (descriptor->serialization ==
-                    lux::ecs::EComponentSerializationPolicy::TRANSIENT)
-                {
-                    return lux::cxx::unexpected(detail::makeFailure(
-                        EEntityBatchError::TRANSIENT_SCHEMA_IN_COOKED_CONTENT,
-                        section,
-                        generation,
-                        "transient component cannot appear in LXES",
-                        std::string{schema.id.name()}));
-                }
-                if (!descriptor->operations.get ||
-                    !descriptor->operations.emplace ||
-                    !descriptor->operations.reserve ||
-                    !descriptor->operations.transfer ||
-                    !descriptor->operations.no_throw_transfer ||
-                    (schema.storage ==
-                         lux::entity_scene::EEntityComponentStorage::DATA &&
-                     !descriptor->ref_class))
-                {
-                    return lux::cxx::unexpected(detail::makeFailure(
-                        EEntityBatchError::INVALID_COMPONENT_STORAGE,
-                        section,
-                        generation,
-                        "component does not satisfy cooked staging contract",
-                        std::string{schema.id.name()}));
-                }
-                impl->schemas.push_back(*descriptor);
+                return lux::cxx::unexpected(detail::makeFailure(
+                    EEntityBatchError::MISSING_SCHEMA,
+                    section,
+                    generation,
+                    "component schema is not registered",
+                    std::string{schema.id.name()}));
             }
-
-            std::size_t first = 0u;
-            for (std::size_t archetype = 0u;
-                 archetype < image.archetypes.size();
-                 ++archetype)
+            if (descriptor->schema_id.hash != schema.id.hash() ||
+                descriptor->schema_id.name != schema.id.name() ||
+                descriptor->schema_version != schema.schema_version)
             {
-                impl->archetype_first[archetype] = first;
-                while (first < image.entities.size() &&
-                       image.entities[first].archetype == archetype)
-                {
-                    ++impl->archetype_counts[archetype];
-                    ++first;
-                }
-                for (const auto schema : image.archetypes[archetype].schemas)
-                    impl->schema_counts[schema] +=
-                        impl->archetype_counts[archetype];
+                return lux::cxx::unexpected(detail::makeFailure(
+                    EEntityBatchError::SCHEMA_VERSION_MISMATCH,
+                    section,
+                    generation,
+                    "component schema identity or version does not match",
+                    std::string{schema.id.name()}));
             }
-
-            impl->relocations.reserve(image.relocations.size());
-            const auto entity_type = lux::meta::ref_type_of_v<entt::entity>;
-            const auto persistent_reference_type =
-                lux::meta::ref_type_of_v<
-                    lux::ecs::PersistentEntityRef>;
-            const auto blob_type =
-                lux::meta::ref_type_of_v<
-                    lux::entity_scene::ContentBlobRef>;
-
-            std::array<std::vector<RelocationKey>, 3u>
-                expected_relocations;
-            expected_relocations[0u].reserve(image.relocations.size());
-            expected_relocations[1u].reserve(
-                image.persistent_reference_relocations.size());
-            expected_relocations[2u].reserve(
-                image.blob_relocations.size());
-            for (std::uint32_t column_index = 0u;
-                 column_index < image.columns.size();
-                 ++column_index)
+            if (descriptor->serialization ==
+                lux::ecs::EComponentSerializationPolicy::TRANSIENT)
             {
-                const auto& column = image.columns[column_index];
-                const auto& descriptor = impl->schemas[column.schema];
-                for (const auto& field : descriptor.ref_class->fields)
-                {
-                    if (field.visibility != lux::meta::EVisibility::Public)
-                        continue;
-
-                    std::size_t kind = expected_relocations.size();
-                    if (sameExactType(field.type, entity_type))
-                        kind = 0u;
-                    else if (sameExactType(
-                                 field.type,
-                                 persistent_reference_type))
-                        kind = 1u;
-                    else if (sameExactType(field.type, blob_type))
-                        kind = 2u;
-                    if (kind == expected_relocations.size())
-                        continue;
-
-                    const auto property = std::lower_bound(
-                        image.component_names.begin(),
-                        image.component_names.end(),
-                        field.name);
-                    if (property == image.component_names.end() ||
-                        *property != field.name)
-                    {
-                        return lux::cxx::unexpected(detail::makeFailure(
-                            EEntityBatchError::INVALID_REFERENCE_RELOCATION,
-                            section,
-                            generation,
-                            "cooked reference field has no relocation property name",
-                            descriptor.schema_id.name));
-                    }
-                    const auto property_path = static_cast<std::uint32_t>(
-                        property - image.component_names.begin());
-                    const auto value_count = column.offsets.size() - 1u;
-                    for (std::uint32_t value_index = 0u;
-                         value_index < value_count;
-                         ++value_index)
-                    {
-                        expected_relocations[kind].push_back({
-                            column_index,
-                            value_index,
-                            property_path});
-                    }
-                }
+                return lux::cxx::unexpected(detail::makeFailure(
+                    EEntityBatchError::TRANSIENT_SCHEMA_IN_COOKED_CONTENT,
+                    section,
+                    generation,
+                    "transient component cannot appear in LXES",
+                    std::string{schema.id.name()}));
             }
-            for (auto& expected : expected_relocations)
+            if (!descriptor->operations.get ||
+                !descriptor->operations.emplace ||
+                !descriptor->operations.reserve ||
+                !descriptor->operations.transfer ||
+                !descriptor->operations.no_throw_transfer ||
+                (schema.storage ==
+                     lux::ecs::scene_format::EEntityComponentStorage::DATA &&
+                 !descriptor->ref_class))
             {
-                std::sort(expected.begin(), expected.end());
-                if (std::adjacent_find(
-                        expected.begin(), expected.end()) != expected.end())
+                return lux::cxx::unexpected(detail::makeFailure(
+                    EEntityBatchError::INVALID_COMPONENT_STORAGE,
+                    section,
+                    generation,
+                    "component does not satisfy cooked staging contract",
+                    std::string{schema.id.name()}));
+            }
+            impl->schemas.push_back(*descriptor);
+        }
+
+        std::size_t first = 0u;
+        for (std::size_t archetype = 0u;
+             archetype < image.archetypes.size();
+             ++archetype)
+        {
+            impl->archetype_first[archetype] = first;
+            while (first < image.entities.size() &&
+                   image.entities[first].archetype == archetype)
+            {
+                ++impl->archetype_counts[archetype];
+                ++first;
+            }
+            for (const auto schema : image.archetypes[archetype].schemas)
+                impl->schema_counts[schema] +=
+                    impl->archetype_counts[archetype];
+        }
+
+        impl->relocations.reserve(image.relocations.size());
+        const auto entity_type = lux::meta::ref_type_of_v<entt::entity>;
+        const auto persistent_reference_type =
+            lux::meta::ref_type_of_v<
+                lux::ecs::PersistentEntityRef>;
+        const auto blob_type =
+            lux::meta::ref_type_of_v<
+                lux::ecs::scene_format::ContentBlobRef>;
+
+        std::array<std::vector<RelocationKey>, 3u>
+            expected_relocations;
+        expected_relocations[0u].reserve(image.relocations.size());
+        expected_relocations[1u].reserve(
+            image.persistent_reference_relocations.size());
+        expected_relocations[2u].reserve(
+            image.blob_relocations.size());
+        for (std::uint32_t column_index = 0u;
+             column_index < image.columns.size();
+             ++column_index)
+        {
+            const auto& column = image.columns[column_index];
+            const auto& descriptor = impl->schemas[column.schema];
+            for (const auto& field : descriptor.ref_class->fields)
+            {
+                if (field.visibility != lux::meta::EVisibility::Public)
+                    continue;
+
+                std::size_t kind = expected_relocations.size();
+                if (sameExactType(field.type, entity_type))
+                    kind = 0u;
+                else if (sameExactType(
+                             field.type,
+                             persistent_reference_type))
+                    kind = 1u;
+                else if (sameExactType(field.type, blob_type))
+                    kind = 2u;
+                if (kind == expected_relocations.size())
+                    continue;
+
+                const auto property = std::lower_bound(
+                    image.component_names.begin(),
+                    image.component_names.end(),
+                    field.name);
+                if (property == image.component_names.end() ||
+                    *property != field.name)
                 {
                     return lux::cxx::unexpected(detail::makeFailure(
                         EEntityBatchError::INVALID_REFERENCE_RELOCATION,
                         section,
                         generation,
-                        "component reflection contains duplicate cooked reference fields"));
+                        "cooked reference field has no relocation property name",
+                        descriptor.schema_id.name));
+                }
+                const auto property_path = static_cast<std::uint32_t>(
+                    property - image.component_names.begin());
+                const auto value_count = column.offsets.size() - 1u;
+                for (std::uint32_t value_index = 0u;
+                     value_index < value_count;
+                     ++value_index)
+                {
+                    expected_relocations[kind].push_back({
+                        column_index,
+                        value_index,
+                        property_path});
                 }
             }
-            if (!relocationKeysEqual(
-                    expected_relocations[0u], image.relocations) ||
-                !relocationKeysEqual(
-                    expected_relocations[1u],
-                    image.persistent_reference_relocations) ||
-                !relocationKeysEqual(
-                    expected_relocations[2u], image.blob_relocations))
+        }
+        for (auto& expected : expected_relocations)
+        {
+            std::sort(expected.begin(), expected.end());
+            if (std::adjacent_find(
+                    expected.begin(), expected.end()) != expected.end())
             {
                 return lux::cxx::unexpected(detail::makeFailure(
                     EEntityBatchError::INVALID_REFERENCE_RELOCATION,
                     section,
                     generation,
-                    "cooked reference fields require exactly one relocation of the matching kind"));
+                    "component reflection contains duplicate cooked reference fields"));
             }
+        }
+        if (!relocationKeysEqual(
+                expected_relocations[0u], image.relocations) ||
+            !relocationKeysEqual(
+                expected_relocations[1u],
+                image.persistent_reference_relocations) ||
+            !relocationKeysEqual(
+                expected_relocations[2u], image.blob_relocations))
+        {
+            return lux::cxx::unexpected(detail::makeFailure(
+                EEntityBatchError::INVALID_REFERENCE_RELOCATION,
+                section,
+                generation,
+                "cooked reference fields require exactly one relocation of the matching kind"));
+        }
 
-            for (const auto& relocation : image.relocations)
-            {
-                const auto& column = image.columns[relocation.column];
-                const auto& descriptor = impl->schemas[column.schema];
-                const auto field_name =
-                    image.component_names[relocation.property_path];
-                const auto field = std::find_if(
-                    descriptor.ref_class->fields.begin(),
-                    descriptor.ref_class->fields.end(),
-                    [&field_name](const lux::meta::RefField& candidate)
-                    {
-                        return candidate.name == field_name;
-                    });
-                const auto source = impl->archetype_first[column.archetype] +
-                    relocation.value_index;
-                if (field == descriptor.ref_class->fields.end() ||
-                    field->visibility != lux::meta::EVisibility::Public ||
-                    !sameExactType(field->type, entity_type) ||
-                    field->offset + sizeof(entt::entity) >
-                        descriptor.ref_class->type.size ||
-                    source >= image.entities.size())
+        for (const auto& relocation : image.relocations)
+        {
+            const auto& column = image.columns[relocation.column];
+            const auto& descriptor = impl->schemas[column.schema];
+            const auto field_name =
+                image.component_names[relocation.property_path];
+            const auto field = std::find_if(
+                descriptor.ref_class->fields.begin(),
+                descriptor.ref_class->fields.end(),
+                [&field_name](const lux::meta::RefField& candidate)
                 {
-                    return lux::cxx::unexpected(detail::makeFailure(
-                        EEntityBatchError::INVALID_REFERENCE_RELOCATION,
-                        section,
-                        generation,
-                        "reference relocation does not name an entt::entity field",
-                        descriptor.schema_id.name));
-                }
-                impl->relocations.push_back(
-                    detail::ResolvedReferenceRelocation{
-                        column.schema,
-                        static_cast<lux::entity_scene::EntityOrdinal>(source),
-                        relocation.target,
-                        field->offset});
+                    return candidate.name == field_name;
+                });
+            const auto source = impl->archetype_first[column.archetype] +
+                relocation.value_index;
+            if (field == descriptor.ref_class->fields.end() ||
+                field->visibility != lux::meta::EVisibility::Public ||
+                !sameExactType(field->type, entity_type) ||
+                field->offset + sizeof(entt::entity) >
+                    descriptor.ref_class->type.size ||
+                source >= image.entities.size())
+            {
+                return lux::cxx::unexpected(detail::makeFailure(
+                    EEntityBatchError::INVALID_REFERENCE_RELOCATION,
+                    section,
+                    generation,
+                    "reference relocation does not name an entt::entity field",
+                    descriptor.schema_id.name));
             }
+            impl->relocations.push_back(
+                detail::ResolvedReferenceRelocation{
+                    column.schema,
+                    static_cast<lux::ecs::scene_format::EntityOrdinal>(source),
+                    relocation.target,
+                    field->offset});
+        }
         impl->persistent_reference_relocations.reserve(
             image.persistent_reference_relocations.size());
         for (const auto& relocation :
@@ -445,8 +445,9 @@ namespace lux::runtime::entity_scene
             impl->persistent_reference_relocations.push_back(
                 detail::ResolvedPersistentReferenceRelocation{
                     column.schema,
-                    static_cast<lux::entity_scene::EntityOrdinal>(source),
-                    detail::toRuntimePersistentId(relocation.target),
+                    static_cast<lux::ecs::scene_format::EntityOrdinal>(
+                        source),
+                    relocation.target,
                     field->offset});
         }
         impl->blob_relocations.reserve(image.blob_relocations.size());
@@ -468,7 +469,7 @@ namespace lux::runtime::entity_scene
             if (field == descriptor.ref_class->fields.end() ||
                 field->visibility != lux::meta::EVisibility::Public ||
                 !sameExactType(field->type, blob_type) ||
-                field->offset + sizeof(lux::entity_scene::ContentBlobRef) >
+                field->offset + sizeof(lux::ecs::scene_format::ContentBlobRef) >
                     descriptor.ref_class->type.size ||
                 source >= image.entities.size())
             {
@@ -481,7 +482,7 @@ namespace lux::runtime::entity_scene
             }
             impl->blob_relocations.push_back(detail::ResolvedBlobRelocation{
                 column.schema,
-                static_cast<lux::entity_scene::EntityOrdinal>(source),
+                static_cast<lux::ecs::scene_format::EntityOrdinal>(source),
                 relocation.attachment_index,
                 field->offset});
         }
@@ -608,7 +609,7 @@ namespace lux::runtime::entity_scene
                         }
 
                         if (schema.storage ==
-                            lux::entity_scene::EEntityComponentStorage::DATA)
+                            lux::ecs::scene_format::EEntityComponentStorage::DATA)
                         {
                             const auto& column =
                                 image.columns[prepared.component_column];
@@ -722,7 +723,7 @@ namespace lux::runtime::entity_scene
                                     descriptor.schema_id.name));
                         }
                         auto* field = reinterpret_cast<
-                            lux::entity_scene::ContentBlobRef*>(
+                            lux::ecs::scene_format::ContentBlobRef*>(
                                 static_cast<std::byte*>(component) +
                                 relocation.field_offset);
                         *field = prepared.blob_leases[

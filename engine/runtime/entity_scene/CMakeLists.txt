@@ -49,7 +49,8 @@ target_link_libraries(
         lux::cxx::compile_time
         lux::cxx::memory
         lux::engine::ecs::core
-        lux::engine::resource::entity_scene
+        lux::engine::ecs::scene_format
+        lux::engine::scene::scene_package
         lux::engine::resource::asset_core
         lux::engine::runtime::runtime_execution
         lux::engine::scene::scene_api
@@ -66,10 +67,10 @@ component_add_transitive_commands(
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time memory)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta serialization)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS entity_scene asset_core)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_api scene_package)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_api)"
     "find_package(stdexec CONFIG REQUIRED)"
     "find_package(zstd CONFIG REQUIRED)"
 )
@@ -167,6 +168,29 @@ else()
 endif()
 lux_classify_target(
     TARGET  entity_scene_catalog_identity_test
+    LAYER   RUNTIME
+    PRODUCT TEST
+    ROLE    INTEGRATION
+)
+
+# Public API closure and ownership probe. This target intentionally includes
+# only canonical Runtime EntitySection headers; any legacy Resource DTO leak
+# becomes a compile error here.
+add_executable(
+    entity_section_public_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/entity_section_public_contract_test.cpp
+)
+target_link_libraries(
+    entity_section_public_contract_test
+    PRIVATE lux::engine::runtime::runtime_entity_scene
+)
+if(MSVC)
+    target_compile_options(entity_section_public_contract_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(entity_section_public_contract_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  entity_section_public_contract_test
     LAYER   RUNTIME
     PRODUCT TEST
     ROLE    INTEGRATION

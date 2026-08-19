@@ -1,8 +1,7 @@
 #include <lux/engine/runtime/render/scene/SceneGeometryPrepareService.hpp>
 
 #include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/resource/terrain/TerrainTile.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
@@ -87,7 +86,7 @@ namespace
 
     struct StoredBlob final
     {
-        lux::entity_scene::ContentBlobRef reference;
+        lux::ecs::scene_format::ContentBlobRef reference;
         lux::runtime::entity_scene::ContentBlobLease lease;
     };
 
@@ -99,18 +98,18 @@ namespace
         const char* section_text,
         std::uint64_t generation)
     {
-        lux::entity_scene::EntitySectionAttachment attachment;
+        lux::ecs::scene_format::EntitySectionAttachment attachment;
         attachment.reference.type =
-            lux::entity_scene::ContentTypeId{std::string{type}};
+            lux::ecs::scene_format::ContentTypeId{std::string{type}};
         attachment.reference.schema_version = schema;
         attachment.payload = std::move(bytes);
-        attachment.reference.id = lux::entity_scene::makeContentBlobId(
+        attachment.reference.id = lux::ecs::scene_format::makeContentBlobId(
             attachment.reference.type,
             attachment.reference.schema_version,
             attachment.payload);
         auto acquired = store.acquire(
             std::move(attachment),
-            lux::entity_scene::EntitySectionId{uuid(section_text)},
+            lux::ecs::scene_format::EntitySectionId{uuid(section_text)},
             generation);
         require(acquired.has_value());
         auto reference = acquired->reference();

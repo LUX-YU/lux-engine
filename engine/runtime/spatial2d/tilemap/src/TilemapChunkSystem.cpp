@@ -41,7 +41,7 @@ namespace lux::runtime::spatial2d
             lux::ecs::TilemapHandle tilemap;
             lux::ecs::TileChunkCoord coordinate;
             lux::ecs::PersistentEntityRef tilemap_reference;
-            lux::entity_scene::ContentBlobRef content_reference;
+            lux::ecs::scene_format::ContentBlobRef content_reference;
             lux::runtime::entity_scene::ContentBlobLease content;
             std::optional<lux::ecs::TileChunkLoad> prepared;
             ETilemapChunkDomainError prepare_error{

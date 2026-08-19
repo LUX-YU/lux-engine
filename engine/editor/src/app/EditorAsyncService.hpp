@@ -19,7 +19,7 @@
 #include <lux/engine/authoring/world/WorldDescriptorIndex.hpp>
 #include <lux/engine/authoring/world/WorldTerrainAuthoring.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/runtime/execution/AsyncOperation.hpp>
@@ -102,7 +102,7 @@ namespace lux::editor
     struct CookEntitySceneValue final
     {
         std::filesystem::path pak_file;
-        lux::entity_scene::EntitySceneId scene_id;
+        lux::scene::ScenePackageId scene_id;
         std::string scene_origin;
         std::string message;
     };

@@ -25,7 +25,8 @@
 #include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
 #include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/MeshSerDeser.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
 #include <lux/engine/resource/physics3d/StaticColliderBatch3D.hpp>
 #include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
 #include <lux/engine/resource/terrain/TerrainTile.hpp>
@@ -131,8 +132,8 @@ namespace lux::toolchain
             return segment_has_character;
         }
 
-        [[nodiscard]] lux::entity_scene::EntitySectionId derivedSectionId(
-            const lux::entity_scene::EntitySceneId& scene,
+        [[nodiscard]] lux::ecs::scene_format::EntitySectionId derivedSectionId(
+            const lux::scene::ScenePackageId& scene,
             std::string_view purpose)
         {
             std::vector<std::byte> identity;
@@ -146,7 +147,7 @@ namespace lux::toolchain
                 (bytes[6] & 0x0fu) | 0x50u);
             bytes[8] = static_cast<std::uint8_t>(
                 (bytes[8] & 0x3fu) | 0x80u);
-            return lux::entity_scene::EntitySectionId{uuids::uuid{bytes}};
+            return lux::ecs::scene_format::EntitySectionId{uuids::uuid{bytes}};
         }
 
         using AttachmentKey = std::tuple<
@@ -157,11 +158,12 @@ namespace lux::toolchain
         struct EntitySectionAssembly final
         {
             explicit EntitySectionAssembly(
-                lux::entity_scene::EntitySectionId value)
-                : id(value), builder(value)
+                lux::ecs::scene_format::EntitySectionId value)
+                : id(value),
+                  builder(value)
             {}
 
-            lux::entity_scene::EntitySectionId id;
+            lux::ecs::scene_format::EntitySectionId id;
             EntitySectionImageBuilder builder;
             std::map<AttachmentKey, std::uint32_t> attachments;
         };
@@ -169,11 +171,11 @@ namespace lux::toolchain
         [[nodiscard]] lux::cxx::expected<std::uint32_t, AdapterFailure>
         internAttachment(
             EntitySectionAssembly& section,
-            lux::entity_scene::ContentTypeId type,
+            lux::ecs::scene_format::ContentTypeId type,
             std::uint32_t schema_version,
             std::vector<std::byte> payload)
         {
-            const auto content = lux::entity_scene::makeContentBlobId(
+            const auto content = lux::ecs::scene_format::makeContentBlobId(
                 type, schema_version, payload);
             AttachmentKey key{
                 type.name(), schema_version, content.digest};
@@ -194,9 +196,22 @@ namespace lux::toolchain
             return *added;
         }
 
+        [[nodiscard]] lux::entity_scene::DemandChannelId
+        legacyDemandChannel(const lux::scene::DemandChannelId& id)
+        {
+            return lux::entity_scene::DemandChannelId{std::string{id.name()}};
+        }
+
+        [[nodiscard]] lux::entity_scene::EntitySectionId
+        legacySectionId(
+            const lux::ecs::scene_format::EntitySectionId& id) noexcept
+        {
+            return lux::entity_scene::EntitySectionId{id.value()};
+        }
+
         [[nodiscard]] lux::navigation::NavigationRegionId
         navigationRegionId(
-            const lux::entity_scene::EntitySectionId& section,
+            const lux::ecs::scene_format::EntitySectionId& section,
             std::uint8_t profile)
         {
             std::vector<std::byte> identity;
@@ -517,8 +532,8 @@ namespace lux::toolchain
             if (!payload)
                 return lux::cxx::unexpected(std::move(payload.error()));
             EntityComponentCookInput result;
-            result.schema = lux::entity_scene::ComponentSchemaId{
-                descriptor->schema_id.name};
+            result.schema = lux::ecs::componentSchemaId(
+                descriptor->schema_id.name);
             result.schema_version = descriptor->schema_version;
             result.value = std::move(*payload);
             return result;
@@ -542,11 +557,11 @@ namespace lux::toolchain
                         std::string{lux::ecs::typeToken<Tag>().name} + "'"));
             }
             EntityComponentCookInput result;
-            result.schema = lux::entity_scene::ComponentSchemaId{
-                descriptor->schema_id.name};
+            result.schema = lux::ecs::componentSchemaId(
+                descriptor->schema_id.name);
             result.schema_version = descriptor->schema_version;
             result.storage =
-                lux::entity_scene::EEntityComponentStorage::TAG;
+                lux::ecs::scene_format::EEntityComponentStorage::TAG;
             return result;
         }
 
@@ -556,10 +571,10 @@ namespace lux::toolchain
         {
             const auto found = std::ranges::find(
                 entity.components,
-                component.schema.name(),
+                component.schema.name,
                 [](const EntityComponentCookInput& value)
                 {
-                    return value.schema.name();
+                    return value.schema.name;
                 });
             if (found == entity.components.end())
                 entity.components.push_back(std::move(component));
@@ -786,7 +801,7 @@ namespace lux::toolchain
 
             MaterializedActor result;
             result.entity.persistent_id =
-                lux::entity_scene::PersistentEntityId{actor.id.value()};
+                lux::ecs::PersistentEntityId{actor.id.value()};
             for (const auto* descriptor : descriptors)
             {
                 const void* value = descriptor->operations.get(
@@ -795,8 +810,8 @@ namespace lux::toolchain
                 if (!payload)
                     return lux::cxx::unexpected(std::move(payload.error()));
                 EntityComponentCookInput component;
-                component.schema = lux::entity_scene::ComponentSchemaId{
-                    descriptor->schema_id.name};
+                component.schema = lux::ecs::componentSchemaId(
+                    descriptor->schema_id.name);
                 component.schema_version = descriptor->schema_version;
                 component.value = std::move(*payload);
                 result.entity.components.push_back(std::move(component));
@@ -1095,9 +1110,9 @@ namespace lux::toolchain
             return result;
         }
 
-        [[nodiscard]] lux::entity_scene::PersistentEntityId
+        [[nodiscard]] lux::ecs::PersistentEntityId
         visualLodEntityId(
-            const lux::entity_scene::EntitySceneId& scene,
+            const lux::scene::ScenePackageId& scene,
             std::string_view kind,
             const uuids::uuid& space,
             const lux::spatial::GridCoord3i64& cell,
@@ -1105,7 +1120,7 @@ namespace lux::toolchain
             std::span<const std::string> layers = {})
         {
             uuids::uuid_name_generator generator{scene.value()};
-            return lux::entity_scene::PersistentEntityId{generator(
+            return lux::ecs::PersistentEntityId{generator(
                 "lux.visual-lod/" + std::string{kind} + "/" +
                 std::to_string(level) + "/" +
                 visualLodKey(space, cell, layers))};
@@ -1119,7 +1134,7 @@ namespace lux::toolchain
             std::vector<std::size_t> pages;
             std::optional<std::size_t> parent;
             std::uint8_t level{1u};
-            lux::entity_scene::PersistentEntityId persistent_id;
+            lux::ecs::PersistentEntityId persistent_id;
         };
 
         struct VisualHlodPlan final
@@ -1130,7 +1145,7 @@ namespace lux::toolchain
 
         [[nodiscard]] VisualHlodPlan visualHlodPlan(
             const Spatial3DAuthoringSource& source,
-            const lux::entity_scene::EntitySceneId& scene)
+            const lux::scene::ScenePackageId& scene)
         {
             VisualHlodPlan result;
             result.page_parents.resize(source.instance_pages.size());
@@ -1511,7 +1526,7 @@ namespace lux::toolchain
 
         [[nodiscard]] lux::cxx::expected<PreparedVisualHlod, AdapterFailure>
         cookVisualHlod(
-            const lux::entity_scene::EntitySceneId& scene,
+            const lux::scene::ScenePackageId& scene,
             const VisualHlodNodePlan& node,
             const Spatial3DInstancePageSource& aggregate,
             DecodedMeshCatalog& meshes,
@@ -1954,37 +1969,36 @@ namespace lux::toolchain
         }
 
         [[nodiscard]] lux::cxx::expected<void, AdapterFailure>
-        appendContribution(
-            std::vector<lux::entity_scene::SceneContribution>& values,
-            lux::entity_scene::SceneContribution contribution)
+        appendFeature(
+            std::vector<lux::scene::SceneFeatureRequest>& values,
+            lux::scene::SceneFeatureRequest feature)
         {
-            if (!lux::extensions::isCanonicalStableName(
-                    contribution.id.name()) ||
-                !contribution.id.isValid())
+            if (!feature.id.isValid() ||
+                !lux::scene::isValidSceneFeatureIdName(feature.id.name()))
             {
                 return lux::cxx::unexpected(failure(
                     AdapterError::INVALID_ARGUMENT,
-                    "legacy activation has a non-canonical contribution id"));
+                    "Scene Feature request has a non-canonical id"));
             }
             const auto found = std::ranges::find(
                 values,
-                contribution.id.name(),
+                feature.id.name(),
                 [](const auto& value)
                 {
                     return value.id.name();
                 });
             if (found == values.end())
             {
-                values.push_back(std::move(contribution));
+                values.push_back(std::move(feature));
                 return {};
             }
-            if (*found != contribution)
+            if (*found != feature)
             {
                 return lux::cxx::unexpected(failure(
                     AdapterError::INVALID_ARGUMENT,
                     std::string{
-                        "legacy activations define conflicting contribution config for '"} +
-                        std::string{contribution.id.name()} + "'"));
+                        "Scene Feature requests define conflicting configuration for '"} +
+                        std::string{feature.id.name()} + "'"));
             }
             return {};
         }
@@ -2000,7 +2014,10 @@ namespace lux::toolchain
         const Spatial3DMeshAssetCatalog& mesh_assets,
         Spatial3DEntitySceneAdapterConfig config)
     {
-        using namespace lux::entity_scene;
+        using lux::ecs::scene_format::EntityOrdinal;
+        using lux::ecs::scene_format::EntitySectionId;
+        using lux::scene::DemandChannelId;
+        using lux::ecs::scene_format::kInvalidEntityOrdinal;
 
         if (source.scene.empty() ||
             !validSectionContentPrefix(config.section_content_prefix) ||
@@ -2036,7 +2053,7 @@ namespace lux::toolchain
         auto decoded_meshes = indexMeshAssets(mesh_assets);
         if (!decoded_meshes)
             return lux::cxx::unexpected(std::move(decoded_meshes.error()));
-        const EntitySceneId scene = config.scene_id.empty()
+        const lux::scene::ScenePackageId scene = config.scene_id.empty()
             ? source.scene
             : config.scene_id;
         const auto startup_section = derivedSectionId(
@@ -2275,9 +2292,9 @@ namespace lux::toolchain
             &config](
             EntitySectionAssembly& destination,
             PreparedClassicMeshBatch batch,
-            lux::entity_scene::PersistentEntityId persistent_id,
+            lux::ecs::PersistentEntityId persistent_id,
             std::uint8_t level,
-            std::optional<lux::entity_scene::PersistentEntityId> parent)
+            std::optional<lux::ecs::PersistentEntityId> parent)
             -> lux::cxx::expected<void, AdapterFailure>
         {
             auto encoded = lux::classic_mesh::encodeClassicMeshBatchBlob(
@@ -2290,7 +2307,7 @@ namespace lux::toolchain
             }
             auto attachment = internAttachment(
                 destination,
-                ContentTypeId{std::string{
+                lux::ecs::scene_format::ContentTypeId{std::string{
                     lux::classic_mesh::kClassicMeshBatchContentTypeName}},
                 lux::classic_mesh::kClassicMeshBatchSchemaVersion,
                 std::move(*encoded));
@@ -2353,7 +2370,7 @@ namespace lux::toolchain
             auto batch = classicMeshBatch(page);
             if (!batch)
                 return lux::cxx::unexpected(std::move(batch.error()));
-            std::optional<lux::entity_scene::PersistentEntityId> parent;
+            std::optional<lux::ecs::PersistentEntityId> parent;
             if (visual_lod.page_parents[index])
             {
                 parent = visual_lod.nodes[
@@ -2424,7 +2441,7 @@ namespace lux::toolchain
                     prepared->generated_meshes.begin()),
                 std::make_move_iterator(
                     prepared->generated_meshes.end()));
-            std::optional<lux::entity_scene::PersistentEntityId> parent;
+            std::optional<lux::ecs::PersistentEntityId> parent;
             if (node.parent)
                 parent = visual_lod.nodes[*node.parent].persistent_id;
             const auto coordinate = spatialCoordinate(node.cell);
@@ -2706,7 +2723,7 @@ namespace lux::toolchain
                 return lux::cxx::unexpected(std::move(fine.error()));
             auto attachment = internAttachment(
                 (*fine)->section,
-                ContentTypeId{std::string{
+                lux::ecs::scene_format::ContentTypeId{std::string{
                     lux::terrain::kTerrainTileContentTypeName}},
                 lux::terrain::kTerrainTileSchemaVersion,
                 std::move(*encoded));
@@ -2714,7 +2731,7 @@ namespace lux::toolchain
                 return lux::cxx::unexpected(std::move(attachment.error()));
             auto physics_attachment = internAttachment(
                 (*fine)->section,
-                ContentTypeId{std::string{
+                lux::ecs::scene_format::ContentTypeId{std::string{
                     lux::physics3d::
                         kStaticColliderBatch3DContentTypeName}},
                 lux::physics3d::kStaticColliderBatch3DSchemaVersion,
@@ -2777,7 +2794,7 @@ namespace lux::toolchain
                 const auto bytes = encoded->payload.view();
                 auto attachment = internAttachment(
                     (*fine)->section,
-                    ContentTypeId{std::string{
+                    lux::ecs::scene_format::ContentTypeId{std::string{
                         lux::navigation::detour3d::
                             kNavigationRegion3DContentTypeName}},
                     lux::navigation::detour3d::
@@ -2809,7 +2826,7 @@ namespace lux::toolchain
             }
         }
 
-        EntitySceneCookInput cook;
+        ScenePackageCookInput cook;
         cook.id = scene;
         cook.startup_sections.push_back(startup_section);
         while (config.section_content_prefix.size() > 1u &&
@@ -2834,7 +2851,7 @@ namespace lux::toolchain
             }
             EntitySectionCookInput input;
             input.image = std::move(*image);
-            input.source = StoredSectionSource{
+            input.source = lux::scene::StoredSectionSource{
                 config.section_content_prefix + "/" +
                 uuidKey(section.id.value())};
             if (demand)
@@ -2879,13 +2896,13 @@ namespace lux::toolchain
         {
             const auto band = internBand({
                 fine.source,
-                fine_channel,
+                legacyDemandChannel(fine_channel),
                 0u,
                 fine.cell_world_size,
                 1.0,
                 1.0});
             spatial_catalog.entries.push_back({
-                fine.coordinate, band, fine.section.id});
+                fine.coordinate, band, legacySectionId(fine.section.id)});
             const auto added = appendSection(
                 fine.section, fine_channel);
             if (!added)
@@ -2902,13 +2919,13 @@ namespace lux::toolchain
                 config.visual_lod_resident_scale * level_scale);
             const auto band = internBand({
                 coarse.source,
-                visual_lod_channel,
+                legacyDemandChannel(visual_lod_channel),
                 coarse.level,
                 coarse.cell_world_size,
                 active_scale,
                 resident_scale});
             spatial_catalog.entries.push_back({
-                coarse.coordinate, band, coarse.section.id});
+                coarse.coordinate, band, legacySectionId(coarse.section.id)});
             const auto added = appendSection(
                 coarse.section, visual_lod_channel);
             if (!added)
@@ -2925,10 +2942,10 @@ namespace lux::toolchain
                     AdapterError::SPATIAL_CATALOG_REJECTED,
                     encoded.error().detail));
             }
-            const auto added = appendContribution(
-                cook.contributions,
-                SceneContribution{
-                    lux::extensions::ContributionId{std::string{
+            const auto added = appendFeature(
+                cook.features,
+                lux::scene::SceneFeatureRequest{
+                    lux::scene::SceneFeatureId{std::string{
                         lux::spatial3d_scene::
                             kSpatial3DContributionName}},
                     lux::spatial3d_scene::
@@ -2937,38 +2954,37 @@ namespace lux::toolchain
             if (!added)
                 return lux::cxx::unexpected(std::move(added.error()));
         }
-        for (auto& contribution : config.selected_contributions)
+        for (auto& feature : config.selected_features)
         {
-            const auto added = appendContribution(
-                cook.contributions,
-                std::move(contribution));
+            const auto added = appendFeature(
+                cook.features,
+                std::move(feature));
             if (!added)
                 return lux::cxx::unexpected(std::move(added.error()));
         }
-        for (auto& contribution : config.additional_contributions)
+        for (auto& feature : config.additional_features)
         {
-            const auto added = appendContribution(
-                cook.contributions, std::move(contribution));
+            const auto added = appendFeature(
+                cook.features, std::move(feature));
             if (!added)
                 return lux::cxx::unexpected(std::move(added.error()));
         }
-        for (const auto& contribution : source.contributions)
+        for (const auto& feature : source.features)
         {
-            const auto added = appendContribution(
-                cook.contributions,
-                contribution);
+            const auto added = appendFeature(
+                cook.features,
+                feature);
             if (!added)
                 return lux::cxx::unexpected(std::move(added.error()));
         }
-        for (const auto& extension : source.required_extensions)
-            cook.required_extensions.push_back(extension);
+        cook.required_extensions = source.required_extensions;
 
-        auto cooked = cookEntityScene(std::move(cook));
+        auto cooked = cookScenePackage(std::move(cook));
         if (!cooked)
         {
             return lux::cxx::unexpected(entityFailure(
                 cooked.error(),
-                "generic EntityScene cooker rejected Spatial3D output"));
+                "generic ScenePackage cooker rejected Spatial3D output"));
         }
         std::ranges::sort(
             generated_meshes,
@@ -2988,7 +3004,7 @@ namespace lux::toolchain
                 "generated visual HLOD Mesh identity is duplicated"));
         }
         CookedSpatial3DEntitySceneBundle result;
-        static_cast<CookedEntitySceneBundle&>(result) = std::move(*cooked);
+        static_cast<CookedScenePackageBundle&>(result) = std::move(*cooked);
         result.generated_meshes = std::move(generated_meshes);
         return result;
     }

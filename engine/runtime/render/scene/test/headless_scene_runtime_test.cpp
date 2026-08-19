@@ -2,11 +2,12 @@
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/components/ParentComponent.hpp>
 #include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
@@ -476,8 +477,8 @@ namespace
             section_service.loadClient()};
         lux::runtime::SceneRuntime::Config config;
         config.name = "Non-terminal bring-up rollback";
-        config.transient_scene = lux::entity_scene::EntitySceneManifest{
-            lux::entity_scene::EntitySceneId{
+        config.transient_package = lux::scene::ScenePackage{
+            lux::scene::ScenePackageId{
                 uuid("10000000-0000-4000-8000-000000000003")}};
 
         auto scene = lux::runtime::SceneRuntime::create(
@@ -498,7 +499,8 @@ namespace
 
 int main(int argc, char** argv)
 {
-    using namespace lux::entity_scene;
+    namespace format = lux::ecs::scene_format;
+    namespace scene = lux::scene;
 
     constexpr std::string_view rollback_child_argument =
         "--non-terminal-bring-up-rollback-child";
@@ -512,55 +514,55 @@ int main(int argc, char** argv)
         rollback_result != -1 && rollback_result != 0,
         "non-terminal bring-up rollback fails closed before owner release");
 
-    EntitySectionImage section;
-    section.section = EntitySectionId{
+    format::EntitySectionImage section;
+    section.section = format::EntitySectionId{
         uuid("20000000-0000-4000-8000-000000000001")};
     section.component_names = {""};
     section.archetypes.push_back({});
     const lux::ecs::PersistentEntityId root_id{
         uuid("30000000-0000-4000-8000-000000000001")};
     section.entities = {
-        {0u, PersistentEntityId{root_id.value()}},
+        {0u, root_id},
         {0u, std::nullopt}};
     section.parents.push_back({1u, 0u});
-    EntitySectionAttachment close_attachment;
+    format::EntitySectionAttachment close_attachment;
     close_attachment.reference.type =
-        ContentTypeId{"org.test.scene.close_blob"};
+        format::ContentTypeId{"org.test.scene.close_blob"};
     close_attachment.reference.schema_version = 1u;
     close_attachment.payload = {
         std::byte{1u}, std::byte{3u}, std::byte{5u}};
-    close_attachment.reference.id = makeContentBlobId(
+    close_attachment.reference.id = format::makeContentBlobId(
         close_attachment.reference.type,
         close_attachment.reference.schema_version,
         close_attachment.payload);
     const auto close_blob_reference = close_attachment.reference;
     section.attachments.push_back(std::move(close_attachment));
-    auto section_bytes = encodeEntitySectionImage(section);
+    auto section_bytes = format::encodeEntitySectionImage(section);
     check(section_bytes.has_value(), "LXES startup Section encodes");
     if (!section_bytes)
         return 1;
 
-    EntitySectionRecord record;
+    scene::SectionRecord record;
     record.id = section.section;
-    record.source = StoredSectionSource{"/Game/startup_lxes"};
-    record.content_digest = entitySceneContentDigest(*section_bytes);
+    record.source = scene::StoredSectionSource{"/Game/startup_lxes"};
+    record.content_digest = format::entitySectionContentDigest(*section_bytes);
     record.encoded_bytes = section_bytes->size();
     record.decoded_bytes = section_bytes->size();
     record.entity_count = 2u;
 
-    EntitySceneManifest manifest;
-    manifest.id = EntitySceneId{
+    scene::ScenePackage package;
+    package.id = scene::ScenePackageId{
         uuid("10000000-0000-4000-8000-000000000001")};
-    manifest.startup_sections.push_back(record.id);
-    manifest.sections.push_back(record);
-    manifest.contributions.push_back({
-        lux::extensions::ContributionId{
+    package.startup_sections.push_back(record.id);
+    package.sections.push_back(record);
+    package.features.push_back({
+        lux::scene::SceneFeatureId{
             "org.test.scene.cross_phase_blob_close"},
         0u,
         {}});
-    auto manifest_bytes = encodeEntitySceneManifest(manifest);
-    check(manifest_bytes.has_value(), "LXSC manifest encodes");
-    if (!manifest_bytes)
+    auto package_bytes = scene::encodeScenePackage(package);
+    check(package_bytes.has_value(), "LXSC ScenePackage encodes");
+    if (!package_bytes)
         return 1;
 
     auto vfs = std::make_shared<lux::asset::AssetVfs>();
@@ -617,9 +619,9 @@ int main(int argc, char** argv)
     lux::runtime::SceneRuntime::Config config;
     config.name = "LXSC Headless Scene";
     config.scene_origin = "/Game/scene_lxsc";
-    config.scene_manifest_image = lux::asset::AssetBlob::fromShared(
+    config.scene_package_image = lux::asset::AssetBlob::fromShared(
         lux::cxx::SharedBytes<>::copyOf(std::span<const std::byte>{
-            manifest_bytes->data(), manifest_bytes->size()}));
+            package_bytes->data(), package_bytes->size()}));
     config.section_vfs = vfs;
 
     auto scene = lux::runtime::SceneRuntime::create(dependencies, config);
@@ -739,10 +741,11 @@ int main(int argc, char** argv)
 
     lux::runtime::SceneRuntime::Config ordered_close_config;
     ordered_close_config.name = "Domain-neutral ordered close";
-    ordered_close_config.transient_scene = EntitySceneManifest{
-        EntitySceneId{uuid("10000000-0000-4000-8000-000000000004")}};
-    ordered_close_config.transient_scene->contributions.push_back({
-        lux::extensions::ContributionId{
+    ordered_close_config.transient_package = scene::ScenePackage{
+        scene::ScenePackageId{
+            uuid("10000000-0000-4000-8000-000000000004")}};
+    ordered_close_config.transient_package->features.push_back({
+        lux::scene::SceneFeatureId{
             "org.test.scene.runtime_close"},
         0u,
         {}});
@@ -760,8 +763,8 @@ int main(int argc, char** argv)
         check(
             ordered_close_scene->hasActiveContribution(
                 "org.test.scene.runtime_close") &&
-                persistence.contributions.size() == 1u &&
-                persistence.contributions.front().id.name() ==
+                persistence.features.size() == 1u &&
+                persistence.features.front().id.name() ==
                     "org.test.scene.runtime_close",
             "manifest contribution is adopted as the authoritative persistent root");
         std::size_t completions = 0u;
@@ -783,8 +786,9 @@ int main(int argc, char** argv)
 
     lux::runtime::SceneRuntime::Config empty_config;
     empty_config.name = "Dispatcher-independent close";
-    empty_config.transient_scene = EntitySceneManifest{
-        EntitySceneId{uuid("10000000-0000-4000-8000-000000000002")}};
+    empty_config.transient_package = scene::ScenePackage{
+        scene::ScenePackageId{
+            uuid("10000000-0000-4000-8000-000000000002")}};
     auto closing_scene = lux::runtime::SceneRuntime::create(
         dependencies, empty_config);
     check(closing_scene != nullptr, "empty headless Scene assembles");

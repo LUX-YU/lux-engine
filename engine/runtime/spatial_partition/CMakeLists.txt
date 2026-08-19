@@ -1,3 +1,5 @@
+find_package(lux-cxx REQUIRED COMPONENTS core)
+
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_RUNTIME_SPATIAL_PARTITION_LIBRARY
     PUBLIC_MACRO_NAME       LUX_ENGINE_RUNTIME_SPATIAL_PARTITION_PUBLIC
@@ -30,15 +32,18 @@ target_compile_definitions(
 target_link_libraries(
     runtime_spatial_partition
     PUBLIC
+        lux::cxx::core
         lux::engine::ecs::core
-        lux::engine::resource::entity_scene
+        lux::engine::ecs::scene_format
+        lux::engine::scene::scene_package
         lux::engine::runtime::runtime_entity_scene
 )
 
 component_add_transitive_commands(
     runtime_spatial_partition
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS entity_scene)"
+    "find_package(lux-cxx REQUIRED COMPONENTS core)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene)"
 )
 

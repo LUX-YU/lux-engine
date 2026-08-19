@@ -1,6 +1,6 @@
 #include <lux/engine/toolchain/entity_scene/EntitySectionImageBuilder.hpp>
 
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -15,9 +15,9 @@ namespace lux::toolchain
 {
     namespace
     {
-        using lux::entity_scene::ContentBlobId;
-        using lux::entity_scene::EntityOrdinal;
-        using lux::entity_scene::EntitySectionSchema;
+        using lux::ecs::scene_format::ContentBlobId;
+        using lux::ecs::scene_format::EntityOrdinal;
+        using lux::ecs::scene_format::EntitySectionSchema;
 
         [[nodiscard]] EntitySceneCookFailure failure(
             EEntitySceneCookError error,
@@ -37,8 +37,8 @@ namespace lux::toolchain
             const EntitySectionSchema& lhs,
             const EntitySectionSchema& rhs) noexcept
         {
-            return lhs.id.hash() == rhs.id.hash() &&
-                lhs.id.name() == rhs.id.name() &&
+            return lhs.id.hash == rhs.id.hash &&
+                lhs.id.name == rhs.id.name &&
                 lhs.schema_version == rhs.schema_version &&
                 lhs.storage == rhs.storage;
         }
@@ -69,7 +69,7 @@ namespace lux::toolchain
                 entity.components.end(),
                 [schema](const EntityComponentCookInput& component)
                 {
-                    return component.schema.name() == schema;
+                    return component.schema.name == schema;
                 });
             return found == entity.components.end() ? nullptr : &*found;
         }
@@ -91,7 +91,7 @@ namespace lux::toolchain
     }
 
     EntitySectionImageBuilder::EntitySectionImageBuilder(
-        lux::entity_scene::EntitySectionId section) noexcept
+        lux::ecs::scene_format::EntitySectionId section) noexcept
         : section_(section)
     {}
 
@@ -115,7 +115,7 @@ namespace lux::toolchain
     EntitySectionImageBuilder::addEntity(EntityCookInput entity)
     {
         if (entities_.size() >=
-            lux::entity_scene::kInvalidEntityOrdinal)
+            lux::ecs::scene_format::kInvalidEntityOrdinal)
         {
             return lux::cxx::unexpected(failure(
                 EEntitySceneCookError::WIRE_LIMIT_EXCEEDED,
@@ -127,11 +127,11 @@ namespace lux::toolchain
     }
 
     lux::cxx::expected<
-        lux::entity_scene::EntitySectionImage,
+        lux::ecs::scene_format::EntitySectionImage,
         EntitySceneCookFailure>
     EntitySectionImageBuilder::build() && noexcept
     {
-        using namespace lux::entity_scene;
+        using namespace lux::ecs::scene_format;
 
         if (section_.empty())
         {
@@ -155,7 +155,7 @@ namespace lux::toolchain
              ++index)
         {
             auto& input = attachments_[index];
-            if (!isValidEntitySceneId(input.type) ||
+            if (!isValidStableId(input.type) ||
                 input.schema_version == 0u)
             {
                 return lux::cxx::unexpected(failure(
@@ -230,7 +230,7 @@ namespace lux::toolchain
                     component.schema,
                     component.schema_version,
                     component.storage};
-                if (!isValidEntitySceneId(schema.id) ||
+                if (!lux::ecs::isValidComponentSchemaId(schema.id) ||
                     schema.schema_version == 0u ||
                     (schema.storage != EEntityComponentStorage::DATA &&
                      schema.storage != EEntityComponentStorage::TAG))
@@ -242,16 +242,16 @@ namespace lux::toolchain
                 if (std::find(
                         entity_schemas.begin(),
                         entity_schemas.end(),
-                        schema.id.name()) != entity_schemas.end())
+                        schema.id.name) != entity_schemas.end())
                 {
                     return lux::cxx::unexpected(failure(
                         EEntitySceneCookError::DUPLICATE_COMPONENT,
                         "entity contains the same component schema more than once"));
                 }
-                entity_schemas.emplace_back(schema.id.name());
+                entity_schemas.emplace_back(schema.id.name);
 
                 const auto [found, inserted] = schema_map.emplace(
-                    std::string{schema.id.name()}, schema);
+                    std::string{schema.id.name}, schema);
                 if (!inserted && !sameSchema(found->second, schema))
                 {
                     return lux::cxx::unexpected(failure(
@@ -371,13 +371,13 @@ namespace lux::toolchain
                 const auto schema = std::lower_bound(
                     image.schemas.begin(),
                     image.schemas.end(),
-                    component.schema.name(),
+                    component.schema.name,
                     [](const EntitySectionSchema& lhs, std::string_view rhs)
                     {
-                        return lhs.id.name() < rhs;
+                        return lhs.id.name < rhs;
                     });
                 if (schema == image.schemas.end() ||
-                    schema->id.name() != component.schema.name())
+                    schema->id.name != component.schema.name)
                 {
                     return lux::cxx::unexpected(failure(
                         EEntitySceneCookError::INCONSISTENT_SCHEMA,
@@ -479,7 +479,7 @@ namespace lux::toolchain
                     const auto input = output_to_input[output];
                     const auto* component = findComponent(
                         entities_[input],
-                        image.schemas[schema_index].id.name());
+                        image.schemas[schema_index].id.name);
                     if (!component)
                     {
                         return lux::cxx::unexpected(failure(

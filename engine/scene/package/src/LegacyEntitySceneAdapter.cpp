@@ -182,6 +182,71 @@ namespace lux::scene::detail
         return {error, failure.detail};
     }
 
+    ScenePackageCodecResult<legacy::EntitySectionRecord>
+    toLegacySectionRecord(
+        const SectionRecord& section,
+        const ScenePackageCodecLimits& limits) noexcept
+    {
+        legacy::EntitySectionRecord record;
+        record.id = toLegacy(section.id);
+        if (const auto* stored =
+                std::get_if<StoredSectionSource>(&section.source))
+        {
+            record.source = legacy::StoredSectionSource{
+                stored->content_path};
+        }
+        else if (const auto* generated =
+                     std::get_if<GeneratedSectionSource>(&section.source))
+        {
+            if (!isValidSectionGeneratorId(generated->generator))
+            {
+                return lux::cxx::unexpected(invalid(
+                    "invalid ScenePackage Section generator ID"));
+            }
+            record.source = legacy::GeneratedSectionSource{
+                legacy::SectionGeneratorId{generated->generator.name()},
+                generated->seed,
+                generated->parameters};
+        }
+        else
+        {
+            return lux::cxx::unexpected(invalid(
+                "invalid ScenePackage Section source"));
+        }
+        record.content_digest = section.content_digest;
+        record.compression = toLegacy(section.compression);
+        record.encoded_bytes = section.encoded_bytes;
+        record.decoded_bytes = section.decoded_bytes;
+        record.entity_count = section.entity_count;
+        record.dependencies.reserve(section.dependencies.size());
+        for (const auto dependency : section.dependencies)
+            record.dependencies.push_back(toLegacy(dependency));
+        record.demand_channels.reserve(section.demand_channels.size());
+        for (const auto& channel : section.demand_channels)
+        {
+            if (!isValidDemandChannelId(channel))
+            {
+                return lux::cxx::unexpected(invalid(
+                    "invalid ScenePackage demand channel ID"));
+            }
+            record.demand_channels.emplace_back(channel.name());
+        }
+        record.required_extensions.reserve(
+            section.required_extensions.size());
+        for (const auto& extension : section.required_extensions)
+            record.required_extensions.push_back(toLegacy(extension));
+        record.required_components.reserve(
+            section.required_components.size());
+        for (const auto& component : section.required_components)
+            record.required_components.push_back(toLegacy(component));
+
+        const auto validated = legacy::validateEntitySectionRecord(
+            record, legacyLimits(limits));
+        if (!validated)
+            return lux::cxx::unexpected(packageFailure(validated.error()));
+        return record;
+    }
+
     ScenePackageCodecResult<legacy::EntitySceneManifest>
     toLegacyManifest(
         const ScenePackage& package,
@@ -207,45 +272,10 @@ namespace lux::scene::detail
         result.sections.reserve(package.sections.size());
         for (const auto& section : package.sections)
         {
-            legacy::EntitySectionRecord record;
-            record.id = toLegacy(section.id);
-            if (const auto* stored =
-                    std::get_if<StoredSectionSource>(&section.source))
-            {
-                record.source = legacy::StoredSectionSource{
-                    stored->content_path};
-            }
-            else
-            {
-                const auto& generated =
-                    std::get<GeneratedSectionSource>(section.source);
-                record.source = legacy::GeneratedSectionSource{
-                    legacy::SectionGeneratorId{generated.generator.name()},
-                    generated.seed,
-                    generated.parameters};
-            }
-            record.content_digest = section.content_digest;
-            record.compression = toLegacy(section.compression);
-            record.encoded_bytes = section.encoded_bytes;
-            record.decoded_bytes = section.decoded_bytes;
-            record.entity_count = section.entity_count;
-            record.dependencies.reserve(section.dependencies.size());
-            for (const auto dependency : section.dependencies)
-                record.dependencies.push_back(toLegacy(dependency));
-            record.demand_channels.reserve(section.demand_channels.size());
-            for (const auto& channel : section.demand_channels)
-            {
-                record.demand_channels.emplace_back(channel.name());
-            }
-            record.required_extensions.reserve(
-                section.required_extensions.size());
-            for (const auto& extension : section.required_extensions)
-                record.required_extensions.push_back(toLegacy(extension));
-            record.required_components.reserve(
-                section.required_components.size());
-            for (const auto& component : section.required_components)
-                record.required_components.push_back(toLegacy(component));
-            result.sections.push_back(std::move(record));
+            auto record = toLegacySectionRecord(section, limits);
+            if (!record)
+                return lux::cxx::unexpected(std::move(record.error()));
+            result.sections.push_back(std::move(*record));
         }
 
         result.required_extensions.reserve(package.required_extensions.size());

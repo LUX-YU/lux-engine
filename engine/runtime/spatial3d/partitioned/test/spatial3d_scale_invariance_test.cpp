@@ -4,8 +4,10 @@
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
@@ -48,12 +50,12 @@ namespace
 
     struct GeneratorState final
     {
-        lux::entity_scene::SectionGeneratorId id{
+        lux::scene::SectionGeneratorId id{
             "org.lux.test.spatial3d.scale.generator"};
         mutable std::atomic<std::uint64_t> generated{0u};
     };
 
-    lux::entity_scene::EntitySectionId sectionId(std::uint64_t ordinal)
+    lux::ecs::scene_format::EntitySectionId sectionId(std::uint64_t ordinal)
     {
         std::array<std::uint8_t, 16u> bytes{};
         for (std::size_t index = 0u; index < 8u; ++index)
@@ -65,13 +67,13 @@ namespace
             (bytes[6] & 0x0fu) | 0x40u);
         bytes[8] = static_cast<std::uint8_t>(
             (bytes[8] & 0x3fu) | 0x80u);
-        return lux::entity_scene::EntitySectionId{uuids::uuid{bytes}};
+        return lux::ecs::scene_format::EntitySectionId{uuids::uuid{bytes}};
     }
 
-    lux::entity_scene::EntitySectionImage image(
-        lux::entity_scene::EntitySectionId section)
+    lux::ecs::scene_format::EntitySectionImage image(
+        lux::ecs::scene_format::EntitySectionId section)
     {
-        lux::entity_scene::EntitySectionImage result;
+        lux::ecs::scene_format::EntitySectionImage result;
         result.section = section;
         result.component_names = {""};
         result.archetypes.push_back({{}});
@@ -79,19 +81,19 @@ namespace
         return result;
     }
 
-    lux::entity_scene::EntitySectionRecord record(
+    lux::scene::SectionRecord record(
         const GeneratorState& generator,
         std::uint64_t ordinal)
     {
-        lux::entity_scene::EntitySectionRecord result;
+        lux::scene::SectionRecord result;
         result.id = sectionId(ordinal);
-        result.source = lux::entity_scene::GeneratedSectionSource{
+        result.source = lux::scene::GeneratedSectionSource{
             generator.id, ordinal, {}};
-        const auto encoded = lux::entity_scene::encodeEntitySectionImage(
+        const auto encoded = lux::ecs::scene_format::encodeEntitySectionImage(
             image(result.id));
         assert(encoded);
         result.content_digest =
-            lux::entity_scene::entitySceneContentDigest(*encoded);
+            lux::ecs::scene_format::entitySectionContentDigest(*encoded);
         result.encoded_bytes = encoded->size();
         result.decoded_bytes = encoded->size();
         result.entity_count = 1u;
@@ -110,12 +112,12 @@ namespace
             const void* opaque,
             GeneratedEntitySectionRequest request) noexcept
             -> lux::cxx::expected<
-                lux::entity_scene::EntitySectionImage,
+                lux::ecs::scene_format::EntitySectionImage,
                 EntitySectionGeneratorFailure>
         {
             const auto& state = *static_cast<const GeneratorState*>(opaque);
             const auto* source = std::get_if<
-                lux::entity_scene::GeneratedSectionSource>(
+                lux::scene::GeneratedSectionSource>(
                     &request.record.source);
             if (!source || source->generator != state.id)
             {
@@ -146,11 +148,11 @@ namespace
         namespace spatial3d = lux::runtime::spatial3d;
 
         const auto section_count = kBaseCatalogSections * scale;
-        lux::entity_scene::EntitySceneManifest manifest;
-        manifest.id = lux::entity_scene::EntitySceneId{
+        lux::scene::ScenePackage package;
+        package.id = lux::scene::ScenePackageId{
             uuids::uuid::from_string(
                 "8a000000-0000-4000-8000-000000000001").value()};
-        manifest.sections.reserve(section_count);
+        package.sections.reserve(section_count);
         std::vector<spatial3d::Spatial3DSectionCatalogEntry> entries;
         entries.reserve(section_count);
 
@@ -159,7 +161,7 @@ namespace
         {
             auto section = record(generator, ordinal++);
             entries.push_back({coordinate, section.id});
-            manifest.sections.push_back(std::move(section));
+            package.sections.push_back(std::move(section));
         };
 
         // Two disjoint complete 5x5x5 windows preserve the old teleport
@@ -185,11 +187,11 @@ namespace
                 1'000'000});
         }
 
-        const auto section_bytes = manifest.sections.front().decoded_bytes;
-        const auto encoded = lux::entity_scene::encodeEntitySceneManifest(
-            manifest);
+        const auto section_bytes = package.sections.front().decoded_bytes;
+        const auto encoded = lux::scene::encodeScenePackage(
+            package);
         assert(encoded);
-        const auto decoded = lux::entity_scene::decodeEntitySceneManifest(
+        const auto decoded = lux::scene::decodeScenePackage(
             *encoded);
         assert(decoded);
         auto catalog =
@@ -334,7 +336,7 @@ namespace
             .sections = spatial3d::Spatial3DSectionSource::catalog(
                 std::move(fixture.spatial)),
             .cell_world_size = 64.0,
-            .channel = lux::entity_scene::DemandChannelId{
+            .channel = lux::scene::DemandChannelId{
                 std::string{kDemandChannel}},
             .active_distance_scale = 1.0,
             .resident_distance_scale = 1.0,

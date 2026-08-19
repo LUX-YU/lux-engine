@@ -77,13 +77,12 @@ target_link_libraries(
     INTERFACE
         lux::engine::ecs::render_components
         lux::engine::function::animation
-        lux::engine::resource::entity_scene
+        lux::engine::ecs::scene_format
 )
 component_add_transitive_commands(
     render_components_3d
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS render_components)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS render_components scene_format)"
     "find_package(lux-engine-function REQUIRED COMPONENTS animation)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS entity_scene)"
 )
 
 # ---------------------------------------------------------------------------

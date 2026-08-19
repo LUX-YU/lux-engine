@@ -5,7 +5,7 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/Spatial2DSectionIndex.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/visibility.h>
@@ -27,7 +27,7 @@ namespace lux::runtime::spatial2d
     struct SpatialInterest2DConfig final
     {
         double section_world_size{64.0};
-        lux::entity_scene::DemandChannelId channel{
+        lux::scene::DemandChannelId channel{
             "lux.spatial2d.resident"};
         std::uint32_t resident_priority{1u};
         std::size_t maximum_sources{8u};

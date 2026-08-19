@@ -14,7 +14,7 @@ namespace
         const lux::runtime::entity_scene::EntitySceneCatalog& catalog,
         Id id)
     {
-        catalog.findContribution(id);
+        catalog.findFeature(id);
     };
 }
 
@@ -27,21 +27,21 @@ int main()
         "71000000-0000-4000-8000-000000000001");
     assert(parsed);
 
-    lux::entity_scene::EntitySceneManifest manifest;
-    manifest.id = lux::entity_scene::EntitySceneId{*parsed};
-    manifest.contributions.push_back({
-        lux::extensions::ContributionId{"org.lux.test.catalog_identity"},
+    lux::scene::ScenePackage package;
+    package.id = lux::scene::ScenePackageId{*parsed};
+    package.features.push_back({
+        lux::scene::SceneFeatureId{"org.lux.test.catalog_identity"},
         1u,
         {}});
 
     auto catalog =
         lux::runtime::entity_scene::EntitySceneCatalog::create(
-            std::move(manifest));
+            std::move(package));
     assert(catalog);
-    assert(catalog->findContribution(
+    assert(catalog->findFeature(
         lux::scene::sceneFeatureId(
             "org.lux.test.catalog_identity")) != nullptr);
-    assert(catalog->findContribution(
+    assert(catalog->findFeature(
         lux::scene::sceneFeatureId(
             "org.lux.test.catalog_missing")) == nullptr);
     return 0;

@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/engine/ecs/PersistentEntityId.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/visibility.h>
@@ -56,10 +57,10 @@ namespace lux::toolchain
 
     struct Spatial3DActorSource final
     {
-        lux::entity_scene::PersistentEntityId id;
+        lux::ecs::PersistentEntityId id;
         uuids::uuid space{};
         lux::spatial::Position3D position;
-        std::optional<lux::entity_scene::PersistentEntityId> transform_parent;
+        std::optional<lux::ecs::PersistentEntityId> transform_parent;
         std::vector<std::string> data_layers;
         std::vector<std::byte> name_table;
         std::vector<Spatial3DActorComponentSource> components;
@@ -67,7 +68,7 @@ namespace lux::toolchain
 
     struct Spatial3DInstanceSource final
     {
-        lux::entity_scene::PersistentEntityId id;
+        lux::ecs::PersistentEntityId id;
         lux::spatial::Position3D position;
         std::array<float, 4u> rotation{0.0f, 0.0f, 0.0f, 1.0f};
         std::array<float, 3u> scale{1.0f, 1.0f, 1.0f};
@@ -101,10 +102,10 @@ namespace lux::toolchain
 
     struct Spatial3DAuthoringSource final
     {
-        lux::entity_scene::EntitySceneId scene;
-        std::vector<lux::entity_scene::SceneContribution> contributions;
+        lux::scene::ScenePackageId scene;
+        std::vector<lux::scene::SceneFeatureRequest> features;
         std::vector<Spatial3DSourceSpace> spaces;
-        std::vector<lux::entity_scene::RequiredExtension> required_extensions;
+        std::vector<lux::scene::RequiredExtension> required_extensions;
         std::vector<Spatial3DActorSource> actors;
         std::vector<Spatial3DInstancePageSource> instance_pages;
         std::vector<Spatial3DTerrainPageSource> terrain_pages;

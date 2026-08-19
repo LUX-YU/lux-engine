@@ -1,6 +1,6 @@
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 
 #include "EntityBatchInternal.hpp"
 
@@ -33,7 +33,7 @@ namespace lux::runtime::entity_scene::detail
 
         mutable std::mutex mutex;
         std::map<
-            lux::entity_scene::ContentBlobId,
+            lux::ecs::scene_format::ContentBlobId,
             std::weak_ptr<const SectionBlobEntry>> entries;
         const std::uint64_t generation;
         bool owner_alive{true};
@@ -61,7 +61,7 @@ namespace lux::runtime::entity_scene::detail
         }
 
         std::shared_ptr<SectionBlobStoreControl> control;
-        lux::entity_scene::ContentBlobRef reference;
+        lux::ecs::scene_format::ContentBlobRef reference;
         lux::cxx::SharedBytes<> bytes;
         bool accounted{false};
     };
@@ -74,10 +74,10 @@ namespace lux::runtime::entity_scene
         return static_cast<bool>(entry_);
     }
 
-    const lux::entity_scene::ContentBlobRef& ContentBlobLease::reference()
+    const lux::ecs::scene_format::ContentBlobRef& ContentBlobLease::reference()
         const noexcept
     {
-        static const lux::entity_scene::ContentBlobRef empty;
+        static const lux::ecs::scene_format::ContentBlobRef empty;
         return entry_ ? entry_->reference : empty;
     }
 
@@ -88,7 +88,7 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<ContentBlobLease, EContentBlobLookupError>
     ContentBlobClient::resolve(
-        const lux::entity_scene::ContentBlobRef& reference) const noexcept
+        const lux::ecs::scene_format::ContentBlobRef& reference) const noexcept
     {
         if (!reference.valid())
         {
@@ -164,8 +164,8 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<ContentBlobLease, EntityBatchFailure>
     SectionBlobStore::acquire(
-        lux::entity_scene::EntitySectionAttachment attachment,
-        const lux::entity_scene::EntitySectionId& section,
+        lux::ecs::scene_format::EntitySectionAttachment attachment,
+        const lux::ecs::scene_format::EntitySectionId& section,
         std::uint64_t generation) noexcept
     {
         const auto control = control_;
@@ -177,7 +177,7 @@ namespace lux::runtime::entity_scene
                 generation,
                 "invalid content blob reference"));
         }
-        const auto computed = lux::entity_scene::makeContentBlobId(
+        const auto computed = lux::ecs::scene_format::makeContentBlobId(
             attachment.reference.type,
             attachment.reference.schema_version,
             attachment.payload);

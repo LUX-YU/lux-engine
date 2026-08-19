@@ -64,15 +64,15 @@ target_link_libraries(
     lux::engine::ecs::core
     lux::engine::core::math
     lux::engine::core::meta
-    lux::engine::resource::entity_scene
+    lux::engine::ecs::scene_format
     lux::engine::resource::spatial
 )
 
 component_add_transitive_commands(
     physics3d
-    "find_package (lux-engine-ecs  REQUIRED COMPONENTS core)"
+    "find_package (lux-engine-ecs  REQUIRED COMPONENTS core scene_format)"
     "find_package (lux-engine-core REQUIRED COMPONENTS math meta)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS entity_scene spatial)"
+    "find_package (lux-engine-resource REQUIRED COMPONENTS spatial)"
 )
 # 注意：Jolt 刻意不在传递命令里（内部封装裁定）。
 

@@ -6,7 +6,7 @@
 
 #include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
 
 namespace lux::ecs
@@ -26,6 +26,6 @@ namespace lux::ecs
         PersistentEntityRef field;
 
         LUX_MEMBER(display_name=Content, readonly=true, cooked_relocation=content_blob_ref)
-        lux::entity_scene::ContentBlobRef content;
+        lux::ecs::scene_format::ContentBlobRef content;
     };
 }

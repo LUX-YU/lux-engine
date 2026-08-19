@@ -17,10 +17,10 @@ namespace lux::runtime::entity_scene
     PreparedEntityBatch& PreparedEntityBatch::operator=(
         PreparedEntityBatch&&) noexcept = default;
 
-    const lux::entity_scene::EntitySectionId& PreparedEntityBatch::section()
+    const lux::ecs::scene_format::EntitySectionId& PreparedEntityBatch::section()
         const noexcept
     {
-        static const lux::entity_scene::EntitySectionId empty;
+        static const lux::ecs::scene_format::EntitySectionId empty;
         return impl_ ? impl_->decoded.section() : empty;
     }
 

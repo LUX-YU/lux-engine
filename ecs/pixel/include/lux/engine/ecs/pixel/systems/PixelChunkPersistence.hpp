@@ -6,7 +6,7 @@
 
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/resource/entity_scene/EntityPersistenceJournal.hpp>
+#include <lux/engine/ecs/scene_format/PersistenceJournal.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -31,11 +31,11 @@ namespace lux::ecs
     };
 
     [[nodiscard]] LUX_FUNCTION_PUBLIC
-    lux::entity_scene::PersistenceSchemaId
+    lux::ecs::scene_format::PersistenceSchemaId
     pixelChunkPersistenceSchema();
 
     [[nodiscard]] LUX_FUNCTION_PUBLIC lux::cxx::expected<
-        lux::entity_scene::PersistenceJournalRecord,
+        lux::ecs::scene_format::PersistenceJournalRecord,
         EPixelChunkPersistenceError>
     encodePixelChunkPersistence(
         const PixelChunkDeltaSnapshot& snapshot) noexcept;
@@ -44,7 +44,7 @@ namespace lux::ecs
         PixelChunkDeltaSnapshot,
         EPixelChunkPersistenceError>
     decodePixelChunkPersistence(
-        const lux::entity_scene::PersistenceJournalRecord& record) noexcept;
+        const lux::ecs::scene_format::PersistenceJournalRecord& record) noexcept;
 
     /// Applies a journal delta to an owning decoded base before the expensive
     /// PreparedPixelChunk expansion. This is pure worker-safe CPU work.
@@ -53,7 +53,7 @@ namespace lux::ecs
         EPixelChunkPersistenceError>
     mergePixelChunkPersistence(
         PixelChunkLoad& base,
-        const lux::entity_scene::PersistenceJournalRecord& record) noexcept;
+        const lux::ecs::scene_format::PersistenceJournalRecord& record) noexcept;
 
     struct PixelChunkPersistenceSnapshot final
     {
@@ -83,7 +83,7 @@ namespace lux::ecs
             EPixelChunkPersistenceError>
         restore(PixelChunkLoad& base) noexcept;
 
-        [[nodiscard]] const lux::entity_scene::PersistenceJournalRecord*
+        [[nodiscard]] const lux::ecs::scene_format::PersistenceJournalRecord*
         latest(PixelChunkCoord coordinate) const noexcept;
 
         [[nodiscard]] PixelChunkPersistenceSnapshot snapshot() const noexcept;
@@ -92,7 +92,7 @@ namespace lux::ecs
     private:
         std::unordered_map<
             PixelChunkCoord,
-            lux::entity_scene::PersistenceJournal,
+            lux::ecs::scene_format::PersistenceJournal,
             PixelChunkCoordHash> journals_;
         std::uint64_t captures_{0u};
         std::uint64_t recoveries_{0u};

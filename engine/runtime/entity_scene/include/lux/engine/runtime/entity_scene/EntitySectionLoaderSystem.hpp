@@ -5,7 +5,7 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchTypes.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
@@ -149,7 +149,7 @@ namespace lux::runtime::entity_scene
         [[nodiscard]] lux::cxx::expected<
             EntitySectionTicket,
             EEntitySectionRequestError>
-        acquire(lux::entity_scene::EntitySectionRecord record) const noexcept;
+        acquire(lux::scene::SectionRecord record) const noexcept;
 
         /// Side-effect-free admission/requirement preflight. Scene selectors
         /// use this for the whole startup set before acquiring the first
@@ -158,15 +158,15 @@ namespace lux::runtime::entity_scene
             void,
             EEntitySectionRequestError>
         validate(
-            const lux::entity_scene::EntitySectionRecord& record) const
+            const lux::scene::SectionRecord& record) const
             noexcept;
 
         [[nodiscard]] lux::cxx::expected<
             void,
             EEntitySectionRequestError>
         validateRequirements(
-            std::span<const lux::entity_scene::RequiredExtension> extensions,
-            std::span<const lux::entity_scene::RequiredComponentSchema>
+            std::span<const lux::scene::RequiredExtension> extensions,
+            std::span<const lux::scene::RequiredComponentSchema>
                 components) const noexcept;
 
         [[nodiscard]] explicit operator bool() const noexcept;
@@ -177,7 +177,7 @@ namespace lux::runtime::entity_scene
         /// generation through the ECS barrier, or another owner still pins
         /// that generation. This never treats a newer generation as a match.
         [[nodiscard]] bool releaseSettled(
-            const lux::entity_scene::EntitySectionId& section,
+            const lux::ecs::scene_format::EntitySectionId& section,
             std::uint64_t generation) const noexcept;
 
     private:
@@ -263,26 +263,26 @@ namespace lux::runtime::entity_scene
         [[nodiscard]] lux::cxx::expected<
             EntitySectionTicket,
             EEntitySectionRequestError>
-        acquire(lux::entity_scene::EntitySectionRecord record) noexcept;
+        acquire(lux::scene::SectionRecord record) noexcept;
         [[nodiscard]] lux::cxx::expected<
             void,
             EEntitySectionRequestError>
         validate(
-            const lux::entity_scene::EntitySectionRecord& record) const
+            const lux::scene::SectionRecord& record) const
             noexcept;
         [[nodiscard]] lux::cxx::expected<
             void,
             EEntitySectionRequestError>
         validateRequirements(
-            std::span<const lux::entity_scene::RequiredExtension> extensions,
-            std::span<const lux::entity_scene::RequiredComponentSchema>
+            std::span<const lux::scene::RequiredExtension> extensions,
+            std::span<const lux::scene::RequiredComponentSchema>
                 components) const noexcept;
         void release(std::uint32_t slot, std::uint64_t generation) noexcept;
         [[nodiscard]] EEntitySectionState state(
             std::uint32_t slot,
             std::uint64_t generation) const noexcept;
         [[nodiscard]] bool releaseSettled(
-            const lux::entity_scene::EntitySectionId& section,
+            const lux::ecs::scene_format::EntitySectionId& section,
             std::uint64_t generation) const noexcept;
         void applyCommand(
             const EntitySectionCommand& command,

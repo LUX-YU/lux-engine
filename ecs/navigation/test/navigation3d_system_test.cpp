@@ -104,9 +104,9 @@ int main(int argc, char** argv)
     World world;
     auto& registry = world.registry();
     const auto entity = registry.create();
-    lux::entity_scene::ContentBlobRef content;
+    lux::ecs::scene_format::ContentBlobRef content;
     content.id.digest[0] = std::byte{1u};
-    content.type = lux::entity_scene::ContentTypeId{
+    content.type = lux::ecs::scene_format::ContentTypeId{
         std::string{kNavigationRegion3DContentTypeName}};
     content.schema_version = kNavigationRegion3DSchemaVersion;
     registry.emplace<NavigationRegion3DComponent>(
@@ -196,7 +196,7 @@ int main(int argc, char** argv)
         entity,
         [](NavigationRegion3DComponent& component)
         {
-            component.content.type = lux::entity_scene::ContentTypeId{
+            component.content.type = lux::ecs::scene_format::ContentTypeId{
                 std::string{"lux.navigation.unsupported"}};
         });
     schedule.tick(0.0f);

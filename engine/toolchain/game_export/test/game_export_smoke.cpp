@@ -3,7 +3,8 @@
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/MeshSerDeser.hpp>
@@ -455,7 +456,7 @@ int main()
         return 5;
     }
 
-    // LXWA is Authoring-only. The Player Pak contains one LXSC manifest plus
+    // LXWA is Authoring-only. The Player Pak contains one LXSC ScenePackage plus
     // its startup, fine-cell and coarse-LOD LXES images, each linked through
     // one absolute mounted source.
     auto provider = lux::asset::PakAssetProvider::loadFromFile(
@@ -465,11 +466,11 @@ int main()
     const auto scene_image = (*provider)->open(scene_entry->id);
     if (!scene_image)
         return 5;
-    const auto scene_manifest = lux::entity_scene::decodeEntitySceneManifest(
+    const auto scene_package = lux::scene::decodeScenePackage(
         scene_image->bytes.view());
-    if (!scene_manifest ||
-        scene_manifest->sections.size() != section_count ||
-        scene_manifest->startup_sections.size() != 1u)
+    if (!scene_package ||
+        scene_package->sections.size() != section_count ||
+        scene_package->startup_sections.size() != 1u)
     {
         return 5;
     }
@@ -477,7 +478,7 @@ int main()
     std::size_t published_attachments = 0u;
     bool startup_found = false;
     bool generated_hlod_referenced = false;
-    for (const auto& record : scene_manifest->sections)
+    for (const auto& record : scene_package->sections)
     {
         const auto section_entry = std::find_if(
             pak->entries.begin(),
@@ -491,7 +492,7 @@ int main()
         if (section_entry == pak->entries.end())
             return 5;
         const auto* stored = std::get_if<
-            lux::entity_scene::StoredSectionSource>(&record.source);
+            lux::scene::StoredSectionSource>(&record.source);
         if (stored == nullptr ||
             stored->content_path != "/Game/" + section_entry->vpath ||
             section_entry->vpath != "EntitySections/" +
@@ -506,7 +507,8 @@ int main()
         {
             return 5;
         }
-        const auto section = lux::entity_scene::decodeEntitySectionImage(
+        const auto section =
+            lux::ecs::scene_format::decodeEntitySectionImage(
             section_image->bytes.view());
         if (!section || section->section.value() != section_entry->id ||
             section->entities.size() != record.entity_count)
@@ -537,7 +539,7 @@ int main()
                     });
         }
         startup_found = startup_found ||
-            record.id == scene_manifest->startup_sections.front();
+            record.id == scene_package->startup_sections.front();
     }
     if (!startup_found || !generated_hlod_referenced ||
         published_entities == 0u ||

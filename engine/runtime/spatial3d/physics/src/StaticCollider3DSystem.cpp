@@ -31,7 +31,7 @@ namespace lux::runtime::spatial3d
         }
 
         [[nodiscard]] bool supportedContent(
-            const lux::entity_scene::ContentBlobRef& content) noexcept
+            const lux::ecs::scene_format::ContentBlobRef& content) noexcept
         {
             return content.valid() &&
                 content.type.name() ==
@@ -89,7 +89,7 @@ namespace lux::runtime::spatial3d
         struct Entry final
         {
             entt::entity entity{entt::null};
-            lux::entity_scene::ContentBlobRef content;
+            lux::ecs::scene_format::ContentBlobRef content;
             lux::ecs::ResolvedTransform3DComponent transform;
             std::uint64_t generation{0u};
             EStaticCollider3DState state{

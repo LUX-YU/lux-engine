@@ -4,7 +4,7 @@
  * @brief Move-only private-registry staging transaction for one EntitySection.
  */
 
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
+#include <lux/engine/ecs/scene_format/Identifiers.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchTypes.hpp>
 #include <lux/engine/runtime/entity_scene/visibility.h>
 
@@ -25,7 +25,7 @@ namespace lux::runtime::entity_scene
         PreparedEntityBatch(const PreparedEntityBatch&) = delete;
         PreparedEntityBatch& operator=(const PreparedEntityBatch&) = delete;
 
-        [[nodiscard]] const lux::entity_scene::EntitySectionId& section()
+        [[nodiscard]] const lux::ecs::scene_format::EntitySectionId& section()
             const noexcept;
         [[nodiscard]] std::uint64_t generation() const noexcept;
         [[nodiscard]] std::size_t entityCount() const noexcept;

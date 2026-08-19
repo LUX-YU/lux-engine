@@ -69,6 +69,32 @@ namespace lux::toolchain
             }
             return result == 0u ? 1u : result;
         }
+
+        [[nodiscard]] lux::scene::SceneFeatureRequest toSceneFeature(
+            const lux::entity_scene::SceneContribution& contribution)
+        {
+            return {
+                lux::scene::SceneFeatureId{
+                    std::string{contribution.id.name()}},
+                contribution.config_schema_version,
+                contribution.config};
+        }
+
+        [[nodiscard]] lux::scene::RequiredExtension toRequiredExtension(
+            const lux::entity_scene::RequiredExtension& requirement)
+        {
+            return {
+                lux::extensions::ExtensionId{
+                    std::string{requirement.id.name()}},
+                requirement.required_major,
+                requirement.minimum_minor};
+        }
+
+        [[nodiscard]] lux::ecs::PersistentEntityId toRuntimeEntityId(
+            const lux::entity_scene::PersistentEntityId& id) noexcept
+        {
+            return lux::ecs::PersistentEntityId{id.value()};
+        }
     } // namespace
 
     lux::cxx::expected<Spatial3DAuthoringSource, std::string>
@@ -83,8 +109,10 @@ namespace lux::toolchain
         }
 
         Spatial3DAuthoringSource result;
-        result.scene = lux::entity_scene::EntitySceneId{root->world.value()};
-        result.contributions = root->contributions;
+        result.scene = lux::scene::ScenePackageId{root->world.value()};
+        result.features.reserve(root->contributions.size());
+        for (const auto& contribution : root->contributions)
+            result.features.push_back(toSceneFeature(contribution));
         result.spaces.reserve(root->spaces.size());
         std::unordered_set<std::string> spaces;
         for (const auto& space : root->spaces)
@@ -103,7 +131,10 @@ namespace lux::toolchain
                 static_cast<double>(space.cell_edge)
             });
         }
-        result.required_extensions = root->required_extensions;
+        result.required_extensions.reserve(root->required_extensions.size());
+        for (const auto& requirement : root->required_extensions)
+            result.required_extensions.push_back(
+                toRequiredExtension(requirement));
 
         lux::authoring::WorldSourceCodecLimits actor_limits;
         actor_limits.maximum_bytes = limits.maximum_actor_document_bytes;
@@ -151,10 +182,14 @@ namespace lux::toolchain
                     });
                 }
                 Spatial3DActorSource actor;
-                actor.id = document->actor;
+                actor.id = toRuntimeEntityId(document->actor);
                 actor.space = document->space.value();
                 actor.position = *position;
-                actor.transform_parent = document->transform_parent;
+                if (document->transform_parent)
+                {
+                    actor.transform_parent =
+                        toRuntimeEntityId(*document->transform_parent);
+                }
                 actor.data_layers.reserve(document->data_layers.size());
                 for (const auto& layer : document->data_layers)
                 {
@@ -237,7 +272,7 @@ namespace lux::toolchain
                                 std::to_string(
                                     source_instance.id.local_id));
                         group->second.instances.push_back({
-                            lux::entity_scene::PersistentEntityId{instance_id},
+                            lux::ecs::PersistentEntityId{instance_id},
                             *position,
                             source_instance.rotation,
                             source_instance.scale,

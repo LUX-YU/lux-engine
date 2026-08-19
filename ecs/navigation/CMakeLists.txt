@@ -36,15 +36,14 @@ target_link_libraries(
         lux::engine::ecs::core
         lux::engine::function::navigation
         lux::engine::function::navigation_detour3d
-        lux::engine::resource::entity_scene
+        lux::engine::ecs::scene_format
         lux::engine::core::meta
 )
 
 component_add_transitive_commands(
     navigation3d
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
     "find_package(lux-engine-function REQUIRED COMPONENTS navigation navigation_detour3d)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS entity_scene)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
 )
 

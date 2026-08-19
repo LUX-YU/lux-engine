@@ -5,8 +5,10 @@
  */
 
 #include <lux/engine/ecs/PersistentEntityId.hpp>
+#include <lux/engine/ecs/ComponentSchemaId.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
@@ -41,13 +43,13 @@ namespace lux::runtime::spatial2d
     struct Infinite2DPixelSectionConfig final
     {
         lux::ecs::PersistentEntityId field;
-        lux::entity_scene::SectionGeneratorId generator{
+        lux::scene::SectionGeneratorId generator{
             "lux.pixel.infinite2d.chunk"};
-        lux::entity_scene::ComponentSchemaId chunk_schema{
-            "lux.pixel.chunk2d"};
-        lux::entity_scene::ContentTypeId content_type{
+        lux::ecs::ComponentSchemaId chunk_schema{
+            lux::ecs::componentSchemaId("lux.pixel.chunk2d")};
+        lux::ecs::scene_format::ContentTypeId content_type{
             "lux.pixel.chunk"};
-        lux::entity_scene::DemandChannelId demand_channel{
+        lux::scene::DemandChannelId demand_channel{
             "lux.spatial2d.resident"};
         std::uint64_t seed{0u};
         lux::ecs::MaterialId foreground_material{1u};
@@ -79,7 +81,7 @@ namespace lux::runtime::spatial2d
         [[nodiscard]] Spatial2DSectionRecordFactory recordFactory() const;
 
         [[nodiscard]] lux::cxx::expected<
-            lux::entity_scene::EntitySectionRecord,
+            lux::scene::SectionRecord,
             Infinite2DPixelContentFailure>
         record(lux::spatial::GridCoord2i64 coordinate) const;
 
@@ -114,5 +116,5 @@ namespace lux::runtime::spatial2d
         Infinite2DPixelContentFailure>
     decodeInfinite2DPixelChunk(
         lux::cxx::SharedBytes<> bytes,
-        lux::entity_scene::ContentBlobRef reference);
+        lux::ecs::scene_format::ContentBlobRef reference);
 }

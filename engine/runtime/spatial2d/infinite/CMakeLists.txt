@@ -40,7 +40,7 @@ target_link_libraries(
         lux::engine::ecs::core
         lux::engine::ecs::spatial2d_components
         lux::engine::ecs::transform
-        lux::engine::resource::entity_scene
+        lux::engine::scene::scene_package
         lux::engine::resource::spatial
         lux::engine::runtime::runtime_spatial_partition
         lux::cxx::compile_time
@@ -49,7 +49,8 @@ target_link_libraries(
 component_add_transitive_commands(
     runtime_spatial2d_infinite
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core spatial2d_components transform)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS entity_scene spatial)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS spatial)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_spatial_partition)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
@@ -96,6 +97,7 @@ target_link_libraries(
         lux::engine::runtime::runtime_entity_scene
         lux::engine::runtime::runtime_execution
         lux::engine::ecs::pixel
+        lux::engine::ecs::scene_format
     PRIVATE
         lux::cxx::algorithm
         lux::engine::core::serialization
@@ -104,7 +106,7 @@ target_link_libraries(
 component_add_transitive_commands(
     runtime_pack_infinite2d
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_execution runtime_spatial2d_infinite)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS pixel)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS pixel scene_format)"
 )
 
 lux_classify_target(

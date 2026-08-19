@@ -651,7 +651,7 @@ namespace lux::game
 
         lux::runtime::SceneRuntime::Config runtime_config;
         runtime_config.name = application.config.title;
-        runtime_config.scene_manifest_image = std::move(scene_image.value());
+        runtime_config.scene_package_image = std::move(scene_image.value());
         runtime_config.scene_origin = scene_origin;
         runtime_config.events = application.events.get();
 
@@ -1091,7 +1091,7 @@ namespace lux::game
             lux::scene::sceneFeatureId(
                 lux::spatial3d_scene::kSpatial3DContributionName);
         telemetry.spatial3d_catalog_present =
-            impl_->runtime->entityScene().findContribution(
+            impl_->runtime->entityScene().findFeature(
                 spatial3d_feature) != nullptr;
         if (const auto* interest = impl_->runtime->services().get<
                 lux::runtime::spatial3d::SpatialInterest3DSystem>())

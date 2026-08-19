@@ -8,7 +8,7 @@
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
-#include <lux/engine/resource/entity_scene/EntitySection.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -23,7 +23,7 @@ namespace lux::ecs
     {
         entt::entity entity{entt::null};
         std::uint64_t generation{0u};
-        lux::entity_scene::ContentBlobRef content;
+        lux::ecs::scene_format::ContentBlobRef content;
     };
 
     struct Navigation3DSystemSnapshot final

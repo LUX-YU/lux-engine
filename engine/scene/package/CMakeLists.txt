@@ -64,6 +64,33 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
+# Public-link probe: this target intentionally does not link the legacy
+# resource/entity_scene component. On Windows it therefore verifies that the
+# scene_package DLL exports its canonical codec entry points and produces an
+# import library.
+add_executable(
+    scene_package_public_link_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/scene_package_public_link_test.cpp
+)
+target_link_libraries(
+    scene_package_public_link_test
+    PRIVATE lux::engine::scene::scene_package
+)
+if(MSVC)
+    target_compile_options(scene_package_public_link_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(scene_package_public_link_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  scene_package_public_link_test
+    LAYER   RUNTIME
+    PRODUCT TEST
+    ROLE    INTEGRATION
+)
+
+# Compatibility contract: this test additionally links the frozen Resource
+# codec so it can compare canonical ScenePackage bytes with the legacy LXSC
+# implementation during the migration window.
 add_executable(
     scene_package_contract_test
     ${CMAKE_CURRENT_SOURCE_DIR}/test/scene_package_contract_test.cpp

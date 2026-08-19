@@ -4,6 +4,7 @@
  * @brief Pixel leaf provider for procedurally addressed EntitySections.
  */
 
+#include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
 #include <lux/engine/resource/entity_scene/EntityScene.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
@@ -39,7 +40,7 @@ namespace lux::runtime::spatial2d
 
     struct Infinite2DPixelSectionConfig final
     {
-        lux::entity_scene::PersistentEntityId field;
+        lux::ecs::PersistentEntityId field;
         lux::entity_scene::SectionGeneratorId generator{
             "lux.pixel.infinite2d.chunk"};
         lux::entity_scene::ComponentSchemaId chunk_schema{

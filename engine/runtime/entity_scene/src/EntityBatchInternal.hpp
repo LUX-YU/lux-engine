@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/core/serialization/NameTable.hpp>
+#include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/meta/LuxObject.hpp>
 #include <lux/engine/resource/entity_scene/EntitySection.hpp>
@@ -16,6 +17,13 @@
 
 namespace lux::runtime::entity_scene::detail
 {
+    [[nodiscard]] inline lux::ecs::PersistentEntityId
+    toRuntimePersistentId(
+        const lux::entity_scene::PersistentEntityId& id) noexcept
+    {
+        return lux::ecs::PersistentEntityId{id.value()};
+    }
+
     struct ResolvedReferenceRelocation final
     {
         std::uint32_t schema{0u};
@@ -40,7 +48,7 @@ namespace lux::runtime::entity_scene::detail
         std::uint32_t schema{0u};
         lux::entity_scene::EntityOrdinal source{
             lux::entity_scene::kInvalidEntityOrdinal};
-        lux::entity_scene::PersistentEntityId target;
+        lux::ecs::PersistentEntityId target;
         std::uint32_t field_offset{0u};
     };
 

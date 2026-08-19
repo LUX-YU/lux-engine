@@ -517,9 +517,11 @@ int main(int argc, char** argv)
         uuid("20000000-0000-4000-8000-000000000001")};
     section.component_names = {""};
     section.archetypes.push_back({});
-    const PersistentEntityId root_id{
+    const lux::ecs::PersistentEntityId root_id{
         uuid("30000000-0000-4000-8000-000000000001")};
-    section.entities = {{0u, root_id}, {0u, std::nullopt}};
+    section.entities = {
+        {0u, PersistentEntityId{root_id.value()}},
+        {0u, std::nullopt}};
     section.parents.push_back({1u, 0u});
     EntitySectionAttachment close_attachment;
     close_attachment.reference.type =

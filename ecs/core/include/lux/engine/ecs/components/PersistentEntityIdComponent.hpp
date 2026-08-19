@@ -9,7 +9,7 @@
  * requires an identity beyond one registry residency interval.
  */
 
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
+#include <lux/engine/ecs/PersistentEntityId.hpp>
 
 #include <utility>
 
@@ -34,7 +34,7 @@ namespace lux::ecs
         PersistentEntityIdComponent& operator=(
             PersistentEntityIdComponent&&) noexcept = delete;
 
-        [[nodiscard]] const lux::entity_scene::PersistentEntityId& id()
+        [[nodiscard]] const PersistentEntityId& id()
             const noexcept
         {
             return id_;
@@ -44,11 +44,11 @@ namespace lux::ecs
         friend class PersistentEntityIndex;
 
         explicit PersistentEntityIdComponent(
-            lux::entity_scene::PersistentEntityId id) noexcept
+            PersistentEntityId id) noexcept
             : id_(std::move(id))
         {
         }
 
-        lux::entity_scene::PersistentEntityId id_;
+        PersistentEntityId id_;
     };
 }

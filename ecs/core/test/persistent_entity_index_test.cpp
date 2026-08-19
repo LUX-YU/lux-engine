@@ -8,9 +8,9 @@
 
 namespace
 {
-    lux::entity_scene::PersistentEntityId id(std::string_view value)
+    lux::ecs::PersistentEntityId id(std::string_view value)
     {
-        return lux::entity_scene::PersistentEntityId{
+        return lux::ecs::PersistentEntityId{
             *uuids::uuid::from_string(value)};
     }
 }
@@ -19,7 +19,7 @@ int main()
 {
     static_assert(!std::is_constructible_v<
         lux::ecs::PersistentEntityIdComponent,
-        lux::entity_scene::PersistentEntityId>);
+        lux::ecs::PersistentEntityId>);
     static_assert(!std::is_copy_assignable_v<
         lux::ecs::PersistentEntityIdComponent>);
     static_assert(!std::is_move_assignable_v<
@@ -152,7 +152,7 @@ int main()
         lux::ecs::EPersistentEntityIdError::DUPLICATE_ID);
 
     const std::array invalid_ids{
-        lux::entity_scene::PersistentEntityId{}};
+        lux::ecs::PersistentEntityId{}};
     auto invalid_claim = lux::ecs::claimPersistentEntityIds(
         index, invalid_ids);
     assert(!invalid_claim);

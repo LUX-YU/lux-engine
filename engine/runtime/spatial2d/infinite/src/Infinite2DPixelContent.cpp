@@ -24,6 +24,12 @@ namespace lux::runtime::spatial2d
             lux::spatial::GridCoord2i64 coordinate;
         };
 
+        [[nodiscard]] lux::entity_scene::PersistentEntityId
+        toWirePersistentId(const lux::ecs::PersistentEntityId& id) noexcept
+        {
+            return lux::entity_scene::PersistentEntityId{id.value()};
+        }
+
         [[nodiscard]] std::vector<std::byte> encodeParameters(
             lux::spatial::GridCoord2i64 coordinate)
         {
@@ -150,7 +156,10 @@ namespace lux::runtime::spatial2d
                     coordinate_payload.size())},
                 std::move(coordinate_payload)});
             image.persistent_reference_relocations.push_back({
-                0u, 0u, 3u, config.field});
+                0u,
+                0u,
+                3u,
+                toWirePersistentId(config.field)});
 
             EntitySectionAttachment attachment;
             attachment.reference.type = config.content_type;

@@ -4,6 +4,7 @@
  * @brief Authored identity and content reference for one sparse pixel chunk.
  */
 
+#include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/meta/MetaAnnotations.hpp>
 #include <lux/engine/resource/entity_scene/EntitySection.hpp>
 #include <lux/engine/resource/spatial/Spatial.hpp>
@@ -22,7 +23,7 @@ namespace lux::ecs
         // deliberately remain reflected fields even though TaggedProperty
         // serialization has no raw-object representation for either type.
         LUX_MEMBER(display_name=Field, readonly=true, cooked_relocation=persistent_entity_ref)
-        lux::entity_scene::PersistentEntityRef field;
+        PersistentEntityRef field;
 
         LUX_MEMBER(display_name=Content, readonly=true, cooked_relocation=content_blob_ref)
         lux::entity_scene::ContentBlobRef content;

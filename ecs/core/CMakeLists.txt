@@ -58,9 +58,7 @@ target_link_libraries(
     lux::engine::core::math
     lux::engine::core::meta            # EntityRegistry / reflection seam
     lux::engine::resource::asset_core       # AssetLoadFn carries asset_id_t
-    lux::engine::ecs::identity              # component schema identity
-    # Legacy persistent identity. Removed after the Scene Package adapter lands.
-    lux::engine::resource::entity_scene
+    lux::engine::ecs::identity              # component + persistent entity identity
     lux::engine::resource::spatial
 )
 
@@ -69,7 +67,7 @@ component_add_transitive_commands(
     "find_package (lux-cxx             REQUIRED COMPONENTS algorithm compile_time)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS identity)"
     "find_package (lux-engine-core     REQUIRED COMPONENTS math meta)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS asset_core entity_scene spatial)"
+    "find_package (lux-engine-resource REQUIRED COMPONENTS asset_core spatial)"
 )
 
 # ---------------------------------------------------------------------------

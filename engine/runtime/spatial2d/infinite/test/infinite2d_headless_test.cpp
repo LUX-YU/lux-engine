@@ -277,7 +277,7 @@ namespace
                 lux::meta::RefField{
                     "field",
                     lux::meta::ref_type_of_v<
-                        lux::entity_scene::PersistentEntityRef>,
+                        lux::ecs::PersistentEntityRef>,
                     lux::meta::EVisibility::Public,
                     &chunk,
                     static_cast<std::uint32_t>(offsetof(
@@ -308,7 +308,7 @@ namespace
                 lux::meta::RefField{
                     "tilemap",
                     lux::meta::ref_type_of_v<
-                        lux::entity_scene::PersistentEntityRef>,
+                        lux::ecs::PersistentEntityRef>,
                     lux::meta::EVisibility::Public,
                     &tile_chunk,
                     static_cast<std::uint32_t>(offsetof(
@@ -404,7 +404,7 @@ namespace
     };
 
     FieldSection makeFieldSection(
-        const lux::entity_scene::PersistentEntityId& field_id,
+        const lux::ecs::PersistentEntityId& field_id,
         const FieldFacts& facts)
     {
         using namespace lux::entity_scene;
@@ -423,7 +423,9 @@ namespace
             1u,
             EEntityComponentStorage::DATA});
         image.archetypes.push_back({{0u}});
-        image.entities.push_back({0u, field_id});
+        image.entities.push_back({
+            0u,
+            lux::entity_scene::PersistentEntityId{field_id.value()}});
         auto payload = fieldPayload(facts);
         image.columns.push_back({
             0u,
@@ -522,7 +524,7 @@ namespace
 
     struct TilemapProofState final
     {
-        lux::entity_scene::PersistentEntityId tilemap;
+        lux::ecs::PersistentEntityId tilemap;
         lux::entity_scene::SectionGeneratorId generator{
             "lux.tilemap.infinite2d.chunk.test"};
         lux::entity_scene::ComponentSchemaId schema{
@@ -621,7 +623,10 @@ namespace
             {0u, static_cast<std::uint32_t>(payload.size())},
             std::move(payload)});
         image.persistent_reference_relocations.push_back({
-            0u, 0u, 3u, state.tilemap});
+            0u,
+            0u,
+            3u,
+            lux::entity_scene::PersistentEntityId{state.tilemap.value()}});
 
         EntitySectionAttachment attachment;
         attachment.reference.type = state.content_type;
@@ -724,7 +729,7 @@ namespace
         lux::ecs::PersistentEntityIndex& persistent_entities,
         lux::runtime::entity_scene::ContentBlobClient blobs,
         lux::spatial::GridCoord2i64 expected,
-        const lux::entity_scene::PersistentEntityId& expected_owner)
+        const lux::ecs::PersistentEntityId& expected_owner)
     {
         auto view = registry.view<const lux::ecs::TileChunk2DComponent>();
         if (registry.storage<lux::ecs::TileChunk2DComponent>().size() != 1u)
@@ -910,7 +915,7 @@ namespace
         lux::meta::EntityRegistry& registry,
         lux::runtime::entity_scene::ContentBlobClient blobs,
         lux::spatial::GridCoord2i64 center,
-        const lux::entity_scene::PersistentEntityId& field_id)
+        const lux::ecs::PersistentEntityId& field_id)
     {
         std::vector<lux::spatial::GridCoord2i64> coordinates;
         registry.view<const lux::ecs::PixelChunk2DComponent>().each(
@@ -969,7 +974,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     registerComponent<lux::ecs::TileChunk2DComponent>(
         components, kTileChunkSchema, reflections.tile_chunk);
 
-    const lux::entity_scene::PersistentEntityId field_id{
+    const lux::ecs::PersistentEntityId field_id{
         ordinalUuid(10u)};
     constexpr lux::spatial::GridCoord2i64 kTileProofCoordinate{
         -1'234'567, 7'654'321};
@@ -1295,7 +1300,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     assert(loaded_field.simulation_enabled ==
         field_facts.simulation_enabled);
     const auto field_handle = field_owner->resolveField(
-        lux::entity_scene::PersistentEntityRef{field_id});
+        lux::ecs::PersistentEntityRef{field_id});
     assert(field_handle.isValid());
     if (extension)
     {
@@ -1464,7 +1469,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
                 entity,
                 lux::ecs::TileChunk2DComponent{
                     {x, y},
-                    lux::entity_scene::PersistentEntityRef{field_id},
+                    lux::ecs::PersistentEntityRef{field_id},
                     generated_tile_fact.content});
             tile_window.push_back(entity);
             if (x == 2 && y == 2)
@@ -1493,7 +1498,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
                 spatial2d::kSpatial2DActiveSectionCount;
     });
     const auto tilemap_handle = tilemap_owner_system->resolveTilemap(
-        lux::entity_scene::PersistentEntityRef{field_id});
+        lux::ecs::PersistentEntityRef{field_id});
     assert(tilemap_handle.isValid());
     assert(!tilemap_runtime.chunkResident(tilemap_handle, {2, 2}));
     assert(tilemap_runtime.chunkResident(tilemap_handle, {3, 3}));

@@ -282,7 +282,7 @@ namespace lux::runtime::entity_scene
             const auto entity_type = lux::meta::ref_type_of_v<entt::entity>;
             const auto persistent_reference_type =
                 lux::meta::ref_type_of_v<
-                    lux::entity_scene::PersistentEntityRef>;
+                    lux::ecs::PersistentEntityRef>;
             const auto blob_type =
                 lux::meta::ref_type_of_v<
                     lux::entity_scene::ContentBlobRef>;
@@ -431,7 +431,7 @@ namespace lux::runtime::entity_scene
                 field->visibility != lux::meta::EVisibility::Public ||
                 !sameExactType(field->type, persistent_reference_type) ||
                 field->offset + sizeof(
-                    lux::entity_scene::PersistentEntityRef) >
+                    lux::ecs::PersistentEntityRef) >
                     descriptor.ref_class->type.size ||
                 source >= image.entities.size())
             {
@@ -446,7 +446,7 @@ namespace lux::runtime::entity_scene
                 detail::ResolvedPersistentReferenceRelocation{
                     column.schema,
                     static_cast<lux::entity_scene::EntityOrdinal>(source),
-                    relocation.target,
+                    detail::toRuntimePersistentId(relocation.target),
                     field->offset});
         }
         impl->blob_relocations.reserve(image.blob_relocations.size());
@@ -683,10 +683,10 @@ namespace lux::runtime::entity_scene
                                     descriptor.schema_id.name));
                         }
                         auto* field = reinterpret_cast<
-                            lux::entity_scene::PersistentEntityRef*>(
+                            lux::ecs::PersistentEntityRef*>(
                                 static_cast<std::byte*>(component) +
                                 relocation.field_offset);
-                        *field = lux::entity_scene::PersistentEntityRef{
+                        *field = lux::ecs::PersistentEntityRef{
                             relocation.target};
                         ++prepared.persistent_reference_relocation;
                         ++completed;

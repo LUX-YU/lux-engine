@@ -6,7 +6,7 @@
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/ecs/pixel/PixelFieldTypes.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
+#include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <cstdint>
@@ -57,7 +57,7 @@ namespace lux::ecs
         /// Resolve one optional cross-Section field reference without
         /// exposing the transient binding component outside the Pixel domain.
         [[nodiscard]] PixelFieldHandle resolveField(
-            const lux::entity_scene::PersistentEntityRef& reference)
+            const PersistentEntityRef& reference)
             const noexcept;
 
     private:

@@ -1,5 +1,6 @@
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/scene_format/PersistenceJournal.hpp>
+#include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
 #include <lux/engine/resource/entity_scene/EntityPersistenceJournal.hpp>
 #include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
 
@@ -7,6 +8,8 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace
@@ -24,8 +27,25 @@ int main()
     namespace legacy = lux::entity_scene;
     namespace format = lux::ecs::scene_format;
 
+    static_assert(!std::is_same_v<
+        legacy::PersistentEntityId,
+        lux::ecs::PersistentEntityId>);
+    static_assert(!std::is_convertible_v<
+        legacy::PersistentEntityId,
+        lux::ecs::PersistentEntityId>);
+
+    static_assert(std::is_same_v<
+        decltype(std::declval<const lux::ecs::PersistentEntityIdComponent&>().id()),
+        const lux::ecs::PersistentEntityId&>);
+
     const auto section_uuid =
         uuid("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+
+    const auto persistent_uuid =
+        uuid("bbbbbbbb-cccc-4ddd-8eee-ffffffffffff");
+    const legacy::PersistentEntityId legacy_persistent{persistent_uuid};
+    const lux::ecs::PersistentEntityId runtime_persistent{persistent_uuid};
+    assert(legacy_persistent.value() == runtime_persistent.value());
 
     legacy::EntitySectionImage legacy_image;
     legacy_image.section = legacy::EntitySectionId{section_uuid};

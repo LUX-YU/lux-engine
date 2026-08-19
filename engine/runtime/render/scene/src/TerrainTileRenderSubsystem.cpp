@@ -33,7 +33,7 @@ namespace lux::runtime
     namespace
     {
         [[nodiscard]] lux::render::TerrainWireId terrainUuidWireId(
-            const lux::entity_scene::PersistentEntityId& id) noexcept
+            const lux::ecs::PersistentEntityId& id) noexcept
         {
             lux::render::TerrainWireId result{};
             if (id.empty())

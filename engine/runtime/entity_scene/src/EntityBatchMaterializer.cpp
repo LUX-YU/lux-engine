@@ -258,7 +258,7 @@ namespace lux::runtime::entity_scene
                 "Parent storage capacity reservation failed"));
         }
 
-        std::vector<lux::entity_scene::PersistentEntityId> persistent_ids;
+        std::vector<lux::ecs::PersistentEntityId> persistent_ids;
         std::vector<std::uint32_t> persistent_ordinals;
         persistent_ids.reserve(image.entities.size());
         persistent_ordinals.reserve(image.entities.size());
@@ -268,7 +268,8 @@ namespace lux::runtime::entity_scene
         {
             if (!image.entities[ordinal].persistent_id)
                 continue;
-            persistent_ids.push_back(*image.entities[ordinal].persistent_id);
+            persistent_ids.push_back(detail::toRuntimePersistentId(
+                *image.entities[ordinal].persistent_id));
             persistent_ordinals.push_back(ordinal);
         }
         const auto persistent_count = persistent_ids.size();

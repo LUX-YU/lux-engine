@@ -40,7 +40,7 @@ namespace lux::runtime::spatial2d
             entt::entity entity{entt::null};
             lux::ecs::TilemapHandle tilemap;
             lux::ecs::TileChunkCoord coordinate;
-            lux::entity_scene::PersistentEntityRef tilemap_reference;
+            lux::ecs::PersistentEntityRef tilemap_reference;
             lux::entity_scene::ContentBlobRef content_reference;
             lux::runtime::entity_scene::ContentBlobLease content;
             std::optional<lux::ecs::TileChunkLoad> prepared;

@@ -42,7 +42,7 @@ namespace lux::runtime
         constexpr std::size_t kRowsPerUpdate = 4096u;
 
         [[nodiscard]] lux::render::RenderClusterWireId uuidWireId(
-            const lux::entity_scene::PersistentEntityId& id) noexcept
+            const lux::ecs::PersistentEntityId& id) noexcept
         {
             lux::render::RenderClusterWireId result{};
             if (id.empty())

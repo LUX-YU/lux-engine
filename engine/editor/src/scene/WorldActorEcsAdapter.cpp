@@ -34,6 +34,18 @@ namespace lux::editor
             return uuids::uuid_random_generator{generator}();
         }
 
+        [[nodiscard]] lux::entity_scene::PersistentEntityId
+        toAuthoringId(const lux::ecs::PersistentEntityId& id) noexcept
+        {
+            return lux::entity_scene::PersistentEntityId{id.value()};
+        }
+
+        [[nodiscard]] lux::ecs::PersistentEntityId
+        toRuntimeId(const lux::entity_scene::PersistentEntityId& id) noexcept
+        {
+            return lux::ecs::PersistentEntityId{id.value()};
+        }
+
     }
 
     lux::cxx::expected<lux::authoring::WorldActorDocument, std::string>
@@ -97,7 +109,7 @@ namespace lux::editor
             const auto assigned = lux::ecs::setPersistentEntityId(
                 persistent_entities_,
                 entity,
-                lux::entity_scene::PersistentEntityId{randomUuid()});
+                lux::ecs::PersistentEntityId{randomUuid()});
             if (!assigned)
             {
                 return lux::cxx::unexpected(
@@ -111,7 +123,7 @@ namespace lux::editor
         lux::serialize::NameTable names;
         lux::authoring::WorldActorDocument document;
         document.world = world;
-        document.actor = stable->id();
+        document.actor = toAuthoringId(stable->id());
         if (hierarchy)
         {
             auto* parent = registry.try_get<
@@ -121,7 +133,7 @@ namespace lux::editor
                 const auto assigned = lux::ecs::setPersistentEntityId(
                     persistent_entities_,
                     hierarchy->parent(),
-                    lux::entity_scene::PersistentEntityId{randomUuid()});
+                    lux::ecs::PersistentEntityId{randomUuid()});
                 if (!assigned)
                 {
                     return lux::cxx::unexpected(
@@ -138,7 +150,7 @@ namespace lux::editor
                     std::string{"persistent World child has no stable parent in '"}
                     + std::string{origin} + "'");
             }
-            const auto parent_id = parent->id();
+            const auto parent_id = toAuthoringId(parent->id());
             document.transform_parent = parent_id;
             document.references.push_back({
                 parent_id,
@@ -311,7 +323,7 @@ namespace lux::editor
             }
         }
         const auto assigned = lux::ecs::setPersistentEntityId(
-            persistent_entities_, entity, document.actor);
+            persistent_entities_, entity, toRuntimeId(document.actor));
         if (!assigned)
         {
             registry.destroy(entity);
@@ -377,7 +389,7 @@ namespace lux::editor
         if (document.transform_parent)
         {
             const auto parent = persistent_entities_.find(
-                *document.transform_parent);
+                toRuntimeId(*document.transform_parent));
             if (parent != entt::null)
             {
                 if (parent == entity ||

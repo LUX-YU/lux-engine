@@ -5,7 +5,7 @@
  */
 
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
+#include <lux/engine/ecs/PersistentEntityId.hpp>
 
 #include <cstdint>
 
@@ -34,6 +34,6 @@ namespace lux::ecs
         LUX_MEMBER(display_name=Parent,
                    readonly=true,
                    cooked_relocation=persistent_entity_ref)
-        lux::entity_scene::PersistentEntityRef parent;
+        PersistentEntityRef parent;
     };
 } // namespace lux::ecs

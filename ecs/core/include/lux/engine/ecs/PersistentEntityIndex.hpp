@@ -11,6 +11,7 @@
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
 #include <lux/engine/meta/LuxObject.hpp>
 
@@ -76,7 +77,7 @@ namespace lux::ecs
             PersistentEntityIndex& owner,
             std::weak_ptr<std::uint8_t> lifetime,
             std::uint64_t token,
-            std::vector<lux::entity_scene::PersistentEntityId> ids) noexcept
+            std::vector<PersistentEntityId> ids) noexcept
             : owner_(&owner),
               lifetime_(std::move(lifetime)),
               token_(token),
@@ -86,7 +87,7 @@ namespace lux::ecs
         PersistentEntityIndex* owner_{nullptr};
         std::weak_ptr<std::uint8_t> lifetime_;
         std::uint64_t token_{0u};
-        std::vector<lux::entity_scene::PersistentEntityId> ids_;
+        std::vector<PersistentEntityId> ids_;
     };
 
     using PersistentEntityIdClaimResult = PersistentEntityIdExp<PersistentEntityIdClaim>;
@@ -140,7 +141,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] entt::entity find(
-            const lux::entity_scene::PersistentEntityId& id) const noexcept
+            const PersistentEntityId& id) const noexcept
         {
             const auto found = findIdEntry(id.value());
             return found == by_id_.end() ? entt::null : found->second;
@@ -152,7 +153,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] bool claimed(
-            const lux::entity_scene::PersistentEntityId& id) const noexcept
+            const PersistentEntityId& id) const noexcept
         {
             return findPendingEntry(id.value()) != pending_.end();
         }
@@ -183,9 +184,9 @@ namespace lux::ecs
         }
 
         [[nodiscard]] PersistentEntityIdClaimResult claim(
-            std::span<const lux::entity_scene::PersistentEntityId> ids)
+            std::span<const PersistentEntityId> ids)
         {
-            std::vector<lux::entity_scene::PersistentEntityId> owned;
+            std::vector<PersistentEntityId> owned;
             owned.reserve(ids.size());
             for (const auto& id : ids)
             {
@@ -297,7 +298,7 @@ namespace lux::ecs
 
         [[nodiscard]] PersistentEntityIdResult set(
             entt::entity entity,
-            lux::entity_scene::PersistentEntityId id)
+            PersistentEntityId id)
         {
             if (!registry_->valid(entity))
             {
@@ -679,7 +680,7 @@ namespace lux::ecs
     [[nodiscard]] inline PersistentEntityIdClaimResult
     claimPersistentEntityIds(
         PersistentEntityIndex& index,
-        std::span<const lux::entity_scene::PersistentEntityId> ids)
+        std::span<const PersistentEntityId> ids)
     {
         return index.claim(ids);
     }
@@ -695,7 +696,7 @@ namespace lux::ecs
     [[nodiscard]] inline PersistentEntityIdResult setPersistentEntityId(
         PersistentEntityIndex& index,
         entt::entity entity,
-        lux::entity_scene::PersistentEntityId id)
+        PersistentEntityId id)
     {
         return index.set(entity, std::move(id));
     }

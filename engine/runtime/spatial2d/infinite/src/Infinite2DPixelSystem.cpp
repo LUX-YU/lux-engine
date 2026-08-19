@@ -41,7 +41,7 @@ namespace lux::runtime::spatial2d
             entt::entity entity{entt::null};
             lux::ecs::PixelFieldHandle field;
             lux::spatial::GridCoord2i64 coordinate;
-            lux::entity_scene::PersistentEntityRef field_reference;
+            lux::ecs::PersistentEntityRef field_reference;
             lux::entity_scene::ContentBlobRef content_reference;
             lux::runtime::entity_scene::ContentBlobLease content;
             bool active{false};

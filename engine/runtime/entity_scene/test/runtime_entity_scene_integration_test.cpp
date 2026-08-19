@@ -32,7 +32,7 @@ namespace
     {
         std::int32_t value{0};
         entt::entity target{entt::null};
-        lux::entity_scene::PersistentEntityRef persistent_target;
+        lux::ecs::PersistentEntityRef persistent_target;
         lux::entity_scene::ContentBlobRef content;
     };
 
@@ -125,7 +125,7 @@ namespace
             lux::meta::RefField{
                 "persistent_target",
                 lux::meta::ref_type_of_v<
-                    lux::entity_scene::PersistentEntityRef>,
+                    lux::ecs::PersistentEntityRef>,
                 lux::meta::EVisibility::Public,
                 &result,
                 static_cast<std::uint32_t>(
@@ -871,8 +871,8 @@ int main()
     assert(live.get<TestLinkComponent>(child).value == 11);
     assert(live.get<TestLinkComponent>(child).target == root);
     assert(live.get<TestLinkComponent>(root).persistent_target ==
-        lux::entity_scene::PersistentEntityRef{
-            lux::entity_scene::PersistentEntityId{
+        lux::ecs::PersistentEntityRef{
+            lux::ecs::PersistentEntityId{
                 uuid("60000000-0000-4000-8000-000000000099")}});
     assert(live.get<TestLinkComponent>(root).content ==
         good_image.attachments.front().reference);

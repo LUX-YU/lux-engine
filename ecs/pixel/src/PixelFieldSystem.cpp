@@ -280,7 +280,7 @@ namespace lux::ecs
     }
 
     PixelFieldHandle PixelFieldSystem::resolveField(
-        const lux::entity_scene::PersistentEntityRef& reference)
+        const PersistentEntityRef& reference)
         const noexcept
     {
         if (impl_->closing || !impl_->attached || !reference.valid())

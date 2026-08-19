@@ -29,7 +29,7 @@ int main()
     TilemapRuntime runtime;
 
     const auto existing = registry.create();
-    const auto persistent_id = lux::entity_scene::PersistentEntityId{
+    const auto persistent_id = lux::ecs::PersistentEntityId{
         uuid("72000000-0000-4000-8000-000000000001")};
     assert(setPersistentEntityId(persistent, existing, persistent_id));
     auto& authored = registry.emplace<TilemapComponent>(existing);
@@ -46,7 +46,7 @@ int main()
     const auto first = registry.get<TilemapBindingComponent>(existing);
     assert(first.owned_by_system && runtime.isAlive(first.runtime));
     assert(system->resolveTilemap(
-        lux::entity_scene::PersistentEntityRef{persistent_id}) ==
+        lux::ecs::PersistentEntityRef{persistent_id}) ==
         first.runtime);
     assert(runtime.desc(first.runtime).id.empty());
 

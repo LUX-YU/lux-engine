@@ -234,7 +234,7 @@ namespace lux::ecs
     }
 
     TilemapHandle TilemapSystem::resolveTilemap(
-        const lux::entity_scene::PersistentEntityRef& reference)
+        const PersistentEntityRef& reference)
         const noexcept
     {
         if (impl_->closing || !impl_->attached || !reference.valid())

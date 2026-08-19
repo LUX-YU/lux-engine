@@ -123,7 +123,7 @@ namespace
     struct SectionFixture final
     {
         lux::entity_scene::EntitySectionRecord record;
-        lux::entity_scene::PersistentEntityId entity;
+        lux::ecs::PersistentEntityId entity;
         StoredImage stored;
     };
 
@@ -139,8 +139,10 @@ namespace
         image.section = EntitySectionId{uuid(section_id)};
         image.component_names = {""};
         image.archetypes.push_back({});
-        const PersistentEntityId persistent{uuid(entity_id)};
-        image.entities.push_back({0u, persistent});
+        const lux::ecs::PersistentEntityId persistent{uuid(entity_id)};
+        image.entities.push_back({
+            0u,
+            lux::entity_scene::PersistentEntityId{persistent.value()}});
         auto encoded = encodeEntitySectionImage(image);
         assert(encoded);
 

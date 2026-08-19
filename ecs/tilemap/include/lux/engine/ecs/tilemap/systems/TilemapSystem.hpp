@@ -6,7 +6,7 @@
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/ecs/tilemap/TilemapTypes.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
+#include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/ecs/tilemap/visibility.h>
 
 #include <cstdint>
@@ -57,7 +57,7 @@ namespace lux::ecs
 
         [[nodiscard]] TilemapSystemSnapshot snapshot() const noexcept;
         [[nodiscard]] TilemapHandle resolveTilemap(
-            const lux::entity_scene::PersistentEntityRef& reference)
+            const PersistentEntityRef& reference)
             const noexcept;
 
     private:

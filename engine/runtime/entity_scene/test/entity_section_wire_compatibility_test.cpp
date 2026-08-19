@@ -25,9 +25,9 @@ int main()
     namespace legacy = lux::entity_scene;
     namespace format = lux::ecs::scene_format;
 
-    // The compatibility test owns only the frozen wire models. Runtime ECS
-    // component contracts are checked by entity_section_public_contract_test,
-    // whose target declares the ecs/core dependency explicitly.
+    // This target owns only frozen wire compatibility. Runtime component API
+    // contracts belong to ecs/core and are checked by
+    // persistent_entity_index_test, whose target declares that dependency.
     static_assert(!std::is_same_v<
         legacy::PersistentEntityId,
         lux::ecs::PersistentEntityId>);

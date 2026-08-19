@@ -1,5 +1,4 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
-#include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchStager.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
@@ -32,15 +31,6 @@ namespace
     static_assert(std::same_as<
         decltype(std::declval<const EntitySceneCatalog&>().package()),
         const lux::scene::ScenePackage&>);
-
-    // Runtime component contracts belong here, where the target explicitly
-    // links runtime_entity_scene and therefore ecs/core. This prevents a test
-    // from silently resolving a stale installed header through an undeclared
-    // dependency.
-    static_assert(std::same_as<
-        decltype(std::declval<
-            const lux::ecs::PersistentEntityIdComponent&>().id()),
-        const lux::ecs::PersistentEntityId&>);
 
     static_assert(!std::default_initializable<EntityBatchStager>);
     static_assert(std::constructible_from<

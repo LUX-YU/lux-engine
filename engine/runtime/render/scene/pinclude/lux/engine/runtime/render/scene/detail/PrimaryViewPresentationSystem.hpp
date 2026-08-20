@@ -105,7 +105,7 @@ namespace lux::runtime::detail
             std::size_t candidate_count{0u};
             entt::entity selected{entt::null};
             lux::render::RenderTargetId target{};
-            lux::common::Size2D extent{};
+            lux::math::Extent2u extent{};
             std::uint64_t intent_revision{0u};
 
             friend bool operator==(

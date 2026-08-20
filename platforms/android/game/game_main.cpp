@@ -275,7 +275,7 @@ namespace
         return true;
     }
 
-    [[nodiscard]] lux::common::Size2D updateSurfaceExtent(
+    [[nodiscard]] lux::math::Extent2u updateSurfaceExtent(
         android_app* native_app)
     {
         game.width = static_cast<std::uint32_t>(
@@ -349,7 +349,7 @@ namespace
         game.last_frame = now;
         (void)game.application->tick(
             dt,
-            lux::common::Size2D{game.width, game.height}
+            lux::math::Extent2u{game.width, game.height}
         );
     }
 

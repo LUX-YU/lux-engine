@@ -37,7 +37,7 @@ namespace lux::render
     };
 
     [[nodiscard]] LUX_FUNCTION_PUBLIC VkFormat toVkFormat(
-        lux::common::ETextureFormat format
+        lux::rdesc::ETextureFormat format
     ) noexcept;
 
     [[nodiscard]] LUX_FUNCTION_PUBLIC VkImageUsageFlags toVkImageUsage(

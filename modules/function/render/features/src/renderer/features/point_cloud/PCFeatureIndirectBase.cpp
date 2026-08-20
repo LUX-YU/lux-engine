@@ -401,8 +401,8 @@ void PCFeatureIndirectBase::addIndirectDrawPass(
     std::function<void(const PassRecordContext&)> push_constant_fn)
 {
     builder.addPass(pass_name, ERGPassType::GRAPHICS)
-        .write(builder.referenceTexture(color_target), lux::common::ETextureRole::COLOR_ATTACHMENT)
-        .write(builder.referenceTexture(depth_target), lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+        .write(builder.referenceTexture(color_target), lux::render::ETextureRole::COLOR_ATTACHMENT)
+        .write(builder.referenceTexture(depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
         .setPipeline(draw_handle_)
         .bindSceneDS()
         .read(indirect_rg, ERGBufferRole::INDIRECT)

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/common/ImageEnums.hpp>
+#include <lux/engine/description/Image.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
 
 #include <array>
@@ -108,8 +108,8 @@ namespace lux::render
 
     struct RenderTargetSlotDesc
     {
-        lux::common::ETextureFormat format{
-            lux::common::ETextureFormat::UNDEFINED};
+        lux::rdesc::ETextureFormat format{
+            lux::rdesc::ETextureFormat::UNDEFINED};
         ERenderImageUsage    usage{ERenderImageUsage::NONE};
         ERenderAspect        aspect{ERenderAspect::COLOR};
         ERenderResourceState initial_state{ERenderResourceState::UNDEFINED};
@@ -189,19 +189,19 @@ namespace lux::render
         switch (slot)
         {
         case TargetSlot::LINEAR_DEPTH:
-            desc.format = lux::common::ETextureFormat::R32_SFLOAT;
+            desc.format = lux::rdesc::ETextureFormat::R32_SFLOAT;
             break;
         case TargetSlot::NORMAL:
-            desc.format = lux::common::ETextureFormat::RGBA16_SFLOAT;
+            desc.format = lux::rdesc::ETextureFormat::RGBA16_SFLOAT;
             break;
         case TargetSlot::MOTION_VECTOR:
-            desc.format = lux::common::ETextureFormat::RG16_SFLOAT;
+            desc.format = lux::rdesc::ETextureFormat::RG16_SFLOAT;
             break;
         case TargetSlot::INSTANCE_ID:
-            desc.format = lux::common::ETextureFormat::R32_UINT;
+            desc.format = lux::rdesc::ETextureFormat::R32_UINT;
             break;
         case TargetSlot::SEMANTIC_CLASS:
-            desc.format = lux::common::ETextureFormat::R16_UINT;
+            desc.format = lux::rdesc::ETextureFormat::R16_UINT;
             break;
         default:
             break;

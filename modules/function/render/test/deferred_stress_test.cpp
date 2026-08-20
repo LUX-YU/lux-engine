@@ -1090,7 +1090,7 @@ int main(int argc, char** argv)
                   << srv_init.skybox_tid << ", " << srv_init.grid_tid << ")\n";
 
         // ── Pre-initialize: create scene + view ─────────────────────
-        auto scene = server.createScene("DeferredStress", {}, lux::common::ETextureFormat::RGBA8_SRGB);
+        auto scene = server.createScene("DeferredStress", {}, lux::rdesc::ETextureFormat::RGBA8_SRGB);
         srv_init.scene_id = scene.scene_id;
         std::cout << "  Scene created\n";
 

@@ -65,8 +65,8 @@ namespace lux::render
         {
             const char*   name{""};
             std::uint32_t flags{0};
-            lux::common::ETextureFormat lit_color_format{
-                lux::common::ETextureFormat::RGBA16_SFLOAT};
+            lux::rdesc::ETextureFormat lit_color_format{
+                lux::rdesc::ETextureFormat::RGBA16_SFLOAT};
             double coordinate_page_size{1024.0};
             std::int64_t scene_origin_page[3]{};
         };
@@ -80,7 +80,7 @@ namespace lux::render
             RenderSceneId scene, bool enabled = true);
 
         [[nodiscard]] RenderRequest<ViewCreatedReply> addView(
-            RenderSceneId scene, common::Size2D extent, const char* name);
+            RenderSceneId scene, lux::math::Extent2u extent, const char* name);
         [[nodiscard]] RenderViewLease adoptView(
             RenderSceneId scene, ViewHandle view,
             RenderViewReleaseObserver observer = {}) noexcept;
@@ -88,10 +88,10 @@ namespace lux::render
             RenderSceneId scene, ViewHandle view);
 
         [[nodiscard]] RenderRequest<TargetReadyReply>
-        createOffscreenRenderTarget(common::Size2D extent, std::uint32_t flags = 0);
+        createOffscreenRenderTarget(lux::math::Extent2u extent, std::uint32_t flags = 0);
 
         [[nodiscard]] RenderRequest<TargetReadyReply>
-        createSurfaceRenderTarget(std::uint64_t native_window_handle, common::Size2D extent);
+        createSurfaceRenderTarget(std::uint64_t native_window_handle, lux::math::Extent2u extent);
 
         [[nodiscard]] RenderTargetLease
         adoptTarget(RenderTargetId target, RenderTargetReleaseObserver observer = {}) noexcept;
@@ -101,7 +101,7 @@ namespace lux::render
 
         void setLayer(RenderTargetId target, std::uint32_t order, RenderSceneId scene, ViewHandle view);
         void removeLayer(RenderTargetId target, std::uint32_t order);
-        void resizeTarget(RenderTargetId target, common::Size2D extent);
+        void resizeTarget(RenderTargetId target, lux::math::Extent2u extent);
         void bindSwapchain(RenderSceneId scene, ViewHandle view);
 
         [[nodiscard]] RenderRequest<ReadbackTargetReply>

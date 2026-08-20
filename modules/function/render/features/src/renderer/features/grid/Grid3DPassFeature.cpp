@@ -41,8 +41,8 @@ namespace lux::render
     {
         auto &pass =
             builder.addPass("Grid3DPass", ERGPassType::GRAPHICS)
-            .write(builder.referenceTexture(cfg_.color_target), lux::common::ETextureRole::COLOR_ATTACHMENT)
-            .write(builder.referenceTexture(cfg_.depth_target), lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+            .write(builder.referenceTexture(cfg_.color_target), lux::render::ETextureRole::COLOR_ATTACHMENT)
+            .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(grid_handle_)
             .bindSceneDS()
             .setKernelFn(

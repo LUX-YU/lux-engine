@@ -47,3 +47,18 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE FOUNDATION
 )
+
+add_executable(
+    image_description_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/image_description_contract_test.cpp
+)
+target_link_libraries(
+    image_description_contract_test
+    PRIVATE lux::engine::resource::description
+)
+lux_classify_target(
+    TARGET  image_description_contract_test
+    LAYER   RESOURCE
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)

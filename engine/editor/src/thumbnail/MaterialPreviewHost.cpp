@@ -57,7 +57,7 @@
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 
 #include <lux/engine/input/ActionMapper.hpp>
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <uuid.h>   // std::hash<uuids::uuid>(retire/owned 集合)
@@ -177,7 +177,7 @@ namespace lux::editor
         // ── HOST step 1: SAMPLED offscreen target(面板经 ImGui target sentinel
         //    采样显示;非 SAMPLED 目标的 sentinel 解析为 VK_NULL_HANDLE)。
         //    OURS to create and (in releaseGpu) destroy。
-        const lux::common::Size2D extent{host->cur_w, host->cur_h};
+        const lux::math::Extent2u extent{host->cur_w, host->cur_h};
         auto target_result = infra_.control->syncCall(
             infra_.control->createOffscreenRenderTarget(
                 extent,
@@ -355,7 +355,7 @@ namespace lux::editor
         //    排空并重设 layer;aspect 由 syncAspect 随 extent 对齐。
         if (h.pending_resize)
         {
-            const lux::common::Size2D extent{h.pend_w, h.pend_h};
+            const lux::math::Extent2u extent{h.pend_w, h.pend_h};
             // M2c:改尺寸直达渲染目标图像池(视图渲染尺寸随 binding 派生)。
             infra_.control->resizeTarget(h.target.id(), extent);
             // 走 patch:直接写字段不发 on_update(EnTT 契约),layer 不会重设。

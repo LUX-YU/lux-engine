@@ -1,5 +1,5 @@
 find_package(Vulkan REQUIRED)
-find_package(lux-cxx REQUIRED COMPONENTS reflection_runtime)
+find_package(lux-cxx REQUIRED COMPONENTS core reflection_runtime)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 find_package(meshoptimizer CONFIG REQUIRED)
 find_path(meshoptimizer_INCLUDE_DIRS NAMES meshoptimizer.h REQUIRED)
@@ -140,6 +140,11 @@ endif()
 
 component_add_internal_dependencies(render_features render_vulkan)
 
+component_add_transitive_commands(
+    render_features
+    "find_package(lux-cxx REQUIRED COMPONENTS core)"
+)
+
 lux_classify_target(
     TARGET  render_features
     LAYER   FUNCTION
@@ -150,6 +155,7 @@ lux_classify_target(
 target_link_libraries(
     render_features
     PRIVATE
+        lux::cxx::core
         meshoptimizer::meshoptimizer
         GPUOpen::VulkanMemoryAllocator
 )

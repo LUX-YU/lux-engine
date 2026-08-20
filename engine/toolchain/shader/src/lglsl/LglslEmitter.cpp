@@ -2,7 +2,7 @@
 #include <lux/engine/description/LayoutContract.hpp>
 
 #include <array>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <optional>
 
 namespace lux::shadergen::lglsl

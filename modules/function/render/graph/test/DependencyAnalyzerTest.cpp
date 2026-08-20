@@ -54,6 +54,12 @@ int main()
 {
     using namespace lux::render;
 
+    static_assert(sizeof(ETextureRole) == 4u);
+    static_assert(static_cast<std::int32_t>(
+        ETextureRole::COLOR_ATTACHMENT) == 0);
+    static_assert(static_cast<std::int32_t>(
+        ETextureRole::INPUT_ATTACHMENT) == 4);
+
     std::vector<OwnedPass> passes{
         OwnedPass{.name = "A"},
         OwnedPass{.name = "Z"},
@@ -61,12 +67,12 @@ int main()
     };
     passes[0].textures.push_back(RGPassTextureRef{
         .resource = RGResourceHandle{0},
-        .role = lux::common::ETextureRole::COLOR_ATTACHMENT,
+        .role = lux::render::ETextureRole::COLOR_ATTACHMENT,
         .usage = ERGResourceUsage::WRITE
     });
     passes[1].textures.push_back(RGPassTextureRef{
         .resource = RGResourceHandle{0},
-        .role = lux::common::ETextureRole::INPUT_ATTACHMENT,
+        .role = lux::render::ETextureRole::INPUT_ATTACHMENT,
         .usage = ERGResourceUsage::READ
     });
 
@@ -120,12 +126,12 @@ int main()
     };
     forward_reference[0].textures.push_back(RGPassTextureRef{
         .resource = RGResourceHandle{0},
-        .role = lux::common::ETextureRole::SAMPLED,
+        .role = lux::render::ETextureRole::SAMPLED,
         .usage = ERGResourceUsage::READ
     });
     forward_reference[1].textures.push_back(RGPassTextureRef{
         .resource = RGResourceHandle{0},
-        .role = lux::common::ETextureRole::COLOR_ATTACHMENT,
+        .role = lux::render::ETextureRole::COLOR_ATTACHMENT,
         .usage = ERGResourceUsage::WRITE
     });
     auto forward_reference_views = makeViews(forward_reference);

@@ -1002,9 +1002,9 @@ namespace lux::render
         auto shadow_draw = builder.addPass(kMeshShadowDrawPassName, ERGPassType::GRAPHICS);
         if (const char* color_target = tech->casterColorTarget())
             shadow_draw.write(builder.referenceTexture(color_target),
-                              lux::common::ETextureRole::COLOR_ATTACHMENT);
+                              lux::render::ETextureRole::COLOR_ATTACHMENT);
         shadow_draw
-            .write(builder.referenceTexture(cfg_.shadow_atlas), lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+            .write(builder.referenceTexture(cfg_.shadow_atlas), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(caster_pipelines_[tech_idx]);
 
         // The caster's set 0 is intentionally feature-private. It contains

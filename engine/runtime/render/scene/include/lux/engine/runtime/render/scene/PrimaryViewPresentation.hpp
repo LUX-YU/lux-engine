@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/runtime/render/scene/visibility.h>
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 
 #include <entt/entity/entity.hpp>
@@ -33,7 +33,7 @@ namespace lux::runtime
         std::size_t candidate_count{0u};
         entt::entity bound_camera{entt::null};
         lux::render::RenderTargetId target{};
-        lux::common::Size2D extent{};
+        lux::math::Extent2u extent{};
         std::uint64_t intent_revision{1u};
         std::uint64_t committed_revision{0u};
         bool command_pending{false};
@@ -47,7 +47,7 @@ namespace lux::runtime
         PrimaryViewPresentation(
             bool enabled,
             lux::render::RenderTargetId target,
-            lux::common::Size2D extent) noexcept
+            lux::math::Extent2u extent) noexcept
             : intent_{enabled, target, extent, 1u}
         {
             snapshot_.status = enabled
@@ -67,7 +67,7 @@ namespace lux::runtime
         /// performs all registry mutation at the Schedule command barrier.
         void setOutputIntent(
             lux::render::RenderTargetId target,
-            lux::common::Size2D extent) noexcept
+            lux::math::Extent2u extent) noexcept
         {
             updateIntent(target, extent);
         }
@@ -80,13 +80,13 @@ namespace lux::runtime
         {
             bool enabled{false};
             lux::render::RenderTargetId target{};
-            lux::common::Size2D extent{};
+            lux::math::Extent2u extent{};
             std::uint64_t revision{1u};
         };
 
         void updateIntent(
             lux::render::RenderTargetId target,
-            lux::common::Size2D extent) noexcept
+            lux::math::Extent2u extent) noexcept
         {
             auto next_extent = intent_.extent;
             if (extent.width != 0u && extent.height != 0u)

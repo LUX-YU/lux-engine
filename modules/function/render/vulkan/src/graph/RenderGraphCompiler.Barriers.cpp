@@ -21,7 +21,7 @@ namespace lux::render
     namespace
     {
         // Returns the appropriate VkImageAspectFlags for a given texture format.
-        VkImageAspectFlags buildAspectMask(lux::common::ETextureFormat format) noexcept
+        VkImageAspectFlags buildAspectMask(lux::rdesc::ETextureFormat format) noexcept
         {
             if (isDepthStencilFormat_shared(format))
             {
@@ -457,8 +457,8 @@ namespace lux::render
             uint32_t pass_idx,
             const RGPassTextureRef& ref) -> VkAttachmentLoadOp
         {
-            if (ref.role != lux::common::ETextureRole::COLOR_ATTACHMENT &&
-                ref.role != lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+            if (ref.role != lux::render::ETextureRole::COLOR_ATTACHMENT &&
+                ref.role != lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                 return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 
             const auto& layout = compiled.render_pass_layout;
@@ -472,7 +472,7 @@ namespace lux::render
             const auto& group = layout.groups[group_idx];
             if (group.local_read)
             {
-                if (ref.role == lux::common::ETextureRole::COLOR_ATTACHMENT)
+                if (ref.role == lux::render::ETextureRole::COLOR_ATTACHMENT)
                 {
                     for (std::size_t i = 0; i < group.union_color_res.size(); ++i)
                         if (group.union_color_res[i] == ref.resource.index &&
@@ -490,7 +490,7 @@ namespace lux::render
             {
                 if (group_pass.pass_index != pass_idx)
                     continue;
-                if (ref.role == lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                if (ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                     return group_pass.pass_depth_load_op;
 
                 const RGPassDescription* pass =
@@ -502,7 +502,7 @@ namespace lux::render
                 std::size_t color_ordinal = 0;
                 for (const auto& texture : pass->textures)
                 {
-                    if (texture.role != lux::common::ETextureRole::COLOR_ATTACHMENT)
+                    if (texture.role != lux::render::ETextureRole::COLOR_ATTACHMENT)
                         continue;
                     if (texture.resource.index == ref.resource.index)
                         return color_ordinal < group_pass.pass_color_load_ops.size()
@@ -553,7 +553,7 @@ namespace lux::render
                 if (lr_gi != std::numeric_limits<uint32_t>::max()
                     && lr_input_attachment[res_idx])
                 {
-                    if (tex_ref.role == lux::common::ETextureRole::INPUT_ATTACHMENT)
+                    if (tex_ref.role == lux::render::ETextureRole::INPUT_ATTACHMENT)
                     {
                         // Intra-scope read: NO pipeline barrier here (the
                         // LocalReadBoundary command owns by-region sync);
@@ -578,9 +578,9 @@ namespace lux::render
                 // vkCmdBeginRendering and the dependency is incomplete.
                 if (attachmentLoadOp(pass_idx, tex_ref) == VK_ATTACHMENT_LOAD_OP_LOAD)
                 {
-                    if (tex_ref.role == lux::common::ETextureRole::COLOR_ATTACHMENT)
+                    if (tex_ref.role == lux::render::ETextureRole::COLOR_ATTACHMENT)
                         target_state.access_mask |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
-                    else if (tex_ref.role == lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                    else if (tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                         target_state.access_mask |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
                 }
 

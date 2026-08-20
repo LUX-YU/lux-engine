@@ -52,7 +52,7 @@
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 
 #include <lux/engine/input/ActionMapper.hpp>
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
@@ -296,7 +296,7 @@ namespace lux::editor
         //    composes the camera's view onto it. SAMPLED 形态与 EditorScene 的
         //    主视口 target 同款(显示路径要可采样;readback 在两种形态上都走
         //    readbackTarget* 命令面)。
-        const lux::common::Size2D extent{host->render_size, host->render_size};
+        const lux::math::Extent2u extent{host->render_size, host->render_size};
         auto target_result = infra_.control->syncCall(
             infra_.control->createOffscreenRenderTarget(
                 extent,

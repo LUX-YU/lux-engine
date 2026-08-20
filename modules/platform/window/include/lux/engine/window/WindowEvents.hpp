@@ -2,7 +2,7 @@
 
 #include <filesystem>
 #include <vector>
-#include <lux/engine/common/Size2D.hpp>
+#include <cstdint>
 #include <lux/engine/window/LuxWindowDefination.hpp>
 
 namespace lux::window
@@ -13,12 +13,14 @@ namespace lux::window
 
     struct WindowResizeEvent
     {
-        common::Size2D size;
+        std::uint32_t width{0};
+        std::uint32_t height{0};
     };
 
     struct FramebufferResizeEvent
     {
-        common::Size2D size;
+        std::uint32_t width{0};
+        std::uint32_t height{0};
     };
 
     struct WindowCloseEvent

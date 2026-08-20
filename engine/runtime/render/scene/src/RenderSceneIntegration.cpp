@@ -292,7 +292,7 @@ namespace lux::runtime
 
     void RenderSceneIntegration::reattachTarget(
         lux::render::RenderTargetId target,
-        lux::common::Size2D extent) noexcept
+        lux::math::Extent2u extent) noexcept
     {
         if (!target.isValid() || !impl_->primary_view)
             return;

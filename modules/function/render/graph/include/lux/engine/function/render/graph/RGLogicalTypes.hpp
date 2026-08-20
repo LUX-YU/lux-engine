@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/common/ImageEnums.hpp>
+#include <lux/engine/function/render/graph/TextureAccess.hpp>
 #include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>
 
@@ -24,7 +24,7 @@ namespace lux::render
     struct RGPassTextureRef
     {
         RGResourceHandle          resource;
-        lux::common::ETextureRole role;
+        lux::render::ETextureRole role;
         ERGResourceUsage          usage;
         RGTextureSubresourceRange range;
         std::uint32_t input_attachment_index{

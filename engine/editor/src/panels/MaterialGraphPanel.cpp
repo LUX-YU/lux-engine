@@ -11,7 +11,7 @@
 #include <lux/engine/description/ShaderInfo.hpp>
 #include "thumbnail/MaterialPreviewHost.hpp"
 #include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
-#include <lux/engine/platform/FormatCompat.h>   // lux::format — impl-only (kept out of the header)
+#include <lux/cxx/core/Format.hpp>   // lux::format — impl-only (kept out of the header)
 #include <lux/engine/editor/AssetRegistry.hpp>
 #include <lux/engine/editor/app/EditorEvents.hpp>
 #include <lux/engine/events/DomainEvents.hpp>

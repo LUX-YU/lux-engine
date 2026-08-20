@@ -144,7 +144,7 @@ namespace lux::render
          *
          * Example:
          *   builder.addPass("MyPass", ERGPassType::GRAPHICS)
-         *       .write(color_target, lux::common::ETextureRole::COLOR_ATTACHMENT)
+         *       .write(color_target, lux::render::ETextureRole::COLOR_ATTACHMENT)
          *       .setPipeline(pipeline)
          *       .setRecorder([](const PassRecordContext& ctx) { ... });
          */
@@ -242,9 +242,9 @@ namespace lux::render
         // -----------------------------------------------------------------
         // Texture access declaration (only declares dependency, does not create resource)
         // -----------------------------------------------------------------
-        RGPassBuilder& read(RGResourceHandle res, lux::common::ETextureRole role = lux::common::ETextureRole::SAMPLED);
-        RGPassBuilder& write(RGResourceHandle res, lux::common::ETextureRole role = lux::common::ETextureRole::COLOR_ATTACHMENT);
-        RGPassBuilder& readWrite(RGResourceHandle res, lux::common::ETextureRole role = lux::common::ETextureRole::UNORDERED_ACCESS);
+        RGPassBuilder& read(RGResourceHandle res, lux::render::ETextureRole role = lux::render::ETextureRole::SAMPLED);
+        RGPassBuilder& write(RGResourceHandle res, lux::render::ETextureRole role = lux::render::ETextureRole::COLOR_ATTACHMENT);
+        RGPassBuilder& readWrite(RGResourceHandle res, lux::render::ETextureRole role = lux::render::ETextureRole::UNORDERED_ACCESS);
 
         /// Declare an input-attachment read (subpass input for Path B / tile-based GPUs).
         /// @param handle          Texture written by a prior subpass in the same render pass.
@@ -343,7 +343,7 @@ namespace lux::render
             EDSBindMode mode,
             RGResourceHandle declared_consume = {},
             ERGResourceType consume_type = ERGResourceType::BUFFER,
-            lux::common::ETextureRole consume_tex_role = lux::common::ETextureRole::SAMPLED);
+            lux::render::ETextureRole consume_tex_role = lux::render::ETextureRole::SAMPLED);
 
         // ── Bind an engine set by LOGICAL IDENTITY (recommended; the raw-slot-number
         //    overloads above are being retired) ──
@@ -381,7 +381,7 @@ namespace lux::render
             EDescriptorSetSlot logical,
             RGResourceHandle declared_consume = {},
             ERGResourceType consume_type = ERGResourceType::BUFFER,
-            lux::common::ETextureRole consume_tex_role = lux::common::ETextureRole::SAMPLED);
+            lux::render::ETextureRole consume_tex_role = lux::render::ETextureRole::SAMPLED);
 
         /// 引擎集的**句柄式**绑定。机制退休后只剩一种合法用法:BINDLESS 域的
         /// 全局纹理表(它没有独立的域实例,全局表自己就是)。FEATURE/GLOBAL 域

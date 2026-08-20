@@ -15,8 +15,8 @@
         lux::render::RenderControlSession* control{nullptr};
         lux::render::RenderTargetLease surface_target{};
         lux::render::RenderTargetLease diagnostic_capture_target{};
-        lux::common::Size2D surface_extent{};
-        lux::common::Size2D diagnostic_capture_extent{};
+        lux::math::Extent2u surface_extent{};
+        lux::math::Extent2u diagnostic_capture_extent{};
         bool backend_started{false};
         lux::render::CapacityPlan capacity_plan{};
         std::optional<lux::render::CapacityShortfall> capacity_shortfall{};
@@ -580,7 +580,7 @@
 
         [[nodiscard]] bool attachSurface(
             std::uint64_t native_surface,
-            lux::common::Size2D extent)
+            lux::math::Extent2u extent)
         {
             if (!control || native_surface == 0u ||
                 extent.width == 0u || extent.height == 0u)

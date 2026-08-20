@@ -15,7 +15,7 @@
 #include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp>                    // Expected / renderFailure
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <lux/engine/function/render/client/resources/EBuiltinShader.hpp>
 #include <lux/engine/render/resources/TextureResources.hpp>     // bindless combined-sampler set (set 2)
 #include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
@@ -317,7 +317,7 @@ void Canvas2DFeature::addPasses(RGBuilder& builder)
 
     // Group 0 — the direct pass (EXACTLY the pre-A2-04 pass when no groups).
     builder.addPass("Canvas2D", ERGPassType::GRAPHICS)
-        .write(builder.referenceTexture(cfg_.color_target), lux::common::ETextureRole::COLOR_ATTACHMENT)
+        .write(builder.referenceTexture(cfg_.color_target), lux::render::ETextureRole::COLOR_ATTACHMENT)
         .setPipeline(pipeline_handle_)              // variant 0 = image kind
         .addPipeline(field_pipeline_handle_)        // variant 1 = pixel-field kind
         .addPipeline(tile_pipeline_handle_)         // variant 2 = tile kind
@@ -354,13 +354,13 @@ void Canvas2DFeature::addPasses(RGBuilder& builder)
         const auto ds_name = lux::format("Canvas2DGroup{}CompositeDS", g);
 
         RGTextureDescription rt_desc = RGTextureDescription::Relative(
-            1.0f, 1.0f, lux::common::ETextureFormat::RGBA8_UNORM);
+            1.0f, 1.0f, lux::rdesc::ETextureFormat::RGBA8_UNORM);
         rt_desc.usage = static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT)
                       | static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::SAMPLED);
         auto rt_rg = builder.createTexture(rt_name, rt_desc);
 
         builder.addPass(draw_name, ERGPassType::GRAPHICS)
-            .write(rt_rg, lux::common::ETextureRole::COLOR_ATTACHMENT)
+            .write(rt_rg, lux::render::ETextureRole::COLOR_ATTACHMENT)
             .setPipeline(pipeline_handle_)
             .addPipeline(field_pipeline_handle_)
             .addPipeline(tile_pipeline_handle_)
@@ -377,8 +377,8 @@ void Canvas2DFeature::addPasses(RGBuilder& builder)
              EImageLayout::SHADER_READ_ONLY_OPTIMAL},
         });
         builder.addPass(comp_name, ERGPassType::GRAPHICS)
-            .read(rt_rg, lux::common::ETextureRole::SAMPLED)
-            .write(builder.referenceTexture(cfg_.color_target), lux::common::ETextureRole::COLOR_ATTACHMENT)
+            .read(rt_rg, lux::render::ETextureRole::SAMPLED)
+            .write(builder.referenceTexture(cfg_.color_target), lux::render::ETextureRole::COLOR_ATTACHMENT)
             .setPipeline(composite_pipeline_)
             .bindSceneDS()
             .bindTransientDS(1, comp_tds)

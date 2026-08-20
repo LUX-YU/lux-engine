@@ -458,7 +458,7 @@ namespace lux::render
     {
         if (handle.index < graph.resources.size()) {
             const auto* tex = std::get_if<RGTextureDescription>(&graph.resources[handle.index].desc);
-            if (tex && tex->dimension == lux::common::ETextureDimension::TEX_2D_ARRAY)
+            if (tex && tex->dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY)
                 return tex->array_layers;
         }
         return 1;
@@ -468,7 +468,7 @@ namespace lux::render
     {
         RGPassTextureRef ref{};
         ref.resource = handle;
-        ref.role = lux::common::ETextureRole::INPUT_ATTACHMENT;
+        ref.role = lux::render::ETextureRole::INPUT_ATTACHMENT;
         ref.usage = ERGResourceUsage::READ;
         ref.input_attachment_index = attachment_idx;
         ref.range.base_mip_level = 0;
@@ -480,7 +480,7 @@ namespace lux::render
         return *this;
     }
 
-    RGPassBuilder& RGPassBuilder::read(RGResourceHandle handle, lux::common::ETextureRole role)
+    RGPassBuilder& RGPassBuilder::read(RGResourceHandle handle, lux::render::ETextureRole role)
     {
         RGPassTextureRef ref{};
         ref.resource = handle;
@@ -496,7 +496,7 @@ namespace lux::render
         return *this;
     }
 
-    RGPassBuilder& RGPassBuilder::write(RGResourceHandle handle, lux::common::ETextureRole role)
+    RGPassBuilder& RGPassBuilder::write(RGResourceHandle handle, lux::render::ETextureRole role)
     {
         RGPassTextureRef ref{};
         ref.resource = handle;
@@ -512,7 +512,7 @@ namespace lux::render
         return *this;
     }
 
-    RGPassBuilder& RGPassBuilder::readWrite(RGResourceHandle handle, lux::common::ETextureRole role)
+    RGPassBuilder& RGPassBuilder::readWrite(RGResourceHandle handle, lux::render::ETextureRole role)
     {
         RGPassTextureRef ref{};
         ref.resource = handle;
@@ -739,7 +739,7 @@ namespace lux::render
         EDSBindMode mode,
         RGResourceHandle declared_consume,
         ERGResourceType consume_type,
-        lux::common::ETextureRole consume_tex_role)
+        lux::render::ETextureRole consume_tex_role)
     {
         PassDSBinding b;
         b.slot = slot;
@@ -791,7 +791,7 @@ namespace lux::render
         EDescriptorSetSlot logical,
         RGResourceHandle declared_consume,
         ERGResourceType consume_type,
-        lux::common::ETextureRole consume_tex_role)
+        lux::render::ETextureRole consume_tex_role)
     {
         PassDSBinding b;
         b.slot             = static_cast<uint32_t>(logical);

@@ -127,12 +127,6 @@ namespace lux::window
         _init = init();
     }
 
-    LuxWindow::LuxWindow(common::Size2D size, std::string title)
-        : LuxWindow(size.width, size.height, std::move(title))
-    {
-
-    }
-
     LuxWindow::LuxWindow(const InitParameter& parameter)
         : _parameter{ parameter }
     {
@@ -303,15 +297,16 @@ namespace lux::window
         );
     }
 
-    common::Size2D LuxWindow::size() const
+    void LuxWindow::size(
+        std::uint32_t& width,
+        std::uint32_t& height
+    ) const
     {
-		int width, height;
-        glfwGetWindowSize(_glfw_window, &width, &height);
-        common::Size2D size{
-            .width  = (uint32_t)width,
-            .height = (uint32_t)height
-        };
-        return size;
+        int native_width = 0;
+        int native_height = 0;
+        glfwGetWindowSize(_glfw_window, &native_width, &native_height);
+        width = static_cast<std::uint32_t>(native_width);
+        height = static_cast<std::uint32_t>(native_height);
     }
 
     std::string LuxWindow::windowFrameworkName() const
@@ -480,7 +475,8 @@ namespace lux::window
                 if (self->on_resize)
                 {
                     self->on_resize(WindowResizeEvent{
-                        common::Size2D{(uint32_t)width, (uint32_t)height}
+                        static_cast<std::uint32_t>(width),
+                        static_cast<std::uint32_t>(height)
                     });
                 }
             }
@@ -497,7 +493,8 @@ namespace lux::window
                 if (self->on_framebuffer_resize)
                 {
                     self->on_framebuffer_resize(FramebufferResizeEvent{
-                        common::Size2D{(uint32_t)width, (uint32_t)height}
+                        static_cast<std::uint32_t>(width),
+                        static_cast<std::uint32_t>(height)
                     });
                 }
             }
@@ -509,15 +506,20 @@ namespace lux::window
         return _delta_time;
     }
 
-    common::Size2D LuxWindow::framebufferSize() const
+    void LuxWindow::framebufferSize(
+        std::uint32_t& width,
+        std::uint32_t& height
+    ) const
     {
-		int width, height;
-        glfwGetFramebufferSize(_glfw_window, &width, &height);
-        common::Size2D size{
-            .width  = (uint32_t)width,
-            .height = (uint32_t)height
-        };
-        return size;
+        int native_width = 0;
+        int native_height = 0;
+        glfwGetFramebufferSize(
+            _glfw_window,
+            &native_width,
+            &native_height
+        );
+        width = static_cast<std::uint32_t>(native_width);
+        height = static_cast<std::uint32_t>(native_height);
     }
 
 #ifdef __PLATFORM_WIN32__
@@ -627,12 +629,11 @@ namespace lux::window
 
         // --- Window / framebuffer size --------------------------------------
         {
-            const auto ws = size();
-            snap.window_width  = ws.width;
-            snap.window_height = ws.height;
-            const auto fs = framebufferSize();
-            snap.framebuffer_width  = fs.width;
-            snap.framebuffer_height = fs.height;
+            size(snap.window_width, snap.window_height);
+            framebufferSize(
+                snap.framebuffer_width,
+                snap.framebuffer_height
+            );
         }
 
         // --- Discrete events (drained from the callback buffer) -------------

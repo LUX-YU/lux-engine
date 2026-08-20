@@ -29,7 +29,7 @@ struct LUX_FUNCTION_PUBLIC ViewFrameData
     // Per-view viewport state
     Viewport        viewport{};
     ScissorRect     scissor{};
-    common::Size2D        extent{};
+    lux::math::Extent2u        extent{};
 
     void clear()
     {

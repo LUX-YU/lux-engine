@@ -1,5 +1,5 @@
 find_package(spirv_cross_core CONFIG REQUIRED)
-find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+find_package(lux-cxx REQUIRED COMPONENTS compile_time core)
 
 # Shader compilation is a toolchain concern. Keep shaderc discovery here so
 # configuring Runtime/Player does not discover or export compiler libraries.
@@ -96,8 +96,9 @@ target_link_libraries(
     toolchain_shader_emitter
     PUBLIC
         lux::cxx::compile_time
-        lux::engine::platform::common
         lux::engine::resource::description
+    PRIVATE
+        lux::cxx::core
 )
 set_target_properties(
     toolchain_shader_emitter PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -109,8 +110,7 @@ lux_classify_target(
 )
 component_add_transitive_commands(
     toolchain_shader_emitter
-    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
-    "find_package(lux-engine-platform REQUIRED COMPONENTS common)"
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 

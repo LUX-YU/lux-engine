@@ -134,7 +134,7 @@ namespace lux::render
     }
 
     RenderRequest<ViewCreatedReply> RenderControlSession::addView(
-        RenderSceneId scene, common::Size2D extent, const char* name)
+        RenderSceneId scene, lux::math::Extent2u extent, const char* name)
     {
         return recordReply<ViewCreatedReply>(
             [&](Builder& builder, auto callback)
@@ -175,7 +175,7 @@ namespace lux::render
 
     RenderRequest<TargetReadyReply>
     RenderControlSession::createOffscreenRenderTarget(
-        common::Size2D extent, std::uint32_t flags)
+        lux::math::Extent2u extent, std::uint32_t flags)
     {
         return recordReply<TargetReadyReply>(
             [&](Builder& builder, auto callback)
@@ -191,7 +191,7 @@ namespace lux::render
 
     RenderRequest<TargetReadyReply>
     RenderControlSession::createSurfaceRenderTarget(
-        std::uint64_t native_window_handle, common::Size2D extent)
+        std::uint64_t native_window_handle, lux::math::Extent2u extent)
     {
         return recordReply<TargetReadyReply>(
             [&](Builder& builder, auto callback)
@@ -254,7 +254,7 @@ namespace lux::render
     }
 
     void RenderControlSession::resizeTarget(
-        RenderTargetId target, common::Size2D extent)
+        RenderTargetId target, lux::math::Extent2u extent)
     {
         (void)record([&](Builder& builder)
         {

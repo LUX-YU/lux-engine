@@ -35,8 +35,8 @@ namespace lux::render
             for (const auto& tex_ref : pass.textures)
             {
                 const bool is_attachment =
-                    tex_ref.role == lux::common::ETextureRole::COLOR_ATTACHMENT
-                    || tex_ref.role == lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT;
+                    tex_ref.role == lux::render::ETextureRole::COLOR_ATTACHMENT
+                    || tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT;
                 if (!is_attachment)
                     continue;
 
@@ -56,7 +56,7 @@ namespace lux::render
 
                 switch (tex_ref.role)
                 {
-                case lux::common::ETextureRole::COLOR_ATTACHMENT:
+                case lux::render::ETextureRole::COLOR_ATTACHMENT:
                 {
                     VkFormat fmt = convertTextureFormat(tex_desc->format);
                     if (fmt == VK_FORMAT_UNDEFINED)
@@ -68,7 +68,7 @@ namespace lux::render
                     key.push_color_format(fmt);
                     break;
                 }
-                case lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT:
+                case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT:
                 {
                     VkFormat fmt = convertTextureFormat(tex_desc->format);
                     if (fmt == VK_FORMAT_UNDEFINED)
@@ -139,14 +139,14 @@ namespace lux::render
             {
                 switch (ref.role)
                 {
-                case lux::common::ETextureRole::COLOR_ATTACHMENT:
+                case lux::render::ETextureRole::COLOR_ATTACHMENT:
                     out.colors.push_back(ref.resource.index);
                     break;
-                case lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT:
+                case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT:
                     if (out.depth == std::numeric_limits<uint32_t>::max())
                         out.depth = ref.resource.index;
                     break;
-                case lux::common::ETextureRole::INPUT_ATTACHMENT:
+                case lux::render::ETextureRole::INPUT_ATTACHMENT:
                     out.inputs.emplace_back(ref.resource.index, ref.input_attachment_index);
                     break;
                 default:

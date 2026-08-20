@@ -161,7 +161,7 @@ namespace lux::game
     bool GameApplication::start(
         GameApplicationConfig config,
         std::uint64_t native_surface,
-        lux::common::Size2D extent)
+        lux::math::Extent2u extent)
     {
         if (impl_ && impl_->live)
             return true;
@@ -724,7 +724,7 @@ namespace lux::game
 
     bool GameApplication::attachSurface(
         std::uint64_t native_surface,
-        lux::common::Size2D extent)
+        lux::math::Extent2u extent)
     {
         return impl_ && impl_->attachSurface(native_surface, extent);
     }
@@ -734,7 +734,7 @@ namespace lux::game
         return !impl_ || impl_->detachSurface();
     }
 
-    bool GameApplication::tick(float dt, lux::common::Size2D extent)
+    bool GameApplication::tick(float dt, lux::math::Extent2u extent)
     {
         if (!impl_ || !impl_->live || !impl_->surface_target ||
             !impl_->runtime)

@@ -272,7 +272,7 @@ namespace lux::render
         /// relies on markSideEffect / triggers a validation warning.
         RGResourceHandle          declared_consume{};
         ERGResourceType           consume_type{ERGResourceType::BUFFER};
-        lux::common::ETextureRole consume_tex_role{lux::common::ETextureRole::SAMPLED};
+        lux::render::ETextureRole consume_tex_role{lux::render::ETextureRole::SAMPLED};
     };
 
     // ========== Pass & Graph Description ==========

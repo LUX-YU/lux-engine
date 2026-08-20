@@ -73,7 +73,7 @@ void SsaoFeature::addPasses(RGBuilder& builder)
     auto linear = builder.referenceTexture(targetSlotName(TargetSlot::LINEAR_DEPTH));
 
     RGTextureDescription ao_desc = RGTextureDescription::Relative(
-        1.0f, 1.0f, lux::common::ETextureFormat::R8_UNORM);
+        1.0f, 1.0f, lux::rdesc::ETextureFormat::R8_UNORM);
     ao_desc.usage =
         static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT)
         | static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::SAMPLED);
@@ -87,8 +87,8 @@ void SsaoFeature::addPasses(RGBuilder& builder)
     });
 
     builder.addPass("SsaoResolve", ERGPassType::GRAPHICS)
-        .read(linear, lux::common::ETextureRole::SAMPLED)
-        .write(ao, lux::common::ETextureRole::COLOR_ATTACHMENT)
+        .read(linear, lux::render::ETextureRole::SAMPLED)
+        .write(ao, lux::render::ETextureRole::COLOR_ATTACHMENT)
         .setPipeline(pipeline_)
         .bindTransientDS(1, tds)      // set1:uLinearDepth(发射器自动 b0)
         .setKernelFn([](const PassRecordContext& rec) {
@@ -103,7 +103,7 @@ void SsaoFeature::addPasses(RGBuilder& builder)
     // TRANSFER 型:GRAPHICS 要 renderpass、COMPUTE 强制 compute 管线,
     // 只有它允许"纯 barrier + CPU 回调"的空 pass。
     builder.addPass("SsaoPublish", ERGPassType::TRANSFER)
-        .read(ao, lux::common::ETextureRole::SAMPLED)
+        .read(ao, lux::render::ETextureRole::SAMPLED)
         .markSideEffect(true)
         .setKernelFn([this, ao](const PassRecordContext& rec) {
             const VkImageView view = rec.resolveTextureView(ao);

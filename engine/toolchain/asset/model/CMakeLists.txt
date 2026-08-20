@@ -27,7 +27,12 @@ target_link_libraries(
     PRIVATE
         assimp::assimp
         meshoptimizer::meshoptimizer
-        lux::engine::platform::common
+        lux::cxx::core
+)
+
+component_add_transitive_commands(
+    toolchain_model_importer
+    "find_package(lux-cxx REQUIRED COMPONENTS core)"
 )
 
 lux_classify_target(

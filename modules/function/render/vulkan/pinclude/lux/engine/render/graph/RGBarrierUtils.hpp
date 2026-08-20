@@ -55,16 +55,16 @@ namespace lux::render
             : VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
     }
 
-    inline bool isDepthStencilFormat_shared(lux::common::ETextureFormat format)
+    inline bool isDepthStencilFormat_shared(lux::rdesc::ETextureFormat format)
     {
-        return format >= lux::common::ETextureFormat::D16_UNORM;
+        return format >= lux::rdesc::ETextureFormat::D16_UNORM;
     }
 
-    inline bool hasStencilComponent_shared(lux::common::ETextureFormat format)
+    inline bool hasStencilComponent_shared(lux::rdesc::ETextureFormat format)
     {
-        return format == lux::common::ETextureFormat::D16_UNORM_S8_UINT ||
-               format == lux::common::ETextureFormat::D24_UNORM_S8_UINT ||
-               format == lux::common::ETextureFormat::D32_SFLOAT_S8_UINT;
+        return format == lux::rdesc::ETextureFormat::D16_UNORM_S8_UINT ||
+               format == lux::rdesc::ETextureFormat::D24_UNORM_S8_UINT ||
+               format == lux::rdesc::ETextureFormat::D32_SFLOAT_S8_UINT;
     }
 
     inline VulkanResourceState determineTextureState(
@@ -85,7 +85,7 @@ namespace lux::render
 
         switch (ref.role)
         {
-        case lux::common::ETextureRole::COLOR_ATTACHMENT:
+        case lux::render::ETextureRole::COLOR_ATTACHMENT:
             state.stage_mask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
             state.access_mask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
             if (ref.usage == ERGResourceUsage::READ || ref.usage == ERGResourceUsage::READ_WRITE) {
@@ -94,7 +94,7 @@ namespace lux::render
             state.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             break;
 
-        case lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT:
+        case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT:
             state.stage_mask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
             if (ref.usage == ERGResourceUsage::WRITE || ref.usage == ERGResourceUsage::READ_WRITE) {
                 state.access_mask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
@@ -106,7 +106,7 @@ namespace lux::render
             }
             break;
 
-        case lux::common::ETextureRole::SAMPLED:
+        case lux::render::ETextureRole::SAMPLED:
             state.stage_mask  = shader_stage;
             state.access_mask = VK_ACCESS_2_SHADER_READ_BIT;
             state.layout      = isDepthStencilFormat_shared(desc.format)
@@ -114,13 +114,13 @@ namespace lux::render
                               : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             break;
 
-        case lux::common::ETextureRole::UNORDERED_ACCESS:
+        case lux::render::ETextureRole::UNORDERED_ACCESS:
             state.stage_mask  = shader_stage;
             state.access_mask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
             state.layout      = VK_IMAGE_LAYOUT_GENERAL;
             break;
 
-        case lux::common::ETextureRole::INPUT_ATTACHMENT:
+        case lux::render::ETextureRole::INPUT_ATTACHMENT:
             // Local-read merged scope only (line-B): tile-local reads keep the
             // attachment in RENDERING_LOCAL_READ for the whole scope.
             state.stage_mask  = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;

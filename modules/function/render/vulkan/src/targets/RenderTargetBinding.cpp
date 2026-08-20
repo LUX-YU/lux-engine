@@ -4,7 +4,7 @@
 
 namespace lux::render
 {
-    VkFormat toVkFormat(lux::common::ETextureFormat format) noexcept
+    VkFormat toVkFormat(lux::rdesc::ETextureFormat format) noexcept
     {
         return convertTextureFormat(format);
     }

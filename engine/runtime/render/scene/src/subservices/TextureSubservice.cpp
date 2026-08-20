@@ -5,7 +5,7 @@
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/TextureAsset.hpp>
-#include <lux/engine/platform/FormatCompat.h>   // lux::format
+#include <lux/cxx/core/Format.hpp>   // lux::format
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
 

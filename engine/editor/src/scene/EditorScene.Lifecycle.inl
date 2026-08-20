@@ -91,7 +91,7 @@
         //    the view/scene. The runtime only composes the scene's view onto
         //    it (setLayer); a game host passes a surface target through the
         //    same seam.
-        const lux::common::Size2D view_extent{cfg.initial_width, cfg.initial_height};
+        const lux::math::Extent2u view_extent{cfg.initial_width, cfg.initial_height};
         auto target_result = infra_.control->syncCall(
             infra_.control->createOffscreenRenderTarget(
                 view_extent,
@@ -350,7 +350,7 @@
         // —— 那正好把「每个可见的 view 都有相机」这条不变量倒过来了。
         viewport_slot_ = lux::ecs::ViewPresentComponent{
             main_target_.id(), 0u,
-            lux::common::Size2D{cfg.initial_width, cfg.initial_height}};
+            lux::math::Extent2u{cfg.initial_width, cfg.initial_height}};
         world.emplace<lux::ecs::ViewPresentComponent>(camera_entity_, viewport_slot_);
         // 第一帧提交之前 view 必须在位,否则 target 上没有任何层 —— 黑屏几帧、不报错。
         lux::runtime::renderScene(*runtime_)->settleViewCreation();

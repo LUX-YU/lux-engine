@@ -61,8 +61,6 @@ namespace lux::window
         */
         LuxWindow(int width, int height, std::string title);
 
-        LuxWindow(common::Size2D size, std::string title);
-
         explicit LuxWindow(const InitParameter& parameter);
 
         /**
@@ -84,7 +82,10 @@ namespace lux::window
 
         [[nodiscard]] const char* title() const;
 
-        [[nodiscard]] common::Size2D size() const;
+        void size(
+            std::uint32_t& width,
+            std::uint32_t& height
+        ) const;
 
         bool shouldClose();
 
@@ -129,7 +130,10 @@ namespace lux::window
 
         float lastFrameDelayTime() const;
 
-        common::Size2D framebufferSize() const;
+        void framebufferSize(
+            std::uint32_t& width,
+            std::uint32_t& height
+        ) const;
 
         // ── Vulkan surface seam (backend-specific) ───────────────────
         // These two are the ONLY sanctioned way for render/ui code to get a

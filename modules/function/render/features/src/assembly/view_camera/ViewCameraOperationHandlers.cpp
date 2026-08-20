@@ -45,7 +45,7 @@ namespace lux::render
         // Build the per-view camera frame data from a wire payload — exactly the
         // mapping the retired core handleViewFrameUpdate did (column-major float[16]
         // → Eigen mat4, derived inverses, frustum from view-proj).
-        ViewFrameData buildViewFrameData(const ViewCameraUpdatePayload& u, const common::Size2D& extent)
+        ViewFrameData buildViewFrameData(const ViewCameraUpdatePayload& u, const lux::math::Extent2u& extent)
         {
             ViewFrameData data{};
             Eigen::Matrix4f rotation_view = Eigen::Matrix4f::Identity();

@@ -40,13 +40,13 @@ target_link_libraries(
         lux::engine::core::serialization
     PRIVATE
         lux::cxx::reflection_runtime
-        lux::engine::platform::common
+        lux::cxx::core
 )
 component_add_internal_dependencies(asset_core description)
 component_add_transitive_commands(
     asset_core
     "find_package(stduuid CONFIG REQUIRED)"
-    "find_package(lux-cxx REQUIRED COMPONENTS memory)"
+    "find_package(lux-cxx REQUIRED COMPONENTS core memory)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta math serialization)"
 )
 lux_classify_target(

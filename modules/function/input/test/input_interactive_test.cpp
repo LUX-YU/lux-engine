@@ -14,7 +14,7 @@
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/input/ActionMapper.hpp>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 
 #include <cassert>
 #include <chrono>

@@ -20,10 +20,13 @@ target_compile_definitions(asset_pak PRIVATE LUX_ASSET_PAK_LIBRARY)
 target_link_libraries(
     asset_pak
     PUBLIC lux::engine::resource::asset_core
-    PRIVATE lux::cxx::algorithm
+    PRIVATE
+        lux::cxx::algorithm
+        lux::cxx::core
 )
 component_add_transitive_commands(
     asset_pak
+    "find_package(lux-cxx REQUIRED COMPONENTS core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
 )
 lux_classify_target(

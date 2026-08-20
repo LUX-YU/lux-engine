@@ -30,8 +30,8 @@ namespace lux::render
 
             for (const auto& tex_ref : desc->textures)
             {
-                if (tex_ref.role != lux::common::ETextureRole::COLOR_ATTACHMENT
-                    && tex_ref.role != lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                if (tex_ref.role != lux::render::ETextureRole::COLOR_ATTACHMENT
+                    && tex_ref.role != lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                     continue;
 
                 const auto& res_desc = graph.original_graph.resources[tex_ref.resource.index];
@@ -49,7 +49,7 @@ namespace lux::render
                     {
                         record_context.group_extents[group_index] = resolveTextureExtent(*tex_desc, extent);
                     }
-                    if (tex_desc->dimension == lux::common::ETextureDimension::TEX_2D_ARRAY
+                    if (tex_desc->dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY
                         && tex_desc->array_layers > record_context.group_layer_counts[group_index])
                     {
                         record_context.group_layer_counts[group_index] = tex_desc->array_layers;
@@ -101,10 +101,10 @@ namespace lux::render
                 VkImageViewType view_type;
                 switch (tex_desc.dimension)
                 {
-                    case lux::common::ETextureDimension::TEX_2D:       view_type = VK_IMAGE_VIEW_TYPE_2D;       break;
-                    case lux::common::ETextureDimension::TEX_2D_ARRAY: view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY; break;
-                    case lux::common::ETextureDimension::TEX_3D:       view_type = VK_IMAGE_VIEW_TYPE_3D;       break;
-                    case lux::common::ETextureDimension::CUBE:         view_type = VK_IMAGE_VIEW_TYPE_CUBE;     break;
+                    case lux::rdesc::ETextureDimension::TEX_2D:       view_type = VK_IMAGE_VIEW_TYPE_2D;       break;
+                    case lux::rdesc::ETextureDimension::TEX_2D_ARRAY: view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY; break;
+                    case lux::rdesc::ETextureDimension::TEX_3D:       view_type = VK_IMAGE_VIEW_TYPE_3D;       break;
+                    case lux::rdesc::ETextureDimension::CUBE:         view_type = VK_IMAGE_VIEW_TYPE_CUBE;     break;
                     default:                                           view_type = VK_IMAGE_VIEW_TYPE_2D;       break;
                 }
 
@@ -116,11 +116,11 @@ namespace lux::render
                 {
                     aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
                     if (hasStencilComponent_shared(tex_desc.format)
-                        && tex_ref.role == lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                        && tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                         aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
                 }
                 const uint32_t layer_count =
-                    (tex_desc.dimension == lux::common::ETextureDimension::TEX_2D_ARRAY)
+                    (tex_desc.dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY)
                         ? tex_desc.array_layers : 1u;
                 const VkFormat vk_format = convertTextureFormat(tex_desc.format);
 

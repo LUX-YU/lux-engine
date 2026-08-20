@@ -88,5 +88,15 @@ target_compile_definitions(
 if(WIN32)
     target_link_libraries(dynamic_library PRIVATE kernel32)
 else()
-    target_link_libraries(dynamic_library PRIVATE ${CMAKE_DL_LIBS})
+    target_link_libraries(
+        dynamic_library
+        PRIVATE
+            ${CMAKE_DL_LIBS}
+            lux::cxx::core
+    )
 endif()
+
+component_add_transitive_commands(
+    dynamic_library
+    "find_package(lux-cxx REQUIRED COMPONENTS core)"
+)

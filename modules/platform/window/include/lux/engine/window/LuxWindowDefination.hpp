@@ -1,6 +1,5 @@
 #pragma once
 #include <cstdint>
-#include <lux/engine/common/Size2D.hpp>
 
 namespace lux::window
 {

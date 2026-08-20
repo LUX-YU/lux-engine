@@ -1,5 +1,5 @@
 #include <lux/engine/editor/content/EditorBuiltins.hpp>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <lux/engine/toolchain/asset/builtin/BuiltinGeometry.hpp>
 #include <lux/engine/editor/content/EngineContentPath.hpp>
 #include <lux/engine/editor/content/RuntimeAssetPath.hpp>

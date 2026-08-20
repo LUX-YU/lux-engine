@@ -930,7 +930,7 @@ namespace lux::render
         auto depth_description = RGTextureDescription::Absolute(
             1u,
             1u,
-            lux::common::ETextureFormat::D32_SFLOAT);
+            lux::rdesc::ETextureFormat::D32_SFLOAT);
         depth_description.usage = static_cast<ERGTextureUsageFlags>(
             ERGTextureUsageBits::DEPTH_STENCIL);
         depth_description.keep_transient = true;
@@ -945,7 +945,7 @@ namespace lux::render
             .write(result, ERGBufferRole::STORAGE)
             .write(
                 depth,
-                lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setManualViewport(true)
             .markSideEffect();
         for (const auto buffer : vertex_buffers)

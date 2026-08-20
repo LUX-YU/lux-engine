@@ -14,7 +14,7 @@
 #include <lux/engine/runtime/extensions/SceneContributions.hpp>
 #include <lux/engine/meta/LuxObject.hpp>              // entity_id
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>   // RenderTargetId
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>                 // asset_id_t
 #include <lux/engine/scene/ScenePackage.hpp>
 
@@ -61,7 +61,7 @@ namespace lux::editor
     /// view 必须在位,否则 target 上没有任何层)。
     lux::meta::entity_id createPreviewCamera(lux::ecs::World&            world,
                                              lux::render::RenderTargetId target,
-                                             lux::common::Size2D         extent,
+                                             lux::math::Extent2u         extent,
                                              bool                        auto_aspect);
 
     /// 把相机实体摆到 @p eye、看向 @p center:写 Transform3D 位姿(相机沿局部

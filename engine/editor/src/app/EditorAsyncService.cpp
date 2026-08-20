@@ -14,7 +14,7 @@
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScope.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 
 #include <stdexec/execution.hpp>
 

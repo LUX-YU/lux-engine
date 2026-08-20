@@ -13,6 +13,7 @@ lux_classify_target(
 target_link_libraries(
     lux_world_benchmark
     PRIVATE
+        lux::cxx::core
         lux::engine::host::game_application
         lux::engine::platform::window
         lux::engine::core::log

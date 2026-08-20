@@ -17,7 +17,7 @@
 #include <lux/engine/navigation/Navigation.hpp>
 #include <lux/engine/function/render/Capacity.hpp>
 #include <lux/engine/math/Position.hpp>
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 #include <lux/engine/ecs/render/components/3d/DirectionalLightComponent.hpp>
 #include <lux/engine/ecs/render/components/3d/HeightFogComponent.hpp>
 #include <lux/engine/ecs/render/components/3d/SkyboxComponent.hpp>
@@ -90,7 +90,7 @@ namespace lux::game
     /// per-frame gameplay API.
     struct GameApplicationFrameCapture final
     {
-        lux::common::Size2D extent{};
+        lux::math::Extent2u extent{};
         std::vector<std::uint8_t> pixels_bgra8;
         /// Graph compiled for the temporary offscreen target, captured before
         /// the View is restored to the platform surface.
@@ -367,20 +367,20 @@ namespace lux::game
         [[nodiscard]] bool start(
             GameApplicationConfig config,
             std::uint64_t native_surface,
-            lux::common::Size2D extent);
+            lux::math::Extent2u extent);
 
         /// Attach a newly acquired platform surface. If the scene is already
         /// live, its present view is rebound at the render safe point.
         [[nodiscard]] bool attachSurface(
             std::uint64_t native_surface,
-            lux::common::Size2D extent);
+            lux::math::Extent2u extent);
 
         /// Complete the two-phase target release before the platform invalidates
         /// its native window. Safe when no surface is attached.
         [[nodiscard]] bool detachSurface() noexcept;
 
         /// Advance one playable frame. dt is clamped by the shared runtime rule.
-        [[nodiscard]] bool tick(float dt, lux::common::Size2D extent);
+        [[nodiscard]] bool tick(float dt, lux::math::Extent2u extent);
 
         [[nodiscard]] bool sceneReady() const noexcept;
 

@@ -25,7 +25,7 @@
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>   // kMaterialFeatureFactory
 #include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>  // kMeshStackFeatureFactory
-#include <lux/engine/platform/FormatCompat.h>                        // lux::format
+#include <lux/cxx/core/Format.hpp>                        // lux::format
 
 #include <atomic>
 #include <algorithm>

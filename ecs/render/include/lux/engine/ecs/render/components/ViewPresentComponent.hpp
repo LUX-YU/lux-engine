@@ -21,7 +21,7 @@
 // ============================================================================
 
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>   // RenderTargetId
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 
 #include <cstdint>
 
@@ -40,7 +40,7 @@ namespace lux::ecs
         ///   ② **相机 aspect 的来源** —— 所以窗口/视口改尺寸时宿主要
         ///      `registry.patch<ViewPresentComponent>()` 更新它，否则画面会拉伸。
         ///      （view 自身的渲染尺寸随 target 派生，不用重建 view。）
-        lux::common::Size2D extent{};
+        lux::math::Extent2u extent{};
     };
 
 } // namespace lux::ecs

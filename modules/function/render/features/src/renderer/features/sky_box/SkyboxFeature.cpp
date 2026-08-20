@@ -181,8 +181,8 @@ void SkyboxFeature::addPasses(RGBuilder& builder)
         : ~0u;
 
     auto pass = builder.addPass(kSkyboxPassName, ERGPassType::GRAPHICS)
-        .write(color_target, lux::common::ETextureRole::COLOR_ATTACHMENT)
-        .write(builder.referenceTexture(cfg_.depth_target), lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+        .write(color_target, lux::render::ETextureRole::COLOR_ATTACHMENT)
+        .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
         .setPipeline(base_pipeline)
         .stage(ERenderStage::Sky);   // after opaque, before overlays (Grid/Gizmo)
 

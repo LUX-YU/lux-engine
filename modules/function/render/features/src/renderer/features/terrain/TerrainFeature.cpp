@@ -518,22 +518,22 @@ namespace lux::render
                 builder.referenceTexture(
                     gbuffer.albedo_metallic,
                     ERGReference::Required),
-                lux::common::ETextureRole::COLOR_ATTACHMENT)
+                lux::render::ETextureRole::COLOR_ATTACHMENT)
             .write(
                 builder.referenceTexture(
                     gbuffer.normal_roughness,
                     ERGReference::Required),
-                lux::common::ETextureRole::COLOR_ATTACHMENT)
+                lux::render::ETextureRole::COLOR_ATTACHMENT)
             .write(
                 builder.referenceTexture(
                     gbuffer.emissive_ao,
                     ERGReference::Required),
-                lux::common::ETextureRole::COLOR_ATTACHMENT)
+                lux::render::ETextureRole::COLOR_ATTACHMENT)
             .write(
                 builder.referenceTexture(
                     "SceneDepth",
                     ERGReference::Required),
-                lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             // Selection and VkDrawIndirectCommand are produced by the compute
             // pass in this frame.  The GBuffer pass also participates in the
             // wider deferred painter order, so that unrelated constraint must

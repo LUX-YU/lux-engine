@@ -116,6 +116,7 @@ target_link_libraries(
     PUBLIC
     lux::engine::runtime::runtime_execution                          # AsyncRuntime facade + upload client assembly
     PRIVATE
+    lux::cxx::core
     STDEXEC::stdexec                   # 两个 sender 编排 TU 专用(私有,不出头)
 )
 
@@ -139,7 +140,7 @@ component_add_transitive_commands(
     runtime_render_scene
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(Eigen3 REQUIRED)"
-    "find_package(lux-cxx REQUIRED COMPONENTS algorithm memory)"
+    "find_package(lux-cxx REQUIRED COMPONENTS algorithm core memory)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format render_core render_3d terrain_components)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core asset_codecs)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_features render_standard_content)"

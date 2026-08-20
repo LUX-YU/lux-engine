@@ -32,11 +32,6 @@ namespace lux::window
     {
     }
 
-    LuxWindow::LuxWindow(common::Size2D size, std::string title)
-        : LuxWindow(static_cast<int>(size.width), static_cast<int>(size.height), std::move(title))
-    {
-    }
-
     LuxWindow::LuxWindow(const InitParameter& parameter)
         : _parameter{parameter}
     {
@@ -57,11 +52,13 @@ namespace lux::window
 
     const char* LuxWindow::title() const { return _parameter.title.c_str(); }
 
-    common::Size2D LuxWindow::size() const
+    void LuxWindow::size(
+        std::uint32_t& width,
+        std::uint32_t& height
+    ) const
     {
-        return common::Size2D{
-            static_cast<uint32_t>(_parameter.width),
-            static_cast<uint32_t>(_parameter.height)};
+        width = static_cast<std::uint32_t>(_parameter.width);
+        height = static_cast<std::uint32_t>(_parameter.height);
     }
 
     bool LuxWindow::shouldClose() { return false; }
@@ -106,7 +103,13 @@ namespace lux::window
 
     float LuxWindow::lastFrameDelayTime() const { return _delta_time; }
 
-    common::Size2D LuxWindow::framebufferSize() const { return size(); }
+    void LuxWindow::framebufferSize(
+        std::uint32_t& width,
+        std::uint32_t& height
+    ) const
+    {
+        size(width, height);
+    }
 
     bool LuxWindow::createVulkanSurface(VkInstance,
                                         const VkAllocationCallbacks*,

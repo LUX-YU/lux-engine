@@ -655,9 +655,9 @@ void ShadowMapFeature::addPasses(RGBuilder& builder)
     shadow_tex_desc.width        = shadow_res_->atlasResolution();
     shadow_tex_desc.height       = shadow_res_->atlasResolution();
     shadow_tex_desc.array_layers = shadow_res_->atlasPageCount();
-    shadow_tex_desc.format       = lux::common::ETextureFormat::D32_SFLOAT;
+    shadow_tex_desc.format       = lux::rdesc::ETextureFormat::D32_SFLOAT;
     shadow_tex_desc.usage        = ERGTextureUsageBits::DEPTH_STENCIL | ERGTextureUsageBits::SAMPLED;
-    shadow_tex_desc.dimension    = lux::common::ETextureDimension::TEX_2D_ARRAY;
+    shadow_tex_desc.dimension    = lux::rdesc::ETextureDimension::TEX_2D_ARRAY;
 
     // Import shadow atlas (single image, shared across FIF — depth writes are idempotent)
     RGImportedResourceInfo import_info{};
@@ -688,10 +688,10 @@ void ShadowMapFeature::addPasses(RGBuilder& builder)
         evsm_tex_desc.width        = evsm_res.pageResolution();
         evsm_tex_desc.height       = evsm_res.pageResolution();
         evsm_tex_desc.array_layers = evsm_res.pageCount();
-        evsm_tex_desc.format       = lux::common::ETextureFormat::RGBA16_SFLOAT;
+        evsm_tex_desc.format       = lux::rdesc::ETextureFormat::RGBA16_SFLOAT;
         evsm_tex_desc.usage  = ERGTextureUsageBits::COLOR_ATTACHMENT | ERGTextureUsageBits::SAMPLED;
         evsm_tex_desc.usage |= ERGTextureUsageBits::STORAGE;
-        evsm_tex_desc.dimension    = lux::common::ETextureDimension::TEX_2D_ARRAY;
+        evsm_tex_desc.dimension    = lux::rdesc::ETextureDimension::TEX_2D_ARRAY;
 
         auto make_evsm_import = [&](VkImage image)
         {

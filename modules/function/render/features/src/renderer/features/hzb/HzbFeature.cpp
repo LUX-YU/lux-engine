@@ -300,7 +300,7 @@ namespace lux::render
             .setComputePipeline(compute_pipeline_)
             .markSideEffect()   // HZB pyramid is consumed by the cull via a feature DS (bindResourceDS), not an RG .read → don't dead-prune this build
             .bindTransientDS(1, depth_tds)
-            .read(builder.referenceTexture("SceneDepth"), lux::common::ETextureRole::SAMPLED)
+            .read(builder.referenceTexture("SceneDepth"), lux::render::ETextureRole::SAMPLED)
             // Build the next-frame pyramid from this frame's completed opaque
             // depth.  Without the explicit edge, a late Terrain/Cluster
             // contribution can reverse the inferred RAW direction and make

@@ -12,7 +12,7 @@
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 
 #include <functional>
 #include <memory>
@@ -45,7 +45,7 @@ namespace lux::runtime
     struct RenderSceneConfig
     {
         lux::render::RenderTargetId target{};
-        lux::common::Size2D extent{};
+        lux::math::Extent2u extent{};
         /// Game/Play presentation opts in. Editor and thumbnail scaffolding
         /// keep their explicitly authored runtime-only ViewPresentComponent.
         bool present_primary_camera{false};
@@ -80,7 +80,7 @@ namespace lux::runtime
         void settleViewCreation() noexcept;
         void reattachTarget(
             lux::render::RenderTargetId target,
-            lux::common::Size2D extent) noexcept;
+            lux::math::Extent2u extent) noexcept;
         [[nodiscard]] RenderEffects effects() const noexcept;
         [[nodiscard]] lux::render::RenderSceneId sceneId() const noexcept;
         [[nodiscard]] const PrimaryViewPresentationSnapshot*

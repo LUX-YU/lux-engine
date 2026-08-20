@@ -14,7 +14,7 @@
 
 #include "flow/FlowGraphCompiler.hpp"
 
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/authoring/assets/FlowGraphAsset.hpp>

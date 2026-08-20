@@ -121,7 +121,7 @@ namespace lux::editor
 
     lux::meta::entity_id createPreviewCamera(lux::ecs::World&            world,
                                              lux::render::RenderTargetId target,
-                                             lux::common::Size2D         extent,
+                                             lux::math::Extent2u         extent,
                                              bool                        auto_aspect)
     {
         const auto e = world.createEntity();

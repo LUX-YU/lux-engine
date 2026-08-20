@@ -20,7 +20,7 @@
         if (!live_ || !pending_resize_)
             return;
         // M2c:改尺寸直达渲染目标图像池(视图渲染尺寸随 binding 派生)。
-        const lux::common::Size2D extent{pending_resize_w_, pending_resize_h_};
+        const lux::math::Extent2u extent{pending_resize_w_, pending_resize_h_};
         infra_.control->resizeTarget(main_target_.id(), extent);
 
         // 出图槽位的尺寸也要跟上 —— 它是相机投影 aspect 的数据源(CameraViewSubsystem)。

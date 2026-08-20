@@ -3,7 +3,7 @@
 #include <lux/engine/resource/asset/VirtualPath.hpp>
 
 #include <algorithm>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <fstream>
 #include <system_error>
 #include <unordered_map>

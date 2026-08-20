@@ -11,7 +11,7 @@
 
 find_package(imgui       REQUIRED COMPONENTS glfw3 vulkan)
 find_package(node_editor REQUIRED COMPONENTS node_editor)
-find_package(lux-cxx     REQUIRED COMPONENTS container reflection_runtime event)
+find_package(lux-cxx     REQUIRED COMPONENTS core container reflection_runtime event)
 
 # Editor-only frameworks are owned and configured by the Editor product. They
 # are invisible to Runtime and Toolchain configuration.
@@ -29,8 +29,8 @@ if(TARGET nfd)
     )
 endif()
 
-# (FormatCompat 的编辑器私有复制已删除 —— lux::format 统一来自
-#  modules/platform/common 的 <lux/engine/platform/FormatCompat.h>。)
+# (格式兼容层的编辑器私有复制已删除 —— lux::format 统一来自
+#  lux-cxx core 的 <lux/cxx/core/Format.hpp>。)
 
 # Asset path header — EditorScene loads the built-in skybox texture
 # (modules/function/render/features/assets/textures/blue_nebulae_1.luxasset) so the
@@ -184,12 +184,13 @@ component_add_transitive_commands(
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_logging runtime_frame runtime_assets runtime_scene_script runtime_extension_loader runtime_contribution_host runtime_render_scene runtime_render_backend_host runtime_spatial2d_tilemap runtime_pack_tilemap2d runtime_spatial3d_navigation_adapter runtime_spatial3d_physics)"
     "find_package (imgui REQUIRED COMPONENTS glfw3 vulkan)"
     "find_package (node_editor REQUIRED COMPONENTS node_editor)"
-    "find_package (lux-cxx REQUIRED COMPONENTS container reflection_runtime)"
+    "find_package (lux-cxx REQUIRED COMPONENTS core container reflection_runtime)"
 )
 
 target_link_libraries(
     editor
     PUBLIC
+    lux::cxx::core
     lux::engine::function::ui
     lux::engine::function::ui_vulkan
     lux::engine::function::navigation
@@ -380,16 +381,6 @@ target_link_libraries(
         lux::engine::toolchain::toolchain_material_compiler
         lux::engine::toolchain::toolchain_builtin_content
 )
-
-# Link format library if needed
-if(USE_LIBFMT)
-    if(FMT_TARGET)
-        target_link_libraries(editor PRIVATE ${FMT_TARGET})
-    elseif(FMT_LIBRARIES)
-        target_link_libraries(editor PRIVATE ${FMT_LIBRARIES})
-        target_include_directories(editor PRIVATE ${FMT_INCLUDE_DIRS})
-    endif()
-endif()
 
 set(ENABLE_EDITOR_TEST OFF CACHE BOOL "Enable Editor Test")
 if(ENABLE_EDITOR_TEST)

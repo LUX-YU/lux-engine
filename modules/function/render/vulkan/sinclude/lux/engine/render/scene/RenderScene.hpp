@@ -27,7 +27,7 @@
 #include <lux/engine/render/RenderFeature.hpp>   // addFeature<T> 的 is_base_of 判定
 #include <lux/engine/render/core/FrameRetireScheduler.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>   // sceneId()
-#include <lux/engine/function/render/client/core/RenderTypes.hpp> // common::Size2D
+#include <lux/engine/function/render/client/core/RenderTypes.hpp> // lux::math::Extent2u
 #include <lux/engine/render/scene/View.hpp>
 #include <lux/engine/render/scene/SceneGraphCache.hpp>   // SceneGraphState + 图缓存组件
 #include <lux/engine/render/scene/SceneViewSet.hpp>      // ViewCreateInfo + 视图集合组件

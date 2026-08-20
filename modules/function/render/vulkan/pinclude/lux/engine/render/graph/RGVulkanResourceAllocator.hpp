@@ -15,9 +15,9 @@ namespace lux::render
 	{
 		ERGResourceType     type{};
 		uint32_t            width{0}, height{0}, depth{0};
-		lux::common::ETextureFormat    format{};
+		lux::rdesc::ETextureFormat    format{};
 		ERGTextureUsageFlags usage{0};
-		lux::common::ETextureDimension dimension{};
+		lux::rdesc::ETextureDimension dimension{};
 		uint32_t            mip_levels{1};
 		uint32_t            array_layers{1};
 		uint32_t            sample{1};

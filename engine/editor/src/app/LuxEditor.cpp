@@ -102,7 +102,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <fstream>
 #include <optional>
 #include <sstream>

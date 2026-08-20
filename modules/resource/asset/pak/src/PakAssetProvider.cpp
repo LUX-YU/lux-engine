@@ -9,7 +9,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 
 namespace lux::asset
 {

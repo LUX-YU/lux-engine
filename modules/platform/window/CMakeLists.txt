@@ -40,7 +40,7 @@ generate_visibility_header(
 # The window component is responsible for creating and managing the window
 # Introduced dependencies:
 # glfw3
-# common
+# platform-neutral window values
 add_component(
     COMPONENT_NAME window
     NAMESPACE      lux::engine::platform
@@ -81,11 +81,6 @@ target_link_libraries(
 if(NOT ANDROID)
     target_link_libraries(window PUBLIC glfw)
 endif()
-
-component_add_internal_dependencies(
-    window
-    common
-)
 
 component_add_transitive_commands(
     window

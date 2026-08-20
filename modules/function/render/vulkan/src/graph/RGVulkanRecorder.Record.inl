@@ -518,14 +518,14 @@
                                 uint32_t decl = 0;
                                 for (const auto& tr : sub_cpass.pass->textures)
                                 {
-                                    if (tr.role == lux::common::ETextureRole::COLOR_ATTACHMENT)
+                                    if (tr.role == lux::render::ETextureRole::COLOR_ATTACHMENT)
                                     {
                                         if (decl < gp.pass_color_load_ops.size() &&
                                             gp.pass_color_load_ops[decl] == VK_ATTACHMENT_LOAD_OP_CLEAR)
                                             pending_clear_resources.push_back(tr.resource.index);
                                         ++decl;
                                     }
-                                    else if (tr.role == lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT &&
+                                    else if (tr.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT &&
                                              gp.pass_depth_load_op == VK_ATTACHMENT_LOAD_OP_CLEAR)
                                         pending_clear_resources.push_back(tr.resource.index);
                                 }

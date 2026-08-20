@@ -1,4 +1,5 @@
 #include <lux/engine/math/Grid.hpp>
+#include <lux/engine/math/Extent.hpp>
 #include <lux/engine/math/Position.hpp>
 #include <lux/engine/math/RelativePosition.hpp>
 
@@ -11,6 +12,12 @@
 int main()
 {
     using namespace lux::math;
+
+    static_assert(std::is_standard_layout_v<Extent2u>);
+    static_assert(std::is_trivially_copyable_v<Extent2u>);
+    static_assert(sizeof(Extent2u) == 8u);
+    static_assert(offsetof(Extent2u, width) == 0u);
+    static_assert(offsetof(Extent2u, height) == 4u);
 
     static_assert(std::is_standard_layout_v<Position2d>);
     static_assert(std::is_trivially_copyable_v<Position2d>);

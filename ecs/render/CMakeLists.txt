@@ -35,6 +35,7 @@ lux_configure_render_interface(render_components)
 target_link_libraries(
     render_components
     INTERFACE
+        lux::cxx::core
         lux::engine::ecs::core
         lux::engine::function::render_client
         lux::engine::resource::asset_core
@@ -44,6 +45,7 @@ target_link_libraries(
 )
 component_add_transitive_commands(
     render_components
+    "find_package(lux-cxx REQUIRED COMPONENTS core)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core description)"

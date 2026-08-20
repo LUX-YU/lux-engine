@@ -3,7 +3,7 @@
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/log/Log.hpp>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 
 #include <algorithm>
 #include <array>
@@ -923,7 +923,7 @@ namespace
     [[nodiscard]] bool captureRouteSemantics(
         lux::game::GameApplication& application,
         const Options& options,
-        lux::common::Size2D extent,
+        lux::math::Extent2u extent,
         std::optional<EEnvironmentPhase>& applied_environment,
         std::uint32_t run)
     {
@@ -1464,7 +1464,7 @@ namespace
             lux::window::LuxWindow::requiredVulkanInstanceExtensions();
         for (const auto* extension : required)
             config.vulkan_instance_extensions.emplace_back(extension);
-        const auto extent = lux::common::Size2D{
+        const auto extent = lux::math::Extent2u{
             options.width,
             options.height};
         const auto native = reinterpret_cast<std::uint64_t>(

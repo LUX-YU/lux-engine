@@ -48,6 +48,8 @@ target_link_libraries(
         lux::engine::authoring::authoring_flowforge
         lux::engine::core::serialization
         lux::cxx::binary
+    PRIVATE
+        lux::cxx::core
 )
 
 component_add_transitive_commands(
@@ -55,7 +57,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset_codecs)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_flowforge)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
-    "find_package(lux-cxx REQUIRED COMPONENTS binary)"
+    "find_package(lux-cxx REQUIRED COMPONENTS binary core)"
 )
 
 if(ENABLE_ASSET_TEST)

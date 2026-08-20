@@ -10,7 +10,7 @@
 #include <system_error>
 #include <unordered_set>
 
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 
 namespace lux::asset::detail
 {

@@ -161,16 +161,16 @@ namespace lux::render
         /// 纹理角色 → 用途位。INPUT_ATTACHMENT 属附件类用途 —— 它不把资源拖出
         /// lazy(分配器的 kAttachmentOnlyUsage 含它),local_read 的 G-buffer
         /// 因此继续零显存。
-        [[nodiscard]] ERGTextureUsageFlags usageBitsForRole(lux::common::ETextureRole role) noexcept
+        [[nodiscard]] ERGTextureUsageFlags usageBitsForRole(lux::render::ETextureRole role) noexcept
         {
             using B = ERGTextureUsageBits;
             switch (role)
             {
-            case lux::common::ETextureRole::SAMPLED:                  return static_cast<ERGTextureUsageFlags>(B::SAMPLED);
-            case lux::common::ETextureRole::COLOR_ATTACHMENT:         return static_cast<ERGTextureUsageFlags>(B::COLOR_ATTACHMENT);
-            case lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT: return static_cast<ERGTextureUsageFlags>(B::DEPTH_STENCIL);
-            case lux::common::ETextureRole::INPUT_ATTACHMENT:         return static_cast<ERGTextureUsageFlags>(B::INPUT_ATTACHMENT);
-            case lux::common::ETextureRole::UNORDERED_ACCESS:         return static_cast<ERGTextureUsageFlags>(B::STORAGE);
+            case lux::render::ETextureRole::SAMPLED:                  return static_cast<ERGTextureUsageFlags>(B::SAMPLED);
+            case lux::render::ETextureRole::COLOR_ATTACHMENT:         return static_cast<ERGTextureUsageFlags>(B::COLOR_ATTACHMENT);
+            case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT: return static_cast<ERGTextureUsageFlags>(B::DEPTH_STENCIL);
+            case lux::render::ETextureRole::INPUT_ATTACHMENT:         return static_cast<ERGTextureUsageFlags>(B::INPUT_ATTACHMENT);
+            case lux::render::ETextureRole::UNORDERED_ACCESS:         return static_cast<ERGTextureUsageFlags>(B::STORAGE);
             default:                                                  return static_cast<ERGTextureUsageFlags>(0);
             }
         }
@@ -1493,23 +1493,23 @@ namespace lux::render
 
     // H: Derive precise VkPipelineStageFlags2 from resource role + pass type,
     //    replacing the former blanket ALL_COMMANDS_BIT on semaphore sync points.
-    static VkPipelineStageFlags2 writeStageForTexture(lux::common::ETextureRole role, ERGPassType pt)
+    static VkPipelineStageFlags2 writeStageForTexture(lux::render::ETextureRole role, ERGPassType pt)
     {
         switch (role) {
-        case lux::common::ETextureRole::COLOR_ATTACHMENT:         return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-        case lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT: return VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-        case lux::common::ETextureRole::UNORDERED_ACCESS:         return shaderStageForPass(pt);
+        case lux::render::ETextureRole::COLOR_ATTACHMENT:         return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT: return VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        case lux::render::ETextureRole::UNORDERED_ACCESS:         return shaderStageForPass(pt);
         default: return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         }
     }
 
-    static VkPipelineStageFlags2 readStageForTexture(lux::common::ETextureRole role, ERGPassType pt)
+    static VkPipelineStageFlags2 readStageForTexture(lux::render::ETextureRole role, ERGPassType pt)
     {
         switch (role) {
-        case lux::common::ETextureRole::COLOR_ATTACHMENT:         return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-        case lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT: return VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
-        case lux::common::ETextureRole::SAMPLED:
-        case lux::common::ETextureRole::UNORDERED_ACCESS:         return shaderStageForPass(pt);
+        case lux::render::ETextureRole::COLOR_ATTACHMENT:         return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        case lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT: return VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+        case lux::render::ETextureRole::SAMPLED:
+        case lux::render::ETextureRole::UNORDERED_ACCESS:         return shaderStageForPass(pt);
         default: return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         }
     }

@@ -61,8 +61,8 @@ namespace lux::render::pass_gen
     // ── graph I/O: barriers/lifetime/aliasing stay derived by the graph ──
     inline void declareGraphIO(RGPassBuilder& pass, const ::{{ rec.fq_name }}& p)
     {
-{% for fid in rec.field_decls %}{% set f = decl_from_id(fid) %}{% set role = annotation_get_for_or(f, "luxpass::resource", "role", "") %}{% if role == "read" %}        pass.read (p.{{ f.name }}, lux::common::ETextureRole::SAMPLED);
-{% else if role == "write" %}        pass.write(p.{{ f.name }}, lux::common::ETextureRole::COLOR_ATTACHMENT);
+{% for fid in rec.field_decls %}{% set f = decl_from_id(fid) %}{% set role = annotation_get_for_or(f, "luxpass::resource", "role", "") %}{% if role == "read" %}        pass.read (p.{{ f.name }}, lux::render::ETextureRole::SAMPLED);
+{% else if role == "write" %}        pass.write(p.{{ f.name }}, lux::render::ETextureRole::COLOR_ATTACHMENT);
 {% endif %}{% endfor %}    }
 
     // ── transient descriptor set: reads in declaration order; bindings are

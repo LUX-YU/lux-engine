@@ -424,7 +424,7 @@ namespace
         lux::render::TargetReadyReply t{};
         if (!awaitReq(g.control->createSurfaceRenderTarget(
                           reinterpret_cast<std::uint64_t>(app->window),
-                          lux::common::Size2D{g.width, g.height}),
+                          lux::math::Extent2u{g.width, g.height}),
                       t, "createSurfaceRenderTarget"))
             return false;
         if (!t.target.isValid())

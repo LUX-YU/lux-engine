@@ -18,7 +18,7 @@
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
 #include <lux/engine/function/render/client/features/material/MaterialOperation.hpp>   // 便捷面 uploadGraphMaterial
-#include <lux/engine/platform/FormatCompat.h>   // lux::format
+#include <lux/cxx/core/Format.hpp>   // lux::format
 
 #include <algorithm>
 #include <memory>

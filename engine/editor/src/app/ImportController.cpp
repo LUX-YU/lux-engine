@@ -8,7 +8,7 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>            // importExternalFile arg
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <string>
 
 namespace lux::editor

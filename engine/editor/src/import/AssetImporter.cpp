@@ -31,7 +31,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <fstream>
 #include <numbers>
 #include <string_view>

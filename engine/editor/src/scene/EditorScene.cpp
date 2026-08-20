@@ -27,8 +27,8 @@
 #include <lux/engine/ecs/systems/HierarchicalTransformSystem.hpp> // setParent (per the write contract)
 #include <lux/engine/ecs/script/systems/ScriptSystem.hpp>                 // dispatchTo (play wiring)
 
-#include <lux/engine/platform/FormatCompat.h>   // lux::format — spawnModel entity naming
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/cxx/core/Format.hpp>   // lux::format — spawnModel entity naming
+#include <lux/engine/math/Extent.hpp>
 #include <lux/engine/math/Intersection.hpp>
 #include <lux/engine/math/Picking.hpp>
 #include <lux/engine/math/Ray.hpp>

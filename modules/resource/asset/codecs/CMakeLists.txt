@@ -1,6 +1,6 @@
 set(_asset_root ${CMAKE_CURRENT_LIST_DIR}/..)
 
-find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time)
+find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time core)
 
 add_component(
     COMPONENT_NAME asset_codecs
@@ -42,8 +42,8 @@ target_link_libraries(
         lux::engine::resource::asset_core
         lux::engine::resource::description
     PRIVATE
+        lux::cxx::core
         lux::engine::core::serialization
-        lux::engine::platform::common
 )
 component_add_internal_dependencies(asset_codecs description)
 component_add_cmake_scripts(
@@ -52,7 +52,7 @@ component_add_cmake_scripts(
 )
 component_add_transitive_commands(
     asset_codecs
-    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time core)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset_identity asset_core description)"
 )

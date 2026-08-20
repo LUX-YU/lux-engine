@@ -18,7 +18,7 @@
  * 线程:与 RenderScene 一致 —— 仅渲染线程。
  */
 
-#include <lux/engine/function/render/client/core/RenderTypes.hpp>   // common::Size2D
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>   // lux::math::Extent2u
 #include <lux/engine/render/scene/View.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/cxx/container/BasicSparseSet.hpp>     // SlotKeyAutoSparseSet
@@ -36,7 +36,7 @@ namespace lux::render
 
     struct ViewCreateInfo
     {
-        common::Size2D initial_extent{};
+        lux::math::Extent2u initial_extent{};
         const char *debug_name{"View"};
     };
 

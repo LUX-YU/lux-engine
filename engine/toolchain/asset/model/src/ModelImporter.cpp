@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <charconv>
 #include <filesystem>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <optional>
 #include <string_view>
 #include <iostream>

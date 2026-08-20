@@ -43,11 +43,13 @@ target_link_libraries(
     lux::engine::runtime::runtime_render_scene
     lux::engine::runtime::runtime_contribution_host
     PRIVATE
+    lux::cxx::concurrent
     lux::engine::runtime::runtime_logging
 )
 
 component_add_transitive_commands(
     runtime_frame
+    "find_package(lux-cxx REQUIRED COMPONENTS concurrent)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
     "find_package(lux-engine-core REQUIRED COMPONENTS events)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_logging runtime_scene_core runtime_render_scene runtime_contribution_host)"

@@ -29,10 +29,6 @@ install_components(
 	NAMESPACE		lux::engine::resource
 	COMPONENTS		description
                     spatial
-                    classic_mesh_content
-                    terrain_content
-                    tilemap_content
-                    physics3d_content
                     asset_identity
                     asset_core
                     asset_codecs

@@ -1,5 +1,5 @@
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/tilemap/TilemapChunk.hpp>
+#include <lux/engine/resource/asset/codecs/TilemapChunkCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>

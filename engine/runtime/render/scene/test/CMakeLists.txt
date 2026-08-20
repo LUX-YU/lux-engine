@@ -71,7 +71,7 @@ target_link_libraries(
     scene_content_render_contract_test
     PRIVATE
         runtime_render_scene_test_support
-        lux::engine::resource::classic_mesh_content
+        lux::engine::function::render_standard_content
 )
 
 add_executable(
@@ -227,7 +227,7 @@ target_link_libraries(
         lux::engine::ecs::render_pixel_integration
         lux::engine::function::render_features
         lux::engine::resource::asset_codecs
-        lux::engine::resource::tilemap_content
+        lux::engine::resource::asset_codecs
         lux::engine::core::serialization
         lux::engine::platform::window
 )

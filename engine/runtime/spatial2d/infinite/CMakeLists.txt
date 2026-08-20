@@ -150,7 +150,7 @@ target_link_libraries(
         lux::engine::runtime::runtime_spatial2d_tilemap
         lux::engine::core::serialization
         lux::engine::ecs::tilemap
-        lux::engine::resource::tilemap_content
+        lux::engine::resource::asset_codecs
 )
 if(MSVC)
     target_compile_options(infinite2d_headless_test PRIVATE /UNDEBUG)

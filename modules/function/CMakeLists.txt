@@ -17,7 +17,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # Input or Lua. Keep this list explicit so an offline-tool configure cannot
     # discover Vulkan, GLFW, ImGui or a Runtime script backend by directory
     # enumeration.
-    set(dir_list animation render/client)
+    set(dir_list animation render/client render/standard_content)
     # Spatial3D EntityScene cooking emits the engine-owned LXNR payload through
     # navigation_detour3d's codec.  This lower-layer dependency is Recast-only
     # and must exist in the Toolchain profile without pulling Render/Vulkan.
@@ -45,6 +45,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         navigation
         navigation_detour3d
         render_client
+        render_standard_content
     )
     if(LUX_ENABLE_FLOWFORGE_MLIR)
         list(APPEND LUX_FUNCTION_COMPONENTS script_core)
@@ -55,6 +56,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
 else()
     set(LUX_FUNCTION_COMPONENTS
         render_client
+        render_standard_content
         render_graph
         render_vulkan
         render_features

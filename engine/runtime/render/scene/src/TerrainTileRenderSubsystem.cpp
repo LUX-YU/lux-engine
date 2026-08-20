@@ -12,7 +12,7 @@
 #include <lux/engine/ecs/terrain/components/TerrainTileComponent.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/genops/TerrainOperation.ops.hpp>
-#include <lux/engine/resource/terrain/TerrainTile.hpp>
+#include <lux/engine/resource/asset/codecs/TerrainTileCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 
 #include <stdexec/execution.hpp>

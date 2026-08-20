@@ -7,7 +7,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::runtime::runtime_spatial2d_tilemap
         lux::engine::runtime::runtime_execution
-        lux::engine::resource::tilemap_content
+        lux::engine::resource::asset_codecs
 )
 if(MSVC)
     target_compile_options(tilemap_prepare_service_test PRIVATE /UNDEBUG)

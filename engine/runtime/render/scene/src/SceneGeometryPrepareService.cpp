@@ -2,7 +2,7 @@
 
 #include <lux/engine/function/render/client/features/terrain/TerrainOperation.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/terrain/TerrainTile.hpp>
+#include <lux/engine/resource/asset/codecs/TerrainTileCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 
 #include <stdexec/execution.hpp>

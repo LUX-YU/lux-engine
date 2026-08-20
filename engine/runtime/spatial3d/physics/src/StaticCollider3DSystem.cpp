@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/ecs/physics3d/components/Physics3DComponents.hpp>
 #include <lux/engine/ecs/physics3d/systems/Physics3DSystem.hpp>
-#include <lux/engine/resource/physics3d/StaticColliderBatch3D.hpp>
+#include <lux/engine/resource/asset/codecs/StaticColliderBatch3DCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>

@@ -9,7 +9,7 @@
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/MeshSerDeser.hpp>
 #include <lux/engine/resource/asset/PakAssetProvider.hpp>
-#include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
+#include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/game/LaunchManifest.hpp>
 
 #include <chrono>

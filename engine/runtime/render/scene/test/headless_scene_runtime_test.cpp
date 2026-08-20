@@ -624,15 +624,15 @@ int main(int argc, char** argv)
             package_bytes->data(), package_bytes->size()}));
     config.section_vfs = vfs;
 
-    auto scene = lux::runtime::SceneRuntime::create(dependencies, config);
-    check(scene != nullptr, "headless SceneRuntime accepts LXSC");
-    if (!scene)
+    auto scene_runtime = lux::runtime::SceneRuntime::create(dependencies, config);
+    check(scene_runtime != nullptr, "headless SceneRuntime accepts LXSC");
+    if (!scene_runtime)
         return 1;
     check(
-        scene->state() == lux::runtime::ESceneRuntimeState::LOADING,
+        scene_runtime->state() == lux::runtime::ESceneRuntimeState::LOADING,
         "startup Sections begin in LOADING");
     check(
-        scene->world().registry().view<entt::entity>().empty(),
+        scene_runtime->world().registry().view<entt::entity>().empty(),
         "live registry is unchanged before the command barrier");
 
     lux::input::ActionMapper input;
@@ -641,20 +641,21 @@ int main(int argc, char** argv)
         startup.driveWithStep(
             [&]() noexcept
             {
-                scene->tick(0.0f, 0.0f, 0.0f, input);
+                scene_runtime->tick(0.0f, 0.0f, 0.0f, input);
             },
             [&]() noexcept
             {
-                return scene->state() !=
+                return scene_runtime->state() !=
                     lux::runtime::ESceneRuntimeState::LOADING;
             },
-            [&scene]() noexcept
+            [&scene_runtime]() noexcept
             {
-                const auto state = scene->entitySectionLoaderSnapshot();
+                const auto state =
+                    scene_runtime->entitySectionLoaderSnapshot();
                 return state.waiting_admission_sections != 0u ||
                     state.staging_sections != 0u ||
                     state.armed_sections != 0u ||
-                    (scene->state() ==
+                    (scene_runtime->state() ==
                          lux::runtime::ESceneRuntimeState::LOADING &&
                      state.waiting_sections == 0u &&
                      state.staging_sections == 0u &&
@@ -662,12 +663,15 @@ int main(int argc, char** argv)
             });
     }
 
-    check(scene->isReady(), "all startup Sections commit before READY");
-    auto& registry = scene->world().registry();
+    check(
+        scene_runtime->isReady(),
+        "all startup Sections commit before READY");
+    auto& registry = scene_runtime->world().registry();
     check(
         registry.view<entt::entity>().size() == 2u,
         "LXES entities publish exactly once");
-    auto* persistent = scene->services().get<lux::ecs::PersistentEntityIndex>();
+    auto* persistent =
+        scene_runtime->services().get<lux::ecs::PersistentEntityIndex>();
     const auto root = persistent ? persistent->find(root_id) : entt::null;
     const auto children = registry.view<lux::ecs::ParentComponent>();
     check(
@@ -675,7 +679,7 @@ int main(int argc, char** argv)
             children.get<lux::ecs::ParentComponent>(*children.begin())
                     .parent() == root,
         "batch-local parent ordinal relocates at the command barrier");
-    auto* const content_blobs = scene->services().get<
+    auto* const content_blobs = scene_runtime->services().get<
         lux::runtime::entity_scene::ContentBlobClient>();
     check(content_blobs != nullptr, "scene publishes ContentBlobClient");
     std::shared_ptr<
@@ -718,13 +722,13 @@ int main(int argc, char** argv)
                 | stdexec::upon_stopped(release_scope_blob);
             check(
                 lux::exec::spawn(
-                    scene->asyncScope(), std::move(delayed_release)),
+                    scene_runtime->asyncScope(), std::move(delayed_release)),
                 "scene AsyncScope admits delayed blob release");
         }
     }
     std::size_t scene_close_completions = 0u;
     const auto scene_close = closeScene(
-        *scene, async, scene_close_completions);
+        *scene_runtime, async, scene_close_completions);
     check(
         scene_close.clean() && scene_close_completions == 1u,
         "LXSC Scene closes exactly once through the same barrier");
@@ -737,7 +741,7 @@ int main(int argc, char** argv)
         delayed_scope_blob_released && delayed_scope_blob &&
             !*delayed_scope_blob,
         "scene scope terminal wakes Section close after delayed blob release");
-    scene.reset();
+    scene_runtime.reset();
 
     lux::runtime::SceneRuntime::Config ordered_close_config;
     ordered_close_config.name = "Domain-neutral ordered close";

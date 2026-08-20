@@ -164,7 +164,7 @@ if(TARGET lux_player AND TARGET render_features)
             lux::engine::authoring::authoring_world
             lux::engine::ecs::scene_format
             lux::engine::scene::scene_package
-            lux::engine::resource::classic_mesh_content
+            lux::engine::function::render_standard_content
     )
     lux_link_game_export_component_meta(game_export_smoke)
     target_compile_definitions(

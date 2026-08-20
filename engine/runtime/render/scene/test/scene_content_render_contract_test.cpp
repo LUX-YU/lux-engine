@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/render/components/3d/ClassicMeshBatchComponent.hpp>
 #include <lux/engine/function/render/client/features/render_cluster/RenderClusterOperation.hpp>
 #include <lux/engine/meta/LuxObject.hpp>
-#include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
+#include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
 
 #include <array>

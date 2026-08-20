@@ -157,7 +157,7 @@ int main()
                 "lux::spatial::Position3D",
         "non-final Position field retains its nested reflection link");
 
-    const lux::entity_scene::EntitySceneId world_id{
+    const lux::authoring::WorldId world_id{
         *uuids::uuid::from_string(
             "99999999-0000-4000-8000-000000000001")};
     const auto mesh_id = *uuids::uuid::from_string(
@@ -272,10 +272,10 @@ int main()
             }),
         "encoded LXAD bytes exclude transient component schemas");
 
-    const auto hello_id = lux::entity_scene::PersistentEntityId{
+    const auto hello_id = lux::authoring::WorldActorId{
         source_registry.get<
         lux::ecs::PersistentEntityIdComponent>(hello).id().value()};
-    const auto peer_id = lux::entity_scene::PersistentEntityId{
+    const auto peer_id = lux::authoring::WorldActorId{
         source_registry.get<
         lux::ecs::PersistentEntityIdComponent>(peer).id().value()};
     expect(!hello_id.empty() && hello_id != peer_id,
@@ -287,7 +287,8 @@ int main()
         lux::authoring::makeWorldSourceDocument(
             lux::authoring::EPartitionTopology::PLANAR_XZ);
     root.contributions.push_back({
-        lux::extensions::ContributionId{"org.lux.builtin.physics3d"},
+        lux::authoring::WorldSceneFeatureId{
+            "org.lux.builtin.physics3d"},
         0u,
         {std::byte{0x10u}, std::byte{0x20u}}});
     auto encoded_root = lux::authoring::encodeWorldSource(root);

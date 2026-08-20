@@ -205,7 +205,7 @@ namespace lux::editor
         auto source = lux::authoring::makeWorldSourceDocument(
             lux::authoring::EPartitionTopology::PLANAR_XZ);
         source.contributions.push_back({
-            lux::extensions::ContributionId{
+            lux::authoring::WorldSceneFeatureId{
                 "org.lux.builtin.presentation3d"},
             0u,
             {}});
@@ -248,7 +248,7 @@ namespace lux::editor
                 return false;
             }
             lux::authoring::WorldActorSourceDescriptor descriptor;
-            descriptor.id = lux::entity_scene::PersistentEntityId{
+            descriptor.id = lux::authoring::WorldActorId{
                 stable->id().value()};
             descriptor.actor_class = "org.lux.actor";
             descriptor.space = source.spaces.front().id;

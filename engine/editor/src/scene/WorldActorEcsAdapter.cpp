@@ -18,6 +18,7 @@
 #include <array>
 #include <cmath>
 #include <random>
+#include <type_traits>
 #include <unordered_map>
 
 namespace lux::editor
@@ -34,25 +35,37 @@ namespace lux::editor
             return uuids::uuid_random_generator{generator}();
         }
 
-        [[nodiscard]] lux::entity_scene::PersistentEntityId
+        [[nodiscard]] lux::authoring::WorldActorId
         toAuthoringId(const lux::ecs::PersistentEntityId& id) noexcept
         {
-            return lux::entity_scene::PersistentEntityId{id.value()};
+            return lux::authoring::WorldActorId{id.value()};
         }
 
         [[nodiscard]] lux::ecs::PersistentEntityId
-        toRuntimeId(const lux::entity_scene::PersistentEntityId& id) noexcept
+        toRuntimeId(const lux::authoring::WorldActorId& id) noexcept
         {
             return lux::ecs::PersistentEntityId{id.value()};
         }
 
-    }
+        static_assert(!std::is_constructible_v<
+            lux::authoring::WorldActorId,
+            lux::ecs::PersistentEntityId>);
+        static_assert(!std::is_constructible_v<
+            lux::ecs::PersistentEntityId,
+            lux::authoring::WorldActorId>);
+        static_assert(!std::is_assignable_v<
+            lux::authoring::WorldActorId&,
+            lux::ecs::PersistentEntityId>);
+        static_assert(!std::is_assignable_v<
+            lux::ecs::PersistentEntityId&,
+            lux::authoring::WorldActorId>);
+    } // namespace
 
     lux::cxx::expected<lux::authoring::WorldActorDocument, std::string>
     WorldActorEcsAdapter::capture(
         lux::meta::EntityRegistry& registry,
         entt::entity entity,
-        lux::entity_scene::EntitySceneId world,
+        lux::authoring::WorldId world,
         std::string_view origin)
     {
         if (!persistent_entities_.boundTo(registry))

@@ -19,7 +19,7 @@ namespace lux::editor::detail
     /// existing content object in the current Authoring transaction.
     struct WorldActorComponentSchemaSnapshot final
     {
-        lux::entity_scene::PersistentEntityId actor;
+        lux::authoring::WorldActorId actor;
         std::vector<std::string> schemas;
     };
 

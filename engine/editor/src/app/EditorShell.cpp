@@ -827,14 +827,14 @@ namespace lux::editor
                         for (auto& actor : indexed)
                         {
                             result.push_back({
-                                lux::entity_scene::PersistentEntityId{
+                                lux::authoring::WorldActorId{
                                     actor.actor.value()},
                                 std::move(actor.display_name),
                                 std::move(actor.actor_class)});
                         }
                         return result;
                     },
-                    [scene](lux::entity_scene::PersistentEntityId actor)
+                    [scene](lux::authoring::WorldActorId actor)
                     {
                         (void)scene->requestWorldActorProxy(actor);
                     });

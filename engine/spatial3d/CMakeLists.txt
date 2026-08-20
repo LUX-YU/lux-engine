@@ -1,5 +1,4 @@
-# Engine-owned Spatial3D scene catalog. The legacy Resource component remains
-# only for the byte-compatibility test while consumers migrate to this target.
+# Engine-owned Spatial3D scene catalog and L3SC v1 codec.
 
 find_package(lux-cxx REQUIRED COMPONENTS compile_time core)
 
@@ -89,9 +88,7 @@ add_executable(
 )
 target_link_libraries(
     spatial3d_scene_catalog_contract_test
-    PRIVATE
-        lux::engine::spatial3d::scene_catalog
-        lux::engine::resource::spatial3d_scene
+    PRIVATE lux::engine::spatial3d::scene_catalog
 )
 if(MSVC)
     target_compile_options(

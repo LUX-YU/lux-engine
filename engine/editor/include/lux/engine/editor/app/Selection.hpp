@@ -21,7 +21,7 @@
 #include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
 #include <lux/engine/authoring/world/WorldIdentifiers.hpp>
 #include <lux/engine/authoring/world/WorldPartition.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
+#include <lux/engine/authoring/world/WorldIdentifiers.hpp>
 #include <lux/engine/meta/LuxObject.hpp>
 
 #include <entt/entt.hpp>
@@ -76,7 +76,7 @@ namespace lux::editor
 
     using EditorObjectId = std::variant<
         TransientEntityId,
-        lux::entity_scene::PersistentEntityId,
+        lux::authoring::WorldActorId,
         lux::authoring::WorldInstanceId,
         TerrainSelection,
         TileSelection,
@@ -111,7 +111,7 @@ namespace lux::editor
                         lux::ecs::PersistentEntityIdComponent>(e);
                     stable && !stable->id().empty())
                 {
-                    object = lux::entity_scene::PersistentEntityId{
+                    object = lux::authoring::WorldActorId{
                         stable->id().value()};
                 }
                 else

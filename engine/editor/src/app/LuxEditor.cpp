@@ -1459,7 +1459,7 @@ namespace lux::editor
                 ? lux::authoring::EPartitionTopology::PLANAR_XY
                 : lux::authoring::EPartitionTopology::PLANAR_XZ);
         source.contributions.push_back({
-            lux::extensions::ContributionId{
+            lux::authoring::WorldSceneFeatureId{
                 spatial_2d
                     ? "org.lux.builtin.presentation2d"
                     : "org.lux.builtin.presentation3d"},

@@ -1,8 +1,7 @@
 #pragma once
 
-#include <lux/engine/resource/entity_scene/EntitySceneCodec.hpp>
-
 #include <lux/engine/core/serialization/ByteIO.hpp>
+#include <lux/engine/scene/ScenePackageCodec.hpp>
 
 #include <algorithm>
 #include <array>
@@ -15,13 +14,13 @@
 #include <utility>
 #include <vector>
 
-namespace lux::entity_scene::detail
+namespace lux::scene::detail
 {
     using lux::core::serialization::ByteReader;
     using lux::core::serialization::ByteWriter;
 
-    [[nodiscard]] inline EntitySceneCodecFailure failure(
-        EEntitySceneCodecError error,
+    [[nodiscard]] inline ScenePackageCodecFailure failure(
+        ScenePackageCodecError error,
         std::string detail)
     {
         return {error, std::move(detail)};
@@ -99,35 +98,6 @@ namespace lux::entity_scene::detail
         }
         values.resize(count);
         return true;
-    }
-
-    template <class Value>
-    [[nodiscard]] bool reserveVector(
-        ByteReader& reader,
-        DecodeAllocationBudget& budget,
-        std::vector<Value>& values,
-        std::uint32_t count,
-        std::uint32_t minimum_wire_bytes,
-        const char* truncated_message,
-        const char* budget_message) noexcept
-    {
-        if (!countFitsRemaining(
-                reader, count, minimum_wire_bytes, truncated_message) ||
-            !budget.consume(reader, count, sizeof(Value), budget_message))
-        {
-            return false;
-        }
-        values.reserve(count);
-        return true;
-    }
-
-    template <class Id>
-    [[nodiscard]] bool uuidLess(const Id& lhs, const Id& rhs) noexcept
-    {
-        const auto left = lhs.value().as_bytes();
-        const auto right = rhs.value().as_bytes();
-        return std::lexicographical_compare(
-            left.begin(), left.end(), right.begin(), right.end());
     }
 
     template <class Id>
@@ -254,8 +224,7 @@ namespace lux::entity_scene::detail
                 names_.end());
         }
 
-        [[nodiscard]] std::uint32_t index(std::string_view name) const
-            noexcept
+        [[nodiscard]] std::uint32_t index(std::string_view name) const noexcept
         {
             if (name.empty())
                 return 0u;
@@ -268,9 +237,7 @@ namespace lux::entity_scene::detail
 
         [[nodiscard]] std::string_view at(std::uint32_t index) const noexcept
         {
-            if (index >= names_.size())
-                return {};
-            return names_[index];
+            return index < names_.size() ? names_[index] : std::string_view{};
         }
 
         [[nodiscard]] std::size_t size() const noexcept
@@ -287,7 +254,7 @@ namespace lux::entity_scene::detail
 
         [[nodiscard]] bool read(
             ByteReader& reader,
-            const EntitySceneCodecLimits& limits,
+            const ScenePackageCodecLimits& limits,
             DecodeAllocationBudget& budget) noexcept
         {
             std::uint32_t count = 0u;
@@ -322,7 +289,9 @@ namespace lux::entity_scene::detail
                         value,
                         limits.maximum_string_bytes,
                         budget))
+                {
                     return false;
+                }
                 if (value.empty() ||
                     (index > 1u && names_.back() >= value))
                 {
@@ -348,12 +317,13 @@ namespace lux::entity_scene::detail
         writer.u32(names.index(id.name()));
     }
 
-    template <class StableId>
+    template <class StableId, class Validator>
     bool readStableId(
         ByteReader& reader,
         const WireNameTable& names,
         StableId& id,
-        DecodeAllocationBudget& budget) noexcept
+        DecodeAllocationBudget& budget,
+        Validator&& validator) noexcept
     {
         std::uint64_t hash = 0u;
         std::uint32_t name_index = 0u;
@@ -374,7 +344,7 @@ namespace lux::entity_scene::detail
             return false;
         }
         id = StableId{name};
-        if (id.hash() != hash || !isValidEntitySceneId(id))
+        if (id.hash() != hash || !validator(id))
         {
             reader.fail("stable id hash or canonical name is invalid");
             return false;
@@ -382,19 +352,19 @@ namespace lux::entity_scene::detail
         return true;
     }
 
-    inline void writeExtensionId(
+    inline void writeComponentId(
         ByteWriter& writer,
         const WireNameTable& names,
-        const lux::extensions::ExtensionId& id)
+        const lux::ecs::ComponentSchemaId& id)
     {
-        writer.u64(id.hash());
-        writer.u32(names.index(id.name()));
+        writer.u64(id.hash);
+        writer.u32(names.index(id.name));
     }
 
-    inline bool readExtensionId(
+    inline bool readComponentId(
         ByteReader& reader,
         const WireNameTable& names,
-        lux::extensions::ExtensionId& id,
+        lux::ecs::ComponentSchemaId& id,
         DecodeAllocationBudget& budget) noexcept
     {
         std::uint64_t hash = 0u;
@@ -402,57 +372,20 @@ namespace lux::entity_scene::detail
         if (!reader.u64(hash) || !reader.u32(name_index))
             return false;
         const auto name = names.at(name_index);
-        if (!budget.consume(
+        if (name.empty() || !budget.consume(
                 reader,
                 name.size(),
                 sizeof(char),
-                "extension id names exceed decode allocation budget"))
+                "component id names exceed decode allocation budget"))
         {
+            if (name.empty())
+                reader.fail("component id references an invalid name");
             return false;
         }
-        id = lux::extensions::ExtensionId{name};
-        if (name.empty() || !id.isValid() || id.hash() != hash ||
-            !lux::extensions::isCanonicalStableName(name))
+        id = lux::ecs::componentSchemaId(name);
+        if (id.hash != hash || !lux::ecs::isValidComponentSchemaId(id))
         {
-            reader.fail("extension id hash or canonical name is invalid");
-            return false;
-        }
-        return true;
-    }
-
-    inline void writeContributionId(
-        ByteWriter& writer,
-        const WireNameTable& names,
-        const lux::extensions::ContributionId& id)
-    {
-        writer.u64(id.hash());
-        writer.u32(names.index(id.name()));
-    }
-
-    inline bool readContributionId(
-        ByteReader& reader,
-        const WireNameTable& names,
-        lux::extensions::ContributionId& id,
-        DecodeAllocationBudget& budget) noexcept
-    {
-        std::uint64_t hash = 0u;
-        std::uint32_t name_index = 0u;
-        if (!reader.u64(hash) || !reader.u32(name_index))
-            return false;
-        const auto name = names.at(name_index);
-        if (!budget.consume(
-                reader,
-                name.size(),
-                sizeof(char),
-                "contribution id names exceed decode allocation budget"))
-        {
-            return false;
-        }
-        id = lux::extensions::ContributionId{name};
-        if (name.empty() || !id.isValid() || id.hash() != hash ||
-            !lux::extensions::isCanonicalStableName(name))
-        {
-            reader.fail("contribution id hash or canonical name is invalid");
+            reader.fail("component id hash or canonical name is invalid");
             return false;
         }
         return true;
@@ -474,19 +407,19 @@ namespace lux::entity_scene::detail
         return true;
     }
 
-    [[nodiscard]] inline EEntitySceneCodecError readerError(
+    [[nodiscard]] inline ScenePackageCodecError readerError(
         std::string_view detail) noexcept
     {
         if (detail.find("limit") != std::string_view::npos ||
             detail.find("exceeds") != std::string_view::npos)
         {
-            return EEntitySceneCodecError::LIMIT_EXCEEDED;
+            return ScenePackageCodecError::LimitExceeded;
         }
         if (detail.find("hash") != std::string_view::npos ||
             detail.find("canonical name") != std::string_view::npos)
         {
-            return EEntitySceneCodecError::HASH_MISMATCH;
+            return ScenePackageCodecError::HashMismatch;
         }
-        return EEntitySceneCodecError::TRUNCATED;
+        return ScenePackageCodecError::Truncated;
     }
-}
+} // namespace lux::scene::detail

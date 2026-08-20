@@ -242,7 +242,7 @@
                 source.spaces.front().topology ==
                 lux::authoring::EPartitionTopology::PLANAR_XY;
             source.contributions.push_back({
-                lux::extensions::ContributionId{
+                lux::authoring::WorldSceneFeatureId{
                     is_2d
                         ? "org.lux.builtin.presentation2d"
                         : "org.lux.builtin.presentation3d"},
@@ -696,7 +696,7 @@
         return lux::cxx::unexpected(instance_edit_error_);
     }
 
-    lux::cxx::expected<lux::entity_scene::PersistentEntityId, std::string>
+    lux::cxx::expected<lux::authoring::WorldActorId, std::string>
     EditorScene::convertWorldInstanceToActor(
         lux::authoring::WorldInstanceId instance_id)
     {
@@ -884,17 +884,17 @@
         dirty_instance_pages_.insert(instance_page->first);
         authoring_load_result_.created_entities.push_back(*entity);
         authoring_load_result_.world_entity_ids.push_back(
-            lux::entity_scene::PersistentEntityId{
+            lux::authoring::WorldActorId{
                 transaction->actor_document.actor.value()});
         selection_.select(&registry, *entity);
         trimAuthoringDescriptorPageCache();
-        return lux::entity_scene::PersistentEntityId{
+        return lux::authoring::WorldActorId{
             transaction->actor_document.actor.value()};
     }
 
     lux::cxx::expected<lux::authoring::WorldInstanceId, std::string>
     EditorScene::convertWorldActorToInstance(
-        lux::entity_scene::PersistentEntityId actor)
+        lux::authoring::WorldActorId actor)
     {
         instance_edit_error_.clear();
         if (!world_source_ || actor.empty())
@@ -1180,7 +1180,7 @@
     }
 
     bool EditorScene::requestWorldActorProxy(
-        lux::entity_scene::PersistentEntityId actor,
+        lux::authoring::WorldActorId actor,
         bool select)
     {
         if (!live_ || !world_source_ || !world_descriptor_index_ ||
@@ -1218,7 +1218,7 @@
             return true;
         }
         const auto persistent_actor =
-            lux::entity_scene::PersistentEntityId{actor.value()};
+            lux::authoring::WorldActorId{actor.value()};
         const auto indexed = world_descriptor_index_->find(persistent_actor);
         const auto* page = indexed
             ? world_descriptor_index_->page(indexed->descriptor_page)
@@ -1313,7 +1313,7 @@
                 owner->authoring_load_result_.created_entities.push_back(
                     entity);
                 owner->authoring_load_result_.world_entity_ids.push_back(
-                    lux::entity_scene::PersistentEntityId{
+                    lux::authoring::WorldActorId{
                         outcome->descriptor.id.value()});
                 owner->materialized_actor_ids_.insert(key);
                 owner->materialized_actor_descriptors_.insert_or_assign(
@@ -1327,7 +1327,7 @@
                 owner->selection_.resolveProxy(
                     &registry,
                     entity,
-                    EditorObjectId{lux::entity_scene::PersistentEntityId{
+                    EditorObjectId{lux::authoring::WorldActorId{
                         outcome->descriptor.id.value()}});
                 owner->updateAuthoringProxyWindow();
             });

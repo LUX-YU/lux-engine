@@ -46,7 +46,6 @@ target_link_libraries(
     PUBLIC
         lux::cxx::compile_time
         lux::engine::resource::asset_identity
-        lux::engine::resource::entity_scene
         lux::engine::resource::spatial
         lux::cxx::algorithm
         lux::engine::core::serialization
@@ -57,7 +56,7 @@ component_add_transitive_commands(
     authoring_world
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time)"
     "find_package(stduuid CONFIG REQUIRED)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_identity entity_scene spatial)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_identity spatial)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
 )
 

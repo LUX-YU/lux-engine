@@ -14,6 +14,7 @@
 #include <lux/engine/ecs/render/components/3d/VisualLodNodeComponent.hpp>
 #include <lux/engine/ecs/navigation/components/NavigationRegion3DComponent.hpp>
 #include <lux/engine/ecs/physics3d/components/Physics3DComponents.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
 #include <lux/engine/ecs/terrain/components/TerrainTileComponent.hpp>
 #include <lux/engine/meta/Meta.hpp>

@@ -21,7 +21,7 @@
 #include <lux/engine/editor/visibility.h>
 #include <lux/engine/meta/LuxObject.hpp>
 #include <lux/engine/ui/Panel.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
+#include <lux/engine/authoring/world/WorldIdentifiers.hpp>
 
 #include <entt/entt.hpp>
 
@@ -38,7 +38,7 @@ namespace lux::editor
 
     struct HierarchyWorldActorItem final
     {
-        lux::entity_scene::PersistentEntityId id;
+        lux::authoring::WorldActorId id;
         std::string display_name;
         std::string actor_class;
     };
@@ -60,7 +60,7 @@ namespace lux::editor
             std::function<std::size_t()> count,
             std::function<std::vector<HierarchyWorldActorItem>(
                 std::string_view, std::size_t, std::size_t)> query,
-            std::function<void(lux::entity_scene::PersistentEntityId)> open);
+            std::function<void(lux::authoring::WorldActorId)> open);
         void clearWorldActorSource() noexcept;
 
         /// Inject the Create-menu CONTENT drawer (menu items + click handling),
@@ -84,7 +84,7 @@ namespace lux::editor
         std::function<std::size_t()> world_actor_count_;
         std::function<std::vector<HierarchyWorldActorItem>(
             std::string_view, std::size_t, std::size_t)> world_actor_query_;
-        std::function<void(lux::entity_scene::PersistentEntityId)> world_actor_open_;
+        std::function<void(lux::authoring::WorldActorId)> world_actor_open_;
         std::vector<HierarchyWorldActorItem> world_actor_page_;
         std::size_t world_actor_offset_{0u};
         std::size_t observed_world_actor_count_{0u};

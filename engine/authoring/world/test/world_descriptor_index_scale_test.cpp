@@ -61,11 +61,11 @@ int main()
     const auto world_file = temporary.root / "Worlds" / "Scale.luxworld";
     const auto cache_file = worldDescriptorIndexCachePath(
         temporary.root / "Cache",
-        lux::entity_scene::EntitySceneId{uuids::uuid::from_string(
+        lux::authoring::WorldId{uuids::uuid::from_string(
             "a1000000-0000-4000-8000-000000000001").value()});
 
     WorldSourceDocument source;
-    source.world = lux::entity_scene::EntitySceneId{uuids::uuid::from_string(
+    source.world = lux::authoring::WorldId{uuids::uuid::from_string(
         "a1000000-0000-4000-8000-000000000001").value()};
     PartitionSpaceDescriptor space;
     space.id = PartitionSpaceId{uuids::uuid::from_string(
@@ -78,7 +78,7 @@ int main()
     const auto page_count = static_cast<std::uint32_t>(
         (kActorCount + kActorsPerPage - 1u) / kActorsPerPage);
     const std::uint64_t needle_ordinal = kActorCount / 2u;
-    const auto needle_actor = lux::entity_scene::PersistentEntityId{
+    const auto needle_actor = lux::authoring::WorldActorId{
         actorUuid(needle_ordinal)};
     for (std::uint32_t page_index = 0u;
          page_index < page_count; ++page_index)
@@ -101,7 +101,7 @@ int main()
         {
             const auto ordinal = first + local;
             WorldActorSourceDescriptor actor;
-            actor.id = lux::entity_scene::PersistentEntityId{
+            actor.id = lux::authoring::WorldActorId{
                 actorUuid(ordinal)};
             actor.space = space.id;
             const auto cell_x = static_cast<std::int64_t>(local % 32u);
@@ -153,9 +153,9 @@ int main()
     assert(cold.actor_count == kActorCount &&
         cold.page_count == page_count && cold.cached_bytes == 0u);
     assert(loaded->find(
-        lux::entity_scene::PersistentEntityId{actorUuid(0u)}));
+        lux::authoring::WorldActorId{actorUuid(0u)}));
     assert(loaded->find(needle_actor));
-    assert(loaded->find(lux::entity_scene::PersistentEntityId{
+    assert(loaded->find(lux::authoring::WorldActorId{
         actorUuid(kActorCount - 1u)}));
     const auto matches = loaded->search("needle million", 0u, 4u);
     assert(matches.size() == 1u && matches.front().actor == needle_actor);

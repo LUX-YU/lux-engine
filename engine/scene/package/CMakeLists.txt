@@ -1,7 +1,5 @@
-# Engine-owned LXSC scene package contract. The public API speaks in
-# SceneFeatureId and ECS scene-format identities; the historical Resource
-# manifest is used only by the private compatibility adapter while migration is
-# in progress.
+# Engine-owned LXSC scene package contract. The public API and wire codec speak
+# directly in SceneFeatureId and ECS scene-format identities.
 
 find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time core)
 
@@ -19,7 +17,6 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScenePackageCodec.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScenePackageValidation.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/LegacyEntitySceneAdapter.cpp
 )
 
 component_include_directories(
@@ -48,7 +45,6 @@ target_link_libraries(
         lux::engine::extensions::extension_api
     PRIVATE
         lux::engine::resource::asset_core
-        lux::engine::resource::entity_scene
 )
 
 component_add_transitive_commands(
@@ -66,10 +62,8 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-# Public-link probe: this target intentionally does not link the legacy
-# resource/entity_scene component. On Windows it therefore verifies that the
-# scene_package DLL exports its canonical codec entry points and produces an
-# import library.
+# Public-link probe verifies that the scene_package DLL exports its canonical
+# codec entry points and produces an import library on Windows.
 add_executable(
     scene_package_public_link_test
     ${CMAKE_CURRENT_SOURCE_DIR}/test/scene_package_public_link_test.cpp
@@ -112,18 +106,14 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-# Compatibility contract: this test additionally links the frozen Resource
-# codec so it can compare canonical ScenePackage bytes with the legacy LXSC
-# implementation during the migration window.
+# Compatibility contract: canonical codec against the frozen LXSC v1 fixture.
 add_executable(
     scene_package_contract_test
     ${CMAKE_CURRENT_SOURCE_DIR}/test/scene_package_contract_test.cpp
 )
 target_link_libraries(
     scene_package_contract_test
-    PRIVATE
-        lux::engine::scene::scene_package
-        lux::engine::resource::entity_scene
+    PRIVATE lux::engine::scene::scene_package
 )
 if(MSVC)
     target_compile_options(scene_package_contract_test PRIVATE /UNDEBUG)

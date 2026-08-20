@@ -2,7 +2,7 @@
         lux::authoring::EPartitionTopology topology)
     {
         WorldSourceDocument root;
-        root.world = lux::entity_scene::EntitySceneId{randomUuid()};
+        root.world = lux::authoring::WorldId{randomUuid()};
         lux::authoring::PartitionSpaceDescriptor space;
         space.id = lux::authoring::PartitionSpaceId{randomUuid()};
         space.topology = topology;
@@ -13,7 +13,7 @@
     }
 
     std::string makeWorldActorDocumentPath(
-        lux::entity_scene::PersistentEntityId actor,
+        lux::authoring::WorldActorId actor,
         const lux::cxx::algorithm::Sha256Digest& content_digest)
     {
         const auto identity = uuids::to_string(actor.value());
@@ -22,7 +22,7 @@
     }
 
     uuids::uuid makeWorldDescriptorPageId(
-        lux::entity_scene::EntitySceneId world,
+        lux::authoring::WorldId world,
         lux::authoring::PartitionSpaceId space,
         const lux::authoring::WorldMacroCoord& macro)
     {
@@ -235,7 +235,7 @@
             return lux::cxx::unexpected(
                 std::string{"World source has invalid LXWA v4 header"});
         WorldSourceDocument root;
-        root.world = readId<lux::entity_scene::EntitySceneId>(reader);
+        root.world = readId<lux::authoring::WorldId>(reader);
         std::uint32_t count = 0u;
         if (!readCount(reader, limits.maximum_contributions, count))
         {
@@ -252,8 +252,8 @@
                 return lux::cxx::unexpected(
                     std::string{"malformed scene contribution id"});
             }
-            lux::entity_scene::SceneContribution contribution;
-            contribution.id = lux::extensions::ContributionId{name};
+            lux::authoring::WorldSceneFeatureRequest contribution;
+            contribution.id = lux::authoring::WorldSceneFeatureId{name};
             if (contribution.id.hash() != hash)
             {
                 return lux::cxx::unexpected(
@@ -308,8 +308,8 @@
             std::string name;
             if (!readString(reader, limits.maximum_string_bytes, name))
                 return lux::cxx::unexpected(std::string{"malformed Extension id"});
-            lux::entity_scene::RequiredExtension extension;
-            extension.id = lux::extensions::ExtensionId{name};
+            lux::authoring::WorldRequiredExtension extension;
+            extension.id = lux::authoring::WorldExtensionId{name};
             if (extension.id.hash() != hash)
             {
                 return lux::cxx::unexpected(
@@ -403,7 +403,7 @@
             return lux::cxx::unexpected(
                 std::string{"invalid LXAI v2 header"});
         WorldDescriptorPageDocument page;
-        page.world = readId<lux::entity_scene::EntitySceneId>(reader);
+        page.world = readId<lux::authoring::WorldId>(reader);
         page.id = reader.readUuid();
         page.space = readId<lux::authoring::PartitionSpaceId>(reader);
         if (!readMacro(reader, page.macro))

@@ -104,15 +104,15 @@ namespace
         const auto actor_id = uuids::uuid::from_string(
             "560e8400-e29b-41d4-a716-446655440001").value();
         lux::authoring::WorldActorDocument actor_document;
-        actor_document.world = lux::entity_scene::EntitySceneId{world_id};
+        actor_document.world = lux::authoring::WorldId{world_id};
         actor_document.actor =
-            lux::entity_scene::PersistentEntityId{actor_id};
+            lux::authoring::WorldActorId{actor_id};
         actor_document.name_table = {
             std::byte{1u}, std::byte{0u},
             std::byte{0u}, std::byte{0u}};
         using namespace lux::authoring;
         lux::authoring::WorldSourceDocument source;
-        source.world = lux::entity_scene::EntitySceneId{world_id};
+        source.world = lux::authoring::WorldId{world_id};
         PartitionSpaceDescriptor space;
         space.id = PartitionSpaceId{
             uuids::uuid::from_string(
@@ -122,7 +122,7 @@ namespace
         space.macro_edge_cells = 32u;
         source.spaces.push_back(space);
         lux::authoring::WorldActorSourceDescriptor actor;
-        actor.id = lux::entity_scene::PersistentEntityId{actor_id};
+        actor.id = lux::authoring::WorldActorId{actor_id};
         actor.display_name = "Exporter Smoke Actor";
         actor.actor_class = "org.lux.test.exporter_actor";
         actor.space = space.id;

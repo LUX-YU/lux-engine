@@ -37,7 +37,7 @@ namespace lux::editor
         capture(
             lux::meta::EntityRegistry& registry,
             entt::entity entity,
-            lux::entity_scene::EntitySceneId world,
+            lux::authoring::WorldId world,
             std::string_view origin = "LXAD Actor");
 
         [[nodiscard]] lux::cxx::expected<entt::entity, std::string>

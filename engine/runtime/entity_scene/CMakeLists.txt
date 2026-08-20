@@ -125,18 +125,14 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-# Temporary migration gate: the new ECS-owned LXES/persistence codec must remain
-# byte-for-byte compatible with the legacy Resource entry points until every
-# producer and consumer has moved to ecs::scene_format.
+# Frozen wire contract for ECS-owned LXES v1 and Persistence Journal v1.
 add_executable(
     entity_section_wire_compatibility_test
     ${CMAKE_CURRENT_SOURCE_DIR}/test/entity_section_wire_compatibility_test.cpp
 )
 target_link_libraries(
     entity_section_wire_compatibility_test
-    PRIVATE
-        lux::engine::ecs::scene_format
-        lux::engine::resource::entity_scene
+    PRIVATE lux::engine::ecs::scene_format
 )
 if(MSVC)
     target_compile_options(entity_section_wire_compatibility_test PRIVATE /UNDEBUG)

@@ -335,7 +335,7 @@ namespace lux::editor
                 std::size_t offset,
                 std::size_t maximum) const;
         [[nodiscard]] bool requestWorldActorProxy(
-            lux::entity_scene::PersistentEntityId actor,
+            lux::authoring::WorldActorId actor,
             bool select = true);
 
         [[nodiscard]] std::optional<lux::authoring::EditableWorldInstance>
@@ -350,7 +350,7 @@ namespace lux::editor
         [[nodiscard]] lux::cxx::expected<void, std::string>
             deleteWorldInstance(lux::authoring::WorldInstanceId instance);
         [[nodiscard]] lux::cxx::expected<
-            lux::entity_scene::PersistentEntityId,
+            lux::authoring::WorldActorId,
             std::string>
             convertWorldInstanceToActor(
                 lux::authoring::WorldInstanceId instance);
@@ -358,7 +358,7 @@ namespace lux::editor
             lux::authoring::WorldInstanceId,
             std::string>
             convertWorldActorToInstance(
-                lux::entity_scene::PersistentEntityId actor);
+                lux::authoring::WorldActorId actor);
         [[nodiscard]] const std::string& worldInstanceEditError() const noexcept
         {
             return instance_edit_error_;
@@ -575,7 +575,7 @@ namespace lux::editor
         struct AuthoringEntityState final
         {
             std::vector<entt::entity> created_entities;
-            std::vector<lux::entity_scene::PersistentEntityId> world_entity_ids;
+            std::vector<lux::authoring::WorldActorId> world_entity_ids;
             entt::entity primary_camera{entt::null};
         }                                   authoring_load_result_{};
         std::unordered_set<std::string>      pending_actor_proxies_;

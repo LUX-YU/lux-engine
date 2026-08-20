@@ -167,7 +167,7 @@ namespace lux::editor
         std::filesystem::path world_file;
         std::shared_ptr<const lux::authoring::WorldSourceDocument> source;
         lux::authoring::WorldDescriptorPageReference page;
-        lux::entity_scene::PersistentEntityId actor;
+        lux::authoring::WorldActorId actor;
         std::optional<lux::authoring::WorldActorSourceDescriptor> descriptor;
     };
 

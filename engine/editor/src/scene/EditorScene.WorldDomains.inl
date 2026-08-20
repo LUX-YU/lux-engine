@@ -835,7 +835,7 @@
                             {
                                 ++proxy_admissions;
                                 (void)requestWorldActorProxy(
-                                    lux::entity_scene::PersistentEntityId{
+                                    lux::authoring::WorldActorId{
                                         reference.target.value()},
                                     false);
                             }
@@ -851,7 +851,7 @@
                 {
                     ++proxy_admissions;
                     (void)requestWorldActorProxy(
-                        lux::entity_scene::PersistentEntityId{actor.value()},
+                        lux::authoring::WorldActorId{actor.value()},
                         false);
                 }
             }
@@ -918,7 +918,7 @@
         if (const auto& selected = selection_.object(); selected)
         {
             if (const auto* actor = std::get_if<
-                    lux::entity_scene::PersistentEntityId>(&*selected))
+                    lux::authoring::WorldActorId>(&*selected))
             {
                 desired.insert(uuids::to_string(actor->value()));
             }
@@ -1035,7 +1035,7 @@
             }
             const auto digest = lux::cxx::algorithm::Sha256::hash(*encoded);
             if (lux::authoring::makeWorldActorDocumentPath(
-                    lux::entity_scene::PersistentEntityId{found->value()},
+                    lux::authoring::WorldActorId{found->value()},
                     digest) !=
                     descriptor->document_path)
             {

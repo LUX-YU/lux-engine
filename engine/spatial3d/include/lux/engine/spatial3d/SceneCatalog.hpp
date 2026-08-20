@@ -4,8 +4,8 @@
  * @brief Engine-owned finite Spatial3D catalog and its stable L3SC codec.
  *
  * This contract indexes canonical ECS EntitySection identities and Engine
- * Scene demand channels. The historical resource/spatial3d_scene component is
- * retained only as a wire-compatibility implementation during migration.
+ * Scene demand channels. L3SC v1 is owned and implemented here; Resource does
+ * not expose a parallel catalog contract.
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -56,8 +56,7 @@ namespace lux::spatial3d
         std::uint32_t band{0u};
         lux::ecs::scene_format::EntitySectionId section;
 
-        friend bool operator==(const SceneCatalogEntry&, const SceneCatalogEntry&) =
-            default;
+        friend bool operator==(const SceneCatalogEntry&, const SceneCatalogEntry&) = default;
     };
 
     struct ResidencyCapacity final
@@ -75,8 +74,7 @@ namespace lux::spatial3d
                 maximum_sections_per_interest != 0u;
         }
 
-        friend bool operator==(const ResidencyCapacity&, const ResidencyCapacity&) =
-            default;
+        friend bool operator==(const ResidencyCapacity&, const ResidencyCapacity&) = default;
     };
 
     struct SceneCatalog final

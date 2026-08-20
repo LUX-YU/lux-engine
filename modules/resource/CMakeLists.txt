@@ -29,8 +29,6 @@ install_components(
 	NAMESPACE		lux::engine::resource
 	COMPONENTS		description
                     spatial
-                    spatial3d_scene
-                    entity_scene
                     classic_mesh_content
                     terrain_content
                     tilemap_content

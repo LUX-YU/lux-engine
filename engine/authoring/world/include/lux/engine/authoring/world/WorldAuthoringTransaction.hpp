@@ -58,7 +58,7 @@ namespace lux::authoring
         WorldInstancePageDocument instance_page;
         WorldInstanceSetSourceDescriptor instance_set;
         EditableWorldInstance instance;
-        lux::entity_scene::PersistentEntityId removed_actor;
+        lux::authoring::WorldActorId removed_actor;
     };
 
     /// Converts an Actor only after every reflected component is admitted by

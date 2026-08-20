@@ -7,6 +7,7 @@
 #include <array>
 #include <map>
 #include <string>
+#include <type_traits>
 #include <unordered_set>
 #include <utility>
 #include <variant>
@@ -70,31 +71,55 @@ namespace lux::toolchain
             return result == 0u ? 1u : result;
         }
 
-        [[nodiscard]] lux::scene::SceneFeatureRequest toSceneFeature(
-            const lux::entity_scene::SceneContribution& contribution)
+        [[nodiscard]] std::optional<lux::scene::SceneFeatureRequest>
+        toSceneFeature(
+            const lux::authoring::WorldSceneFeatureRequest& feature)
         {
-            return {
-                lux::scene::SceneFeatureId{
-                    std::string{contribution.id.name()}},
-                contribution.config_schema_version,
-                contribution.config};
+            if (!feature.id.valid() ||
+                !lux::scene::isValidSceneFeatureIdName(feature.id.name()))
+            {
+                return std::nullopt;
+            }
+            return lux::scene::SceneFeatureRequest{
+                lux::scene::SceneFeatureId{feature.id.name()},
+                feature.config_schema_version,
+                feature.config};
         }
 
-        [[nodiscard]] lux::scene::RequiredExtension toRequiredExtension(
-            const lux::entity_scene::RequiredExtension& requirement)
+        [[nodiscard]] std::optional<lux::scene::RequiredExtension>
+        toRequiredExtension(
+            const lux::authoring::WorldRequiredExtension& requirement)
         {
-            return {
-                lux::extensions::ExtensionId{
-                    std::string{requirement.id.name()}},
+            if (!requirement.id.valid() ||
+                !lux::extensions::isCanonicalStableName(
+                    requirement.id.name()))
+            {
+                return std::nullopt;
+            }
+            return lux::scene::RequiredExtension{
+                lux::extensions::ExtensionId{requirement.id.name()},
                 requirement.required_major,
                 requirement.minimum_minor};
         }
 
         [[nodiscard]] lux::ecs::PersistentEntityId toRuntimeEntityId(
-            const lux::entity_scene::PersistentEntityId& id) noexcept
+            const lux::authoring::WorldActorId& id) noexcept
         {
             return lux::ecs::PersistentEntityId{id.value()};
         }
+
+        static_assert(!std::is_constructible_v<
+            lux::authoring::WorldId,
+            lux::scene::ScenePackageId>);
+        static_assert(!std::is_constructible_v<
+            lux::scene::ScenePackageId,
+            lux::authoring::WorldId>);
+        static_assert(!std::is_constructible_v<
+            lux::authoring::WorldActorId,
+            lux::ecs::PersistentEntityId>);
+        static_assert(!std::is_constructible_v<
+            lux::ecs::PersistentEntityId,
+            lux::authoring::WorldActorId>);
     } // namespace
 
     lux::cxx::expected<Spatial3DAuthoringSource, std::string>
@@ -111,8 +136,16 @@ namespace lux::toolchain
         Spatial3DAuthoringSource result;
         result.scene = lux::scene::ScenePackageId{root->world.value()};
         result.features.reserve(root->contributions.size());
-        for (const auto& contribution : root->contributions)
-            result.features.push_back(toSceneFeature(contribution));
+        for (const auto& feature : root->contributions)
+        {
+            auto cooked = toSceneFeature(feature);
+            if (!cooked)
+            {
+                return lux::cxx::unexpected(
+                    std::string{"invalid Authoring scene feature ID"});
+            }
+            result.features.push_back(std::move(*cooked));
+        }
         result.spaces.reserve(root->spaces.size());
         std::unordered_set<std::string> spaces;
         for (const auto& space : root->spaces)
@@ -133,8 +166,15 @@ namespace lux::toolchain
         }
         result.required_extensions.reserve(root->required_extensions.size());
         for (const auto& requirement : root->required_extensions)
-            result.required_extensions.push_back(
-                toRequiredExtension(requirement));
+        {
+            auto cooked = toRequiredExtension(requirement);
+            if (!cooked)
+            {
+                return lux::cxx::unexpected(
+                    std::string{"invalid Authoring Extension ID"});
+            }
+            result.required_extensions.push_back(std::move(*cooked));
+        }
 
         lux::authoring::WorldSourceCodecLimits actor_limits;
         actor_limits.maximum_bytes = limits.maximum_actor_document_bytes;

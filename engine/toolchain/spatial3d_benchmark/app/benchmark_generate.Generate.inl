@@ -20,7 +20,7 @@
         const auto world_uuid = named(
             recipe_namespace,
             "org.lux.benchmark.world:" + std::to_string(options.seed));
-        const lux::entity_scene::EntitySceneId world{world_uuid};
+        const lux::authoring::WorldId world{world_uuid};
         const lux::authoring::PartitionSpaceId space{
             named(world_uuid, "space:surface")};
         const lux::authoring::InstanceSetId instance_set{
@@ -652,7 +652,7 @@
                     lux::authoring::WorldActorDocument actor;
                     actor.world = world;
                     actor.actor =
-                        lux::entity_scene::PersistentEntityId{actor_uuid};
+                        lux::authoring::WorldActorId{actor_uuid};
                     actor.actor_class = "org.lux.benchmark.semantic";
                     actor.space = space;
                     actor.position = lux::spatial::Position3D{

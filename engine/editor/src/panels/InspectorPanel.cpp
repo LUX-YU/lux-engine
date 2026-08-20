@@ -637,7 +637,7 @@ namespace lux::editor
         drawAddComponentMenu(*reg, e);
         if (scene_ && selection_->object())
         {
-            if (const auto* actor = std::get_if<lux::entity_scene::PersistentEntityId>(
+            if (const auto* actor = std::get_if<lux::authoring::WorldActorId>(
                     &*selection_->object()))
             {
                 if (ImGui::Button("Convert Actor to Instance"))

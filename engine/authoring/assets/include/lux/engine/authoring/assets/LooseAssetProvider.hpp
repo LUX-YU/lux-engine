@@ -73,7 +73,7 @@ namespace lux::authoring
         struct Entry
         {
             lux::asset::asset_id_t id{};
-            lux::asset::EAssetType type{lux::asset::EAssetType::UNKNOWN};
+            std::uint32_t          magic_number{0u};
             std::string           vpath;   ///< Mount-relative canonical.
             std::filesystem::path file;    ///< Absolute on-disk path.
         };

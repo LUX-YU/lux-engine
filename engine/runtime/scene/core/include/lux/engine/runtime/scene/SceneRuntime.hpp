@@ -1,9 +1,9 @@
 #pragma once
 /**
  * @file SceneRuntime.hpp
- * @brief Domain-blind owner of one ECS registry, Schedule and ScenePackage.
+ * @brief Domain-blind owner of one ECS registry, Schedule and SceneDescription.
  *
- * SceneRuntime decodes one Engine ScenePackage, enables its requested features,
+ * SceneRuntime decodes one Engine SceneDescription, enables its requested features,
  * publishes startup LXES Sections through the unique ECS command barrier, and
  * closes the resulting registry. Optional domains are
  * installed through ISceneRuntimeIntegration during the unpublished assembly
@@ -20,7 +20,7 @@
 #include <lux/engine/runtime/entity_scene/StartupSectionSystem.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/SceneServices.hpp>
 #include <lux/engine/ecs/TypeToken.hpp>
@@ -233,17 +233,14 @@ namespace lux::runtime
 
         struct Config
         {
-            std::string           name{"Scene"};
-            lux::asset::AssetBlob scene_package_image{};
-            std::string           scene_origin{};
+            std::string                   name{"Scene"};
+            lux::asset::asset_id_t        scene_asset_id{};
+            std::string                   scene_origin{};
             /// Immutable provider used by stored LXES Section records. Asset
             /// references still resolve through AssetManager's process VFS.
             /// Editor Play uses this to mount an ephemeral cooked bundle
             /// without mutating the process-wide Authoring asset namespace.
             std::shared_ptr<const lux::asset::AssetVfs> section_vfs{};
-            /// Host-created scenes (preview, tests and tools) provide the same
-            /// validated package value consumed by the cooked LXSC path.
-            std::optional<lux::scene::ScenePackage> transient_package{};
             lux::events::DomainEvents* events{nullptr};
         };
 
@@ -409,6 +406,7 @@ namespace lux::runtime
         entity_scene::EntitySectionLoaderSystem*   entity_section_loader_{};
         entity_scene::StartupSectionSystem*        startup_sections_{};
         const entity_scene::EntitySceneCatalog*    entity_scene_catalog_{};
+        lux::asset::AssetRef                       scene_asset_ref_{};
 
         bool live_{false};
         bool closing_{false};

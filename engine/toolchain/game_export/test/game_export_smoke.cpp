@@ -4,7 +4,7 @@
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
@@ -389,7 +389,7 @@ int main()
               pak->entries,
               [](const auto& entry)
               {
-                  return entry.type == lux::asset::EAssetType::ENTITY_SCENE;
+                  return entry.magic_number == lux::scene::kSceneAssetMagic;
               })
         : 0u;
     const auto section_count = pak
@@ -397,7 +397,8 @@ int main()
               pak->entries,
               [](const auto& entry)
               {
-                  return entry.type == lux::asset::EAssetType::ENTITY_SECTION;
+                  return entry.magic_number ==
+                      lux::ecs::scene_format::kEntitySectionImageMagic;
               })
         : 0u;
     const auto mesh_count = pak
@@ -405,7 +406,9 @@ int main()
               pak->entries,
               [](const auto& entry)
               {
-                  return entry.type == lux::asset::EAssetType::MESH;
+                  return entry.magic_number ==
+                      lux::asset::asset_magic_number_of<
+                          lux::asset::EAssetType::MESH>::value;
               })
         : 0u;
     const auto scene_entry = pak
@@ -414,8 +417,8 @@ int main()
               pak->entries.end(),
               [](const auto& entry)
               {
-                  return entry.type ==
-                      lux::asset::EAssetType::ENTITY_SCENE;
+                  return entry.magic_number ==
+                      lux::scene::kSceneAssetMagic;
               })
         : decltype(pak->entries.begin()){};
     const auto generated_hlod_entry = pak
@@ -424,7 +427,9 @@ int main()
               pak->entries.end(),
               [](const auto& entry)
               {
-                  return entry.type == lux::asset::EAssetType::MESH &&
+                  return entry.magic_number ==
+                          lux::asset::asset_magic_number_of<
+                              lux::asset::EAssetType::MESH>::value &&
                       entry.vpath.starts_with("Generated/HlodMeshes/");
               })
         : decltype(pak->entries.begin()){};
@@ -433,12 +438,14 @@ int main()
         pak->entries,
         [&runtime_codecs](const auto& entry)
         {
-            if (entry.type == lux::asset::EAssetType::ENTITY_SCENE ||
-                entry.type == lux::asset::EAssetType::ENTITY_SECTION)
+            if (entry.magic_number == lux::scene::kSceneAssetMagic ||
+                entry.magic_number ==
+                    lux::ecs::scene_format::kEntitySectionImageMagic)
             {
                 return true;
             }
-            const auto* codec = runtime_codecs->find(entry.type);
+            const auto* codec = runtime_codecs->findByMagic(
+                entry.magic_number);
             return codec != nullptr &&
                 codec->shipping ==
                     lux::asset::EAssetShippingClass::RUNTIME;
@@ -456,7 +463,7 @@ int main()
         return 5;
     }
 
-    // LXWA is Authoring-only. The Player Pak contains one LXSC ScenePackage plus
+    // LXWA is Authoring-only. The Player Pak contains one LXSC SceneDescription plus
     // its startup, fine-cell and coarse-LOD LXES images, each linked through
     // one absolute mounted source.
     auto provider = lux::asset::PakAssetProvider::loadFromFile(
@@ -466,11 +473,11 @@ int main()
     const auto scene_image = (*provider)->open(scene_entry->id);
     if (!scene_image)
         return 5;
-    const auto scene_package = lux::scene::decodeScenePackage(
+    const auto scene_description = lux::scene::SceneAssetSerDeser::decodeData(
         scene_image->bytes.view());
-    if (!scene_package ||
-        scene_package->sections.size() != section_count ||
-        scene_package->startup_sections.size() != 1u)
+    if (!scene_description ||
+        (*scene_description)->sections.size() != section_count ||
+        (*scene_description)->startup_sections.size() != 1u)
     {
         return 5;
     }
@@ -478,15 +485,15 @@ int main()
     std::size_t published_attachments = 0u;
     bool startup_found = false;
     bool generated_hlod_referenced = false;
-    for (const auto& record : scene_package->sections)
+    for (const auto& record : (*scene_description)->sections)
     {
         const auto section_entry = std::find_if(
             pak->entries.begin(),
             pak->entries.end(),
             [&record](const auto& entry)
             {
-                return entry.type ==
-                           lux::asset::EAssetType::ENTITY_SECTION &&
+                return entry.magic_number ==
+                           lux::ecs::scene_format::kEntitySectionImageMagic &&
                     entry.id == record.id.value();
             });
         if (section_entry == pak->entries.end())
@@ -539,7 +546,7 @@ int main()
                     });
         }
         startup_found = startup_found ||
-            record.id == scene_package->startup_sections.front();
+            record.id == (*scene_description)->startup_sections.front();
     }
     if (!startup_found || !generated_hlod_referenced ||
         published_entities == 0u ||

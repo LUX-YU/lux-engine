@@ -6,7 +6,7 @@
 #include <lux/engine/core/serialization/NameTable.hpp>
 #include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <cassert>
 #include <cstddef>
@@ -207,8 +207,8 @@ int main()
     assert(image->attachments[1u].reference.type.name() ==
         "lux.test.z_blob");
 
-    ScenePackageCookInput scene;
-    scene.id = ScenePackageId{
+    SceneDescriptionCookInput scene;
+    scene.id = lux::asset::asset_id_t{
         uuid("10000000-0000-4000-8000-000000000001")};
     scene.features.push_back({
         SceneFeatureId{"lux.test.presentation"},
@@ -234,9 +234,9 @@ int main()
         lux::scene::DemandChannelId{"lux.test.startup"});
     scene.sections.push_back(std::move(startup));
 
-    auto cooked = cookScenePackage(std::move(scene));
+    auto cooked = cookSceneDescription(std::move(scene));
     assert(cooked);
-    assert(validateScenePackage(cooked->package));
+    assert(validateSceneDescription(cooked->package));
     assert(cooked->sections.size() == 2u);
     assert(cooked->sections[0u].record.id ==
         lux::ecs::scene_format::EntitySectionId{section_id.value()});
@@ -247,9 +247,9 @@ int main()
             cooked->sections[0u].encoded_image));
     assert(cooked->sections[0u].record.required_components.size() == 2u);
     assert(cooked->package.required_components.size() == 2u);
-    const auto decoded_package = decodeScenePackage(
+    const auto decoded_package = SceneAssetSerDeser::decodeData(
         cooked->encoded_package);
-    assert(decoded_package && *decoded_package == cooked->package);
+    assert(decoded_package && **decoded_package == cooked->package);
 
     return 0;
 }

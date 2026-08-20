@@ -40,7 +40,7 @@ target_link_libraries(
     toolchain_entity_scene_cook
     PUBLIC
         lux::engine::ecs::scene_format
-        lux::engine::scene::scene_package
+        lux::engine::scene::scene
     PRIVATE
         lux::engine::core::serialization
         lux::cxx::algorithm
@@ -50,7 +50,7 @@ component_add_transitive_commands(
     toolchain_entity_scene_cook
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS scene_format)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
 )
 

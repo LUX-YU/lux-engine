@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/tilemap/components/TileChunk2DComponent.hpp>
 #include <lux/engine/ecs/tilemap/systems/TilemapRuntime.hpp>
 #include <lux/engine/ecs/tilemap/systems/TilemapSystem.hpp>
-#include <lux/engine/resource/asset/codecs/TilemapChunkCodec.hpp>
+#include <lux/engine/ecs/tilemap/TilemapChunkCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>

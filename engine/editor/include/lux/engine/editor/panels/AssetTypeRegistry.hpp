@@ -144,10 +144,10 @@ namespace lux::editor
         // EAssetType requires a row INSERTED at its ordinal + the size bump.
         // The assert below is the §7.4 enum-append nail: the table must stay
         // exactly aligned with every published enum ordinal.
-        static_assert(static_cast<std::size_t>(EAssetType::ENTITY_SECTION) + 1 == 17,
+        static_assert(static_cast<std::size_t>(EAssetType::UNKNOWN) + 1 == 15,
             "EAssetType grew — add the new type's row to this table at its "
             "ordinal and bump the array size");
-        static const std::array<AssetTypeDesc, 17> table = { {
+        static const std::array<AssetTypeDesc, 15> table = { {
             { "TEX", "Texture",          IM_COL32( 64, 180, 220, 255), &detail::glyphTexture   },
             { "MDL", "Model",            IM_COL32(255, 215,  60, 255), &detail::glyphModel     },
             { "SHD", "Shader",           IM_COL32(160, 200, 240, 255), &detail::glyphShader    },
@@ -163,11 +163,8 @@ namespace lux::editor
             { "FBC", "Flipbook Clip", IM_COL32(240, 140, 160, 255), &detail::glyphAnimation },
             { "FLW", "Flow Graph",       IM_COL32(140, 220, 140, 255), &detail::glyphGeneric   },
             { "?",   "Unknown",          IM_COL32(120, 120, 120, 255), &detail::glyphGeneric   },
-            { "SCN", "Entity Scene",     IM_COL32(120, 190, 230, 255), &detail::glyphGeneric   },
-            { "SEC", "Entity Section",   IM_COL32(100, 160, 210, 255), &detail::glyphGeneric   },
         } };
         const auto i = static_cast<std::size_t>(type);
-        // UNKNOWN is no longer the last row — fall back to it EXPLICITLY.
         return (i < table.size())
             ? table[i]
             : table[static_cast<std::size_t>(EAssetType::UNKNOWN)];

@@ -53,11 +53,8 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/ShaderSerDeser.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/SkeletonDescriptionCodec.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/SkeletonSerDeser.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/StaticColliderBatch3DCodec.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/TerrainTileCodec.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/TextureAtlasAssets.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/TextureCodec.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/TilemapChunkCodec.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/pak/PakAssetProvider.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/pak/PakCodec.cpp
 )
@@ -119,49 +116,6 @@ target_link_libraries(
 )
 lux_classify_target(
     TARGET  asset_codec_catalog_test
-    LAYER   RESOURCE
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-
-foreach(_codec_test IN ITEMS
-    terrain_tile_codec_test
-    tilemap_chunk_codec_test
-    static_collider_batch3d_codec_test
-)
-    add_executable(
-        ${_codec_test}
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/codecs/${_codec_test}.cpp
-    )
-    target_link_libraries(
-        ${_codec_test}
-        PRIVATE
-            lux::cxx::algorithm
-            lux::engine::resource::asset
-    )
-    if(MSVC)
-        target_compile_options(${_codec_test} PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(${_codec_test} PRIVATE -UNDEBUG)
-    endif()
-    lux_classify_target(
-        TARGET  ${_codec_test}
-        LAYER   RESOURCE
-        PRODUCT TEST
-        ROLE    DOMAIN
-    )
-endforeach()
-
-add_executable(
-    asset_content_public_link_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/codecs/asset_content_public_link_test.cpp
-)
-target_link_libraries(
-    asset_content_public_link_test
-    PRIVATE lux::engine::resource::asset
-)
-lux_classify_target(
-    TARGET  asset_content_public_link_test
     LAYER   RESOURCE
     PRODUCT TEST
     ROLE    DOMAIN

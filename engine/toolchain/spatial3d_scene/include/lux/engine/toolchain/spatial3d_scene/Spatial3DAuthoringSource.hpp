@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/ecs/PersistentEntityId.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
 #include <lux/engine/math/Position.hpp>
 #include <lux/engine/math/Grid.hpp>
@@ -103,7 +103,7 @@ namespace lux::toolchain
 
     struct Spatial3DAuthoringSource final
     {
-        lux::scene::ScenePackageId scene;
+        lux::asset::asset_id_t scene;
         std::vector<lux::scene::SceneFeatureRequest> features;
         std::vector<Spatial3DSourceSpace> spaces;
         std::vector<lux::scene::RequiredExtension> required_extensions;

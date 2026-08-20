@@ -1,4 +1,4 @@
-find_package(lux-cxx REQUIRED COMPONENTS algorithm container)
+find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time container)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_ECS_TILEMAP_LIBRARY
@@ -14,6 +14,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TilemapRuntime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TilemapSystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TilemapChunkCodec.cpp
 )
 
 lux_classify_target(
@@ -43,19 +44,22 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::core
         lux::cxx::algorithm
+        lux::cxx::compile_time
         lux::engine::resource::asset
         lux::engine::resource::description
         lux::engine::ecs::scene_format
         lux::engine::core::math
         lux::engine::core::meta
         lux::cxx::container
+    PRIVATE
+        lux::engine::core::serialization
 )
 
 component_add_transitive_commands(
     tilemap
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
-    "find_package(lux-cxx REQUIRED COMPONENTS algorithm container)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS math meta)"
+    "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time container)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math meta serialization)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset description)"
 )
 

@@ -6,7 +6,11 @@
 #include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/codecs/ScriptSerDeser.hpp>
+#include <lux/engine/scene/SceneAsset.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/game/LaunchManifest.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
@@ -587,8 +591,8 @@ namespace lux::toolchain
                 return written;
             }
             entries.push_back(PakCookFileEntry{
-                cooked->package.id.value(),
-                lux::asset::EAssetType::ENTITY_SCENE,
+                cooked->package.id,
+                lux::scene::kSceneAssetMagic,
                 scene_vpath,
                 package_path});
 
@@ -621,7 +625,7 @@ namespace lux::toolchain
                 }
                 entries.push_back(PakCookFileEntry{
                     section.record.id.value(),
-                    lux::asset::EAssetType::ENTITY_SECTION,
+                    lux::ecs::scene_format::kEntitySectionImageMagic,
                     "EntitySections/" + key,
                     section_path});
             }
@@ -747,8 +751,8 @@ namespace lux::toolchain
                         const auto header = lux::asset::readAssetHeader(
                             iterator->path());
                         if (extension == ".luxasset" &&
-                            lux::asset::assetTypeOfMagic(header.magic) ==
-                                lux::asset::EAssetType::MESH)
+                            header.magic == lux::asset::asset_magic_number_of<
+                                lux::asset::EAssetType::MESH>::value)
                         {
                             auto image = readCookInputImage(iterator->path());
                             if (!image)
@@ -1195,13 +1199,21 @@ namespace lux::toolchain
                 std::move(pak_info.error())
             ));
         }
-        const auto runtime_codecs = lux::asset::runtimeAssetCodecCatalog();
+        const auto runtime_codecs = lux::scene::makeSceneAssetCodecCatalog(
+            *lux::asset::runtimeAssetCodecCatalog());
+        if (!runtime_codecs)
+        {
+            return lux::cxx::unexpected(failure(
+                EGameExportError::COOK_FAILED,
+                "cannot compose Runtime Scene asset codec catalog"));
+        }
         for (const auto& entry : pak_info->entries)
         {
-            if (entry.type == lux::asset::EAssetType::ENTITY_SCENE ||
-                entry.type == lux::asset::EAssetType::ENTITY_SECTION)
+            if (entry.magic_number ==
+                    lux::ecs::scene_format::kEntitySectionImageMagic)
                 continue;
-            const auto* codec = runtime_codecs->find(entry.type);
+            const auto* codec = (*runtime_codecs)->findByMagic(
+                entry.magic_number);
             if (codec == nullptr ||
                 codec->shipping != lux::asset::EAssetShippingClass::RUNTIME)
             {

@@ -16,13 +16,14 @@
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>   // RenderTargetId
 #include <lux/engine/math/Extent.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>                 // asset_id_t
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 
 #include <Eigen/Core>
 
 #include <string_view>
 
 namespace lux::ecs { class World; }
+namespace lux::asset { class AssetManager; }
 
 namespace lux::editor
 {
@@ -47,8 +48,15 @@ namespace lux::editor
     /// Build the transient LXSC value for one private preview world. Registering
     /// the descriptor in a catalog is not activation: the manifest must select
     /// it so SceneRuntime installs the mesh resolver and extraction subsystem.
-    [[nodiscard]] lux::scene::ScenePackage
-    makePreviewScenePackage(std::string_view scene_name);
+    [[nodiscard]] lux::scene::SceneDescription
+    makePreviewSceneDescription(std::string_view scene_name);
+
+    /// Register the deterministic private preview SceneAsset in the existing
+    /// process AssetManager and return its id. Repeated registration of the
+    /// same preview id reuses the already-present asset.
+    [[nodiscard]] lux::asset::asset_id_t registerPreviewSceneAsset(
+        lux::asset::AssetManager& assets,
+        std::string_view scene_name);
 
     /// 常驻 key light(方向/暖白/强度/投影与旧手写预览场景的常驻灯同参)。
     lux::meta::entity_id createPreviewKeyLight(lux::ecs::World& world);

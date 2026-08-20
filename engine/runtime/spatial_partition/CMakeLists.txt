@@ -35,7 +35,7 @@ target_link_libraries(
         lux::cxx::core
         lux::engine::ecs::core
         lux::engine::ecs::scene_format
-        lux::engine::scene::scene_package
+        lux::engine::scene::scene
         lux::engine::runtime::runtime_entity_scene
 )
 
@@ -43,7 +43,7 @@ component_add_transitive_commands(
     runtime_spatial_partition
     "find_package(lux-cxx REQUIRED COMPONENTS core)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene)"
 )
 

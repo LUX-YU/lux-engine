@@ -48,7 +48,7 @@ target_link_libraries(
     PUBLIC
         lux::engine::runtime::runtime_extension_loader
         lux::engine::extensions::extension_api
-        lux::engine::scene::scene_api
+        lux::engine::scene::scene
         lux::engine::ecs::core
         lux::cxx::core
         lux::cxx::memory
@@ -64,7 +64,7 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS core memory)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_extension_loader)"
     "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_api)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
     "find_package(lux-engine-core REQUIRED COMPONENTS events)"
 )

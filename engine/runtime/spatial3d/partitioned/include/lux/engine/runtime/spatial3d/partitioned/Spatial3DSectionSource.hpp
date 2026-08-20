@@ -7,7 +7,7 @@
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/ecs/scene_format/Identifiers.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/math/Position.hpp>
 #include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/visibility.h>

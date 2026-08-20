@@ -4,6 +4,8 @@
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
+#include <lux/engine/scene/SceneAsset.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
@@ -150,7 +152,7 @@ namespace lux::editor
             const auto content_digest = lux::cxx::algorithm::Sha256::hash(
                 bundle.encoded_package);
             return root_document.parent_path() / "entity-scene-play-images" /
-                (uuids::to_string(bundle.package.id.value()) + "-" +
+                (uuids::to_string(bundle.package.id) + "-" +
                     lux::cxx::algorithm::toHex(content_digest) +
                     ".luxpak");
         }
@@ -170,7 +172,7 @@ namespace lux::editor
         }
 
         [[nodiscard]] lux::cxx::expected<
-            lux::scene::ScenePackageId,
+            lux::asset::asset_id_t,
             std::string>
         publishPlayEntityScenePak(
             lux::toolchain::CookedSpatial3DEntitySceneBundle bundle,
@@ -182,8 +184,8 @@ namespace lux::editor
                 bundle.generated_meshes.size());
             const auto scene_id = bundle.package.id;
             entries.push_back({
-                scene_id.value(),
-                lux::asset::EAssetType::ENTITY_SCENE,
+                scene_id,
+                lux::scene::kSceneAssetMagic,
                 "Scenes/Play",
                 ownBytes(std::move(bundle.encoded_package))});
             for (auto& section : bundle.sections)
@@ -207,7 +209,7 @@ namespace lux::editor
                 }
                 entries.push_back({
                     section.record.id.value(),
-                    lux::asset::EAssetType::ENTITY_SECTION,
+                    lux::ecs::scene_format::kEntitySectionImageMagic,
                     "EntitySections/" + key,
                     ownBytes(std::move(section.encoded_image))});
             }
@@ -215,7 +217,8 @@ namespace lux::editor
             {
                 entries.push_back({
                     mesh.id,
-                    lux::asset::EAssetType::MESH,
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MESH>::value,
                     std::move(mesh.virtual_path),
                     ownBytes(std::move(mesh.encoded_image))});
             }

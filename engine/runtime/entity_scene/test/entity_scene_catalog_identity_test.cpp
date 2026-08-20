@@ -27,8 +27,8 @@ int main()
         "71000000-0000-4000-8000-000000000001");
     assert(parsed);
 
-    lux::scene::ScenePackage package;
-    package.id = lux::scene::ScenePackageId{*parsed};
+    lux::scene::SceneDescription package;
+    package.id = lux::asset::asset_id_t{*parsed};
     package.features.push_back({
         lux::scene::SceneFeatureId{"org.lux.test.catalog_identity"},
         1u,

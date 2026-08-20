@@ -1,6 +1,6 @@
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
 
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 
 #include <algorithm>

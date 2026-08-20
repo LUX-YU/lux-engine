@@ -6,7 +6,7 @@
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
@@ -44,8 +44,8 @@ namespace
 
     lux::runtime::entity_scene::EntitySceneCatalog emptyCatalog()
     {
-        lux::scene::ScenePackage package;
-        package.id = lux::scene::ScenePackageId{
+        lux::scene::SceneDescription package;
+        package.id = lux::asset::asset_id_t{
             uuids::uuid::from_string(
                 "84000000-0000-4000-8000-000000000001").value()};
         auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(

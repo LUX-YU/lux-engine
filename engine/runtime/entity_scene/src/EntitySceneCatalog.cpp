@@ -19,10 +19,10 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<
         EntitySceneCatalog,
-        lux::scene::ScenePackageCodecFailure>
-    EntitySceneCatalog::create(lux::scene::ScenePackage package) noexcept
+        lux::scene::SceneCodecFailure>
+    EntitySceneCatalog::create(lux::scene::SceneDescription package) noexcept
     {
-        if (auto valid = lux::scene::validateScenePackage(package); !valid)
+        if (auto valid = lux::scene::validateSceneDescription(package); !valid)
             return lux::cxx::unexpected(std::move(valid.error()));
         return EntitySceneCatalog{std::move(package)};
     }

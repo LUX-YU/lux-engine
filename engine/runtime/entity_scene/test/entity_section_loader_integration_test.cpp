@@ -5,7 +5,7 @@
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/components/ParentComponent.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/StartupSectionSystem.hpp>
@@ -299,7 +299,7 @@ namespace
             {
                 fn({
                     entry.id,
-                    lux::asset::EAssetType::ENTITY_SECTION,
+                    lux::ecs::scene_format::kEntitySectionImageMagic,
                     entry.path,
                     false});
             }
@@ -543,8 +543,8 @@ int main()
     auto* fixed_owner = fixed_loader.get();
     assert(fixed_schedule.addSystem(
         std::move(fixed_loader), lux::ecs::kPhaseSceneLoading));
-    lux::scene::ScenePackage fixed_package;
-    fixed_package.id = lux::scene::ScenePackageId{
+    lux::scene::SceneDescription fixed_package;
+    fixed_package.id = lux::asset::asset_id_t{
         uuid("70000000-0000-4000-8000-000000000001")};
     fixed_package.features.push_back({
         lux::scene::SceneFeatureId{"org.lux.test.headless"},
@@ -999,8 +999,8 @@ int main()
     auto* rejected_loader_owner = rejected_loader.get();
     assert(rejected_schedule.addSystem(
         std::move(rejected_loader), lux::ecs::kPhaseSceneLoading));
-    lux::scene::ScenePackage rejected_package;
-    rejected_package.id = lux::scene::ScenePackageId{
+    lux::scene::SceneDescription rejected_package;
+    rejected_package.id = lux::asset::asset_id_t{
         uuid("70000000-0000-4000-8000-000000000002")};
     rejected_package.startup_sections.push_back(common.record.id);
     rejected_package.sections.push_back(common.record);

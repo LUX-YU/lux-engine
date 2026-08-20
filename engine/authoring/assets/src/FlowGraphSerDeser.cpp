@@ -235,6 +235,10 @@ namespace lux::authoring
                 &createFlowGraphCodec,
                 nullptr,
                 nullptr,
+                lux::asset::asset_magic_number_of<
+                    lux::asset::EAssetType::FLOW_GRAPH>::value,
+                0u,
+                nullptr,
                 {}});
             auto built = lux::asset::AssetCodecCatalog::build(
                 std::move(descriptors));

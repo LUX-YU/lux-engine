@@ -2,6 +2,8 @@
 #include <lux/engine/runtime/assets/AssetLoadSenders.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
+#include <lux/engine/scene/SceneAsset.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <stdexec/execution.hpp>
 
@@ -16,6 +18,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 namespace ex = stdexec;
 
@@ -94,9 +97,84 @@ namespace
         mutable std::thread::id io_thread_{};
     };
 
+    class ImageProvider final : public lux::asset::IAssetProvider
+    {
+    public:
+        ImageProvider(
+            lux::asset::asset_id_t id,
+            std::vector<std::byte> image) noexcept
+            : id_(id), image_(std::move(image))
+        {
+            if (image_.size() >= sizeof(magic_number_))
+            {
+                std::memcpy(
+                    &magic_number_,
+                    image_.data(),
+                    sizeof(magic_number_));
+            }
+        }
+
+        [[nodiscard]] bool contains(
+            const lux::asset::asset_id_t& id) const override
+        {
+            return id == id_;
+        }
+
+        [[nodiscard]] lux::cxx::expected<
+            lux::asset::AssetBlob,
+            lux::asset::EAssetError>
+        open(const lux::asset::asset_id_t& id) const override
+        {
+            if (id != id_)
+            {
+                return lux::cxx::unexpected(
+                    lux::asset::EAssetError::ASSET_NOT_EXIST);
+            }
+            opens_.fetch_add(1, std::memory_order_acq_rel);
+            auto bytes = std::shared_ptr<std::byte[]>(
+                new std::byte[image_.size()]);
+            std::memcpy(bytes.get(), image_.data(), image_.size());
+            return lux::asset::AssetBlob::fromSharedArray(
+                std::move(bytes), image_.size());
+        }
+
+        [[nodiscard]] std::optional<lux::asset::asset_id_t> resolve(
+            std::string_view path) const override
+        {
+            return path == "Scenes/Test" ? std::optional{id_} : std::nullopt;
+        }
+
+        [[nodiscard]] std::optional<std::string> pathOf(
+            const lux::asset::asset_id_t& id) const override
+        {
+            return id == id_ ? std::optional<std::string>{"Scenes/Test"}
+                             : std::nullopt;
+        }
+
+        void enumerate(
+            const std::function<void(const lux::asset::ProviderEntry&)>& fn)
+            const override
+        {
+            fn(lux::asset::ProviderEntry{
+                id_, magic_number_, "Scenes/Test", false});
+        }
+
+        [[nodiscard]] int opens() const noexcept
+        {
+            return opens_.load(std::memory_order_acquire);
+        }
+
+    private:
+        lux::asset::asset_id_t id_{};
+        std::vector<std::byte> image_;
+        std::uint32_t magic_number_{0u};
+        mutable std::atomic<int> opens_{0};
+    };
+
     struct AwaitResult final
     {
         std::atomic<bool> done{false};
+        std::atomic<bool> success{false};
         std::atomic<bool> domain_failure{false};
         std::atomic<bool> runtime_failure{false};
         std::atomic<int> error{0};
@@ -119,7 +197,11 @@ namespace
         if (terminal)
         {
             auto& outcome = std::get<0>(*terminal);
-            if (!outcome && !outcome.error().isRuntime())
+            if (outcome)
+            {
+                result.success.store(true, std::memory_order_relaxed);
+            }
+            else if (!outcome.error().isRuntime())
             {
                 result.domain_failure.store(true, std::memory_order_relaxed);
                 result.error.store(
@@ -301,6 +383,111 @@ int main()
 
     service.close();
     (void)lux::exec::testing::closeRuntime(runtime);
+
+    // The Engine composes Scene into the existing immutable Resource catalog;
+    // the generic AssetLoadService remains unaware of Scene semantics.
+    const auto scene_catalog = lux::scene::makeSceneAssetCodecCatalog(
+        *lux::asset::runtimeAssetCodecCatalog());
+    check(scene_catalog.has_value(), "Scene codec composes into Asset catalog");
+    if (scene_catalog)
+    {
+        lux::asset::AssetManager scene_manager{*scene_catalog};
+        lux::exec::AsyncRuntimeBuilder scene_builder;
+        auto scene_service_result =
+            lux::asset_runtime::AssetLoadService::addTo(
+                scene_builder, scene_manager);
+        auto scene_plan = std::move(scene_builder).compile();
+        check(
+            scene_service_result.has_value() && scene_plan.has_value(),
+            "Scene Asset async fixture assembles");
+        if (scene_service_result && scene_plan)
+        {
+            lux::exec::AsyncRuntime scene_runtime(
+                std::move(*scene_plan),
+                lux::exec::AsyncRuntimeConfig{
+                    .blocking_io_threads = 1,
+                    .background_cpu_concurrency = 1});
+            auto scene_service = std::move(*scene_service_result);
+            const auto scene_id = scene_manager.generateUUID();
+            lux::scene::SceneDescription description;
+            description.id = scene_id;
+            auto scene_image = lux::scene::SceneAssetSerDeser::encodeData(
+                scene_id, description);
+            check(scene_image.has_value(), "wrapped SceneAsset encodes");
+            if (scene_image)
+            {
+                auto scene_provider = std::make_shared<ImageProvider>(
+                    scene_id, std::move(*scene_image));
+                auto scene_vfs = std::make_shared<lux::asset::AssetVfs>();
+                (void)scene_vfs->mount({
+                    .root = "/Game",
+                    .provider = scene_provider,
+                    .priority = 0});
+                scene_manager.setVfs(scene_vfs);
+
+                AwaitResult first_scene;
+                AwaitResult second_scene;
+                std::thread first_waiter(
+                    awaitLoad,
+                    scene_service.client(),
+                    scene_id,
+                    std::ref(first_scene));
+                std::thread second_waiter(
+                    awaitLoad,
+                    scene_service.client(),
+                    scene_id,
+                    std::ref(second_scene));
+                const auto scene_deadline =
+                    std::chrono::steady_clock::now() +
+                    std::chrono::seconds(5);
+                while ((!first_scene.done.load(std::memory_order_acquire) ||
+                        !second_scene.done.load(std::memory_order_acquire)) &&
+                       std::chrono::steady_clock::now() < scene_deadline)
+                {
+                    (void)scene_runtime.drainMainThreadCompletions();
+                    std::this_thread::yield();
+                }
+                first_waiter.join();
+                second_waiter.join();
+                check(
+                    first_scene.success.load(std::memory_order_acquire) &&
+                        second_scene.success.load(std::memory_order_acquire) &&
+                        scene_provider->opens() == 1,
+                    "concurrent SceneAsset loads deduplicate");
+
+                auto scene_ref = scene_manager.acquire(scene_id);
+                check(
+                    scene_ref && scene_manager.isReferenced(scene_id),
+                    "SceneAsset uses the existing residency ticket");
+                scene_ref.reset();
+                check(
+                    !scene_manager.isReferenced(scene_id) &&
+                        scene_manager.unloadData(scene_id) &&
+                        !scene_manager.hasData(scene_id),
+                    "SceneAsset unload returns the registered object to shell");
+
+                AwaitResult reloaded_scene;
+                std::thread reload_waiter(
+                    awaitLoad,
+                    scene_service.client(),
+                    scene_id,
+                    std::ref(reloaded_scene));
+                const bool reload_done = pumpUntil(
+                    scene_runtime,
+                    reloaded_scene,
+                    std::chrono::seconds(5));
+                reload_waiter.join();
+                check(
+                    reload_done &&
+                        reloaded_scene.success.load(std::memory_order_acquire) &&
+                        scene_manager.hasData(scene_id) &&
+                        scene_provider->opens() == 2,
+                    "unloaded SceneAsset reloads through the same async pipe");
+            }
+            scene_service.close();
+            (void)lux::exec::testing::closeRuntime(scene_runtime);
+        }
+    }
 
     // A request parked in coordinator backoff is not owned by a worker scope.
     // Runtime close must flush its timer and settle its receiver exactly once.

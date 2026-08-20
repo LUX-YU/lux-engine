@@ -34,7 +34,7 @@ target_link_libraries(
         lux::engine::ecs::scene_format
         lux::engine::ecs::spatial3d_components
         lux::engine::ecs::transform
-        lux::engine::scene::scene_package
+        lux::engine::scene::scene
         lux::engine::core::math
         lux::engine::runtime::runtime_spatial_partition
         lux::cxx::compile_time
@@ -43,7 +43,7 @@ target_link_libraries(
 component_add_transitive_commands(
     runtime_spatial3d_partitioned
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format spatial3d_components transform)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_spatial_partition)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"

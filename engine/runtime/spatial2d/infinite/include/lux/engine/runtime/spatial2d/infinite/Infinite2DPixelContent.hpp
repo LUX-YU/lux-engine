@@ -7,7 +7,7 @@
 #include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/ecs/ComponentSchemaId.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>

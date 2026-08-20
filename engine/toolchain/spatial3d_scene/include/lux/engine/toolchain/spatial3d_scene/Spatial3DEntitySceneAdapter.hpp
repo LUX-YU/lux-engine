@@ -1,10 +1,10 @@
 #pragma once
 /**
  * @file Spatial3DEntitySceneAdapter.hpp
- * @brief Toolchain-only LXWA v4 to ScenePackage/LXES bridge for 3D data.
+ * @brief Toolchain-only LXWA v4 to SceneDescription/LXES bridge for 3D data.
  *
  * The input is the owning, page-free Spatial3D Authoring model. The result
- * contains exclusively ScenePackage records and domain-owned content blobs;
+ * contains exclusively SceneDescription records and domain-owned content blobs;
  * no Runtime target needs a legacy cooked-World reader for this path.
  */
 
@@ -63,7 +63,7 @@ namespace lux::toolchain
     /// Spatial3D-specific cook result.  The generic EntityScene bundle stays
     /// domain blind; generated geometry belongs to this Toolchain leaf.
     struct CookedSpatial3DEntitySceneBundle final
-        : CookedScenePackageBundle
+        : CookedSceneDescriptionBundle
     {
         std::vector<CookedSpatial3DMeshAsset> generated_meshes;
     };
@@ -73,7 +73,7 @@ namespace lux::toolchain
     struct Spatial3DEntitySceneAdapterConfig final
     {
         /// Empty preserves the Authoring scene UUID in the cooked Scene.
-        lux::scene::ScenePackageId scene_id;
+        lux::asset::asset_id_t scene_id;
         /// Explicit domain leaves selected for a general 3D scene. Tools may
         /// remove Presentation for a headless cook, or omit Physics/
         /// Navigation when the authored product does not use them. There is

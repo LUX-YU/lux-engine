@@ -1,6 +1,7 @@
 #include <lux/engine/hosts/game_application/GameApplication.hpp>
 
 #include <lux/engine/scene/SceneFeatureId.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/runtime/frame/FrameCoordinator.hpp>
 #include <lux/engine/runtime/frame/MainCloseDriver.hpp>
 #include <lux/engine/runtime/scene/script/SceneScriptRuntime.hpp>
@@ -70,6 +71,7 @@
 #include <lux/engine/runtime/execution/detail/MainThreadMailbox.hpp>
 #include <lux/engine/runtime/logging/LogRouter.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
+#include <lux/engine/runtime/assets/AssetLoadSenders.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/spatial3d/navigation/Navigation3DPrepareService.hpp>
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
@@ -93,6 +95,7 @@
 #include <cmath>
 #include <limits>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 namespace lux::game
@@ -220,9 +223,18 @@ namespace lux::game
             application.subs
         );
 
+        const auto scene_codecs = lux::scene::makeSceneAssetCodecCatalog(
+            *lux::asset::runtimeAssetCodecCatalog());
+        if (!scene_codecs)
+        {
+            lux::log::error(
+                "game_application",
+                "Scene asset codec catalog composition failed ({})",
+                static_cast<unsigned>(scene_codecs.error()));
+            return false;
+        }
         application.assets = std::make_shared<lux::asset::AssetManager>(
-            lux::asset::runtimeAssetCodecCatalog()
-        );
+            *scene_codecs);
         auto vfs = std::make_shared<lux::asset::AssetVfs>();
         auto game_pak = lux::asset::PakAssetProvider::loadFromFile(
             application.config.game_pak_file
@@ -508,54 +520,92 @@ namespace lux::game
         if (!application.attachSurface(native_surface, extent))
             return false;
 
-        const auto boot = lux::asset::resolveBootScene(
-            *game_pak.value(),
-            application.config.boot_scene
-        );
-        if (!boot)
-        {
-            switch (boot.error())
-            {
-            case lux::asset::EBootSceneError::VPathNotFound:
-                lux::log::error(
-                    "game_application",
-                    "scene vpath '{}' was not found in the game pak",
-                    application.config.boot_scene
-                );
-                break;
-            case lux::asset::EBootSceneError::EntryTypeMismatch:
-                lux::log::error(
-                    "game_application",
-                    "boot vpath '{}' is not an EntityScene",
-                    application.config.boot_scene
-                );
-                break;
-            case lux::asset::EBootSceneError::NoSceneEntry:
-                lux::log::error(
-                    "game_application",
-                    "game pak contains no EntityScene"
-                );
-                break;
-            case lux::asset::EBootSceneError::MultipleScenes:
-                lux::log::error(
-                    "game_application",
-                    "game pak contains several EntityScenes; select boot_scene"
-                );
-                break;
-            }
-            return false;
-        }
-        auto scene_image = application.assets->vfs()->open(boot->id);
-        if (!scene_image)
+        if (application.config.boot_scene.empty())
         {
             lux::log::error(
                 "game_application",
-                "cannot open boot scene (error={})",
-                static_cast<int>(scene_image.error())
-            );
+                "RuntimeLaunchManifest must specify boot_scene");
             return false;
         }
-        const auto scene_origin = boot->vpath + " @ " +
+
+        const auto boot_id = game_pak.value()->resolve(
+            application.config.boot_scene);
+        if (!boot_id)
+        {
+            lux::log::error(
+                "game_application",
+                "scene vpath '{}' was not found in the game pak",
+                application.config.boot_scene);
+            return false;
+        }
+        bool boot_is_scene = false;
+        game_pak.value()->enumerate(
+            [&](const lux::asset::ProviderEntry& entry)
+            {
+                if (entry.id != *boot_id)
+                    return;
+                const auto* descriptor =
+                    application.assets->codecCatalog().findByMagic(
+                        entry.magic_number);
+                boot_is_scene = descriptor != nullptr &&
+                    descriptor->type == lux::scene::kSceneAssetType;
+            });
+        if (!boot_is_scene)
+        {
+            lux::log::error(
+                "game_application",
+                "boot vpath '{}' is not a SceneAsset",
+                application.config.boot_scene);
+            return false;
+        }
+
+        struct BootSceneLoad final
+        {
+            std::atomic<bool> done{false};
+            std::atomic<bool> loaded{false};
+            std::atomic<int> error{0};
+        } boot_load;
+        std::thread boot_waiter(
+            [client = application.asset_load->client(),
+             id = *boot_id,
+             &boot_load]() mutable
+            {
+                auto terminal = stdexec::sync_wait(
+                    lux::asset_runtime::loadAsset(client, id));
+                if (terminal)
+                {
+                    auto& outcome = std::get<0>(*terminal);
+                    if (outcome)
+                    {
+                        boot_load.loaded.store(
+                            true, std::memory_order_relaxed);
+                    }
+                    else if (!outcome.error().isRuntime())
+                    {
+                        boot_load.error.store(
+                            static_cast<int>(
+                                outcome.error().domainError()),
+                            std::memory_order_relaxed);
+                    }
+                }
+                boot_load.done.store(true, std::memory_order_release);
+            });
+        while (!boot_load.done.load(std::memory_order_acquire))
+        {
+            (void)application.async->drainMainThreadCompletions();
+            std::this_thread::yield();
+        }
+        boot_waiter.join();
+        if (!boot_load.loaded.load(std::memory_order_relaxed))
+        {
+            lux::log::error(
+                "game_application",
+                "cannot load boot SceneAsset (error={})",
+                boot_load.error.load(std::memory_order_relaxed));
+            return false;
+        }
+
+        const auto scene_origin = application.config.boot_scene + " @ " +
             application.config.game_pak_file.filename().string();
         lux::log::info(
             "game_application",
@@ -651,7 +701,7 @@ namespace lux::game
 
         lux::runtime::SceneRuntime::Config runtime_config;
         runtime_config.name = application.config.title;
-        runtime_config.scene_package_image = std::move(scene_image.value());
+        runtime_config.scene_asset_id = *boot_id;
         runtime_config.scene_origin = scene_origin;
         runtime_config.events = application.events.get();
 

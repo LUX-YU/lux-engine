@@ -16,10 +16,10 @@
 #include <lux/engine/ecs/tilemap/systems/TilemapSystem.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/asset/codecs/TilemapChunkCodec.hpp>
+#include <lux/engine/ecs/tilemap/TilemapChunkCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
@@ -88,8 +88,8 @@ namespace
 
     lux::runtime::entity_scene::EntitySceneCatalog emptyCatalog()
     {
-        lux::scene::ScenePackage package;
-        package.id = lux::scene::ScenePackageId{
+        lux::scene::SceneDescription package;
+        package.id = lux::asset::asset_id_t{
             uuids::uuid::from_string(
                 "85000000-0000-4000-8000-000000000001").value()};
         auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(
@@ -505,7 +505,7 @@ namespace
             {
                 fn({
                     section.asset,
-                    lux::asset::EAssetType::UNKNOWN,
+                    lux::ecs::scene_format::kEntitySectionImageMagic,
                     section.path,
                     false});
             }

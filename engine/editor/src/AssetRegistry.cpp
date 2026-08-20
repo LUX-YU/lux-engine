@@ -1,4 +1,5 @@
 #include <lux/engine/editor/AssetRegistry.hpp>
+#include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
 
 #include <cstdio>
 #include <system_error>
@@ -22,13 +23,16 @@ namespace lux::editor
                     content_root);
         }
         provider_->rescan();
+        const auto codecs =
+            lux::authoring::authoringAssetCodecCatalog();
 
         provider_->enumerate(
             [&](const lux::asset::ProviderEntry& e)
             {
                 AssetMeta m;
                 m.id   = e.id;
-                m.type = e.type;
+                if (const auto* codec = codecs->findByMagic(e.magic_number))
+                    m.type = codec->type;
                 if (auto file = provider_->filePathOf(e.id))
                 {
                     m.name = file->stem().string();

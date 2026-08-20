@@ -1,6 +1,5 @@
 #include <lux/engine/resource/asset/detail/AssetManagerImpl.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 
 #include <cstring>
 #include <cstdlib>
@@ -287,8 +286,11 @@ namespace lux::asset
 
         std::uint32_t magic = 0;
         std::memcpy(&magic, blob->bytes.data(), sizeof(magic));
+        const auto* descriptor = codecCatalog().findByMagic(magic);
+        if (descriptor == nullptr)
+            return lux::cxx::unexpected(EAssetError::UNSUPPORTED);
         auto serdeser = createSerDeser(
-            assetTypeOfMagic(magic),
+            descriptor->type,
             // Non-owning aliasing shared_ptr: the SerDeser lives only for
             // this call and self-registers into *this. AssetManager is also
             // constructed on the stack (tests), so enable_shared_from_this

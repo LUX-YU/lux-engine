@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/scene_format/Identifiers.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchMaterializer.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchStager.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>

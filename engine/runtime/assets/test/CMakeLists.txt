@@ -4,6 +4,7 @@ target_link_libraries(asset_load_service_test
     PRIVATE
         runtime_assets
         lux::engine::resource::asset
+        lux::engine::scene::scene
         STDEXEC::stdexec
 )
 

@@ -30,7 +30,7 @@ namespace
         const lux::ecs::scene_format::ContentBlobRef&>);
     static_assert(std::same_as<
         decltype(std::declval<const EntitySceneCatalog&>().package()),
-        const lux::scene::ScenePackage&>);
+        const lux::scene::SceneDescription&>);
 
     static_assert(!std::default_initializable<EntityBatchStager>);
     static_assert(std::constructible_from<

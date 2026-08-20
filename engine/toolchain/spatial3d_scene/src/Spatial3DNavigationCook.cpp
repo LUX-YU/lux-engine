@@ -1,6 +1,6 @@
 #include <lux/engine/toolchain/spatial3d_scene/detail/Spatial3DNavigationCook.hpp>
 
-#include <lux/engine/description/TerrainTile.hpp>
+#include <lux/engine/ecs/terrain/TerrainTile.hpp>
 
 #include <Recast.h>
 

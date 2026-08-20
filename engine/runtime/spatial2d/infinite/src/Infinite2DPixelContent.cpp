@@ -4,7 +4,7 @@
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <algorithm>
 #include <array>

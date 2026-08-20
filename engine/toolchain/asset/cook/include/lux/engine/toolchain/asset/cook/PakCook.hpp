@@ -57,7 +57,7 @@ namespace lux::toolchain
     struct PakCookMemoryEntry final
     {
         lux::asset::asset_id_t id{};
-        lux::asset::EAssetType type{lux::asset::EAssetType::UNKNOWN};
+        std::uint32_t magic_number{0u};
         std::string vpath;
         lux::cxx::SharedBytes<> image;
     };
@@ -69,7 +69,7 @@ namespace lux::toolchain
     struct PakCookFileEntry final
     {
         lux::asset::asset_id_t id{};
-        lux::asset::EAssetType type{lux::asset::EAssetType::UNKNOWN};
+        std::uint32_t magic_number{0u};
         std::string vpath;
         std::filesystem::path image_path;
     };
@@ -136,7 +136,7 @@ namespace lux::toolchain
     struct PakInspectEntry
     {
         lux::asset::asset_id_t id{};
-        lux::asset::EAssetType type{lux::asset::EAssetType::UNKNOWN};
+        std::uint32_t magic_number{0u};
         std::string   vpath;            ///< Mount-relative; empty if none.
         std::uint64_t offset{ 0 };
         std::uint64_t size{ 0 };

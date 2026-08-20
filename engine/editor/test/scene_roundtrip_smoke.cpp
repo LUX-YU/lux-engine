@@ -2,7 +2,7 @@
 #include <lux/engine/editor/scene/DemoSceneTemplate.hpp>
 #include <lux/engine/editor/scene/WorldActorEcsAdapter.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
@@ -337,12 +337,17 @@ int main()
     }
     expect(cooked_demo && !cooked_demo->sections.empty(),
         "demo Authoring World cooked through LXAD -> LXSC/LXES");
-    auto decoded_package = cooked_demo
-        ? lux::scene::decodeScenePackage(cooked_demo->encoded_package)
-        : decltype(lux::scene::decodeScenePackage({})){};
+    bool decoded_scene_identity = false;
+    if (cooked_demo)
+    {
+        const auto decoded_package =
+            lux::scene::SceneAssetSerDeser::decodeData(
+                cooked_demo->encoded_package);
+        decoded_scene_identity = decoded_package &&
+            (*decoded_package)->id == cooked_demo->package.id;
+    }
     expect(
-        decoded_package && cooked_demo &&
-            decoded_package->id == cooked_demo->package.id,
+        decoded_scene_identity,
         "cooked LXSC package decodes with the expected Scene identity");
     bool sections_decode = cooked_demo.has_value();
     if (cooked_demo)

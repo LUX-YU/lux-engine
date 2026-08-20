@@ -34,6 +34,7 @@
 #include <lux/engine/authoring/project/Project.hpp>
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>   // clampFrameDt (§2.4)
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/runtime/render/scene/RenderDiagnostics.hpp>   // 诊断出口装配(§7.1)
 #include <lux/engine/runtime/extensions/EngineExtensions.hpp>
 #include <lux/engine/editor/extensions/EditorContributionRegistrar.hpp>
@@ -446,9 +447,19 @@ namespace lux::editor
         runtime_->ui_system_ = std::make_unique<lux::ui::UISystem>(*runtime_->window_);
 
         // 4. Process-wide AssetManager — survives scene swaps.
+        const auto scene_codecs = lux::scene::makeSceneAssetCodecCatalog(
+            *lux::authoring::authoringAssetCodecCatalog());
+        if (!scene_codecs)
+        {
+            std::fprintf(
+                stderr,
+                "[LuxEditor] Scene asset codec catalog composition failed (%u)\n",
+                static_cast<unsigned>(scene_codecs.error()));
+            shutdown();
+            return false;
+        }
         runtime_->asset_mgr_ = std::make_shared<lux::asset::AssetManager>(
-            lux::authoring::authoringAssetCodecCatalog()
-        );
+            *scene_codecs);
 
         // 4a. Register editor builtin assets (cube / plane / white PBR /
         //     skybox texture) so demo entities and any drag-drop targets

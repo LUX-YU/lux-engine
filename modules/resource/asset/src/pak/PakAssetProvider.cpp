@@ -395,7 +395,7 @@ namespace lux::asset
             {
                 fn(ProviderEntry{
                     entry.id,
-                    EAssetType::UNKNOWN,
+                    entry.asset_magic,
                     std::string{},
                     true});
             }
@@ -403,7 +403,7 @@ namespace lux::asset
             {
                 fn(ProviderEntry{
                     entry.id,
-                    assetTypeOfMagic(entry.asset_magic),
+                    entry.asset_magic,
                     entry.vpath,
                     false});
             }

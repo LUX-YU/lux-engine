@@ -5,7 +5,7 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/visibility.h>

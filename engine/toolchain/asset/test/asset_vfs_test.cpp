@@ -305,7 +305,10 @@ static void test_loose_dir_provider()
         check(seen.size() == 2, "enumerate yields 2 entries");
         bool types_ok = true;
         for (const auto& e : seen)
-            types_ok = types_ok && e.type == EAssetType::SKELETON && !e.tombstone;
+            types_ok = types_ok &&
+                e.magic_number ==
+                    asset_magic_number_of<EAssetType::SKELETON>::value &&
+                !e.tombstone;
         check(types_ok, "enumerate carries probed types, no tombstones");
     }
 
@@ -384,7 +387,10 @@ namespace
             const std::function<void(const ProviderEntry&)>& fn) const override
         {
             for (const auto& i : items)
-                fn(ProviderEntry{ i.id, EAssetType::SKELETON, i.vpath,
+                fn(ProviderEntry{ i.id,
+                                  asset_magic_number_of<
+                                      EAssetType::SKELETON>::value,
+                                  i.vpath,
                                   i.tombstone });
         }
 

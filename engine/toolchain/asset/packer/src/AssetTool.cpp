@@ -656,7 +656,7 @@ int main(int argc, char* argv[])
                   << "entries: " << info.value().entries.size() << "\n";
         for (const auto& e : info.value().entries) {
             std::cout << "  " << uuids::to_string(e.id)
-                      << "  type=" << static_cast<int>(e.type)
+                      << "  magic=" << e.magic_number
                       << "  off=" << e.offset
                       << "  size=" << e.size
                       << (e.tombstone ? "  TOMBSTONE" : "")

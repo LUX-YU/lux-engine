@@ -1,6 +1,18 @@
-add_interface_component(
+find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+
+generate_visibility_header(
+    ENABLE_MACRO_NAME       LUX_ENGINE_ECS_TERRAIN_LIBRARY
+    PUBLIC_MACRO_NAME       LUX_ENGINE_ECS_TERRAIN_PUBLIC
+    DISABLE_DLL_MACRO_NAME  LUX_ENGINE_ECS_TERRAIN_DLL_DISABLE
+    GENERATE_FILE_PATH      lux/engine/ecs/terrain/visibility.h
+)
+
+add_component(
     COMPONENT_NAME terrain_components
     NAMESPACE      lux::engine::ecs
+    OUTPUT_NAME    lux_engine_ecs_terrain_components
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TerrainTileCodec.cpp
 )
 
 lux_classify_target(
@@ -20,18 +32,39 @@ component_include_directories(
 
 target_link_libraries(
     terrain_components
-    INTERFACE
+    PUBLIC
+        lux::cxx::compile_time
         lux::engine::ecs::core
         lux::engine::core::math
         lux::engine::core::meta
         lux::engine::ecs::scene_format
+    PRIVATE
+        lux::engine::core::serialization
 )
+
+target_compile_definitions(
+    terrain_components PRIVATE LUX_ENGINE_ECS_TERRAIN_LIBRARY)
 
 component_add_transitive_commands(
     terrain_components
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS math meta)"
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math meta serialization)"
 )
+
+add_executable(
+    terrain_tile_codec_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/terrain_tile_codec_test.cpp)
+target_link_libraries(
+    terrain_tile_codec_test
+    PRIVATE lux::cxx::algorithm terrain_components)
+if(MSVC)
+    target_compile_options(terrain_tile_codec_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(terrain_tile_codec_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET terrain_tile_codec_test LAYER ECS PRODUCT TEST ROLE DOMAIN)
 
 if(LUX_BUILD_COMPONENT_META)
     include_component_cmake_scripts(meta)

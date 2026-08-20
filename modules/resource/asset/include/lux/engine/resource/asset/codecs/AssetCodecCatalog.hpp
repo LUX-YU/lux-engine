@@ -3,8 +3,9 @@
  * @file AssetCodecCatalog.hpp
  * @brief Immutable, product-composed asset codec table.
  *
- * The resource layer owns the closed EAssetType vocabulary, while each
- * product decides which codecs are present.  A catalog is assembled once,
+ * The resource layer owns the stable common EAssetType range, while Engine
+ * products may reserve additional numeric values and decide which codecs are
+ * present. A catalog is assembled once,
  * validated for duplicate/colliding identities, and thereafter shared as an
  * immutable snapshot.  Worker code receives the snapshot by shared ownership;
  * it never consults a mutable global registry.
@@ -36,7 +37,9 @@ namespace lux::asset
         EMPTY_NAME,
         INVALID_TYPE_IDENTITY,
         MISSING_FACTORY,
+        MISSING_PRIMARY_MAGIC,
         DUPLICATE_ASSET_TYPE,
+        DUPLICATE_MAGIC,
         DUPLICATE_CPP_TYPE,
         TYPE_HASH_COLLISION
     };
@@ -47,6 +50,10 @@ namespace lux::asset
         std::unique_ptr<AssetInfo>
     ) noexcept;
 
+    using AssetImageShellCreateFn = lux::cxx::expected<
+        std::unique_ptr<LuxAsset>,
+        EAssetError> (*)(std::span<const std::byte>) noexcept;
+
     struct AssetCodecDescriptor final
     {
         EAssetType              type{EAssetType::UNKNOWN};
@@ -56,6 +63,9 @@ namespace lux::asset
         AssetSerDeserFactoryFn  create{};
         AssetDataDecodeFn       decode{};
         AssetShellCreateFn      create_shell{};
+        std::uint32_t           primary_magic{0u};
+        std::uint32_t           legacy_magic{0u};
+        AssetImageShellCreateFn create_shell_from_image{};
 
         // Keeps dynamically supplied function pointers alive without making
         // the Resource layer depend on Runtime's concrete ModuleLifetime.
@@ -78,6 +88,9 @@ namespace lux::asset
 
         [[nodiscard]] const AssetCodecDescriptor* find(
             EAssetType type) const noexcept;
+
+        [[nodiscard]] const AssetCodecDescriptor* findByMagic(
+            std::uint32_t magic) const noexcept;
 
         [[nodiscard]] std::span<const AssetCodecDescriptor>
         descriptors() const noexcept

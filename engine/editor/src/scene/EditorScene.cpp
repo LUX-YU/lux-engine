@@ -22,6 +22,8 @@
 #include <lux/engine/resource/asset/AssetVfs.hpp>
 #include <lux/engine/resource/asset/pak/PakAssetProvider.hpp>
 #include <lux/engine/resource/asset/MeshAsset.hpp>
+#include <lux/engine/scene/SceneAsset.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/ecs/render/components/3d/AnimatorComponent.hpp>
 #include <lux/engine/ecs/systems/HierarchicalTransformSystem.hpp> // setParent (per the write contract)

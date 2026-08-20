@@ -5,7 +5,7 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchTypes.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>

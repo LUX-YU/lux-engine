@@ -8,7 +8,7 @@
 #include <lux/engine/input/ActionMapper.hpp>
 #include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
@@ -38,6 +38,23 @@ namespace
     [[nodiscard]] uuids::uuid uuid(const char* value)
     {
         return uuids::uuid::from_string(value).value();
+    }
+
+    [[nodiscard]] bool registerScene(
+        lux::asset::AssetManager& assets,
+        lux::scene::SceneDescription description)
+    {
+        const auto id = description.id;
+        auto info = std::make_unique<lux::asset::AssetInfo>();
+        info->id = id;
+        info->type = lux::scene::kSceneAssetType;
+        auto asset = std::make_unique<lux::scene::SceneAsset>(
+            std::move(info),
+            std::make_unique<lux::scene::SceneDescription>(
+                std::move(description)));
+        return assets.hasAsset(id)
+            ? assets.replaceAsset(std::move(asset))
+            : assets.registerAsset(std::move(asset));
     }
 
     [[nodiscard]] bool uuidLess(
@@ -102,7 +119,7 @@ namespace
             {
                 fn({
                     image.asset,
-                    lux::asset::EAssetType::UNKNOWN,
+                    lux::ecs::scene_format::kEntitySectionImageMagic,
                     image.path,
                     false});
             }
@@ -318,8 +335,8 @@ int main()
         catalog::encodeSceneCatalog(spatial_config);
     assert(encoded_config);
 
-    lux::scene::ScenePackage package;
-    package.id = lux::scene::ScenePackageId{
+    lux::scene::SceneDescription package;
+    package.id = lux::asset::asset_id_t{
         uuid("50000000-0000-4000-8000-000000000001")};
     package.features.push_back({
         lux::scene::SceneFeatureId{
@@ -337,7 +354,9 @@ int main()
         {
             return uuidLess(left.id.value(), right.id.value());
         });
-    auto package_bytes = lux::scene::encodeScenePackage(package);
+    auto package_bytes = lux::scene::SceneAssetSerDeser::encodeData(
+        package.id,
+        package);
     assert(package_bytes);
 
     std::vector<StoredImage> stored;
@@ -383,10 +402,8 @@ int main()
     lux::runtime::SceneRuntime::Config scene_config;
     scene_config.name = "Spatial3D LXSC integration";
     scene_config.scene_origin = "/Game/spatial3d_scene_lxsc";
-    scene_config.scene_package_image = lux::asset::AssetBlob::fromShared(
-        lux::cxx::SharedBytes<>::copyOf(
-            std::span<const std::byte>{
-                package_bytes->data(), package_bytes->size()}));
+    assert(registerScene(assets, package));
+    scene_config.scene_asset_id = package.id;
     scene_config.section_vfs = vfs;
     auto scene = lux::runtime::SceneRuntime::create(
         dependencies, scene_config);
@@ -476,14 +493,8 @@ int main()
         {
             return uuidLess(left.id.value(), right.id.value());
         });
-    auto unmatched_bytes = lux::scene::encodeScenePackage(
-        unmatched_package);
-    assert(unmatched_bytes);
     auto rejected_config = scene_config;
-    rejected_config.scene_package_image = lux::asset::AssetBlob::fromShared(
-        lux::cxx::SharedBytes<>::copyOf(
-            std::span<const std::byte>{
-                unmatched_bytes->data(), unmatched_bytes->size()}));
+    assert(registerScene(assets, std::move(unmatched_package)));
     auto rejected_scene = lux::runtime::SceneRuntime::create(
         dependencies, rejected_config);
     assert(!rejected_scene);

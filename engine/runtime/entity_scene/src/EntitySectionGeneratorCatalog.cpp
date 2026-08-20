@@ -1,6 +1,6 @@
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <algorithm>
 #include <string>

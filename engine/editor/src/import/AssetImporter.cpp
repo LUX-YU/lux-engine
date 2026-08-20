@@ -4,7 +4,7 @@
 #include <lux/engine/resource/asset/AnimationClipAsset.hpp>
 #include <lux/engine/resource/asset/codecs/AnimationClipSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
-#include <lux/engine/resource/asset/AssetHeaderProbe.hpp>   // readAssetHeader / assetTypeOfMagic
+#include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/codecs/MaterialSerDeser.hpp>
 #include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
 #include <lux/engine/resource/asset/codecs/MaterialInstanceSerDeser.hpp>
@@ -622,8 +622,11 @@ namespace lux::editor
                 return false;
             }
 
-            const auto type = lux::asset::assetTypeOfMagic(probe.magic);
-            auto serdeser = mgr_shared->createSerDeser(type, mgr_shared);
+            const auto* codec =
+                mgr_shared->codecCatalog().findByMagic(probe.magic);
+            auto serdeser = codec != nullptr
+                ? mgr_shared->createSerDeser(codec->type, mgr_shared)
+                : nullptr;
             if (!serdeser)
             {
                 std::fprintf(stderr,

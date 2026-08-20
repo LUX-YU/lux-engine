@@ -7,7 +7,7 @@
 #include <lux/engine/ecs/components/ParentComponent.hpp>
 #include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
@@ -49,6 +49,24 @@ namespace
         return uuids::uuid::from_string(value).value();
     }
 
+    [[nodiscard]] lux::asset::asset_id_t registerScene(
+        lux::asset::AssetManager& assets,
+        lux::scene::SceneDescription description)
+    {
+        const auto id = description.id;
+        auto info = std::make_unique<lux::asset::AssetInfo>();
+        info->id = id;
+        info->type = lux::scene::kSceneAssetType;
+        if (!assets.registerAsset(std::make_unique<lux::scene::SceneAsset>(
+                std::move(info),
+                std::make_unique<lux::scene::SceneDescription>(
+                    std::move(description)))))
+        {
+            return {};
+        }
+        return id;
+    }
+
     class SectionProvider final : public lux::asset::IAssetProvider
     {
     public:
@@ -88,7 +106,8 @@ namespace
             const std::function<void(const lux::asset::ProviderEntry&)>& fn)
             const override
         {
-            fn({id_, lux::asset::EAssetType::UNKNOWN, path_, false});
+            fn({id_, lux::ecs::scene_format::kEntitySectionImageMagic,
+                path_, false});
         }
 
         [[nodiscard]] std::optional<std::string> pathOf(
@@ -477,9 +496,11 @@ namespace
             section_service.loadClient()};
         lux::runtime::SceneRuntime::Config config;
         config.name = "Non-terminal bring-up rollback";
-        config.transient_package = lux::scene::ScenePackage{
-            lux::scene::ScenePackageId{
-                uuid("10000000-0000-4000-8000-000000000003")}};
+        lux::scene::SceneDescription description;
+        description.id =
+            uuid("10000000-0000-4000-8000-000000000003");
+        config.scene_asset_id = registerScene(
+            assets, std::move(description));
 
         auto scene = lux::runtime::SceneRuntime::create(
             dependencies,
@@ -550,8 +571,8 @@ int main(int argc, char** argv)
     record.decoded_bytes = section_bytes->size();
     record.entity_count = 2u;
 
-    scene::ScenePackage package;
-    package.id = scene::ScenePackageId{
+    scene::SceneDescription package;
+    package.id = lux::asset::asset_id_t{
         uuid("10000000-0000-4000-8000-000000000001")};
     package.startup_sections.push_back(record.id);
     package.sections.push_back(record);
@@ -560,8 +581,10 @@ int main(int argc, char** argv)
             "org.test.scene.cross_phase_blob_close"},
         0u,
         {}});
-    auto package_bytes = scene::encodeScenePackage(package);
-    check(package_bytes.has_value(), "LXSC ScenePackage encodes");
+    auto package_bytes = scene::SceneAssetSerDeser::encodeData(
+        package.id,
+        package);
+    check(package_bytes.has_value(), "LXSC SceneDescription encodes");
     if (!package_bytes)
         return 1;
 
@@ -619,9 +642,14 @@ int main(int argc, char** argv)
     lux::runtime::SceneRuntime::Config config;
     config.name = "LXSC Headless Scene";
     config.scene_origin = "/Game/scene_lxsc";
-    config.scene_package_image = lux::asset::AssetBlob::fromShared(
-        lux::cxx::SharedBytes<>::copyOf(std::span<const std::byte>{
-            package_bytes->data(), package_bytes->size()}));
+    auto decoded_package = scene::SceneAssetSerDeser::decodeData(
+        std::span<const std::byte>{
+            package_bytes->data(), package_bytes->size()});
+    check(decoded_package.has_value(), "wrapped SceneAsset decodes");
+    if (!decoded_package)
+        return 1;
+    config.scene_asset_id = registerScene(
+        assets, std::move(**decoded_package));
     config.section_vfs = vfs;
 
     auto scene_runtime = lux::runtime::SceneRuntime::create(dependencies, config);
@@ -745,14 +773,16 @@ int main(int argc, char** argv)
 
     lux::runtime::SceneRuntime::Config ordered_close_config;
     ordered_close_config.name = "Domain-neutral ordered close";
-    ordered_close_config.transient_package = scene::ScenePackage{
-        scene::ScenePackageId{
+    scene::SceneDescription ordered_close_description{
+        lux::asset::asset_id_t{
             uuid("10000000-0000-4000-8000-000000000004")}};
-    ordered_close_config.transient_package->features.push_back({
+    ordered_close_description.features.push_back({
         lux::scene::SceneFeatureId{
             "org.test.scene.runtime_close"},
         0u,
         {}});
+    ordered_close_config.scene_asset_id = registerScene(
+        assets, std::move(ordered_close_description));
     auto ordered_close_scene = lux::runtime::SceneRuntime::create(
         dependencies, ordered_close_config);
         check(
@@ -790,9 +820,11 @@ int main(int argc, char** argv)
 
     lux::runtime::SceneRuntime::Config empty_config;
     empty_config.name = "Dispatcher-independent close";
-    empty_config.transient_package = scene::ScenePackage{
-        scene::ScenePackageId{
-            uuid("10000000-0000-4000-8000-000000000002")}};
+    scene::SceneDescription empty_description;
+    empty_description.id =
+        uuid("10000000-0000-4000-8000-000000000002");
+    empty_config.scene_asset_id = registerScene(
+        assets, std::move(empty_description));
     auto closing_scene = lux::runtime::SceneRuntime::create(
         dependencies, empty_config);
     check(closing_scene != nullptr, "empty headless Scene assembles");

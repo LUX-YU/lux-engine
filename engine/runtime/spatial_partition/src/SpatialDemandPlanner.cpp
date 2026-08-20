@@ -1,6 +1,6 @@
 #include <lux/engine/runtime/spatial_partition/SpatialDemandPlanner.hpp>
 
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 
 #include <algorithm>

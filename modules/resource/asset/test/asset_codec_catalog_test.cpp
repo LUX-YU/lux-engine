@@ -18,6 +18,7 @@ namespace
         lux::asset::EAssetType type,
         std::uint64_t hash,
         std::string name,
+        std::uint32_t magic,
         std::shared_ptr<const void> lifetime = {})
     {
         return lux::asset::AssetCodecDescriptor{
@@ -28,6 +29,9 @@ namespace
             &dummyFactory,
             nullptr,
             nullptr,
+            magic,
+            0u,
+            nullptr,
             std::move(lifetime)};
     }
 }
@@ -37,8 +41,8 @@ int main()
     using namespace lux::asset;
 
     auto duplicate_type = AssetCodecCatalog::build({
-        descriptor(EAssetType::MESH, 1u, "MeshA"),
-        descriptor(EAssetType::MESH, 2u, "MeshB")});
+        descriptor(EAssetType::MESH, 1u, "MeshA", 101u),
+        descriptor(EAssetType::MESH, 2u, "MeshB", 102u)});
     if (duplicate_type || duplicate_type.error() !=
             EAssetCodecCatalogError::DUPLICATE_ASSET_TYPE)
     {
@@ -46,8 +50,8 @@ int main()
     }
 
     auto collision = AssetCodecCatalog::build({
-        descriptor(EAssetType::MESH, 7u, "MeshA"),
-        descriptor(EAssetType::TEXTURE, 7u, "TextureB")});
+        descriptor(EAssetType::MESH, 7u, "MeshA", 101u),
+        descriptor(EAssetType::TEXTURE, 7u, "TextureB", 102u)});
     if (collision || collision.error() !=
             EAssetCodecCatalogError::TYPE_HASH_COLLISION)
     {
@@ -58,8 +62,8 @@ int main()
     std::weak_ptr<const void> observed = lifetime;
     {
         auto built = AssetCodecCatalog::build({
-            descriptor(EAssetType::MESH, 1u, "Mesh", lifetime),
-            descriptor(EAssetType::TEXTURE, 2u, "Texture")});
+            descriptor(EAssetType::MESH, 1u, "Mesh", 101u, lifetime),
+            descriptor(EAssetType::TEXTURE, 2u, "Texture", 102u)});
         lifetime.reset();
         if (!built || observed.expired() ||
             built->find(EAssetType::MESH) == nullptr ||
@@ -74,8 +78,8 @@ int main()
     const auto runtime = runtimeAssetCodecCatalog();
     if (!runtime || runtime->find(EAssetType::TEXTURE) == nullptr ||
         runtime->find(EAssetType::FLOW_GRAPH) != nullptr ||
-        runtime->find(EAssetType::ENTITY_SCENE) != nullptr ||
-        runtime->find(EAssetType::ENTITY_SECTION) != nullptr)
+        runtime->findByMagic(
+            asset_magic_number_of<EAssetType::TEXTURE>::value) == nullptr)
     {
         return 5;
     }
@@ -83,5 +87,23 @@ int main()
     AssetManager manager{runtime};
     if (manager.codecCatalogOwner() != runtime)
         return 6;
+
+    auto duplicate_magic = AssetCodecCatalog::build({
+        descriptor(EAssetType::MESH, 1u, "Mesh", 101u),
+        descriptor(EAssetType::TEXTURE, 2u, "Texture", 101u)});
+    if (duplicate_magic || duplicate_magic.error() !=
+            EAssetCodecCatalogError::DUPLICATE_MAGIC)
+    {
+        return 7;
+    }
+
+    auto duplicate_name = AssetCodecCatalog::build({
+        descriptor(EAssetType::MESH, 1u, "SharedName", 101u),
+        descriptor(EAssetType::TEXTURE, 2u, "SharedName", 102u)});
+    if (duplicate_name || duplicate_name.error() !=
+            EAssetCodecCatalogError::DUPLICATE_CPP_TYPE)
+    {
+        return 8;
+    }
     return 0;
 }

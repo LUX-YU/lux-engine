@@ -45,7 +45,7 @@ target_link_libraries(
     toolchain_spatial3d_scene_cook
     PUBLIC
         lux::engine::toolchain::toolchain_entity_scene_cook
-        lux::engine::scene::scene_package
+        lux::engine::scene::scene
         lux::engine::ecs::core
         lux::engine::ecs::identity
         lux::engine::resource::asset
@@ -74,7 +74,7 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_entity_scene_cook)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core identity render_components_3d spatial3d_components terrain_components physics3d navigation3d)"
     "find_package(lux-engine-function REQUIRED COMPONENTS navigation_detour3d render_standard_content)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"

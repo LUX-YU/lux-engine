@@ -50,10 +50,10 @@ target_link_libraries(
         lux::cxx::memory
         lux::engine::ecs::core
         lux::engine::ecs::scene_format
-        lux::engine::scene::scene_package
+        lux::engine::scene::scene
         lux::engine::resource::asset
         lux::engine::runtime::runtime_execution
-        lux::engine::scene::scene_api
+        lux::engine::scene::scene
         EnTT::EnTT
         STDEXEC::stdexec
     PRIVATE
@@ -69,7 +69,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS meta serialization)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_api scene_package)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution)"
     "find_package(stdexec CONFIG REQUIRED)"
     "find_package(zstd CONFIG REQUIRED)"
@@ -155,7 +155,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::runtime::runtime_entity_scene
         lux::engine::extensions::extension_api
-        lux::engine::scene::scene_api
+        lux::engine::scene::scene
 )
 if(MSVC)
     target_compile_options(entity_scene_catalog_identity_test PRIVATE /UNDEBUG)

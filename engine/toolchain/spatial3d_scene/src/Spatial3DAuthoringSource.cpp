@@ -108,11 +108,11 @@ namespace lux::toolchain
             return lux::ecs::PersistentEntityId{id.value()};
         }
 
-        static_assert(!std::is_constructible_v<
+        static_assert(!std::is_convertible_v<
             lux::authoring::WorldId,
-            lux::scene::ScenePackageId>);
-        static_assert(!std::is_constructible_v<
-            lux::scene::ScenePackageId,
+            lux::asset::asset_id_t>);
+        static_assert(!std::is_convertible_v<
+            lux::asset::asset_id_t,
             lux::authoring::WorldId>);
         static_assert(!std::is_constructible_v<
             lux::authoring::WorldActorId,
@@ -134,7 +134,7 @@ namespace lux::toolchain
         }
 
         Spatial3DAuthoringSource result;
-        result.scene = lux::scene::ScenePackageId{root->world.value()};
+        result.scene = lux::asset::asset_id_t{root->world.value()};
         result.features.reserve(root->contributions.size());
         for (const auto& feature : root->contributions)
         {

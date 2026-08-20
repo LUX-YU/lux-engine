@@ -123,7 +123,22 @@
         lux::runtime::SceneRuntime::Config rcfg;
         rcfg.name               = cfg.name;
         if (incoming_source)
-            rcfg.transient_package = runtimePackage(*incoming_source);
+        {
+            auto description = runtimePackage(*incoming_source);
+            rcfg.scene_asset_id = description.id;
+            if (!registerSceneDescription(
+                    assets_, std::move(description)))
+                return false;
+        }
+        else
+        {
+            lux::scene::SceneDescription description;
+            description.id = assets_.generateUUID(rcfg.name);
+            rcfg.scene_asset_id = description.id;
+            if (!registerSceneDescription(
+                    assets_, std::move(description)))
+                return false;
+        }
         rcfg.events             = infra_.events;      // 进程域同一个 bus(批B,可空)
         // ★ 批 D2:`SceneRuntime::Dependencies::residency` 是引用,而 `RenderInfra`
         //   的这一项按设计是**可空指针**(LuxEditor 装配到一定阶段才填)。检查没有
@@ -718,7 +733,7 @@
     {
         if (!live_ || generation != play_generation_ || play_runtime_)
             return;
-        if (value.pak_file.empty() || value.scene_id.empty())
+        if (value.pak_file.empty() || value.scene_id.is_nil())
         {
             lux::log::error(
                 "editor",
@@ -728,7 +743,8 @@
             play_actions_ = nullptr;
             return;
         }
-        auto image = makePlayScenePackageImage(
+        auto image = makePlaySceneAsset(
+            assets_,
             value.pak_file,
             value.scene_id);
         if (!image)
@@ -773,7 +789,7 @@
         };
         lux::runtime::SceneRuntime::Config config;
         config.name = "EditorCookedPlay";
-        config.scene_package_image = image->package_image;
+        config.scene_asset_id = image->scene_id;
         config.scene_origin = std::move(value.scene_origin);
         config.section_vfs = image->vfs;
         config.events = infra_.events;

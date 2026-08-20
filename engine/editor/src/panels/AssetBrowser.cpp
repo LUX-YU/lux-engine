@@ -6,7 +6,7 @@
 #include <lux/engine/ui/AssetDragDrop.hpp>
 #include <lux/engine/editor/panels/AssetTypeRegistry.hpp>   // type chip/glyph metadata
 #include <lux/engine/editor/thumbnail/ThumbnailService.hpp> // GRID view requestThumbnail
-#include <lux/engine/resource/asset/AssetHeaderProbe.hpp>            // shared readAssetHeader/assetTypeOfMagic
+#include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>   // ImGui::InputTextWithHint(std::string)
@@ -30,10 +30,6 @@ namespace lux::editor
 
     namespace
     {
-        // Header probe (readAssetHeader) + magic->type (assetTypeOfMagic) live
-        // in the asset module's <lux/engine/resource/asset/AssetHeaderProbe.hpp> — the
-        // SSOT shared with the AssetRegistry, import pipeline and pak cooker.
-
         // Type label + chip colour + glyph now come from
         // lux::editor::assetTypeDesc() (AssetTypeRegistry.hpp), so a new
         // EAssetType only needs a row there — not edits here.
@@ -121,7 +117,11 @@ namespace lux::editor
             if (is_known_ext)
             {
                 const auto probe = lux::asset::readAssetHeader(de.path());
-                e.asset_type = lux::asset::assetTypeOfMagic(probe.magic);
+                if (const auto* codec =
+                        asset_mgr_->codecCatalog().findByMagic(probe.magic))
+                {
+                    e.asset_type = codec->type;
+                }
                 e.asset_id   = probe.id;
             }
             e.size_bytes = de.file_size(ec);

@@ -71,10 +71,10 @@ namespace lux::asset
     /// mounts — they never reach user-facing enumeration.
     struct ProviderEntry
     {
-        asset_id_t  id{};
-        EAssetType  type{ EAssetType::UNKNOWN };
-        std::string vpath;
-        bool        tombstone{ false };
+        asset_id_t   id{};
+        std::uint32_t magic_number{0u};
+        std::string  vpath;
+        bool         tombstone{false};
     };
 
     /// One mount source (loose content dir, pak file, in-memory builtins).
@@ -105,31 +105,6 @@ namespace lux::asset
         [[nodiscard]] virtual std::optional<std::string>
         pathOf(const asset_id_t& id) const = 0;
     };
-
-    // ── Boot-scene resolution ─────────────────────────────────────────────
-    enum class EBootSceneError : std::uint8_t
-    {
-        VPathNotFound,    ///< The explicit vpath resolves to nothing.
-        EntryTypeMismatch,///< Explicit vpath is not an ENTITY_SCENE.
-        NoSceneEntry,     ///< The provider carries no ENTITY_SCENE entry.
-        MultipleScenes,   ///< >1 scene entries and no vpath to disambiguate.
-    };
-
-    struct BootSceneResolve
-    {
-        asset_id_t  id{};
-        std::string vpath;          ///< The resolved entry's vpath (origin tag).
-        std::size_t scene_count{};  ///< ENTITY_SCENE entries seen.
-    };
-
-    /// THE boot-scene rule, one copy for both players (desktop lux_player +
-    /// the Android game shell): an explicit @p vpath wins; otherwise the
-    /// provider's single ENTITY_SCENE entry boots — zero or several is an error
-    /// demanding an explicit pick. Error TEXT stays with the host
-    /// (diagnostics belong to the host; this returns the facts).
-    [[nodiscard]] LUX_ASSET_PUBLIC
-    lux::cxx::expected<BootSceneResolve, EBootSceneError>
-    resolveBootScene(const IAssetProvider& provider, std::string_view vpath);
 
     using MountId = std::uint32_t;
     inline constexpr MountId kInvalidMountId = 0;

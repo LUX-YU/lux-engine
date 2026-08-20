@@ -30,6 +30,9 @@ namespace fs = std::filesystem;
 
 namespace
 {
+    inline constexpr std::uint32_t kOpaqueSceneMagic = 0x4353584cu;
+    inline constexpr std::uint32_t kOpaqueSectionMagic = 0x5345584cu;
+
     int g_pass = 0;
     int g_fail = 0;
 
@@ -447,12 +450,12 @@ namespace
         std::vector<PakCookFileEntry> scene_entries;
         scene_entries.push_back({
             scene_id,
-            EAssetType::ENTITY_SCENE,
+            kOpaqueSceneMagic,
             "Scenes/Main",
             scene_image_path});
         scene_entries.push_back({
             section_id,
-            EAssetType::ENTITY_SECTION,
+            kOpaqueSectionMagic,
             "EntitySections/Main_Startup",
             section_image_path});
 
@@ -500,13 +503,13 @@ namespace
                 [&](const auto& entry)
                 {
                     return entry.id == scene_id &&
-                        entry.type == EAssetType::ENTITY_SCENE;
+                        entry.magic_number == kOpaqueSceneMagic;
                 }) && std::ranges::any_of(
                 inspected->entries,
                 [&](const auto& entry)
                 {
                     return entry.id == section_id &&
-                        entry.type == EAssetType::ENTITY_SECTION;
+                        entry.magic_number == kOpaqueSectionMagic;
                 }),
             "mixed Pak index preserves both EntityScene entry types");
 
@@ -522,17 +525,17 @@ namespace
         std::vector<PakCookFileEntry> conflicting;
         conflicting.push_back({
             hero,
-            EAssetType::ENTITY_SECTION,
+            kOpaqueSectionMagic,
             "EntitySections/DuplicateId",
             section_image_path});
         conflicting.push_back({
             makeId(0x1803u),
-            EAssetType::ENTITY_SECTION,
+            kOpaqueSectionMagic,
             "Characters/Hero",
             section_image_path});
         conflicting.push_back({
             makeId(0x1804u),
-            EAssetType::ENTITY_SECTION,
+            kOpaqueSectionMagic,
             "characters/hero",
             section_image_path});
         const auto rejected = cookSourcesAndFileEntriesToPak(
@@ -570,12 +573,12 @@ namespace
         std::vector<PakCookMemoryEntry> entries;
         entries.push_back({
             scene_id,
-            EAssetType::ENTITY_SCENE,
+            kOpaqueSceneMagic,
             "Scenes/Play",
             lux::cxx::SharedBytes<>::copyOf(scene_bytes)});
         entries.push_back({
             mesh_id,
-            EAssetType::MESH,
+            asset_magic_number_of<EAssetType::MESH>::value,
             "GeneratedMeshes/Test",
             lux::cxx::SharedBytes<>::copyOf(mesh_bytes)});
         const auto cooked = cookMemoryEntriesToPak(
@@ -597,26 +600,20 @@ namespace
                     [&](const auto& entry)
                     {
                         return entry.id == scene_id &&
-                            entry.type == EAssetType::ENTITY_SCENE;
+                            entry.magic_number == kOpaqueSceneMagic;
                     }) &&
                 std::ranges::any_of(
                     inspected->entries,
                     [&](const auto& entry)
                     {
                         return entry.id == mesh_id &&
-                            entry.type == EAssetType::MESH;
+                            entry.magic_number ==
+                                asset_magic_number_of<EAssetType::MESH>::value;
                     }),
             "memory entry types survive the paged Pak index");
-        bool boot_scene_ok = false;
-        if (provider)
-        {
-            const auto boot = resolveBootScene(*provider.value(), {});
-            boot_scene_ok = boot && boot->id == scene_id &&
-                boot->vpath == "Scenes/Play";
-        }
         check(
-            boot_scene_ok,
-            "boot discovery selects the explicit ENTITY_SCENE type");
+            provider && provider.value()->resolve("Scenes/Play") == scene_id,
+            "Pak exposes the explicitly addressed opaque scene entry");
     }
 
     void testFileBackedCook()
@@ -648,11 +645,14 @@ namespace
         std::vector<PakCookFileEntry> entries;
         entries.push_back({
             scene_id,
-            EAssetType::ENTITY_SCENE,
+            kOpaqueSceneMagic,
             "Scenes/File",
             scene_image});
         entries.push_back({
-            mesh_id, EAssetType::MESH, "GeneratedMeshes/File", mesh_image});
+            mesh_id,
+            asset_magic_number_of<EAssetType::MESH>::value,
+            "GeneratedMeshes/File",
+            mesh_image});
         const auto cooked = cookFileEntriesToPak(
             std::move(entries), pak, "/Game");
         check(

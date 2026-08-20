@@ -26,9 +26,9 @@
 #include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/asset/codecs/StaticColliderBatch3DCodec.hpp>
+#include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
 #include <lux/engine/spatial3d/SceneCatalog.hpp>
-#include <lux/engine/resource/asset/codecs/TerrainTileCodec.hpp>
+#include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -132,12 +132,12 @@ namespace lux::toolchain
         }
 
         [[nodiscard]] lux::ecs::scene_format::EntitySectionId derivedSectionId(
-            const lux::scene::ScenePackageId& scene,
+            const lux::asset::asset_id_t& scene,
             std::string_view purpose)
         {
             std::vector<std::byte> identity;
             lux::serialize::ArchiveWriter writer{identity};
-            writer.writeUuid(scene.value());
+            writer.writeUuid(scene);
             writer.writeString(purpose);
             const auto digest = lux::cxx::algorithm::Sha256::hash(identity);
             std::array<std::uint8_t, 16u> bytes{};
@@ -1098,14 +1098,14 @@ namespace lux::toolchain
 
         [[nodiscard]] lux::ecs::PersistentEntityId
         visualLodEntityId(
-            const lux::scene::ScenePackageId& scene,
+            const lux::asset::asset_id_t& scene,
             std::string_view kind,
             const uuids::uuid& space,
             const lux::math::GridCoord3i64& cell,
             std::uint8_t level,
             std::span<const std::string> layers = {})
         {
-            uuids::uuid_name_generator generator{scene.value()};
+            uuids::uuid_name_generator generator{scene};
             return lux::ecs::PersistentEntityId{generator(
                 "lux.visual-lod/" + std::string{kind} + "/" +
                 std::to_string(level) + "/" +
@@ -1131,7 +1131,7 @@ namespace lux::toolchain
 
         [[nodiscard]] VisualHlodPlan visualHlodPlan(
             const Spatial3DAuthoringSource& source,
-            const lux::scene::ScenePackageId& scene)
+            const lux::asset::asset_id_t& scene)
         {
             VisualHlodPlan result;
             result.page_parents.resize(source.instance_pages.size());
@@ -1512,7 +1512,7 @@ namespace lux::toolchain
 
         [[nodiscard]] lux::cxx::expected<PreparedVisualHlod, AdapterFailure>
         cookVisualHlod(
-            const lux::scene::ScenePackageId& scene,
+            const lux::asset::asset_id_t& scene,
             const VisualHlodNodePlan& node,
             const Spatial3DInstancePageSource& aggregate,
             DecodedMeshCatalog& meshes,
@@ -1873,7 +1873,7 @@ namespace lux::toolchain
                 node_mesh_bounds.merge(mesh_bounds);
                 merged.lods.clear();
 
-                uuids::uuid_name_generator generator{scene.value()};
+                uuids::uuid_name_generator generator{scene};
                 const auto content_identity_bytes = std::as_bytes(
                     std::span{content_identity.data(),
                         content_identity.size()});
@@ -2005,7 +2005,7 @@ namespace lux::toolchain
         using lux::scene::DemandChannelId;
         using lux::ecs::scene_format::kInvalidEntityOrdinal;
 
-        if (source.scene.empty() ||
+        if (source.scene.is_nil() ||
             !validSectionContentPrefix(config.section_content_prefix) ||
             !lux::math::isFinite(config.fallback_camera_position) ||
             !std::isfinite(config.fine_active_distance) ||
@@ -2039,7 +2039,7 @@ namespace lux::toolchain
         auto decoded_meshes = indexMeshAssets(mesh_assets);
         if (!decoded_meshes)
             return lux::cxx::unexpected(std::move(decoded_meshes.error()));
-        const lux::scene::ScenePackageId scene = config.scene_id.empty()
+        const lux::asset::asset_id_t scene = config.scene_id.is_nil()
             ? source.scene
             : config.scene_id;
         const auto startup_section = derivedSectionId(
@@ -2812,7 +2812,7 @@ namespace lux::toolchain
             }
         }
 
-        ScenePackageCookInput cook;
+        SceneDescriptionCookInput cook;
         cook.id = scene;
         cook.startup_sections.push_back(startup_section);
         while (config.section_content_prefix.size() > 1u &&
@@ -2956,12 +2956,12 @@ namespace lux::toolchain
         }
         cook.required_extensions = source.required_extensions;
 
-        auto cooked = cookScenePackage(std::move(cook));
+        auto cooked = cookSceneDescription(std::move(cook));
         if (!cooked)
         {
             return lux::cxx::unexpected(entityFailure(
                 cooked.error(),
-                "generic ScenePackage cooker rejected Spatial3D output"));
+                "generic SceneDescription cooker rejected Spatial3D output"));
         }
         std::ranges::sort(
             generated_meshes,
@@ -2981,7 +2981,7 @@ namespace lux::toolchain
                 "generated visual HLOD Mesh identity is duplicated"));
         }
         CookedSpatial3DEntitySceneBundle result;
-        static_cast<CookedScenePackageBundle&>(result) = std::move(*cooked);
+        static_cast<CookedSceneDescriptionBundle&>(result) = std::move(*cooked);
         result.generated_meshes = std::move(generated_meshes);
         return result;
     }

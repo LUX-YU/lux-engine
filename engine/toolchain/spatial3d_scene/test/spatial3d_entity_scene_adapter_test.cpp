@@ -22,9 +22,9 @@
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/resource/asset/codecs/StaticColliderBatch3DCodec.hpp>
+#include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
 #include <lux/engine/spatial3d/SceneCatalog.hpp>
-#include <lux/engine/resource/asset/codecs/TerrainTileCodec.hpp>
+#include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
 
 #include <algorithm>
@@ -140,7 +140,7 @@ namespace
     [[nodiscard]] lux::toolchain::Spatial3DAuthoringSource sourceFixture()
     {
         lux::toolchain::Spatial3DAuthoringSource source;
-        source.scene = lux::scene::ScenePackageId{
+        source.scene = lux::asset::asset_id_t{
             uuid("10000000-0000-4000-8000-000000000001")};
         const auto space =
             uuid("12000000-0000-4000-8000-000000000001");
@@ -365,7 +365,7 @@ int main()
         assert(first->sections[index].encoded_image ==
             second->sections[index].encoded_image);
     }
-    assert(first->package.id.value() == source.scene.value());
+    assert(first->package.id == source.scene);
     assert(first->package.startup_sections.size() == 1u);
     assert(first->package.features.size() == 5u);
     for (const auto name : {

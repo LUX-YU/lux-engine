@@ -340,15 +340,15 @@ int main(int argc, char** argv)
             const auto material = lux::asset::readAssetHeader(argv[1]);
             const auto instance = lux::asset::readAssetHeader(argv[2]);
             check(
-                !material.id.is_nil()
-                    && lux::asset::assetTypeOfMagic(material.magic)
-                        == lux::asset::EAssetType::MATERIAL,
+                !material.id.is_nil() &&
+                    material.magic == lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MATERIAL>::value,
                 "field graph-material header is valid"
             );
             check(
-                !instance.id.is_nil()
-                    && lux::asset::assetTypeOfMagic(instance.magic)
-                        == lux::asset::EAssetType::MATERIAL_INSTANCE,
+                !instance.id.is_nil() &&
+                    instance.magic == lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MATERIAL_INSTANCE>::value,
                 "field material-instance header is valid"
             );
             if (!material.id.is_nil() && !instance.id.is_nil())

@@ -199,12 +199,11 @@
             return result;
         }
 
-        [[nodiscard]] lux::scene::ScenePackage runtimePackage(
+        [[nodiscard]] lux::scene::SceneDescription runtimePackage(
             const lux::authoring::WorldSourceDocument& source)
         {
-            lux::scene::ScenePackage package;
-            package.id = lux::scene::ScenePackageId{
-                source.world.value()};
+            lux::scene::SceneDescription package;
+            package.id = source.world.value();
             package.features.reserve(source.contributions.size());
             for (const auto& contribution : source.contributions)
             {
@@ -225,6 +224,25 @@
                     requirement.minimum_minor});
             }
             return package;
+        }
+
+        [[nodiscard]] bool registerSceneDescription(
+            lux::asset::AssetManager& assets,
+            lux::scene::SceneDescription description)
+        {
+            const auto id = description.id;
+            if (id.is_nil())
+                return false;
+            auto info = std::make_unique<lux::asset::AssetInfo>();
+            info->id = id;
+            info->type = lux::scene::kSceneAssetType;
+            auto scene = std::make_unique<lux::scene::SceneAsset>(
+                std::move(info),
+                std::make_unique<lux::scene::SceneDescription>(
+                    std::move(description)));
+            return assets.hasAsset(id)
+                ? assets.replaceAsset(std::move(scene))
+                : assets.registerAsset(std::move(scene));
         }
 
         /// Early LXWA v4 editor/demo writers emitted roots with an empty
@@ -251,33 +269,42 @@
             return true;
         }
 
-        struct PlayScenePackageImage final
+        struct PlaySceneAsset final
         {
-            lux::asset::AssetBlob package_image;
+            lux::asset::asset_id_t scene_id{};
             std::shared_ptr<const lux::asset::AssetVfs> vfs;
         };
 
-        [[nodiscard]] lux::cxx::expected<PlayScenePackageImage, std::string>
-        makePlayScenePackageImage(
+        [[nodiscard]] lux::cxx::expected<PlaySceneAsset, std::string>
+        makePlaySceneAsset(
+            lux::asset::AssetManager& assets,
             const std::filesystem::path& pak_file,
-            lux::scene::ScenePackageId scene_id) noexcept
+            lux::asset::asset_id_t scene_id) noexcept
         {
             auto pak = lux::asset::PakAssetProvider::loadFromFile(pak_file);
             if (!pak)
                 return lux::cxx::unexpected(std::move(pak.error()));
-            auto selected = lux::asset::resolveBootScene(
-                **pak, "Scenes/Play");
-            if (!selected || selected->id != scene_id.value())
+            auto selected = (*pak)->resolve("Scenes/Play");
+            if (!selected || *selected != scene_id)
             {
                 return lux::cxx::unexpected(std::string{
                     "cooked Play Pak does not expose the expected "
-                    "ENTITY_SCENE entry"});
+                    "SceneAsset entry"});
             }
-            auto manifest = (*pak)->open(scene_id.value());
+            auto manifest = (*pak)->open(scene_id);
             if (!manifest)
             {
                 return lux::cxx::unexpected(
-                    std::string{"cannot open cooked Play LXSC manifest"});
+                    std::string{"cannot open cooked Play SceneAsset"});
+            }
+            auto description = lux::scene::SceneAssetSerDeser::decodeData(
+                manifest->bytes.view());
+            if (!description || (*description)->id != scene_id ||
+                !registerSceneDescription(
+                    assets, std::move(**description)))
+            {
+                return lux::cxx::unexpected(
+                    std::string{"cannot register cooked Play SceneAsset"});
             }
             auto vfs = std::make_shared<lux::asset::AssetVfs>();
             if (vfs->mount({"/Game", std::move(*pak), 0}) ==
@@ -286,8 +313,8 @@
                 return lux::cxx::unexpected(
                     std::string{"cannot mount cooked Play EntityScene"});
             }
-            return PlayScenePackageImage{
-                std::move(*manifest),
+            return PlaySceneAsset{
+                scene_id,
                 std::move(vfs)};
         }
 

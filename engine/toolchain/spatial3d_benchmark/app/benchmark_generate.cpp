@@ -14,6 +14,8 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
 #include <lux/engine/resource/asset/MaterialAsset.hpp>
+#include <lux/engine/scene/SceneAsset.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/engine/resource/asset/codecs/MaterialSerDeser.hpp>
 #include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
 #include <lux/engine/resource/asset/codecs/SkeletonSerDeser.hpp>
@@ -220,7 +222,7 @@ namespace
     struct BenchmarkAssetImage final
     {
         uuids::uuid id;
-        lux::asset::EAssetType type{lux::asset::EAssetType::UNKNOWN};
+        std::uint32_t magic_number{0u};
         std::string virtual_path;
         std::vector<std::byte> image;
     };
@@ -772,8 +774,10 @@ namespace
                 return std::nullopt;
             }
             const auto header = lux::asset::readAssetHeader(path);
-            const auto type = lux::asset::assetTypeOfMagic(header.magic);
-            if (type == lux::asset::EAssetType::UNKNOWN ||
+            const auto* codec =
+                lux::asset::runtimeAssetCodecCatalog()->findByMagic(
+                    header.magic);
+            if (codec == nullptr ||
                 header.id.is_nil())
             {
                 std::fprintf(
@@ -784,7 +788,7 @@ namespace
             }
             result.images.push_back({
                 header.id,
-                type,
+                header.magic,
                 virtualPath(spec.relative_path),
                 std::move(*image)});
         }
@@ -843,7 +847,7 @@ namespace
         staged_files.reserve(entries.capacity());
         const auto add_bytes = [&](
             uuids::uuid id,
-            lux::asset::EAssetType type,
+            std::uint32_t magic_number,
             std::string vpath,
             std::span<const std::byte> bytes) -> bool
         {
@@ -851,13 +855,13 @@ namespace
                 (uuids::to_string(id) + ".image");
             if (!writeBytes(path, bytes))
                 return false;
-            entries.push_back({id, type, std::move(vpath), path});
+            entries.push_back({id, magic_number, std::move(vpath), path});
             staged_files.push_back(path);
             return true;
         };
         if (!add_bytes(
-                bundle.package.id.value(),
-                lux::asset::EAssetType::ENTITY_SCENE,
+                bundle.package.id,
+                lux::scene::kSceneAssetMagic,
                 "Scenes/Benchmark",
                 bundle.encoded_package))
             return false;
@@ -872,7 +876,7 @@ namespace
             if (!stored || stored->content_path != expected_source ||
                 !add_bytes(
                     section.record.id.value(),
-                    lux::asset::EAssetType::ENTITY_SECTION,
+                    lux::ecs::scene_format::kEntitySectionImageMagic,
                     "EntitySections/" + key,
                     section.encoded_image))
             {
@@ -883,7 +887,8 @@ namespace
         {
             if (!add_bytes(
                     id,
-                    lux::asset::EAssetType::MESH,
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MESH>::value,
                     "Benchmark/Mesh/" + uuids::to_string(id),
                     image))
             {
@@ -894,7 +899,8 @@ namespace
         {
             if (!add_bytes(
                     mesh.id,
-                    lux::asset::EAssetType::MESH,
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MESH>::value,
                     mesh.virtual_path,
                     mesh.encoded_image))
             {
@@ -905,7 +911,7 @@ namespace
         {
             if (!add_bytes(
                     asset.id,
-                    asset.type,
+                    asset.magic_number,
                     asset.virtual_path,
                     asset.image))
             {

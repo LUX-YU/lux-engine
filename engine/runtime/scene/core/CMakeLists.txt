@@ -38,8 +38,8 @@ target_link_libraries(
         lux::engine::runtime::runtime_execution
         lux::engine::runtime::runtime_extension_loader
         lux::engine::runtime::runtime_scene_contributions
-        lux::engine::scene::scene_api
-        lux::engine::scene::scene_package
+        lux::engine::scene::scene
+        lux::engine::scene::scene
         lux::engine::ecs::core
         lux::engine::resource::asset
         lux::cxx::memory
@@ -53,7 +53,7 @@ component_add_transitive_commands(
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS memory)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_api scene_package)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-core REQUIRED COMPONENTS events log)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_assets runtime_entity_scene runtime_execution runtime_extension_loader runtime_scene_contributions)"

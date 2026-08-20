@@ -163,7 +163,7 @@ if(TARGET lux_player AND TARGET render_features)
             lux::engine::toolchain::toolchain_game_export
             lux::engine::authoring::authoring_world
             lux::engine::ecs::scene_format
-            lux::engine::scene::scene_package
+            lux::engine::scene::scene
             lux::engine::function::render_standard_content
     )
     lux_link_game_export_component_meta(game_export_smoke)

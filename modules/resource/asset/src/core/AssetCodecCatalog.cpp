@@ -1,7 +1,5 @@
 #include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 
-#include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
-
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -30,6 +28,16 @@ namespace lux::asset
                 return lux::cxx::unexpected(
                     EAssetCodecCatalogError::MISSING_FACTORY);
             }
+            if (descriptor.primary_magic == 0u)
+            {
+                return lux::cxx::unexpected(
+                    EAssetCodecCatalogError::MISSING_PRIMARY_MAGIC);
+            }
+            if (descriptor.legacy_magic == descriptor.primary_magic)
+            {
+                return lux::cxx::unexpected(
+                    EAssetCodecCatalogError::DUPLICATE_MAGIC);
+            }
         }
 
         std::sort(
@@ -53,10 +61,21 @@ namespace lux::asset
             }
             for (std::size_t other = 0u; other < index; ++other)
             {
-                if (descriptors[other].cpp_type_hash !=
-                    descriptors[index].cpp_type_hash)
+                const auto magicConflicts = [](
+                    const AssetCodecDescriptor& lhs,
+                    const AssetCodecDescriptor& rhs) noexcept
                 {
-                    continue;
+                    return lhs.primary_magic == rhs.primary_magic ||
+                        (lhs.legacy_magic != 0u &&
+                            (lhs.legacy_magic == rhs.primary_magic ||
+                             lhs.legacy_magic == rhs.legacy_magic)) ||
+                        (rhs.legacy_magic != 0u &&
+                            rhs.legacy_magic == lhs.primary_magic);
+                };
+                if (magicConflicts(descriptors[other], descriptors[index]))
+                {
+                    return lux::cxx::unexpected(
+                        EAssetCodecCatalogError::DUPLICATE_MAGIC);
                 }
                 if (descriptors[other].cpp_type_name ==
                     descriptors[index].cpp_type_name)
@@ -64,11 +83,33 @@ namespace lux::asset
                     return lux::cxx::unexpected(
                         EAssetCodecCatalogError::DUPLICATE_CPP_TYPE);
                 }
+                if (descriptors[other].cpp_type_hash !=
+                    descriptors[index].cpp_type_hash)
+                {
+                    continue;
+                }
                 return lux::cxx::unexpected(
                     EAssetCodecCatalogError::TYPE_HASH_COLLISION);
             }
         }
         return AssetCodecCatalog{std::move(descriptors)};
+    }
+
+    const AssetCodecDescriptor* AssetCodecCatalog::findByMagic(
+        std::uint32_t magic) const noexcept
+    {
+        if (magic == 0u)
+            return nullptr;
+        const auto found = std::find_if(
+            descriptors_.begin(),
+            descriptors_.end(),
+            [magic](const AssetCodecDescriptor& descriptor) noexcept
+            {
+                return descriptor.primary_magic == magic ||
+                    descriptor.legacy_magic == magic;
+            }
+        );
+        return found != descriptors_.end() ? std::addressof(*found) : nullptr;
     }
 
     const AssetCodecDescriptor* AssetCodecCatalog::find(
@@ -108,7 +149,7 @@ namespace lux::asset
 
         std::uint32_t magic{};
         std::memcpy(&magic, image.data(), sizeof(magic));
-        const auto* descriptor = find(assetTypeOfMagic(magic));
+        const auto* descriptor = findByMagic(magic);
         if (descriptor == nullptr || descriptor->decode == nullptr)
             return lux::cxx::unexpected(EAssetError::UNSUPPORTED);
         return descriptor->decode(std::move(image));
@@ -133,10 +174,25 @@ namespace lux::asset
     {
         constexpr std::size_t kPrefix =
             sizeof(std::uint32_t) + sizeof(asset_version_t);
-        if (bytes == nullptr || len < kPrefix)
+        if (bytes == nullptr || len < sizeof(std::uint32_t))
             return lux::cxx::unexpected(EAssetError::ABNORMAL_FILE_SIZE);
 
         const auto* data = static_cast<const std::byte*>(bytes);
+        std::uint32_t magic{};
+        std::memcpy(&magic, data, sizeof(magic));
+        const auto* descriptor = catalog.findByMagic(magic);
+        if (descriptor == nullptr)
+            return lux::cxx::unexpected(EAssetError::UNSUPPORTED);
+        if (magic == descriptor->legacy_magic)
+        {
+            if (descriptor->create_shell_from_image == nullptr)
+                return lux::cxx::unexpected(EAssetError::UNSUPPORTED);
+            return descriptor->create_shell_from_image(
+                std::span<const std::byte>{data, len});
+        }
+        if (len < kPrefix)
+            return lux::cxx::unexpected(EAssetError::ABNORMAL_FILE_SIZE);
+
         asset_version_t version{};
         std::memcpy(
             &version,
@@ -166,6 +222,8 @@ namespace lux::asset
             return lux::cxx::unexpected(EAssetError::UNSUPPORTED_VERSION);
         }
 
+        if (info.type != descriptor->type)
+            return lux::cxx::unexpected(EAssetError::WRONG_FILE_HEADER);
         auto shell = catalog.createShell(std::make_unique<AssetInfo>(info));
         if (!shell)
             return lux::cxx::unexpected(EAssetError::UNSUPPORTED);
@@ -181,15 +239,21 @@ namespace lux::asset
         if (!stream)
             return lux::cxx::unexpected(EAssetError::FILE_OPEN_FAIL);
 
-        std::array<std::byte, sizeof(AssetFileHeader)> buffer{};
+        stream.seekg(0, std::ios::end);
+        const auto end = stream.tellg();
+        if (end <= 0)
+            return lux::cxx::unexpected(EAssetError::ABNORMAL_FILE_SIZE);
+        stream.seekg(0, std::ios::beg);
+        std::vector<std::byte> buffer(static_cast<std::size_t>(end));
         stream.read(
             reinterpret_cast<char*>(buffer.data()),
-            static_cast<std::streamsize>(buffer.size())
-        );
+            static_cast<std::streamsize>(buffer.size()));
+        if (stream.gcount() != static_cast<std::streamsize>(buffer.size()))
+            return lux::cxx::unexpected(EAssetError::READ_FILE_FAIL);
         return makeShellFromMemory(
             catalog,
             buffer.data(),
-            static_cast<std::size_t>(stream.gcount())
+            buffer.size()
         );
     }
 } // namespace lux::asset

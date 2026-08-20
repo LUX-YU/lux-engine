@@ -12,10 +12,8 @@ namespace lux::authoring
 {
     using lux::asset::AssetBlob;
     using lux::asset::EAssetError;
-    using lux::asset::EAssetType;
     using lux::asset::ProviderEntry;
     using lux::asset::VirtualPath;
-    using lux::asset::assetTypeOfMagic;
     using lux::asset::asset_id_t;
     using lux::asset::foldCaseAscii;
     using lux::asset::readAssetHeader;
@@ -42,7 +40,7 @@ namespace lux::authoring
         struct Candidate
         {
             asset_id_t            id;
-            EAssetType            type;
+            std::uint32_t         magic_number;
             std::string           vpath;    // mount-relative canonical
             std::string           rel_file; // tie-break key, with extension
             std::filesystem::path file;
@@ -77,8 +75,7 @@ namespace lux::authoring
             }
 
             const auto probe = readAssetHeader(de.path());
-            const auto type  = assetTypeOfMagic(probe.magic);
-            if (type == EAssetType::UNKNOWN || probe.id.is_nil())
+            if (probe.magic == 0u || probe.id.is_nil())
             {
                 diagnostics_.push_back(lux::format(
                     "skip '{}': unrecognized or corrupt asset header",
@@ -87,7 +84,11 @@ namespace lux::authoring
             }
 
             candidates.push_back(Candidate{
-                probe.id, type, vpath, rel.generic_string(), de.path() });
+                probe.id,
+                probe.magic,
+                vpath,
+                rel.generic_string(),
+                de.path()});
         }
 
         std::sort(
@@ -133,7 +134,11 @@ namespace lux::authoring
             }
 
             const std::size_t idx = entries_.size();
-            entries_.push_back(Entry{ c.id, c.type, c.vpath, c.file });
+            entries_.push_back(Entry{
+                c.id,
+                c.magic_number,
+                c.vpath,
+                c.file});
             by_path_.emplace(entries_[idx].vpath, idx);
             by_id_.emplace(entries_[idx].id, idx);
         }
@@ -198,7 +203,11 @@ namespace lux::authoring
         const std::function<void(const ProviderEntry&)>& fn) const
     {
         for (const Entry& e : entries_)
-            fn(ProviderEntry{ e.id, e.type, e.vpath, /*tombstone=*/false });
+            fn(ProviderEntry{
+                e.id,
+                e.magic_number,
+                e.vpath,
+                /*tombstone=*/false});
     }
 
     std::optional<std::string>

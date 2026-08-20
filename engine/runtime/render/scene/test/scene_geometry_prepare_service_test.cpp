@@ -2,7 +2,7 @@
 
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/asset/codecs/TerrainTileCodec.hpp>
+#include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncScope.hpp>

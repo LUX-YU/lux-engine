@@ -1,6 +1,6 @@
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
 
-#include <lux/engine/resource/asset/codecs/StaticColliderBatch3DCodec.hpp>
+#include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 

@@ -74,28 +74,23 @@ namespace lux::asset
      *
      * These asset types specify the kind of resource represented by an asset.
      */
-    enum class EAssetType
+    enum class EAssetType : std::uint32_t
     {
-        TEXTURE,         ///< Texture asset.
-        MODEL,           ///< Model asset.
-        SHADER,          ///< Shader asset.
-        MESH,            ///< Mesh asset.
-        FONT,            ///< Font asset.
-        SOUND,           ///< Sound asset.
-        SCRIPT,          ///< Compiled script asset (shared library + manifest).
-        SKELETON,        ///< Skeletal animation skeleton (bone hierarchy + bind pose).
-        ANIMATION_CLIP,  ///< Keyframe animation clip targeting a Skeleton.
-        MATERIAL,        ///< Node-graph material (authoring graph + baked SPIR-V + params). Every material is a graph.
-        MATERIAL_INSTANCE, ///< References a parent MATERIAL; overrides params/textures only (no own shader).
-        TEXTURE_ATLAS,    ///< 2D image atlas: named uv sub-rects + pivots over one TEXTURE.
-        FLIPBOOK_CLIP,///< 2D image frame animation over a TEXTURE_ATLAS (NOT the skeletal ANIMATION_CLIP).
-        FLOW_GRAPH,      ///< FlowForge visual-script graph (authoring graph; compiled editor-side).
-        UNKNOWN,         ///< Unknown asset type.
-        /// Raw LXSC EntityScene manifest. SceneRuntime opens it directly
-        /// through the VFS; AssetManager deliberately treats it as opaque.
-        ENTITY_SCENE,
-        /// Raw LXES EntitySection image owned by EntitySectionService.
-        ENTITY_SECTION
+        TEXTURE = 0u,          ///< Texture asset.
+        MODEL = 1u,            ///< Model asset.
+        SHADER = 2u,           ///< Shader asset.
+        MESH = 3u,             ///< Mesh asset.
+        FONT = 4u,             ///< Font asset.
+        SOUND = 5u,            ///< Sound asset.
+        SCRIPT = 6u,           ///< Compiled script asset (shared library + manifest).
+        SKELETON = 7u,         ///< Skeletal animation skeleton (bone hierarchy + bind pose).
+        ANIMATION_CLIP = 8u,   ///< Keyframe animation clip targeting a Skeleton.
+        MATERIAL = 9u,         ///< Node-graph material (authoring graph + baked SPIR-V + params).
+        MATERIAL_INSTANCE = 10u, ///< Parent MATERIAL plus parameter/texture overrides.
+        TEXTURE_ATLAS = 11u,   ///< Named UV sub-rects and pivots over one TEXTURE.
+        FLIPBOOK_CLIP = 12u,   ///< Frame animation over a TEXTURE_ATLAS.
+        FLOW_GRAPH = 13u,      ///< FlowForge authoring graph.
+        UNKNOWN = 14u          ///< Unknown or unsupported Resource asset type.
     };
 
     /**

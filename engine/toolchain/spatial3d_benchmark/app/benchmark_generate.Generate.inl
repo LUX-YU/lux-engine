@@ -153,12 +153,14 @@
         std::vector<BenchmarkAssetImage> builtin_assets;
         builtin_assets.push_back({
             sky_texture_id,
-            lux::asset::EAssetType::TEXTURE,
+            lux::asset::asset_magic_number_of<
+                lux::asset::EAssetType::TEXTURE>::value,
             "Benchmark/Texture/SkyGradient",
             std::move(*sky_texture_image)});
         builtin_assets.push_back({
             skeleton_id,
-            lux::asset::EAssetType::SKELETON,
+            lux::asset::asset_magic_number_of<
+                lux::asset::EAssetType::SKELETON>::value,
             "Benchmark/Skeleton/" + uuids::to_string(skeleton_id),
             std::move(*skeleton_image)});
         {
@@ -234,7 +236,8 @@
                     return 1;
                 builtin_assets.push_back({
                     showcase_materials[index],
-                    lux::asset::EAssetType::MATERIAL,
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MATERIAL>::value,
                     "Benchmark/Material/Showcase" +
                         std::to_string(index),
                     std::move(*image)});
@@ -289,7 +292,8 @@
                 }
                 builtin_assets.push_back({
                     id,
-                    lux::asset::EAssetType::MATERIAL,
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MATERIAL>::value,
                     "Benchmark/Material/" +
                         fs::path{filename}.stem().string(),
                     std::move(*image)});
@@ -1041,7 +1045,9 @@
                 mesh_assets.meshes.push_back({id, image});
             for (const auto& asset : builtin_assets)
             {
-                if (asset.type == lux::asset::EAssetType::MESH)
+                if (asset.magic_number ==
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MESH>::value)
                 {
                     mesh_assets.meshes.push_back({
                         asset.id, asset.image});

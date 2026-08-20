@@ -6,7 +6,7 @@
 
 #include <lux/cxx/core/StableNameId.hpp>
 #include <lux/engine/ecs/scene_format/Identifiers.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 
 #include <cstddef>
 #include <cstdint>

@@ -9,6 +9,13 @@
 - 将 Terrain/Tilemap/Physics3D 场景 Payload 的最终 owner 改为对应 ECS 领域，保留历史 Resource 内容组件清零记录。
 - 用 `SCENEASSET-*` 条目追踪二次归位，不把被取代的旧目标伪装为已完成。
 
+## 2026-08-20 Scene Asset 实施完成
+
+- `SCENEASSET-001..020` 已完成并通过 owner contract、四 Profile 全量构建、安装 consumer 与旧符号归零验收。
+- `engine/scene/api` 与 `engine/scene/package` 已删除，canonical owner 为单一 `engine/scene` component。
+- Terrain、Tilemap、StaticColliderBatch3D 值/Codec/tests 已二次归位对应 ECS 领域，五种既有内部 wire version 均未升级。
+- CTest 当前未注册测试；验收结果明确来自独立 owner test executables，不将 0 项 CTest 误报为覆盖。
+
 > 明确废止的旧建议、保留的上层裁决以及新版施工顺序变化
 
 **执行文档 R · 重构实施版 v2.0**

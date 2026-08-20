@@ -1,6 +1,6 @@
 # LUX Engine 重构执行文档 v2 合订本
 
-基线：Asset 目录归一化 checkpoint `49af7129`
+基线：Scene Asset 边界修订实施 `36ce56c6`
 
 > 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明及 2026-08-20 Scene Asset ADR 机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
 
@@ -559,7 +559,6 @@ add_library(lux::engine::resource::asset_core ALIAS lux_asset)
 - PLAYER、EDITOR、TOOLCHAIN、DEVELOPER Profile 均通过双构建与测试。
 - 架构扫描器能够阻止旧依赖和旧命名重新进入。
 
-
 ---
 
 # `modules/` 公共 SDK 边界与分发体系重构
@@ -994,7 +993,6 @@ Extension ABI 不属于公共 Asset/Core 版本；它由 `lux-engine-extension-s
 - [ ] Script-only 外部样例不需要 Engine Extension ABI。
 - [ ] 新公共头不使用 `lux/engine/function` 或 `lux/engine/resource` 前缀。
 - [ ] 所有兼容 Alias 都有删除里程碑。
-
 
 ---
 
@@ -1565,7 +1563,6 @@ Level
 - [ ] `resource/spatial` target 已删除。
 - [ ] `extension_abi` 不出现在 Modules SDK 安装清单。
 - [ ] 所有 Build-time 生成器依赖不进入安装 Config。
-
 
 ---
 
@@ -2275,7 +2272,6 @@ entity scene / section
 - [ ] 旧 `.luxasset` Golden Files 全部可读。
 - [ ] Asset-only 外部样例不链接 ECS/Engine/Reflection Registry。
 
-
 ---
 
 # Function 公共模块重构
@@ -2825,7 +2821,6 @@ cmake/Codegen/ShaderParams.cmake
 - [ ] `SceneViewportPanel` 不在 modules。
 - [ ] Tooling Feature 不自动进入标准 Renderer 公共闭包。
 
-
 ---
 
 # ECS 内核、序列化与 Scene Format 重构
@@ -3374,7 +3369,6 @@ Persistence Journal
 - [ ] `SystemUpdateContext` 未新增 Runtime/Asset/Extension getter。
 - [ ] 旧 Entity Scene/Section Golden Files 全部可读。
 - [ ] 动态 Extension metadata 使用显式 Draft/Commit，不依赖隐式全局 pending chain。
-
 
 ---
 
@@ -4036,7 +4030,6 @@ lux::engine::spatial3d
 - [ ] 多种 CloseSender 不再成为跨领域公共概念。
 - [ ] Extension unload 在所有 Lease 与 accepted work 归零后发生。
 
-
 ---
 
 # Game、Editor 与共享 Session 产品重构
@@ -4615,7 +4608,6 @@ lux::window_glfw
 - [ ] 导出目录无 Editor/Toolchain 二进制。
 - [ ] Product API 不公开内部 Executor/AssetStore/Renderer。
 - [ ] Close 失败可诊断，不以 `Impl::release()` 泄漏整个产品状态作为常规路径。
-
 
 ---
 
@@ -5358,7 +5350,6 @@ lux_editor_product
 - [ ] `EditorScene` 已拆分，Play 使用 `game::Session`。
 - [ ] 长生命周期异步闭包不捕获 Panel/Controller 裸指针。
 
-
 ---
 
 # CMake、命名空间、SDK 包与兼容迁移
@@ -5886,7 +5877,6 @@ legacy scan
 - [ ] 安装前缀无 build-tree absolute path。
 - [ ] Legacy include/target report 最终为零。
 - [ ] 导出游戏 inventory 无 Editor/Toolchain/Authoring。
-
 
 ---
 
@@ -6512,7 +6502,6 @@ BUILD-03..FINAL
 - [ ] 旧包名、target、include、namespace 已删除。
 - [ ] 导出游戏无 Editor/Toolchain/Authoring 与用户可见 EngineRuntime 语义。
 
-
 ---
 
 # LUX Engine 重构详细施工 Checklist
@@ -6867,26 +6856,26 @@ BUILD-03..FINAL
 
 ## M4：Scene Asset 边界修订
 
-- [ ] `SCENEASSET-001` 将 `engine/scene/api` 与 `engine/scene/package` 收敛为单一 `scene` component/target。
-- [ ] `SCENEASSET-002` 将 `ScenePackage`/`ScenePackageId` 迁为 `SceneDescription`/`asset_id_t`，不留 alias 或旧 include。
-- [ ] `SCENEASSET-003` 建立 `SceneAsset : TAsset<SceneDescription>` 与 Engine-owned `kSceneAssetType` 兼容数值。
-- [ ] `SCENEASSET-004` 建立 public `SceneAssetSerDeser : TAssetSerDeser<std::monostate>`，不得在 SceneAsset 上复制静态 Codec。
-- [ ] `SCENEASSET-005` 使用 `0x0130914D` 标准 AssetFileHeader 包裹原样 LXSC v1 data，并校验 outer/inner ID。
-- [ ] `SCENEASSET-006` 支持历史裸 LXSC `0x4353584C` 只读加载，重新导出只写包裹格式。
-- [ ] `SCENEASSET-007` 扩展 AssetCodecDescriptor/Catalog 的主/legacy magic、`findByMagic()`、冲突校验和 legacy shell 回调。
-- [ ] `SCENEASSET-008` 让 AssetManager、AssetLoadService、Pak 与 Toolchain 统一经 Catalog magic 分派，删除中央 `assetTypeOfMagic()`。
-- [ ] `SCENEASSET-009` 让 Provider/Pak 暴露和接收原始 magic，保持 Pak v2 `asset_magic` wire 不变。
-- [ ] `SCENEASSET-010` 从 Resource 删除 LXSC/LXES magic、Scene enum 名称、boot Scene 规则和 Scene 特判。
-- [ ] `SCENEASSET-011` Game/Editor/Toolchain 以标准 descriptors + Scene descriptor 构建 immutable Catalog。
-- [ ] `SCENEASSET-012` GameExporter 输出包裹 SceneAsset，Section 继续输出裸 LXES 且路径不变。
-- [ ] `SCENEASSET-013` RuntimeLaunchManifest 强制显式 `boot_scene`，删除唯一 Scene 自动选择回退。
-- [ ] `SCENEASSET-014` Game 经 VFS/AssetLoadService 加载 SceneAsset；SceneRuntime 持有 typed AssetRef，不接收裸 LXSC。
-- [ ] `SCENEASSET-015` Editor 临时场景注册为 SceneAsset，且不借机重构 Editor 架构。
-- [ ] `SCENEASSET-016` TerrainTile 值/Codec/tests 二次归位 `ecs/terrain`，保持 LXTT v1 wire。
-- [ ] `SCENEASSET-017` TilemapChunk 值/Codec/tests 二次归位 `ecs/tilemap`，保持 LXTC v1 wire。
-- [ ] `SCENEASSET-018` StaticColliderBatch3D 值/Codec/tests 二次归位 `ecs/physics3d`，保持 LXPC v1 wire。
-- [ ] `SCENEASSET-019` 验证 Scene/Payload Golden、Catalog 冲突、异步加载、显式启动和安装 consumer 契约。
-- [ ] `SCENEASSET-020` 删除旧 Scene components/includes 与 Resource 场景 Payload 头，完成旧符号/安装树归零扫描。
+- [x] `SCENEASSET-001` 将 `engine/scene/api` 与 `engine/scene/package` 收敛为单一 `scene` component/target。
+- [x] `SCENEASSET-002` 将 `ScenePackage`/`ScenePackageId` 迁为 `SceneDescription`/`asset_id_t`，不留 alias 或旧 include。
+- [x] `SCENEASSET-003` 建立 `SceneAsset : TAsset<SceneDescription>` 与 Engine-owned `kSceneAssetType` 兼容数值。
+- [x] `SCENEASSET-004` 建立 public `SceneAssetSerDeser : TAssetSerDeser<std::monostate>`，不得在 SceneAsset 上复制静态 Codec。
+- [x] `SCENEASSET-005` 使用 `0x0130914D` 标准 AssetFileHeader 包裹原样 LXSC v1 data，并校验 outer/inner ID。
+- [x] `SCENEASSET-006` 支持历史裸 LXSC `0x4353584C` 只读加载，重新导出只写包裹格式。
+- [x] `SCENEASSET-007` 扩展 AssetCodecDescriptor/Catalog 的主/legacy magic、`findByMagic()`、冲突校验和 legacy shell 回调。
+- [x] `SCENEASSET-008` 让 AssetManager、AssetLoadService、Pak 与 Toolchain 统一经 Catalog magic 分派，删除中央 `assetTypeOfMagic()`。
+- [x] `SCENEASSET-009` 让 Provider/Pak 暴露和接收原始 magic，保持 Pak v2 `asset_magic` wire 不变。
+- [x] `SCENEASSET-010` 从 Resource 删除 LXSC/LXES magic、Scene enum 名称、boot Scene 规则和 Scene 特判。
+- [x] `SCENEASSET-011` Game/Editor/Toolchain 以标准 descriptors + Scene descriptor 构建 immutable Catalog。
+- [x] `SCENEASSET-012` GameExporter 输出包裹 SceneAsset，Section 继续输出裸 LXES 且路径不变。
+- [x] `SCENEASSET-013` RuntimeLaunchManifest 强制显式 `boot_scene`，删除唯一 Scene 自动选择回退。
+- [x] `SCENEASSET-014` Game 经 VFS/AssetLoadService 加载 SceneAsset；SceneRuntime 持有 typed AssetRef，不接收裸 LXSC。
+- [x] `SCENEASSET-015` Editor 临时场景注册为 SceneAsset，且不借机重构 Editor 架构。
+- [x] `SCENEASSET-016` TerrainTile 值/Codec/tests 二次归位 `ecs/terrain`，保持 LXTT v1 wire。
+- [x] `SCENEASSET-017` TilemapChunk 值/Codec/tests 二次归位 `ecs/tilemap`，保持 LXTC v1 wire。
+- [x] `SCENEASSET-018` StaticColliderBatch3D 值/Codec/tests 二次归位 `ecs/physics3d`，保持 LXPC v1 wire。
+- [x] `SCENEASSET-019` 验证 Scene/Payload Golden、Catalog 冲突、异步加载、显式启动和安装 consumer 契约。
+- [x] `SCENEASSET-020` 删除旧 Scene components/includes 与 Resource 场景 Payload 头，完成旧符号/安装树归零扫描。
 - [ ] `SCENE-011` 把 StartupSectionSystem 移到 Scene Feature。
 - [x] `SCENE-012` 把 World Partition 配置移到 engine/spatial3d。 **完成：`engine/spatial3d` 拥有 Scene Catalog、L3SC v1 codec、Demand Channel 与 Entity Section canonical ID；Runtime、Game、Toolchain 与测试消费者已迁移，legacy `resource/spatial3d_scene` 已删除。**
 - [ ] `SCENE-013` 把 runtime packs 按 Scene Feature 或 Game recipe 归位。
@@ -7276,7 +7265,6 @@ BUILD-03..FINAL
 
 本清单共 **508** 个稳定编号施工项；当前已完成 **97** 项、有效待完成或部分完成 **391** 项，另有 **20** 项被 ADR-20260820 明确取代且不再施工。
 
-
 ---
 
 # 当前代码到目标架构的迁移映射总表
@@ -7287,7 +7275,7 @@ BUILD-03..FINAL
 
 | 项目 | 内容 |
 | --- | --- |
-| 代码基线 | 原始文档 `09b2a82582550bcbe03afeef77d2591e1656a656`；Asset 目录归一化 checkpoint `49af7129`；lux-cxx `91b9233713bb713adeb16acaf681a84dd36e4546` |
+| 代码基线 | 原始文档 `09b2a82582550bcbe03afeef77d2591e1656a656`；Asset 目录归一化 checkpoint `49af7129`；Scene Asset 实施 `36ce56c6`；lux-cxx `91b9233713bb713adeb16acaf681a84dd36e4546` |
 | 基线日期 | 2026-08-19 |
 | 文档更新 | 2026-08-20 |
 | 适用对象 | 项目管理、架构负责人、实施者、迁移脚本维护者和代码评审者 |
@@ -7340,24 +7328,24 @@ BUILD-03..FINAL
 | modules/resource/deployment | render/config + engine/game/deployment | SPLIT/DELETE | Render/Game | 03 |
 | RuntimeCapacity | RenderConfig/RenderCapacity + product options | SPLIT | Render/Game | 03 |
 | RuntimeLaunchManifest | GameManifest | MOVE/RENAME | Game | 03/07 |
-| modules/resource/entity_scene（已删除） | ecs/scene_format + engine/scene | DONE/SECONDARY REFACTOR — LXES v1/Persistence v1 归 ECS；LXSC v1 将归单一 Scene Asset component | ECS/Scene | 03/05/ADR |
-| EntitySceneManifest / legacy DTO / Codec | SceneDescription/SceneAsset + EntitySection records | IN_PROGRESS — ScenePackage 二次改名/包裹，内部 LXSC/LXES 字节不变 | ECS/Scene | 05/ADR |
+| modules/resource/entity_scene（已删除） | ecs/scene_format + engine/scene | DONE — LXES v1/Persistence v1 归 ECS；LXSC v1 归单一 Scene Asset component | ECS/Scene | 03/05/ADR |
+| EntitySceneManifest / legacy DTO / Codec | SceneDescription/SceneAsset + EntitySection records | DONE — SceneDescription 二次改名并以 AssetFileHeader 包裹；内部 LXSC/LXES 字节不变 | ECS/Scene | 05/ADR |
 | modules/resource/spatial3d_scene（已删除） | engine/spatial3d `SceneCatalog` | DONE — MOVE/DELETE；L3SC v1 字节不变 | Spatial3D | 03/06 |
 | Authoring legacy World/Actor UUID wrapper | `WorldId` + `WorldActorId` | DONE — SPLIT；仅 Toolchain/Editor adapter 显式值转换 | Authoring/ECS/Scene | 05/06/08 |
 | LXWA `SceneContribution` / `RequiredExtension` DTO | `WorldSceneFeatureRequest` + `WorldRequiredExtension` | DONE — Authoring owner，Toolchain leaf 转 cooked DTO | Authoring/Toolchain | 05/06 |
 | modules/resource/classic_mesh（已删除） | `modules/function/render/standard_content` | DONE — MOVE/DELETE；LXCB v1 字节不变 | Render | 03/04 |
-| modules/resource/terrain（已删除） | `ecs/terrain` | IN_PROGRESS — 历史 Resource 清零 DONE；值/Codec/tests 二次归位，LXTT v1 不变 | ECS Terrain | 03/ADR |
-| modules/resource/tilemap（已删除） | `ecs/tilemap` | IN_PROGRESS — 历史 Resource 清零 DONE；值/Codec/tests 二次归位，LXTC v1 不变 | ECS Tilemap | 03/ADR |
-| modules/resource/physics3d（已删除） | `ecs/physics3d` | IN_PROGRESS — 历史 Resource 清零 DONE；值/Codec/tests 二次归位，LXPC v1 不变 | ECS Physics3D | 03/ADR |
+| modules/resource/terrain（已删除） | `ecs/terrain` | DONE — 历史 Resource 清零记录保留；值/Codec/tests 已二次归位，LXTT v1 不变 | ECS Terrain | 03/ADR |
+| modules/resource/tilemap（已删除） | `ecs/tilemap` | DONE — 历史 Resource 清零记录保留；值/Codec/tests 已二次归位，LXTC v1 不变 | ECS Tilemap | 03/ADR |
+| modules/resource/physics3d（已删除） | `ecs/physics3d` | DONE — 历史 Resource 清零记录保留；值/Codec/tests 已二次归位，LXPC v1 不变 | ECS Physics3D | 03/ADR |
 | modules/resource/asset/{core,codecs,identity,pak}（已删除） | `modules/resource/asset/{src/core,src/codecs,src/pak}` + `include/pinclude/.../asset/{codecs,pak}` | DONE — FLATTEN/MERGE；统一 `lux::engine::resource::asset` target，旧四 target、目录和 visibility 宏删除；wire 格式不变 | Resource | 03/10 |
 | asset_identity / asset_core / asset_codecs / asset_pak（已删除） | `lux::engine::resource::asset` / `lux_engine_asset` | DONE — TARGET MERGE；无 CMake alias、旧 export 或旧安装 component | Resource | 03/10 |
 | asset_id_t | asset_id_t | KEEP — UUID wire/API；不创建 AssetId 同义类型 | Asset | ADR |
-| EAssetType | EAssetType | KEEP/STABILIZE — 显式底层类型与数值；Resource 删除 Engine 成员名 | Asset/Scene | ADR |
+| EAssetType | EAssetType | DONE/KEEP — 显式 `uint32_t` 底层类型与稳定数值；Resource 已删除 Engine Scene/Section 成员名 | Asset/Scene | ADR |
 | LuxAsset | LuxAsset | KEEP — 通用资产抽象 | Asset | ADR |
 | TAsset<T> | TAsset<T> | KEEP — SceneAsset 复用 | Asset/Scene | ADR |
 | AssetManager | AssetManager | KEEP — 通用驻留/引用/驱逐机制，不创建 AssetStore | Asset | ADR |
-| AssetCodecCatalog | AssetCodecCatalog | EXPAND — 主/legacy magic、findByMagic 与冲突校验 | Asset | ADR |
-| AssetSerDeser / TAssetSerDeser | SceneAssetSerDeser 复用既有模板 | KEEP/EXTEND | Asset/Scene | ADR |
+| AssetCodecCatalog | AssetCodecCatalog | DONE/EXPAND — 主/legacy magic、`findByMagic()`、type/magic/C++ identity 冲突校验与 legacy shell | Asset | ADR |
+| AssetSerDeser / TAssetSerDeser | SceneAssetSerDeser 复用既有模板 | DONE/KEEP — Scene 只实现既有同步 SerDeser 接口 | Asset/Scene | ADR |
 | AssetVfs | asset::Vfs | RENAME | Asset | 03 |
 | PakAssetProvider | asset::PakProvider | RENAME | Asset | 03 |
 | render_client | lux::render | REFACTOR/TARGET RENAME | Render | 04 |
@@ -7390,7 +7378,7 @@ BUILD-03..FINAL
 | AsyncScope | TaskGroup | RENAME | Execution | 06 |
 | AsyncFileService | FileIO | RENAME/REVIEW | Execution | 06 |
 | engine/runtime/assets | engine/runtime/assets | KEEP — 公共 AssetManager 的异步编排适配器 | Runtime Assets | ADR |
-| AssetLoadService | AssetLoadService | KEEP/EXTEND — 通过 Catalog magic 加载 SceneAsset | Runtime Assets | ADR |
+| AssetLoadService | AssetLoadService | DONE/KEEP — 通过 Catalog magic 异步加载、去重、驻留与重载 SceneAsset | Runtime Assets | ADR |
 | engine/runtime/extensions/loader | engine/extensions/loader | MOVE | Extensions | 06 |
 | ExtensionModuleManager | ExtensionLoader | RENAME | Extensions | 06 |
 | ModuleLifetime/ModuleLease | ExtensionLease | RENAME | Extensions | 06 |
@@ -7400,7 +7388,7 @@ BUILD-03..FINAL
 | SceneContributions | Scene Feature Catalog | MOVE/RENAME | Scene | 06 |
 | RenderEffects | Render domain catalog | MOVE/RENAME | Render | 06 |
 | engine/runtime/scene/core | engine/runtime/scene/core | KEEP — Scene Runtime 生命周期不进入 Scene Codec component | Runtime Scene | ADR |
-| SceneRuntime | SceneRuntime | KEEP/TYPE INPUT — 消费 typed SceneAsset/AssetRef | Runtime Scene | ADR |
+| SceneRuntime | SceneRuntime | DONE/KEEP — 消费 typed SceneAsset 并持有 AssetRef | Runtime Scene | ADR |
 | SceneContributionDescriptor | FeatureDescriptor | RENAME | Scene | 06 |
 | SceneContributionHost | Features | RENAME/INTERNALIZE | Scene | 06 |
 | SceneScriptRuntime | Script Feature + game::Session | SPLIT/DELETE | Scene/Game | 06 |
@@ -7438,7 +7426,7 @@ BUILD-03..FINAL
 ## 2026-08-20 Scene Asset 边界修订状态
 
 - `modules/resource/entity_scene` 与 `modules/resource/spatial3d_scene` 的 source path、target、component、include prefix、namespace 和安装产物均为 `DONE`，不存在 COMPAT alias/header。
-- 当前 canonical owners 为 `lux::ecs::scene_format`、旧 `lux::scene::ScenePackage` 和 `lux::spatial3d::SceneCatalog`；本分支将前者保持、把后者收敛为 `SceneDescription/SceneAsset`，并保留 `engine/runtime/entity_scene` 的 Runtime loading 职责。
+- 当前 canonical owners 为 `lux::ecs::scene_format`、单一 `engine/scene` 中的 `SceneDescription/SceneAsset` 和 `lux::spatial3d::SceneCatalog`；`engine/runtime/entity_scene` 继续拥有 Runtime Section loading 职责。
 - 文件格式未升级：LXSC v1、LXES v1、L3SC v1、Persistence Journal v1、LXWA v4 及子文档版本由 Golden/Wire contract 冻结。
 - 迁移期四项 Python boundary scanner 及其 CI Job 已由项目决定退役；当前边界依据是 owner 编译/链接/Golden/Wire tests 和 CMake target DAG。
 - `ContributionId` 行仍为 `IN_PROGRESS`：冻结 Extension ABI v4 的 legacy Contribution 布局不在本波次更改。
@@ -7446,7 +7434,7 @@ BUILD-03..FINAL
 ## 2026-08-20 Resource Content 清零状态
 
 - `modules/resource/classic_mesh`、`terrain`、`tilemap`、`physics3d` 的 source path、target、component、include prefix 与安装产物均为 `DONE`，不存在 COMPAT alias/header。
-- Terrain、Tilemap、Physics3D 曾完成 Resource 内容组件清零；现按 ADR 二次归位对应 ECS 领域。Classic Mesh 的值与 LXCB v1 Codec 继续由 Function `render_standard_content` 所有。
+- Terrain、Tilemap、Physics3D 曾完成 Resource 内容组件清零；现已按 ADR 二次归位对应 ECS 领域。Classic Mesh 的值与 LXCB v1 Codec 继续由 Function `render_standard_content` 所有。
 - 四种确定性 fixture 的长度/SHA-256 与 decode/re-encode 已冻结；未增加 wire version，magic、字段顺序、UUID、浮点和整数编码保持不变。
 - `ASSETSDK-019` 仍仅为部分推进；本轮完成统一 `include/pinclude/src` 结构和 canonical Asset target，未夹带 AssetStore 或全局 package namespace 重构。
 
@@ -7494,7 +7482,6 @@ status=PENDING → legacy report 允许但不能增长
 - [ ] 所有 ABI/格式迁移附 Golden/fixture 测试。
 - [ ] 无未登记的新旧双重概念。
 
-
 ---
 
 # 当前代码事实索引
@@ -7513,12 +7500,12 @@ status=PENDING → legacy report 允许但不能增长
 
 > 本版以“`modules/` 是可独立分发的公共 SDK 边界”为首要前提。任何为消除依赖环而把 Engine、Scene、Editor 或 Extension 协议下沉到 `modules/` 的做法，均视为架构回归。
 
-> 资产与 Scene 的目标事实由 `ADR-20260820_SceneAsset与Resource边界.md` 修订：现有 AssetManager/SerDeser/Catalog/VFS/Pak 保留；当前 `scene_api/scene_package` 将收敛为单一 Engine Scene Asset component；三类 Resource 场景 Payload 将二次归位 ECS owner。
+> 资产与 Scene 的现行事实由 `ADR-20260820_SceneAsset与Resource边界.md` 修订：现有 AssetManager/SerDeser/Catalog/VFS/Pak 保留；Scene 已收敛为单一 Engine Scene Asset component；三类 Resource 场景 Payload 已二次归位 ECS owner。
 
 
 ## 使用说明
 
-本索引保留提交 `09b2a825...` 的原始文件锚点，并在 2026-08-20 按 Platform Common checkpoint `bdcb653d` 的实际施工结果更新当前事实。实施分支若继续前移：
+本索引保留提交 `09b2a825...` 的原始文件锚点，并在 2026-08-20 按 Scene Asset 实施提交 `36ce56c6` 的实际施工结果更新当前事实。实施分支若继续前移：
 
 1. 先按旧路径查找；
 2. 若路径变化，按类型名和 CMake target 查找；
@@ -7541,27 +7528,27 @@ status=PENDING → legacy report 允许但不能增长
 | `modules/platform/gapi/CMakeLists.txt` | Vulkan interface target 与 wrapper headers | 02/04 |
 | `modules/platform/window/CMakeLists.txt` | GLFW/Android、Vulkan Header、Tray Icon | 02/04 |
 | `modules/resource/CMakeLists.txt` | 只显式添加并安装 description 与 asset 家族；无自动目录枚举或其他一级 component | 01/03 |
-| `modules/resource/description/CMakeLists.txt` | 当前仍拥有 Terrain、Tilemap、StaticCollider3D 纯值头；按 ADR 将从 Resource 删除并归对应 ECS owner | 03/ADR |
+| `modules/resource/description/CMakeLists.txt` | 只拥有通用 Description 值；不再拥有 Terrain、Tilemap、StaticCollider3D 场景 Payload | 03/ADR |
 | `modules/resource/description/.../LayoutContract.hpp` | Render descriptor layout contract | 03/04 |
 | `modules/resource/description/.../ImportedMaterialDesc.hpp` | Model Importer → Material Graph 中间结构 | 03 |
-| `modules/resource/asset/CMakeLists.txt` | 唯一 `lux::engine::resource::asset` 组件；拥有通用 AssetManager/SerDeser/Catalog/VFS/Pak；场景 Payload Codec 将移出 | 03/10/ADR |
+| `modules/resource/asset/CMakeLists.txt` | 唯一 `lux::engine::resource::asset` 组件；拥有通用 AssetManager/SerDeser/Catalog/VFS/Pak；不含 Engine Scene 或 ECS 场景 Payload Codec | 03/10/ADR |
 | `modules/resource/asset/include/lux/engine/resource/asset/` | Asset 核心公共头；Codec 与 Pak 公共头分别位于 `codecs/`、`pak/` | 03/10 |
 | `modules/resource/asset/pinclude/lux/engine/resource/asset/` | AssetManager detail、Codec 私有头与 Pak 私有头 | 03/10 |
 | `modules/resource/asset/src/{core,codecs,pak}` | 唯一 Asset 库的核心、Codec、Pak 实现分区；不再存在功能子模块 CMakeLists | 03/10 |
 | `modules/resource/deployment`（已删除） | canonical owner 为 `engine/game/deployment` | 03/07 |
-| `modules/resource/entity_scene`（已删除） | LXES/Persistence owner 为 `ecs/scene_format`；当前 LXSC owner `engine/scene/package` 将收敛为单一 `engine/scene` Scene Asset；无 shim/alias | 03/05/ADR |
+| `modules/resource/entity_scene`（已删除） | LXES/Persistence owner 为 `ecs/scene_format`；LXSC/Scene Asset owner 为单一 `engine/scene`；无 shim/alias | 03/05/ADR |
 | `modules/resource/spatial`（已删除） | Position/Grid/relativeFloat owner 为纯 Core Math；无 shim/alias | 02/05 |
 | `modules/core/math/include/lux/engine/math/{Position,Grid,RelativePosition}.hpp` | `lux::math` 大坐标空间值与相对浮点转换；不依赖 Meta/ECS/Resource | 02 |
 | `ecs/core/include/lux/engine/ecs/reflection/SpatialValueReflection*.hpp` | Math 空间值的 ECS-owned external reflection adapter/traits；生成 ecs_meta/ecs_lua_meta sidecar | 05 |
 | `modules/resource/spatial3d_scene`（已删除） | L3SC/Scene Catalog owner 为 `engine/spatial3d`；无 shim/alias | 03/06 |
 | `modules/resource/classic_mesh`（已删除） | Classic Mesh 值与 LXCB v1 Codec owner 为 Function `render_standard_content`；无 shim/alias | 03/04 |
-| `modules/resource/terrain`（已删除） | 当前 Terrain 值/Codec 在 `description`/`asset`；目标二次归位 `ecs/terrain`，LXTT v1 不变 | 03/ADR |
-| `modules/resource/tilemap`（已删除） | 当前 Tilemap 值/Codec 在 `description`/`asset`；目标二次归位 `ecs/tilemap`，LXTC v1 不变 | 03/ADR |
-| `modules/resource/physics3d`（已删除） | 当前 StaticCollider3D 值/Codec 在 `description`/`asset`；目标二次归位 `ecs/physics3d`，LXPC v1 不变 | 03/ADR |
-| `engine/scene/api` + `engine/scene/package` | 当前为两个 component；目标单一 `engine/scene`，公开 SceneDescription/SceneAsset/SceneAssetSerDeser | 05/06/ADR |
-| `engine/scene/package/src/ScenePackageCodec.cpp` | 当前直接编码 LXSC v1；迁移后作为 SceneAsset data Codec 保持字节不变 | 05/06/ADR |
+| `modules/resource/terrain`（已删除） | Terrain 值/Codec/tests owner 为 `ecs/terrain`；LXTT v1 不变 | 03/ADR |
+| `modules/resource/tilemap`（已删除） | Tilemap 值/Codec/tests owner 为 `ecs/tilemap`；LXTC v1 不变 | 03/ADR |
+| `modules/resource/physics3d`（已删除） | StaticCollider3D 值/Codec/tests owner 为 `ecs/physics3d`；LXPC v1 不变 | 03/ADR |
+| `engine/scene/CMakeLists.txt` | 单一 `lux::engine::scene::scene` component；公开 SceneDescription/SceneAsset/SceneAssetSerDeser | 05/06/ADR |
+| `engine/scene/src/SceneDescriptionCodec.cpp` + `SceneAssetSerDeser.cpp` | LXSC v1 data Codec 字节不变；标准 Scene Asset 以 AssetFileHeader 包裹，裸 LXSC 只读兼容 | 05/06/ADR |
 | `engine/spatial3d/.../SceneCatalog.hpp` | Engine-owned `SceneCatalog`、L3SC v1 Codec 与 canonical Scene/ECS IDs | 03/06 |
-| `engine/authoring/world/.../WorldIdentifiers.hpp` | Authoring-owned `WorldId`、`WorldActorId`、Feature/Extension stable-name IDs，不与 ECS/ScenePackage ID 隐式转换 | 05/06/08 |
+| `engine/authoring/world/.../WorldIdentifiers.hpp` | Authoring-owned `WorldId`、`WorldActorId`、Feature/Extension stable-name IDs，不与 ECS/Scene Asset ID 隐式转换 | 05/06/08 |
 | `engine/authoring/world/.../WorldSource.hpp` | `WorldSceneFeatureRequest` / `WorldRequiredExtension` 为 Authoring DTO；Player/Runtime 不读取 LXWA | 05/06/08 |
 | `modules/function/render/client/CMakeLists.txt` | Render protocol 按用途直接依赖 Core Math/Description/Render Graph/lux-cxx；无 Platform Common | 04 |
 | `modules/function/render/standard_content/CMakeLists.txt` | 轻量 Render standard content owner：Classic Mesh 值与 LXCB v1 Codec；不依赖 Vulkan/GLFW/ECS/Engine | 03/04/10 |
@@ -7575,13 +7562,13 @@ status=PENDING → legacy report 允许但不能增长
 | `ecs/core/CMakeLists.txt` | 已退出 Resource `entity_scene` 与 `spatial`；Math 值反射由 ECS sidecar 所有，Persistent Entity/Component API 由 owner tests 覆盖 | 05 |
 | `engine/runtime/CMakeLists.txt` | execution/assets/extensions/entity_scene/scene/render/packs/frame 聚合 | 06 |
 | `engine/runtime/execution` | AsyncRuntime/Builder/Scope/MainThreadMailbox | 06 |
-| `engine/runtime/assets` | 现有 AssetManager 的异步 AssetLoadService/SceneAssetServices；按 ADR 保留，不建立 engine/assets | 06/ADR |
+| `engine/runtime/assets` | 现有 AssetManager 的异步 AssetLoadService/SceneAssetServices；通过组合 Catalog 加载 SceneAsset，不建立 engine/assets | 06/ADR |
 | `engine/runtime/extensions/contribution_host/.../RuntimeContributionRegistrar.hpp` | components/scene/render/async 四 registrar + draft | 06 |
 | `engine/runtime/extensions/loader/.../ExtensionModuleManager.hpp` | 动态库 Extension loader | 06 |
-| `engine/runtime/scene/core/.../SceneRuntime.hpp` | World+Schedule+Services owner 与 close | 06 |
+| `engine/runtime/scene/core/.../SceneRuntime.hpp` | World+Schedule+Services owner 与 close；消费 typed SceneAsset 并持有 AssetRef | 06/ADR |
 | `engine/runtime/entity_scene` | decoder/materializer/stager/loader system/service/store | 05/06 |
 | `engine/runtime/entity_scene/test/entity_section_wire_compatibility_test.cpp` | canonical LXES v1 / Persistence Journal v1 frozen fixtures，不构造 legacy Resource DTO | 05/10 |
-| `engine/scene/package/test/scene_package_contract_test.cpp` | canonical LXSC v1 frozen fixture、decode/re-encode、validation 与 public-link 契约 | 05/10 |
+| `engine/scene/test/scene_asset_contract_test.cpp` | canonical LXSC v1 frozen fixture、裸格式升级、包裹 data 区逐字节一致、validation 与 public-link 契约 | 05/10/ADR |
 | `engine/spatial3d/test/scene_catalog_contract_test.cpp` | canonical L3SC v1 frozen fixture、异常输入与 limits 契约 | 06/10 |
 | `engine/authoring/world/test/world_source_codec_test.cpp` | LXWA v4、LXAI/LXAD/LXIP v2、LXTP/LXTL/LXPP v1 固定长度+SHA-256 与 decode/re-encode 契约 | 05/10 |
 | `.github/workflows/architecture-recovery.yml` | 保留 `source-snapshot` 与 CMake 架构 DAG；四项 Python boundary Job 已按项目决定删除，改用 owner contract tests | 09/10 |
@@ -7634,7 +7621,6 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 - [ ] 新发现的错位模块先加入本索引，再进入 12 映射表。
 - [ ] 当前事实和目标建议分栏，不把目标误写成已实现状态。
 
-
 ---
 
 # v2 相对 v1 的架构修订说明
@@ -7647,6 +7633,13 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 - 将 Scene 定义为既有资产机制上的 Engine-owned Asset；`engine/scene` 只负责同步数据、验证和 SerDeser。
 - 将 Terrain/Tilemap/Physics3D 场景 Payload 的最终 owner 改为对应 ECS 领域，保留历史 Resource 内容组件清零记录。
 - 用 `SCENEASSET-*` 条目追踪二次归位，不把被取代的旧目标伪装为已完成。
+
+## 2026-08-20 Scene Asset 实施完成
+
+- `SCENEASSET-001..020` 已完成并通过 owner contract、四 Profile 全量构建、安装 consumer 与旧符号归零验收。
+- `engine/scene/api` 与 `engine/scene/package` 已删除，canonical owner 为单一 `engine/scene` component。
+- Terrain、Tilemap、StaticColliderBatch3D 值/Codec/tests 已二次归位对应 ECS 领域，五种既有内部 wire version 均未升级。
+- CTest 当前未注册测试；验收结果明确来自独立 owner test executables，不将 0 项 CTest 误报为覆盖。
 
 > 明确废止的旧建议、保留的上层裁决以及新版施工顺序变化
 
@@ -7694,7 +7687,6 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 - Extension ABI 单独 Engine SDK。
 - 488 项施工 Checklist。
 - 当前代码事实索引与 123 条迁移映射。
-
 
 ---
 

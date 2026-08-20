@@ -1,6 +1,6 @@
 LUX Engine 架构重构执行文档 v2.0
 原始代码基线: LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656
-当前施工基线: 49af7129 (Asset 目录归一化 checkpoint)
+当前施工基线: 36ce56c6 (Scene Asset 边界修订实施)
 文档日期: 2026-08-20
 
 推荐阅读与施工顺序:
@@ -17,7 +17,7 @@ LUX Engine 架构重构执行文档 v2.0
 11. 10_测试-CI-PR路线与验收.md
 
 全程维护:
-- 11_详细施工Checklist.md
+- 11_详细施工Checklist_已更新_20260819_b1a25d3.md
 - 12_迁移映射总表.md
 - 13_当前代码事实索引.md
 

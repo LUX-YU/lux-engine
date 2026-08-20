@@ -173,7 +173,7 @@ namespace lux::editor
         if (has_2d)
         {
             const auto* source = hierarchy
-                ? static_cast<const lux::spatial::Position2D*>(nullptr)
+                ? static_cast<const lux::math::Position2d*>(nullptr)
                 : &registry.get<lux::ecs::Transform2DComponent>(entity).position;
             if (hierarchy)
             {
@@ -185,7 +185,7 @@ namespace lux::editor
                         std::string{origin} + "'");
                 source = &resolved->position;
             }
-            if (!lux::spatial::isFinite(*source))
+            if (!lux::math::isFinite(*source))
                 return lux::cxx::unexpected(
                     std::string{"2D Actor position is invalid in '"} +
                     std::string{origin} + "'");
@@ -194,7 +194,7 @@ namespace lux::editor
         else
         {
             const auto* source = hierarchy
-                ? static_cast<const lux::spatial::Position3D*>(nullptr)
+                ? static_cast<const lux::math::Position3d*>(nullptr)
                 : &registry.get<lux::ecs::Transform3DComponent>(entity).position;
             if (hierarchy)
             {
@@ -206,7 +206,7 @@ namespace lux::editor
                         std::string{origin} + "'");
                 source = &resolved->position;
             }
-            if (!lux::spatial::isFinite(*source))
+            if (!lux::math::isFinite(*source))
                 return lux::cxx::unexpected(
                     std::string{"3D Actor position is invalid in '"} +
                     std::string{origin} + "'");
@@ -345,7 +345,7 @@ namespace lux::editor
                 + std::string{origin} + "'");
         }
 
-        if (const auto* position = std::get_if<lux::spatial::Position2D>(
+        if (const auto* position = std::get_if<lux::math::Position2d>(
                 &document.position))
         {
             auto* transform = registry.try_get<
@@ -360,7 +360,7 @@ namespace lux::editor
             }
             if (!document.transform_parent)
             {
-                if (!lux::spatial::isFinite(*position))
+                if (!lux::math::isFinite(*position))
                 {
                     registry.destroy(entity);
                     return lux::cxx::unexpected(
@@ -386,8 +386,8 @@ namespace lux::editor
             if (!document.transform_parent)
             {
                 const auto* position = std::get_if<
-                    lux::spatial::Position3D>(&document.position);
-                if (!position || !lux::spatial::isFinite(*position))
+                    lux::math::Position3d>(&document.position);
+                if (!position || !lux::math::isFinite(*position))
                 {
                     registry.destroy(entity);
                     return lux::cxx::unexpected(

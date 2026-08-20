@@ -17,7 +17,7 @@
                 std::string{"LXAD has invalid identity or bounds"});
         }
         const bool finite_position = std::visit(
-            [](const auto& value) { return lux::spatial::isFinite(value); },
+            [](const auto& value) { return lux::math::isFinite(value); },
             document.position);
         if (!finite_position)
             return lux::cxx::unexpected(

@@ -21,7 +21,7 @@
 
 #include <lux/engine/ecs/physics2d/systems/Box2DPhysics2D.hpp>
 #include <lux/engine/ecs/physics2d/Physics2DConfig.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <lux/engine/meta/LuxObject.hpp>            // EntityRegistry / entity_id
 #include <lux/engine/function/visibility.h>
 #include <lux/cxx/core/move_only_function.hpp>
@@ -60,7 +60,7 @@ namespace lux::ecs
 
     private:
         [[nodiscard]] bool ensurePhysicsOrigin(
-            const lux::spatial::Position2D& position) noexcept;
+            const lux::math::Position2d& position) noexcept;
 
         Box2DPhysics2D world_;
         /// Versioned EnTT identity → Box2D body, and the reverse. Keeping the
@@ -69,6 +69,6 @@ namespace lux::ecs
         std::unordered_map<lux::meta::entity_id, Box2DPhysics2D::BodyId> bodies_;
         std::unordered_map<Box2DPhysics2D::BodyId, lux::meta::entity_id> entities_;
         CollisionSink sink_;
-        std::optional<lux::spatial::Position2D> physics_origin_;
+        std::optional<lux::math::Position2d> physics_origin_;
     };
 } // namespace lux::ecs

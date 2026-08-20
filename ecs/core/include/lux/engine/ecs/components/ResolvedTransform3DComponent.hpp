@@ -4,7 +4,7 @@
 //  System-generated (TransformSystem, G-07), NOT reflected, NOT persisted.
 //  Symmetric-suffix naming (ADR §5): ResolvedTransform2D ↔ ResolvedTransform3D.
 // ============================================================================
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <Eigen/Core>
 
 namespace lux::ecs
@@ -13,7 +13,7 @@ namespace lux::ecs
     /// System-generated (G-07), NOT reflected, NOT persisted.
     struct ResolvedTransform3DComponent
     {
-        lux::spatial::Position3D position{};
+        lux::math::Position3d position{};
         Eigen::Matrix3f          linear = Eigen::Matrix3f::Identity();
     };
 

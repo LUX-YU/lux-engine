@@ -84,7 +84,7 @@ namespace lux::editor
                 ).value_or(Eigen::Vector3f::Zero());
             }
 
-            [[nodiscard]] std::optional<lux::spatial::Position3D>
+            [[nodiscard]] std::optional<lux::math::Position3d>
             worldFocus3D(lux::meta::EntityRegistry&) const override
             {
                 return controller_
@@ -192,7 +192,7 @@ namespace lux::editor
         return nav_ ? nav_->eye(reg) : Eigen::Vector3f::Zero();
     }
 
-    std::optional<lux::spatial::Position3D>
+    std::optional<lux::math::Position3d>
     CameraSceneSystem::worldFocus3D(lux::meta::EntityRegistry& reg) const
     {
         return nav_ && attached_ ? nav_->worldFocus3D(reg) : std::nullopt;

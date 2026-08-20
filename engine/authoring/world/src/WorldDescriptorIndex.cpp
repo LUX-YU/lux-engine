@@ -299,14 +299,14 @@ namespace lux::authoring
             const WorldActorSourcePosition& position)
         {
             if (const auto* planar = std::get_if<
-                    lux::spatial::Position2D>(&position))
+                    lux::math::Position2d>(&position))
             {
                 writer.writePod(std::uint8_t{0u});
                 writer.writePod(planar->x);
                 writer.writePod(planar->y);
                 return;
             }
-            const auto& volume = std::get<lux::spatial::Position3D>(
+            const auto& volume = std::get<lux::math::Position3d>(
                 position);
             writer.writePod(std::uint8_t{1u});
             writer.writePod(volume.x);
@@ -321,9 +321,9 @@ namespace lux::authoring
             const auto kind = reader.readPod<std::uint8_t>();
             if (kind == 0u)
             {
-                const lux::spatial::Position2D value{
+                const lux::math::Position2d value{
                     reader.readPod<double>(), reader.readPod<double>()};
-                if (!reader.ok() || !lux::spatial::isFinite(value))
+                if (!reader.ok() || !lux::math::isFinite(value))
                 {
                     return false;
                 }
@@ -332,11 +332,11 @@ namespace lux::authoring
             }
             if (kind == 1u)
             {
-                const lux::spatial::Position3D value{
+                const lux::math::Position3d value{
                     reader.readPod<double>(),
                     reader.readPod<double>(),
                     reader.readPod<double>()};
-                if (!reader.ok() || !lux::spatial::isFinite(value))
+                if (!reader.ok() || !lux::math::isFinite(value))
                 {
                     return false;
                 }
@@ -458,7 +458,7 @@ namespace lux::authoring
                 lux::authoring::EPartitionTopology::PLANAR_XY)
             {
                 const auto* position = std::get_if<
-                    lux::spatial::Position2D>(&actor.position);
+                    lux::math::Position2d>(&actor.position);
                 if (!position)
                 {
                     return std::nullopt;
@@ -475,7 +475,7 @@ namespace lux::authoring
                 lux::authoring::EPartitionTopology::PLANAR_XZ)
             {
                 const auto* position = std::get_if<
-                    lux::spatial::Position3D>(&actor.position);
+                    lux::math::Position3d>(&actor.position);
                 if (!position)
                 {
                     return std::nullopt;
@@ -491,7 +491,7 @@ namespace lux::authoring
             else
             {
                 const auto* position = std::get_if<
-                    lux::spatial::Position3D>(&actor.position);
+                    lux::math::Position3d>(&actor.position);
                 if (!position)
                 {
                     return std::nullopt;

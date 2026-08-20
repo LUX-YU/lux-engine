@@ -85,7 +85,7 @@
         }
     } // namespace
 
-    std::optional<lux::spatial::Position2D>
+    std::optional<lux::math::Position2d>
     EditorScene::viewportToWorld2D(float cx, float cy, float cw, float ch) const
     {
         if (!live_ || !runtime_ || isPlaying() || cw <= 0.f || ch <= 0.f)
@@ -102,7 +102,7 @@
             {cx, cy});
     }
 
-    std::optional<lux::spatial::Position3D>
+    std::optional<lux::math::Position3d>
     EditorScene::viewportFocus3D() const
     {
         if (!live_ || !runtime_)

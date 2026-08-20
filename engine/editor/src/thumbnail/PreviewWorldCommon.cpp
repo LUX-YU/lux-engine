@@ -152,7 +152,7 @@ namespace lux::editor
         Eigen::Matrix3f R;
         R.col(0) = x; R.col(1) = y; R.col(2) = z;
         const auto rotation = Eigen::Quaternionf(R);
-        const lux::spatial::Position3D position{
+        const lux::math::Position3d position{
             static_cast<double>(eye.x()),
             static_cast<double>(eye.y()),
             static_cast<double>(eye.z())};

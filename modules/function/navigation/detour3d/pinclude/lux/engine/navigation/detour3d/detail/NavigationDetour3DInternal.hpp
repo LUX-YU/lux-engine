@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/math/Position.hpp>
+
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
 
 #include <DetourAlloc.h>
@@ -86,9 +88,9 @@ namespace lux::navigation::detour3d::detail
     }
 
     [[nodiscard]] inline bool
-    contains(const lux::spatial::Position3D& point,
-             const lux::spatial::Position3D& minimum,
-             const lux::spatial::Position3D& maximum) noexcept
+    contains(const lux::math::Position3d& point,
+             const lux::math::Position3d& minimum,
+             const lux::math::Position3d& maximum) noexcept
     {
         return point.x >= minimum.x && point.x <= maximum.x &&
                point.y >= minimum.y && point.y <= maximum.y &&
@@ -102,9 +104,9 @@ namespace lux::navigation::detour3d
     {
         NavigationRegionId region;
         NavigationAgentConstraints agent;
-        lux::spatial::Position3D origin;
-        lux::spatial::Position3D bounds_min;
-        lux::spatial::Position3D bounds_max;
+        lux::math::Position3d origin;
+        lux::math::Position3d bounds_min;
+        lux::math::Position3d bounds_max;
         std::uint64_t request_generation{0u};
         std::uint64_t owned_bytes{0u};
         std::uint64_t resident_bytes{0u};

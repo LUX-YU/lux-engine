@@ -106,7 +106,7 @@ int main()
             actor.space = space.id;
             const auto cell_x = static_cast<std::int64_t>(local % 32u);
             const auto cell_z = static_cast<std::int64_t>(local / 32u);
-            actor.position = lux::spatial::Position3D{
+            actor.position = lux::math::Position3d{
                 static_cast<double>(macro.a * 32 + cell_x) *
                         space.cell_edge + 1.0,
                 0.0,

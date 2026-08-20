@@ -24,10 +24,10 @@ int main()
 
         const auto& local = registry.get<lux::ecs::Transform3DComponent>(
             camera);
-        assert((local.position == lux::spatial::Position3D{
+        assert((local.position == lux::math::Position3d{
             100'010.0, 19'998.0, -79'996.0}));
         const auto focus = controller.orbitTargetWorld();
-        assert((focus && *focus == lux::spatial::Position3D{
+        assert((focus && *focus == lux::math::Position3d{
             100'010.0, 19'998.0, -80'001.0}));
     }
 
@@ -45,7 +45,7 @@ int main()
 
         const auto& local = registry.get<lux::ecs::Transform2DComponent>(
             camera);
-        assert((local.position == lux::spatial::Position2D{
+        assert((local.position == lux::math::Position2d{
             -250'008.0, 125'003.0}));
 
         lux::ecs::Camera2DCacheComponent cache;
@@ -54,7 +54,7 @@ int main()
             cache,
             {100.0f, 100.0f},
             {75.0f, 25.0f});
-        const lux::spatial::Position2D clicked_expected{
+        const lux::math::Position2d clicked_expected{
             local.position.x + 0.5,
             local.position.y - 0.5};
         assert(clicked && *clicked == clicked_expected);

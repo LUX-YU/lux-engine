@@ -8,14 +8,14 @@
 //  Render extraction converts that pair into its backend-private tiled form.
 // ============================================================================
 
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <Eigen/Core>
 
 namespace lux::ecs
 {
     struct ResolvedTransform2DComponent
     {
-        lux::spatial::Position2D position{};
+        lux::math::Position2d position{};
         Eigen::Matrix2f          linear = Eigen::Matrix2f::Identity();
     };
 

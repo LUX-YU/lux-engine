@@ -22,16 +22,15 @@ target_link_libraries(
     terrain_components
     INTERFACE
         lux::engine::ecs::core
+        lux::engine::core::math
         lux::engine::core::meta
         lux::engine::ecs::scene_format
-        lux::engine::resource::spatial
 )
 
 component_add_transitive_commands(
     terrain_components
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS spatial)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math meta)"
 )
 
 if(LUX_BUILD_COMPONENT_META)

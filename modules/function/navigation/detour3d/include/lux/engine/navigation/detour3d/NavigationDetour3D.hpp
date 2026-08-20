@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 /**
  * @file NavigationDetour3D.hpp
  * @brief Detour-backed 3D navigation implementation with a neutral surface.
@@ -30,7 +32,7 @@ namespace lux::navigation::detour3d
     /// navigation topology, independent of unrelated presentation data.
     struct NavigationTraversableArea3D final
     {
-        std::vector<lux::spatial::Position3D> boundary;
+        std::vector<lux::math::Position3d> boundary;
         std::uint8_t area_class{0u};
         std::uint16_t traversal_flags{1u};
     };

@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 /**
  * @file EditorCamera2DController.hpp — the editor 2D viewport navigator.
  *
@@ -117,7 +119,7 @@ namespace lux::editor
         lux::meta::EntityRegistry* reg_{nullptr};
         ActionIds            ids_{};
         Config               cfg_{};
-        lux::spatial::Position2D home_pos_{};
+        lux::math::Position2d home_pos_{};
         float                home_upvh_{10.f};
     };
 

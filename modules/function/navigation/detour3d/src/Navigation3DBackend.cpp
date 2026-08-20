@@ -1,4 +1,5 @@
 #include <lux/engine/navigation/detour3d/detail/NavigationDetour3DInternal.hpp>
+#include <lux/engine/math/RelativePosition.hpp>
 
 #include <DetourNavMesh.h>
 #include <DetourNavMeshQuery.h>
@@ -58,8 +59,8 @@ namespace lux::navigation::detour3d
 
         [[nodiscard]] NavigationPathResult queryRegion(
             const RegionData& region,
-            const lux::spatial::Position3D& start_position,
-            const lux::spatial::Position3D& destination_position,
+            const lux::math::Position3d& start_position,
+            const lux::math::Position3d& destination_position,
             const NavigationPathRequest& request,
             float maximum_relative_extent) noexcept
         {
@@ -71,9 +72,9 @@ namespace lux::navigation::detour3d
                     "navigation region was built for another agent";
                 return result;
             }
-            const auto start = lux::spatial::relativeFloat(
+            const auto start = lux::math::relativeFloat(
                 start_position, region.origin, maximum_relative_extent);
-            const auto destination = lux::spatial::relativeFloat(
+            const auto destination = lux::math::relativeFloat(
                 destination_position, region.origin, maximum_relative_extent);
             if (!start || !destination)
             {
@@ -172,8 +173,8 @@ namespace lux::navigation::detour3d
         {
             NavigationRegionId from;
             NavigationRegionId to;
-            lux::spatial::Position3D from_position;
-            lux::spatial::Position3D to_position;
+            lux::math::Position3d from_position;
+            lux::math::Position3d to_position;
         };
 
         struct PortalPredecessor final
@@ -279,7 +280,7 @@ namespace lux::navigation::detour3d
 
         void appendPoints(
             NavigationPathResult& destination,
-            std::vector<lux::spatial::Position3D>&& source,
+            std::vector<lux::math::Position3d>&& source,
             std::uint32_t maximum_points) noexcept
         {
             for (auto& point : source)
@@ -610,7 +611,7 @@ namespace lux::navigation::detour3d
 
         const auto findContaining = [&request](
             const RegionMap& regions,
-            const lux::spatial::Position3D& point)
+            const lux::math::Position3d& point)
             -> std::shared_ptr<RegionData>
         {
             std::shared_ptr<RegionData> found;

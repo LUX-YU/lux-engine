@@ -455,7 +455,7 @@ namespace lux::editor
         }
 
         bool edited = false;
-        if (auto* position = std::get_if<lux::spatial::Position3D>(
+        if (auto* position = std::get_if<lux::math::Position3d>(
                 &instance.position))
         {
             double value[3]{position->x, position->y, position->z};
@@ -466,7 +466,7 @@ namespace lux::editor
                 edited = true;
             }
         }
-        else if (auto* position = std::get_if<lux::spatial::Position2D>(
+        else if (auto* position = std::get_if<lux::math::Position2d>(
                       &instance.position))
         {
             double value[2]{position->x, position->y};

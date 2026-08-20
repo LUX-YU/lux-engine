@@ -14,7 +14,7 @@
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <lux/engine/spatial3d/SceneCatalog.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -98,7 +98,7 @@ namespace lux::toolchain
                  {}}};
         /// Absolute, extensionless Pak directory for emitted LXES objects.
         std::string section_content_prefix{"/Game/EntitySections"};
-        lux::spatial::Position3D fallback_camera_position{
+        lux::math::Position3d fallback_camera_position{
             512.0, 256.0, 512.0};
         /// 3D selector policy belongs to this leaf adapter/configuration, not
         /// to the dimension-neutral LXWA root.

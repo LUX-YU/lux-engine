@@ -490,7 +490,7 @@
                     instance.id = {instance_set, next_instance++};
                     const auto surface_height = terrainHeight(
                         wx, wz, options.scale.terrain_edge);
-                    instance.position = lux::spatial::Position3D{
+                    instance.position = lux::math::Position3d{
                         wx,
                         surface_height + (showcase_road ? 0.12 : 0.0),
                         wz};
@@ -655,7 +655,7 @@
                         lux::authoring::WorldActorId{actor_uuid};
                     actor.actor_class = "org.lux.benchmark.semantic";
                     actor.space = space;
-                    actor.position = lux::spatial::Position3D{
+                    actor.position = lux::math::Position3d{
                         wx,
                         terrainHeight(wx, wz, options.scale.terrain_edge),
                         wz};
@@ -863,7 +863,7 @@
                     {
                         actor.actor_class =
                             "org.lux.benchmark.environment.water";
-                        actor.position = lux::spatial::Position3D{
+                        actor.position = lux::math::Position3d{
                             static_cast<double>(x) * 1024.0 + 512.0,
                             terrainHeight(
                                 static_cast<double>(x) * 1024.0 + 512.0,

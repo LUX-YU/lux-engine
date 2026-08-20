@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/math/Position.hpp>
+
 #include <lux/engine/ecs/pixel/PixelFieldTypes.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelDirtyLedger.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
@@ -305,8 +307,8 @@ namespace lux::ecs
             PixelCellCoord maximum) const noexcept;
 
         void queryFields(
-            const lux::spatial::Position2D& minimum,
-            const lux::spatial::Position2D& maximum,
+            const lux::math::Position2d& minimum,
+            const lux::math::Position2d& maximum,
             std::vector<PixelFieldQueryEntry>& output) const;
 
         [[nodiscard]] std::uint64_t determinismHash(

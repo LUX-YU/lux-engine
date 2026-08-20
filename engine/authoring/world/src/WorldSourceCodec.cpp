@@ -384,7 +384,7 @@ namespace lux::authoring
             const WorldActorSourcePosition& position)
         {
             if (const auto* planar = std::get_if<
-                    lux::spatial::Position2D>(&position))
+                    lux::math::Position2d>(&position))
             {
                 writer.writePod(std::uint8_t{0u});
                 writer.writePod(planar->x);
@@ -393,7 +393,7 @@ namespace lux::authoring
             else
             {
                 const auto& volume = std::get<
-                    lux::spatial::Position3D>(position);
+                    lux::math::Position3d>(position);
                 writer.writePod(std::uint8_t{1u});
                 writer.writePod(volume.x);
                 writer.writePod(volume.y);
@@ -408,20 +408,20 @@ namespace lux::authoring
             const auto kind = reader.readPod<std::uint8_t>();
             if (kind == 0u)
             {
-                const lux::spatial::Position2D value{
+                const lux::math::Position2d value{
                     reader.readPod<double>(), reader.readPod<double>()};
-                if (!reader.ok() || !lux::spatial::isFinite(value))
+                if (!reader.ok() || !lux::math::isFinite(value))
                     return false;
                 position = value;
                 return true;
             }
             if (kind == 1u)
             {
-                const lux::spatial::Position3D value{
+                const lux::math::Position3d value{
                     reader.readPod<double>(),
                     reader.readPod<double>(),
                     reader.readPod<double>()};
-                if (!reader.ok() || !lux::spatial::isFinite(value))
+                if (!reader.ok() || !lux::math::isFinite(value))
                     return false;
                 position = value;
                 return true;
@@ -620,7 +620,7 @@ namespace lux::authoring
             cell.topology = space.topology;
             if (space.topology == lux::authoring::EPartitionTopology::PLANAR_XY)
             {
-                const auto* point = std::get_if<lux::spatial::Position2D>(
+                const auto* point = std::get_if<lux::math::Position2d>(
                     &position);
                 if (!point)
                     return std::nullopt;
@@ -632,7 +632,7 @@ namespace lux::authoring
             }
             else
             {
-                const auto* point = std::get_if<lux::spatial::Position3D>(
+                const auto* point = std::get_if<lux::math::Position3d>(
                     &position);
                 if (!point)
                     return std::nullopt;

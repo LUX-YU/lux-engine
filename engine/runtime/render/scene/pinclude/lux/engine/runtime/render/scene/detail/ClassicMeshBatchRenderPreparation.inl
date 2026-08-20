@@ -94,7 +94,7 @@
                 component.local_bounds_radius < 0.0f ||
                 !component.local_bounds_center.allFinite() ||
                 !transform.linear.allFinite() ||
-                !lux::spatial::isFinite(transform.position))
+                !lux::math::isFinite(transform.position))
             {
                 fail(entry, ESceneContentRenderFailure::INVALID_COMPONENT);
                 return;
@@ -320,7 +320,7 @@
             pending.payload.instance_count = static_cast<std::uint32_t>(
                 prepared.decoded->instances.size());
             pending.payload.transition_milliseconds = 350u;
-            const auto center = lux::spatial::Position3D{
+            const auto center = lux::math::Position3d{
                 transform.position.x + static_cast<double>((
                     transform.linear * component.local_bounds_center).x()),
                 transform.position.y + static_cast<double>((
@@ -532,7 +532,7 @@
                     rotation.toRotationMatrix() * local_scale.asDiagonal();
                 const Eigen::Vector3f translated =
                     transform.linear * local_translation;
-                const auto position = lux::spatial::Position3D{
+                const auto position = lux::math::Position3d{
                     transform.position.x + translated.x(),
                     transform.position.y + translated.y(),
                     transform.position.z + translated.z()};

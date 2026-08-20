@@ -11,24 +11,11 @@ generate_visibility_header(
 add_subdirectory(description)
 add_subdirectory(asset)
 
-# get sublist
-subdirectory_list(dir_list)
-
-foreach(subdir ${dir_list})
-    if(subdir STREQUAL "description" OR subdir STREQUAL "asset")
-        continue()  # already processed above
-    endif()
-    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt)
-        add_subdirectory(${subdir})
-    endif()
-endforeach()
-
 install_components(
 	PROJECT_NAME	lux-engine-resource
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::resource
 	COMPONENTS		description
-                    spatial
                     asset_identity
                     asset_core
                     asset_codecs

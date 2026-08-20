@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 
 #include <cmath>
 #include <cstdint>
@@ -9,15 +9,15 @@
 
 namespace lux::ecs::detail
 {
-    [[nodiscard]] inline std::optional<lux::spatial::Position2D>
+    [[nodiscard]] inline std::optional<lux::math::Position2d>
     sparseCanvasCellPosition(
-        const lux::spatial::Position2D& origin,
+        const lux::math::Position2d& origin,
         std::int64_t x,
         std::int64_t y,
         double extent,
         double local_offset = 0.0) noexcept
     {
-        if (!lux::spatial::isFinite(origin) || !std::isfinite(extent) ||
+        if (!lux::math::isFinite(origin) || !std::isfinite(extent) ||
             !std::isfinite(local_offset) || !(extent > 0.0))
         {
             return std::nullopt;
@@ -33,11 +33,11 @@ namespace lux::ecs::detail
         {
             return std::nullopt;
         }
-        const lux::spatial::Position2D result{
+        const lux::math::Position2d result{
             static_cast<double>(result_x),
             static_cast<double>(result_y)};
-        return lux::spatial::isFinite(result)
-            ? std::optional<lux::spatial::Position2D>{result}
+        return lux::math::isFinite(result)
+            ? std::optional<lux::math::Position2d>{result}
             : std::nullopt;
     }
 } // namespace lux::ecs::detail

@@ -790,7 +790,7 @@ namespace lux::ecs
         bool simulation_enabled) noexcept
     {
         auto* field = resolve(handle);
-        if (!field || !lux::spatial::isFinite(frame.origin) ||
+        if (!field || !lux::math::isFinite(frame.origin) ||
             !(frame.cell_size > 0.0f) || !std::isfinite(priority))
         {
             return false;
@@ -879,8 +879,8 @@ namespace lux::ecs
     }
 
     void PixelFieldRuntime::queryFields(
-        const lux::spatial::Position2D& minimum,
-        const lux::spatial::Position2D& maximum,
+        const lux::math::Position2d& minimum,
+        const lux::math::Position2d& maximum,
         std::vector<PixelFieldQueryEntry>& output) const
     {
         output.clear();

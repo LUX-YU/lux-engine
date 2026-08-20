@@ -22,11 +22,11 @@ namespace lux::runtime::spatial2d
 
         struct ChunkParameters final
         {
-            lux::spatial::GridCoord2i64 coordinate;
+            lux::math::GridCoord2i64 coordinate;
         };
 
         [[nodiscard]] std::vector<std::byte> encodeParameters(
-            lux::spatial::GridCoord2i64 coordinate)
+            lux::math::GridCoord2i64 coordinate)
         {
             std::vector<std::byte> result;
             lux::serialize::ArchiveWriter writer{result};
@@ -52,7 +52,7 @@ namespace lux::runtime::spatial2d
 
         [[nodiscard]] lux::ecs::scene_format::EntitySectionId makeSectionId(
             const Infinite2DPixelSectionConfig& config,
-            lux::spatial::GridCoord2i64 coordinate)
+            lux::math::GridCoord2i64 coordinate)
         {
             std::vector<std::byte> identity;
             lux::serialize::ArchiveWriter writer{identity};
@@ -79,7 +79,7 @@ namespace lux::runtime::spatial2d
         }
 
         [[nodiscard]] std::vector<std::byte> encodeCoordinate(
-            lux::spatial::GridCoord2i64 coordinate)
+            lux::math::GridCoord2i64 coordinate)
         {
             std::vector<std::byte> nested;
             lux::serialize::ArchiveWriter nested_writer{nested};
@@ -109,7 +109,7 @@ namespace lux::runtime::spatial2d
 
         [[nodiscard]] std::vector<std::byte> encodeContent(
             const Infinite2DPixelSectionConfig& config,
-            lux::spatial::GridCoord2i64 coordinate)
+            lux::math::GridCoord2i64 coordinate)
         {
             std::vector<std::byte> result;
             lux::serialize::ArchiveWriter writer{result};
@@ -129,7 +129,7 @@ namespace lux::runtime::spatial2d
         [[nodiscard]] lux::ecs::scene_format::EntitySectionImage makeImage(
             const Infinite2DPixelSectionConfig& config,
             lux::ecs::scene_format::EntitySectionId section,
-            lux::spatial::GridCoord2i64 coordinate)
+            lux::math::GridCoord2i64 coordinate)
         {
             using namespace lux::ecs::scene_format;
             EntitySectionImage image;
@@ -271,7 +271,7 @@ namespace lux::runtime::spatial2d
         lux::scene::SectionRecord,
         Infinite2DPixelContentFailure>
     Infinite2DPixelSectionSource::record(
-        lux::spatial::GridCoord2i64 coordinate) const
+        lux::math::GridCoord2i64 coordinate) const
     {
         lux::scene::SectionRecord result;
         result.id = makeSectionId(state_->config, coordinate);
@@ -309,7 +309,7 @@ namespace lux::runtime::spatial2d
     {
         auto state = state_;
         return [state = std::move(state)](
-            lux::spatial::GridCoord2i64 coordinate)
+            lux::math::GridCoord2i64 coordinate)
             -> lux::cxx::expected<
                 lux::scene::SectionRecord,
                 Spatial2DIndexFailure>
@@ -363,7 +363,7 @@ namespace lux::runtime::spatial2d
             bytes.data(), bytes.size()};
         const auto magic = reader.readPod<std::uint32_t>();
         const auto version = reader.readPod<std::uint32_t>();
-        lux::spatial::GridCoord2i64 coordinate;
+        lux::math::GridCoord2i64 coordinate;
         coordinate.x = reader.readPod<std::int64_t>();
         coordinate.y = reader.readPod<std::int64_t>();
         const auto seed = reader.readPod<std::uint64_t>();

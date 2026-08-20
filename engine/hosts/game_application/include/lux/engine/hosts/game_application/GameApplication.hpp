@@ -16,7 +16,7 @@
 #include <lux/engine/runtime/frame/FrameCoordinator.hpp>
 #include <lux/engine/navigation/Navigation.hpp>
 #include <lux/engine/function/render/Capacity.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <lux/engine/common/Size2D.hpp>
 #include <lux/engine/ecs/render/components/3d/DirectionalLightComponent.hpp>
 #include <lux/engine/ecs/render/components/3d/HeightFogComponent.hpp>
@@ -58,7 +58,7 @@ namespace lux::game
 {
     struct GameApplicationCameraPose final
     {
-        lux::spatial::Position3D position{};
+        lux::math::Position3d position{};
         std::array<float, 3u> forward{0.0f, 0.0f, -1.0f};
         std::array<float, 3u> up{0.0f, 1.0f, 0.0f};
     };

@@ -405,7 +405,7 @@ namespace lux::runtime
                 component.content.schema_version !=
                     lux::terrain::kTerrainTileSchemaVersion ||
                 !transform.linear.allFinite() ||
-                !lux::spatial::isFinite(transform.position))
+                !lux::math::isFinite(transform.position))
             {
                 fail(entry, ESceneContentRenderFailure::INVALID_COMPONENT);
                 return;
@@ -628,7 +628,7 @@ namespace lux::runtime
             Eigen::Matrix3f off_diagonal = transform.linear;
             off_diagonal.diagonal().setZero();
             if (!transform.linear.allFinite() ||
-                !lux::spatial::isFinite(transform.position) ||
+                !lux::math::isFinite(transform.position) ||
                 off_diagonal.cwiseAbs().maxCoeff() > tolerance ||
                 diagonal.minCoeff() <= 0.0f ||
                 std::abs(diagonal.x() - diagonal.z()) > tolerance)
@@ -930,7 +930,7 @@ namespace lux::runtime
         std::shared_ptr<CallbackControl> callbacks;
         lux::meta::EntityRegistry* registry{nullptr};
         lux::ecs::EcsCommandWriter commands;
-        lux::spatial::GridCoord3i64 scene_origin{};
+        lux::math::GridCoord3i64 scene_origin{};
         std::unordered_map<lux::meta::entity_id, Entry> entries;
         std::unordered_set<lux::meta::entity_id> dirty;
         std::unordered_map<

@@ -35,7 +35,7 @@
 #include <lux/engine/editor/visibility.h>
 
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <lux/engine/math/AABB.hpp>
 #include <lux/engine/meta/LuxObject.hpp>   // entity_id, null_entity
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
@@ -228,9 +228,9 @@ namespace lux::editor
         /// cache — the same math the 2D pick uses). Empty when the scene is not
         /// live / not a 2D-camera scene. Used by "create HERE" (viewport
         /// right-click → spawn at the tap).
-        [[nodiscard]] std::optional<lux::spatial::Position2D>
+        [[nodiscard]] std::optional<lux::math::Position2d>
             viewportToWorld2D(float cx, float cy, float cw, float ch) const;
-        [[nodiscard]] std::optional<lux::spatial::Position3D>
+        [[nodiscard]] std::optional<lux::math::Position3d>
             viewportFocus3D() const;
 
         /// True only while the camera is in fly mode (RMB held in the
@@ -376,7 +376,7 @@ namespace lux::editor
         [[nodiscard]] bool applyWorldTerrainBrush(
             lux::authoring::TerrainSetId terrain,
             std::span<const lux::authoring::WorldCellKey> cells,
-            const lux::spatial::Position3D& center,
+            const lux::math::Position3d& center,
             const lux::authoring::WorldTerrainBrush& brush);
         [[nodiscard]] bool undoWorldTerrainEdit();
         [[nodiscard]] bool redoWorldTerrainEdit();
@@ -401,7 +401,7 @@ namespace lux::editor
         [[nodiscard]] WorldTerrainEditStats worldTerrainEditStats() const;
         [[nodiscard]] std::optional<lux::authoring::PartitionSpaceId>
             defaultWorldTerrainSpace() const;
-        [[nodiscard]] std::optional<lux::spatial::Position3D>
+        [[nodiscard]] std::optional<lux::math::Position3d>
             makeWorldTerrainPosition(
                 lux::authoring::PartitionSpaceId space,
                 const lux::authoring::WorldCellKey& cell,

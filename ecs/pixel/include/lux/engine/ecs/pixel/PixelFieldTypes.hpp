@@ -3,7 +3,8 @@
 #include <lux/cxx/container/SlotMap.hpp>
 
 #include <lux/engine/ecs/pixel/PixelFieldId.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
+#include <lux/engine/math/Grid.hpp>
 
 #include <cmath>
 #include <cstddef>
@@ -17,7 +18,7 @@ namespace lux::ecs
 {
     struct PixelFieldTag final {};
     using PixelFieldHandle = lux::cxx::SlotKey<PixelFieldTag>;
-    using PixelChunkCoord = lux::spatial::GridCoord2i64;
+    using PixelChunkCoord = lux::math::GridCoord2i64;
 
     struct PixelChunkCoordHash final
     {
@@ -93,7 +94,7 @@ namespace lux::ecs
 
     struct PixelFieldFrame final
     {
-        lux::spatial::Position2D origin{};
+        lux::math::Position2d origin{};
         float cell_size{0.1f};
     };
 
@@ -101,11 +102,11 @@ namespace lux::ecs
     /// A result outside int64 cells is rejected.
     [[nodiscard]] inline std::optional<PixelCellCoord> worldToCell(
         const PixelFieldFrame& frame,
-        const lux::spatial::Position2D& world) noexcept
+        const lux::math::Position2d& world) noexcept
     {
         if (!(frame.cell_size > 0.0f) ||
-            !lux::spatial::isFinite(frame.origin) ||
-            !lux::spatial::isFinite(world))
+            !lux::math::isFinite(frame.origin) ||
+            !lux::math::isFinite(world))
         {
             return std::nullopt;
         }

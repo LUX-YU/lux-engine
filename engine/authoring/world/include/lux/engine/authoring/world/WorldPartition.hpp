@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/authoring/world/WorldIdentifiers.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 
 #include <cstdint>
 #include <optional>
@@ -108,16 +108,16 @@ namespace lux::authoring
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_WORLD_PUBLIC std::optional<PlanarCellCoord>
     planarXyCellOf(
-        const lux::spatial::Position2D& position,
+        const lux::math::Position2d& position,
         float cell_edge) noexcept;
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_WORLD_PUBLIC std::optional<PlanarCellCoord>
     planarXzCellOf(
-        const lux::spatial::Position3D& position,
+        const lux::math::Position3d& position,
         float cell_edge) noexcept;
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_WORLD_PUBLIC std::optional<VolumeCellCoord>
     volumeCellOf(
-        const lux::spatial::Position3D& position,
+        const lux::math::Position3d& position,
         float cell_edge) noexcept;
 } // namespace lux::authoring

@@ -224,7 +224,7 @@ namespace lux::toolchain
         };
 
         [[nodiscard]] double portalNormal(
-            const lux::spatial::Position3D& point,
+            const lux::math::Position3d& point,
             ENavigationPortalBoundary boundary) noexcept
         {
             return boundary == ENavigationPortalBoundary::POSITIVE_X
@@ -233,7 +233,7 @@ namespace lux::toolchain
         }
 
         [[nodiscard]] double portalTangent(
-            const lux::spatial::Position3D& point,
+            const lux::math::Position3d& point,
             ENavigationPortalBoundary boundary) noexcept
         {
             return boundary == ENavigationPortalBoundary::POSITIVE_X
@@ -320,8 +320,8 @@ namespace lux::toolchain
                 return std::nullopt;
             }
 
-            std::vector<lux::spatial::Position3D> first_candidates;
-            std::vector<lux::spatial::Position3D> second_candidates;
+            std::vector<lux::math::Position3d> first_candidates;
+            std::vector<lux::math::Position3d> second_candidates;
             const auto collectCandidates = [
                 boundary,
                 seam,
@@ -360,8 +360,8 @@ namespace lux::toolchain
                     static_cast<double>(std::max(
                         first.vertical_resolution,
                         second.vertical_resolution)) * 2.0);
-            const lux::spatial::Position3D* selected_first = nullptr;
-            const lux::spatial::Position3D* selected_second = nullptr;
+            const lux::math::Position3d* selected_first = nullptr;
+            const lux::math::Position3d* selected_second = nullptr;
             auto selected_score = (std::numeric_limits<double>::max)();
             for (const auto& first_point : first_candidates)
             {
@@ -751,7 +751,7 @@ namespace lux::toolchain
             }
             if (!actor.transform_parent)
             {
-                if (!lux::spatial::isFinite(actor.position))
+                if (!lux::math::isFinite(actor.position))
                 {
                     return lux::cxx::unexpected(failure(
                         AdapterError::INVALID_POSITION,
@@ -962,22 +962,22 @@ namespace lux::toolchain
             return result;
         }
 
-        [[nodiscard]] std::optional<lux::spatial::GridCoord2i64>
-        planarCoordinate(const lux::spatial::GridCoord3i64& cell) noexcept
+        [[nodiscard]] std::optional<lux::math::GridCoord2i64>
+        planarCoordinate(const lux::math::GridCoord3i64& cell) noexcept
         {
             if (cell.y != 0)
                 return std::nullopt;
-            return lux::spatial::GridCoord2i64{
+            return lux::math::GridCoord2i64{
                 cell.x, cell.z};
         }
 
-        [[nodiscard]] lux::spatial::GridCoord3i64
-        spatialCoordinate(const lux::spatial::GridCoord3i64& cell) noexcept
+        [[nodiscard]] lux::math::GridCoord3i64
+        spatialCoordinate(const lux::math::GridCoord3i64& cell) noexcept
         {
             return cell;
         }
 
-        [[nodiscard]] std::optional<lux::spatial::GridCoord3i64> actorCell(
+        [[nodiscard]] std::optional<lux::math::GridCoord3i64> actorCell(
             const Spatial3DAuthoringSource& source,
             const Spatial3DActorSource& actor) noexcept
         {
@@ -986,7 +986,7 @@ namespace lux::toolchain
                 actor.space,
                 &Spatial3DSourceSpace::id);
             if (found == source.spaces.end() ||
-                !lux::spatial::isFinite(actor.position) ||
+                !lux::math::isFinite(actor.position) ||
                 !std::isfinite(found->cell_edge) || found->cell_edge <= 0.0f)
                 return std::nullopt;
             const auto coordinate = [edge = static_cast<double>(
@@ -1009,13 +1009,13 @@ namespace lux::toolchain
                 return std::nullopt;
             if (found->topology == ESpatial3DSourceTopology::PLANAR_XZ)
             {
-                return lux::spatial::GridCoord3i64{*x, 0, *z};
+                return lux::math::GridCoord3i64{*x, 0, *z};
             }
             if (found->topology == ESpatial3DSourceTopology::VOLUMETRIC_XYZ)
             {
                 const auto y = coordinate(actor.position.y);
                 return y
-                    ? std::optional{lux::spatial::GridCoord3i64{
+                    ? std::optional{lux::math::GridCoord3i64{
                           *x, *y, *z}}
                     : std::nullopt;
             }
@@ -1047,7 +1047,7 @@ namespace lux::toolchain
             std::int64_t>
         pageOrder(
             const uuids::uuid& space,
-            const lux::spatial::GridCoord3i64& cell)
+            const lux::math::GridCoord3i64& cell)
         {
             return {
                 uuidKey(space), 0u, cell.x, cell.y, cell.z};
@@ -1061,9 +1061,9 @@ namespace lux::toolchain
             return value % divisor < 0 ? quotient - 1 : quotient;
         }
 
-        [[nodiscard]] std::optional<lux::spatial::GridCoord3i64>
+        [[nodiscard]] std::optional<lux::math::GridCoord3i64>
         visualLodParentCell(
-            const lux::spatial::GridCoord3i64& cell,
+            const lux::math::GridCoord3i64& cell,
             std::uint8_t level = 1u) noexcept
         {
             if (cell.y != 0 || level == 0u ||
@@ -1073,7 +1073,7 @@ namespace lux::toolchain
             }
             const auto edge = std::int64_t{1}
                 << (static_cast<unsigned>(level) * 2u);
-            return lux::spatial::GridCoord3i64{
+            return lux::math::GridCoord3i64{
                 floorDivide(cell.x, edge) * edge,
                 0,
                 floorDivide(cell.z, edge) * edge
@@ -1082,7 +1082,7 @@ namespace lux::toolchain
 
         [[nodiscard]] std::string visualLodKey(
             const uuids::uuid& space,
-            const lux::spatial::GridCoord3i64& cell,
+            const lux::math::GridCoord3i64& cell,
             std::span<const std::string> layers = {})
         {
             const auto order = pageOrder(space, cell);
@@ -1101,7 +1101,7 @@ namespace lux::toolchain
             const lux::scene::ScenePackageId& scene,
             std::string_view kind,
             const uuids::uuid& space,
-            const lux::spatial::GridCoord3i64& cell,
+            const lux::math::GridCoord3i64& cell,
             std::uint8_t level,
             std::span<const std::string> layers = {})
         {
@@ -1115,7 +1115,7 @@ namespace lux::toolchain
         struct VisualHlodNodePlan final
         {
             uuids::uuid space{};
-            lux::spatial::GridCoord3i64 cell;
+            lux::math::GridCoord3i64 cell;
             std::vector<std::string> data_layers;
             std::vector<std::size_t> pages;
             std::optional<std::size_t> parent;
@@ -1268,7 +1268,7 @@ namespace lux::toolchain
         {
             lux::classic_mesh::ClassicMeshBatchBlobV1 blob;
             lux::ecs::ClassicMeshBatchComponent component;
-            lux::spatial::Position3D origin;
+            lux::math::Position3d origin;
             float geometric_error{0.0f};
         };
 
@@ -1308,11 +1308,11 @@ namespace lux::toolchain
                 (std::numeric_limits<double>::lowest)(),
                 (std::numeric_limits<double>::lowest)()
             };
-            std::vector<lux::spatial::Position3D> positions;
+            std::vector<lux::math::Position3d> positions;
             positions.reserve(instances.size());
             for (const auto* instance : instances)
             {
-                if (!lux::spatial::isFinite(instance->position))
+                if (!lux::math::isFinite(instance->position))
                 {
                     return lux::cxx::unexpected(failure(
                         AdapterError::INVALID_POSITION,
@@ -1338,7 +1338,7 @@ namespace lux::toolchain
                         maximum[axis], values[axis] + extent);
                 }
             }
-            const lux::spatial::Position3D origin{
+            const lux::math::Position3d origin{
                 (minimum[0] + maximum[0]) * 0.5,
                 (minimum[1] + maximum[1]) * 0.5,
                 (minimum[2] + maximum[2]) * 0.5
@@ -1348,7 +1348,7 @@ namespace lux::toolchain
             const auto half_z = (maximum[2] - minimum[2]) * 0.5;
             const auto radius = std::sqrt(
                 half_x * half_x + half_y * half_y + half_z * half_z);
-            if (!lux::spatial::isFinite(origin) ||
+            if (!lux::math::isFinite(origin) ||
                 !std::isfinite(radius) ||
                 radius > (std::numeric_limits<float>::max)())
             {
@@ -2007,7 +2007,7 @@ namespace lux::toolchain
 
         if (source.scene.empty() ||
             !validSectionContentPrefix(config.section_content_prefix) ||
-            !lux::spatial::isFinite(config.fallback_camera_position) ||
+            !lux::math::isFinite(config.fallback_camera_position) ||
             !std::isfinite(config.fine_active_distance) ||
             config.fine_active_distance <= 0.0 ||
             !std::isfinite(config.fine_resident_distance) ||
@@ -2050,7 +2050,7 @@ namespace lux::toolchain
             FineSection(
                 EntitySectionId id,
                 lux::spatial3d::SourceId source_value,
-                lux::spatial::GridCoord3i64 coordinate_value,
+                lux::math::GridCoord3i64 coordinate_value,
                 double cell_world_size_value)
                 : section(id),
                   source(std::move(source_value)),
@@ -2060,7 +2060,7 @@ namespace lux::toolchain
 
             EntitySectionAssembly section;
             lux::spatial3d::SourceId source;
-            lux::spatial::GridCoord3i64 coordinate;
+            lux::math::GridCoord3i64 coordinate;
             double cell_world_size{0.0};
         };
         std::map<std::string, FineSection> fine_sections;
@@ -2069,7 +2069,7 @@ namespace lux::toolchain
             &scene,
             &source](
             const uuids::uuid& space,
-            const lux::spatial::GridCoord3i64& cell)
+            const lux::math::GridCoord3i64& cell)
             -> lux::cxx::expected<FineSection*, AdapterFailure>
         {
             const auto coordinate = spatialCoordinate(cell);
@@ -2115,7 +2115,7 @@ namespace lux::toolchain
         for (const auto index : actor_order)
         {
             const auto& actor = source.actors[index];
-            if (actor.id.empty() || !lux::spatial::isFinite(actor.position) ||
+            if (actor.id.empty() || !lux::math::isFinite(actor.position) ||
                 !actor_indices.emplace(
                     uuidKey(actor.id.value()), index).second)
             {
@@ -2385,7 +2385,7 @@ namespace lux::toolchain
             CoarseSection(
                 EntitySectionId id,
                 lux::spatial3d::SourceId source_value,
-                lux::spatial::GridCoord3i64 coordinate_value,
+                lux::math::GridCoord3i64 coordinate_value,
                 std::uint8_t level_value,
                 double cell_world_size_value)
                 : section(id),
@@ -2397,7 +2397,7 @@ namespace lux::toolchain
 
             EntitySectionAssembly section;
             lux::spatial3d::SourceId source;
-            lux::spatial::GridCoord3i64 coordinate;
+            lux::math::GridCoord3i64 coordinate;
             std::uint8_t level{1u};
             double cell_world_size{0.0};
         };
@@ -2442,7 +2442,7 @@ namespace lux::toolchain
                 << (static_cast<unsigned>(node.level) * 2u);
             const auto coarse_edge = *fine_edge *
                 static_cast<double>(factor);
-            const lux::spatial::GridCoord3i64 coarse_coordinate{
+            const lux::math::GridCoord3i64 coarse_coordinate{
                 floorDivide(coordinate.x,
                     static_cast<std::int64_t>(factor)),
                 floorDivide(coordinate.y,

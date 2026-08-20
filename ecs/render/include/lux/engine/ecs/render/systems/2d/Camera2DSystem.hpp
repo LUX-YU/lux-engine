@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 // ============================================================================
 //  Camera2DSystem.hpp — derive 2D orthographic view/proj (lux::ecs).
 //
@@ -175,7 +177,7 @@ namespace lux::ecs
     }
 
     /// Double-precision absolute-position counterpart used by authoring commands.
-    [[nodiscard]] inline std::optional<lux::spatial::Position2D>
+    [[nodiscard]] inline std::optional<lux::math::Position2d>
     screenToWorldPosition(
         const Camera2DCacheComponent& cache,
         const Eigen::Vector2f& viewport,
@@ -189,10 +191,10 @@ namespace lux::ecs
         const auto relative = screenToWorld(cache, viewport, screen);
         if (!relative.allFinite())
             return std::nullopt;
-        const lux::spatial::Position2D result{
+        const lux::math::Position2d result{
             cache.render_origin.x + static_cast<double>(relative.x()),
             cache.render_origin.y + static_cast<double>(relative.y())};
-        if (!lux::spatial::isFinite(result))
+        if (!lux::math::isFinite(result))
             return std::nullopt;
         return result;
     }

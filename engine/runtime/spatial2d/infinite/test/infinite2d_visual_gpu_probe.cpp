@@ -333,12 +333,12 @@ namespace
             lux::ecs::World& world,
             lux::ecs::PixelFieldRuntime&,
             lux::ecs::PixelFieldHandle,
-            lux::spatial::GridCoord2i64 center) override
+            lux::math::GridCoord2i64 center) override
         {
             if (skipped_)
                 return true;
             auto& registry = world.registry();
-            const lux::spatial::Position2D position{
+            const lux::math::Position2d position{
                 static_cast<double>(center.x) * 64.0,
                 static_cast<double>(center.y) * 64.0};
             registry.patch<lux::ecs::ResolvedTransform2DComponent>(

@@ -2,7 +2,6 @@
 
 #include <lux/engine/ecs/physics3d/Physics3DConfig.hpp>
 #include <lux/engine/ecs/physics3d/StaticHeightfieldBatch3D.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/meta/LuxObject.hpp>
 #include <lux/cxx/compile_time/expected.hpp>

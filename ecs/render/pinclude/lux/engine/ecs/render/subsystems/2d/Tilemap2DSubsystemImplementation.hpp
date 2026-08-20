@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/math/Position.hpp>
+
 #include <lux/engine/ecs/SpatialTransformMath.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform2DComponent.hpp>
 #include <lux/engine/ecs/render/IRenderSubsystem.hpp>
@@ -113,7 +115,7 @@ namespace lux::ecs
 
             Eigen::Vector2f camera_min{-1e9f, -1e9f};
             Eigen::Vector2f camera_max{1e9f, 1e9f};
-            lux::spatial::Position2D camera_origin{};
+            lux::math::Position2d camera_origin{};
             for (auto entity : registry.view<
                      PrimaryCameraTag,
                      Camera2DComponent,
@@ -274,7 +276,7 @@ namespace lux::ecs
                 TileChunkCoord,
                 ChunkRecord,
                 TileChunkCoordHash> chunks;
-            lux::spatial::Position2D origin{};
+            lux::math::Position2d origin{};
             float tile_size{0.1f};
             float priority{0.0f};
             bool visible{true};
@@ -337,9 +339,9 @@ namespace lux::ecs
             lux::meta::entity_id entity,
             Live& live,
             const TilemapComponent& component,
-            const lux::spatial::Position2D& origin,
+            const lux::math::Position2d& origin,
             float priority,
-            const lux::spatial::Position2D& camera_origin,
+            const lux::math::Position2d& camera_origin,
             const Eigen::Vector2f& camera_min,
             const Eigen::Vector2f& camera_max)
         {

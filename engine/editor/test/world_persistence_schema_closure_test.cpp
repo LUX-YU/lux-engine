@@ -35,7 +35,7 @@ namespace
         const lux::authoring::WorldSourceDocument& source,
         uuids::uuid id,
         std::string schema,
-        lux::spatial::Position3D position,
+        lux::math::Position3d position,
         bool save)
     {
         lux::authoring::WorldActorDocument document;

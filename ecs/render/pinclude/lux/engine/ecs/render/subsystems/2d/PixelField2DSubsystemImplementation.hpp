@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 // ============================================================================
 //  PixelField2DSubsystemImplementation.hpp — private retained bridge
 //  field instances over ONE scene ATLAS texture (lux::ecs, F2-08;
@@ -154,7 +156,7 @@ namespace lux::ecs
                 ChunkRec,
                 PixelChunkCoordHash> chunks;
             float m[6]{};       ///< last sent FIELD affine
-            lux::spatial::Position2D origin{};
+            lux::math::Position2d origin{};
             float priority{0.f};
             bool visible{true};
         };
@@ -275,7 +277,7 @@ namespace lux::ecs
             // With no camera it is huge, so every chunk competes for the slot
             // budget.
             Eigen::Vector2f cam_min{-1e9f, -1e9f}, cam_max{1e9f, 1e9f};
-            lux::spatial::Position2D camera_origin{};
+            lux::math::Position2d camera_origin{};
             for (auto ce : registry.view<PrimaryCameraTag,
                                          Camera2DComponent,
                                          Camera2DCacheComponent,
@@ -457,8 +459,8 @@ namespace lux::ecs
         void driveLive(SceneRenderBinding& ctx, lux::render::Canvas2DProxy& canvas,
                        lux::meta::entity_id e, Live& L, const PixelField2DComponent& pc,
                        const float m[6],
-                       const lux::spatial::Position2D& origin,
-                       const lux::spatial::Position2D& camera_origin,
+                       const lux::math::Position2d& origin,
+                       const lux::math::Position2d& camera_origin,
                        const Eigen::Vector2f& cam_min,
                        const Eigen::Vector2f& cam_max)
         {
@@ -1068,7 +1070,7 @@ namespace lux::ecs
         [[nodiscard]] bool chunkAffine(
             SceneRenderBinding& ctx,
             const PixelField2DComponent& pc,
-            const lux::spatial::Position2D& origin,
+            const lux::math::Position2d& origin,
             PixelChunkCoord coordinate,
             float out[6],
             std::int32_t page_delta[2]) const noexcept

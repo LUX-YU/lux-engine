@@ -40,7 +40,7 @@ namespace lux::runtime::spatial2d
             EOwnedChunkState state{EOwnedChunkState::FREE};
             entt::entity entity{entt::null};
             lux::ecs::PixelFieldHandle field;
-            lux::spatial::GridCoord2i64 coordinate;
+            lux::math::GridCoord2i64 coordinate;
             lux::ecs::PersistentEntityRef field_reference;
             lux::ecs::scene_format::ContentBlobRef content_reference;
             lux::runtime::entity_scene::ContentBlobLease content;

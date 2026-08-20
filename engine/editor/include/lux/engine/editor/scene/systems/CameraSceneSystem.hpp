@@ -23,10 +23,11 @@
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/meta/LuxObject.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 
 #include <Eigen/Core>
 #include <memory>
+#include <optional>
 
 namespace lux::input { class ActionMapper; }
 namespace lux::ecs { class Camera2DSystem; class Camera3DSystem; }
@@ -67,7 +68,7 @@ namespace lux::editor
         /// transform. 2D reports zero (no consumer; streaming is 3D-only).
         [[nodiscard]] virtual Eigen::Vector3f eye(lux::meta::EntityRegistry&) const
         { return Eigen::Vector3f::Zero(); }
-        [[nodiscard]] virtual std::optional<lux::spatial::Position3D>
+        [[nodiscard]] virtual std::optional<lux::math::Position3d>
         worldFocus3D(lux::meta::EntityRegistry&) const
         { return std::nullopt; }
     };
@@ -117,7 +118,7 @@ namespace lux::editor
 
         /// Camera world position after Schedule::tick。宿主 F-focus 一类的功能读它。
         [[nodiscard]] Eigen::Vector3f eye(lux::meta::EntityRegistry& reg) const;
-        [[nodiscard]] std::optional<lux::spatial::Position3D>
+        [[nodiscard]] std::optional<lux::math::Position3d>
             worldFocus3D(lux::meta::EntityRegistry& reg) const;
 
     private:

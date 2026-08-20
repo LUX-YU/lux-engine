@@ -11,7 +11,7 @@
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/StableNameId.hpp>
 #include <lux/engine/ecs/scene_format/Identifiers.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Grid.hpp>
 #include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/spatial3d/visibility.h>
 
@@ -52,7 +52,7 @@ namespace lux::spatial3d
 
     struct SceneCatalogEntry final
     {
-        lux::spatial::GridCoord3i64 coordinate;
+        lux::math::GridCoord3i64 coordinate;
         std::uint32_t band{0u};
         lux::ecs::scene_format::EntitySectionId section;
 

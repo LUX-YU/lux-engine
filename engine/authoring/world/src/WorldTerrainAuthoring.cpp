@@ -316,7 +316,7 @@ namespace lux::authoring
 
         [[nodiscard]] std::optional<std::pair<long double, long double>>
         centerWithinCell(
-            const lux::spatial::Position3D& center,
+            const lux::math::Position3d& center,
             const lux::authoring::PlanarCellCoord& cell,
             float cell_edge) noexcept
         {
@@ -355,7 +355,7 @@ namespace lux::authoring
     applyWorldTerrainBrush(
         const WorldSourceDocument& root,
         std::span<const WorldTerrainPageDocument> source_pages,
-        const lux::spatial::Position3D& center,
+        const lux::math::Position3d& center,
         const WorldTerrainBrush& brush)
     {
         if (!std::isfinite(brush.radius) || !(brush.radius > 0.0f) ||
@@ -383,7 +383,7 @@ namespace lux::authoring
                 EWorldTerrainAuthoringError::INVALID_PAGE,
                 "Terrain Page spacing does not match its PLANAR_XZ Cell"));
         }
-        if (!lux::spatial::isFinite(center))
+        if (!lux::math::isFinite(center))
         {
             return lux::cxx::unexpected(failure(
                 EWorldTerrainAuthoringError::INVALID_ARGUMENT,

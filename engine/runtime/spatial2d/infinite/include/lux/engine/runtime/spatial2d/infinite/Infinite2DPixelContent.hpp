@@ -9,7 +9,7 @@
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
 #include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/Spatial2DSectionIndex.hpp>
@@ -37,7 +37,7 @@ namespace lux::runtime::spatial2d
     {
         EInfinite2DPixelContentError code{
             EInfinite2DPixelContentError::INVALID_CONFIG};
-        lux::spatial::GridCoord2i64 coordinate;
+        lux::math::GridCoord2i64 coordinate;
     };
 
     struct Infinite2DPixelSectionConfig final
@@ -83,7 +83,7 @@ namespace lux::runtime::spatial2d
         [[nodiscard]] lux::cxx::expected<
             lux::scene::SectionRecord,
             Infinite2DPixelContentFailure>
-        record(lux::spatial::GridCoord2i64 coordinate) const;
+        record(lux::math::GridCoord2i64 coordinate) const;
 
         [[nodiscard]] const Infinite2DPixelSectionConfig& config() const
             noexcept;

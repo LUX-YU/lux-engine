@@ -31,3 +31,23 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    FOUNDATION
 )
+
+add_executable(
+    math_spatial_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/math_spatial_contract_test.cpp
+)
+target_link_libraries(
+    math_spatial_contract_test
+    PRIVATE lux::engine::core::math
+)
+if(MSVC)
+    target_compile_options(math_spatial_contract_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(math_spatial_contract_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  math_spatial_contract_test
+    LAYER   CORE
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)

@@ -654,7 +654,7 @@ namespace lux::runtime
         std::shared_ptr<CallbackControl> callbacks;
         lux::meta::EntityRegistry* registry{nullptr};
         lux::ecs::EcsCommandWriter commands;
-        lux::spatial::GridCoord3i64 scene_origin{};
+        lux::math::GridCoord3i64 scene_origin{};
         std::unordered_map<lux::meta::entity_id, Entry> entries;
         std::unordered_set<lux::meta::entity_id> dirty;
         std::unordered_map<

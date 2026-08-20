@@ -64,7 +64,6 @@ target_link_libraries(
     lux::cxx::container
     lux::engine::resource::asset_identity
     lux::engine::ecs::scene_format
-    lux::engine::resource::spatial
     PRIVATE
     TBB::tbb
 )
@@ -74,7 +73,7 @@ component_add_transitive_commands(
     "find_package (lux-engine-ecs      REQUIRED COMPONENTS core scene_format)"
     "find_package (lux-cxx             REQUIRED COMPONENTS algorithm container)"
     "find_package (lux-engine-core     REQUIRED COMPONENTS math meta)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS asset_identity spatial)"
+    "find_package (lux-engine-resource REQUIRED COMPONENTS asset_identity)"
     "find_package (TBB CONFIG REQUIRED)"
 )
 add_subdirectory(test)

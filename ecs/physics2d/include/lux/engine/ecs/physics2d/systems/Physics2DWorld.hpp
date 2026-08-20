@@ -23,7 +23,7 @@
 #include <lux/engine/ecs/physics2d/Physics2DConfig.hpp>
 #include <lux/engine/meta/LuxObject.hpp>            // EntityRegistry
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 
 #include <vector>
 
@@ -63,7 +63,7 @@ namespace lux::ecs
         Physics2DConfig                 cfg_;
         std::vector<StaticBox>          statics_;
         std::vector<ICollision2DProbe*> probes_;
-        lux::spatial::Position2D        physics_origin_{};
+        lux::math::Position2d        physics_origin_{};
     };
 
 } // namespace lux::ecs

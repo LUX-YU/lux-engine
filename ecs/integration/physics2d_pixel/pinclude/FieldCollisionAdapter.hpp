@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 // ============================================================================
 //  FieldCollisionAdapter.hpp — the pixel-field side of ICollision2DProbe
 //  (I2-00, lux::ecs).
@@ -38,14 +40,14 @@ namespace lux::ecs
         [[nodiscard]] bool regionSolid(const Aabb2& region) const override
         {
             if (runtime_ == nullptr) return false;
-            const lux::spatial::Position2D minimum{
+            const lux::math::Position2d minimum{
                 static_cast<double>(region.min.x()),
                 static_cast<double>(region.min.y())};
-            const lux::spatial::Position2D maximum{
+            const lux::math::Position2d maximum{
                 static_cast<double>(region.max.x()),
                 static_cast<double>(region.max.y())};
-            if (!lux::spatial::isFinite(minimum) ||
-                !lux::spatial::isFinite(maximum))
+            if (!lux::math::isFinite(minimum) ||
+                !lux::math::isFinite(maximum))
             {
                 return true;
             }
@@ -61,10 +63,10 @@ namespace lux::ecs
                 const auto lo = worldToCell(hit.frame, minimum);
                 // The max corner is exclusive-ish: back off an epsilon so a box
                 // exactly touching a cell boundary doesn't claim the next cell.
-                const lux::spatial::Position2D inclusive_maximum{
+                const lux::math::Position2d inclusive_maximum{
                     static_cast<double>(region.max.x()) - 1e-5,
                     static_cast<double>(region.max.y()) - 1e-5};
-                if (!lo || !lux::spatial::isFinite(inclusive_maximum))
+                if (!lo || !lux::math::isFinite(inclusive_maximum))
                     return true;
                 const auto hi = worldToCell(hit.frame, inclusive_maximum);
                 if (!hi || runtime_->regionBlocked(hit.handle, *lo, *hi))

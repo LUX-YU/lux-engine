@@ -339,7 +339,7 @@
                 return false;
             auto& registry = runtime->world().registry();
             const auto position = pose.position;
-            if (!lux::spatial::isFinite(position))
+            if (!lux::math::isFinite(position))
                 return false;
             const auto camera = mainCamera();
             if (camera == entt::null || !registry.valid(camera))

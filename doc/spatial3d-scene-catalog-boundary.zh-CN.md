@@ -12,7 +12,7 @@ EntitySection，并配置 World Partition 驻留预算。因此其规范所有�
 
 - `lux::scene::DemandChannelId`；
 - `lux::ecs::scene_format::EntitySectionId`；
-- `lux::spatial::GridCoord3i64`；
+- `lux::math::GridCoord3i64`；
 - Engine-owned residency policy。
 
 Runtime 和 Toolchain 只能 include：

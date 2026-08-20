@@ -118,7 +118,7 @@
                 lux::authoring::EPartitionTopology::PLANAR_XY)
             {
                 const auto* point = std::get_if<
-                    lux::spatial::Position2D>(&position);
+                    lux::math::Position2d>(&position);
                 if (!point)
                     return std::nullopt;
                 const auto x = coordinate(point->x);
@@ -130,7 +130,7 @@
             else
             {
                 const auto* point = std::get_if<
-                    lux::spatial::Position3D>(&position);
+                    lux::math::Position3d>(&position);
                 if (!point)
                     return std::nullopt;
                 if (space->topology ==
@@ -467,7 +467,7 @@
         const bool finite_position = std::visit(
             [](const auto& position)
             {
-                return lux::spatial::isFinite(position);
+                return lux::math::isFinite(position);
             },
             instance.position);
         float rotation_norm = 0.0f;
@@ -739,7 +739,7 @@
             instance_id,
             &lux::authoring::EditableWorldInstance::id);
         if (source == instance_page->second.page.instances.end() ||
-            !std::holds_alternative<lux::spatial::Position3D>(
+            !std::holds_alternative<lux::math::Position3d>(
                 source->position))
         {
             instance_edit_error_ =
@@ -754,7 +754,7 @@
             lux::ecs::NameComponent{
                 "Instance " + std::to_string(instance_id.local_id)});
         lux::ecs::Transform3DComponent transform;
-        transform.position = std::get<lux::spatial::Position3D>(
+        transform.position = std::get<lux::math::Position3d>(
             source->position);
         transform.rotation = Eigen::Quaternionf{
             source->rotation[3],

@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 // ============================================================================
 //  Image2DSubsystem.hpp — ECS Image2DComponent → GPU-resident Canvas2D instance
 //  (lux::ecs, v2 — .internal/2d-gpu-driven-rewrite.md §3.5).
@@ -150,7 +152,7 @@ namespace lux::ecs
 
             // Parallax origin: the active camera's world centre (A2-03). One
             // lookup per tick; scenes without a camera get a zero origin.
-            lux::spatial::Position2D camera_position{};
+            lux::math::Position2d camera_position{};
             for (auto ce : registry.view<PrimaryCameraTag, ResolvedTransform2DComponent>())
             {
                 const auto& cw = registry.get<ResolvedTransform2DComponent>(ce);
@@ -219,7 +221,7 @@ namespace lux::ecs
         /// 一个实体的全部维护。@return 本次是否做了实质动作(VERIFY oracle 的判据)。
         bool processEntity(lux::meta::EntityRegistry& registry, SceneRenderBinding& ctx,
                            auto& canvas,
-                           const lux::spatial::Position2D& camera_position,
+                           const lux::math::Position2d& camera_position,
                            lux::meta::entity_id e, const Image2DComponent& sp,
                            const ResolvedTransform2DComponent& wt)
         {
@@ -238,7 +240,7 @@ namespace lux::ecs
                     auto spatial = wt.position;
                     spatial.x += static_cast<double>(m[0] * px + m[2] * py);
                     spatial.y += static_cast<double>(m[1] * px + m[3] * py);
-                    if (!lux::spatial::isFinite(spatial))
+                    if (!lux::math::isFinite(spatial))
                         return false;
 
                     // A2-03 opt-in modifiers, applied at BAKE time (never written
@@ -442,7 +444,7 @@ namespace lux::ecs
         ExtractionChangeSet<Image2DComponent, Require, Exclude> changes_;
         /// 上一帧的视差原点(相机世界中心)。它变了 = 所有视差图的烘焙平移都变了,
         /// 而那**不产生任何针对这些实体的组件信号** —— 见 markAllWith 的说明。
-        lux::spatial::Position2D last_camera_position_{};
+        lux::math::Position2d last_camera_position_{};
         bool camera_position_seeded_{false};
 
         ComponentSetLeaveObserver<Image2DComponent, Require, Exclude> leave_;

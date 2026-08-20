@@ -749,7 +749,7 @@ namespace lux::editor
             [this](const lux::ui::SceneViewportPanel::ViewportPointer& click) {
                 // "Create HERE": resolve the tap to a 2D world position when the
                 // scene has a 2D camera (3D uses the focal target inside).
-                std::optional<lux::spatial::Position2D> pos2d;
+                std::optional<lux::math::Position2d> pos2d;
                 if (auto* scene = currentScene())
                     pos2d = scene->viewportToWorld2D(
                         click.pos_in_content.x, click.pos_in_content.y,
@@ -1323,7 +1323,7 @@ namespace lux::editor
     //  The built-ins live beside their registry (SpawnRecipes.cpp);
     //  this shell only draws the menu and selects the spawn result.
     // ──────────────────────────────────────────────────────────────────
-    void LuxEditor::drawSpawnMenuItems(const std::optional<lux::spatial::Position2D>& pos2d)
+    void LuxEditor::drawSpawnMenuItems(const std::optional<lux::math::Position2d>& pos2d)
     {
         auto* scene = currentScene();
         if (!scene)
@@ -1337,7 +1337,7 @@ namespace lux::editor
             "org.lux.builtin.presentation3d");
 
         // 3D placement (v1): the camera's focal target — where the user is looking.
-        std::optional<lux::spatial::Position3D> pos3d;
+        std::optional<lux::math::Position3d> pos3d;
         if (presents_3d)
         {
             pos3d = scene->viewportFocus3D();

@@ -62,14 +62,12 @@ target_link_libraries(
     lux::engine::ecs::physics          # 定步累加器 + 碰撞探针缝
     lux::engine::core::math
     lux::engine::core::meta
-    lux::engine::resource::spatial
 )
 
 component_add_transitive_commands(
     physics2d
     "find_package (lux-engine-ecs  REQUIRED COMPONENTS core physics)"
     "find_package (lux-engine-core REQUIRED COMPONENTS math meta)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS spatial)"
 )
 
 add_executable(physics2d_ecs_static_collider_test

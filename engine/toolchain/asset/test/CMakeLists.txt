@@ -25,6 +25,9 @@ target_link_libraries(
     PRIVATE
         lux::engine::authoring::authoring_assets
 )
+if(TARGET ecs_meta)
+    target_link_libraries(flow_graph_codec_test PRIVATE ecs_meta)
+endif()
 target_include_directories(
     flow_graph_codec_test
     PRIVATE ${PROJECT_SOURCE_DIR}/engine/authoring/assets/pinclude

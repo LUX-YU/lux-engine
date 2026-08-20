@@ -77,7 +77,7 @@ namespace
         actor_a.document_path = makeWorldActorDocumentPath(
             actor_a.id, actor_a.content_digest);
         actor_a.space = surface.id;
-        actor_a.position = lux::spatial::Position3D{100.0, 0.0, 15.0};
+        actor_a.position = lux::math::Position3d{100.0, 0.0, 15.0};
         actor_a.bounds_half_extent = {2.0f, 3.0f, 4.0f};
         actor_a.data_layers.push_back(DataLayerId{"org.example.gameplay"});
 
@@ -87,7 +87,7 @@ namespace
         actor_b.display_name = "Gate B";
         actor_b.document_path = makeWorldActorDocumentPath(
             actor_b.id, actor_b.content_digest);
-        actor_b.position = lux::spatial::Position3D{200.0, 0.0, 15.0};
+        actor_b.position = lux::math::Position3d{200.0, 0.0, 15.0};
         actor_a.transform_parent = actor_b.id;
         actor_a.references.push_back({
             actor_b.id, EWorldActorReferenceKind::LOCAL});
@@ -212,7 +212,7 @@ int main()
     assert(!encodeWorldDescriptorPage(fixture.root, invalid_page));
     invalid_page = fixture.page;
     invalid_page.actors.front().position =
-        lux::spatial::Position3D{100000.0, 0.0, 0.0};
+        lux::math::Position3d{100000.0, 0.0, 0.0};
     assert(!encodeWorldDescriptorPage(fixture.root, invalid_page));
     std::vector<std::byte> oversized_descriptor_page(
         static_cast<std::size_t>(WorldSourceCodecLimits{}
@@ -324,7 +324,7 @@ int main()
     distant_actor.display_name = "Distant Gate";
     distant_actor.document_path = makeWorldActorDocumentPath(
         distant_actor.id, distant_actor.content_digest);
-    distant_actor.position = lux::spatial::Position3D{
+    distant_actor.position = lux::math::Position3d{
         5000.0, 0.0, 15.0};
     distant_actor.transform_parent.reset();
     distant_actor.references.clear();
@@ -440,7 +440,7 @@ int main()
         *decoded_actor_document);
     assert(reencoded_actor_document &&
         *reencoded_actor_document == *encoded_actor_document);
-    actor_document.position = lux::spatial::Position3D{
+    actor_document.position = lux::math::Position3d{
         1'000'000'000'000.001,
         -1'000'000'000'000.001,
         0.001};
@@ -452,7 +452,7 @@ int main()
     assert(decoded_large_actor_document &&
         decoded_large_actor_document->position == actor_document.position);
     auto planar_actor_document = actor_document;
-    planar_actor_document.position = lux::spatial::Position2D{
+    planar_actor_document.position = lux::math::Position2d{
         -1'000'000'000'000.001,
         1'000'000'000'000.001};
     const auto encoded_planar_actor_document = encodeWorldActorDocument(
@@ -472,7 +472,7 @@ int main()
         sizeof(legacy_actor_version));
     assert(!decodeWorldActorDocument(legacy_actor_document));
     auto invalid_actor_position = actor_document;
-    invalid_actor_position.position = lux::spatial::Position3D{
+    invalid_actor_position.position = lux::math::Position3d{
         std::numeric_limits<double>::infinity(), 0.0, 0.0};
     assert(!encodeWorldActorDocument(invalid_actor_position));
 
@@ -486,7 +486,7 @@ int main()
         lux::authoring::PlanarCellCoord{0, 0}};
     EditableWorldInstance instance;
     instance.id = {instance_page.instance_set, 2u};
-    instance.position = lux::spatial::Position3D{10.0, 2.0, 12.0};
+    instance.position = lux::math::Position3d{10.0, 2.0, 12.0};
     instance.rotation = {0.0f, 0.0f, 0.0f, 2.0f};
     instance.mesh = uuid("86000000-0000-4000-8000-000000000001");
     instance.data_layers.push_back(
@@ -529,7 +529,7 @@ int main()
     assert(reencoded_rotated && *reencoded_rotated == *encoded_rotated);
     auto invalid_instances = instance_page;
     invalid_instances.instances.front().position =
-        lux::spatial::Position3D{4096.0, 0.0, 0.0};
+        lux::math::Position3d{4096.0, 0.0, 0.0};
     assert(!encodeWorldInstancePage(fixture.root, invalid_instances));
     const auto instance_digest = lux::cxx::algorithm::Sha256::hash(*encoded_instances);
     const auto instance_path = makeWorldInstancePagePath(
@@ -589,7 +589,7 @@ int main()
         fixture.root,
         instance_page,
         instance.id,
-        lux::spatial::Position3D{20.0, 2.0, 20.0});
+        lux::math::Position3d{20.0, 2.0, 20.0});
     assert(duplicated);
     assert(duplicated->created_instance.id.local_id == 4u);
     assert(duplicated->page.instances.size() == 2u);
@@ -607,9 +607,9 @@ int main()
         instance_page,
         instance_page,
         instance.id,
-        lux::spatial::Position3D{25.0, 2.0, 25.0});
+        lux::math::Position3d{25.0, 2.0, 25.0});
     assert(moved_in_page && !moved_in_page->crossedCell());
-    assert(std::get<lux::spatial::Position3D>(
+    assert(std::get<lux::math::Position3d>(
         moved_in_page->moved_instance.position).x == 25.0);
 
     auto destination_page = instance_page;
@@ -621,7 +621,7 @@ int main()
         instance_page,
         destination_page,
         instance.id,
-        lux::spatial::Position3D{130.0, 2.0, 20.0});
+        lux::math::Position3d{130.0, 2.0, 20.0});
     assert(moved_across_cell && moved_across_cell->crossedCell());
     assert(moved_across_cell->source_page.instances.empty());
     assert(moved_across_cell->destination_page->instances.size() == 1u);
@@ -632,7 +632,7 @@ int main()
         advanced_root,
         *moved_across_cell->destination_page,
         instance.id,
-        lux::spatial::Position3D{140.0, 2.0, 20.0});
+        lux::math::Position3d{140.0, 2.0, 20.0});
     assert(duplicated_after_move);
     assert(duplicated_after_move->created_instance.id.local_id == 5u);
     assert(duplicated_after_move->instance_set.next_local_id == 6u);
@@ -641,7 +641,7 @@ int main()
         instance_page,
         destination_page,
         instance.id,
-        lux::spatial::Position3D{20.0, 2.0, 20.0}));
+        lux::math::Position3d{20.0, 2.0, 20.0}));
 
     constexpr std::size_t terrain_samples =
         static_cast<std::size_t>(kWorldTerrainSampleEdge)

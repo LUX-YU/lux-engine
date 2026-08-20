@@ -3,7 +3,8 @@
 #include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
+#include <lux/engine/math/Grid.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -59,7 +60,7 @@ namespace lux::toolchain
     {
         lux::ecs::PersistentEntityId id;
         uuids::uuid space{};
-        lux::spatial::Position3D position;
+        lux::math::Position3d position;
         std::optional<lux::ecs::PersistentEntityId> transform_parent;
         std::vector<std::string> data_layers;
         std::vector<std::byte> name_table;
@@ -69,7 +70,7 @@ namespace lux::toolchain
     struct Spatial3DInstanceSource final
     {
         lux::ecs::PersistentEntityId id;
-        lux::spatial::Position3D position;
+        lux::math::Position3d position;
         std::array<float, 4u> rotation{0.0f, 0.0f, 0.0f, 1.0f};
         std::array<float, 3u> scale{1.0f, 1.0f, 1.0f};
         lux::asset::asset_id_t mesh{};
@@ -81,7 +82,7 @@ namespace lux::toolchain
     struct Spatial3DInstancePageSource final
     {
         uuids::uuid space{};
-        lux::spatial::GridCoord3i64 cell;
+        lux::math::GridCoord3i64 cell;
         std::vector<std::string> data_layers;
         std::vector<Spatial3DInstanceSource> instances;
     };
@@ -90,7 +91,7 @@ namespace lux::toolchain
     {
         uuids::uuid terrain_set{};
         uuids::uuid space{};
-        lux::spatial::GridCoord3i64 cell;
+        lux::math::GridCoord3i64 cell;
         float height_min{0.0f};
         float height_max{1.0f};
         float sample_spacing{1.0f};

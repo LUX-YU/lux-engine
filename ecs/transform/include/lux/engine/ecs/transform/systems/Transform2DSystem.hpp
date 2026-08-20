@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 // ============================================================================
 //  Transform2DSystem.hpp — local 2D TRS → world, hierarchy-aware (lux::ecs).
 //
@@ -31,7 +33,7 @@ namespace lux::ecs
 
         struct Composed final
         {
-            lux::spatial::Position2D position;
+            lux::math::Position2d position;
             Eigen::Matrix2f linear;
         };
 

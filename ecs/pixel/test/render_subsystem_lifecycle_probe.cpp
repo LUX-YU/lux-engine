@@ -544,10 +544,10 @@ namespace
         fixture.registerCanvas2DOps();
         fixture.registerPersistentTextureOps();
 
-        constexpr lux::spatial::GridCoord2i64 kFarTile{
+        constexpr lux::math::GridCoord2i64 kFarTile{
             1'000'000'000,
             -1'000'000'000};
-        constexpr lux::spatial::Position2D kFarPosition{
+        constexpr lux::math::Position2d kFarPosition{
             static_cast<double>(kFarTile.x) *
                 lux::ecs::kRenderSpatialTileSize,
             static_cast<double>(kFarTile.y) *

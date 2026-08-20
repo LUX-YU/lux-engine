@@ -32,6 +32,7 @@
 #include <lux/engine/math/Intersection.hpp>
 #include <lux/engine/math/Picking.hpp>
 #include <lux/engine/math/Ray.hpp>
+#include <lux/engine/math/RelativePosition.hpp>
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/render/components/3d/Camera3DComponent.hpp>

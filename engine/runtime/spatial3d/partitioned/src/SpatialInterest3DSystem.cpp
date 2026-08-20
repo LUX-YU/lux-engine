@@ -71,9 +71,9 @@ namespace lux::runtime::spatial3d
     {
         [[nodiscard]] bool validInterest(
             const lux::ecs::SpatialInterest3DComponent& value,
-            const lux::spatial::Position3D& center) noexcept
+            const lux::math::Position3d& center) noexcept
         {
-            return lux::spatial::isFinite(center) &&
+            return lux::math::isFinite(center) &&
                 std::isfinite(value.active_distance) &&
                 std::isfinite(value.resident_distance) &&
                 value.active_distance >= 0.0 &&
@@ -99,8 +99,8 @@ namespace lux::runtime::spatial3d
     {
         struct SelectionKey final
         {
-            lux::spatial::GridCoord3i64 center;
-            lux::spatial::GridCoord3i64 predicted_center;
+            lux::math::GridCoord3i64 center;
+            lux::math::GridCoord3i64 predicted_center;
             double active_distance{0.0};
             double resident_distance{0.0};
             std::uint32_t active_priority{0u};
@@ -115,7 +115,7 @@ namespace lux::runtime::spatial3d
         {
             struct Entry final
             {
-                lux::spatial::GridCoord3i64 coordinate;
+                lux::math::GridCoord3i64 coordinate;
                 lux::ecs::scene_format::EntitySectionId section;
                 bool active{false};
             };
@@ -222,7 +222,7 @@ namespace lux::runtime::spatial3d
             BandState& band,
             entt::entity entity,
             const lux::ecs::SpatialInterest3DComponent& interest,
-            const lux::spatial::Position3D& center_position)
+            const lux::math::Position3d& center_position)
         {
             auto found = std::lower_bound(
                 band.tracked.begin(),
@@ -282,7 +282,7 @@ namespace lux::runtime::spatial3d
 
             auto center = spatial3DSectionCoordinate(
                 center_position, band.config.cell_world_size);
-            const lux::spatial::Position3D predicted_position{
+            const lux::math::Position3d predicted_position{
                 center_position.x + interest.prediction_offset_x,
                 center_position.y + interest.prediction_offset_y,
                 center_position.z + interest.prediction_offset_z};
@@ -527,7 +527,7 @@ namespace lux::runtime::spatial3d
     }
 
     bool SpatialInterest3DSystem::isActive(
-        lux::spatial::GridCoord3i64 coordinate) const noexcept
+        lux::math::GridCoord3i64 coordinate) const noexcept
     {
         for (const auto& band : impl_->bands)
         {

@@ -6,8 +6,9 @@
 //  component (§4): TransformSystem composes it into a ResolvedTransform3DComponent
 //  each frame; render nodes and physics read the world matrix.
 // ============================================================================
+#include <lux/engine/ecs/reflection/SpatialValueReflectionTraits.hpp>
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
@@ -18,7 +19,7 @@ namespace lux::ecs
     struct LUX_COMPONENT() Transform3DComponent
     {
         LUX_MEMBER(display_name=Position, tooltip=3D position of the entity)
-        lux::spatial::Position3D position{};
+        lux::math::Position3d position{};
 
         LUX_MEMBER(display_name=Rotation, tooltip=Local rotation as a unit quaternion)
         Eigen::Quaternionf rotation = Eigen::Quaternionf::Identity();

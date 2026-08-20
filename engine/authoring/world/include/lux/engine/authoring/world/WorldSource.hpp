@@ -4,7 +4,7 @@
 
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/authoring/world/WorldPartition.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
 
 #include <uuid.h>
@@ -66,8 +66,8 @@ namespace lux::authoring
     };
 
     using WorldActorSourcePosition = std::variant<
-        lux::spatial::Position2D,
-        lux::spatial::Position3D>;
+        lux::math::Position2d,
+        lux::math::Position3d>;
 
     /// LXAD v2 is an Authoring-only, single-Actor tagged document. The opaque
     /// NameTable is required by TaggedPropertyReader; Toolchain validates and

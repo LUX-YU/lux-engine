@@ -154,7 +154,7 @@ int main()
             position_field->type.ptr != nullptr &&
             static_cast<const lux::meta::RefClass*>(
                 position_field->type.ptr)->full_name ==
-                "lux::spatial::Position3D",
+                "lux::math::Position3d",
         "non-final Position field retains its nested reflection link");
 
     const lux::authoring::WorldId world_id{
@@ -172,7 +172,7 @@ int main()
         lux::ecs::Transform3DComponent>(hello);
     transform.position = {1.5, 2.5, -3.0};
     transform.scale = Eigen::Vector3f(2.0f, 1.0f, 0.5f);
-    const lux::spatial::Position3D hello_position{1.5, 2.5, -3.0};
+    const lux::math::Position3d hello_position{1.5, 2.5, -3.0};
     source_registry.emplace<lux::ecs::MeshComponent>(
         hello,
         lux::ecs::MeshComponent{
@@ -232,14 +232,14 @@ int main()
     {
         peer_source->actor_class = "org.lux.test.actor";
         peer_source->space = space_id;
-        peer_source->position = lux::spatial::Position3D{0.0, 0.0, 0.0};
+        peer_source->position = lux::math::Position3d{0.0, 0.0, 0.0};
     }
     if (child_source)
     {
         child_source->actor_class = "org.lux.test.actor";
         child_source->space = space_id;
         child_source->position =
-            lux::spatial::Position3D{5.5, 2.5, -3.0};
+            lux::math::Position3d{5.5, 2.5, -3.0};
     }
     auto hello_bytes = hello_source
         ? lux::authoring::encodeWorldActorDocument(*hello_source)

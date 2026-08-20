@@ -10,18 +10,18 @@
 namespace lux::ecs
 {
     void SceneRenderBinding::requestSceneOriginRebase(
-        const lux::spatial::Position3D& position) noexcept
+        const lux::math::Position3d& position) noexcept
     {
         if (const auto tile = renderTileOf(position))
             pending_scene_origin_tile_ = *tile;
     }
 
     void SceneRenderBinding::requestSceneOriginRebase(
-        const lux::spatial::Position2D& position) noexcept
+        const lux::math::Position2d& position) noexcept
     {
         if (const auto tile = renderTileOf(position))
         {
-            pending_scene_origin_tile_ = lux::spatial::GridCoord3i64{
+            pending_scene_origin_tile_ = lux::math::GridCoord3i64{
                 tile->x,
                 tile->y,
                 scene_origin_tile_3d_.z};

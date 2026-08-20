@@ -17,7 +17,7 @@
  * entity so the caller can select it.
  */
 
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 
 #include <Eigen/Core>
 #include <entt/entt.hpp>
@@ -39,8 +39,8 @@ namespace lux::editor
     struct SpawnContext
     {
         lux::ecs::World& world;
-        std::optional<lux::spatial::Position2D> pos2d;
-        std::optional<lux::spatial::Position3D> pos3d;
+        std::optional<lux::math::Position2d> pos2d;
+        std::optional<lux::math::Position3d> pos3d;
     };
 
     struct SpawnRecipe

@@ -37,7 +37,7 @@ target_link_libraries(
         lux::cxx::core
         lux::engine::ecs::scene_format
         lux::engine::scene::scene_package
-        lux::engine::resource::spatial
+        lux::engine::core::math
     PRIVATE
         lux::engine::core::serialization
 )
@@ -45,10 +45,9 @@ target_link_libraries(
 component_add_transitive_commands(
     scene_catalog
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time core)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math serialization)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS scene_format)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS spatial)"
 )
 
 lux_classify_target(

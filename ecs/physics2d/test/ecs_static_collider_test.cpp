@@ -2,6 +2,7 @@
 #include <lux/engine/ecs/components/Transform2DComponent.hpp>
 #include <lux/engine/ecs/physics2d/components/Physics2DComponents.hpp>
 #include <lux/engine/ecs/physics2d/systems/Physics2DSystem.hpp>
+#include <lux/engine/math/RelativePosition.hpp>
 
 #include <cassert>
 #include <cmath>
@@ -13,7 +14,7 @@ namespace
     void addTransform(
         lux::meta::EntityRegistry& registry,
         lux::meta::entity_id entity,
-        lux::spatial::Position2D position)
+        lux::math::Position2d position)
     {
         auto& transform = registry.emplace<lux::ecs::Transform2DComponent>(
             entity);
@@ -31,7 +32,7 @@ int main()
 {
     using namespace lux::ecs;
 
-    constexpr lux::spatial::Position2D floor_position{
+    constexpr lux::math::Position2d floor_position{
         1'024'000'000.0,
         -2'048'000'000.0};
 
@@ -56,7 +57,7 @@ int main()
         physics.step(registry, 1.0f / 120.0f);
 
     assert(physics.trackedBodyCount() == 2u);
-    const auto resting = lux::spatial::relativeFloat(
+    const auto resting = lux::math::relativeFloat(
         registry.get<Transform2DComponent>(body).position,
         floor_position,
         100.0f);
@@ -70,7 +71,7 @@ int main()
 
     for (std::uint32_t step = 0u; step < 120u; ++step)
         physics.step(registry, 1.0f / 120.0f);
-    const auto after_destroy = lux::spatial::relativeFloat(
+    const auto after_destroy = lux::math::relativeFloat(
         registry.get<Transform2DComponent>(body).position,
         floor_position,
         100.0f);

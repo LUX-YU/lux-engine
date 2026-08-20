@@ -314,7 +314,7 @@ namespace lux::ecs
             }
             for (const auto& heightfield : batch.heightfields)
             {
-                if (!lux::spatial::isFinite(heightfield.origin))
+                if (!lux::math::isFinite(heightfield.origin))
                 {
                     return lux::cxx::unexpected(std::string{
                         "static heightfield origin is not finite"});
@@ -386,9 +386,9 @@ namespace lux::ecs
         struct Heightfield final
         {
             JPH::RefConst<JPH::Shape> shape;
-            lux::spatial::Position3D origin;
-            lux::spatial::Position3D near_corner;
-            lux::spatial::Position3D far_corner;
+            lux::math::Position3d origin;
+            lux::math::Position3d near_corner;
+            lux::math::Position3d far_corner;
         };
 
         // Keep Jolt's factory and registered type table alive until every
@@ -460,11 +460,11 @@ namespace lux::ecs
             impl->fields.push_back({
                 shape.Get(),
                 heightfield.origin,
-                lux::spatial::Position3D{
+                lux::math::Position3d{
                     heightfield.origin.x,
                     heightfield.origin.y + heightfield.height_min,
                     heightfield.origin.z},
-                lux::spatial::Position3D{
+                lux::math::Position3d{
                     heightfield.origin.x + horizontal_extent,
                     heightfield.origin.y + heightfield.height_max,
                     heightfield.origin.z + horizontal_extent}});
@@ -478,17 +478,17 @@ namespace lux::ecs
         struct BodyState final
         {
             JPH::BodyID body;
-            lux::spatial::Position3D position;
+            lux::math::Position3d position;
             Eigen::Vector3f collider_offset = Eigen::Vector3f::Zero();
             ERigidBody3DMotion motion{ERigidBody3DMotion::DYNAMIC};
-            std::optional<lux::spatial::Position3D> near_corner;
-            std::optional<lux::spatial::Position3D> far_corner;
+            std::optional<lux::math::Position3d> near_corner;
+            std::optional<lux::math::Position3d> far_corner;
         };
 
         struct CharacterState final
         {
             JPH::Ref<JPH::CharacterVirtual> character;
-            lux::spatial::Position3D position;
+            lux::math::Position3d position;
             JPH::ObjectLayer object_layer{kDefaultMovingLayer};
         };
 
@@ -601,13 +601,13 @@ namespace lux::ecs
         }
 
         [[nodiscard]] std::optional<Eigen::Vector3f> relative(
-            const lux::spatial::Position3D& position) const noexcept
+            const lux::math::Position3d& position) const noexcept
         {
             return relativePosition(
                 position, physics_origin, kMaximumPhysicsExtent);
         }
 
-        [[nodiscard]] lux::spatial::Position3D absolute(
+        [[nodiscard]] lux::math::Position3d absolute(
             JPH::RVec3Arg position) const noexcept
         {
             return {
@@ -617,9 +617,9 @@ namespace lux::ecs
         }
 
         [[nodiscard]] bool maybeRebase(
-            const lux::spatial::Position3D& target) noexcept
+            const lux::math::Position3d& target) noexcept
         {
-            if (!lux::spatial::isFinite(target))
+            if (!lux::math::isFinite(target))
             {
                 return false;
             }
@@ -635,7 +635,7 @@ namespace lux::ecs
             {
                 JPH::BodyID body;
                 JPH::Quat rotation;
-                lux::spatial::Position3D world;
+                lux::math::Position3d world;
                 Eigen::Vector3f relative;
             };
             std::vector<RebasedBody> rebased;
@@ -648,7 +648,7 @@ namespace lux::ecs
                 JPH::Quat rotation;
                 bodies.GetPositionAndRotation(
                     state.body, old_position, rotation);
-                const lux::spatial::Position3D world{
+                const lux::math::Position3d world{
                     previous_origin.x + static_cast<double>(old_position.GetX()),
                     previous_origin.y + static_cast<double>(old_position.GetY()),
                     previous_origin.z + static_cast<double>(old_position.GetZ())};
@@ -694,7 +694,7 @@ namespace lux::ecs
             for (auto& [_, state] : characters)
             {
                 const auto old = state.character->GetPosition();
-                const lux::spatial::Position3D world{
+                const lux::math::Position3d world{
                     previous_origin.x + static_cast<double>(old.GetX()),
                     previous_origin.y + static_cast<double>(old.GetY()),
                     previous_origin.z + static_cast<double>(old.GetZ())};
@@ -744,9 +744,9 @@ namespace lux::ecs
         }
 
         [[nodiscard]] bool establishStaticStagingOrigin(
-            const lux::spatial::Position3D& target) noexcept
+            const lux::math::Position3d& target) noexcept
         {
-            if (!lux::spatial::isFinite(target))
+            if (!lux::math::isFinite(target))
             {
                 return false;
             }
@@ -1272,7 +1272,7 @@ namespace lux::ecs
         TbbJoltJobSystem jobs;
         Contacts contact_listener;
         std::vector<Contacts::RawFact> raw_contacts;
-        lux::spatial::Position3D physics_origin;
+        lux::math::Position3d physics_origin;
         float accumulator{0.0f};
         std::unordered_map<entt::entity, BodyState> dynamic_bodies;
         std::unordered_map<entt::entity, CharacterState> characters;

@@ -403,7 +403,7 @@ int main()
         [](const auto& entry)
         {
             return entry.coordinate ==
-                lux::spatial::GridCoord3i64{-1, 0, 0};
+                lux::math::GridCoord3i64{-1, 0, 0};
         }));
 
     const auto startup = std::ranges::find(
@@ -685,7 +685,7 @@ int main()
     assert(portal_catalog);
     struct CookedNavigationRegion final
     {
-        lux::spatial::GridCoord3i64 coordinate;
+        lux::math::GridCoord3i64 coordinate;
         lux::navigation::NavigationRegionId id;
         lux::navigation::detour3d::NavigationRegion3DBlob blob;
     };
@@ -726,9 +726,9 @@ int main()
         });
     assert(cooked_regions.size() == 2u);
     assert((cooked_regions[0].coordinate ==
-            lux::spatial::GridCoord3i64{0, 0, 0}));
+            lux::math::GridCoord3i64{0, 0, 0}));
     assert((cooked_regions[1].coordinate ==
-            lux::spatial::GridCoord3i64{1, 0, 0}));
+            lux::math::GridCoord3i64{1, 0, 0}));
 
     auto backend_result =
         lux::navigation::detour3d::Navigation3DBackend::create();

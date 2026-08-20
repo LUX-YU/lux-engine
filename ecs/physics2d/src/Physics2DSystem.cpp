@@ -21,9 +21,9 @@ namespace lux::ecs
     {}
 
     bool Physics2DSystem::ensurePhysicsOrigin(
-        const lux::spatial::Position2D& position) noexcept
+        const lux::math::Position2d& position) noexcept
     {
-        if (!lux::spatial::isFinite(position))
+        if (!lux::math::isFinite(position))
             return false;
         if (!physics_origin_)
         {
@@ -91,7 +91,7 @@ namespace lux::ecs
                 const Eigen::Vector2f world_offset = wt.linear * col.offset;
                 center.x += static_cast<double>(world_offset.x());
                 center.y += static_cast<double>(world_offset.y());
-                if (!lux::spatial::isFinite(center))
+                if (!lux::math::isFinite(center))
                     return;
                 const auto relative = relativePosition(
                     center,
@@ -200,7 +200,7 @@ namespace lux::ecs
                 const auto offset = rotation * scaled_offset;
                 world_position.x -= static_cast<double>(offset.x());
                 world_position.y -= static_cast<double>(offset.y());
-                if (!lux::spatial::isFinite(world_position))
+                if (!lux::math::isFinite(world_position))
                     return;
                 registry.patch<Transform2DComponent>(
                     e,

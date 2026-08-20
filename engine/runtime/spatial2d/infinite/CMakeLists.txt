@@ -41,7 +41,7 @@ target_link_libraries(
         lux::engine::ecs::spatial2d_components
         lux::engine::ecs::transform
         lux::engine::scene::scene_package
-        lux::engine::resource::spatial
+        lux::engine::core::math
         lux::engine::runtime::runtime_spatial_partition
         lux::cxx::compile_time
 )
@@ -50,7 +50,7 @@ component_add_transitive_commands(
     runtime_spatial2d_infinite
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core spatial2d_components transform)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS spatial)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_spatial_partition)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )

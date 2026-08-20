@@ -71,7 +71,7 @@ namespace
     }
 
     lux::ecs::scene_format::EntitySectionId sectionId(
-        lux::spatial::GridCoord3i64 coordinate)
+        lux::math::GridCoord3i64 coordinate)
     {
         const auto first =
             mix(static_cast<std::uint64_t>(coordinate.x)) ^
@@ -98,7 +98,7 @@ namespace
     }
 
     std::vector<std::byte> parameters(
-        lux::spatial::GridCoord3i64 coordinate)
+        lux::math::GridCoord3i64 coordinate)
     {
         std::vector<std::byte> result;
         lux::serialize::ArchiveWriter writer{result};
@@ -111,7 +111,7 @@ namespace
 
     bool decodeParameters(
         std::span<const std::byte> bytes,
-        lux::spatial::GridCoord3i64& coordinate) noexcept
+        lux::math::GridCoord3i64& coordinate) noexcept
     {
         lux::serialize::ArchiveReader reader{bytes.data(), bytes.size()};
         const auto magic = reader.readPod<std::uint32_t>();
@@ -150,7 +150,7 @@ namespace
             const auto* source = std::get_if<
                 lux::scene::GeneratedSectionSource>(
                     &request.record.source);
-            lux::spatial::GridCoord3i64 coordinate;
+            lux::math::GridCoord3i64 coordinate;
             if (!source || source->generator != state.id ||
                 !decodeParameters(source->parameters, coordinate) ||
                 request.record.id != sectionId(coordinate))
@@ -169,7 +169,7 @@ namespace
 
     lux::scene::SectionRecord record(
         const GeneratorState& state,
-        lux::spatial::GridCoord3i64 coordinate)
+        lux::math::GridCoord3i64 coordinate)
     {
         lux::scene::SectionRecord result;
         result.id = sectionId(coordinate);
@@ -345,7 +345,7 @@ int main()
             125u});
     assert(planner);
     auto source = spatial3d::Spatial3DSectionSource::ruleGrid(
-        [generator_state](lux::spatial::GridCoord3i64 coordinate)
+        [generator_state](lux::math::GridCoord3i64 coordinate)
             -> lux::cxx::expected<
                 lux::scene::SectionRecord,
                 spatial3d::Spatial3DSourceFailure>
@@ -399,7 +399,7 @@ int main()
     registry.emplace<lux::ecs::ResolvedTransform3DComponent>(
         interest_entity);
 
-    const auto moveInterest = [&](lux::spatial::Position3D position)
+    const auto moveInterest = [&](lux::math::Position3d position)
     {
         registry.patch<lux::ecs::ResolvedTransform3DComponent>(
             interest_entity,
@@ -408,7 +408,7 @@ int main()
                 transform.position = position;
             });
     };
-    const auto readyAt = [&](lux::spatial::GridCoord3i64 center)
+    const auto readyAt = [&](lux::math::GridCoord3i64 center)
     {
         return [&, center]() noexcept
         {

@@ -16,7 +16,7 @@ namespace lux::toolchain
 {
     namespace
     {
-        [[nodiscard]] std::optional<lux::spatial::GridCoord3i64>
+        [[nodiscard]] std::optional<lux::math::GridCoord3i64>
         gridCoordinate(const lux::authoring::WorldCellKey& cell) noexcept
         {
             if (const auto* planar = std::get_if<
@@ -24,7 +24,7 @@ namespace lux::toolchain
             {
                 return cell.topology ==
                         lux::authoring::EPartitionTopology::PLANAR_XZ
-                    ? std::optional{lux::spatial::GridCoord3i64{
+                    ? std::optional{lux::math::GridCoord3i64{
                           planar->a, 0, planar->b}}
                     : std::nullopt;
             }
@@ -32,7 +32,7 @@ namespace lux::toolchain
                 lux::authoring::VolumeCellCoord>(&cell.coordinate);
             return volume && cell.topology ==
                     lux::authoring::EPartitionTopology::VOLUMETRIC_XYZ
-                ? std::optional{lux::spatial::GridCoord3i64{
+                ? std::optional{lux::math::GridCoord3i64{
                       volume->x, volume->y, volume->z}}
                 : std::nullopt;
         }
@@ -213,7 +213,7 @@ namespace lux::toolchain
                         "LXAD metadata does not match its LXAI descriptor"
                     });
                 }
-                const auto* position = std::get_if<lux::spatial::Position3D>(
+                const auto* position = std::get_if<lux::math::Position3d>(
                     &document->position);
                 if (!position)
                 {
@@ -299,7 +299,7 @@ namespace lux::toolchain
                             group->second.data_layers = std::move(data_layers);
                         }
                         const auto* position = std::get_if<
-                            lux::spatial::Position3D>(
+                            lux::math::Position3d>(
                                 &source_instance.position);
                         if (!position)
                         {

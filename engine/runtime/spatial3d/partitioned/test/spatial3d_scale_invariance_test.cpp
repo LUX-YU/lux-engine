@@ -157,7 +157,7 @@ namespace
         entries.reserve(section_count);
 
         std::uint64_t ordinal = 1u;
-        const auto append = [&](lux::spatial::GridCoord3i64 coordinate)
+        const auto append = [&](lux::math::GridCoord3i64 coordinate)
         {
             auto section = record(generator, ordinal++);
             entries.push_back({coordinate, section.id});
@@ -355,7 +355,7 @@ namespace
         registry.emplace<lux::ecs::ResolvedTransform3DComponent>(
             interest_entity);
 
-        const auto readyAt = [&](lux::spatial::GridCoord3i64 center)
+        const auto readyAt = [&](lux::math::GridCoord3i64 center)
         {
             return [&, center]() noexcept
             {

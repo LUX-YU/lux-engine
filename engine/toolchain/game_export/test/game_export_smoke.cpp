@@ -126,7 +126,7 @@ namespace
         actor.display_name = "Exporter Smoke Actor";
         actor.actor_class = "org.lux.test.exporter_actor";
         actor.space = space.id;
-        actor.position = lux::spatial::Position3D{0.0, 0.0, 0.0};
+        actor.position = lux::math::Position3d{0.0, 0.0, 0.0};
         actor_document.actor_class = actor.actor_class;
         actor_document.space = actor.space;
         actor_document.position = actor.position;
@@ -207,7 +207,7 @@ namespace
                 PlanarCellCoord{static_cast<std::int64_t>(index), 0}};
             lux::authoring::EditableWorldInstance instance;
             instance.id = {page.instance_set, 1u};
-            instance.position = lux::spatial::Position3D{
+            instance.position = lux::math::Position3d{
                 static_cast<double>(index) * space.cell_edge + 4.0,
                 0.0,
                 4.0};

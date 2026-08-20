@@ -13,7 +13,7 @@ add_executable(
 target_link_libraries(
     animation_asset_test
       PRIVATE
-      asset_codecs     # runtime codecs + asset core
+      asset     # runtime codecs + asset core
       lux::engine::toolchain::toolchain_model_importer
 )
 
@@ -33,7 +33,7 @@ add_executable(
 target_link_libraries(
     mesh_asset_test
     PRIVATE
-    asset_codecs     # runtime codecs + asset core
+    asset     # runtime codecs + asset core
 )
 
 target_include_directories(
@@ -52,7 +52,7 @@ add_executable(
 target_link_libraries(
     asset_lifecycle_test
     PRIVATE
-    asset_codecs     # runtime codecs + asset core
+    asset     # runtime codecs + asset core
 )
 
 # shell_from_file_test: W2b — makeShellFromFile reads only a .luxasset header and
@@ -66,7 +66,7 @@ add_executable(
 target_link_libraries(
     shell_from_file_test
     PRIVATE
-    asset_codecs     # makeShellFromFile + MeshAsset + header structs
+    asset     # makeShellFromFile + MeshAsset + header structs
 )
 
 # ── CTest registration ────────────────────────────────────────────────────────

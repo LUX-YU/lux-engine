@@ -31,7 +31,7 @@ target_link_libraries(
         lux::engine::ecs::core
         lux::engine::ecs::scripting
         lux::engine::function::input
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
     PRIVATE
         lux::engine::core::log
 )
@@ -47,5 +47,5 @@ component_add_transitive_commands(
     runtime_scene_script
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scripting)"
     "find_package(lux-engine-function REQUIRED COMPONENTS input)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )

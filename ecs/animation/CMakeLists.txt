@@ -35,13 +35,13 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::render_2d
         lux::engine::function::animation
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     animation_2d
     "find_package(lux-engine-ecs REQUIRED COMPONENTS render_2d)"
     "find_package(lux-engine-function REQUIRED COMPONENTS animation)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 add_component(
@@ -58,13 +58,13 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::render_3d
         lux::engine::function::animation
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     animation_3d
     "find_package(lux-engine-ecs REQUIRED COMPONENTS render_3d)"
     "find_package(lux-engine-function REQUIRED COMPONENTS animation)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 # FlipbookAnimationComponent belongs to the 2D animation target. 3D animation

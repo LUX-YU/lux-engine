@@ -50,14 +50,14 @@ target_link_libraries(
     PUBLIC
     lux::engine::ecs::core             # World / ISystem / EntityRegistry / EntityHandle / ComponentTypeCatalog
     lux::engine::core::meta            # LuxObject + RefClass/RefField/EBaseType (reflection get/set)
-    lux::engine::resource::asset_core       # ScriptComponent.script = asset_id_t + asset routing (rdesc::Script/ScriptAsset)
+    lux::engine::resource::asset       # ScriptComponent.script = asset_id_t + asset routing (rdesc::Script/ScriptAsset)
 )
 
 component_add_transitive_commands(
     scripting
     "find_package (lux-engine-ecs  REQUIRED COMPONENTS core)"
     "find_package (lux-engine-core REQUIRED COMPONENTS meta)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 # Backend adapters are separate Runtime components. A Player that installs

@@ -1,6 +1,6 @@
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
-#include <lux/engine/resource/asset/PakCodec.hpp>
+#include <lux/engine/resource/asset/pak/PakCodec.hpp>
 #include <lux/engine/resource/asset/VirtualPath.hpp>
 
 #include <algorithm>

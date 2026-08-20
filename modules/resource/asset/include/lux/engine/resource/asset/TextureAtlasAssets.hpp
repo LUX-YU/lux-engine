@@ -20,13 +20,13 @@
 namespace lux::asset
 {
     /// Convert an rdesc opaque asset reference to/from the asset id type.
-    [[nodiscard]] LUX_RESOURCE_PUBLIC asset_id_t          assetIdFromOpaque(const lux::rdesc::OpaqueAssetId& raw) noexcept;
-    [[nodiscard]] LUX_RESOURCE_PUBLIC lux::rdesc::OpaqueAssetId opaqueFromAssetId(const asset_id_t& id) noexcept;
+    [[nodiscard]] LUX_ASSET_PUBLIC asset_id_t          assetIdFromOpaque(const lux::rdesc::OpaqueAssetId& raw) noexcept;
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::rdesc::OpaqueAssetId opaqueFromAssetId(const asset_id_t& id) noexcept;
 
     struct TextureAtlasLoadConfig{};
     struct FlipbookClipLoadConfig{};
 
-    class LUX_RESOURCE_PUBLIC TextureAtlasAsset
+    class LUX_ASSET_PUBLIC TextureAtlasAsset
         : public TAsset<lux::rdesc::TextureAtlas>
     {
         friend class TextureAtlasSerDeser;
@@ -37,7 +37,7 @@ namespace lux::asset
                                   std::unique_ptr<lux::rdesc::TextureAtlas> atlas = nullptr);
     };
 
-    class LUX_RESOURCE_PUBLIC FlipbookClipAsset
+    class LUX_ASSET_PUBLIC FlipbookClipAsset
         : public TAsset<lux::rdesc::FlipbookClip>
     {
         friend class FlipbookClipSerDeser;

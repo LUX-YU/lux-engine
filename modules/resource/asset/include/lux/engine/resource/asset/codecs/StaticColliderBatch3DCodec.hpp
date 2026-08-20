@@ -6,7 +6,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/description/StaticColliderBatch3D.hpp>
-#include <lux/engine/resource/asset/codecs/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -49,19 +49,19 @@ namespace lux::physics3d
         std::string detail;
     };
 
-    [[nodiscard]] LUX_ASSET_CODECS_PUBLIC
+    [[nodiscard]] LUX_ASSET_PUBLIC
     lux::cxx::expected<void, StaticColliderBatch3DCodecFailure>
     validateStaticColliderBatch3DBlob(
         const StaticColliderBatch3DBlobV1& blob) noexcept;
 
-    [[nodiscard]] LUX_ASSET_CODECS_PUBLIC
+    [[nodiscard]] LUX_ASSET_PUBLIC
     lux::cxx::expected<
         std::vector<std::byte>,
         StaticColliderBatch3DCodecFailure>
     encodeStaticColliderBatch3DBlob(
         const StaticColliderBatch3DBlobV1& blob) noexcept;
 
-    [[nodiscard]] LUX_ASSET_CODECS_PUBLIC
+    [[nodiscard]] LUX_ASSET_PUBLIC
     lux::cxx::expected<
         StaticColliderBatch3DBlobV1,
         StaticColliderBatch3DCodecFailure>

@@ -44,7 +44,7 @@ target_link_libraries(
         lux::engine::ecs::scene_format
         lux::engine::extensions::extension_api
     PRIVATE
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 
 component_add_transitive_commands(

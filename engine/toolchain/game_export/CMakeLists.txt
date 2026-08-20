@@ -41,7 +41,7 @@ target_link_libraries(
         lux::engine::authoring::project
         lux::engine::toolchain::toolchain_asset_cook
         lux::engine::toolchain::toolchain_texture_importer
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::game::deployment
     PRIVATE
         lux::engine::toolchain::toolchain_spatial3d_scene_cook

@@ -28,7 +28,7 @@ namespace lux::asset
     /**
      * @brief Asset class for skeleton resources.
      */
-    class LUX_RESOURCE_PUBLIC SkeletonAsset
+    class LUX_ASSET_PUBLIC SkeletonAsset
         : public TAsset<lux::rdesc::Skeleton>
     {
         friend class SkeletonSerDeser;

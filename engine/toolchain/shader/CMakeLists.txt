@@ -174,7 +174,7 @@ target_link_libraries(
     toolchain_shader_asset
     PUBLIC
         lux::engine::toolchain::toolchain_shader
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
 )
 
 set_target_properties(

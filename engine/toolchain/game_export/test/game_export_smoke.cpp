@@ -2,13 +2,13 @@
 
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
-#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/scene/ScenePackageCodec.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/PakAssetProvider.hpp>
+#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/pak/PakAssetProvider.hpp>
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/game/LaunchManifest.hpp>
 

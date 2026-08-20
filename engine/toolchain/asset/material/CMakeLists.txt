@@ -42,7 +42,7 @@ component_include_directories(
 target_link_libraries(
     toolchain_material_compiler
     PUBLIC
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::engine::authoring::authoring_assets
         lux::engine::toolchain::toolchain_shader_ir
     PRIVATE
@@ -51,7 +51,7 @@ target_link_libraries(
 
 component_add_transitive_commands(
     toolchain_material_compiler
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_codecs)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_assets)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_shader_ir toolchain_shader_compiler)"
 )

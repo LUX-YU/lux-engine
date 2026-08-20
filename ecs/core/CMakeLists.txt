@@ -57,7 +57,7 @@ target_link_libraries(
     lux::cxx::compile_time             # SceneServices type_hash + expected
     lux::engine::core::math
     lux::engine::core::meta            # EntityRegistry / reflection seam
-    lux::engine::resource::asset_core       # AssetLoadFn carries asset_id_t
+    lux::engine::resource::asset       # AssetLoadFn carries asset_id_t
     lux::engine::ecs::identity              # component + persistent entity identity
 )
 
@@ -66,7 +66,7 @@ component_add_transitive_commands(
     "find_package (lux-cxx             REQUIRED COMPONENTS algorithm compile_time)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS identity)"
     "find_package (lux-engine-core     REQUIRED COMPONENTS math meta)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
 #include <lux/engine/resource/asset/ScriptAsset.hpp>      // in-place SCRIPT editing
-#include <lux/engine/resource/asset/ScriptSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/ScriptSerDeser.hpp>
 #include <lux/cxx/algorithm/string_operations.hpp>
 #include <imgui_stdlib.h>
 #include <sol/sol.hpp>

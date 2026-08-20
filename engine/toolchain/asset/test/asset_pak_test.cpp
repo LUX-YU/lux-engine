@@ -1,11 +1,11 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
 #include <lux/engine/authoring/assets/LooseAssetProvider.hpp>
-#include <lux/engine/resource/asset/PakAssetProvider.hpp>
-#include <lux/engine/resource/asset/PakCodec.hpp>
+#include <lux/engine/resource/asset/pak/PakAssetProvider.hpp>
+#include <lux/engine/resource/asset/pak/PakCodec.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/SkeletonAsset.hpp>
-#include <lux/engine/resource/asset/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/SkeletonSerDeser.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/description/Skeleton.hpp>
 

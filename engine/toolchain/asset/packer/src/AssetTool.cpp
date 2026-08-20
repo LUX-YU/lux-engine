@@ -1,6 +1,6 @@
 // lux_asset_packer
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
 #include <lux/engine/toolchain/shader/SpirvAssetPacker.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>

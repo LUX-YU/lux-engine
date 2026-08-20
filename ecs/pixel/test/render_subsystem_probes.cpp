@@ -45,7 +45,7 @@
 #include <lux/engine/ecs/render/systems/RenderSystem.hpp>
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>           // 驻留三件套(T12 起探针走真装配)
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>             // MeshAsset(⑨ 要一份真资产)
+#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>             // MeshAsset(⑨ 要一份真资产)
 #include <lux/engine/resource/asset/AssetEvents.hpp>              // 资产广播事件(批E)
 #include <lux/engine/events/DomainEvents.hpp>                // 探针自建 bus+pump(批E)
 #include <lux/engine/meta/LuxObject.hpp>

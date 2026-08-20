@@ -28,11 +28,11 @@
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/SkeletonAsset.hpp>
-#include <lux/engine/resource/asset/SkeletonSerDeser.hpp>
-#include <lux/engine/resource/asset/SkeletonDescriptionCodec.hpp>
+#include <lux/engine/resource/asset/codecs/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/SkeletonDescriptionCodec.hpp>
 #include <lux/engine/resource/asset/AnimationClipAsset.hpp>
-#include <lux/engine/resource/asset/AnimationClipSerDeser.hpp>
-#include <lux/engine/resource/asset/AnimationClipDescriptionCodec.hpp>
+#include <lux/engine/resource/asset/codecs/AnimationClipSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/AnimationClipDescriptionCodec.hpp>
 #include <lux/engine/toolchain/asset/model/ModelImporter.hpp>
 #include <lux/engine/resource/asset/ModelAsset.hpp>
 #include <lux/engine/resource/asset/MeshAsset.hpp>

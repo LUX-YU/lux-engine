@@ -44,12 +44,12 @@ target_link_libraries(
         lux::engine::ecs::animation_3d
         lux::engine::runtime::runtime_assets
         lux::engine::runtime::runtime_pack_spatial3d_transform
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     runtime_pack_animation3d
     "find_package(lux-engine-ecs REQUIRED COMPONENTS animation_3d core)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_assets runtime_pack_spatial3d_transform runtime_scene_contributions)"
 )
 
@@ -141,11 +141,11 @@ target_link_libraries(
         lux::engine::runtime::runtime_pack_spatial3d_transform
         lux::engine::ecs::core
         lux::engine::ecs::render_3d
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     runtime_pack_presentation3d
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core render_3d)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_assets runtime_entity_scene runtime_render_scene runtime_scene_contributions runtime_scene_core runtime_pack_spatial3d_transform)"
 )

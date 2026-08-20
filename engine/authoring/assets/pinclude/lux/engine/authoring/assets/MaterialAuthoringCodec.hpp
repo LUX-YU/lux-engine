@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 
 namespace lux::authoring::detail
 {

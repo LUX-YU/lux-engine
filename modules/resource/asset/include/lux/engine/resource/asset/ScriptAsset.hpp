@@ -28,7 +28,7 @@
 
 namespace lux::asset
 {
-    class LUX_RESOURCE_PUBLIC ScriptAsset : public TAsset<lux::rdesc::Script>
+    class LUX_ASSET_PUBLIC ScriptAsset : public TAsset<lux::rdesc::Script>
     {
     public:
         static constexpr EAssetType asset_type{ EAssetType::SCRIPT };

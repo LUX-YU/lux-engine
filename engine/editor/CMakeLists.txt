@@ -37,7 +37,7 @@ endif()
 # SkyboxPass node has a real texture to render against. The render
 # component already registers its runtime assets, so we just generate a
 # header pointing at that root.
-include_component_cmake_scripts(lux::engine::resource::asset_codecs)
+include_component_cmake_scripts(lux::engine::resource::asset)
 component_generate_runtime_asset_path_header(
     COMPONENT     render_features
     OUTPUT_HEADER ${CMAKE_CURRENT_BINARY_DIR}/include/lux/engine/editor/content/RuntimeAssetPath.hpp
@@ -177,7 +177,7 @@ component_add_transitive_commands(
     "find_package (lux-engine-ecs REQUIRED COMPONENTS core render_2d render_3d animation_2d animation_3d navigation3d)"
     "find_package (lux-engine-core REQUIRED COMPONENTS meta)"
     "find_package (lux-engine-function REQUIRED COMPONENTS script_lua)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS asset_codecs)"
+    "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package (lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS project authoring_flowforge authoring_assets authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_spatial3d_scene_cook)"
@@ -205,7 +205,7 @@ target_link_libraries(
     lux::engine::function::input           # ActionMapper / input action mapping
     lux::engine::function::script_lua
     lux::engine::core::meta
-    lux::engine::resource::asset_codecs
+    lux::engine::resource::asset
     lux::engine::toolchain::toolchain_model_importer
     lux::engine::toolchain::toolchain_texture_importer
     lux::engine::core::serialization

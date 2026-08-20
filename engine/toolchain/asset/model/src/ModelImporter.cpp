@@ -5,7 +5,7 @@
 //  ImportedMaterialDesc PODs; no closure rdesc::Material is produced.)
 #include <lux/engine/resource/asset/SkeletonAsset.hpp>
 #include <lux/engine/resource/asset/AnimationClipAsset.hpp>
-#include <AssetManagerImpl.hpp>
+#include <lux/engine/resource/asset/detail/AssetManagerImpl.hpp>
 
 #include <algorithm>
 #include <unordered_map>

@@ -49,7 +49,7 @@ target_compile_definitions(
 target_link_libraries(
     toolchain_texture_importer
     PUBLIC
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
 )
 
 set_target_properties(

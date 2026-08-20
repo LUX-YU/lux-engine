@@ -18,7 +18,7 @@
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
 #include <lux/engine/resource/asset/SkeletonAsset.hpp>
 

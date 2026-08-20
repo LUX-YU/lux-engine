@@ -1,12 +1,12 @@
 #pragma once
 #include <lux/engine/description/Texture.hpp>
-#include <lux/engine/resource/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 #include "Asset.hpp"
 #include "AssetSerDeser.hpp"
 
 namespace lux::asset
 {
-	class LUX_RESOURCE_PUBLIC TextureAsset : public TAsset<lux::rdesc::Texture>
+	class LUX_ASSET_PUBLIC TextureAsset : public TAsset<lux::rdesc::Texture>
     {
         friend class LuxAssetManager;
 		friend class TextureCodec;

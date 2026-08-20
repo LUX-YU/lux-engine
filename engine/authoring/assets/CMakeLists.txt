@@ -44,7 +44,7 @@ target_compile_definitions(
 target_link_libraries(
     authoring_assets
     PUBLIC
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::engine::authoring::authoring_flowforge
         lux::engine::core::serialization
         lux::cxx::binary
@@ -54,7 +54,7 @@ target_link_libraries(
 
 component_add_transitive_commands(
     authoring_assets
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_codecs)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_flowforge)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-cxx REQUIRED COMPONENTS binary core)"

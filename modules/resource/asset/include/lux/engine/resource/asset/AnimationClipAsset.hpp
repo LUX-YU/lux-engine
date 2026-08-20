@@ -30,7 +30,7 @@ namespace lux::asset
     /**
      * @brief Asset class for animation clip resources.
      */
-    class LUX_RESOURCE_PUBLIC AnimationClipAsset
+    class LUX_ASSET_PUBLIC AnimationClipAsset
         : public TAsset<lux::rdesc::AnimationClip>
     {
         friend class AnimationClipSerDeser;

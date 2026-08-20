@@ -99,9 +99,8 @@ target_link_libraries(
     lux::engine::ecs::render_core # dimension-neutral render lifecycle
     lux::engine::ecs::render_3d   # built-in Grid3D render-effect factory
     lux::engine::ecs::terrain_components
-    lux::engine::resource::asset_core       # AssetManager (bridge + eviction)
+    lux::engine::resource::asset       # AssetManager (bridge + eviction)
     lux::engine::function::render_standard_content
-    lux::engine::resource::asset_codecs
     lux::cxx::memory           # owning contribution/upload payloads
     lux::cxx::algorithm          # ContentBlob integrity admission
     lux::engine::function::render_features # backend + built-in feature assembly
@@ -142,7 +141,7 @@ component_add_transitive_commands(
     "find_package(Eigen3 REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm core memory)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format render_core render_3d terrain_components)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core asset_codecs)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_features render_standard_content)"
     "find_package(lux-engine-core REQUIRED COMPONENTS log events)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_assets runtime_entity_scene runtime_extension_loader runtime_scene_contributions runtime_render_effects runtime_scene_core)"

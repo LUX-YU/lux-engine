@@ -43,7 +43,7 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::core
         lux::cxx::algorithm
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
         lux::engine::resource::description
         lux::engine::ecs::scene_format
         lux::engine::core::math
@@ -56,7 +56,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm container)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math meta)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core description)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset description)"
 )
 
 add_subdirectory(test)

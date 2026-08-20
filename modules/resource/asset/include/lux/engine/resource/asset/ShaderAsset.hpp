@@ -9,7 +9,7 @@ namespace lux::asset
 	// for serialization/deserialization
 	using ShaderAssetInfo = lux::rdesc::ShaderInfo;
 
-	class LUX_RESOURCE_PUBLIC ShaderAsset : public TAsset<lux::rdesc::Shader>
+	class LUX_ASSET_PUBLIC ShaderAsset : public TAsset<lux::rdesc::Shader>
 	{
 	public:
 		static constexpr EAssetType asset_type{ EAssetType::SHADER };

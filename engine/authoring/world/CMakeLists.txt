@@ -45,7 +45,7 @@ target_link_libraries(
     authoring_world
     PUBLIC
         lux::cxx::compile_time
-        lux::engine::resource::asset_identity
+        lux::engine::resource::asset
         lux::engine::core::math
         lux::cxx::algorithm
         lux::engine::core::serialization
@@ -56,7 +56,7 @@ component_add_transitive_commands(
     authoring_world
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time)"
     "find_package(stduuid CONFIG REQUIRED)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_identity)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math serialization)"
 )
 

@@ -10,7 +10,7 @@
 
 namespace lux::asset
 {
-	class LUX_RESOURCE_PUBLIC ModelAsset : public TAsset<lux::rdesc::ModelNode>
+	class LUX_ASSET_PUBLIC ModelAsset : public TAsset<lux::rdesc::ModelNode>
 	{
 	public:
 		static constexpr EAssetType asset_type{ EAssetType::MODEL };

@@ -6,8 +6,8 @@ generate_visibility_header(
     GENERATE_FILE_PATH  lux/engine/resource/visibility.h
 )
 
-# Foundation ordering is explicit: asset identity is consumed by later
-# domain-owned content codecs, while asset itself depends on description.
+# Resource owns two installable packages. Asset contains its identity, core,
+# codec, and pak implementation behind one public component.
 add_subdirectory(description)
 add_subdirectory(asset)
 
@@ -16,8 +16,5 @@ install_components(
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::resource
 	COMPONENTS		description
-                    asset_identity
-                    asset_core
-                    asset_codecs
-                    asset_pak
+                    asset
 )

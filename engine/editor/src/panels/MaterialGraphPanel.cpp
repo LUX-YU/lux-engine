@@ -17,8 +17,8 @@
 #include <lux/engine/events/DomainEvents.hpp>
 #include <lux/engine/editor/thumbnail/ThumbnailService.hpp>   // 原地保存后作废旧缩略图
 #include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialSerDeser.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceSerDeser.hpp>   // 实例模式 Save
+#include <lux/engine/resource/asset/codecs/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/MaterialInstanceSerDeser.hpp>   // 实例模式 Save
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/ui/AssetDragDrop.hpp>                 // 实例模式贴图槽拖放
 

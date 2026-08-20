@@ -163,11 +163,11 @@ target_link_libraries(
         lux::engine::ecs::animation_2d
         lux::engine::ecs::physics
         lux::engine::ecs::physics2d_pixel_integration
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     runtime_pack_presentation2d
     "find_package(lux-engine-ecs REQUIRED COMPONENTS animation_2d core physics physics2d_pixel_integration pixel render_2d render_pixel_integration render_tilemap_integration tilemap)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_assets runtime_pack_simulation2d runtime_pack_spatial2d_transform runtime_scene_contributions)"
 )

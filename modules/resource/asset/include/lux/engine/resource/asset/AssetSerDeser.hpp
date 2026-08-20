@@ -9,7 +9,7 @@
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
-#include <lux/engine/resource/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 
 #include "Asset.hpp"
 
@@ -152,7 +152,7 @@ namespace lux::asset
      * Derived classes implement specific serialization logic for different asset types
      * such as textures, meshes, materials, and models.
      */
-    class LUX_RESOURCE_PUBLIC AssetSerDeser
+    class LUX_ASSET_PUBLIC AssetSerDeser
     {
     public:
         /**

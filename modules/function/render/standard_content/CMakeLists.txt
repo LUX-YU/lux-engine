@@ -36,7 +36,7 @@ target_link_libraries(
     render_standard_content
     PUBLIC
         lux::cxx::compile_time
-        lux::engine::resource::asset_identity
+        lux::engine::resource::asset
     PRIVATE
         lux::engine::core::serialization
 )
@@ -45,7 +45,7 @@ component_add_transitive_commands(
     render_standard_content
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_identity)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 lux_classify_target(

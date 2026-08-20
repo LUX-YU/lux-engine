@@ -18,9 +18,9 @@
 #include <lux/engine/editor/scene/EditorTransient.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/PakAssetProvider.hpp>
+#include <lux/engine/resource/asset/pak/PakAssetProvider.hpp>
 #include <lux/engine/resource/asset/MeshAsset.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/ecs/render/components/3d/AnimatorComponent.hpp>

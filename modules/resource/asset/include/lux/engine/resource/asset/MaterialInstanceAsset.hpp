@@ -51,7 +51,7 @@ namespace lux::asset
     };
 
     /// A material-instance asset.
-    class LUX_RESOURCE_PUBLIC MaterialInstanceAsset : public TAsset<MaterialInstanceData>
+    class LUX_ASSET_PUBLIC MaterialInstanceAsset : public TAsset<MaterialInstanceData>
     {
     public:
         static constexpr EAssetType asset_type{ EAssetType::MATERIAL_INSTANCE };

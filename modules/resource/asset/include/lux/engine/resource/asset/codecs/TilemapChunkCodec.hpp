@@ -6,7 +6,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/description/TilemapChunk.hpp>
-#include <lux/engine/resource/asset/codecs/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -43,15 +43,15 @@ namespace lux::tilemap
     template <typename T>
     using TilemapChunkExp = lux::cxx::expected<T, TilemapChunkCodecFailure>;
 
-    [[nodiscard]] LUX_ASSET_CODECS_PUBLIC
+    [[nodiscard]] LUX_ASSET_PUBLIC
     TilemapChunkExp<void>
     validateTilemapChunkBlob(const TilemapChunkBlobV1& blob) noexcept;
 
-    [[nodiscard]] LUX_ASSET_CODECS_PUBLIC
+    [[nodiscard]] LUX_ASSET_PUBLIC
     TilemapChunkExp<std::vector<std::byte>>
     encodeTilemapChunkBlob(const TilemapChunkBlobV1& blob) noexcept;
 
-    [[nodiscard]] LUX_ASSET_CODECS_PUBLIC
+    [[nodiscard]] LUX_ASSET_PUBLIC
     TilemapChunkExp<TilemapChunkBlobV1>
     decodeTilemapChunkBlob(std::span<const std::byte> bytes) noexcept;
 } // namespace lux::tilemap

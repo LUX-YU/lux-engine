@@ -52,7 +52,7 @@ set(_sg_emitted_dir "${CMAKE_BINARY_DIR}/lglsl_emitted")
 # Device-independent: SPIR-V + ShaderInfo .luxasset persistence round-trip (ShaderSerDeser).
 add_executable(shader_asset_test graph_shader_asset_test.cpp)
 target_link_libraries(shader_asset_test PRIVATE
-    toolchain_shader_compiler toolchain_material_compiler lux::engine::resource::asset_codecs)
+    toolchain_shader_compiler toolchain_material_compiler lux::engine::resource::asset)
 target_include_directories(shader_asset_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(shader_asset_test PRIVATE LUX_RENDER_SHADERS_DIR="${_sg_shaders_dir}"
         LUX_LGLSL_EMITTED_DIR="${_sg_emitted_dir}")
@@ -101,7 +101,7 @@ if(TARGET render_features AND TARGET lux::engine::platform::window)
         target_link_libraries(${_t} PRIVATE
             toolchain_shader_compiler toolchain_material_compiler
             render_features lux::engine::platform::window
-            lux::engine::resource::asset_codecs)
+            lux::engine::resource::asset)
         target_include_directories(${_t} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR} ${_rt_gen} ${_rt_pinclude})
         target_compile_definitions(${_t} PRIVATE LUX_RENDER_SHADERS_DIR="${_sg_shaders_dir}"
@@ -113,7 +113,7 @@ if(TARGET render_features AND TARGET lux::engine::platform::window)
     target_link_libraries(skeletal_mesh_walk_test PRIVATE
         toolchain_shader_compiler toolchain_material_compiler
         render_features animation_3d lux::engine::platform::window
-        lux::engine::resource::asset_codecs)
+        lux::engine::resource::asset)
     target_include_directories(skeletal_mesh_walk_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR} ${_rt_gen} ${_rt_pinclude})
     target_compile_definitions(skeletal_mesh_walk_test PRIVATE LUX_RENDER_SHADERS_DIR="${_sg_shaders_dir}"

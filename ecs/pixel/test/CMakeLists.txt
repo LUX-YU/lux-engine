@@ -41,7 +41,7 @@ target_link_libraries(render_subsystem_probes
     # CMake 对非命名空间目标名在生成期解析(flowforge 同款先例)。
     runtime_render_scene_test_support
     lux::engine::runtime::runtime_execution
-    lux::engine::resource::asset_codecs
+    lux::engine::resource::asset
 )
 # ★ 变更驱动的两张安全网在**这个目标上常开**(`LUX_ECS_EXTRACTION_VERIFY`):
 #     · 抽取 oracle —— 反应式排空之后再全扫一遍,还找得到活干 = 漏了信号源;
@@ -89,7 +89,7 @@ target_link_libraries(render_subsystem_lifecycle_probe
     lux::engine::ecs::render_pixel_integration
     lux::engine::ecs::render_tilemap_integration
     lux::engine::function::render_vulkan
-    lux::engine::resource::asset_codecs
+    lux::engine::resource::asset
 )
 
 # Private composition contract shared by the Pixel and Tilemap render leaves.

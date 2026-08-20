@@ -34,7 +34,7 @@ target_link_libraries(render_resource_manager_test
     PRIVATE
     runtime_render_scene_test_support
     lux::engine::runtime::runtime_execution          # 直接驱动 AsyncRuntime(drainMainThreadCompletions/构造)
-    lux::engine::resource::asset_codecs
+    lux::engine::resource::asset
 )
 lux_scene_runtime_test_enable_stdexec(render_resource_manager_test)
 
@@ -50,7 +50,7 @@ target_link_libraries(
         lux::engine::runtime::runtime_scene_core
         lux::engine::runtime::runtime_execution
         lux::engine::function::input
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
 )
 lux_scene_runtime_test_enable_stdexec(headless_scene_runtime_test)
 
@@ -113,7 +113,7 @@ target_link_libraries(residency_gpu_probe
     runtime_render_scene_test_support
     lux::engine::runtime::runtime_execution                          # AsyncRuntime
     lux::engine::platform::window      # DeviceRenderFixture 的窗口面
-    lux::engine::resource::asset_codecs
+    lux::engine::resource::asset
 )
 lux_scene_runtime_test_enable_stdexec(residency_gpu_probe)
 
@@ -226,8 +226,8 @@ target_link_libraries(
         lux::engine::ecs::render_2d
         lux::engine::ecs::render_pixel_integration
         lux::engine::function::render_features
-        lux::engine::resource::asset_codecs
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
+        lux::engine::resource::asset
         lux::engine::core::serialization
         lux::engine::platform::window
 )

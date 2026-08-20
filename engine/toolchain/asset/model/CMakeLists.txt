@@ -22,7 +22,7 @@ component_include_directories(
 target_link_libraries(
     toolchain_model_importer
     PUBLIC
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::engine::toolchain::toolchain_texture_importer
     PRIVATE
         assimp::assimp

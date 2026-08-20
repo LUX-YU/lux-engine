@@ -58,7 +58,7 @@
 
 // ── Asset loading ───────────────────────────────────────────────────────
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/resource/asset/codecs/TextureCodec.hpp>
 #include <lux/engine/resource/asset/TextureAsset.hpp>
 
 // ── Window ──────────────────────────────────────────────────────────────

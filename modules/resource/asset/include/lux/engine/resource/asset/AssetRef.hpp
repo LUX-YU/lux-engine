@@ -23,13 +23,13 @@
  */
 
 #include <lux/engine/resource/asset/AssetId.hpp>
-#include <lux/engine/resource/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 
 namespace lux::asset
 {
     class AssetManager;
 
-    class LUX_RESOURCE_PUBLIC AssetRef
+    class LUX_ASSET_PUBLIC AssetRef
     {
     public:
         AssetRef() = default;

@@ -6,7 +6,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/description/TerrainTile.hpp>
-#include <lux/engine/resource/asset/codecs/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -45,15 +45,15 @@ namespace lux::terrain
     template <typename T>
     using TerrainTileExp = lux::cxx::expected<T, TerrainTileCodecFailure>;
 
-    [[nodiscard]] LUX_ASSET_CODECS_PUBLIC
+    [[nodiscard]] LUX_ASSET_PUBLIC
     TerrainTileExp<void>
     validateTerrainTileBlob(const TerrainTileBlobV1& blob) noexcept;
 
-    [[nodiscard]] LUX_ASSET_CODECS_PUBLIC
+    [[nodiscard]] LUX_ASSET_PUBLIC
     TerrainTileExp<std::vector<std::byte>>
     encodeTerrainTileBlob(const TerrainTileBlobV1& blob) noexcept;
 
-    [[nodiscard]] LUX_ASSET_CODECS_PUBLIC
+    [[nodiscard]] LUX_ASSET_PUBLIC
     TerrainTileExp<TerrainTileBlobV1>
     decodeTerrainTileBlob(std::span<const std::byte> bytes) noexcept;
 } // namespace lux::terrain

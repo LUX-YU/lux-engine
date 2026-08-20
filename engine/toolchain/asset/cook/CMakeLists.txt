@@ -38,7 +38,7 @@ target_compile_definitions(
 target_link_libraries(
     toolchain_asset_cook
     PUBLIC
-        lux::engine::resource::asset_pak
+        lux::engine::resource::asset
         lux::cxx::algorithm
     PRIVATE lux::cxx::core
 )
@@ -46,5 +46,5 @@ target_link_libraries(
 component_add_transitive_commands(
     toolchain_asset_cook
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm core)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_pak)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )

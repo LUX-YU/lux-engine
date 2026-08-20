@@ -15,7 +15,7 @@
 //   * a missing file → FILE_OPEN_FAIL
 //=============================================================================
 
-#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/MeshAsset.hpp>        // MeshAsset (the shelled concrete type)
 
 #include <cstring>

@@ -2,7 +2,7 @@ add_executable(asset_vfs_test asset_vfs_test.cpp)
 target_link_libraries(
     asset_vfs_test
     PRIVATE
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::engine::authoring::authoring_assets
 )
 
@@ -10,7 +10,7 @@ add_executable(asset_pak_test asset_pak_test.cpp)
 target_link_libraries(
     asset_pak_test
     PRIVATE
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::engine::authoring::authoring_assets
         lux::engine::toolchain::toolchain_asset_cook
 )

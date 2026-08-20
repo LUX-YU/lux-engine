@@ -1,6 +1,6 @@
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
 
-#include <AssetManagerImpl.hpp>
+#include <lux/engine/resource/asset/detail/AssetManagerImpl.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>

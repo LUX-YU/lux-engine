@@ -14,10 +14,10 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
 #include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialSerDeser.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/SkeletonSerDeser.hpp>
-#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/resource/asset/codecs/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/TextureCodec.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
 

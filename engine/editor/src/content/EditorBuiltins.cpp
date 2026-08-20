@@ -8,8 +8,8 @@
 #include <lux/engine/resource/asset/MaterialAsset.hpp>
 #include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>   // 内置材质的实例包装
 #include <lux/engine/resource/asset/MeshAsset.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/TextureCodec.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
 #include <lux/engine/math/AABB.hpp>

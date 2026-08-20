@@ -2,21 +2,21 @@
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AnimationClipAsset.hpp>
-#include <lux/engine/resource/asset/AnimationClipSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/AnimationClipSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>   // readAssetHeader / assetTypeOfMagic
-#include <lux/engine/resource/asset/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/MaterialSerDeser.hpp>
 #include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceSerDeser.hpp>
-#include <lux/engine/resource/asset/ScriptSerDeser.hpp>     // .lua -> SCRIPT asset
+#include <lux/engine/resource/asset/codecs/MaterialInstanceSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/ScriptSerDeser.hpp>     // .lua -> SCRIPT asset
 #include <lux/engine/resource/asset/MeshAsset.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
 #include <lux/engine/resource/asset/ModelAsset.hpp>
 #include <lux/engine/toolchain/asset/model/ModelImporter.hpp>
 #include <lux/engine/resource/asset/SkeletonAsset.hpp>
-#include <lux/engine/resource/asset/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/SkeletonSerDeser.hpp>
 #include <lux/engine/resource/asset/TextureAsset.hpp>
-#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/resource/asset/codecs/TextureCodec.hpp>
 #include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
 

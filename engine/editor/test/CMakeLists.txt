@@ -138,7 +138,7 @@ target_link_libraries(
         runtime_render_scene_test_support
         lux::engine::function::render_features
         lux::engine::platform::window
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
 )
 target_include_directories(
     thumbnail_render_gpu_test
@@ -184,7 +184,7 @@ target_link_libraries(
         lux::engine::runtime::runtime_execution
         lux::engine::function::render_features
         lux::engine::platform::window
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
 )
 target_include_directories(
     material_residency_gpu_probe

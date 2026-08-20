@@ -16,7 +16,7 @@
 #include "Asset.hpp"
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/resource/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 #include <lux/cxx/memory/SharedBytes.hpp>
 
 #include <cstddef>
@@ -86,7 +86,7 @@ namespace lux::asset
     ///    error, excluded from resolve()/pathOf(), emitted by enumerate()
     ///    with tombstone=true. This is the shadow-delete contract — v1
     ///    readers MUST honor it even though v1 writers never produce one.
-    class LUX_RESOURCE_PUBLIC IAssetProvider
+    class LUX_ASSET_PUBLIC IAssetProvider
     {
     public:
         virtual ~IAssetProvider() = default;
@@ -127,7 +127,7 @@ namespace lux::asset
     /// provider's single ENTITY_SCENE entry boots — zero or several is an error
     /// demanding an explicit pick. Error TEXT stays with the host
     /// (diagnostics belong to the host; this returns the facts).
-    [[nodiscard]] LUX_RESOURCE_PUBLIC
+    [[nodiscard]] LUX_ASSET_PUBLIC
     lux::cxx::expected<BootSceneResolve, EBootSceneError>
     resolveBootScene(const IAssetProvider& provider, std::string_view vpath);
 
@@ -145,7 +145,7 @@ namespace lux::asset
     /// scanned by (priority desc, recency desc) — equal priority means the
     /// NEWEST mount wins, so a patch pak mounted later shadows the base pak
     /// without priority bookkeeping.
-    class LUX_RESOURCE_PUBLIC AssetVfs
+    class LUX_ASSET_PUBLIC AssetVfs
     {
     public:
         /// Mount a provider under a root. The root must itself parse as one

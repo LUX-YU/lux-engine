@@ -63,7 +63,7 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetEvents.hpp>
 #include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/PakAssetProvider.hpp>
+#include <lux/engine/resource/asset/pak/PakAssetProvider.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>

@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/resource/asset/codecs/TextureCodec.hpp>
 #include <lux/engine/description/Texture.hpp>
 
 namespace lux::toolchain

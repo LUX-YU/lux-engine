@@ -20,7 +20,7 @@ set(TEXTURE_SOURCE_PATH     ${CMAKE_CURRENT_SOURCE_DIR}/assets/textures)
 
 include_component_cmake_scripts(lux::cxx::reflection_runtime)
 include_component_cmake_scripts(meta)
-include_component_cmake_scripts(lux::engine::resource::asset_codecs)
+include_component_cmake_scripts(lux::engine::resource::asset)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/compile_glsl_shaders.cmake)
 
 set(RENDER_FEATURE_SRCS

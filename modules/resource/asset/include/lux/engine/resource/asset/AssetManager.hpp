@@ -2,13 +2,13 @@
 
 #include "Asset.hpp"
 #include "AssetRef.hpp"
-#include "AssetCodecCatalog.hpp"
+#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string_view>
 #include <vector>
-#include <lux/engine/resource/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 
 namespace lux::asset
 {
@@ -31,7 +31,7 @@ namespace lux::asset
      * assets. It handles asset lifetime management, caching, and provides type-safe access
      * to different asset types such as textures, materials, meshes, and models.
      */
-    class LUX_RESOURCE_PUBLIC AssetManager
+    class LUX_ASSET_PUBLIC AssetManager
     {
         // Grant access to AssetSerDeser for serialization/deserialization.
         friend class AssetSerDeser;

@@ -13,8 +13,8 @@
 //=============================================================================
 
 #include <lux/engine/resource/asset/MeshAsset.hpp>            // lux::asset::{Mesh,Vertex,Bone}
-#include <lux/engine/resource/asset/MeshDescriptionCodec.hpp> // detail::{encode,decode}MeshDescription
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/MeshDescriptionCodec.hpp> // detail::{encode,decode}MeshDescription
+#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
 
 #include <uuid.h>
 

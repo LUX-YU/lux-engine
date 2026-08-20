@@ -22,7 +22,7 @@
 // ============================================================================
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/resource/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 
 #include <cstddef>
 #include <optional>
@@ -43,7 +43,7 @@ namespace lux::asset
 
     /// Parsed, validated, canonical virtual path. Immutable; the only way to
     /// obtain one is parse(), so holding a VirtualPath IS the validity proof.
-    class LUX_RESOURCE_PUBLIC VirtualPath
+    class LUX_ASSET_PUBLIC VirtualPath
     {
     public:
         /// Hard byte cap, part of the on-disk contract (pak PATH section
@@ -109,6 +109,6 @@ namespace lux::asset
     /// case-insensitive clashes; editors warn). Deliberately NOT a resolution
     /// key — resolve is byte-sensitive, and keeping folding out of lookup
     /// means no folding algorithm ever becomes a frozen on-disk contract.
-    [[nodiscard]] LUX_RESOURCE_PUBLIC std::string foldCaseAscii(std::string_view s);
+    [[nodiscard]] LUX_ASSET_PUBLIC std::string foldCaseAscii(std::string_view s);
 
 } // namespace lux::asset

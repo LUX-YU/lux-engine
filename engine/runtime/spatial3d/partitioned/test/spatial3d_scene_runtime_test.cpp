@@ -6,7 +6,7 @@
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
 #include <lux/engine/ecs/transform/systems/Transform3DSystem.hpp>
 #include <lux/engine/input/ActionMapper.hpp>
-#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/scene/ScenePackageCodec.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>

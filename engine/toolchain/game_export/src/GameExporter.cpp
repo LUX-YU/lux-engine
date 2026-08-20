@@ -3,10 +3,10 @@
 #include <lux/engine/authoring/project/Project.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/meta/Meta.hpp>
-#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/ScriptSerDeser.hpp>
+#include <lux/engine/resource/asset/codecs/ScriptSerDeser.hpp>
 #include <lux/game/LaunchManifest.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>

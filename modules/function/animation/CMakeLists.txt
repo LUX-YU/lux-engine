@@ -42,13 +42,13 @@ target_link_libraries(
     animation
     PUBLIC
     lux::engine::core::math
-    lux::engine::resource::asset_core
+    lux::engine::resource::asset
 )
 
 component_add_transitive_commands(
     animation
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 set(ENABLE_ANIMATION_TEST OFF CACHE BOOL "Enable animation module tests")

@@ -51,7 +51,7 @@ target_link_libraries(
         lux::engine::ecs::core
         lux::engine::ecs::scene_format
         lux::engine::scene::scene_package
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
         lux::engine::runtime::runtime_execution
         lux::engine::scene::scene_api
         EnTT::EnTT
@@ -68,7 +68,7 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time memory)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta serialization)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_api scene_package)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution)"
     "find_package(stdexec CONFIG REQUIRED)"

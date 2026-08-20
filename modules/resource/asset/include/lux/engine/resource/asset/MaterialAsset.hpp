@@ -54,7 +54,7 @@ namespace lux::asset
     };
 
     /// A baked node-graph material asset.
-    class LUX_RESOURCE_PUBLIC MaterialAsset : public TAsset<MaterialData>
+    class LUX_ASSET_PUBLIC MaterialAsset : public TAsset<MaterialData>
     {
     public:
         static constexpr EAssetType asset_type{ EAssetType::MATERIAL };

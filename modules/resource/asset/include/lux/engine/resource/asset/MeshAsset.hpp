@@ -16,7 +16,7 @@ namespace lux::asset
     /**
      * @brief Asset class for mesh resources.
      */
-    class LUX_RESOURCE_PUBLIC MeshAsset : public TAsset<lux::rdesc::Mesh>
+    class LUX_ASSET_PUBLIC MeshAsset : public TAsset<lux::rdesc::Mesh>
     {
         friend class MeshSerDeser;
     public:

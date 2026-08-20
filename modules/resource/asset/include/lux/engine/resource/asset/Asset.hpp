@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <variant>
 #include <vector>
-#include <lux/engine/resource/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 #include <lux/engine/meta/LuxObject.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
 

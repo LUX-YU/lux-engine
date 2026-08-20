@@ -1,0 +1,27 @@
+LUX Engine 架构重构执行文档 v2.0
+原始代码基线: LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656
+当前施工基线: 49af7129 (Asset 目录归一化 checkpoint)
+文档日期: 2026-08-20
+
+推荐阅读与施工顺序:
+1. 00_架构宪章与变更控制.md
+2. 01_modules公共SDK边界与分发体系重构.md
+3. 02_Core与Platform基础库清理.md
+4. 03_Resource-Description与Asset重构.md
+5. 04_Function公共模块重构.md
+6. 05_ECS内核-序列化与SceneFormat重构.md
+7. 06_Engine执行-资产-场景与扩展重构.md
+8. 07_Game-Editor与共享Session产品重构.md
+9. 08_Editor-Workspace-Workbench-Documents-Panels重构.md
+10. 09_CMake-命名空间-SDK包与兼容迁移.md
+11. 10_测试-CI-PR路线与验收.md
+
+全程维护:
+- 11_详细施工Checklist.md
+- 12_迁移映射总表.md
+- 13_当前代码事实索引.md
+
+现行补充裁决:
+- ADR-20260820_SceneAsset与Resource边界.md
+
+本版替代此前 v1.x 文档。

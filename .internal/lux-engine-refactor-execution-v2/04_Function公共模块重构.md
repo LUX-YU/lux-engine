@@ -1,0 +1,546 @@
+# Function 公共模块重构
+
+> 纯化 Render、Input、Animation、Navigation、Script 与 UI 的公共闭包，使其真正可脱离 ECS 和 Engine 使用
+
+**执行文档 04 · 重构实施版 v2.0**
+
+| 项目 | 内容 |
+| --- | --- |
+| 代码基线 | `LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656` |
+| 基线日期 | 2026-08-17 |
+| 文档日期 | 2026-08-18 |
+| 适用对象 | Render、Input、Animation、Navigation、Script、UI 与公共 SDK 负责人 |
+| 文档地位 | 架构决议与施工合同；实施分支前移时按符号和职责重新定位，不得机械照搬行号 |
+
+> 本版以“`modules/` 是可独立分发的公共 SDK 边界”为首要前提。任何为消除依赖环而把 Engine、Scene、Editor 或 Extension 协议下沉到 `modules/` 的做法，均视为架构回归。
+
+> **2026-08-20 关联裁决：** Function 仍只依赖通用 Resource 契约；本文出现的 “AssetStore” 应理解为现有公共 `AssetManager` 的上层使用者，不再要求创建 Engine AssetStore。详见 `ADR-20260820_SceneAsset与Resource边界.md`。
+
+
+## 1. 目标与边界
+
+`modules/function` 仍是公共 SDK 的领域能力层，但不再作为“所有非 ECS 代码”的泛化容器。每个模块必须有清晰外部产品价值和最小依赖闭包。
+
+| 当前目标 | 目标公开目标 | 核心处理 |
+| --- | --- | --- |
+| `render_client` | `lux::render` 或内部 protocol 子目标 | 移除 Meta、Deployment、Platform Common 的 PUBLIC 依赖 |
+| `render_graph` | `lux::render_graph` | 保持设备无关；依赖 core/math/containers，不依赖 Platform Common |
+| `render_vulkan` | `lux::render_vulkan` | 吸收 gapi；Window Surface 作为叶子 Integration |
+| `render_features` | `lux::render_standard` + 私有 feature object libs | Grid/Gizmo/Highlight 工具能力上移或可选 |
+| `input` | `lux::input` | 物理输入值不依赖 Window Backend |
+| `animation` | `lux::animation` | 只依赖 Description 和 Math |
+| `navigation` | `lux::navigation` | 依赖 Math，不依赖 resource/spatial |
+| `script_core` | `lux::script` | `ScriptHost → ScriptRuntime` |
+| `script_lua` | `lux::script_lua` | 保留 LuaJIT/sol2 Backend |
+| `script_native` | `lux::script_native` | 依赖 DynamicLibrary；与 Engine Extension ABI 无关 |
+| `ui` | `lux::ui` + `lux::ui_imgui` | Panel/Widget 与 ImGui Backend 分离 |
+| `ui_vulkan` | `lux::ui_render_vulkan` | 只做 UI draw data 到 Render/Vulkan Integration |
+
+## 2. Render：公共 SDK 的主边界
+
+### 2.1 目标分层
+
+```text
+modules/function/render/
+├── api/             backend-neutral Renderer、Frame、View、Resource Handles
+├── graph/           logical render graph
+├── shader/          shader/layout contract
+├── vulkan/          Vulkan backend 与内部 low-level wrappers
+├── standard/        可选标准渲染能力集合
+└── integrations/
+    ├── window_vulkan/
+    └── ui_vulkan/
+```
+
+公开目标：
+
+```text
+lux::render
+lux::render_graph
+lux::render_vulkan
+lux::render_standard
+```
+
+内部目标可以更多，但不进入安装组件列表。
+
+### 2.2 `render_client` 的处理
+
+当前 `render_client` 包含大量 Operation Client、Frame/Control/Upload Session 与生成通信代理。保留其线程隔离和 Channel 设计，但对外表面重组为 Renderer API。
+
+目标：
+
+```cpp
+namespace lux::render
+{
+    class Renderer;
+
+    class Frame final
+    {
+    public:
+        SceneView createView(...);
+        void submit(RenderPacket);
+        expected<void, FrameError> finish();
+    };
+
+    class UploadQueue final
+    {
+    public:
+        UploadTicket upload(BufferUpload);
+        UploadTicket upload(ImageUpload);
+    };
+}
+```
+
+`RenderControlSession`、`RenderFrameSession`、`RenderUploadSession` 可作为内部实现类型；普通外部用户不应同时理解三套 Session 和每个 Operation Client。
+
+### 2.3 删除 PUBLIC Meta 依赖
+
+当前 `render_client` PUBLIC 链接 `core::meta`，主要用于生成通信 Operation。施工：
+
+1. 生成器在 Build-time 读取声明；
+2. 生成 `.ops.hpp/.cpp`；
+3. Runtime 目标只编译生成结果；
+4. 安装 Config 不查找 Meta Generator；
+5. 若生成结果需要 `TypeId`，使用轻量 `lux-cxx::type_hash` 或显式 Operation ID。
+
+禁止：
+
+```cmake
+target_link_libraries(render_client PUBLIC meta)
+```
+
+### 2.4 删除 Deployment 依赖
+
+`RuntimeCapacity` 拆分：
+
+- GPU/Renderer Capacity 类型迁入 `render/config`；
+- Game Product Capacity Request 留在 Engine Game Manifest；
+- Renderer 构造接收 `RenderConfig`，不读取 Game Manifest。
+
+目标：
+
+```cpp
+struct RenderCapacity final
+{
+    std::uint64_t maximumInstances{};
+    std::uint64_t geometryBytes{};
+    std::uint32_t bindlessTextures{};
+};
+
+struct RenderConfig final
+{
+    RenderCapacity requested{};
+    Validation validation{Validation::enabled};
+};
+```
+
+### 2.5 `render_graph`
+
+当前目标只编译 `DependencyAnalyzer.cpp`，保持设备无关。修改：
+
+```cmake
+target_link_libraries(render_graph
+    PUBLIC
+        lux::cxx::container
+        lux::cxx::compile_time
+)
+```
+
+移除 `platform::common`。`Size2D`、Format 等精确依赖改为 `lux::math` 或 `lux-cxx`。
+
+### 2.6 `render_vulkan` 吸收 gapi
+
+MOVE `modules/platform/gapi` 的 Vulkan Wrapper 到：
+
+```text
+render/vulkan/low_level
+```
+
+现有 `render_vulkan/src/gpu/*` 与 `gapi/vk/*` 存在重复抽象时，遵循：
+
+```text
+只保留一个 Device/Buffer/Image/Descriptor/Pipeline 所有权模型
+```
+
+不得同时保留：
+
+```text
+gapi::vk::Buffer
+render::GPUBufferVma
+render::BufferHandle
+```
+
+而没有明确层级关系。
+
+建议：
+
+```text
+Vulkan RAII handles         → vulkan/low_level
+VMA-backed allocations      → vulkan/memory
+Renderer logical resources  → render/api handles
+```
+
+### 2.7 Window Surface Integration
+
+`render_vulkan` 核心只接收抽象 Surface Factory 或已创建 Surface：
+
+```cpp
+struct SurfaceSource
+{
+    platform::NativeWindowHandle window;
+};
+
+expected<Surface, SurfaceError>
+createVulkanSurface(VulkanInstance&, SurfaceSource);
+```
+
+目标依赖：
+
+```text
+render_vulkan core       不依赖 window_glfw
+render_vulkan_window     依赖 window + render_vulkan
+```
+
+### 2.8 `render_features` 收敛
+
+当前一个目标包含 Deferred、Forward、Grid、Gizmo、Highlight、Point Cloud、Terrain、Water、Shadow、Skybox、Postprocess 等大量实现。
+
+施工分组：
+
+| 分组 | 内容 | 安装策略 |
+| --- | --- | --- |
+| `standard_core` | View、Depth、Forward/Deferred 基础、Tonemap | 合入 `lux::render_standard` |
+| `standard_lighting` | Light、Shadow、BRDF、Skybox | 合入 `lux::render_standard` |
+| `standard_geometry` | Mesh、Skinning、Material | 合入 `lux::render_standard` |
+| `render_tooling` | Grid、Gizmo、Highlight、Picking Overlay | 默认不装；Editor/Tooling 使用 |
+| `render_pointcloud` | Point Cloud Feature | 确有独立用户时公开可选 |
+| `render_terrain` | Terrain/Water | 确有独立用户时公开可选 |
+| `render_streaming` | Feedback、LOD、Cull | 可作为 standard 内部 |
+
+先使用 Object Library 拆编译单元，再决定公开组件，避免组件爆炸。
+
+### 2.9 Renderer 主对象
+
+公共 API：
+
+```cpp
+namespace lux::render
+{
+    class Renderer final
+    {
+    public:
+        static expected<Renderer, OpenError>
+        open(RenderConfig, Backend, Surface);
+
+        Frame beginFrame(FrameInfo);
+        UploadQueue& uploads() noexcept;
+        SceneView createSceneView(SceneViewConfig);
+        OffscreenView createOffscreenView(OffscreenConfig);
+
+        CloseTask close();
+
+        Renderer(Renderer&&) noexcept;
+        Renderer& operator=(Renderer&&) noexcept;
+        ~Renderer();
+
+    private:
+        struct State;
+        std::unique_ptr<State> state_;
+    };
+}
+```
+
+公共 `Renderer.hpp` 不包含 Vulkan 类型；`Backend` 可由 Vulkan 工厂产生。
+
+## 3. Input 解耦
+
+### 3.1 当前问题
+
+`input` 的 Action Mapping 逻辑是通用的，但 PUBLIC 依赖 `platform::window`，并因此向消费者泄漏 GLFW。
+
+### 3.2 目标结构
+
+```text
+modules/function/input/
+├── include/lux/input/
+│   ├── PhysicalInput.hpp
+│   ├── Snapshot.hpp
+│   ├── Action.hpp
+│   ├── Mapping.hpp
+│   └── Context.hpp
+└── src/
+    ├── ActionMapper.cpp
+    └── BindingIdAllocator.cpp
+
+modules/platform/window/glfw/
+└── GlfwInputAdapter.cpp
+```
+
+目标值类型：
+
+```cpp
+enum class Key;
+enum class PointerButton;
+struct AxisValue;
+struct InputSnapshot;
+```
+
+GLFW Adapter：
+
+```cpp
+input::InputSnapshot captureInput(GLFWwindow&);
+```
+
+`lux::input` 不 include `<GLFW/glfw3.h>`。
+
+### 3.3 对外对象命名
+
+若现有 `ActionMapper + InputActionRegistry + InputContextStack` 对外过于分散，可提供：
+
+```cpp
+class Input final
+{
+public:
+    ActionId declare(ActionDescriptor);
+    BindingId bind(Binding);
+    ContextToken push(ContextId);
+    void update(const InputSnapshot&);
+    const ActionState& state(ActionId) const;
+};
+```
+
+内部仍可保留三个组件，不强制合并代码。
+
+## 4. Animation 解耦
+
+当前 `animation` PUBLIC 依赖 `asset_core`。目标函数直接操作 Description：
+
+```cpp
+Pose sample(
+    const description::Skeleton&,
+    const description::AnimationClip&,
+    AnimationTime,
+    Scratch&);
+```
+
+ECS `AnimationSystem` 与 Engine AssetStore 负责：
+
+```text
+AssetHandle → Skeleton/AnimationClip value → lux::animation::sample()
+```
+
+MODIFY：
+
+```text
+modules/function/animation/CMakeLists.txt
+```
+
+移除：
+
+```text
+lux::engine::resource::asset_core
+```
+
+新增：
+
+```text
+lux::description
+lux::math
+```
+
+## 5. Navigation 解耦
+
+当前 `navigation` 依赖 `resource::spatial`。Spatial 值迁入 Math 后：
+
+```cmake
+target_link_libraries(navigation
+    INTERFACE
+        lux::math)
+```
+
+Detour3D Backend 保持独立：
+
+```text
+lux::navigation
+lux::navigation_detour3d
+```
+
+ECS Navigation Region、Agent Component 与 System 留在 `ecs/navigation`。
+
+## 6. Script 词汇与边界
+
+### 6.1 `ScriptModule` 保留
+
+这是语言 Runtime 加载单元，与 Engine Extension 无关。
+
+### 6.2 `ScriptHost → ScriptRuntime`
+
+当前对象实际负责 Backend 注册、Module 加载、Function Lookup 与 Invoke，符合 Runtime 语义。
+
+RENAME：
+
+```text
+ScriptHost.hpp/.cpp → ScriptRuntime.hpp/.cpp
+ScriptHostImpl      → ScriptRuntime::State
+```
+
+目标：
+
+```cpp
+class ScriptRuntime final
+{
+public:
+    void addBackend(std::unique_ptr<Backend>);
+    expected<ModuleHandle, LoadError> load(...);
+    expected<void, InvokeError> invoke(FunctionHandle, CallFrame&);
+    void unload(ModuleHandle);
+};
+```
+
+改掉返回 `kInvalidModule` 与 `lastError()` 的隐式错误通道，使用 `expected`。
+
+### 6.3 Native Script 与 Engine Extension 分开
+
+```text
+script_native
+    加载脚本编译产物
+    使用 Script ABI
+    依赖 DynamicLibrary
+
+engine/extensions
+    加载 Lux Engine Extension
+    使用 Extension ABI
+    注册 ECS/Scene/Render/Execution 能力
+```
+
+任何头文件不得同时 include 两种 ABI。
+
+## 7. UI 拆分
+
+### 7.1 当前问题
+
+基础 `ui` 目标 PUBLIC 链接 ImGui GLFW 与 Vulkan，并包含 `SceneViewportPanel`；这使“使用 Panel”自动获得窗口与 Vulkan 依赖。
+
+### 7.2 目标结构
+
+```text
+modules/function/ui/
+├── core/
+│   ├── Panel.hpp
+│   ├── Widget.hpp
+│   ├── Layout.hpp
+│   └── Command.hpp
+├── imgui/
+│   ├── ImGuiContext.hpp
+│   └── ImGuiWidgets.cpp
+├── integrations/
+│   ├── imgui_glfw/
+│   └── imgui_render_vulkan/
+└── CMakeLists.txt
+
+engine/editor/
+└── viewport/
+    └── SceneViewport.cpp
+```
+
+公开目标：
+
+```text
+lux::ui
+lux::ui_imgui
+lux::ui_imgui_glfw
+lux::ui_render_vulkan
+```
+
+### 7.3 `UISystem`
+
+若它拥有 ImGui Context 与每帧绘制，RENAME：
+
+```text
+UISystem → UI
+```
+
+因为 `System` 只保留给 ECS。
+
+### 7.4 `SceneViewportPanel`
+
+MOVE：
+
+```text
+modules/function/ui/src/SceneViewportPanel.cpp
+modules/function/ui/include/.../SceneViewportPanel.hpp
+→ engine/editor/src/viewport/SceneViewport.cpp
+```
+
+它知道 Lux Scene/Render View/Editor selection，不是通用 UI。
+
+### 7.5 Backend 依赖
+
+```cmake
+target_link_libraries(ui PUBLIC /* no GLFW, no Vulkan */)
+target_link_libraries(ui_imgui PUBLIC imgui::core)
+target_link_libraries(ui_imgui_glfw PRIVATE glfw)
+target_link_libraries(ui_render_vulkan PRIVATE lux::render_vulkan)
+```
+
+## 8. Shader 与 Codegen
+
+Shader Layout、Pass Params、通信 Operation Codegen 都属于 Render Build Tooling。建立：
+
+```text
+modules/function/render/shader/
+cmake/Codegen/RenderOperations.cmake
+cmake/Codegen/ShaderParams.cmake
+```
+
+生成器可由 Toolchain Profile 构建，但生成产物目标不 PUBLIC 链接生成器。
+
+`render_features` 中对 `include_component_cmake_scripts(meta)` 的依赖改为通用 Codegen CMake API，避免公共 Render 包需要 Engine Meta Component。
+
+## 9. CMake 修改总表
+
+| 当前文件 | 修改 |
+| --- | --- |
+| `modules/function/CMakeLists.txt` | 显式子目录；安装包按领域拆分 |
+| `render/client/CMakeLists.txt` | 删除 Meta、Deployment、Platform Common 的 PUBLIC 依赖 |
+| `render/graph/CMakeLists.txt` | 精确依赖 Core/Math/Container |
+| `render/vulkan/CMakeLists.txt` | 吸收 gapi；Surface Integration 分离 |
+| `render/features/CMakeLists.txt` | Object Library 分组；工具 Feature 移出默认标准包 |
+| `input/CMakeLists.txt` | 不 PUBLIC 链接 Window |
+| `animation/CMakeLists.txt` | 依赖 Description，不依赖 Asset Core |
+| `navigation/core/CMakeLists.txt` | 依赖 Math |
+| `script/core/CMakeLists.txt` | `ScriptRuntime` API 与 expected 错误 |
+| `ui/CMakeLists.txt` | Core/ImGui/GLFW/Vulkan/Editor Viewport 拆分 |
+
+## 10. Pull Request 序列
+
+| PR | 内容 | 退出闸门 |
+| --- | --- | --- |
+| FUNC-01 | 新公共 Alias 与 Include Prefix | 旧 API 兼容 |
+| RENDER-01 | Render Config 与 Deployment 解耦 | render_client 无 deployment |
+| RENDER-02 | Build-time Meta 依赖移出 Runtime Link | 安装包无 generator |
+| RENDER-03 | gapi 并入 Vulkan Backend | Platform 无 Vulkan wrappers |
+| RENDER-04 | Window Surface Integration 分离 | render_vulkan core 无 GLFW |
+| RENDER-05 | features Object Library 分组 | 行为与 shader 输出不变 |
+| INPUT-01 | Snapshot 与 Window Backend 分离 | input-only 样例无 GLFW |
+| ANIM-01 | Animation 直接依赖 Description | 无 AssetStore |
+| NAV-01 | Navigation 改依赖 Math | resource/spatial 删除 |
+| SCRIPT-01 | ScriptRuntime 与 expected | Native/Lua 测试通过 |
+| UI-01 | UI Core/ImGui/Backend 拆分 | UI Core 无 GLFW/Vulkan |
+| UI-02 | SceneViewport 迁入 Editor | modules/ui 无 Scene 类型 |
+| FUNC-FINAL | 删除旧 targets/include | Modules SDK 闭包纯净 |
+
+## 11. 验收闸门
+
+- [ ] `lux::render` 公共头无 ECS、Scene、Editor 类型。
+- [ ] `lux::render` 安装 Config 无 Meta Generator、Deployment、Extension ABI。
+- [ ] `lux::render_vulkan` 核心不依赖 GLFW。
+- [ ] `platform/gapi` 已删除。
+- [ ] `render_graph` 可在无 Vulkan SDK 的测试配置中编译。
+- [ ] `lux::input` 可在无 GLFW 的配置中编译。
+- [ ] `lux::animation` 不依赖 Asset Core/AssetStore。
+- [ ] `lux::navigation` 不依赖 Resource Spatial。
+- [ ] Script ABI 与 Extension ABI 无共享头。
+- [ ] `lux::ui` 无 GLFW/Vulkan 依赖。
+- [ ] `SceneViewportPanel` 不在 modules。
+- [ ] Tooling Feature 不自动进入标准 Renderer 公共闭包。

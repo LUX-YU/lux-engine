@@ -1,0 +1,138 @@
+{
+  "repository": "LUX-YU/lux-engine",
+  "baseline": "49af71297971ae9391f3edcf3930b6a31c802aac",
+  "document_version": "2.11",
+  "document_date": "2026-08-20",
+  "architecture_baseline": [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "A5",
+    "A6",
+    "A7",
+    "A8",
+    "ADR-20260820"
+  ],
+  "numbered_documents": 14,
+  "supplemental_documents": 2,
+  "checklist_items": 508,
+  "mapping_rows": 134,
+  "fact_anchors": 69,
+  "files": [
+    {
+      "name": "README.md",
+      "bytes": 4596,
+      "lines": 92,
+      "sha256": "9bdf297ca3e767a9628f5fe778cd6c5cf2142301f4465a31f62037103de59fd6"
+    },
+    {
+      "name": "REVISION_NOTES_v2.md",
+      "bytes": 2691,
+      "lines": 57,
+      "sha256": "ef9d810ade03f4ce0bc0ae39e8230e6d4f571c5a969075ee57d11e5c5ef49b17"
+    },
+    {
+      "name": "ADR-20260820_SceneAsset与Resource边界.md",
+      "bytes": 7197,
+      "lines": 168,
+      "sha256": "05ffad26cf1d4702b49fcde58006129ba6ae9434be5d1278ec2931d0f89a65cd"
+    },
+    {
+      "name": "00_架构宪章与变更控制.md",
+      "bytes": 20970,
+      "lines": 533,
+      "sha256": "a2fe8952b73d4844a149dbbbffa6b89f7bced996fdc92784016a6f80fb21b6e8"
+    },
+    {
+      "name": "01_modules公共SDK边界与分发体系重构.md",
+      "bytes": 13812,
+      "lines": 432,
+      "sha256": "a6c954a7fbdd3d7291633050ca84c566889f9ba7a04671ae78b5da6562863c61"
+    },
+    {
+      "name": "02_Core与Platform基础库清理.md",
+      "bytes": 14890,
+      "lines": 567,
+      "sha256": "b83c1e426abad8ab2d2338f1d1ff23522f0e30956acd0964a6f28bb34e22fcf2"
+    },
+    {
+      "name": "03_Resource-Description与Asset重构.md",
+      "bytes": 19353,
+      "lines": 705,
+      "sha256": "fe1c821bdd2850992db702be03c8bb2ae6df0c72558eb7f273f0534c7e599a36"
+    },
+    {
+      "name": "04_Function公共模块重构.md",
+      "bytes": 15568,
+      "lines": 546,
+      "sha256": "ec12abc24c93e4418875aba6a03731aca7f2d0c05120f573d803542e0d2ccca3"
+    },
+    {
+      "name": "05_ECS内核-序列化与SceneFormat重构.md",
+      "bytes": 13969,
+      "lines": 546,
+      "sha256": "3748f4b7ced8dba8c5631cf6237925433102ca3e98923d5e9dadfc35fee6f6cc"
+    },
+    {
+      "name": "06_Engine执行-资产-场景与扩展重构.md",
+      "bytes": 17300,
+      "lines": 657,
+      "sha256": "c9d11c81324d0397f3ed89f9890c518c5e013427b7c64897e26ded8dc8ae9d3a"
+    },
+    {
+      "name": "07_Game-Editor与共享Session产品重构.md",
+      "bytes": 13382,
+      "lines": 576,
+      "sha256": "5e3d204434c83a01e330cb09ee9f3eccb64fa582155a4db4ed8e173ecfcf390f"
+    },
+    {
+      "name": "08_Editor-Workspace-Workbench-Documents-Panels重构.md",
+      "bytes": 17791,
+      "lines": 738,
+      "sha256": "d37e0e64d2bed1b86c21d15d886c2971e2f3d0eff06a68db46dddb5906556bb3"
+    },
+    {
+      "name": "09_CMake-命名空间-SDK包与兼容迁移.md",
+      "bytes": 13204,
+      "lines": 525,
+      "sha256": "57de3e6d12b1ba30d3504fd7fa613bfc70e8c2ea7f99e4596c0a2f5d3b45afc9"
+    },
+    {
+      "name": "10_测试-CI-PR路线与验收.md",
+      "bytes": 11936,
+      "lines": 621,
+      "sha256": "82e498bf3843f3c48e3d87749c77cb276d1968543d90522b7c1beff2045253e3"
+    },
+    {
+      "name": "11_详细施工Checklist_已更新_20260819_b1a25d3.md",
+      "bytes": 73225,
+      "lines": 760,
+      "sha256": "808ff5d3209920a772476b29d38b66711703d0ea9f74f96bd1a2b5f8ce6cb627"
+    },
+    {
+      "name": "12_迁移映射总表.md",
+      "bytes": 17712,
+      "lines": 214,
+      "sha256": "6f8ac06c355849ac5fab29d66f14ecf3803cbf91427f6f4cb0e362eb4f54ab01"
+    },
+    {
+      "name": "13_当前代码事实索引.md",
+      "bytes": 12190,
+      "lines": 136,
+      "sha256": "9d7b175213178fd069cd7129fc1045a0c06880bd27d3a53dccaaf970662a3762"
+    },
+    {
+      "name": "00-13_全部执行文档与Checklist_合订本.md",
+      "bytes": 286481,
+      "lines": 7868,
+      "sha256": "056b537404b170936880ebe30718c48ec62e05e0647a90c83555113a532eea7c"
+    },
+    {
+      "name": "文档清单与施工顺序.txt",
+      "bytes": 953,
+      "lines": 27,
+      "sha256": "f982c60e37c0c6b826ba5e1bf09927ca375d2f88b9bf3f41f4ed3ba39afa09b7"
+    }
+  ]
+}

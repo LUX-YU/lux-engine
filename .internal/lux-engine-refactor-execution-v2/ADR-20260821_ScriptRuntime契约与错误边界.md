@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受，代码施工尚未完成。
+已接受并由 `c792c816` 完成代码施工与验收。
 
 ## 背景
 
@@ -49,4 +49,3 @@ UI 必须在独立 ADR 中按领域所有权重新调查；不得把 GLFW/Vulkan
 - module 卸载后旧 function handle 明确返回 `STALE_HANDLE`，不访问释放内存。
 - Script 库没有 `stderr`、`lastError()`、`ScriptHost` 或公开 `kInvalidModule`。
 - installed `script_core` consumer 不获得 Lua、DynamicLibrary 或 Extension ABI。
-

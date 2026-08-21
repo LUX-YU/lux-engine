@@ -2,9 +2,11 @@
 
 ## 2026-08-21：ScriptRuntime 契约裁决
 
-- 以 `de11c05c` 为代码基线，保留 Lua/Native 真实 backend 多态，但禁止增加 Adapter 或第二套 Runtime。
-- `ScriptHost` 将改名为 `ScriptRuntime`；Runtime、Backend 与 Function 统一使用结构化 `ScriptResult<T>`。
-- 删除 invalid/null/bool + thread-local `lastError()` 错误通道、库内 `stderr` 与 module 内裸函数指针。
+- 以 `de11c05c` 为代码基线，`63aaf270` 先提交裁决，`c792c816` 完成代码施工。
+- 保留 Lua/Native 真实 backend 多态，不增加 Adapter 或第二套 Runtime；`ScriptHost` 已无 shim 地替换为 `ScriptRuntime`。
+- Runtime、Backend 与 Function 统一使用结构化 `ScriptResult<T>`，删除 invalid/null/bool + thread-local `lastError()` 错误通道、库内 `stderr` 与 module 内裸函数指针。
+- Runtime-validated function handle 在 unload 后返回 `STALE_HANDLE`，并发 invoke 持有 module 生命周期；Native ABI v1 保持不变。
+- DEVELOPER、PLAYER、TOOLCHAIN 全量构建与第二轮 no-op、Lua/Native/Core owner tests、FlowForge AOT、installed consumer 和 Android arm64 core 编译均通过。
 - `navigation_detour3d` 已按现有独立 target/component 与 owner test 验收；旧 UI 四 target 方案改为待独立 ADR 重审。
 
 ## 2026-08-21：GAPI 保留与单体 Input 实施完成

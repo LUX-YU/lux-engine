@@ -1,6 +1,6 @@
 # LUX Engine 重构执行文档 v2 合订本
 
-基线：Script Runtime 裁决代码基线 `de11c05c`
+基线：Script Runtime 实施提交 `c792c816`
 
 > 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明、现行 ADR 及既有验收证据机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
 
@@ -35,6 +35,7 @@
 - `evidence/core-serialization-ecs-component-archive-6906ccc2.md`
 - `evidence/extension-abi-core-retirement-2259ade7.md`
 - `evidence/input-subsystem-cohesion-d7f364d0.md`
+- `evidence/script-runtime-contract-de11c05c.md`
 
 ---
 
@@ -6769,10 +6770,10 @@ BUILD-03..FINAL
 - [x] `FUNC-007` 移除 animation 对 Asset Core 的依赖。
 - [x] `FUNC-008` 让 navigation 依赖 Math 而非 resource/spatial。 **完成：Navigation Core 与 Detour3D 直接 include/link Core Math，安装传递依赖不再查找 Resource spatial。**
 - [x] `FUNC-009` 保留 navigation_detour3d 独立 backend。 **现有独立 target/component、PRIVATE Recast/Detour 依赖与 owner test 已按事实验收。**
-- [ ] `FUNC-010` 将 `ScriptHost` 重命名为 `ScriptRuntime`。
-- [ ] `FUNC-011` 把 invalid handle + lastError 改为 expected。
-- [ ] `FUNC-012` 保持 ScriptModule 术语仅用于脚本。
-- [ ] `FUNC-013` 确认 script_native 不 include Extension ABI。
+- [x] `FUNC-010` 将 `ScriptHost` 重命名为 `ScriptRuntime`。 **完成：旧头/源码/类型归零，不保留 alias 或 forwarding header。**
+- [x] `FUNC-011` 把 invalid handle + lastError 改为 expected。 **完成：Runtime、Backend、Function 统一返回 `ScriptResult<T>`；卸载后句柄返回 `STALE_HANDLE`。**
+- [x] `FUNC-012` 保持 ScriptModule 术语仅用于脚本。 **完成：ScriptModule 仅表示语言 Runtime 加载单元，未与 Engine Extension ABI 混用。**
+- [x] `FUNC-013` 确认 script_native 不 include Extension ABI。 **完成：源码、target 与 installed `script_core` consumer 闭包均无 Extension ABI。**
 - [ ] `FUNC-014` 拆 UI core 与 ImGui integration。 **PENDING ADR：先按真实 owner 重审，不机械拆 target。**
 - [ ] `FUNC-015` 让 `lux::ui` 不依赖不必要的 GLFW/Vulkan。 **PENDING ADR：以安装闭包和公共 API 为准。**
 - [ ] `FUNC-016` 创建 `lux::ui_imgui`。 **PENDING ADR：旧 target 名不是强制答案。**
@@ -6781,7 +6782,7 @@ BUILD-03..FINAL
 - [ ] `FUNC-019` 将 `UISystem` 重命名为 `UI`。
 - [ ] `FUNC-020` 移动 SceneViewportPanel 到 Editor。
 - [ ] `FUNC-021` 补充 UI core 无图形 backend 测试。
-- [ ] `FUNC-022` 补充 Script Lua/Native load/invoke/unload tests。
+- [x] `FUNC-022` 补充 Script Lua/Native load/invoke/unload tests。 **完成：覆盖 file/memory、坏 ABI/入口/绑定、invoke failure、unload/stale、并发 invoke 生命周期与 FlowForge AOT。**
 ## M3：ECS Kernel 与 Scene Format
 
 - [x] `ECS-001` 将 Entity Registry 真实 owner 改为 ecs/core。 **完成：实现、allocator、handles、snapshot/publication 契约均归 ECS Core。**
@@ -7449,7 +7450,7 @@ BUILD-03..FINAL
 | `lux::window` normalized input / `captureInputSnapshot()` | `lux::input::{PhysicalInput,InputSnapshot,Input}` + Window raw event batch | DONE — MOVE/DELETE OLD OWNER；枚举 ordinal 与帧语义保持 | Window/Input | 02/04/ADR-20260821-Input |
 | function::animation → asset | function::animation → Description + Core Math | DONE — REMOVE ASSET DEPENDENCY；installed consumer 不查找 Asset | Animation/Description | 04/10/ADR-20260821-Serialization |
 | function::navigation → resource::spatial | function::navigation → math | DONE — DEPENDENCY FIX；安装闭包不再查找 Resource spatial | Navigation | 04 |
-| ScriptHost | ScriptRuntime + `ScriptResult<T>` + runtime-validated function handle | IN PROGRESS — ADR-20260821-ScriptRuntime；无 shim/lastError/stderr | Script | 04/ADR |
+| ScriptHost | ScriptRuntime + `ScriptResult<T>` + runtime-validated function handle | DONE — `c792c816`；无 shim/lastError/库内 stderr，Native ABI 不变 | Script | 04/ADR |
 | modules/function/ui | UI domain + render/platform ownership pending ADR | REVIEW — 不按旧四 target/Adapter 方案机械拆分 | UI | 04 |
 | UISystem | UI | RENAME | UI | 04/08 |
 | SceneViewportPanel | engine/editor/viewport/SceneViewport | MOVE | Editor | 04/08 |
@@ -7677,7 +7678,7 @@ status=PENDING → legacy report 允许但不能增长
 | `modules/function/input/CMakeLists.txt` | 唯一 Input target；配置期选择 GLFW/Android 私有 `InputPlatform.cpp`；PUBLIC 仅 `lux-cxx::container`，不传播 Window/GLFW | 04/ADR-20260821-Input |
 | `modules/function/input/.../{Input,InputSnapshot,PhysicalInput}.hpp` | normalized physical input、帧快照与完整 Input 所有权对象；支持 Window sample 与 synthetic evaluate | 04/ADR-20260821-Input |
 | `engine/hosts/game_application/.../GameApplication.hpp`、Player、Editor | 宿主统一持有一个 Input；无第二份 Registry，脚本 action name lookup 与 Mapper state 同源 | 04/07/08/ADR-20260821-Input |
-| `modules/function/script/core/.../ScriptHost.hpp` | 当前仍以 invalid/null/bool + thread-local lastError 表达失败，FunctionHandle 暴露 module 内裸指针；按 ScriptRuntime ADR 待迁移 | 04/ADR-20260821-ScriptRuntime |
+| `modules/function/script/core/.../{ScriptRuntime,ScriptResult}.hpp` | 唯一语言 Runtime dispatcher；Backend/Function 统一 structured expected，函数句柄保存 module + owning name 并在 invoke 时重解析，unload 后明确 stale | 04/ADR-20260821-ScriptRuntime |
 | `modules/function/navigation/detour3d/CMakeLists.txt` | 独立 navigation_detour3d target/component；Recast/Detour PRIVATE，具有 owner test | 04 / FUNC-009 DONE |
 | `modules/function/ui/CMakeLists.txt` | 基础 UI PUBLIC ImGui GLFW/Vulkan，包含 SceneViewportPanel | 04/08 |
 | `ecs/CMakeLists.txt` | ECS 层定义与领域目标列表 | 05 |
@@ -7753,9 +7754,11 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 
 ## 2026-08-21：ScriptRuntime 契约裁决
 
-- 以 `de11c05c` 为代码基线，保留 Lua/Native 真实 backend 多态，但禁止增加 Adapter 或第二套 Runtime。
-- `ScriptHost` 将改名为 `ScriptRuntime`；Runtime、Backend 与 Function 统一使用结构化 `ScriptResult<T>`。
-- 删除 invalid/null/bool + thread-local `lastError()` 错误通道、库内 `stderr` 与 module 内裸函数指针。
+- 以 `de11c05c` 为代码基线，`63aaf270` 先提交裁决，`c792c816` 完成代码施工。
+- 保留 Lua/Native 真实 backend 多态，不增加 Adapter 或第二套 Runtime；`ScriptHost` 已无 shim 地替换为 `ScriptRuntime`。
+- Runtime、Backend 与 Function 统一使用结构化 `ScriptResult<T>`，删除 invalid/null/bool + thread-local `lastError()` 错误通道、库内 `stderr` 与 module 内裸函数指针。
+- Runtime-validated function handle 在 unload 后返回 `STALE_HANDLE`，并发 invoke 持有 module 生命周期；Native ABI v1 保持不变。
+- DEVELOPER、PLAYER、TOOLCHAIN 全量构建与第二轮 no-op、Lua/Native/Core owner tests、FlowForge AOT、installed consumer 和 Android arm64 core 编译均通过。
 - `navigation_detour3d` 已按现有独立 target/component 与 owner test 验收；旧 UI 四 target 方案改为待独立 ADR 重审。
 
 ## 2026-08-21：GAPI 保留与单体 Input 实施完成
@@ -8625,7 +8628,7 @@ Window 只采集 OS/window backend 的原始 key、mouse、scroll 与 text 事�
 
 ## 状态
 
-已接受，代码施工尚未完成。
+已接受并由 `c792c816` 完成代码施工与验收。
 
 ## 背景
 
@@ -8870,3 +8873,50 @@ UI 必须在独立 ADR 中按领域所有权重新调查；不得把 GLFW/Vulkan
 | 旧符号与结构扫描 | 旧 include/API/namespace、Adapter/interface、`input_glfw`/`input_android` 归零 |
 
 本阶段未接入真实 Android GameActivity 输入；Android 平台实现按 ADR 确定性地产生空快照。
+
+---
+
+# ScriptRuntime 契约施工证据
+
+## 基线与提交
+
+- 代码基线：`de11c05c`
+- 文档优先提交：`63aaf270`
+- 实施提交：`c792c816`
+- 分支：`codex/script-runtime-contract`
+
+## 已完成边界
+
+- `ScriptHost`、`kInvalidModule`、`lastError()` 与旧头/源码已删除，无 alias 或 forwarding header。
+- `ScriptRuntime`、`IScriptBackend`、`ScriptFunction` 使用统一 `ScriptResult<T>`。
+- `ScriptFunctionHandle` 不保存 module 内裸指针；unload 后 invoke/signature 返回 `STALE_HANDLE`。
+- invoke 期间以 shared module state 保证动态库生命周期，并以 module-local mutex 串行化 backend 调用。
+- Native backend 校验入口、ABI、module/function table、重复函数名、host bind 与 invoke return code；库内不写终端。
+- Lua backend 的 file/memory compile 与 invoke 错误进入结构化 detail。
+- Native Script ABI version、C symbol 与结构布局未修改；Script targets 不依赖 Extension ABI。
+
+## Owner 与集成测试
+
+- `script_runtime_contract_test.exe`：注册冲突、扩展分派、file/memory、missing function、重复 module、unload/stale、并发 invoke/unload 生命周期。
+- `script_lua_runtime_contract_test.exe`：file/memory load、invoke、语法错误 detail、missing file、unload/stale。
+- `script_native_runtime_contract_test.exe`：path/memory、invoke failure、坏 ABI、坏/缺失入口、host bind failure、missing file、unload/stale。
+- `script_asset_request_system_test.exe`：Runtime Script asset request 回归。
+- `flowforge_aot_test.exe`：JIT/AOT differential、Native ScriptRuntime 动态加载/调用与缺失 host import 拒绝。
+
+上述 owner executables 均返回 0。项目根当前未注册 CTest，因此未把 0 项 CTest 误报为覆盖。
+
+## 构建与安装
+
+- Windows RelWithDebInfo DEVELOPER：完整 `target all -j 4 -k 0` 通过；第二轮 `ninja: no work to do`。
+- Windows RelWithDebInfo PLAYER：完整 `target all -j 4 -k 0` 通过；第二轮 no-op。
+- Windows RelWithDebInfo TOOLCHAIN：完整 440/440 通过；第二轮 no-op。
+- installed `script_core` consumer 配置、编译、运行通过；导入闭包只报告 `lux-engine-function-script_core` 与 `lux-cxx-compile_time`。
+- Debug、RelWithDebInfo、Android 安装前缀已同步公共头；三个 include tree 均不存在 `ScriptHost.hpp`。
+- NDK 28.2、`aarch64-none-linux-android28` 对 `ScriptRuntime.cpp` compile-only 通过。
+
+## 归零扫描
+
+- production/test/CMake 不存在 `ScriptHost`、`kInvalidModule` 或 `lastError()`。
+- `modules/function/script` production 不存在 `fprintf(stderr)`、`std::cerr` 或 `std::cout`。
+- `modules/function/script` 不 include/link Extension ABI。
+- `git diff --check` 通过。

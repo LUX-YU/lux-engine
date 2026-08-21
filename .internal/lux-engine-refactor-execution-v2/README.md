@@ -12,7 +12,8 @@
 **GAPI/Input 裁决代码基线：** `d7f364d0`
 **单体 Input 实施提交：** `08e3d590`
 **Script Runtime 裁决代码基线：** `de11c05c`
-**当前事实基线：** `de11c05c`
+**Script Runtime 实施提交：** `c792c816`
+**当前事实基线：** `c792c816`
 **文档日期：** 2026-08-21
 
 本套文档替代此前 v1.x 文档。新版以以下哲学为中心：
@@ -76,7 +77,8 @@ products= 最终入口与可执行程序
 `ADR-20260821_GAPI保留裁决.md` 取代 GAPI 并入 Render/删除 Platform owner 的旧目标；`ADR-20260821_单体Input子系统边界.md` 规定单一 Input target、完整领域所有权与配置期平台源选择。`08e3d590` 已完成 Input 施工；GAPI production 与安装接口保持不变。
 
 `ADR-20260821_ScriptRuntime契约与错误边界.md` 规定保留真实 Lua/Native backend 多态，删除
-`ScriptHost`、invalid handle/lastError 与 module 内裸函数指针，并把旧 UI 四 target 结构降为待重审候选。
+`ScriptHost`、invalid handle/lastError 与 module 内裸函数指针，并把旧 UI 四 target 结构降为待重审候选；
+`c792c816` 已完成代码、owner tests、installed consumer 与多 Profile 验收。
 
 ## 推荐阅读与施工顺序
 

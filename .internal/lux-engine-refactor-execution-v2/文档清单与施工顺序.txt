@@ -1,10 +1,11 @@
 LUX Engine 架构重构执行文档 v2.0
 原始代码基线: LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656
-最近完成提交: de11c05c (GAPI 保留与单体 Input 收尾)
+最近完成提交: c792c816 (ScriptRuntime 结构化契约实施)
 GAPI/Input 裁决代码基线: d7f364d0
 单体 Input 实施提交: 08e3d590
 Script Runtime 裁决代码基线: de11c05c
-当前事实基线: de11c05c
+Script Runtime 实施提交: c792c816
+当前事实基线: c792c816
 文档日期: 2026-08-21
 
 推荐阅读与施工顺序:
@@ -47,5 +48,7 @@ Script Runtime 裁决代码基线: de11c05c
 - Extension ABI 实施提交 c56efbc4
 - evidence/input-subsystem-cohesion-d7f364d0.md
 - 单体 Input 实施提交 08e3d590
+- evidence/script-runtime-contract-de11c05c.md
+- Script Runtime 实施提交 c792c816
 
 本版替代此前 v1.x 文档。

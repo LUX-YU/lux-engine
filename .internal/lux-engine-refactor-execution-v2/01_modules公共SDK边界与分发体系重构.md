@@ -18,6 +18,8 @@
 
 > **2026-08-21 裁决更新：** Provider/VFS 是 opaque bytes 存储面，Pak v2 的 reader/writer/inspector 都是公共 Asset SDK；Asset 源码按 texture/material/mesh/model/animation/shader/script/storage 领域内聚。冻结的 Engine 内置资产 ID 不属于 Modules。详见 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。
 
+> **2026-08-21 Profile 修订：** 不新增 `MODULES_SDK` Profile。公共 SDK 独立性通过现有四个 Profile 的安装结果和 installed consumers 验证；本文后续 `MODULES_SDK` 示例仅为历史提案，不再施工。Modules 聚合目录仍必须改为显式子目录列表。
+
 
 ## 1. 当前问题与施工目标
 

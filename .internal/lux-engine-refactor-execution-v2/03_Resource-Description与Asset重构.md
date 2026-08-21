@@ -18,6 +18,8 @@
 
 > **2026-08-21 裁决更新：** Asset 公共面按资产领域族组织，存储面收敛到 `asset/storage`；Pak v2 读、写和检查均属 Modules Asset SDK。`BuiltinAssetIds.hpp`、M_Missing 与演示色板迁入 `engine/content`。详见 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。
 
+> **2026-08-21 加载链裁决：** `AssetSerDeser` 是唯一具体 Codec 多态接口，Catalog 产出完整未注册 `LuxAsset`，AssetManager 只负责安装与账本；删除 Injector/decode 回调。AssetRef 不自动 IO。详见 `ADR-20260821_Asset运行期需求与SerDeser边界.md`。
+
 
 ## 1. 最终边界
 

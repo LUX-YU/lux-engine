@@ -18,6 +18,8 @@
 
 > **2026-08-21 裁决更新：** 新建的 `engine/content` 只拥有冻结内置资产 UUID、M_Missing 与色板，不是第二套资产系统。Runtime Render 在唯一装配点把 fallback material ID 注入 ECS Residency。Toolchain 只拥有 Pak cook/publish 策略，不访问 Resource 私有 Pak wire 实现。
 
+> **2026-08-21 加载裁决：** `engine/runtime/assets` 通过既有 `AssetLoadService` 编排 IO、manager-less SerDeser decode 与主线程安装。Runtime packs/Scene Script integration 直接表达需求；不得向 ECS 注入裸加载函数或在 tick 中调用同步 `ensureAsset()`。
+
 
 ## 1. 目标目录
 

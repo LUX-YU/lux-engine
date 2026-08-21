@@ -18,6 +18,8 @@
 
 > **2026-08-21 裁决更新：** ECS 不拥有、不包含 Engine 内置资产身份。Render Residency 的 fallback material ID 由 Engine Runtime 装配时注入；nil 明确表示不请求默认材质。
 
+> **2026-08-21 Registry/资产需求裁决：** Registry 原样归 ECS Core，Core Meta 不再链接 EnTT；`AssetLoadFn` 直接删除，不创建空泛 `ecs/assets integration`。Animation/Script 的资产请求由 Engine Runtime integration 显式使用 `AssetClient`，ECS 系统只消费 ready 数据。
+
 
 ## 1. 当前问题
 

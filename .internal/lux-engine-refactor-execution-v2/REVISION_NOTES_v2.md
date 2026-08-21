@@ -77,3 +77,11 @@
 - Extension ABI 单独 Engine SDK。
 - 488 项施工 Checklist。
 - 当前代码事实索引与 123 条迁移映射。
+
+## 2026-08-21 Asset Pipeline 与 Core Meta 裁决
+
+- `AssetSerDeser` 成为唯一具体 Codec 多态接口；Catalog 解码完整对象，LoadService 编排，Manager 安装并维护账本。
+- 删除 `AssetDataInjector`、`AssetLoadFn`、`ThumbnailLoadFn` 等退化回调；AssetRef 明确不触发 IO。
+- Animation/Script/Thumbnail 的运行期需求归 Engine Runtime/Editor service 装配，ECS 不执行同步 IO。
+- Registry、allocator 与 handles 归 ECS Core；Core Meta 删除 EnTT、LuxObject、EntityObject 与虚构反射根类。
+- `MODULES_SDK` Profile 提案废止，改用现有四个 Profile 的 installed consumers 验证公共包闭包。

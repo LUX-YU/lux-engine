@@ -1,10 +1,8 @@
 # LUX Engine 重构执行文档 v2 合订本
 
-基线：Asset 领域内聚施工基线 `f35e245a`
+基线：Asset Pipeline / Core Meta 施工基线 `fe4422ba`
 
-实施：`1364810c`（领域/owner/API）+ `e7348155`（wire/storage 契约）
-
-> 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明、现行 ADR 及本轮验收证据机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
+> 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明、现行 ADR 及既有验收证据机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
 
 ## 文件顺序
 
@@ -25,6 +23,8 @@
 - `REVISION_NOTES_v2.md`
 - `ADR-20260820_SceneAsset与Resource边界.md`
 - `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`
+- `ADR-20260821_Asset运行期需求与SerDeser边界.md`
+- `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`
 - `evidence/asset-domain-cohesion-f35e245a.md`
 
 ---
@@ -46,6 +46,8 @@
 > 本版以“`modules/` 是可独立分发的公共 SDK 边界”为首要前提。任何为消除依赖环而把 Engine、Scene、Editor 或 Extension 协议下沉到 `modules/` 的做法，均视为架构回归。
 
 > **2026-08-20 裁决更新：** `ADR-20260820_SceneAsset与Resource边界.md` 是资产与场景边界的现行 SSOT。`modules/resource/asset` 作为可复用 SDK 保留 `LuxAsset`、`AssetManager`、`TAssetSerDeser`、Catalog、Provider、VFS 与 Pak；不再创建 `AssetId`、`AssetTypeId`、`engine/assets` 或第二套 `AssetStore`。Engine Scene 作为既有资产机制上的 Engine-owned 类型存在。本文后续与该 ADR 冲突的 AssetStore/新 ID 示例均已被取代。
+
+> **2026-08-21 裁决更新：** 资产运行期只允许 `AssetClient -> AssetLoadService -> VFS -> Catalog -> SerDeser -> AssetManager`；AssetRef 不触发 IO。Core Meta 不拥有 EnTT、Registry 或 OO 标记根类，Registry 回归 ECS Core。详见 `ADR-20260821_Asset运行期需求与SerDeser边界.md` 与 `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`。
 
 > **2026-08-21 裁决更新：** `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 是 Asset 源码布局、Provider/VFS/Pak 存储边界与内置资产身份的现行 SSOT。Asset 按领域族组织；Pak 读写检查属公共 SDK；Engine 默认内容归 `engine/content`；ECS 通过装配参数接收 fallback ID。
 
@@ -587,6 +589,8 @@ add_library(lux::engine::resource::asset_core ALIAS lux_asset)
 
 > **2026-08-21 裁决更新：** Provider/VFS 是 opaque bytes 存储面，Pak v2 的 reader/writer/inspector 都是公共 Asset SDK；Asset 源码按 texture/material/mesh/model/animation/shader/script/storage 领域内聚。冻结的 Engine 内置资产 ID 不属于 Modules。详见 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。
 
+> **2026-08-21 Profile 修订：** 不新增 `MODULES_SDK` Profile。公共 SDK 独立性通过现有四个 Profile 的安装结果和 installed consumers 验证；本文后续 `MODULES_SDK` 示例仅为历史提案，不再施工。Modules 聚合目录仍必须改为显式子目录列表。
+
 
 ## 1. 当前问题与施工目标
 
@@ -1021,6 +1025,8 @@ Extension ABI 不属于公共 Asset/Core 版本；它由 `lux-engine-extension-s
 > 本版以“`modules/` 是可独立分发的公共 SDK 边界”为首要前提。任何为消除依赖环而把 Engine、Scene、Editor 或 Extension 协议下沉到 `modules/` 的做法，均视为架构回归。
 
 > **2026-08-20 关联裁决：** 本文 Core/Platform 目标不变。资产身份、Scene Asset 与场景 Payload 的现行边界见 `ADR-20260820_SceneAsset与Resource边界.md`；不得为该迁移把 Engine Scene 语义下沉到 Core。
+
+> **2026-08-21 裁决更新：** Core Meta 删除 EnTT、Registry、`LuxObject` 与 `EntityObject`；Registry allocator/handle/publication 合同原样归 `ecs/core`。反射类型由标注 record identity 决定，不再依赖 OO 根类。详见 `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`。
 
 
 ## 1. 施工范围
@@ -1593,6 +1599,8 @@ Level
 > **2026-08-20 裁决更新：** 本文原有“文件协议与 Engine AssetStore 分离”、新建 `AssetId/AssetTypeId`、把 Terrain/Tilemap/Physics3D 长期放在 Resource 的目标已由 `ADR-20260820_SceneAsset与Resource边界.md` 取代。现有 AssetManager/SerDeser/Catalog/VFS/Pak 是公共 SDK 的正式组成；Scene 是 Engine-owned Asset，三类场景 Payload 最终归对应 ECS 领域。
 
 > **2026-08-21 裁决更新：** Asset 公共面按资产领域族组织，存储面收敛到 `asset/storage`；Pak v2 读、写和检查均属 Modules Asset SDK。`BuiltinAssetIds.hpp`、M_Missing 与演示色板迁入 `engine/content`。详见 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。
+
+> **2026-08-21 加载链裁决：** `AssetSerDeser` 是唯一具体 Codec 多态接口，Catalog 产出完整未注册 `LuxAsset`，AssetManager 只负责安装与账本；删除 Injector/decode 回调。AssetRef 不自动 IO。详见 `ADR-20260821_Asset运行期需求与SerDeser边界.md`。
 
 
 ## 1. 最终边界
@@ -2809,6 +2817,8 @@ cmake/Codegen/ShaderParams.cmake
 
 > **2026-08-21 裁决更新：** ECS 不拥有、不包含 Engine 内置资产身份。Render Residency 的 fallback material ID 由 Engine Runtime 装配时注入；nil 明确表示不请求默认材质。
 
+> **2026-08-21 Registry/资产需求裁决：** Registry 原样归 ECS Core，Core Meta 不再链接 EnTT；`AssetLoadFn` 直接删除，不创建空泛 `ecs/assets integration`。Animation/Script 的资产请求由 Engine Runtime integration 显式使用 `AssetClient`，ECS 系统只消费 ready 数据。
+
 
 ## 1. 当前问题
 
@@ -3359,6 +3369,8 @@ Persistence Journal
 > **2026-08-20 裁决更新：** 不建立 `engine/assets` 或 `AssetStore`。`engine/runtime/assets` 保留为现有公共 `AssetManager` 的异步编排适配器；`engine/scene` 收敛成拥有 `SceneDescription`、`SceneAsset` 与 `SceneAssetSerDeser` 的单一组件，不拥有 IO、异步执行或 Registry 生命周期。本文后续与此冲突的目标目录和接口由 `ADR-20260820_SceneAsset与Resource边界.md` 取代。
 
 > **2026-08-21 裁决更新：** 新建的 `engine/content` 只拥有冻结内置资产 UUID、M_Missing 与色板，不是第二套资产系统。Runtime Render 在唯一装配点把 fallback material ID 注入 ECS Residency。Toolchain 只拥有 Pak cook/publish 策略，不访问 Resource 私有 Pak wire 实现。
+
+> **2026-08-21 加载裁决：** `engine/runtime/assets` 通过既有 `AssetLoadService` 编排 IO、manager-less SerDeser decode 与主线程安装。Runtime packs/Scene Script integration 直接表达需求；不得向 ECS 注入裸加载函数或在 tick 中调用同步 `ensureAsset()`。
 
 
 ## 1. 目标目录
@@ -5342,6 +5354,8 @@ lux_editor_product
 
 > **2026-08-21 裁决更新：** 本轮仅在现有 `lux::engine::resource::asset` target 内迁移领域头路径，不推进全局 M7。新增 `lux::engine::content` / `lux-engine-content` `content` component；旧 Asset `codecs/`、`pak/`、根部领域头与 Resource `BuiltinAssetIds.hpp` 不保留兼容层。
 
+> **2026-08-21 Profile 修订：** `LUX_BUILD_PROFILE` 仍只有 DEVELOPER/PLAYER/EDITOR/TOOLCHAIN；不创建文中历史 `MODULES_SDK` Profile。Modules 包边界改由 installed consumers 验证，旧 alias/forwarding 迁移要求由“一次迁移并删除旧 API”的现行规则取代。
+
 
 ## 1. 目标
 
@@ -5869,6 +5883,8 @@ legacy scan
 > 本版以“`modules/` 是可独立分发的公共 SDK 边界”为首要前提。任何为消除依赖环而把 Engine、Scene、Editor 或 Extension 协议下沉到 `modules/` 的做法，均视为架构回归。
 
 > **2026-08-20 验收更新：** AssetStore/新 Asset ID 测试目标不再施工。新增 Scene Asset outer-header/legacy LXSC、Catalog magic 冲突、显式 boot Scene、ECS 领域 Payload owner 与安装反向查找契约；内部 LXSC/LXES/LXTT/LXTC/LXPC Golden 必须保持不变。详见 `ADR-20260820_SceneAsset与Resource边界.md`。
+
+> **2026-08-21 验收更新：** 增加 manager-less 全资产 decode、同步/异步等价、shell 替换账本不变、Runtime 无同步 IO、Registry owner 与 Meta installed closure 契约。Modules 独立性不通过新增 Profile 验证，而通过现有安装包的独立 consumer 验证。
 
 
 ## 1. 总体策略
@@ -6480,13 +6496,13 @@ BUILD-03..FINAL
 
 > 按里程碑、目录、类型、CMake、测试与删除闸门列出的可勾选实施清单
 
-**执行文档 11 · 重构实施版 v2.12（Asset 领域内聚完成）**
+**执行文档 11 · 重构实施版 v2.13（Asset Pipeline / Core Meta 施工裁决）**
 
 | 项目 | 内容 |
 | --- | --- |
 | 原始代码基线 | `LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656` |
-| 当前实施分支 | `codex/asset-domain-cohesion` |
-| 当前实施 Head | Asset 领域内聚 `1364810c`；wire/storage 契约 `e7348155` |
+| 当前实施分支 | `codex/asset-pipeline-core-meta-boundary` |
+| 当前实施 Head | 施工基线 `fe4422ba`；代码尚未开始 |
 | 上游配套提交 | lux-cxx `91b9233713bb713adeb16acaf681a84dd36e4546`；lux-cmake-toolset `961c63eda82448b8108219461ba624ff016b2297` |
 | 最近维护者全量构建通过 | Windows x64 / MSVC / RelWithDebInfo，Asset 领域内聚至 `e7348155` |
 | 基线日期 | 2026-08-17 |
@@ -6497,6 +6513,8 @@ BUILD-03..FINAL
 > 本版以“`modules/` 是可独立分发的公共 SDK 边界”为首要前提。任何为消除依赖环而把 Engine、Scene、Editor 或 Extension 协议下沉到 `modules/` 的做法，均视为架构回归。
 
 > `ADR-20260820_SceneAsset与Resource边界.md` 已取代新建 `AssetId`、`AssetTypeId`、Engine `AssetStore` 和把场景 Payload 永久留在 Resource 的旧目标。被取代项保持未勾选并标记 `SUPERSEDED`，不伪装为已完成，也不再进入待施工统计。
+
+> `ADR-20260821_Asset运行期需求与SerDeser边界.md` 与 `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md` 已裁决本阶段目标。以下新增 `ASSETPIPE-*` 项在代码、测试、安装与文档全部完成前保持未勾选。
 
 ## 2026-08-20 施工状态更新
 
@@ -6547,7 +6565,7 @@ BUILD-03..FINAL
 - [ ] `GLOBAL-020` 每个永久例外写入 `architecture-exceptions.json` 并包含 owner、原因和复审日期。
 ## M0：公共 SDK 架构闸门
 
-- [ ] `SDK-001` 创建 `MODULES_SDK` Profile，完全跳过 `ecs/`、`engine/` 和 products。
+- [ ] `SDK-001` 创建 `MODULES_SDK` Profile，完全跳过 `ecs/`、`engine/` 和 products。 **SUPERSEDED：合法 Profile 仍只有 DEVELOPER/PLAYER/EDITOR/TOOLCHAIN；用 installed consumers 验证 Modules SDK。**
 - [ ] `SDK-002` 根 CMake 为 modules、ecs、engine、products 建立显式开关或 Profile 门控。
 - [ ] `SDK-003` 删除 modules 四个层级中的自动目录枚举。
 - [ ] `SDK-004` 显式列出 `modules/core` 的保留子目录。
@@ -6571,7 +6589,7 @@ BUILD-03..FINAL
 - [ ] `SDK-022` 记录当前 modules 递归依赖边基线。
 - [ ] `SDK-023` 把 A1–A8 决议写入仓库 ADR。
 - [ ] `SDK-024` 更新 README 的层级图与 modules 定义。
-- [ ] `SDK-025` 持续集成加入 `MODULES_SDK` configure/build/test job。
+- [ ] `SDK-025` 持续集成加入 `MODULES_SDK` configure/build/test job。 **SUPERSEDED：不增加第五 Profile；在现有 Profile 安装结果上运行独立 consumer。**
 ## M1：Core 清理
 
 - [x] `CORE-001` 在 `engine/extensions/api` 创建 Extension API target。证据：`engine/extensions/api/CMakeLists.txt`；外部构建树 `E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/engine/extensions/api/CMakeFiles/Export/*/lux-engine-extensions-extension_api-config-targets.cmake` 生成 `lux::engine::extensions::extension_api`，并暂时链接旧 `lux::engine::core::extension_abi`；RelWithDebInfo 全量构建通过，第二轮最终验证 `ninja: no work to do`。
@@ -6742,7 +6760,7 @@ BUILD-03..FINAL
 - [ ] `ECS-005` 从 ecs/core 删除 Asset Core dependency。 **未完成：`ecs/core` 仍依赖 legacy Asset Core。**
 - [x] `ECS-006` 从 ecs/core 删除 resource/entity_scene dependency。 **完成：`PersistentEntityIdComponent` 与 `PersistentEntityIndex` 使用 ECS-owned identity；`ecs/core` 的源码与安装期传递依赖均不再引用旧 Resource component，回归由 owner 编译契约与 CMake DAG 门禁防止。**
 - [x] `ECS-007` 从 ecs/core 删除 resource/spatial dependency。 **完成：ECS 使用 `lux::math` 值类型；Runtime Reflection 由 ECS-owned external reflection adapter/traits sidecar 提供，Core Math 保持纯值。**
-- [ ] `ECS-008` 把 AssetLoadFn 移入 ecs/assets integration。
+- [ ] `ECS-008` 把 AssetLoadFn 移入 ecs/assets integration。 **REVISED：删除 AssetLoadFn；异步资产需求归 Engine Runtime integration，不创建空泛 ECS integration target。**
 - [x] `ECS-009` 确认 Schedule 仍唯一拥有 `unique_ptr<ISystem>`。 **完成（审计保持）：`Schedule` 仍唯一拥有 `std::unique_ptr<ISystem>`。**
 - [x] `ECS-010` 确认 SystemHandle generation 语义未变。 **完成（审计保持）：System handle 的 owner/generation 语义未被本轮改动破坏。**
 - [x] `ECS-011` 确认 topology/prerequisite tests 未变。 **完成（审计保持）：拓扑、prerequisite 与 phase 编译路径未改变。**
@@ -7250,6 +7268,23 @@ BUILD-03..FINAL
 - [x] `ASSETCOHESION-011` Asset/Engine Content public-link 与 installed consumers 通过，旧头/类型/私有跨界全仓归零。
 - [x] `ASSETCOHESION-012` DEVELOPER/PLAYER/EDITOR/TOOLCHAIN RelWithDebInfo 全量构建、owner tests 和第二轮 no-op 验收完成。
 
+## 本轮施工追踪（Asset Pipeline、Runtime Demand 与 Core Meta）
+
+> 以 `ADR-20260821_Asset运行期需求与SerDeser边界.md`、`ADR-20260821_CoreMeta纯化与ECSRegistry归位.md` 为 SSOT。本节只登记目标，不提前记录完成。
+
+- [ ] `ASSETPIPE-001` Catalog 通过 manager-less SerDeser decode 完整、未注册 LuxAsset，删除 descriptor injector/decode 回调。
+- [ ] `ASSETPIPE-002` AssetManager 建立 shell-safe `installLoadedAsset()`，保持 AssetRef 账本、revision 与事件语义。
+- [ ] `ASSETPIPE-003` AssetLoadService 与同步 ensure 统一为 decodeAsset + installLoadedAsset，并保持 dedup/retry/ABA/close。
+- [ ] `ASSETPIPE-004` Script、Shader、Model、Scene 与全部标准 descriptor manager-less decode 完整内容。
+- [ ] `ASSETPIPE-005` LuxAsset 脱离 LuxObject，删除 untyped rawData/data API，Asset target 不再依赖 Core Meta。
+- [ ] `ASSETPIPE-006` Animation Resolver 归 Runtime packs，删除 ECS `AssetLoadFn` 与同步 test loader。
+- [ ] `ASSETPIPE-007` Runtime Script request system 使用 AssetClient，ECS ScriptSystem 不执行同步 IO。
+- [ ] `ASSETPIPE-008` Thumbnail provider 只报告缺失依赖，ThumbnailService 统一去重请求。
+- [ ] `ASSETPIPE-009` Registry、allocator 与 handles 原样迁入 ECS Core，旧 Meta API/头归零。
+- [ ] `ASSETPIPE-010` Core Meta/Serialization 安装闭包不含 EnTT，反射生成不依赖 LuxObject/EntityObject。
+- [ ] `ASSETPIPE-011` Core/Platform/Function/Resource 聚合目录使用显式列表，Description 删除未使用 Extension ABI 依赖。
+- [ ] `ASSETPIPE-012` owner tests、installed consumers、四 Profile 全量/no-op 构建与旧符号扫描全部通过。
+
 ## 统计
 
 本清单共 **508** 个稳定编号施工项；当前已完成 **97** 项、有效待完成或部分完成 **391** 项，另有 **20** 项被 ADR-20260820 明确取代且不再施工。
@@ -7387,6 +7422,11 @@ BUILD-03..FINAL
 | RenderEffects | Render domain catalog | MOVE/RENAME | Render | 06 |
 | engine/runtime/scene/core | engine/runtime/scene/core | KEEP — Scene Runtime 生命周期不进入 Scene Codec component | Runtime Scene | ADR |
 | SceneRuntime | SceneRuntime | DONE/KEEP — 消费 typed SceneAsset 并持有 AssetRef | Runtime Scene | ADR |
+| AssetCodecDescriptor decode / AssetDataInjector | `AssetCodecCatalog::decodeAsset` + manager-less SerDeser | DELETE/REPLACE — PENDING | Asset | ADR-20260821-Pipeline |
+| `AssetLoadFn` / `syncTestLoader` | Engine Runtime pack `AssetClient` demand | DELETE/MOVE — PENDING | Runtime | 05/06/ADR-20260821-Pipeline |
+| `ThumbnailLoadFn` | `ThumbnailSpec` missing dependency IDs + ThumbnailService request | DELETE/REPLACE — PENDING | Editor | 08/ADR-20260821-Pipeline |
+| `lux::meta::EntityRegistry` / handles | `lux::ecs::Registry` / handles | MOVE/RENAME — PENDING | ECS Core | 02/05/ADR-20260821-Meta |
+| `LuxObject` / `EntityObject` | DELETE | DELETE — PENDING | Core Meta | 02/ADR-20260821-Meta |
 | SceneContributionDescriptor | FeatureDescriptor | RENAME | Scene | 06 |
 | SceneContributionHost | Features | RENAME/INTERNALIZE | Scene | 06 |
 | SceneScriptRuntime | Script Feature + game::Session | SPLIT/DELETE | Scene/Game | 06 |
@@ -7509,6 +7549,8 @@ status=PENDING → legacy report 允许但不能增长
 
 > **2026-08-21 当前事实：** Asset 已按领域族与 storage 组织；`BuiltinAssetIds.hpp` 已迁至 `engine/content`；Toolchain 只调用公共 Pak API；Provider/VFS 可读取 opaque records，但只有 AssetManager/AssetRef 参与驻留引用账本。
 
+> **2026-08-21 待施工事实：** 当前 Catalog/LoadService 仍存在 `AssetDataInjector` 双轨，ECS Animation/Script 仍有退化加载入口，Core Meta 仍拥有 EnTT Registry 与 OO 根类。两份 2026-08-21 Pipeline/Meta ADR 已接受，但在代码完成前不得把这些目标写成当前事实。
+
 
 ## 使用说明
 
@@ -7575,6 +7617,10 @@ status=PENDING → legacy report 允许但不能增长
 | `engine/runtime/CMakeLists.txt` | execution/assets/extensions/entity_scene/scene/render/packs/frame 聚合 | 06 |
 | `engine/runtime/execution` | AsyncRuntime/Builder/Scope/MainThreadMailbox | 06 |
 | `engine/runtime/assets` | 现有 AssetManager 的异步 AssetLoadService/SceneAssetServices；通过组合 Catalog 加载 SceneAsset，不建立 engine/assets | 06/ADR |
+| `modules/resource/asset/.../AssetCodecCatalog.hpp` | 当前 descriptor 仍有 decode/injector 双轨；目标为 manager-less SerDeser `decodeAsset()` | 03/06/ADR-20260821-Pipeline |
+| `ecs/core/.../systems/AssetLoadFn.hpp` | 当前供 Animation Resolver 注入裸加载函数；目标为删除并由 Runtime pack 使用 AssetClient | 05/06/ADR-20260821-Pipeline |
+| `ecs/script/.../ScriptSystem.cpp` | 当前 tick 内仍可能同步 ensure；目标为 Runtime request system + ECS ready-only consumer | 05/06/ADR-20260821-Pipeline |
+| `engine/editor/.../thumbnail` | 当前 provider 接收 ThumbnailLoadFn；目标为纯依赖报告 + Service 请求 | 08/ADR-20260821-Pipeline |
 | `engine/runtime/extensions/contribution_host/.../RuntimeContributionRegistrar.hpp` | components/scene/render/async 四 registrar + draft | 06 |
 | `engine/runtime/extensions/loader/.../ExtensionModuleManager.hpp` | 动态库 Extension loader | 06 |
 | `engine/runtime/scene/core/.../SceneRuntime.hpp` | World+Schedule+Services owner 与 close；消费 typed SceneAsset 并持有 AssetRef | 06/ADR |
@@ -7714,6 +7760,14 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 - Extension ABI 单独 Engine SDK。
 - 488 项施工 Checklist。
 - 当前代码事实索引与 123 条迁移映射。
+
+## 2026-08-21 Asset Pipeline 与 Core Meta 裁决
+
+- `AssetSerDeser` 成为唯一具体 Codec 多态接口；Catalog 解码完整对象，LoadService 编排，Manager 安装并维护账本。
+- 删除 `AssetDataInjector`、`AssetLoadFn`、`ThumbnailLoadFn` 等退化回调；AssetRef 明确不触发 IO。
+- Animation/Script/Thumbnail 的运行期需求归 Engine Runtime/Editor service 装配，ECS 不执行同步 IO。
+- Registry、allocator 与 handles 归 ECS Core；Core Meta 删除 EnTT、LuxObject、EntityObject 与虚构反射根类。
+- `MODULES_SDK` Profile 提案废止，改用现有四个 Profile 的 installed consumers 验证公共包闭包。
 
 ---
 
@@ -8028,6 +8082,158 @@ component `asset` 保持不变。Engine Content target 为 `lux::engine::content
 
 本轮不创建第二套 AssetStore、Provider、AssetId 或 AssetTypeId；不推进 M0、全局 M7
 命名迁移、Scene/Registry/Editor 架构重写或 Extension ABI；不改变任何 wire/schema。
+
+---
+
+# ADR：Asset 运行期需求与 SerDeser 边界
+
+**状态：** Accepted / Implementation Pending
+
+**日期：** 2026-08-21
+
+**代码施工基线：** `fe4422ba`
+
+**关联裁决：** `ADR-20260820_SceneAsset与Resource边界.md`、`ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`
+
+## 1. 问题
+
+当前完整 `.luxasset` 已由各领域 `*SerDeser` 解析，但运行期异步加载又在
+`AssetCodecDescriptor` 中维护 `decode`/`AssetDataInjector` 回调。Animation、Script 和
+Editor Thumbnail 还分别注入 `AssetLoadFn`、同步 `ensureAsset()` 或 `ThumbnailLoadFn`。
+同一件事因此存在“SerDeser 构造完整对象”和“裸数据回调填充 shell”两条链，类型、辅助
+payload、错误与生命周期语义容易漂移。
+
+## 2. 唯一加载链
+
+运行期只保留以下链路：
+
+```text
+AssetClient
+  -> AssetLoadService
+  -> AssetVfs::open
+  -> AssetCodecCatalog::decodeAsset
+  -> concrete AssetSerDeser::parseLuxAssetMemory
+  -> complete, unregistered LuxAsset
+  -> AssetManager::installLoadedAsset
+```
+
+职责固定为：
+
+- `AssetSerDeser/TAssetSerDeser` 是唯一具体 Codec 多态接口，只做 bounded、无副作用的纯解析；
+- `AssetCodecCatalog` 只按 type、magic 与 C++ identity 选择 descriptor 并创建 manager-less
+  SerDeser；
+- `AssetLoadService` 负责编排阻塞 IO、后台解码、主线程安装、去重、retry/backoff、ABA 与 close；
+- `AssetManager` 负责对象安装、AssetRef 账本、revision、事件与驱逐；
+- `AssetRef` 只是稳定的驻留票据和 ID，不隐式触发 IO。
+
+删除 descriptor 的 `AssetDataDecodeFn`、`AssetDataInjector` 和 `decode` 字段。Shell factory
+只用于启动期轻量身份注册与 legacy Scene shell，不参与真实内容解码。
+
+## 3. 安装语义
+
+`AssetManager::installLoadedAsset(expected_id, decoded)` 在主线程安全点执行：
+
+- 拒绝 null、nil/mismatched ID、type mismatch；
+- 资产不存在时注册完整对象并保持 `on_registered`；
+- data-less shell 原位替换为完整对象，不增加 content revision，不发送 content-changed；
+- 已有完整对象时丢弃重复完成并返回现有对象；
+- AssetRef 计数、revision 与异步 ABA 观察值不因 shell 替换而变化。
+
+对象地址和 typed data 指针只保证使用到下一次 AssetManager 主线程 mutation/sync point；
+跨帧身份必须使用 AssetRef/ID。热更新继续只走 `replaceAsset()`。
+
+## 4. Runtime demand
+
+ECS 不拥有加载编排，也不在 tick 中执行同步 IO：
+
+- Flipbook/Skeletal Resolver 归 Engine Runtime presentation/animation pack，直接使用现有
+  `AssetManager + AssetClient`；
+- Script 的请求系统归 Engine Runtime Scene Script integration；ECS `ScriptSystem` 只消费
+  已就绪资产；
+- Thumbnail provider 只返回纯 `ThumbnailSpec` 与缺失依赖 ID，`ThumbnailService` 统一去重请求；
+- 删除 `AssetLoadFn`、`ThumbnailLoadFn` 和 `syncTestLoader()`。
+
+`ensureAsset()` 继续作为 Editor、Toolchain 和测试的显式同步 API，但 production ECS/Runtime
+不得调用。Runtime pack 缺少 `SceneAssetServices` 时必须明确装配失败。
+
+## 5. 完整对象合同
+
+所有 manager-less decode 必须产生完整 owning `LuxAsset`：Script 保留 description、主 payload
+与 auxiliary payload；Shader 保留 `ShaderInfo` 与 SPIR-V；Model 的运行期 manifest 即使没有
+authoring node tree 也视为内容已就绪；Scene legacy LXSC 仍通过同一 descriptor 读取。
+
+`LuxAsset` 成为独立多态基类，不继承 `LuxObject`。删除公开 `void* rawData()` 与模板
+`LuxAsset::data<T>()`；只有具体 `TAsset<T>::data()` 暴露 typed pointer。
+
+## 6. 兼容与非目标
+
+AssetFileHeader v1/v2、各资产 wire、Scene legacy LXSC、Pak v2、magic、UUID 和 schema version
+均不得改变。不增加 Loader 接口、第二套 AssetManager/Profile，也不让 AssetRef 自动加载。
+
+`MODULES_SDK` 不是合法 Profile；Modules 边界由 installed consumers 在现有四个 Profile 的
+安装结果上验证。
+
+---
+
+# ADR：Core Meta 纯化与 ECS Registry 归位
+
+**状态：** Accepted / Implementation Pending
+
+**日期：** 2026-08-21
+
+**代码施工基线：** `fe4422ba`
+
+## 1. 问题
+
+`modules/core/meta/LuxObject.hpp` 同时包含 `LuxObject`、`EntityObject`、EnTT entity、Registry、
+handle 与 allocator owner。结果是 Core Meta 和依赖它的 Serialization 安装闭包携带 EnTT，
+而 Asset 只为继承一个空泛根类又依赖 Meta。这违背 `modules` 中 Core 不理解 ECS 运行时的
+边界，也让反射生成器依赖虚构 OO 根类判断 record 是否可反射。
+
+## 2. Registry owner
+
+Registry 是 ECS 基础设施，统一归 `ecs/core`：
+
+```cpp
+lux::ecs::Entity
+lux::ecs::kNullEntity
+lux::ecs::RegistryBase
+lux::ecs::Registry
+lux::ecs::EntityHandle
+lux::ecs::ConstEntityHandle
+```
+
+allocator、publication reservation/admission、snapshot、no-grow 与 handle 行为原样迁移。
+删除 `lux::meta::EntityRegistry`、`entity_id`、`null_entity` 及旧头，不提供 alias、shim 或
+forwarding header。ECS Core 建立自身 visibility API，并去掉仅由 `AssetLoadFn` 引入的
+Resource Asset PUBLIC 依赖。
+
+## 3. Core Meta contract
+
+Core Meta 只拥有通用反射描述、查询和生成模型：
+
+- 不 include、find 或 link EnTT；
+- 不拥有 Registry、`LuxObject` 或 `EntityObject`；
+- `LUX_CLASS/LUX_COMPONENT` 标注 record 直接是反射类型；
+- 字段、参数和返回值通过生成模型中的 reflected-record identity 建立 `RefClass`；
+- external 非侵入类型继续使用 `is_reflected_value_v<T>`；
+- parent chain 只包含实际标注的反射基类，不注入虚构根类。
+
+Core Serialization 可继续 PUBLIC 使用通用 `RefClass/RefField`，但 installed closure 不再查找
+EnTT。Asset 删除 Core Meta 依赖，Core Serialization 仅作为 Asset PRIVATE 实现依赖。
+
+## 4. CMake 与验收边界
+
+`modules/core`、`modules/platform`、`modules/function` 和 `modules/resource` 使用明确子目录列表，
+不再自动枚举 production target。`description` 删除未使用的 Extension ABI 依赖。
+
+验收至少包括：Registry allocator/publication/no-grow 回归；Schedule/Hierarchy/DeferredCommands/
+PersistentEntity/Scene loading 回归；普通类、继承、字段/参数/返回值、external value 与 Lua
+sidecar 反射；Core Meta/Serialization installed consumer 不获得 EnTT，ECS Core consumer 不
+获得 Resource Asset，Asset consumer 不获得 Core Meta。
+
+本 ADR 不推进 M0、M7、Extension ABI、VFS/Platform 迁移、Registry 产品级重写或 Scene Runtime
+重写。
 
 ---
 

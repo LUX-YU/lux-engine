@@ -2,7 +2,7 @@
 
 **代码基线：** `LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656`
 **Scene Asset 实施提交：** `36ce56c634f1e03959910fc1761ec62b2fb4671e`
-**当前施工基线：** `f35e245a1e493c388722a41711f1a3ecd1df2acb`
+**当前施工基线：** `fe4422ba`
 **Asset 领域内聚实施提交：** `1364810c`；wire/storage 契约提交：`e7348155`
 **文档日期：** 2026-08-21
 
@@ -25,6 +25,8 @@ products= 最终入口与可执行程序
 - Engine-owned Scene 复用公共资产机制；场景 Payload 由对应 ECS 领域拥有。
 - Asset 按领域族内聚；Provider/VFS/Pak 是 opaque bytes 存储面，Pak 读写检查属公共 SDK。
 - 冻结的 Engine 内置资产身份归 `engine/content`，ECS fallback 由 Engine Runtime 装配注入。
+- 资产加载统一为 SerDeser 纯解析、AssetLoadService 编排、AssetManager 安装；AssetRef 不隐式 IO。
+- Core Meta 不拥有 EnTT/Registry/LuxObject；Registry 与 allocator/handles 归 ECS Core。
 - 先纯化公共 Modules 和 ECS 依赖方向，再实施 Game/Editor 重构。
 
 ## 文档目录
@@ -42,15 +44,17 @@ products= 最终入口与可执行程序
 | 08 | Editor | Workspace、Workbench、Documents、Panels、Flow/Material/Script/Preview | 08_Editor-Workspace-Workbench-Documents-Panels重构.md |
 | 09 | CMake 与 SDK | Target、Namespace、Package、Compatibility、Profile | 09_CMake-命名空间-SDK包与兼容迁移.md |
 | 10 | 测试与验收 | 持续集成、Sanitizer、Golden、故障注入、PR 路线 | 10_测试-CI-PR路线与验收.md |
-| 11 | 施工 Checklist | 625 个可勾选施工项 | 11_详细施工Checklist_已更新_20260819_b1a25d3.md |
-| 12 | 迁移映射总表 | 127 条当前→目标映射 | 12_迁移映射总表.md |
-| 13 | 当前代码事实索引 | 69 个关键文件锚点 | 13_当前代码事实索引.md |
+| 11 | 施工 Checklist | 649 个可勾选施工项 | 11_详细施工Checklist_已更新_20260819_b1a25d3.md |
+| 12 | 迁移映射总表 | 148 条当前→目标映射 | 12_迁移映射总表.md |
+| 13 | 当前代码事实索引 | 78 个关键文件锚点 | 13_当前代码事实索引.md |
 
 补充 ADR：`ADR-20260820_SceneAsset与Resource边界.md`。它取代旧文档中关于
 `AssetId`、`AssetTypeId`、`engine/assets/AssetStore` 与 Resource 场景 Payload 最终归属的目标；
 冲突内容只保留为历史设计记录，不再作为施工要求。
 
 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 进一步裁决 Asset 目录、Storage/Pak 公共边界、Engine Content owner 与 ECS fallback 注入；该裁决已由 `1364810c`、`e7348155` 实施并验收。
+
+`ADR-20260821_Asset运行期需求与SerDeser边界.md` 与 `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md` 裁决当前待施工的唯一加载链、Runtime demand、Registry owner 与纯 Meta 合同。
 
 ## 推荐阅读与施工顺序
 
@@ -76,11 +80,11 @@ products= 最终入口与可执行程序
 
 ## 最先执行的五个 Pull Request
 
-1. 增加 `MODULES_SDK` Profile 与公共依赖闸门。
-2. 停止 modules 子目录自动枚举。
-3. 将 `extension_abi` 从 Core 安装闭包中隔离，建立 Engine Extension API 新目标。
-4. 解散 `platform/common`，把依赖改为精确目标。
-5. 将 `resource/spatial` 的纯值迁入 Math。
+1. 停止 modules 聚合目录自动枚举，并用 installed consumers 验证公共闭包。
+2. 统一 Catalog/SerDeser/LoadService/Manager 资产加载链。
+3. 把 Animation/Script 的加载需求归 Runtime integration，删除裸回调与 Runtime 同步 IO。
+4. 将 Registry 归 ECS Core，删除 Core Meta 的 EnTT 与 OO 根类。
+5. 用四个现有 Profile 全量构建、安装 consumer 与 Golden 契约验收。
 
 这五步先建立防回归边界，不立即改产品行为。
 
@@ -92,6 +96,8 @@ products= 最终入口与可执行程序
 - `13_当前代码事实索引.md`：固定提交上的代码锚点。
 - `ADR-20260820_SceneAsset与Resource边界.md`：Scene Asset 与公共 Resource 的现行裁决。
 - `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`：Asset 领域内聚、Pak 和 Engine Content 的现行裁决。
+- `ADR-20260821_Asset运行期需求与SerDeser边界.md`：SerDeser、加载编排、Manager 安装与 Runtime demand 的现行裁决。
+- `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`：Registry owner 与 Core Meta/Reflection 的现行裁决。
 - `evidence/asset-domain-cohesion-f35e245a.md`：本轮基线公共面、12 组 wire 指纹与验收结论。
 - `SHA256SUMS.txt`：校验值。
 - `manifest.json`：机器可读文件清单。

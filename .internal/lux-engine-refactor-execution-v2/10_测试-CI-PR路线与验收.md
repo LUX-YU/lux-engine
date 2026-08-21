@@ -16,6 +16,8 @@
 
 > **2026-08-20 验收更新：** AssetStore/新 Asset ID 测试目标不再施工。新增 Scene Asset outer-header/legacy LXSC、Catalog magic 冲突、显式 boot Scene、ECS 领域 Payload owner 与安装反向查找契约；内部 LXSC/LXES/LXTT/LXTC/LXPC Golden 必须保持不变。详见 `ADR-20260820_SceneAsset与Resource边界.md`。
 
+> **2026-08-21 验收更新：** 增加 manager-less 全资产 decode、同步/异步等价、shell 替换账本不变、Runtime 无同步 IO、Registry owner 与 Meta installed closure 契约。Modules 独立性不通过新增 Profile 验证，而通过现有安装包的独立 consumer 验证。
+
 
 ## 1. 总体策略
 

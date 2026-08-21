@@ -16,6 +16,8 @@
 
 > **2026-08-20 关联裁决：** 本文 Core/Platform 目标不变。资产身份、Scene Asset 与场景 Payload 的现行边界见 `ADR-20260820_SceneAsset与Resource边界.md`；不得为该迁移把 Engine Scene 语义下沉到 Core。
 
+> **2026-08-21 裁决更新：** Core Meta 删除 EnTT、Registry、`LuxObject` 与 `EntityObject`；Registry allocator/handle/publication 合同原样归 `ecs/core`。反射类型由标注 record identity 决定，不再依赖 OO 根类。详见 `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`。
+
 
 ## 1. 施工范围
 

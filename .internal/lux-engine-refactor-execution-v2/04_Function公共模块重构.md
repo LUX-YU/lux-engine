@@ -1,5 +1,7 @@
 # Function 公共模块重构
 
+> **2026-08-21 依赖裁决：** Function Animation 只消费 Description 中的 Skeleton/AnimationClip 值与 Core Math，不应通过 Resource Asset 获得这些类型。本轮将删除该陈旧 PUBLIC Asset 依赖，不改变采样 API 或 wire。
+
 > 纯化 Render、Input、Animation、Navigation、Script 与 UI 的公共闭包，使其真正可脱离 ECS 和 Engine 使用
 
 **执行文档 04 · 重构实施版 v2.0**

@@ -22,6 +22,8 @@
 
 > **2026-08-21 实施状态：** Registry/资产需求裁决已完成。ECS Core installed consumer 不导入 Resource Asset；Animation Resolver 与 Script request system 均由 Runtime integration 私有拥有，ECS production 不执行同步资产 IO。
 
+> **2026-08-21 Component Archive 裁决：** Reflection-driven tagged-property archive 整体归 `ecs/serialization` 的 `component_archive` component；Core 只保留 byte Archive/NameTable。不建立 RegistryArchive，Unknown Component schema 在 Authoring/Toolchain/Runtime 均拒绝。详见 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`。
+
 
 ## 1. 当前问题
 
@@ -397,7 +399,7 @@ StartupSectionSystem
 | 当前类型 | 目标 |
 | --- | --- |
 | `EntityBatchDecoder` | `ecs/scene_format/SectionDecoder` |
-| `EntityBatchMaterializer` | `ecs/serialization/SectionMaterializer` |
+| `EntityBatchMaterializer` | SUPERSEDED：纯 LXES image + Runtime `EntityBatchStager` 已提供 staged materialization |
 | `EntityBatchStager` | `engine/scene/loading/SectionStager` |
 | `EntitySceneCatalog` | `engine/scene/package/PackageCatalog` |
 | `EntitySectionGeneratorCatalog` | `engine/scene/loading/SectionGeneratorCatalog` |
@@ -480,12 +482,11 @@ resource::spatial
 
 ```text
 lux::ecs::core
-lux::ecs::serialization
+lux::engine::ecs::component_archive
 lux::ecs::scene_format
-lux::ecs::assets_integration
 ```
 
-只有前三个可作为基础 ECS SDK； Asset Integration 是否安装取决于是否仍保持 Engine-neutral。
+`component_archive` 与 `scene_format` 可独立安装；不创建空泛 Asset Integration 或 RegistryArchive component。
 
 ## 13. 格式迁移
 

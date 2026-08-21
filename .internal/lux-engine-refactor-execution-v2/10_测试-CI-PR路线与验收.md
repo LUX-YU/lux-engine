@@ -212,6 +212,10 @@ entity section decode/materialize
 unknown component skip/reject policy
 ```
 
+现行策略由 Component Archive ADR 固定：未知字段只在已知 Component 的 compatible
+Authoring payload 中跳过；未知 Component schema 在 Authoring、Toolchain 与 Runtime
+一律拒绝，Cooked LXES 使用 exact field contract。
+
 ### 5.2 AssetStore
 
 ```text

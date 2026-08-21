@@ -42,7 +42,7 @@
 | `modules/core/events` | 保留 | `lux::events` | 清理对 Host/AsyncRuntime 的说明；API 只表达延迟事实分发 |
 | `modules/core/log` | 保留 | `lux::log` | Sink 接口保持可注入；Engine 异步 Sink 留在 Engine |
 | `modules/core/math` | 保留并扩充 | `lux::math` | 吸收 `resource/spatial` 的纯值类型 |
-| `modules/core/serialization` | 拆分 | `lux::serialization` | 保留 Archive/NameTable；反射与 ECS Adapter 上移 |
+| `modules/core/serialization` | 拆分 | `lux::serialization` | 只保留 Archive/NameTable/Byte primitives；反射 Component Archive 上移 `ecs/serialization` |
 | `modules/core/meta` | 拆除聚合边界 | `lux-cxx::reflection_runtime` + `ecs` + `engine/reflection` | EntityRegistry 与 Extension Sidecar 语义移出 |
 | `modules/core/extension_abi` | 搬迁 | `engine/extensions/api` | 作为单独 Engine Extension SDK，而非公共 Core |
 | `modules/platform/common` | 删除 | 分别迁移 | AtomicWait/Format/Size2D/ImageEnums 各归其领域 |

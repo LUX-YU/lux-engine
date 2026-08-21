@@ -48,6 +48,7 @@ target_link_libraries(app PRIVATE
 | `lux::engine::core::log` | `lux::log` | `lux-core` |
 | `lux::engine::core::math` | `lux::math` | `lux-core` |
 | `lux::engine::core::serialization` | `lux::serialization` | `lux-core` |
+| `lux::engine::ecs::component_archive` | `lux::ecs::serialization` | `lux-engine-ecs` |
 | `lux::engine::core::meta` | 删除；使用 `lux::cxx::reflection_runtime`/ECS adapter | 不再独立公共包 |
 | `lux::engine::core::extension_abi` | `lux::engine::extensions_api` | `lux-engine-extension-sdk` |
 | `lux::engine::platform::common` | 删除 | — |

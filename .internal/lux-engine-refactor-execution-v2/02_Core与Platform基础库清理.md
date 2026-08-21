@@ -51,7 +51,7 @@ modules/platform/window
 | `modules/core/meta/include/lux/engine/meta/LuxObject.hpp` | `ecs/core/include/lux/ecs/EntityRegistry.hpp` and optional `EntityObject.hpp` | SPLIT |
 | `modules/core/meta/include/lux/engine/meta/Meta*.hpp` | `lux-cxx::reflection_runtime` or temporary `engine/reflection` | SPLIT |
 | `modules/core/meta/cmake/engine_add_meta.cmake` | `cmake/Codegen/Reflection.cmake` | MOVE |
-| `modules/core/serialization/src/TaggedPropertyArchive.cpp` | base tagged archive remains; reflection adapter to `ecs/serialization` | SPLIT |
+| `modules/core/serialization/src/TaggedPropertyArchive.cpp` | entire reflected Component Archive to `ecs/serialization`; Core retains Archive/NameTable | MOVE/DELETE |
 | `modules/resource/spatial/include/.../Spatial.hpp` | `modules/core/math/include/lux/math/Position.hpp` and `Grid.hpp` | MOVE |
 | `modules/platform/common/include/.../AtomicWait.hpp` | `lux-cxx::concurrent` or `modules/core/concurrency` | MOVE |
 | `modules/platform/common/FormatCompat.h.in` | `lux-cxx::format` or `modules/core/format` | MOVE |
@@ -79,7 +79,7 @@ EditorContributionRegistrar
 
 ### 3.2 目标目录
 
-CREATE：
+CREATE（2026-08-21 ADR 修订后）：
 
 ```text
 engine/extensions/api/
@@ -298,22 +298,17 @@ CREATE：
 ```text
 ecs/serialization/
     ComponentArchive.hpp/.cpp
-    RegistryArchive.hpp/.cpp
 
 engine/serialization/
     ExtensionSchemaMigration.hpp/.cpp
 ```
 
-`TaggedPropertyArchive` 若依赖 `RefClass/RefField`，拆为：
+`TaggedPropertyArchive` 依赖 `RefClass/RefField`，整体归入 ECS Component Archive；Core 不再保留 tagged wire facade：
 
 ```cpp
-// modules/core/serialization
-class TaggedWriter;
-class TaggedReader;
-
-// ecs/serialization 或 reflection adapter
-expected<void, Error>
-writeReflected(TaggedWriter&, const ReflectionType&, const void*);
+// ecs/serialization
+ComponentArchiveResult<void>
+TaggedPropertyWriter::writeObject(const RefClass&, const void*);
 ```
 
 ### 5.3 CMake 修改
@@ -335,7 +330,10 @@ lux::engine::core::meta
 Eigen3::Eigen（若仅个别 Adapter 使用）
 ```
 
-Eigen Codec 放到 `math_serialization` 私有 Adapter 或模板头。
+Eigen leaf Codec 是 ECS Component Archive 的 PRIVATE 实现依赖。
+
+`RegistryArchive` 提案被 `EntitySectionImage -> EntityBatchStager -> Registry` 边界取代；
+Core/ECS 均不建立 `entt::registry` 文件镜像。
 
 ## 6. Math 吸收 Spatial 值
 

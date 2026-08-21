@@ -1,5 +1,12 @@
 # v2 相对 v1 的架构修订说明
 
+## 2026-08-21：Core Serialization 与 ECS Component Archive
+
+- Core Serialization 收敛为 Archive/NameTable/Byte primitives，移除 Reflection/Eigen 公共闭包。
+- reflected tagged-property archive 整体归 ECS `component_archive`；不创建 RegistryArchive。
+- tag 48 保持 wire ordinal，源码语义从 AssetRef 改为 UUID；资产引用只由显式 `asset_type=` annotation 表达。
+- Unknown Component schema 在 Authoring/Toolchain/Runtime 拒绝；已知 Component 的 compatible reader 仍可跳过未知字段。
+
 ## 2026-08-21：Asset 领域内聚、Pak 公共边界与 Engine Content
 
 - 接受 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。

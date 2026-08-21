@@ -5,6 +5,7 @@
 **当前施工基线：** `fe4422ba`
 **Asset 领域内聚实施提交：** `1364810c`；wire/storage 契约提交：`e7348155`
 **Asset Pipeline/Core Meta 实施提交：** `ed5fb7eb`
+**当前 Serialization 施工基线：** `6906ccc2`
 **文档日期：** 2026-08-21
 
 本套文档替代此前 v1.x 文档。新版以以下哲学为中心：
@@ -28,6 +29,7 @@ products= 最终入口与可执行程序
 - 冻结的 Engine 内置资产身份归 `engine/content`，ECS fallback 由 Engine Runtime 装配注入。
 - 资产加载统一为 SerDeser 纯解析、AssetLoadService 编排、AssetManager 安装；AssetRef 不隐式 IO。
 - Core Meta 不拥有 EnTT/Registry/LuxObject；Registry 与 allocator/handles 归 ECS Core。
+- Core Serialization 只保留 Archive/NameTable；反射 Component Archive 归 ECS，Registry 不形成文件镜像。
 - 先纯化公共 Modules 和 ECS 依赖方向，再实施 Game/Editor 重构。
 
 ## 文档目录
@@ -56,6 +58,8 @@ products= 最终入口与可执行程序
 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 进一步裁决 Asset 目录、Storage/Pak 公共边界、Engine Content owner 与 ECS fallback 注入；该裁决已由 `1364810c`、`e7348155` 实施并验收。
 
 `ADR-20260821_Asset运行期需求与SerDeser边界.md` 与 `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md` 裁决的唯一加载链、Runtime demand、Registry owner 与纯 Meta 合同已在当前分支实施并完成 owner/installed consumer/四 Profile 验收。
+
+`ADR-20260821_CoreSerialization与ECSComponentArchive边界.md` 裁决 Core/ECS 序列化边界、详细错误合同、UUID/资产 annotation 语义以及 Unknown Component 拒绝策略；代码施工由 `ECSSER-*` 跟踪。
 
 ## 推荐阅读与施工顺序
 
@@ -99,6 +103,7 @@ products= 最终入口与可执行程序
 - `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`：Asset 领域内聚、Pak 和 Engine Content 的现行裁决。
 - `ADR-20260821_Asset运行期需求与SerDeser边界.md`：SerDeser、加载编排、Manager 安装与 Runtime demand 的现行裁决。
 - `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`：Registry owner 与 Core Meta/Reflection 的现行裁决。
+- `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`：Core byte archive 与 ECS Component Archive 的现行裁决。
 - `evidence/asset-domain-cohesion-f35e245a.md`：本轮基线公共面、12 组 wire 指纹与验收结论。
 - `evidence/asset-pipeline-core-meta-fe4422ba.md`：统一加载链、Runtime demand、Registry/Meta 边界与安装闭包验收。
 - `SHA256SUMS.txt`：校验值。

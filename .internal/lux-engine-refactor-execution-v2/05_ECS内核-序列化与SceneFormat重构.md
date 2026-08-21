@@ -22,6 +22,10 @@
 
 > **2026-08-21 实施状态：** Registry/资产需求裁决已完成。ECS Core installed consumer 不导入 Resource Asset；Animation Resolver 与 Script request system 均由 Runtime integration 私有拥有，ECS production 不执行同步资产 IO。
 
+> **2026-08-21 Script 直接调用裁决：** ScriptSystem 的事件热路径只消费绑定好的
+> `{lux_script_invoke_fn, context}`。名称、签名、ABI 和语言 backend 选择全部在实例
+> 绑定期完成；C++ Behavior 不再是多态基类，Native/C++ 不安装 SEH 恢复层。
+
 > **2026-08-21 Component Archive 裁决：** Reflection-driven tagged-property archive 整体归 `ecs/serialization` 的 `component_archive` component；Core 只保留 byte Archive/NameTable。不建立 RegistryArchive，Unknown Component schema 在 Authoring/Toolchain/Runtime 均拒绝。详见 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`。
 
 > **2026-08-21 Component Archive 实施状态：** `d1ead288` 已建立详细 expected/limits、compatible/exact reader 与 UUID annotation 语义；LXWA/LXES/Persistence/L3SC/Infinite2D owner 契约和 installed consumer 均通过。

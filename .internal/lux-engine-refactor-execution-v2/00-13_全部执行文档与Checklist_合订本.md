@@ -1,6 +1,6 @@
 # LUX Engine 重构执行文档 v2 合订本
 
-基线：Script Runtime 实施提交 `c792c816`
+基线：Script Direct 裁决代码基线 `db8ed375`
 
 > 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明、现行 ADR 及既有验收证据机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
 
@@ -30,6 +30,7 @@
 - `ADR-20260821_GAPI保留裁决.md`
 - `ADR-20260821_单体Input子系统边界.md`
 - `ADR-20260821_ScriptRuntime契约与错误边界.md`
+- `ADR-20260821_ScriptAsset会话驻留与直接调用.md`
 - `evidence/asset-domain-cohesion-f35e245a.md`
 - `evidence/asset-pipeline-core-meta-fe4422ba.md`
 - `evidence/core-serialization-ecs-component-archive-6906ccc2.md`
@@ -2602,44 +2603,26 @@ lux::navigation_detour3d
 
 ECS Navigation Region、Agent Component 与 System 留在 `ecs/navigation`。
 
-## 6. Script 词汇与边界
+## 6. Script ABI、具体 Module 与直接调用
 
-### 6.1 `ScriptModule` 保留
+### 6.1 删除通用 ScriptRuntime dispatcher
 
-这是语言 Runtime 加载单元，与 Engine Extension 无关。
+`ScriptRuntime`、`ScriptFunctionHandle`、`ScriptFunction`、`IScriptModule` 把冷路径
+加载与热路径调用错误地捆绑在一起。按
+`ADR-20260821_ScriptAsset会话驻留与直接调用.md`，这一通用 dispatcher 删除，不保留
+handle、alias 或 forwarding header。
 
-### 6.2 `ScriptHost → ScriptRuntime`
+`script_core` 只拥有 Script ABI、value/signature view、非空 `CallFrame` 便利层和加载/
+绑定阶段的结构化错误。`script_native` 公开一个具体 move-only `NativeModule`，
+它拥有 `DynamicLibrary`并在绑定期暴露 `lux_script_function_desc`。
 
-当前对象实际负责 Backend 注册、Module 加载、Function Lookup 与 Invoke，符合 Runtime 语义。
+### 6.2 调用是绑定后的函数指针
 
-RENAME：
+ECS/Engine 绑定 ScriptEvent 时完成函数名解析、ABI 校验和精确签名匹配，并保存
+`{lux_script_invoke_fn, void* context}`。调用期间不再进入 Function 层的 Runtime、虚接口、
+锁、hash/string lookup、`shared_ptr` 或 `expected`。
 
-```text
-ScriptHost.hpp/.cpp → ScriptRuntime.hpp/.cpp
-ScriptHostImpl      → ScriptRuntime::State
-```
-
-目标：
-
-```cpp
-class ScriptRuntime final
-{
-public:
-    ScriptResult<void> registerBackend(std::unique_ptr<IScriptBackend>);
-    ScriptResult<ModuleHandle> loadModule(...);
-    ScriptResult<ScriptFunctionHandle> findFunction(...);
-    ScriptResult<void> invoke(const ScriptFunctionHandle&, CallFrame&);
-    ScriptResult<void> unloadModule(ModuleHandle);
-};
-```
-
-按 `ADR-20260821_ScriptRuntime契约与错误边界.md`，Runtime、Backend 与 Function 使用同一组
-`EScriptError`、`ScriptFailure`、`ScriptResult<T>`。改掉返回 `kInvalidModule`、`nullptr`、
-`bool` 与 `lastError()` 的隐式错误通道。Function handle 不得保存 module 内部裸指针，卸载后
-调用必须稳定返回 `STALE_HANDLE`。
-
-Backend 多态对应 Lua、Native 等真实语言执行实现，应当保留；不为它增加 Adapter、第二套
-Runtime 或全局注册表。Script 库只返回结构化错误，不直接输出终端文字。
+Lua/Native backend 的多态只存在播放会话绑定冷路径；不得进入每实例每帧调用。
 
 ### 6.3 Native Script 与 Engine Extension 分开
 
@@ -2816,6 +2799,10 @@ cmake/Codegen/ShaderParams.cmake
 > **2026-08-21 Registry/资产需求裁决：** Registry 原样归 ECS Core，Core Meta 不再链接 EnTT；`AssetLoadFn` 直接删除，不创建空泛 `ecs/assets integration`。Animation/Script 的资产请求由 Engine Runtime integration 显式使用 `AssetClient`，ECS 系统只消费 ready 数据。
 
 > **2026-08-21 实施状态：** Registry/资产需求裁决已完成。ECS Core installed consumer 不导入 Resource Asset；Animation Resolver 与 Script request system 均由 Runtime integration 私有拥有，ECS production 不执行同步资产 IO。
+
+> **2026-08-21 Script 直接调用裁决：** ScriptSystem 的事件热路径只消费绑定好的
+> `{lux_script_invoke_fn, context}`。名称、签名、ABI 和语言 backend 选择全部在实例
+> 绑定期完成；C++ Behavior 不再是多态基类，Native/C++ 不安装 SEH 恢复层。
 
 > **2026-08-21 Component Archive 裁决：** Reflection-driven tagged-property archive 整体归 `ecs/serialization` 的 `component_archive` component；Core 只保留 byte Archive/NameTable。不建立 RegistryArchive，Unknown Component schema 在 Authoring/Toolchain/Runtime 均拒绝。详见 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`。
 
@@ -6038,10 +6025,12 @@ EditorAsyncService
 
 ## 4. L1：公共模块单元测试
 
-Script Runtime owner tests 必须覆盖 Lua/Native 的 file/memory load、function lookup、invoke、unload，
-并覆盖 duplicate/unknown backend、坏扩展、坏 ABI/入口、backend invoke failure 与 stale function handle。
-Script 公共库不得通过 `stderr` 或 thread-local `lastError()` 输出诊断；installed `script_core`
-consumer 不获得 Lua、DynamicLibrary 或 Extension ABI。
+Script owner tests 必须覆盖 Lua/Native 的 file/memory load、冷路径 descriptor/function 解析、
+播放会话驻留与 stop 后统一 reset。Native/C++/Lua 必须在绑定期完成精确事件 ABI 校验，
+成功事件循环只保留一次最终 `lux_script_invoke_fn` 间接调用；不得包含锁、字符串或哈希查找、
+`shared_ptr`、`expected`、虚调用、动态分配或 stale/revision 检查。installed `script_core`
+consumer 不获得 Lua、DynamicLibrary 或 Extension ABI；installed `script_native` consumer 直接
+使用 `NativeModule` load/find/invoke 契约。库不得向 `stderr` 输出诊断。
 
 ### 4.1 Core
 
@@ -6771,7 +6760,7 @@ BUILD-03..FINAL
 - [x] `FUNC-008` 让 navigation 依赖 Math 而非 resource/spatial。 **完成：Navigation Core 与 Detour3D 直接 include/link Core Math，安装传递依赖不再查找 Resource spatial。**
 - [x] `FUNC-009` 保留 navigation_detour3d 独立 backend。 **现有独立 target/component、PRIVATE Recast/Detour 依赖与 owner test 已按事实验收。**
 - [x] `FUNC-010` 将 `ScriptHost` 重命名为 `ScriptRuntime`。 **完成：旧头/源码/类型归零，不保留 alias 或 forwarding header。**
-- [x] `FUNC-011` 把 invalid handle + lastError 改为 expected。 **完成：Runtime、Backend、Function 统一返回 `ScriptResult<T>`；卸载后句柄返回 `STALE_HANDLE`。**
+- [x] `FUNC-011` 把 invalid handle + lastError 改为 expected。 **历史完成：`c792c816` 曾统一为 `ScriptResult<T>`；其中 invoke-time Runtime handle 模型后由直接分派 ADR 取代。**
 - [x] `FUNC-012` 保持 ScriptModule 术语仅用于脚本。 **完成：ScriptModule 仅表示语言 Runtime 加载单元，未与 Engine Extension ABI 混用。**
 - [x] `FUNC-013` 确认 script_native 不 include Extension ABI。 **完成：源码、target 与 installed `script_core` consumer 闭包均无 Extension ABI。**
 - [ ] `FUNC-014` 拆 UI core 与 ImGui integration。 **PENDING ADR：先按真实 owner 重审，不机械拆 target。**
@@ -6782,7 +6771,22 @@ BUILD-03..FINAL
 - [ ] `FUNC-019` 将 `UISystem` 重命名为 `UI`。
 - [ ] `FUNC-020` 移动 SceneViewportPanel 到 Editor。
 - [ ] `FUNC-021` 补充 UI core 无图形 backend 测试。
-- [x] `FUNC-022` 补充 Script Lua/Native load/invoke/unload tests。 **完成：覆盖 file/memory、坏 ABI/入口/绑定、invoke failure、unload/stale、并发 invoke 生命周期与 FlowForge AOT。**
+- [x] `FUNC-022` 补充 Script Lua/Native load/invoke/unload tests。 **历史完成：`c792c816` 覆盖旧 Runtime 合同；后续由 SCRIPTDIRECT 契约替换 handle/stale 部分。**
+
+### Script Asset 会话驻留与直接分派（二次施工）
+
+- [ ] `SCRIPTDIRECT-001` 删除 ScriptRuntime、FunctionHandle、通用 Module/Function 虚调用层和 forwarding surface。
+- [ ] `SCRIPTDIRECT-002` 建立 move-only NativeModule，加载期完成 ABI、host binding、函数表与重复名称校验。
+- [ ] `SCRIPTDIRECT-003` 以两个指针的 BoundScriptCall 统一 Native、Lua 与 C++ Behavior 绑定结果。
+- [ ] `SCRIPTDIRECT-004` ScriptEvent 绑定要求参数 count/kind/size/type ID 精确一致，拒绝前缀兼容。
+- [ ] `SCRIPTDIRECT-005` ScriptSystem 每事件只构造一次 ABI frame，成功订阅循环只执行一次最终间接调用。
+- [ ] `SCRIPTDIRECT-006` 将订阅结构修改、稳定删除与压缩移出 dispatch 热循环并接入 DeferredCommands barrier。
+- [ ] `SCRIPTDIRECT-007` C++ ScriptBehavior 去除 virtual/vptr，使用 requires 生成 noexcept ABI thunk。
+- [ ] `SCRIPTDIRECT-008` Lua/Native backend 与派生代码缓存归 SceneScriptRuntime 播放会话所有。
+- [ ] `SCRIPTDIRECT-009` stop 按实例销毁、AssetRef 释放、系统移除、backend reset 的固定顺序清理会话。
+- [ ] `SCRIPTDIRECT-010` 删除 ScriptCrashGuard 与 Windows SEH 恢复承诺，Native 非零返回转结构化宿主诊断。
+- [ ] `SCRIPTDIRECT-011` 增加直接函数指针基线 benchmark、反汇编和零分配热路径证据。
+- [ ] `SCRIPTDIRECT-012` 设计 AssetManager GC/root、logical invalidation 与 physical destruction。 **独立后续项，本轮不得提前勾选。**
 ## M3：ECS Kernel 与 Scene Format
 
 - [x] `ECS-001` 将 Entity Registry 真实 owner 改为 ecs/core。 **完成：实现、allocator、handles、snapshot/publication 契约均归 ECS Core。**
@@ -7450,7 +7454,7 @@ BUILD-03..FINAL
 | `lux::window` normalized input / `captureInputSnapshot()` | `lux::input::{PhysicalInput,InputSnapshot,Input}` + Window raw event batch | DONE — MOVE/DELETE OLD OWNER；枚举 ordinal 与帧语义保持 | Window/Input | 02/04/ADR-20260821-Input |
 | function::animation → asset | function::animation → Description + Core Math | DONE — REMOVE ASSET DEPENDENCY；installed consumer 不查找 Asset | Animation/Description | 04/10/ADR-20260821-Serialization |
 | function::navigation → resource::spatial | function::navigation → math | DONE — DEPENDENCY FIX；安装闭包不再查找 Resource spatial | Navigation | 04 |
-| ScriptHost | ScriptRuntime + `ScriptResult<T>` + runtime-validated function handle | DONE — `c792c816`；无 shim/lastError/库内 stderr，Native ABI 不变 | Script | 04/ADR |
+| ScriptHost / ScriptRuntime / ScriptFunctionHandle | `NativeModule` load-time API + ECS `BoundScriptCall` | IN PROGRESS — Runtime handle 方案由会话驻留与直接 ABI 分派 ADR 取代；Native ABI 不变 | Script | 04/05/ADR-20260821-ScriptDirect |
 | modules/function/ui | UI domain + render/platform ownership pending ADR | REVIEW — 不按旧四 target/Adapter 方案机械拆分 | UI | 04 |
 | UISystem | UI | RENAME | UI | 04/08 |
 | SceneViewportPanel | engine/editor/viewport/SceneViewport | MOVE | Editor | 04/08 |
@@ -7595,7 +7599,7 @@ status=PENDING → legacy report 允许但不能增长
 
 | 项目 | 内容 |
 | --- | --- |
-| 代码基线 | 原始索引 `09b2a82582550bcbe03afeef77d2591e1656a656`；Pipeline/Core Meta `ed5fb7eb`；Component Archive `d1ead288`；Extension ABI `c56efbc4`；单体 Input `08e3d590` |
+| 代码基线 | 原始索引 `09b2a82582550bcbe03afeef77d2591e1656a656`；Pipeline/Core Meta `ed5fb7eb`；Component Archive `d1ead288`；Extension ABI `c56efbc4`；单体 Input `08e3d590`；Script Direct 基线 `db8ed375` |
 | 基线日期 | 2026-08-19 |
 | 文档更新 | 2026-08-21 |
 | 适用对象 | 实施者、代码评审者、迁移脚本维护者 |
@@ -7612,6 +7616,8 @@ status=PENDING → legacy report 允许但不能增长
 > **2026-08-21 当前事实：** Core Serialization 只含 Archive/NameTable，安装闭包不含 Meta/Eigen。Reflected tagged archive 已归 ECS `component_archive`；tag 48 为 UUID，只有显式 `asset_type=` annotation 表达资产引用。不创建 RegistryArchive。
 
 > **2026-08-21 Extension ABI 当前事实：** `engine/extensions/api` 是 v4 实体与独立安装 component 的唯一 owner；`modules/core/extension_abi` 与通用 `ContributionId` 已删除。ABI v4 namespace/layout/ordinal/fingerprint、ABI-facing registrar 名称和三个 symbol string 保持不变。Authoring 保持 source DTO，并在 Toolchain/Editor 边界显式转换。
+
+> **2026-08-21 Script Direct 裁决：** ScriptAsset 仍由公共 AssetManager/AssetRef 表达身份和需求；Native/Lua 派生代码改为播放会话驻留，ScriptRuntime handle/stale 模型待删除。全部查找和签名验证归冷绑定路径，ECS 热事件面收敛为 `{lux_script_invoke_fn, context}`。
 
 > **2026-08-21 Input 当前事实：** `lux::input::Input` 拥有 Snapshot、Mapper、Mapper 内唯一 Registry 与 ContextStack；单一 target 配置期选择 GLFW/Android 私有源。Window 只提供 raw event batch，Input 的公开链接接口不传播 Window/GLFW；GAPI 保持原公共 owner。
 
@@ -7678,7 +7684,7 @@ status=PENDING → legacy report 允许但不能增长
 | `modules/function/input/CMakeLists.txt` | 唯一 Input target；配置期选择 GLFW/Android 私有 `InputPlatform.cpp`；PUBLIC 仅 `lux-cxx::container`，不传播 Window/GLFW | 04/ADR-20260821-Input |
 | `modules/function/input/.../{Input,InputSnapshot,PhysicalInput}.hpp` | normalized physical input、帧快照与完整 Input 所有权对象；支持 Window sample 与 synthetic evaluate | 04/ADR-20260821-Input |
 | `engine/hosts/game_application/.../GameApplication.hpp`、Player、Editor | 宿主统一持有一个 Input；无第二份 Registry，脚本 action name lookup 与 Mapper state 同源 | 04/07/08/ADR-20260821-Input |
-| `modules/function/script/core/.../{ScriptRuntime,ScriptResult}.hpp` | 唯一语言 Runtime dispatcher；Backend/Function 统一 structured expected，函数句柄保存 module + owning name 并在 invoke 时重解析，unload 后明确 stale | 04/ADR-20260821-ScriptRuntime |
+| `modules/function/script/core`、`modules/function/script/native` | ScriptRuntime/FunctionHandle 待由 concrete NativeModule load-time API 取代；script_core 只保留 ABI/Signature/CallFrame/结构化加载错误 | 04/ADR-20260821-ScriptDirect |
 | `modules/function/navigation/detour3d/CMakeLists.txt` | 独立 navigation_detour3d target/component；Recast/Detour PRIVATE，具有 owner test | 04 / FUNC-009 DONE |
 | `modules/function/ui/CMakeLists.txt` | 基础 UI PUBLIC ImGui GLFW/Vulkan，包含 SceneViewportPanel | 04/08 |
 | `ecs/CMakeLists.txt` | ECS 层定义与领域目标列表 | 05 |
@@ -7688,7 +7694,7 @@ status=PENDING → legacy report 允许但不能增长
 | `engine/runtime/assets` | AssetLoadService 执行 VFS open → Catalog decode → Manager install，保持 dedup/retry/backoff/ABA/close；不建立第二套资产系统 | 06/ADR-20260821-Pipeline |
 | `modules/resource/asset/.../AssetCodecCatalog.hpp` | `decodeAsset()` 通过 descriptor factory 与 manager-less SerDeser 返回完整 owning `LuxAsset`；无 injector/decode 回调 | 03/06/ADR-20260821-Pipeline |
 | `engine/runtime/packs/scene2d`、`scene3d` | 私有 Animation Resolver 使用 AssetClient 请求并在每帧重查 typed Asset；ECS Animation 只保留纯采样 | 05/06/ADR-20260821-Pipeline |
-| `ecs/script/.../ScriptSystem.cpp` + `engine/runtime/scene/script` | ECS ScriptSystem 只消费 ready ScriptAsset；Runtime request system 负责异步需求并先于 ScriptSystem 运行 | 05/06/ADR-20260821-Pipeline |
+| `ecs/script/.../ScriptSystem.cpp` + `engine/runtime/scene/script` | ScriptSystem 只消费 ready ScriptAsset；本轮将调用面收敛为 BoundScriptCall，并由 SceneScriptRuntime 独占 Lua/Native 播放会话缓存 | 05/06/ADR-20260821-ScriptDirect |
 | `engine/editor/.../thumbnail` | Provider 只构造含缺失依赖 ID 的 ThumbnailSpec；ThumbnailService 去重并通过 AssetClient 请求 | 08/ADR-20260821-Pipeline |
 | `engine/runtime/extensions/contribution_host/.../RuntimeContributionRegistrar.hpp` | components/scene/render/async 四 registrar + draft | 06 |
 | `engine/runtime/extensions/loader/.../ExtensionModuleManager.hpp` | 动态库 Extension loader | 06 |
@@ -7752,7 +7758,15 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 
 # v2 相对 v1 的架构修订说明
 
-## 2026-08-21：ScriptRuntime 契约裁决
+## 2026-08-21：Script Asset 会话驻留与直接调用
+
+- `ScriptRuntime` stale-handle 模型被新 ADR 取代；旧施工记录保留但不再是现行目标。
+- Script 执行代码按 `SceneScriptRuntime` 播放会话驻留，会话内不因 AssetRef 归零或最后实例销毁而卸载。
+- 函数查找与精确 ABI 签名校验归绑定冷路径；Native/C++ 事件热路径只调用一次最终函数指针。
+- C++ Behavior 改为非多态基类；Native/C++ 视为可信任进程内代码，删除 Windows SEH CrashGuard。
+- AssetRef/GC/显式回收是独立后续设计，本轮不修改全局 AssetManager 语义。
+
+## 2026-08-21：ScriptRuntime 契约历史裁决
 
 - 以 `de11c05c` 为代码基线，`63aaf270` 先提交裁决，`c792c816` 完成代码施工。
 - 保留 Lua/Native 真实 backend 多态，不增加 Adapter 或第二套 Runtime；`ScriptHost` 已无 shim 地替换为 `ScriptRuntime`。
@@ -8628,7 +8642,10 @@ Window 只采集 OS/window backend 的原始 key、mouse、scroll 与 text 事�
 
 ## 状态
 
-已接受并由 `c792c816` 完成代码施工与验收。
+历史施工已由 `c792c816` 完成；其 Runtime-validated handle、invoke-time lookup
+与 stale-handle 调用模型已被
+`ADR-20260821_ScriptAsset会话驻留与直接调用.md` 取代。本文仅保留为历史决策和验收记录，
+不再是当前施工目标。
 
 ## 背景
 
@@ -8675,6 +8692,70 @@ UI 必须在独立 ADR 中按领域所有权重新调查；不得把 GLFW/Vulkan
 - module 卸载后旧 function handle 明确返回 `STALE_HANDLE`，不访问释放内存。
 - Script 库没有 `stderr`、`lastError()`、`ScriptHost` 或公开 `kInvalidModule`。
 - installed `script_core` consumer 不获得 Lua、DynamicLibrary 或 Extension ABI。
+
+---
+
+# ADR-20260821：Script Asset 会话驻留与直接调用
+
+## 状态
+
+已接受，等待代码施工。本 ADR 取代
+`ADR-20260821_ScriptRuntime契约与错误边界.md` 中的 Runtime-validated handle、
+invoke-time module lookup 与 stale-handle 调用模型；旧 ADR 作为历史施工记录保留。
+
+## 背景
+
+Script 在 Engine 中是 `ScriptAsset`，已由 `AssetManager` 与 `AssetRef` 表达身份和
+驻留需求。当前 Native 事件调用却依次经过 event thunk、两层锁、module/function
+哈希查找、`shared_ptr`、虚调用与 `expected`，最后才进入
+`lux_script_invoke_fn`。这些工作属于加载和绑定边界，不应每实例每帧重复。
+
+`AssetRef` 当前仍是 UUID 驻留需求票据，不是稳定资产对象指针或 GC root。
+全局 Asset 回收、logical invalidation 与 physical destruction 需要独立设计，
+不在本阶段通过 Script 私有 lease 或 handle 抢先裁决。
+
+## 裁决
+
+1. `ScriptAsset` 是唯一内容身份；`AssetRef` 继续表达 ScriptComponent 的驻留需求。
+2. Lua chunk 和 Native dynamic module 是一次播放会话的派生执行数据。首次绑定后
+   驻留到 `SceneScriptRuntime::stop()`，不因 AssetRef 归零或最后实例销毁而卸载。
+3. 会话内容是快照：同一 asset id 一旦加载，当前会话继续使用该版本；
+   内容变更或删除在下一次会话生效。
+4. 名称查找、ABI/manifest 校验、签名匹配、Lua handle 解析和 C++ 类型检测
+   只在加载/绑定冷路径执行。
+5. 绑定结果是 `{lux_script_invoke_fn, void* context}` 两个指针的纯数据记录。
+   ECS 事件热路径直接调用最终函数指针。
+6. ScriptEvent 签名必须精确匹配参数数量、kind、size、type id 与顺序；
+   不保留参数前缀兼容。
+7. `ScriptRuntime`、`ScriptFunctionHandle`、`ScriptFunction`、`IScriptModule`
+   与通用 Backend/Module 虚调用层删除。Function Script 只保留 ABI、value/signature
+   与具体 move-only `NativeModule` 加载 API。
+8. C++ Behavior 基类不再多态；注册模板使用 `requires` 检测 `noexcept`
+   生命周期函数并生成直接 ABI thunk。
+9. Native/C++ AOT 是可信任进程内代码。删除 Windows SEH CrashGuard；真正不可信
+   代码使用 Lua，未来可选 WASM 或进程隔离。
+10. `LUX_SCRIPT_ABI_VERSION=1`、C struct 布局、ScriptAsset Schema v2 和全部 wire 不变。
+
+## 会话所有权
+
+进程全局 `ScriptRegistry` 只保留 C++ Behavior 静态注册。Lua/Native backend 由
+`SceneScriptRuntime` 显式拥有，虚接口只用于 bind/beginFrame/resetSession 冷路径。
+停止顺序固定为：停止派发 → OnDestroy → 销毁实例 → 释放 AssetRef →
+移除 ScriptSystem → reset backend 会话缓存。
+
+## 性能契约
+
+- `BoundScriptCall` 在 64 位平台固定为 16 bytes 且 trivially-copyable。
+- bulk event 的 value slots 与 call frame 每个 event 只构造一次。
+- 成功热循环每 subscriber 只读取两个指针、写 `user_context`、调用一次
+  最终函数指针并检查整数返回码。
+- 调用期间不得出现 mutex、hash/string lookup、`shared_ptr`、`expected`、
+  虚调用、分配或 stale/revision 检查。
+
+## 后续项
+
+独立设计 AssetManager 的显式回收、GC/root、logical invalidation 与 physical destruction。
+该项不以引用归零即卸载为默认结论，也不在本 Script 施工中提前完成。
 
 ---
 

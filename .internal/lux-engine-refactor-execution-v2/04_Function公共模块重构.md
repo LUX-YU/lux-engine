@@ -350,44 +350,26 @@ lux::navigation_detour3d
 
 ECS Navigation Region、Agent Component 与 System 留在 `ecs/navigation`。
 
-## 6. Script 词汇与边界
+## 6. Script ABI、具体 Module 与直接调用
 
-### 6.1 `ScriptModule` 保留
+### 6.1 删除通用 ScriptRuntime dispatcher
 
-这是语言 Runtime 加载单元，与 Engine Extension 无关。
+`ScriptRuntime`、`ScriptFunctionHandle`、`ScriptFunction`、`IScriptModule` 把冷路径
+加载与热路径调用错误地捆绑在一起。按
+`ADR-20260821_ScriptAsset会话驻留与直接调用.md`，这一通用 dispatcher 删除，不保留
+handle、alias 或 forwarding header。
 
-### 6.2 `ScriptHost → ScriptRuntime`
+`script_core` 只拥有 Script ABI、value/signature view、非空 `CallFrame` 便利层和加载/
+绑定阶段的结构化错误。`script_native` 公开一个具体 move-only `NativeModule`，
+它拥有 `DynamicLibrary`并在绑定期暴露 `lux_script_function_desc`。
 
-当前对象实际负责 Backend 注册、Module 加载、Function Lookup 与 Invoke，符合 Runtime 语义。
+### 6.2 调用是绑定后的函数指针
 
-RENAME：
+ECS/Engine 绑定 ScriptEvent 时完成函数名解析、ABI 校验和精确签名匹配，并保存
+`{lux_script_invoke_fn, void* context}`。调用期间不再进入 Function 层的 Runtime、虚接口、
+锁、hash/string lookup、`shared_ptr` 或 `expected`。
 
-```text
-ScriptHost.hpp/.cpp → ScriptRuntime.hpp/.cpp
-ScriptHostImpl      → ScriptRuntime::State
-```
-
-目标：
-
-```cpp
-class ScriptRuntime final
-{
-public:
-    ScriptResult<void> registerBackend(std::unique_ptr<IScriptBackend>);
-    ScriptResult<ModuleHandle> loadModule(...);
-    ScriptResult<ScriptFunctionHandle> findFunction(...);
-    ScriptResult<void> invoke(const ScriptFunctionHandle&, CallFrame&);
-    ScriptResult<void> unloadModule(ModuleHandle);
-};
-```
-
-按 `ADR-20260821_ScriptRuntime契约与错误边界.md`，Runtime、Backend 与 Function 使用同一组
-`EScriptError`、`ScriptFailure`、`ScriptResult<T>`。改掉返回 `kInvalidModule`、`nullptr`、
-`bool` 与 `lastError()` 的隐式错误通道。Function handle 不得保存 module 内部裸指针，卸载后
-调用必须稳定返回 `STALE_HANDLE`。
-
-Backend 多态对应 Lua、Native 等真实语言执行实现，应当保留；不为它增加 Adapter、第二套
-Runtime 或全局注册表。Script 库只返回结构化错误，不直接输出终端文字。
+Lua/Native backend 的多态只存在播放会话绑定冷路径；不得进入每实例每帧调用。
 
 ### 6.3 Native Script 与 Engine Extension 分开
 

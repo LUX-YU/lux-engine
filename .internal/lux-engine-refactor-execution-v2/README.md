@@ -13,7 +13,8 @@
 **单体 Input 实施提交：** `08e3d590`
 **Script Runtime 裁决代码基线：** `de11c05c`
 **Script Runtime 实施提交：** `c792c816`
-**当前事实基线：** `c792c816`
+**Script 直接分派代码基线：** `db8ed375`
+**当前事实基线：** `db8ed375`
 **文档日期：** 2026-08-21
 
 本套文档替代此前 v1.x 文档。新版以以下哲学为中心：
@@ -40,7 +41,7 @@ products= 最终入口与可执行程序
 - Core Serialization 只保留 Archive/NameTable；反射 Component Archive 归 ECS，Registry 不形成文件镜像。
 - Extension ABI v4 的真实 owner 是 `engine/extensions/api`；Core 不安装 Extension API，ABI-facing 名称与布局在 v4 内冻结。
 - GAPI 保持公共 Platform Vulkan SDK；Input 已收敛为一个 target 与一个完整领域对象，平台采集由配置期私有源选择。
-- Script backend 多态只承载真实语言实现；Runtime/Backend/Function 统一返回结构化 expected，库不拥有诊断出口。
+- Script Asset 的执行代码按播放会话驻留；语言多态只留在冷绑定路径，ECS 事件热路径直接调用最终 ABI 函数指针。
 - 先纯化公共 Modules 和 ECS 依赖方向，再实施 Game/Editor 重构。
 
 ## 文档目录
@@ -79,6 +80,10 @@ products= 最终入口与可执行程序
 `ADR-20260821_ScriptRuntime契约与错误边界.md` 规定保留真实 Lua/Native backend 多态，删除
 `ScriptHost`、invalid handle/lastError 与 module 内裸函数指针，并把旧 UI 四 target 结构降为待重审候选；
 `c792c816` 已完成代码、owner tests、installed consumer 与多 Profile 验收。
+
+`ADR-20260821_ScriptAsset会话驻留与直接调用.md` 取代上述 ADR 的 invoke-time handle
+模型：AssetRef 继续表达需求，Lua/Native 派生代码按播放会话驻留；全部 ABI、签名和名称解析
+移到绑定期，Native/C++ 热路径只执行一个最终函数指针调用。本 ADR 当前等待代码施工。
 
 ## 推荐阅读与施工顺序
 
@@ -127,6 +132,7 @@ products= 最终入口与可执行程序
 - `ADR-20260821_GAPI保留裁决.md`：保留 Platform GAPI 公共 SDK，取代并入 Render/删除 owner 的旧目标。
 - `ADR-20260821_单体Input子系统边界.md`：单一 Input target、完整 Input 领域对象与编译期平台实现。
 - `ADR-20260821_ScriptRuntime契约与错误边界.md`：ScriptRuntime、结构化错误、安全句柄与 UI 后续重审边界。
+- `ADR-20260821_ScriptAsset会话驻留与直接调用.md`：取代 Runtime handle 的会话驻留、冷绑定和直接 ABI 分派裁决。
 - `evidence/asset-domain-cohesion-f35e245a.md`：本轮基线公共面、12 组 wire 指纹与验收结论。
 - `evidence/asset-pipeline-core-meta-fe4422ba.md`：统一加载链、Runtime demand、Registry/Meta 边界与安装闭包验收。
 - `evidence/core-serialization-ecs-component-archive-6906ccc2.md`：Core/Component Archive 迁移、wire 回归与四 Profile/安装闭包验收。

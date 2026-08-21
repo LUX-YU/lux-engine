@@ -1,6 +1,14 @@
 # v2 相对 v1 的架构修订说明
 
-## 2026-08-21：ScriptRuntime 契约裁决
+## 2026-08-21：Script Asset 会话驻留与直接调用
+
+- `ScriptRuntime` stale-handle 模型被新 ADR 取代；旧施工记录保留但不再是现行目标。
+- Script 执行代码按 `SceneScriptRuntime` 播放会话驻留，会话内不因 AssetRef 归零或最后实例销毁而卸载。
+- 函数查找与精确 ABI 签名校验归绑定冷路径；Native/C++ 事件热路径只调用一次最终函数指针。
+- C++ Behavior 改为非多态基类；Native/C++ 视为可信任进程内代码，删除 Windows SEH CrashGuard。
+- AssetRef/GC/显式回收是独立后续设计，本轮不修改全局 AssetManager 语义。
+
+## 2026-08-21：ScriptRuntime 契约历史裁决
 
 - 以 `de11c05c` 为代码基线，`63aaf270` 先提交裁决，`c792c816` 完成代码施工。
 - 保留 Lua/Native 真实 backend 多态，不增加 Adapter 或第二套 Runtime；`ScriptHost` 已无 shim 地替换为 `ScriptRuntime`。

@@ -1,7 +1,7 @@
 {
   "repository": "LUX-YU/lux-engine",
-  "baseline": "c792c816",
-  "document_version": "2.24",
+  "baseline": "db8ed375",
+  "document_version": "2.25",
   "document_date": "2026-08-21",
   "architecture_baseline": [
     "A1",
@@ -20,25 +20,26 @@
     "ADR-20260821-ExtensionABI",
     "ADR-20260821-GAPIRetention",
     "ADR-20260821-Input",
-    "ADR-20260821-ScriptRuntime"
+    "ADR-20260821-ScriptRuntime",
+    "ADR-20260821-ScriptDirect"
   ],
   "numbered_documents": 14,
-  "supplemental_documents": 16,
-  "checklist_items": 668,
+  "supplemental_documents": 17,
+  "checklist_items": 680,
   "mapping_rows": 149,
   "fact_anchors": 83,
   "files": [
     {
       "name": "README.md",
-      "bytes": 9887,
-      "lines": 140,
-      "sha256": "d06a886d2c8b77f225c8751e2756e4b21adcb6237fa9f87cbd3732408cedad87"
+      "bytes": 10424,
+      "lines": 146,
+      "sha256": "49d4da5dd8c8d98ff64232f43bef284c3fa5e80db2138447fa14f9689eec34c8"
     },
     {
       "name": "REVISION_NOTES_v2.md",
-      "bytes": 9440,
-      "lines": 132,
-      "sha256": "090c3fce4b6e743ee8baebe7ca52e8103f3c8327dcc32a5076f90d260251b5ad"
+      "bytes": 10078,
+      "lines": 140,
+      "sha256": "df675d223d8f1a789cb6817c82b2d48a64fc8ca581a8f2ba8dffd723db2a0403"
     },
     {
       "name": "ADR-20260820_SceneAsset与Resource边界.md",
@@ -90,9 +91,15 @@
     },
     {
       "name": "ADR-20260821_ScriptRuntime契约与错误边界.md",
-      "bytes": 3090,
-      "lines": 51,
-      "sha256": "810998ba3dc9c8e528cba1f14ff7ed11464de52aa131f713e37f10447dd4e1fc"
+      "bytes": 3303,
+      "lines": 54,
+      "sha256": "82becf002a2f03e9a47f243aa88c464664d6bc86a9e6e8e961111e12b17aa46f"
+    },
+    {
+      "name": "ADR-20260821_ScriptAsset会话驻留与直接调用.md",
+      "bytes": 3435,
+      "lines": 61,
+      "sha256": "7d6fbded3a68aad9736d752f1129c1db63c004a8c96fbc385bb26ee4e12365ae"
     },
     {
       "name": "00_架构宪章与变更控制.md",
@@ -120,15 +127,15 @@
     },
     {
       "name": "04_Function公共模块重构.md",
-      "bytes": 17787,
-      "lines": 540,
-      "sha256": "cca0350161f9872385383844e71de99b40103cc0c3d28193fe01763f08131158"
+      "bytes": 17523,
+      "lines": 522,
+      "sha256": "1a775c0f68a6b47d456b1f6d0481bb13ca5f0ec854c79bfcb8ac0d1cf1055ff9"
     },
     {
       "name": "05_ECS内核-序列化与SceneFormat重构.md",
-      "bytes": 15568,
-      "lines": 558,
-      "sha256": "2c773770906357602d5d2398c87ea2ed84217391dbdd8b00681680b3757d1efd"
+      "bytes": 15863,
+      "lines": 562,
+      "sha256": "78b95fad63deb12fde5be83a47b6a952f18d3350745be4f620fd550a444ae8d6"
     },
     {
       "name": "06_Engine执行-资产-场景与扩展重构.md",
@@ -156,27 +163,27 @@
     },
     {
       "name": "10_测试-CI-PR路线与验收.md",
-      "bytes": 14144,
-      "lines": 644,
-      "sha256": "88f6989e7cb5db4246cef6665ddd64c50d14a029e5a84551faa46172d92b68a7"
+      "bytes": 14378,
+      "lines": 646,
+      "sha256": "e005abf76f2d608ce2d61b5b7d60451cc867a05ce5323c1fe9540ff6fb585426"
     },
     {
       "name": "11_详细施工Checklist_已更新_20260819_b1a25d3.md",
-      "bytes": 84875,
-      "lines": 821,
-      "sha256": "7688b5812f06714cdf0be73da1c716e270be02b0b82853509e398647135b73dc"
+      "bytes": 86423,
+      "lines": 836,
+      "sha256": "b4c7113d7406f69aa33c0c48927f1a510c287e3bc5a6ed6737202d9c277e55f2"
     },
     {
       "name": "12_迁移映射总表.md",
-      "bytes": 22239,
+      "bytes": 22315,
       "lines": 236,
-      "sha256": "cccf86e17a97ad0a65960a77be6c090bb5cd51357f89ef9e171ad14dff2f3dc3"
+      "sha256": "3ba4424fd62a4639500bf38dc426ae1ea4f9a53b2cdf6fe06fcc419a7875fe17"
     },
     {
       "name": "13_当前代码事实索引.md",
-      "bytes": 17581,
-      "lines": 160,
-      "sha256": "b25be46178dcba69d42da098653a0a2a69761ee770a9ed1c2ab971e55f71a153"
+      "bytes": 17946,
+      "lines": 162,
+      "sha256": "5bcf7afec2ec9a52103c5b97cb5b94a9006172e73944dfaf889d18094f1ade85"
     },
     {
       "name": "evidence/asset-domain-cohesion-f35e245a.md",
@@ -216,15 +223,15 @@
     },
     {
       "name": "文档清单与施工顺序.txt",
-      "bytes": 2181,
-      "lines": 54,
-      "sha256": "30e668d01e2e910e73e55a86ad1f13ce893b6c22167d9a790547f7593f0a1d15"
+      "bytes": 2238,
+      "lines": 55,
+      "sha256": "c47c8d1014576051821611658f2c5b82155a445d720c497188036bd316fe092f"
     },
     {
       "name": "00-13_全部执行文档与Checklist_合订本.md",
-      "bytes": 373908,
-      "lines": 8922,
-      "sha256": "e21e11fc4963f580e9237816baef814e45639721f9db27c77462f2661de21216"
+      "bytes": 389363,
+      "lines": 9003,
+      "sha256": "34fbbdf370467638aebbc400e42d3b8084a3526bd6dd7398f197182cb47d2871"
     }
   ]
 }

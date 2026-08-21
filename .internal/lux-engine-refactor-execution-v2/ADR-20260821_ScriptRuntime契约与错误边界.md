@@ -2,7 +2,10 @@
 
 ## 状态
 
-已接受并由 `c792c816` 完成代码施工与验收。
+历史施工已由 `c792c816` 完成；其 Runtime-validated handle、invoke-time lookup
+与 stale-handle 调用模型已被
+`ADR-20260821_ScriptAsset会话驻留与直接调用.md` 取代。本文仅保留为历史决策和验收记录，
+不再是当前施工目标。
 
 ## 背景
 

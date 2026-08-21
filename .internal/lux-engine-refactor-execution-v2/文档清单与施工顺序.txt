@@ -36,6 +36,7 @@ Script Runtime 实施提交: c792c816
 - ADR-20260821_GAPI保留裁决.md
 - ADR-20260821_单体Input子系统边界.md
 - ADR-20260821_ScriptRuntime契约与错误边界.md
+- ADR-20260821_ScriptAsset会话驻留与直接调用.md
 
 本轮验收证据:
 - evidence/asset-domain-cohesion-f35e245a.md

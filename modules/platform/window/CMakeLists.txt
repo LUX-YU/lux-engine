@@ -3,7 +3,7 @@
 find_package(Vulkan  REQUIRED)
 
 # Backend source selection — same pattern as dynamic_library (win32/posix):
-# one public header set (LuxWindow.hpp / InputSnapshot.hpp / ...), one backend
+# one public header set (LuxWindow.hpp / WindowEvents.hpp / ...), one backend
 # implementation chosen at configure time. An Android backend adds
 # src/LuxWindow.android.cpp (+ its runtime) here WITHOUT touching consumers —
 # see .internal/lux-engine-mobile-adaptation-investigation.md §3.

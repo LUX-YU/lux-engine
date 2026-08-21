@@ -427,7 +427,7 @@ lux_render_link_2d_pack_sidecars(tilemap_visual_stress)
 # atlas sheet/atlas/clip assets + frame animation + kinematic character
 # controller (WASD/Space, one-way platform). One demo covers A2-01/A2-02/P2-01.
 add_executable(platformer2d_visual_demo platformer2d_visual_demo.cpp)
-target_link_libraries(platformer2d_visual_demo PRIVATE render_features runtime_render_scene_test_support lux::engine::runtime::runtime_execution lux::engine::runtime::runtime_pack_presentation2d lux::engine::runtime::runtime_pack_physics2d lux::engine::ecs::physics2d lux::engine::resource::asset lux::engine::platform::window)
+target_link_libraries(platformer2d_visual_demo PRIVATE render_features runtime_render_scene_test_support lux::engine::runtime::runtime_execution lux::engine::runtime::runtime_pack_presentation2d lux::engine::runtime::runtime_pack_physics2d lux::engine::ecs::physics2d lux::engine::resource::asset lux::engine::platform::window lux::engine::function::input)
 target_include_directories(platformer2d_visual_demo PRIVATE ${RENDER_PINCLUDE_DIR} ${SHADER_CONFIG_OUT_PATH})
 lux_render_link_2d_pack_sidecars(platformer2d_visual_demo physics2d_meta)
 
@@ -435,7 +435,7 @@ lux_render_link_2d_pack_sidecars(platformer2d_visual_demo physics2d_meta)
 # boxes fall, tip and STACK on a static floor (box-vs-box + rotation the swept
 # solver cannot do). Assembled from presentation2d + physics2d contributions.
 add_executable(rigidbody2d_visual_demo rigidbody2d_visual_demo.cpp)
-target_link_libraries(rigidbody2d_visual_demo PRIVATE render_features runtime_render_scene_test_support lux::engine::runtime::runtime_execution lux::engine::runtime::runtime_pack_presentation2d lux::engine::runtime::runtime_pack_physics2d lux::engine::ecs::physics2d lux::engine::ecs::scripting lux::engine::ecs::scripting_lua lux::engine::resource::asset lux::engine::platform::window) # scripting: Lua collision probe
+target_link_libraries(rigidbody2d_visual_demo PRIVATE render_features runtime_render_scene_test_support lux::engine::runtime::runtime_execution lux::engine::runtime::runtime_pack_presentation2d lux::engine::runtime::runtime_pack_physics2d lux::engine::ecs::physics2d lux::engine::ecs::scripting lux::engine::ecs::scripting_lua lux::engine::resource::asset lux::engine::platform::window lux::engine::function::input) # scripting: Lua collision probe
 target_include_directories(rigidbody2d_visual_demo PRIVATE ${RENDER_PINCLUDE_DIR} ${SHADER_CONFIG_OUT_PATH})
 lux_render_link_2d_pack_sidecars(
     rigidbody2d_visual_demo

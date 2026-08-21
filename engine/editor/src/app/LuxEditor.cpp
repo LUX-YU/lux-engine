@@ -41,10 +41,8 @@
 #include <lux/engine/runtime/extensions/ExtensionModuleManager.hpp>
 #include <lux/engine/log/Log.hpp>                          // setOutput / LogRecord(事件批C)
 
-#include <lux/engine/input/ActionMapper.hpp>
+#include <lux/engine/input/Input.hpp>
 #include <lux/engine/input/InputContext.hpp>
-#include <lux/engine/input/InputContextStack.hpp>
-#include <lux/engine/window/InputSnapshot.hpp>
 
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
@@ -268,8 +266,7 @@ namespace lux::editor
         std::unique_ptr<MaterialPreviewHost>                material_preview_;
         std::unique_ptr<ThumbnailService>                   thumbnail_service_;
 
-        std::unique_ptr<lux::input::ActionMapper>           action_mapper_;
-        std::unique_ptr<lux::input::InputContextStack>      input_stack_;
+        std::unique_ptr<lux::input::Input>                  input_;
         bool                                                cursor_captured_{false};
 
         // Panels borrow the process services above. Controllers and command
@@ -1149,15 +1146,14 @@ namespace lux::editor
                                   runtime_->material_preview_.get());
 
 
-        // 9. Editor input layer — ActionMapper + a single default
+        // 9. Editor input layer — one Input + a single default
         //    InputContext carrying the M2 viewport bindings (WASD for fly,
         //    LMB / RMB / MMB for camera modes + picking, F / End hotkeys).
         //    Owned by LuxEditor; ticked in run(). EditorScene reads it
         //    each frame for camera control. Built BEFORE the initial scene
         //    so EditorScene::tick can rely on it from frame 0.
-        runtime_->action_mapper_ = std::make_unique<lux::input::ActionMapper>();
-        runtime_->input_stack_   = std::make_unique<lux::input::InputContextStack>();
-        actions::registerAll(*runtime_->action_mapper_);
+        runtime_->input_ = std::make_unique<lux::input::Input>();
+        actions::registerAll(runtime_->input_->mapper());
         auto* editor_ctx = actions::editorContext();
         if (!editor_ctx)
         {
@@ -1167,7 +1163,7 @@ namespace lux::editor
             shutdown();
             return false;
         }
-        runtime_->input_stack_->push(editor_ctx);
+        runtime_->input_->contexts().push(editor_ctx);
 
         // 10. Initial scene is NOT brought up here. Caller (main.cpp / the
         //     File menu) decides which scene the editor should open first
@@ -1312,7 +1308,10 @@ namespace lux::editor
         // actions = nullptr for now: the editor registers only camera actions, not
         // game actions, so name→id resolution isn't meaningful in play yet (input-in-
         // play is a follow-up). Scripts still receive the ActionMapper (ctx.input).
-        if (!scene->enterPlay(*runtime_->action_mapper_, nullptr))
+        if (!scene->enterPlay(
+                runtime_->input_->mapper(),
+                &runtime_->input_->actionRegistry()
+            ))
             std::fprintf(stderr, "[LuxEditor] enterPlayMode: failed to enter play.\n");
     }
 
@@ -1617,7 +1616,7 @@ namespace lux::editor
             // to ActionMapper below (after ImGui::NewFrame so we can ask
             // ImGui whether it is capturing keyboard / mouse for its own
             // text inputs and drag handles).
-            lux::window::InputSnapshot snapshot = runtime_->window_->captureInputSnapshot();
+            runtime_->input_->sample(*runtime_->window_);
 
             // Drain the deferred-action queue BEFORE starting the next
             // ImGui frame. Menu callbacks (EditorMenuBar::paint) cannot
@@ -1673,9 +1672,7 @@ namespace lux::editor
             const bool  route_to_gp  = over_view || owns_mb;
             const bool  want_kb      = route_to_gp || !io.WantCaptureKeyboard;
             const bool  want_ms      = route_to_gp || !io.WantCaptureMouse;
-            snapshot.keyboard_captured_by_ui = !want_kb;
-            snapshot.mouse_captured_by_ui    = !want_ms;
-            runtime_->action_mapper_->update(snapshot, *runtime_->input_stack_, dt, want_kb, want_ms);
+            runtime_->input_->evaluate(dt, want_kb, want_ms);
 
             ImDrawData* draw_data = ImGui::GetDrawData();
 
@@ -1708,7 +1705,7 @@ namespace lux::editor
                 {
                     scene->processPendingResize();
                     const auto cs = runtime_->shell_->viewportPanel()->contentSize();
-                    scene->tick(dt, cs.x, cs.y, *runtime_->action_mapper_);
+                    scene->tick(dt, cs.x, cs.y, runtime_->input_->mapper());
 
                     const bool fly = scene->cameraWantsCursorCapture();
                     if (fly != runtime_->cursor_captured_)

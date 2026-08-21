@@ -43,9 +43,7 @@
 
         std::unique_ptr<lux::runtime::ResidencyAssembly> residency;
 
-        lux::input::InputActionRegistry action_registry;
-        lux::input::InputContextStack context_stack;
-        std::unique_ptr<lux::input::ActionMapper> mapper;
+        std::unique_ptr<lux::input::Input> input;
 
         std::unique_ptr<lux::runtime::SceneRuntime> runtime;
         std::unique_ptr<lux::runtime::SceneScriptRuntime> simulation;

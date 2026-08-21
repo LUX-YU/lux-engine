@@ -25,6 +25,8 @@
 #endif
 #include <vulkan/vulkan.h>
 
+#include <utility>
+
 namespace lux::window
 {
     LuxWindow::LuxWindow(int width, int height, std::string title)
@@ -81,14 +83,11 @@ namespace lux::window
 
     void LuxWindow::setCursorPos(double, double) {}
 
-    KeyState LuxWindow::queryKey(KeyEnum) const { return KeyState::RELEASE; }
-
-    InputSnapshot LuxWindow::captureInputSnapshot()
+    std::vector<WindowInputEvent> LuxWindow::drainInputEvents()
     {
-        InputSnapshot snapshot{};
-        snapshot.window_width      = static_cast<uint32_t>(_parameter.width);
-        snapshot.window_height     = static_cast<uint32_t>(_parameter.height);
-        return snapshot;
+        auto events = std::move(pending_input_events_);
+        pending_input_events_.clear();
+        return events;
     }
 
     int LuxWindow::exec() { return 0; }

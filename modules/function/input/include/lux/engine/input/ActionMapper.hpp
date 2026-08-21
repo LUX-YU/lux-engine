@@ -6,7 +6,7 @@
 #include "InputActionRegistry.hpp"
 #include "TriggerEvaluator.hpp"
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/window/InputSnapshot.hpp>
+#include <lux/engine/input/InputSnapshot.hpp>
 #include <lux/cxx/container/SparseSet.hpp>
 #include <span>
 #include <vector>
@@ -45,7 +45,7 @@ namespace lux::input
         //  Per-frame update                                                   //
         // ------------------------------------------------------------------ //
 
-        void update(const lux::window::InputSnapshot& snapshot,
+        void update(const InputSnapshot& snapshot,
                     InputContextStack& stack,
                     float dt,
                     bool want_kb    = true,
@@ -84,7 +84,7 @@ namespace lux::input
 
         void beginFrame(float dt);
 
-        void evaluateBindings(const lux::window::InputSnapshot& snapshot,
+        void evaluateBindings(const InputSnapshot& snapshot,
                               InputContextStack& stack,
                               float dt,
                               bool want_kb, bool want_mouse);
@@ -104,7 +104,7 @@ namespace lux::input
             bool  held         = false;
         };
 
-        static RawExtract extractRaw(const lux::window::InputSnapshot& snapshot,
+        static RawExtract extractRaw(const InputSnapshot& snapshot,
                                      const ActionBinding& binding);
 
         static InputValue projectContribution(float raw_scalar,

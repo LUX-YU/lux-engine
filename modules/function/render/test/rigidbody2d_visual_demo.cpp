@@ -64,6 +64,7 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/script/ScriptAsset.hpp>
 #include <lux/engine/meta/Meta.hpp>
+#include <lux/engine/input/Input.hpp>
 
 #include <chrono>
 #include <array>
@@ -77,8 +78,6 @@
 
 using namespace lux::render;
 namespace d2 = lux::ecs;
-using lux::window::KeyEnum;
-using lux::window::KeyState;
 
 namespace
 {
@@ -370,7 +369,7 @@ int main(int argc, char** argv)
     auto fps_mark   = t0;
     int  fps_frames = 0;
     std::uint64_t total_frames = 0;
-    bool prev_space = false, prev_r = false;
+    lux::input::Input input;
 
     while (fx.running())
     {
@@ -380,17 +379,15 @@ int main(int argc, char** argv)
         if (dt > 0.1f) dt = 0.1f;
 
         // ── input (edge-detected so a held key fires once) ──
-        const bool space = fx.window().queryKey(KeyEnum::KEY_SPACE) == KeyState::PRESS;
-        const bool r     = fx.window().queryKey(KeyEnum::KEY_R) == KeyState::PRESS;
-        if (space && !prev_space)
+        input.sample(fx.window());
+        const auto& snapshot = input.snapshot();
+        if (snapshot.isKeyJustPressed(lux::input::EKey::KEY_SPACE))
             dropBox(0.4f * std::sin(static_cast<float>(spawn_count)), 4.6f);
-        if (r && !prev_r)
+        if (snapshot.isKeyJustPressed(lux::input::EKey::KEY_R))
         {
             resetPile();
             seedStack();
         }
-        prev_space = space;
-        prev_r = r;
 
         async.drainMainThreadCompletions();              // 驻留管道主线程会合
         schedule.tick(dt);              // fixed-step Simulation2DSystem → Physics2DSystem

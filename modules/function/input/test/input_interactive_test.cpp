@@ -2,7 +2,7 @@
 /// Interactive input system test with a real GLFW window.
 ///
 /// Opens a window, captures actual keyboard/mouse input through
-/// LuxWindow::captureInputSnapshot(), runs the ActionMapper pipeline,
+/// lux::input::Input, runs the ActionMapper pipeline,
 /// and prints state changes to the console so you can verify correctness.
 ///
 /// Usage:
@@ -13,7 +13,7 @@
 
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
-#include <lux/engine/input/ActionMapper.hpp>
+#include <lux/engine/input/Input.hpp>
 #include <lux/cxx/core/Format.hpp>
 
 #include <cassert>
@@ -150,14 +150,14 @@ static void registerActions(InputActionRegistry& reg)
 static void setupBindings(ActionMap& am)
 {
     // Jump: Space
-    am.bindKey(Act::Jump, KeyEnum::KEY_SPACE,
+    am.bindKey(Act::Jump, EKey::KEY_SPACE,
                InputValue::makeBool(true));
 
     // Move: WASD → Axis2D
-    am.bindKey(Act::Move, KeyEnum::KEY_W, InputValue::makeAxis2D( 0.f,  1.f));
-    am.bindKey(Act::Move, KeyEnum::KEY_S, InputValue::makeAxis2D( 0.f, -1.f));
-    am.bindKey(Act::Move, KeyEnum::KEY_A, InputValue::makeAxis2D(-1.f,  0.f));
-    am.bindKey(Act::Move, KeyEnum::KEY_D, InputValue::makeAxis2D( 1.f,  0.f));
+    am.bindKey(Act::Move, EKey::KEY_W, InputValue::makeAxis2D( 0.f,  1.f));
+    am.bindKey(Act::Move, EKey::KEY_S, InputValue::makeAxis2D( 0.f, -1.f));
+    am.bindKey(Act::Move, EKey::KEY_A, InputValue::makeAxis2D(-1.f,  0.f));
+    am.bindKey(Act::Move, EKey::KEY_D, InputValue::makeAxis2D( 1.f,  0.f));
 
     // Look: mouse delta → Axis2D
     am.bindMouseAxis(Act::Look, MouseAxisInput::EAxis::DELTA_X,
@@ -166,15 +166,15 @@ static void setupBindings(ActionMap& am)
                      InputValue::makeAxis2D(0.f, 1.f));
 
     // Fire: left click
-    am.bindMouseButton(Act::Fire, MouseButton::MOUSE_BUTTON_LEFT,
+    am.bindMouseButton(Act::Fire, EMouseButton::MOUSE_BUTTON_LEFT,
                        InputValue::makeBool(true));
 
     // Aim: right click (Hold 0.5s trigger defined on the action)
-    am.bindMouseButton(Act::Aim, MouseButton::MOUSE_BUTTON_RIGHT,
+    am.bindMouseButton(Act::Aim, EMouseButton::MOUSE_BUTTON_RIGHT,
                        InputValue::makeBool(true));
 
     // Sprint: left shift
-    am.bindKey(Act::Sprint, KeyEnum::KEY_LEFT_SHIFT,
+    am.bindKey(Act::Sprint, EKey::KEY_LEFT_SHIFT,
                InputValue::makeBool(true));
 
     // Zoom: scroll wheel → Axis1D
@@ -184,22 +184,22 @@ static void setupBindings(ActionMap& am)
     // ── Advanced trigger bindings ──
 
     // QuickTap: Q key, Tap trigger (must release within 0.3s)
-    am.bindKey(Act::QuickTap, KeyEnum::KEY_Q,
+    am.bindKey(Act::QuickTap, EKey::KEY_Q,
                InputValue::makeBool(true), {},
                {{ETriggerKind::TAP, ETriggerLogicType::EXPLICIT, 0.5f, 0.0f, 0.3f}});
 
     // ChargeRelease: E key, HoldAndRelease trigger (hold ≥ 0.4s then release)
-    am.bindKey(Act::ChargeRelease, KeyEnum::KEY_E,
+    am.bindKey(Act::ChargeRelease, EKey::KEY_E,
                InputValue::makeBool(true), {},
                {{ETriggerKind::HOLD_AND_RELEASE, ETriggerLogicType::EXPLICIT, 0.5f, 0.4f}});
 
     // AutoFire: R key, Pulse trigger (fires every 0.2s while held)
-    am.bindKey(Act::AutoFire, KeyEnum::KEY_R,
+    am.bindKey(Act::AutoFire, EKey::KEY_R,
                InputValue::makeBool(true), {},
                {{ETriggerKind::PULSE, ETriggerLogicType::EXPLICIT, 0.5f, 0.0f, 0.2f, 0.2f}});
 
     // SprintFire: F key, ChordAction trigger (requires Sprint to be active)
-    am.bindKey(Act::SprintFire, KeyEnum::KEY_F,
+    am.bindKey(Act::SprintFire, EKey::KEY_F,
                InputValue::makeBool(true), {},
                {{ETriggerKind::CHORD_ACTION, ETriggerLogicType::EXPLICIT, 0.5f, 0.0f, 0.2f, 0.1f, Act::Sprint}});
 }
@@ -225,15 +225,14 @@ int main()
         return 1;
     }
 
-    // ── ActionMapper ────────────────────────────────────────────────── //
-    ActionMapper mapper;
-    registerActions(mapper.actionRegistry());
+    // ── Input ───────────────────────────────────────────────────────── //
+    Input input;
+    registerActions(input.actionRegistry());
 
     InputContext ctx("gameplay");
     setupBindings(ctx.actionMap());
 
-    InputContextStack stack;
-    stack.push(&ctx);
+    input.contexts().push(&ctx);
 
     // ── Action tracking ─────────────────────────────────────────────── //
     constexpr int kNumActions = 11;
@@ -288,23 +287,22 @@ int main()
     while (!window.shouldClose())
     {
         LuxWindow::pollEvents();
-        auto snap = window.captureInputSnapshot();
+        input.sample(window);
+        const auto& snap = input.snapshot();
 
-        if (snap.isKeyJustPressed(KeyEnum::KEY_ESCAPE)) {
+        if (snap.isKeyJustPressed(EKey::KEY_ESCAPE)) {
             window.exit();
             break;
         }
 
         float dt = snap.sample_dt > 0.f ? snap.sample_dt : 1.f / 60.f;
-        mapper.update(snap, stack, dt,
-                      !snap.keyboard_captured_by_ui,
-                      !snap.mouse_captured_by_ui);
+        input.evaluate(dt);
 
         ++frame;
 
         // Print only when events change for an action.
         for (int i = 0; i < kNumActions; ++i) {
-            const auto& st = mapper.state(entries[i].id);
+            const auto& st = input.mapper().state(entries[i].id);
 
             if (st.events == ActionEvent_None && prev_events[i] == ActionEvent_None)
                 continue; // Nothing happening.

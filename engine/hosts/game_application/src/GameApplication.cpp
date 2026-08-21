@@ -78,9 +78,7 @@
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp>
 #include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
 
-#include <lux/engine/input/ActionMapper.hpp>
-#include <lux/engine/input/InputActionRegistry.hpp>
-#include <lux/engine/input/InputContext.hpp>
+#include <lux/engine/input/Input.hpp>
 
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/log/Log.hpp>
@@ -612,12 +610,10 @@ namespace lux::game
             scene_origin
         );
 
-        application.mapper = std::make_unique<lux::input::ActionMapper>();
+        application.input = std::make_unique<lux::input::Input>();
         if (application.config.hooks.configure_input &&
             !application.config.hooks.configure_input(
-                *application.mapper,
-                application.action_registry,
-                application.context_stack
+                *application.input
             ))
         {
             lux::log::error(
@@ -756,8 +752,8 @@ namespace lux::game
                 application.asset_load->client()
             );
         if (!application.simulation->start(
-                *application.mapper,
-                &application.action_registry
+                application.input->mapper(),
+                &application.input->actionRegistry()
             ))
         {
             lux::log::error(
@@ -841,7 +837,7 @@ namespace lux::game
                     frame_dt,
                     static_cast<float>(extent.width),
                     static_cast<float>(extent.height),
-                    *impl_->mapper,
+                    impl_->input->mapper(),
                     frame.sequence()
                 );
                 impl_->observeVisualRevisions();
@@ -1747,21 +1743,9 @@ namespace lux::game
         return impl_ && static_cast<bool>(impl_->surface_target);
     }
 
-    lux::input::ActionMapper& GameApplication::inputMapper() noexcept
+    lux::input::Input& GameApplication::input() noexcept
     {
-        return *impl_->mapper;
-    }
-
-    lux::input::InputActionRegistry&
-    GameApplication::inputActions() noexcept
-    {
-        return impl_->action_registry;
-    }
-
-    lux::input::InputContextStack&
-    GameApplication::inputContexts() noexcept
-    {
-        return impl_->context_stack;
+        return *impl_->input;
     }
 
     lux::extensions::EngineExtensions&

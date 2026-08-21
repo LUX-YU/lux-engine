@@ -16,7 +16,7 @@ namespace lux::input
 
         /// Bind a keyboard key to an action.
         ActionMap& bindKey(ActionId id,
-                           lux::window::KeyEnum key,
+                           EKey key,
                            InputValue contribution = InputValue::makeAxis1D(1.0f),
                            std::vector<ModifierSpec> binding_modifiers = {},
                            std::vector<TriggerDesc>  binding_triggers = {},
@@ -36,7 +36,7 @@ namespace lux::input
 
         /// Bind a mouse button to an action.
         ActionMap& bindMouseButton(ActionId id,
-                                   lux::window::MouseButton button,
+                                   EMouseButton button,
                                    InputValue contribution = InputValue::makeAxis1D(1.0f),
                                    std::vector<ModifierSpec> binding_modifiers = {},
                                    std::vector<TriggerDesc>  binding_triggers = {},

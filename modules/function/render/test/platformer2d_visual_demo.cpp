@@ -65,6 +65,7 @@
 #include <lux/engine/description/Texture.hpp>
 #include <lux/engine/description/TextureAtlas.hpp>
 #include <lux/engine/meta/Meta.hpp>
+#include <lux/engine/input/Input.hpp>
 
 #include <uuid.h>
 
@@ -79,8 +80,6 @@
 
 using namespace lux::render;
 namespace d2 = lux::ecs;
-using lux::window::KeyEnum;
-using lux::window::KeyState;
 
 namespace
 {
@@ -509,6 +508,7 @@ int main(int argc, char** argv)
     int  fps_frames = 0;
     std::uint64_t total_frames = 0;
     bool was_walking = false;
+    lux::input::Input input;
 
     while (fx.running())
     {
@@ -518,12 +518,14 @@ int main(int argc, char** argv)
         if (dt > 0.1f) dt = 0.1f;
 
         // ── input → controller intent (velocity.y stays owned by physics) ──
+        input.sample(fx.window());
+        const auto& snapshot = input.snapshot();
         auto& ctl = world.registry().get<d2::CharacterController2DComponent>(player);
-        const bool left  = fx.window().queryKey(KeyEnum::KEY_A) == KeyState::PRESS ||
-                           fx.window().queryKey(KeyEnum::KEY_LEFT) == KeyState::PRESS;
-        const bool right = fx.window().queryKey(KeyEnum::KEY_D) == KeyState::PRESS ||
-                           fx.window().queryKey(KeyEnum::KEY_RIGHT) == KeyState::PRESS;
-        const bool jump  = fx.window().queryKey(KeyEnum::KEY_SPACE) == KeyState::PRESS;
+        const bool left = snapshot.isKeyHeld(lux::input::EKey::KEY_A) ||
+            snapshot.isKeyHeld(lux::input::EKey::KEY_LEFT);
+        const bool right = snapshot.isKeyHeld(lux::input::EKey::KEY_D) ||
+            snapshot.isKeyHeld(lux::input::EKey::KEY_RIGHT);
+        const bool jump = snapshot.isKeyHeld(lux::input::EKey::KEY_SPACE);
         ctl.velocity.x() = (right ? 2.4f : 0.f) + (left ? -2.4f : 0.f);
         if (jump && ctl.grounded)
             ctl.velocity.y() = 9.5f;

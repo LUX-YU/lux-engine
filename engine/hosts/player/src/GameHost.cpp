@@ -3,7 +3,7 @@
 #include <lux/engine/hosts/game_application/GameApplication.hpp>
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
-#include <lux/engine/input/ActionMapper.hpp>
+#include <lux/engine/input/Input.hpp>
 #include <lux/engine/log/Log.hpp>
 
 #include <chrono>
@@ -161,12 +161,8 @@ namespace lux::game
                 continue;
             }
 
-            const auto snapshot = host.window->captureInputSnapshot();
-            host.application.inputMapper().update(
-                snapshot,
-                host.application.inputContexts(),
-                dt
-            );
+            host.application.input().sample(*host.window);
+            host.application.input().evaluate(dt);
 
             if (host.config.dump_graph && ++frame_count == 120u)
                 dumpRenderGraph();

@@ -49,9 +49,7 @@ namespace lux::extensions
 
 namespace lux::input
 {
-    class ActionMapper;
-    class InputActionRegistry;
-    class InputContextStack;
+    class Input;
 }
 
 namespace lux::game
@@ -109,11 +107,7 @@ namespace lux::game
 
         /// Called before SceneScriptRuntime starts. Compiled game code can
         /// register actions and contexts without modifying a platform shell.
-        std::function<bool(
-            lux::input::ActionMapper&,
-            lux::input::InputActionRegistry&,
-            lux::input::InputContextStack&)>
-            configure_input;
+        std::function<bool(lux::input::Input&)> configure_input;
     };
 
     struct GameApplicationConfig final
@@ -455,10 +449,7 @@ namespace lux::game
         [[nodiscard]] bool live() const noexcept;
         [[nodiscard]] bool surfaceAttached() const noexcept;
 
-        [[nodiscard]] lux::input::ActionMapper& inputMapper() noexcept;
-        [[nodiscard]] lux::input::InputActionRegistry&
-            inputActions() noexcept;
-        [[nodiscard]] lux::input::InputContextStack& inputContexts() noexcept;
+        [[nodiscard]] lux::input::Input& input() noexcept;
         [[nodiscard]] lux::extensions::EngineExtensions& extensions() noexcept;
 
     private:

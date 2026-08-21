@@ -1,6 +1,6 @@
 # LUX Engine 重构执行文档 v2 合订本
 
-基线：GAPI 保留与单体 Input 施工基线 `d7f364d0`
+基线：单体 Input 实施提交 `08e3d590`
 
 > 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明、现行 ADR 及既有验收证据机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
 
@@ -33,6 +33,7 @@
 - `evidence/asset-pipeline-core-meta-fe4422ba.md`
 - `evidence/core-serialization-ecs-component-archive-6906ccc2.md`
 - `evidence/extension-abi-core-retirement-2259ade7.md`
+- `evidence/input-subsystem-cohesion-d7f364d0.md`
 
 ---
 
@@ -580,7 +581,6 @@ add_library(lux::engine::resource::asset_core ALIAS lux_asset)
 - PLAYER、EDITOR、TOOLCHAIN、DEVELOPER Profile 均通过双构建与测试。
 - 架构扫描器能够阻止旧依赖和旧命名重新进入。
 
-
 ---
 
 # `modules/` 公共 SDK 边界与分发体系重构
@@ -1002,7 +1002,7 @@ Extension ABI 不属于公共 Asset/Core 版本；它由 `lux-engine-extension-s
 
 | PR | 内容 | 必须保持 |
 | --- | --- | --- |
-| SDK-01 | 增加 `MODULES_SDK` Profile 与隔离测试 | 不移动任何实现 |
+| SDK-01 | 增加 installed Modules consumer 隔离测试 | 不增加第五种 Profile |
 | SDK-02 | 显式列举 modules 子目录，停止自动发现 | 全 Profile 配置一致 |
 | SDK-03 | 引入新公共 Alias 与 Include Prefix | 旧 Alias 仍工作 |
 | SDK-04 | 接入 Include/Link 闭包扫描 | 允许受控兼容例外 |
@@ -1011,17 +1011,15 @@ Extension ABI 不属于公共 Asset/Core 版本；它由 `lux-engine-extension-s
 
 ## 10. 验收闸门
 
-- [ ] `MODULES_SDK` 配置不执行 `add_subdirectory(ecs)`。
-- [ ] `MODULES_SDK` 配置不执行 `add_subdirectory(engine)`。
+- [ ] installed Modules consumer 不导入 ECS/Engine target。
 - [ ] 安装结果中不存在 `SceneRuntime.hpp`、`EngineExtensions.hpp`、`GameApplication.hpp`。
 - [ ] 公共目标的递归 Link Closure 不包含 ECS/Engine/Editor。
 - [ ] Render-only 外部样例可以创建窗口、初始化 Vulkan Renderer 并清理。
 - [ ] Asset-only 外部样例可以读取 Header、选择 Codec、读取 Pak。
-- [ ] Input-only 外部样例不需要 GLFW。
+- [x] Input-only 外部样例不需要查找或链接 Window/GLFW；synthetic Snapshot + Action Mapping 可执行。
 - [ ] Script-only 外部样例不需要 Engine Extension ABI。
 - [ ] 新公共头不使用 `lux/engine/function` 或 `lux/engine/resource` 前缀。
 - [ ] 所有兼容 Alias 都有删除里程碑。
-
 
 ---
 
@@ -1575,7 +1573,6 @@ Level
 - [ ] `resource/spatial` target 已删除。
 - [ ] `extension_abi` 不出现在 Modules SDK 安装清单。
 - [ ] 所有 Build-time 生成器依赖不进入安装 Config。
-
 
 ---
 
@@ -2247,7 +2244,6 @@ entity scene / section
 - [ ] 旧 `.luxasset` Golden Files 全部可读。
 - [x] Asset-only 外部样例不链接 ECS/Engine/Reflection Registry。
 
-
 ---
 
 # Function 公共模块重构
@@ -2482,9 +2478,9 @@ namespace lux::render
 
 ### 3.1 当前问题
 
-`input` 的 Action Mapping 逻辑是通用的，但 PUBLIC 依赖 `platform::window`，并因此向消费者泄漏 GLFW。
+历史基线中 `input` 的 Action Mapping PUBLIC 依赖 `platform::window`，并向消费者泄漏 GLFW。`08e3d590` 已完成归位：Input 的公开链接闭包只保留 `lux-cxx::container`，Window/GLFW 仅为平台采样实现的 PRIVATE 依赖。
 
-### 3.2 目标结构
+### 3.2 已实施结构
 
 ```text
 modules/function/input/
@@ -2523,6 +2519,8 @@ public:
 ```
 
 Input 只有一个 target。CMake 在配置期只选择一个私有平台实现；不创建 Adapter target、backend interface、factory 或注册表。`lux::input` 公共头不 include `<GLFW/glfw3.h>`。
+
+Window 已删除 normalized input 与 snapshot 状态，只积累 raw key/mouse/scroll/text event batch。`Input::sample()` 负责 held/edge、cursor/sample history 与规范化；`evaluate(InputSnapshot, ...)` 可在无 Window 的 installed consumer 中运行。
 
 ### 3.3 对外对象命名
 
@@ -2777,7 +2775,6 @@ cmake/Codegen/ShaderParams.cmake
 - [ ] `lux::ui` 无 GLFW/Vulkan 依赖。
 - [ ] `SceneViewportPanel` 不在 modules。
 - [ ] Tooling Feature 不自动进入标准 Renderer 公共闭包。
-
 
 ---
 
@@ -3339,7 +3336,6 @@ Persistence Journal
 - [ ] `SystemUpdateContext` 未新增 Runtime/Asset/Extension getter。
 - [ ] 旧 Entity Scene/Section Golden Files 全部可读。
 - [ ] 动态 Extension metadata 使用显式 Draft/Commit，不依赖隐式全局 pending chain。
-
 
 ---
 
@@ -4015,7 +4011,6 @@ lux::engine::spatial3d
 - [ ] 多种 CloseSender 不再成为跨领域公共概念。
 - [ ] Extension unload 在所有 Lease 与 accepted work 归零后发生。
 
-
 ---
 
 # Game、Editor 与共享 Session 产品重构
@@ -4594,7 +4589,6 @@ lux::window_glfw
 - [ ] 导出目录无 Editor/Toolchain 二进制。
 - [ ] Product API 不公开内部 Executor/AssetStore/Renderer。
 - [ ] Close 失败可诊断，不以 `Impl::release()` 泄漏整个产品状态作为常规路径。
-
 
 ---
 
@@ -5337,7 +5331,6 @@ lux_editor_product
 - [ ] `EditorScene` 已拆分，Play 使用 `game::Session`。
 - [ ] 长生命周期异步闭包不捕获 Panel/Controller 裸指针。
 
-
 ---
 
 # CMake、命名空间、SDK 包与兼容迁移
@@ -5756,20 +5749,12 @@ EDITOR
 TOOLCHAIN
 ```
 
-新增：
-
-```text
-MODULES_SDK
-ECS_SDK（可选）
-```
-
-Profile 必须用显式目录列表，不使用自动目录枚举。
+不新增层级形状 Profile；Modules/ECS SDK 的隔离由 installed consumer 验证。Profile 必须用显式目录列表，不使用自动目录枚举。
 
 ### 10.1 Profile 矩阵
 
 | Profile | Modules | ECS | Engine | Authoring | Toolchain | Editor | Products |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| MODULES_SDK | ✓ | — | — | — | — | — | samples |
 | PLAYER | ✓ | ✓ | ✓ | — | — | — | player |
 | EDITOR | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | editor |
 | TOOLCHAIN | 最小集 | schema 需要 | format 需要 | ✓ | ✓ | — | tools |
@@ -5874,7 +5859,6 @@ legacy scan
 - [ ] 安装前缀无 build-tree absolute path。
 - [ ] Legacy include/target report 最终为零。
 - [ ] 导出游戏 inventory 无 Editor/Toolchain/Authoring。
-
 
 ---
 
@@ -6076,6 +6060,9 @@ Legacy EAssetType adapter
 Render graph topology and hazards
 Render protocol bounded queues
 Input mapping/context precedence
+Input raw-event translation, same-frame edges and enum ordinals
+Input ownership and unique ActionRegistry identity
+Input-only synthetic installed consumer; Window+Input installed consumer
 Animation sampling
 Navigation codec/query
 Script load/invoke/unload
@@ -6515,7 +6502,6 @@ BUILD-03..FINAL
 - [ ] 旧包名、target、include、namespace 已删除。
 - [ ] 导出游戏无 Editor/Toolchain/Authoring 与用户可见 EngineRuntime 语义。
 
-
 ---
 
 # LUX Engine 重构详细施工 Checklist
@@ -6606,7 +6592,7 @@ BUILD-03..FINAL
 - [ ] `SDK-013` 创建 installed modules SDK smoke project。
 - [ ] `SDK-014` 创建 render-only installed sample。
 - [ ] `SDK-015` 创建 asset-only installed sample。
-- [ ] `SDK-016` 创建 input-only installed sample。
+- [x] `SDK-016` 创建 input-only installed sample。 **完成：只查找/链接 `lux::engine::function::input`，可执行 synthetic Snapshot + Action Mapping；公开闭包不含 Window/GLFW。**
 - [ ] `SDK-017` 创建 script-only installed sample。
 - [ ] `SDK-018` 创建 UI-core-only installed sample。
 - [ ] `SDK-019` 检查安装 Config 无 build-tree absolute path。
@@ -6668,7 +6654,7 @@ BUILD-03..FINAL
 - [ ] `PLATFORM-019` 迁移 `GlfwRuntime` 为 `GlfwLibrary` 或 backend internal state。
 - [ ] `PLATFORM-020` 移动 `TrayIconWin32` 到 Launcher 或独立 tray 模块。
 - [ ] `PLATFORM-021` 补充 Window core 无 Vulkan 构建测试。
-- [ ] `PLATFORM-022` 补充 Window raw event → 单体 Input platform implementation 的翻译测试。
+- [x] `PLATFORM-022` 补充 Window raw event → 单体 Input platform implementation 的翻译测试。 **完成：覆盖事件顺序、unknown bounds、press/repeat/release 同帧 edge、mouse、scroll、text 与 modifier。**
 - [ ] `PLATFORM-023` 补充 DynamicLibrary path/memory load 测试。
 - [ ] `PLATFORM-024` 补充 FileWatcher coalescing/close 测试。
 ## M2：Resource Description
@@ -6755,11 +6741,11 @@ BUILD-03..FINAL
 - [ ] `RENDER-027` 补充 close with accepted frame/upload tests。
 ## M2：Input/Animation/Navigation/Script/UI
 
-- [ ] `FUNC-001` 把 PhysicalInput 与 InputSnapshot 放入 input 模块。
-- [ ] `FUNC-002` 让 input target 不 PUBLIC 链接 Window/GLFW。
-- [ ] `FUNC-003` 在单一 input target 内以配置期源选择实现 GLFW/Android 平台采集；禁止 Adapter target/interface。
-- [ ] `FUNC-004` 保留 ActionMapper/Context 的领域逻辑。
-- [ ] `FUNC-005` 建立完整 `Input` 领域对象，统一拥有 Snapshot、Mapper、唯一 ActionRegistry 与 ContextStack。
+- [x] `FUNC-001` 把 PhysicalInput 与 InputSnapshot 放入 input 模块。 **完成：normalized key/mouse/touch/event/snapshot 已归 `lux::input`，旧 Window 头与 namespace 归零。**
+- [x] `FUNC-002` 让 input target 不 PUBLIC 链接 Window/GLFW。 **完成：installed target 的公开链接闭包只有 `lux::cxx::container`；Window 为 PRIVATE。**
+- [x] `FUNC-003` 在单一 input target 内以配置期源选择实现 GLFW/Android 平台采集；禁止 Adapter target/interface。 **完成：CMake 只选择一个 `InputPlatform.cpp`；Android 空快照源通过 NDK arm64 语法编译。**
+- [x] `FUNC-004` 保留 ActionMapper/Context 的领域逻辑。 **完成：既有 trigger/modifier/consume/priority/injection 契约由 26 项 owner tests 回归。**
+- [x] `FUNC-005` 建立完整 `Input` 领域对象，统一拥有 Snapshot、Mapper、唯一 ActionRegistry 与 ContextStack。 **完成：GameApplication/Player/Editor 已统一装配，脚本 lookup 与 Mapper 使用同一 Registry。**
 - [x] `FUNC-006` 让 animation 直接依赖 Description/Math。
 - [x] `FUNC-007` 移除 animation 对 Asset Core 的依赖。
 - [x] `FUNC-008` 让 navigation 依赖 Math 而非 resource/spatial。 **完成：Navigation Core 与 Detour3D 直接 include/link Core Math，安装传递依赖不再查找 Resource spatial。**
@@ -7338,8 +7324,7 @@ BUILD-03..FINAL
 
 ## 统计
 
-本清单当前共 **668** 个验收复选项：**321** 项完成，**320** 项有效待完成或部分完成，另有 **27** 项被现行 ADR 明确取代并保留未勾选作为历史记录。
-
+本清单当前共 **668** 个验收复选项：**328** 项完成，**313** 项有效待完成或部分完成，另有 **27** 项被现行 ADR 明确取代并保留未勾选作为历史记录。
 
 ---
 
@@ -7441,7 +7426,8 @@ BUILD-03..FINAL
 | RenderControlSession | Renderer internal | INTERNALIZE | Render | 04 |
 | RenderFrameSession | Frame/internal | INTERNALIZE | Render | 04 |
 | RenderUploadSession | UploadQueue/internal | INTERNALIZE | Render | 04 |
-| ActionMapper/InputActionRegistry/InputContextStack | lux::input API with precise internals | REORGANIZE | Input | 04 |
+| ActionMapper/InputActionRegistry/InputContextStack | 单体 `lux::input::Input` 所有权对象；算法类仍可独立使用 | DONE — 唯一 Registry、配置期平台私有源、无 Adapter/子 target | Input | 04/ADR-20260821-Input |
+| `lux::window` normalized input / `captureInputSnapshot()` | `lux::input::{PhysicalInput,InputSnapshot,Input}` + Window raw event batch | DONE — MOVE/DELETE OLD OWNER；枚举 ordinal 与帧语义保持 | Window/Input | 02/04/ADR-20260821-Input |
 | function::animation → asset | function::animation → Description + Core Math | DONE — REMOVE ASSET DEPENDENCY；installed consumer 不查找 Asset | Animation/Description | 04/10/ADR-20260821-Serialization |
 | function::navigation → resource::spatial | function::navigation → math | DONE — DEPENDENCY FIX；安装闭包不再查找 Resource spatial | Navigation | 04 |
 | ScriptHost | ScriptRuntime | RENAME | Script | 04 |
@@ -7579,7 +7565,6 @@ status=PENDING → legacy report 允许但不能增长
 - [ ] 所有 ABI/格式迁移附 Golden/fixture 测试。
 - [ ] 无未登记的新旧双重概念。
 
-
 ---
 
 # 当前代码事实索引
@@ -7590,7 +7575,7 @@ status=PENDING → legacy report 允许但不能增长
 
 | 项目 | 内容 |
 | --- | --- |
-| 代码基线 | 原始索引 `09b2a82582550bcbe03afeef77d2591e1656a656`；Pipeline/Core Meta `ed5fb7eb`；Component Archive `d1ead288`；Extension ABI 实施 `c56efbc4` |
+| 代码基线 | 原始索引 `09b2a82582550bcbe03afeef77d2591e1656a656`；Pipeline/Core Meta `ed5fb7eb`；Component Archive `d1ead288`；Extension ABI `c56efbc4`；单体 Input `08e3d590` |
 | 基线日期 | 2026-08-19 |
 | 文档更新 | 2026-08-21 |
 | 适用对象 | 实施者、代码评审者、迁移脚本维护者 |
@@ -7607,6 +7592,8 @@ status=PENDING → legacy report 允许但不能增长
 > **2026-08-21 当前事实：** Core Serialization 只含 Archive/NameTable，安装闭包不含 Meta/Eigen。Reflected tagged archive 已归 ECS `component_archive`；tag 48 为 UUID，只有显式 `asset_type=` annotation 表达资产引用。不创建 RegistryArchive。
 
 > **2026-08-21 Extension ABI 当前事实：** `engine/extensions/api` 是 v4 实体与独立安装 component 的唯一 owner；`modules/core/extension_abi` 与通用 `ContributionId` 已删除。ABI v4 namespace/layout/ordinal/fingerprint、ABI-facing registrar 名称和三个 symbol string 保持不变。Authoring 保持 source DTO，并在 Toolchain/Editor 边界显式转换。
+
+> **2026-08-21 Input 当前事实：** `lux::input::Input` 拥有 Snapshot、Mapper、Mapper 内唯一 Registry 与 ContextStack；单一 target 配置期选择 GLFW/Android 私有源。Window 只提供 raw event batch，Input 的公开链接接口不传播 Window/GLFW；GAPI 保持原公共 owner。
 
 
 ## 使用说明
@@ -7634,7 +7621,7 @@ status=PENDING → legacy report 允许但不能增长
 | `modules/resource/description/.../Image.hpp` | `lux::rdesc::ETextureDimension/ETextureFormat` owner；ordinal 与 32-bit wire/layout 语义不变 | 02/03 |
 | `modules/function/render/graph/.../TextureAccess.hpp` | `lux::render::ETextureRole` owner；Render Graph 可 headless 独立安装和链接 | 02/04 |
 | `modules/platform/gapi/CMakeLists.txt` | 保留的公共 Vulkan interface target 与 wrapper headers；Render 可消费但不取得所有权 | 02/04 / GAPI ADR |
-| `modules/platform/window/CMakeLists.txt` | GLFW/Android、Vulkan Header、Tray Icon | 02/04 |
+| `modules/platform/window/CMakeLists.txt` + `WindowEvents.hpp` | Window 仍为现有单 component；GLFW/Android 源配置期选择，向 Input 提供 raw key/mouse/scroll/text event batch，不再拥有 normalized snapshot | 02/04/ADR-20260821-Input |
 | `modules/resource/CMakeLists.txt` | 只显式添加并安装 description 与 asset 家族；无自动目录枚举或其他一级 component | 01/03 |
 | `modules/resource/description/CMakeLists.txt` | 只拥有通用 Description 值；不再拥有 Terrain、Tilemap、StaticCollider3D 场景 Payload | 03/ADR |
 | `modules/resource/description/.../LayoutContract.hpp` | Render descriptor layout contract | 03/04 |
@@ -7668,7 +7655,9 @@ status=PENDING → legacy report 允许但不能增长
 | `modules/function/render/vulkan/CMakeLists.txt` | Vulkan server/renderer/resources/scene/targets | 04 |
 | `modules/function/render/features/CMakeLists.txt` | 大量标准/工具/地形/点云 Feature 与 codegen | 04 |
 | `modules/function/animation/CMakeLists.txt` | PUBLIC Description + Core Math；不再查找或链接 Resource Asset | 04/10 |
-| `modules/function/input/CMakeLists.txt` | PUBLIC platform window/GLFW closure | 04 |
+| `modules/function/input/CMakeLists.txt` | 唯一 Input target；配置期选择 GLFW/Android 私有 `InputPlatform.cpp`；PUBLIC 仅 `lux-cxx::container`，不传播 Window/GLFW | 04/ADR-20260821-Input |
+| `modules/function/input/.../{Input,InputSnapshot,PhysicalInput}.hpp` | normalized physical input、帧快照与完整 Input 所有权对象；支持 Window sample 与 synthetic evaluate | 04/ADR-20260821-Input |
+| `engine/hosts/game_application/.../GameApplication.hpp`、Player、Editor | 宿主统一持有一个 Input；无第二份 Registry，脚本 action name lookup 与 Mapper state 同源 | 04/07/08/ADR-20260821-Input |
 | `modules/function/script/core/.../ScriptHost.hpp` | 脚本 backend/module/invoke dispatcher | 04 |
 | `modules/function/ui/CMakeLists.txt` | 基础 UI PUBLIC ImGui GLFW/Vulkan，包含 SceneViewportPanel | 04/08 |
 | `ecs/CMakeLists.txt` | ECS 层定义与领域目标列表 | 05 |
@@ -7738,10 +7727,18 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 - [ ] 新发现的错位模块先加入本索引，再进入 12 映射表。
 - [ ] 当前事实和目标建议分栏，不把目标误写成已实现状态。
 
-
 ---
 
 # v2 相对 v1 的架构修订说明
+
+## 2026-08-21：GAPI 保留与单体 Input 实施完成
+
+- `e994a42a` 先落地 GAPI 保留与单体 Input 裁决；`08e3d590` 完成代码施工。
+- GAPI 继续作为公共 Platform Vulkan wrapper SDK，production target/component/include/namespace 均未修改。
+- normalized physical input 与 snapshot 从 Window 归入 Function Input；Window 只积累 backend-native event batch。
+- Input 只有一个 target，CMake 配置期选择 GLFW/Android 私有源；不存在 Adapter、backend interface 或平台子 target。
+- `lux::input::Input` 统一拥有 Snapshot、Mapper、Mapper 内唯一 Registry 与 ContextStack；GameApplication、Player、Editor 已使用同一模型。
+- 四个 Windows Profile 全量构建及第二轮 no-op、owner executables、两个 installed consumers 与安装头清理均通过；Android Input 源由 NDK arm64 语法编译验证。
 
 ## 2026-08-21：Extension ABI v4 Owner 与 Core 清零
 
@@ -7855,7 +7852,6 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 - Input 只保留 `lux::engine::function::input` 一个 target；平台差异由 CMake 选择私有 GLFW/Android 源实现。
 - Window 只产出原始事件，`lux::input::Input` 统一拥有 Snapshot、ActionMapper、唯一 ActionRegistry 与 ContextStack。
 - 禁止新增 Input Adapter target/interface、backend factory、catalog 或运行期多态。
-
 
 ---
 
@@ -8028,7 +8024,6 @@ engine/scene/
 - 三类领域 Payload 在新 owner 下保持长度、SHA 与 decode/re-encode 契约。
 - 安装包只暴露 canonical `scene` component；旧 Scene components 和 Resource 场景 Payload 头不存在。
 
-
 ---
 
 # ADR：Asset 领域内聚、Pak 公共边界与 Engine Content
@@ -8172,7 +8167,6 @@ component `asset` 保持不变。Engine Content target 为 `lux::engine::content
 本轮不创建第二套 AssetStore、Provider、AssetId 或 AssetTypeId；不推进 M0、全局 M7
 命名迁移、Scene/Registry/Editor 架构重写或 Extension ABI；不改变任何 wire/schema。
 
-
 ---
 
 # ADR：Asset 运行期需求与 SerDeser 边界
@@ -8263,7 +8257,6 @@ AssetFileHeader v1/v2、各资产 wire、Scene legacy LXSC、Pak v2、magic、UU
 `MODULES_SDK` 不是合法 Profile；Modules 边界由 installed consumers 在现有四个 Profile 的
 安装结果上验证。
 
-
 ---
 
 # ADR：Core Meta 纯化与 ECS Registry 归位
@@ -8328,7 +8321,6 @@ sidecar 反射；Core Meta/Serialization installed consumer 不获得 EnTT，ECS
 
 本 ADR 不推进 M0、M7、Extension ABI、VFS/Platform 迁移、Registry 产品级重写或 Scene Runtime
 重写。
-
 
 ---
 
@@ -8407,7 +8399,6 @@ Core Serialization 已删除 TaggedPropertyArchive、Meta 与 Eigen 闭包；ECS
 三条 Unknown Component 路径均在 Registry 发布前失败。Core、ECS Component Archive 与
 Function Animation installed consumers、四 Profile 全量构建及第二轮 no-op 已通过；证据见
 `evidence/core-serialization-ecs-component-archive-6906ccc2.md`。
-
 
 ---
 
@@ -8507,7 +8498,6 @@ reflection publication、lease/unload 与 Editor-only registration。实际 Phys
 `luxGetExtensionModuleV4` 与 `luxRegisterRuntimeContributionsV4`。完整验证见
 `evidence/extension-abi-core-retirement-2259ade7.md`。
 
-
 ---
 
 # ADR-20260821：GAPI 保留裁决
@@ -8544,14 +8534,13 @@ GAPI 与 Render 的职责不同：GAPI 是外部项目也可直接使用的低�
 - 本裁决不修改 Window/Vulkan Surface 的所有权；该边界仍由后续 Window/Render Surface 阶段处理。
 - 本裁决不改变任何 GAPI production 代码或安装 ABI。
 
-
 ---
 
 # ADR-20260821：单体 Input 子系统边界
 
 ## 状态
 
-ACCEPTED，取代“为每个窗口后端建立公开 Input Adapter target”的旧目标。
+IMPLEMENTED（`08e3d590`），取代“为每个窗口后端建立公开 Input Adapter target”的旧目标。
 
 ## 决策
 
@@ -8595,6 +8584,13 @@ Window 只采集 OS/window backend 的原始 key、mouse、scroll 与 text 事�
 - 不完整拆分 Window core/backend、Vulkan Surface、Tray 或 UI。
 - 不引入输入设备热插拔、gamepad、重放文件格式或新的线程模型。
 
+## 实施结果
+
+- `lux::input::Input` 已统一拥有 Snapshot、Mapper、Mapper 内唯一 Registry 与 ContextStack。
+- Window 只发布 backend-native event batch；normalized 类型、held/edge、采样历史与 Action Mapping 已归 Input。
+- 单一 Input target 在 CMake 配置期选择 GLFW 或 Android 私有源；公开链接闭包不传播 Window/GLFW。
+- GameApplication、Player 与 Editor 已改用同一 Input 所有权模型，不再维护重复 Registry。
+- 旧 Window 输入头、旧 namespace/API、Adapter/interface 与平台子 target 均已归零；GAPI production 未修改。
 
 ---
 
@@ -8637,7 +8633,6 @@ Window 只采集 OS/window backend 的原始 key、mouse、scroll 与 text 事�
 - Public Pak writer/inspector/provider、opaque VFS、AssetRef 账本、Catalog 冲突、Engine Content UUID 与 ECS fallback 注入契约均通过。
 - DEVELOPER、PLAYER、EDITOR、TOOLCHAIN 的 Windows RelWithDebInfo `target all -j 4 -k 0` 通过，第二轮均为 `ninja: no work to do`。
 
-
 ---
 
 # Asset Pipeline、Runtime Demand 与 Core Meta 验收证据
@@ -8672,7 +8667,6 @@ Window 只采集 OS/window backend 的原始 key、mouse、scroll 与 text 事�
 - Debug、RelWithDebInfo、Android 三个安装前缀的变更公共头已同步；五个退役头已精确删除。
 - Asset、Core Meta/Serialization 与 ECS Core installed consumers 均完成配置、编译、链接和运行。
 - 旧回调、旧 Registry/OO 根类、旧 Resolver 公共头及禁止依赖闭包扫描归零；`git diff --check` 通过。
-
 
 ---
 
@@ -8711,7 +8705,6 @@ Window 只采集 OS/window backend 的原始 key、mouse、scroll 与 text 事�
 | module layout / target DAG | 四 Profile 配置通过 |
 
 四个构建树当前均报告 `No tests were found!!!`，因此验收记录来自独立 owner test executables，未把 0 项 CTest 误报为测试覆盖。旧构建目录中的 `entity_scene_contract_test.exe` 是已删除 Resource target 的历史残留，不属于当前 CMake DAG；现行 LXES 契约由 `entity_section_wire_compatibility_test`、`entity_scene_cooker_test` 与 `runtime_entity_scene_integration_test` 验证。
-
 
 ---
 
@@ -8753,3 +8746,46 @@ Window 只采集 OS/window backend 的原始 key、mouse、scroll 与 text 事�
 | module layout / target DAG | 四 Profile 配置通过；旧 target 不在 classified/unclassified graph |
 
 四个构建树的 CTest 命令均成功执行，但工程当前注册 0 项；因此本证据明确来自 owner executables，未把空 CTest 当成覆盖。
+
+---
+
+# GAPI 保留与单体 Input 子系统施工证据
+
+**施工基线：** `d7f364d0`
+**文档裁决提交：** `e994a42a`
+**实施提交：** `08e3d590`
+**日期：** 2026-08-21
+
+## Owner 与依赖边界
+
+- `modules/platform/gapi` production diff 为空；既有 target、component、namespace 与公共头保持。
+- normalized key/mouse/modifier/state/touch/event/snapshot 已归 `lux::input`；旧 Window 输入头、namespace 与 API 扫描归零。
+- Window callbacks 只积累 backend-native key/mouse/scroll/text event batch；`Input::sample()` 负责规范化、held/edge、cursor 和 sample history。
+- `lux::input::Input` 拥有 Snapshot、ActionMapper、Mapper 内唯一 ActionRegistry 与 ContextStack。GameApplication、Player、Editor 不再维护第二份 Registry。
+- Input 只有 `lux::engine::function::input` 一个 target/component；CMake 只选择 GLFW 或 Android 私有源。无 Adapter、backend interface、factory、catalog 或平台子 target。
+- installed Input target 的 `INTERFACE_LINK_LIBRARIES` 为 `lux::cxx::container`，不传播 Window/GLFW。
+
+## 契约测试
+
+- `input_system_test`：26 项通过，覆盖 Action/Context priority、consume、disabled、trigger、modifier、injection、UI routing、唯一 Registry 与 synthetic evaluation。
+- `input_platform_translation_test`：覆盖 unknown bounds、raw event order、同帧 press/repeat/release、最终 held、mouse、scroll、text 与 modifier。
+- enum compile-time contract 固定 key code、mouse ordinal、modifier bit、input state 与 touch phase ordinal。
+- `input_public_link_test` 通过；input-only installed consumer 可配置、链接、运行 synthetic Snapshot + Action Mapping。
+- Window+Input installed consumer 可独立配置和链接；运行期由完整安装闭包提供 Window/GLFW DLL。
+
+## 构建、安装与平台证据
+
+| 验证 | 结果 |
+| --- | --- |
+| DEVELOPER RelWithDebInfo `target all -j 4 -k 0` | PASS；第二轮 `ninja: no work to do` |
+| PLAYER RelWithDebInfo | PASS；第二轮 no-op |
+| EDITOR RelWithDebInfo | PASS；第二轮 no-op |
+| TOOLCHAIN RelWithDebInfo | PASS；第二轮 no-op；该离线 Profile 不配置 Input |
+| CTest 四 Profile | 命令 PASS，但工程当前注册 0 项；覆盖来自 owner executables |
+| Android Input selected sources | NDK Clang 19、arm64/android-28 `-fsyntax-only` PASS |
+| Android PLAYER 完整配置 | 正确 Android lux-cxx/Host Tools 后进入 Render codegen，但配置阶段无输出停滞，人工终止；未伪报全量通过 |
+| Debug/RelWithDebInfo/Android headers | 新 Input/Window 头同步；旧 Window `InputSnapshot.hpp`、`LuxWindowDefination.hpp` 精确删除 |
+| installed consumer | input-only 与 Window+Input configure/build/run PASS |
+| 旧符号与结构扫描 | 旧 include/API/namespace、Adapter/interface、`input_glfw`/`input_android` 归零 |
+
+本阶段未接入真实 Android GameActivity 输入；Android 平台实现按 ADR 确定性地产生空快照。

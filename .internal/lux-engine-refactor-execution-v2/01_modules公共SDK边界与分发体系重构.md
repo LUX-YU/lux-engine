@@ -417,7 +417,7 @@ Extension ABI 不属于公共 Asset/Core 版本；它由 `lux-engine-extension-s
 
 | PR | 内容 | 必须保持 |
 | --- | --- | --- |
-| SDK-01 | 增加 `MODULES_SDK` Profile 与隔离测试 | 不移动任何实现 |
+| SDK-01 | 增加 installed Modules consumer 隔离测试 | 不增加第五种 Profile |
 | SDK-02 | 显式列举 modules 子目录，停止自动发现 | 全 Profile 配置一致 |
 | SDK-03 | 引入新公共 Alias 与 Include Prefix | 旧 Alias 仍工作 |
 | SDK-04 | 接入 Include/Link 闭包扫描 | 允许受控兼容例外 |
@@ -426,13 +426,12 @@ Extension ABI 不属于公共 Asset/Core 版本；它由 `lux-engine-extension-s
 
 ## 10. 验收闸门
 
-- [ ] `MODULES_SDK` 配置不执行 `add_subdirectory(ecs)`。
-- [ ] `MODULES_SDK` 配置不执行 `add_subdirectory(engine)`。
+- [ ] installed Modules consumer 不导入 ECS/Engine target。
 - [ ] 安装结果中不存在 `SceneRuntime.hpp`、`EngineExtensions.hpp`、`GameApplication.hpp`。
 - [ ] 公共目标的递归 Link Closure 不包含 ECS/Engine/Editor。
 - [ ] Render-only 外部样例可以创建窗口、初始化 Vulkan Renderer 并清理。
 - [ ] Asset-only 外部样例可以读取 Header、选择 Codec、读取 Pak。
-- [ ] Input-only 外部样例不需要 GLFW。
+- [x] Input-only 外部样例不需要查找或链接 Window/GLFW；synthetic Snapshot + Action Mapping 可执行。
 - [ ] Script-only 外部样例不需要 Engine Extension ABI。
 - [ ] 新公共头不使用 `lux/engine/function` 或 `lux/engine/resource` 前缀。
 - [ ] 所有兼容 Alias 都有删除里程碑。

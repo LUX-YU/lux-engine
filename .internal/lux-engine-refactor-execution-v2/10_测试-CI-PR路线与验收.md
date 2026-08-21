@@ -196,6 +196,9 @@ Legacy EAssetType adapter
 Render graph topology and hazards
 Render protocol bounded queues
 Input mapping/context precedence
+Input raw-event translation, same-frame edges and enum ordinals
+Input ownership and unique ActionRegistry identity
+Input-only synthetic installed consumer; Window+Input installed consumer
 Animation sampling
 Navigation codec/query
 Script load/invoke/unload

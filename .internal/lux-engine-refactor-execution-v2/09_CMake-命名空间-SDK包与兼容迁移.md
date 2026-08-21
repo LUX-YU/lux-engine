@@ -414,20 +414,12 @@ EDITOR
 TOOLCHAIN
 ```
 
-新增：
-
-```text
-MODULES_SDK
-ECS_SDK（可选）
-```
-
-Profile 必须用显式目录列表，不使用自动目录枚举。
+不新增层级形状 Profile；Modules/ECS SDK 的隔离由 installed consumer 验证。Profile 必须用显式目录列表，不使用自动目录枚举。
 
 ### 10.1 Profile 矩阵
 
 | Profile | Modules | ECS | Engine | Authoring | Toolchain | Editor | Products |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| MODULES_SDK | ✓ | — | — | — | — | — | samples |
 | PLAYER | ✓ | ✓ | ✓ | — | — | — | player |
 | EDITOR | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | editor |
 | TOOLCHAIN | 最小集 | schema 需要 | format 需要 | ✓ | ✓ | — | tools |

@@ -230,9 +230,9 @@ namespace lux::render
 
 ### 3.1 当前问题
 
-`input` 的 Action Mapping 逻辑是通用的，但 PUBLIC 依赖 `platform::window`，并因此向消费者泄漏 GLFW。
+历史基线中 `input` 的 Action Mapping PUBLIC 依赖 `platform::window`，并向消费者泄漏 GLFW。`08e3d590` 已完成归位：Input 的公开链接闭包只保留 `lux-cxx::container`，Window/GLFW 仅为平台采样实现的 PRIVATE 依赖。
 
-### 3.2 目标结构
+### 3.2 已实施结构
 
 ```text
 modules/function/input/
@@ -271,6 +271,8 @@ public:
 ```
 
 Input 只有一个 target。CMake 在配置期只选择一个私有平台实现；不创建 Adapter target、backend interface、factory 或注册表。`lux::input` 公共头不 include `<GLFW/glfw3.h>`。
+
+Window 已删除 normalized input 与 snapshot 状态，只积累 raw key/mouse/scroll/text event batch。`Input::sample()` 负责 held/edge、cursor/sample history 与规范化；`evaluate(InputSnapshot, ...)` 可在无 Window 的 installed consumer 中运行。
 
 ### 3.3 对外对象命名
 

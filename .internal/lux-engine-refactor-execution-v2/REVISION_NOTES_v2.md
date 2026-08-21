@@ -1,5 +1,14 @@
 # v2 相对 v1 的架构修订说明
 
+## 2026-08-21：GAPI 保留与单体 Input 实施完成
+
+- `e994a42a` 先落地 GAPI 保留与单体 Input 裁决；`08e3d590` 完成代码施工。
+- GAPI 继续作为公共 Platform Vulkan wrapper SDK，production target/component/include/namespace 均未修改。
+- normalized physical input 与 snapshot 从 Window 归入 Function Input；Window 只积累 backend-native event batch。
+- Input 只有一个 target，CMake 配置期选择 GLFW/Android 私有源；不存在 Adapter、backend interface 或平台子 target。
+- `lux::input::Input` 统一拥有 Snapshot、Mapper、Mapper 内唯一 Registry 与 ContextStack；GameApplication、Player、Editor 已使用同一模型。
+- 四个 Windows Profile 全量构建及第二轮 no-op、owner executables、两个 installed consumers 与安装头清理均通过；Android Input 源由 NDK arm64 语法编译验证。
+
 ## 2026-08-21：Extension ABI v4 Owner 与 Core 清零
 
 - `2a916295` 先裁决 owner 与冻结表面；`c56efbc4` 已使 `engine/extensions/api` 成为唯一实体 owner，并删除旧 Core component。

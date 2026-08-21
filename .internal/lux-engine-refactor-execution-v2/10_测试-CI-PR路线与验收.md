@@ -134,7 +134,7 @@ Editor
 
 ```json
 {
-  "ScriptRuntime": "language execution environment",
+  "SceneScriptRuntime": "playback-session owner",
   "FileWatcher": "not matched",
   "PhysicsSystem": "ecs::ISystem"
 }
@@ -165,6 +165,11 @@ Script owner tests 必须覆盖 Lua/Native 的 file/memory load、冷路径 desc
 `shared_ptr`、`expected`、虚调用、动态分配或 stale/revision 检查。installed `script_core`
 consumer 不获得 Lua、DynamicLibrary 或 Extension ABI；installed `script_native` consumer 直接
 使用 `NativeModule` load/find/invoke 契约。库不得向 `stderr` 输出诊断。
+
+`a478e173` 的 RelWithDebInfo 机器契约以 100,000 个订阅者、100 次重复运行：成功
+热循环零动态分配，中位开销相对等价手写函数指针循环不超过 10%；反汇编必须显示
+每个订阅者恰好一个间接 `call`。具体结果见
+`evidence/script-direct-dispatch-db8ed375.md`。
 
 ### 4.1 Core
 

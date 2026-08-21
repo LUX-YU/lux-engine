@@ -32,9 +32,9 @@
 | `input` | `lux::input` | 物理输入值不依赖 Window Backend |
 | `animation` | `lux::animation` | 只依赖 Description 和 Math |
 | `navigation` | `lux::navigation` | 依赖 Math，不依赖 resource/spatial |
-| `script_core` | `lux::script` | `ScriptHost → ScriptRuntime` |
-| `script_lua` | `lux::script_lua` | 保留 LuaJIT/sol2 Backend |
-| `script_native` | `lux::script_native` | 依赖 DynamicLibrary；与 Engine Extension ABI 无关 |
+| `script_core` | `lux::script` | ABI、Signature、Value 与非空 CallFrame；无通用 Runtime dispatcher |
+| `script_lua` | `lux::script_lua` | LuaJIT/sol2 具体执行能力；会话绑定归 ECS backend |
+| `script_native` | `lux::script_native` | move-only NativeModule + DynamicLibrary；与 Engine Extension ABI 无关 |
 | `ui` | `lux::ui` + `lux::ui_imgui` | Panel/Widget 与 ImGui Backend 分离 |
 | `ui_vulkan` | `lux::ui_render_vulkan` | 只做 UI draw data 到 Render/Vulkan Integration |
 
@@ -485,7 +485,7 @@ cmake/Codegen/ShaderParams.cmake
 | `input/CMakeLists.txt` | 不 PUBLIC 链接 Window |
 | `animation/CMakeLists.txt` | 依赖 Description，不依赖 Asset Core |
 | `navigation/core/CMakeLists.txt` | 依赖 Math |
-| `script/core/CMakeLists.txt` | `ScriptRuntime` API 与 expected 错误 |
+| `script/core/CMakeLists.txt` | ABI/Signature/Value/CallFrame 与加载期 expected 错误；无 Runtime handle |
 | `ui/CMakeLists.txt` | Core/ImGui/GLFW/Vulkan/Editor Viewport 拆分 |
 
 ## 10. Pull Request 序列
@@ -501,7 +501,7 @@ cmake/Codegen/ShaderParams.cmake
 | INPUT-01 | Snapshot 与 Window Backend 分离 | input-only 样例无 GLFW |
 | ANIM-01 | Animation 直接依赖 Description | 无 AssetStore |
 | NAV-01 | Navigation 改依赖 Math | resource/spatial 删除 |
-| SCRIPT-01 | ScriptRuntime 与 expected | Native/Lua 测试通过 |
+| SCRIPT-01 | NativeModule 加载期 expected + ECS 直接 ABI 分派 | Native/Lua/session/机器码测试通过 |
 | UI-01 | UI owner ADR 与实现收敛 | UI 公共闭包无不必要的 GLFW/Vulkan，且不制造薄 Adapter target |
 | UI-02 | SceneViewport 迁入 Editor | modules/ui 无 Scene 类型 |
 | FUNC-FINAL | 删除旧 targets/include | Modules SDK 闭包纯净 |

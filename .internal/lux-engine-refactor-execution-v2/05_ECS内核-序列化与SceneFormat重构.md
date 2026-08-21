@@ -25,6 +25,8 @@
 > **2026-08-21 Script 直接调用裁决：** ScriptSystem 的事件热路径只消费绑定好的
 > `{lux_script_invoke_fn, context}`。名称、签名、ABI 和语言 backend 选择全部在实例
 > 绑定期完成；C++ Behavior 不再是多态基类，Native/C++ 不安装 SEH 恢复层。
+> `a478e173` 已实施该裁决：Lua/Native 缓存按 SceneScriptRuntime 播放会话驻留，
+> bulk dispatch 每个订阅者只执行一次最终函数指针调用且零动态分配。
 
 > **2026-08-21 Component Archive 裁决：** Reflection-driven tagged-property archive 整体归 `ecs/serialization` 的 `component_archive` component；Core 只保留 byte Archive/NameTable。不建立 RegistryArchive，Unknown Component schema 在 Authoring/Toolchain/Runtime 均拒绝。详见 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`。
 

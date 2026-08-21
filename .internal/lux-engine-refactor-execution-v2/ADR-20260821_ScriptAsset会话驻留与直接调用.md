@@ -2,9 +2,11 @@
 
 ## 状态
 
-已接受，等待代码施工。本 ADR 取代
+已实施（`a478e173`）。本 ADR 取代
 `ADR-20260821_ScriptRuntime契约与错误边界.md` 中的 Runtime-validated handle、
 invoke-time module lookup 与 stale-handle 调用模型；旧 ADR 作为历史施工记录保留。
+
+施工证据见 `evidence/script-direct-dispatch-db8ed375.md`。
 
 ## 背景
 

@@ -2,6 +2,7 @@
 
 ## 2026-08-21：Script Asset 会话驻留与直接调用
 
+- 以 `db8ed375` 为基线，`d7cd367d` 先提交裁决，`a478e173` 完成代码施工与多 Profile 验收。
 - `ScriptRuntime` stale-handle 模型被新 ADR 取代；旧施工记录保留但不再是现行目标。
 - Script 执行代码按 `SceneScriptRuntime` 播放会话驻留，会话内不因 AssetRef 归零或最后实例销毁而卸载。
 - 函数查找与精确 ABI 签名校验归绑定冷路径；Native/C++ 事件热路径只调用一次最终函数指针。

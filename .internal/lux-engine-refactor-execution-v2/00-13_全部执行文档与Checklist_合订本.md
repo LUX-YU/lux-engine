@@ -1,6 +1,6 @@
 # LUX Engine 重构执行文档 v2 合订本
 
-基线：单体 Input 实施提交 `08e3d590`
+基线：Script Runtime 裁决代码基线 `de11c05c`
 
 > 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明、现行 ADR 及既有验收证据机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
 
@@ -29,6 +29,7 @@
 - `ADR-20260821_ExtensionAbiV4Owner与Core清零.md`
 - `ADR-20260821_GAPI保留裁决.md`
 - `ADR-20260821_单体Input子系统边界.md`
+- `ADR-20260821_ScriptRuntime契约与错误边界.md`
 - `evidence/asset-domain-cohesion-f35e245a.md`
 - `evidence/asset-pipeline-core-meta-fe4422ba.md`
 - `evidence/core-serialization-ecs-component-archive-6906ccc2.md`
@@ -64,6 +65,8 @@
 > **2026-08-21 Extension ABI 裁决：** ABI v4 的实体定义归 `engine/extensions/api`，Core 不再安装 Extension API；namespace、descriptor 布局、ordinal、fingerprint、ABI-facing registrar 名称及导出 symbol 保持不变。通用 `ContributionId` 删除。ABI-facing 类型改名与显式 reflection codegen entry 留给独立 ABI 版本裁决。详见 `ADR-20260821_ExtensionAbiV4Owner与Core清零.md`。
 
 > **2026-08-21 Extension ABI 实施状态：** `c56efbc4` 已完成上述裁决；Authoring 保持 source DTO，并在 Toolchain/Editor 边界显式转换为 Engine Extension API。四 Profile、动态 DLL、installed consumer 与旧 component 反向查找均通过。
+
+> **2026-08-21 Script Runtime 裁决：** Lua/Native 等真实语言 backend 继续使用同一 Runtime 多态边界；Runtime、Backend 与 Function 统一返回结构化 `expected`。库不直接输出终端文字，function handle 不暴露 module 内裸指针。旧 UI 四 target 拆分降为待独立 ADR 重审的历史候选，不得机械制造 Adapter target。详见 `ADR-20260821_ScriptRuntime契约与错误边界.md`。
 
 
 ## 0. 文档目的
@@ -2621,14 +2624,21 @@ ScriptHostImpl      → ScriptRuntime::State
 class ScriptRuntime final
 {
 public:
-    void addBackend(std::unique_ptr<Backend>);
-    expected<ModuleHandle, LoadError> load(...);
-    expected<void, InvokeError> invoke(FunctionHandle, CallFrame&);
-    void unload(ModuleHandle);
+    ScriptResult<void> registerBackend(std::unique_ptr<IScriptBackend>);
+    ScriptResult<ModuleHandle> loadModule(...);
+    ScriptResult<ScriptFunctionHandle> findFunction(...);
+    ScriptResult<void> invoke(const ScriptFunctionHandle&, CallFrame&);
+    ScriptResult<void> unloadModule(ModuleHandle);
 };
 ```
 
-改掉返回 `kInvalidModule` 与 `lastError()` 的隐式错误通道，使用 `expected`。
+按 `ADR-20260821_ScriptRuntime契约与错误边界.md`，Runtime、Backend 与 Function 使用同一组
+`EScriptError`、`ScriptFailure`、`ScriptResult<T>`。改掉返回 `kInvalidModule`、`nullptr`、
+`bool` 与 `lastError()` 的隐式错误通道。Function handle 不得保存 module 内部裸指针，卸载后
+调用必须稳定返回 `STALE_HANDLE`。
+
+Backend 多态对应 Lua、Native 等真实语言执行实现，应当保留；不为它增加 Adapter、第二套
+Runtime 或全局注册表。Script 库只返回结构化错误，不直接输出终端文字。
 
 ### 6.3 Native Script 与 Engine Extension 分开
 
@@ -2646,7 +2656,11 @@ engine/extensions
 
 任何头文件不得同时 include 两种 ABI。
 
-## 7. UI 拆分
+## 7. UI 边界（待独立 ADR 重新裁决）
+
+> 以下四 target 结构是历史候选，不再作为可直接施工的固定答案。后续必须先核对 ImGui、Window、
+> Vulkan 与 Editor Viewport 的真实所有权；不得通过创建薄 `ui_imgui_glfw` Adapter 来掩盖边界。
+> `SceneViewportPanel` 迁入 Editor、公共 UI 闭包退出不必要的平台/渲染依赖仍是有效目标。
 
 ### 7.1 当前问题
 
@@ -2674,7 +2688,7 @@ engine/editor/
     └── SceneViewport.cpp
 ```
 
-公开目标：
+历史候选目标（非现行强制 target 清单）：
 
 ```text
 lux::ui
@@ -2757,7 +2771,7 @@ cmake/Codegen/ShaderParams.cmake
 | ANIM-01 | Animation 直接依赖 Description | 无 AssetStore |
 | NAV-01 | Navigation 改依赖 Math | resource/spatial 删除 |
 | SCRIPT-01 | ScriptRuntime 与 expected | Native/Lua 测试通过 |
-| UI-01 | UI Core/ImGui/Backend 拆分 | UI Core 无 GLFW/Vulkan |
+| UI-01 | UI owner ADR 与实现收敛 | UI 公共闭包无不必要的 GLFW/Vulkan，且不制造薄 Adapter target |
 | UI-02 | SceneViewport 迁入 Editor | modules/ui 无 Scene 类型 |
 | FUNC-FINAL | 删除旧 targets/include | Modules SDK 闭包纯净 |
 
@@ -6023,6 +6037,11 @@ EditorAsyncService
 
 ## 4. L1：公共模块单元测试
 
+Script Runtime owner tests 必须覆盖 Lua/Native 的 file/memory load、function lookup、invoke、unload，
+并覆盖 duplicate/unknown backend、坏扩展、坏 ABI/入口、backend invoke failure 与 stale function handle。
+Script 公共库不得通过 `stderr` 或 thread-local `lastError()` 输出诊断；installed `script_core`
+consumer 不获得 Lua、DynamicLibrary 或 Extension ABI。
+
 ### 4.1 Core
 
 ```text
@@ -6749,16 +6768,16 @@ BUILD-03..FINAL
 - [x] `FUNC-006` 让 animation 直接依赖 Description/Math。
 - [x] `FUNC-007` 移除 animation 对 Asset Core 的依赖。
 - [x] `FUNC-008` 让 navigation 依赖 Math 而非 resource/spatial。 **完成：Navigation Core 与 Detour3D 直接 include/link Core Math，安装传递依赖不再查找 Resource spatial。**
-- [ ] `FUNC-009` 保留 navigation_detour3d 独立 backend。
+- [x] `FUNC-009` 保留 navigation_detour3d 独立 backend。 **现有独立 target/component、PRIVATE Recast/Detour 依赖与 owner test 已按事实验收。**
 - [ ] `FUNC-010` 将 `ScriptHost` 重命名为 `ScriptRuntime`。
 - [ ] `FUNC-011` 把 invalid handle + lastError 改为 expected。
 - [ ] `FUNC-012` 保持 ScriptModule 术语仅用于脚本。
 - [ ] `FUNC-013` 确认 script_native 不 include Extension ABI。
-- [ ] `FUNC-014` 拆 UI core 与 ImGui integration。
-- [ ] `FUNC-015` 让 `lux::ui` 不依赖 GLFW/Vulkan。
-- [ ] `FUNC-016` 创建 `lux::ui_imgui`。
-- [ ] `FUNC-017` 创建 `lux::ui_imgui_glfw`。
-- [ ] `FUNC-018` 创建 `lux::ui_render_vulkan`。
+- [ ] `FUNC-014` 拆 UI core 与 ImGui integration。 **PENDING ADR：先按真实 owner 重审，不机械拆 target。**
+- [ ] `FUNC-015` 让 `lux::ui` 不依赖不必要的 GLFW/Vulkan。 **PENDING ADR：以安装闭包和公共 API 为准。**
+- [ ] `FUNC-016` 创建 `lux::ui_imgui`。 **PENDING ADR：旧 target 名不是强制答案。**
+- [ ] `FUNC-017` 创建 `lux::ui_imgui_glfw`。 **PENDING ADR：禁止薄 Adapter target。**
+- [ ] `FUNC-018` 创建 `lux::ui_render_vulkan`。 **PENDING ADR：与现有 `ui_vulkan` owner 一并重审。**
 - [ ] `FUNC-019` 将 `UISystem` 重命名为 `UI`。
 - [ ] `FUNC-020` 移动 SceneViewportPanel 到 Editor。
 - [ ] `FUNC-021` 补充 UI core 无图形 backend 测试。
@@ -7430,8 +7449,8 @@ BUILD-03..FINAL
 | `lux::window` normalized input / `captureInputSnapshot()` | `lux::input::{PhysicalInput,InputSnapshot,Input}` + Window raw event batch | DONE — MOVE/DELETE OLD OWNER；枚举 ordinal 与帧语义保持 | Window/Input | 02/04/ADR-20260821-Input |
 | function::animation → asset | function::animation → Description + Core Math | DONE — REMOVE ASSET DEPENDENCY；installed consumer 不查找 Asset | Animation/Description | 04/10/ADR-20260821-Serialization |
 | function::navigation → resource::spatial | function::navigation → math | DONE — DEPENDENCY FIX；安装闭包不再查找 Resource spatial | Navigation | 04 |
-| ScriptHost | ScriptRuntime | RENAME | Script | 04 |
-| modules/function/ui | ui core + imgui + backend integrations | SPLIT | UI | 04 |
+| ScriptHost | ScriptRuntime + `ScriptResult<T>` + runtime-validated function handle | IN PROGRESS — ADR-20260821-ScriptRuntime；无 shim/lastError/stderr | Script | 04/ADR |
+| modules/function/ui | UI domain + render/platform ownership pending ADR | REVIEW — 不按旧四 target/Adapter 方案机械拆分 | UI | 04 |
 | UISystem | UI | RENAME | UI | 04/08 |
 | SceneViewportPanel | engine/editor/viewport/SceneViewport | MOVE | Editor | 04/08 |
 | ecs/core dependency extension_abi（已删除） | ecs-owned ComponentSchemaId | DONE — REMOVE | ECS | 05 |
@@ -7658,7 +7677,8 @@ status=PENDING → legacy report 允许但不能增长
 | `modules/function/input/CMakeLists.txt` | 唯一 Input target；配置期选择 GLFW/Android 私有 `InputPlatform.cpp`；PUBLIC 仅 `lux-cxx::container`，不传播 Window/GLFW | 04/ADR-20260821-Input |
 | `modules/function/input/.../{Input,InputSnapshot,PhysicalInput}.hpp` | normalized physical input、帧快照与完整 Input 所有权对象；支持 Window sample 与 synthetic evaluate | 04/ADR-20260821-Input |
 | `engine/hosts/game_application/.../GameApplication.hpp`、Player、Editor | 宿主统一持有一个 Input；无第二份 Registry，脚本 action name lookup 与 Mapper state 同源 | 04/07/08/ADR-20260821-Input |
-| `modules/function/script/core/.../ScriptHost.hpp` | 脚本 backend/module/invoke dispatcher | 04 |
+| `modules/function/script/core/.../ScriptHost.hpp` | 当前仍以 invalid/null/bool + thread-local lastError 表达失败，FunctionHandle 暴露 module 内裸指针；按 ScriptRuntime ADR 待迁移 | 04/ADR-20260821-ScriptRuntime |
+| `modules/function/navigation/detour3d/CMakeLists.txt` | 独立 navigation_detour3d target/component；Recast/Detour PRIVATE，具有 owner test | 04 / FUNC-009 DONE |
 | `modules/function/ui/CMakeLists.txt` | 基础 UI PUBLIC ImGui GLFW/Vulkan，包含 SceneViewportPanel | 04/08 |
 | `ecs/CMakeLists.txt` | ECS 层定义与领域目标列表 | 05 |
 | `ecs/core/CMakeLists.txt` | 拥有 Registry 与 EnTT component reflection adapter；已退出 Resource Asset/entity_scene/spatial，installed consumer 不导入 Resource | 05/ADR-20260821-Meta |
@@ -7730,6 +7750,13 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 ---
 
 # v2 相对 v1 的架构修订说明
+
+## 2026-08-21：ScriptRuntime 契约裁决
+
+- 以 `de11c05c` 为代码基线，保留 Lua/Native 真实 backend 多态，但禁止增加 Adapter 或第二套 Runtime。
+- `ScriptHost` 将改名为 `ScriptRuntime`；Runtime、Backend 与 Function 统一使用结构化 `ScriptResult<T>`。
+- 删除 invalid/null/bool + thread-local `lastError()` 错误通道、库内 `stderr` 与 module 内裸函数指针。
+- `navigation_detour3d` 已按现有独立 target/component 与 owner test 验收；旧 UI 四 target 方案改为待独立 ADR 重审。
 
 ## 2026-08-21：GAPI 保留与单体 Input 实施完成
 
@@ -8591,6 +8618,60 @@ Window 只采集 OS/window backend 的原始 key、mouse、scroll 与 text 事�
 - 单一 Input target 在 CMake 配置期选择 GLFW 或 Android 私有源；公开链接闭包不传播 Window/GLFW。
 - GameApplication、Player 与 Editor 已改用同一 Input 所有权模型，不再维护重复 Registry。
 - 旧 Window 输入头、旧 namespace/API、Adapter/interface 与平台子 target 均已归零；GAPI production 未修改。
+
+---
+
+# ADR-20260821：ScriptRuntime 契约与错误边界
+
+## 状态
+
+已接受，代码施工尚未完成。
+
+## 背景
+
+当前 `script_core` 已经形成一个真实的语言执行边界：Lua、Native DLL 以及未来可能存在的
+WASM backend 可以同时存在，并由同一个对象完成 backend 注册、module 加载、function 查找与
+调用。这种多态对应多个真实实现，不是为搬运平台差异而制造的 Adapter。
+
+现有公共 API 仍有三项问题：
+
+- `kInvalidModule`、`nullptr`、`bool` 与线程局部 `lastError()` 共同表达失败，调用方无法可靠组合错误；
+- Native backend 在公共库内部直接写 `stderr`，宿主无法统一诊断出口；
+- `ScriptFunctionHandle` 保存 module 内部裸指针，module 卸载后可能悬垂。
+
+## 裁决
+
+1. `ScriptHost` 重命名为 `ScriptRuntime`，旧头、旧类型名和 forwarding alias 不保留。
+2. 保留现有 backend 多态；不创建 Adapter、第二套 Runtime、Service Locator 或全局 backend registry。
+3. `ScriptRuntime`、`IScriptBackend` 与 `ScriptFunction` 使用同一组结构化错误：
+   `EScriptError`、`ScriptFailure` 与 `ScriptResult<T>`。
+4. module load、memory load、function lookup、invoke、unload 和 backend 注册均返回 `ScriptResult`；
+   删除 `lastError()` 及以 invalid handle/null/bool 作为可诊断失败的公共通道。
+5. `ScriptFunctionHandle` 继续作为现有公共概念，但不得保存 module 内部裸指针。
+   Runtime 在调用时验证 module/function 身份，并保证调用期间 module 存活；卸载后的旧句柄返回
+   `STALE_HANDLE`。
+6. 库只返回结构化诊断，不决定文字输出位置。日志、终端和 Editor 面板由宿主装配。
+7. `ScriptModule` 只表示语言 Runtime 的加载单元。Native Script ABI 与 Engine Extension ABI
+   相互独立，任何 Script target 都不得 include 或 link Extension ABI。
+8. `lux_script_abi.h` 的 ABI version、C symbol、结构布局和调用约定保持不变。
+
+## Navigation 与 UI 关联裁决
+
+`navigation_detour3d` 当前已是独立 target/component，Recast/Detour 为 PRIVATE 依赖并具有 owner
+test；`FUNC-009` 按事实验收，不再安排搬迁。
+
+旧 UI 章节列出的 `ui_imgui`、`ui_imgui_glfw`、`ui_render_vulkan` 四目标结构不再是强制施工图。
+UI 必须在独立 ADR 中按领域所有权重新调查；不得把 GLFW/Vulkan 调用简单包成公共 Adapter target。
+`SceneViewportPanel` 归 Editor 与 UI 公共闭包退出平台/渲染 backend 仍是目标，但最终 target 数量与
+命名由后续裁决决定。
+
+## 验收
+
+- Lua/Native file、memory、find、invoke、unload owner tests。
+- unknown/duplicate backend、坏扩展、坏 ABI、坏入口、缺失函数与 backend invoke failure。
+- module 卸载后旧 function handle 明确返回 `STALE_HANDLE`，不访问释放内存。
+- Script 库没有 `stderr`、`lastError()`、`ScriptHost` 或公开 `kInvalidModule`。
+- installed `script_core` consumer 不获得 Lua、DynamicLibrary 或 Extension ABI。
 
 ---
 

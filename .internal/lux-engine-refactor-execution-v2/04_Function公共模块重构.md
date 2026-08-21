@@ -373,14 +373,21 @@ ScriptHostImpl      → ScriptRuntime::State
 class ScriptRuntime final
 {
 public:
-    void addBackend(std::unique_ptr<Backend>);
-    expected<ModuleHandle, LoadError> load(...);
-    expected<void, InvokeError> invoke(FunctionHandle, CallFrame&);
-    void unload(ModuleHandle);
+    ScriptResult<void> registerBackend(std::unique_ptr<IScriptBackend>);
+    ScriptResult<ModuleHandle> loadModule(...);
+    ScriptResult<ScriptFunctionHandle> findFunction(...);
+    ScriptResult<void> invoke(const ScriptFunctionHandle&, CallFrame&);
+    ScriptResult<void> unloadModule(ModuleHandle);
 };
 ```
 
-改掉返回 `kInvalidModule` 与 `lastError()` 的隐式错误通道，使用 `expected`。
+按 `ADR-20260821_ScriptRuntime契约与错误边界.md`，Runtime、Backend 与 Function 使用同一组
+`EScriptError`、`ScriptFailure`、`ScriptResult<T>`。改掉返回 `kInvalidModule`、`nullptr`、
+`bool` 与 `lastError()` 的隐式错误通道。Function handle 不得保存 module 内部裸指针，卸载后
+调用必须稳定返回 `STALE_HANDLE`。
+
+Backend 多态对应 Lua、Native 等真实语言执行实现，应当保留；不为它增加 Adapter、第二套
+Runtime 或全局注册表。Script 库只返回结构化错误，不直接输出终端文字。
 
 ### 6.3 Native Script 与 Engine Extension 分开
 
@@ -398,7 +405,11 @@ engine/extensions
 
 任何头文件不得同时 include 两种 ABI。
 
-## 7. UI 拆分
+## 7. UI 边界（待独立 ADR 重新裁决）
+
+> 以下四 target 结构是历史候选，不再作为可直接施工的固定答案。后续必须先核对 ImGui、Window、
+> Vulkan 与 Editor Viewport 的真实所有权；不得通过创建薄 `ui_imgui_glfw` Adapter 来掩盖边界。
+> `SceneViewportPanel` 迁入 Editor、公共 UI 闭包退出不必要的平台/渲染依赖仍是有效目标。
 
 ### 7.1 当前问题
 
@@ -426,7 +437,7 @@ engine/editor/
     └── SceneViewport.cpp
 ```
 
-公开目标：
+历史候选目标（非现行强制 target 清单）：
 
 ```text
 lux::ui
@@ -509,7 +520,7 @@ cmake/Codegen/ShaderParams.cmake
 | ANIM-01 | Animation 直接依赖 Description | 无 AssetStore |
 | NAV-01 | Navigation 改依赖 Math | resource/spatial 删除 |
 | SCRIPT-01 | ScriptRuntime 与 expected | Native/Lua 测试通过 |
-| UI-01 | UI Core/ImGui/Backend 拆分 | UI Core 无 GLFW/Vulkan |
+| UI-01 | UI owner ADR 与实现收敛 | UI 公共闭包无不必要的 GLFW/Vulkan，且不制造薄 Adapter target |
 | UI-02 | SceneViewport 迁入 Editor | modules/ui 无 Scene 类型 |
 | FUNC-FINAL | 删除旧 targets/include | Modules SDK 闭包纯净 |
 

@@ -159,6 +159,11 @@ EditorAsyncService
 
 ## 4. L1：公共模块单元测试
 
+Script Runtime owner tests 必须覆盖 Lua/Native 的 file/memory load、function lookup、invoke、unload，
+并覆盖 duplicate/unknown backend、坏扩展、坏 ABI/入口、backend invoke failure 与 stale function handle。
+Script 公共库不得通过 `stderr` 或 thread-local `lastError()` 输出诊断；installed `script_core`
+consumer 不获得 Lua、DynamicLibrary 或 Extension ABI。
+
 ### 4.1 Core
 
 ```text

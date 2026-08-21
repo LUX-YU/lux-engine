@@ -1,5 +1,12 @@
 # v2 相对 v1 的架构修订说明
 
+## 2026-08-21：ScriptRuntime 契约裁决
+
+- 以 `de11c05c` 为代码基线，保留 Lua/Native 真实 backend 多态，但禁止增加 Adapter 或第二套 Runtime。
+- `ScriptHost` 将改名为 `ScriptRuntime`；Runtime、Backend 与 Function 统一使用结构化 `ScriptResult<T>`。
+- 删除 invalid/null/bool + thread-local `lastError()` 错误通道、库内 `stderr` 与 module 内裸函数指针。
+- `navigation_detour3d` 已按现有独立 target/component 与 owner test 验收；旧 UI 四 target 方案改为待独立 ADR 重审。
+
 ## 2026-08-21：GAPI 保留与单体 Input 实施完成
 
 - `e994a42a` 先落地 GAPI 保留与单体 Input 裁决；`08e3d590` 完成代码施工。

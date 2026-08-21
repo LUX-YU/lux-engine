@@ -1,9 +1,10 @@
 LUX Engine 架构重构执行文档 v2.0
 原始代码基线: LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656
-最近完成提交: 08e3d590 (GAPI 保留裁决与单体 Input 实施完成)
+最近完成提交: de11c05c (GAPI 保留与单体 Input 收尾)
 GAPI/Input 裁决代码基线: d7f364d0
 单体 Input 实施提交: 08e3d590
-当前事实基线: 08e3d590
+Script Runtime 裁决代码基线: de11c05c
+当前事实基线: de11c05c
 文档日期: 2026-08-21
 
 推荐阅读与施工顺序:
@@ -33,6 +34,7 @@ GAPI/Input 裁决代码基线: d7f364d0
 - ADR-20260821_ExtensionAbiV4Owner与Core清零.md
 - ADR-20260821_GAPI保留裁决.md
 - ADR-20260821_单体Input子系统边界.md
+- ADR-20260821_ScriptRuntime契约与错误边界.md
 
 本轮验收证据:
 - evidence/asset-domain-cohesion-f35e245a.md

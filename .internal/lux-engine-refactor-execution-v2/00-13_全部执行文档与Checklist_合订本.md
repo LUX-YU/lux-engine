@@ -1,8 +1,8 @@
 # LUX Engine 重构执行文档 v2 合订本
 
-基线：Scene Asset 边界修订实施 `36ce56c6`
+基线：Asset 领域内聚施工基线 `f35e245a`
 
-> 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明及 2026-08-20 Scene Asset ADR 机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
+> 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明及现行 ADR 机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
 
 ## 文件顺序
 
@@ -22,6 +22,7 @@
 - `13_当前代码事实索引.md`
 - `REVISION_NOTES_v2.md`
 - `ADR-20260820_SceneAsset与Resource边界.md`
+- `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`
 
 ---
 
@@ -42,6 +43,8 @@
 > 本版以“`modules/` 是可独立分发的公共 SDK 边界”为首要前提。任何为消除依赖环而把 Engine、Scene、Editor 或 Extension 协议下沉到 `modules/` 的做法，均视为架构回归。
 
 > **2026-08-20 裁决更新：** `ADR-20260820_SceneAsset与Resource边界.md` 是资产与场景边界的现行 SSOT。`modules/resource/asset` 作为可复用 SDK 保留 `LuxAsset`、`AssetManager`、`TAssetSerDeser`、Catalog、Provider、VFS 与 Pak；不再创建 `AssetId`、`AssetTypeId`、`engine/assets` 或第二套 `AssetStore`。Engine Scene 作为既有资产机制上的 Engine-owned 类型存在。本文后续与该 ADR 冲突的 AssetStore/新 ID 示例均已被取代。
+
+> **2026-08-21 裁决更新：** `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 是 Asset 源码布局、Provider/VFS/Pak 存储边界与内置资产身份的现行 SSOT。Asset 按领域族组织；Pak 读写检查属公共 SDK；Engine 默认内容归 `engine/content`；ECS 通过装配参数接收 fallback ID。
 
 
 ## 0. 文档目的
@@ -579,6 +582,8 @@ add_library(lux::engine::resource::asset_core ALIAS lux_asset)
 
 > **2026-08-20 裁决更新：** 公共 SDK 可以拥有与 Engine 语义无关的完整资产机制。现有 `asset_id_t`、`LuxAsset`、`AssetManager`、Codec Catalog、Provider、VFS 与 Pak 保留在 `modules/resource/asset`；旧版提出的 `AssetId`/`AssetTypeId` 改名和 AssetStore 上移目标由 `ADR-20260820_SceneAsset与Resource边界.md` 取代。
 
+> **2026-08-21 裁决更新：** Provider/VFS 是 opaque bytes 存储面，Pak v2 的 reader/writer/inspector 都是公共 Asset SDK；Asset 源码按 texture/material/mesh/model/animation/shader/script/storage 领域内聚。冻结的 Engine 内置资产 ID 不属于 Modules。详见 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。
+
 
 ## 1. 当前问题与施工目标
 
@@ -610,7 +615,7 @@ add_library(lux::engine::resource::asset_core ALIAS lux_asset)
 | `modules/platform/window` | 拆分 | `lux::window`、`lux::window_glfw` | 核心抽象、平台 Backend、Vulkan Surface Integration 分离 |
 | `modules/platform/gapi` | 搬迁 | `modules/function/render/vulkan/low_level` | 实际是 Vulkan Wrapper，不是 Platform 抽象 |
 | `modules/resource/description` | 保留并纯化 | `lux::description` | 只保留被动资源值类型 |
-| `modules/resource/asset` | 保留并重构 | `lux::asset`、`lux::asset_pak` | 文件协议、Codec、Provider、VFS；移出 AssetManager |
+| `modules/resource/asset` | 保留并重构 | `lux::asset` | 通用 Asset/SerDeser/Catalog/Manager/Provider/VFS 与 Pak 读写；不含 Engine 默认内容 |
 | `modules/resource/*` 其他目录 | 消除一级组件 | 按语义迁移 | 见文档 03 |
 | `modules/function/render` | 保留并重构 | `lux::render*` | 公共渲染库主边界 |
 | `modules/function/input` | 保留并解耦 | `lux::input` | 不 PUBLIC 依赖 GLFW/Window Backend |
@@ -1584,6 +1589,8 @@ Level
 
 > **2026-08-20 裁决更新：** 本文原有“文件协议与 Engine AssetStore 分离”、新建 `AssetId/AssetTypeId`、把 Terrain/Tilemap/Physics3D 长期放在 Resource 的目标已由 `ADR-20260820_SceneAsset与Resource边界.md` 取代。现有 AssetManager/SerDeser/Catalog/VFS/Pak 是公共 SDK 的正式组成；Scene 是 Engine-owned Asset，三类场景 Payload 最终归对应 ECS 领域。
 
+> **2026-08-21 裁决更新：** Asset 公共面按资产领域族组织，存储面收敛到 `asset/storage`；Pak v2 读、写和检查均属 Modules Asset SDK。`BuiltinAssetIds.hpp`、M_Missing 与演示色板迁入 `engine/content`。详见 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。
+
 
 ## 1. 最终边界
 
@@ -1936,36 +1943,13 @@ namespace lux::asset
 
 ### 5.5 Provider 与 VFS
 
-```cpp
-class Provider
-{
-public:
-    virtual ~Provider() = default;
+Provider 负责 `asset_id_t`/`VirtualPath` 到 opaque bytes 的字节来源，不负责解析、对象缓存、驻留或引用计数。现有 `IAssetProvider` 与 `AssetVfs` API 保持，但公共头迁入 `asset/storage`。
 
-    virtual expected<AssetBytes, ReadError>
-    read(AssetId) = 0;
-
-    virtual expected<AssetBytes, ReadError>
-    read(VirtualPathView) = 0;
-};
-
-class Vfs final
-{
-public:
-    expected<MountId, MountError>
-    mount(VirtualPathView root, std::unique_ptr<Provider> provider);
-
-    expected<AssetBytes, ReadError>
-    read(VirtualPathView path);
-};
-```
-
-Provider 负责字节来源，不负责对象缓存。
+`AssetManager + AssetRef` 是唯一引用账本。Scene Section 等非驻留记录可以复用 Provider/VFS 读取字节，但不注册到 AssetManager，不创建 AssetRef。
 
 ### 5.6 Pak
 
-保留 `PakCodec` 与 `PakAssetProvider`；当前 Resource 包将 identity、core、Codec、Pak
-实现统一收敛到 `lux::engine::resource::asset`，其公开依赖仍只表达：
+保留 LUXPAK v2 wire。`PakAssetProvider`、writer 和 inspector 统一迁入 `asset/storage/pak`，并作为公共 Asset SDK API。公开存储面只表达：
 
 ```text
 AssetId
@@ -1975,7 +1959,7 @@ Reader
 Hash
 ```
 
-不得依赖 Engine `AssetStore` 或所有具体 Asset 类型。
+不得依赖 Engine 产品语义，Writer 也不使用 `EAssetType`/Catalog 解释 magic。Toolchain 保留 source 扫描、auxiliary 剔除、Catalog 策略、冲突诊断和发布组合，不得 include Asset `pinclude`。
 
 ## 6. `AssetManager` 上移
 
@@ -2024,49 +2008,28 @@ namespace lux::engine::assets
 
 注意：这是 Engine 类型，因此 Include Prefix 保留 `lux/engine/assets` 是合理的。
 
-## 7. 内置 Codec 组织
+## 7. 内置 Asset 领域组织
 
-当前 `lux::engine::resource::asset` 把 identity、AssetManager、Texture、Material、Mesh、Model、Shader、Script、Skeleton、Animation、Atlas、Pak 统一在一个闭合组件中；源码按 `src/core`、`src/codecs`、`src/pak` 组织，公共头按 `include/.../asset`、`include/.../asset/codecs`、`include/.../asset/pak` 分层，模块根不再有功能 target 子目录。
-
-目标：
+单一 `lux::engine::resource::asset` target 保持不变，但源码、头和测试按资产领域族共同组织：
 
 ```text
 modules/resource/asset/
 ├── include/lux/engine/resource/asset/
-│   ├── ...资产核心接口
-│   ├── codecs/...
-│   └── pak/...
+│   ├── ...资产核心接口与 AssetCodecCatalog.hpp
+│   ├── texture/ material/ mesh/ model/
+│   ├── animation/ shader/ script/
+│   └── storage/{AssetProvider,AssetVfs,VirtualPath,pak/...}.hpp
 ├── pinclude/lux/engine/resource/asset/
 │   ├── detail/...
-│   ├── codecs/...
-│   └── pak/...
+│   ├── <domain>/*DescriptionCodec.hpp
+│   └── storage/pak/PakCodec.hpp
 ├── src/
-│   ├── core/...
-│   ├── codecs/...
-│   └── pak/...
-└── test/codecs/...
+│   ├── <domain>/...
+│   └── storage/...
+└── test/<domain-or-storage>/...
 ```
 
-领域级 Codec 目录仍是后续 `ASSETSDK-019` 的可选细分；本轮只统一模块边界和
-安装组件，不改变 Codec 的 namespace、字段顺序或 wire version。
-
-当前对外仍由闭合的 Asset Codec Catalog/standard factory 组合标准 Codec；按领域拆分
-注册入口和去中央 `EAssetType` switch 属于后续 `ASSETSDK-019`，本轮不改变这套 API。
-
-后续可提供一个方便函数：
-
-```cpp
-void registerStandardCodecs(asset::CodecRegistry&);
-```
-
-但每个领域也可以单独注册：
-
-```cpp
-registerImageCodecs(registry);
-registerMeshCodecs(registry);
-```
-
-按领域拆分后再评估是否移除中央 `EAssetType` switch；本轮保持现有行为。
+`TextureCodec/ModelCodec` 改名为 `TextureSerDeser/ModelSerDeser`。跨领域组合继续使用 `runtimeAssetCodecCatalog()`，不新建第二套 registry。`BuiltinAssetIds.hpp` 不是通用 Asset 合同，迁入 `engine/content`。
 
 ## 8. 其他 Resource 目录迁移
 
@@ -2841,6 +2804,8 @@ cmake/Codegen/ShaderParams.cmake
 
 > **2026-08-20 裁决更新：** ECS Scene Format 继续拥有 LXES/Persistence 原始记录，不直接拥有 `entt::registry` 的文件镜像。Terrain、Tilemap 与 Physics3D 场景 Payload 的值、Codec 和 wire tests 归各自 ECS 领域；Engine `SceneDescription/SceneAsset` 负责 LXSC。详见 `ADR-20260820_SceneAsset与Resource边界.md`。
 
+> **2026-08-21 裁决更新：** ECS 不拥有、不包含 Engine 内置资产身份。Render Residency 的 fallback material ID 由 Engine Runtime 装配时注入；nil 明确表示不请求默认材质。
+
 
 ## 1. 当前问题
 
@@ -3389,6 +3354,8 @@ Persistence Journal
 > 本版以“`modules/` 是可独立分发的公共 SDK 边界”为首要前提。任何为消除依赖环而把 Engine、Scene、Editor 或 Extension 协议下沉到 `modules/` 的做法，均视为架构回归。
 
 > **2026-08-20 裁决更新：** 不建立 `engine/assets` 或 `AssetStore`。`engine/runtime/assets` 保留为现有公共 `AssetManager` 的异步编排适配器；`engine/scene` 收敛成拥有 `SceneDescription`、`SceneAsset` 与 `SceneAssetSerDeser` 的单一组件，不拥有 IO、异步执行或 Registry 生命周期。本文后续与此冲突的目标目录和接口由 `ADR-20260820_SceneAsset与Resource边界.md` 取代。
+
+> **2026-08-21 裁决更新：** 新建的 `engine/content` 只拥有冻结内置资产 UUID、M_Missing 与色板，不是第二套资产系统。Runtime Render 在唯一装配点把 fallback material ID 注入 ECS Residency。Toolchain 只拥有 Pak cook/publish 策略，不访问 Resource 私有 Pak wire 实现。
 
 
 ## 1. 目标目录
@@ -5370,6 +5337,8 @@ lux_editor_product
 
 > **2026-08-20 裁决更新：** 本轮不创建 `lux/asset/AssetId.hpp`、新 `AssetTypeId` 或其兼容 shim。Scene 安装面收敛为单一 `lux-engine-scene` component `scene`；旧 `scene_api`、`scene_package` target/include/component 一次删除。全局 M7 package rename 仍不推进。
 
+> **2026-08-21 裁决更新：** 本轮仅在现有 `lux::engine::resource::asset` target 内迁移领域头路径，不推进全局 M7。新增 `lux::engine::content` / `lux-engine-content` `content` component；旧 Asset `codecs/`、`pak/`、根部领域头与 Resource `BuiltinAssetIds.hpp` 不保留兼容层。
+
 
 ## 1. 目标
 
@@ -7261,6 +7230,23 @@ BUILD-03..FINAL
 - [x] Asset Codec Catalog、Terrain/Tilemap/Physics3D Codec、Pak、生命周期、Mesh、Shell、Animation 和统一公共链接测试在 RelWithDebInfo/MSVC 下通过；Animation 测试仅因未设置 `LUX_ANIMATION_TEST_MODEL` 按既有约定跳过模型分支。
 - [x] RelWithDebInfo 安装前缀完成 canonical `description`/`asset` consumer 配置、编译、链接、运行；Debug/RelWithDebInfo/Android 精确清理旧 Asset 头和产物；四个旧 component 查找均按预期失败。DEVELOPER、PLAYER、EDITOR、TOOLCHAIN 的 Windows x64/MSVC/RelWithDebInfo 全量构建及第二轮 `ninja: no work to do` 均通过；完整 CTest 命令执行但当前工程未注册 CTest 测试，owner 契约已直接运行通过；旧 target/header/export/visibility 全仓扫描归零。
 
+## 本轮施工追踪（Asset 领域内聚、Pak 公共边界与 Engine Content）
+
+> 以 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 为 SSOT。以下项目在文档先行提交时只记录为待施工，不提前勾选。
+
+- [ ] `ASSETCOHESION-001` 保存 `f35e245a` 基线的公共头、target graph、安装 manifest 与资产/Pak fixture length+SHA。
+- [ ] `ASSETCOHESION-002` 建立 `engine/content` component，迁移冻结 Builtin UUID、M_Missing 与色板，删除 Resource owner。
+- [ ] `ASSETCOHESION-003` ECS Residency 改为可选 fallback material ID 注入，Runtime 在唯一装配点提供 Engine Content ID。
+- [ ] `ASSETCOHESION-004` Asset 公共头按 texture/material/mesh/model/animation/shader/script/storage 领域族迁移，无 shim。
+- [ ] `ASSETCOHESION-005` Asset 私有头、源码与 tests 镜像领域族，删除 `src/core`、`src/codecs`、`src/pak`。
+- [ ] `ASSETCOHESION-006` `TextureCodec/ModelCodec` 改名 `TextureSerDeser/ModelSerDeser`，旧类型与旧头归零。
+- [ ] `ASSETCOHESION-007` 拆出 `storage/AssetProvider.hpp`，并固定 Provider/VFS opaque bytes 与 AssetManager/AssetRef 引用账本边界。
+- [ ] `ASSETCOHESION-008` 公开 `storage/pak/PakArchive.hpp` writer/inspector API，保持 LUXPAK v2 wire。
+- [ ] `ASSETCOHESION-009` Toolchain 只保留 cook/publish 策略，删除 Asset `pinclude` 越界与重复 inspector 类型。
+- [ ] `ASSETCOHESION-010` 标准资产、Catalog、AssetRef、Provider/VFS、Pak、ECS fallback 与 Engine Content owner tests 通过。
+- [ ] `ASSETCOHESION-011` Asset/Engine Content public-link 与 installed consumers 通过，旧头/类型/私有跨界全仓归零。
+- [ ] `ASSETCOHESION-012` DEVELOPER/PLAYER/EDITOR/TOOLCHAIN RelWithDebInfo 全量构建、owner tests 和第二轮 no-op 验收完成。
+
 ## 统计
 
 本清单共 **508** 个稳定编号施工项；当前已完成 **97** 项、有效待完成或部分完成 **391** 项，另有 **20** 项被 ADR-20260820 明确取代且不再施工。
@@ -7284,6 +7270,8 @@ BUILD-03..FINAL
 > 本版以“`modules/` 是可独立分发的公共 SDK 边界”为首要前提。任何为消除依赖环而把 Engine、Scene、Editor 或 Extension 协议下沉到 `modules/` 的做法，均视为架构回归。
 
 > **2026-08-20 裁决：** 资产与场景相关行以 `ADR-20260820_SceneAsset与Resource边界.md` 为准。旧 `AssetId/AssetTypeId/AssetStore` 目标已被取代；Resource 保留现有资产机制，Engine Scene 作为其上的领域 Asset，三类场景 Payload 二次归位 ECS owner。
+
+> **2026-08-21 裁决：** Asset 领域目录、Storage/Pak 公共边界、Engine Content 与 ECS fallback 注入以 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 为准。本表中标记 `IN_PROGRESS` 的新行在代码完成后再改为 `DONE`。
 
 
 ## 使用规则
@@ -7346,6 +7334,13 @@ BUILD-03..FINAL
 | AssetManager | AssetManager | KEEP — 通用驻留/引用/驱逐机制，不创建 AssetStore | Asset | ADR |
 | AssetCodecCatalog | AssetCodecCatalog | DONE/EXPAND — 主/legacy magic、`findByMagic()`、type/magic/C++ identity 冲突校验与 legacy shell | Asset | ADR |
 | AssetSerDeser / TAssetSerDeser | SceneAssetSerDeser 复用既有模板 | DONE/KEEP — Scene 只实现既有同步 SerDeser 接口 | Asset/Scene | ADR |
+| Asset 根部领域头 + `codecs/` + `src/{core,codecs,pak}` | `asset/{texture,material,mesh,model,animation,shader,script,storage}` 镜像布局 | IN_PROGRESS — MOVE/RENAME，无 shim，wire 不变 | Asset | 03/ADR-20260821 |
+| TextureCodec / ModelCodec | TextureSerDeser / ModelSerDeser | IN_PROGRESS — RENAME/DELETE OLD API | Asset | 03/ADR-20260821 |
+| `AssetVfs.hpp` 内 Provider records | `storage/AssetProvider.hpp` + `storage/AssetVfs.hpp` | IN_PROGRESS — SPLIT；oaque bytes 不参与引用计数 | Asset | ADR-20260821 |
+| `asset/pak/PakAssetProvider.hpp` + 私有 PakCodec | `asset/storage/pak/{PakArchive,PakAssetProvider}.hpp` + private wire | IN_PROGRESS — 公开 writer/inspector/provider，LUXPAK v2 不变 | Asset | ADR-20260821 |
+| `modules/resource/asset/BuiltinAssetIds.hpp` | `engine/content/BuiltinAssetIds.hpp` | IN_PROGRESS — MOVE/DELETE OLD OWNER；UUID/色板不变 | Engine Content | 06/ADR-20260821 |
+| ECS Residency 全局 `builtinMissingMaterialId()` | ResidencySubsystem constructor fallback ID | IN_PROGRESS — Engine Runtime 注入，ECS 不依赖 Engine Content | ECS/Runtime | 05/06/ADR-20260821 |
+| Toolchain `PakCook` 直接访问 Asset pinclude/detail | 公共 `lux::asset::writePakFile/inspectPak` + Toolchain cook policy | IN_PROGRESS — REMOVE PRIVATE INCLUDE | Asset/Toolchain | ADR-20260821 |
 | AssetVfs | asset::Vfs | RENAME | Asset | 03 |
 | PakAssetProvider | asset::PakProvider | RENAME | Asset | 03 |
 | render_client | lux::render | REFACTOR/TARGET RENAME | Render | 04 |
@@ -7502,6 +7497,8 @@ status=PENDING → legacy report 允许但不能增长
 
 > 资产与 Scene 的现行事实由 `ADR-20260820_SceneAsset与Resource边界.md` 修订：现有 AssetManager/SerDeser/Catalog/VFS/Pak 保留；Scene 已收敛为单一 Engine Scene Asset component；三类 Resource 场景 Payload 已二次归位 ECS owner。
 
+> **2026-08-21 施工前事实：** Asset 仍使用根部领域头、`codecs/`、`pak/` 与 `src/{core,codecs,pak}`；`BuiltinAssetIds.hpp` 仍位于 Resource；Toolchain 仍访问 Asset Pak `pinclude`。这些是 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 的本轮待施工项，不是最终边界。
+
 
 ## 使用说明
 
@@ -7535,6 +7532,9 @@ status=PENDING → legacy report 允许但不能增长
 | `modules/resource/asset/include/lux/engine/resource/asset/` | Asset 核心公共头；Codec 与 Pak 公共头分别位于 `codecs/`、`pak/` | 03/10 |
 | `modules/resource/asset/pinclude/lux/engine/resource/asset/` | AssetManager detail、Codec 私有头与 Pak 私有头 | 03/10 |
 | `modules/resource/asset/src/{core,codecs,pak}` | 唯一 Asset 库的核心、Codec、Pak 实现分区；不再存在功能子模块 CMakeLists | 03/10 |
+| `modules/resource/asset/include/.../BuiltinAssetIds.hpp` | 施工前仍拥有 Engine 冻结 UUID/M_Missing/色板；目标 owner 为 `engine/content` | 06/ADR-20260821 |
+| `engine/toolchain/game/export/src/PakCook.cpp` | 施工前直接包含 Asset 私有 PakCodec；目标为仅调用公共 PakArchive API 并保留 cook policy | 03/06/ADR-20260821 |
+| `ecs/render/.../ResidencySubsystem.hpp` | 施工前直接读取 Resource builtin ID；目标为可选 fallback ID 构造注入 | 05/06/ADR-20260821 |
 | `modules/resource/deployment`（已删除） | canonical owner 为 `engine/game/deployment` | 03/07 |
 | `modules/resource/entity_scene`（已删除） | LXES/Persistence owner 为 `ecs/scene_format`；LXSC/Scene Asset owner 为单一 `engine/scene`；无 shim/alias | 03/05/ADR |
 | `modules/resource/spatial`（已删除） | Position/Grid/relativeFloat owner 为纯 Core Math；无 shim/alias | 02/05 |
@@ -7624,6 +7624,14 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 ---
 
 # v2 相对 v1 的架构修订说明
+
+## 2026-08-21：Asset 领域内聚、Pak 公共边界与 Engine Content
+
+- 接受 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。
+- Asset 从 `core/codecs/pak` 横向分区改为领域族组织，Storage 作为语义领域容纳 Provider/VFS/Pak。
+- Pak v2 reader/writer/inspector 是公共 Modules Asset SDK；Toolchain 只拥有 cook/publish 策略。
+- `BuiltinAssetIds.hpp`、M_Missing 与内置色板归 `engine/content`；ECS fallback 改为 Engine Runtime 注入。
+- 保持 AssetFileHeader v1/v2、所有资产 wire、冻结 UUID/颜色和 LUXPAK v2 字节不变。
 
 ## 2026-08-20：Scene Asset 与 Resource 边界修订
 
@@ -7858,3 +7866,144 @@ engine/scene/
 - Resource 的生产代码、Pak 与 Provider 不再含 Scene 名称或 boot Scene 策略。
 - 三类领域 Payload 在新 owner 下保持长度、SHA 与 decode/re-encode 契约。
 - 安装包只暴露 canonical `scene` component；旧 Scene components 和 Resource 场景 Payload 头不存在。
+
+---
+
+# ADR：Asset 领域内聚、Pak 公共边界与 Engine Content
+
+**状态：** Accepted，代码施工中
+
+**日期：** 2026-08-21
+
+**代码施工基线：** `f35e245a1e493c388722a41711f1a3ecd1df2acb`
+
+**关联裁决：** `ADR-20260820_SceneAsset与Resource边界.md`
+
+## 1. 背景
+
+`modules/resource/asset` 已经收敛为单一公共组件，并保留了通用的
+`LuxAsset`、`AssetManager`、`TAssetSerDeser`、Catalog、Provider、VFS 与 Pak。
+当前源码仍按 `core/codecs/pak` 横向分区，导致一个资产族的值、SerDeser、私有
+Description Codec、实现和测试被拆散；Engine Toolchain 还直接包含 Resource
+`pinclude` 中的 Pak wire 实现。
+
+Resource 同时公开 `BuiltinAssetIds.hpp`。这些冻结 UUID、`M_Missing` 与演示色板是
+Lux Engine 默认内容契约，不是外部 Asset SDK 的通用语义。ECS Render 直接引用该头，
+也使默认产品策略反向渗入 ECS。
+
+## 2. 裁决
+
+### 2.1 Asset 按领域族内聚
+
+公共与私有源码按以下领域镜像组织：
+
+```text
+asset/
+├── texture/   # Texture、TextureAtlas、FlipbookClip
+├── material/  # Material、MaterialInstance
+├── mesh/
+├── model/
+├── animation/ # Skeleton、AnimationClip
+├── shader/
+├── script/
+└── storage/   # Provider、VFS、VirtualPath、Pak
+```
+
+`AssetCodecCatalog.hpp` 等跨领域资产核心合同保留在 Asset 根部。完整 `.luxasset`
+转换统一使用 `*SerDeser`；被动值段转换继续使用私有 `*DescriptionCodec`。
+`TextureCodec` 与 `ModelCodec` 分别改名为 `TextureSerDeser` 与 `ModelSerDeser`。
+旧头、类型 alias、namespace alias 和 forwarding header 一律不保留。
+
+### 2.2 Provider、VFS 与引用账本
+
+Provider 是 `asset_id_t`/`VirtualPath` 到 opaque bytes 的存储接口，只负责
+`resolve/contains/open/enumerate/pathOf`。它不创建 `LuxAsset`，不解释 Engine Scene
+语义，也不修改资产引用计数。
+
+```text
+IAssetProvider -> AssetVfs -> AssetBlob
+                              |-> Catalog/SerDeser -> AssetManager
+                              `-> Scene Section Codec（不进入 AssetManager）
+```
+
+`AssetManager + AssetRef` 是唯一资产引用账本。Scene Section、Spatial 分区等记录可以
+复用 Provider/VFS，但直接读取不产生 `AssetRef`，不参与驻留、revision 或驱逐。
+
+### 2.3 Pak 是公共 Asset SDK 的存储格式
+
+LUXPAK v2 的 Provider、writer 与 inspector 都属于 `modules/resource/asset/storage/pak`。
+公共 API 提供 `PakWriteEntry`、`writePakFile()`、`PakInspectEntry`、`PakInspectInfo` 和
+`inspectPak()`。Writer 只验证结构、路径、ID、magic、payload、排序、对齐、索引和
+digest，不按 `EAssetType` 或 Catalog 解释条目语义，因此可以承载 Engine Scene 与
+Scene Section 的原始 magic。
+
+Engine Toolchain 只拥有 source 扫描、authoring auxiliary 剥离、Catalog/magic 策略、
+冲突诊断、Scene/Game cook 组合与发布策略。Engine 不得包含 Resource `pinclude`，也不
+得访问 `lux::asset::detail::Pak*`。
+
+### 2.4 Engine 默认内容归 `engine/content`
+
+新建轻量 `lux::engine::content` 组件，仅拥有冻结的内置资产 UUID、`M_Missing` 身份和
+内置色板。它复用公共 `asset_id_t`，但不拥有 AssetManager、Codec、Provider、IO、异步
+加载、几何生成或注册逻辑。
+
+ECS 不依赖 Engine Content。`ResidencySubsystem` 接收可选的 fallback material ID：
+Engine Runtime 在装配点注入 `builtinMissingMaterialId()`；通用 ECS/headless consumer
+可以传 nil，明确禁用默认材质请求。Engine Toolchain builtin baker 继续拥有几何生成，
+但其冻结身份来自 `engine/content`。
+
+## 3. 公共结构
+
+```text
+modules/resource/asset/include/lux/engine/resource/asset/
+├── Asset*.hpp
+├── texture/
+├── material/
+├── mesh/
+├── model/
+├── animation/
+├── shader/
+├── script/
+└── storage/
+    ├── AssetProvider.hpp
+    ├── AssetVfs.hpp
+    ├── VirtualPath.hpp
+    └── pak/
+        ├── PakArchive.hpp
+        └── PakAssetProvider.hpp
+
+engine/content/include/lux/engine/content/
+└── BuiltinAssetIds.hpp
+```
+
+单一 Resource target `lux::engine::resource::asset`、`lux::asset` namespace 与安装
+component `asset` 保持不变。Engine Content target 为 `lux::engine::content`，安装到
+`lux-engine-content` 的 `content` component。
+
+## 4. 兼容性
+
+以下字节合同不得改变：
+
+- AssetFileHeader v1/v2；
+- 所有标准资产内部 wire、magic 与 `EAssetType` 数值；
+- 所有冻结内置 UUID 与颜色；
+- LUXPAK v2 header、4 KiB B+tree page、16-byte payload alignment、SHA-256 与排序。
+
+本 ADR 允许源码、target 依赖和安装头路径发生破坏性迁移，不允许格式升级或兼容 shim。
+
+## 5. 验收
+
+- 每个标准资产具备 deterministic length/SHA、decode/re-encode、legacy v1 与坏输入契约；
+- Catalog 覆盖 type、main/legacy magic、C++ type hash/name 冲突；
+- AssetRef 生命周期和 1->0 广播语义不变；
+- Provider/VFS 的 opaque Section 读取不改变 AssetManager 账本；
+- Resource 公共 Pak writer/inspector/provider 覆盖正常、冲突、截断与 digest 损坏；
+- ECS fallback 的 nil/非 nil 两条路径均有 owner tests，ECS link closure 不含 Engine Content；
+- installed consumer 可独立写、检查并读取 Pak；
+- 安装树与全仓不存在旧 `codecs/`、旧 `pak/`、旧根部领域头、旧类名和 Resource
+  `BuiltinAssetIds.hpp`。
+
+## 6. 非目标
+
+本轮不创建第二套 AssetStore、Provider、AssetId 或 AssetTypeId；不推进 M0、全局 M7
+命名迁移、Scene/Registry/Editor 架构重写或 Extension ABI；不改变任何 wire/schema。

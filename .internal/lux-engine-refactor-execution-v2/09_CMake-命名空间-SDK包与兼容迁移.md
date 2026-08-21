@@ -16,6 +16,8 @@
 
 > **2026-08-20 裁决更新：** 本轮不创建 `lux/asset/AssetId.hpp`、新 `AssetTypeId` 或其兼容 shim。Scene 安装面收敛为单一 `lux-engine-scene` component `scene`；旧 `scene_api`、`scene_package` target/include/component 一次删除。全局 M7 package rename 仍不推进。
 
+> **2026-08-21 裁决更新：** 本轮仅在现有 `lux::engine::resource::asset` target 内迁移领域头路径，不推进全局 M7。新增 `lux::engine::content` / `lux-engine-content` `content` component；旧 Asset `codecs/`、`pak/`、根部领域头与 Resource `BuiltinAssetIds.hpp` 不保留兼容层。
+
 
 ## 1. 目标
 

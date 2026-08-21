@@ -16,6 +16,8 @@
 
 > **2026-08-20 裁决更新：** 公共 SDK 可以拥有与 Engine 语义无关的完整资产机制。现有 `asset_id_t`、`LuxAsset`、`AssetManager`、Codec Catalog、Provider、VFS 与 Pak 保留在 `modules/resource/asset`；旧版提出的 `AssetId`/`AssetTypeId` 改名和 AssetStore 上移目标由 `ADR-20260820_SceneAsset与Resource边界.md` 取代。
 
+> **2026-08-21 裁决更新：** Provider/VFS 是 opaque bytes 存储面，Pak v2 的 reader/writer/inspector 都是公共 Asset SDK；Asset 源码按 texture/material/mesh/model/animation/shader/script/storage 领域内聚。冻结的 Engine 内置资产 ID 不属于 Modules。详见 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。
+
 
 ## 1. 当前问题与施工目标
 
@@ -47,7 +49,7 @@
 | `modules/platform/window` | 拆分 | `lux::window`、`lux::window_glfw` | 核心抽象、平台 Backend、Vulkan Surface Integration 分离 |
 | `modules/platform/gapi` | 搬迁 | `modules/function/render/vulkan/low_level` | 实际是 Vulkan Wrapper，不是 Platform 抽象 |
 | `modules/resource/description` | 保留并纯化 | `lux::description` | 只保留被动资源值类型 |
-| `modules/resource/asset` | 保留并重构 | `lux::asset`、`lux::asset_pak` | 文件协议、Codec、Provider、VFS；移出 AssetManager |
+| `modules/resource/asset` | 保留并重构 | `lux::asset` | 通用 Asset/SerDeser/Catalog/Manager/Provider/VFS 与 Pak 读写；不含 Engine 默认内容 |
 | `modules/resource/*` 其他目录 | 消除一级组件 | 按语义迁移 | 见文档 03 |
 | `modules/function/render` | 保留并重构 | `lux::render*` | 公共渲染库主边界 |
 | `modules/function/input` | 保留并解耦 | `lux::input` | 不 PUBLIC 依赖 GLFW/Window Backend |

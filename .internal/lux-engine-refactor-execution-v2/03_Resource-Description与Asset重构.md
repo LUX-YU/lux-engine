@@ -16,6 +16,8 @@
 
 > **2026-08-20 裁决更新：** 本文原有“文件协议与 Engine AssetStore 分离”、新建 `AssetId/AssetTypeId`、把 Terrain/Tilemap/Physics3D 长期放在 Resource 的目标已由 `ADR-20260820_SceneAsset与Resource边界.md` 取代。现有 AssetManager/SerDeser/Catalog/VFS/Pak 是公共 SDK 的正式组成；Scene 是 Engine-owned Asset，三类场景 Payload 最终归对应 ECS 领域。
 
+> **2026-08-21 裁决更新：** Asset 公共面按资产领域族组织，存储面收敛到 `asset/storage`；Pak v2 读、写和检查均属 Modules Asset SDK。`BuiltinAssetIds.hpp`、M_Missing 与演示色板迁入 `engine/content`。详见 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。
+
 
 ## 1. 最终边界
 
@@ -368,36 +370,13 @@ namespace lux::asset
 
 ### 5.5 Provider 与 VFS
 
-```cpp
-class Provider
-{
-public:
-    virtual ~Provider() = default;
+Provider 负责 `asset_id_t`/`VirtualPath` 到 opaque bytes 的字节来源，不负责解析、对象缓存、驻留或引用计数。现有 `IAssetProvider` 与 `AssetVfs` API 保持，但公共头迁入 `asset/storage`。
 
-    virtual expected<AssetBytes, ReadError>
-    read(AssetId) = 0;
-
-    virtual expected<AssetBytes, ReadError>
-    read(VirtualPathView) = 0;
-};
-
-class Vfs final
-{
-public:
-    expected<MountId, MountError>
-    mount(VirtualPathView root, std::unique_ptr<Provider> provider);
-
-    expected<AssetBytes, ReadError>
-    read(VirtualPathView path);
-};
-```
-
-Provider 负责字节来源，不负责对象缓存。
+`AssetManager + AssetRef` 是唯一引用账本。Scene Section 等非驻留记录可以复用 Provider/VFS 读取字节，但不注册到 AssetManager，不创建 AssetRef。
 
 ### 5.6 Pak
 
-保留 `PakCodec` 与 `PakAssetProvider`；当前 Resource 包将 identity、core、Codec、Pak
-实现统一收敛到 `lux::engine::resource::asset`，其公开依赖仍只表达：
+保留 LUXPAK v2 wire。`PakAssetProvider`、writer 和 inspector 统一迁入 `asset/storage/pak`，并作为公共 Asset SDK API。公开存储面只表达：
 
 ```text
 AssetId
@@ -407,7 +386,7 @@ Reader
 Hash
 ```
 
-不得依赖 Engine `AssetStore` 或所有具体 Asset 类型。
+不得依赖 Engine 产品语义，Writer 也不使用 `EAssetType`/Catalog 解释 magic。Toolchain 保留 source 扫描、auxiliary 剔除、Catalog 策略、冲突诊断和发布组合，不得 include Asset `pinclude`。
 
 ## 6. `AssetManager` 上移
 
@@ -456,49 +435,28 @@ namespace lux::engine::assets
 
 注意：这是 Engine 类型，因此 Include Prefix 保留 `lux/engine/assets` 是合理的。
 
-## 7. 内置 Codec 组织
+## 7. 内置 Asset 领域组织
 
-当前 `lux::engine::resource::asset` 把 identity、AssetManager、Texture、Material、Mesh、Model、Shader、Script、Skeleton、Animation、Atlas、Pak 统一在一个闭合组件中；源码按 `src/core`、`src/codecs`、`src/pak` 组织，公共头按 `include/.../asset`、`include/.../asset/codecs`、`include/.../asset/pak` 分层，模块根不再有功能 target 子目录。
-
-目标：
+单一 `lux::engine::resource::asset` target 保持不变，但源码、头和测试按资产领域族共同组织：
 
 ```text
 modules/resource/asset/
 ├── include/lux/engine/resource/asset/
-│   ├── ...资产核心接口
-│   ├── codecs/...
-│   └── pak/...
+│   ├── ...资产核心接口与 AssetCodecCatalog.hpp
+│   ├── texture/ material/ mesh/ model/
+│   ├── animation/ shader/ script/
+│   └── storage/{AssetProvider,AssetVfs,VirtualPath,pak/...}.hpp
 ├── pinclude/lux/engine/resource/asset/
 │   ├── detail/...
-│   ├── codecs/...
-│   └── pak/...
+│   ├── <domain>/*DescriptionCodec.hpp
+│   └── storage/pak/PakCodec.hpp
 ├── src/
-│   ├── core/...
-│   ├── codecs/...
-│   └── pak/...
-└── test/codecs/...
+│   ├── <domain>/...
+│   └── storage/...
+└── test/<domain-or-storage>/...
 ```
 
-领域级 Codec 目录仍是后续 `ASSETSDK-019` 的可选细分；本轮只统一模块边界和
-安装组件，不改变 Codec 的 namespace、字段顺序或 wire version。
-
-当前对外仍由闭合的 Asset Codec Catalog/standard factory 组合标准 Codec；按领域拆分
-注册入口和去中央 `EAssetType` switch 属于后续 `ASSETSDK-019`，本轮不改变这套 API。
-
-后续可提供一个方便函数：
-
-```cpp
-void registerStandardCodecs(asset::CodecRegistry&);
-```
-
-但每个领域也可以单独注册：
-
-```cpp
-registerImageCodecs(registry);
-registerMeshCodecs(registry);
-```
-
-按领域拆分后再评估是否移除中央 `EAssetType` switch；本轮保持现有行为。
+`TextureCodec/ModelCodec` 改名为 `TextureSerDeser/ModelSerDeser`。跨领域组合继续使用 `runtimeAssetCodecCatalog()`，不新建第二套 registry。`BuiltinAssetIds.hpp` 不是通用 Asset 合同，迁入 `engine/content`。
 
 ## 8. 其他 Resource 目录迁移
 

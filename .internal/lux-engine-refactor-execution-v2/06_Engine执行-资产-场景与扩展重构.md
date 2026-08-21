@@ -16,6 +16,8 @@
 
 > **2026-08-20 裁决更新：** 不建立 `engine/assets` 或 `AssetStore`。`engine/runtime/assets` 保留为现有公共 `AssetManager` 的异步编排适配器；`engine/scene` 收敛成拥有 `SceneDescription`、`SceneAsset` 与 `SceneAssetSerDeser` 的单一组件，不拥有 IO、异步执行或 Registry 生命周期。本文后续与此冲突的目标目录和接口由 `ADR-20260820_SceneAsset与Resource边界.md` 取代。
 
+> **2026-08-21 裁决更新：** 新建的 `engine/content` 只拥有冻结内置资产 UUID、M_Missing 与色板，不是第二套资产系统。Runtime Render 在唯一装配点把 fallback material ID 注入 ECS Residency。Toolchain 只拥有 Pak cook/publish 策略，不访问 Resource 私有 Pak wire 实现。
+
 
 ## 1. 目标目录
 

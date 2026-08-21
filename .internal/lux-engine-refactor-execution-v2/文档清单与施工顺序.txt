@@ -1,7 +1,7 @@
 LUX Engine 架构重构执行文档 v2.0
 原始代码基线: LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656
-当前施工基线: 36ce56c6 (Scene Asset 边界修订实施)
-文档日期: 2026-08-20
+当前施工基线: f35e245a (Scene Asset 实施后的 Asset 领域内聚基线)
+文档日期: 2026-08-21
 
 推荐阅读与施工顺序:
 1. 00_架构宪章与变更控制.md
@@ -23,5 +23,6 @@ LUX Engine 架构重构执行文档 v2.0
 
 现行补充裁决:
 - ADR-20260820_SceneAsset与Resource边界.md
+- ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md
 
 本版替代此前 v1.x 文档。

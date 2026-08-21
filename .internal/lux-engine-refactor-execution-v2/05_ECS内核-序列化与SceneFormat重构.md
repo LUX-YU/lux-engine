@@ -16,6 +16,8 @@
 
 > **2026-08-20 裁决更新：** ECS Scene Format 继续拥有 LXES/Persistence 原始记录，不直接拥有 `entt::registry` 的文件镜像。Terrain、Tilemap 与 Physics3D 场景 Payload 的值、Codec 和 wire tests 归各自 ECS 领域；Engine `SceneDescription/SceneAsset` 负责 LXSC。详见 `ADR-20260820_SceneAsset与Resource边界.md`。
 
+> **2026-08-21 裁决更新：** ECS 不拥有、不包含 Engine 内置资产身份。Render Residency 的 fallback material ID 由 Engine Runtime 装配时注入；nil 明确表示不请求默认材质。
+
 
 ## 1. 当前问题
 

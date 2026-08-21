@@ -1,5 +1,13 @@
 # v2 相对 v1 的架构修订说明
 
+## 2026-08-21：Asset 领域内聚、Pak 公共边界与 Engine Content
+
+- 接受 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`。
+- Asset 从 `core/codecs/pak` 横向分区改为领域族组织，Storage 作为语义领域容纳 Provider/VFS/Pak。
+- Pak v2 reader/writer/inspector 是公共 Modules Asset SDK；Toolchain 只拥有 cook/publish 策略。
+- `BuiltinAssetIds.hpp`、M_Missing 与内置色板归 `engine/content`；ECS fallback 改为 Engine Runtime 注入。
+- 保持 AssetFileHeader v1/v2、所有资产 wire、冻结 UUID/颜色和 LUXPAK v2 字节不变。
+
 ## 2026-08-20：Scene Asset 与 Resource 边界修订
 
 - 接受 `ADR-20260820_SceneAsset与Resource边界.md`。

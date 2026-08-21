@@ -2,7 +2,8 @@
 
 **代码基线：** `LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656`
 **Scene Asset 实施提交：** `36ce56c634f1e03959910fc1761ec62b2fb4671e`
-**文档日期：** 2026-08-20
+**当前施工基线：** `f35e245a1e493c388722a41711f1a3ecd1df2acb`
+**文档日期：** 2026-08-21
 
 本套文档替代此前 v1.x 文档。新版以以下哲学为中心：
 
@@ -21,6 +22,8 @@ products= 最终入口与可执行程序
 - Extension ABI、Game Manifest、Entity Scene、World Partition 等回到真实上层。
 - 保留公共 `AssetManager`、`LuxAsset`、Codec、Provider、VFS 与 Pak，不建立第二套 Engine AssetStore。
 - Engine-owned Scene 复用公共资产机制；场景 Payload 由对应 ECS 领域拥有。
+- Asset 按领域族内聚；Provider/VFS/Pak 是 opaque bytes 存储面，Pak 读写检查属公共 SDK。
+- 冻结的 Engine 内置资产身份归 `engine/content`，ECS fallback 由 Engine Runtime 装配注入。
 - 先纯化公共 Modules 和 ECS 依赖方向，再实施 Game/Editor 重构。
 
 ## 文档目录
@@ -45,6 +48,8 @@ products= 最终入口与可执行程序
 补充 ADR：`ADR-20260820_SceneAsset与Resource边界.md`。它取代旧文档中关于
 `AssetId`、`AssetTypeId`、`engine/assets/AssetStore` 与 Resource 场景 Payload 最终归属的目标；
 冲突内容只保留为历史设计记录，不再作为施工要求。
+
+`ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 进一步裁决 Asset 目录、Storage/Pak 公共边界、Engine Content owner 与 ECS fallback 注入。
 
 ## 推荐阅读与施工顺序
 
@@ -85,6 +90,7 @@ products= 最终入口与可执行程序
 - `12_迁移映射总表.md`：路径/类型/Target 映射。
 - `13_当前代码事实索引.md`：固定提交上的代码锚点。
 - `ADR-20260820_SceneAsset与Resource边界.md`：Scene Asset 与公共 Resource 的现行裁决。
+- `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`：Asset 领域内聚、Pak 和 Engine Content 的现行裁决。
 - `SHA256SUMS.txt`：校验值。
 - `manifest.json`：机器可读文件清单。
 

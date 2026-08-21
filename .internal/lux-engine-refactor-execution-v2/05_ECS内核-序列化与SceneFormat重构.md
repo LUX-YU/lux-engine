@@ -148,6 +148,9 @@ lux::extensions::ContributionId
 
 的依赖。
 
+> **实施状态：** ECS 直接依赖已清零；`c56efbc4` 又删除了旧 Core component 与通用
+> `ContributionId` 定义。上面的名称仅保留为历史删除合同。
+
 ## 5. Asset 依赖移出 Kernel
 
 当前 `ecs/core` 因 `AssetLoadFn` 等类型 PUBLIC 链接 `asset_core`。施工：

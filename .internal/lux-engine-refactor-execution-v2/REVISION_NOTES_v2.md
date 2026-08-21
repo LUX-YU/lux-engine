@@ -2,11 +2,13 @@
 
 ## 2026-08-21：Extension ABI v4 Owner 与 Core 清零
 
-- `engine/extensions/api` 当前只是旧 Core ABI 的转发入口，不能继续写成实体已完成迁移。
+- `2a916295` 先裁决 owner 与冻结表面；`c56efbc4` 已使 `engine/extensions/api` 成为唯一实体 owner，并删除旧 Core component。
 - ABI v4 的 descriptor、ordinal、fingerprint、registrar 对象布局与导出 symbol 冻结；本轮只改变 owner/include/target。
 - `RuntimeContributionRegistrar` 等 ABI-facing 类型在 v4 内不改名；相关旧 Checklist 重命名项由本裁决取代。
 - 通用 `ContributionId` 不在 v4 descriptor 布局中且已无 production 消费，可以直接删除。
 - 静态 reflection pending chain 的移除需要独立 codegen/plugin-entry 裁决，不夹带进 owner 搬迁。
+- Authoring Project Manifest 保持 source DTO；Toolchain/Editor 在唯一上层边界显式转换为 Engine Extension API，避免 AUTHORING→RUNTIME 反向依赖。
+- 四 Profile 全量/no-op、动态 DLL transaction、实际 Physics2D exports、installed consumer 与旧 component 反向查找均已通过。
 
 ## 2026-08-21：Core Serialization 与 ECS Component Archive
 

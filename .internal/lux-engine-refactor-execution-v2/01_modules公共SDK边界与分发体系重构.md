@@ -20,6 +20,8 @@
 
 > **2026-08-21 Profile 修订：** 不新增 `MODULES_SDK` Profile。公共 SDK 独立性通过现有四个 Profile 的安装结果和 installed consumers 验证；本文后续 `MODULES_SDK` 示例仅为历史提案，不再施工。Modules 聚合目录仍必须改为显式子目录列表。
 
+> **2026-08-21 Extension ABI 实施状态：** `modules/core/extension_abi` 已删除；ABI v4 只由独立 `lux-engine-extensions` package 的 `extension_api` component 安装，Core/Modules package 不再导出 Extension API。
+
 
 ## 1. 当前问题与施工目标
 
@@ -44,7 +46,7 @@
 | `modules/core/math` | 保留并扩充 | `lux::math` | 吸收 `resource/spatial` 的纯值类型 |
 | `modules/core/serialization` | 拆分 | `lux::serialization` | 只保留 Archive/NameTable/Byte primitives；反射 Component Archive 上移 `ecs/serialization` |
 | `modules/core/meta` | 拆除聚合边界 | `lux-cxx::reflection_runtime` + `ecs` + `engine/reflection` | EntityRegistry 与 Extension Sidecar 语义移出 |
-| `modules/core/extension_abi` | 搬迁 | `engine/extensions/api` | 作为单独 Engine Extension SDK，而非公共 Core |
+| `modules/core/extension_abi`（已删除） | 已搬迁 | `engine/extensions/api` | DONE；作为单独 Engine Extension SDK，而非公共 Core |
 | `modules/platform/common` | 删除 | 分别迁移 | AtomicWait/Format/Size2D/ImageEnums 各归其领域 |
 | `modules/platform/dynamic_library` | 保留 | `lux::dynamic_library` | 独立 RAII 动态库加载 |
 | `modules/platform/filewatch` | 保留 | `lux::filewatch` | Editor 只是当前消费者，不改变通用性 |

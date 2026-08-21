@@ -7,7 +7,9 @@
 **Asset Pipeline/Core Meta 实施提交：** `ed5fb7eb`
 **当前 Serialization 施工基线：** `6906ccc2`
 **Component Archive 实施提交：** `d1ead288`
-**当前 Extension ABI 施工基线：** `2259ade7`
+**Extension ABI 文档裁决提交：** `2a916295`
+**Extension ABI 实施提交：** `c56efbc4`
+**当前事实基线：** `c56efbc4`
 **文档日期：** 2026-08-21
 
 本套文档替代此前 v1.x 文档。新版以以下哲学为中心：
@@ -50,7 +52,7 @@ products= 最终入口与可执行程序
 | 08 | Editor | Workspace、Workbench、Documents、Panels、Flow/Material/Script/Preview | 08_Editor-Workspace-Workbench-Documents-Panels重构.md |
 | 09 | CMake 与 SDK | Target、Namespace、Package、Compatibility、Profile | 09_CMake-命名空间-SDK包与兼容迁移.md |
 | 10 | 测试与验收 | 持续集成、Sanitizer、Golden、故障注入、PR 路线 | 10_测试-CI-PR路线与验收.md |
-| 11 | 施工 Checklist | 658 个可勾选施工项 | 11_详细施工Checklist_已更新_20260819_b1a25d3.md |
+| 11 | 施工 Checklist | 668 个可勾选施工项 | 11_详细施工Checklist_已更新_20260819_b1a25d3.md |
 | 12 | 迁移映射总表 | 148 条当前→目标映射 | 12_迁移映射总表.md |
 | 13 | 当前代码事实索引 | 79 个关键文件锚点 | 13_当前代码事实索引.md |
 
@@ -64,7 +66,7 @@ products= 最终入口与可执行程序
 
 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md` 裁决 Core/ECS 序列化边界、详细错误合同、UUID/资产 annotation 语义以及 Unknown Component 拒绝策略；`d1ead288` 已完成施工和安装闭包验收。
 
-`ADR-20260821_ExtensionAbiV4Owner与Core清零.md` 裁决 Extension ABI 实体 owner、v4 二进制兼容边界与通用 `ContributionId` 删除；当前代码施工尚未完成。
+`ADR-20260821_ExtensionAbiV4Owner与Core清零.md` 裁决 Extension ABI 实体 owner、v4 二进制兼容边界与通用 `ContributionId` 删除；`c56efbc4` 已完成施工和安装/ABI 验收。
 
 ## 推荐阅读与施工顺序
 
@@ -113,9 +115,10 @@ products= 最终入口与可执行程序
 - `evidence/asset-domain-cohesion-f35e245a.md`：本轮基线公共面、12 组 wire 指纹与验收结论。
 - `evidence/asset-pipeline-core-meta-fe4422ba.md`：统一加载链、Runtime demand、Registry/Meta 边界与安装闭包验收。
 - `evidence/core-serialization-ecs-component-archive-6906ccc2.md`：Core/Component Archive 迁移、wire 回归与四 Profile/安装闭包验收。
+- `evidence/extension-abi-core-retirement-2259ade7.md`：Extension ABI v4 owner、动态 DLL、四 Profile 与安装 component 验收。
 - `SHA256SUMS.txt`：校验值。
 - `manifest.json`：机器可读文件清单。
 
 ## 状态说明
 
-这些文档同时记录施工规范与已验证状态。`SCENEASSET-001..020`、`ASSETCOHESION-001..012`、`ASSETPIPE-001..012` 与 `ECSSER-001..009` 已按 ADR 完成；其余未勾选目标仍须在后续变更中引用 Checklist ID，并同步更新映射表和事实索引。
+这些文档同时记录施工规范与已验证状态。`SCENEASSET-001..020`、`ASSETCOHESION-001..012`、`ASSETPIPE-001..012`、`ECSSER-001..009` 与 `EXTABI-001..010` 已按 ADR 完成；其余未勾选目标仍须在后续变更中引用 Checklist ID，并同步更新映射表和事实索引。

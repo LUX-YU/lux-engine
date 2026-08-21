@@ -20,6 +20,8 @@
 
 > **2026-08-21 Component Archive 验收：** Core byte archive、ECS Component Archive、Unknown Component 三路径、资产 UUID annotation 与 Function Animation 闭包已经 owner/installed consumer 验证；四 Profile 全量与第二轮 no-op 通过。当前构建树仍未注册 CTest 条目，因此不得把“0 tests”写成 CTest 覆盖。
 
+> **2026-08-21 Extension ABI 验收：** v4 size/alignment/offset/ordinal/fingerprint/symbol、path/memory DLL loading、dependency、rollback、reflection publication、lease/unload、Editor-only registrar 与 Physics2D exports 已验证；四 Profile、installed consumer、旧 component 反向查找和三安装前缀同步通过。
+
 
 ## 1. 总体策略
 

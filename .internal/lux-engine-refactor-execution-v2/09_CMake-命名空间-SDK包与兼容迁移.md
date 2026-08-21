@@ -22,6 +22,8 @@
 
 > **2026-08-21 Serialization 安装事实：** `lux-engine-core COMPONENTS serialization` 的导出闭包只有 binary/stduuid；`lux-engine-ecs COMPONENTS component_archive` 独立导出且不含 Resource/Engine。旧 Core TaggedPropertyArchive 头不再安装。
 
+> **2026-08-21 Extension ABI 安装事实：** `lux-engine-extensions COMPONENTS extension_api` 可由 installed consumer 独立配置/链接；`lux-engine-core COMPONENTS extension_abi` 明确失败。旧 Core 头/export 已精确清理，不提供 alias 或 forwarding header。
+
 
 ## 1. 目标
 

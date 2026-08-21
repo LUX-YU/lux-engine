@@ -1,10 +1,14 @@
 # Extension ABI v4 Owner 与 Core 清零
 
-**状态：** Accepted，代码施工待完成
+**状态：** Implemented
 
 **日期：** 2026-08-21
 
 **施工基线：** `2259ade725506f11fe247582d1c3be32116bebe0`
+
+**文档裁决提交：** `2a916295`
+
+**实施提交：** `c56efbc4`
 
 ## 背景
 
@@ -60,8 +64,8 @@ plugin entry contract，属于后续 ABI/codegen ADR；不得在 v4 owner 搬迁
 
 本轮完成：
 
-- `CORE-005/006/010`
-- `EXT-012/025/026`
+- `CORE-002/003/005/006/010`
+- `EXT-007/012/025/026`
 - `FINAL-001`
 - 新增 `EXTABI-*` 证据条目
 
@@ -75,3 +79,17 @@ M0、M7、Scene Runtime、Game/Editor 架构或 Extension ABI v5。
 - `lux-engine-core COMPONENTS extension_abi` 必须失败，三个安装前缀不含旧头或旧 export。
 - production/test/CMake 不存在旧 Core include、target/component 或通用 `ContributionId`。
 - 四个 Profile 全量构建和 owner tests 通过，CMake 第二轮为 no-op。
+
+## 实施结论
+
+`c56efbc4` 已完成 owner 搬迁与旧 Core component 清零。Authoring Project Manifest 保持
+Authoring-owned source DTO，不反向依赖 Runtime 产品；Game Exporter 与 Editor
+ProjectController 在 authoring→cooked/runtime 边界显式转换为 Engine `ExtensionId` 与 target。
+Runtime、Scene、Game、Editor Extension API 和实际 Extension DLL 均只消费
+`engine/extensions/api`。
+
+Windows x64 v4 descriptor/result 的 size、alignment、field offset、enum ordinal、fingerprint
+和三个 symbol string 已由 owner contract 固定；动态 fixture 覆盖 dependency、rollback、
+reflection publication、lease/unload 与 Editor-only registration。实际 Physics2D DLL 导出
+`luxGetExtensionModuleV4` 与 `luxRegisterRuntimeContributionsV4`。完整验证见
+`evidence/extension-abi-core-retirement-2259ade7.md`。

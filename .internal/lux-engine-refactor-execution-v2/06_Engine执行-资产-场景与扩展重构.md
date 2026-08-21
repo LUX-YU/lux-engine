@@ -20,6 +20,8 @@
 
 > **2026-08-21 加载裁决：** `engine/runtime/assets` 通过既有 `AssetLoadService` 编排 IO、manager-less SerDeser decode 与主线程安装。Runtime packs/Scene Script integration 直接表达需求；不得向 ECS 注入裸加载函数或在 tick 中调用同步 `ensureAsset()`。
 
+> **2026-08-21 Extension ABI 实施状态：** `c56efbc4` 已使 `engine/extensions/api` 成为 ABI v4 唯一实体 owner，Core owner 与通用 `ContributionId` 已删除。Authoring source DTO 在 Toolchain/Editor 边界显式转换；v4 registrar/draft/lease 名称保持冻结。
+
 
 ## 1. 目标目录
 
@@ -252,8 +254,8 @@ extensions::ExtensionLoader extensions;
 MOVE：
 
 ```text
-modules/core/extension_abi/*
-→ engine/extensions/api/*
+modules/core/extension_abi/*（已删除）
+→ engine/extensions/api/*（DONE）
 
 engine/runtime/extensions/loader/ExtensionModuleManager.*
 → engine/extensions/loader/ExtensionLoader.*

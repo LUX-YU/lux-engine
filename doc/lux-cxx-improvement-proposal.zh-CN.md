@@ -1198,7 +1198,7 @@ test_support
 
 保留在 engine：
 
-- ExtensionId/ContributionId tag 和 canonical reverse-domain policy；
+- ExtensionId 与各领域 stable-name tag/canonical policy；不保留通用 ContributionId；
 - EntityScene schema/content domain separation；
 - AssetRef/relocation；
 - Registry/Schedule/AsyncRuntime/Render protocol。

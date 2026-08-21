@@ -22,6 +22,8 @@
 
 > **2026-08-21 Serialization 实施状态：** `d1ead288` 已将 reflected tagged archive 整体迁入 ECS `component_archive`。Core Serialization 只导出 Archive/NameTable，安装闭包不含 Meta 或 Eigen；旧 Core 头与 namespace 已删除。
 
+> **2026-08-21 Extension ABI 实施状态：** `c56efbc4` 已把 v4 实体 owner 迁入 `engine/extensions/api`，删除 Core 目录/target/component/include/export 与通用 `ContributionId`；ABI-facing 名称、布局与导出 symbol 不变。
+
 
 ## 1. 施工范围
 
@@ -33,7 +35,7 @@ modules/core/log
 modules/core/math
 modules/core/meta
 modules/core/serialization
-modules/core/extension_abi
+modules/core/extension_abi（已删除，保留为历史施工范围）
 
 modules/platform/common
 modules/platform/dynamic_library
@@ -48,8 +50,8 @@ modules/platform/window
 
 | 当前文件/目录 | 目标 | 动作 |
 | --- | --- | --- |
-| `modules/core/extension_abi/include/.../StableId.hpp` | `lux-cxx::StableNameId` remains generic; domain IDs move to owners | SPLIT |
-| `modules/core/extension_abi/include/.../ModuleAbi.hpp` | `engine/extensions/api/include/lux/engine/extensions/ExtensionAbi.hpp` | MOVE |
+| `modules/core/extension_abi/include/.../StableId.hpp`（已删除） | `lux-cxx::StableNameId` remains generic; domain IDs move to owners | DONE — SPLIT/DELETE |
+| `modules/core/extension_abi/include/.../ModuleAbi.hpp`（已删除） | `engine/extensions/api/include/lux/engine/extensions/ExtensionAbi.hpp` | DONE — MOVE/DELETE |
 | `modules/core/meta/include/lux/engine/meta/LuxObject.hpp` | `ecs/core/include/lux/ecs/EntityRegistry.hpp` and optional `EntityObject.hpp` | SPLIT |
 | `modules/core/meta/include/lux/engine/meta/Meta*.hpp` | `lux-cxx::reflection_runtime` or temporary `engine/reflection` | SPLIT |
 | `modules/core/meta/cmake/engine_add_meta.cmake` | `cmake/Codegen/Reflection.cmake` | MOVE |

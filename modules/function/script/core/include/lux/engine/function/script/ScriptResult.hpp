@@ -12,23 +12,13 @@ namespace lux::script
     enum class EScriptError : std::uint8_t
     {
         INVALID_ARGUMENT,
-        DUPLICATE_BACKEND,
-        DUPLICATE_EXTENSION,
-        BACKEND_NOT_FOUND,
-        UNSUPPORTED_EXTENSION,
         IO_ERROR,
         LOAD_FAILED,
-        MEMORY_LOAD_UNSUPPORTED,
         INVALID_ENTRY_POINT,
         INVALID_MODULE,
         ABI_MISMATCH,
         HOST_BIND_FAILED,
-        DUPLICATE_MODULE_NAME,
-        MODULE_NOT_FOUND,
-        FUNCTION_NOT_FOUND,
-        STALE_HANDLE,
-        INVOKE_FAILED,
-        HANDLE_EXHAUSTED
+        SIGNATURE_MISMATCH
     };
 
     struct LUX_FUNCTION_PUBLIC ScriptFailure

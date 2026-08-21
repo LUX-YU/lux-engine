@@ -22,7 +22,7 @@
  *
  * The runtime contract for `NativeModuleScript` is fixed by
  * the Function Script ABI: once loaded, the library
- * exports `lux_script_get_module` and `ScriptRuntime` dispatches calls
+ * exports `lux_script_get_module`; the host binds the final ABI function pointer
  * through `lux_script_call_frame`.
  */
 

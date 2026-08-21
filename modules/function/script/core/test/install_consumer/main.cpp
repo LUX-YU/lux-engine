@@ -1,11 +1,8 @@
-#include <lux/engine/function/script/ScriptRuntime.hpp>
+#include <lux/engine/function/script/ScriptCallFrame.hpp>
 
 int main()
 {
-    lux::script::ScriptRuntime runtime;
-    const auto result = runtime.registerBackend({});
-    return !result
-        && result.error().code == lux::script::EScriptError::INVALID_ARGUMENT
-        ? 0
-        : 1;
+    lux_script_call_frame raw{};
+    lux::script::CallFrame frame(raw);
+    return &frame.raw() == &raw ? 0 : 1;
 }

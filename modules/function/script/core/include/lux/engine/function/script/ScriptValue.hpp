@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file ScriptValue.hpp
- * @brief C++-friendly views over @ref lux_script_value_slot for ScriptRuntime callers.
+ * @brief C++-friendly views over @ref lux_script_value_slot for module authors.
  */
 
 #include <cstdint>

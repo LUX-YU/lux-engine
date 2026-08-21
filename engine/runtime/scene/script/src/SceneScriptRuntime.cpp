@@ -6,6 +6,7 @@
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/script/systems/ScriptRegistry.hpp>
+#include <lux/engine/ecs/script/systems/ScriptBehavior.hpp>
 #include <lux/engine/ecs/script/systems/ScriptSystem.hpp>
 #include <lux/engine/input/ActionMapper.hpp>
 #include <lux/engine/log/Log.hpp>
@@ -33,6 +34,19 @@ namespace lux::runtime
         (void)stop();
     }
 
+    bool SceneScriptRuntime::addBackend(
+        std::unique_ptr<lux::ecs::IScriptBackend> backend
+    )
+    {
+        if (!backend || active())
+            return false;
+        for (const auto& current : backends_)
+            if (current->kind() == backend->kind())
+                return false;
+        backends_.push_back(std::move(backend));
+        return true;
+    }
+
     bool SceneScriptRuntime::start(
         const lux::input::ActionMapper& mapper,
         const lux::input::InputActionRegistry* actions)
@@ -45,9 +59,14 @@ namespace lux::runtime
             *assets_,
             asset_client_
         );
+        std::vector<lux::ecs::IScriptBackend*> backend_views;
+        backend_views.reserve(backends_.size());
+        for (const auto& backend : backends_)
+            backend_views.push_back(backend.get());
         auto script = std::make_unique<lux::ecs::ScriptSystem>(
             lux::ecs::scriptRegistry(),
-            lux::ecs::ScriptContext{world_, &mapper, actions, assets_});
+            lux::ecs::ScriptContext{world_, &mapper, actions, assets_},
+            std::move(backend_views));
         lux::ecs::ScheduleBuilder builder{*schedule_, *services_};
         auto pending_request = builder.add(
             std::move(request),
@@ -126,6 +145,8 @@ namespace lux::runtime
             }
             request_system_ = {};
         }
+        for (const auto& backend : backends_)
+            backend->resetSession();
         return true;
     }
 

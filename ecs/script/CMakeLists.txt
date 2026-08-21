@@ -1,9 +1,9 @@
 # lux::engine::ecs::scripting — the ScriptSystem folder (scripting ADR v3.3).
 #
 # Per-entity script behaviors: ONE ScriptComponent + ONE ScriptSystem driving
-# backend-agnostic instances (C++ ScriptBehavior + Lua now; FlowForge-AOT later),
-# with native crash isolation (§6b: a faulting script is disabled, the engine
-# survives). Knows only ECS core + reflection — never the editor. namespace lux::ecs
+# bind-time-resolved ABI calls (C++, Lua and native AOT). Native/C++ code is
+# trusted process code; an ABI-reported non-zero result disables the script,
+# while a native memory fault follows the host process crash policy.
 #
 # NOTE: CMake target is `scripting` (not `script`) — modules/core/script already
 # owns the target name `script`. Alias lux::engine::ecs::scripting; DLL
@@ -13,7 +13,6 @@ set(LUX_ECS_SCRIPT_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptEventRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptSystem.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptCrashGuard.cpp
 )
 
 add_component(
@@ -37,6 +36,8 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME
         include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 
 target_compile_definitions(
@@ -51,6 +52,8 @@ target_link_libraries(
     lux::engine::ecs::core             # World / ISystem / EntityRegistry / EntityHandle / ComponentTypeCatalog
     lux::engine::core::meta            # RefClass/RefField/EBaseType (reflection get/set)
     lux::engine::resource::asset       # ScriptComponent.script = asset_id_t + asset routing (rdesc::Script/ScriptAsset)
+    PRIVATE
+    lux::engine::core::log
 )
 
 component_add_transitive_commands(
@@ -58,9 +61,10 @@ component_add_transitive_commands(
     "find_package (lux-engine-ecs  REQUIRED COMPONENTS core)"
     "find_package (lux-engine-core REQUIRED COMPONENTS meta)"
     "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package (lux-engine-core REQUIRED COMPONENTS log)"
 )
 
-# Backend adapters are separate Runtime components. A Player that installs
+# Session backends are separate Runtime components. A Player that installs
 # only ScriptSystem and native C++ behaviours carries neither LuaJIT nor the
 # native dynamic-module backend.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -95,6 +99,7 @@ target_link_libraries(
         sol2::sol2
         LuaJIT::LuaJIT
         lux::engine::function::input
+        lux::engine::core::log
 )
 component_add_transitive_commands(
     scripting_lua
@@ -103,6 +108,7 @@ component_add_transitive_commands(
     "find_package(sol2 CONFIG REQUIRED)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS scripting)"
     "find_package(lux-engine-function REQUIRED COMPONENTS input)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS log)"
 )
 
 add_component(
@@ -196,5 +202,83 @@ if(LUX_BUILD_COMPONENT_META)
         TARGET_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/script/components/ScriptComponent.hpp
         LUA_BINDING
+    )
+endif()
+
+add_executable(
+    script_direct_dispatch_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/script_direct_dispatch_contract_test.cpp
+)
+target_include_directories(
+    script_direct_dispatch_contract_test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+)
+target_link_libraries(
+    script_direct_dispatch_contract_test
+    PRIVATE
+        scripting
+)
+lux_classify_target(
+    TARGET script_direct_dispatch_contract_test
+    LAYER ECS
+    PRODUCT TEST
+    ROLE INTEGRATION
+)
+
+add_executable(
+    script_system_direct_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/script_system_direct_contract_test.cpp
+)
+target_link_libraries(
+    script_system_direct_contract_test
+    PRIVATE
+        scripting
+)
+if(MSVC)
+    target_compile_options(script_system_direct_contract_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(script_system_direct_contract_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET script_system_direct_contract_test
+    LAYER ECS
+    PRODUCT TEST
+    ROLE INTEGRATION
+)
+
+if(TARGET script_native_fixture)
+    add_executable(
+        native_script_session_contract_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/native_script_session_contract_test.cpp
+    )
+    target_link_libraries(
+        native_script_session_contract_test
+        PRIVATE
+            scripting_native
+    )
+    target_compile_definitions(
+        native_script_session_contract_test
+        PRIVATE
+            LUX_SCRIPT_NATIVE_FIXTURE="$<TARGET_FILE:script_native_fixture>"
+    )
+    add_dependencies(
+        native_script_session_contract_test
+        script_native_fixture
+    )
+    if(MSVC)
+        target_compile_options(
+            native_script_session_contract_test PRIVATE /UNDEBUG
+        )
+    else()
+        target_compile_options(
+            native_script_session_contract_test PRIVATE -UNDEBUG
+        )
+    endif()
+    lux_classify_target(
+        TARGET native_script_session_contract_test
+        LAYER ECS
+        PRODUCT TEST
+        ROLE INTEGRATION
     )
 endif()

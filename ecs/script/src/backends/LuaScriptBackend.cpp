@@ -32,12 +32,13 @@
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/input/ActionMapper.hpp>
 #include <lux/engine/input/InputActionRegistry.hpp>
+#include <lux/engine/log/Log.hpp>
 
 #include <sol/sol.hpp>
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -165,8 +166,7 @@ namespace lux::ecs
 
         struct CompiledScript
         {
-            sol::table  callbacks;         ///< the chunk's returned table (event name → fn)
-            std::size_t source_hash = 0;   ///< asset path: recompile gate (hot reload)
+            sol::table callbacks;
         };
 
         // ── Event-table dispatch (ADR v2 §3.2): per-instance state + ONE generic thunk ──
@@ -227,64 +227,73 @@ namespace lux::ecs
             return true;
         }
 
-        struct LuaInstanceState
+        struct LuaEventBinding
         {
-            ScriptEntity                          self;
-            sol::state_view                       lua;    // the backend's state
-            std::vector<sol::protected_function>  fns;    // dense by ScriptEventId
+            ScriptEntity             self;
+            sol::state_view          lua;
+            sol::protected_function function;
+            const ScriptEventDesc*   event{nullptr};
 
-            LuaInstanceState(ScriptEntity s, lua_State* L) : self(s), lua(L) {}
+            LuaEventBinding(
+                ScriptEntity entity,
+                lua_State* state,
+                sol::protected_function callback,
+                const ScriptEventDesc& description
+            )
+                : self(entity)
+                , lua(state)
+                , function(std::move(callback))
+                , event(&description)
+            {}
         };
 
-        /// The one Lua dispatch thunk (every bound slot points here — the
-        /// dispatcher's event id selects the handle).
-        bool luaEventThunk(void* state, ScriptEventId id, void* const* args)
+        struct LuaInstanceState
         {
-            auto* st = static_cast<LuaInstanceState*>(state);
-            const sol::protected_function& fn = st->fns[id];
-            if (!fn.valid()) return true;   // unreachable when bound correctly
+            std::vector<std::unique_ptr<LuaEventBinding>> bindings;
+        };
 
-            const auto& desc = scriptEventRegistry().desc(id);
-            const std::size_t n = desc.params.size();
+        int luaEventThunk(lux_script_call_frame* frame)
+        {
+            auto* binding = static_cast<LuaEventBinding*>(frame->user_context);
+            const auto& event = *binding->event;
+            const std::size_t n = event.params.size();
             sol::object argv[ScriptEventRegistry::kMaxParams];
             for (std::size_t i = 0; i < n; ++i)
             {
-                if (!packedToLua(st->lua, *desc.params[i].type, args[i], argv[i]))
-                    return false;   // registry/binding drift — surface as fault
+                if (!packedToLua(
+                        binding->lua,
+                        *event.params[i].type,
+                        frame->args[i].data,
+                        argv[i]
+                    ))
+                    return 1;
             }
 
             sol::protected_function_result r;
             switch (n)   // sol call sites need compile-time arity (≤ kMaxParams)
             {
-                case 0: r = fn(st->self); break;
-                case 1: r = fn(st->self, argv[0]); break;
-                case 2: r = fn(st->self, argv[0], argv[1]); break;
-                case 3: r = fn(st->self, argv[0], argv[1], argv[2]); break;
-                case 4: r = fn(st->self, argv[0], argv[1], argv[2], argv[3]); break;
-                case 5: r = fn(st->self, argv[0], argv[1], argv[2], argv[3],
+                case 0: r = binding->function(binding->self); break;
+                case 1: r = binding->function(binding->self, argv[0]); break;
+                case 2: r = binding->function(binding->self, argv[0], argv[1]); break;
+                case 3: r = binding->function(binding->self, argv[0], argv[1], argv[2]); break;
+                case 4: r = binding->function(binding->self, argv[0], argv[1], argv[2], argv[3]); break;
+                case 5: r = binding->function(binding->self, argv[0], argv[1], argv[2], argv[3],
                                argv[4]); break;
-                case 6: r = fn(st->self, argv[0], argv[1], argv[2], argv[3],
+                case 6: r = binding->function(binding->self, argv[0], argv[1], argv[2], argv[3],
                                argv[4], argv[5]); break;
-                case 7: r = fn(st->self, argv[0], argv[1], argv[2], argv[3],
+                case 7: r = binding->function(binding->self, argv[0], argv[1], argv[2], argv[3],
                                argv[4], argv[5], argv[6]); break;
-                default: r = fn(st->self, argv[0], argv[1], argv[2], argv[3],
+                default: r = binding->function(binding->self, argv[0], argv[1], argv[2], argv[3],
                                 argv[4], argv[5], argv[6], argv[7]); break;
             }
-            if (!r.valid())
-            {
-                const sol::error err = r;
-                std::fprintf(stderr, "[lua %s] %s\n",
-                             desc.name.c_str(), err.what());
-                return false;   // script-reported failure → dispatcher disables
-            }
-            return true;
+            return r.valid() ? 0 : 1;
         }
     } // namespace
 
     struct LuaScriptBackend::Impl
     {
         sol::state                                      lua;
-        std::unordered_map<std::string, CompiledScript> scripts;
+        std::unordered_map<lux::asset::asset_id_t, CompiledScript> scripts;
         const ComponentTypeCatalog&                     components;
 
         // Current frame's input (set by beginFrame; read by the Lua `Input` table).
@@ -337,81 +346,73 @@ namespace lux::ecs
         impl_->actions = ctx.actions;
     }
 
-    void LuaScriptBackend::registerLuaSource(std::string_view name, std::string source)
-    {
-        sol::load_result chunk = impl_->lua.load(source);
-        if (!chunk.valid())
-        {
-            sol::error e = chunk;
-            std::fprintf(stderr, "[lua] load '%.*s' failed: %s\n",
-                         static_cast<int>(name.size()), name.data(), e.what());
-            return;
-        }
-        sol::protected_function_result ran = chunk();
-        if (!ran.valid())
-        {
-            sol::error e = ran;
-            std::fprintf(stderr, "[lua] run '%.*s' failed: %s\n",
-                         static_cast<int>(name.size()), name.data(), e.what());
-            return;
-        }
-        sol::object ret = ran;
-        if (!ret.is<sol::table>())
-        {
-            std::fprintf(stderr, "[lua] '%.*s' must `return` a table of callbacks\n",
-                         static_cast<int>(name.size()), name.data());
-            return;
-        }
-        sol::table t = ret;
-        CompiledScript cs;
-        cs.callbacks = t;   // the whole module table — events resolve by
-                            // REGISTERED name at instance bind (ADR v2 §3.2)
-        impl_->scripts[std::string(name)] = std::move(cs);
-    }
-
     ScriptInstance
     LuaScriptBackend::createInstanceFromAsset(
         lux::ecs::EntityHandle entity,
         World& world,
-                                              const lux::rdesc::Script&  desc,
-                                              std::span<const std::byte> payload,
-                                              std::string_view           cache_key)
+        const lux::rdesc::Script& desc,
+        std::span<const std::byte> payload,
+        lux::asset::asset_id_t asset_id,
+        std::uint32_t)
     {
         if (!std::holds_alternative<lux::rdesc::LuaSourceScript>(desc.body))
-            return {};   // not our kind — let the next backend look
+            return {};
 
-        // (Re)compile when unseen OR the source changed. Keying the compile
-        // cache on the source hash makes HOT RELOAD a plain re-import: the
-        // next play-start sees a different hash and recompiles — no dedicated
-        // reload machinery. (LuaSourceScript::entry — multi-behavior selection
-        // inside one chunk — is deferred; the chunk's returned table IS the
-        // behavior for now.)
-        const std::string      key{cache_key};
         const std::string_view source(reinterpret_cast<const char*>(payload.data()),
                                       payload.size());
-        const std::size_t hash = std::hash<std::string_view>{}(source);
-
-        auto it = impl_->scripts.find(key);
-        if (it == impl_->scripts.end() || it->second.source_hash != hash)
+        auto it = impl_->scripts.find(asset_id);
+        if (it == impl_->scripts.end())
         {
-            registerLuaSource(key, std::string(source));
-            it = impl_->scripts.find(key);
-            if (it == impl_->scripts.end())
-                return {};   // compile/run failed (already logged)
-            it->second.source_hash = hash;
+            sol::load_result chunk = impl_->lua.load(source);
+            if (!chunk.valid())
+            {
+                const sol::error error = chunk;
+                lux::log::error(
+                    "ecs.script.lua",
+                    "failed to compile Lua ScriptAsset '{}': {}",
+                    desc.module_name,
+                    std::string_view{error.what()}
+                );
+                return {};
+            }
+            sol::protected_function_result result = chunk();
+            if (!result.valid())
+            {
+                const sol::error error = result;
+                lux::log::error(
+                    "ecs.script.lua",
+                    "failed to initialize Lua ScriptAsset '{}': {}",
+                    desc.module_name,
+                    std::string_view{error.what()}
+                );
+                return {};
+            }
+            sol::object object = result;
+            if (!object.is<sol::table>())
+            {
+                lux::log::error(
+                    "ecs.script.lua",
+                    "Lua ScriptAsset '{}' must return a callback table",
+                    desc.module_name
+                );
+                return {};
+            }
+            it = impl_->scripts.emplace(
+                asset_id,
+                CompiledScript{object.as<sol::table>()}
+            ).first;
         }
 
         // ── bind (ADR v2 §3.2): resolve each REGISTERED event's handle from
         // the module table ONCE; only implemented events get an entry — the
         // subscription index then never dispatches this instance for others.
         const auto& evreg = scriptEventRegistry();
-        auto state = std::make_unique<LuaInstanceState>(
-            ScriptEntity{
-                &world.registry(),
-                entity.entity(),
-                &impl_->components},
-            impl_->lua.lua_state());
-        state->fns.resize(evreg.count());
+        auto state = std::make_unique<LuaInstanceState>();
+        const ScriptEntity self{
+            &world.registry(),
+            entity.entity(),
+            &impl_->components
+        };
 
         ScriptInstance inst(
             state.get(),
@@ -424,16 +425,26 @@ namespace lux::ecs
                 continue;   // absent event — legal, slot stays empty
             if (!luaMarshallable(ev))
             {
-                std::fprintf(stderr,
-                    "[lua] '%s' implements '%s' but a param type is not "
-                    "Lua-marshallable — left unbound\n",
-                    key.c_str(), ev.name.c_str());
-                continue;
+                state.release();
+                return {};
             }
-            state->fns[id] = cb.as<sol::protected_function>();
-            inst.bind(id, &luaEventThunk);
+            auto binding = std::make_unique<LuaEventBinding>(
+                self,
+                impl_->lua.lua_state(),
+                cb.as<sol::protected_function>(),
+                ev
+            );
+            auto* context = binding.get();
+            state->bindings.push_back(std::move(binding));
+            inst.bind(id, BoundScriptCall{&luaEventThunk, context});
         }
         state.release();   // owned by inst's drop from here
         return inst;
+    }
+
+    void LuaScriptBackend::resetSession() noexcept
+    {
+        const auto& components = impl_->components;
+        impl_ = std::make_unique<Impl>(components);
     }
 } // namespace lux::ecs

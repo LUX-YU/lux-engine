@@ -819,7 +819,16 @@
                 candidate->services(),
                 assets_,
                 asset_client_);
-        if (!play_mapper_ ||
+        const bool backends_ready =
+            candidate_simulation->addBackend(
+                std::make_unique<lux::ecs::LuaScriptBackend>(
+                    components_
+                )
+            )
+            && candidate_simulation->addBackend(
+                std::make_unique<lux::ecs::NativeModuleScriptBackend>()
+            );
+        if (!backends_ready || !play_mapper_ ||
             !candidate_simulation->start(*play_mapper_, play_actions_))
         {
             if (!infra_.close_driver->close(*candidate))

@@ -8,7 +8,6 @@ add_component(
     OUTPUT_NAME     lux_engine_function_script_lua
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Lua.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/LuaBackend.cpp
 )
 
 component_include_directories(
@@ -58,31 +57,6 @@ lux_classify_target(
     LAYER   FUNCTION
     PRODUCT RUNTIME
     ROLE    DOMAIN
-)
-
-add_executable(
-    script_lua_runtime_contract_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/script_lua_runtime_contract_test.cpp
-)
-target_link_libraries(
-    script_lua_runtime_contract_test
-    PRIVATE
-        lux::engine::function::script_lua
-)
-if(MSVC)
-    target_compile_options(script_lua_runtime_contract_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(script_lua_runtime_contract_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  script_lua_runtime_contract_test
-    LAYER   FUNCTION
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-add_test(
-    NAME script_lua_runtime_contract_test
-    COMMAND script_lua_runtime_contract_test
 )
 
 set(ENABLE_SCRIPT_LUA_TEST OFF CACHE BOOL "Enable Lua script tests")

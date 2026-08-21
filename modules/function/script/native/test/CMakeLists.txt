@@ -15,6 +15,11 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
+target_link_libraries(
+    script_native_fixture
+    PRIVATE lux::cxx::compile_time
+)
+
 add_library(
     script_native_bad_entry_fixture
     SHARED
@@ -35,6 +40,11 @@ lux_classify_target(
     LAYER   FUNCTION
     PRODUCT TEST
     ROLE    DOMAIN
+)
+
+target_link_libraries(
+    script_native_bad_entry_fixture
+    PRIVATE lux::cxx::compile_time
 )
 
 add_library(
@@ -76,6 +86,11 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
+target_link_libraries(
+    script_native_bind_failure_fixture
+    PRIVATE lux::cxx::compile_time
+)
+
 add_library(
     script_native_bad_abi_fixture
     SHARED
@@ -96,6 +111,11 @@ lux_classify_target(
     LAYER   FUNCTION
     PRODUCT TEST
     ROLE    DOMAIN
+)
+
+target_link_libraries(
+    script_native_bad_abi_fixture
+    PRIVATE lux::cxx::compile_time
 )
 
 add_executable(

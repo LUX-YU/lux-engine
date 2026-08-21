@@ -76,8 +76,6 @@
 #include <lux/engine/ecs/components/Transform2DComponent.hpp>   // Spinner2D demo script (temporary)
 #include <lux/engine/ecs/script/systems/ScriptRegistry.hpp>             // scriptRegistry() — register demo script
 #include <lux/engine/ecs/script/systems/ScriptBehavior.hpp>             // ScriptBehavior base — demo script
-#include <lux/engine/ecs/script/backends/LuaScriptBackend.hpp>  // Lua backend serves SCRIPT assets
-#include <lux/engine/ecs/script/backends/NativeModuleScriptBackend.hpp>  // native-module (lux_script_abi) assets
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/ui/ImGuiLuxWidgets.hpp>
 #include <lux/engine/editor/panels/InspectorPanel.hpp>
@@ -124,7 +122,7 @@ namespace lux::editor
         class Spinner2DBehavior final : public lux::ecs::ScriptBehavior
         {
         public:
-            void onUpdate(float dt) override
+            void onUpdate(float dt) noexcept
             {
                 if (!hasComponent<lux::ecs::Transform2DComponent>())
                     return;
@@ -139,8 +137,7 @@ namespace lux::editor
             static constexpr float kSpinRadPerSec = 1.5f;   // ~86°/s — clearly visible
         };
 
-        void registerBuiltinDemoScripts(
-            const lux::ecs::ComponentTypeCatalog& components)
+        void registerBuiltinDemoScripts()
         {
             auto& reg = lux::ecs::scriptRegistry();
             if (reg.hasCppScript("Spinner2D"))
@@ -149,17 +146,6 @@ namespace lux::editor
             // per-type pool + DEVIRTUALIZED shims for exactly the overridden
             // lifecycle methods (Spinner2D → onUpdate only).
             reg.registerCppScript<Spinner2DBehavior>("Spinner2D");
-            // The Lua backend serves SCRIPT assets of kind LuaSource:
-            // .lua imports become assets, ScriptComponent references them, and
-            // play-start routes here. Registered once with the demo scripts.
-            reg.registerBackend(
-                std::make_unique<lux::ecs::LuaScriptBackend>(components));
-            // Native-module backend: claims NativeModuleScript
-            // assets (lux_script_abi dll payloads — hand-written plugins and
-            // cooked FlowForge-AOT artefacts). Empty resolver: import-free
-            // modules load; modules importing host symbols are LOUDLY rejected.
-            reg.registerBackend(
-                std::make_unique<lux::ecs::NativeModuleScriptBackend>());
         }
 
         // ── UIRenderServer bring-up — RenderBackendHost 的 bring_up 回调正文,
@@ -421,7 +407,7 @@ namespace lux::editor
         //     openProject,先落 cwd/.lux 兜底;工程一开 repointFlowGraphCache()
         //     就把它搬到 <工程根>/.lux/cache/flowforge(此前恒落 cwd 是被已删的
         //     EditorConfig::project_root 恒空字段藏住的缺口,清理批补上重指)。
-        registerBuiltinDemoScripts(runtime_->component_types_);
+        registerBuiltinDemoScripts();
         // 2. GLFW + window.
         runtime_->glfw_ = std::make_unique<lux::window::GlfwRuntime>();
         if (!runtime_->glfw_->valid())

@@ -5,7 +5,7 @@ add_component(
     NAMESPACE       lux::engine::function
     OUTPUT_NAME     lux_engine_function_script_native
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/NativeBackend.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/NativeModule.cpp
 )
 
 component_include_directories(

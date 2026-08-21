@@ -1,5 +1,4 @@
-#include <lux/engine/function/script/ScriptRuntime.hpp>
-#include <lux/engine/function/script/backends/NativeBackend.hpp>
+#include <lux/engine/function/script/native/NativeModule.hpp>
 
 #include <cassert>
 #include <cstddef>
@@ -42,58 +41,47 @@ int main()
     const std::filesystem::path bind_failure_fixture =
         LUX_SCRIPT_NATIVE_BIND_FAILURE_FIXTURE;
 
-    lux::script::ScriptRuntime runtime;
-    assert(runtime.registerBackend(lux::script::native_backend::create()));
-
-    auto loaded = runtime.loadModule(fixture);
+    auto loaded = lux::script::loadNativeModule(fixture);
     assert(loaded);
-    auto function = runtime.findFunction(loaded.value(), "Increment");
-    assert(function);
+    const auto* function = loaded.value().findFunction("Increment");
+    assert(function && function->invoke);
 
     std::int32_t counter = 0;
     lux_script_call_frame raw{};
     raw.user_context = &counter;
-    lux::script::CallFrame frame(&raw);
-    assert(runtime.invoke(function.value(), frame));
+    assert(function->invoke(&raw) == 0);
     assert(counter == 1);
 
     lux_script_call_frame failing_raw{};
-    lux::script::CallFrame failing_frame(&failing_raw);
-    auto invocation_failure = runtime.invoke(function.value(), failing_frame);
-    assert(!invocation_failure);
-    assert(invocation_failure.error().code == EScriptError::INVOKE_FAILED);
-
-    assert(runtime.unloadModule(loaded.value()));
-    auto stale = runtime.invoke(function.value(), frame);
-    assert(!stale);
-    assert(stale.error().code == EScriptError::STALE_HANDLE);
+    assert(function->invoke(&failing_raw) != 0);
 
     const auto bytes = readFile(fixture);
-    auto memory_loaded = runtime.loadModuleFromMemory(
-        "native",
+    auto memory_loaded = lux::script::loadNativeModule(
         bytes,
         "native_fixture_memory"
     );
     assert(memory_loaded);
-    assert(runtime.unloadModule(memory_loaded.value()));
+    assert(memory_loaded.value().findFunction("Increment") != nullptr);
 
-    auto bad_abi = runtime.loadModule(bad_abi_fixture);
+    auto bad_abi = lux::script::loadNativeModule(bad_abi_fixture);
     assert(!bad_abi);
     assert(bad_abi.error().code == EScriptError::ABI_MISMATCH);
 
-    auto bad_entry = runtime.loadModule(bad_entry_fixture);
+    auto bad_entry = lux::script::loadNativeModule(bad_entry_fixture);
     assert(!bad_entry);
     assert(bad_entry.error().code == EScriptError::INVALID_MODULE);
 
-    auto missing_entry = runtime.loadModule(missing_entry_fixture);
+    auto missing_entry = lux::script::loadNativeModule(missing_entry_fixture);
     assert(!missing_entry);
     assert(missing_entry.error().code == EScriptError::INVALID_ENTRY_POINT);
 
-    auto bind_failure = runtime.loadModule(bind_failure_fixture);
+    auto bind_failure = lux::script::loadNativeModule(bind_failure_fixture);
     assert(!bind_failure);
     assert(bind_failure.error().code == EScriptError::HOST_BIND_FAILED);
 
-    auto missing = runtime.loadModule(fixture.parent_path() / "missing_script.dll");
+    auto missing = lux::script::loadNativeModule(
+        fixture.parent_path() / "missing_script.dll"
+    );
     assert(!missing);
     assert(missing.error().code == EScriptError::IO_ERROR);
 

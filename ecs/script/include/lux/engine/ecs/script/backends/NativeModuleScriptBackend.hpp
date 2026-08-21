@@ -5,10 +5,9 @@
 //
 //  Claims NativeModuleScript SCRIPT assets (payload = lux_script_abi shared-
 //  library bytes — hand-written C++ plugins and FlowForge-AOT artefacts alike;
-//  provenance discriminates, the loading path is identical). Wraps
-//  function/script's ScriptRuntime + NativeBackend (ABI validation, bind_host
-//  import resolution, in-memory dll loading) into an entity-bound
-//  IScriptBackend:
+//  provenance discriminates, the loading path is identical). The concrete
+//  function/script NativeModule performs load-time ABI validation and host
+//  import resolution; this cold-path owner binds descriptors into ECS calls:
 //
 //    asset payload ──loadModuleFromMemory──▶ module (shared per asset)
 //    instance      = per-entity STATE BLOCK (rdesc recipe: state_size bytes,
@@ -16,14 +15,11 @@
 //                    lifecycle entries; every call passes the block through
 //                    call_frame.user_context.
 //
-//  Module lifetime = instance refcount: the last destroyed instance unloads
-//  the dll (play-stop drops every instance → the module unloads — the ADR v2
-//  ruling that stopping play means unloading). A changed payload under the
-//  same cache_key reloads on the next instance creation (the play-boundary
-//  hot-reload path, same contract as the Lua backend's source-hash recompile).
+//  Module lifetime = playback session. The first version observed for an asset
+//  id remains the session snapshot even when its last instance disappears.
+//  resetSession() unloads modules only after every instance has been destroyed.
 //
-//  PIMPL: ScriptRuntime/NativeBackend stay in the .cpp — script_core is a
-//  PRIVATE dep of the scripting target (consumers see no host headers).
+//  PIMPL keeps NativeModule and platform loader details out of the ECS API.
 // ============================================================================
 
 #include <lux/engine/ecs/script/systems/ScriptBehavior.hpp>   // IScriptBackend / ScriptInstance
@@ -53,7 +49,10 @@ namespace lux::ecs
         NativeModuleScriptBackend(const NativeModuleScriptBackend&)            = delete;
         NativeModuleScriptBackend& operator=(const NativeModuleScriptBackend&) = delete;
 
-        [[nodiscard]] std::string_view kind() const override { return "native"; }
+        [[nodiscard]] lux::rdesc::Script::Kind kind() const noexcept override
+        {
+            return lux::rdesc::Script::Kind::NativeModule;
+        }
 
         /// Claims NativeModuleScript kinds; every other kind → empty (next
         /// backend). Returns empty on ABI version mismatch,
@@ -66,10 +65,13 @@ namespace lux::ecs
             createInstanceFromAsset(lux::ecs::EntityHandle, World&,
                                     const lux::rdesc::Script&  desc,
                                     std::span<const std::byte> payload,
-                                    std::string_view           cache_key) override;
+                                    lux::asset::asset_id_t     asset_id,
+                                    std::uint32_t content_revision) override;
+
+        void resetSession() noexcept override;
 
     private:
         struct Impl;
-        std::unique_ptr<Impl> impl_;   // owns ScriptRuntime; all runtime types stay in the .cpp
+        std::unique_ptr<Impl> impl_;
     };
 } // namespace lux::ecs

@@ -1,30 +1,10 @@
-// ============================================================================
-//  NativeModuleScriptBackend.cpp — ScriptRuntime/NativeBackend live here and
-//  NOWHERE else in ecs/script (PIMPL; core::script is a PRIVATE dep).
-//
-//  The loading door is the SAME one flowforge_aot_test proves: NativeBackend
-//  validates LUX_SCRIPT_ABI_VERSION, runs bind_host against the resolver
-//  (unresolved import = module rejected), and exposes the export table. This
-//  file adds the entity-facing half: manifest pre-checks, per-asset module
-//  sharing with instance refcounts, the per-instance state block that travels
-//  through call_frame.user_context, and (ADR v2 §3.2) the event-entry
-//  binding: every REGISTERED script event resolves against the loaded export
-//  table by name, with call-frame slot templates built from the LOADED
-//  signatures — the manifest is only a pre-check.
-// ============================================================================
-
 #include <lux/engine/ecs/script/backends/NativeModuleScriptBackend.hpp>
 
-#include <lux/engine/function/script/ScriptRuntime.hpp>
-#include <lux/engine/function/script/ScriptCallFrame.hpp>
-#include <lux/engine/function/script/ScriptSignature.hpp>
-#include <lux/engine/function/script/abi/lux_script_abi.h>
-#include <lux/engine/function/script/backends/NativeBackend.hpp>
+#include <lux/engine/function/script/native/NativeModule.hpp>
 
+#include <algorithm>
 #include <cstring>
 #include <memory>
-#include <optional>
-#include <string>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -34,223 +14,207 @@ namespace lux::ecs
 {
     namespace
     {
-        std::uint64_t fnv1a64(std::span<const std::byte> bytes) noexcept
+        bool sameType(
+            const lux_script_type_desc& loaded,
+            const lux::rdesc::ScriptValueType& manifest
+        ) noexcept
         {
-            std::uint64_t h = 0xcbf29ce484222325ull;
-            for (const std::byte b : bytes)
-            {
-                h ^= static_cast<std::uint64_t>(b);
-                h *= 0x100000001b3ull;
-            }
-            return h;
+            return loaded.kind == manifest.kind
+                && loaded.size == manifest.size
+                && loaded.type_id == manifest.type_id;
         }
-    } // namespace
+
+        bool sameType(
+            const lux_script_type_desc& loaded,
+            const lux_script_type_desc& event
+        ) noexcept
+        {
+            return loaded.kind == event.kind
+                && loaded.size == event.size
+                && loaded.type_id == event.type_id;
+        }
+
+        bool matchesManifest(
+            const lux_script_function_desc& loaded,
+            const lux::rdesc::ScriptFunction& manifest
+        ) noexcept
+        {
+            if (loaded.arg_count != manifest.args.size()
+                || loaded.return_count != manifest.returns.size())
+                return false;
+            for (std::size_t i = 0; i < manifest.args.size(); ++i)
+                if (!sameType(loaded.args[i], manifest.args[i]))
+                    return false;
+            for (std::size_t i = 0; i < manifest.returns.size(); ++i)
+                if (!sameType(loaded.returns[i], manifest.returns[i]))
+                    return false;
+            return true;
+        }
+
+        bool matchesEvent(
+            const lux_script_function_desc& loaded,
+            const ScriptEventDesc& event
+        ) noexcept
+        {
+            if (loaded.return_count != 0
+                || loaded.arg_count != event.abi_params.size())
+                return false;
+            for (std::size_t i = 0; i < event.abi_params.size(); ++i)
+                if (!sameType(loaded.args[i], event.abi_params[i]))
+                    return false;
+            return true;
+        }
+    }
 
     struct NativeModuleScriptBackend::Impl
     {
-        lux::script::ScriptRuntime runtime;
-        std::optional<lux::script::ScriptFailure> registration_failure;
-
         struct ModuleEntry
         {
-            lux::script::ModuleHandle handle         = 0;
-            std::uint64_t             payload_hash   = 0;
-            int                       live_instances = 0;
-        };
-        std::unordered_map<std::string, ModuleEntry> modules;   // key = cache_key (asset uuid)
-
-        explicit Impl(HostSymbolResolver resolver)
-        {
-            auto registered = runtime.registerBackend(
-                lux::script::native_backend::create(std::move(resolver))
-            );
-            if (!registered)
-                registration_failure = std::move(registered.error());
-        }
-
-        void release(const std::string& key)
-        {
-            const auto it = modules.find(key);
-            if (it == modules.end()) return;
-            if (--it->second.live_instances > 0) return;
-            (void)runtime.unloadModule(it->second.handle);
-            modules.erase(it);
-        }
-
-        /// One bound event: the loaded module's function + the call-frame
-        /// slot template derived from ITS signature (a module may take a
-        /// SUBSET of the event payload — a parameterless OnUpdate is legal).
-        struct EventEntry
-        {
-            lux::script::ScriptFunctionHandle function;
-            std::vector<lux_script_value_slot> slot_template;
+            lux::script::NativeModule module;
+            std::vector<const lux_script_function_desc*> event_functions;
+            std::vector<std::byte> state_defaults;
+            std::uint32_t state_size{0};
+            std::uint32_t content_revision{0};
         };
 
-        /// Per-entity instance state: shared module refcount + own state
-        /// block + the dense [ScriptEventId] entry data the thunk consumes.
         struct InstanceState
         {
-            Impl*                   owner = nullptr;
-            std::string             key;
-            World*                  world = nullptr;
-            std::vector<std::byte>  block;
-            std::vector<EventEntry> entries;
+            std::vector<std::byte> block;
         };
 
-        /// The one native dispatch thunk (every bound slot points here — the
-        /// dispatcher's event id selects the entry).
-        static bool eventThunk(void* state, ScriptEventId id, void* const* args)
+        HostSymbolResolver resolver;
+        std::unordered_map<lux::asset::asset_id_t, ModuleEntry> modules;
+
+        explicit Impl(HostSymbolResolver host_resolver)
+            : resolver(std::move(host_resolver))
+        {}
+
+        lux::script::HostSymbolResolver makeResolver()
         {
-            auto* st = static_cast<InstanceState*>(state);
-            const EventEntry& en = st->entries[id];
-
-            lux_script_value_slot slots[ScriptEventRegistry::kMaxParams];
-            const auto n = static_cast<std::uint32_t>(en.slot_template.size());
-            for (std::uint32_t i = 0; i < n; ++i)
-            {
-                slots[i]      = en.slot_template[i];
-                slots[i].data = args[i];
-            }
-
-            lux_script_call_frame raw{};
-            raw.args          = n != 0 ? slots : nullptr;
-            raw.arg_count     = n;
-            raw.world_context = st->world;
-            raw.user_context  = st->block.empty() ? nullptr : st->block.data();
-
-            lux::script::CallFrame frame(&raw);
-            // Hard faults propagate to the dispatcher's crash guard; a nonzero
-            // ABI return is the script REPORTING failure → false disables it.
-            return static_cast<bool>(st->owner->runtime.invoke(en.function, frame));
+            return lux::script::HostSymbolResolver(
+                [this](std::string_view symbol) -> void*
+                {
+                    return resolver ? resolver(symbol) : nullptr;
+                }
+            );
         }
 
-        static void dropInstance(void* state)
+        static void dropInstance(void* state) noexcept
         {
-            auto* st = static_cast<InstanceState*>(state);
-            Impl*             owner = st->owner;
-            const std::string key   = std::move(st->key);
-            delete st;
-            owner->release(key);
+            delete static_cast<InstanceState*>(state);
         }
     };
 
-    NativeModuleScriptBackend::NativeModuleScriptBackend(HostSymbolResolver resolver)
+    NativeModuleScriptBackend::NativeModuleScriptBackend(
+        HostSymbolResolver resolver
+    )
         : impl_(std::make_unique<Impl>(std::move(resolver)))
-    {
-    }
+    {}
 
     NativeModuleScriptBackend::~NativeModuleScriptBackend() = default;
 
-    ScriptInstance
-    NativeModuleScriptBackend::createInstanceFromAsset(
-        lux::ecs::EntityHandle, World& world,
-        const lux::rdesc::Script&  desc,
+    ScriptInstance NativeModuleScriptBackend::createInstanceFromAsset(
+        EntityHandle,
+        World&,
+        const lux::rdesc::Script& description,
         std::span<const std::byte> payload,
-        std::string_view           cache_key)
+        lux::asset::asset_id_t asset_id,
+        std::uint32_t content_revision
+    )
     {
-        const auto* native = std::get_if<lux::rdesc::NativeModuleScript>(&desc.body);
-        if (!native)
-            return {};   // not mine — the registry tries the next backend
-
-        // ── manifest pre-checks: reject before touching the loader ─────────
-        if (native->abi_version != LUX_SCRIPT_ABI_VERSION)
-        {
+        const auto* native = std::get_if<lux::rdesc::NativeModuleScript>(
+            &description.body
+        );
+        if (!native || asset_id.is_nil() || payload.empty()
+            || native->abi_version != LUX_SCRIPT_ABI_VERSION
+            || native->state_defaults.size() > native->state_size)
             return {};
-        }
-        if (payload.empty())
-        {
-            return {};
-        }
-        if (native->state_defaults.size() > native->state_size)
-        {
-            return {};
-        }
-        if (impl_->registration_failure) return {};
 
-        // ── module: one load per asset, shared by every instance ───────────
-        const std::string   key(cache_key);
-        const std::uint64_t hash = fnv1a64(payload);
-
-        auto it = impl_->modules.find(key);
-        if (it != impl_->modules.end() && it->second.payload_hash != hash)
+        auto module_it = impl_->modules.find(asset_id);
+        if (module_it == impl_->modules.end())
         {
-            // Changed payload under the same asset id. Play-boundary reload:
-            // with live instances this cannot legally happen (asset payloads
-            // are stable within a play session) — refuse rather than yank a
-            // dll out from under running code.
-            if (it->second.live_instances > 0)
-            {
+            auto loaded = lux::script::loadNativeModule(
+                payload,
+                description.module_name.empty()
+                    ? std::string_view{"native_script"}
+                    : std::string_view{description.module_name},
+                impl_->makeResolver()
+            );
+            if (!loaded)
                 return {};
-            }
-            (void)impl_->runtime.unloadModule(it->second.handle);
-            impl_->modules.erase(it);
-            it = impl_->modules.end();
-        }
-        if (it == impl_->modules.end())
-        {
-            // cache_key (the asset uuid) doubles as the host-side module name:
-            // collision-free where module_name is only a display string.
-            auto loaded = impl_->runtime.loadModuleFromMemory("native", payload, key);
-            if (!loaded) return {};
-            const auto handle = loaded.value();
-            // Manifest cross-check: every function the DESCRIPTION declares
-            // must exist in the LOADED export table — drift between a cooked
-            // manifest and its dll is a build bug, reject the module.
-            for (const auto& f : native->functions)
+
+            std::vector<const lux_script_function_desc*> event_functions(
+                scriptEventRegistry().count(),
+                nullptr
+            );
+
+            if (loaded.value().functions().size() != native->functions.size())
+                return {};
+
+            for (const auto& manifest : native->functions)
             {
-                if (!impl_->runtime.findFunction(handle, f.name))
-                {
-                    (void)impl_->runtime.unloadModule(handle);
+                const auto* function = loaded.value().findFunction(manifest.name);
+                if (!function || !matchesManifest(*function, manifest))
                     return {};
+            }
+
+            for (ScriptEventId id = 0; id < scriptEventRegistry().count(); ++id)
+            {
+                const auto& event = scriptEventRegistry().desc(id);
+                const auto* function = loaded.value().findFunction(event.name);
+                if (!function)
+                    continue;
+                const auto manifest = std::find_if(
+                    native->functions.begin(),
+                    native->functions.end(),
+                    [&](const auto& item) { return item.name == event.name; }
+                );
+                if (manifest == native->functions.end()
+                    || !matchesManifest(*function, *manifest)
+                    || !matchesEvent(*function, event))
+                    return {};
+                event_functions[id] = function;
+            }
+
+            module_it = impl_->modules.emplace(
+                asset_id,
+                Impl::ModuleEntry{
+                    std::move(loaded.value()),
+                    std::move(event_functions),
+                    native->state_defaults,
+                    native->state_size,
+                    content_revision
                 }
-            }
-            it = impl_->modules
-                     .emplace(key, Impl::ModuleEntry{ handle, hash, 0 })
-                     .first;
+            ).first;
         }
-        const auto handle = it->second.handle;
 
-        // ── event binding (ADR v2 §3.2): registry × loaded export table ────
-        const auto& evreg = scriptEventRegistry();
         auto state = std::make_unique<Impl::InstanceState>();
-        state->owner = impl_.get();
-        state->key   = key;
-        state->world = &world;
-        state->block.assign(native->state_size, std::byte{0});
-        if (!native->state_defaults.empty())
-            std::memcpy(state->block.data(), native->state_defaults.data(),
-                        native->state_defaults.size());
-        state->entries.resize(evreg.count());
-
-        ScriptInstance inst(state.get(), &Impl::dropInstance);
-        for (ScriptEventId id = 0; id < evreg.count(); ++id)
+        state->block.assign(module_it->second.state_size, std::byte{0});
+        if (!module_it->second.state_defaults.empty())
         {
-            const auto& ev = evreg.desc(id);
-            auto fn = impl_->runtime.findFunction(handle, ev.name);
-            if (!fn) continue;   // absent event — legal, slot stays empty
-            auto signature = impl_->runtime.functionSignature(fn.value());
-            if (!signature) continue;
-            const auto& sig = signature.value();
-            if (sig.args.size() > ev.params.size())
-            {
-                continue;
-            }
-            auto& entry = state->entries[id];
-            entry.function = std::move(fn.value());
-            entry.slot_template.resize(sig.args.size());
-            for (std::size_t i = 0; i < sig.args.size(); ++i)
-            {
-                auto& slot   = entry.slot_template[i];
-                slot         = {};
-                slot.kind    = sig.args[i].kind;
-                slot.size    = sig.args[i].size;
-                slot.type_id = sig.args[i].type_id;
-            }
-            inst.bind(id, &Impl::eventThunk);
+            std::memcpy(
+                state->block.data(),
+                module_it->second.state_defaults.data(),
+                module_it->second.state_defaults.size()
+            );
         }
 
-        ++it->second.live_instances;
-        state.release();   // owned by inst's drop from here
-        return inst;
+        void* context = state->block.empty() ? nullptr : state->block.data();
+        ScriptInstance instance(state.get(), &Impl::dropInstance);
+        for (ScriptEventId id = 0;
+             id < module_it->second.event_functions.size();
+             ++id)
+        {
+            const auto* function = module_it->second.event_functions[id];
+            if (function)
+                instance.bind(id, BoundScriptCall{function->invoke, context});
+        }
+        state.release();
+        return instance;
     }
-} // namespace lux::ecs
+
+    void NativeModuleScriptBackend::resetSession() noexcept
+    {
+        impl_->modules.clear();
+    }
+}

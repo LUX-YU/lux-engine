@@ -14,7 +14,7 @@
  *
  * The on-disk `.luxasset` layout (`AssetFileHeader` + binary description
  * blob + payload) is the concern of @ref ScriptSerDeser. The asset layer
- * never `dlopen`s anything — that's `lux::script::ScriptRuntime`'s job.
+ * never `dlopen`s anything — that belongs to the session-owned Native backend.
  */
 
 #include <cstddef>

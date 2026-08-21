@@ -317,9 +317,7 @@ int main(int argc, char** argv)
     // ── Smoke test: a Lua collision probe on the FLOOR ─────────────────────
     // Every box landing prints one line — the whole event chain on screen:
     // Box2D → collision sink → subscription-index dispatchTo → Lua.
-    d2::scriptRegistry().registerBackend(
-        std::make_unique<d2::LuaScriptBackend>(components)
-    );
+    auto lua_backend = std::make_unique<d2::LuaScriptBackend>(components);
     {
         lux::rdesc::Script desc;
         desc.module_name = "floor_collision_probe";
@@ -345,7 +343,11 @@ int main(int argc, char** argv)
     d2::ScriptContext script_ctx;
     script_ctx.world  = &world;
     script_ctx.assets = &assets;
-    d2::ScriptSystem scripts(d2::scriptRegistry(), script_ctx);
+    d2::ScriptSystem scripts(
+        d2::scriptRegistry(),
+        script_ctx,
+        {lua_backend.get()}
+    );
     scripts.onRuntimeStart(world.registry());
     if (auto* physics = services.get<d2::Physics2DSystem>())
     {

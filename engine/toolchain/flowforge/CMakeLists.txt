@@ -1,7 +1,7 @@
 ## engine::toolchain_flowforge
 ##
 ## Editor / dev-time compiler that lowers FlowForge graphs through MLIR / LLVM
-## into runtime artefacts consumed by `lux::script::ScriptRuntime`.
+## into runtime artefacts consumed by `lux::script::NativeModule`.
 ##
 ## This is the ONLY target in the engine that drags in MLIR / LLVM and is
 ## opt-in via `LUX_ENABLE_FLOWFORGE_MLIR`. It belongs to the editor tier

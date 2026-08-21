@@ -5,9 +5,9 @@
 // ============================================================================
 
 #include <lux/engine/ecs/script/systems/ScriptRegistry.hpp>
+#include <lux/engine/log/Log.hpp>
 
 #include <algorithm>   // cppScriptNames sort (A-5 manifest)
-#include <cstdio>      // unregistered-behavior diagnostic (A-6)
 #include <string>
 #include <utility>
 #include <variant>     // CppBehaviorScript routing (A-6)
@@ -18,18 +18,6 @@ namespace lux::ecs
     {
         if (!name.empty() && ops.construct != nullptr && ops.destroy != nullptr)
             cpp_scripts_[std::string(name)] = ops;
-    }
-
-    void ScriptRegistry::registerBackend(std::unique_ptr<IScriptBackend> backend)
-    {
-        if (backend)
-            backends_.push_back(std::move(backend));
-    }
-
-    void ScriptRegistry::beginFrame(const ScriptContext& ctx)
-    {
-        for (const auto& backend : backends_)
-            backend->beginFrame(ctx);
     }
 
     bool ScriptRegistry::hasCppScript(std::string_view name) const
@@ -48,12 +36,10 @@ namespace lux::ecs
     }
 
     ScriptInstance
-    ScriptRegistry::createInstanceFromAsset(
+    ScriptRegistry::createCppInstanceFromAsset(
         lux::ecs::EntityHandle entity,
         World& world,
-                                            const lux::rdesc::Script&  desc,
-                                            std::span<const std::byte> payload,
-                                            std::string_view           cache_key) const
+        const lux::rdesc::Script& desc) const
     {
         // Cpp behaviors resolve HERE — the registry owns the ops table.
         // The asset (CppBehaviorScript) is the manifest entry naming a
@@ -67,9 +53,12 @@ namespace lux::ecs
             const auto it = cpp_scripts_.find(cpp->behavior);
             if (it == cpp_scripts_.end())
             {
-                std::fprintf(stderr,
-                    "[ScriptRegistry] C++ behavior '%s' is not registered in "
-                    "this binary — instance not created\n", cpp->behavior.c_str());
+                lux::log::error(
+                    "ecs.script",
+                    "C++ behavior '{}' is not registered in this binary; "
+                    "instance not created",
+                    cpp->behavior
+                );
                 return {};
             }
             const CppBehaviorOps& ops = it->second;
@@ -77,24 +66,24 @@ namespace lux::ecs
             void* state = ops.construct();
             if (!state)
                 return {};
-            auto* behavior   = static_cast<ScriptBehavior*>(state);
-            behavior->self_  = entity;   // friend access — bind BEFORE onCreate
-            behavior->world_ = &world;
+            ops.bind_context(state, entity, world);
 
             ScriptInstance inst(state, ops.destroy);
-            inst.bind(ScriptEventRegistry::kOnCreate,  ops.on_create);
-            inst.bind(ScriptEventRegistry::kOnUpdate,  ops.on_update);
-            inst.bind(ScriptEventRegistry::kOnDestroy, ops.on_destroy);
+            inst.bind(
+                ScriptEventRegistry::kOnCreate,
+                BoundScriptCall{ops.on_create, state}
+            );
+            inst.bind(
+                ScriptEventRegistry::kOnUpdate,
+                BoundScriptCall{ops.on_update, state}
+            );
+            inst.bind(
+                ScriptEventRegistry::kOnDestroy,
+                BoundScriptCall{ops.on_destroy, state}
+            );
             return inst;
         }
-
-        for (const auto& backend : backends_)
-        {
-            if (auto inst = backend->createInstanceFromAsset(
-                    entity, world, desc, payload, cache_key))
-                return inst;
-        }
-        return {};   // no backend claims this kind
+        return {};
     }
 
     ScriptRegistry& scriptRegistry()

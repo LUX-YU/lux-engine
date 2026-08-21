@@ -4,6 +4,9 @@
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/scene/script/visibility.h>
 
+#include <memory>
+#include <vector>
+
 namespace lux::asset
 {
     class AssetManager;
@@ -12,6 +15,7 @@ namespace lux::asset
 namespace lux::ecs
 {
     class SceneServices;
+    class IScriptBackend;
     class ScriptSystem;
     class World;
 }
@@ -42,6 +46,10 @@ namespace lux::runtime
         SceneScriptRuntime(const SceneScriptRuntime&) = delete;
         SceneScriptRuntime& operator=(const SceneScriptRuntime&) = delete;
 
+        [[nodiscard]] bool addBackend(
+            std::unique_ptr<lux::ecs::IScriptBackend> backend
+        );
+
         [[nodiscard]] bool start(
             const lux::input::ActionMapper& mapper,
             const lux::input::InputActionRegistry* actions);
@@ -57,5 +65,6 @@ namespace lux::runtime
         lux::asset_runtime::AssetClient asset_client_;
         lux::ecs::SystemHandle<ScriptAssetRequestSystem> request_system_{};
         lux::ecs::SystemHandle<lux::ecs::ScriptSystem> system_{};
+        std::vector<std::unique_ptr<lux::ecs::IScriptBackend>> backends_;
     };
 }

@@ -21,6 +21,7 @@
 // ============================================================================
 
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/function/script/abi/lux_script_abi.h>
 #include <lux/engine/meta/Meta.hpp>   // RefType (signature truth source)
 
 #include <cstdint>
@@ -54,6 +55,7 @@ namespace lux::ecs
     {
         std::string                   name;
         std::vector<ScriptEventParam> params;
+        std::vector<lux_script_type_desc> abi_params;
     };
 
     class LUX_FUNCTION_PUBLIC ScriptEventRegistry

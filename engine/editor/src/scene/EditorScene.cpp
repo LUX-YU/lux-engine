@@ -28,6 +28,8 @@
 #include <lux/engine/ecs/render/components/3d/AnimatorComponent.hpp>
 #include <lux/engine/ecs/systems/HierarchicalTransformSystem.hpp> // setParent (per the write contract)
 #include <lux/engine/ecs/script/systems/ScriptSystem.hpp>                 // dispatchTo (play wiring)
+#include <lux/engine/ecs/script/backends/LuaScriptBackend.hpp>
+#include <lux/engine/ecs/script/backends/NativeModuleScriptBackend.hpp>
 
 #include <lux/cxx/core/Format.hpp>   // lux::format — spawnModel entity naming
 #include <lux/engine/math/Extent.hpp>

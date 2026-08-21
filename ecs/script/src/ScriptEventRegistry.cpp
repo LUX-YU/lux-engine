@@ -3,12 +3,36 @@
 // ============================================================================
 
 #include <lux/engine/ecs/script/systems/ScriptEventRegistry.hpp>
+#include <lux/engine/log/Log.hpp>
 
-#include <cstdio>
 #include <utility>
 
 namespace lux::ecs
 {
+    namespace
+    {
+        std::uint8_t abiKind(const lux::meta::RefType& type) noexcept
+        {
+            using lux::meta::EBaseType;
+            switch (static_cast<EBaseType>(type.qtype.base))
+            {
+                case EBaseType::Bool:   return LUX_SCRIPT_VK_BOOL;
+                case EBaseType::Int8:
+                case EBaseType::Int16:
+                case EBaseType::Int32:  return LUX_SCRIPT_VK_INT32;
+                case EBaseType::Uint8:
+                case EBaseType::Uint16:
+                case EBaseType::Uint32: return LUX_SCRIPT_VK_UINT32;
+                case EBaseType::Int64:  return LUX_SCRIPT_VK_INT64;
+                case EBaseType::Uint64: return LUX_SCRIPT_VK_UINT64;
+                case EBaseType::Float:  return LUX_SCRIPT_VK_FLOAT;
+                case EBaseType::Double: return LUX_SCRIPT_VK_DOUBLE;
+                case EBaseType::Record: return LUX_SCRIPT_VK_STRUCT_REF;
+                default:                return LUX_SCRIPT_VK_VOID;
+            }
+        }
+    }
+
     ScriptEventRegistry::ScriptEventRegistry()
     {
         // The lifecycle trio — ordinary entries, registered first so the id
@@ -28,16 +52,36 @@ namespace lux::ecs
             return it->second;   // idempotent (double-registration is benign)
         if (params.size() > kMaxParams)
         {
-            std::fprintf(stderr,
-                "[ScriptEventRegistry] '%.*s': %zu params exceed the dispatch "
-                "ceiling (%zu) — event not registered\n",
-                static_cast<int>(name.size()), name.data(), params.size(),
-                kMaxParams);
+            lux::log::error(
+                "ecs.script",
+                "event '{}' has {} parameters; dispatch limit is {}",
+                name,
+                params.size(),
+                kMaxParams
+            );
             return kInvalidScriptEvent;
         }
 
         const auto id = static_cast<ScriptEventId>(entries_.size());
-        entries_.push_back(ScriptEventDesc{ std::string(name), std::move(params) });
+        ScriptEventDesc event;
+        event.name = std::string(name);
+        event.params = std::move(params);
+        event.abi_params.reserve(event.params.size());
+        for (const auto& parameter : event.params)
+        {
+            if (!parameter.type)
+                return kInvalidScriptEvent;
+            lux_script_type_desc abi{};
+            abi.name = parameter.type->name.data();
+            abi.type_id = parameter.type->hash;
+            abi.size = parameter.type->size;
+            abi.align = 0;
+            abi.kind = abiKind(*parameter.type);
+            if (abi.kind == LUX_SCRIPT_VK_VOID)
+                return kInvalidScriptEvent;
+            event.abi_params.push_back(abi);
+        }
+        entries_.push_back(std::move(event));
         by_name_.emplace(entries_.back().name, id);   // key views the deque-stable string
         return id;
     }

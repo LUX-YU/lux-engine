@@ -8,7 +8,7 @@
 //   * it exports lux_script_get_module() — a module descriptor whose
 //     function table carries one call_frame entry per OnEvent node (the
 //     table's function name is the event's DISPLAY name, so
-//     ScriptRuntime::findFunction(module, "Tick") just works);
+//     NativeModule::findFunction("Tick") resolves at bind time);
 //   * when the graph calls into the engine it also exports
 //     lux_script_bind_host() — every native / reflected call site compiles
 //     to an indirect call through an internal import-slot table that
@@ -19,7 +19,7 @@
 //     cook step can serialize them into the script manifest.
 //
 // MLIR / LLVM stay entirely cook-side (inside this compiler target): the
-// runtime loads the DLL through ScriptRuntime + NativeBackend with zero
+// runtime loads the DLL through the concrete NativeModule API with zero
 // compiler dependency.
 //
 #include <cstddef>
@@ -37,7 +37,7 @@ namespace lux::flowforge
 
     struct AotEventDesc
     {
-        std::string name;          ///< display name == ScriptRuntime function name
+        std::string name;          ///< display name == NativeModule function name
         std::size_t arg_count = 0; ///< payload parameter count
     };
 

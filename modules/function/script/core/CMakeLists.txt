@@ -1,5 +1,5 @@
 set(LUX_SCRIPT_CORE_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptRuntime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptCore.cpp
 )
 
 add_component(

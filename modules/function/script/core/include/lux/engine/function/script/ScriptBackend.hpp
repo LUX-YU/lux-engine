@@ -1,11 +1,11 @@
 #pragma once
 /**
  * @file ScriptBackend.hpp
- * @brief Pluggable backend interface for ScriptHost.
+ * @brief Pluggable backend interface for ScriptRuntime.
  *
  * A backend knows how to load a particular flavour of script module: Lua source
  * file, native compiled dll exposing @ref lux_script_get_module, future WASM,
- * etc. Backends are registered with the @ref ScriptHost and selected by
+ * etc. Backends are registered with the @ref ScriptRuntime and selected by
  * filesystem extension or by explicit name.
  */
 
@@ -19,6 +19,7 @@
 
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/function/script/ScriptModule.hpp>
+#include <lux/engine/function/script/ScriptResult.hpp>
 
 namespace lux::script
 {
@@ -35,9 +36,11 @@ namespace lux::script
 
         /**
          * @brief Try to load a module from disk.
-         * @returns A non-null module on success; nullptr on failure.
+         * @returns A complete module on success or a structured failure.
          */
-        virtual ScriptModulePtr loadModule(const std::filesystem::path& path) = 0;
+        virtual ScriptResult<ScriptModulePtr> loadModule(
+            const std::filesystem::path& path
+        ) = 0;
 
         /**
          * @brief Try to load a module from an in-memory payload.
@@ -47,12 +50,17 @@ namespace lux::script
          * used for diagnostics and as a default scratch name when no other
          * identifier is available; it may be empty.
          *
-         * Default implementation returns nullptr — backends that cannot
-         * support in-memory loading are free to ignore this entry point.
+         * The default implementation reports `MEMORY_LOAD_UNSUPPORTED`.
          */
-        virtual ScriptModulePtr loadFromMemory(std::span<const std::byte> /*payload*/, std::string_view /*module_name*/)
+        virtual ScriptResult<ScriptModulePtr> loadFromMemory(
+            std::span<const std::byte> /*payload*/,
+            std::string_view /*module_name*/
+        )
         {
-            return nullptr;
+            return lux::cxx::unexpected(scriptFailure(
+                EScriptError::MEMORY_LOAD_UNSUPPORTED,
+                "script backend does not support memory loading"
+            ));
         }
     };
 }

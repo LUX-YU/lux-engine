@@ -6,12 +6,12 @@
 #include <lux/engine/function/script/ScriptCallFrame.hpp>
 #include <lux/engine/function/script/ScriptSignature.hpp>
 
-#include <cstdio>
 #include <memory>
 #include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -43,10 +43,25 @@ namespace lux::script::native_backend
 
             const FunctionSignature& signature() const noexcept override { return sig_; }
 
-            bool invoke(CallFrame& frame) const override
+            ScriptResult<void> invoke(CallFrame& frame) const override
             {
-                if (!invoke_ || !frame.raw()) return false;
-                return invoke_(frame.raw()) == 0;
+                if (!invoke_ || !frame.raw())
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::INVALID_ARGUMENT,
+                        "native script invocation has no entry point or call frame"
+                    ));
+                }
+                const int result = invoke_(frame.raw());
+                if (result != 0)
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::INVOKE_FAILED,
+                        "native script function returned error code "
+                            + std::to_string(result)
+                    ));
+                }
+                return {};
             }
 
         private:
@@ -108,46 +123,124 @@ namespace lux::script::native_backend
                 return {"dll", "so", "dylib"};
             }
 
-            ScriptModulePtr loadModule(const std::filesystem::path& path) override
+            ScriptResult<ScriptModulePtr> loadModule(
+                const std::filesystem::path& path
+            ) override
             {
                 DynamicLibrary lib;
                 if (!lib.load(path))
                 {
-                    std::fprintf(stderr,
-                        "[script::native] load('%s') failed: %s\n",
-                        path.string().c_str(), lib.last_error().c_str());
-                    return nullptr;
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::IO_ERROR,
+                        "cannot load native script '" + path.string()
+                            + "': " + lib.last_error()
+                    ));
                 }
                 return finalize(std::move(lib));
             }
 
-            ScriptModulePtr loadFromMemory(std::span<const std::byte> payload,
-                                           std::string_view           module_name) override
+            ScriptResult<ScriptModulePtr> loadFromMemory(
+                std::span<const std::byte> payload,
+                std::string_view module_name
+            ) override
             {
-                if (payload.empty()) return nullptr;
+                if (payload.empty())
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::INVALID_ARGUMENT,
+                        "native script memory payload cannot be empty"
+                    ));
+                }
                 DynamicLibrary lib;
                 if (!lib.load_from_memory(payload, module_name))
                 {
-                    std::fprintf(stderr,
-                        "[script::native] load_from_memory('%.*s') failed: %s\n",
-                        static_cast<int>(module_name.size()), module_name.data(),
-                        lib.last_error().c_str());
-                    return nullptr;
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::LOAD_FAILED,
+                        "cannot load native script memory image '"
+                            + std::string(module_name) + "': " + lib.last_error()
+                    ));
                 }
                 return finalize(std::move(lib));
             }
 
         private:
-            ScriptModulePtr finalize(DynamicLibrary lib)
+            ScriptResult<ScriptModulePtr> finalize(DynamicLibrary lib)
             {
                 using entry_fn = const lux_script_module_desc* (*)();
                 auto entry = reinterpret_cast<entry_fn>(
                     lib.get_symbol(LUX_SCRIPT_MODULE_ENTRY));
-                if (!entry) return nullptr;
+                if (!entry)
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::INVALID_ENTRY_POINT,
+                        "native script does not export " LUX_SCRIPT_MODULE_ENTRY
+                    ));
+                }
 
                 const lux_script_module_desc* desc = entry();
-                if (!desc) return nullptr;
-                if (desc->abi_version != LUX_SCRIPT_ABI_VERSION) return nullptr;
+                if (!desc)
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::INVALID_MODULE,
+                        "native script entry returned a null module descriptor"
+                    ));
+                }
+                if (desc->abi_version != LUX_SCRIPT_ABI_VERSION)
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::ABI_MISMATCH,
+                        "native script ABI version " + std::to_string(desc->abi_version)
+                            + " does not match host version "
+                            + std::to_string(LUX_SCRIPT_ABI_VERSION)
+                    ));
+                }
+                if (!desc->module_name)
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::INVALID_MODULE,
+                        "native script module name is null"
+                    ));
+                }
+                if (desc->function_count != 0 && !desc->functions)
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::INVALID_MODULE,
+                        "native script function table is null"
+                    ));
+                }
+                std::unordered_set<std::string_view> function_names;
+                for (std::uint32_t i = 0; i < desc->function_count; ++i)
+                {
+                    const auto& function = desc->functions[i];
+                    if (!function.name || !function.invoke)
+                    {
+                        return lux::cxx::unexpected(scriptFailure(
+                            EScriptError::INVALID_MODULE,
+                            "native script function entry is incomplete"
+                        ));
+                    }
+                    if (function.arg_count != 0 && !function.args)
+                    {
+                        return lux::cxx::unexpected(scriptFailure(
+                            EScriptError::INVALID_MODULE,
+                            "native script argument type table is null"
+                        ));
+                    }
+                    if (function.return_count != 0 && !function.returns)
+                    {
+                        return lux::cxx::unexpected(scriptFailure(
+                            EScriptError::INVALID_MODULE,
+                            "native script return type table is null"
+                        ));
+                    }
+                    if (!function_names.emplace(function.name).second)
+                    {
+                        return lux::cxx::unexpected(scriptFailure(
+                            EScriptError::INVALID_MODULE,
+                            "native script exports a duplicate function name"
+                        ));
+                    }
+                }
 
                 // Optional host binding: a module that imports engine symbols
                 // exports LUX_SCRIPT_BIND_HOST_ENTRY. Bind BEFORE exposing
@@ -158,10 +251,17 @@ namespace lux::script::native_backend
                 {
                     if (bind(&NativeBackend::resolveThunk, this,
                              LUX_SCRIPT_ABI_VERSION) != 0)
-                        return nullptr;
+                    {
+                        return lux::cxx::unexpected(scriptFailure(
+                            EScriptError::HOST_BIND_FAILED,
+                            "native script host-symbol binding failed"
+                        ));
+                    }
                 }
 
-                return std::make_unique<NativeModule>(std::move(lib), desc);
+                return ScriptModulePtr(
+                    std::make_unique<NativeModule>(std::move(lib), desc)
+                );
             }
 
             // C-ABI thunk over the move-only resolver. Only alive for

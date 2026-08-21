@@ -1,5 +1,5 @@
 // =============================================================================
-//  flowforge_aot_test — M-E acceptance: graph -> native DLL -> ScriptHost.
+//  flowforge_aot_test — M-E acceptance: graph -> native DLL -> ScriptRuntime.
 //
 //  One graph, two execution paths, differential check:
 //
@@ -10,7 +10,7 @@
 //
 //    1. JIT baseline: FlowScriptInstance::compile + 3x invoke.
 //    2. AOT: compileToObject -> lld-link -> a DLL that speaks
-//       lux_script_abi, loaded through ScriptHost + NativeBackend like any
+//       lux_script_abi, loaded through ScriptRuntime + NativeBackend like any
 //       hand-written native plugin. bind_host fills the import slots from
 //       a host resolver; the instance-state block travels through
 //       call_frame.user_context. 3x invoke must sink the same sequence.
@@ -40,7 +40,7 @@
 #include <lux/engine/toolchain/flowforge/mlir/ScriptInstance.hpp>
 #include <lux/engine/meta/Meta.hpp>
 
-#include <lux/engine/function/script/ScriptHost.hpp>
+#include <lux/engine/function/script/ScriptRuntime.hpp>
 #include <lux/engine/function/script/ScriptCallFrame.hpp>
 #include <lux/engine/function/script/backends/NativeBackend.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
@@ -224,7 +224,7 @@ int main(int argc, char** argv)
         if (g_failed) return 1;
     }
 
-    // ---- 3. Load through ScriptHost + NativeBackend (the plugin door) -----
+    // ---- 3. Load through ScriptRuntime + NativeBackend --------------------
     std::unordered_map<std::string, void*> host_symbols{
         { "lux_test_sink_int", reinterpret_cast<void*>(&lux_test_sink_int) },
         { mul_import, reinterpret_cast<void*>(mul_reg->invokable.invoker) },
@@ -236,15 +236,19 @@ int main(int argc, char** argv)
         };
 
     {
-        lux::script::ScriptHost host;
-        host.registerBackend(lux::script::native_backend::create(
-            std::move(resolver)));
+        lux::script::ScriptRuntime runtime;
+        const auto registered = runtime.registerBackend(
+            lux::script::native_backend::create(std::move(resolver))
+        );
+        check(static_cast<bool>(registered), "Native backend registers");
+        if (!registered) return 1;
 
-        const auto handle = host.loadModule(dll_path);
-        check(handle != lux::script::kInvalidModule, "DLL loads via ScriptHost");
-        if (handle == lux::script::kInvalidModule) return 1;
+        const auto loaded = runtime.loadModule(dll_path);
+        check(static_cast<bool>(loaded), "DLL loads via ScriptRuntime");
+        if (!loaded) return 1;
+        const auto handle = loaded.value();
 
-        const auto fn = host.findFunction(handle, "Bump");
+        const auto fn = runtime.findFunction(handle, "Bump");
         check(static_cast<bool>(fn), "findFunction(\"Bump\") resolves");
         if (!fn) return 1;
 
@@ -265,7 +269,8 @@ int main(int argc, char** argv)
 
         g_sunk.clear();
         for (int i = 0; i < 3; ++i)
-            check(host.invoke(fn, frame), "AOT Bump invoke");
+            check(static_cast<bool>(runtime.invoke(fn.value(), frame)),
+                  "AOT Bump invoke");
         check(g_sunk == jit_sunk,
               "AOT output matches the JIT baseline (differential)");
 
@@ -276,14 +281,18 @@ int main(int argc, char** argv)
 
     // ---- 4. Negative: unresolved import -> module rejected at load --------
     {
-        lux::script::ScriptHost host;
-        host.registerBackend(lux::script::native_backend::create(
-            [](std::string_view sym) -> void* {
-                return sym == "lux_test_sink_int"
-                    ? reinterpret_cast<void*>(&lux_test_sink_int) : nullptr;
-            }));
-        const auto handle = host.loadModule(dll_path);
-        check(handle == lux::script::kInvalidModule,
+        lux::script::ScriptRuntime runtime;
+        const auto registered = runtime.registerBackend(
+            lux::script::native_backend::create(
+                [](std::string_view sym) -> void* {
+                    return sym == "lux_test_sink_int"
+                        ? reinterpret_cast<void*>(&lux_test_sink_int) : nullptr;
+                }
+            )
+        );
+        check(static_cast<bool>(registered), "Native backend registers");
+        const auto loaded = runtime.loadModule(dll_path);
+        check(!loaded,
               "missing reflected import -> load rejected (no half-bound module)");
     }
 

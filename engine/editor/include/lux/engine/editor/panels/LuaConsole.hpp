@@ -61,7 +61,7 @@ namespace lux::editor
          *   lux.asset_exists(path) -> bool
          *   lux.find_assets(prefix)-> sorted array of absolute vpaths
          * Relative paths sugar to /Game. NOTE: hand-registered sol2 today;
-         * relocates verbatim into the shared runtime ScriptHost when the
+         * relocates verbatim into the shared ScriptRuntime when the
          * ship-side Lua host lands (one registration, no editor variant).
          */
         void setAssetManager(std::shared_ptr<lux::asset::AssetManager> mgr);

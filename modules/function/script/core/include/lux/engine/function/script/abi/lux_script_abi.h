@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file lux_script_abi.h
- * @brief C ABI for compiled script modules consumed by `lux::script::ScriptHost`.
+ * @brief C ABI for compiled script modules consumed by `lux::script::ScriptRuntime`.
  *
  * Any compiled script artifact (FlowForge-MLIR native dll, hand-written native
  * plugin, future AOT Lua, ...) exposes a single C entry point:

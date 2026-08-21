@@ -113,7 +113,7 @@ assert(a:func(5,"hi") == 6)
 		auto ref = script_engine->parseScript(code);
 		if (!ref) { std::cerr << "parseScript failed"; return 1; }
 
-		script_engine->runScript(*ref);
+		(void)script_engine->runScript(*ref);
 		std::cout << "[C++] all tests passed 🎉\n";
 	}
 

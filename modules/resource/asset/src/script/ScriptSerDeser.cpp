@@ -110,7 +110,7 @@ namespace lux::asset
 
             // Loose-dll import: pair the binary with a sibling description
             // blob (same stem, ".luxscriptmeta"). Without the manifest we
-            // cannot populate the Script description, and ScriptHost would
+            // cannot populate the Script description, and ScriptRuntime would
             // have nothing but an opaque blob.
             std::filesystem::path manifest_path = p;
             manifest_path.replace_extension(".luxscriptmeta");

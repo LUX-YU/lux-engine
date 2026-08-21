@@ -6,7 +6,7 @@
  * Concrete backends (Lua, native dll, future WASM, ...) implement
  * @ref IScriptModule and produce instances of @ref ScriptFunction wrappers.
  *
- * The host (`ScriptHost`) only ever talks to these interfaces, so adding a new
+ * The runtime (`ScriptRuntime`) only ever talks to these interfaces, so adding a new
  * backend never requires changes to gameplay code.
  */
 
@@ -17,6 +17,7 @@
 
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/function/script/ScriptCallFrame.hpp>
+#include <lux/engine/function/script/ScriptResult.hpp>
 #include <lux/engine/function/script/ScriptSignature.hpp>
 
 namespace lux::script
@@ -25,7 +26,7 @@ namespace lux::script
      * @brief Stable handle to a script function inside a loaded module.
      *
      * Implementations may use any internal representation (Lua registry ref,
-     * native function pointer, WASM export index, ...). The host treats it as
+     * native function pointer, WASM export index, ...). The runtime treats it as
      * an opaque token.
      */
     class LUX_FUNCTION_PUBLIC ScriptFunction
@@ -37,9 +38,9 @@ namespace lux::script
 
         /**
          * @brief Invoke the function with the supplied call frame.
-         * @return true on success, false on failure (see backend logs / lastError).
+         * @return Structured success or backend failure. The library does not log.
          */
-        virtual bool invoke(CallFrame& frame) const = 0;
+        virtual ScriptResult<void> invoke(CallFrame& frame) const = 0;
     };
 
     /**

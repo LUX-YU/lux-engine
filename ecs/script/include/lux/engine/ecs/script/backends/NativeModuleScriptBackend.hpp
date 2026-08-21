@@ -6,7 +6,7 @@
 //  Claims NativeModuleScript SCRIPT assets (payload = lux_script_abi shared-
 //  library bytes — hand-written C++ plugins and FlowForge-AOT artefacts alike;
 //  provenance discriminates, the loading path is identical). Wraps
-//  modules/core/script's ScriptHost + NativeBackend (ABI validation, bind_host
+//  function/script's ScriptRuntime + NativeBackend (ABI validation, bind_host
 //  import resolution, in-memory dll loading) into an entity-bound
 //  IScriptBackend:
 //
@@ -22,7 +22,7 @@
 //  same cache_key reloads on the next instance creation (the play-boundary
 //  hot-reload path, same contract as the Lua backend's source-hash recompile).
 //
-//  PIMPL: ScriptHost/NativeBackend stay in the .cpp — core::script is a
+//  PIMPL: ScriptRuntime/NativeBackend stay in the .cpp — script_core is a
 //  PRIVATE dep of the scripting target (consumers see no host headers).
 // ============================================================================
 
@@ -56,7 +56,7 @@ namespace lux::ecs
         [[nodiscard]] std::string_view kind() const override { return "native"; }
 
         /// Claims NativeModuleScript kinds; every other kind → empty (next
-        /// backend). Loud-reject (stderr + empty) on: ABI version mismatch,
+        /// backend). Returns empty on ABI version mismatch,
         /// empty payload, oversized state defaults, load/bind failure, or a
         /// manifest function missing from the loaded module's export table.
         /// Event binding (ADR v2 §3.2): each REGISTERED event resolves against
@@ -70,6 +70,6 @@ namespace lux::ecs
 
     private:
         struct Impl;
-        std::unique_ptr<Impl> impl_;   // owns the ScriptHost; all host types confined to the .cpp
+        std::unique_ptr<Impl> impl_;   // owns ScriptRuntime; all runtime types stay in the .cpp
     };
 } // namespace lux::ecs

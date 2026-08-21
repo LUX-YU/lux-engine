@@ -194,7 +194,7 @@ namespace lux::editor
 			addLog("[error] syntax error");
 			return;
 		}
-		runScript(*prog);
+		(void)runScript(*prog);
 
 		addLog("# done");
 	}

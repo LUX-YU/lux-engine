@@ -1,11 +1,11 @@
 #pragma once
 /**
  * @file LuaBackend.hpp
- * @brief Lua backend implementation for `lux::script::ScriptHost`.
+ * @brief Lua backend implementation for `lux::script::ScriptRuntime`.
  *
- * Loads `.lua` source files. Functions inside the chunk become callable through
- * @ref lux::script::ScriptHost::findFunction. The wrapper keeps a long-lived
- * `lua_State` per module and references each Lua function via the registry.
+ * Loads a `.lua` source chunk and exposes its `main` entry through
+ * @ref lux::script::ScriptRuntime::findFunction. The wrapper keeps a long-lived
+ * `lua_State` per module and references the chunk via the registry.
  *
  * Note: marshalling between `lux::script::CallFrame` and Lua values is
  * currently limited to the primitive @ref lux::script::ValueKind variants;

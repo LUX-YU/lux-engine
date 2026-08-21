@@ -45,3 +45,7 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
+
+if(NOT ANDROID)
+    add_subdirectory(test)
+endif()

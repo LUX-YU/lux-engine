@@ -22,15 +22,6 @@ namespace lux::script::lua_backend
 
     namespace
     {
-        std::string readFile(const std::filesystem::path& p)
-        {
-            std::ifstream is(p, std::ios::binary);
-            if (!is) return {};
-            std::ostringstream ss;
-            ss << is.rdbuf();
-            return ss.str();
-        }
-
         /**
          * Minimal ScriptFunction implementation backed by a Lua chunk reference.
          *
@@ -51,10 +42,25 @@ namespace lux::script::lua_backend
 
             const FunctionSignature& signature() const noexcept override { return sig_; }
 
-            bool invoke(CallFrame& /*frame*/) const override
+            ScriptResult<void> invoke(CallFrame& /*frame*/) const override
             {
-                engine_.runScript(ref_);
-                return true;
+                std::string detail;
+                engine_.setOnError(
+                    [&detail](std::string_view message)
+                    {
+                        detail.assign(message);
+                    }
+                );
+                const bool succeeded = engine_.runScript(ref_);
+                engine_.setOnError({});
+                if (!succeeded)
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::INVOKE_FAILED,
+                        detail.empty() ? "Lua script invocation failed" : std::move(detail)
+                    ));
+                }
+                return {};
             }
 
         private:
@@ -103,17 +109,36 @@ namespace lux::script::lua_backend
                 return {"lua"};
             }
 
-            ScriptModulePtr loadModule(const std::filesystem::path& path) override
+            ScriptResult<ScriptModulePtr> loadModule(
+                const std::filesystem::path& path
+            ) override
             {
-                auto src = readFile(path);
-                if (src.empty()) return nullptr;
+                std::ifstream input(path, std::ios::binary);
+                if (!input)
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::IO_ERROR,
+                        "cannot open Lua script '" + path.string() + "'"
+                    ));
+                }
+                std::ostringstream stream;
+                stream << input.rdbuf();
+                std::string src = stream.str();
                 return parseSource(src, path.stem().string());
             }
 
-            ScriptModulePtr loadFromMemory(std::span<const std::byte> payload,
-                                           std::string_view           module_name) override
+            ScriptResult<ScriptModulePtr> loadFromMemory(
+                std::span<const std::byte> payload,
+                std::string_view module_name
+            ) override
             {
-                if (payload.empty()) return nullptr;
+                if (payload.empty())
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::INVALID_ARGUMENT,
+                        "Lua script memory payload cannot be empty"
+                    ));
+                }
                 std::string src(reinterpret_cast<const char*>(payload.data()),
                                 payload.size());
                 std::string name = module_name.empty()
@@ -123,11 +148,28 @@ namespace lux::script::lua_backend
             }
 
         private:
-            static ScriptModulePtr parseSource(const std::string& src, std::string module_name)
+            static ScriptResult<ScriptModulePtr> parseSource(
+                const std::string& src,
+                std::string module_name
+            )
             {
                 auto engine = std::make_unique<lux::script::lua::ScriptEngine>();
+                std::string detail;
+                engine->setOnError(
+                    [&detail](std::string_view message)
+                    {
+                        detail.assign(message);
+                    }
+                );
                 auto ref    = engine->parseScript(src);
-                if (!ref) return nullptr;
+                engine->setOnError({});
+                if (!ref)
+                {
+                    return lux::cxx::unexpected(scriptFailure(
+                        EScriptError::LOAD_FAILED,
+                        detail.empty() ? "Lua script compilation failed" : std::move(detail)
+                    ));
+                }
 
                 auto mod = std::make_unique<LuaModule>(module_name, std::move(engine));
 
@@ -137,7 +179,7 @@ namespace lux::script::lua_backend
                                                               std::move(*ref),
                                                               std::move(sig));
                 mod->registerEntry("main", std::move(fn));
-                return mod;
+                return ScriptModulePtr(std::move(mod));
             }
         };
     }

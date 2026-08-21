@@ -38,11 +38,11 @@ namespace lux::script::native_backend
     /**
      * @brief Construct a fresh native backend instance.
      *
-     * Each backend instance owns its loaded modules. Register it with
-     * `ScriptHost::registerBackend()` to make it discoverable by extension.
-     * The default extension list is `{"dll", "so", "dylib"}`; consumers that
-     * want a single canonical extension (e.g. `.luxscript`) can wrap the
-     * returned backend or register the module manually via the host API.
+     * Register one backend instance with `ScriptRuntime::registerBackend()` to
+     * make it discoverable by extension. The runtime owns every module returned
+     * by that backend.
+     * The default extension list is `{"dll", "so", "dylib"}`. Memory images
+     * and extension-independent sources use the explicit `"native"` backend id.
      *
      * `resolver` feeds modules that export LUX_SCRIPT_BIND_HOST_ENTRY —
      * binding runs once at load, before any function is exposed, and a

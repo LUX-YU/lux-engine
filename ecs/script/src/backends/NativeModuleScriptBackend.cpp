@@ -1,5 +1,5 @@
 // ============================================================================
-//  NativeModuleScriptBackend.cpp — ScriptHost/NativeBackend live here and
+//  NativeModuleScriptBackend.cpp — ScriptRuntime/NativeBackend live here and
 //  NOWHERE else in ecs/script (PIMPL; core::script is a PRIVATE dep).
 //
 //  The loading door is the SAME one flowforge_aot_test proves: NativeBackend
@@ -15,15 +15,15 @@
 
 #include <lux/engine/ecs/script/backends/NativeModuleScriptBackend.hpp>
 
-#include <lux/engine/function/script/ScriptHost.hpp>
+#include <lux/engine/function/script/ScriptRuntime.hpp>
 #include <lux/engine/function/script/ScriptCallFrame.hpp>
 #include <lux/engine/function/script/ScriptSignature.hpp>
 #include <lux/engine/function/script/abi/lux_script_abi.h>
 #include <lux/engine/function/script/backends/NativeBackend.hpp>
 
-#include <cstdio>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -48,11 +48,12 @@ namespace lux::ecs
 
     struct NativeModuleScriptBackend::Impl
     {
-        lux::script::ScriptHost host;
+        lux::script::ScriptRuntime runtime;
+        std::optional<lux::script::ScriptFailure> registration_failure;
 
         struct ModuleEntry
         {
-            lux::script::ModuleHandle handle         = lux::script::kInvalidModule;
+            lux::script::ModuleHandle handle         = 0;
             std::uint64_t             payload_hash   = 0;
             int                       live_instances = 0;
         };
@@ -60,8 +61,11 @@ namespace lux::ecs
 
         explicit Impl(HostSymbolResolver resolver)
         {
-            host.registerBackend(lux::script::native_backend::create(
-                std::move(resolver)));
+            auto registered = runtime.registerBackend(
+                lux::script::native_backend::create(std::move(resolver))
+            );
+            if (!registered)
+                registration_failure = std::move(registered.error());
         }
 
         void release(const std::string& key)
@@ -69,7 +73,7 @@ namespace lux::ecs
             const auto it = modules.find(key);
             if (it == modules.end()) return;
             if (--it->second.live_instances > 0) return;
-            host.unloadModule(it->second.handle);   // last instance gone → dll unloads
+            (void)runtime.unloadModule(it->second.handle);
             modules.erase(it);
         }
 
@@ -78,7 +82,7 @@ namespace lux::ecs
         /// SUBSET of the event payload — a parameterless OnUpdate is legal).
         struct EventEntry
         {
-            const lux::script::ScriptFunction* fn = nullptr;
+            lux::script::ScriptFunctionHandle function;
             std::vector<lux_script_value_slot> slot_template;
         };
 
@@ -117,7 +121,7 @@ namespace lux::ecs
             lux::script::CallFrame frame(&raw);
             // Hard faults propagate to the dispatcher's crash guard; a nonzero
             // ABI return is the script REPORTING failure → false disables it.
-            return en.fn->invoke(frame);
+            return static_cast<bool>(st->owner->runtime.invoke(en.function, frame));
         }
 
         static void dropInstance(void* state)
@@ -151,29 +155,17 @@ namespace lux::ecs
         // ── manifest pre-checks: reject before touching the loader ─────────
         if (native->abi_version != LUX_SCRIPT_ABI_VERSION)
         {
-            std::fprintf(stderr,
-                "[NativeModuleScriptBackend] '%s': manifest ABI v%u != host ABI "
-                "v%u — module not loaded\n", desc.module_name.c_str(),
-                native->abi_version, LUX_SCRIPT_ABI_VERSION);
             return {};
         }
         if (payload.empty())
         {
-            std::fprintf(stderr,
-                "[NativeModuleScriptBackend] '%s': empty payload (a native "
-                "module asset carries the shared-library bytes)\n",
-                desc.module_name.c_str());
             return {};
         }
         if (native->state_defaults.size() > native->state_size)
         {
-            std::fprintf(stderr,
-                "[NativeModuleScriptBackend] '%s': state_defaults (%zu B) "
-                "exceed state_size (%u B) — corrupt recipe\n",
-                desc.module_name.c_str(), native->state_defaults.size(),
-                native->state_size);
             return {};
         }
+        if (impl_->registration_failure) return {};
 
         // ── module: one load per asset, shared by every instance ───────────
         const std::string   key(cache_key);
@@ -188,13 +180,9 @@ namespace lux::ecs
             // dll out from under running code.
             if (it->second.live_instances > 0)
             {
-                std::fprintf(stderr,
-                    "[NativeModuleScriptBackend] '%s': payload changed while "
-                    "%d instance(s) are live — instance not created\n",
-                    key.c_str(), it->second.live_instances);
                 return {};
             }
-            impl_->host.unloadModule(it->second.handle);
+            (void)impl_->runtime.unloadModule(it->second.handle);
             impl_->modules.erase(it);
             it = impl_->modules.end();
         }
@@ -202,28 +190,17 @@ namespace lux::ecs
         {
             // cache_key (the asset uuid) doubles as the host-side module name:
             // collision-free where module_name is only a display string.
-            const auto handle =
-                impl_->host.loadModuleFromMemory("native", payload, key);
-            if (handle == lux::script::kInvalidModule)
-            {
-                std::fprintf(stderr,
-                    "[NativeModuleScriptBackend] '%s': load rejected: %s\n",
-                    desc.module_name.c_str(), impl_->host.lastError().c_str());
-                return {};
-            }
+            auto loaded = impl_->runtime.loadModuleFromMemory("native", payload, key);
+            if (!loaded) return {};
+            const auto handle = loaded.value();
             // Manifest cross-check: every function the DESCRIPTION declares
             // must exist in the LOADED export table — drift between a cooked
-            // manifest and its dll is a build bug, fail loudly.
+            // manifest and its dll is a build bug, reject the module.
             for (const auto& f : native->functions)
             {
-                if (!impl_->host.findFunction(handle, f.name))
+                if (!impl_->runtime.findFunction(handle, f.name))
                 {
-                    std::fprintf(stderr,
-                        "[NativeModuleScriptBackend] '%s': manifest declares "
-                        "'%s' but the loaded module does not export it — "
-                        "module rejected\n",
-                        desc.module_name.c_str(), f.name.c_str());
-                    impl_->host.unloadModule(handle);
+                    (void)impl_->runtime.unloadModule(handle);
                     return {};
                 }
             }
@@ -246,24 +223,20 @@ namespace lux::ecs
         state->entries.resize(evreg.count());
 
         ScriptInstance inst(state.get(), &Impl::dropInstance);
-        bool any_bound = false;
         for (ScriptEventId id = 0; id < evreg.count(); ++id)
         {
             const auto& ev = evreg.desc(id);
-            const auto  fn = impl_->host.findFunction(handle, ev.name);
+            auto fn = impl_->runtime.findFunction(handle, ev.name);
             if (!fn) continue;   // absent event — legal, slot stays empty
-            const auto& sig = fn.fn->signature();
+            auto signature = impl_->runtime.functionSignature(fn.value());
+            if (!signature) continue;
+            const auto& sig = signature.value();
             if (sig.args.size() > ev.params.size())
             {
-                std::fprintf(stderr,
-                    "[NativeModuleScriptBackend] '%s': '%s' takes %zu args but "
-                    "the event carries %zu — left unbound\n",
-                    desc.module_name.c_str(), ev.name.c_str(),
-                    sig.args.size(), ev.params.size());
                 continue;
             }
             auto& entry = state->entries[id];
-            entry.fn = fn.fn;
+            entry.function = std::move(fn.value());
             entry.slot_template.resize(sig.args.size());
             for (std::size_t i = 0; i < sig.args.size(); ++i)
             {
@@ -274,14 +247,6 @@ namespace lux::ecs
                 slot.type_id = sig.args[i].type_id;
             }
             inst.bind(id, &Impl::eventThunk);
-            any_bound = true;
-        }
-        if (!any_bound)
-        {
-            std::fprintf(stderr,
-                "[NativeModuleScriptBackend] '%s': no export matches any "
-                "registered script event — the instance is inert\n",
-                desc.module_name.c_str());
         }
 
         ++it->second.live_instances;

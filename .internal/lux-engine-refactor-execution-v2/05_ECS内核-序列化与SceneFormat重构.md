@@ -20,6 +20,8 @@
 
 > **2026-08-21 Registry/资产需求裁决：** Registry 原样归 ECS Core，Core Meta 不再链接 EnTT；`AssetLoadFn` 直接删除，不创建空泛 `ecs/assets integration`。Animation/Script 的资产请求由 Engine Runtime integration 显式使用 `AssetClient`，ECS 系统只消费 ready 数据。
 
+> **2026-08-21 实施状态：** Registry/资产需求裁决已完成。ECS Core installed consumer 不导入 Resource Asset；Animation Resolver 与 Script request system 均由 Runtime integration 私有拥有，ECS production 不执行同步资产 IO。
+
 
 ## 1. 当前问题
 
@@ -538,9 +540,9 @@ Persistence Journal
 ## 15. 验收闸门
 
 - [ ] `ecs/core` 不依赖 `engine/*`。
-- [ ] `ecs/core` 不依赖 Extension ABI。
-- [ ] `ecs/core` 不依赖 AssetManager/AssetStore。
-- [ ] Entity Registry 位于 ECS。
+- [x] `ecs/core` 不依赖 Extension ABI。
+- [x] `ecs/core` 不依赖 AssetManager/AssetStore。
+- [x] Entity Registry 位于 ECS。
 - [ ] ComponentSchemaId 位于 ECS。
 - [ ] ECS Scene Format 不包含 RequiredExtension 或 SceneFeature。
 - [ ] Engine Scene Package 不进入 modules/resource。

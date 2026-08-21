@@ -18,6 +18,8 @@
 
 > **2026-08-21 裁决更新：** Core Meta 删除 EnTT、Registry、`LuxObject` 与 `EntityObject`；Registry allocator/handle/publication 合同原样归 `ecs/core`。反射类型由标注 record identity 决定，不再依赖 OO 根类。详见 `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`。
 
+> **2026-08-21 实施状态：** 上述 Meta/Registry 裁决已完成。Core Meta/Serialization installed consumer 不导入 EnTT；ECS-owned adapter 承担 EnTT component 操作，旧 Meta Registry 与 OO 根类已归零。
+
 
 ## 1. 施工范围
 
@@ -558,7 +560,7 @@ Level
 ## 12. 验收闸门
 
 - [ ] `modules/core` 不定义 Entity、Scene、Extension。
-- [ ] `modules/core` 公共目标不链接 EnTT。
+- [x] `modules/core` 公共目标不链接 EnTT。
 - [ ] `lux::serialization` 不链接 Engine Reflection Registry。
 - [ ] `modules/platform` 不包含 Vulkan Object Wrapper。
 - [ ] `lux::window` 公共头不 include `<vulkan/vulkan.h>`。

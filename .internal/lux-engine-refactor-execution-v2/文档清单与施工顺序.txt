@@ -30,5 +30,7 @@ LUX Engine 架构重构执行文档 v2.0
 本轮验收证据:
 - evidence/asset-domain-cohesion-f35e245a.md
 - 实施提交 1364810c；wire/storage 契约提交 e7348155
+- evidence/asset-pipeline-core-meta-fe4422ba.md
+- Asset Pipeline/Core Meta 实施提交 ed5fb7eb
 
 本版替代此前 v1.x 文档。

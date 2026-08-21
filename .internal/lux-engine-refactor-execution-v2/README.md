@@ -4,6 +4,7 @@
 **Scene Asset 实施提交：** `36ce56c634f1e03959910fc1761ec62b2fb4671e`
 **当前施工基线：** `fe4422ba`
 **Asset 领域内聚实施提交：** `1364810c`；wire/storage 契约提交：`e7348155`
+**Asset Pipeline/Core Meta 实施提交：** `ed5fb7eb`
 **文档日期：** 2026-08-21
 
 本套文档替代此前 v1.x 文档。新版以以下哲学为中心：
@@ -54,7 +55,7 @@ products= 最终入口与可执行程序
 
 `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 进一步裁决 Asset 目录、Storage/Pak 公共边界、Engine Content owner 与 ECS fallback 注入；该裁决已由 `1364810c`、`e7348155` 实施并验收。
 
-`ADR-20260821_Asset运行期需求与SerDeser边界.md` 与 `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md` 裁决当前待施工的唯一加载链、Runtime demand、Registry owner 与纯 Meta 合同。
+`ADR-20260821_Asset运行期需求与SerDeser边界.md` 与 `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md` 裁决的唯一加载链、Runtime demand、Registry owner 与纯 Meta 合同已在当前分支实施并完成 owner/installed consumer/四 Profile 验收。
 
 ## 推荐阅读与施工顺序
 
@@ -78,7 +79,7 @@ products= 最终入口与可执行程序
 13 用于定位当前代码
 ```
 
-## 最先执行的五个 Pull Request
+## 已完成的 Pipeline/Core Meta 施工波次
 
 1. 停止 modules 聚合目录自动枚举，并用 installed consumers 验证公共闭包。
 2. 统一 Catalog/SerDeser/LoadService/Manager 资产加载链。
@@ -86,7 +87,7 @@ products= 最终入口与可执行程序
 4. 将 Registry 归 ECS Core，删除 Core Meta 的 EnTT 与 OO 根类。
 5. 用四个现有 Profile 全量构建、安装 consumer 与 Golden 契约验收。
 
-这五步先建立防回归边界，不立即改产品行为。
+以上五步均已完成，wire、AssetRef 账本和产品可见行为保持既有合同。
 
 ## 文件说明
 
@@ -99,9 +100,10 @@ products= 最终入口与可执行程序
 - `ADR-20260821_Asset运行期需求与SerDeser边界.md`：SerDeser、加载编排、Manager 安装与 Runtime demand 的现行裁决。
 - `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`：Registry owner 与 Core Meta/Reflection 的现行裁决。
 - `evidence/asset-domain-cohesion-f35e245a.md`：本轮基线公共面、12 组 wire 指纹与验收结论。
+- `evidence/asset-pipeline-core-meta-fe4422ba.md`：统一加载链、Runtime demand、Registry/Meta 边界与安装闭包验收。
 - `SHA256SUMS.txt`：校验值。
 - `manifest.json`：机器可读文件清单。
 
 ## 状态说明
 
-这些文档同时记录施工规范与已验证状态。`SCENEASSET-001..020` 与 `ASSETCOHESION-001..012` 已按 ADR 完成；其余未勾选目标仍须在后续变更中引用 Checklist ID，并同步更新映射表和事实索引。
+这些文档同时记录施工规范与已验证状态。`SCENEASSET-001..020`、`ASSETCOHESION-001..012` 与 `ASSETPIPE-001..012` 已按 ADR 完成；其余未勾选目标仍须在后续变更中引用 Checklist ID，并同步更新映射表和事实索引。

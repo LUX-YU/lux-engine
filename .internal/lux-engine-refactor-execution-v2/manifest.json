@@ -1,7 +1,7 @@
 {
   "repository": "LUX-YU/lux-engine",
-  "baseline": "fe4422ba",
-  "document_version": "2.15",
+  "baseline": "ed5fb7eb",
+  "document_version": "2.16",
   "document_date": "2026-08-21",
   "architecture_baseline": [
     "A1",
@@ -18,22 +18,22 @@
     "ADR-20260821-CoreMeta"
   ],
   "numbered_documents": 14,
-  "supplemental_documents": 6,
+  "supplemental_documents": 7,
   "checklist_items": 649,
   "mapping_rows": 148,
   "fact_anchors": 78,
   "files": [
     {
       "name": "README.md",
-      "bytes": 6405,
-      "lines": 107,
-      "sha256": "bc9175a012271ea0b116ccce1f1d9ac14835cef508b07505f6a54b25e3b1fc34"
+      "bytes": 6716,
+      "lines": 109,
+      "sha256": "ba08731b3a78a7cc90bd30efe72294d28971289c0256139c9c9b275e1e23a7eb"
     },
     {
       "name": "REVISION_NOTES_v2.md",
-      "bytes": 5122,
-      "lines": 87,
-      "sha256": "7e88595bb2f96ae0bd724ff15d0d067323910cd858a855e42caa528e21707e3b"
+      "bytes": 5355,
+      "lines": 89,
+      "sha256": "cc92c0993364508c85d8c4b3163786118ac6daac88204b4e777bebebaa8ac00e"
     },
     {
       "name": "ADR-20260820_SceneAsset与Resource边界.md",
@@ -49,15 +49,15 @@
     },
     {
       "name": "ADR-20260821_Asset运行期需求与SerDeser边界.md",
-      "bytes": 4056,
+      "bytes": 4047,
       "lines": 87,
-      "sha256": "1ea43cac2ba5360934738cbf9796b36f28eb0ac7baff73f612fbcecb3dde00d5"
+      "sha256": "cca9b8139de8939e21cfbcd6317a0e80b7cd46a33fd2b5b791b7cfbfa6fed751"
     },
     {
       "name": "ADR-20260821_CoreMeta纯化与ECSRegistry归位.md",
-      "bytes": 2585,
+      "bytes": 2576,
       "lines": 59,
-      "sha256": "badeaf54b63b94475a850b5b23726836431181fc0054025ba99afce5d8cb77c0"
+      "sha256": "133185bee2fdc2482a1eabf338eee06912298b78b28fdc82620812f88a8a4c40"
     },
     {
       "name": "00_架构宪章与变更控制.md",
@@ -73,15 +73,15 @@
     },
     {
       "name": "02_Core与Platform基础库清理.md",
-      "bytes": 15194,
-      "lines": 569,
-      "sha256": "9353e3e872fcfd65d8325c01ba3e99169dd8882219396a41db9b92899cb55a55"
+      "bytes": 15420,
+      "lines": 571,
+      "sha256": "c037cc17daa2fa8b06d9d6a92d810e28309277c2bcc6520f8a98ed36f7d2eeed"
     },
     {
       "name": "03_Resource-Description与Asset重构.md",
-      "bytes": 19456,
-      "lines": 665,
-      "sha256": "f77e8ea2a260eaca23c1edbbec076d0a0d82ad69a17b682ea5f2ad84a0184fa6"
+      "bytes": 19681,
+      "lines": 667,
+      "sha256": "ea55eed0a1a15a2a6ab5d7162a1141a11569a89cb760593f2061b8ff39b4e2c7"
     },
     {
       "name": "04_Function公共模块重构.md",
@@ -91,9 +91,9 @@
     },
     {
       "name": "05_ECS内核-序列化与SceneFormat重构.md",
-      "bytes": 14486,
-      "lines": 550,
-      "sha256": "3604811000b7a0aa6f9eb76b58e6f8d3864ab66f48f85193b6eab8fe642b1460"
+      "bytes": 14744,
+      "lines": 552,
+      "sha256": "f31fe4b1114d0e67039b603132152f954ee9551d891ad2bbe5f0096b422691ba"
     },
     {
       "name": "06_Engine执行-资产-场景与扩展重构.md",
@@ -127,21 +127,21 @@
     },
     {
       "name": "11_详细施工Checklist_已更新_20260819_b1a25d3.md",
-      "bytes": 78470,
+      "bytes": 80351,
       "lines": 796,
-      "sha256": "2ac18d346c84ede395cfafa9f2e484dfe41d6cd3ce05c7952e7851b8f4f40159"
+      "sha256": "b509d9efbcba387d85ea99af36bf5d8a611c8eb556d8dd19187b6aae77023b44"
     },
     {
       "name": "12_迁移映射总表.md",
-      "bytes": 20793,
+      "bytes": 21107,
       "lines": 235,
-      "sha256": "dd173b7237f9ee31c24808f02261e3bdd8d96d51281a75b7321c7122c06655b3"
+      "sha256": "4c2804c2c9c3de6a716ddbc530dfcb13913403f72e28cd032cf0b14bb101ba67"
     },
     {
       "name": "13_当前代码事实索引.md",
-      "bytes": 14533,
+      "bytes": 14945,
       "lines": 149,
-      "sha256": "121ee4fac825280d66604c7d975220cc9c92fd07942950170244f68cfc8c91b8"
+      "sha256": "daf2a5be7cf26aa915c87214446d0f67e4362144d4c2f1640bba937be618da46"
     },
     {
       "name": "evidence/asset-domain-cohesion-f35e245a.md",
@@ -150,16 +150,22 @@
       "sha256": "322466a1af97dc9934f8b8497739a9f6147904496c5d1c170a5dfc722b840a51"
     },
     {
+      "name": "evidence/asset-pipeline-core-meta-fe4422ba.md",
+      "bytes": 2373,
+      "lines": 32,
+      "sha256": "166e1ac483e19f5cf8f4239aa94aa45c5cb087157dd45b0a96b74b8f2682896a"
+    },
+    {
       "name": "00-13_全部执行文档与Checklist_合订本.md",
-      "bytes": 318669,
-      "lines": 8277,
-      "sha256": "a98cf7e624bc7ca185449c897c5dc8346db4a88f6c447373a76551c61a4e3665"
+      "bytes": 324761,
+      "lines": 8341,
+      "sha256": "8d90a3727929820af5c0761d878a7f13cb304a053c9d39fa5db319a8ae83ce9f"
     },
     {
       "name": "文档清单与施工顺序.txt",
-      "bytes": 1308,
-      "lines": 34,
-      "sha256": "03327149b3d0f3d270f5011e536a3944186fba0a4ca5871fda65348b79ec5bf6"
+      "bytes": 1405,
+      "lines": 36,
+      "sha256": "4ff8954b5fa98cc59a60c3e101a0cd197828de13d055d02c18c68c0fe7f642f9"
     }
   ]
 }

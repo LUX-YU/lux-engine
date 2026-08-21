@@ -1,6 +1,6 @@
 # ADR：Core Meta 纯化与 ECS Registry 归位
 
-**状态：** Accepted / Implementation Pending
+**状态：** Implemented (`ed5fb7eb`)
 
 **日期：** 2026-08-21
 

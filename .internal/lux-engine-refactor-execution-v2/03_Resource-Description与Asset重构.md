@@ -20,6 +20,8 @@
 
 > **2026-08-21 加载链裁决：** `AssetSerDeser` 是唯一具体 Codec 多态接口，Catalog 产出完整未注册 `LuxAsset`，AssetManager 只负责安装与账本；删除 Injector/decode 回调。AssetRef 不自动 IO。详见 `ADR-20260821_Asset运行期需求与SerDeser边界.md`。
 
+> **2026-08-21 实施状态：** 加载链裁决已完成；同步 ensure 与异步 LoadService 共用 Catalog decode/Manager install，Asset installed consumer 不导入 Core Meta，全部既有 wire Golden 保持不变。
+
 
 ## 1. 最终边界
 
@@ -652,9 +654,9 @@ entity scene / section
 ## 12. 验收闸门
 
 - [ ] `modules/resource` 根只有 `description` 与 `asset` 两个一级目录。
-- [ ] `lux::description` 不依赖 Extension ABI、ECS、Engine、Editor。
+- [x] `lux::description` 不依赖 Extension ABI、ECS、Engine、Editor。
 - [ ] `lux::asset` 不定义 `AssetManager`。
-- [ ] `lux::asset` 不继承 `LuxObject`。
+- [x] `lux::asset` 不继承 `LuxObject`。
 - [ ] 新 Asset 类型无需修改中央 enum。
 - [ ] `RuntimeLaunchManifest` 不在 Resource。
 - [ ] `EntitySceneManifest` 的 Engine Feature 部分不在 Resource。
@@ -662,4 +664,4 @@ entity scene / section
 - [ ] `ImportedMaterialDesc` 不在 Description。
 - [ ] `resource/spatial`、`classic_mesh`、`terrain`、`tilemap`、`physics3d` 一级 targets 已删除。
 - [ ] 旧 `.luxasset` Golden Files 全部可读。
-- [ ] Asset-only 外部样例不链接 ECS/Engine/Reflection Registry。
+- [x] Asset-only 外部样例不链接 ECS/Engine/Reflection Registry。

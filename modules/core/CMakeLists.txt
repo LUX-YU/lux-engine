@@ -6,7 +6,6 @@ generate_visibility_header(
     GENERATE_FILE_PATH  lux/engine/core/visibility.h
 )
 
-add_subdirectory(extension_abi)
 add_subdirectory(math)
 add_subdirectory(meta)
 add_subdirectory(serialization)
@@ -17,8 +16,7 @@ install_components(
 	PROJECT_NAME	lux-engine-core
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::core
-	COMPONENTS		extension_abi
-					math
+	COMPONENTS		math
 					meta
                     serialization
                     log

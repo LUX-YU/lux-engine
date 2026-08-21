@@ -183,6 +183,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-authoring REQUIRED COMPONENTS project authoring_flowforge authoring_assets authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_spatial3d_scene_cook)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_logging runtime_frame runtime_assets runtime_scene_script runtime_extension_loader runtime_contribution_host runtime_render_scene runtime_render_backend_host runtime_spatial2d_tilemap runtime_pack_tilemap2d runtime_spatial3d_navigation_adapter runtime_spatial3d_physics)"
+    "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"
     "find_package (imgui REQUIRED COMPONENTS glfw3 vulkan)"
     "find_package (node_editor REQUIRED COMPONENTS node_editor)"
     "find_package (lux-cxx REQUIRED COMPONENTS core container reflection_runtime)"
@@ -192,6 +193,7 @@ target_link_libraries(
     editor
     PUBLIC
     lux::cxx::core
+    lux::engine::extensions::extension_api
     lux::engine::function::ui
     lux::engine::function::ui_vulkan
     lux::engine::function::navigation

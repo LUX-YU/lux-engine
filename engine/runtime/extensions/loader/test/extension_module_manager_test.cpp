@@ -42,6 +42,16 @@ int main(int argc, char** argv)
         lux::cxx::AbiBuildInfo::fingerprint());
     static_assert(std::is_standard_layout_v<ExtensionDependencyView>);
     static_assert(std::is_standard_layout_v<ExtensionModuleDescriptorV4>);
+    static_assert(std::is_standard_layout_v<ExtensionRegistrationResult>);
+    static_assert(
+        static_cast<std::uint8_t>(EExtensionModuleTarget::RUNTIME) == 0u);
+    static_assert(
+        static_cast<std::uint8_t>(EExtensionModuleTarget::EDITOR) == 1u);
+    static_assert(
+        static_cast<std::uint8_t>(EExtensionRegistrationError::NONE) == 0u);
+    static_assert(
+        static_cast<std::uint8_t>(
+            EExtensionRegistrationError::INTERNAL_FAILURE) == 7u);
     static_assert(offsetof(ExtensionDependencyView, id) == 0u);
     static_assert(
         offsetof(ExtensionDependencyView, required_major) ==
@@ -76,6 +86,17 @@ int main(int argc, char** argv)
         offsetof(ExtensionModuleDescriptorV4, dependency_count) >=
         offsetof(ExtensionModuleDescriptorV4, dependencies) +
             sizeof(const ExtensionDependencyView*));
+#if defined(_WIN64)
+    static_assert(sizeof(ExtensionDependencyView) == 24u);
+    static_assert(alignof(ExtensionDependencyView) == 8u);
+    static_assert(sizeof(ExtensionModuleDescriptorV4) == 80u);
+    static_assert(alignof(ExtensionModuleDescriptorV4) == 8u);
+    static_assert(sizeof(ExtensionRegistrationResult) == 1u);
+    static_assert(alignof(ExtensionRegistrationResult) == 1u);
+    static_assert(offsetof(ExtensionModuleDescriptorV4, target) == 62u);
+    static_assert(offsetof(ExtensionModuleDescriptorV4, dependencies) == 64u);
+    static_assert(offsetof(ExtensionModuleDescriptorV4, dependency_count) == 72u);
+#endif
 
     int failures = 0;
     const auto check = [&failures](bool condition, const char* message)

@@ -1,6 +1,5 @@
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 
-#include <lux/engine/extensions/ExtensionId.hpp>
 #include <lux/engine/scene/SceneFeatureId.hpp>
 
 #include <cassert>
@@ -21,8 +20,6 @@ namespace
 int main()
 {
     static_assert(CatalogLookupId<lux::scene::SceneFeatureIdView>);
-    static_assert(!CatalogLookupId<lux::extensions::ContributionIdView>);
-
     const auto parsed = uuids::uuid::from_string(
         "71000000-0000-4000-8000-000000000001");
     assert(parsed);

@@ -120,9 +120,12 @@ namespace lux::editor
                 path = current_project_->root() / path;
             requirements.push_back(
                 lux::extensions::ExtensionModuleRequirement::fromPath(
-                    entry.id,
+                    lux::extensions::ExtensionId{entry.id.name()},
                     std::move(path),
-                    entry.target,
+                    entry.target ==
+                            lux::authoring::EProjectExtensionTarget::EDITOR
+                        ? lux::extensions::EExtensionModuleTarget::EDITOR
+                        : lux::extensions::EExtensionModuleTarget::RUNTIME,
                     entry.required_major,
                     entry.minimum_minor));
         }

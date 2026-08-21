@@ -5,10 +5,6 @@
 #include <memory>
 #include <type_traits>
 
-static_assert(!std::is_same_v<
-    lux::editor::PanelId,
-    lux::extensions::ContributionId>);
-
 namespace
 {
     int failures = 0;

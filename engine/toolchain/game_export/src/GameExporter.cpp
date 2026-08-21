@@ -1235,7 +1235,7 @@ namespace lux::toolchain
         for (const auto& extension : project->manifest().extensions)
         {
             if (extension.target !=
-                lux::extensions::EExtensionModuleTarget::RUNTIME)
+                lux::authoring::EProjectExtensionTarget::RUNTIME)
             {
                 continue;
             }
@@ -1243,7 +1243,7 @@ namespace lux::toolchain
                 ? extension.path
                 : project->root() / extension.path;
             receipt.extensions.push_back(CookedExtension{
-                extension.id,
+                lux::extensions::ExtensionId{extension.id.name()},
                 source.lexically_normal(),
                 extension.required_major,
                 extension.minimum_minor});

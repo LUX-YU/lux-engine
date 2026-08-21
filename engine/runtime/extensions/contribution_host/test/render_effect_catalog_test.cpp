@@ -31,9 +31,6 @@ namespace
 
 int main()
 {
-    static_assert(!std::is_same_v<
-        lux::render::RenderEffectId,
-        lux::extensions::ContributionId>);
     static_assert(std::is_same_v<
         typename decltype(std::declval<
             lux::runtime::RenderEffectDescriptor>().required_scene_features)::

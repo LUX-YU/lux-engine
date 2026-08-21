@@ -148,9 +148,6 @@ int main()
     namespace format = lux::ecs::scene_format;
     namespace scene = lux::scene;
 
-    static_assert(!std::is_same_v<
-        scene::SceneFeatureId,
-        lux::extensions::ContributionId>);
     static_assert(!std::is_constructible_v<
         lux::asset::asset_id_t,
         format::EntitySectionId>);

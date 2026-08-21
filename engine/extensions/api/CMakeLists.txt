@@ -1,8 +1,6 @@
-## engine::extensions::extension_api — Engine-owned Extension API boundary.
-##
-## CORE-001 creates the upper-layer target before the ABI headers move out of
-## modules/core. The old extension_abi component remains the compatibility
-## implementation until CORE-002..005 migrate its headers and consumers.
+## engine::extensions::extension_api — Engine-owned Extension ABI v4 boundary.
+
+find_package(lux-cxx REQUIRED COMPONENTS core abi)
 
 add_interface_component(
     COMPONENT_NAME  extension_api
@@ -21,7 +19,8 @@ component_include_directories(
 target_link_libraries(
     extension_api
     INTERFACE
-        lux::engine::core::extension_abi
+        lux::cxx::core
+        lux::cxx::abi
 )
 
 lux_classify_target(
@@ -33,7 +32,7 @@ lux_classify_target(
 
 component_add_transitive_commands(
     extension_api
-    "find_package(lux-engine-core REQUIRED COMPONENTS extension_abi)"
+    "find_package(lux-cxx REQUIRED COMPONENTS core abi)"
 )
 
 install_components(

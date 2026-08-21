@@ -7,7 +7,7 @@
 #include <lux/engine/editor/PanelId.hpp>
 #include <lux/engine/runtime/extensions/ModuleLifetime.hpp>
 #include <lux/engine/runtime/extensions/OperationTicket.hpp>
-#include <lux/engine/core/extension_abi/StableId.hpp>
+#include <lux/engine/extensions/ExtensionId.hpp>
 #include <lux/engine/ui/UISystem.hpp>
 
 #include <cstddef>

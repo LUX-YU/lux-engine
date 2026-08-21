@@ -4,7 +4,7 @@
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/description/Mesh.hpp>
@@ -595,31 +595,31 @@ namespace
         void boolean(std::string_view name, bool value)
         {
             const std::uint8_t wire = value ? 1u : 0u;
-            field(name, lux::serialize::EArchiveType::Bool, &wire,
+            field(name, lux::ecs::serialization::EArchiveType::Bool, &wire,
                 sizeof(wire));
         }
 
         void uint32(std::string_view name, std::uint32_t value)
         {
-            field(name, lux::serialize::EArchiveType::UInt32, &value,
+            field(name, lux::ecs::serialization::EArchiveType::UInt32, &value,
                 sizeof(value));
         }
 
         void floating(std::string_view name, float value)
         {
-            field(name, lux::serialize::EArchiveType::Float, &value,
+            field(name, lux::ecs::serialization::EArchiveType::Float, &value,
                 sizeof(value));
         }
 
         void vec2(std::string_view name, const std::array<float, 2>& value)
         {
-            field(name, lux::serialize::EArchiveType::Vec2f, value.data(),
+            field(name, lux::ecs::serialization::EArchiveType::Vec2f, value.data(),
                 sizeof(value));
         }
 
         void vec3(std::string_view name, const std::array<float, 3>& value)
         {
-            field(name, lux::serialize::EArchiveType::Vec3f, value.data(),
+            field(name, lux::ecs::serialization::EArchiveType::Vec3f, value.data(),
                 sizeof(value));
         }
 
@@ -628,7 +628,7 @@ namespace
             const auto index = names_.intern(name);
             writer_.writePod(index);
             writer_.writePod(static_cast<std::uint8_t>(
-                lux::serialize::EArchiveType::AssetRef));
+                lux::ecs::serialization::EArchiveType::Uuid));
             writer_.writePod(std::uint32_t{16u});
             writer_.writeUuid(value);
         }
@@ -637,14 +637,14 @@ namespace
         {
             if (finished_)
                 return;
-            writer_.writePod(lux::serialize::kEndOfObject);
+            writer_.writePod(lux::ecs::serialization::kEndOfObject);
             finished_ = true;
         }
 
     private:
         void field(
             std::string_view name,
-            lux::serialize::EArchiveType type,
+            lux::ecs::serialization::EArchiveType type,
             const void* data,
             std::size_t size)
         {

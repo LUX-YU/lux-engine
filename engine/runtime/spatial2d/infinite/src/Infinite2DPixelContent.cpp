@@ -2,7 +2,7 @@
 
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/core/serialization/Archive.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
@@ -85,25 +85,25 @@ namespace lux::runtime::spatial2d
             lux::serialize::ArchiveWriter nested_writer{nested};
             nested_writer.writePod<std::uint32_t>(4u); // x
             nested_writer.writePod<std::uint8_t>(static_cast<std::uint8_t>(
-                lux::serialize::EArchiveType::Int64));
+                lux::ecs::serialization::EArchiveType::Int64));
             nested_writer.writePod<std::uint32_t>(sizeof(coordinate.x));
             nested_writer.writePod(coordinate.x);
             nested_writer.writePod<std::uint32_t>(5u); // y
             nested_writer.writePod<std::uint8_t>(static_cast<std::uint8_t>(
-                lux::serialize::EArchiveType::Int64));
+                lux::ecs::serialization::EArchiveType::Int64));
             nested_writer.writePod<std::uint32_t>(sizeof(coordinate.y));
             nested_writer.writePod(coordinate.y);
-            nested_writer.writePod(lux::serialize::kEndOfObject);
+            nested_writer.writePod(lux::ecs::serialization::kEndOfObject);
 
             std::vector<std::byte> result;
             lux::serialize::ArchiveWriter writer{result};
             writer.writePod<std::uint32_t>(2u); // coordinate
             writer.writePod<std::uint8_t>(static_cast<std::uint8_t>(
-                lux::serialize::EArchiveType::Struct));
+                lux::ecs::serialization::EArchiveType::Struct));
             writer.writePod<std::uint32_t>(
                 static_cast<std::uint32_t>(nested.size()));
             writer.writeBytes(nested.data(), nested.size());
-            writer.writePod(lux::serialize::kEndOfObject);
+            writer.writePod(lux::ecs::serialization::kEndOfObject);
             return result;
         }
 

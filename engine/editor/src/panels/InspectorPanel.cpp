@@ -9,6 +9,7 @@
 #include <lux/engine/ui/AssetDragDrop.hpp>
 #include <lux/engine/ui/ReflectedFieldTable.hpp>   // drawReflectedFieldTable scaffold
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
 
@@ -44,101 +45,58 @@ namespace lux::editor
             return std::string(full);
         }
 
-        // Case-insensitive substring test (ASCII) — used to infer the asset type
-        // a uuid field expects from its conventional name.
-        bool nameHas(std::string_view name, std::string_view needle) noexcept
-        {
-            if (needle.empty() || needle.size() > name.size()) return false;
-            for (std::size_t i = 0; i + needle.size() <= name.size(); ++i)
-            {
-                bool m = true;
-                for (std::size_t j = 0; j < needle.size(); ++j)
-                {
-                    char a = name[i + j];
-                    if (a >= 'A' && a <= 'Z') a = static_cast<char>(a + 32);
-                    if (a != needle[j]) { m = false; break; }
-                }
-                if (m) return true;
-            }
-            return false;
-        }
-
-        // lux has no typed asset handles (every reference is a bare asset_id_t);
-        // infer the acceptable asset type(s) for a uuid field from its name.
-        // Writes up to 4 types and returns the count; 0 == "accepts any asset".
-        // Map an `asset_type=` annotation token to a concrete EAssetType.
-        // The reflected, explicit path (audit 5.1) — retires the name heuristic.
+        // Map the stable `asset_type=` tokens exported by Resource Asset.
         bool assetTypeFromToken(std::string_view tok, lux::asset::EAssetType& out) noexcept
         {
             using lux::asset::EAssetType;
-            if      (tok == "material")          out = EAssetType::MATERIAL;
-            else if (tok == "material_instance") out = EAssetType::MATERIAL_INSTANCE;
+            if      (tok == "texture")           out = EAssetType::TEXTURE;
             else if (tok == "model")             out = EAssetType::MODEL;
+            else if (tok == "shader")            out = EAssetType::SHADER;
             else if (tok == "mesh")              out = EAssetType::MESH;
-            else if (tok == "texture")           out = EAssetType::TEXTURE;
+            else if (tok == "font")              out = EAssetType::FONT;
+            else if (tok == "sound")             out = EAssetType::SOUND;
             else if (tok == "script")            out = EAssetType::SCRIPT;
-            else if (tok == "flow_graph")        out = EAssetType::FLOW_GRAPH;  // graph script
+            else if (tok == "skeleton")          out = EAssetType::SKELETON;
+            else if (tok == "animation_clip")    out = EAssetType::ANIMATION_CLIP;
+            else if (tok == "material")          out = EAssetType::MATERIAL;
+            else if (tok == "material_instance") out = EAssetType::MATERIAL_INSTANCE;
+            else if (tok == "texture_atlas")     out = EAssetType::TEXTURE_ATLAS;
+            else if (tok == "flipbook_clip")     out = EAssetType::FLIPBOOK_CLIP;
+            else if (tok == "flow_graph")        out = EAssetType::FLOW_GRAPH;
             else return false;
             return true;
         }
 
-        // Preferred: an explicit `asset_type=a|b` annotation on the uuid field
-        // (pipe-separated for multi-accept). Returns count; -1 = no annotation
-        // (caller falls back to the legacy name heuristic).
+        // Pipe-separated tokens are allowed. Missing, empty or unknown tokens
+        // reject every asset; there is no field-name or "accept any" fallback.
         int expectedTypesFromAnnotation(const lux::meta::RefField& field,
                                         lux::asset::EAssetType (&out)[4]) noexcept
         {
             auto at = field.annotations().get("asset_type");
             if (!at) return -1;
+            if (at->empty()) return 0;
             int n = 0;
             std::string_view rest = *at;
-            while (!rest.empty() && n < 4)
+            while (!rest.empty())
             {
                 const auto bar = rest.find('|');
                 const auto tok = rest.substr(0, bar);
                 lux::asset::EAssetType t;
-                if (assetTypeFromToken(tok, t)) out[n++] = t;
+                if (n == 4 || !assetTypeFromToken(tok, t))
+                    return 0;
+                out[n++] = t;
                 if (bar == std::string_view::npos) break;
                 rest = rest.substr(bar + 1);
             }
             return n;
         }
 
-        int expectedTypes(std::string_view name,
-                          lux::asset::EAssetType (&out)[4]) noexcept
-        {
-            using lux::asset::EAssetType;
-            int n = 0;
-            if (nameHas(name, "material"))
-            {
-                // 模板与实例都收(2026-08-04 用户裁决,对齐 UE:Material 与
-                // Material Instance 都能直接装到 mesh 上)。挂模板 = 共享语义
-                // ——所有挂同一模板的实体共用一份参数,改模板全体变,这与 UE
-                // 一致,不是缺陷;要逐实体调参走实例(右键 Create Material
-                // Instance 动线保留)。此前「只收实例」的拒收分支还撞上了
-                // 拖拽中弹 tooltip 的多视口崩溃路径,放开后该分支整体消失。
-                out[n++] = EAssetType::MATERIAL_INSTANCE;
-                out[n++] = EAssetType::MATERIAL;
-            }
-            else if (nameHas(name, "mesh") || nameHas(name, "model"))
-            {
-                out[n++] = EAssetType::MODEL;
-                out[n++] = EAssetType::MESH;
-            }
-            else if (nameHas(name, "texture"))
-            {
-                out[n++] = EAssetType::TEXTURE;
-            }
-            return n; // 0 → any
-        }
-
         bool fieldAcceptsType(const lux::meta::RefField& field,
                               lux::asset::EAssetType t) noexcept
         {
             lux::asset::EAssetType acc[4];
-            int n = expectedTypesFromAnnotation(field, acc);   // explicit annotation wins
-            if (n < 0) n = expectedTypes(field.name, acc);     // legacy name heuristic
-            if (n == 0) return true; // untyped field accepts any asset
+            const int n = expectedTypesFromAnnotation(field, acc);
+            if (n <= 0) return false;
             for (int i = 0; i < n; ++i)
                 if (acc[i] == t) return true;
             return false;
@@ -284,6 +242,8 @@ namespace lux::editor
             tn == "lux::asset::asset_id_t" ||
             (tn.size() >= 4 && tn.substr(tn.size() - 4) == "uuid");
         if (!is_uuid)
+            return false;
+        if (!lux::ecs::serialization::isAssetReferenceField(field))
             return false;
 
         auto* id_ptr = reinterpret_cast<lux::asset::asset_id_t*>(

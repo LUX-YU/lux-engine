@@ -3,7 +3,7 @@
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/components/ParentComponent.hpp>
@@ -252,8 +252,16 @@ namespace lux::editor
                 return lux::cxx::unexpected(
                     std::string{"component disappeared while authoring '"}
                     + std::string{origin} + "'");
-            lux::serialize::TaggedPropertyWriter tagged{writer, names};
-            tagged.writeObject(*schema.ref_class, component);
+            lux::ecs::serialization::TaggedPropertyWriter tagged{writer, names};
+            const auto encoded =
+                tagged.writeObject(*schema.ref_class, component);
+            if (!encoded)
+            {
+                return lux::cxx::unexpected(
+                    std::string{"component archive encode failed for '"}
+                    + std::string{schema.fullName()} + "': "
+                    + encoded.error().detail);
+            }
             document.components.push_back(std::move(record));
         }
         {
@@ -325,14 +333,17 @@ namespace lux::editor
             }
             lux::serialize::ArchiveReader payload_reader{
                 record.tagged_payload.data(), record.tagged_payload.size()};
-            lux::serialize::TaggedPropertyReader tagged{payload_reader, names};
-            tagged.readObject(*schema->ref_class, component);
-            if (!payload_reader.ok())
+            lux::ecs::serialization::TaggedPropertyReader tagged{payload_reader, names};
+            const auto decoded =
+                tagged.readObject(*schema->ref_class, component);
+            if (!decoded || !payload_reader.ok() || !payload_reader.eof())
             {
                 registry.destroy(entity);
                 return lux::cxx::unexpected(
                     std::string{"invalid tagged component payload for '"}
-                    + record.schema_name + "'");
+                    + record.schema_name + "': "
+                    + (decoded ? std::string{"trailing bytes"}
+                               : decoded.error().detail));
             }
         }
         const auto assigned = lux::ecs::setPersistentEntityId(

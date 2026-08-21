@@ -29,6 +29,7 @@ namespace lux::ecs
         /// UUID of the equirect TextureAsset to bind as the sky. The
         /// bridge resolves this via `SceneRenderBinding::ensureTexture`,
         /// inheriting the same cache + refcount model as material textures.
+        LUX_MEMBER(display_name=Texture, asset_type=texture, tooltip=Equirectangular sky texture)
         lux::asset::asset_id_t equirect_texture_id;
 
         LUX_MEMBER(display_name=Rotation, tooltip=Rotation around the vertical axis in radians)

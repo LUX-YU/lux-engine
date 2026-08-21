@@ -1,5 +1,5 @@
 #include <lux/engine/core/serialization/Archive.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
@@ -283,7 +283,10 @@ namespace
                     lux::meta::EVisibility::Public,
                     &chunk,
                     static_cast<std::uint32_t>(offsetof(
-                        lux::ecs::PixelChunk2DComponent, field))},
+                        lux::ecs::PixelChunk2DComponent, field)),
+                    false,
+                    false,
+                    "luxref::property::member, cooked_relocation=persistent_entity_ref"},
                 lux::meta::RefField{
                     "content",
                     lux::meta::ref_type_of_v<
@@ -291,7 +294,10 @@ namespace
                     lux::meta::EVisibility::Public,
                     &chunk,
                     static_cast<std::uint32_t>(offsetof(
-                        lux::ecs::PixelChunk2DComponent, content))}};
+                        lux::ecs::PixelChunk2DComponent, content)),
+                    false,
+                    false,
+                    "luxref::property::member, cooked_relocation=content_blob_ref"}};
 
             tile_chunk.name = "TileChunk2DComponent";
             tile_chunk.full_name = "lux::ecs::TileChunk2DComponent";
@@ -314,7 +320,10 @@ namespace
                     lux::meta::EVisibility::Public,
                     &tile_chunk,
                     static_cast<std::uint32_t>(offsetof(
-                        lux::ecs::TileChunk2DComponent, tilemap))},
+                        lux::ecs::TileChunk2DComponent, tilemap)),
+                    false,
+                    false,
+                    "luxref::property::member, cooked_relocation=persistent_entity_ref"},
                 lux::meta::RefField{
                     "content",
                     lux::meta::ref_type_of_v<
@@ -322,7 +331,10 @@ namespace
                     lux::meta::EVisibility::Public,
                     &tile_chunk,
                     static_cast<std::uint32_t>(offsetof(
-                        lux::ecs::TileChunk2DComponent, content))}};
+                        lux::ecs::TileChunk2DComponent, content)),
+                    false,
+                    false,
+                    "luxref::property::member, cooked_relocation=content_blob_ref"}};
         }
     };
 
@@ -370,30 +382,30 @@ namespace
         lux::serialize::ArchiveWriter writer{result};
         const auto writeHeader = [&](
             std::uint32_t name,
-            lux::serialize::EArchiveType type,
+            lux::ecs::serialization::EArchiveType type,
             std::uint32_t size)
         {
             writer.writePod(name);
             writer.writePod(static_cast<std::uint8_t>(type));
             writer.writePod(size);
         };
-        writeHeader(2u, lux::serialize::EArchiveType::AssetRef, 16u);
+        writeHeader(2u, lux::ecs::serialization::EArchiveType::Uuid, 16u);
         writer.writeUuid(facts.definition);
-        writeHeader(4u, lux::serialize::EArchiveType::AssetRef, 16u);
+        writeHeader(4u, lux::ecs::serialization::EArchiveType::Uuid, 16u);
         writer.writeUuid(facts.material);
-        writeHeader(1u, lux::serialize::EArchiveType::Double, sizeof(double));
+        writeHeader(1u, lux::ecs::serialization::EArchiveType::Double, sizeof(double));
         writer.writePod(facts.cell_size);
         writeHeader(
             3u,
-            lux::serialize::EArchiveType::Int32,
+            lux::ecs::serialization::EArchiveType::Int32,
             sizeof(std::int32_t));
         writer.writePod(facts.draw_priority);
-        writeHeader(6u, lux::serialize::EArchiveType::Bool, 1u);
+        writeHeader(6u, lux::ecs::serialization::EArchiveType::Bool, 1u);
         writer.writePod<std::uint8_t>(facts.visible ? 1u : 0u);
-        writeHeader(5u, lux::serialize::EArchiveType::Bool, 1u);
+        writeHeader(5u, lux::ecs::serialization::EArchiveType::Bool, 1u);
         writer.writePod<std::uint8_t>(
             facts.simulation_enabled ? 1u : 0u);
-        writer.writePod(lux::serialize::kEndOfObject);
+        writer.writePod(lux::ecs::serialization::kEndOfObject);
         return result;
     }
 
@@ -585,25 +597,25 @@ namespace
         lux::serialize::ArchiveWriter nested_writer{nested};
         nested_writer.writePod<std::uint32_t>(4u);
         nested_writer.writePod<std::uint8_t>(static_cast<std::uint8_t>(
-            lux::serialize::EArchiveType::Int64));
+            lux::ecs::serialization::EArchiveType::Int64));
         nested_writer.writePod<std::uint32_t>(sizeof(coordinate.x));
         nested_writer.writePod(coordinate.x);
         nested_writer.writePod<std::uint32_t>(5u);
         nested_writer.writePod<std::uint8_t>(static_cast<std::uint8_t>(
-            lux::serialize::EArchiveType::Int64));
+            lux::ecs::serialization::EArchiveType::Int64));
         nested_writer.writePod<std::uint32_t>(sizeof(coordinate.y));
         nested_writer.writePod(coordinate.y);
-        nested_writer.writePod(lux::serialize::kEndOfObject);
+        nested_writer.writePod(lux::ecs::serialization::kEndOfObject);
 
         std::vector<std::byte> result;
         lux::serialize::ArchiveWriter writer{result};
         writer.writePod<std::uint32_t>(2u);
         writer.writePod<std::uint8_t>(static_cast<std::uint8_t>(
-            lux::serialize::EArchiveType::Struct));
+            lux::ecs::serialization::EArchiveType::Struct));
         writer.writePod<std::uint32_t>(
             static_cast<std::uint32_t>(nested.size()));
         writer.writeBytes(nested.data(), nested.size());
-        writer.writePod(lux::serialize::kEndOfObject);
+        writer.writePod(lux::ecs::serialization::kEndOfObject);
         return result;
     }
 

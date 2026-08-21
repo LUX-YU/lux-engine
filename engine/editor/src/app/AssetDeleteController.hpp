@@ -16,7 +16,7 @@
  *
  * 引用者扫描的两层账(互补,缺一个都会漏):
  *   · **场景内组件字段**(可列举):ComponentTypeCatalog × RefClass.fields ×
- *     serialize::isAssetRefField —— 「什么算资产引用」与序列化同一张表;
+ *     ecs::serialization::isAssetReferenceField —— 只认显式 asset_type 注解;
  *   · **驻留票**(不可列举,只能否决):AssetManager::isReferenced —— 材质级联
  *     钉的贴图、动画/脚本的票都在这本账上,但账本是数字不是名单。
  */

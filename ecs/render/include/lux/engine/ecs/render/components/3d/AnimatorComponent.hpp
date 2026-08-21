@@ -36,6 +36,7 @@ namespace lux::ecs
         // ---- input (driven by editor / gameplay code) ----
 
         /// UUID of the AnimationClipAsset to play. Zero = no-op.
+        LUX_MEMBER(display_name=Clip, asset_type=animation_clip, tooltip=Animation clip asset)
         lux::asset::asset_id_t clip_asset_id;
 
         LUX_MEMBER(display_name=Time, tooltip=Current playback time in seconds)

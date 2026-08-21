@@ -1,9 +1,7 @@
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
-#include <lux/engine/meta/Meta.hpp>
-
 #include <cassert>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -35,47 +33,45 @@ int main()
     assert(names.intern({}) == 0u);
     assert(names.at(0u).empty());
 
-    // A cooked relocation remains reflected so the owning format can
-    // validate its exact destination, but it must never leak into the
-    // domain-neutral tagged-property archive.
-    struct RelocationFixture final
-    {
-        std::uint32_t value{0u};
-        std::uint32_t relocated{0u};
-    };
-    lux::meta::RefClass fixture_class;
-    fixture_class.fields = {
-        lux::meta::RefField{
-            .name = "value",
-            .type = lux::meta::ref_type_of_v<std::uint32_t>,
-            .offset = static_cast<std::uint32_t>(
-                offsetof(RelocationFixture, value))},
-        lux::meta::RefField{
-            .name = "relocated",
-            .type = lux::meta::ref_type_of_v<std::uint32_t>,
-            .offset = static_cast<std::uint32_t>(
-                offsetof(RelocationFixture, relocated)),
-            .annotation_str =
-                "luxref::property::member, cooked_relocation = content_blob_ref"}};
+    std::vector<std::byte> bytes;
+    lux::serialize::ArchiveWriter writer{bytes};
+    writer.writePod<std::uint32_t>(17u);
+    writer.writeString("core-only");
+    writer.writeUuid(uuids::uuid{});
 
-    const RelocationFixture source_value{17u, 99u};
-    std::vector<std::byte> payload;
-    lux::serialize::NameTable payload_names;
-    lux::serialize::ArchiveWriter payload_writer{payload};
-    lux::serialize::TaggedPropertyWriter tagged_writer{
-        payload_writer, payload_names};
-    tagged_writer.writeObject(fixture_class, &source_value);
-    assert(payload_names.size() == 2u);
-    assert(payload_names.at(1u) == "value");
+    lux::serialize::ArchiveReader reader{bytes.data(), bytes.size()};
+    assert(reader.readPod<std::uint32_t>() == 17u);
+    assert(reader.readString() == "core-only");
+    assert(reader.readUuid().is_nil());
+    assert(reader.eof());
 
-    RelocationFixture decoded{0u, 41u};
-    lux::serialize::ArchiveReader payload_reader{
-        payload.data(), payload.size()};
-    lux::serialize::TaggedPropertyReader tagged_reader{
-        payload_reader, payload_names};
-    assert(tagged_reader.readObjectExact(fixture_class, &decoded));
-    assert(payload_reader.eof());
-    assert(decoded.value == source_value.value);
-    assert(decoded.relocated == 41u);
+    const std::array<std::byte, 3> borrowed{
+        std::byte{1}, std::byte{2}, std::byte{3}};
+    lux::serialize::ArchiveReader span_reader{borrowed.data(), borrowed.size()};
+    const auto prefix = span_reader.readSpan(2u);
+    assert(prefix.size() == 2u);
+    assert(prefix[0] == std::byte{1});
+    assert(span_reader.remaining() == 1u);
+    assert(span_reader.readSpan(2u).empty());
+    assert(!span_reader.ok());
+    assert(span_reader.readPod<std::uint8_t>() == 0u);
+    assert(span_reader.remainingSpan().empty());
+
+    const std::array<std::byte, 4> zero_count{};
+    lux::serialize::ArchiveReader invalid_table_reader{
+        zero_count.data(), zero_count.size()};
+    [[maybe_unused]] const auto invalid_table =
+        lux::serialize::NameTable::deserialize(invalid_table_reader);
+    assert(!invalid_table_reader.ok());
+
+    std::vector<std::byte> truncated_table_bytes;
+    lux::serialize::ArchiveWriter truncated_table_writer{
+        truncated_table_bytes};
+    truncated_table_writer.writePod<std::uint32_t>(2u);
+    lux::serialize::ArchiveReader truncated_table_reader{
+        truncated_table_bytes.data(), truncated_table_bytes.size()};
+    [[maybe_unused]] const auto truncated_table =
+        lux::serialize::NameTable::deserialize(truncated_table_reader);
+    assert(!truncated_table_reader.ok());
     return 0;
 }

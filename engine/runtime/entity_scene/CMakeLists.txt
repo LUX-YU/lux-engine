@@ -59,6 +59,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::core::meta
         lux::engine::core::serialization
+        lux::engine::ecs::component_archive
         zstd::libzstd
 )
 
@@ -67,7 +68,7 @@ component_add_transitive_commands(
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time memory)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta serialization)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format component_archive)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution)"
@@ -92,6 +93,7 @@ target_link_libraries(
         lux::engine::runtime::runtime_entity_scene
         lux::engine::core::serialization
         lux::engine::core::meta
+        lux::engine::ecs::component_archive
 )
 if(MSVC)
     target_compile_options(runtime_entity_scene_integration_test PRIVATE /UNDEBUG)

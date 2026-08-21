@@ -24,6 +24,7 @@ namespace lux::ecs
     {
         /// UUID of the MeshAsset. Its vertices must carry bone-id +
         /// bone-weight per Vertex (enforced by the Toolchain ModelImporter).
+        LUX_MEMBER(display_name=Mesh, asset_type=mesh, tooltip=Skinned mesh asset)
         lux::asset::asset_id_t mesh_asset_id;
 
         /// UUID of the material (Material or Material Instance). Optional;
@@ -34,6 +35,7 @@ namespace lux::ecs
 
         /// UUID of the SkeletonAsset. Drives bone count + bind/inv-bind data
         /// used by AnimatorComponent + SkinningFeature.
+        LUX_MEMBER(display_name=Skeleton, asset_type=skeleton, tooltip=Skeleton asset)
         lux::asset::asset_id_t skeleton_asset_id;
 
         LUX_MEMBER(display_name=Cast Shadow)

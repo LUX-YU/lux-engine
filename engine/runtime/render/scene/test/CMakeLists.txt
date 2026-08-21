@@ -229,6 +229,7 @@ target_link_libraries(
         lux::engine::resource::asset
         lux::engine::resource::asset
         lux::engine::core::serialization
+        lux::engine::ecs::component_archive
         lux::engine::platform::window
 )
 if(MSVC)

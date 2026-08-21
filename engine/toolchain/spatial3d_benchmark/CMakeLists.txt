@@ -19,6 +19,7 @@ if(NOT LUX_TARGET_OS STREQUAL "ANDROID")
             lux::engine::authoring::authoring_world
             lux::engine::authoring::project
             lux::engine::ecs::core
+            lux::engine::ecs::component_archive
             lux::engine::resource::asset
             lux::engine::resource::description
             lux::engine::content

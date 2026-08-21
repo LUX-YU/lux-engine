@@ -1,5 +1,5 @@
 #include <lux/engine/core/serialization/Archive.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/components/ParentComponent.hpp>
@@ -203,7 +203,7 @@ namespace
         lux::serialize::ArchiveWriter writer{bytes};
         if (shape == ETestPayloadShape::MISSING_FIELD)
         {
-            writer.writePod(lux::serialize::kEndOfObject);
+            writer.writePod(lux::ecs::serialization::kEndOfObject);
             return bytes;
         }
         writer.writePod<std::uint32_t>(
@@ -213,19 +213,19 @@ namespace
         writer.writePod<std::uint8_t>(
             static_cast<std::uint8_t>(
                 shape == ETestPayloadShape::TYPE_MISMATCH
-                    ? lux::serialize::EArchiveType::Float
-                    : lux::serialize::EArchiveType::Int32));
+                    ? lux::ecs::serialization::EArchiveType::Float
+                    : lux::ecs::serialization::EArchiveType::Int32));
         writer.writePod<std::uint32_t>(sizeof(value));
         writer.writePod(value);
         if (shape == ETestPayloadShape::DUPLICATE_FIELD)
         {
             writer.writePod<std::uint32_t>(4u);
             writer.writePod<std::uint8_t>(static_cast<std::uint8_t>(
-                lux::serialize::EArchiveType::Int32));
+                lux::ecs::serialization::EArchiveType::Int32));
             writer.writePod<std::uint32_t>(sizeof(value));
             writer.writePod(value);
         }
-        writer.writePod(lux::serialize::kEndOfObject);
+        writer.writePod(lux::ecs::serialization::kEndOfObject);
         if (shape == ETestPayloadShape::TRUNCATED)
             bytes.pop_back();
         return bytes;

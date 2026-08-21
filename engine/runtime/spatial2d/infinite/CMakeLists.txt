@@ -101,12 +101,13 @@ target_link_libraries(
     PRIVATE
         lux::cxx::algorithm
         lux::engine::core::serialization
+        lux::engine::ecs::component_archive
 )
 
 component_add_transitive_commands(
     runtime_pack_infinite2d
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_execution runtime_spatial2d_infinite)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS pixel scene_format)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS pixel scene_format component_archive)"
 )
 
 lux_classify_target(
@@ -149,6 +150,7 @@ target_link_libraries(
         lux::engine::runtime::runtime_execution
         lux::engine::runtime::runtime_spatial2d_tilemap
         lux::engine::core::serialization
+        lux::engine::ecs::component_archive
         lux::engine::ecs::tilemap
         lux::engine::resource::asset
 )

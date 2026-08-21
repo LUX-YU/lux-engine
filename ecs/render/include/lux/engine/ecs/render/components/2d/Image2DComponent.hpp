@@ -29,9 +29,9 @@ namespace lux::ecs
 {
     struct LUX_COMPONENT() Image2DComponent
     {
-        /// Texture/atlas asset. Null → the tint-only quad (MVP). Sampled once texturing
+        /// Texture asset. Null → the tint-only quad (MVP). Sampled once texturing
         /// (bindless set 2) lands; the bridge resolves it to a bindless index then.
-        LUX_MEMBER(display_name=Texture, asset_type=texture, tooltip=Texture or atlas asset (null = flat tint))
+        LUX_MEMBER(display_name=Texture, asset_type=texture, tooltip=Texture asset (null = flat tint))
         lux::asset::asset_id_t texture{};
 
         /// UV sub-rect within the texture: (x, y, w, h) in [0,1]. Whole texture by default.

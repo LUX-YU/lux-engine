@@ -7,7 +7,7 @@
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/TypeToken.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/render/components/PrimaryCameraTag.hpp>
@@ -449,8 +449,17 @@ namespace lux::toolchain
             TaggedPayloadSource result;
             lux::serialize::NameTable names;
             lux::serialize::ArchiveWriter writer{result.payload};
-            lux::serialize::TaggedPropertyWriter tagged{writer, names};
-            tagged.writeObject(*descriptor.ref_class, component);
+            lux::ecs::serialization::TaggedPropertyWriter tagged{writer, names};
+            const auto encoded =
+                tagged.writeObject(*descriptor.ref_class, component);
+            if (!encoded)
+            {
+                return lux::cxx::unexpected(failure(
+                    AdapterError::INVALID_COMPONENT_PAYLOAD,
+                    "component archive encode failed for '" +
+                        descriptor.schema_id.name + "': " +
+                        encoded.error().detail));
+            }
             result.names = namesOf(names);
             return result;
         }
@@ -687,16 +696,19 @@ namespace lux::toolchain
                     record.tagged_payload.data(),
                     record.tagged_payload.size()
                 };
-                lux::serialize::TaggedPropertyReader tagged{
+                lux::ecs::serialization::TaggedPropertyReader tagged{
                     reader, source_names
                 };
-                tagged.readObject(*descriptor->ref_class, value);
-                if (!reader.ok() || !reader.eof())
+                const auto decoded =
+                    tagged.readObject(*descriptor->ref_class, value);
+                if (!decoded || !reader.ok() || !reader.eof())
                 {
                     return lux::cxx::unexpected(failure(
                         AdapterError::INVALID_COMPONENT_PAYLOAD,
                         "legacy Actor component payload is malformed: '" +
-                            schema + "'"));
+                            schema + "': " +
+                            (decoded ? std::string{"trailing bytes"}
+                                     : decoded.error().detail)));
                 }
                 descriptors.push_back(descriptor);
             }

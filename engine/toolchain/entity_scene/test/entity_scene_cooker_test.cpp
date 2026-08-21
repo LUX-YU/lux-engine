@@ -4,7 +4,7 @@
 
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
@@ -26,8 +26,8 @@ namespace
     struct Field final
     {
         std::uint32_t name{0u};
-        lux::serialize::EArchiveType type{
-            lux::serialize::EArchiveType::UInt32};
+        lux::ecs::serialization::EArchiveType type{
+            lux::ecs::serialization::EArchiveType::UInt32};
         std::vector<std::byte> payload;
     };
 
@@ -52,7 +52,7 @@ namespace
                 field.payload.size()));
             writer.writeBytes(field.payload.data(), field.payload.size());
         }
-        writer.writePod(lux::serialize::kEndOfObject);
+        writer.writePod(lux::ecs::serialization::kEndOfObject);
         return bytes;
     }
 
@@ -69,7 +69,7 @@ namespace
 
     lux::toolchain::TaggedPayloadSource referencePayload()
     {
-        using lux::serialize::EArchiveType;
+        using lux::ecs::serialization::EArchiveType;
         lux::toolchain::TaggedPayloadSource source;
         source.names = {"", "target", "persistent", "blob"};
         const std::vector<Field> fields{
@@ -100,14 +100,14 @@ int main()
     nested_source.names = {"", "zeta", "alpha", "inner"};
     const std::vector<Field> nested_fields{
         {3u,
-         lux::serialize::EArchiveType::UInt32,
+         lux::ecs::serialization::EArchiveType::UInt32,
          pod<std::uint32_t>(7u)}};
     const auto nested = tagged(nested_fields);
     const std::vector<Field> outer_fields{
         {1u,
-         lux::serialize::EArchiveType::UInt32,
+         lux::ecs::serialization::EArchiveType::UInt32,
          pod<std::uint32_t>(9u)},
-        {2u, lux::serialize::EArchiveType::Struct, nested}};
+        {2u, lux::ecs::serialization::EArchiveType::Struct, nested}};
     nested_source.payload = tagged(outer_fields);
 
     const auto canonical_names = canonicalTaggedPayloadNames(

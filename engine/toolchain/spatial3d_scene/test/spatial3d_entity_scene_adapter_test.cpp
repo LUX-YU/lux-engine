@@ -2,7 +2,7 @@
 
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/render/components/PrimaryCameraTag.hpp>
 #include <lux/engine/ecs/render/components/3d/Camera3DComponent.hpp>
@@ -106,14 +106,14 @@ namespace
             const auto index = names_.intern(name);
             writer_.writePod(index);
             writer_.writePod(static_cast<std::uint8_t>(
-                lux::serialize::EArchiveType::Float));
+                lux::ecs::serialization::EArchiveType::Float));
             writer_.writePod<std::uint32_t>(sizeof(value));
             writer_.writePod(value);
         }
 
         void finish()
         {
-            writer_.writePod(lux::serialize::kEndOfObject);
+            writer_.writePod(lux::ecs::serialization::kEndOfObject);
         }
 
     private:
@@ -311,6 +311,18 @@ int main()
         source, components, mesh_assets);
     assert(first && second);
     assert(first->encoded_package == second->encoded_package);
+
+    auto unknown_component_source = source;
+    unknown_component_source.actors.front().components.front().schema_name =
+        "org.lux.test.unregistered_component";
+    const auto unknown_component =
+        lux::toolchain::adaptSpatial3DEntityScene(
+            unknown_component_source, components, mesh_assets);
+    assert(!unknown_component);
+    assert(unknown_component.error().code ==
+        lux::toolchain::ESpatial3DEntitySceneAdapterError::
+            MISSING_COMPONENT_SCHEMA);
+
     assert(first->generated_meshes.size() == 1u);
     assert(second->generated_meshes.size() == 1u);
     assert(first->generated_meshes.front().id ==

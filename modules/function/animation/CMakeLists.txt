@@ -2,7 +2,7 @@
 #
 # Runtime animation playback: stateless pose sampling + skinning-matrix
 # composition (PoseSampling) + pooled scratch. Function tier — no Vulkan, no
-# MLIR; deps are resource::asset (transitively resource::description) + core::math.
+# MLIR; deps are resource::description + core::math.
 # The ECS side (AnimatorComponent + AnimationSystem) consumes this from the
 # gameplay 3D kit (lux::gameplay::d3).
 
@@ -42,13 +42,13 @@ target_link_libraries(
     animation
     PUBLIC
     lux::engine::core::math
-    lux::engine::resource::asset
+    lux::engine::resource::description
 )
 
 component_add_transitive_commands(
     animation
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 
 set(ENABLE_ANIMATION_TEST OFF CACHE BOOL "Enable animation module tests")

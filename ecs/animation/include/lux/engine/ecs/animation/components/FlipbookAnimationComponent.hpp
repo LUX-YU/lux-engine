@@ -27,7 +27,7 @@ namespace lux::ecs
     {
         /// The FLIPBOOK_CLIP asset to play. Nil → the image keeps whatever
         /// uv/pivot it has (the direct-authoring path stays untouched).
-        LUX_MEMBER(display_name=Clip, tooltip=Flipbook clip asset)
+        LUX_MEMBER(display_name=Clip, asset_type=flipbook_clip, tooltip=Flipbook clip asset)
         lux::asset::asset_id_t clip{};
 
         LUX_MEMBER(display_name=Time, tooltip=Playback cursor in seconds)

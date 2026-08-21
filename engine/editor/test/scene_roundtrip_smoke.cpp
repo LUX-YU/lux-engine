@@ -263,6 +263,25 @@ int main()
         : decltype(lux::authoring::decodeWorldActorDocument({})){};
     expect(hello_document && peer_document && child_document,
         "LXAD v2 hierarchy documents decoded");
+
+    if (hello_document)
+    {
+        auto unknown_component = *hello_document;
+        unknown_component.components.front().schema_name =
+            "org.lux.test.unregistered_component";
+        lux::ecs::Registry rejected_registry;
+        lux::ecs::PersistentEntityIndex rejected_ids{rejected_registry};
+        lux::editor::WorldActorEcsAdapter rejected_adapter{
+            components, rejected_ids};
+        const auto rejected = rejected_adapter.materialize(
+            unknown_component, rejected_registry, "unknown-schema fixture");
+        const auto rejected_entities =
+            rejected_registry.view<entt::entity>();
+        expect(
+            !rejected &&
+                rejected_entities.begin() == rejected_entities.end(),
+            "Authoring rejects unknown Component schema before Registry mutation");
+    }
     expect(
         hello_document && std::ranges::none_of(
             hello_document->components,

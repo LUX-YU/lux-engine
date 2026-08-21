@@ -211,6 +211,7 @@ target_link_libraries(
     lux::engine::toolchain::toolchain_model_importer
     lux::engine::toolchain::toolchain_texture_importer
     lux::engine::core::serialization
+    lux::engine::ecs::component_archive
     lux::engine::runtime::runtime_render_scene             # the host-neutral scene runtime EditorScene hosts
     lux::engine::runtime::runtime_render_backend_host      # process-level render thread/channel owner
     lux::engine::authoring::project

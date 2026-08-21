@@ -62,6 +62,7 @@ target_link_libraries(
         lux::engine::function::render_standard_content
         lux::engine::resource::asset
         lux::engine::core::serialization
+        lux::engine::ecs::component_archive
         lux::cxx::algorithm
         RecastNavigation::Recast
         meshoptimizer::meshoptimizer
@@ -75,7 +76,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_entity_scene_cook)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core identity render_components_3d spatial3d_components terrain_components physics3d navigation3d)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core identity component_archive render_components_3d spatial3d_components terrain_components physics3d navigation3d)"
     "find_package(lux-engine-function REQUIRED COMPONENTS navigation_detour3d render_standard_content)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-spatial3d REQUIRED COMPONENTS scene_catalog)"
@@ -112,6 +113,7 @@ if(TARGET ecs_meta AND
             physics3d_meta
             navigation3d_meta
             lux::engine::core::meta
+            lux::engine::ecs::component_archive
     )
     if(MSVC)
         target_compile_options(

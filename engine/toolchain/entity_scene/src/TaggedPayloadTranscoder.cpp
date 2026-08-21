@@ -2,7 +2,7 @@
 
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 
 #include <algorithm>
 #include <functional>
@@ -120,7 +120,7 @@ namespace lux::toolchain
                 std::uint32_t source_index = 0u;
                 if (!readU32(object, cursor, source_index))
                     return false;
-                if (source_index == lux::serialize::kEndOfObject)
+                if (source_index == lux::ecs::serialization::kEndOfObject)
                 {
                     if (context.output)
                         appendU32(*context.output, source_index);
@@ -164,7 +164,7 @@ namespace lux::toolchain
 
                 const auto payload = object.subspan(cursor, payload_size);
                 if (wire_type == static_cast<std::uint8_t>(
-                        lux::serialize::EArchiveType::Struct))
+                        lux::ecs::serialization::EArchiveType::Struct))
                 {
                     if (!walkObject(payload, context, depth + 1u))
                         return false;

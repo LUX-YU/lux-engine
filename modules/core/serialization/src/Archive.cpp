@@ -107,4 +107,16 @@ namespace lux::serialize
         cur_ += n;
     }
 
+    std::span<const std::byte> ArchiveReader::readSpan(std::size_t n) noexcept
+    {
+        if (!valid_ || n > remaining())
+        {
+            valid_ = false;
+            return {};
+        }
+        const std::span<const std::byte> result{cur_, n};
+        cur_ += n;
+        return result;
+    }
+
 } // namespace lux::serialize

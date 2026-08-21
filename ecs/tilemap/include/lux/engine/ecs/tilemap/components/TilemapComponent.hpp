@@ -14,7 +14,7 @@ namespace lux::ecs
     {
         TilemapId LUX_NO_MEMBER() id{};
 
-        LUX_MEMBER(display_name=Tileset, tooltip=Tileset atlas texture asset)
+        LUX_MEMBER(display_name=Tileset, asset_type=texture, tooltip=Tileset texture asset)
         lux::asset::asset_id_t tileset_texture{};
 
         LUX_MEMBER(display_name=Tileset Cols, tooltip=Tiles per tileset row)

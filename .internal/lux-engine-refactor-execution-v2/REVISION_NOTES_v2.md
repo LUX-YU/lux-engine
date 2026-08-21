@@ -8,6 +8,13 @@
 - `BuiltinAssetIds.hpp`、M_Missing 与内置色板归 `engine/content`；ECS fallback 改为 Engine Runtime 注入。
 - 保持 AssetFileHeader v1/v2、所有资产 wire、冻结 UUID/颜色和 LUXPAK v2 字节不变。
 
+## 2026-08-21：Asset 领域内聚实施完成
+
+- `1364810c` 完成 Asset 领域布局、Storage/Pak 公共 API、Engine Content owner 与 fallback 注入；`e7348155` 完成 wire/storage 契约。
+- 11 类标准资产与 1000-entry LUXPAK v2 fixture 固定 length/SHA；decode/re-encode、v1 读取、corrupt/truncated 与引用账本隔离测试通过。
+- Toolchain 不再包含 Asset `pinclude`；Resource/ECS 不再拥有或反向依赖 Engine Builtin 身份。
+- DEVELOPER、PLAYER、EDITOR、TOOLCHAIN 的 Windows RelWithDebInfo 全量构建与第二轮 no-op 通过；installed Asset/Content consumers 通过。
+
 ## 2026-08-20：Scene Asset 与 Resource 边界修订
 
 - 接受 `ADR-20260820_SceneAsset与Resource边界.md`。

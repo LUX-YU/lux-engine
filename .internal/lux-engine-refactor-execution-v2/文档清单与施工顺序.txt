@@ -25,4 +25,8 @@ LUX Engine 架构重构执行文档 v2.0
 - ADR-20260820_SceneAsset与Resource边界.md
 - ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md
 
+本轮验收证据:
+- evidence/asset-domain-cohesion-f35e245a.md
+- 实施提交 1364810c；wire/storage 契约提交 e7348155
+
 本版替代此前 v1.x 文档。

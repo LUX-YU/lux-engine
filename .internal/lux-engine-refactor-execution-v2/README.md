@@ -3,6 +3,7 @@
 **代码基线：** `LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656`
 **Scene Asset 实施提交：** `36ce56c634f1e03959910fc1761ec62b2fb4671e`
 **当前施工基线：** `f35e245a1e493c388722a41711f1a3ecd1df2acb`
+**Asset 领域内聚实施提交：** `1364810c`；wire/storage 契约提交：`e7348155`
 **文档日期：** 2026-08-21
 
 本套文档替代此前 v1.x 文档。新版以以下哲学为中心：
@@ -49,7 +50,7 @@ products= 最终入口与可执行程序
 `AssetId`、`AssetTypeId`、`engine/assets/AssetStore` 与 Resource 场景 Payload 最终归属的目标；
 冲突内容只保留为历史设计记录，不再作为施工要求。
 
-`ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 进一步裁决 Asset 目录、Storage/Pak 公共边界、Engine Content owner 与 ECS fallback 注入。
+`ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 进一步裁决 Asset 目录、Storage/Pak 公共边界、Engine Content owner 与 ECS fallback 注入；该裁决已由 `1364810c`、`e7348155` 实施并验收。
 
 ## 推荐阅读与施工顺序
 
@@ -91,9 +92,10 @@ products= 最终入口与可执行程序
 - `13_当前代码事实索引.md`：固定提交上的代码锚点。
 - `ADR-20260820_SceneAsset与Resource边界.md`：Scene Asset 与公共 Resource 的现行裁决。
 - `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`：Asset 领域内聚、Pak 和 Engine Content 的现行裁决。
+- `evidence/asset-domain-cohesion-f35e245a.md`：本轮基线公共面、12 组 wire 指纹与验收结论。
 - `SHA256SUMS.txt`：校验值。
 - `manifest.json`：机器可读文件清单。
 
 ## 状态说明
 
-这些文档同时记录施工规范与已验证状态。`SCENEASSET-001..020` 已按 ADR 完成；其余未勾选目标仍须在后续变更中引用 Checklist ID，并同步更新映射表和事实索引。
+这些文档同时记录施工规范与已验证状态。`SCENEASSET-001..020` 与 `ASSETCOHESION-001..012` 已按 ADR 完成；其余未勾选目标仍须在后续变更中引用 Checklist ID，并同步更新映射表和事实索引。

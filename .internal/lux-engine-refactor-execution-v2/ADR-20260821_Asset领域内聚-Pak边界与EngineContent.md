@@ -1,10 +1,12 @@
 # ADR：Asset 领域内聚、Pak 公共边界与 Engine Content
 
-**状态：** Accepted，代码施工中
+**状态：** Implemented
 
 **日期：** 2026-08-21
 
 **代码施工基线：** `f35e245a1e493c388722a41711f1a3ecd1df2acb`
+
+**实施提交：** `1364810c`（owner/目录/API 迁移）、`e7348155`（wire/storage 契约与 v1 兼容修复）
 
 **关联裁决：** `ADR-20260820_SceneAsset与Resource边界.md`
 

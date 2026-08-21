@@ -11,7 +11,7 @@
 //  (the documented index-staleness window, design §10.3).
 // ============================================================================
 
-#include <lux/engine/resource/asset/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/AssetProvider.hpp>
 #include <lux/engine/authoring/assets/visibility.h>
 
 #include <filesystem>

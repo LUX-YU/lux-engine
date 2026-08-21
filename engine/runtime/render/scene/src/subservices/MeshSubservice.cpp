@@ -4,7 +4,7 @@
 #include <lux/engine/runtime/render/scene/detail/residency/OwnerReplyReaper.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/MeshAsset.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>

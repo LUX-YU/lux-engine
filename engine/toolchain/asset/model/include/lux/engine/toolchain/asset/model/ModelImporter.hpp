@@ -4,11 +4,11 @@
 #include <string_view>
 #include <cstdint>
 #include <Eigen/Geometry>
-#include <lux/engine/resource/asset/ModelAsset.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
-#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/codecs/SkeletonSerDeser.hpp>
-#include <lux/engine/resource/asset/codecs/AnimationClipSerDeser.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/animation/AnimationClipSerDeser.hpp>
 #include <lux/engine/description/ImportedMaterialDesc.hpp>   // W5b: importer emits POD descs (no rdesc::Material)
 
 struct aiScene;

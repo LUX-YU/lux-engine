@@ -38,8 +38,8 @@
  *  2. 材质空句柄 = 作者没指定(合法);**不是**「还没好」。
  *  3. 换资产/在途/失败**保持旧组件**(旧图画到新图到位,不闪);旧资产
  *     票押到新副本落地才放(防「换资产窗口期画死句柄」)。
- *     材质终败换装 M_Missing 兜底(实体变色不消失,裁决七),原票保留
- *     —— 行活着,内容修复/重注册的失效推送才到得了这里,换装可逆。
+ *     材质终败时，若宿主注入了 fallback material ID，就执行
+ *     可逆换装；注入 nil 则保留旧组件且不请求默认资产。
  */
 
 #include <cstdint>
@@ -52,7 +52,6 @@
 
 #include <lux/engine/resource/asset/AssetManager.hpp>       // acquire(兴趣票)/fetchAsset(材质分域)
 #include <lux/engine/resource/asset/AssetRef.hpp>
-#include <lux/engine/resource/asset/BuiltinAssetIds.hpp>    // M_Missing 兜底(裁决七)
 
 #include <lux/engine/ecs/render/ResidencyCallbacks.hpp>
 #include <lux/engine/ecs/render/IRenderSubsystem.hpp>
@@ -253,7 +252,7 @@ namespace lux::ecs
 
     /// 把 `C` 的网格 + 材质两个字段驻留成 `MeshGpuCacheComponent`。
     /// 「材质 nil = 作者没设」与「材质没好 = 整个组件等着」分开判
-    /// (组件语义三条,见文件头);材质终败换装 M_Missing。
+    /// (组件语义三条,见文件头);材质终败可换装宿主注入的 fallback。
     template <class C, lux::asset::asset_id_t C::*MeshField,
                        lux::asset::asset_id_t C::*MaterialField,
               class Exclude = ComponentList<>>
@@ -272,7 +271,7 @@ namespace lux::ecs
             bool                       mesh_failed{false};
             bool                       active{false};
             std::uint32_t              generation{0};
-            // 材质终败的 M_Missing 换装态(原票之外另钉兜底)。
+            // 材质终败的 fallback 换装态(原票之外另钉兜底)。
             bool                       fallback{false};
             lux::asset::AssetRef       fb_ref{};
             ResidencyCallbacks::Ticket fb_wait{};
@@ -281,9 +280,13 @@ namespace lux::ecs
         };
 
     public:
-        MeshResidencyResolver(const ResidencyCallbacks& cb,
-                              lux::asset::AssetManager& mgr) noexcept
-            : cb_(&cb), mgr_(&mgr)
+        MeshResidencyResolver(
+            const ResidencyCallbacks& cb,
+            lux::asset::AssetManager& mgr,
+            lux::asset::asset_id_t fallback_material_id) noexcept
+            : cb_(&cb)
+            , mgr_(&mgr)
+            , fallback_material_id_(fallback_material_id)
         {}
 
         void attach(lux::meta::EntityRegistry& reg) override
@@ -390,12 +393,11 @@ namespace lux::ecs
         void onInvalidated(const std::unordered_set<lux::asset::asset_id_t>& ids,
                            lux::meta::EntityRegistry* reg) override
         {
-            const auto fid = lux::asset::builtinMissingMaterialId();
             for (auto& [e, r] : recs_)
             {
                 const bool hit = ids.contains(r.want_mesh)
                     || (!r.want_mat.is_nil() && ids.contains(r.want_mat))
-                    || (r.fallback && ids.contains(fid));
+                    || (r.fallback && ids.contains(fallback_material_id_));
                 if (!hit) continue;
                 if (reg != nullptr && reg->valid(e)
                     && reg->template all_of<MeshGpuCacheComponent>(e))
@@ -482,7 +484,7 @@ namespace lux::ecs
             r.mat_wait.reset();
             if (fail != nullptr || bits == 0)
             {   // 「加载中」与「确认坏/没了」分开判(裁决七):终败才换装
-                // M_Missing —— 实体变色,不消失。原票保留(可逆,见文件头)。
+                // 宿主 fallback —— 实体可视化换装,不消失。原票保留(可逆,见文件头)。
                 startFallback(e, r);
                 return;
             }
@@ -504,7 +506,16 @@ namespace lux::ecs
 
         void startFallback(lux::meta::entity_id e, Rec& r)
         {
-            const auto fid = lux::asset::builtinMissingMaterialId();
+            if (fallback_material_id_.is_nil())
+            {
+                if (reg_ != nullptr && reg_->valid(e)
+                    && reg_->template all_of<AssetStreamingStateComponent>(e))
+                {
+                    reg_->template remove<AssetStreamingStateComponent>(e);
+                }
+                return;
+            }
+            const auto& fid = fallback_material_id_;
             r.fallback = true;
             r.fb_ref   = mgr_->acquire(fid);
             r.fb_wait  = cb_->await(fid,
@@ -530,7 +541,7 @@ namespace lux::ecs
                 else if (r.fallback && r.fb_bits != 0)
                 {
                     mat     = unpackHandleBits<lux::render::RMaterialHandle>(r.fb_bits);
-                    mat_src = lux::asset::builtinMissingMaterialId();
+                    mat_src = fallback_material_id_;
                 }
                 else
                     return;   // 作者指定了材质但还没好 —— 等它
@@ -556,6 +567,7 @@ namespace lux::ecs
         const ResidencyCallbacks*  cb_{nullptr};
         lux::asset::AssetManager*  mgr_{nullptr};
         lux::meta::EntityRegistry* reg_{nullptr};
+        lux::asset::asset_id_t     fallback_material_id_{};
 
         std::unordered_map<lux::meta::entity_id, Rec> recs_;
         std::unordered_set<lux::meta::entity_id>      dirty_;
@@ -580,8 +592,11 @@ namespace lux::ecs
     class ResidencySubsystem final : public IRenderSubsystem
     {
     public:
-        explicit ResidencySubsystem(lux::asset::AssetManager& mgr) noexcept
+        explicit ResidencySubsystem(
+            lux::asset::AssetManager& mgr,
+            lux::asset::asset_id_t fallback_material_id = {}) noexcept
             : mgr_(&mgr)
+            , fallback_material_id_(fallback_material_id)
         {}
 
         ~ResidencySubsystem() override { detach(); }
@@ -610,7 +625,7 @@ namespace lux::ecs
             resolvers_.push_back(
                 std::make_unique<MeshResidencyResolver<C, MeshField,
                                                        MaterialField, Exclude>>(
-                    cb_, *mgr_));
+                    cb_, *mgr_, fallback_material_id_));
         }
 
         // Residency is data preparation, not the render consumer. Mesh and
@@ -684,6 +699,7 @@ namespace lux::ecs
     private:
         lux::asset::AssetManager*  mgr_{nullptr};
         lux::meta::EntityRegistry* reg_{nullptr};
+        lux::asset::asset_id_t     fallback_material_id_{};
         ResidencyCallbacks         cb_{};
         ResidencyCallbacks::Ticket watch_{};
         std::vector<std::unique_ptr<IResidencyResolver>> resolvers_;

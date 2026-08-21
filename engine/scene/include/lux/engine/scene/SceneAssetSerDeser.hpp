@@ -2,7 +2,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
-#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <lux/engine/scene/SceneAsset.hpp>
 #include <lux/engine/scene/visibility.h>
 

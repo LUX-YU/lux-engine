@@ -10,7 +10,7 @@
 #include <lux/engine/ui/Panel.hpp>                        // setVisible / isVisible
 #include <lux/engine/ui/UISystem.hpp>                     // layout load/save/clear
 #include <lux/engine/resource/asset/AssetManager.hpp>              // setVfs / registerContentFolder arg
-#include <lux/engine/resource/asset/AssetVfs.hpp>                  // AssetVfs
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>                  // AssetVfs
 #include <lux/engine/authoring/assets/LooseAssetProvider.hpp>
 #include <lux/engine/authoring/project/RecentProjects.hpp>
 

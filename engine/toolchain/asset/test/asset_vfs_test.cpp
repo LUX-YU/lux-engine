@@ -23,11 +23,11 @@
 //=============================================================================
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/authoring/assets/LooseAssetProvider.hpp>
-#include <lux/engine/resource/asset/VirtualPath.hpp>
-#include <lux/engine/resource/asset/SkeletonAsset.hpp>
-#include <lux/engine/resource/asset/codecs/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/storage/VirtualPath.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/description/Skeleton.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>

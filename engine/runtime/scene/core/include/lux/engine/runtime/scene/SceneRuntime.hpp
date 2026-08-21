@@ -18,7 +18,7 @@
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/StartupSectionSystem.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>

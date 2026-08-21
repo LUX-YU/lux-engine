@@ -6,7 +6,7 @@
 
 #include <lux/engine/resource/asset/Asset.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 

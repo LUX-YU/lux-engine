@@ -1,11 +1,12 @@
 // lux_asset_packer
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
 #include <lux/engine/toolchain/shader/SpirvAssetPacker.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
 
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>   // for AssetFileHeader / loadHeader
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/cxx/arguments/Arguments.hpp>
 
@@ -645,7 +646,7 @@ int main(int argc, char* argv[])
             std::cerr << "In --pak_inspect mode, --target_path is required.\n";
             return -1;
         }
-        auto info = lux::toolchain::inspectPak(
+        auto info = lux::asset::inspectPak(
             fs::path(target_path_str.value()));
         if (!info) {
             std::cerr << "pak-inspect failed: " << info.error() << "\n";

@@ -9,7 +9,7 @@
 #include <lux/engine/ecs/animation/components/FlipbookAnimationComponent.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/TextureAtlasAssets.hpp>
+#include <lux/engine/resource/asset/texture/TextureAtlasAssets.hpp>
 
 #include <cassert>
 #include <utility>

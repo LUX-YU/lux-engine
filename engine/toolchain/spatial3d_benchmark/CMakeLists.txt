@@ -21,6 +21,7 @@ if(NOT LUX_TARGET_OS STREQUAL "ANDROID")
             lux::engine::ecs::core
             lux::engine::resource::asset
             lux::engine::resource::description
+            lux::engine::content
             lux::engine::core::meta
     )
     if(TARGET ecs_meta AND

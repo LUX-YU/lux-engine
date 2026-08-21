@@ -7,7 +7,7 @@
 
 add_executable(
     animation_asset_test
-    animation_asset_test.cpp
+    animation/animation_asset_test.cpp
 )
 
 target_link_libraries(
@@ -27,7 +27,7 @@ target_include_directories(
 # skinned verts + indices + bounds, no-bounds, empty, and bad-magic rejection.
 add_executable(
     mesh_asset_test
-    mesh_asset_test.cpp
+    mesh/mesh_asset_test.cpp
 )
 
 target_link_libraries(

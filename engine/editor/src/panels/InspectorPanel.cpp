@@ -4,7 +4,7 @@
 #include <lux/engine/editor/scene/EditorScene.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>       // vfs->pathOf for tooltips
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>       // vfs->pathOf for tooltips
 
 #include <lux/engine/ui/AssetDragDrop.hpp>
 #include <lux/engine/ui/ReflectedFieldTable.hpp>   // drawReflectedFieldTable scaffold

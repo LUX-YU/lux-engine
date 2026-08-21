@@ -30,7 +30,7 @@
 #include <lux/engine/editor/thumbnail/ImageCodec.hpp>
 #include "thumbnail/PreviewWorldCommon.hpp"               // 预览世界共用装配件(批 2 提取)
 #include <lux/engine/editor/app/LuxEditor.hpp>            // EditorRenderInfra
-#include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
+#include <lux/engine/content/BuiltinAssetIds.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
@@ -264,7 +264,7 @@ namespace lux::editor
         auto host = std::make_unique<RuntimeHost>();
         host->render_size = render_size ? render_size : 256u;
         if (!parseBuiltinId(
-                lux::asset::kBuiltinSphereMeshIdStr,
+                lux::engine::content::kBuiltinSphereMeshIdStr,
                 host->sphere_mesh_id))
             return false;   // programmer error — the literal is compile-time
         // Mesh-instance creation requires a real material handle; nil is not a
@@ -272,12 +272,12 @@ namespace lux::editor
         // builtin white material, but never let a thumbnail job reach the
         // render bridge with an invalid material configuration.
         (void)parseBuiltinId(
-            lux::asset::kBuiltinPreviewGreyMaterialIdStr,
+            lux::engine::content::kBuiltinPreviewGreyMaterialIdStr,
             host->preview_grey_id);
         if (!assets_.hasAsset(host->preview_grey_id))
         {
             (void)parseBuiltinId(
-                lux::asset::kBuiltinWhitePbrMaterialIdStr,
+                lux::engine::content::kBuiltinWhitePbrMaterialIdStr,
                 host->preview_grey_id
             );
             if (!assets_.hasAsset(host->preview_grey_id))

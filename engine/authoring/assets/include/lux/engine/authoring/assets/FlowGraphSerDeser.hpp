@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/authoring/assets/FlowGraphAsset.hpp>
-#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <lux/engine/authoring/assets/visibility.h>
 
 namespace lux::authoring

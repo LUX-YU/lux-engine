@@ -178,6 +178,7 @@ component_add_transitive_commands(
     "find_package (lux-engine-core REQUIRED COMPONENTS meta)"
     "find_package (lux-engine-function REQUIRED COMPONENTS script_lua)"
     "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package(lux-engine-content REQUIRED COMPONENTS content)"
     "find_package (lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS project authoring_flowforge authoring_assets authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_spatial3d_scene_cook)"
@@ -206,6 +207,7 @@ target_link_libraries(
     lux::engine::function::script_lua
     lux::engine::core::meta
     lux::engine::resource::asset
+    lux::engine::content
     lux::engine::toolchain::toolchain_model_importer
     lux::engine::toolchain::toolchain_texture_importer
     lux::engine::core::serialization

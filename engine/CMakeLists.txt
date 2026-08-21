@@ -33,6 +33,10 @@ endif()
 # Stable Scene-domain contracts are configured before Runtime, Authoring, and
 # Toolchain so those layers share one identity vocabulary without depending on
 # a concrete Scene owner or scheduler.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/content/CMakeLists.txt)
+    add_subdirectory(content)
+endif()
+
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/scene/CMakeLists.txt)
     add_subdirectory(scene)
 endif()

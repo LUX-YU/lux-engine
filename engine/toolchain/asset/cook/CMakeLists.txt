@@ -26,8 +26,6 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
-    PRIVATE
-        ${PROJECT_SOURCE_DIR}/modules/resource/asset/pinclude
 )
 
 target_compile_definitions(

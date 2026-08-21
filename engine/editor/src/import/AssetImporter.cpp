@@ -1,22 +1,22 @@
 #include <lux/engine/editor/import/AssetImporter.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/AnimationClipAsset.hpp>
-#include <lux/engine/resource/asset/codecs/AnimationClipSerDeser.hpp>
+#include <lux/engine/resource/asset/animation/AnimationClipAsset.hpp>
+#include <lux/engine/resource/asset/animation/AnimationClipSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
-#include <lux/engine/resource/asset/codecs/MaterialSerDeser.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
-#include <lux/engine/resource/asset/codecs/MaterialInstanceSerDeser.hpp>
-#include <lux/engine/resource/asset/codecs/ScriptSerDeser.hpp>     // .lua -> SCRIPT asset
-#include <lux/engine/resource/asset/MeshAsset.hpp>
-#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/ModelAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceSerDeser.hpp>
+#include <lux/engine/resource/asset/script/ScriptSerDeser.hpp>     // .lua -> SCRIPT asset
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/toolchain/asset/model/ModelImporter.hpp>
-#include <lux/engine/resource/asset/SkeletonAsset.hpp>
-#include <lux/engine/resource/asset/codecs/SkeletonSerDeser.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
-#include <lux/engine/resource/asset/codecs/TextureCodec.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
+#include <lux/engine/resource/asset/texture/TextureSerDeser.hpp>
 #include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
 
@@ -272,7 +272,7 @@ namespace lux::editor
             // own info section), but writing the manifest LAST means a
             // crash mid-import leaves a manifest-free directory that
             // re-import can safely overwrite without orphan manifests.
-            lux::asset::TextureCodec          tex_ser(manager);
+            lux::asset::TextureSerDeser          tex_ser(manager);
             lux::asset::MeshSerDeser          mesh_ser(manager);
             lux::asset::SkeletonSerDeser      skel_ser(manager);
             lux::asset::AnimationClipSerDeser clip_ser(manager);

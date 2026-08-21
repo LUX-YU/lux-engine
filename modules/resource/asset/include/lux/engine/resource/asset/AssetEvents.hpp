@@ -11,7 +11,8 @@
  * 三个语义**互不混用**(热更新批4 定死的不变量):
  *   · AssetUnreferenced   —— 计数 1→0:没人要了,派生物(GPU 副本)回收;
  *   · AssetInvalidated    —— removeAsset 扩散(裁决七):对象没了,停发
- *                            load + M_Missing 换装兜底;账本不清;
+ *                            load + 宿主选择的 fallback/派生资源策略;
+ *                            账本不清;
  *   · AssetContentChanged —— 对象**还在**,内容换了(replaceAsset /
  *                            notifyContentChanged):派生副本按 revision
  *                            失配重建,不闪兜底、不动计数。

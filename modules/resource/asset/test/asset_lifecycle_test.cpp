@@ -13,7 +13,7 @@
 //=============================================================================
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
 #include <lux/engine/description/Skeleton.hpp>
 
 #include <iostream>

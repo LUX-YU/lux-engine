@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Asset.hpp"
+#include <lux/engine/resource/asset/Asset.hpp>
 #include "AssetRef.hpp"
-#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <cstdint>
 #include <functional>
 #include <memory>

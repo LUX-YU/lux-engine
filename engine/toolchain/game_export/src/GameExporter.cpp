@@ -3,11 +3,12 @@
 #include <lux/engine/authoring/project/Project.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/meta/Meta.hpp>
-#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
-#include <lux/engine/resource/asset/codecs/ScriptSerDeser.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
+#include <lux/engine/resource/asset/script/ScriptSerDeser.hpp>
 #include <lux/engine/scene/SceneAsset.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
@@ -1191,7 +1192,7 @@ namespace lux::toolchain
             ));
         }
 
-        auto pak_info = inspectPak(game_pak);
+        auto pak_info = lux::asset::inspectPak(game_pak);
         if (!pak_info)
         {
             return lux::cxx::unexpected(failure(

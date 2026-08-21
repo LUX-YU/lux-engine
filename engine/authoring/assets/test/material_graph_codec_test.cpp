@@ -22,7 +22,7 @@
 #include <lux/engine/authoring/assets/MaterialGraphDocument.hpp>
 #include <lux/engine/core/serialization/ByteIO.hpp>
 #include <lux/engine/authoring/assets/material/Nodes.hpp>   // rdesc graph data model
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
 
 #include <cstdint>
 #include <cstring>

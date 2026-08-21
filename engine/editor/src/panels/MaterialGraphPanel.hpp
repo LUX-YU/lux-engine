@@ -23,7 +23,7 @@
 #include <lux/engine/authoring/assets/material/MaterialGraph.hpp>
 #include <lux/engine/editor/framework/graphkit/GraphEditor.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>   // asset_id_t
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>   // MaterialInstanceData(实例模式编辑副本)
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>   // MaterialInstanceData(实例模式编辑副本)
 #include <lux/cxx/core/move_only_function.hpp>
 
 #include <array>

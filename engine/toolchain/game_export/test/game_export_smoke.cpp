@@ -1,14 +1,15 @@
 #include <lux/engine/toolchain/game_export/GameExporter.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
-#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
-#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/pak/PakAssetProvider.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/game/LaunchManifest.hpp>
 
@@ -374,7 +375,7 @@ int main()
         return 4;
     }
 
-    auto pak = lux::toolchain::inspectPak(cooked->game_pak);
+    auto pak = lux::asset::inspectPak(cooked->game_pak);
     const auto shader_entry = pak
         ? std::find_if(
               pak->entries.begin(),

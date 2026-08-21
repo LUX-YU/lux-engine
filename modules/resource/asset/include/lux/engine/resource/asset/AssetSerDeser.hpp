@@ -11,7 +11,7 @@
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <lux/engine/resource/asset/visibility.h>
 
-#include "Asset.hpp"
+#include <lux/engine/resource/asset/Asset.hpp>
 
 namespace lux::asset
 {

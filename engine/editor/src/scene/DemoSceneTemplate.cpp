@@ -69,10 +69,10 @@ namespace lux::editor
         // Parse the EditorBuiltins UUID literals — same IDs the editor's
         // AssetManager registers, so loading this scene later resolves.
         lux::asset::asset_id_t cube_id{}, plane_id{}, white_pbr_id{};
-        if (!parseUuid(lux::asset::kBuiltinCubeMeshIdStr, cube_id) ||
-            !parseUuid(lux::asset::kBuiltinPlaneMeshIdStr, plane_id) ||
+        if (!parseUuid(lux::engine::content::kBuiltinCubeMeshIdStr, cube_id) ||
+            !parseUuid(lux::engine::content::kBuiltinPlaneMeshIdStr, plane_id) ||
             !parseUuid(
-                lux::asset::kBuiltinWhitePbrMaterialIdStr,
+                lux::engine::content::kBuiltinWhitePbrMaterialIdStr,
                 white_pbr_id))
         {
             std::fprintf(stderr,

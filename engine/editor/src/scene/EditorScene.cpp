@@ -18,10 +18,10 @@
 #include <lux/engine/editor/scene/EditorTransient.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/pak/PakAssetProvider.hpp>
-#include <lux/engine/resource/asset/MeshAsset.hpp>
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/scene/SceneAsset.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>

@@ -63,8 +63,8 @@
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetEvents.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/pak/PakAssetProvider.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
@@ -233,8 +233,7 @@ namespace lux::game
                 static_cast<unsigned>(scene_codecs.error()));
             return false;
         }
-        application.assets = std::make_shared<lux::asset::AssetManager>(
-            *scene_codecs);
+        application.assets = std::make_shared<lux::asset::AssetManager>(*scene_codecs);
         auto vfs = std::make_shared<lux::asset::AssetVfs>();
         auto game_pak = lux::asset::PakAssetProvider::loadFromFile(
             application.config.game_pak_file

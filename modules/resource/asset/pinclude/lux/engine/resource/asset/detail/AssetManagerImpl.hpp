@@ -255,7 +255,7 @@ namespace lux::asset
         /// 同 id 换对象(文件监视/重导入的落点):旧对象析构,新对象顶入,
         /// bump + content_changed 广播。**不推 invalidated、不动 refcounts_**
         /// —— 对象一直在场,票照常有效,派生副本按 revision 失配重建即可,
-        /// 不闪 M_Missing。id 未注册返回 false(那是 registerAsset 的活)。
+        /// 不触发宿主 fallback。id 未注册返回 false(那是 registerAsset 的活)。
         bool replaceAsset(std::unique_ptr<LuxAsset> asset)
         {
             assertLedgerThread();

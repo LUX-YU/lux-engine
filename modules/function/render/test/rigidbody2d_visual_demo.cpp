@@ -62,7 +62,7 @@
 #include <lux/engine/ecs/script/backends/LuaScriptBackend.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/ScriptAsset.hpp>
+#include <lux/engine/resource/asset/script/ScriptAsset.hpp>
 #include <lux/engine/meta/Meta.hpp>
 
 #include <chrono>

@@ -14,11 +14,6 @@ target_link_libraries(
         lux::engine::authoring::authoring_assets
         lux::engine::toolchain::toolchain_asset_cook
 )
-target_include_directories(
-    asset_pak_test
-    PRIVATE ${PROJECT_SOURCE_DIR}/modules/resource/asset/pinclude
-)
-
 add_executable(flow_graph_codec_test flow_graph_codec_test.cpp)
 target_link_libraries(
     flow_graph_codec_test

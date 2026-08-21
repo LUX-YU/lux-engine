@@ -17,12 +17,12 @@
 #include <lux/engine/editor/AssetRegistry.hpp>
 #include <lux/engine/editor/thumbnail/ThumbnailService.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
-#include <lux/engine/resource/asset/codecs/MaterialInstanceSerDeser.hpp>
-#include <lux/engine/resource/asset/codecs/ScriptSerDeser.hpp>   // New-Script authoring
-#include <lux/engine/resource/asset/ModelAsset.hpp>       // A-4 describe: model meshes/skeleton
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceSerDeser.hpp>
+#include <lux/engine/resource/asset/script/ScriptSerDeser.hpp>   // New-Script authoring
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>       // A-4 describe: model meshes/skeleton
 #include <lux/engine/log/Log.hpp>
-#include <lux/engine/resource/asset/MeshAsset.hpp>        // A-4 describe: vert/index counts
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>        // A-4 describe: vert/index counts
 #include <lux/engine/ecs/script/systems/ScriptRegistry.hpp>   // A-5: cppScriptNames manifest
 
 #include <lux/engine/ui/SceneViewportPanel.hpp>

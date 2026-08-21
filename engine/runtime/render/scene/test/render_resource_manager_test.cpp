@@ -18,9 +18,9 @@
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
 
 #include <cstddef>
 #include <cstdio>
@@ -30,6 +30,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 using lux::asset::asset_id_t;
@@ -726,7 +727,8 @@ int main()
     // await→service.await(票据包成不透明 RAII),watch→watchInvalidation。
     {
         lux::meta::EntityRegistry reg;
-        lux::ecs::ResidencySubsystem glue(mgr);
+        const auto missing_id = mgr.generateUUID("test:missing-material");
+        lux::ecs::ResidencySubsystem glue(mgr, missing_id);
 
         auto wrapTicket = [](auto&& t)
         {
@@ -831,7 +833,6 @@ int main()
         }
 
         // 11i: 材质终败 → M_Missing 换装(实体变色不消失;原票保留可逆)。
-        const auto missing_id = lux::asset::builtinMissingMaterialId();
         mgr.registerAsset(makeAsset(missing_id));   // 兜底本体可上传
         const auto M3  = mgr.generateUUID();
         const auto BAD = mgr.generateUUID();        // 不注册、无 VFS → 异步终败
@@ -870,6 +871,65 @@ int main()
         check(!reg.all_of<lux::ecs::TextureGpuCacheComponent>(e1),
               "11m: 离场摘 cache 组件");
 
+        glue.detach();
+    }
+
+    // 11n: 通用 ECS consumer 未注入 fallback 时，原材质终败就地收束；
+    //      不得凭空请求任何引擎内置内容。
+    {
+        lux::meta::EntityRegistry reg;
+        lux::ecs::ResidencySubsystem glue(mgr);
+
+        std::unordered_map<asset_id_t, lux::ecs::ResidencyCallbacks::DeliverFn>
+            deliveries;
+        std::size_t material_requests = 0;
+        const lux::ecs::ResourceFailure terminal_failure{
+            lux::ecs::EResourceStage::LOAD,
+            lux::ecs::EFailureClass::TERMINAL,
+            "test terminal failure"};
+
+        lux::ecs::ResidencyCallbacks cbs;
+        cbs.await = [&](const asset_id_t& id,
+                        lux::ecs::ResidencyCallbacks::DeliverFn deliver)
+        {
+            deliveries.insert_or_assign(id, std::move(deliver));
+            return lux::ecs::ResidencyCallbacks::Ticket{};
+        };
+        cbs.request = [&](const asset_id_t& id, EResourceDomain domain)
+        {
+            const auto found = deliveries.find(id);
+            check(found != deliveries.end(),
+                  "11n: request 之前必须建立 await");
+            if (found == deliveries.end())
+                return;
+            auto deliver = found->second;
+            if (domain == EResourceDomain::MESH)
+            {
+                deliver((0x45ull << 32) | 1, nullptr);
+                return;
+            }
+            ++material_requests;
+            deliver(0, &terminal_failure);
+        };
+        cbs.watch_invalidation = [](auto)
+        { return lux::ecs::ResidencyCallbacks::Ticket{}; };
+        glue.setCallbacks(std::move(cbs));
+        glue.resolveMeshOf<TestMesh, &TestMesh::mesh, &TestMesh::mat>();
+
+        const auto mesh_id = mgr.generateUUID("test:nil-fallback-mesh");
+        const auto bad_id  = mgr.generateUUID("test:nil-fallback-material");
+        mgr.registerAsset(makeAsset(mesh_id));
+        const auto entity = reg.create();
+        reg.emplace<TestMesh>(entity, TestMesh{mesh_id, bad_id});
+        glue.attach(reg);
+        glue.drainResolvers(reg);
+
+        check(material_requests == 1,
+              "11n: nil fallback 只请求原材质，不请求默认资产");
+        check(!reg.all_of<lux::ecs::MeshGpuCacheComponent>(entity),
+              "11n: nil fallback 不伪造材质就绪结果");
+        check(!reg.all_of<lux::ecs::AssetStreamingStateComponent>(entity),
+              "11n: nil fallback 终败后清理流式状态");
         glue.detach();
     }
 

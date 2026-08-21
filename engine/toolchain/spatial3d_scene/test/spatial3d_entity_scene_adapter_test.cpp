@@ -20,7 +20,7 @@
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/meta/LuxObject.hpp>
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
-#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
 #include <lux/engine/spatial3d/SceneCatalog.hpp>

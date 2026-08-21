@@ -16,8 +16,8 @@
 #include <lux/engine/editor/thumbnail/ImageCodec.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/MeshAsset.hpp>
-#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
 #include <lux/engine/math/AABB.hpp>

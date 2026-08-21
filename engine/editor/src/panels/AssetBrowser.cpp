@@ -2,7 +2,7 @@
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>   // asset_magic_number_of
-#include <lux/engine/resource/asset/AssetVfs.hpp>        // vfs->pathOf for tooltips
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>        // vfs->pathOf for tooltips
 #include <lux/engine/ui/AssetDragDrop.hpp>
 #include <lux/engine/editor/panels/AssetTypeRegistry.hpp>   // type chip/glyph metadata
 #include <lux/engine/editor/thumbnail/ThumbnailService.hpp> // GRID view requestThumbnail

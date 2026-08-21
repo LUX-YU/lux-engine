@@ -25,38 +25,39 @@ add_component(
     NAMESPACE      lux::engine::resource
     OUTPUT_NAME    lux_engine_asset
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/AnimationClipAsset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/AssetCodecCatalog.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/AssetManager.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/AssetSerDeser.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/AssetVfs.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/MaterialAsset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/MaterialInstanceAsset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/MeshAsset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/ModelAsset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/ScriptAsset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/ShaderAsset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/SkeletonAsset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/TextureAsset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/TextureAtlasAssetValues.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/VirtualPath.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/AnimationClipDescriptionCodec.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/AnimationClipSerDeser.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/AssetSerDeserFactory.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/MaterialInstanceSerDeser.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/MaterialSerDeser.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/MeshDescriptionCodec.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/MeshSerDeser.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/ModelCodec.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/ScriptDescriptionCodec.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/ScriptSerDeser.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/ShaderSerDeser.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/SkeletonDescriptionCodec.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/SkeletonSerDeser.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/TextureAtlasAssets.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/codecs/TextureCodec.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/pak/PakAssetProvider.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/pak/PakCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetCodecCatalog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetSerDeser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetSerDeserFactory.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/animation/AnimationClipAsset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/animation/AnimationClipDescriptionCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/animation/AnimationClipSerDeser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/animation/SkeletonAsset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/animation/SkeletonDescriptionCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/animation/SkeletonSerDeser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/material/MaterialAsset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/material/MaterialInstanceAsset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/material/MaterialInstanceSerDeser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/material/MaterialSerDeser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/mesh/MeshAsset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/mesh/MeshDescriptionCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/mesh/MeshSerDeser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ModelAsset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/model/ModelSerDeser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/script/ScriptAsset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/script/ScriptDescriptionCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/script/ScriptSerDeser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/ShaderAsset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/shader/ShaderSerDeser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/AssetVfs.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/VirtualPath.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakArchive.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakAssetProvider.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/pak/PakCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/texture/TextureAsset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/texture/TextureAtlasAssets.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/texture/TextureAtlasAssetValues.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/texture/TextureSerDeser.cpp
 )
 
 component_include_directories(
@@ -74,6 +75,7 @@ target_link_libraries(
     asset
     PUBLIC
         stduuid
+        lux::cxx::algorithm
         lux::cxx::compile_time
         lux::cxx::memory
         lux::engine::core::math
@@ -81,7 +83,6 @@ target_link_libraries(
         lux::engine::core::serialization
         lux::engine::resource::description
     PRIVATE
-        lux::cxx::algorithm
         lux::cxx::core
         lux::cxx::reflection_runtime
 )
@@ -116,6 +117,36 @@ target_link_libraries(
 )
 lux_classify_target(
     TARGET  asset_codec_catalog_test
+    LAYER   RESOURCE
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+
+add_executable(
+    pak_archive_public_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/storage/pak_archive_public_test.cpp
+)
+target_link_libraries(
+    pak_archive_public_test
+    PRIVATE lux::engine::resource::asset
+)
+lux_classify_target(
+    TARGET  pak_archive_public_test
+    LAYER   RESOURCE
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+
+add_executable(
+    asset_public_link_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/asset_public_link_test.cpp
+)
+target_link_libraries(
+    asset_public_link_test
+    PRIVATE lux::engine::resource::asset
+)
+lux_classify_target(
+    TARGET  asset_public_link_test
     LAYER   RESOURCE
     PRODUCT TEST
     ROLE    DOMAIN

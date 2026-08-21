@@ -60,8 +60,8 @@
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
-#include <lux/engine/resource/asset/TextureAtlasAssets.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
+#include <lux/engine/resource/asset/texture/TextureAtlasAssets.hpp>
 #include <lux/engine/description/Texture.hpp>
 #include <lux/engine/description/TextureAtlas.hpp>
 #include <lux/engine/meta/Meta.hpp>

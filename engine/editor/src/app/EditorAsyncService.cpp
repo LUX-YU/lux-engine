@@ -3,7 +3,7 @@
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/scene/SceneAsset.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>

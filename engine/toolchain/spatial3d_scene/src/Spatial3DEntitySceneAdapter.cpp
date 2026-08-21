@@ -23,8 +23,8 @@
 #include <lux/engine/ecs/terrain/components/TerrainTileComponent.hpp>
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
-#include <lux/engine/resource/asset/codecs/AssetCodecCatalog.hpp>
-#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
 #include <lux/engine/spatial3d/SceneCatalog.hpp>

@@ -12,14 +12,14 @@
 #include <lux/engine/description/Texture.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
+#include <lux/engine/content/BuiltinAssetIds.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
 #include <lux/engine/scene/SceneAsset.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
-#include <lux/engine/resource/asset/codecs/MaterialSerDeser.hpp>
-#include <lux/engine/resource/asset/codecs/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/codecs/SkeletonSerDeser.hpp>
-#include <lux/engine/resource/asset/codecs/TextureCodec.hpp>
+#include <lux/engine/resource/asset/material/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/texture/TextureSerDeser.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
 
@@ -564,7 +564,7 @@ namespace
             return lux::cxx::unexpected(
                 lux::asset::EAssetError::ASSET_DESERIALIZE_FAIL);
         }
-        return lux::asset::TextureCodec::encodeData(id, *texture);
+        return lux::asset::TextureSerDeser::encodeData(id, *texture);
     }
 
     /// Toolchain must not link ECS merely to construct benchmark Authoring

@@ -18,7 +18,6 @@
 
 #include <lux/engine/resource/asset/Asset.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
-#include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/toolchain/asset/cook/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -130,31 +129,5 @@ namespace lux::toolchain
         std::vector<PakCookFileEntry> entries,
         const std::filesystem::path& out_pak,
         std::string_view mount_hint = "/Game");
-
-    /// One row of inspectPak output (public-friendly mirror of the codec's
-    /// entry + its PATH row, joined).
-    struct PakInspectEntry
-    {
-        lux::asset::asset_id_t id{};
-        std::uint32_t magic_number{0u};
-        std::string   vpath;            ///< Mount-relative; empty if none.
-        std::uint64_t offset{ 0 };
-        std::uint64_t size{ 0 };
-        std::uint8_t  compression{ 0 };
-        bool          tombstone{ false };
-        lux::cxx::algorithm::Sha256Digest content_digest;
-    };
-
-    struct PakInspectInfo
-    {
-        std::string                  mount_hint;
-        std::vector<PakInspectEntry> entries;   ///< uuid-ascending.
-    };
-
-    /// Read + validate a pak's index for display (lux_asset_packer
-    /// `pak-inspect`). Never touches payload bytes.
-    [[nodiscard]] LUX_ENGINE_TOOLCHAIN_ASSET_COOK_PUBLIC
-    lux::cxx::expected<PakInspectInfo, std::string>
-    inspectPak(const std::filesystem::path& pak_path);
 
 } // namespace lux::toolchain

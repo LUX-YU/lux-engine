@@ -1,6 +1,6 @@
 #include <lux/engine/authoring/assets/LooseAssetProvider.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
-#include <lux/engine/resource/asset/VirtualPath.hpp>
+#include <lux/engine/resource/asset/storage/VirtualPath.hpp>
 
 #include <algorithm>
 #include <lux/cxx/core/Format.hpp>

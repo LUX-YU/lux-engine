@@ -10,8 +10,8 @@
 #include "lux/engine/ecs/render/components/3d/SkeletalMeshComponent.hpp"
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/SkeletonAsset.hpp>
-#include <lux/engine/resource/asset/AnimationClipAsset.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/animation/AnimationClipAsset.hpp>
 
 #include <cassert>
 #include <utility>

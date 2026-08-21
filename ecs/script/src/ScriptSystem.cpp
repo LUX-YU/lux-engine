@@ -19,7 +19,7 @@
 #include <lux/engine/ecs/World.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>   // SCRIPT asset resolution
-#include <lux/engine/resource/asset/ScriptAsset.hpp>
+#include <lux/engine/resource/asset/script/ScriptAsset.hpp>
 
 #include <cstdio>
 #include <span>

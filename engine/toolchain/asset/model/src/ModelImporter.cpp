@@ -1,12 +1,11 @@
 #include <lux/engine/toolchain/asset/model/ModelImporter.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 // (MaterialAsset.hpp + MaterialConverter.hpp dropped in W5b — the importer emits
 //  ImportedMaterialDesc PODs; no closure rdesc::Material is produced.)
-#include <lux/engine/resource/asset/SkeletonAsset.hpp>
-#include <lux/engine/resource/asset/AnimationClipAsset.hpp>
-#include <lux/engine/resource/asset/detail/AssetManagerImpl.hpp>
-
+#include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/animation/AnimationClipAsset.hpp>
 #include <algorithm>
 #include <unordered_map>
 #include <charconv>

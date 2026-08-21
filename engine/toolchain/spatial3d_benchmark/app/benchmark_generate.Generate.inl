@@ -119,15 +119,15 @@
             std::fprintf(stderr, "cannot encode benchmark Skeleton\n");
             return 1;
         }
-        std::array<uuids::uuid, 1u + lux::asset::kBuiltinEmissiveCount>
+        std::array<uuids::uuid, 1u + lux::engine::content::kBuiltinEmissiveCount>
             benchmark_materials{};
         benchmark_materials[0] = uuids::uuid::from_string(
-            lux::asset::kBuiltinWhitePbrMaterialIdStr).value();
+            lux::engine::content::kBuiltinWhitePbrMaterialIdStr).value();
         for (std::size_t index = 0u;
-             index < lux::asset::kBuiltinEmissiveCount; ++index)
+             index < lux::engine::content::kBuiltinEmissiveCount; ++index)
         {
             benchmark_materials[index + 1u] = uuids::uuid::from_string(
-                lux::asset::kBuiltinEmissiveIdStrs[index]).value();
+                lux::engine::content::kBuiltinEmissiveIdStrs[index]).value();
         }
         constexpr std::array<std::array<float, 3u>, 9u>
             showcase_material_colors{{
@@ -302,7 +302,7 @@
             if (!addMaterial(benchmark_materials[0], "M_WhitePbr.luxasset"))
                 return 1;
             for (std::size_t index = 0u;
-                 index < lux::asset::kBuiltinEmissiveCount; ++index)
+                 index < lux::engine::content::kBuiltinEmissiveCount; ++index)
             {
                 if (!addMaterial(
                         benchmark_materials[index + 1u],
@@ -314,7 +314,7 @@
             }
             if (!addMaterial(
                     uuids::uuid::from_string(
-                        lux::asset::kBuiltinMissingMaterialIdStr).value(),
+                        lux::engine::content::kBuiltinMissingMaterialIdStr).value(),
                     "M_Missing.luxasset"))
             {
                 return 1;
@@ -538,7 +538,7 @@
                                 (random_key % 23u == 0u)
                                     ? 1u + static_cast<std::size_t>(
                                         mix(random_key) %
-                                        lux::asset::kBuiltinEmissiveCount)
+                                        lux::engine::content::kBuiltinEmissiveCount)
                                     : 0u;
                             instance.material_instance =
                                 benchmark_materials[material_variant];

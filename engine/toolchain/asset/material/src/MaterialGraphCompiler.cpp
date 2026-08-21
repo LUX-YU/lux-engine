@@ -5,8 +5,8 @@
 #include <lux/engine/authoring/assets/material/Nodes.hpp>
 #include <lux/engine/toolchain/shader/Backend.hpp>
 #include <lux/engine/toolchain/asset/material/MaterialShaderPaths.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/codecs/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/authoring/assets/MaterialGraphDocument.hpp>
 

@@ -5,8 +5,8 @@
 //  belongs to the immutable product-composed AssetCodecCatalog.
 // ============================================================================
 
-#include "Asset.hpp"          // EAssetType, asset_id_t
-#include "AssetSerDeser.hpp"  // AssetFileHeader, asset_magic_number_of
+#include <lux/engine/resource/asset/Asset.hpp>          // EAssetType, asset_id_t
+#include <lux/engine/resource/asset/AssetSerDeser.hpp>  // AssetFileHeader, asset_magic_number_of
 
 #include <cstdint>
 #include <filesystem>

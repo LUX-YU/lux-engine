@@ -19,7 +19,14 @@ component_include_directories(
 target_link_libraries(
     toolchain_builtin_content
     INTERFACE
+        lux::engine::content
         lux::engine::resource::description
+)
+
+component_add_transitive_commands(
+    toolchain_builtin_content
+    "find_package(lux-engine-content REQUIRED COMPONENTS content)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 
 add_subdirectory(baker)

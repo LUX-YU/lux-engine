@@ -7,8 +7,8 @@
 #include <lux/engine/runtime/render/scene/detail/residency/OwnerReplyReaper.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/runtime/execution/AsyncCallbackSender.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>

@@ -1,6 +1,6 @@
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
-#include <lux/engine/resource/asset/VirtualPath.hpp>
+#include <lux/engine/resource/asset/storage/VirtualPath.hpp>
 
 #include <algorithm>
 #include <string>

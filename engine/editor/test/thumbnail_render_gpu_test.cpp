@@ -44,11 +44,11 @@
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
-#include <lux/engine/resource/asset/ModelAsset.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>
 #include <lux/engine/authoring/assets/material/MaterialGraph.hpp>
 #include <lux/engine/authoring/assets/material/Nodes.hpp>
 #include <lux/engine/toolchain/asset/material/MaterialGraphCompiler.hpp>
@@ -214,10 +214,10 @@ int main(int argc, char** argv)
             check(builtins.registerInto(mgr), "EditorBuiltins::registerInto");
         }
         auto id = [](const char* s){ return uuids::uuid::from_string(s).value(); };
-        const auto cube_id = id(lux::asset::kBuiltinCubeMeshIdStr);
-        const auto sphere_id = id(lux::asset::kBuiltinSphereMeshIdStr);
+        const auto cube_id = id(lux::engine::content::kBuiltinCubeMeshIdStr);
+        const auto sphere_id = id(lux::engine::content::kBuiltinSphereMeshIdStr);
         const auto white_id = id(
-            lux::asset::kBuiltinWhitePbrMaterialIdStr);
+            lux::engine::content::kBuiltinWhitePbrMaterialIdStr);
 
         const char* kTexId   = "00000000-0000-4000-8000-a00000000003";
         const char* kModelId = "00000000-0000-4000-8000-a00000000004";

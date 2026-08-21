@@ -2,8 +2,8 @@
 
 #include <lux/engine/authoring/assets/MaterialGraphCodec.hpp>
 #include <lux/engine/authoring/assets/MaterialGraphDocument.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/codecs/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialSerDeser.hpp>
 
 #include <algorithm>
 #include <array>

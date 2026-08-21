@@ -15,8 +15,6 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     INSTALL_TIME
         include
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/modules/resource/asset/pinclude
 )
 
 target_link_libraries(

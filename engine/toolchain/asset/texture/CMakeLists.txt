@@ -35,7 +35,6 @@ component_include_directories(
     INSTALL_TIME
         include
     PRIVATE
-        ${CMAKE_SOURCE_DIR}/modules/resource/asset/pinclude
         ${STB_SOURCE_DIR}
         ${BC7ENC_SOURCE_DIR}
 )

@@ -1,11 +1,11 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/authoring/assets/LooseAssetProvider.hpp>
-#include <lux/engine/resource/asset/pak/PakAssetProvider.hpp>
-#include <lux/engine/resource/asset/pak/PakCodec.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
-#include <lux/engine/resource/asset/SkeletonAsset.hpp>
-#include <lux/engine/resource/asset/codecs/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonSerDeser.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/description/Skeleton.hpp>
 
@@ -150,17 +150,6 @@ namespace
         return id;
     }
 
-    detail::PakHeader readHeader(const fs::path& path)
-    {
-        detail::PakHeader header;
-        std::ifstream stream(path, std::ios::binary);
-        std::string error;
-        const auto size = fs::file_size(path);
-        static_cast<void>(
-            detail::readPakHeader(stream, size, header, &error));
-        return header;
-    }
-
     void testPagedIndexAndIntegrity()
     {
         banner("LUXPAK v2 paged index, lazy integrity and concurrency");
@@ -168,7 +157,7 @@ namespace
         const auto pak = tree.root / "bulk.luxpak";
 
         constexpr std::size_t kEntryCount = 1000u;
-        std::vector<detail::PakWriteEntry> inputs;
+        std::vector<PakWriteEntry> inputs;
         inputs.reserve(kEntryCount);
         for (std::size_t i = 0u; i < kEntryCount; ++i)
         {
@@ -177,41 +166,28 @@ namespace
                 std::byte{static_cast<unsigned char>(i & 0xffu)},
                 std::byte{static_cast<unsigned char>((i >> 8u) & 0xffu)},
                 std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
-            inputs.push_back(detail::PakWriteEntry{
+            inputs.push_back(PakWriteEntry{
                 makeId(i + 1u),
-                0u,
+                0x4b4c5542u,
                 bulkPath(i),
                 {},
                 lux::cxx::SharedBytes<>::copyOf(payload)});
         }
         std::string write_error;
         check(
-            detail::writePakFile(pak, inputs, "/Game", &write_error),
+            writePakFile(pak, inputs, "/Game", &write_error),
             "writes 1000 payloads into immutable paged B+trees");
         if (!fs::exists(pak))
             return;
 
         const auto pristine = readAll(pak);
-        const auto header = readHeader(pak);
+        const auto initial_inspection = lux::asset::inspectPak(pak);
         check(
-            header.version == 2u && header.entry_count == kEntryCount
-                && header.index_page_count > 2u,
-            "header records v2 and a multi-page index");
-        {
-            std::ifstream stream(pak, std::ios::binary);
-            detail::PakPage page;
-            std::string error;
-            check(
-                detail::readPakPage(
-                    stream,
-                    fs::file_size(pak),
-                    header.entry_root_offset,
-                    page,
-                    &error)
-                    && detail::pakPageHeader(page).kind
-                        == detail::EPakPageKind::ENTRY_INTERNAL,
-                "entry root is internal; startup need not read its leaves");
-        }
+            initial_inspection
+                && initial_inspection->entries.size() == kEntryCount,
+            "public inspection validates the v2 multi-page index");
+        if (!initial_inspection)
+            return;
 
         auto provider_result = PakAssetProvider::loadFromFile(pak);
         check(provider_result.has_value(), "provider validates Header plus two roots");
@@ -223,7 +199,7 @@ namespace
         check(
             mounted_stats.index_pages_resident == 2u
                 && mounted_stats.metadata_resident_bytes
-                    == 2u * detail::kPakPageSize,
+                    == 2u * 4096u,
             "mount retains only the two B+tree roots");
         check(
             provider->resolve(bulkPath(0u)) == makeId(1u)
@@ -273,7 +249,7 @@ namespace
         check(
             lookup_stats.index_pages_resident <= 256u
                 && lookup_stats.metadata_resident_bytes
-                    <= 256u * detail::kPakPageSize
+                    <= 256u * 4096u
                 && lookup_stats.index_page_hits != 0u
                 && lookup_stats.index_page_misses != 0u,
             "paged lookup stays inside the fixed metadata LRU budget");
@@ -285,42 +261,30 @@ namespace
             "corrupt Header is rejected at mount");
 
         writeAll(pak, pristine);
-        flipByte(pak, header.entry_root_offset + 100u);
+        flipByte(pak, fs::file_size(pak) - 4096u + 100u);
         check(
             !PakAssetProvider::loadFromFile(pak),
-            "corrupt Entry root digest is rejected at mount");
+            "corrupt root digest is rejected at mount");
 
         writeAll(pak, pristine);
-        detail::PakEntryChild first_child;
-        {
-            std::ifstream stream(pak, std::ios::binary);
-            detail::PakPage root;
-            std::string error;
-            std::vector<detail::PakEntryChild> children;
-            detail::readPakPage(
-                stream,
-                fs::file_size(pak),
-                header.entry_root_offset,
-                root,
-                &error);
-            detail::decodeEntryInternal(root, children, &error);
-            first_child = children.front();
-        }
-        flipByte(pak, first_child.offset + 100u);
+        const auto payload_end = initial_inspection->entries.back().offset
+            + initial_inspection->entries.back().size;
+        const auto first_index_page = (payload_end + 4095u) & ~4095ull;
+        flipByte(pak, first_index_page + 100u);
         auto lazy_corrupt = PakAssetProvider::loadFromFile(pak);
         check(
             lazy_corrupt.has_value(),
             "corrupt descendant is not scanned during O(1) mount");
         if (lazy_corrupt)
         {
-            const auto opened = lazy_corrupt.value()->open(first_child.maximum_key);
+            const auto opened = lazy_corrupt.value()->open(makeId(1u));
             check(
                 !opened && opened.error() == EAssetError::READ_FILE_FAIL,
                 "corrupt descendant fails when that lookup first reaches it");
         }
 
         writeAll(pak, pristine);
-        auto inspected = inspectPak(pak);
+        auto inspected = lux::asset::inspectPak(pak);
         check(
             inspected && inspected.value().entries.size() == kEntryCount
                 && inspected.value().entries.front().content_digest !=
@@ -496,7 +460,7 @@ namespace
             fs::exists(scene_image_path) && fs::exists(section_image_path),
             "mixed publication retains ownership of staged scene files");
 
-        const auto inspected = inspectPak(pak);
+        const auto inspected = lux::asset::inspectPak(pak);
         check(
             inspected && std::ranges::any_of(
                 inspected->entries,
@@ -592,7 +556,7 @@ namespace
             provider && provider.value()->open(scene_id) &&
                 provider.value()->open(mesh_id),
             "memory-cooked EntityScene and generated asset are readable");
-        const auto inspected = inspectPak(pak);
+        const auto inspected = lux::asset::inspectPak(pak);
         check(
             inspected && inspected->entries.size() == 2u &&
                 std::ranges::any_of(

@@ -28,11 +28,11 @@
 #include "thumbnail/PreviewWorldCommon.hpp"
 
 #include <lux/engine/editor/app/LuxEditor.hpp>            // EditorRenderInfra
-#include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
+#include <lux/engine/content/BuiltinAssetIds.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetEvents.hpp>   // AssetUnreferenced(批E 订阅)
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
 #include <lux/engine/ecs/render/RenderResourceEvents.hpp>
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>          // 进程域驻留三件套(贴图槽解析)
@@ -164,12 +164,12 @@ namespace lux::editor
         auto host = std::make_unique<Host>();
         host->cur_w = host->cur_h = render_size ? render_size : 512u;
         if (!parseBuiltinId(
-                lux::asset::kBuiltinSphereMeshIdStr,
+                lux::engine::content::kBuiltinSphereMeshIdStr,
                 host->sphere_mesh_id))
             return false;   // programmer error — the literal is compile-time
         // 预览灰缺席不致命:球以 nil 材质起步(渲染侧默认),首刀落地后无差异。
         (void)parseBuiltinId(
-            lux::asset::kBuiltinPreviewGreyMaterialIdStr,
+            lux::engine::content::kBuiltinPreviewGreyMaterialIdStr,
             host->preview_grey_id);
         if (!assets_.hasAsset(host->preview_grey_id))
             host->preview_grey_id = {};

@@ -1,4 +1,4 @@
-#include <lux/engine/resource/asset/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/runtime/assets/AssetLoadSenders.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>

@@ -21,8 +21,8 @@
 #include <lux/engine/runtime/execution/AsyncScope.hpp>
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>
 #include <lux/engine/authoring/assets/material/MaterialGraph.hpp>
 
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>

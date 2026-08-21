@@ -42,8 +42,8 @@
 #include "graph_test_helpers.hpp"
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/codecs/TextureCodec.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
+#include <lux/engine/resource/asset/texture/TextureSerDeser.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 
 #include <lux/engine/window/LuxWindow.hpp>
 #include <GLFW/glfw3.h>
@@ -373,7 +373,7 @@ static RenderTask<void> stressTask(
     // Load the texture .luxasset (packed by CMake alongside shaders)
     auto tex_mgr = std::make_shared<lux::asset::AssetManager>(
         lux::asset::runtimeAssetCodecCatalog());
-    lux::asset::TextureCodec tex_ser(tex_mgr);
+    lux::asset::TextureSerDeser tex_ser(tex_mgr);
     auto tex_res = tex_ser.fromLuxAsset(asset_dir / "textures" / "blue_nebulae_1.luxasset");
     if (!tex_res)
         throw std::runtime_error("Failed to load skybox texture");

@@ -42,8 +42,11 @@ Core Meta 只拥有通用反射描述、查询和生成模型：
 - external 非侵入类型继续使用 `is_reflected_value_v<T>`；
 - parent chain 只包含实际标注的反射基类，不注入虚构根类。
 
-Core Serialization 可继续 PUBLIC 使用通用 `RefClass/RefField`，但 installed closure 不再查找
-EnTT。Asset 删除 Core Meta 依赖，Core Serialization 仅作为 Asset PRIVATE 实现依赖。
+本 ADR 接受时曾允许 Core Serialization PUBLIC 使用通用 `RefClass/RefField`；该局部裁决已被
+后续 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md` 取代。当前 Core
+Serialization 只保留 byte Archive/NameTable，不再依赖 Meta 或 Eigen；反射归 ECS
+`component_archive`。Asset 删除 Core Meta 依赖，Core Serialization 仅作为 Asset PRIVATE
+实现依赖。
 
 ## 4. CMake 与验收边界
 

@@ -1,6 +1,6 @@
 # LUX Engine 重构执行文档 v2 合订本
 
-基线：Core Serialization / ECS Component Archive 施工基线 `6906ccc2`
+基线：Component Archive 实施提交 `d1ead288`（施工基线 `6906ccc2`）
 
 > 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明、现行 ADR 及既有验收证据机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
 
@@ -28,6 +28,7 @@
 - `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`
 - `evidence/asset-domain-cohesion-f35e245a.md`
 - `evidence/asset-pipeline-core-meta-fe4422ba.md`
+- `evidence/core-serialization-ecs-component-archive-6906ccc2.md`
 
 ---
 
@@ -1034,6 +1035,8 @@ Extension ABI 不属于公共 Asset/Core 版本；它由 `lux-engine-extension-s
 
 > **2026-08-21 实施状态：** 上述 Meta/Registry 裁决已完成。Core Meta/Serialization installed consumer 不导入 EnTT；ECS-owned adapter 承担 EnTT component 操作，旧 Meta Registry 与 OO 根类已归零。
 
+> **2026-08-21 Serialization 实施状态：** `d1ead288` 已将 reflected tagged archive 整体迁入 ECS `component_archive`。Core Serialization 只导出 Archive/NameTable，安装闭包不含 Meta 或 Eigen；旧 Core 头与 namespace 已删除。
+
 
 ## 1. 施工范围
 
@@ -1065,7 +1068,7 @@ modules/platform/window
 | `modules/core/meta/include/lux/engine/meta/LuxObject.hpp` | `ecs/core/include/lux/ecs/EntityRegistry.hpp` and optional `EntityObject.hpp` | SPLIT |
 | `modules/core/meta/include/lux/engine/meta/Meta*.hpp` | `lux-cxx::reflection_runtime` or temporary `engine/reflection` | SPLIT |
 | `modules/core/meta/cmake/engine_add_meta.cmake` | `cmake/Codegen/Reflection.cmake` | MOVE |
-| `modules/core/serialization/src/TaggedPropertyArchive.cpp` | entire reflected Component Archive to `ecs/serialization`; Core retains Archive/NameTable | MOVE/DELETE |
+| `modules/core/serialization/src/TaggedPropertyArchive.cpp`（已删除） | `ecs/serialization` Component Archive；Core 保留 Archive/NameTable | DONE — MOVE/DELETE |
 | `modules/resource/spatial/include/.../Spatial.hpp` | `modules/core/math/include/lux/math/Position.hpp` and `Grid.hpp` | MOVE |
 | `modules/platform/common/include/.../AtomicWait.hpp` | `lux-cxx::concurrent` or `modules/core/concurrency` | MOVE |
 | `modules/platform/common/FormatCompat.h.in` | `lux-cxx::format` or `modules/core/format` | MOVE |
@@ -2571,7 +2574,8 @@ public:
 
 ## 4. Animation 解耦
 
-当前 `animation` PUBLIC 依赖 `asset_core`。目标函数直接操作 Description：
+历史基线中 `animation` PUBLIC 依赖 `asset_core`；`d1ead288` 已改为直接依赖
+Description 与 Math。目标函数直接操作 Description：
 
 ```cpp
 Pose sample(
@@ -2581,7 +2585,7 @@ Pose sample(
     Scratch&);
 ```
 
-ECS `AnimationSystem` 与 Engine AssetStore 负责：
+ECS `AnimationSystem` 与现有 Engine Runtime 资产编排负责：
 
 ```text
 AssetHandle → Skeleton/AnimationClip value → lux::animation::sample()
@@ -2596,14 +2600,14 @@ modules/function/animation/CMakeLists.txt
 移除：
 
 ```text
-lux::engine::resource::asset_core
+lux::engine::resource::asset
 ```
 
 新增：
 
 ```text
-lux::description
-lux::math
+lux::engine::resource::description
+lux::engine::core::math
 ```
 
 ## 5. Navigation 解耦
@@ -2830,6 +2834,8 @@ cmake/Codegen/ShaderParams.cmake
 > **2026-08-21 实施状态：** Registry/资产需求裁决已完成。ECS Core installed consumer 不导入 Resource Asset；Animation Resolver 与 Script request system 均由 Runtime integration 私有拥有，ECS production 不执行同步资产 IO。
 
 > **2026-08-21 Component Archive 裁决：** Reflection-driven tagged-property archive 整体归 `ecs/serialization` 的 `component_archive` component；Core 只保留 byte Archive/NameTable。不建立 RegistryArchive，Unknown Component schema 在 Authoring/Toolchain/Runtime 均拒绝。详见 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`。
+
+> **2026-08-21 Component Archive 实施状态：** `d1ead288` 已建立详细 expected/limits、compatible/exact reader 与 UUID annotation 语义；LXWA/LXES/Persistence/L3SC/Infinite2D owner 契约和 installed consumer 均通过。
 
 
 ## 1. 当前问题
@@ -5367,6 +5373,8 @@ lux_editor_product
 
 > **2026-08-21 Profile 修订：** `LUX_BUILD_PROFILE` 仍只有 DEVELOPER/PLAYER/EDITOR/TOOLCHAIN；不创建文中历史 `MODULES_SDK` Profile。Modules 包边界改由 installed consumers 验证，旧 alias/forwarding 迁移要求由“一次迁移并删除旧 API”的现行规则取代。
 
+> **2026-08-21 Serialization 安装事实：** `lux-engine-core COMPONENTS serialization` 的导出闭包只有 binary/stduuid；`lux-engine-ecs COMPONENTS component_archive` 独立导出且不含 Resource/Engine。旧 Core TaggedPropertyArchive 头不再安装。
+
 
 ## 1. 目标
 
@@ -5897,6 +5905,8 @@ legacy scan
 > **2026-08-20 验收更新：** AssetStore/新 Asset ID 测试目标不再施工。新增 Scene Asset outer-header/legacy LXSC、Catalog magic 冲突、显式 boot Scene、ECS 领域 Payload owner 与安装反向查找契约；内部 LXSC/LXES/LXTT/LXTC/LXPC Golden 必须保持不变。详见 `ADR-20260820_SceneAsset与Resource边界.md`。
 
 > **2026-08-21 验收更新：** 增加 manager-less 全资产 decode、同步/异步等价、shell 替换账本不变、Runtime 无同步 IO、Registry owner 与 Meta installed closure 契约。Modules 独立性不通过新增 Profile 验证，而通过现有安装包的独立 consumer 验证。
+
+> **2026-08-21 Component Archive 验收：** Core byte archive、ECS Component Archive、Unknown Component 三路径、资产 UUID annotation 与 Function Animation 闭包已经 owner/installed consumer 验证；四 Profile 全量与第二轮 no-op 通过。当前构建树仍未注册 CTest 条目，因此不得把“0 tests”写成 CTest 覆盖。
 
 
 ## 1. 总体策略
@@ -6627,12 +6637,12 @@ BUILD-03..FINAL
 - [ ] `CORE-017` 把 Extension reflection publication 移入 Engine。
 - [ ] `CORE-018` 移动 `engine_add_meta.cmake` 到 Build Tool 目录。
 - [x] `CORE-019` 确认 Runtime targets 不 PUBLIC 链接 meta generator。 **完成：安装与 Profile 闭包验证未通过 Runtime PUBLIC 边传播生成器。**
-- [ ] `CORE-020` 拆分 Serialization 基础 archive 与 reflected adapter。
+- [x] `CORE-020` 拆分 Serialization 基础 archive 与 reflected adapter。
 - [x] `CORE-021` 从 `lux::serialization` PUBLIC 依赖移除 EnTT。 **完成：Core Meta/Serialization 源码、链接与 installed consumer 闭包均无 EnTT。**
-- [ ] `CORE-022` 从 `lux::serialization` PUBLIC 依赖移除 Engine Reflection。
-- [ ] `CORE-023` 建立 ECS Component Archive adapter。
+- [x] `CORE-022` 从 `lux::serialization` PUBLIC 依赖移除 Engine Reflection。
+- [x] `CORE-023` 建立 ECS Component Archive adapter。
 - [ ] `CORE-024` 建立 Registry Archive adapter。 **SUPERSEDED：不序列化 `entt::registry`；使用 `EntitySectionImage -> EntityBatchStager -> Registry` staged materialization。**
-- [ ] `CORE-025` 补充 Serialization truncation/unknown-field tests。
+- [x] `CORE-025` 补充 Serialization truncation/unknown-field tests。
 - [ ] `CORE-026` 补充 Reflection draft commit/rollback tests。
 - [ ] `CORE-027` 补充 Entity Registry memory tests。
 ## M1：Platform 清理
@@ -6750,8 +6760,8 @@ BUILD-03..FINAL
 - [ ] `FUNC-003` 建立 GLFW Input Adapter。
 - [ ] `FUNC-004` 保留 ActionMapper/Context 的领域逻辑。
 - [ ] `FUNC-005` 评估是否提供统一 `Input` façade。
-- [ ] `FUNC-006` 让 animation 直接依赖 Description/Math。
-- [ ] `FUNC-007` 移除 animation 对 Asset Core 的依赖。
+- [x] `FUNC-006` 让 animation 直接依赖 Description/Math。
+- [x] `FUNC-007` 移除 animation 对 Asset Core 的依赖。
 - [x] `FUNC-008` 让 navigation 依赖 Math 而非 resource/spatial。 **完成：Navigation Core 与 Detour3D 直接 include/link Core Math，安装传递依赖不再查找 Resource spatial。**
 - [ ] `FUNC-009` 保留 navigation_detour3d 独立 backend。
 - [ ] `FUNC-010` 将 `ScriptHost` 重命名为 `ScriptRuntime`。
@@ -6782,7 +6792,7 @@ BUILD-03..FINAL
 - [x] `ECS-011` 确认 topology/prerequisite tests 未变。 **完成（审计保持）：拓扑、prerequisite 与 phase 编译路径未改变。**
 - [x] `ECS-012` 确认 SystemUpdateContext 未新增 service locator。 **完成（审计保持）：`SystemUpdateContext` 未引入 Runtime 或 Service Locator。**
 - [x] `ECS-013` 保留 SceneServices 装配期语义。 **完成（审计保持）：`SceneServices` 仍只承担装配期类型化服务语义。**
-- [ ] `ECS-014` 创建 `ecs/serialization`。
+- [x] `ECS-014` 创建 `ecs/serialization`。
 - [x] `ECS-015` 创建 `ecs/scene_format`。 **完成：新增真实 target `lux::engine::ecs::scene_format`。**
 - [x] `ECS-016` 移动 Section wire identifiers。 **完成：`EntitySectionId`、`PersistentEntityId`、内容 Blob 标识进入 ECS identity/scene_format。**
 - [x] `ECS-017` 移动 ComponentRecord/SectionImage。 **完成：LXES Section Schema、Archetype、Column、Relocation、Attachment 与 Image 进入 ECS Scene Format。**
@@ -6794,21 +6804,21 @@ BUILD-03..FINAL
 - [x] `ECS-023` 把 FeatureRequest 移到 Engine package。 **完成：`SceneFeatureRequest` 使用 `SceneFeatureId` 并位于 Engine Scene Package。**
 - [x] `ECS-024` 建立 legacy EntityScene split adapter。 **完成并退役：迁移期私有 adapter 曾隔离公共 Scene Package API；原生 LXSC v1 Codec 完成后 `LegacyEntitySceneAdapter` 已删除，未保留 shim 或 overload。**
 - [x] `ECS-025` 建立 Entity Section Golden Files。 **完成：canonical ECS Scene Format Codec 对版本化 LXES v1 与 Persistence Journal v1 冻结 fixture 执行 decode/re-encode 逐字节契约，并覆盖截断、尾随字节、hash/digest 损坏和 limits。**
-- [ ] `ECS-026` 测试 unknown component policy。
+- [x] `ECS-026` 测试 unknown component policy。
 - [x] `ECS-027` 测试 feature transaction 与 schedule commit。 **完成：`scene_contributions_test` 在当前 Windows x64 / MSVC / RelWithDebInfo 构建树运行通过，覆盖 cold assembly、transaction commit、失败 rollback、动态 enable/disable 与 close。**
 - [ ] `ECS-028` 把 reflection pending static chain 改显式 draft。
 
 ### ECS Component Archive 二次裁决施工追踪
 
-- [ ] `ECSSER-001` 首笔提交只修订 Core Serialization / ECS Component Archive ADR 与事实文档。
-- [ ] `ECSSER-002` Core Serialization 删除 reflected tagged archive、Meta 与 Eigen 闭包。
-- [ ] `ECSSER-003` 建立 `lux::engine::ecs::component_archive` 与详细 expected 错误合同。
-- [ ] `ECSSER-004` 保持全部 tag ordinal 与包含 wire 的 Golden bytes 不变。
-- [ ] `ECSSER-005` tag 48 源码语义改为 UUID；资产引用只由显式 `asset_type=` annotation 表达。
-- [ ] `ECSSER-006` Authoring compatible field drift 与 Cooked exact schema policy 通过契约测试。
-- [ ] `ECSSER-007` Unknown Component schema 在 Authoring、Toolchain、Runtime 均明确拒绝且不发布部分 Registry 状态。
-- [ ] `ECSSER-008` Core/Component Archive/Function Animation installed consumer 闭包通过。
-- [ ] `ECSSER-009` 四 Profile 全量、owner tests、第二轮 no-op 与安装前缀同步通过。
+- [x] `ECSSER-001` 首笔提交只修订 Core Serialization / ECS Component Archive ADR 与事实文档。
+- [x] `ECSSER-002` Core Serialization 删除 reflected tagged archive、Meta 与 Eigen 闭包。
+- [x] `ECSSER-003` 建立 `lux::engine::ecs::component_archive` 与详细 expected 错误合同。
+- [x] `ECSSER-004` 保持全部 tag ordinal 与包含 wire 的 Golden bytes 不变。
+- [x] `ECSSER-005` tag 48 源码语义改为 UUID；资产引用只由显式 `asset_type=` annotation 表达。
+- [x] `ECSSER-006` Authoring compatible field drift 与 Cooked exact schema policy 通过契约测试。
+- [x] `ECSSER-007` Unknown Component schema 在 Authoring、Toolchain、Runtime 均明确拒绝且不发布部分 Registry 状态。
+- [x] `ECSSER-008` Core/Component Archive/Function Animation installed consumer 闭包通过。
+- [x] `ECSSER-009` 四 Profile 全量、owner tests、第二轮 no-op 与安装前缀同步通过。
 ## M4：Engine Execution 与公共 Asset 异步适配
 
 - [ ] `ENGEA-001` 将 `engine/runtime/execution` 移到 `engine/execution`。
@@ -7356,7 +7366,7 @@ BUILD-03..FINAL
 | lux::engine::core::log | lux::log | TARGET RENAME | Core | 09 |
 | modules/core/math | modules/core/math | KEEP/EXPAND | Core | 02 |
 | modules/resource/spatial（已删除） | modules/core/math `Position.hpp` / `Grid.hpp` / `RelativePosition.hpp` | DONE — MOVE/DELETE；ECS-owned reflection sidecar | Core/ECS | 02/05 |
-| modules/core/serialization | Core Archive/NameTable + `ecs/serialization` Component Archive | DECIDED — SPLIT；代码待施工 | Core/ECS | 02/05/ADR-20260821-Serialization |
+| modules/core/serialization | Core Archive/NameTable + `ecs/serialization` Component Archive | DONE — SPLIT；旧 Core reflected archive 已删除 | Core/ECS | 02/05/ADR-20260821-Serialization |
 | modules/core/meta | lux-cxx reflection + ecs/core + engine/extensions/reflection | SPLIT/DELETE | Core/ECS/Engine | 02 |
 | LuxObject | DELETE | DONE — 独立 `LuxAsset` 与 reflected-record identity 已取代 OO 根类 | ECS/Reflection | 02/03/ADR-20260821-Meta |
 | EntityRegistry | `lux::ecs::Registry` | DONE — MOVE/RENAME，无 alias/forwarding header | ECS | 02/05/ADR-20260821-Meta |
@@ -7418,7 +7428,7 @@ BUILD-03..FINAL
 | RenderFrameSession | Frame/internal | INTERNALIZE | Render | 04 |
 | RenderUploadSession | UploadQueue/internal | INTERNALIZE | Render | 04 |
 | ActionMapper/InputActionRegistry/InputContextStack | lux::input API with precise internals | REORGANIZE | Input | 04 |
-| function::animation → asset | function::animation → `lux::engine::resource::asset` | DONE — DEPENDENCY NORMALIZE；消费者统一链接 canonical Asset component | Animation/Asset | 04/10 |
+| function::animation → asset | function::animation → Description + Core Math | DONE — REMOVE ASSET DEPENDENCY；installed consumer 不查找 Asset | Animation/Description | 04/10/ADR-20260821-Serialization |
 | function::navigation → resource::spatial | function::navigation → math | DONE — DEPENDENCY FIX；安装闭包不再查找 Resource spatial | Navigation | 04 |
 | ScriptHost | ScriptRuntime | RENAME | Script | 04 |
 | modules/function/ui | ui core + imgui + backend integrations | SPLIT | UI | 04 |
@@ -7565,7 +7575,7 @@ status=PENDING → legacy report 允许但不能增长
 
 | 项目 | 内容 |
 | --- | --- |
-| 代码基线 | 原始索引 `09b2a82582550bcbe03afeef77d2591e1656a656`；Asset 领域内聚 `1364810c`；Pipeline/Core Meta 实施 `ed5fb7eb` |
+| 代码基线 | 原始索引 `09b2a82582550bcbe03afeef77d2591e1656a656`；Pipeline/Core Meta `ed5fb7eb`；Component Archive `d1ead288` |
 | 基线日期 | 2026-08-19 |
 | 文档更新 | 2026-08-21 |
 | 适用对象 | 实施者、代码评审者、迁移脚本维护者 |
@@ -7579,7 +7589,7 @@ status=PENDING → legacy report 允许但不能增长
 
 > **2026-08-21 当前事实：** Catalog 通过 manager-less SerDeser 产出完整 owning `LuxAsset`，LoadService 与同步 ensure 共用同一 decode/install 路径；Runtime packs 显式提出 Animation/Script 需求，Thumbnail 只报告依赖。Registry、allocator 与 handles 已归 ECS Core，Core Meta/Serialization 与 Asset 的安装闭包分别不再包含 EnTT 与 Core Meta。
 
-> **2026-08-21 待施工裁决：** Core Serialization 的 reflected TaggedPropertyArchive 将整体迁入 ECS `component_archive`；tag 48 保持字节值但改为 UUID 语义，资产引用只认显式 annotation。不创建 RegistryArchive。
+> **2026-08-21 当前事实：** Core Serialization 只含 Archive/NameTable，安装闭包不含 Meta/Eigen。Reflected tagged archive 已归 ECS `component_archive`；tag 48 为 UUID，只有显式 `asset_type=` annotation 表达资产引用。不创建 RegistryArchive。
 
 
 ## 使用说明
@@ -7598,7 +7608,8 @@ status=PENDING → legacy report 允许但不能增长
 | `modules/core/extension_abi/.../StableId.hpp` | 冻结 Extension ABI v4 仍保留 legacy Contribution 布局；Scene/Render/Authoring 产品表面已使用领域 ID | 02/06 |
 | `modules/core/meta/CMakeLists.txt` | Runtime reflection 与 codegen scripts；不查找、包含或链接 EnTT | 02/05/ADR-20260821-Meta |
 | `ecs/core/include/lux/engine/ecs/{Entity,Registry,RegistryMemoryResource}.hpp` | ECS-owned Entity/Registry/handles/allocator/publication/snapshot API；旧 Meta owner 已删除 | 02/05/ADR-20260821-Meta |
-| `modules/core/serialization/CMakeLists.txt` | 当前仍为 Archive/NameTable/TaggedPropertyArchive、PUBLIC Meta；已由 ADR 决定拆分，代码待施工 | 02/ADR-20260821-Serialization |
+| `modules/core/serialization/CMakeLists.txt` | 只拥有 Archive/NameTable/readSpan；PUBLIC binary/stduuid，无 Meta/Eigen | 02/ADR-20260821-Serialization |
+| `ecs/serialization` | `lux::engine::ecs::component_archive`；拥有 reflected tagged wire、bounded compatible/exact reader、详细 expected 与资产 annotation 判定 | 05/10/ADR-20260821-Serialization |
 | `modules/platform/common`（已删除） | AtomicWait/Format/Extent/Image/Texture Role 已归精确 owner；旧 target/component/include/namespace 与安装产物归零 | 02/03/04 |
 | `lux-cxx/core/.../Format.hpp`、`lux-cxx/concurrent/.../AtomicWait.hpp` | 跨平台 Format compatibility 与 64-bit atomic deadline wait 的唯一 owner；Windows/Android 编译契约通过 | 02 |
 | `modules/core/math/.../Extent.hpp` | `lux::math::Extent2u` 唯一 owner；standard-layout/trivially-copyable/8-byte layout 契约 | 02 |
@@ -7638,7 +7649,7 @@ status=PENDING → legacy report 允许但不能增长
 | `modules/function/render/standard_content/CMakeLists.txt` | 轻量 Render standard content owner：Classic Mesh 值与 LXCB v1 Codec；不依赖 Vulkan/GLFW/ECS/Engine | 03/04/10 |
 | `modules/function/render/vulkan/CMakeLists.txt` | Vulkan server/renderer/resources/scene/targets | 04 |
 | `modules/function/render/features/CMakeLists.txt` | 大量标准/工具/地形/点云 Feature 与 codegen | 04 |
-| `modules/function/animation/CMakeLists.txt` | PUBLIC asset | 04 |
+| `modules/function/animation/CMakeLists.txt` | PUBLIC Description + Core Math；不再查找或链接 Resource Asset | 04/10 |
 | `modules/function/input/CMakeLists.txt` | PUBLIC platform window/GLFW closure | 04 |
 | `modules/function/script/core/.../ScriptHost.hpp` | 脚本 backend/module/invoke dispatcher | 04 |
 | `modules/function/ui/CMakeLists.txt` | 基础 UI PUBLIC ImGui GLFW/Vulkan，包含 SceneViewportPanel | 04/08 |
@@ -7719,6 +7730,7 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 - reflected tagged-property archive 整体归 ECS `component_archive`；不创建 RegistryArchive。
 - tag 48 保持 wire ordinal，源码语义从 AssetRef 改为 UUID；资产引用只由显式 `asset_type=` annotation 表达。
 - Unknown Component schema 在 Authoring/Toolchain/Runtime 拒绝；已知 Component 的 compatible reader 仍可跳过未知字段。
+- `d9d3619b` 先落地文档裁决，`d1ead288` 完成代码迁移；四 Profile、owner executables、三类 installed consumer 与安装前缀同步通过。
 
 ## 2026-08-21：Asset 领域内聚、Pak 公共边界与 Engine Content
 
@@ -8258,8 +8270,11 @@ Core Meta 只拥有通用反射描述、查询和生成模型：
 - external 非侵入类型继续使用 `is_reflected_value_v<T>`；
 - parent chain 只包含实际标注的反射基类，不注入虚构根类。
 
-Core Serialization 可继续 PUBLIC 使用通用 `RefClass/RefField`，但 installed closure 不再查找
-EnTT。Asset 删除 Core Meta 依赖，Core Serialization 仅作为 Asset PRIVATE 实现依赖。
+本 ADR 接受时曾允许 Core Serialization PUBLIC 使用通用 `RefClass/RefField`；该局部裁决已被
+后续 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md` 取代。当前 Core
+Serialization 只保留 byte Archive/NameTable，不再依赖 Meta 或 Eigen；反射归 ECS
+`component_archive`。Asset 删除 Core Meta 依赖，Core Serialization 仅作为 Asset PRIVATE
+实现依赖。
 
 ## 4. CMake 与验收边界
 
@@ -8278,11 +8293,13 @@ sidecar 反射；Core Meta/Serialization installed consumer 不获得 EnTT，ECS
 
 # Core Serialization 与 ECS Component Archive 边界
 
-**状态：** Accepted，代码施工待完成
+**状态：** Implemented
 
 **日期：** 2026-08-21
 
 **施工基线：** `6906ccc21bec1275fef8a45586b25b0337da2c4b`
+
+**文档提交：** `d9d3619b`；**实施提交：** `d1ead288`
 
 ## 决议
 
@@ -8341,6 +8358,14 @@ Authoring/Toolchain Component payload
   L3SC v1 与 Infinite2D payload 字节不变。
 - 不保留旧 Core include、namespace alias、target alias 或 forwarding header。
 - 本 ADR 不推进 M0、M7、Extension ABI、VFS/Platform、Scene Runtime 或 Editor 架构重构。
+
+## 实施结果
+
+Core Serialization 已删除 TaggedPropertyArchive、Meta 与 Eigen 闭包；ECS 已安装
+`component_archive`。Authoring 使用 compatible reader，Cooked LXES 使用 exact reader，
+三条 Unknown Component 路径均在 Registry 发布前失败。Core、ECS Component Archive 与
+Function Animation installed consumers、四 Profile 全量构建及第二轮 no-op 已通过；证据见
+`evidence/core-serialization-ecs-component-archive-6906ccc2.md`。
 
 ---
 
@@ -8417,3 +8442,41 @@ Authoring/Toolchain Component payload
 - Debug、RelWithDebInfo、Android 三个安装前缀的变更公共头已同步；五个退役头已精确删除。
 - Asset、Core Meta/Serialization 与 ECS Core installed consumers 均完成配置、编译、链接和运行。
 - 旧回调、旧 Registry/OO 根类、旧 Resolver 公共头及禁止依赖闭包扫描归零；`git diff --check` 通过。
+
+---
+
+# Core Serialization / ECS Component Archive 施工证据
+
+**施工基线：** `6906ccc2`
+**文档提交：** `d9d3619b`
+**实施提交：** `d1ead288`
+**日期：** 2026-08-21
+
+## 所有权与安装闭包
+
+- Core Serialization 只导出 Archive、NameTable、UUID/POD/string 与 bounded `readSpan()`；导出链接闭包为 `lux::cxx::binary;stduuid`，不含 Meta、Eigen、ECS 或 Engine。
+- `lux::engine::ecs::component_archive` 独立安装，PUBLIC 依赖 Core Serialization、Core Meta、compile_time，Eigen 为 PRIVATE；不含 Resource、Runtime 或 Engine。
+- Function Animation 的导出闭包为 Core Math + Resource Description，不再查找 Resource Asset。
+- Debug、RelWithDebInfo、Android 三个 include 前缀均含新 ECS 头且不含旧 Core TaggedPropertyArchive 头。
+
+## 格式与行为契约
+
+- `EArchiveType` ordinal 保持不变；源码名 `AssetRef=48` 改为 `Uuid=48`，fixture 仍为 60 bytes，tag byte 仍为 48。
+- Component Archive owner test 覆盖 preflight 无副作用、详细错误、limits、compatible future field、exact canonical schema、重复/缺失/类型漂移、截断/尾随、NaN、UUID annotation 与 nested payload 边界。
+- `world_source_codec_test` 继续固定 LXWA v4 与全部子文档 length/SHA；SceneFormat/LXES/Persistence、Spatial3D L3SC、Infinite2D 与 Editor roundtrip owner tests 均通过。
+- Unknown Component schema 在 Authoring、Toolchain、Runtime 三条路径明确失败；Authoring/Runtime 断言 Registry 在失败前未发布部分状态。
+
+## 构建与消费者
+
+| 验证 | 结果 |
+| --- | --- |
+| DEVELOPER RelWithDebInfo `target all -j 4 -k 0` | PASS；第二轮 `ninja: no work to do` |
+| PLAYER RelWithDebInfo | PASS；owner contracts PASS；第二轮 no-op |
+| EDITOR RelWithDebInfo | PASS；owner contracts PASS；第二轮 no-op |
+| TOOLCHAIN RelWithDebInfo | PASS；owner contracts PASS；第二轮 no-op |
+| Core Serialization installed consumer | configure/build/run PASS；无 Meta/Eigen/ECS/Engine |
+| ECS Component Archive installed consumer | configure/build/run PASS；无 Resource/Runtime/Editor |
+| Function Animation installed consumer | configure/build/run PASS；无 Resource Asset |
+| module layout / target DAG | 四 Profile 配置通过 |
+
+四个构建树当前均报告 `No tests were found!!!`，因此验收记录来自独立 owner test executables，未把 0 项 CTest 误报为测试覆盖。旧构建目录中的 `entity_scene_contract_test.exe` 是已删除 Resource target 的历史残留，不属于当前 CMake DAG；现行 LXES 契约由 `entity_section_wire_compatibility_test`、`entity_scene_cooker_test` 与 `runtime_entity_scene_integration_test` 验证。

@@ -24,6 +24,8 @@
 
 > **2026-08-21 Component Archive 裁决：** Reflection-driven tagged-property archive 整体归 `ecs/serialization` 的 `component_archive` component；Core 只保留 byte Archive/NameTable。不建立 RegistryArchive，Unknown Component schema 在 Authoring/Toolchain/Runtime 均拒绝。详见 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`。
 
+> **2026-08-21 Component Archive 实施状态：** `d1ead288` 已建立详细 expected/limits、compatible/exact reader 与 UUID annotation 语义；LXWA/LXES/Persistence/L3SC/Infinite2D owner 契约和 installed consumer 均通过。
+
 
 ## 1. 当前问题
 

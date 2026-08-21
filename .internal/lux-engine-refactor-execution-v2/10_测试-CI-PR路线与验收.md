@@ -18,6 +18,8 @@
 
 > **2026-08-21 验收更新：** 增加 manager-less 全资产 decode、同步/异步等价、shell 替换账本不变、Runtime 无同步 IO、Registry owner 与 Meta installed closure 契约。Modules 独立性不通过新增 Profile 验证，而通过现有安装包的独立 consumer 验证。
 
+> **2026-08-21 Component Archive 验收：** Core byte archive、ECS Component Archive、Unknown Component 三路径、资产 UUID annotation 与 Function Animation 闭包已经 owner/installed consumer 验证；四 Profile 全量与第二轮 no-op 通过。当前构建树仍未注册 CTest 条目，因此不得把“0 tests”写成 CTest 覆盖。
+
 
 ## 1. 总体策略
 

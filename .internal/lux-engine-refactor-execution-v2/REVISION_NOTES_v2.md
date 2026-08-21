@@ -6,6 +6,7 @@
 - reflected tagged-property archive 整体归 ECS `component_archive`；不创建 RegistryArchive。
 - tag 48 保持 wire ordinal，源码语义从 AssetRef 改为 UUID；资产引用只由显式 `asset_type=` annotation 表达。
 - Unknown Component schema 在 Authoring/Toolchain/Runtime 拒绝；已知 Component 的 compatible reader 仍可跳过未知字段。
+- `d9d3619b` 先落地文档裁决，`d1ead288` 完成代码迁移；四 Profile、owner executables、三类 installed consumer 与安装前缀同步通过。
 
 ## 2026-08-21：Asset 领域内聚、Pak 公共边界与 Engine Content
 

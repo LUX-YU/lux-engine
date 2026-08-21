@@ -20,6 +20,8 @@
 
 > **2026-08-21 实施状态：** 上述 Meta/Registry 裁决已完成。Core Meta/Serialization installed consumer 不导入 EnTT；ECS-owned adapter 承担 EnTT component 操作，旧 Meta Registry 与 OO 根类已归零。
 
+> **2026-08-21 Serialization 实施状态：** `d1ead288` 已将 reflected tagged archive 整体迁入 ECS `component_archive`。Core Serialization 只导出 Archive/NameTable，安装闭包不含 Meta 或 Eigen；旧 Core 头与 namespace 已删除。
+
 
 ## 1. 施工范围
 
@@ -51,7 +53,7 @@ modules/platform/window
 | `modules/core/meta/include/lux/engine/meta/LuxObject.hpp` | `ecs/core/include/lux/ecs/EntityRegistry.hpp` and optional `EntityObject.hpp` | SPLIT |
 | `modules/core/meta/include/lux/engine/meta/Meta*.hpp` | `lux-cxx::reflection_runtime` or temporary `engine/reflection` | SPLIT |
 | `modules/core/meta/cmake/engine_add_meta.cmake` | `cmake/Codegen/Reflection.cmake` | MOVE |
-| `modules/core/serialization/src/TaggedPropertyArchive.cpp` | entire reflected Component Archive to `ecs/serialization`; Core retains Archive/NameTable | MOVE/DELETE |
+| `modules/core/serialization/src/TaggedPropertyArchive.cpp`（已删除） | `ecs/serialization` Component Archive；Core 保留 Archive/NameTable | DONE — MOVE/DELETE |
 | `modules/resource/spatial/include/.../Spatial.hpp` | `modules/core/math/include/lux/math/Position.hpp` and `Grid.hpp` | MOVE |
 | `modules/platform/common/include/.../AtomicWait.hpp` | `lux-cxx::concurrent` or `modules/core/concurrency` | MOVE |
 | `modules/platform/common/FormatCompat.h.in` | `lux-cxx::format` or `modules/core/format` | MOVE |

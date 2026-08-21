@@ -315,7 +315,8 @@ public:
 
 ## 4. Animation 解耦
 
-当前 `animation` PUBLIC 依赖 `asset_core`。目标函数直接操作 Description：
+历史基线中 `animation` PUBLIC 依赖 `asset_core`；`d1ead288` 已改为直接依赖
+Description 与 Math。目标函数直接操作 Description：
 
 ```cpp
 Pose sample(
@@ -325,7 +326,7 @@ Pose sample(
     Scratch&);
 ```
 
-ECS `AnimationSystem` 与 Engine AssetStore 负责：
+ECS `AnimationSystem` 与现有 Engine Runtime 资产编排负责：
 
 ```text
 AssetHandle → Skeleton/AnimationClip value → lux::animation::sample()
@@ -340,14 +341,14 @@ modules/function/animation/CMakeLists.txt
 移除：
 
 ```text
-lux::engine::resource::asset_core
+lux::engine::resource::asset
 ```
 
 新增：
 
 ```text
-lux::description
-lux::math
+lux::engine::resource::description
+lux::engine::core::math
 ```
 
 ## 5. Navigation 解耦

@@ -20,6 +20,8 @@
 
 > **2026-08-21 Profile 修订：** `LUX_BUILD_PROFILE` 仍只有 DEVELOPER/PLAYER/EDITOR/TOOLCHAIN；不创建文中历史 `MODULES_SDK` Profile。Modules 包边界改由 installed consumers 验证，旧 alias/forwarding 迁移要求由“一次迁移并删除旧 API”的现行规则取代。
 
+> **2026-08-21 Serialization 安装事实：** `lux-engine-core COMPONENTS serialization` 的导出闭包只有 binary/stduuid；`lux-engine-ecs COMPONENTS component_archive` 独立导出且不含 Resource/Engine。旧 Core TaggedPropertyArchive 头不再安装。
+
 
 ## 1. 目标
 

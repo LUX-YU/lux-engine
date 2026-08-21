@@ -1,10 +1,12 @@
 # Core Serialization 与 ECS Component Archive 边界
 
-**状态：** Accepted，代码施工待完成
+**状态：** Implemented
 
 **日期：** 2026-08-21
 
 **施工基线：** `6906ccc21bec1275fef8a45586b25b0337da2c4b`
+
+**文档提交：** `d9d3619b`；**实施提交：** `d1ead288`
 
 ## 决议
 
@@ -63,3 +65,11 @@ Authoring/Toolchain Component payload
   L3SC v1 与 Infinite2D payload 字节不变。
 - 不保留旧 Core include、namespace alias、target alias 或 forwarding header。
 - 本 ADR 不推进 M0、M7、Extension ABI、VFS/Platform、Scene Runtime 或 Editor 架构重构。
+
+## 实施结果
+
+Core Serialization 已删除 TaggedPropertyArchive、Meta 与 Eigen 闭包；ECS 已安装
+`component_archive`。Authoring 使用 compatible reader，Cooked LXES 使用 exact reader，
+三条 Unknown Component 路径均在 Registry 发布前失败。Core、ECS Component Archive 与
+Function Animation installed consumers、四 Profile 全量构建及第二轮 no-op 已通过；证据见
+`evidence/core-serialization-ecs-component-archive-6906ccc2.md`。

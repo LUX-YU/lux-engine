@@ -1,6 +1,6 @@
 # LUX Engine 重构执行文档 v2 合订本
 
-基线：Extension ABI v4 Core 清零实施提交 `c56efbc4`
+基线：GAPI 保留与单体 Input 施工基线 `d7f364d0`
 
 > 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明、现行 ADR 及既有验收证据机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
 
@@ -27,6 +27,8 @@
 - `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`
 - `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`
 - `ADR-20260821_ExtensionAbiV4Owner与Core清零.md`
+- `ADR-20260821_GAPI保留裁决.md`
+- `ADR-20260821_单体Input子系统边界.md`
 - `evidence/asset-domain-cohesion-f35e245a.md`
 - `evidence/asset-pipeline-core-meta-fe4422ba.md`
 - `evidence/core-serialization-ecs-component-archive-6906ccc2.md`
@@ -503,7 +505,7 @@ EExtensionModuleTarget
 | 顺序 | 文档 | 退出条件 |
 | --- | --- | --- |
 | 1 | 01 公共 SDK 边界 | `modules/` 隔离规则进入持续集成 |
-| 2 | 02 Core 与 Platform | `extension_abi`、`common`、`gapi` 不再位于错误层 |
+| 2 | 02 Core 与 Platform | `extension_abi`、`common` 清零；GAPI 按 ADR 保留；Window 边界收敛 |
 | 3 | 03 Resource | 只剩 `description` 与 `asset` 一级语义 |
 | 4 | 04 Function | Render/Input/Animation/Navigation/Script/UI 公共闭包纯化 |
 | 5 | 05 ECS | ECS Core 不再依赖 Engine Extension、Asset Manager 或 Engine Scene |
@@ -567,7 +569,7 @@ add_library(lux::engine::resource::asset_core ALIAS lux_asset)
 项目只有在同时满足以下条件时才算完成：
 
 - `modules/` 安装后可以在独立外部样例中使用，不需要 `ecs/` 或 `engine/`。
-- `modules/core/extension_abi`、`modules/platform/common`、`modules/platform/gapi`、`modules/resource/deployment` 等错误目录已消失。
+- `modules/core/extension_abi`、`modules/platform/common`、`modules/resource/deployment` 等已裁决错误目录消失；`modules/platform/gapi` 按保留 ADR 继续存在。
 - `modules/resource` 只有 `description` 与 `asset` 一级语义。
 - `AssetManager`、`EntityRegistry`、Scene Package、Extension ABI 已回到正确层。
 - ECS Core 不依赖 Engine Extension、Engine Asset Store 或 Game Scene Manifest。
@@ -577,6 +579,7 @@ add_library(lux::engine::resource::asset_core ALIAS lux_asset)
 - 公共 CMake Target 与 Include Prefix 使用领域名称。
 - PLAYER、EDITOR、TOOLCHAIN、DEVELOPER Profile 均通过双构建与测试。
 - 架构扫描器能够阻止旧依赖和旧命名重新进入。
+
 
 ---
 
@@ -633,7 +636,7 @@ add_library(lux::engine::resource::asset_core ALIAS lux_asset)
 | `modules/platform/dynamic_library` | 保留 | `lux::dynamic_library` | 独立 RAII 动态库加载 |
 | `modules/platform/filewatch` | 保留 | `lux::filewatch` | Editor 只是当前消费者，不改变通用性 |
 | `modules/platform/window` | 拆分 | `lux::window`、`lux::window_glfw` | 核心抽象、平台 Backend、Vulkan Surface Integration 分离 |
-| `modules/platform/gapi` | 搬迁 | `modules/function/render/vulkan/low_level` | 实际是 Vulkan Wrapper，不是 Platform 抽象 |
+| `modules/platform/gapi` | 保留 | 当前 owner | 公共低层 Vulkan Wrapper SDK；Render 可消费但不取得所有权 |
 | `modules/resource/description` | 保留并纯化 | `lux::description` | 只保留被动资源值类型 |
 | `modules/resource/asset` | 保留并重构 | `lux::asset` | 通用 Asset/SerDeser/Catalog/Manager/Provider/VFS 与 Pak 读写；不含 Engine 默认内容 |
 | `modules/resource/*` 其他目录 | 消除一级组件 | 按语义迁移 | 见文档 03 |
@@ -1019,6 +1022,7 @@ Extension ABI 不属于公共 Asset/Core 版本；它由 `lux-engine-extension-s
 - [ ] 新公共头不使用 `lux/engine/function` 或 `lux/engine/resource` 前缀。
 - [ ] 所有兼容 Alias 都有删除里程碑。
 
+
 ---
 
 # Core 与 Platform 基础库清理
@@ -1084,7 +1088,7 @@ modules/platform/window
 | `modules/platform/common/FormatCompat.h.in` | `lux-cxx::format` or `modules/core/format` | MOVE |
 | `modules/platform/common/include/.../Size2D.hpp` | `modules/core/math/include/lux/math/Extent.hpp` | MOVE |
 | `modules/platform/common/include/.../ImageEnums.hpp` | `modules/resource/description/include/lux/description/Image.hpp` | MOVE |
-| `modules/platform/gapi` | `modules/function/render/vulkan/low_level` | MOVE |
+| `modules/platform/gapi` | 当前 owner | KEEP — ADR-20260821 GAPI 保留裁决 |
 | `modules/platform/window/src/GlfwRuntime.cpp` | `modules/platform/window/glfw/src/GlfwLibrary.cpp` | MOVE/RENAME |
 | `modules/platform/window/src/TrayIconWin32.cpp` | `modules/platform/tray/win32` or product layer | MOVE |
 
@@ -1439,45 +1443,18 @@ lux-engine-platform common component
 
 所有依赖者必须改为精确目标，不能创建新的 `foundation_common`。
 
-## 8. `gapi` 迁入 Render Vulkan
+## 8. `gapi` 保留为 Platform 公共 SDK
 
 ### 8.1 当前事实
 
-`modules/platform/gapi` 强制查找 Vulkan，并导出 Buffer、Image、Descriptor、Pipeline、Swapchain、Surface 等 Vulkan Wrapper。它是 Render Backend 的底层实现，不是 Platform。
+`modules/platform/gapi` 查找 Vulkan，并导出 Buffer、Image、Descriptor、Pipeline、Swapchain、Surface 等低层 Wrapper。按 ADR-20260821，它是外部项目也可直接使用的公共 Platform 图形 API，而不是必须被 Render 吸收的临时实现目录。
 
-### 8.2 目标目录
+### 8.2 保留边界
 
-MOVE：
-
-```text
-modules/platform/gapi/include/lux/engine/gapi/vk/*
-→ modules/function/render/vulkan/low_level/include/lux/render/vulkan/*
-```
-
-MOVE 或 DELETE：
-
-```text
-RenderDevice.hpp
-RenderInstance.hpp
-```
-
-若只是旧抽象壳，合入 `VulkanDevice` 与 `VulkanInstance`。
-
-MODIFY `render_vulkan`：
-
-```cmake
-target_sources(render_vulkan PRIVATE
-    low_level/src/...
-)
-```
-
-DELETE target：
-
-```text
-lux::engine::platform::gapi
-```
-
-Renderer 对外 API 仍不得暴露这些 Wrapper；它们只用于高级用户明确选择 `lux::render_vulkan_low_level` 时才考虑安装。默认全部 PRIVATE。
+- `modules/platform/gapi`、`lux::engine::platform::gapi`、安装 component 与公共头保持不变。
+- Render Vulkan 可以依赖 GAPI，但不取得其类型和生命周期合同的所有权。
+- GAPI wrapper 与 Render 内部 handle 服务不同公共受众，不在本重构中强制合并。
+- 本阶段不修改 GAPI production 代码；后续正常维护不属于目录清零任务。
 
 ## 9. Window 拆分
 
@@ -1582,7 +1559,7 @@ Level
 | CORE-04 | EntityRegistry 迁入 ECS | Meta 公共目标不再链接 EnTT |
 | CORE-05 | Extension ABI 迁入 Engine SDK | Modules SDK 无 Extension 类型 |
 | PLATFORM-01 | 解散 common | 所有依赖改为精确目标 |
-| PLATFORM-02 | gapi 并入 render_vulkan | Platform 包不再查找 Vulkan |
+| PLATFORM-02 | GAPI 保留裁决 | 旧迁移/删除目标标记 SUPERSEDED，公共 component 保持可链接 |
 | PLATFORM-03 | Window Core/Backend/Surface 拆分 | Input/Window/Render 样例独立 |
 | CORE-FINAL | 删除旧 target/include/namespace | 架构扫描无例外 |
 
@@ -1598,6 +1575,7 @@ Level
 - [ ] `resource/spatial` target 已删除。
 - [ ] `extension_abi` 不出现在 Modules SDK 安装清单。
 - [ ] 所有 Build-time 生成器依赖不进入安装 Config。
+
 
 ---
 
@@ -2269,6 +2247,7 @@ entity scene / section
 - [ ] 旧 `.luxasset` Golden Files 全部可读。
 - [x] Asset-only 外部样例不链接 ECS/Engine/Reflection Registry。
 
+
 ---
 
 # Function 公共模块重构
@@ -2300,7 +2279,7 @@ entity scene / section
 | --- | --- | --- |
 | `render_client` | `lux::render` 或内部 protocol 子目标 | 移除 Meta、Deployment、Platform Common 的 PUBLIC 依赖 |
 | `render_graph` | `lux::render_graph` | 保持设备无关；依赖 core/math/containers，不依赖 Platform Common |
-| `render_vulkan` | `lux::render_vulkan` | 吸收 gapi；Window Surface 作为叶子 Integration |
+| `render_vulkan` | `lux::render_vulkan` | 消费保留的 GAPI；Window Surface 作为叶子 Integration |
 | `render_features` | `lux::render_standard` + 私有 feature object libs | Grid/Gizmo/Highlight 工具能力上移或可选 |
 | `input` | `lux::input` | 物理输入值不依赖 Window Backend |
 | `animation` | `lux::animation` | 只依赖 Description 和 Math |
@@ -2423,37 +2402,9 @@ target_link_libraries(render_graph
 
 移除 `platform::common`。`Size2D`、Format 等精确依赖改为 `lux::math` 或 `lux-cxx`。
 
-### 2.6 `render_vulkan` 吸收 gapi
+### 2.6 `render_vulkan` 消费保留的 GAPI
 
-MOVE `modules/platform/gapi` 的 Vulkan Wrapper 到：
-
-```text
-render/vulkan/low_level
-```
-
-现有 `render_vulkan/src/gpu/*` 与 `gapi/vk/*` 存在重复抽象时，遵循：
-
-```text
-只保留一个 Device/Buffer/Image/Descriptor/Pipeline 所有权模型
-```
-
-不得同时保留：
-
-```text
-gapi::vk::Buffer
-render::GPUBufferVma
-render::BufferHandle
-```
-
-而没有明确层级关系。
-
-建议：
-
-```text
-Vulkan RAII handles         → vulkan/low_level
-VMA-backed allocations      → vulkan/memory
-Renderer logical resources  → render/api handles
-```
+按 ADR-20260821，GAPI 继续作为公共 Platform Vulkan wrapper SDK。`render_vulkan` 可以链接并使用它，但不迁移其目录、target、component 或 namespace，也不在本重构中强制把 GAPI wrapper 与 Render 内部 handle 合并为一种公共对象模型。
 
 ### 2.7 Window Surface Integration
 
@@ -2537,54 +2488,60 @@ namespace lux::render
 
 ```text
 modules/function/input/
-├── include/lux/input/
+├── include/lux/engine/input/
+│   ├── Input.hpp
+│   ├── InputSnapshot.hpp
 │   ├── PhysicalInput.hpp
-│   ├── Snapshot.hpp
-│   ├── Action.hpp
-│   ├── Mapping.hpp
-│   └── Context.hpp
+│   └── Action/Mapping/Context headers
 └── src/
+    ├── Input.cpp
     ├── ActionMapper.cpp
-    └── BindingIdAllocator.cpp
-
-modules/platform/window/glfw/
-└── GlfwInputAdapter.cpp
+    ├── BindingIdAllocator.cpp
+    └── platform/{glfw|android}/InputPlatform.cpp
 ```
 
 目标值类型：
 
 ```cpp
-enum class Key;
-enum class PointerButton;
-struct AxisValue;
+enum class EKey;
+enum class EMouseButton;
 struct InputSnapshot;
 ```
 
-GLFW Adapter：
-
-```cpp
-input::InputSnapshot captureInput(GLFWwindow&);
-```
-
-`lux::input` 不 include `<GLFW/glfw3.h>`。
-
-### 3.3 对外对象命名
-
-若现有 `ActionMapper + InputActionRegistry + InputContextStack` 对外过于分散，可提供：
+公开领域对象：
 
 ```cpp
 class Input final
 {
 public:
-    ActionId declare(ActionDescriptor);
-    BindingId bind(Binding);
-    ContextToken push(ContextId);
-    void update(const InputSnapshot&);
-    const ActionState& state(ActionId) const;
+    void sample(window::LuxWindow&);
+    void evaluate(float dt, bool accept_keyboard, bool accept_pointer);
+    ActionMapper& mapper() noexcept;
+    InputActionRegistry& actionRegistry() noexcept;
+    InputContextStack& contexts() noexcept;
 };
 ```
 
-内部仍可保留三个组件，不强制合并代码。
+Input 只有一个 target。CMake 在配置期只选择一个私有平台实现；不创建 Adapter target、backend interface、factory 或注册表。`lux::input` 公共头不 include `<GLFW/glfw3.h>`。
+
+### 3.3 对外对象命名
+
+`Input` 是平台宿主使用的统一所有权对象：
+
+```cpp
+class Input final
+{
+public:
+    void sample(window::LuxWindow&);
+    void evaluate(float dt, bool accept_keyboard = true,
+                  bool accept_pointer = true);
+    ActionMapper& mapper() noexcept;
+    InputActionRegistry& actionRegistry() noexcept;
+    InputContextStack& contexts() noexcept;
+};
+```
+
+`InputActionRegistry` 只保留 `ActionMapper` 内部唯一实例。`ActionMapper` 仍可在 headless Preview 与低层 Runtime 中单独使用，但 GameApplication 不得再维护第二份 Registry。
 
 ## 4. Animation 解耦
 
@@ -2780,7 +2737,7 @@ cmake/Codegen/ShaderParams.cmake
 | `modules/function/CMakeLists.txt` | 显式子目录；安装包按领域拆分 |
 | `render/client/CMakeLists.txt` | 删除 Meta、Deployment、Platform Common 的 PUBLIC 依赖 |
 | `render/graph/CMakeLists.txt` | 精确依赖 Core/Math/Container |
-| `render/vulkan/CMakeLists.txt` | 吸收 gapi；Surface Integration 分离 |
+| `render/vulkan/CMakeLists.txt` | 消费保留的 GAPI；Surface Integration 分离 |
 | `render/features/CMakeLists.txt` | Object Library 分组；工具 Feature 移出默认标准包 |
 | `input/CMakeLists.txt` | 不 PUBLIC 链接 Window |
 | `animation/CMakeLists.txt` | 依赖 Description，不依赖 Asset Core |
@@ -2795,7 +2752,7 @@ cmake/Codegen/ShaderParams.cmake
 | FUNC-01 | 新公共 Alias 与 Include Prefix | 旧 API 兼容 |
 | RENDER-01 | Render Config 与 Deployment 解耦 | render_client 无 deployment |
 | RENDER-02 | Build-time Meta 依赖移出 Runtime Link | 安装包无 generator |
-| RENDER-03 | gapi 并入 Vulkan Backend | Platform 无 Vulkan wrappers |
+| RENDER-03 | GAPI 保留裁决 | 迁移/删除目标 SUPERSEDED，公共 GAPI 保持可链接 |
 | RENDER-04 | Window Surface Integration 分离 | render_vulkan core 无 GLFW |
 | RENDER-05 | features Object Library 分组 | 行为与 shader 输出不变 |
 | INPUT-01 | Snapshot 与 Window Backend 分离 | input-only 样例无 GLFW |
@@ -2811,7 +2768,7 @@ cmake/Codegen/ShaderParams.cmake
 - [ ] `lux::render` 公共头无 ECS、Scene、Editor 类型。
 - [ ] `lux::render` 安装 Config 无 Meta Generator、Deployment、Extension ABI。
 - [ ] `lux::render_vulkan` 核心不依赖 GLFW。
-- [ ] `platform/gapi` 已删除。
+- [x] `platform/gapi` 按保留 ADR 继续作为公共组件存在。
 - [ ] `render_graph` 可在无 Vulkan SDK 的测试配置中编译。
 - [ ] `lux::input` 可在无 GLFW 的配置中编译。
 - [ ] `lux::animation` 不依赖 Asset Core/AssetStore。
@@ -2820,6 +2777,7 @@ cmake/Codegen/ShaderParams.cmake
 - [ ] `lux::ui` 无 GLFW/Vulkan 依赖。
 - [ ] `SceneViewportPanel` 不在 modules。
 - [ ] Tooling Feature 不自动进入标准 Renderer 公共闭包。
+
 
 ---
 
@@ -3381,6 +3339,7 @@ Persistence Journal
 - [ ] `SystemUpdateContext` 未新增 Runtime/Asset/Extension getter。
 - [ ] 旧 Entity Scene/Section Golden Files 全部可读。
 - [ ] 动态 Extension metadata 使用显式 Draft/Commit，不依赖隐式全局 pending chain。
+
 
 ---
 
@@ -4056,6 +4015,7 @@ lux::engine::spatial3d
 - [ ] 多种 CloseSender 不再成为跨领域公共概念。
 - [ ] Extension unload 在所有 Lease 与 accepted work 归零后发生。
 
+
 ---
 
 # Game、Editor 与共享 Session 产品重构
@@ -4634,6 +4594,7 @@ lux::window_glfw
 - [ ] 导出目录无 Editor/Toolchain 二进制。
 - [ ] Product API 不公开内部 Executor/AssetStore/Renderer。
 - [ ] Close 失败可诊断，不以 `Impl::release()` 泄漏整个产品状态作为常规路径。
+
 
 ---
 
@@ -5376,6 +5337,7 @@ lux_editor_product
 - [ ] `EditorScene` 已拆分，Play 使用 `game::Session`。
 - [ ] 长生命周期异步闭包不捕获 Panel/Controller 裸指针。
 
+
 ---
 
 # CMake、命名空间、SDK 包与兼容迁移
@@ -5437,7 +5399,7 @@ target_link_libraries(app PRIVATE
 | `lux::engine::core::extension_abi` | 当前 `lux::engine::extensions::extension_api`；M7 再评估短 alias | `lux-engine-extensions`，Core 旧 component 删除 |
 | `lux::engine::platform::common` | 删除 | — |
 | `lux::engine::platform::window` | `lux::window` / `lux::window_glfw` | `lux-platform` |
-| `lux::engine::platform::gapi` | 删除；并入 `lux::render_vulkan` | `lux-render` |
+| `lux::engine::platform::gapi` | KEEP；公共低层 Vulkan wrapper SDK | `lux-engine-platform` |
 | `lux::engine::platform::dynamic_library` | `lux::dynamic_library` | `lux-platform` |
 | `lux::engine::platform::filewatch` | `lux::filewatch` | `lux-platform` |
 | `lux::engine::resource::description` | `lux::description` | `lux-resource` |
@@ -5912,6 +5874,7 @@ legacy scan
 - [ ] 安装前缀无 build-tree absolute path。
 - [ ] Legacy include/target report 最终为零。
 - [ ] 导出游戏 inventory 无 Editor/Toolchain/Authoring。
+
 
 ---
 
@@ -6463,7 +6426,7 @@ CORE-02..05
 PLATFORM-01..03
 ```
 
-退出：Extension ABI、gapi、common、spatial 归位。
+退出：Extension ABI、common、spatial 归位；GAPI 按保留 ADR 继续存在。
 
 ### M2：Resource/Function
 
@@ -6551,6 +6514,7 @@ BUILD-03..FINAL
 - [ ] Editor 无必需依赖 hook。
 - [ ] 旧包名、target、include、namespace 已删除。
 - [ ] 导出游戏无 Editor/Toolchain/Authoring 与用户可见 EngineRuntime 语义。
+
 
 ---
 
@@ -6691,9 +6655,9 @@ BUILD-03..FINAL
 - [x] `PLATFORM-006` 迁移所有 `platform::common` PUBLIC links。 **完成：消费者改为按用途直接依赖 lux-cxx Core/Concurrent、Core Math、Description 或 Render Graph。**
 - [x] `PLATFORM-007` 删除 `platform/common` target。 **完成：源码目录、CMake target 与全部旧 namespace/include 引用已删除，无兼容 alias。**
 - [x] `PLATFORM-008` 删除 `platform/common` install component。 **完成：三个安装前缀旧头/导出产物归零，旧 component 的 `find_package` 明确失败。**
-- [ ] `PLATFORM-009` 移动 `platform/gapi` Vulkan wrappers 到 render/vulkan。
-- [ ] `PLATFORM-010` 消除 gapi 与 render/vulkan 重复 Buffer/Image/Device 抽象。
-- [ ] `PLATFORM-011` 删除 `platform::gapi` target。
+- [ ] `PLATFORM-009` 移动 `platform/gapi` Vulkan wrappers 到 render/vulkan。 **SUPERSEDED：ADR-20260821 保留 GAPI 公共 SDK，不迁移 owner。**
+- [ ] `PLATFORM-010` 消除 gapi 与 render/vulkan 重复 Buffer/Image/Device 抽象。 **SUPERSEDED：GAPI wrapper 与 Render 内部 handle 服务不同公共边界，本重构不强制合并。**
+- [ ] `PLATFORM-011` 删除 `platform::gapi` target。 **SUPERSEDED：target/component/include/namespace 永久保留。**
 - [ ] `PLATFORM-012` 拆 `window` 为 core 与 backend。
 - [ ] `PLATFORM-013` 创建 `window_glfw` target。
 - [ ] `PLATFORM-014` 创建 Android window backend target 或保持条件源但不污染 core。
@@ -6704,7 +6668,7 @@ BUILD-03..FINAL
 - [ ] `PLATFORM-019` 迁移 `GlfwRuntime` 为 `GlfwLibrary` 或 backend internal state。
 - [ ] `PLATFORM-020` 移动 `TrayIconWin32` 到 Launcher 或独立 tray 模块。
 - [ ] `PLATFORM-021` 补充 Window core 无 Vulkan 构建测试。
-- [ ] `PLATFORM-022` 补充 input adapter event translation 测试。
+- [ ] `PLATFORM-022` 补充 Window raw event → 单体 Input platform implementation 的翻译测试。
 - [ ] `PLATFORM-023` 补充 DynamicLibrary path/memory load 测试。
 - [ ] `PLATFORM-024` 补充 FileWatcher coalescing/close 测试。
 ## M2：Resource Description
@@ -6770,8 +6734,8 @@ BUILD-03..FINAL
 - [ ] `RENDER-006` 把 GPU capacity 迁入 render/config。
 - [ ] `RENDER-007` 把 Game capacity request 留在 Game Manifest。
 - [x] `RENDER-008` 让 render_graph 不依赖 platform common。 **完成：Render Graph 自有 `TextureAccess.hpp` 与 `ETextureRole`，安装 target 无 Platform Common 或其他串漏依赖。**
-- [ ] `RENDER-009` 把 gapi wrappers 并入 render_vulkan low_level。
-- [ ] `RENDER-010` 统一 Vulkan Buffer/Image/Device ownership model。
+- [ ] `RENDER-009` 把 gapi wrappers 并入 render_vulkan low_level。 **SUPERSEDED：Render 消费保留的 GAPI，不取得 owner。**
+- [ ] `RENDER-010` 统一 Vulkan Buffer/Image/Device ownership model。 **SUPERSEDED：不把公共 GAPI wrapper 与 Render 私有 handle 强制合并。**
 - [ ] `RENDER-011` 拆 Window Surface integration。
 - [ ] `RENDER-012` 让 render_vulkan core 不依赖 GLFW。
 - [ ] `RENDER-013` 将 `RenderBackendHost` 移入 Render 并重构为 `Renderer`。
@@ -6793,9 +6757,9 @@ BUILD-03..FINAL
 
 - [ ] `FUNC-001` 把 PhysicalInput 与 InputSnapshot 放入 input 模块。
 - [ ] `FUNC-002` 让 input target 不 PUBLIC 链接 Window/GLFW。
-- [ ] `FUNC-003` 建立 GLFW Input Adapter。
+- [ ] `FUNC-003` 在单一 input target 内以配置期源选择实现 GLFW/Android 平台采集；禁止 Adapter target/interface。
 - [ ] `FUNC-004` 保留 ActionMapper/Context 的领域逻辑。
-- [ ] `FUNC-005` 评估是否提供统一 `Input` façade。
+- [ ] `FUNC-005` 建立完整 `Input` 领域对象，统一拥有 Snapshot、Mapper、唯一 ActionRegistry 与 ContextStack。
 - [x] `FUNC-006` 让 animation 直接依赖 Description/Math。
 - [x] `FUNC-007` 移除 animation 对 Asset Core 的依赖。
 - [x] `FUNC-008` 让 navigation 依赖 Math 而非 resource/spatial。 **完成：Navigation Core 与 Detour3D 直接 include/link Core Math，安装传递依赖不再查找 Resource spatial。**
@@ -7151,7 +7115,7 @@ BUILD-03..FINAL
 
 - [x] `FINAL-001` 删除 `modules/core/extension_abi`。 **完成：源码、CMake、安装 component/export 与旧 include 全部归零。**
 - [x] `FINAL-002` 删除 `modules/platform/common`。 **完成：目录、target、component、生成头、安装导出、旧 namespace/type 全部删除；不保留 alias、shim 或 forwarding header。**
-- [ ] `FINAL-003` 删除 `modules/platform/gapi`。
+- [ ] `FINAL-003` 删除 `modules/platform/gapi`。 **SUPERSEDED：ADR-20260821 确认 GAPI 永久保留。**
 - [x] `FINAL-004` 删除 `modules/resource/deployment`。 **完成：`modules/resource/deployment` 已删除。**
 - [x] `FINAL-005` 删除 `modules/resource/entity_scene`。 **完成：旧 target、component、源码、测试、公共头、namespace 与安装产物已删除；未保留 alias、shim、forwarding header 或测试专用旧 Codec。**
 - [x] `FINAL-006` 删除 `modules/resource/spatial`。 **完成：旧源码、target、component、include prefix、namespace 与安装导出均已删除，不保留 alias/shim/forwarding header。**
@@ -7376,6 +7340,7 @@ BUILD-03..FINAL
 
 本清单当前共 **668** 个验收复选项：**321** 项完成，**320** 项有效待完成或部分完成，另有 **27** 项被现行 ADR 明确取代并保留未勾选作为历史记录。
 
+
 ---
 
 # 当前代码到目标架构的迁移映射总表
@@ -7427,7 +7392,7 @@ BUILD-03..FINAL
 | FormatCompat.h | `lux/cxx/core/Format.hpp` | DONE — MOVE/DELETE generated header；std/libfmt/fallback 语义保留 | lux-cxx Core | 02 |
 | Size2D.hpp / `Size2D` | `lux/engine/math/Extent.hpp` / `lux::math::Extent2u` | DONE — MOVE/RENAME；8-byte layout 固定 | Core Math | 02 |
 | ImageEnums.hpp | `description/Image.hpp` + `render/graph/TextureAccess.hpp` | DONE — SPLIT；Dimension/Format 归 Description，Role 归 Render | Resource/Render | 02/03/04 |
-| modules/platform/gapi | modules/function/render/vulkan/low_level | MOVE/DELETE | Render | 02/04 |
+| modules/platform/gapi | modules/platform/gapi | KEEP — ADR-20260821；公共 GAPI component 保留 | Platform | 02/04 |
 | modules/platform/window | window core + window backends + render surface integration | SPLIT | Platform/Render | 02 |
 | GlfwRuntime | GlfwLibrary/backend state | RENAME/INTERNAL | Platform | 02 |
 | TrayIconWin32 | products/launcher or lux::tray | MOVE | Launcher/Platform | 02 |
@@ -7614,6 +7579,7 @@ status=PENDING → legacy report 允许但不能增长
 - [ ] 所有 ABI/格式迁移附 Golden/fixture 测试。
 - [ ] 无未登记的新旧双重概念。
 
+
 ---
 
 # 当前代码事实索引
@@ -7667,7 +7633,7 @@ status=PENDING → legacy report 允许但不能增长
 | `modules/core/math/.../Extent.hpp` | `lux::math::Extent2u` 唯一 owner；standard-layout/trivially-copyable/8-byte layout 契约 | 02 |
 | `modules/resource/description/.../Image.hpp` | `lux::rdesc::ETextureDimension/ETextureFormat` owner；ordinal 与 32-bit wire/layout 语义不变 | 02/03 |
 | `modules/function/render/graph/.../TextureAccess.hpp` | `lux::render::ETextureRole` owner；Render Graph 可 headless 独立安装和链接 | 02/04 |
-| `modules/platform/gapi/CMakeLists.txt` | Vulkan interface target 与 wrapper headers | 02/04 |
+| `modules/platform/gapi/CMakeLists.txt` | 保留的公共 Vulkan interface target 与 wrapper headers；Render 可消费但不取得所有权 | 02/04 / GAPI ADR |
 | `modules/platform/window/CMakeLists.txt` | GLFW/Android、Vulkan Header、Tray Icon | 02/04 |
 | `modules/resource/CMakeLists.txt` | 只显式添加并安装 description 与 asset 家族；无自动目录枚举或其他一级 component | 01/03 |
 | `modules/resource/description/CMakeLists.txt` | 只拥有通用 Description 值；不再拥有 Terrain、Tilemap、StaticCollider3D 场景 Payload | 03/ADR |
@@ -7771,6 +7737,7 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 - [ ] 删除旧文件时将对应行标记 DONE，而不是静默删除历史。
 - [ ] 新发现的错位模块先加入本索引，再进入 12 映射表。
 - [ ] 当前事实和目标建议分栏，不把目标误写成已实现状态。
+
 
 ---
 
@@ -7881,6 +7848,14 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 - `MODULES_SDK` Profile 提案废止，改用现有四个 Profile 的 installed consumers 验证公共包闭包。
 
 实施提交 `ed5fb7eb` 已完成上述裁决；owner tests、四 Profile 全量/no-op 构建、三类 installed consumer 与旧符号/依赖闭包扫描均通过。完整证据见 `evidence/asset-pipeline-core-meta-fe4422ba.md`。
+
+## 2026-08-21 GAPI 保留与单体 Input 裁决
+
+- 保留 `modules/platform/gapi` 的公共 target、component、namespace 与低层 Vulkan wrapper 所有权，废止并入 Render 后删除旧 owner 的目标。
+- Input 只保留 `lux::engine::function::input` 一个 target；平台差异由 CMake 选择私有 GLFW/Android 源实现。
+- Window 只产出原始事件，`lux::input::Input` 统一拥有 Snapshot、ActionMapper、唯一 ActionRegistry 与 ContextStack。
+- 禁止新增 Input Adapter target/interface、backend factory、catalog 或运行期多态。
+
 
 ---
 
@@ -8053,6 +8028,7 @@ engine/scene/
 - 三类领域 Payload 在新 owner 下保持长度、SHA 与 decode/re-encode 契约。
 - 安装包只暴露 canonical `scene` component；旧 Scene components 和 Resource 场景 Payload 头不存在。
 
+
 ---
 
 # ADR：Asset 领域内聚、Pak 公共边界与 Engine Content
@@ -8196,6 +8172,7 @@ component `asset` 保持不变。Engine Content target 为 `lux::engine::content
 本轮不创建第二套 AssetStore、Provider、AssetId 或 AssetTypeId；不推进 M0、全局 M7
 命名迁移、Scene/Registry/Editor 架构重写或 Extension ABI；不改变任何 wire/schema。
 
+
 ---
 
 # ADR：Asset 运行期需求与 SerDeser 边界
@@ -8286,6 +8263,7 @@ AssetFileHeader v1/v2、各资产 wire、Scene legacy LXSC、Pak v2、magic、UU
 `MODULES_SDK` 不是合法 Profile；Modules 边界由 installed consumers 在现有四个 Profile 的
 安装结果上验证。
 
+
 ---
 
 # ADR：Core Meta 纯化与 ECS Registry 归位
@@ -8350,6 +8328,7 @@ sidecar 反射；Core Meta/Serialization installed consumer 不获得 EnTT，ECS
 
 本 ADR 不推进 M0、M7、Extension ABI、VFS/Platform 迁移、Registry 产品级重写或 Scene Runtime
 重写。
+
 
 ---
 
@@ -8428,6 +8407,7 @@ Core Serialization 已删除 TaggedPropertyArchive、Meta 与 Eigen 闭包；ECS
 三条 Unknown Component 路径均在 Registry 发布前失败。Core、ECS Component Archive 与
 Function Animation installed consumers、四 Profile 全量构建及第二轮 no-op 已通过；证据见
 `evidence/core-serialization-ecs-component-archive-6906ccc2.md`。
+
 
 ---
 
@@ -8527,6 +8507,95 @@ reflection publication、lease/unload 与 Editor-only registration。实际 Phys
 `luxGetExtensionModuleV4` 与 `luxRegisterRuntimeContributionsV4`。完整验证见
 `evidence/extension-abi-core-retirement-2259ade7.md`。
 
+
+---
+
+# ADR-20260821：GAPI 保留裁决
+
+## 状态
+
+ACCEPTED，取代执行文档中所有“把 `modules/platform/gapi` 并入 Render Vulkan 并删除旧 owner”的目标。
+
+## 决策
+
+`modules/platform/gapi` 保持为 Modules SDK 中公开、可独立使用的 Platform 图形 API 组件：
+
+- target、安装 component、公共 include 与 `lux::engine::platform::gapi` namespace 均保留；
+- GAPI 继续拥有其低层 Vulkan wrapper 与对象生命周期合同；
+- Render Vulkan 可以依赖 GAPI，但不取得 GAPI 的所有权；
+- 本重构不强制把 GAPI wrapper 与 Render 内部 handle/资源模型合并为一种类型；
+- 不创建迁移 alias、forwarding header 或替代 target。
+
+GAPI 与 Render 的职责不同：GAPI 是外部项目也可直接使用的低层图形 API，Render Vulkan 是引擎 Render 协议的一种实现。二者使用同一 Vulkan 后端不等价于二者必须共享同一公共对象模型。
+
+## 被取代的施工目标
+
+以下 Checklist 项保持未勾选，并标记为 `SUPERSEDED`：
+
+- `PLATFORM-009/010/011`
+- `RENDER-009/010`
+- `FINAL-003`
+
+迁移映射 `modules/platform/gapi -> modules/function/render/vulkan/low_level` 改为 `KEEP`。阶段退出条件与最终验收不得再要求 GAPI 目录、target、component 或 namespace 消失。
+
+## 非目标
+
+- 本裁决不禁止 GAPI 内部修复、测试或面向 Vulkan 版本的正常演进。
+- 本裁决不修改 Window/Vulkan Surface 的所有权；该边界仍由后续 Window/Render Surface 阶段处理。
+- 本裁决不改变任何 GAPI production 代码或安装 ABI。
+
+
+---
+
+# ADR-20260821：单体 Input 子系统边界
+
+## 状态
+
+ACCEPTED，取代“为每个窗口后端建立公开 Input Adapter target”的旧目标。
+
+## 决策
+
+Input 只提供一个公开 target 与安装 component：
+
+```text
+lux::engine::function::input
+```
+
+公开的 `lux::input::Input` 是完整输入领域对象，拥有：
+
+- 当前帧 `InputSnapshot`；
+- `ActionMapper`；
+- `ActionMapper` 内唯一的 `InputActionRegistry`；
+- `InputContextStack`。
+
+Window 只采集 OS/window backend 的原始 key、mouse、scroll 与 text 事件。`Input::sample(window)` 读取并规范化这些事件，`Input::evaluate()` 再执行 Action Mapping。采集与求值刻意分成两个阶段，使 Editor 可以在采集后依据 ImGui/Viewport 状态决定 keyboard/pointer routing。
+
+平台差异只存在于同一 target 的私有实现：CMake 在配置时选择 `src/platform/glfw/InputPlatform.cpp` 或 `src/platform/android/InputPlatform.cpp`。不得增加：
+
+- `input_glfw` / `input_android` target 或 component；
+- `InputAdapter` / `IInputBackend`；
+- backend factory、catalog、注册表或运行期多态；
+- 必需依赖 setter、hook 或 Service Locator。
+
+## 所有权与依赖
+
+- normalized physical input、snapshot、Action/Context 语义属于 Function Input。
+- Platform Window 拥有原始事件 acquisition 与 per-window event queue，但不解释 Action、Context、UI capture 或 held/edge 状态。
+- Input 对 Window/GLFW 的构建链接为 PRIVATE；Input 公共头不 include GLFW。
+- `ActionMapper` 继续是同一 target 内可独立使用的算法类，服务于 headless Preview、测试和低层 Runtime。
+- GameApplication 不再维护第二份 `InputActionRegistry`；脚本名称查询与 Mapper state 必须使用同一 Registry。
+
+## 兼容性
+
+本阶段允许源码与安装头路径破坏，不保留旧 `lux::window` 输入类型、旧头或 forwarding alias。输入类型没有持久化 wire；Scene、Asset、Pak 与 Authoring 字节格式不受影响。
+
+## 非目标
+
+- 不实现真实 Android GameActivity 输入；Android 当前确定性地产生空快照并保持可编译。
+- 不完整拆分 Window core/backend、Vulkan Surface、Tray 或 UI。
+- 不引入输入设备热插拔、gamepad、重放文件格式或新的线程模型。
+
+
 ---
 
 # Asset 领域内聚基线与 wire 验收证据
@@ -8568,6 +8637,7 @@ reflection publication、lease/unload 与 Editor-only registration。实际 Phys
 - Public Pak writer/inspector/provider、opaque VFS、AssetRef 账本、Catalog 冲突、Engine Content UUID 与 ECS fallback 注入契约均通过。
 - DEVELOPER、PLAYER、EDITOR、TOOLCHAIN 的 Windows RelWithDebInfo `target all -j 4 -k 0` 通过，第二轮均为 `ninja: no work to do`。
 
+
 ---
 
 # Asset Pipeline、Runtime Demand 与 Core Meta 验收证据
@@ -8602,6 +8672,7 @@ reflection publication、lease/unload 与 Editor-only registration。实际 Phys
 - Debug、RelWithDebInfo、Android 三个安装前缀的变更公共头已同步；五个退役头已精确删除。
 - Asset、Core Meta/Serialization 与 ECS Core installed consumers 均完成配置、编译、链接和运行。
 - 旧回调、旧 Registry/OO 根类、旧 Resolver 公共头及禁止依赖闭包扫描归零；`git diff --check` 通过。
+
 
 ---
 
@@ -8640,6 +8711,7 @@ reflection publication、lease/unload 与 Editor-only registration。实际 Phys
 | module layout / target DAG | 四 Profile 配置通过 |
 
 四个构建树当前均报告 `No tests were found!!!`，因此验收记录来自独立 owner test executables，未把 0 项 CTest 误报为测试覆盖。旧构建目录中的 `entity_scene_contract_test.exe` 是已删除 Resource target 的历史残留，不属于当前 CMake DAG；现行 LXES 契约由 `entity_section_wire_compatibility_test`、`entity_scene_cooker_test` 与 `runtime_entity_scene_integration_test` 验证。
+
 
 ---
 

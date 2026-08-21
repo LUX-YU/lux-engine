@@ -9,7 +9,8 @@
 **Component Archive 实施提交：** `d1ead288`
 **Extension ABI 文档裁决提交：** `2a916295`
 **Extension ABI 实施提交：** `c56efbc4`
-**当前事实基线：** `c56efbc4`
+**GAPI/Input 裁决代码基线：** `d7f364d0`
+**当前事实基线：** `d7f364d0`
 **文档日期：** 2026-08-21
 
 本套文档替代此前 v1.x 文档。新版以以下哲学为中心：
@@ -43,7 +44,7 @@ products= 最终入口与可执行程序
 | --- | --- | --- | --- |
 | 00 | 架构宪章与变更控制 | 不可变决议、层级、命名、所有权和执行顺序 | 00_架构宪章与变更控制.md |
 | 01 | modules 公共 SDK 边界 | 公共库准入、安装包、隔离 Profile 与架构扫描 | 01_modules公共SDK边界与分发体系重构.md |
-| 02 | Core 与 Platform | extension_abi/meta/common/gapi/window 清理 | 02_Core与Platform基础库清理.md |
+| 02 | Core 与 Platform | extension_abi/meta/common 清理、GAPI 保留与 window 边界 | 02_Core与Platform基础库清理.md |
 | 03 | Resource | Description/Asset 两级语义、既有 AssetManager、Codec、Provider 与 VFS/Pak | 03_Resource-Description与Asset重构.md |
 | 04 | Function | Render/Input/Animation/Navigation/Script/UI 公共闭包纯化 | 04_Function公共模块重构.md |
 | 05 | ECS | Registry、ComponentSchema、Serialization、Scene Format | 05_ECS内核-序列化与SceneFormat重构.md |
@@ -67,6 +68,8 @@ products= 最终入口与可执行程序
 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md` 裁决 Core/ECS 序列化边界、详细错误合同、UUID/资产 annotation 语义以及 Unknown Component 拒绝策略；`d1ead288` 已完成施工和安装闭包验收。
 
 `ADR-20260821_ExtensionAbiV4Owner与Core清零.md` 裁决 Extension ABI 实体 owner、v4 二进制兼容边界与通用 `ContributionId` 删除；`c56efbc4` 已完成施工和安装/ABI 验收。
+
+`ADR-20260821_GAPI保留裁决.md` 取代 GAPI 并入 Render/删除 Platform owner 的旧目标；`ADR-20260821_单体Input子系统边界.md` 规定单一 Input target、完整领域所有权与配置期平台源选择。两项裁决在代码完成前不提前勾选施工项。
 
 ## 推荐阅读与施工顺序
 
@@ -112,6 +115,8 @@ products= 最终入口与可执行程序
 - `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`：Registry owner 与 Core Meta/Reflection 的现行裁决。
 - `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`：Core byte archive 与 ECS Component Archive 的现行裁决。
 - `ADR-20260821_ExtensionAbiV4Owner与Core清零.md`：Extension ABI v4 owner、冻结表面与 Core 清零裁决。
+- `ADR-20260821_GAPI保留裁决.md`：保留 Platform GAPI 公共 SDK，取代并入 Render/删除 owner 的旧目标。
+- `ADR-20260821_单体Input子系统边界.md`：单一 Input target、完整 Input 领域对象与编译期平台实现。
 - `evidence/asset-domain-cohesion-f35e245a.md`：本轮基线公共面、12 组 wire 指纹与验收结论。
 - `evidence/asset-pipeline-core-meta-fe4422ba.md`：统一加载链、Runtime demand、Registry/Meta 边界与安装闭包验收。
 - `evidence/core-serialization-ecs-component-archive-6906ccc2.md`：Core/Component Archive 迁移、wire 回归与四 Profile/安装闭包验收。

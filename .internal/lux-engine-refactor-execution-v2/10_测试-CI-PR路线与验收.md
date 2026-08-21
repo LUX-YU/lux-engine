@@ -546,7 +546,7 @@ CORE-02..05
 PLATFORM-01..03
 ```
 
-退出：Extension ABI、gapi、common、spatial 归位。
+退出：Extension ABI、common、spatial 归位；GAPI 按保留 ADR 继续存在。
 
 ### M2：Resource/Function
 

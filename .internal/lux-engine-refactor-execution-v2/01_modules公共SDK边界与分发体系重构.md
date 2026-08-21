@@ -51,7 +51,7 @@
 | `modules/platform/dynamic_library` | 保留 | `lux::dynamic_library` | 独立 RAII 动态库加载 |
 | `modules/platform/filewatch` | 保留 | `lux::filewatch` | Editor 只是当前消费者，不改变通用性 |
 | `modules/platform/window` | 拆分 | `lux::window`、`lux::window_glfw` | 核心抽象、平台 Backend、Vulkan Surface Integration 分离 |
-| `modules/platform/gapi` | 搬迁 | `modules/function/render/vulkan/low_level` | 实际是 Vulkan Wrapper，不是 Platform 抽象 |
+| `modules/platform/gapi` | 保留 | 当前 owner | 公共低层 Vulkan Wrapper SDK；Render 可消费但不取得所有权 |
 | `modules/resource/description` | 保留并纯化 | `lux::description` | 只保留被动资源值类型 |
 | `modules/resource/asset` | 保留并重构 | `lux::asset` | 通用 Asset/SerDeser/Catalog/Manager/Provider/VFS 与 Pak 读写；不含 Engine 默认内容 |
 | `modules/resource/*` 其他目录 | 消除一级组件 | 按语义迁移 | 见文档 03 |

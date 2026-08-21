@@ -57,7 +57,7 @@ target_link_libraries(app PRIVATE
 | `lux::engine::core::extension_abi` | 当前 `lux::engine::extensions::extension_api`；M7 再评估短 alias | `lux-engine-extensions`，Core 旧 component 删除 |
 | `lux::engine::platform::common` | 删除 | — |
 | `lux::engine::platform::window` | `lux::window` / `lux::window_glfw` | `lux-platform` |
-| `lux::engine::platform::gapi` | 删除；并入 `lux::render_vulkan` | `lux-render` |
+| `lux::engine::platform::gapi` | KEEP；公共低层 Vulkan wrapper SDK | `lux-engine-platform` |
 | `lux::engine::platform::dynamic_library` | `lux::dynamic_library` | `lux-platform` |
 | `lux::engine::platform::filewatch` | `lux::filewatch` | `lux-platform` |
 | `lux::engine::resource::description` | `lux::description` | `lux-resource` |

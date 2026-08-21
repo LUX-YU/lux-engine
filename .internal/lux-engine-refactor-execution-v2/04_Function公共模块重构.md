@@ -27,7 +27,7 @@
 | --- | --- | --- |
 | `render_client` | `lux::render` 或内部 protocol 子目标 | 移除 Meta、Deployment、Platform Common 的 PUBLIC 依赖 |
 | `render_graph` | `lux::render_graph` | 保持设备无关；依赖 core/math/containers，不依赖 Platform Common |
-| `render_vulkan` | `lux::render_vulkan` | 吸收 gapi；Window Surface 作为叶子 Integration |
+| `render_vulkan` | `lux::render_vulkan` | 消费保留的 GAPI；Window Surface 作为叶子 Integration |
 | `render_features` | `lux::render_standard` + 私有 feature object libs | Grid/Gizmo/Highlight 工具能力上移或可选 |
 | `input` | `lux::input` | 物理输入值不依赖 Window Backend |
 | `animation` | `lux::animation` | 只依赖 Description 和 Math |
@@ -150,37 +150,9 @@ target_link_libraries(render_graph
 
 移除 `platform::common`。`Size2D`、Format 等精确依赖改为 `lux::math` 或 `lux-cxx`。
 
-### 2.6 `render_vulkan` 吸收 gapi
+### 2.6 `render_vulkan` 消费保留的 GAPI
 
-MOVE `modules/platform/gapi` 的 Vulkan Wrapper 到：
-
-```text
-render/vulkan/low_level
-```
-
-现有 `render_vulkan/src/gpu/*` 与 `gapi/vk/*` 存在重复抽象时，遵循：
-
-```text
-只保留一个 Device/Buffer/Image/Descriptor/Pipeline 所有权模型
-```
-
-不得同时保留：
-
-```text
-gapi::vk::Buffer
-render::GPUBufferVma
-render::BufferHandle
-```
-
-而没有明确层级关系。
-
-建议：
-
-```text
-Vulkan RAII handles         → vulkan/low_level
-VMA-backed allocations      → vulkan/memory
-Renderer logical resources  → render/api handles
-```
+按 ADR-20260821，GAPI 继续作为公共 Platform Vulkan wrapper SDK。`render_vulkan` 可以链接并使用它，但不迁移其目录、target、component 或 namespace，也不在本重构中强制把 GAPI wrapper 与 Render 内部 handle 合并为一种公共对象模型。
 
 ### 2.7 Window Surface Integration
 
@@ -264,54 +236,60 @@ namespace lux::render
 
 ```text
 modules/function/input/
-├── include/lux/input/
+├── include/lux/engine/input/
+│   ├── Input.hpp
+│   ├── InputSnapshot.hpp
 │   ├── PhysicalInput.hpp
-│   ├── Snapshot.hpp
-│   ├── Action.hpp
-│   ├── Mapping.hpp
-│   └── Context.hpp
+│   └── Action/Mapping/Context headers
 └── src/
+    ├── Input.cpp
     ├── ActionMapper.cpp
-    └── BindingIdAllocator.cpp
-
-modules/platform/window/glfw/
-└── GlfwInputAdapter.cpp
+    ├── BindingIdAllocator.cpp
+    └── platform/{glfw|android}/InputPlatform.cpp
 ```
 
 目标值类型：
 
 ```cpp
-enum class Key;
-enum class PointerButton;
-struct AxisValue;
+enum class EKey;
+enum class EMouseButton;
 struct InputSnapshot;
 ```
 
-GLFW Adapter：
-
-```cpp
-input::InputSnapshot captureInput(GLFWwindow&);
-```
-
-`lux::input` 不 include `<GLFW/glfw3.h>`。
-
-### 3.3 对外对象命名
-
-若现有 `ActionMapper + InputActionRegistry + InputContextStack` 对外过于分散，可提供：
+公开领域对象：
 
 ```cpp
 class Input final
 {
 public:
-    ActionId declare(ActionDescriptor);
-    BindingId bind(Binding);
-    ContextToken push(ContextId);
-    void update(const InputSnapshot&);
-    const ActionState& state(ActionId) const;
+    void sample(window::LuxWindow&);
+    void evaluate(float dt, bool accept_keyboard, bool accept_pointer);
+    ActionMapper& mapper() noexcept;
+    InputActionRegistry& actionRegistry() noexcept;
+    InputContextStack& contexts() noexcept;
 };
 ```
 
-内部仍可保留三个组件，不强制合并代码。
+Input 只有一个 target。CMake 在配置期只选择一个私有平台实现；不创建 Adapter target、backend interface、factory 或注册表。`lux::input` 公共头不 include `<GLFW/glfw3.h>`。
+
+### 3.3 对外对象命名
+
+`Input` 是平台宿主使用的统一所有权对象：
+
+```cpp
+class Input final
+{
+public:
+    void sample(window::LuxWindow&);
+    void evaluate(float dt, bool accept_keyboard = true,
+                  bool accept_pointer = true);
+    ActionMapper& mapper() noexcept;
+    InputActionRegistry& actionRegistry() noexcept;
+    InputContextStack& contexts() noexcept;
+};
+```
+
+`InputActionRegistry` 只保留 `ActionMapper` 内部唯一实例。`ActionMapper` 仍可在 headless Preview 与低层 Runtime 中单独使用，但 GameApplication 不得再维护第二份 Registry。
 
 ## 4. Animation 解耦
 
@@ -507,7 +485,7 @@ cmake/Codegen/ShaderParams.cmake
 | `modules/function/CMakeLists.txt` | 显式子目录；安装包按领域拆分 |
 | `render/client/CMakeLists.txt` | 删除 Meta、Deployment、Platform Common 的 PUBLIC 依赖 |
 | `render/graph/CMakeLists.txt` | 精确依赖 Core/Math/Container |
-| `render/vulkan/CMakeLists.txt` | 吸收 gapi；Surface Integration 分离 |
+| `render/vulkan/CMakeLists.txt` | 消费保留的 GAPI；Surface Integration 分离 |
 | `render/features/CMakeLists.txt` | Object Library 分组；工具 Feature 移出默认标准包 |
 | `input/CMakeLists.txt` | 不 PUBLIC 链接 Window |
 | `animation/CMakeLists.txt` | 依赖 Description，不依赖 Asset Core |
@@ -522,7 +500,7 @@ cmake/Codegen/ShaderParams.cmake
 | FUNC-01 | 新公共 Alias 与 Include Prefix | 旧 API 兼容 |
 | RENDER-01 | Render Config 与 Deployment 解耦 | render_client 无 deployment |
 | RENDER-02 | Build-time Meta 依赖移出 Runtime Link | 安装包无 generator |
-| RENDER-03 | gapi 并入 Vulkan Backend | Platform 无 Vulkan wrappers |
+| RENDER-03 | GAPI 保留裁决 | 迁移/删除目标 SUPERSEDED，公共 GAPI 保持可链接 |
 | RENDER-04 | Window Surface Integration 分离 | render_vulkan core 无 GLFW |
 | RENDER-05 | features Object Library 分组 | 行为与 shader 输出不变 |
 | INPUT-01 | Snapshot 与 Window Backend 分离 | input-only 样例无 GLFW |
@@ -538,7 +516,7 @@ cmake/Codegen/ShaderParams.cmake
 - [ ] `lux::render` 公共头无 ECS、Scene、Editor 类型。
 - [ ] `lux::render` 安装 Config 无 Meta Generator、Deployment、Extension ABI。
 - [ ] `lux::render_vulkan` 核心不依赖 GLFW。
-- [ ] `platform/gapi` 已删除。
+- [x] `platform/gapi` 按保留 ADR 继续作为公共组件存在。
 - [ ] `render_graph` 可在无 Vulkan SDK 的测试配置中编译。
 - [ ] `lux::input` 可在无 GLFW 的配置中编译。
 - [ ] `lux::animation` 不依赖 Asset Core/AssetStore。

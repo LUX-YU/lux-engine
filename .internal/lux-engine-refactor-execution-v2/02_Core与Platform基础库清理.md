@@ -61,7 +61,7 @@ modules/platform/window
 | `modules/platform/common/FormatCompat.h.in` | `lux-cxx::format` or `modules/core/format` | MOVE |
 | `modules/platform/common/include/.../Size2D.hpp` | `modules/core/math/include/lux/math/Extent.hpp` | MOVE |
 | `modules/platform/common/include/.../ImageEnums.hpp` | `modules/resource/description/include/lux/description/Image.hpp` | MOVE |
-| `modules/platform/gapi` | `modules/function/render/vulkan/low_level` | MOVE |
+| `modules/platform/gapi` | 当前 owner | KEEP — ADR-20260821 GAPI 保留裁决 |
 | `modules/platform/window/src/GlfwRuntime.cpp` | `modules/platform/window/glfw/src/GlfwLibrary.cpp` | MOVE/RENAME |
 | `modules/platform/window/src/TrayIconWin32.cpp` | `modules/platform/tray/win32` or product layer | MOVE |
 
@@ -416,45 +416,18 @@ lux-engine-platform common component
 
 所有依赖者必须改为精确目标，不能创建新的 `foundation_common`。
 
-## 8. `gapi` 迁入 Render Vulkan
+## 8. `gapi` 保留为 Platform 公共 SDK
 
 ### 8.1 当前事实
 
-`modules/platform/gapi` 强制查找 Vulkan，并导出 Buffer、Image、Descriptor、Pipeline、Swapchain、Surface 等 Vulkan Wrapper。它是 Render Backend 的底层实现，不是 Platform。
+`modules/platform/gapi` 查找 Vulkan，并导出 Buffer、Image、Descriptor、Pipeline、Swapchain、Surface 等低层 Wrapper。按 ADR-20260821，它是外部项目也可直接使用的公共 Platform 图形 API，而不是必须被 Render 吸收的临时实现目录。
 
-### 8.2 目标目录
+### 8.2 保留边界
 
-MOVE：
-
-```text
-modules/platform/gapi/include/lux/engine/gapi/vk/*
-→ modules/function/render/vulkan/low_level/include/lux/render/vulkan/*
-```
-
-MOVE 或 DELETE：
-
-```text
-RenderDevice.hpp
-RenderInstance.hpp
-```
-
-若只是旧抽象壳，合入 `VulkanDevice` 与 `VulkanInstance`。
-
-MODIFY `render_vulkan`：
-
-```cmake
-target_sources(render_vulkan PRIVATE
-    low_level/src/...
-)
-```
-
-DELETE target：
-
-```text
-lux::engine::platform::gapi
-```
-
-Renderer 对外 API 仍不得暴露这些 Wrapper；它们只用于高级用户明确选择 `lux::render_vulkan_low_level` 时才考虑安装。默认全部 PRIVATE。
+- `modules/platform/gapi`、`lux::engine::platform::gapi`、安装 component 与公共头保持不变。
+- Render Vulkan 可以依赖 GAPI，但不取得其类型和生命周期合同的所有权。
+- GAPI wrapper 与 Render 内部 handle 服务不同公共受众，不在本重构中强制合并。
+- 本阶段不修改 GAPI production 代码；后续正常维护不属于目录清零任务。
 
 ## 9. Window 拆分
 
@@ -559,7 +532,7 @@ Level
 | CORE-04 | EntityRegistry 迁入 ECS | Meta 公共目标不再链接 EnTT |
 | CORE-05 | Extension ABI 迁入 Engine SDK | Modules SDK 无 Extension 类型 |
 | PLATFORM-01 | 解散 common | 所有依赖改为精确目标 |
-| PLATFORM-02 | gapi 并入 render_vulkan | Platform 包不再查找 Vulkan |
+| PLATFORM-02 | GAPI 保留裁决 | 旧迁移/删除目标标记 SUPERSEDED，公共 component 保持可链接 |
 | PLATFORM-03 | Window Core/Backend/Surface 拆分 | Input/Window/Render 样例独立 |
 | CORE-FINAL | 删除旧 target/include/namespace | 架构扫描无例外 |
 

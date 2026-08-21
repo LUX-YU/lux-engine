@@ -105,3 +105,10 @@
 - `MODULES_SDK` Profile 提案废止，改用现有四个 Profile 的 installed consumers 验证公共包闭包。
 
 实施提交 `ed5fb7eb` 已完成上述裁决；owner tests、四 Profile 全量/no-op 构建、三类 installed consumer 与旧符号/依赖闭包扫描均通过。完整证据见 `evidence/asset-pipeline-core-meta-fe4422ba.md`。
+
+## 2026-08-21 GAPI 保留与单体 Input 裁决
+
+- 保留 `modules/platform/gapi` 的公共 target、component、namespace 与低层 Vulkan wrapper 所有权，废止并入 Render 后删除旧 owner 的目标。
+- Input 只保留 `lux::engine::function::input` 一个 target；平台差异由 CMake 选择私有 GLFW/Android 源实现。
+- Window 只产出原始事件，`lux::input::Input` 统一拥有 Snapshot、ActionMapper、唯一 ActionRegistry 与 ContextStack。
+- 禁止新增 Input Adapter target/interface、backend factory、catalog 或运行期多态。

@@ -1,7 +1,7 @@
 {
   "repository": "LUX-YU/lux-engine",
-  "baseline": "c56efbc4",
-  "document_version": "2.20",
+  "baseline": "d7f364d0",
+  "document_version": "2.21",
   "document_date": "2026-08-21",
   "architecture_baseline": [
     "A1",
@@ -17,25 +17,27 @@
     "ADR-20260821-AssetPipeline",
     "ADR-20260821-CoreMeta",
     "ADR-20260821-Serialization",
-    "ADR-20260821-ExtensionABI"
+    "ADR-20260821-ExtensionABI",
+    "ADR-20260821-GAPIRetention",
+    "ADR-20260821-Input"
   ],
   "numbered_documents": 14,
-  "supplemental_documents": 11,
+  "supplemental_documents": 13,
   "checklist_items": 668,
   "mapping_rows": 148,
   "fact_anchors": 80,
   "files": [
     {
       "name": "README.md",
-      "bytes": 8223,
-      "lines": 124,
-      "sha256": "46ead44c23c3464572d84c64e7bfa942dcc585643d808c0803c4191c93c50fbf"
+      "bytes": 8817,
+      "lines": 129,
+      "sha256": "346624bd870e9278375c30f8e48235bf8b0af3174085e0c5539cf9cea718a951"
     },
     {
       "name": "REVISION_NOTES_v2.md",
-      "bytes": 7060,
-      "lines": 107,
-      "sha256": "e8383d8b4686290e194bbb75461907c95dd5b8cee4236d8dcfbaab2655c0ea1e"
+      "bytes": 7629,
+      "lines": 114,
+      "sha256": "576091f3818cab29d0d412676f206e98b6d5b1643f4c7876ff70dc80b10452dd"
     },
     {
       "name": "ADR-20260820_SceneAsset与Resource边界.md",
@@ -74,22 +76,34 @@
       "sha256": "08272a05a852ff7c47229f7328fe26ed7fc74d957db31e80d99ed1deb6d49806"
     },
     {
+      "name": "ADR-20260821_GAPI保留裁决.md",
+      "bytes": 1589,
+      "lines": 33,
+      "sha256": "a9087a796f96bdd3c5604c9355a603aff9c81e19f7abef719bf95956838116a6"
+    },
+    {
+      "name": "ADR-20260821_单体Input子系统边界.md",
+      "bytes": 2301,
+      "lines": 47,
+      "sha256": "3ac971d7439ee6dc3e474d35b33378f29c65f225b00bd4fc4ea8c86d74676882"
+    },
+    {
       "name": "00_架构宪章与变更控制.md",
-      "bytes": 22719,
+      "bytes": 22772,
       "lines": 543,
-      "sha256": "1c382108b6f0bec0cd8f6d7bbde45de82a770eb3f04a27257be52e159d78e438"
+      "sha256": "9040e153db8b9e5c041d161132af1176d8ebec1e36a4d7aac89da9a96e944dd6"
     },
     {
       "name": "01_modules公共SDK边界与分发体系重构.md",
-      "bytes": 14772,
+      "bytes": 14764,
       "lines": 438,
-      "sha256": "c4c507fa760c20b0a81b3dd66ee045b3912cac10716124cf98fb9a6332c036b6"
+      "sha256": "3f45544680c9441561162414b70aa80e45deef4ff8a09500227adcfa2decb6e0"
     },
     {
       "name": "02_Core与Platform基础库清理.md",
-      "bytes": 16240,
-      "lines": 577,
-      "sha256": "e379203bd5370ff9bcf6ca0c7a4354a27adeb6240b778d429980d5f382817698"
+      "bytes": 16147,
+      "lines": 550,
+      "sha256": "3a941fe535b7424e3fe0375fc972348ca09f7284bfe347c79a89e7ef85022db0"
     },
     {
       "name": "03_Resource-Description与Asset重构.md",
@@ -99,9 +113,9 @@
     },
     {
       "name": "04_Function公共模块重构.md",
-      "bytes": 15927,
-      "lines": 549,
-      "sha256": "0b9a3be3e66c1e30f39ebc13539c5736725ed7732e5e62984889bd0674486335"
+      "bytes": 16316,
+      "lines": 527,
+      "sha256": "8658ffb6a0a45a2c81360a8e407b95831d93a46709be6b432c4d76f16b2c75f5"
     },
     {
       "name": "05_ECS内核-序列化与SceneFormat重构.md",
@@ -129,33 +143,33 @@
     },
     {
       "name": "09_CMake-命名空间-SDK包与兼容迁移.md",
-      "bytes": 14521,
+      "bytes": 14532,
       "lines": 534,
-      "sha256": "f5777f25f86cdcf18af6f1a240af70044bd743f5d40a18b29057184e0848d4c9"
+      "sha256": "1342729139d58d704a5229215e1ae38f351c1df7aedf1958d341d43fb1558cbf"
     },
     {
       "name": "10_测试-CI-PR路线与验收.md",
-      "bytes": 13529,
+      "bytes": 13556,
       "lines": 636,
-      "sha256": "a918765db260f19db1b40ca8278e2d497b18e607ca61eaed599e5e5e6a0a3952"
+      "sha256": "4c564cc1c93135631c915bb660433b912ba913602dd9bafd6e96c0113f4e710d"
     },
     {
       "name": "11_详细施工Checklist_已更新_20260819_b1a25d3.md",
-      "bytes": 82478,
+      "bytes": 83128,
       "lines": 821,
-      "sha256": "a063f30d801ef86362b31ee6ddb1b1ae55f9c9c0ba010ca4278394b9f285149e"
+      "sha256": "c4bab96adb5904d92b39a9ea60e5d5549c10c720fc0853094b2e793ef57ae132"
     },
     {
       "name": "12_迁移映射总表.md",
-      "bytes": 21654,
+      "bytes": 21678,
       "lines": 235,
-      "sha256": "c434bdcf54778cf3bcd48d9aef5d6f8d067b76b3af512096d584f8c34a1779d4"
+      "sha256": "bbf48640324e6d995ebaa887968954f579ff0d2080fbeb6c6872e2b19bd29502"
     },
     {
       "name": "13_当前代码事实索引.md",
-      "bytes": 16138,
+      "bytes": 16205,
       "lines": 155,
-      "sha256": "256877af4ecac26146826f702ff3b291b0fdb8f58593271f879520f3c8ea0623"
+      "sha256": "9c1f09a00e2a9489605ebe4f85af33bd45b09cc5b80f763a7b7512e28df82aef"
     },
     {
       "name": "evidence/asset-domain-cohesion-f35e245a.md",
@@ -183,15 +197,15 @@
     },
     {
       "name": "00-13_全部执行文档与Checklist_合订本.md",
-      "bytes": 350513,
-      "lines": 8683,
-      "sha256": "875825437263f3a2c678e1b77a70b9b5388f72fa1684b4f9c2cbd9615544e3fe"
+      "bytes": 356213,
+      "lines": 8755,
+      "sha256": "cd481ab61df78430460db878cbca9e1b25f7acbce67cc424057d4065d649dbc9"
     },
     {
       "name": "文档清单与施工顺序.txt",
-      "bytes": 1728,
-      "lines": 43,
-      "sha256": "8f62e46fe124a54586a43f920f5be30ec674c88ec3b0b64999e1c5fbf723cdc2"
+      "bytes": 1848,
+      "lines": 46,
+      "sha256": "fc8d4dacd7372bd7c58738bc6b0179261b008f9d914a9ae6aa72534dbde97c1d"
     }
   ]
 }

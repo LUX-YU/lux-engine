@@ -160,7 +160,7 @@ namespace lux::asset
         {
             return lux::cxx::unexpected(error);
         }
-        if (header.info_offset != sizeof(AssetFileHeader) ||
+        if (header.info_offset != assetFileHeaderSize(header.version) ||
             header.data_offset != header.info_offset + header.info_size ||
             header.data_size != 0 ||
             file.size() < header.data_offset)

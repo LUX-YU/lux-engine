@@ -134,7 +134,7 @@ namespace lux::asset
         // / info_size come straight from untrusted file bytes (loadHeaderRaw only checks
         // the header FITS), so a corrupt/truncated .luxasset would otherwise let the
         // Cursor read out of bounds. Wrap-safe form (no info_offset + info_size add).
-        if (header.info_offset != sizeof(AssetFileHeader))
+        if (header.info_offset != assetFileHeaderSize(header.version))
             return unexpected(EAssetError::WRONG_FILE_HEADER);
         if (header.info_offset > file.size()
             || header.info_size > file.size() - header.info_offset)

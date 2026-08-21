@@ -138,6 +138,21 @@ lux_classify_target(
 )
 
 add_executable(
+    asset_storage_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/storage/asset_storage_contract_test.cpp
+)
+target_link_libraries(
+    asset_storage_contract_test
+    PRIVATE lux::engine::resource::asset
+)
+lux_classify_target(
+    TARGET  asset_storage_contract_test
+    LAYER   RESOURCE
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+
+add_executable(
     asset_public_link_test
     ${CMAKE_CURRENT_SOURCE_DIR}/test/asset_public_link_test.cpp
 )
@@ -147,6 +162,21 @@ target_link_libraries(
 )
 lux_classify_target(
     TARGET  asset_public_link_test
+    LAYER   RESOURCE
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+
+add_executable(
+    asset_wire_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/asset_wire_contract_test.cpp
+)
+target_link_libraries(
+    asset_wire_contract_test
+    PRIVATE lux::engine::resource::asset
+)
+lux_classify_target(
+    TARGET  asset_wire_contract_test
     LAYER   RESOURCE
     PRODUCT TEST
     ROLE    DOMAIN

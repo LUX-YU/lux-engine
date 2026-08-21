@@ -137,6 +137,18 @@ namespace lux::asset
         }
     }
 
+    /// Serialized header width for a supported AssetFileHeader version.
+    /// Decoders must validate section offsets against the on-disk version,
+    /// not against sizeof(the current in-memory header).
+    [[nodiscard]] inline constexpr std::size_t assetFileHeaderSize(
+        asset_version_t version
+    ) noexcept
+    {
+        if (version == current_asset_version) return sizeof(AssetFileHeader);
+        if (version == asset_version_v1) return sizeof(compat::AssetFileHeaderV1);
+        return 0u;
+    }
+
     class AssetManager;
     
     /**

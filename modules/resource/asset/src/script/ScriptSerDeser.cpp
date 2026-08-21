@@ -55,7 +55,7 @@ namespace lux::asset
             }
             if (header.magic_number != asset_magic_number_of<EAssetType::SCRIPT>::value)
                 return EAssetError::WRONG_FILE_HEADER;
-            if (header.info_offset != sizeof(AssetFileHeader))
+            if (header.info_offset != assetFileHeaderSize(header.version))
                 return EAssetError::WRONG_FILE_HEADER;
             if (header.data_offset != header.info_offset + header.info_size)
                 return EAssetError::WRONG_FILE_HEADER;

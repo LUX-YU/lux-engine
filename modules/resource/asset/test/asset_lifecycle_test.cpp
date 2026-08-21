@@ -143,6 +143,46 @@ static void test_remove_asset_keeps_ledger()
     mgr.setBroadcast({});
 }
 
+static void test_asset_ref_value_semantics()
+{
+    banner("Test 5b: AssetRef copy/move/reset keeps the single ledger balanced");
+
+    AssetManager mgr{runtimeAssetCodecCatalog()};
+    const asset_id_t id = mgr.generateUUID();
+    mgr.registerAsset(makeSkeletonAssetWithId(id));
+    std::vector<asset_id_t> zeroed;
+    mgr.setBroadcast({.on_unreferenced =
+        [&](const asset_id_t& value) { zeroed.push_back(value); }});
+
+    AssetRef first = mgr.acquire(id);
+    AssetRef copy = first;
+    check(first && copy && mgr.isReferenced(id),
+          "copy acquires a second ledger ticket");
+
+    first.reset();
+    check(first.empty() && copy && mgr.isReferenced(id) && zeroed.empty(),
+          "reset releases only its own ticket");
+
+    AssetRef moved = std::move(copy);
+    check(copy.empty() && moved && mgr.isReferenced(id),
+          "move transfers without changing the ledger");
+
+    AssetRef assigned;
+    assigned = moved;
+    moved.reset();
+    check(assigned && mgr.isReferenced(id) && zeroed.empty(),
+          "copy assignment retains before the source releases");
+
+    assigned = std::move(assigned);
+    check(assigned && mgr.isReferenced(id),
+          "self move assignment preserves the ticket");
+    assigned.reset();
+    assigned.reset();
+    check(!mgr.isReferenced(id) && zeroed.size() == 1u && zeroed[0] == id,
+          "last reset emits one 1-to-0 edge and repeated reset is idempotent");
+    mgr.setBroadcast({});
+}
+
 static void test_invalidation_broadcast()
 {
     banner("Test 6: removeAsset broadcasts INVALIDATION (决七的第二事件)");
@@ -230,6 +270,7 @@ int main()
               << "====================================\n";
 
     test_remove_asset_keeps_ledger();
+    test_asset_ref_value_semantics();
     test_invalidation_broadcast();
     test_content_changed_broadcast();
     test_registered_broadcast();

@@ -19,6 +19,7 @@ namespace
         std::uint64_t hash,
         std::string name,
         std::uint32_t magic,
+        std::uint32_t legacy_magic = 0u,
         std::shared_ptr<const void> lifetime = {})
     {
         return lux::asset::AssetCodecDescriptor{
@@ -30,7 +31,7 @@ namespace
             nullptr,
             nullptr,
             magic,
-            0u,
+            legacy_magic,
             nullptr,
             std::move(lifetime)};
     }
@@ -62,7 +63,7 @@ int main()
     std::weak_ptr<const void> observed = lifetime;
     {
         auto built = AssetCodecCatalog::build({
-            descriptor(EAssetType::MESH, 1u, "Mesh", 101u, lifetime),
+            descriptor(EAssetType::MESH, 1u, "Mesh", 101u, 0u, lifetime),
             descriptor(EAssetType::TEXTURE, 2u, "Texture", 102u)});
         lifetime.reset();
         if (!built || observed.expired() ||
@@ -104,6 +105,27 @@ int main()
             EAssetCodecCatalogError::DUPLICATE_CPP_TYPE)
     {
         return 8;
+    }
+
+    auto legacy_collision = AssetCodecCatalog::build({
+        descriptor(EAssetType::MESH, 1u, "Mesh", 101u, 201u),
+        descriptor(EAssetType::TEXTURE, 2u, "Texture", 201u)});
+    if (legacy_collision || legacy_collision.error() !=
+            EAssetCodecCatalogError::DUPLICATE_MAGIC)
+    {
+        return 9;
+    }
+
+    auto legacy_catalog = AssetCodecCatalog::build({
+        descriptor(EAssetType::MESH, 1u, "Mesh", 101u, 201u),
+        descriptor(EAssetType::TEXTURE, 2u, "Texture", 102u)});
+    if (!legacy_catalog ||
+        legacy_catalog->findByMagic(101u) == nullptr ||
+        legacy_catalog->findByMagic(201u) == nullptr ||
+        legacy_catalog->findByMagic(201u)->type != EAssetType::MESH ||
+        legacy_catalog->findByMagic(999u) != nullptr)
+    {
+        return 10;
     }
     return 0;
 }

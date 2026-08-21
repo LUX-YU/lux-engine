@@ -229,7 +229,7 @@ namespace lux::asset
             }
             if (header.magic_number != asset_magic_number_of<EAssetType::MATERIAL>::value)
                 return unexpected(EAssetError::WRONG_FILE_HEADER);
-            if (header.info_offset != sizeof(AssetFileHeader))
+            if (header.info_offset != assetFileHeaderSize(header.version))
                 return unexpected(EAssetError::WRONG_FILE_HEADER);
             // Wrap-safe bounds check: info_offset / info_size come straight from
             // untrusted file bytes (loadHeaderRaw only verifies the header FITS),

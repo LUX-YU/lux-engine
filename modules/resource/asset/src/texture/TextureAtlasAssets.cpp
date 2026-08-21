@@ -225,7 +225,7 @@ namespace lux::asset
                 return unexpected(ec);
             if (header.magic_number != asset_magic_number_of<Type>::value)
                 return unexpected(EAssetError::WRONG_FILE_HEADER);
-            if (header.info_offset != sizeof(AssetFileHeader))
+            if (header.info_offset != assetFileHeaderSize(header.version))
                 return unexpected(EAssetError::WRONG_FILE_HEADER);
             if (header.data_offset != header.info_offset + header.info_size)
                 return unexpected(EAssetError::WRONG_FILE_HEADER);

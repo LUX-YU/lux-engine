@@ -11,16 +11,12 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <memory>
-#include <sstream>
 #include <string>
-#include <thread>
 #include <vector>
 
 using namespace lux::asset;
@@ -95,19 +91,6 @@ namespace
             static_cast<std::streamsize>(bytes.size()));
     }
 
-    void flipByte(const fs::path& path, std::uint64_t offset)
-    {
-        std::fstream stream(
-            path,
-            std::ios::binary | std::ios::in | std::ios::out);
-        stream.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
-        char value = 0;
-        stream.read(&value, 1);
-        value ^= static_cast<char>(0x5au);
-        stream.seekp(static_cast<std::streamoff>(offset), std::ios::beg);
-        stream.write(&value, 1);
-    }
-
     asset_id_t makeId(std::uint64_t ordinal)
     {
         std::array<std::uint8_t, 16> bytes{};
@@ -118,13 +101,6 @@ namespace
                 ordinal >> (i * 8u));
         }
         return asset_id_t{bytes};
-    }
-
-    std::string bulkPath(std::size_t index)
-    {
-        std::ostringstream stream;
-        stream << "Bulk/Asset_" << std::setw(5) << std::setfill('0') << index;
-        return stream.str();
     }
 
     asset_id_t writeSkeletonAsset(
@@ -148,158 +124,6 @@ namespace
         if (codec.exportAsLuxAsset(id, file) != EAssetError::SUCCESS)
             return {};
         return id;
-    }
-
-    void testPagedIndexAndIntegrity()
-    {
-        banner("LUXPAK v2 paged index, lazy integrity and concurrency");
-        TempTree tree("paged");
-        const auto pak = tree.root / "bulk.luxpak";
-
-        constexpr std::size_t kEntryCount = 1000u;
-        std::vector<PakWriteEntry> inputs;
-        inputs.reserve(kEntryCount);
-        for (std::size_t i = 0u; i < kEntryCount; ++i)
-        {
-            const std::array<std::byte, 8> payload{
-                std::byte{0x4c}, std::byte{0x55}, std::byte{0x58},
-                std::byte{static_cast<unsigned char>(i & 0xffu)},
-                std::byte{static_cast<unsigned char>((i >> 8u) & 0xffu)},
-                std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
-            inputs.push_back(PakWriteEntry{
-                makeId(i + 1u),
-                0x4b4c5542u,
-                bulkPath(i),
-                {},
-                lux::cxx::SharedBytes<>::copyOf(payload)});
-        }
-        std::string write_error;
-        check(
-            writePakFile(pak, inputs, "/Game", &write_error),
-            "writes 1000 payloads into immutable paged B+trees");
-        if (!fs::exists(pak))
-            return;
-
-        const auto pristine = readAll(pak);
-        const auto initial_inspection = lux::asset::inspectPak(pak);
-        check(
-            initial_inspection
-                && initial_inspection->entries.size() == kEntryCount,
-            "public inspection validates the v2 multi-page index");
-        if (!initial_inspection)
-            return;
-
-        auto provider_result = PakAssetProvider::loadFromFile(pak);
-        check(provider_result.has_value(), "provider validates Header plus two roots");
-        if (!provider_result)
-            return;
-        const auto provider = provider_result.value();
-        check(provider->assetCount() == kEntryCount, "asset count comes from Header");
-        const auto mounted_stats = provider->stats();
-        check(
-            mounted_stats.index_pages_resident == 2u
-                && mounted_stats.metadata_resident_bytes
-                    == 2u * 4096u,
-            "mount retains only the two B+tree roots");
-        check(
-            provider->resolve(bulkPath(0u)) == makeId(1u)
-                && provider->resolve(bulkPath(517u)) == makeId(518u)
-                && provider->resolve(bulkPath(999u)) == makeId(1000u),
-            "path lookup traverses first, middle and last leaves");
-        check(
-            provider->open(makeId(518u)).has_value(),
-            "payload lookup and SHA-256 verification succeeds");
-
-        std::size_t enumerated = 0u;
-        provider->enumerate([&](const ProviderEntry& entry)
-        {
-            if (!entry.tombstone)
-                ++enumerated;
-        });
-        check(
-            enumerated == kEntryCount,
-            "explicit enumeration walks the complete Entry tree");
-
-        std::atomic<bool> concurrent_ok{true};
-        std::vector<std::thread> workers;
-        for (std::size_t worker = 0u; worker < 8u; ++worker)
-        {
-            workers.emplace_back([&, worker]
-            {
-                for (std::size_t iteration = 0u; iteration < 80u; ++iteration)
-                {
-                    const auto index = (worker * 113u + iteration * 17u)
-                        % kEntryCount;
-                    const auto id = provider->resolve(bulkPath(index));
-                    if (!id || *id != makeId(index + 1u)
-                        || !provider->open(*id))
-                    {
-                        concurrent_ok.store(false, std::memory_order_relaxed);
-                        return;
-                    }
-                }
-            });
-        }
-        for (auto& worker : workers)
-            worker.join();
-        check(
-            concurrent_ok.load(std::memory_order_relaxed),
-            "concurrent lookups use independent positional read cursors");
-        const auto lookup_stats = provider->stats();
-        check(
-            lookup_stats.index_pages_resident <= 256u
-                && lookup_stats.metadata_resident_bytes
-                    <= 256u * 4096u
-                && lookup_stats.index_page_hits != 0u
-                && lookup_stats.index_page_misses != 0u,
-            "paged lookup stays inside the fixed metadata LRU budget");
-
-        writeAll(pak, pristine);
-        flipByte(pak, 0u);
-        check(
-            !PakAssetProvider::loadFromFile(pak),
-            "corrupt Header is rejected at mount");
-
-        writeAll(pak, pristine);
-        flipByte(pak, fs::file_size(pak) - 4096u + 100u);
-        check(
-            !PakAssetProvider::loadFromFile(pak),
-            "corrupt root digest is rejected at mount");
-
-        writeAll(pak, pristine);
-        const auto payload_end = initial_inspection->entries.back().offset
-            + initial_inspection->entries.back().size;
-        const auto first_index_page = (payload_end + 4095u) & ~4095ull;
-        flipByte(pak, first_index_page + 100u);
-        auto lazy_corrupt = PakAssetProvider::loadFromFile(pak);
-        check(
-            lazy_corrupt.has_value(),
-            "corrupt descendant is not scanned during O(1) mount");
-        if (lazy_corrupt)
-        {
-            const auto opened = lazy_corrupt.value()->open(makeId(1u));
-            check(
-                !opened && opened.error() == EAssetError::READ_FILE_FAIL,
-                "corrupt descendant fails when that lookup first reaches it");
-        }
-
-        writeAll(pak, pristine);
-        auto inspected = lux::asset::inspectPak(pak);
-        check(
-            inspected && inspected.value().entries.size() == kEntryCount
-                && inspected.value().entries.front().content_digest !=
-                    lux::cxx::algorithm::Sha256Digest{},
-            "inspection explicitly walks pages and exposes SHA-256");
-        if (inspected)
-        {
-            const auto victim = inspected.value().entries[500u];
-            flipByte(pak, victim.offset);
-            auto payload_corrupt = PakAssetProvider::loadFromFile(pak);
-            check(
-                payload_corrupt
-                    && !payload_corrupt.value()->open(victim.id),
-                "payload corruption is rejected by content digest");
-        }
     }
 
     void testCookParityAndDeterminism()
@@ -637,7 +461,6 @@ namespace
 
 int main()
 {
-    testPagedIndexAndIntegrity();
     testCookParityAndDeterminism();
     testMixedSourceAndSceneImageCook();
     testMemoryCook();

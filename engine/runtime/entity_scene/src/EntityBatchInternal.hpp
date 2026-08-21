@@ -3,7 +3,7 @@
 #include <lux/engine/core/serialization/NameTable.hpp>
 #include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
 #include <lux/engine/runtime/entity_scene/PreparedEntityBatch.hpp>
@@ -63,12 +63,12 @@ namespace lux::runtime::entity_scene::detail
             DecodedEntityBatch decoded_batch,
             SectionBlobStore& blob_store_value)
             : decoded(std::move(decoded_batch)),
-              staging(std::make_unique<lux::meta::EntityRegistry>()),
+              staging(std::make_unique<lux::ecs::Registry>()),
               blob_store(blob_store_value)
         {}
 
         DecodedEntityBatch decoded;
-        std::unique_ptr<lux::meta::EntityRegistry> staging;
+        std::unique_ptr<lux::ecs::Registry> staging;
         SectionBlobStore& blob_store;
         lux::serialize::NameTable names;
 
@@ -103,7 +103,7 @@ namespace lux::runtime::entity_scene::detail
         std::size_t persistent_reference_relocation{0u};
         std::size_t blob_relocation{0u};
 
-        lux::meta::EntityRegistry* armed_registry{nullptr};
+        lux::ecs::Registry* armed_registry{nullptr};
     };
 
     [[nodiscard]] inline EntityBatchFailure makeFailure(

@@ -29,7 +29,7 @@ namespace lux::ecs
         }
 
         void reconcile(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             static_cast<void>(enqueue(TilemapIntentCommand{
@@ -37,7 +37,7 @@ namespace lux::ecs
         }
 
         void bindingDestroyed(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity) noexcept
         {
             const auto* binding =
@@ -52,7 +52,7 @@ namespace lux::ecs
         }
 
         void attach(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             EcsCommandWriter writer)
         {
             if (attached || !persistent->boundTo(registry))
@@ -93,7 +93,7 @@ namespace lux::ecs
 
         TilemapRuntime* runtime{nullptr};
         PersistentEntityIndex* persistent{nullptr};
-        lux::meta::EntityRegistryBase* attached{nullptr};
+        lux::ecs::RegistryBase* attached{nullptr};
         EcsCommandWriter commands;
         entt::scoped_connection constructed;
         entt::scoped_connection updated;
@@ -125,7 +125,7 @@ namespace lux::ecs
     }
 
     void TilemapSystem::applyReconcile(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity) noexcept
     {
         if (impl_->attached != &registry)
@@ -196,7 +196,7 @@ namespace lux::ecs
     }
 
     void TilemapIntentCommand::prepareRegistryPublication(
-        lux::meta::EntityRegistry& registry) const noexcept
+        lux::ecs::Registry& registry) const noexcept
     {
         if (action == ETilemapIntentAction::RECONCILE)
         {

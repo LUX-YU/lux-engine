@@ -81,9 +81,9 @@ namespace lux::editor
         lux::input::ActionMapper                    mapper;
         std::unique_ptr<lux::runtime::SceneRuntime> runtime;
         lux::render::RenderTargetLease              target{};
-        lux::meta::entity_id                        camera{entt::null};
-        lux::meta::entity_id                        key_light{entt::null};
-        lux::meta::entity_id                        sphere{entt::null};
+        lux::ecs::Entity                        camera{entt::null};
+        lux::ecs::Entity                        key_light{entt::null};
+        lux::ecs::Entity                        sphere{entt::null};
         lux::asset::asset_id_t                      sphere_mesh_id{};
         lux::asset::asset_id_t                      preview_grey_id{};
         lux::render::MaterialOperationIds           material_ops{};

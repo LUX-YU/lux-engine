@@ -428,7 +428,7 @@ namespace lux::editor
             const auto model = (*prepared)->model;
             const auto revision = (*prepared)->model_revision;
             const auto root = commit(std::move(**prepared));
-            if (root == lux::meta::null_entity)
+            if (root == lux::ecs::kNullEntity)
             {
                 terminal->complete(lux::cxx::unexpected(
                     InstanceSpawnFailure{

@@ -73,7 +73,7 @@ namespace lux::ecs
 
         /// Entering play: instantiate every enabled ScriptComponent, fire
         /// OnCreate, and build the subscription index.
-        void onRuntimeStart(lux::meta::EntityRegistry& registry);
+        void onRuntimeStart(lux::ecs::Registry& registry);
 
         /// Per-frame (play only): dispatch(kOnUpdate).
         void update(const lux::ecs::SystemUpdateContext& ctx) override;
@@ -93,13 +93,13 @@ namespace lux::ecs
         // ── the module-facing dispatch surface (ADR §3.3) ──────────────────
         /// Fire @p id at EVERY implementer. @p args follows the packed
         /// convention (args[i] → param i storage, valid for the call only).
-        void dispatch(lux::meta::EntityRegistry& registry, ScriptEventId id,
+        void dispatch(lux::ecs::Registry& registry, ScriptEventId id,
                       void* const* args);
 
         /// Fire @p id at ONE entity's instance (directed events — collision
         /// pairs, messages). No-op when the entity does not implement it.
-        void dispatchTo(lux::meta::EntityRegistry& registry,
-                        lux::meta::entity_id entity, ScriptEventId id,
+        void dispatchTo(lux::ecs::Registry& registry,
+                        lux::ecs::Entity entity, ScriptEventId id,
                         void* const* args);
 
     private:
@@ -108,20 +108,20 @@ namespace lux::ecs
         /// (unsubscribed mid-session; compacted on the next runtime start).
         struct Subscriber
         {
-            lux::meta::entity_id entity{};
+            lux::ecs::Entity entity{};
             void*                state = nullptr;
             ScriptEventFn        fn    = nullptr;
         };
 
-        void subscribe(lux::meta::entity_id entity, const ScriptInstance& inst);
-        void unsubscribe(lux::meta::entity_id entity);
-        void faultSubscriber(lux::meta::EntityRegistry& registry,
-                             lux::meta::entity_id entity, ScriptEventId id);
-        void tryCreateInstances(lux::meta::EntityRegistry& registry);
+        void subscribe(lux::ecs::Entity entity, const ScriptInstance& inst);
+        void unsubscribe(lux::ecs::Entity entity);
+        void faultSubscriber(lux::ecs::Registry& registry,
+                             lux::ecs::Entity entity, ScriptEventId id);
+        void tryCreateInstances(lux::ecs::Registry& registry);
         void onScriptComponentDestroyed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity);
-        void stopRuntime(lux::meta::EntityRegistry& registry);
+        void stopRuntime(lux::ecs::Registry& registry);
 
         ScriptRegistry& registry_;
         ScriptContext   ctx_;

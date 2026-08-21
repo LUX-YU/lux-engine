@@ -21,7 +21,6 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>   // SCRIPT asset resolution
 #include <lux/engine/resource/asset/script/ScriptAsset.hpp>
 
-#include <cstdio>
 #include <span>
 #include <utility>
 
@@ -34,7 +33,7 @@ namespace lux::ecs
 
     // ── subscription index maintenance ──────────────────────────────────────
 
-    void ScriptSystem::subscribe(lux::meta::entity_id entity,
+    void ScriptSystem::subscribe(lux::ecs::Entity entity,
                                  const ScriptInstance& inst)
     {
         const auto events = inst.events();
@@ -46,7 +45,7 @@ namespace lux::ecs
         }
     }
 
-    void ScriptSystem::unsubscribe(lux::meta::entity_id entity)
+    void ScriptSystem::unsubscribe(lux::ecs::Entity entity)
     {
         // Tombstone, don't erase: dispatch may be mid-iteration over one of
         // these lists (a script destroying a scripted entity lands here from
@@ -57,8 +56,8 @@ namespace lux::ecs
                 { s.state = nullptr; s.fn = nullptr; }
     }
 
-    void ScriptSystem::faultSubscriber(lux::meta::EntityRegistry& registry,
-                                       lux::meta::entity_id entity,
+    void ScriptSystem::faultSubscriber(lux::ecs::Registry& registry,
+                                       lux::ecs::Entity entity,
                                        ScriptEventId id)
     {
         if (auto* sc = registry.try_get<ScriptComponent>(entity))
@@ -68,7 +67,7 @@ namespace lux::ecs
     }
 
     void ScriptSystem::onScriptComponentDestroyed(
-        lux::meta::EntityRegistryBase&,
+        lux::ecs::RegistryBase&,
         entt::entity e)
     {
         unsubscribe(e);   // the slot (and its state) dies with the component
@@ -76,7 +75,7 @@ namespace lux::ecs
 
     // ── dispatch (the module-facing surface) ────────────────────────────────
 
-    void ScriptSystem::dispatch(lux::meta::EntityRegistry& registry,
+    void ScriptSystem::dispatch(lux::ecs::Registry& registry,
                                 ScriptEventId id, void* const* args)
     {
         if (id >= by_event_.size()) return;
@@ -104,8 +103,8 @@ namespace lux::ecs
         }
     }
 
-    void ScriptSystem::dispatchTo(lux::meta::EntityRegistry& registry,
-                                  lux::meta::entity_id entity,
+    void ScriptSystem::dispatchTo(lux::ecs::Registry& registry,
+                                  lux::ecs::Entity entity,
                                   ScriptEventId id, void* const* args)
     {
         if (id >= by_event_.size()) return;
@@ -124,7 +123,7 @@ namespace lux::ecs
 
     // ── play lifecycle ──────────────────────────────────────────────────────
 
-    void ScriptSystem::onRuntimeStart(lux::meta::EntityRegistry& registry)
+    void ScriptSystem::onRuntimeStart(lux::ecs::Registry& registry)
     {
         if (running_)
             return;
@@ -143,10 +142,10 @@ namespace lux::ecs
     }
 
     void ScriptSystem::tryCreateInstances(
-        lux::meta::EntityRegistry& registry)
+        lux::ecs::Registry& registry)
     {
         registry.view<ScriptComponent>().each(
-            [&](lux::meta::entity_id e, ScriptComponent& sc)
+            [&](lux::ecs::Entity e, ScriptComponent& sc)
             {
                 if (!sc.enabled || sc.instance.created)
                     return;
@@ -156,39 +155,29 @@ namespace lux::ecs
                 // Authored FLOW_GRAPH assets are cooked to SCRIPT before a
                 // Runtime product sees them.
                 //
-                // ⚠️ 定性(2026-08-04 同步收口批):这是 World tick 内仅存的
-                // 同步 ensureAsset —— 「tick 中途注册资产」的唯一入口,所有
-                // 宿主都走。此处不跨调用持任何 Data*(拿到立即消费),悬垂
-                // 无虞;但它让脚本首帧带一次盘 IO 顿挫,应迁 requestLoad +
-                // 就绪轮询(涉及脚本就绪时序,记档另立,本批不动)。
                 ScriptInstance inst;
                 if (!sc.script.is_nil() && ctx_.assets)
                 {
-                    if (auto loaded = ctx_.assets->ensureAsset(sc.script))
+                    if (sc.instance.ref.id() != sc.script)
+                        sc.instance.ref = ctx_.assets->acquire(sc.script);
+                    if (auto* asset = ctx_.assets->fetchAssetAs<
+                            lux::asset::ScriptAsset>(sc.script);
+                        asset && asset->data())
                     {
-                        if (auto* sa = loaded.value()->as<lux::asset::ScriptAsset>();
-                            sa && sa->data())
-                        {
-                            inst = registry_.createInstanceFromAsset(
-                                lux::meta::EntityHandle{registry, e},
-                                *ctx_.world,
-                                *sa->data(), std::span<const std::byte>(sa->payload()),
-                                uuids::to_string(sc.script));
-                        }
-                    }
-                    else
-                    {
-                        std::fprintf(stderr,
-                            "[ScriptSystem] entity %u: SCRIPT asset %s failed to load (err=%d)\n",
-                            static_cast<unsigned>(e), uuids::to_string(sc.script).c_str(),
-                            static_cast<int>(loaded.error()));
+                        inst = registry_.createInstanceFromAsset(
+                            lux::ecs::EntityHandle{registry, e},
+                            *ctx_.world,
+                            *asset->data(),
+                            std::span<const std::byte>(asset->payload()),
+                            uuids::to_string(sc.script));
                     }
                 }
                 if (!inst)
                     return;
                 sc.instance = std::move(inst);
                 // 实例期驻留票:活着的脚本实例把源资产钉在账本上(流送闸门可见)。
-                sc.instance.ref = ctx_.assets->acquire(sc.script);
+                if (sc.instance.ref.id() != sc.script)
+                    sc.instance.ref = ctx_.assets->acquire(sc.script);
 
                 // OnCreate fires DIRECTLY (creation order), before the entity
                 // joins the index — an instance that faults in OnCreate never
@@ -236,14 +225,14 @@ namespace lux::ecs
         stopRuntime(removal.registry());
     }
 
-    void ScriptSystem::stopRuntime(lux::meta::EntityRegistry& registry)
+    void ScriptSystem::stopRuntime(lux::ecs::Registry& registry)
     {
         if (!running_)
             return;
         running_ = false;
         destroy_conn_.release();
         registry.view<ScriptComponent>().each(
-            [&](lux::meta::entity_id e, ScriptComponent& sc)
+            [&](lux::ecs::Entity e, ScriptComponent& sc)
             {
                 if (!sc.instance)
                     return;

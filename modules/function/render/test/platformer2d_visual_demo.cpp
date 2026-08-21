@@ -40,6 +40,7 @@
 #include <lux/engine/runtime/packs/spatial2d/Presentation2DContribution.hpp>
 #include <lux/engine/runtime/packs/spatial2d/Simulation2DContribution.hpp>
 #include <lux/engine/runtime/packs/spatial2d/Transform2DContribution.hpp>
+#include <lux/engine/runtime/assets/SceneAssetServices.hpp>
 #include <lux/engine/ecs/physics/systems/Simulation2DSystem.hpp>
 #include <lux/engine/ecs/physics/FixedStepConfig.hpp>
 #include <lux/engine/ecs/physics2d/Physics2DConfig.hpp>
@@ -52,7 +53,6 @@
 #include <lux/engine/ecs/tilemap/components/TilemapBindingComponent.hpp>
 #include <lux/engine/ecs/tilemap/systems/TilemapRuntime.hpp>
 #include <lux/engine/ecs/render/components/2d/Camera2DComponent.hpp>
-#include <lux/engine/ecs/animation/systems/Flipbook2DResolver.hpp>
 #include <lux/engine/ecs/physics2d/components/Physics2DComponents.hpp>
 #include <lux/engine/ecs/physics2d/systems/Physics2DWorld.hpp>
 #include <lux/engine/ecs/World.hpp>
@@ -342,6 +342,9 @@ int main(int argc, char** argv)
     // Reverse destruction is intentional: builder → schedule systems → owned
     // services → residency observers → World registry. Longer-lived borrowed
     // render/asset resources remain below that graph.
+    lux::asset_runtime::SceneAssetServices asset_services{
+        assets,
+        async.assetClient()};
     lux::ecs::SceneServices   services;
     lux::ecs::Schedule        schedule{world};
     lux::ecs::ScheduleBuilder assembly{schedule, services};
@@ -349,6 +352,7 @@ int main(int argc, char** argv)
     auto& staged = assembly.services();
     if (!staged.adopt(fixed) ||
         !staged.adopt(gravity) ||
+        !staged.adopt(asset_services) ||
         !staged.adopt(tilemap_runtime) ||
         !staged.adopt(*residency_owner) ||
         !staged.adopt(render_builder))
@@ -398,8 +402,6 @@ int main(int argc, char** argv)
     if (services.get<d2::Simulation2DSystem>() == nullptr ||
         services.get<d2::Physics2DWorld>() == nullptr)
     { std::printf("install failed\n"); return 1; }
-
-    d2::Flipbook2DResolver resolver(assets);   // app-level, runs before tick
 
     const auto cam = world.createEntity();
     world.emplace<d2::Transform2DComponent>(cam);
@@ -557,8 +559,7 @@ int main(int argc, char** argv)
         });
 
         async.drainMainThreadCompletions();                       // 驻留管道主线程会合
-        resolver.update({world.registry(), dt});   // A2-01: assets → cache, pre-tick
-        schedule.tick(dt);                       // fixed-step physics + anim + transforms
+        schedule.tick(dt);                       // demand + animation + transforms
         residency_owner->drainResolvers(world.registry());
         fx.flush();
 

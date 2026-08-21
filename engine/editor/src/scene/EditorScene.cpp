@@ -64,7 +64,6 @@
 #include <lux/engine/ecs/HierarchyIndex.hpp>   // hierarchyRoot (pick -> whole object)
 
 #include <iostream>   // teardown-drain overflow diagnostic
-#include <lux/engine/ecs/animation/systems/SkeletalAnimationResolver.hpp>
 #include <lux/engine/ecs/script/systems/ScriptSystem.hpp>     // play-scoped ScriptSystem + ScriptContext
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>

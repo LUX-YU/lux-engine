@@ -201,14 +201,14 @@ namespace lux::runtime::spatial2d
         }
 
         void chunkChanged(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueueReconcile(entity);
         }
 
         void bindingDestroyed(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity) noexcept
         {
             const auto* binding =
@@ -224,7 +224,7 @@ namespace lux::runtime::spatial2d
         }
 
         void attach(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             lux::ecs::EcsCommandWriter writer)
         {
             if (attached)
@@ -261,7 +261,7 @@ namespace lux::runtime::spatial2d
         }
 
         void setStatus(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity,
             ETilemapChunkDomainState state,
             ETilemapChunkDomainError error,
@@ -411,7 +411,7 @@ namespace lux::runtime::spatial2d
                 metrics.retirement_granules_last_update);
         }
 
-        void recount(lux::meta::EntityRegistry& registry) noexcept
+        void recount(lux::ecs::Registry& registry) noexcept
         {
             metrics.waiting_chunks = 0u;
             metrics.staging_chunks = 0u;
@@ -471,7 +471,7 @@ namespace lux::runtime::spatial2d
         const TilemapChunkActivity2D* activity{nullptr};
         TilemapChunkSystemConfig config;
         std::shared_ptr<CompletionControl> completion;
-        lux::meta::EntityRegistry* attached{nullptr};
+        lux::ecs::Registry* attached{nullptr};
         lux::ecs::EcsCommandWriter commands;
         entt::scoped_connection constructed;
         entt::scoped_connection updated;
@@ -622,7 +622,7 @@ namespace lux::runtime::spatial2d
     }
 
     void TilemapChunkSystem::applyReconcile(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity) noexcept
     {
         if (impl_->attached != &registry)
@@ -710,7 +710,7 @@ namespace lux::runtime::spatial2d
     }
 
     void TilemapChunkSystem::applyPublish(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
         std::uint32_t slot,
         std::uint32_t generation) noexcept
@@ -778,7 +778,7 @@ namespace lux::runtime::spatial2d
     }
 
     void TilemapChunkSystem::applyRetire(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         std::uint32_t slot,
         std::uint32_t generation) noexcept
     {
@@ -974,7 +974,7 @@ namespace lux::runtime::spatial2d
     }
 
     void TilemapChunkIntentCommand::prepareRegistryPublication(
-        lux::meta::EntityRegistry& registry) const noexcept
+        lux::ecs::Registry& registry) const noexcept
     {
         lux::ecs::reserveEcsCommandStorage(
             registry.storage<TilemapChunkDomainStateComponent>(), 1u);
@@ -983,7 +983,7 @@ namespace lux::runtime::spatial2d
     }
 
     void TilemapChunkIntentCommand::apply(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         TilemapChunkSystem& system) const noexcept
     {
         switch (action)

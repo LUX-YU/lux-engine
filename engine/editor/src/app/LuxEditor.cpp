@@ -1214,7 +1214,7 @@ namespace lux::editor
                 .thumbnails = runtime_->thumbnail_service_.get(),
                 .events = runtime_->events_.get(),
                 .components = runtime_->component_types_,
-                .scene_registry = [this]() -> lux::meta::EntityRegistry*
+                .scene_registry = [this]() -> lux::ecs::Registry*
                 {
                     auto* sc = runtime_->scene_controller_ ? runtime_->scene_controller_->currentScene()
                                                  : nullptr;

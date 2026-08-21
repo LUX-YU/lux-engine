@@ -141,21 +141,21 @@ namespace lux::runtime::spatial3d
             const std::shared_ptr<StaticCollider3DBinding>& binding)
             noexcept;
         void applyPublish(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity,
             std::uint64_t generation) noexcept;
         void applyArm(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity,
             std::uint64_t generation) noexcept;
         void applyStatus(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity,
             std::uint64_t generation,
             EStaticCollider3DState state,
             EStaticCollider3DFailure failure) noexcept;
         void applyRemove(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity,
             std::uint64_t generation) noexcept;
         void acceptPreparation(
@@ -194,7 +194,7 @@ namespace lux::runtime::spatial3d
             return lux::ecs::ecsCommandSparsePublicationBytes(2u);
         }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry& registry) const noexcept
+            lux::ecs::Registry& registry) const noexcept
         {
             lux::ecs::reserveEcsCommandStorage(
                 registry.storage<StaticCollider3DBindingComponent>(), 1u);
@@ -203,7 +203,7 @@ namespace lux::runtime::spatial3d
         }
 
         void apply(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             StaticCollider3DSystem& system) const noexcept
         {
             switch (action)

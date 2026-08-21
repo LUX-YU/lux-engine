@@ -22,7 +22,7 @@
 #include <lux/engine/authoring/world/WorldIdentifiers.hpp>
 #include <lux/engine/authoring/world/WorldPartition.hpp>
 #include <lux/engine/authoring/world/WorldIdentifiers.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <entt/entt.hpp>
 
@@ -85,7 +85,7 @@ namespace lux::editor
     class Selection
     {
     public:
-        [[nodiscard]] lux::meta::EntityRegistryBase* registry() const noexcept
+        [[nodiscard]] lux::ecs::RegistryBase* registry() const noexcept
         {
             return registry_;
         }
@@ -101,7 +101,7 @@ namespace lux::editor
         /// 编辑器层可直接 publish。(曾有 Signal changed —— 全仓零订阅者,
         /// 随信号层退役批删除;消费者全是 pull 模型,每帧读值。)
         void select(
-            lux::meta::EntityRegistryBase* reg,
+            lux::ecs::RegistryBase* reg,
             entt::entity e)
         {
             std::optional<EditorObjectId> object;
@@ -138,7 +138,7 @@ namespace lux::editor
         }
 
         void resolveProxy(
-            lux::meta::EntityRegistryBase* reg,
+            lux::ecs::RegistryBase* reg,
             entt::entity entity,
             const EditorObjectId& object)
         {
@@ -166,7 +166,7 @@ namespace lux::editor
         }
 
     private:
-        lux::meta::EntityRegistryBase* registry_{nullptr};
+        lux::ecs::RegistryBase* registry_{nullptr};
         entt::entity    entity_{entt::null};
         std::optional<EditorObjectId> object_;
     };

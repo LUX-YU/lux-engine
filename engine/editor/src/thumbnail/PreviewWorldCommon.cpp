@@ -131,7 +131,7 @@ namespace lux::editor
         return id;
     }
 
-    lux::meta::entity_id createPreviewKeyLight(lux::ecs::World& world)
+    lux::ecs::Entity createPreviewKeyLight(lux::ecs::World& world)
     {
         const auto e = world.createEntity();
         auto& dl = world.emplace<lux::ecs::DirectionalLightComponent>(e);
@@ -142,7 +142,7 @@ namespace lux::editor
         return e;
     }
 
-    lux::meta::entity_id createPreviewCamera(lux::ecs::World&            world,
+    lux::ecs::Entity createPreviewCamera(lux::ecs::World&            world,
                                              lux::render::RenderTargetId target,
                                              lux::math::Extent2u         extent,
                                              bool                        auto_aspect)
@@ -164,7 +164,7 @@ namespace lux::editor
     }
 
     void aimPreviewCamera(lux::ecs::World&       world,
-                          lux::meta::entity_id   camera,
+                          lux::ecs::Entity   camera,
                           const Eigen::Vector3f& eye,
                           const Eigen::Vector3f& center)
     {

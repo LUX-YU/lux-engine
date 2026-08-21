@@ -270,6 +270,48 @@ namespace lux::asset
             return true;
         }
 
+        [[nodiscard]] lux::cxx::expected<LuxAsset*, EAssetError>
+        installLoadedAsset(
+            const asset_id_t& expected_id,
+            std::unique_ptr<LuxAsset> decoded)
+        {
+            assertLedgerThread();
+            if (expected_id.is_nil() || !decoded || decoded->info() == nullptr ||
+                decoded->id().is_nil() || decoded->id() != expected_id)
+            {
+                return lux::cxx::unexpected(EAssetError::WRONG_FILE_HEADER);
+            }
+            if (!decoded->hasData())
+                return lux::cxx::unexpected(EAssetError::ASSET_NO_DATA);
+            if (!codecs_ || codecs_->find(decoded->type()) == nullptr)
+                return lux::cxx::unexpected(EAssetError::FILE_TYPE_ERROR);
+
+            auto found = assets_.find(expected_id);
+            if (found == assets_.end())
+            {
+                auto* installed = decoded.get();
+                auto [it, inserted] = assets_.emplace(
+                    expected_id,
+                    std::move(decoded)
+                );
+                if (!inserted)
+                    return lux::cxx::unexpected(
+                        EAssetError::ASSET_ALREADY_EXIST);
+                if (broadcast_.on_registered)
+                    broadcast_.on_registered(expected_id);
+                return installed;
+            }
+
+            LuxAsset* existing = found->second.get();
+            if (existing->type() != decoded->type())
+                return lux::cxx::unexpected(EAssetError::FILE_TYPE_ERROR);
+            if (existing->hasData())
+                return existing;
+
+            found->second = std::move(decoded);
+            return found->second.get();
+        }
+
     private:
         std::shared_ptr<const AssetVfs>                            vfs_;
         std::shared_ptr<const AssetCodecCatalog>                   codecs_;

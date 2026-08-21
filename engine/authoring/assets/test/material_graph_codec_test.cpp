@@ -291,18 +291,13 @@ using lux::core::serialization::ByteWriter;
 
         const auto image = makeMaterialImage(asset_info, std::move(info));
         const auto catalog = lux::authoring::authoringAssetCodecCatalog();
-        auto shell = catalog->createShell(
-            std::make_unique<lux::asset::AssetInfo>(asset_info)
-        );
-        auto injector = catalog->decode(
+        auto decoded = catalog->decodeAsset(
             lux::cxx::SharedBytes<>::copyOf(image)
         );
-        check(injector.has_value(), "authoring catalog accepts material v3");
-        if (injector && shell)
-            injector.value()(*shell);
+        check(decoded.has_value(), "authoring catalog accepts material v3");
 
-        const auto* material = shell
-            ? shell->as<lux::asset::MaterialAsset>()
+        const auto* material = decoded
+            ? (*decoded)->as<lux::asset::MaterialAsset>()
             : nullptr;
         check(material && material->data(),
               "material v3 lazy decode injects cooked runtime data");
@@ -355,17 +350,12 @@ using lux::core::serialization::ByteWriter;
             } }
         );
         const auto catalog = lux::authoring::authoringAssetCodecCatalog();
-        auto shell = catalog->createShell(
-            std::make_unique<lux::asset::AssetInfo>(asset_info)
-        );
-        auto injector = catalog->decode(
+        auto decoded = catalog->decodeAsset(
             lux::cxx::SharedBytes<>::copyOf(image)
         );
-        check(injector.has_value(), "authoring catalog accepts material v4");
-        if (injector && shell)
-            injector.value()(*shell);
-        const auto* material = shell
-            ? shell->as<lux::asset::MaterialAsset>()
+        check(decoded.has_value(), "authoring catalog accepts material v4");
+        const auto* material = decoded
+            ? (*decoded)->as<lux::asset::MaterialAsset>()
             : nullptr;
         check(material && material->data() &&
                   material->data()->parameter_count == 1u,

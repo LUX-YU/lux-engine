@@ -6,7 +6,7 @@
 #include <lux/engine/ecs/pixel/systems/PixelDirtyLedger.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <array>

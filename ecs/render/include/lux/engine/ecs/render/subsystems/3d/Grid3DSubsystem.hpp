@@ -27,8 +27,8 @@ namespace lux::ecs
         using Ops     = lux::render::Grid3DOperationIds;
         using Payload = lux::render::Grid3DSetParamsPayload;
 
-        static std::optional<Payload> extract(lux::meta::entity_id, const Grid3DComponent& g,
-                                              lux::meta::EntityRegistry&,
+        static std::optional<Payload> extract(lux::ecs::Entity, const Grid3DComponent& g,
+                                              lux::ecs::Registry&,
                                               SceneRenderBinding& ctx,
                                               lux::render::FeatureHandle feat)
         {

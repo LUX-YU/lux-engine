@@ -4,6 +4,7 @@
 #include <lux/engine/ecs/render/components/3d/HeightFogComponent.hpp>
 #include <lux/engine/ecs/render/components/3d/SkyboxComponent.hpp>
 #include <lux/engine/ecs/render/components/3d/WaterSurfaceComponent.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
@@ -468,7 +469,7 @@ int main()
         if (result != 0)
             return result;
 
-        lux::meta::EntityRegistry environment_registry;
+        lux::ecs::Registry environment_registry;
         const auto sky_entity = environment_registry.create();
         auto& sky_component =
             environment_registry.emplace<lux::ecs::SkyboxComponent>(

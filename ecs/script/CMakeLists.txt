@@ -49,7 +49,7 @@ target_link_libraries(
     scripting
     PUBLIC
     lux::engine::ecs::core             # World / ISystem / EntityRegistry / EntityHandle / ComponentTypeCatalog
-    lux::engine::core::meta            # LuxObject + RefClass/RefField/EBaseType (reflection get/set)
+    lux::engine::core::meta            # RefClass/RefField/EBaseType (reflection get/set)
     lux::engine::resource::asset       # ScriptComponent.script = asset_id_t + asset routing (rdesc::Script/ScriptAsset)
 )
 

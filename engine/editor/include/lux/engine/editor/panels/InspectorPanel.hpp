@@ -19,7 +19,7 @@
  */
 
 #include <lux/engine/editor/visibility.h>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/ui/Panel.hpp>
 #include <lux/engine/ui/WidgetDispatch.hpp>
 #include <lux/engine/ui/SearchPopupElement.hpp>
@@ -82,7 +82,7 @@ namespace lux::editor
         void paint() override;
         void displayField(const lux::meta::RefField& field, void* base);
         void drawAddComponentMenu(
-            lux::meta::EntityRegistryBase& reg,
+            lux::ecs::RegistryBase& reg,
             entt::entity e);
         void paintWorldInstance(lux::authoring::WorldInstanceId instance);
 

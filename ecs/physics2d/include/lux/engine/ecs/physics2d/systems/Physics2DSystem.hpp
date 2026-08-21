@@ -22,7 +22,7 @@
 #include <lux/engine/ecs/physics2d/systems/Box2DPhysics2D.hpp>
 #include <lux/engine/ecs/physics2d/Physics2DConfig.hpp>
 #include <lux/engine/math/Position.hpp>
-#include <lux/engine/meta/LuxObject.hpp>            // EntityRegistry / entity_id
+#include <lux/engine/ecs/Registry.hpp>            // EntityRegistry / entity_id
 #include <lux/engine/function/visibility.h>
 #include <lux/cxx/core/move_only_function.hpp>
 
@@ -41,7 +41,7 @@ namespace lux::ecs
         /// Advance one fixed step: sync bodies (create new, prune dead), step
         /// Box2D, write dynamic poses back to Transform2D, and report this
         /// step's collision-enter pairs through the sink.
-        void step(lux::meta::EntityRegistry& registry, float fixed_dt);
+        void step(lux::ecs::Registry& registry, float fixed_dt);
 
         /// The collision-ENTER outlet. Called
         /// once per direction per begin-touch pair — (self, other) then
@@ -49,8 +49,8 @@ namespace lux::ecs
         /// supplied by the optional physics2d_script integration target.
         using CollisionSink =
             lux::cxx::move_only_function<void(
-                lux::meta::entity_id self,
-                lux::meta::entity_id other)>;
+                lux::ecs::Entity self,
+                lux::ecs::Entity other)>;
         void setCollisionSink(CollisionSink sink) { sink_ = std::move(sink); }
 
         [[nodiscard]] std::size_t trackedBodyCount() const noexcept
@@ -66,8 +66,8 @@ namespace lux::ecs
         /// Versioned EnTT identity → Box2D body, and the reverse. Keeping the
         /// strong entity type avoids accidentally dropping version bits while
         /// pruning recycled entities or attributing contacts.
-        std::unordered_map<lux::meta::entity_id, Box2DPhysics2D::BodyId> bodies_;
-        std::unordered_map<Box2DPhysics2D::BodyId, lux::meta::entity_id> entities_;
+        std::unordered_map<lux::ecs::Entity, Box2DPhysics2D::BodyId> bodies_;
+        std::unordered_map<Box2DPhysics2D::BodyId, lux::ecs::Entity> entities_;
         CollisionSink sink_;
         std::optional<lux::math::Position2d> physics_origin_;
     };

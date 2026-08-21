@@ -24,8 +24,8 @@ namespace lux::ecs
             [[nodiscard]] std::size_t registryPublicationBytes()
                 const noexcept { return 0u; }
             void prepareRegistryPublication(
-                lux::meta::EntityRegistry&) const noexcept {}
-            void apply(lux::meta::EntityRegistry&, CameraViewSubsystem&) const;
+                lux::ecs::Registry&) const noexcept {}
+            void apply(lux::ecs::Registry&, CameraViewSubsystem&) const;
         };
 
         /// 出图意图变了(target / order)。Android 的 surface 重建走这条。
@@ -36,8 +36,8 @@ namespace lux::ecs
             [[nodiscard]] std::size_t registryPublicationBytes()
                 const noexcept { return 0u; }
             void prepareRegistryPublication(
-                lux::meta::EntityRegistry&) const noexcept {}
-            void apply(lux::meta::EntityRegistry&, CameraViewSubsystem&) const;
+                lux::ecs::Registry&) const noexcept {}
+            void apply(lux::ecs::Registry&, CameraViewSubsystem&) const;
         };
 
         /// 摘掉了「要出图」→ 把绑定也摘掉;真正的 removeView 由绑定的 lease 析构发。
@@ -48,8 +48,8 @@ namespace lux::ecs
             [[nodiscard]] std::size_t registryPublicationBytes()
                 const noexcept { return 0u; }
             void prepareRegistryPublication(
-                lux::meta::EntityRegistry&) const noexcept {}
-            void apply(lux::meta::EntityRegistry&, CameraViewSubsystem&) const;
+                lux::ecs::Registry&) const noexcept {}
+            void apply(lux::ecs::Registry&, CameraViewSubsystem&) const;
         };
 
         /// 绑定没了 —— 桥不再面向任何 view。
@@ -59,8 +59,8 @@ namespace lux::ecs
             [[nodiscard]] std::size_t registryPublicationBytes()
                 const noexcept { return 0u; }
             void prepareRegistryPublication(
-                lux::meta::EntityRegistry&) const noexcept {}
-            void apply(lux::meta::EntityRegistry&, CameraViewSubsystem&) const;
+                lux::ecs::Registry&) const noexcept {}
+            void apply(lux::ecs::Registry&, CameraViewSubsystem&) const;
         };
     };
 
@@ -77,7 +77,7 @@ namespace lux::ecs
         EcsCommandWriter                    commands{};
 
         /// 只作主线程身份比较；World 按契约晚于系统析构。
-        lux::meta::EntityRegistryBase* attached{nullptr};
+        lux::ecs::RegistryBase* attached{nullptr};
         entt::scoped_connection present_constructed_connection{};
         entt::scoped_connection present_updated_connection{};
         entt::scoped_connection present_destroyed_connection{};
@@ -115,14 +115,14 @@ namespace lux::ecs
         }
 
         void onPresentConstructed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity e)
         {
             enqueue(Commands::AddViewRequested{e}, "add-view");
         }
 
         void onPresentUpdated(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity e)
         {
             // target / order 变了（Android surface 重建走这条）。extent 变化只影响
@@ -131,7 +131,7 @@ namespace lux::ecs
         }
 
         void onPresentDestroyed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity e)
         {
             // 摘掉「要出图」→ 把绑定也摘掉，真正的 removeView 由绑定的 on_destroy 发。
@@ -141,7 +141,7 @@ namespace lux::ecs
         }
 
         void onBindingDestroyed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity)
         {
             // Resource return is now the component's move-only lease destructor.
@@ -152,7 +152,7 @@ namespace lux::ecs
 
         // ── 延迟命令的实际动作 ────────────────────────────────────────────
 
-        void issueAddView(lux::meta::EntityRegistry& reg, entt::entity e)
+        void issueAddView(lux::ecs::Registry& reg, entt::entity e)
         {
             if (!reg.valid(e)) return;
             const auto* present = reg.try_get<ViewPresentComponent>(e);
@@ -163,7 +163,7 @@ namespace lux::ecs
             pending.emplace(e, control->addView(scene_id, present->extent, "CameraView"));
         }
 
-        void relayer(lux::meta::EntityRegistry& reg, entt::entity e)
+        void relayer(lux::ecs::Registry& reg, entt::entity e)
         {
             if (!reg.valid(e)) return;
             const auto* present = reg.try_get<ViewPresentComponent>(e);
@@ -185,7 +185,7 @@ namespace lux::ecs
                 LayerBinding{present->target, present->order});
         }
 
-        void dropBinding(lux::meta::EntityRegistry& reg, entt::entity e)
+        void dropBinding(lux::ecs::Registry& reg, entt::entity e)
         {
             if (const auto old = layers.find(e); old != layers.end())
             {
@@ -198,7 +198,7 @@ namespace lux::ecs
 
         /// 回复落地：装上句柄、合成到 target、告诉桥。首帧矩阵由维度所属的
         /// Camera2D/3DUploadSubsystem::settle 补推，公共 view 生命周期不认识相机形状。
-        void applyReady(lux::meta::EntityRegistry& reg)
+        void applyReady(lux::ecs::Registry& reg)
         {
             if (pending.empty()) return;
 
@@ -266,7 +266,7 @@ namespace lux::ecs
 
         // ── 信号连接 ──────────────────────────────────────────────────────
 
-        void attach(lux::meta::EntityRegistryBase& r)
+        void attach(lux::ecs::RegistryBase& r)
         {
             if (attached == &r) return;
             detach();
@@ -312,7 +312,7 @@ namespace lux::ecs
     // ── 命令的实现。放在 Impl 之后:它们要碰 Impl 的状态 ──────────────────────
 
     void CameraViewSubsystem::Commands::AddViewRequested::apply(
-        lux::meta::EntityRegistry& reg, CameraViewSubsystem& sys) const
+        lux::ecs::Registry& reg, CameraViewSubsystem& sys) const
     {
         if (sys.impl_->closing)
             return;
@@ -320,7 +320,7 @@ namespace lux::ecs
     }
 
     void CameraViewSubsystem::Commands::LayerRefreshRequested::apply(
-        lux::meta::EntityRegistry& reg, CameraViewSubsystem& sys) const
+        lux::ecs::Registry& reg, CameraViewSubsystem& sys) const
     {
         if (sys.impl_->closing)
             return;
@@ -328,7 +328,7 @@ namespace lux::ecs
     }
 
     void CameraViewSubsystem::Commands::ViewBindingDropRequested::apply(
-        lux::meta::EntityRegistry& reg, CameraViewSubsystem& sys) const
+        lux::ecs::Registry& reg, CameraViewSubsystem& sys) const
     {
         if (sys.impl_->closing)
             return;
@@ -338,7 +338,7 @@ namespace lux::ecs
     }
 
     void CameraViewSubsystem::Commands::ActiveViewCleared::apply(
-        lux::meta::EntityRegistry&, CameraViewSubsystem& sys) const
+        lux::ecs::Registry&, CameraViewSubsystem& sys) const
     {
         if (sys.impl_->closing)
             return;

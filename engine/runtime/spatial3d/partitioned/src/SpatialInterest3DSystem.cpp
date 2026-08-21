@@ -481,7 +481,7 @@ namespace lux::runtime::spatial3d
         std::vector<lux::ecs::scene_format::EntitySectionId> active_scratch;
         std::vector<lux::ecs::scene_format::EntitySectionId> resident_scratch;
         std::vector<entt::id_type> entity_scratch;
-        lux::meta::EntityRegistry* registry{nullptr};
+        lux::ecs::Registry* registry{nullptr};
         SpatialInterest3DSnapshot snapshot;
         bool closing{false};
     };

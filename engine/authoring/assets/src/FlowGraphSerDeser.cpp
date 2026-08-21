@@ -226,14 +226,14 @@ namespace lux::authoring
                 runtime->descriptors().end()};
             for (auto& descriptor : descriptors)
                 if (descriptor.type == lux::asset::EAssetType::MATERIAL)
-                    descriptor.decode = &detail::decodeAuthoringMaterial;
+                    descriptor.create =
+                        &detail::createAuthoringMaterialSerDeser;
             descriptors.push_back(lux::asset::AssetCodecDescriptor{
                 lux::asset::EAssetType::FLOW_GRAPH,
                 lux::cxx::type_hash<FlowGraphAsset>(),
                 std::string{lux::cxx::type_name<FlowGraphAsset>()},
                 lux::asset::EAssetShippingClass::AUTHORING_ONLY,
                 &createFlowGraphCodec,
-                nullptr,
                 nullptr,
                 lux::asset::asset_magic_number_of<
                     lux::asset::EAssetType::FLOW_GRAPH>::value,

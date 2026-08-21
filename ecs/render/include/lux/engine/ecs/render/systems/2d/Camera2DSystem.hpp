@@ -139,7 +139,7 @@ namespace lux::ecs
         static constexpr float kFarZ  =  1024.0f;
 
         /// Reused scratch for the ONE-TIME derived-cache-maintenance backfill.
-        std::vector<lux::meta::entity_id> scratch_;
+        std::vector<lux::ecs::Entity> scratch_;
         /// G-07 signals are wired lazily on the first update.
         bool cache_maintenance_connected_{false};
 #ifndef NDEBUG
@@ -153,12 +153,12 @@ namespace lux::ecs
     /// Camera2DComponent). Returns null_entity when there is zero (a Canvas can then
     /// skip rendering rather than read garbage) OR more than one (ambiguous). NEVER the
     /// implicit "first camera" — selection is explicit (design T2-03).
-    [[nodiscard]] inline lux::meta::entity_id activeCamera(lux::meta::EntityRegistry& reg)
+    [[nodiscard]] inline lux::ecs::Entity activeCamera(lux::ecs::Registry& reg)
     {
-        lux::meta::entity_id found = lux::meta::null_entity;
+        lux::ecs::Entity found = lux::ecs::kNullEntity;
         int count = 0;
         for (auto e : reg.view<PrimaryCameraTag, Camera2DComponent>()) { found = e; ++count; }
-        return count == 1 ? found : lux::meta::null_entity;
+        return count == 1 ? found : lux::ecs::kNullEntity;
     }
 
     /// Screen pixel → view-relative point on the z=0 plane via a camera's

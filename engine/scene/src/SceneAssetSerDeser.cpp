@@ -111,22 +111,6 @@ namespace lux::scene
                 : nullptr;
         }
 
-        [[nodiscard]] lux::cxx::expected<lux::asset::AssetDataInjector, lux::asset::EAssetError>
-        decodeSceneAsset(lux::cxx::SharedBytes<> image) noexcept
-        {
-            auto description = SceneAssetSerDeser::decodeData(image.view());
-            if (!description){
-                return lux::cxx::unexpected(assetError(description.error().error));
-            }
-            return lux::asset::AssetDataInjector{
-                [value = std::move(*description)](lux::asset::LuxAsset& shell) mutable
-                {
-                    if (auto* scene = shell.as<SceneAsset>())
-                        scene->setData(std::move(value));
-                }
-            };
-        }
-
         [[nodiscard]] std::unique_ptr<lux::asset::LuxAsset>
         createShell(std::unique_ptr<lux::asset::AssetInfo> info) noexcept
         {
@@ -298,7 +282,6 @@ namespace lux::scene
             std::string{lux::cxx::type_name<SceneAsset>()},
             lux::asset::EAssetShippingClass::RUNTIME,
             &createCodec,
-            &decodeSceneAsset,
             &createShell,
             kSceneAssetMagic,
             kSceneDescriptionMagic,

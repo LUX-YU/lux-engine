@@ -30,9 +30,9 @@ namespace lux::ecs
         using Exclude = ComponentList<>;
 
         static std::optional<Desc> extract(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             const Component& component,
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             SceneRenderBinding& render)
         {
             const auto transform = makeRenderSpatialTransform(

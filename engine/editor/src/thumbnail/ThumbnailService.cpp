@@ -66,6 +66,7 @@
 #include <Eigen/Geometry>
 
 #include <atomic>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -120,8 +121,8 @@ namespace lux::editor
         lux::input::ActionMapper                    mapper;
         std::unique_ptr<lux::runtime::SceneRuntime> runtime;
         lux::render::RenderTargetLease              target{};
-        lux::meta::entity_id                        camera{entt::null};
-        lux::meta::entity_id                        key_light{entt::null};
+        lux::ecs::Entity                        camera{entt::null};
+        lux::ecs::Entity                        key_light{entt::null};
         lux::asset::asset_id_t                      sphere_mesh_id{};
         lux::asset::asset_id_t                      preview_grey_id{};
         std::uint32_t                               render_size{256};
@@ -162,7 +163,7 @@ namespace lux::editor
         /// The job's world entities (one per spec instance). Their whole GPU
         /// footprint — mesh/material upload, instance, refcounts — is owned by
         /// the resolver + mesh subsystem; destroying the entities reclaims it.
-        std::vector<lux::meta::entity_id> entities;
+        std::vector<lux::ecs::Entity> entities;
 
         lux::render::RenderRequest<lux::render::ReadbackTargetReply>   capture_req;
         lux::render::RenderRequest<lux::render::Texture2DCreatedReply> display_req;
@@ -189,7 +190,7 @@ namespace lux::editor
         /// fov/near/far 进 Camera3D。Camera3DSystem 用同一个 TLookAt/TPerspective
         /// 帮手推导矩阵,所以像旧实现一样取景。
         void frameCameraForBounds(lux::ecs::World&           world,
-                                  lux::meta::entity_id       camera,
+                                  lux::ecs::Entity       camera,
                                   const lux::math::AABB&     bounds)
         {
             const Eigen::Vector3f center = bounds.center();
@@ -471,11 +472,23 @@ namespace lux::editor
         case Job::Stage::Spec:
         {
             auto* r = providers_.get(j.type);
-            // W2b: provider requests an async load for any data-less shell it needs.
-            const ThumbnailLoadFn load = [this](const lux::asset::asset_id_t& dep)
-            { (void)asset_client_.request(dep); };
-            j.spec = r ? r->buildSpec(assets_, host_->sphere_mesh_id, j.id, load)
+            j.spec = r ? r->buildSpec(assets_, host_->sphere_mesh_id, j.id)
                        : ThumbnailSpec{};
+            std::vector<lux::asset::asset_id_t> requested;
+            requested.reserve(j.spec.missing_assets.size());
+            for (const auto& dependency : j.spec.missing_assets)
+            {
+                if (dependency.is_nil() ||
+                    std::find(
+                        requested.begin(),
+                        requested.end(),
+                        dependency) != requested.end())
+                {
+                    continue;
+                }
+                requested.push_back(dependency);
+                static_cast<void>(asset_client_.request(dependency));
+            }
             if (!j.spec.valid)
             {
                 // Deps still streaming in → re-queue (cache stays Pending) instead

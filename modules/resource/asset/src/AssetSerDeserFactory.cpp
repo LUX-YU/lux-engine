@@ -28,35 +28,6 @@ namespace lux::asset
             return std::make_unique<Codec>(std::move(manager));
         }
 
-        template <class Asset, class Codec>
-        lux::cxx::expected<AssetDataInjector, EAssetError> decodeData(
-            lux::cxx::SharedBytes<> image) noexcept
-        {
-            auto decoded = Codec::decodeData(image.data(), image.size());
-            if (!decoded)
-                return lux::cxx::unexpected(decoded.error());
-            return AssetDataInjector{
-                [data = std::move(*decoded)](LuxAsset& shell) mutable
-                {
-                    if (auto* asset = shell.as<Asset>())
-                        asset->setData(std::move(data));
-                }};
-        }
-
-        lux::cxx::expected<AssetDataInjector, EAssetError> decodeTexture(
-            lux::cxx::SharedBytes<> image) noexcept
-        {
-            auto decoded = TextureSerDeser::decodeData(std::move(image));
-            if (!decoded)
-                return lux::cxx::unexpected(decoded.error());
-            return AssetDataInjector{
-                [data = std::move(*decoded)](LuxAsset& shell) mutable
-                {
-                    if (auto* asset = shell.as<TextureAsset>())
-                        asset->setData(std::move(data));
-                }};
-        }
-
         template <class Asset>
         std::unique_ptr<LuxAsset> createShell(
             std::unique_ptr<AssetInfo> info) noexcept
@@ -68,7 +39,6 @@ namespace lux::asset
         AssetCodecDescriptor descriptor(
             EAssetType type,
             std::uint32_t primary_magic,
-            AssetDataDecodeFn decode = nullptr,
             AssetShellCreateFn shell = nullptr)
         {
             return AssetCodecDescriptor{
@@ -77,7 +47,6 @@ namespace lux::asset
                 std::string{lux::cxx::type_name<Asset>()},
                 EAssetShippingClass::RUNTIME,
                 &createCodec<Codec>,
-                decode,
                 shell,
                 primary_magic,
                 0u,
@@ -96,13 +65,11 @@ namespace lux::asset
             descriptors.push_back(descriptor<TextureAsset, TextureSerDeser>(
                 EAssetType::TEXTURE,
                 asset_magic_number_of<EAssetType::TEXTURE>::value,
-                &decodeTexture,
                 &createShell<TextureAsset>
             ));
             descriptors.push_back(descriptor<MaterialAsset, MaterialSerDeser>(
                 EAssetType::MATERIAL,
                 asset_magic_number_of<EAssetType::MATERIAL>::value,
-                &decodeData<MaterialAsset, MaterialSerDeser>,
                 &createShell<MaterialAsset>
             ));
             descriptors.push_back(descriptor<
@@ -110,15 +77,11 @@ namespace lux::asset
                 MaterialInstanceSerDeser>(
                     EAssetType::MATERIAL_INSTANCE,
                     asset_magic_number_of<EAssetType::MATERIAL_INSTANCE>::value,
-                    &decodeData<
-                        MaterialInstanceAsset,
-                        MaterialInstanceSerDeser>,
                     &createShell<MaterialInstanceAsset>
             ));
             descriptors.push_back(descriptor<MeshAsset, MeshSerDeser>(
                 EAssetType::MESH,
                 asset_magic_number_of<EAssetType::MESH>::value,
-                &decodeData<MeshAsset, MeshSerDeser>,
                 &createShell<MeshAsset>
             ));
             descriptors.push_back(descriptor<ModelAsset, ModelSerDeser>(
@@ -136,7 +99,6 @@ namespace lux::asset
             descriptors.push_back(descriptor<SkeletonAsset, SkeletonSerDeser>(
                 EAssetType::SKELETON,
                 asset_magic_number_of<EAssetType::SKELETON>::value,
-                &decodeData<SkeletonAsset, SkeletonSerDeser>,
                 &createShell<SkeletonAsset>
             ));
             descriptors.push_back(descriptor<
@@ -144,7 +106,6 @@ namespace lux::asset
                 AnimationClipSerDeser>(
                     EAssetType::ANIMATION_CLIP,
                     asset_magic_number_of<EAssetType::ANIMATION_CLIP>::value,
-                    &decodeData<AnimationClipAsset, AnimationClipSerDeser>,
                     &createShell<AnimationClipAsset>
             ));
             descriptors.push_back(descriptor<
@@ -152,7 +113,6 @@ namespace lux::asset
                 TextureAtlasSerDeser>(
                     EAssetType::TEXTURE_ATLAS,
                     asset_magic_number_of<EAssetType::TEXTURE_ATLAS>::value,
-                    &decodeData<TextureAtlasAsset, TextureAtlasSerDeser>,
                     &createShell<TextureAtlasAsset>
             ));
             descriptors.push_back(descriptor<
@@ -160,7 +120,6 @@ namespace lux::asset
                 FlipbookClipSerDeser>(
                     EAssetType::FLIPBOOK_CLIP,
                     asset_magic_number_of<EAssetType::FLIPBOOK_CLIP>::value,
-                    &decodeData<FlipbookClipAsset, FlipbookClipSerDeser>,
                     &createShell<FlipbookClipAsset>
             ));
 

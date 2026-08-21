@@ -113,7 +113,7 @@ namespace
 
     template<class Component>
     bool has(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.all_of<Component>(entity);
@@ -121,7 +121,7 @@ namespace
 
     template<class Component>
     void* get(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.try_get<Component>(entity);
@@ -129,7 +129,7 @@ namespace
 
     template<class Component>
     void* emplace(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return &registry.emplace_or_replace<Component>(entity);
@@ -137,7 +137,7 @@ namespace
 
     template<class Component>
     void remove(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         static_cast<void>(registry.remove<Component>(entity));
@@ -145,7 +145,7 @@ namespace
 
     template<class Component>
     void notify(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         if (registry.all_of<Component>(entity))
@@ -154,7 +154,7 @@ namespace
 
     template<class Component>
     void reserve(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         std::size_t additional)
     {
         auto& storage = registry.storage<Component>();
@@ -163,9 +163,9 @@ namespace
 
     template<class Component>
     void* transfer(
-        lux::meta::EntityRegistryBase& source,
+        lux::ecs::RegistryBase& source,
         entt::entity source_entity,
-        lux::meta::EntityRegistryBase& destination,
+        lux::ecs::RegistryBase& destination,
         entt::entity destination_entity) noexcept
     {
         auto* value = source.try_get<Component>(source_entity);
@@ -743,7 +743,7 @@ namespace
     }
 
     bool validateTileProof(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         lux::ecs::PersistentEntityIndex& persistent_entities,
         lux::runtime::entity_scene::ContentBlobClient blobs,
         lux::math::GridCoord2i64 expected,
@@ -798,13 +798,13 @@ namespace
         const lux::runtime::spatial2d::SpatialInterest2DSystem* interest_;
     };
 
-    std::size_t chunkCount(lux::meta::EntityRegistry& registry)
+    std::size_t chunkCount(lux::ecs::Registry& registry)
     {
         return registry.storage<lux::ecs::PixelChunk2DComponent>().size();
     }
 
     bool hasExactChunkWindow(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         lux::math::GridCoord2i64 center) noexcept
     {
         std::array<bool,
@@ -839,7 +839,7 @@ namespace
         const lux::runtime::spatial2d::SpatialInterest2DSystem& interest,
         const lux::ecs::PixelFieldSystem& fields,
         const lux::runtime::spatial2d::Infinite2DPixelSystem& pixels,
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         Predicate&& done)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
@@ -930,7 +930,7 @@ namespace
     }
 
     void validateWindow(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         lux::runtime::entity_scene::ContentBlobClient blobs,
         lux::math::GridCoord2i64 center,
         const lux::ecs::PersistentEntityId& field_id)

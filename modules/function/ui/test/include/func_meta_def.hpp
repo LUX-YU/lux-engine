@@ -1,5 +1,4 @@
 #pragma once
-#include "lux/engine/meta/LuxObject.hpp"
 #include <lux/engine/meta/Meta.hpp>
 
 static inline std::string LUX_FUNC() TestFunc(std::string a, int b)
@@ -7,7 +6,7 @@ static inline std::string LUX_FUNC() TestFunc(std::string a, int b)
 	return a + std::to_string(b);
 }
 
-class LUX_CLASS() TestClass : public lux::meta::LuxObject
+class LUX_CLASS() TestClass
 {
 public:
 	TestClass() = default;

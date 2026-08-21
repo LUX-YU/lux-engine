@@ -6,14 +6,12 @@ generate_visibility_header(
     GENERATE_FILE_PATH  lux/engine/core/visibility.h
 )
 
-# get sublist
-subdirectory_list(dir_list)
-
-foreach(subdir ${dir_list})
-    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt)
-        add_subdirectory(${subdir})
-    endif()
-endforeach()
+add_subdirectory(extension_abi)
+add_subdirectory(math)
+add_subdirectory(meta)
+add_subdirectory(serialization)
+add_subdirectory(log)
+add_subdirectory(events)
 
 install_components(
 	PROJECT_NAME	lux-engine-core

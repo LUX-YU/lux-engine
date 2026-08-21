@@ -501,7 +501,7 @@ namespace lux::runtime::entity_scene
         const lux::ecs::ComponentTypeCatalog* components{nullptr};
         lux::ecs::PersistentEntityIndex* persistent_entities{nullptr};
         std::shared_ptr<detail::EntitySectionOwnerControl> control;
-        lux::meta::EntityRegistry* registry{nullptr};
+        lux::ecs::Registry* registry{nullptr};
         lux::ecs::EcsCommandWriter commands;
         std::vector<Slot> slots;
         std::map<uuids::uuid, std::uint32_t> section_slots;
@@ -665,7 +665,7 @@ namespace lux::runtime::entity_scene
     }
 
     bool EntitySectionClient::boundTo(
-        const lux::meta::EntityRegistry& registry) const noexcept
+        const lux::ecs::Registry& registry) const noexcept
     {
         const auto control = control_.lock();
         if (!control)
@@ -1112,7 +1112,7 @@ namespace lux::runtime::entity_scene
     }
 
     void EntitySectionCommand::apply(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         EntitySectionLoaderSystem& owner) const noexcept
     {
         owner.applyCommand(*this, registry);
@@ -1120,7 +1120,7 @@ namespace lux::runtime::entity_scene
 
     void EntitySectionLoaderSystem::applyCommand(
         const EntitySectionCommand& command,
-        lux::meta::EntityRegistry& registry) noexcept
+        lux::ecs::Registry& registry) noexcept
     {
         requireOwnerThread(*impl_->control);
         if (&registry != impl_->registry ||

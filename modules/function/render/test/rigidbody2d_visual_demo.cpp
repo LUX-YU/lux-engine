@@ -281,7 +281,7 @@ int main(int argc, char** argv)
     addStatic({ 3.0f, 2.0f}, {0.2f, 2.5f}, 0xFF303030u);        // right wall
 
     // ── dynamic bodies ──
-    std::vector<lux::meta::entity_id> boxes;
+    std::vector<lux::ecs::Entity> boxes;
     int spawn_count = 0;
     const auto dropBox = [&](float x, float y)
     {
@@ -352,8 +352,8 @@ int main(int argc, char** argv)
     {
         const auto ev = d2::scriptEventRegistry().find("OnCollision2DEnter");
         physics->setCollisionSink(
-            [&world, &scripts, ev](lux::meta::entity_id self,
-                                   lux::meta::entity_id other)
+            [&world, &scripts, ev](lux::ecs::Entity self,
+                                   lux::ecs::Entity other)
             {
                 std::uint32_t o = static_cast<std::uint32_t>(other);
                 void* args[1]  = { &o };

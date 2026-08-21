@@ -45,11 +45,14 @@ static void banner(const char* title)
 // AssetManager::createAsset (which auto-generates an id) because the tests
 // want deterministic ids to subscribe against before registration.
 static std::unique_ptr<SkeletonAsset>
-makeSkeletonAssetWithId(asset_id_t id)
+makeSkeletonAssetWithId(
+    asset_id_t id,
+    EAssetType type = SkeletonAsset::asset_type
+)
 {
     auto info  = std::make_unique<AssetInfo>();
     info->id   = id;
-    info->type = SkeletonAsset::asset_type;
+    info->type = type;
     info->date = 0;
 
     auto data  = std::make_unique<lux::rdesc::Skeleton>();
@@ -140,6 +143,74 @@ static void test_remove_asset_keeps_ledger()
     check(!mgr.isReferenced(id), "count drains when the holder lets go");
     check(zeroed.size() == 1 && zeroed[0] == id,
           "zero-edge broadcast fires exactly once, AFTER removal");
+    mgr.setBroadcast({});
+}
+
+static void test_loaded_asset_installation()
+{
+    banner("Test 9: decoded assets install without hot-reload side effects");
+
+    AssetManager mgr{runtimeAssetCodecCatalog()};
+    const asset_id_t id = mgr.generateUUID();
+    std::vector<asset_id_t> registered;
+    std::vector<asset_id_t> changed;
+    mgr.setBroadcast({
+        .on_content_changed =
+            [&](const asset_id_t& value, std::uint32_t)
+            { changed.push_back(value); },
+        .on_registered =
+            [&](const asset_id_t& value) { registered.push_back(value); },
+    });
+
+    auto initial = mgr.installLoadedAsset(
+        id,
+        makeSkeletonAssetWithId(id)
+    );
+    check(initial && *initial == mgr.fetchAsset(id),
+          "first decoded object is registered");
+    check(registered == std::vector{id},
+          "first decoded object emits the ordinary registration edge");
+    check(mgr.contentRevision(id) == 0u && changed.empty(),
+          "initial installation is not reported as a content edit");
+
+    AssetRef ticket = mgr.acquire(id);
+    check(mgr.unloadData(id) && !mgr.hasData(id),
+          "resident object becomes a data-less shell");
+    auto reloaded = mgr.installLoadedAsset(
+        id,
+        makeSkeletonAssetWithId(id)
+    );
+    check(reloaded && mgr.hasData(id),
+          "complete decode replaces a data-less shell");
+    check(mgr.isReferenced(id) && mgr.contentRevision(id) == 0u &&
+              registered.size() == 1u && changed.empty(),
+          "shell replacement preserves tickets, revision, and broadcasts");
+
+    LuxAsset* installed = mgr.fetchAsset(id);
+    auto duplicate = mgr.installLoadedAsset(
+        id,
+        makeSkeletonAssetWithId(id)
+    );
+    check(duplicate && *duplicate == installed && mgr.fetchAsset(id) == installed,
+          "duplicate completion keeps the already-ready object");
+
+    const asset_id_t other = mgr.generateUUID();
+    auto wrong_id = mgr.installLoadedAsset(
+        other,
+        makeSkeletonAssetWithId(id)
+    );
+    check(!wrong_id && wrong_id.error() == EAssetError::WRONG_FILE_HEADER,
+          "expected and decoded IDs must match");
+
+    const asset_id_t unknown_type_id = mgr.generateUUID();
+    auto unknown_type = mgr.installLoadedAsset(
+        unknown_type_id,
+        makeSkeletonAssetWithId(unknown_type_id, EAssetType::UNKNOWN)
+    );
+    check(!unknown_type && unknown_type.error() == EAssetError::FILE_TYPE_ERROR,
+          "decoded type must be registered in the manager catalog");
+
+    ticket.reset();
     mgr.setBroadcast({});
 }
 
@@ -274,6 +345,7 @@ int main()
     test_invalidation_broadcast();
     test_content_changed_broadcast();
     test_registered_broadcast();
+    test_loaded_asset_installation();
 
     std::cout << "\n" << std::string(60, '=') << "\n"
               << "  Summary: " << g_pass << " passed, "

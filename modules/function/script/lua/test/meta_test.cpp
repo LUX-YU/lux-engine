@@ -63,8 +63,6 @@ int main()
 		test_class_meta->construct(mem);
 		auto obj = reinterpret_cast<TestClass*>(mem);
 		assert(obj);
-		std::cout << "Object id:" << static_cast<uint32_t>(obj->id()) << std::endl;
-	
 		int arg1 = 10;
 		std::string arg2 = "Hello";
 		void* args[2]{

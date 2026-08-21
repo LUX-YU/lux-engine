@@ -135,7 +135,7 @@ namespace lux::ecs
             return proj;
         }
 
-        std::vector<lux::meta::entity_id> scratch_;
+        std::vector<lux::ecs::Entity> scratch_;
         bool cache_maintenance_connected_{false};
 #ifndef NDEBUG
         const void* maintenance_registry_{nullptr};

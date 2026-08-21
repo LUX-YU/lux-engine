@@ -631,7 +631,7 @@ namespace lux::toolchain
                         names.error().detail));
             }
 
-            lux::meta::EntityRegistry staging;
+            lux::ecs::Registry staging;
             const auto entity = staging.create();
             std::vector<const lux::ecs::ComponentSchemaDescriptor*>
                 descriptors;

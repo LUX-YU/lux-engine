@@ -253,7 +253,7 @@
                 }
             }
             runtime_.reset();
-            camera_entity_ = lux::meta::null_entity;
+            camera_entity_ = lux::ecs::kNullEntity;
             return false;
         };
 
@@ -646,7 +646,7 @@
         terrain_load_pending_ = false;
         terrain_heightmap_io_pending_ = false;
 
-        camera_entity_ = lux::meta::null_entity;
+        camera_entity_ = lux::ecs::kNullEntity;
         live_          = false;
 
         // M2 cleanup: drop the per-mesh AABB cache so the next bringUp starts
@@ -817,7 +817,8 @@
                 candidate->world(),
                 candidate->schedule(),
                 candidate->services(),
-                assets_);
+                assets_,
+                asset_client_);
         if (!play_mapper_ ||
             !candidate_simulation->start(*play_mapper_, play_actions_))
         {
@@ -880,7 +881,7 @@
         if (restore_edit_view && runtime_)
         {
             auto& registry = runtime_->world().registry();
-            if (camera_entity_ != lux::meta::null_entity &&
+            if (camera_entity_ != lux::ecs::kNullEntity &&
                 registry.valid(camera_entity_))
             {
                 registry.emplace_or_replace<
@@ -917,11 +918,11 @@
             std::move(completion));
     }
 
-    lux::meta::entity_id EditorScene::commitSpawnModel(
+    lux::ecs::Entity EditorScene::commitSpawnModel(
         InstanceSpawnPlan&& plan)
     {
         if (!live_ || !runtime_ || plan.submeshes.empty())
-            return lux::meta::null_entity;
+            return lux::ecs::kNullEntity;
         auto& w = runtime_->world();
         const bool skinned = !plan.skeleton.is_nil();
 

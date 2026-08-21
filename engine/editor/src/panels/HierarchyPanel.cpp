@@ -56,7 +56,7 @@ namespace lux::editor
     }
 
     void HierarchyPanel::beginRename(
-        lux::meta::EntityRegistryBase& reg,
+        lux::ecs::RegistryBase& reg,
         entt::entity e)
     {
         renaming_ = e;
@@ -73,7 +73,7 @@ namespace lux::editor
     {
         // Immediate-mode: read the SCENE'S selection each frame. Null between
         // scenes (C11 — the Selection lives and dies with the scene).
-        lux::meta::EntityRegistryBase* reg =
+        lux::ecs::RegistryBase* reg =
             sel_ ? sel_->registry() : nullptr;
         if (!reg)
         {

@@ -7,7 +7,6 @@
 #include <filesystem>
 #include <cstring>
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/cxx/core/move_only_function.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <lux/engine/resource/asset/visibility.h>
 
@@ -590,8 +589,6 @@ namespace lux::asset
     /// type's setData to call — and invoked on the shell at a main-thread sync
     /// point to complete the injection. move-only (captures a unique_ptr to
     /// the data).
-    using AssetDataInjector = lux::cxx::move_only_function<void(LuxAsset&)>;
-
     template<typename Config>
 	class TAssetSerDeser : public AssetSerDeser
     {

@@ -49,6 +49,14 @@ namespace lux::asset
 		{ return animation_clip_asset_ids_; }
 		void addAnimationClipAssetId(const asset_id_t& id) { animation_clip_asset_ids_.push_back(id); }
 
+		/// A cooked model is runtime-ready once its dependency manifest has
+		/// been decoded, even when the optional authoring node tree is absent.
+		void markManifestLoaded() noexcept { manifest_loaded_ = true; }
+		[[nodiscard]] bool hasData() const override
+		{
+			return manifest_loaded_ || TAsset::hasData();
+		}
+
 		// ===== W5b: transient imported-material descriptors (NOT persisted) =====
 		// The Assimp importer fills these (one per material slot, parallel to
 		// ModelMeshInfo::material_index); the editor's AssetImporter converts each to a
@@ -71,6 +79,7 @@ namespace lux::asset
 		std::vector<asset_id_t>   material_asset_ids_;
 		std::optional<asset_id_t> skeleton_asset_id_;
 		std::vector<asset_id_t>   animation_clip_asset_ids_;
+		bool                      manifest_loaded_{false};
 		// W5b transient (import-only):
 		std::vector<rdesc::ImportedMaterialDesc>   imported_material_descs_;
 		std::vector<std::vector<asset_id_t>>       imported_material_texture_uuids_;

@@ -8,7 +8,7 @@
  * Runtime know what editor scaffolding means.
  */
 
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 namespace lux::editor
 {
@@ -24,7 +24,7 @@ namespace lux::editor
 
     /// Captureless predicate used by the Editor's Authoring transaction.
     inline bool skipEditorTransient(
-        const lux::meta::EntityRegistryBase& reg,
+        const lux::ecs::RegistryBase& reg,
         entt::entity e)
     {
         return reg.all_of<EditorTransientComponent>(e);

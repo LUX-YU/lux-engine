@@ -7,6 +7,7 @@
 # Domain-free by contract: no 2D/3D/render types ever land here.
 
 find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time)
+find_package(EnTT CONFIG REQUIRED)
 
 set(LUX_ECS_CORE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ComponentTypeCatalog.cpp
@@ -15,6 +16,8 @@ set(LUX_ECS_CORE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Schedule.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ScheduleTopology.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ScheduleBuilder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Registry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/RegistryMemoryResource.cpp
 )
 
 add_component(
@@ -47,7 +50,7 @@ lux_classify_target(
 target_compile_definitions(
     core
     PRIVATE
-    LUX_FUNCTION_LIBRARY
+    LUX_ECS_LIBRARY
 )
 
 target_link_libraries(
@@ -56,9 +59,9 @@ target_link_libraries(
     lux::cxx::algorithm                # stable schema ids (FNV-1a)
     lux::cxx::compile_time             # SceneServices type_hash + expected
     lux::engine::core::math
-    lux::engine::core::meta            # EntityRegistry / reflection seam
-    lux::engine::resource::asset       # AssetLoadFn carries asset_id_t
+    lux::engine::core::meta            # generic reflection vocabulary
     lux::engine::ecs::identity              # component + persistent entity identity
+    EnTT::EnTT
 )
 
 component_add_transitive_commands(
@@ -66,7 +69,7 @@ component_add_transitive_commands(
     "find_package (lux-cxx             REQUIRED COMPONENTS algorithm compile_time)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS identity)"
     "find_package (lux-engine-core     REQUIRED COMPONENTS math meta)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package (EnTT CONFIG REQUIRED)"
 )
 
 # ---------------------------------------------------------------------------

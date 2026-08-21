@@ -25,7 +25,7 @@
 // ============================================================================
 
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/meta/LuxObject.hpp>   // entity_id
+#include <lux/engine/ecs/Registry.hpp>   // entity_id
 
 #include <functional>
 #include <string_view>
@@ -37,5 +37,5 @@ namespace lux::ecs
     [[nodiscard]] LUX_FUNCTION_PUBLIC bool guardedScriptCall(const std::function<void()>& fn);
 
     /// Report a caught script fault (logs; the editor phase also stops play + restores).
-    LUX_FUNCTION_PUBLIC void reportScriptFault(lux::meta::entity_id entity, std::string_view phase);
+    LUX_FUNCTION_PUBLIC void reportScriptFault(lux::ecs::Entity entity, std::string_view phase);
 } // namespace lux::ecs

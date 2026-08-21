@@ -1,4 +1,4 @@
-#include <lux/engine/meta/RegistryMemoryResource.hpp>
+#include <lux/engine/ecs/RegistryMemoryResource.hpp>
 
 #include <algorithm>
 #include <cstdlib>
@@ -7,7 +7,7 @@
 #include <thread>
 #include <utility>
 
-namespace lux::meta
+namespace lux::ecs
 {
     namespace
     {
@@ -620,4 +620,4 @@ namespace lux::meta
             registryMemoryInvariantFailed();
         impl_->publication_admission_closed = false;
     }
-} // namespace lux::meta
+} // namespace lux::ecs

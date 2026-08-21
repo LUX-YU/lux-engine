@@ -37,42 +37,42 @@ namespace
     };
 
     bool transientProbeHas(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.all_of<TransientProbe>(entity);
     }
 
     void* transientProbeGet(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.try_get<TransientProbe>(entity);
     }
 
     void* transientProbeEmplace(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return &registry.get_or_emplace<TransientProbe>(entity);
     }
 
     void transientProbeRemove(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         (void)registry.remove<TransientProbe>(entity);
     }
 
     void transientProbeNotify(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         registry.patch<TransientProbe>(entity, [](auto&) noexcept {});
     }
 
     void transientProbeReserve(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         std::size_t additional)
     {
         auto& storage = registry.storage<TransientProbe>();
@@ -80,9 +80,9 @@ namespace
     }
 
     void* transientProbeTransfer(
-        lux::meta::EntityRegistryBase&,
+        lux::ecs::RegistryBase&,
         entt::entity,
-        lux::meta::EntityRegistryBase&,
+        lux::ecs::RegistryBase&,
         entt::entity) noexcept
     {
         return nullptr;
@@ -162,7 +162,7 @@ int main()
             "99999999-0000-4000-8000-000000000001")};
     const auto mesh_id = *uuids::uuid::from_string(
         "00000000-0000-4000-8000-cccccccccccc");
-    lux::meta::EntityRegistry source_registry;
+    lux::ecs::Registry source_registry;
     lux::ecs::PersistentEntityIndex source_persistent_entities{
         source_registry};
     const auto hello = source_registry.create();

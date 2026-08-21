@@ -38,7 +38,7 @@ namespace
                 return lux::ecs::ecsCommandSparsePublicationBytes(3u);
             }
             void prepareRegistryPublication(
-                lux::meta::EntityRegistry& registry) const noexcept
+                lux::ecs::Registry& registry) const noexcept
             {
                 constexpr std::size_t kMaximumFixtureEdges = 1024u;
                 auto& parents =
@@ -59,7 +59,7 @@ namespace
             }
 
             void apply(
-                lux::meta::EntityRegistry& registry,
+                lux::ecs::Registry& registry,
                 ParentBatchSystem&) const noexcept
             {
                 assert(lux::ecs::setParent(registry, child, parent));

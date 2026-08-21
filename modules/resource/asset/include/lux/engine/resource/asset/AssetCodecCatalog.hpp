@@ -44,8 +44,6 @@ namespace lux::asset
         TYPE_HASH_COLLISION
     };
 
-    using AssetDataDecodeFn = lux::cxx::expected<AssetDataInjector, EAssetError> (*)(lux::cxx::SharedBytes<>) noexcept;
-
     using AssetShellCreateFn = std::unique_ptr<LuxAsset> (*)(
         std::unique_ptr<AssetInfo>
     ) noexcept;
@@ -61,7 +59,6 @@ namespace lux::asset
         std::string             cpp_type_name;
         EAssetShippingClass     shipping{EAssetShippingClass::RUNTIME};
         AssetSerDeserFactoryFn  create{};
-        AssetDataDecodeFn       decode{};
         AssetShellCreateFn      create_shell{};
         std::uint32_t           primary_magic{0u};
         std::uint32_t           legacy_magic{0u};
@@ -103,8 +100,10 @@ namespace lux::asset
             std::shared_ptr<AssetManager> owner
         ) const;
 
-        [[nodiscard]] lux::cxx::expected<AssetDataInjector, EAssetError>
-        decode(lux::cxx::SharedBytes<> image) const noexcept;
+        /// Decode a complete image through the selected manager-less
+        /// SerDeser. The returned asset is owning and not registered.
+        [[nodiscard]] lux::cxx::expected<std::unique_ptr<LuxAsset>, EAssetError>
+        decodeAsset(lux::cxx::SharedBytes<> image) const noexcept;
 
         [[nodiscard]] std::unique_ptr<LuxAsset> createShell(
             std::unique_ptr<AssetInfo> info

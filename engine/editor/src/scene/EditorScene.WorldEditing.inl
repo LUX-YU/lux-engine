@@ -421,7 +421,7 @@
     }
 
     void EditorScene::restoreAuthoringViewpoint(
-        lux::meta::entity_id source_camera) noexcept
+        lux::ecs::Entity source_camera) noexcept
     {
         if (!runtime_ || camera_entity_ == entt::null)
             return;
@@ -774,7 +774,7 @@
             return lux::cxx::unexpected(instance_edit_error_);
         }
 
-        lux::meta::EntityRegistry staging;
+        lux::ecs::Registry staging;
         const auto staging_entity = staging.create();
         staging.emplace<lux::ecs::NameComponent>(
             staging_entity,

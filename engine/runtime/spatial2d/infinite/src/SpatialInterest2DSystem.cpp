@@ -264,7 +264,7 @@ namespace lux::runtime::spatial2d
         std::vector<TrackedSource> tracked;
         std::vector<lux::ecs::scene_format::EntitySectionId> active_scratch;
         std::vector<lux::ecs::scene_format::EntitySectionId> resident_scratch;
-        lux::meta::EntityRegistry* registry{nullptr};
+        lux::ecs::Registry* registry{nullptr};
         SpatialInterest2DSnapshot snapshot;
         bool closing{false};
     };

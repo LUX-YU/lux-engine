@@ -112,7 +112,7 @@ namespace lux::ecs
             // signals, so a successful write fires entry->notify (patch<T> →
             // on_update) — event-driven consumers observe reflection writes.
             const lux::ecs::ComponentSchemaDescriptor* entry = nullptr;
-            lux::meta::EntityRegistryBase*       reg   = nullptr;
+            lux::ecs::RegistryBase*       reg   = nullptr;
             entt::entity                         ent   = entt::null;
 
             sol::object index(const std::string& field, sol::this_state ts) const
@@ -141,7 +141,7 @@ namespace lux::ecs
         /// The `self` a Lua callback receives — the live entity.
         struct ScriptEntity
         {
-            lux::meta::EntityRegistryBase* reg = nullptr;
+            lux::ecs::RegistryBase* reg = nullptr;
             entt::entity    ent = entt::null;
             const ComponentTypeCatalog* components = nullptr;
 
@@ -371,7 +371,7 @@ namespace lux::ecs
 
     ScriptInstance
     LuaScriptBackend::createInstanceFromAsset(
-        lux::meta::EntityHandle entity,
+        lux::ecs::EntityHandle entity,
         World& world,
                                               const lux::rdesc::Script&  desc,
                                               std::span<const std::byte> payload,

@@ -77,7 +77,7 @@ namespace lux::runtime
             simulation->setPhase(
                 Simulation2DSystem::Phase::SimulatePhysics,
                 [physics_owner](
-                    lux::meta::EntityRegistry& registry,
+                    lux::ecs::Registry& registry,
                     float dt)
                 {
                     physics_owner->step(registry, dt);
@@ -130,7 +130,7 @@ namespace lux::runtime
             simulation->setPhase(
                 Simulation2DSystem::Phase::SimulatePhysics,
                 [physics_owner](
-                    lux::meta::EntityRegistry& registry,
+                    lux::ecs::Registry& registry,
                     float dt)
                 {
                     physics_owner->step(registry, dt);

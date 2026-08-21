@@ -25,7 +25,7 @@ namespace lux::ecs
         lux::render::RenderSceneLease scene_lease;
         SceneRenderBinding           binding;
         ActiveRenderView             active_view;
-        lux::meta::EntityRegistry*   registry{nullptr};
+        lux::ecs::Registry*   registry{nullptr};
         std::uint64_t                tick_index{0};
         bool                         closing{false};
         bool                         closed{false};

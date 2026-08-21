@@ -32,13 +32,13 @@ namespace lux::ecs
     class SystemSetupContext final
     {
     public:
-        SystemSetupContext(lux::meta::EntityRegistry& registry,
+        SystemSetupContext(lux::ecs::Registry& registry,
                            EcsCommandWriter commands) noexcept
             : registry_(&registry), commands_(commands)
         {
         }
 
-        [[nodiscard]] lux::meta::EntityRegistry& registry() const noexcept
+        [[nodiscard]] lux::ecs::Registry& registry() const noexcept
         {
             return *registry_;
         }
@@ -49,7 +49,7 @@ namespace lux::ecs
         }
 
     private:
-        lux::meta::EntityRegistry* registry_{nullptr};
+        lux::ecs::Registry* registry_{nullptr};
         EcsCommandWriter           commands_{};
     };
 
@@ -64,19 +64,19 @@ namespace lux::ecs
     {
     public:
         explicit SystemRemovalContext(
-            lux::meta::EntityRegistry& registry
+            lux::ecs::Registry& registry
         ) noexcept
             : registry_(&registry)
         {
         }
 
-        [[nodiscard]] lux::meta::EntityRegistry& registry() const noexcept
+        [[nodiscard]] lux::ecs::Registry& registry() const noexcept
         {
             return *registry_;
         }
 
     private:
-        lux::meta::EntityRegistry* registry_{nullptr};
+        lux::ecs::Registry* registry_{nullptr};
     };
 
     /// `ISystem::update` 的唯一形参。
@@ -87,7 +87,7 @@ namespace lux::ecs
     class SystemUpdateContext final
     {
     public:
-        SystemUpdateContext(lux::meta::EntityRegistry& registry,
+        SystemUpdateContext(lux::ecs::Registry& registry,
                             EcsCommandWriter commands,
                             float dt, std::uint64_t tick_index) noexcept
             : registry_(&registry), commands_(commands), dt_(dt),
@@ -98,12 +98,12 @@ namespace lux::ecs
         /// 手工驱动一个系统(测试 / 可视化 demo:没有 Schedule,也就没有命令分片)。
         /// 这样构造出来的上下文里 `commands()` 是**无效 writer** —— 系统若真去入队,
         /// 会在入队处响亮报错,而不是把命令静默丢掉。
-        SystemUpdateContext(lux::meta::EntityRegistry& registry, float dt) noexcept
+        SystemUpdateContext(lux::ecs::Registry& registry, float dt) noexcept
             : registry_(&registry), dt_(dt)
         {
         }
 
-        [[nodiscard]] lux::meta::EntityRegistry& registry() const noexcept
+        [[nodiscard]] lux::ecs::Registry& registry() const noexcept
         {
             return *registry_;
         }
@@ -123,7 +123,7 @@ namespace lux::ecs
         }
 
     private:
-        lux::meta::EntityRegistry* registry_{nullptr};
+        lux::ecs::Registry* registry_{nullptr};
         EcsCommandWriter           commands_{};
         float                      dt_{0.0f};
         std::uint64_t              tick_index_{0};

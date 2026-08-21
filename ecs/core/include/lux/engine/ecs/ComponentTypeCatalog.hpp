@@ -12,9 +12,10 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/ComponentSchemaId.hpp>
+#include <lux/engine/ecs/Entity.hpp>
 #include <lux/engine/ecs/TypeToken.hpp>
-#include <lux/engine/function/visibility.h>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/visibility.h>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -33,7 +34,7 @@ namespace lux::ecs
     /// so implementation spelling never leaks an invalid `::` name into
     /// LXSC/LXES. Explicit provider schemas may still supply another
     /// canonical stable name in their descriptor transaction.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC std::string
+    [[nodiscard]] LUX_ECS_PUBLIC std::string
     defaultComponentSchemaName(std::string_view cpp_name);
 
 
@@ -55,32 +56,28 @@ namespace lux::ecs
 
     struct ComponentOperations final
     {
-        bool  (*has)(lux::meta::EntityRegistryBase&, entt::entity){nullptr};
-        void* (*get)(lux::meta::EntityRegistryBase&, entt::entity){nullptr};
-        void* (*emplace)(
-            lux::meta::EntityRegistryBase&,
-            entt::entity){nullptr};
-        void  (*remove)(lux::meta::EntityRegistryBase&, entt::entity){nullptr};
+        bool  (*has)(lux::ecs::RegistryBase&, Entity){nullptr};
+        void* (*get)(lux::ecs::RegistryBase&, Entity){nullptr};
+        void* (*emplace)(lux::ecs::RegistryBase&, Entity){nullptr};
+        void  (*remove)(lux::ecs::RegistryBase&, Entity){nullptr};
         void* (*clone)(
-            lux::meta::EntityRegistryBase&,
-            entt::entity,
-            lux::meta::EntityRegistryBase&,
-            entt::entity){nullptr};
-        void (*notify)(
-            lux::meta::EntityRegistryBase&,
-            entt::entity){nullptr};
+            lux::ecs::RegistryBase&,
+            Entity,
+            lux::ecs::RegistryBase&,
+            Entity){nullptr};
+        void (*notify)(lux::ecs::RegistryBase&, Entity){nullptr};
         // Reserves EnTT packed/payload capacity for this many additional
         // components. EnTT does not preallocate every sparse entity-index
         // page here, so this is not by itself a zero-heap publication proof.
         // Providers must add the argument to the storage's current size.
         void (*reserve)(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             std::size_t){nullptr};
         void* (*transfer)(
-            lux::meta::EntityRegistryBase&,
-            entt::entity,
-            lux::meta::EntityRegistryBase&,
-            entt::entity) noexcept {nullptr};
+            lux::ecs::RegistryBase&,
+            Entity,
+            lux::ecs::RegistryBase&,
+            Entity) noexcept {nullptr};
         bool no_throw_transfer{false};
     };
 
@@ -116,8 +113,8 @@ namespace lux::ecs
             return schema_id.name;
         }
 
-        [[nodiscard]] bool has(lux::meta::EntityRegistryBase& registry,
-                               entt::entity entity) const noexcept
+        [[nodiscard]] bool has(lux::ecs::RegistryBase& registry,
+                               Entity entity) const noexcept
         {
             return operations.has && operations.has(registry, entity);
         }
@@ -145,7 +142,7 @@ namespace lux::ecs
     template <typename T>
     using ComponentCatalogExp = lux::cxx::expected<T, ComponentCatalogFailure>;
 
-    class LUX_FUNCTION_PUBLIC ComponentTypeCatalog final
+    class LUX_ECS_PUBLIC ComponentTypeCatalog final
     {
     public:
         using RegisterSchemaResult = ComponentCatalogExp<const ComponentSchemaDescriptor*>;
@@ -189,26 +186,26 @@ namespace lux::ecs
 
     /// Called only by generated reflection callbacks. This does not publish a
     /// component to any consumer; it appends to the main-thread pending chain.
-    LUX_FUNCTION_PUBLIC void queueGeneratedComponent(ComponentSchemaDescriptor descriptor) noexcept;
+    LUX_ECS_PUBLIC void queueGeneratedComponent(ComponentSchemaDescriptor descriptor) noexcept;
 
     /// Publish every descriptor queued by the most recent meta_module_init or
     /// meta_module_drain. On validation failure the pending chain is retained
     /// and the destination catalogue remains unchanged.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC ComponentCatalogExp<std::size_t>
+    [[nodiscard]] LUX_ECS_PUBLIC ComponentCatalogExp<std::size_t>
     registerGeneratedComponents(ComponentTypeCatalog& catalog);
 
     /// Move the descriptors produced by the latest meta-module drain into a
     /// caller-owned registration transaction. Dynamic extension loading uses
     /// this path so generated schemas are validated and published atomically
     /// with the module's other contributions.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC
+    [[nodiscard]] LUX_ECS_PUBLIC
     std::vector<ComponentSchemaDescriptor> takeGeneratedComponents() noexcept;
 
     /// Pack declaration drift check. Diagnostics stay at composition call
     /// sites; this helper has no terminal-I/O side effects.
     using ComponentCatalogValidationResult = ComponentCatalogExp<void>;
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC ComponentCatalogValidationResult validateComponentSchemas(
+    [[nodiscard]] LUX_ECS_PUBLIC ComponentCatalogValidationResult validateComponentSchemas(
         const ComponentTypeCatalog& catalog,
         std::span<const std::string_view> schema_names
     );

@@ -201,14 +201,60 @@ namespace
             return fail(golden.name, "length/SHA-256 contract changed");
         }
 
+        auto decoded = codecs->decodeAsset(
+            lux::cxx::SharedBytes<>::copyOf(first)
+        );
+        if (!decoded || (*decoded)->id() != fixture_id ||
+            (*decoded)->type() != type || !(*decoded)->hasData())
+        {
+            return fail(
+                golden.name,
+                "manager-less Catalog decode did not produce a complete asset"
+            );
+        }
+
+        if (type == EAssetType::MODEL)
+        {
+            const auto* model = (*decoded)->as<ModelAsset>();
+            if (model == nullptr || model->meshAssetIds() != std::vector{id(6u)} ||
+                model->materialAssetIds() != std::vector{id(4u)} ||
+                model->skeletonAssetId() != std::optional{id(10u)} ||
+                model->animationClipAssetIds() != std::vector{id(11u)})
+            {
+                return fail(golden.name, "runtime Model manifest is incomplete");
+            }
+        }
+        else if (type == EAssetType::SCRIPT)
+        {
+            const auto* script = (*decoded)->as<ScriptAsset>();
+            if (script == nullptr || script->data() == nullptr ||
+                script->data()->module_name != "wire.fixture" ||
+                script->payload() != std::vector<std::byte>{
+                    std::byte{'r'}, std::byte{'e'}, std::byte{'t'},
+                    std::byte{'u'}, std::byte{'r'}, std::byte{'n'}})
+            {
+                return fail(
+                    golden.name,
+                    "Script description or primary payload is incomplete"
+                );
+            }
+        }
+        else if (type == EAssetType::SHADER)
+        {
+            const auto* shader = (*decoded)->as<ShaderAsset>();
+            if (shader == nullptr || shader->data() == nullptr ||
+                shader->shaderInfo().entry_points.size() != 1u ||
+                shader->data()->size() != 4u)
+            {
+                return fail(
+                    golden.name,
+                    "ShaderInfo or SPIR-V payload is incomplete"
+                );
+            }
+        }
+
         auto decode_manager = std::make_shared<AssetManager>(codecs);
         auto decoder = decode_manager->createSerDeser(type, decode_manager);
-        auto decoded = decoder->parseLuxAssetMemory(first.data(), first.size());
-        if (!decoded || (*decoded)->id() != fixture_id ||
-            (*decoded)->type() != type)
-        {
-            return fail(golden.name, "current image decode failed");
-        }
         if (!decode_manager->registerAsset(std::move(*decoded)))
             return fail(golden.name, "decoded fixture registration failed");
         const auto second_path = root / (std::string(golden.name) + ".roundtrip");
@@ -222,18 +268,55 @@ namespace
 
         const auto legacy = asLegacyV1(first);
         auto legacy_manager = std::make_shared<AssetManager>(codecs);
-        auto legacy_decoder = legacy_manager->createSerDeser(
-            type,
-            legacy_manager
-        );
-        auto legacy_decoded = legacy_decoder->parseLuxAssetMemory(
-            legacy.data(),
-            legacy.size()
+        auto legacy_decoded = codecs->decodeAsset(
+            lux::cxx::SharedBytes<>::copyOf(legacy)
         );
         if (!legacy_decoded || (*legacy_decoded)->id() != fixture_id ||
-            (*legacy_decoded)->type() != type)
+            (*legacy_decoded)->type() != type || !(*legacy_decoded)->hasData())
         {
-            return fail(golden.name, "legacy v1 image is not readable");
+            return fail(
+                golden.name,
+                "legacy v1 image is not readable through the Catalog"
+            );
+        }
+
+        if (type == EAssetType::SCRIPT)
+        {
+            constexpr payload_tag_t kAuxiliaryTag = 0x545345545855414Cull;
+            constexpr std::array kAuxiliaryBytes{
+                std::byte{0x21}, std::byte{0x43}, std::byte{0x65}};
+            auto with_auxiliary = first;
+            const PayloadBlockHeader block{
+                kAuxiliaryTag,
+                static_cast<std::uint64_t>(kAuxiliaryBytes.size())};
+            const auto* block_bytes = reinterpret_cast<const std::byte*>(
+                std::addressof(block)
+            );
+            with_auxiliary.insert(
+                with_auxiliary.end(),
+                block_bytes,
+                block_bytes + sizeof(block)
+            );
+            with_auxiliary.insert(
+                with_auxiliary.end(),
+                kAuxiliaryBytes.begin(),
+                kAuxiliaryBytes.end()
+            );
+            auto decoded_with_auxiliary = codecs->decodeAsset(
+                lux::cxx::SharedBytes<>::copyOf(with_auxiliary)
+            );
+            const auto* auxiliary = decoded_with_auxiliary
+                ? (*decoded_with_auxiliary)->payload(kAuxiliaryTag)
+                : nullptr;
+            if (auxiliary == nullptr ||
+                *auxiliary != std::vector<std::byte>(
+                    kAuxiliaryBytes.begin(), kAuxiliaryBytes.end()))
+            {
+                return fail(
+                    golden.name,
+                    "Script auxiliary payload is incomplete"
+                );
+            }
         }
 
         auto bad_magic = first;

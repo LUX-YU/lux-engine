@@ -63,7 +63,7 @@ namespace lux::ecs
     private:
         friend struct TilemapIntentCommand;
         void applyReconcile(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity) noexcept;
         void releaseOwned(TilemapHandle handle) noexcept;
 
@@ -90,10 +90,10 @@ namespace lux::ecs
             return ecsCommandSparsePublicationBytes(1u);
         }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry& registry) const noexcept;
+            lux::ecs::Registry& registry) const noexcept;
 
         void apply(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             TilemapSystem& system) const noexcept
         {
             if (action == ETilemapIntentAction::DESTROY_OWNED_HANDLE)

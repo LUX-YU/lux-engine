@@ -14,7 +14,7 @@
 #include <lux/engine/resource/asset/AssetRef.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/ecs/render/ResidencyCallbacks.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -66,7 +66,7 @@ namespace lux::editor
 
     struct InstanceSpawnResult final
     {
-        lux::meta::entity_id root{lux::meta::null_entity};
+        lux::ecs::Entity root{lux::ecs::kNullEntity};
         lux::asset::asset_id_t model{};
         std::uint32_t model_revision{0};
     };
@@ -80,7 +80,7 @@ namespace lux::editor
     {
     public:
         using Commit = lux::cxx::move_only_function<
-            lux::meta::entity_id(InstanceSpawnPlan&&)>;
+            lux::ecs::Entity(InstanceSpawnPlan&&)>;
         using Completion = lux::cxx::move_only_function<void(
             InstanceSpawnOutcome)>;
 

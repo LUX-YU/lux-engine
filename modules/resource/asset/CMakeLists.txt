@@ -8,10 +8,7 @@ find_package(
         compile_time
         core
         memory
-        reflection_runtime
 )
-
-include_component_cmake_scripts(lux::cxx::reflection_runtime)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ASSET_LIBRARY
@@ -79,12 +76,10 @@ target_link_libraries(
         lux::cxx::compile_time
         lux::cxx::memory
         lux::engine::core::math
-        lux::engine::core::meta
-        lux::engine::core::serialization
         lux::engine::resource::description
     PRIVATE
         lux::cxx::core
-        lux::cxx::reflection_runtime
+        lux::engine::core::serialization
 )
 
 component_add_internal_dependencies(asset description)
@@ -95,8 +90,8 @@ component_add_cmake_scripts(
 component_add_transitive_commands(
     asset
     "find_package(stduuid CONFIG REQUIRED)"
-    "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time core memory reflection_runtime)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS math meta serialization)"
+    "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time memory)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 

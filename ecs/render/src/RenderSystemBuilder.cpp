@@ -377,7 +377,7 @@ namespace lux::ecs
         std::vector<EcsCommandBuffer> staging;
         EcsCommandStorageReservationPlan command_storage_plan;
         std::vector<std::string_view> features;
-        lux::meta::EntityRegistry* registry{nullptr};
+        lux::ecs::Registry* registry{nullptr};
         std::uint64_t identity{0u};
         std::uint64_t dropped_stale_commands{0u};
         std::size_t next_sequence{0u};
@@ -561,7 +561,7 @@ namespace lux::ecs
         return impl_ ? impl_->dropped_stale_commands : 0u;
     }
 
-    void RenderSystemPlan::activate(lux::meta::EntityRegistry& registry)
+    void RenderSystemPlan::activate(lux::ecs::Registry& registry)
     {
         if (!impl_ || impl_->active)
             return;
@@ -576,7 +576,7 @@ namespace lux::ecs
     }
 
     void RenderSystemPlan::update(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         SceneRenderBinding& render,
         ActiveRenderView& active_view,
         float dt,
@@ -605,7 +605,7 @@ namespace lux::ecs
     }
 
     void RenderSystemPlan::settle(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         SceneRenderBinding& render,
         ActiveRenderView& active_view,
         std::uint64_t tick_index)
@@ -850,7 +850,7 @@ namespace lux::ecs
     }
 
     void RenderSystemPlan::close(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         SceneRenderBinding& render,
         ActiveRenderView& active_view,
         std::uint64_t tick_index) noexcept
@@ -878,7 +878,7 @@ namespace lux::ecs
     }
 
     void RenderSystemPlan::detach(
-        lux::meta::EntityRegistry& registry) noexcept
+        lux::ecs::Registry& registry) noexcept
     {
         if (!impl_ || !impl_->active)
             return;

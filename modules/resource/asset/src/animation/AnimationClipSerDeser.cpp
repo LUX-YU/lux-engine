@@ -119,7 +119,7 @@ namespace lux::asset
         if (!casset)
             return EAssetError::FILE_TYPE_ERROR;
         const auto* clip = static_cast<const lux::rdesc::AnimationClip*>(
-            casset->rawData());
+            casset->data());
         if (!clip)
             return EAssetError::ASSET_NO_DATA;
 

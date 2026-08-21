@@ -139,7 +139,7 @@ namespace lux::ecs
 
     ScriptInstance
     NativeModuleScriptBackend::createInstanceFromAsset(
-        lux::meta::EntityHandle, World& world,
+        lux::ecs::EntityHandle, World& world,
         const lux::rdesc::Script&  desc,
         std::span<const std::byte> payload,
         std::string_view           cache_key)

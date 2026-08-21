@@ -2,7 +2,6 @@
 
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
-#include <lux/engine/ecs/animation/systems/Flipbook2DResolver.hpp>
 #include <lux/engine/ecs/animation/systems/FlipbookAnimationSystem.hpp>
 #include <lux/engine/ecs/integration/physics2d_pixel/PixelCollisionProbe.hpp>
 #include <lux/engine/ecs/physics/CollisionProbe2D.hpp>
@@ -23,6 +22,7 @@
 #include <lux/engine/runtime/assets/SceneAssetServices.hpp>
 #include <lux/engine/runtime/packs/spatial2d/Simulation2DContribution.hpp>
 #include <lux/engine/runtime/packs/spatial2d/Transform2DContribution.hpp>
+#include <lux/engine/runtime/packs/scene2d/Flipbook2DResolver.hpp>
 
 #include <memory>
 #include <span>
@@ -64,7 +64,8 @@ namespace lux::runtime
                 std::string{kSpatial2DTransformContributionName}}};
         descriptor.required_services = {
             typeToken<Simulation2DSystem>(),
-            typeToken<Transform2DSystem>()};
+            typeToken<Transform2DSystem>(),
+            typeToken<lux::asset_runtime::SceneAssetServices>()};
         descriptor.provided_services = {typeToken<Camera2DSystem>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
@@ -77,21 +78,21 @@ namespace lux::runtime
         {
             auto* const assets = builder.findService<
                 lux::asset_runtime::SceneAssetServices>(context);
-            if (assets)
+            if (!assets)
             {
-                const auto request_load = [client = assets->loads](
-                    const lux::asset::asset_id_t& id) noexcept
-                {
-                    static_cast<void>(client.request(id));
-                };
-                if (auto added = builder.add(
-                        std::make_unique<Flipbook2DResolver>(
-                            assets->manager,
-                            request_load),
-                        kPhasePreTransform); !added)
-                {
-                    return added;
-                }
+                return lux::cxx::unexpected(
+                    SceneContributionBuildFailure{
+                        ESceneContributionBuildError::MISSING_SERVICE,
+                        typeToken<lux::asset_runtime::
+                            SceneAssetServices>()});
+            }
+            if (auto added = builder.add(
+                    std::make_unique<Flipbook2DResolver>(
+                        assets->manager,
+                        assets->loads),
+                    kPhasePreTransform); !added)
+            {
+                return added;
             }
             if (auto added = builder.add(
                     std::make_unique<FlipbookAnimationSystem>()); !added)
@@ -129,13 +130,13 @@ namespace lux::runtime
                 }
                 simulation->setPhase(
                     Simulation2DSystem::Phase::ApplyFieldCommands,
-                    [pixels](lux::meta::EntityRegistry&, float)
+                    [pixels](lux::ecs::Registry&, float)
                     {
                         pixels->applyCommands();
                     });
                 simulation->setPhase(
                     Simulation2DSystem::Phase::SimulateFields,
-                    [pixels](lux::meta::EntityRegistry&, float)
+                    [pixels](lux::ecs::Registry&, float)
                     {
                         pixels->step();
                     });

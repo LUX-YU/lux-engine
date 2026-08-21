@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <span>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -27,6 +28,7 @@ namespace lux::authoring::detail
             std::size_t info_offset{};
             std::size_t info_size{};
             std::size_t payload_offset{};
+            lux::asset::AssetInfo asset_info{};
         };
 
         template <class T>
@@ -61,6 +63,7 @@ namespace lux::authoring::detail
             std::uint64_t data_offset{};
             std::uint64_t data_size{};
             std::size_t   header_size{};
+            AssetInfo     asset_info{};
             if (version == current_asset_version)
             {
                 AssetFileHeader header{};
@@ -71,6 +74,7 @@ namespace lux::authoring::detail
                 data_offset = header.data_offset;
                 data_size   = header.data_size;
                 header_size = sizeof(header);
+                asset_info  = header.info;
             }
             else if (version == asset_version_v1)
             {
@@ -82,6 +86,7 @@ namespace lux::authoring::detail
                 data_offset = header.data_offset;
                 data_size   = header.data_size;
                 header_size = sizeof(header);
+                asset_info  = compat::upgradeAssetInfo(header.info);
             }
             else
             {
@@ -96,10 +101,15 @@ namespace lux::authoring::detail
                 data_size > image.size() - static_cast<std::size_t>(data_offset))
                 return lux::cxx::unexpected(EAssetError::ABNORMAL_FILE_SIZE);
 
+            if (asset_info.type != EAssetType::MATERIAL)
+                return lux::cxx::unexpected(
+                    EAssetError::WRONG_FILE_HEADER);
+
             return ImageSections{
                 static_cast<std::size_t>(info_offset),
                 static_cast<std::size_t>(info_size),
-                static_cast<std::size_t>(data_offset + data_size)
+                static_cast<std::size_t>(data_offset + data_size),
+                asset_info
             };
         }
 
@@ -261,79 +271,124 @@ namespace lux::authoring::detail
         }
     } // namespace
 
-    lux::cxx::expected<
-        lux::asset::AssetDataInjector,
-        lux::asset::EAssetError>
-    decodeAuthoringMaterial(lux::cxx::SharedBytes<> image) noexcept
+    namespace
     {
-        using namespace lux::asset;
-        const auto bytes = image.view();
-        auto inspected = inspectImage(bytes);
-        if (!inspected)
-            return lux::cxx::unexpected(inspected.error());
-        const ImageSections sections = *inspected;
-
-        std::uint32_t material_version{};
-        if (!readAt(bytes, sections.info_offset, material_version))
-            return lux::cxx::unexpected(EAssetError::ASSET_DESERIALIZE_FAIL);
-
-        std::unique_ptr<MaterialData> data;
-        std::vector<Payload> payloads = readPayloads(
-            bytes,
-            sections.payload_offset
-        );
-        if (material_version == kCookedMaterialVersion)
+        lux::cxx::expected<
+            std::unique_ptr<lux::asset::LuxAsset>,
+            lux::asset::EAssetError>
+        decodeAuthoringMaterialAsset(
+            std::span<const std::byte> bytes) noexcept
         {
-            auto decoded = MaterialSerDeser::decodeData(
-                bytes.data(),
-                bytes.size()
+            using namespace lux::asset;
+            auto inspected = inspectImage(bytes);
+            if (!inspected)
+                return lux::cxx::unexpected(inspected.error());
+            const ImageSections sections = *inspected;
+
+            std::uint32_t material_version{};
+            if (!readAt(bytes, sections.info_offset, material_version))
+                return lux::cxx::unexpected(
+                    EAssetError::ASSET_DESERIALIZE_FAIL);
+
+            std::unique_ptr<MaterialData> data;
+            std::vector<Payload> payloads = readPayloads(
+                bytes,
+                sections.payload_offset
             );
-            if (!decoded)
-                return lux::cxx::unexpected(decoded.error());
-            data = std::move(*decoded);
-        }
-        else if (material_version == kLegacyMaterialVersion)
-        {
-            Cursor cursor{
-                bytes.subspan(sections.info_offset, sections.info_size),
-                sizeof(material_version)
-            };
-            std::vector<std::byte> graph_blob;
-            data = decodeLegacyFields(cursor, graph_blob);
-            if (!data || cursor.offset != cursor.bytes.size())
+            if (material_version == kCookedMaterialVersion)
+            {
+                auto decoded = MaterialSerDeser::decodeData(
+                    bytes.data(),
+                    bytes.size()
+                );
+                if (!decoded)
+                    return lux::cxx::unexpected(decoded.error());
+                data = std::move(*decoded);
+            }
+            else if (material_version == kLegacyMaterialVersion)
+            {
+                Cursor cursor{
+                    bytes.subspan(
+                        sections.info_offset,
+                        sections.info_size),
+                    sizeof(material_version)
+                };
+                std::vector<std::byte> graph_blob;
+                data = decodeLegacyFields(cursor, graph_blob);
+                if (!data || cursor.offset != cursor.bytes.size())
+                    return lux::cxx::unexpected(
+                        EAssetError::ASSET_DESERIALIZE_FAIL
+                    );
+
+                std::erase_if(
+                    payloads,
+                    [](const Payload& payload)
+                    {
+                        return payload.tag == kMaterialGraphPayloadTag;
+                    }
+                );
+                payloads.push_back(Payload{
+                    kMaterialGraphPayloadTag,
+                    std::move(graph_blob)
+                });
+            }
+            else
+            {
                 return lux::cxx::unexpected(
                     EAssetError::ASSET_DESERIALIZE_FAIL
                 );
+            }
 
-            std::erase_if(
-                payloads,
-                [](const Payload& payload)
-                {
-                    return payload.tag == kMaterialGraphPayloadTag;
-                }
+            auto asset = std::make_unique<MaterialAsset>(
+                std::make_unique<AssetInfo>(sections.asset_info)
             );
-            payloads.push_back(Payload{
-                kMaterialGraphPayloadTag,
-                std::move(graph_blob)
-            });
+            asset->setData(std::move(data));
+            asset->setPayloads(std::move(payloads));
+            return std::unique_ptr<LuxAsset>{std::move(asset)};
         }
-        else
+
+        class AuthoringMaterialSerDeser final
+            : public lux::asset::MaterialSerDeser
         {
-            return lux::cxx::unexpected(
-                EAssetError::ASSET_DESERIALIZE_FAIL
-            );
-        }
+        public:
+            using lux::asset::MaterialSerDeser::MaterialSerDeser;
 
-        return AssetDataInjector{
-            [data = std::move(data),
-             payloads = std::move(payloads)](LuxAsset& shell) mutable
+        protected:
+            lux::cxx::expected<
+                std::unique_ptr<lux::asset::LuxAsset>,
+                lux::asset::EAssetError>
+            fromLuxAssetStream(std::istream& stream) override
             {
-                if (auto* material = shell.as<MaterialAsset>())
+                stream.seekg(0, std::ios::end);
+                const auto end = stream.tellg();
+                if (end <= 0)
+                    return lux::cxx::unexpected(
+                        lux::asset::EAssetError::ABNORMAL_FILE_SIZE);
+                stream.seekg(0, std::ios::beg);
+                std::vector<std::byte> bytes(
+                    static_cast<std::size_t>(end)
+                );
+                if (!stream.read(
+                        reinterpret_cast<char*>(bytes.data()),
+                        static_cast<std::streamsize>(bytes.size())))
                 {
-                    material->setData(std::move(data));
-                    material->setPayloads(std::move(payloads));
+                    return lux::cxx::unexpected(
+                        lux::asset::EAssetError::READ_FILE_FAIL);
                 }
+                return decodeAuthoringMaterialAsset(bytes);
             }
         };
+    } // namespace
+
+    std::unique_ptr<lux::asset::AssetSerDeser>
+    createAuthoringMaterialSerDeser(
+        lux::asset::EAssetType type,
+        std::shared_ptr<lux::asset::AssetManager> manager)
+    {
+        if (type != lux::asset::EAssetType::MATERIAL)
+            return nullptr;
+        return std::make_unique<AuthoringMaterialSerDeser>(
+            std::move(manager)
+        );
     }
 } // namespace lux::authoring::detail

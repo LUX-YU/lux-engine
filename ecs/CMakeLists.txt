@@ -1,4 +1,10 @@
 message("-------- ECS Layer --------")
+
+generate_visibility_header(
+    ENABLE_MACRO_NAME   LUX_ECS_LIBRARY
+    PUBLIC_MACRO_NAME   LUX_ECS_PUBLIC
+    GENERATE_FILE_PATH  lux/engine/ecs/visibility.h
+)
 # ─────────────────────────────────────────────────────────────────────────────
 #  ecs/ — the ECS layer (ADR: lux-engine-ecs-layer-architecture).
 #

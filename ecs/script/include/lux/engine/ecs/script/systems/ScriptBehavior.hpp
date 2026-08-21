@@ -25,7 +25,7 @@
 // ============================================================================
 
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/description/Script.hpp>   // rdesc::Script — asset-routed creation
 #include <lux/engine/ecs/script/systems/ScriptEventRegistry.hpp>   // ScriptEventId
 
@@ -145,16 +145,16 @@ namespace lux::ecs
         ///  那边由借用检查强制经过打戳的包装,这边由 API 形状引导。)
         template<typename C, typename Fn>
         void patchComponent(Fn&& fn) { self_.patch<C>(std::forward<Fn>(fn)); }
-        [[nodiscard]] lux::meta::EntityHandle self() const noexcept
+        [[nodiscard]] lux::ecs::EntityHandle self() const noexcept
         {
             return self_;
         }
-        [[nodiscard]] lux::meta::entity_id entity() const noexcept { return self_.entity(); }
+        [[nodiscard]] lux::ecs::Entity entity() const noexcept { return self_.entity(); }
         [[nodiscard]] World& world() const noexcept { return *world_; }
 
     private:
         friend class ScriptRegistry;   // injects self_/world_ before onCreate
-        lux::meta::EntityHandle self_{};
+        lux::ecs::EntityHandle self_{};
         World*       world_{nullptr};
     };
 
@@ -178,7 +178,7 @@ namespace lux::ecs
         /// Return an EMPTY instance for "not mine" — the registry tries the
         /// next backend. Event entries are resolved HERE, once (ADR §3.2).
         virtual ScriptInstance
-            createInstanceFromAsset(lux::meta::EntityHandle, World&,
+            createInstanceFromAsset(lux::ecs::EntityHandle, World&,
                                     const lux::rdesc::Script& /*desc*/,
                                     std::span<const std::byte> /*payload*/,
                                     std::string_view /*cache_key*/)

@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/render/components/3d/ClassicMeshBatchComponent.hpp>
 #include <lux/engine/function/render/client/features/render_cluster/RenderClusterOperation.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
 
@@ -100,7 +100,7 @@ int main()
         lux::classic_mesh::kClassicMeshBatchContentTypeName}};
     content.schema_version =
         lux::classic_mesh::kClassicMeshBatchSchemaVersion;
-    lux::meta::EntityRegistry registry;
+    lux::ecs::Registry registry;
     const auto entity = registry.create();
     registry.emplace<lux::ecs::ClassicMeshBatchComponent>(
         entity,

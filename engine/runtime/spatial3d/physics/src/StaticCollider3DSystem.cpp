@@ -376,14 +376,14 @@ namespace lux::runtime::spatial3d
         }
 
         void onFactConstructed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             (void)mark(entity);
         }
 
         void onFactUpdated(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             hideUncommittedCandidate(entity);
@@ -391,7 +391,7 @@ namespace lux::runtime::spatial3d
         }
 
         void onFactDestroyed(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity) noexcept
         {
             if (const auto* binding = registry.try_get<
@@ -405,7 +405,7 @@ namespace lux::runtime::spatial3d
         }
 
         void onTransformChanged(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity) noexcept
         {
             if (registry.all_of<lux::ecs::StaticColliderBatch3DComponent>(
@@ -417,7 +417,7 @@ namespace lux::runtime::spatial3d
         }
 
         void onTransformDestroyed(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity) noexcept
         {
             if (const auto* binding = registry.try_get<
@@ -435,7 +435,7 @@ namespace lux::runtime::spatial3d
         }
 
         void onBindingDestroyed(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity) noexcept
         {
             // EnTT dispatches on_destroy while the binding is still readable.
@@ -453,7 +453,7 @@ namespace lux::runtime::spatial3d
         }
 
         void onStatusDestroyed(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity) noexcept
         {
             if (registry.all_of<lux::ecs::StaticColliderBatch3DComponent>(
@@ -498,7 +498,7 @@ namespace lux::runtime::spatial3d
         }
 
         void attach(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             lux::ecs::EcsCommandWriter writer)
         {
             if (attached)
@@ -544,7 +544,7 @@ namespace lux::runtime::spatial3d
         }
 
         void detach(
-            lux::meta::EntityRegistry&) noexcept
+            lux::ecs::Registry&) noexcept
         {
             fact_constructed.release();
             fact_updated.release();
@@ -564,7 +564,7 @@ namespace lux::runtime::spatial3d
         }
 
         void beginDesired(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity,
             const lux::ecs::StaticColliderBatch3DComponent& fact,
             const lux::ecs::ResolvedTransform3DComponent& transform)
@@ -714,7 +714,7 @@ namespace lux::runtime::spatial3d
         }
 
         void reconcile(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity) noexcept
         {
             const auto key = entityKey(entity);
@@ -752,7 +752,7 @@ namespace lux::runtime::spatial3d
             beginDesired(registry, entity, *fact, *transform);
         }
 
-        void processDirty(lux::meta::EntityRegistry& registry) noexcept
+        void processDirty(lux::ecs::Registry& registry) noexcept
         {
             if (rescan_required)
             {
@@ -1024,7 +1024,7 @@ namespace lux::runtime::spatial3d
             }
         }
 
-        void emitCloseCommands(lux::meta::EntityRegistry& registry) noexcept
+        void emitCloseCommands(lux::ecs::Registry& registry) noexcept
         {
             // Close uses the same typed command barrier as ordinary removal.
             // Rebuild this bounded snapshot every tick so command-buffer
@@ -1083,7 +1083,7 @@ namespace lux::runtime::spatial3d
         lux::runtime::entity_scene::ContentBlobClient content;
         std::shared_ptr<CompletionControl> completion;
         StaticCollider3DSystemConfig config;
-        lux::meta::EntityRegistry* attached{nullptr};
+        lux::ecs::Registry* attached{nullptr};
         lux::ecs::EcsCommandWriter commands;
         entt::scoped_connection fact_constructed;
         entt::scoped_connection fact_updated;
@@ -1205,7 +1205,7 @@ namespace lux::runtime::spatial3d
     }
 
     void StaticCollider3DSystem::applyArm(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
         std::uint64_t generation) noexcept
     {
@@ -1278,7 +1278,7 @@ namespace lux::runtime::spatial3d
     }
 
     void StaticCollider3DSystem::applyPublish(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
         std::uint64_t generation) noexcept
     {
@@ -1376,7 +1376,7 @@ namespace lux::runtime::spatial3d
     }
 
     void StaticCollider3DSystem::applyStatus(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
         std::uint64_t generation,
         EStaticCollider3DState state,
@@ -1425,7 +1425,7 @@ namespace lux::runtime::spatial3d
     }
 
     void StaticCollider3DSystem::applyRemove(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
         std::uint64_t generation) noexcept
     {

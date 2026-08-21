@@ -30,7 +30,7 @@ int main()
             const lux::ecs::PersistentEntityIdComponent&>().id()),
         const lux::ecs::PersistentEntityId&>);
 
-    lux::meta::EntityRegistry registry;
+    lux::ecs::Registry registry;
     lux::ecs::PersistentEntityIndex index{registry};
     assert(index.boundTo(registry));
 

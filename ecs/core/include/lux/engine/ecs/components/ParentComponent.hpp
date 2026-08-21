@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 namespace lux::ecs
 {
@@ -18,11 +18,11 @@ namespace lux::ecs
     /// handle is never persisted as content.
     struct ParentComponent final
     {
-        [[nodiscard]] lux::meta::entity_id parent() const noexcept { return parent_; }
+        [[nodiscard]] lux::ecs::Entity parent() const noexcept { return parent_; }
 
     private:
         friend struct ParentAccess;   // the ONE key, held by setParent/clearParent
-        lux::meta::entity_id parent_ = lux::meta::null_entity;
+        lux::ecs::Entity parent_ = lux::ecs::kNullEntity;
     };
 
     /// The single point with write access to ParentComponent's link —
@@ -30,7 +30,7 @@ namespace lux::ecs
     /// call those functions, never this.
     struct ParentAccess final
     {
-        [[nodiscard]] static ParentComponent make(lux::meta::entity_id parent) noexcept
+        [[nodiscard]] static ParentComponent make(lux::ecs::Entity parent) noexcept
         {
             ParentComponent h;
             h.parent_ = parent;

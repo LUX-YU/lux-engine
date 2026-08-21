@@ -242,7 +242,7 @@ namespace lux::asset
         if (!sasset)
             return EAssetError::FILE_TYPE_ERROR;
         const auto* script = static_cast<const lux::rdesc::Script*>(
-            sasset->rawData());
+            sasset->data());
         if (!script)
             return EAssetError::ASSET_NO_DATA;
 

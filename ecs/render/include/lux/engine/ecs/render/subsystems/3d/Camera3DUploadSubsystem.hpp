@@ -22,7 +22,7 @@
 #include <lux/engine/ecs/SpatialTransformMath.hpp>
 #include <lux/engine/ecs/render/RenderSpatialTransform.hpp>
 #include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 namespace lux::ecs
 {

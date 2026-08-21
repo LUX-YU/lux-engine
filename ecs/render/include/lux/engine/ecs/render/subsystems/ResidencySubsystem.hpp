@@ -83,14 +83,14 @@ namespace lux::ecs
     {
     public:
         virtual ~IResidencyResolver() = default;
-        virtual void attach(lux::meta::EntityRegistry&) = 0;
+        virtual void attach(lux::ecs::Registry&) = 0;
         virtual void detach() = 0;
         /// 帧 OPEN 排空:离场摘组件 + 脏实体发起请求。
-        virtual void drain(lux::meta::EntityRegistry&, lux::asset::AssetManager&) = 0;
+        virtual void drain(lux::ecs::Registry&, lux::asset::AssetManager&) = 0;
         /// 失效命中集:摘死句柄组件、清送达态、重新标脏(兴趣票保留)。
         virtual void onInvalidated(
             const std::unordered_set<lux::asset::asset_id_t>&,
-            lux::meta::EntityRegistry*) = 0;
+            lux::ecs::Registry*) = 0;
         virtual void releaseAll() = 0;
     };
 
@@ -118,11 +118,11 @@ namespace lux::ecs
             : cb_(&cb), mgr_(&mgr)
         {}
 
-        void attach(lux::meta::EntityRegistry& reg) override
+        void attach(lux::ecs::Registry& reg) override
         {
             reg_ = &reg;
-            leave_.attach(reg, [this](lux::meta::entity_id e) { onLeave(e); });
-            change_.attach(reg, [this](lux::meta::entity_id e) { dirty_.insert(e); });
+            leave_.attach(reg, [this](lux::ecs::Entity e) { onLeave(e); });
+            change_.attach(reg, [this](lux::ecs::Entity e) { dirty_.insert(e); });
         }
 
         void detach() override
@@ -132,7 +132,7 @@ namespace lux::ecs
             reg_ = nullptr;
         }
 
-        void drain(lux::meta::EntityRegistry& reg,
+        void drain(lux::ecs::Registry& reg,
                    lux::asset::AssetManager&  mgr) override
         {
             for (const auto e : leaving_)
@@ -177,7 +177,7 @@ namespace lux::ecs
         }
 
         void onInvalidated(const std::unordered_set<lux::asset::asset_id_t>& ids,
-                           lux::meta::EntityRegistry* reg) override
+                           lux::ecs::Registry* reg) override
         {
             for (auto& [e, r] : recs_)
             {
@@ -204,7 +204,7 @@ namespace lux::ecs
         }
 
     private:
-        void onLeave(lux::meta::entity_id e)
+        void onLeave(lux::ecs::Entity e)
         {
             if (auto it = recs_.find(e); it != recs_.end())
             {
@@ -216,7 +216,7 @@ namespace lux::ecs
             dirty_.erase(e);
         }
 
-        void onDeliver(lux::meta::entity_id e, const lux::asset::asset_id_t& id,
+        void onDeliver(lux::ecs::Entity e, const lux::asset::asset_id_t& id,
                        std::uint64_t bits, const ResourceFailure* fail)
         {
             auto it = recs_.find(e);
@@ -240,11 +240,11 @@ namespace lux::ecs
 
         const ResidencyCallbacks*  cb_{nullptr};
         lux::asset::AssetManager*  mgr_{nullptr};
-        lux::meta::EntityRegistry* reg_{nullptr};
+        lux::ecs::Registry* reg_{nullptr};
 
-        std::unordered_map<lux::meta::entity_id, Rec> recs_;
-        std::unordered_set<lux::meta::entity_id>      dirty_;
-        std::vector<lux::meta::entity_id>             leaving_;
+        std::unordered_map<lux::ecs::Entity, Rec> recs_;
+        std::unordered_set<lux::ecs::Entity>      dirty_;
+        std::vector<lux::ecs::Entity>             leaving_;
         std::vector<Rec>                              leaving_recs_;
         ComponentSetChangeObserver<C, ComponentList<>, Exclude> change_;
         ComponentSetLeaveObserver <C, ComponentList<>, Exclude> leave_;
@@ -289,11 +289,11 @@ namespace lux::ecs
             , fallback_material_id_(fallback_material_id)
         {}
 
-        void attach(lux::meta::EntityRegistry& reg) override
+        void attach(lux::ecs::Registry& reg) override
         {
             reg_ = &reg;
-            leave_.attach(reg, [this](lux::meta::entity_id e) { onLeave(e); });
-            change_.attach(reg, [this](lux::meta::entity_id e) { dirty_.insert(e); });
+            leave_.attach(reg, [this](lux::ecs::Entity e) { onLeave(e); });
+            change_.attach(reg, [this](lux::ecs::Entity e) { dirty_.insert(e); });
         }
 
         void detach() override
@@ -303,7 +303,7 @@ namespace lux::ecs
             reg_ = nullptr;
         }
 
-        void drain(lux::meta::EntityRegistry& reg,
+        void drain(lux::ecs::Registry& reg,
                    lux::asset::AssetManager&  mgr) override
         {
             for (const auto e : leaving_)
@@ -391,7 +391,7 @@ namespace lux::ecs
         }
 
         void onInvalidated(const std::unordered_set<lux::asset::asset_id_t>& ids,
-                           lux::meta::EntityRegistry* reg) override
+                           lux::ecs::Registry* reg) override
         {
             for (auto& [e, r] : recs_)
             {
@@ -443,7 +443,7 @@ namespace lux::ecs
         }
 
     private:
-        void onLeave(lux::meta::entity_id e)
+        void onLeave(lux::ecs::Entity e)
         {
             if (auto it = recs_.find(e); it != recs_.end())
             {
@@ -454,7 +454,7 @@ namespace lux::ecs
             dirty_.erase(e);
         }
 
-        void onMeshDeliver(lux::meta::entity_id e, const lux::asset::asset_id_t& id,
+        void onMeshDeliver(lux::ecs::Entity e, const lux::asset::asset_id_t& id,
                            std::uint64_t bits, const ResourceFailure* fail)
         {
             auto it = recs_.find(e);
@@ -475,7 +475,7 @@ namespace lux::ecs
             tryWrite(e, r);
         }
 
-        void onMatDeliver(lux::meta::entity_id e, const lux::asset::asset_id_t& id,
+        void onMatDeliver(lux::ecs::Entity e, const lux::asset::asset_id_t& id,
                           std::uint64_t bits, const ResourceFailure* fail)
         {
             auto it = recs_.find(e);
@@ -492,7 +492,7 @@ namespace lux::ecs
             tryWrite(e, r);
         }
 
-        void onFallbackDeliver(lux::meta::entity_id e, std::uint64_t bits,
+        void onFallbackDeliver(lux::ecs::Entity e, std::uint64_t bits,
                                const ResourceFailure* fail)
         {
             auto it = recs_.find(e);
@@ -504,7 +504,7 @@ namespace lux::ecs
             tryWrite(e, r);
         }
 
-        void startFallback(lux::meta::entity_id e, Rec& r)
+        void startFallback(lux::ecs::Entity e, Rec& r)
         {
             if (fallback_material_id_.is_nil())
             {
@@ -525,7 +525,7 @@ namespace lux::ecs
         }
 
         /// 合取写入:网格就绪 && (材质 nil | 就绪 | 兜底就绪) 才写组件。
-        void tryWrite(lux::meta::entity_id e, Rec& r)
+        void tryWrite(lux::ecs::Entity e, Rec& r)
         {
             if (reg_ == nullptr || !reg_->valid(e)) return;   // 验活
             if (r.mesh_bits == 0) return;
@@ -566,12 +566,12 @@ namespace lux::ecs
 
         const ResidencyCallbacks*  cb_{nullptr};
         lux::asset::AssetManager*  mgr_{nullptr};
-        lux::meta::EntityRegistry* reg_{nullptr};
+        lux::ecs::Registry* reg_{nullptr};
         lux::asset::asset_id_t     fallback_material_id_{};
 
-        std::unordered_map<lux::meta::entity_id, Rec> recs_;
-        std::unordered_set<lux::meta::entity_id>      dirty_;
-        std::vector<lux::meta::entity_id>             leaving_;
+        std::unordered_map<lux::ecs::Entity, Rec> recs_;
+        std::unordered_set<lux::ecs::Entity>      dirty_;
+        std::vector<lux::ecs::Entity>             leaving_;
         std::vector<Rec>                              leaving_recs_;
         ComponentSetChangeObserver<C, ComponentList<>, Exclude> change_;
         ComponentSetLeaveObserver <C, ComponentList<>, Exclude> leave_;
@@ -666,7 +666,7 @@ namespace lux::ecs
 
         /// 排空脏实体。前置:帧 OPEN、构建器开(`update` 由 `Schedule::tick` 驱动,
         /// 宿主的帧序保证这一点)。手工驱动的探针/可视化 demo 直接调它。
-        void drainResolvers(lux::meta::EntityRegistry& reg)
+        void drainResolvers(lux::ecs::Registry& reg)
         {
             if (!cb_.request || !cb_.await) return;   // 未接线惰性
             for (auto& r : resolvers_) r->drain(reg, *mgr_);
@@ -675,7 +675,7 @@ namespace lux::ecs
         /// 连/断信号。`Schedule` 经 `onAdded`/`onRemoved` 自动做;**手工驱动**的
         /// 探针与可视化 demo(不走 `Schedule::tick`)自己调 —— 与 `drainResolvers`
         /// 对称:手工驱动者手动做调度器自动做的那两件事。
-        void attach(lux::meta::EntityRegistry& reg)
+        void attach(lux::ecs::Registry& reg)
         {
             reg_ = &reg;
             for (auto& r : resolvers_) r->attach(reg);
@@ -698,7 +698,7 @@ namespace lux::ecs
 
     private:
         lux::asset::AssetManager*  mgr_{nullptr};
-        lux::meta::EntityRegistry* reg_{nullptr};
+        lux::ecs::Registry* reg_{nullptr};
         lux::asset::asset_id_t     fallback_material_id_{};
         ResidencyCallbacks         cb_{};
         ResidencyCallbacks::Ticket watch_{};

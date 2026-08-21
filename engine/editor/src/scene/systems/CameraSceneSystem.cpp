@@ -24,10 +24,10 @@ namespace lux::editor
         class Camera3DNavigator final : public IEditorCameraController
         {
         public:
-            Camera3DNavigator(Selection* selection, lux::meta::entity_id camera) noexcept
+            Camera3DNavigator(Selection* selection, lux::ecs::Entity camera) noexcept
                 : camera_(camera), selection_(selection) {}
 
-            void attach(lux::meta::EntityRegistry& reg) override
+            void attach(lux::ecs::Registry& reg) override
             {
                 controller_ = std::make_unique<EditorCamera3DController>();
                 controller_->attach(camera_, reg);
@@ -53,10 +53,10 @@ namespace lux::editor
                 // lifetime.
                 Selection* sel = selection_;
                 controller_->setSelectionProvider(
-                    [sel] { return sel ? sel->entity() : lux::meta::null_entity; });
+                    [sel] { return sel ? sel->entity() : lux::ecs::kNullEntity; });
             }
 
-            void tick(lux::meta::EntityRegistry& reg,
+            void tick(lux::ecs::Registry& reg,
                       const lux::input::ActionMapper& mapper, float dt,
                       float content_w, float content_h) override
             {
@@ -72,7 +72,7 @@ namespace lux::editor
                 return controller_ && controller_->wantsCursorCapture();
             }
 
-            [[nodiscard]] Eigen::Vector3f eye(lux::meta::EntityRegistry& reg) const override
+            [[nodiscard]] Eigen::Vector3f eye(lux::ecs::Registry& reg) const override
             {
                 const auto* wt = reg.try_get<lux::ecs::ResolvedTransform3DComponent>(camera_);
                 if (!wt)
@@ -85,7 +85,7 @@ namespace lux::editor
             }
 
             [[nodiscard]] std::optional<lux::math::Position3d>
-            worldFocus3D(lux::meta::EntityRegistry&) const override
+            worldFocus3D(lux::ecs::Registry&) const override
             {
                 return controller_
                     ? controller_->orbitTargetWorld()
@@ -96,17 +96,17 @@ namespace lux::editor
             std::unique_ptr<EditorCamera3DController> controller_;
             /// 编辑器脚手架相机。批 3 之前从 ctx.camera_entity 读 —— 运行时不再
             /// 镜像「谁在出图」，这是宿主知识，装配期注入。
-            lux::meta::entity_id                      camera_{lux::meta::null_entity};
+            lux::ecs::Entity                      camera_{lux::ecs::kNullEntity};
             Selection*                                selection_{nullptr};
         };
 
         class Camera2DNavigator final : public IEditorCameraController
         {
         public:
-            explicit Camera2DNavigator(lux::meta::entity_id camera) noexcept
+            explicit Camera2DNavigator(lux::ecs::Entity camera) noexcept
                 : camera_(camera) {}
 
-            void attach(lux::meta::EntityRegistry& reg) override
+            void attach(lux::ecs::Registry& reg) override
             {
                 controller_ = std::make_unique<EditorCamera2DController>();
                 controller_->attach(camera_, &reg);
@@ -120,7 +120,7 @@ namespace lux::editor
                 controller_->setActionIds(ids);
             }
 
-            void tick(lux::meta::EntityRegistry& reg,
+            void tick(lux::ecs::Registry& reg,
                       const lux::input::ActionMapper& mapper, float dt,
                       float content_w, float content_h) override
             {
@@ -132,20 +132,20 @@ namespace lux::editor
 
         private:
             std::unique_ptr<EditorCamera2DController> controller_;
-            lux::meta::entity_id                      camera_{lux::meta::null_entity};
+            lux::ecs::Entity                      camera_{lux::ecs::kNullEntity};
         };
     } // namespace
 
     std::unique_ptr<IEditorCameraController>
-    makeEditorCamera3DNavigator(Selection* selection, lux::meta::entity_id camera)
+    makeEditorCamera3DNavigator(Selection* selection, lux::ecs::Entity camera)
     { return std::make_unique<Camera3DNavigator>(selection, camera); }
     std::unique_ptr<IEditorCameraController>
-    makeEditorCamera2DNavigator(lux::meta::entity_id camera)
+    makeEditorCamera2DNavigator(lux::ecs::Entity camera)
     { return std::make_unique<Camera2DNavigator>(camera); }
 
     // ── The one camera system ────────────────────────────────────────────────
     CameraSceneSystem::CameraSceneSystem(std::unique_ptr<IEditorCameraController> navigator,
-                                         lux::meta::entity_id                     camera,
+                                         lux::ecs::Entity                     camera,
                                          lux::ecs::SystemType                     camera_system)
         : nav_(std::move(navigator)),
           camera_(camera),
@@ -163,7 +163,7 @@ namespace lux::editor
         // system checks its own precondition. A vanished scaffolding camera (a
         // play script destroyed it) skips camera navigation; everything else runs.
         {
-            if (camera_ == lux::meta::null_entity ||
+            if (camera_ == lux::ecs::kNullEntity ||
                 !reg.valid(static_cast<entt::entity>(camera_)) ||
                 !reg.any_of<lux::ecs::Camera3DComponent,
                             lux::ecs::Camera2DComponent>(
@@ -187,13 +187,13 @@ namespace lux::editor
         return nav_ && attached_ && nav_->wantsCursorCapture();
     }
 
-    Eigen::Vector3f CameraSceneSystem::eye(lux::meta::EntityRegistry& reg) const
+    Eigen::Vector3f CameraSceneSystem::eye(lux::ecs::Registry& reg) const
     {
         return nav_ ? nav_->eye(reg) : Eigen::Vector3f::Zero();
     }
 
     std::optional<lux::math::Position3d>
-    CameraSceneSystem::worldFocus3D(lux::meta::EntityRegistry& reg) const
+    CameraSceneSystem::worldFocus3D(lux::ecs::Registry& reg) const
     {
         return nav_ && attached_ ? nav_->worldFocus3D(reg) : std::nullopt;
     }

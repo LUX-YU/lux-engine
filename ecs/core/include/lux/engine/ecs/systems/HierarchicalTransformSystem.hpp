@@ -4,7 +4,7 @@
 #include <lux/engine/ecs/EcsVerify.hpp>
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -20,7 +20,7 @@ namespace lux::ecs
     {
         template <class Source, class Derived>
         void emplaceDerivedOnSourceConstruct(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity)
         {
             if (!registry.all_of<Derived>(entity))
@@ -29,7 +29,7 @@ namespace lux::ecs
 
         template <class Source, class Derived>
         void removeDerivedOnSourceDestroy(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity)
         {
             registry.remove<Derived>(entity);
@@ -43,8 +43,8 @@ namespace lux::ecs
 
     template <class Source, class Derived>
     inline void connectDerivedMaintenance(
-        lux::meta::EntityRegistry& registry,
-        std::vector<lux::meta::entity_id>& scratch)
+        lux::ecs::Registry& registry,
+        std::vector<lux::ecs::Entity>& scratch)
     {
         registry.on_construct<Source>()
             .template connect<&detail::emplaceDerivedOnSourceConstruct<Source, Derived>>();
@@ -66,7 +66,7 @@ namespace lux::ecs
 
     template <class Source, class Derived>
     inline void disconnectDerivedMaintenance(
-        lux::meta::EntityRegistry& registry)
+        lux::ecs::Registry& registry)
     {
         registry.on_construct<Source>()
             .template disconnect<
@@ -77,9 +77,9 @@ namespace lux::ecs
     }
 
     [[nodiscard]] inline bool wouldCreateHierarchyCycle(
-        lux::meta::EntityRegistryBase& registry,
-        lux::meta::entity_id child,
-        lux::meta::entity_id new_parent)
+        lux::ecs::RegistryBase& registry,
+        lux::ecs::Entity child,
+        lux::ecs::Entity new_parent)
     {
         const auto& storage = registry.storage<ParentComponent>();
         std::size_t budget = storage.size() + 1u;
@@ -98,13 +98,13 @@ namespace lux::ecs
     }
 
     inline bool setParent(
-        lux::meta::EntityRegistryBase& registry,
-        lux::meta::entity_id child,
-        lux::meta::entity_id new_parent)
+        lux::ecs::RegistryBase& registry,
+        lux::ecs::Entity child,
+        lux::ecs::Entity new_parent)
     {
-        if (child == lux::meta::null_entity || !registry.valid(child))
+        if (child == lux::ecs::kNullEntity || !registry.valid(child))
             return false;
-        if (new_parent == lux::meta::null_entity || !registry.valid(new_parent))
+        if (new_parent == lux::ecs::kNullEntity || !registry.valid(new_parent))
         {
             registry.remove<ParentComponent>(child);
             return true;
@@ -121,18 +121,18 @@ namespace lux::ecs
     }
 
     inline void clearParent(
-        lux::meta::EntityRegistryBase& registry,
-        lux::meta::entity_id child)
+        lux::ecs::RegistryBase& registry,
+        lux::ecs::Entity child)
     {
-        if (child != lux::meta::null_entity && registry.valid(child))
+        if (child != lux::ecs::kNullEntity && registry.valid(child))
             registry.remove<ParentComponent>(child);
     }
 
     namespace detail
     {
         inline std::size_t collectHierarchyCycleCores(
-            lux::meta::EntityRegistry& registry,
-            std::vector<lux::meta::entity_id>* cores)
+            lux::ecs::Registry& registry,
+            std::vector<lux::ecs::Entity>* cores)
         {
             auto& storage = registry.storage<ParentComponent>();
             std::size_t maximum_index = 0u;
@@ -144,7 +144,7 @@ namespace lux::ecs
                 );
             }
             std::vector<std::uint8_t> colour(maximum_index + 1u, 0u);
-            std::vector<lux::meta::entity_id> stack;
+            std::vector<lux::ecs::Entity> stack;
             std::size_t count = 0u;
 
             for (std::size_t index = 0u; index < storage.size(); ++index)
@@ -159,7 +159,7 @@ namespace lux::ecs
                     stack.push_back(entity);
                     const auto parent = storage.contains(entity)
                         ? storage.get(entity).parent()
-                        : lux::meta::null_entity;
+                        : lux::ecs::kNullEntity;
                     if (!registry.valid(parent) || !storage.contains(parent))
                         break;
                     const auto parent_colour = colour[entt::to_entity(parent)];
@@ -187,14 +187,14 @@ namespace lux::ecs
     } // namespace detail
 
     [[nodiscard]] inline std::size_t validateHierarchy(
-        lux::meta::EntityRegistry& registry)
+        lux::ecs::Registry& registry)
     {
         return detail::collectHierarchyCycleCores(registry, nullptr);
     }
 
-    inline std::size_t repairHierarchyCycles(lux::meta::EntityRegistry& registry)
+    inline std::size_t repairHierarchyCycles(lux::ecs::Registry& registry)
     {
-        std::vector<lux::meta::entity_id> cores;
+        std::vector<lux::ecs::Entity> cores;
         detail::collectHierarchyCycleCores(registry, &cores);
         for (const auto entity : cores)
             registry.remove<ParentComponent>(entity);
@@ -312,7 +312,7 @@ namespace lux::ecs
         }
 
     private:
-        void attachChanges(lux::meta::EntityRegistry& registry)
+        void attachChanges(lux::ecs::Registry& registry)
         {
             changes_.attach(
                 registry,
@@ -360,8 +360,8 @@ namespace lux::ecs
         }
 
         void resolveOne(
-            lux::meta::EntityRegistry& registry,
-            lux::meta::entity_id entity)
+            lux::ecs::Registry& registry,
+            lux::ecs::Entity entity)
         {
             auto* local = registry.try_get<Local>(entity);
             auto* world = registry.try_get<World>(entity);
@@ -393,9 +393,9 @@ namespace lux::ecs
             Local,
             ComponentList<World>,
             ComponentList<>> changes_;
-        std::vector<lux::meta::entity_id> scratch_;
-        std::vector<lux::meta::entity_id> changed_;
-        std::vector<lux::meta::entity_id> standalone_;
+        std::vector<lux::ecs::Entity> scratch_;
+        std::vector<lux::ecs::Entity> changed_;
+        std::vector<lux::ecs::Entity> standalone_;
         std::vector<HierarchySubtreeRange> intervals_;
         std::size_t last_visited_count_{0u};
         std::uint64_t last_topology_revision_{0u};

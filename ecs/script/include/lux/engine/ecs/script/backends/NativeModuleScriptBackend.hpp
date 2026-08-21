@@ -63,7 +63,7 @@ namespace lux::ecs
         /// the loaded export table by name; call-frame slot templates come
         /// from the LOADED signatures (the manifest is only a pre-check).
         [[nodiscard]] ScriptInstance
-            createInstanceFromAsset(lux::meta::EntityHandle, World&,
+            createInstanceFromAsset(lux::ecs::EntityHandle, World&,
                                     const lux::rdesc::Script&  desc,
                                     std::span<const std::byte> payload,
                                     std::string_view           cache_key) override;

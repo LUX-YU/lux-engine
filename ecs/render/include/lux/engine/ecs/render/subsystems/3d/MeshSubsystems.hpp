@@ -44,8 +44,8 @@ namespace lux::ecs
         /// Both meshes place themselves from a ResolvedTransform3DComponent; the matrix is
         /// borrowed (column-major Eigen storage == std430 mat4), never copied.
         inline InstanceTransform worldTransform(
-            lux::meta::entity_id e,
-            lux::meta::EntityRegistry& reg,
+            lux::ecs::Entity e,
+            lux::ecs::Registry& reg,
             SceneRenderBinding& render)
         {
             const auto& wt = reg.get<ResolvedTransform3DComponent>(e);
@@ -71,7 +71,7 @@ namespace lux::ecs
         using Require = ComponentList<ResolvedTransform3DComponent>;
         using Exclude = ComponentList<>;
 
-        static InstanceTransform transform(lux::meta::entity_id e, lux::meta::EntityRegistry& reg, SceneRenderBinding& render)
+        static InstanceTransform transform(lux::ecs::Entity e, lux::ecs::Registry& reg, SceneRenderBinding& render)
         {
             return mesh_detail::worldTransform(e, reg, render);
         }
@@ -86,7 +86,7 @@ namespace lux::ecs
         using Exclude = ComponentList<>;
 
 
-        static InstanceTransform transform(lux::meta::entity_id e, lux::meta::EntityRegistry& reg, SceneRenderBinding& render)
+        static InstanceTransform transform(lux::ecs::Entity e, lux::ecs::Registry& reg, SceneRenderBinding& render)
         {
             return mesh_detail::worldTransform(e, reg, render);
         }
@@ -111,8 +111,8 @@ namespace lux::ecs
         }
 
         static void accumulate(FrameState& f, lux::render::RenderObjectHandle object,
-                               lux::render::RMeshHandle mesh, lux::meta::entity_id e,
-                               lux::meta::EntityRegistry& reg)
+                               lux::render::RMeshHandle mesh, lux::ecs::Entity e,
+                               lux::ecs::Registry& reg)
         {
             // NOT gated on transform-dirty: the skinned output pool is a per-frame
             // transient arena, so every visible skinned instance must re-skin every

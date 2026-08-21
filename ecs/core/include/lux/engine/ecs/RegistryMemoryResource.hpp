@@ -23,7 +23,7 @@
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/core/visibility.h>
+#include <lux/engine/ecs/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -32,7 +32,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace lux::meta
+namespace lux::ecs
 {
     class RegistryMemoryResource;
     class RegistryPublicationReservation;
@@ -41,7 +41,7 @@ namespace lux::meta
     /// Pre-armed reservations may still be entered while this scope is live,
     /// but a re-entrant reservePublication() fails closed without consulting
     /// the upstream allocator. Owner-thread only, like the resource itself.
-    class LUX_CORE_PUBLIC RegistryPublicationAdmissionScope final
+    class LUX_ECS_PUBLIC RegistryPublicationAdmissionScope final
     {
     public:
         RegistryPublicationAdmissionScope() noexcept = default;
@@ -75,7 +75,7 @@ namespace lux::meta
 
     /// Non-throwing upstream used only while arming/growing registry-owned
     /// blocks.  Publication scopes never call it.
-    class LUX_CORE_PUBLIC IRegistryMemoryUpstream
+    class LUX_ECS_PUBLIC IRegistryMemoryUpstream
     {
     public:
         virtual ~IRegistryMemoryUpstream() = default;
@@ -92,7 +92,7 @@ namespace lux::meta
         IRegistryMemoryUpstream() = default;
     };
 
-    [[nodiscard]] LUX_CORE_PUBLIC IRegistryMemoryUpstream&
+    [[nodiscard]] LUX_ECS_PUBLIC IRegistryMemoryUpstream&
     defaultRegistryMemoryUpstream() noexcept;
 
     enum class ERegistryPublicationReservationError : std::uint8_t
@@ -123,7 +123,7 @@ namespace lux::meta
         std::uint64_t cancelled_reservations{0u};
     };
 
-    class LUX_CORE_PUBLIC RegistryPublicationScope final
+    class LUX_ECS_PUBLIC RegistryPublicationScope final
     {
     public:
         RegistryPublicationScope() noexcept = default;
@@ -156,7 +156,7 @@ namespace lux::meta
         void* token_{nullptr};
     };
 
-    class LUX_CORE_PUBLIC RegistryPublicationReservation final
+    class LUX_ECS_PUBLIC RegistryPublicationReservation final
     {
     public:
         RegistryPublicationReservation() noexcept = default;
@@ -202,7 +202,7 @@ namespace lux::meta
 
     using RegistryPublicationReservationResult = RegistryPublicationExp<RegistryPublicationReservation>;
 
-    class LUX_CORE_PUBLIC RegistryMemoryResource final
+    class LUX_ECS_PUBLIC RegistryMemoryResource final
         : public std::enable_shared_from_this<RegistryMemoryResource>
     {
     public:
@@ -310,4 +310,4 @@ namespace lux::meta
 
         std::shared_ptr<RegistryMemoryResource> resource_;
     };
-} // namespace lux::meta
+} // namespace lux::ecs

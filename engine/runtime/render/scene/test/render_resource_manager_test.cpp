@@ -726,7 +726,7 @@ int main()
     // 本段的接线 lambda 就是 T11 宿主装配的参考形状:request→ops::ensure,
     // await→service.await(票据包成不透明 RAII),watch→watchInvalidation。
     {
-        lux::meta::EntityRegistry reg;
+        lux::ecs::Registry reg;
         const auto missing_id = mgr.generateUUID("test:missing-material");
         lux::ecs::ResidencySubsystem glue(mgr, missing_id);
 
@@ -877,7 +877,7 @@ int main()
     // 11n: 通用 ECS consumer 未注入 fallback 时，原材质终败就地收束；
     //      不得凭空请求任何引擎内置内容。
     {
-        lux::meta::EntityRegistry reg;
+        lux::ecs::Registry reg;
         lux::ecs::ResidencySubsystem glue(mgr);
 
         std::unordered_map<asset_id_t, lux::ecs::ResidencyCallbacks::DeliverFn>

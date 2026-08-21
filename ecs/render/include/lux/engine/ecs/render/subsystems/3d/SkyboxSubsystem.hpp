@@ -46,7 +46,7 @@ namespace lux::ecs
             if (!feature.isValid() || !operations.valid())
                 return;
 
-            lux::meta::entity_id selected = lux::meta::null_entity;
+            lux::ecs::Entity selected = lux::ecs::kNullEntity;
             std::size_t count = 0u;
             for (const auto entity : registry.view<SkyboxComponent>())
             {

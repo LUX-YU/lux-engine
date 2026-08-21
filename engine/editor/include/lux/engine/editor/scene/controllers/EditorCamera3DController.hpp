@@ -117,7 +117,7 @@ namespace lux::editor
         /// must already carry a Transform3DComponent (the controller writes
         /// position / rotation each tick). Records the entity's current
         /// pose as `home` for End-reset.
-        void attach(lux::meta::entity_id entity, lux::meta::EntityRegistry& reg)
+        void attach(lux::ecs::Entity entity, lux::ecs::Registry& reg)
         {
             entity_ = entity;
             reg_  = &reg;
@@ -140,7 +140,7 @@ namespace lux::editor
 
         /// Pull the focal point for F-focus / pan / orbit from a selection
         /// provider. Returning `null_entity` disables F-focus (no-op).
-        using SelectionProvider = std::function<lux::meta::entity_id()>;
+        using SelectionProvider = std::function<lux::ecs::Entity()>;
         void setSelectionProvider(SelectionProvider fn) { sel_fn_ = std::move(fn); }
 
         /// True only while RMB is held → caller (LuxEditor) uses this to
@@ -351,7 +351,7 @@ namespace lux::editor
         {
             if (!sel_fn_) return;
             const auto sel = sel_fn_();
-            if (sel == lux::meta::null_entity) return;
+            if (sel == lux::ecs::kNullEntity) return;
             auto& reg = (*reg_);
             if (!reg.all_of<ResolvedTransform3DComponent>(sel)) return;
 
@@ -540,8 +540,8 @@ namespace lux::editor
 
         Config              cfg_{};
         ActionIds           ids_{};
-        lux::meta::EntityRegistry* reg_ = nullptr;
-        lux::meta::entity_id entity_ = lux::meta::null_entity;
+        lux::ecs::Registry* reg_ = nullptr;
+        lux::ecs::Entity entity_ = lux::ecs::kNullEntity;
         SelectionProvider   sel_fn_;
 
         Mode                mode_ = Mode::Idle;

@@ -308,7 +308,7 @@ namespace lux::asset
         if (!aasset)
             return EAssetError::FILE_TYPE_ERROR;
         const auto* atlas = static_cast<const lux::rdesc::TextureAtlas*>(
-            aasset->rawData());
+            aasset->data());
         if (!atlas)
             return EAssetError::ASSET_NO_DATA;
         return writeMetadataImage<EAssetType::TEXTURE_ATLAS>(
@@ -362,7 +362,7 @@ namespace lux::asset
         if (!casset)
             return EAssetError::FILE_TYPE_ERROR;
         const auto* clip = static_cast<const lux::rdesc::FlipbookClip*>(
-            casset->rawData());
+            casset->data());
         if (!clip)
             return EAssetError::ASSET_NO_DATA;
         return writeMetadataImage<EAssetType::FLIPBOOK_CLIP>(

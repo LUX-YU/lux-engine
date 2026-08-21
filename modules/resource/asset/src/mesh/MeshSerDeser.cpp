@@ -162,7 +162,7 @@ namespace lux::asset
         if (!masset)
             return EAssetError::FILE_TYPE_ERROR;
         const auto* mesh = static_cast<const lux::rdesc::Mesh*>(
-            masset->rawData());
+            masset->data());
         if (!mesh)
             return EAssetError::ASSET_NO_DATA;
 

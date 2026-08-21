@@ -32,7 +32,7 @@ namespace lux::ecs
         void update(RenderSubsystemContext& context) override
         {
             auto& registry = context.registry();
-            lux::meta::entity_id selected = lux::meta::null_entity;
+            lux::ecs::Entity selected = lux::ecs::kNullEntity;
             std::size_t count = 0u;
             for (const auto entity : registry.view<HeightFogComponent>())
             {

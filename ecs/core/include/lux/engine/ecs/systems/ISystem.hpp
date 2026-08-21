@@ -1,7 +1,7 @@
 #pragma once
 #include <lux/engine/ecs/SystemUpdateContext.hpp>
 #include <lux/engine/ecs/TypeToken.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <cstdint>
 #include <span>

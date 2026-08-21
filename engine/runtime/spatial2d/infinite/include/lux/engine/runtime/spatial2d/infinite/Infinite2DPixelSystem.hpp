@@ -122,15 +122,15 @@ namespace lux::runtime::spatial2d
         friend struct Infinite2DPixelCommand;
 
         void applyReconcile(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity) noexcept;
         void applyPublish(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity,
             std::uint32_t slot,
             std::uint32_t generation) noexcept;
         void applyRetire(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             std::uint32_t slot,
             std::uint32_t generation) noexcept;
         void acceptPreparation(
@@ -172,10 +172,10 @@ namespace lux::runtime::spatial2d
             return lux::ecs::ecsCommandSparsePublicationBytes(2u);
         }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry& registry) const noexcept;
+            lux::ecs::Registry& registry) const noexcept;
 
         void apply(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             Infinite2DPixelSystem& system) const noexcept;
     };
 

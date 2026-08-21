@@ -14,8 +14,8 @@ namespace lux::ecs
 {
     class ComponentTypeCatalog;
     class PersistentEntityIndex;
+    class Registry;
 }
-namespace lux::meta { class EntityRegistry; }
 
 namespace lux::editor
 {
@@ -35,7 +35,7 @@ namespace lux::editor
             lux::authoring::WorldActorDocument,
             std::string>
         capture(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity,
             lux::authoring::WorldId world,
             std::string_view origin = "LXAD Actor");
@@ -43,7 +43,7 @@ namespace lux::editor
         [[nodiscard]] lux::cxx::expected<entt::entity, std::string>
         materialize(
             const lux::authoring::WorldActorDocument& document,
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             std::string_view origin = "LXAD Actor") const;
 
     private:

@@ -19,7 +19,7 @@
  */
 
 #include <lux/engine/editor/visibility.h>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/ui/Panel.hpp>
 #include <lux/engine/authoring/world/WorldIdentifiers.hpp>
 
@@ -75,7 +75,7 @@ namespace lux::editor
     private:
         const lux::ecs::ComponentTypeCatalog& components_;
         void beginRename(
-            lux::meta::EntityRegistryBase& reg,
+            lux::ecs::RegistryBase& reg,
             entt::entity e);
 
         Selection* sel_{nullptr}; ///< scene-domain; re-targeted on scene change

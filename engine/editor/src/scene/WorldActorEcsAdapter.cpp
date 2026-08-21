@@ -12,7 +12,7 @@
 #include <lux/engine/ecs/components/Transform2DComponent.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/systems/HierarchicalTransformSystem.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <algorithm>
 #include <array>
@@ -63,7 +63,7 @@ namespace lux::editor
 
     lux::cxx::expected<lux::authoring::WorldActorDocument, std::string>
     WorldActorEcsAdapter::capture(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
         lux::authoring::WorldId world,
         std::string_view origin)
@@ -266,7 +266,7 @@ namespace lux::editor
     lux::cxx::expected<entt::entity, std::string>
     WorldActorEcsAdapter::materialize(
         const lux::authoring::WorldActorDocument& document,
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         std::string_view origin) const
     {
         if (!persistent_entities_.boundTo(registry))

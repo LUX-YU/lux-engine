@@ -18,7 +18,7 @@
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
 #include <lux/engine/ecs/terrain/components/TerrainTileComponent.hpp>
 #include <lux/engine/meta/Meta.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>

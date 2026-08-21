@@ -12,8 +12,8 @@
 namespace
 {
     void addTransform(
-        lux::meta::EntityRegistry& registry,
-        lux::meta::entity_id entity,
+        lux::ecs::Registry& registry,
+        lux::ecs::Entity entity,
         lux::math::Position2d position)
     {
         auto& transform = registry.emplace<lux::ecs::Transform2DComponent>(
@@ -36,7 +36,7 @@ int main()
         1'024'000'000.0,
         -2'048'000'000.0};
 
-    lux::meta::EntityRegistry registry;
+    lux::ecs::Registry registry;
     const auto floor = registry.create();
     addTransform(registry, floor, floor_position);
     auto& floor_collider = registry.emplace<Collider2DComponent>(floor);

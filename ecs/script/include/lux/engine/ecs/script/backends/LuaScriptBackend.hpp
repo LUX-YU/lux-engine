@@ -49,7 +49,7 @@ namespace lux::ecs
         /// bind by REGISTERED name from the module table (ADR v2 §3.2); events
         /// the table does not implement stay unbound. Other kinds → empty.
         [[nodiscard]] ScriptInstance
-            createInstanceFromAsset(lux::meta::EntityHandle, World&,
+            createInstanceFromAsset(lux::ecs::EntityHandle, World&,
                                     const lux::rdesc::Script&  desc,
                                     std::span<const std::byte> payload,
                                     std::string_view           cache_key) override;

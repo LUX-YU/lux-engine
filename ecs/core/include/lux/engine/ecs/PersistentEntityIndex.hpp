@@ -13,7 +13,7 @@
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <entt/entt.hpp>
 
@@ -109,7 +109,7 @@ namespace lux::ecs
     {
     public:
         explicit PersistentEntityIndex(
-            lux::meta::EntityRegistryBase& registry)
+            lux::ecs::RegistryBase& registry)
             : registry_(&registry),
               constructed_(
                   registry.on_construct<PersistentEntityIdComponent>()
@@ -135,7 +135,7 @@ namespace lux::ecs
             delete;
 
         [[nodiscard]] bool boundTo(
-            const lux::meta::EntityRegistryBase& registry) const noexcept
+            const lux::ecs::RegistryBase& registry) const noexcept
         {
             return registry_ == &registry;
         }
@@ -392,7 +392,7 @@ namespace lux::ecs
         }
 
         void observeConstruct(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity)
             noexcept
         {
@@ -428,7 +428,7 @@ namespace lux::ecs
         }
 
         void observeUpdate(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity)
             noexcept
         {
@@ -469,7 +469,7 @@ namespace lux::ecs
         }
 
         void observeDestroy(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity)
             noexcept
         {
@@ -622,7 +622,7 @@ namespace lux::ecs
             claim.ids_.clear();
         }
 
-        lux::meta::EntityRegistryBase* registry_{nullptr};
+        lux::ecs::RegistryBase* registry_{nullptr};
         entt::scoped_connection constructed_;
         entt::scoped_connection updated_;
         entt::scoped_connection destroyed_;

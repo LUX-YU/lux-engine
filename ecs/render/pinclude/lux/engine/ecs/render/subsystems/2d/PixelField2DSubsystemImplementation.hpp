@@ -53,7 +53,7 @@
 #include <lux/engine/function/render/client/features/canvas2d/Canvas2DOperation.hpp>
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
 #include <lux/engine/function/render/client/RenderRequest.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/SparseCanvasAtlasCache.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/SparseCanvasSpatial.hpp>
 
@@ -164,7 +164,7 @@ namespace lux::ecs
     private:
         struct ChunkCreateKey
         {
-            lux::meta::entity_id entity{entt::null};
+            lux::ecs::Entity entity{entt::null};
             PixelChunkCoord coordinate{};
 
             friend bool operator==(
@@ -180,7 +180,7 @@ namespace lux::ecs
             ) const noexcept
             {
                 const std::size_t entity_hash =
-                    std::hash<lux::meta::entity_id>{}(key.entity);
+                    std::hash<lux::ecs::Entity>{}(key.entity);
                 const std::size_t coordinate_hash =
                     PixelChunkCoordHash{}(key.coordinate);
                 return entity_hash ^
@@ -205,7 +205,7 @@ namespace lux::ecs
 
         struct UploadIntent
         {
-            lux::meta::entity_id entity{entt::null};
+            lux::ecs::Entity entity{entt::null};
             PixelFieldHandle field{};
             PixelChunkCoord coordinate{};
             std::uint32_t    slot{kNoSlot};
@@ -299,7 +299,7 @@ namespace lux::ecs
                 PixelField2DComponent,
                 PixelFieldBindingComponent,
                 ResolvedTransform2DComponent>().each(
-                [&](lux::meta::entity_id e, const PixelField2DComponent& pc,
+                [&](lux::ecs::Entity e, const PixelField2DComponent& pc,
                     const PixelFieldBindingComponent& binding,
                     const ResolvedTransform2DComponent& wt)
                 {
@@ -358,7 +358,7 @@ namespace lux::ecs
         void onAdded(const SystemSetupContext& setup) override
         {
             auto& registry = setup.registry();
-            leave_.attach(registry, [this](lux::meta::entity_id e) { onLeave(e); });
+            leave_.attach(registry, [this](lux::ecs::Entity e) { onLeave(e); });
         }
         void onRemoved(const SystemRemovalContext&) override { leave_.detach(); }
 
@@ -457,7 +457,7 @@ namespace lux::ecs
         static constexpr lux::ecs::PixelExportBudget kUploadBudget{1u << 20, 64};
 
         void driveLive(SceneRenderBinding& ctx, lux::render::Canvas2DProxy& canvas,
-                       lux::meta::entity_id e, Live& L, const PixelField2DComponent& pc,
+                       lux::ecs::Entity e, Live& L, const PixelField2DComponent& pc,
                        const float m[6],
                        const lux::math::Position2d& origin,
                        const lux::math::Position2d& camera_origin,
@@ -988,7 +988,7 @@ namespace lux::ecs
         }
 
         void createInstance(SceneRenderBinding& ctx, lux::render::Canvas2DProxy& canvas,
-                             lux::meta::entity_id e, Live& L, const PixelField2DComponent& pc,
+                             lux::ecs::Entity e, Live& L, const PixelField2DComponent& pc,
                              PixelChunkCoord coordinate, ChunkRec& rec)
         {
             lux::render::PixelField2DInstanceData data{};
@@ -1401,7 +1401,7 @@ namespace lux::ecs
 
         PixelFieldRuntime* runtime_{nullptr};
 
-        std::unordered_map<lux::meta::entity_id, Live> live_;
+        std::unordered_map<lux::ecs::Entity, Live> live_;
         /// 已离场、chunk 还没释放的。观察者填,`tick` 开头排空。
         std::vector<Live> leaving_;
         ComponentSetLeaveObserver<PixelField2DComponent,
@@ -1412,12 +1412,12 @@ namespace lux::ecs
 
         /// 观察者回调:**只记账,不发命令**(构建器此刻多半没开)。整条 Live 搬进
         /// 离场队列 —— 释放 chunk 需要它里面的全部句柄,等到排空时实体早没了。
-        void onLeave(lux::meta::entity_id e)
+        void onLeave(lux::ecs::Entity e)
         {
             retireLive(e);
         }
 
-        void retireLive(lux::meta::entity_id e)
+        void retireLive(lux::ecs::Entity e)
         {
             abandonChunkCreates(e);
             if (auto it = live_.find(e); it != live_.end())
@@ -1427,7 +1427,7 @@ namespace lux::ecs
             }
         }
 
-        void abandonChunkCreates(lux::meta::entity_id e)
+        void abandonChunkCreates(lux::ecs::Entity e)
         {
             (void)chunk_create_requests_.abandonIf(
                 [e](const ChunkCreateKey& key)

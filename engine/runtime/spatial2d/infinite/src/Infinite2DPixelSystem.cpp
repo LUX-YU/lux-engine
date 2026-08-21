@@ -288,21 +288,21 @@ namespace lux::runtime::spatial2d
         }
 
         void onChunkConstructed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueueReconcile(entity);
         }
 
         void onChunkUpdated(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueueReconcile(entity);
         }
 
         void onChunkDestroyed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             if (auto* chunk = find(entity))
@@ -310,7 +310,7 @@ namespace lux::runtime::spatial2d
         }
 
         void onBindingDestroyed(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity) noexcept
         {
             const auto* binding =
@@ -322,7 +322,7 @@ namespace lux::runtime::spatial2d
         }
 
         void attach(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             lux::ecs::EcsCommandWriter writer)
         {
             if (attached)
@@ -350,7 +350,7 @@ namespace lux::runtime::spatial2d
         }
 
         void setStatus(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity,
             EPixelChunkDomainState state,
             EPixelChunkDomainError error)
@@ -366,7 +366,7 @@ namespace lux::runtime::spatial2d
         }
 
         void fail(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity,
             EPixelChunkDomainError error)
         {
@@ -393,7 +393,7 @@ namespace lux::runtime::spatial2d
             ++snapshot.retired_chunks;
         }
 
-        void recount(lux::meta::EntityRegistry& registry) noexcept
+        void recount(lux::ecs::Registry& registry) noexcept
         {
             snapshot.waiting_chunks = 0u;
             snapshot.staging_chunks = 0u;
@@ -474,7 +474,7 @@ namespace lux::runtime::spatial2d
         lux::ecs::PixelChunkPersistenceStore* persistence{nullptr};
         lux::runtime::entity_scene::ContentBlobClient content;
         const SpatialInterest2DSystem* activity{nullptr};
-        lux::meta::EntityRegistry* attached{nullptr};
+        lux::ecs::Registry* attached{nullptr};
         lux::ecs::EcsCommandWriter commands;
         entt::scoped_connection constructed;
         entt::scoped_connection updated;
@@ -698,7 +698,7 @@ namespace lux::runtime::spatial2d
     }
 
     void Infinite2DPixelSystem::applyReconcile(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity) noexcept
     {
         if (impl_->attached != &registry)
@@ -768,7 +768,7 @@ namespace lux::runtime::spatial2d
     }
 
     void Infinite2DPixelSystem::applyPublish(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
         std::uint32_t slot,
         std::uint32_t generation) noexcept
@@ -929,7 +929,7 @@ namespace lux::runtime::spatial2d
     }
 
     void Infinite2DPixelSystem::applyRetire(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         std::uint32_t slot,
         std::uint32_t generation) noexcept
     {
@@ -1003,7 +1003,7 @@ namespace lux::runtime::spatial2d
     }
 
     void Infinite2DPixelCommand::prepareRegistryPublication(
-        lux::meta::EntityRegistry& registry) const noexcept
+        lux::ecs::Registry& registry) const noexcept
     {
         lux::ecs::reserveEcsCommandStorage(
             registry.storage<PixelChunkDomainStateComponent>(), 1u);
@@ -1012,7 +1012,7 @@ namespace lux::runtime::spatial2d
     }
 
     void Infinite2DPixelCommand::apply(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         Infinite2DPixelSystem& system) const noexcept
     {
         switch (action)

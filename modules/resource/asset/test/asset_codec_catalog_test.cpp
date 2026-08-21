@@ -29,7 +29,6 @@ namespace
             lux::asset::EAssetShippingClass::RUNTIME,
             &dummyFactory,
             nullptr,
-            nullptr,
             magic,
             legacy_magic,
             nullptr,

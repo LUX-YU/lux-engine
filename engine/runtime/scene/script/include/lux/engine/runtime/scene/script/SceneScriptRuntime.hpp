@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/ecs/Schedule.hpp>
+#include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/scene/script/visibility.h>
 
 namespace lux::asset
@@ -23,6 +24,7 @@ namespace lux::input
 
 namespace lux::runtime
 {
+    class ScriptAssetRequestSystem;
     /// Optional script-domain activation for one live World. SceneRuntime owns
     /// only World/Schedule; a host or pack opts into scripting by constructing
     /// this narrow controller. No render or editor service crosses this seam.
@@ -33,7 +35,8 @@ namespace lux::runtime
             lux::ecs::World& world,
             lux::ecs::Schedule& schedule,
             lux::ecs::SceneServices& services,
-            lux::asset::AssetManager& assets) noexcept;
+            lux::asset::AssetManager& assets,
+            lux::asset_runtime::AssetClient asset_client) noexcept;
         ~SceneScriptRuntime() noexcept;
 
         SceneScriptRuntime(const SceneScriptRuntime&) = delete;
@@ -51,6 +54,8 @@ namespace lux::runtime
         lux::ecs::Schedule* schedule_{nullptr};
         lux::ecs::SceneServices* services_{nullptr};
         lux::asset::AssetManager* assets_{nullptr};
+        lux::asset_runtime::AssetClient asset_client_;
+        lux::ecs::SystemHandle<ScriptAssetRequestSystem> request_system_{};
         lux::ecs::SystemHandle<lux::ecs::ScriptSystem> system_{};
     };
 }

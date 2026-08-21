@@ -162,6 +162,14 @@ namespace lux::asset
         return impl_->replaceAsset(std::move(asset));
     }
 
+    lux::cxx::expected<LuxAsset*, EAssetError>
+    AssetManager::installLoadedAsset(
+        const asset_id_t& expected_id,
+        std::unique_ptr<LuxAsset> decoded)
+    {
+        return impl_->installLoadedAsset(expected_id, std::move(decoded));
+    }
+
     AssetRef AssetManager::acquire(const asset_id_t& id)
     {
         if (id.is_nil()) return {};
@@ -248,31 +256,8 @@ namespace lux::asset
         if (id.is_nil())
             return lux::cxx::unexpected(EAssetError::ASSET_NOT_EXIST);
 
-        if (auto* present = queryAsset(id))
-        {
-            if (present->hasData())
-                return present;
-
-            // Shell 无 data(unloadData 驱逐后)。此前这里直接把空壳交回去 ——
-            // 对所有同步兜底路径(Android 的 request_load 就是本方法、动画/
-            // 缓存的无 executor 兜底)驱逐是**单向**的:数据永远不会回来。
-            // 照 AssetLoadService 的安装形状同步重解码装回壳(纯解码,不再注册 ——
-            // 走 fromLuxAssetMemory 会撞 ALREADY_EXIST)。失败时交回壳照旧
-            // (消费者本来就按 hasData 判,容忍空壳是既有契约)。
-            const auto& shell_vfs = impl_->vfs();
-            if (shell_vfs)
-            {
-                if (auto blob = shell_vfs->open(id);
-                    blob.has_value() &&
-                        blob->bytes.size() >= sizeof(std::uint32_t))
-                {
-                    if (auto inj = codecCatalog().decode(blob->bytes);
-                        inj.has_value())
-                        inj.value()(*present);
-                }
-            }
+        if (auto* present = queryAsset(id); present && present->hasData())
             return present;
-        }
 
         const auto& vfs = impl_->vfs();
         if (!vfs)
@@ -281,47 +266,9 @@ namespace lux::asset
         auto blob = vfs->open(id);
         if (!blob.has_value())
             return lux::cxx::unexpected(blob.error());
-        if (blob->bytes.size() < sizeof(std::uint32_t))
-            return lux::cxx::unexpected(EAssetError::ABNORMAL_FILE_SIZE);
-
-        std::uint32_t magic = 0;
-        std::memcpy(&magic, blob->bytes.data(), sizeof(magic));
-        const auto* descriptor = codecCatalog().findByMagic(magic);
-        if (descriptor == nullptr)
-            return lux::cxx::unexpected(EAssetError::UNSUPPORTED);
-        auto serdeser = createSerDeser(
-            descriptor->type,
-            // Non-owning aliasing shared_ptr: the SerDeser lives only for
-            // this call and self-registers into *this. AssetManager is also
-            // constructed on the stack (tests), so enable_shared_from_this
-            // is not an option here.
-            std::shared_ptr<AssetManager>(std::shared_ptr<AssetManager>{}, this)
-        );
-        if (!serdeser)
-            return lux::cxx::unexpected(EAssetError::UNSUPPORTED);
-
-        auto loaded =
-            serdeser->fromLuxAssetMemory(
-                blob->bytes.data(), blob->bytes.size());
-        if (!loaded.has_value())
-        {
-            // Lost a race with a same-frame load — the asset is there now.
-            if (loaded.error() == EAssetError::ASSET_ALREADY_EXIST)
-            {
-                if (auto* present = queryAsset(id))
-                    return present;
-            }
-            return lux::cxx::unexpected(loaded.error());
-        }
-
-        if (loaded.value().second != id)
-        {
-            // The image carries a different identity than the locator that
-            // produced it — a corrupt index or a moved file. Don't keep the
-            // impostor registered under its own id.
-            removeAsset(loaded.value().second);
-            return lux::cxx::unexpected(EAssetError::WRONG_FILE_HEADER);
-        }
-        return loaded.value().first;
+        auto decoded = codecCatalog().decodeAsset(blob->bytes);
+        if (!decoded)
+            return lux::cxx::unexpected(decoded.error());
+        return installLoadedAsset(id, std::move(*decoded));
     }
 }

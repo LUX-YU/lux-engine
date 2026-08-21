@@ -52,7 +52,7 @@ namespace lux::ecs
         static constexpr std::size_t kPhaseCount = static_cast<std::size_t>(Phase::Count);
 
         /// A phase strategy: given the registry + the FIXED timestep, advance one substep.
-        using PhaseFn = std::function<void(lux::meta::EntityRegistry&, float /*fixed_dt*/)>;
+        using PhaseFn = std::function<void(lux::ecs::Registry&, float /*fixed_dt*/)>;
 
         explicit Simulation2DSystem(const FixedStepConfig& cfg) noexcept : cfg_(cfg) {}
 

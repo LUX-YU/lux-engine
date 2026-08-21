@@ -20,7 +20,7 @@
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
-#include <lux/engine/meta/LuxObject.hpp>     // EntityRegistry
+#include <lux/engine/ecs/Registry.hpp>     // EntityRegistry
 #include <lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp>  // LIGHT_FLAG_*
 
 #include <Eigen/Core>
@@ -81,7 +81,7 @@ namespace lux::editor
         }
 
         // ── Build the World in memory ──
-        lux::meta::EntityRegistry reg;
+        lux::ecs::Registry reg;
         lux::ecs::PersistentEntityIndex persistent_entities{reg};
 
         // Editor Camera — looks at the origin from up-and-back.

@@ -37,7 +37,7 @@
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/math/Position.hpp>
 #include <lux/engine/math/AABB.hpp>
-#include <lux/engine/meta/LuxObject.hpp>   // entity_id, null_entity
+#include <lux/engine/ecs/Registry.hpp>   // entity_id, null_entity
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
@@ -486,7 +486,7 @@ namespace lux::editor
         // Generation-checked observation into the runtime-owned Schedule.
         lux::ecs::SystemHandle<CameraSceneSystem> camera_system_{};
 
-        [[nodiscard]] lux::meta::entity_id commitSpawnModel(InstanceSpawnPlan&& plan);
+        [[nodiscard]] lux::ecs::Entity commitSpawnModel(InstanceSpawnPlan&& plan);
         [[nodiscard]] std::shared_ptr<const EntityScenePlayCookJob>
             buildEntityScenePlayCookJob(
                 const std::filesystem::path& root_document);
@@ -509,14 +509,14 @@ namespace lux::editor
             lux::authoring::WorldInstancePageDocument page);
         void clearAuthoringInstanceClusters() noexcept;
         void restoreAuthoringViewpoint(
-            lux::meta::entity_id source_camera) noexcept;
+            lux::ecs::Entity source_camera) noexcept;
 
         // Pick strategy: bound once at bringUp next to
         // the camera navigator; onPick calls it kind-blind and applies the
         // shared root-promotion + selection epilogue.
-        lux::meta::entity_id (EditorScene::*pick_fn_)(float, float, float, float){nullptr};
-        lux::meta::entity_id pickImage2D(float cx, float cy, float cw, float ch);
-        lux::meta::entity_id pickMesh3D(float cx, float cy, float cw, float ch);
+        lux::ecs::Entity (EditorScene::*pick_fn_)(float, float, float, float){nullptr};
+        lux::ecs::Entity pickImage2D(float cx, float cy, float cw, float ch);
+        lux::ecs::Entity pickMesh3D(float cx, float cy, float cw, float ch);
 
         // The HOST-owned render target: bringUp creates the offscreen SAMPLED
         // target the viewport panel samples, hands its id to the runtime
@@ -537,7 +537,7 @@ namespace lux::editor
         bool     pending_resize_{false};
 
         // ECS-driven editor camera.
-        lux::meta::entity_id                camera_entity_{lux::meta::null_entity};
+        lux::ecs::Entity                camera_entity_{lux::ecs::kNullEntity};
         OrbitCameraState                    orbit_{};
         float                               elapsed_{0.f};
 

@@ -404,7 +404,7 @@ static void test_real_model_import()
         check(skel_asset != nullptr, "skeleton asset resolvable from manager");
         if (skel_asset)
         {
-            const auto* skel = static_cast<const Skeleton*>(skel_asset->rawData());
+            const auto* skel = skel_asset->data();
             check(skel != nullptr && !skel->bones.empty(),
                   "skeleton has >= 1 bone");
             if (skel && !skel->bones.empty())
@@ -448,7 +448,7 @@ static void test_real_model_import()
             auto* craw   = manager->fetchAsset(cid);
             auto* casset = craw ? craw->as<AnimationClipAsset>() : nullptr;
             if (!casset) { all_clips_sane = false; continue; }
-            const auto* clip = static_cast<const AnimationClip*>(casset->rawData());
+            const auto* clip = casset->data();
             if (!clip || clip->duration <= 0.0f) { all_clips_sane = false; continue; }
             if (clip->tracks.empty())             { all_clips_sane = false; continue; }
         }
@@ -470,7 +470,7 @@ static void test_real_model_import()
         auto* masset   = mesh_raw ? mesh_raw->as<MeshAsset>() : nullptr;
         if (masset)
         {
-            const auto* mesh = static_cast<const lux::rdesc::Mesh*>(masset->rawData());
+            const auto* mesh = masset->data();
             if (mesh && !mesh->vertices.empty())
             {
                 size_t skinned_verts = 0;

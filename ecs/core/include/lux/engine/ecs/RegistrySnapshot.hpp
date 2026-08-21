@@ -48,7 +48,7 @@ namespace lux::ecs
         /// Read-only on @p live. Replaces any previous capture.
         template<typename ContentPred>
         void capture(
-            lux::meta::EntityRegistryBase& live,
+            lux::ecs::RegistryBase& live,
             ContentPred&& is_content)
         {
             shadow_.clear();
@@ -66,7 +66,7 @@ namespace lux::ecs
                     if (t.operations.clone)
                         t.operations.clone(live, e, shadow_, s);
                 if (const auto* h = live.try_get<ParentComponent>(e);
-                    h && h->parent() != lux::meta::null_entity)
+                    h && h->parent() != lux::ecs::kNullEntity)
                     parents_.emplace_back(e, h->parent());
             }
         }
@@ -77,7 +77,7 @@ namespace lux::ecs
         /// valid on arrival), components second, parent links last.
         template<typename ContentPred>
         void restore(
-            lux::meta::EntityRegistryBase& live,
+            lux::ecs::RegistryBase& live,
             ContentPred&& is_content)
         {
             std::vector<entt::entity> doomed;
@@ -124,7 +124,7 @@ namespace lux::ecs
 
     private:
         const ComponentTypeCatalog&                         components_;
-        lux::meta::EntityRegistry                          shadow_;
+        lux::ecs::Registry                          shadow_;
         std::vector<std::pair<entt::entity, entt::entity>> map_;      // live id → shadow id
         std::vector<std::pair<entt::entity, entt::entity>> parents_;  // child → parent (live ids)
     };

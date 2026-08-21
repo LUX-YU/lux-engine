@@ -48,7 +48,7 @@
 #include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>             // MeshAsset(⑨ 要一份真资产)
 #include <lux/engine/resource/asset/AssetEvents.hpp>              // 资产广播事件(批E)
 #include <lux/engine/events/DomainEvents.hpp>                // 探针自建 bus+pump(批E)
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/SystemPhase.hpp>
@@ -213,7 +213,7 @@ namespace
     template <class Subsystem>
     void drive(
         Subsystem&                         subsystem,
-        lux::meta::EntityRegistry&         registry,
+        lux::ecs::Registry&         registry,
         lux::ecs::SceneRenderBinding&      binding,
         lux::ecs::ActiveRenderView&        active_view,
         float                              dt
@@ -496,7 +496,7 @@ namespace
     };
 
     /// 一个挂了点光源 + 世界变换的实体（点光源的 Require 是变换：位置从那里取）。
-    lux::meta::entity_id makeLight(lux::meta::EntityRegistry& reg, float x)
+    lux::ecs::Entity makeLight(lux::ecs::Registry& reg, float x)
     {
         const auto e = reg.create();
         reg.emplace<lux::ecs::PointLightComponent>(e);
@@ -510,7 +510,7 @@ namespace
     struct Harness
     {
         lux::bridgetest::HeadlessBridgeFixture fx;
-        lux::meta::EntityRegistry              reg;
+        lux::ecs::Registry              reg;
         lux::ecs::ActiveRenderView             active_view{fx.view()};
         lux::ecs::SceneRenderBinding       render_ctx{
             fx.session(), fx.control(), {}, fx.scene()};
@@ -799,7 +799,7 @@ int main()
     //  Image2D（阶段 2）与 Tilemap（本阶段实机）证过，这里要证的是**消费者**。
     {
         lux::bridgetest::HeadlessBridgeFixture fx;
-        lux::meta::EntityRegistry              reg;
+        lux::ecs::Registry              reg;
         fx.registerSkyboxOps();
 
         lux::ecs::ActiveRenderView active_view_rs{fx.view()};
@@ -854,7 +854,7 @@ int main()
     //  那是**加**一个组件却要算「离场」，最容易漏连的一条。
     {
         lux::bridgetest::HeadlessBridgeFixture fx;
-        lux::meta::EntityRegistry              reg;
+        lux::ecs::Registry              reg;
         fx.registerMeshStackOps();
 
         lux::ecs::ActiveRenderView active_view_rs{fx.view()};
@@ -943,7 +943,7 @@ int main()
     //  发光 —— 一个纯视觉的回归，日志、退出码、测试全都看不见。
     {
         lux::bridgetest::HeadlessBridgeFixture fx;
-        lux::meta::EntityRegistry              reg;
+        lux::ecs::Registry              reg;
         fx.registerMeshStackOps();
 
         lux::ecs::ActiveRenderView active_view_rs{fx.view()};
@@ -1288,7 +1288,7 @@ int main()
     //  日志一个字都不会变，ctest 也照样全过 —— 只有这条能证。
     {
         lux::bridgetest::HeadlessBridgeFixture fx;
-        lux::meta::EntityRegistry              reg;
+        lux::ecs::Registry              reg;
         lux::asset::AssetManager               assets{
             lux::asset::runtimeAssetCodecCatalog()};
         fx.registerMeshStackOps();
@@ -1406,7 +1406,7 @@ int main()
     //   d) 回执落账后两个世界都拿到同一份 READY 句柄。
     {
         lux::bridgetest::HeadlessBridgeFixture fx;
-        lux::meta::EntityRegistry              reg_a, reg_b;   // 两个「世界」
+        lux::ecs::Registry              reg_a, reg_b;   // 两个「世界」
         fx.registerMeshStackOps();
 
         lux::asset::AssetManager assets{
@@ -1456,7 +1456,7 @@ int main()
             fx.roundTrip();
             (void)rrig.settleBridge();
         };
-        const auto spawn = [&](lux::meta::EntityRegistry& reg) {
+        const auto spawn = [&](lux::ecs::Registry& reg) {
             const auto e = reg.create();
             auto& mc = reg.emplace<lux::ecs::MeshComponent>(e);
             mc.visible       = true;
@@ -1521,7 +1521,7 @@ int main()
     //  尚无材质 handler,级联专项探针记档待补 —— 本条钉住主链全程。)
     {
         lux::bridgetest::HeadlessBridgeFixture fx;
-        lux::meta::EntityRegistry              reg;
+        lux::ecs::Registry              reg;
         lux::asset::AssetManager               assets{
             lux::asset::runtimeAssetCodecCatalog()};
         fx.registerMeshStackOps();

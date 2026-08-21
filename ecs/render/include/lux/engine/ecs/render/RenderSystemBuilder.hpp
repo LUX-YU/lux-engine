@@ -131,27 +131,27 @@ namespace lux::ecs
     private:
         friend class RenderSystemBuilder;
         friend class RenderSystem;
-        void activate(lux::meta::EntityRegistry& registry);
+        void activate(lux::ecs::Registry& registry);
         void update(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             SceneRenderBinding&        render,
             ActiveRenderView&          active_view,
             float                      dt,
             std::uint64_t              tick_index
         );
         void settle(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             SceneRenderBinding&        render,
             ActiveRenderView&          active_view,
             std::uint64_t              tick_index
         );
         void close(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             SceneRenderBinding&        render,
             ActiveRenderView&          active_view,
             std::uint64_t              tick_index
         ) noexcept;
-        void detach(lux::meta::EntityRegistry& registry) noexcept;
+        void detach(lux::ecs::Registry& registry) noexcept;
         [[nodiscard]] lux::cxx::expected<
             InstalledRenderSubsystemBatch,
             RenderAssemblyFailure>

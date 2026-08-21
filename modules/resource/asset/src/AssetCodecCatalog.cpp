@@ -141,8 +141,8 @@ namespace lux::asset
             : nullptr;
     }
 
-    lux::cxx::expected<AssetDataInjector, EAssetError>
-    AssetCodecCatalog::decode(lux::cxx::SharedBytes<> image) const noexcept
+    lux::cxx::expected<std::unique_ptr<LuxAsset>, EAssetError>
+    AssetCodecCatalog::decodeAsset(lux::cxx::SharedBytes<> image) const noexcept
     {
         if (image.size() < sizeof(std::uint32_t))
             return lux::cxx::unexpected(EAssetError::ABNORMAL_FILE_SIZE);
@@ -150,9 +150,37 @@ namespace lux::asset
         std::uint32_t magic{};
         std::memcpy(&magic, image.data(), sizeof(magic));
         const auto* descriptor = findByMagic(magic);
-        if (descriptor == nullptr || descriptor->decode == nullptr)
+        if (descriptor == nullptr || descriptor->create == nullptr)
             return lux::cxx::unexpected(EAssetError::UNSUPPORTED);
-        return descriptor->decode(std::move(image));
+
+        try
+        {
+            auto codec = descriptor->create(descriptor->type, {});
+            if (!codec)
+                return lux::cxx::unexpected(EAssetError::UNSUPPORTED);
+            auto decoded = codec->parseLuxAssetMemory(
+                image.data(),
+                image.size()
+            );
+            if (!decoded)
+                return lux::cxx::unexpected(decoded.error());
+            if (!*decoded || (*decoded)->info() == nullptr ||
+                (*decoded)->type() != descriptor->type)
+            {
+                return lux::cxx::unexpected(EAssetError::WRONG_FILE_HEADER);
+            }
+            if (!(*decoded)->hasData())
+                return lux::cxx::unexpected(EAssetError::ASSET_NO_DATA);
+            return std::move(*decoded);
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(EAssetError::OUT_OF_MEMORY);
+        }
+        catch (...)
+        {
+            return lux::cxx::unexpected(EAssetError::UNKNOWN_ERROR);
+        }
     }
 
     std::unique_ptr<LuxAsset> AssetCodecCatalog::createShell(

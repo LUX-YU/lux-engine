@@ -35,12 +35,6 @@ namespace lux::asset_runtime
             }
         }
 
-        struct DecodedLoad final
-        {
-            lux::asset::AssetDataInjector injector;
-            std::unique_ptr<lux::asset::LuxAsset> shell;
-        };
-
         struct AttemptResult final
         {
             lux::cxx::expected<AssetLoadResult, lux::asset::EAssetError> result;
@@ -289,35 +283,19 @@ namespace lux::asset_runtime
                              lux::asset::AssetBlob,
                              lux::asset::EAssetError> blob) noexcept
                           -> lux::cxx::expected<
-                              DecodedLoad,
+                              std::unique_ptr<lux::asset::LuxAsset>,
                               lux::asset::EAssetError>
                       {
                           if (!blob)
                               return lux::cxx::unexpected(blob.error());
-                          if (blob->bytes.size() < sizeof(std::uint32_t))
-                              return lux::cxx::unexpected(
-                                  lux::asset::EAssetError::ABNORMAL_FILE_SIZE);
-                          auto injector = codecs->decode(blob->bytes);
-                          if (!injector)
-                              return lux::cxx::unexpected(injector.error());
-
-                          DecodedLoad decoded{
-                              std::move(*injector),
-                              nullptr};
-                          auto shell = lux::asset::makeShellFromMemory(
-                              *codecs,
-                              blob->bytes.data(),
-                              blob->bytes.size());
-                          if (shell)
-                              decoded.shell = std::move(*shell);
-                          return decoded;
+                          return codecs->decodeAsset(blob->bytes);
                       })
                 | ex::continues_on(
                       lux::exec::mainThreadScheduler(context.runtime()))
                 | ex::then(
                       [self, id, revision](
                           lux::cxx::expected<
-                              DecodedLoad,
+                              std::unique_ptr<lux::asset::LuxAsset>,
                               lux::asset::EAssetError> decoded) mutable noexcept
                       {
                           return self->installMain(
@@ -351,7 +329,7 @@ namespace lux::asset_runtime
             const lux::asset::asset_id_t& id,
             std::uint32_t revision,
             lux::cxx::expected<
-                DecodedLoad,
+                std::unique_ptr<lux::asset::LuxAsset>,
                 lux::asset::EAssetError> decoded) noexcept
         {
             const auto observed = manager->contentRevision(id);
@@ -366,38 +344,14 @@ namespace lux::asset_runtime
                 return AttemptResult{
                     lux::cxx::unexpected(decoded.error()),
                     observed};
-            if (manager->hasData(id))
-                return AttemptResult{AssetLoadResult{id, revision}, observed};
-
-            auto* shell = manager->fetchAsset(id);
-            if (!shell && decoded->shell)
-            {
-                if (decoded->shell->id() != id)
-                {
-                    return AttemptResult{
-                        lux::cxx::unexpected(
-                            lux::asset::EAssetError::WRONG_FILE_HEADER),
-                        observed};
-                }
-                auto* adopted = decoded->shell.get();
-                if (!manager->registerAsset(std::move(decoded->shell)))
-                {
-                    return AttemptResult{
-                        lux::cxx::unexpected(
-                            lux::asset::EAssetError::ASSET_ALREADY_EXIST),
-                        observed};
-                }
-                shell = adopted;
-            }
-            if (!shell)
-            {
+            auto installed = manager->installLoadedAsset(
+                id,
+                std::move(*decoded)
+            );
+            if (!installed)
                 return AttemptResult{
-                    lux::cxx::unexpected(
-                        lux::asset::EAssetError::ASSET_NOT_EXIST),
+                    lux::cxx::unexpected(installed.error()),
                     observed};
-            }
-
-            decoded->injector(*shell);
             return AttemptResult{AssetLoadResult{id, revision}, observed};
         }
 

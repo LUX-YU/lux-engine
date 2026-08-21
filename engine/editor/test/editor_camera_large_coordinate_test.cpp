@@ -12,7 +12,7 @@ int main()
     lux::input::ActionMapper input;
 
     {
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         const auto camera = registry.create();
         auto& transform = registry.emplace<lux::ecs::Transform3DComponent>(
             camera);
@@ -32,7 +32,7 @@ int main()
     }
 
     {
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         const auto camera = registry.create();
         auto& transform = registry.emplace<lux::ecs::Transform2DComponent>(
             camera);

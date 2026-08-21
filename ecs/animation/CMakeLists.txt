@@ -27,7 +27,6 @@ add_component(
     OUTPUT_NAME    lux_engine_ecs_animation_2d
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/FlipbookAnimationSystem.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Flipbook2DResolver.cpp
 )
 lux_configure_animation_target(animation_2d)
 target_link_libraries(
@@ -50,7 +49,6 @@ add_component(
     OUTPUT_NAME    lux_engine_ecs_animation_3d
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AnimationSystem.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SkeletalAnimationResolver.cpp
 )
 lux_configure_animation_target(animation_3d)
 target_link_libraries(

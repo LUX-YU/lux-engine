@@ -819,7 +819,7 @@ namespace lux::ecs
             return result.Get();
         }
 
-        void ensureBodies(lux::meta::EntityRegistry& registry) noexcept
+        void ensureBodies(lux::ecs::Registry& registry) noexcept
         {
             auto view = registry.view<
                 RigidBody3DComponent,
@@ -834,7 +834,7 @@ namespace lux::ecs
                 const auto* hierarchy = registry.try_get<ParentComponent>(
                     entity);
                 const auto& transform = view.get<Transform3DComponent>(entity);
-                if (hierarchy && hierarchy->parent() != lux::meta::null_entity)
+                if (hierarchy && hierarchy->parent() != lux::ecs::kNullEntity)
                 {
                     continue;
                 }
@@ -941,7 +941,7 @@ namespace lux::ecs
             }
         }
 
-        void pruneBodies(lux::meta::EntityRegistry& registry) noexcept
+        void pruneBodies(lux::ecs::Registry& registry) noexcept
         {
             auto& bodies = physics.GetBodyInterface();
             for (auto iterator = dynamic_bodies.begin();
@@ -965,7 +965,7 @@ namespace lux::ecs
             }
         }
 
-        void ensureCharacters(lux::meta::EntityRegistry& registry) noexcept
+        void ensureCharacters(lux::ecs::Registry& registry) noexcept
         {
             auto view = registry.view<
                 CharacterController3DComponent,
@@ -984,7 +984,7 @@ namespace lux::ecs
                 const auto* hierarchy = registry.try_get<ParentComponent>(
                     entity);
                 const auto& transform = view.get<Transform3DComponent>(entity);
-                if (hierarchy && hierarchy->parent() != lux::meta::null_entity)
+                if (hierarchy && hierarchy->parent() != lux::ecs::kNullEntity)
                 {
                     continue;
                 }
@@ -1056,7 +1056,7 @@ namespace lux::ecs
             }
         }
 
-        void pruneCharacters(lux::meta::EntityRegistry& registry) noexcept
+        void pruneCharacters(lux::ecs::Registry& registry) noexcept
         {
             for (auto iterator = characters.begin();
                  iterator != characters.end();)
@@ -1075,7 +1075,7 @@ namespace lux::ecs
         }
 
         void stepCharacters(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             float fixed_dt) noexcept
         {
             const JPH::BodyFilter body_filter;
@@ -1119,7 +1119,7 @@ namespace lux::ecs
             }
         }
 
-        void syncKinematics(lux::meta::EntityRegistry& registry) noexcept
+        void syncKinematics(lux::ecs::Registry& registry) noexcept
         {
             auto& bodies = physics.GetBodyInterface();
             for (auto& [entity, state] : dynamic_bodies)
@@ -1145,7 +1145,7 @@ namespace lux::ecs
             }
         }
 
-        void scatter(lux::meta::EntityRegistry& registry) noexcept
+        void scatter(lux::ecs::Registry& registry) noexcept
         {
             auto& bodies = physics.GetBodyInterface();
             for (auto& [entity, state] : dynamic_bodies)
@@ -1208,7 +1208,7 @@ namespace lux::ecs
             }
         }
 
-        void collectContacts(lux::meta::EntityRegistry& registry)
+        void collectContacts(lux::ecs::Registry& registry)
         {
             contacts.clear();
             const auto valid_owner = [this, &registry](
@@ -1674,7 +1674,7 @@ namespace lux::ecs
     Physics3DScene::~Physics3DScene() noexcept = default;
 
     void Physics3DScene::advance(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         float frame_dt) noexcept
     {
         if (!impl_ || !std::isfinite(frame_dt) || frame_dt <= 0.0f)

@@ -51,7 +51,7 @@ namespace lux::ecs
         return false;
     }
 
-    void Physics2DWorld::step(lux::meta::EntityRegistry& registry, float fixed_dt)
+    void Physics2DWorld::step(lux::ecs::Registry& registry, float fixed_dt)
     {
         // ── gather the static set (per substep; MVP counts are small).
         // Entities carrying a controller or a (future-dynamic) rigid body are
@@ -74,7 +74,7 @@ namespace lux::ecs
                 *colliders.begin()).position;
         }
         registry.view<Collider2DComponent, ResolvedTransform2DComponent>().each(
-            [&](lux::meta::entity_id e, const Collider2DComponent& c,
+            [&](lux::ecs::Entity e, const Collider2DComponent& c,
                 const ResolvedTransform2DComponent& wt)
             {
                 if (registry.any_of<CharacterController2DComponent, RigidBody2DComponent>(e))
@@ -96,7 +96,7 @@ namespace lux::ecs
         // ── sweep every controller (axis-separated: X, then Y).
         registry.view<CharacterController2DComponent, Collider2DComponent,
                       Transform2DComponent>().each(
-            [&](lux::meta::entity_id e, CharacterController2DComponent& cc,
+            [&](lux::ecs::Entity e, CharacterController2DComponent& cc,
                 const Collider2DComponent& col, Transform2DComponent& t)
             {
                 cc.velocity.y() += cfg_.gravity_y * cc.gravity_scale * fixed_dt;

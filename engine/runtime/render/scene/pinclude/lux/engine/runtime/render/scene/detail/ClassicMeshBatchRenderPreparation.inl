@@ -1,5 +1,5 @@
         [[nodiscard]] bool fillTopology(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             lux::render::UploadRenderClusterPayload& payload) const noexcept
         {
             if (!registry)
@@ -74,7 +74,7 @@
             entry.state = ESceneContentRenderState::FAILED;
         }
 
-        void begin(lux::meta::entity_id entity, Entry& entry)
+        void begin(lux::ecs::Entity entity, Entry& entry)
         {
             if (!residency.await || !residency.request)
             {
@@ -138,7 +138,7 @@
         }
 
         void launchPreparation(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             Entry& entry) noexcept
         {
             if (!entry.preparation || entry.preparation->in_flight)
@@ -215,7 +215,7 @@
         }
 
         void preparationStopped(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t desired_generation) noexcept
         {
@@ -237,7 +237,7 @@
         }
 
         void acceptPreparation(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t desired_generation,
             lux::exec::AsyncOutcome<PrepareClassicMeshBatch> outcome)
@@ -421,7 +421,7 @@
         }
 
         void assetDelivered(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t desired_generation,
             const lux::asset::asset_id_t& id,
@@ -485,7 +485,7 @@
         }
 
         [[nodiscard]] bool buildRows(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             Entry& entry)
         {
             auto& pending = *entry.pending;

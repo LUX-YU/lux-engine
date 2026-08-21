@@ -7,19 +7,8 @@ find_package(
     COMPONENTS algorithm compile_time container reflection_runtime
 )
 
-# Find EnTT
-find_package(EnTT    CONFIG REQUIRED)
-find_path(ENTT_INCLUDE_DIRS "entt/entt.hpp")
-if(NOT ENTT_INCLUDE_DIRS)
-    message(FATAL_ERROR "EnTT include directory not found.")
-else()
-    message(STATUS "EnTT include directory found: ${ENTT_INCLUDE_DIRS}")
-endif()
-
 set(LUX_META_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/LuxObject.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Meta.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/RegistryMemoryResource.cpp
 )
 
 add_component(
@@ -33,7 +22,6 @@ component_include_directories(
     meta
     BUILD_TIME_EXPORT   ${CMAKE_CURRENT_SOURCE_DIR}/include
                         ${LUX_GENERATE_HEADER_DIR}
-    BUILD_TIME_SHARED   ${ENTT_INCLUDE_DIRS}
     INSTALL_TIME        include
     PRIVATE             pinclude
 )
@@ -47,7 +35,6 @@ target_compile_definitions(
 component_add_transitive_commands(
     meta
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time container reflection_runtime)"
-    "find_package(EnTT    CONFIG REQUIRED)"
 )
 
 component_add_cmake_scripts(
@@ -62,7 +49,6 @@ target_link_libraries(
     lux::cxx::compile_time
     lux::cxx::container
     lux::cxx::reflection_runtime
-    EnTT::EnTT
 )
 
 lux_classify_target(

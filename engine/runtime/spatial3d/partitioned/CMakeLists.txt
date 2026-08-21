@@ -85,6 +85,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::runtime::runtime_spatial3d_partitioned
         lux::engine::runtime::runtime_execution
+        lux::engine::core::serialization
 )
 if(MSVC)
     target_compile_options(spatial3d_partition_headless_test PRIVATE /UNDEBUG)

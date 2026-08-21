@@ -1,20 +1,17 @@
 message("-------- Plaform Layer --------")
-# get sublist
-subdirectory_list(dir_list)
-
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # Offline tools do not configure interactive platform domains.
-    set(dir_list)
     if(LUX_ENABLE_FLOWFORGE_MLIR AND ENABLE_FLOWFORGE_TEST)
-        list(APPEND dir_list dynamic_library)
+        add_subdirectory(dynamic_library)
+    endif()
+else()
+    add_subdirectory(gapi)
+    add_subdirectory(window)
+    add_subdirectory(dynamic_library)
+    if(NOT ANDROID)
+        add_subdirectory(filewatch)
     endif()
 endif()
-
-foreach(subdir ${dir_list})
-    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt)
-        add_subdirectory(${subdir})
-    endif()
-endforeach()
 
 # filewatch 只在非 Android 构建(见其 CMakeLists 头注释)——安装列表跟着条件。
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")

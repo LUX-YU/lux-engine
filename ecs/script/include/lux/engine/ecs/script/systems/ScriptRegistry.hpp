@@ -199,7 +199,7 @@ namespace lux::ecs
         /// EMPTY instance when nothing accepts.
         [[nodiscard]] ScriptInstance
             createInstanceFromAsset(
-                lux::meta::EntityHandle entity,
+                lux::ecs::EntityHandle entity,
                 World& world,
                                     const lux::rdesc::Script&  desc,
                                     std::span<const std::byte> payload,

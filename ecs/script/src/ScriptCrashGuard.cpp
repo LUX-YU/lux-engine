@@ -91,7 +91,7 @@ namespace lux::ecs
 
 namespace lux::ecs
 {
-    void reportScriptFault(lux::meta::entity_id entity, std::string_view phase)
+    void reportScriptFault(lux::ecs::Entity entity, std::string_view phase)
     {
         std::fprintf(stderr,
                      "[script] FAULT in %.*s on entity %u — script disabled; engine survives.\n",

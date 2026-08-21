@@ -159,7 +159,7 @@ namespace lux::asset
         if (!sasset)
             return EAssetError::FILE_TYPE_ERROR;
         const auto* skel = static_cast<const lux::rdesc::Skeleton*>(
-            sasset->rawData());
+            sasset->data());
         if (!skel)
             return EAssetError::ASSET_NO_DATA;
 

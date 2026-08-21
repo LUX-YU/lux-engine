@@ -752,7 +752,8 @@ namespace lux::game
                 application.runtime->world(),
                 application.runtime->schedule(),
                 application.runtime->services(),
-                *application.assets
+                *application.assets,
+                application.asset_load->client()
             );
         if (!application.simulation->start(
                 *application.mapper,

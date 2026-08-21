@@ -89,7 +89,7 @@
 
         template <class Component>
         [[nodiscard]] static std::optional<Component> singletonComponent(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             bool& ambiguous) noexcept
         {
             ambiguous = false;

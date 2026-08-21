@@ -43,7 +43,7 @@ namespace
 
     template <class Component>
     bool has(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.all_of<Component>(entity);
@@ -51,7 +51,7 @@ namespace
 
     template <class Component>
     void* get(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.try_get<Component>(entity);
@@ -59,7 +59,7 @@ namespace
 
     template <class Component>
     void* emplace(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return &registry.emplace_or_replace<Component>(entity);
@@ -67,7 +67,7 @@ namespace
 
     template <class Component>
     void remove(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         static_cast<void>(registry.remove<Component>(entity));
@@ -75,7 +75,7 @@ namespace
 
     template <class Component>
     void notify(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         if (registry.all_of<Component>(entity))
@@ -84,7 +84,7 @@ namespace
 
     template <class Component>
     void reserve(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         std::size_t additional)
     {
         auto& storage = registry.storage<Component>();
@@ -93,9 +93,9 @@ namespace
 
     template <class Component>
     void* transfer(
-        lux::meta::EntityRegistryBase& source,
+        lux::ecs::RegistryBase& source,
         entt::entity source_entity,
-        lux::meta::EntityRegistryBase& destination,
+        lux::ecs::RegistryBase& destination,
         entt::entity destination_entity) noexcept
     {
         auto* component = source.try_get<Component>(source_entity);
@@ -368,7 +368,7 @@ namespace
     struct ConstructCounter final
     {
         void receive(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity) noexcept
         {
             ++count;
@@ -418,7 +418,7 @@ int main()
     // non-existent component/archetype.
     {
         runtime::SectionBlobStore empty_blobs;
-        lux::meta::EntityRegistry empty_live;
+        lux::ecs::Registry empty_live;
         lux::ecs::PersistentEntityIndex empty_persistent_entities{
             empty_live};
         runtime::EntityBatchMaterializer empty_materializer{
@@ -454,7 +454,7 @@ int main()
                 *prepared, runtime::EntityBatchStageBudget{64u});
             assert(advanced);
         }
-        lux::meta::EntityRegistry growth_live;
+        lux::ecs::Registry growth_live;
         lux::ecs::PersistentEntityIndex growth_persistent_entities{
             growth_live};
         runtime::EntityBatchMaterializer growth_materializer{
@@ -489,7 +489,7 @@ int main()
                 uuid("60000000-0000-4000-8000-000000000011")};
 
         runtime::SectionBlobStore armed_blobs;
-        lux::meta::EntityRegistry armed_live;
+        lux::ecs::Registry armed_live;
         lux::ecs::PersistentEntityIndex armed_persistent_entities{
             armed_live};
         runtime::EntityBatchMaterializer armed_materializer{
@@ -658,7 +658,7 @@ int main()
     for (const auto shape : rejected_payloads)
     {
         runtime::SectionBlobStore failed_blobs;
-        lux::meta::EntityRegistry live;
+        lux::ecs::Registry live;
         runtime::EntityBatchDecoder decoder;
         const auto corrupt_bytes = encode(sectionImage(shape));
         auto decoded = decoder.decode(
@@ -820,7 +820,7 @@ int main()
     }
 
     runtime::SectionBlobStore blobs;
-    lux::meta::EntityRegistry live;
+    lux::ecs::Registry live;
     lux::ecs::PersistentEntityIndex persistent_entities{live};
     ConstructCounter counter;
     live.on_construct<TestLinkComponent>()

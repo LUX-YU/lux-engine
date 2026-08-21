@@ -22,7 +22,7 @@
  */
 
 #include <lux/engine/editor/panels/AssetBrowser.hpp>   // DeleteAssetCommand
-#include <lux/engine/meta/LuxObject.hpp>               // EntityRegistry
+#include <lux/engine/ecs/Registry.hpp>               // EntityRegistry
 
 #include <filesystem>
 #include <functional>
@@ -48,7 +48,7 @@ namespace lux::editor
             lux::events::DomainEvents* events{nullptr};       ///< committed facts
             const lux::ecs::ComponentTypeCatalog& components;
             /// 当前场景的注册表(无场景 = null)。每次扫描现取 —— 场景会换。
-            std::function<lux::meta::EntityRegistry*()> scene_registry;
+            std::function<lux::ecs::Registry*()> scene_registry;
         };
 
         explicit AssetDeleteController(Services services)

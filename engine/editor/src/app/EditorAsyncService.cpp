@@ -268,32 +268,20 @@ namespace lux::editor
                 value.error = "failed to retain file bytes";
                 return value;
             }
-            auto shell = lux::asset::makeShellFromMemory(
-                *codecs,
-                shared.data(), shared.size());
-            if (!shell)
+            auto decoded = codecs->decodeAsset(std::move(shared));
+            if (!decoded)
             {
                 value.error = lux::format(
-                    "shell decode failed (err={})",
-                    static_cast<int>(shell.error()));
+                    "decode failed (err={})",
+                    static_cast<int>(decoded.error()));
                 return value;
             }
-            if ((*shell)->id() != input.id)
+            if ((*decoded)->id() != input.id)
             {
                 value.error = "decoded bytes claim a different asset id";
                 return value;
             }
-
-            auto injector = codecs->decode(std::move(shared));
-            if (!injector)
-            {
-                value.error = lux::format(
-                    "decode failed (err={})",
-                    static_cast<int>(injector.error()));
-                return value;
-            }
-            (*injector)(**shell);
-            value.asset = std::move(*shell);
+            value.asset = std::move(*decoded);
             return value;
         }
     }

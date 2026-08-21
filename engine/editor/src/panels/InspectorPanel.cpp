@@ -180,7 +180,7 @@ namespace lux::editor
     //  drawAddComponentMenu — capability-gated (editor ADR §7)
     // -------------------------------------------------------------------------
     void InspectorPanel::drawAddComponentMenu(
-        lux::meta::EntityRegistryBase& reg,
+        lux::ecs::RegistryBase& reg,
         entt::entity e)
     {
         if (!ImGui::BeginPopup("##add_component"))
@@ -619,7 +619,7 @@ namespace lux::editor
         }
         // Immediate-mode: read the SCENE'S selection each frame and validate —
         // null between scenes (C11); a swap can leave a stale id for one frame.
-        lux::meta::EntityRegistryBase* reg =
+        lux::ecs::RegistryBase* reg =
             selection_ ? selection_->registry() : nullptr;
         const entt::entity e   = selection_ ? selection_->entity() : entt::null;
         if (!reg || e == entt::null || !reg->valid(e))
@@ -698,7 +698,7 @@ namespace lux::editor
                     auto comp_get = ce.operations.get;
                     current_comp_resolver_ = [this, comp_get, e]() -> void*
                     {
-                        lux::meta::EntityRegistryBase* r =
+                        lux::ecs::RegistryBase* r =
                             selection_ ? selection_->registry() : nullptr;
                         if (!r || !comp_get || e == entt::null || !r->valid(e))
                             return nullptr;
@@ -709,7 +709,7 @@ namespace lux::editor
                     auto comp_notify = ce.operations.notify;
                     current_comp_notify_ = [this, comp_notify, e]()
                     {
-                        lux::meta::EntityRegistryBase* r =
+                        lux::ecs::RegistryBase* r =
                             selection_ ? selection_->registry() : nullptr;
                         if (r && comp_notify && e != entt::null && r->valid(e))
                             comp_notify(*r, e);

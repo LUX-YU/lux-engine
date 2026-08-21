@@ -212,6 +212,7 @@ namespace lux::asset
         {
             model->setSkeletonAssetId(*skeleton);
         }
+        model->markManifestLoaded();
         return std::unique_ptr<LuxAsset>(std::move(model));
     }
 

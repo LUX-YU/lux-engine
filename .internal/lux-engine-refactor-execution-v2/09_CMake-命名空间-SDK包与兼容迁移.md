@@ -52,7 +52,7 @@ target_link_libraries(app PRIVATE
 | `lux::engine::core::serialization` | `lux::serialization` | `lux-core` |
 | `lux::engine::ecs::component_archive` | `lux::ecs::serialization` | `lux-engine-ecs` |
 | `lux::engine::core::meta` | 删除；使用 `lux::cxx::reflection_runtime`/ECS adapter | 不再独立公共包 |
-| `lux::engine::core::extension_abi` | `lux::engine::extensions_api` | `lux-engine-extension-sdk` |
+| `lux::engine::core::extension_abi` | 当前 `lux::engine::extensions::extension_api`；M7 再评估短 alias | `lux-engine-extensions`，Core 旧 component 删除 |
 | `lux::engine::platform::common` | 删除 | — |
 | `lux::engine::platform::window` | `lux::window` / `lux::window_glfw` | `lux-platform` |
 | `lux::engine::platform::gapi` | 删除；并入 `lux::render_vulkan` | `lux-render` |

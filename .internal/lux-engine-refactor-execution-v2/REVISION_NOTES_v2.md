@@ -1,5 +1,13 @@
 # v2 相对 v1 的架构修订说明
 
+## 2026-08-21：Extension ABI v4 Owner 与 Core 清零
+
+- `engine/extensions/api` 当前只是旧 Core ABI 的转发入口，不能继续写成实体已完成迁移。
+- ABI v4 的 descriptor、ordinal、fingerprint、registrar 对象布局与导出 symbol 冻结；本轮只改变 owner/include/target。
+- `RuntimeContributionRegistrar` 等 ABI-facing 类型在 v4 内不改名；相关旧 Checklist 重命名项由本裁决取代。
+- 通用 `ContributionId` 不在 v4 descriptor 布局中且已无 production 消费，可以直接删除。
+- 静态 reflection pending chain 的移除需要独立 codegen/plugin-entry 裁决，不夹带进 owner 搬迁。
+
 ## 2026-08-21：Core Serialization 与 ECS Component Archive
 
 - Core Serialization 收敛为 Archive/NameTable/Byte primitives，移除 Reflection/Eigen 公共闭包。

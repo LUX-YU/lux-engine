@@ -103,20 +103,24 @@ MOVE：
 ModuleAbi.hpp → ExtensionAbi.hpp
 ExtensionIdTag/ExtensionId → ExtensionId.hpp
 ExtensionDependencyView → ExtensionDependencyView
-ExtensionModuleDescriptorV4 → ExtensionDescriptorV4
+ExtensionModuleDescriptorV4 → ExtensionModuleDescriptorV4
 ```
 
-RENAME：
+ABI v4 冻结：
 
 ```text
-kExtensionAbiV4                 → kExtensionAbiVersion4
-EExtensionModuleTarget          → ExtensionTarget
-ExtensionRegistrationResult     → ExtensionResult
-EExtensionRegistrationError     → ExtensionError
-GetExtensionModuleV4Fn          → GetExtensionDescriptorV4Fn
+kExtensionAbiV4
+EExtensionModuleTarget
+ExtensionRegistrationResult
+EExtensionRegistrationError
+GetExtensionModuleV4Fn
+RuntimeContributionRegistrar
+EditorContributionRegistrar
 ```
 
-ABI 导出符号可以在兼容期保持旧字符串；C++ 类型名和路径先迁移，ABI v5 再决定是否改符号。
+上述 C++ 名称、对象布局与 ABI 导出字符串共同构成现行 v4 plugin surface。本轮只迁移
+owner/include/target，不在 v4 内改名；若需要新命名，必须通过独立 ABI v5 裁决。详见
+`ADR-20260821_ExtensionAbiV4Owner与Core清零.md`。
 
 ### 3.3 Stable ID 解耦
 
@@ -147,7 +151,7 @@ struct FeatureIdTag;
 using FeatureId = lux::cxx::StableNameId<FeatureIdTag>;
 }
 
-namespace lux::engine::extensions {
+namespace lux::extensions {
 struct ExtensionIdTag;
 using ExtensionId = lux::cxx::StableNameId<ExtensionIdTag>;
 }

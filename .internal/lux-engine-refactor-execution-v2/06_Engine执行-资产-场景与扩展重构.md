@@ -232,6 +232,11 @@ engine/scene/integration/assets/SceneAssetResolver.hpp
 
 ## 4. Extension API 与 Loader
 
+> `ADR-20260821_ExtensionAbiV4Owner与Core清零.md` 修订本节：ABI v4 的实体定义本轮归
+> `engine/extensions/api` 并删除 Core 组件，但 ABI-facing registrar/draft/lease 名称和对象
+> 布局不在 v4 内改名。以下 `ExtensionRegistrar/ExtensionDraft/ExtensionLease` 是未来 ABI
+> 版本或纯宿主内部重构方向，不得作为 v4 owner 搬迁的验收条件。
+
 ### 4.1 不创建 `Modules`
 
 产品组合根拥有：
@@ -254,10 +259,10 @@ engine/runtime/extensions/loader/ExtensionModuleManager.*
 → engine/extensions/loader/ExtensionLoader.*
 
 engine/runtime/extensions/loader/ModuleLifetime.hpp
-→ engine/extensions/loader/ExtensionLease.hpp
+→ 后续宿主内部整理；v4 registrar 可见布局暂不改名
 
 engine/runtime/extensions/contribution_host/RuntimeContributionRegistrar.*
-→ engine/extensions/registration/ExtensionRegistrar.*
+→ v4 ABI-facing surface 保留名称；后续新 ABI 再评估改名
 
 EngineExtensions.*
 → 拆除
@@ -266,6 +271,9 @@ EngineExtensions.*
 ### 4.3 Extension Registrar
 
 一个 Engine Extension 入口可以接收一个专用 Registrar，但 Registrar 只收集领域描述，不提供任意服务查询。
+
+当前 ABI v4 的 canonical 类型仍为 `RuntimeContributionRegistrar` 与
+`EditorContributionRegistrar`。下面的 `ExtensionRegistrar` 仅是未来版本草图，不在本轮创建。
 
 ```cpp
 class ExtensionRegistrar final

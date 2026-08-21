@@ -478,6 +478,11 @@ canonical encoding
 
 编译一个最小 C Extension fixture 和一个 C++ Extension fixture，验证：
 
+`ADR-20260821_ExtensionAbiV4Owner与Core清零.md` 进一步要求 owner 搬迁前后逐项固定
+v4 descriptor size/alignment/offset、枚举 ordinal、ABI fingerprint、registrar ABI-facing
+类型与三个导出 symbol string。installed consumer 只查找 Engine Extension SDK；旧 Core
+`extension_abi` component 与 include 必须失败/不存在。
+
 ```text
 symbol lookup
 descriptor size/alignment

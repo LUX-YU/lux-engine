@@ -1,6 +1,7 @@
 LUX Engine 架构重构执行文档 v2.0
 原始代码基线: LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656
 当前实施提交: d1ead288 (Core Serialization / ECS Component Archive 归位完成)
+当前施工基线: 2259ade7 (Extension ABI v4 owner 与 Core 清零)
 文档日期: 2026-08-21
 
 推荐阅读与施工顺序:
@@ -27,6 +28,7 @@ LUX Engine 架构重构执行文档 v2.0
 - ADR-20260821_Asset运行期需求与SerDeser边界.md
 - ADR-20260821_CoreMeta纯化与ECSRegistry归位.md
 - ADR-20260821_CoreSerialization与ECSComponentArchive边界.md
+- ADR-20260821_ExtensionAbiV4Owner与Core清零.md
 
 本轮验收证据:
 - evidence/asset-domain-cohesion-f35e245a.md

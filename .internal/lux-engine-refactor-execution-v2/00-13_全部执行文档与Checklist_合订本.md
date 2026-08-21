@@ -1,6 +1,6 @@
 # LUX Engine 重构执行文档 v2 合订本
 
-基线：Component Archive 实施提交 `d1ead288`（施工基线 `6906ccc2`）
+基线：Extension ABI v4 Core 清零施工基线 `2259ade7`
 
 > 本合订本由 00–13 号执行文档、详细施工 Checklist、迁移映射、代码事实索引、v2 修订说明、现行 ADR 及既有验收证据机械合并生成。独立文件是施工与评审的主版本；本文件用于全文检索和连续阅读。
 
@@ -26,6 +26,7 @@
 - `ADR-20260821_Asset运行期需求与SerDeser边界.md`
 - `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`
 - `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`
+- `ADR-20260821_ExtensionAbiV4Owner与Core清零.md`
 - `evidence/asset-domain-cohesion-f35e245a.md`
 - `evidence/asset-pipeline-core-meta-fe4422ba.md`
 - `evidence/core-serialization-ecs-component-archive-6906ccc2.md`
@@ -55,6 +56,8 @@
 > **2026-08-21 Serialization 裁决：** Core Serialization 只保留 Archive/NameTable/Byte primitives；反射 Component Archive 归 ECS。UUID wire tag 不表达资产语义，资产引用必须使用显式 `asset_type=` annotation。不建立 Registry 文件镜像。详见 `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`。
 
 > **2026-08-21 裁决更新：** `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 是 Asset 源码布局、Provider/VFS/Pak 存储边界与内置资产身份的现行 SSOT。Asset 按领域族组织；Pak 读写检查属公共 SDK；Engine 默认内容归 `engine/content`；ECS 通过装配参数接收 fallback ID。
+
+> **2026-08-21 Extension ABI 裁决：** ABI v4 的实体定义归 `engine/extensions/api`，Core 不再安装 Extension API；namespace、descriptor 布局、ordinal、fingerprint、ABI-facing registrar 名称及导出 symbol 保持不变。通用 `ContributionId` 删除。ABI-facing 类型改名与显式 reflection codegen entry 留给独立 ABI 版本裁决。详见 `ADR-20260821_ExtensionAbiV4Owner与Core清零.md`。
 
 
 ## 0. 文档目的
@@ -1118,20 +1121,24 @@ MOVE：
 ModuleAbi.hpp → ExtensionAbi.hpp
 ExtensionIdTag/ExtensionId → ExtensionId.hpp
 ExtensionDependencyView → ExtensionDependencyView
-ExtensionModuleDescriptorV4 → ExtensionDescriptorV4
+ExtensionModuleDescriptorV4 → ExtensionModuleDescriptorV4
 ```
 
-RENAME：
+ABI v4 冻结：
 
 ```text
-kExtensionAbiV4                 → kExtensionAbiVersion4
-EExtensionModuleTarget          → ExtensionTarget
-ExtensionRegistrationResult     → ExtensionResult
-EExtensionRegistrationError     → ExtensionError
-GetExtensionModuleV4Fn          → GetExtensionDescriptorV4Fn
+kExtensionAbiV4
+EExtensionModuleTarget
+ExtensionRegistrationResult
+EExtensionRegistrationError
+GetExtensionModuleV4Fn
+RuntimeContributionRegistrar
+EditorContributionRegistrar
 ```
 
-ABI 导出符号可以在兼容期保持旧字符串；C++ 类型名和路径先迁移，ABI v5 再决定是否改符号。
+上述 C++ 名称、对象布局与 ABI 导出字符串共同构成现行 v4 plugin surface。本轮只迁移
+owner/include/target，不在 v4 内改名；若需要新命名，必须通过独立 ABI v5 裁决。详见
+`ADR-20260821_ExtensionAbiV4Owner与Core清零.md`。
 
 ### 3.3 Stable ID 解耦
 
@@ -1162,7 +1169,7 @@ struct FeatureIdTag;
 using FeatureId = lux::cxx::StableNameId<FeatureIdTag>;
 }
 
-namespace lux::engine::extensions {
+namespace lux::extensions {
 struct ExtensionIdTag;
 using ExtensionId = lux::cxx::StableNameId<ExtensionIdTag>;
 }
@@ -3601,6 +3608,11 @@ engine/scene/integration/assets/SceneAssetResolver.hpp
 
 ## 4. Extension API 与 Loader
 
+> `ADR-20260821_ExtensionAbiV4Owner与Core清零.md` 修订本节：ABI v4 的实体定义本轮归
+> `engine/extensions/api` 并删除 Core 组件，但 ABI-facing registrar/draft/lease 名称和对象
+> 布局不在 v4 内改名。以下 `ExtensionRegistrar/ExtensionDraft/ExtensionLease` 是未来 ABI
+> 版本或纯宿主内部重构方向，不得作为 v4 owner 搬迁的验收条件。
+
 ### 4.1 不创建 `Modules`
 
 产品组合根拥有：
@@ -3623,10 +3635,10 @@ engine/runtime/extensions/loader/ExtensionModuleManager.*
 → engine/extensions/loader/ExtensionLoader.*
 
 engine/runtime/extensions/loader/ModuleLifetime.hpp
-→ engine/extensions/loader/ExtensionLease.hpp
+→ 后续宿主内部整理；v4 registrar 可见布局暂不改名
 
 engine/runtime/extensions/contribution_host/RuntimeContributionRegistrar.*
-→ engine/extensions/registration/ExtensionRegistrar.*
+→ v4 ABI-facing surface 保留名称；后续新 ABI 再评估改名
 
 EngineExtensions.*
 → 拆除
@@ -3635,6 +3647,9 @@ EngineExtensions.*
 ### 4.3 Extension Registrar
 
 一个 Engine Extension 入口可以接收一个专用 Registrar，但 Registrar 只收集领域描述，不提供任意服务查询。
+
+当前 ABI v4 的 canonical 类型仍为 `RuntimeContributionRegistrar` 与
+`EditorContributionRegistrar`。下面的 `ExtensionRegistrar` 仅是未来版本草图，不在本轮创建。
 
 ```cpp
 class ExtensionRegistrar final
@@ -5405,7 +5420,7 @@ target_link_libraries(app PRIVATE
 | `lux::engine::core::serialization` | `lux::serialization` | `lux-core` |
 | `lux::engine::ecs::component_archive` | `lux::ecs::serialization` | `lux-engine-ecs` |
 | `lux::engine::core::meta` | 删除；使用 `lux::cxx::reflection_runtime`/ECS adapter | 不再独立公共包 |
-| `lux::engine::core::extension_abi` | `lux::engine::extensions_api` | `lux-engine-extension-sdk` |
+| `lux::engine::core::extension_abi` | 当前 `lux::engine::extensions::extension_api`；M7 再评估短 alias | `lux-engine-extensions`，Core 旧 component 删除 |
 | `lux::engine::platform::common` | 删除 | — |
 | `lux::engine::platform::window` | `lux::window` / `lux::window_glfw` | `lux-platform` |
 | `lux::engine::platform::gapi` | 删除；并入 `lux::render_vulkan` | `lux-render` |
@@ -6366,6 +6381,11 @@ canonical encoding
 
 编译一个最小 C Extension fixture 和一个 C++ Extension fixture，验证：
 
+`ADR-20260821_ExtensionAbiV4Owner与Core清零.md` 进一步要求 owner 搬迁前后逐项固定
+v4 descriptor size/alignment/offset、枚举 ordinal、ABI fingerprint、registrar ABI-facing
+类型与三个导出 symbol string。installed consumer 只查找 Engine Extension SDK；旧 Core
+`extension_abi` component 与 include 必须失败/不存在。
+
 ```text
 symbol lookup
 descriptor size/alignment
@@ -6619,15 +6639,15 @@ BUILD-03..FINAL
 ## M1：Core 清理
 
 - [x] `CORE-001` 在 `engine/extensions/api` 创建 Extension API target。证据：`engine/extensions/api/CMakeLists.txt`；外部构建树 `E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/engine/extensions/api/CMakeFiles/Export/*/lux-engine-extensions-extension_api-config-targets.cmake` 生成 `lux::engine::extensions::extension_api`，并暂时链接旧 `lux::engine::core::extension_abi`；RelWithDebInfo 全量构建通过，第二轮最终验证 `ninja: no work to do`。
-- [x] `CORE-002` 移动 `ModuleAbi.hpp` 到 `ExtensionAbi.hpp`。证据：`engine/extensions/api/include/lux/engine/extensions/ExtensionAbi.hpp` 已建立 Engine-owned 兼容入口；Engine Runtime/Extension 消费者和 loader/project 目标（受架构 DAG 允许者）已迁移到 `lux::engine::extensions::extension_api`；旧 `modules/core` 头保留至后续 Resource/Extension 边界迁移。外部 RelWithDebInfo 受影响目标构建通过，第二轮 `ninja: no work to do`，`lux_engine_extensions` component 安装验证通过。
-- [x] `CORE-003` 移动 Extension Descriptor 与 Version 类型。证据：Engine-owned `ExtensionVersion.hpp`、`ExtensionDescriptor.hpp`、`ExtensionResult.hpp`、`ExtensionRegistrarFwd.hpp` 已从聚合转发头中拆出；`ExtensionAbi.hpp` 保留 v4 ABI 字段布局和旧 symbol strings。外部 RelWithDebInfo 的 `runtime_extension_loader` 构建通过，第二轮验证 `ninja: no work to do`。
+- [ ] `CORE-002` 移动 `ModuleAbi.hpp` 到 `ExtensionAbi.hpp`。 **进行中：Engine-owned include/target 已建立，但当前头仍 forwarding 到 Core；实体迁移由 `EXTABI-*` 跟踪。**
+- [ ] `CORE-003` 移动 Extension Descriptor 与 Version 类型。 **进行中：拆分入口已建立，定义仍来自 Core；实体迁移由 `EXTABI-*` 跟踪。**
 - [x] `CORE-004` 保留旧 ABI symbol string 的兼容测试。证据：`engine/runtime/extensions/loader/test/extension_module_manager_test.cpp` 增加 v4 descriptor/依赖字段顺序断言，以及 `luxGetExtensionModuleV4`、`luxRegisterRuntimeContributionsV4`、`luxRegisterEditorContributionsV4` 三项旧 symbol 精确匹配检查；外部 RelWithDebInfo `extension_module_manager_test` 构建并运行通过，输出 `ALL CHECKS PASSED`，第二轮构建 `ninja: no work to do`。
-- [ ] `CORE-005` 从 Core 安装组件移除 `extension_abi`。 **进行中：Deployment 与两个 Scene Resource 兼容组件已退役；冻结 Extension ABI v4 的布局与 symbol contract 仍使 `extension_abi` 不能删除。**
-- [ ] `CORE-006` 删除通用 `ContributionId`。 **进行中：Panel、Render Effect、Runtime Scene Feature、ScenePackage 与 Authoring World 已使用各自领域 ID；LXSC/LXWA 字节布局保持不变但已不需要 legacy DTO。剩余阻塞仅是冻结 Extension ABI v4 中的 legacy Contribution 布局。**
+- [ ] `CORE-005` 从 Core 安装组件移除 `extension_abi`。 **待完成：v4 可保持布局与 symbol 不变地迁入 Engine；旧 Core target/头不再有兼容理由。**
+- [ ] `CORE-006` 删除通用 `ContributionId`。 **待完成：production 已无消费者，且该类型不属于 v4 descriptor 布局。**
 - [x] `CORE-007` 在 ECS 定义 `ComponentSchemaId`。 **完成：新增 `ecs/identity/include/lux/engine/ecs/ComponentSchemaId.hpp`。**
 - [ ] `CORE-008` 在 Render 定义 `FeatureId/RepresentationId`。 **进行中：`RenderEffectId` 已完成，且 Render Effect 对 Scene Feature 的依赖已强类型化；`RepresentationId` 仍待迁移。**
 - [x] `CORE-009` 在 Engine Scene 定义 `FeatureId`。 **完成：新增 Engine-owned `lux::scene::SceneFeatureId`，Runtime Catalog/Ticket/Snapshot 已迁移。**
-- [ ] `CORE-010` 在 Engine Extensions 定义 `ExtensionId`。 **进行中：Engine-owned `ExtensionId.hpp` 入口已建立，底层定义仍来自冻结兼容组件。**
+- [ ] `CORE-010` 在 Engine Extensions 定义 `ExtensionId`。 **进行中：Engine-owned 入口已建立，实体仍来自 Core；由 `EXTABI-*` 完成。**
 - [x] `CORE-011` 拆分 `LuxObject.hpp` 中 Entity Registry。 **完成：旧聚合头删除，Entity、Registry 与 allocator 成为 ECS Core 独立公共头。**
 - [x] `CORE-012` 把 `EntityRegistry` 移入 `ecs/core`。 **完成：最终 API 为 `lux::ecs::RegistryBase/Registry/EntityHandle/ConstEntityHandle`，无旧 alias。**
 - [x] `CORE-013` 评估并删除 `LuxObject` 基类。 **完成：Asset 与反射 record 均不再依赖 OO 根类。**
@@ -6846,15 +6866,15 @@ BUILD-03..FINAL
 - [x] `EXT-001` 创建 `engine/extensions/api`。 **完成：`engine/extensions/api` target 已建立。**
 - [ ] `EXT-002` 创建 `engine/extensions/loader`。
 - [ ] `EXT-003` 创建 `engine/extensions/registration`。
-- [ ] `EXT-004` 创建 `engine/extensions/reflection`。
+- [ ] `EXT-004` 创建 `engine/extensions/reflection`。 **后续 ABI/codegen 裁决：本轮保留已事务化的 reflection draft，不暗中增加 v4 plugin entry。**
 - [ ] `EXT-005` 将 ExtensionModuleManager 改为 ExtensionLoader。
-- [ ] `EXT-006` 将 ModuleLifetime/ModuleLease 改为 ExtensionLease。
-- [x] `EXT-007` 移动 Extension ABI。 **完成：Extension ABI 的 Engine-owned 入口已建立，旧 Core 路径仅兼容。**
+- [ ] `EXT-006` 将 ModuleLifetime/ModuleLease 改为 ExtensionLease。 **SUPERSEDED FOR ABI v4：ABI-facing registrar 可见布局不改名；纯宿主内部整理另立波次。**
+- [ ] `EXT-007` 移动 Extension ABI。 **进行中：Engine-owned 入口已建立，实体与安装闭包仍在 Core；由 `EXTABI-*` 完成。**
 - [x] `EXT-008` 建立 Extension Descriptor version tests。 **完成：已有 ABI version/layout/symbol compatibility tests。**
-- [ ] `EXT-009` 将 RuntimeContributionRegistrar 改为 ExtensionRegistrar。
-- [ ] `EXT-010` 将 RuntimeRegistrationDraft 改为 ExtensionDraft。
+- [ ] `EXT-009` 将 RuntimeContributionRegistrar 改为 ExtensionRegistrar。 **SUPERSEDED FOR ABI v4：类型名和 inline/object layout 属于现行 plugin surface；新命名只能随新 ABI。**
+- [ ] `EXT-010` 将 RuntimeRegistrationDraft 改为 ExtensionDraft。 **SUPERSEDED FOR ABI v4：不在 owner 搬迁中改变 registrar 可见类型。**
 - [ ] `EXT-011` Registrar 仅暴露 components/sceneFeatures/render/operations。
-- [ ] `EXT-012` 删除通用 ContributionId。 **进行中：领域 Catalog、命令、Ticket、Snapshot、ScenePackage 与 Authoring DTO 不再使用通用 ID；legacy Resource wire DTO 已删除。冻结 Extension ABI v4 中的 legacy Contribution 布局不在本波次修改，因此仍为部分完成。**
+- [ ] `EXT-012` 删除通用 ContributionId。 **待完成：领域消费者已清零，该类型不参与 ExtensionModuleDescriptorV4 布局。**
 - [ ] `EXT-013` 拆除 EngineExtensions 聚合对象。
 - [ ] `EXT-014` 将 SceneContributions 迁为 Scene Feature Catalog。 **进行中：ID、Catalog 查询、动态命令和产品调用点已强制使用 `SceneFeatureId`；旧 `SceneContributions` 类型名与表面尚未全部改为 Feature。**
 - [ ] `EXT-015` 将 RenderEffects 迁到 Render 领域 Catalog。 **进行中：`RenderEffectId`、Scene Feature dependency 类型、Catalog 校验与测试已领域化；Catalog/Host 实现仍位于 `engine/runtime/extensions/contribution_host`，尚未迁入 Render owner。**
@@ -6869,6 +6889,19 @@ BUILD-03..FINAL
 - [ ] `EXT-024` 测试 unload after scene close。
 - [ ] `EXT-025` 删除 modules/core/extension_abi。
 - [ ] `EXT-026` 确认 Modules SDK 不安装 Extension API。
+
+### Extension ABI v4 owner 与 Core 清零施工追踪
+
+- [ ] `EXTABI-001` 首笔提交只修订 Extension ABI v4 owner、冻结表面与 Core 清零 ADR。
+- [ ] `EXTABI-002` Engine Extension API 直接拥有 ExtensionId、descriptor/version/result、函数类型与 symbol constants。
+- [ ] `EXTABI-003` 保持 ABI v4 namespace、layout、ordinal、fingerprint 和三个导出 symbol string 不变。
+- [ ] `EXTABI-004` 删除通用 ContributionId 及全部 production/test/CMake 引用，不建立替代通用 ID。
+- [ ] `EXTABI-005` 删除 `modules/core/extension_abi` 目录、target、component、旧 include 与安装导出，不留兼容层。
+- [ ] `EXTABI-006` Authoring、Editor、Runtime、Scene、Game 与 Extension fixture 只依赖 Engine Extension API。
+- [ ] `EXTABI-007` Extension ABI layout/symbol、loader、rollback、dependency 与实际 Physics2D Extension owner tests 通过。
+- [ ] `EXTABI-008` installed Extension SDK consumer 可配置/链接，旧 Core component 查找失败。
+- [ ] `EXTABI-009` Debug、RelWithDebInfo、Android 安装前缀中旧 Core ABI 头与 export 精确清零。
+- [ ] `EXTABI-010` 四 Profile 全量、第二轮 no-op、旧符号扫描与 `git diff --check` 通过。
 ## M4：Engine Scene/Spatial/Render Bridge
 
 - [ ] `SCENE-001` 移动 SceneRuntime 到 engine/scene/Scene。 **SUPERSEDED：`engine/scene` 只拥有 Scene Asset 数据/SerDeser，Runtime 生命周期保持独立。**
@@ -7325,7 +7358,7 @@ BUILD-03..FINAL
 
 ## 统计
 
-本清单共 **508** 个稳定编号施工项；当前已完成 **129** 项、有效待完成或部分完成 **359** 项，另有 **20** 项被 ADR-20260820 明确取代且不再施工。
+本清单当前共 **668** 个验收复选项：**300** 项完成，**341** 项有效待完成或部分完成，另有 **27** 项被现行 ADR 明确取代并保留未勾选作为历史记录。
 
 ---
 
@@ -7370,9 +7403,9 @@ BUILD-03..FINAL
 | modules/core/meta | lux-cxx reflection + ecs/core + engine/extensions/reflection | SPLIT/DELETE | Core/ECS/Engine | 02 |
 | LuxObject | DELETE | DONE — 独立 `LuxAsset` 与 reflected-record identity 已取代 OO 根类 | ECS/Reflection | 02/03/ADR-20260821-Meta |
 | EntityRegistry | `lux::ecs::Registry` | DONE — MOVE/RENAME，无 alias/forwarding header | ECS | 02/05/ADR-20260821-Meta |
-| modules/core/extension_abi | engine/extensions/api | MOVE/DELETE | Extensions | 02/06 |
-| ModuleAbi.hpp | ExtensionAbi.hpp | MOVE/RENAME | Extensions | 02 |
-| ContributionId | domain-specific IDs | IN_PROGRESS — 冻结 Extension ABI v4 尚保留 legacy 布局 | All domains | 02/06 |
+| modules/core/extension_abi | engine/extensions/api | IN_PROGRESS — Engine 入口已建立，实体/target/component 待 MOVE/DELETE | Extensions | 02/06/ADR-20260821-ExtensionABI |
+| ModuleAbi.hpp | ExtensionAbi.hpp | IN_PROGRESS — v4 类型名/layout/symbol 不改，只迁移 owner/include | Extensions | 02/ADR-20260821-ExtensionABI |
+| ContributionId | DELETE；保留 domain-specific IDs | READY — production 已清零且不属于 v4 descriptor layout | All domains | 02/06/ADR-20260821-ExtensionABI |
 | modules/platform/common（已删除） | lux-cxx Core/Concurrent + Core Math + Description + Render Graph | DONE — SPLIT/DELETE；无 alias/shim/forwarding header | Core/Resource/Render | 02/03/04 |
 | AtomicWait.hpp | `lux/cxx/concurrent/AtomicWait.hpp` | DONE — MOVE；Windows/Android 行为与编译契约 | lux-cxx Concurrent | 02 |
 | FormatCompat.h | `lux/cxx/core/Format.hpp` | DONE — MOVE/DELETE generated header；std/libfmt/fallback 语义保留 | lux-cxx Core | 02 |
@@ -7540,9 +7573,9 @@ BUILD-03..FINAL
   document: "02,06"
   status: PENDING
   compatibility:
-    target_alias: true
-    forwarding_headers: true
-    remove_milestone: SDK-COMPAT-REMOVE
+    target_alias: false
+    forwarding_headers: false
+    remove_milestone: EXTABI
   format_or_abi:
     kind: extension_abi
     version: 4
@@ -7575,7 +7608,7 @@ status=PENDING → legacy report 允许但不能增长
 
 | 项目 | 内容 |
 | --- | --- |
-| 代码基线 | 原始索引 `09b2a82582550bcbe03afeef77d2591e1656a656`；Pipeline/Core Meta `ed5fb7eb`；Component Archive `d1ead288` |
+| 代码基线 | 原始索引 `09b2a82582550bcbe03afeef77d2591e1656a656`；Pipeline/Core Meta `ed5fb7eb`；Component Archive `d1ead288`；当前 Extension ABI 施工基线 `2259ade7` |
 | 基线日期 | 2026-08-19 |
 | 文档更新 | 2026-08-21 |
 | 适用对象 | 实施者、代码评审者、迁移脚本维护者 |
@@ -7591,6 +7624,8 @@ status=PENDING → legacy report 允许但不能增长
 
 > **2026-08-21 当前事实：** Core Serialization 只含 Archive/NameTable，安装闭包不含 Meta/Eigen。Reflected tagged archive 已归 ECS `component_archive`；tag 48 为 UUID，只有显式 `asset_type=` annotation 表达资产引用。不创建 RegistryArchive。
 
+> **2026-08-21 Extension ABI 施工前事实：** `engine/extensions/api` 只是 forwarding include/target，实体定义与安装 component 仍在 `modules/core/extension_abi`。ABI v4 保持全部布局和 ABI-facing 名称；通用 `ContributionId` 不参与 descriptor layout 且已无 production 消费。详见 `ADR-20260821_ExtensionAbiV4Owner与Core清零.md`。
+
 
 ## 使用说明
 
@@ -7604,8 +7639,9 @@ status=PENDING → legacy report 允许但不能增长
 | 当前锚点 | 当前事实 | 施工文档 |
 | --- | --- | --- |
 | `modules/core/CMakeLists.txt` | 安装 events/extension_abi/log/math/meta/serialization | 01/02 |
-| `modules/core/extension_abi/.../ModuleAbi.hpp` | Engine Extension ABI v4、Runtime/Editor registrar symbols | 02/06 |
-| `modules/core/extension_abi/.../StableId.hpp` | 冻结 Extension ABI v4 仍保留 legacy Contribution 布局；Scene/Render/Authoring 产品表面已使用领域 ID | 02/06 |
+| `modules/core/extension_abi/.../ModuleAbi.hpp` | 施工前 ABI v4 实体 owner；Engine Extension API 仍 forwarding 至此 | 02/06/ADR-20260821-ExtensionABI |
+| `modules/core/extension_abi/.../StableId.hpp` | 施工前同时定义 ExtensionId 与已无 production 消费的 ContributionId；后者不属于 v4 descriptor layout | 02/06/ADR-20260821-ExtensionABI |
+| `engine/extensions/api` | 已有 Engine-owned target/include，但施工前仍 PUBLIC 依赖 Core extension_abi，尚非实体 owner | 02/06/ADR-20260821-ExtensionABI |
 | `modules/core/meta/CMakeLists.txt` | Runtime reflection 与 codegen scripts；不查找、包含或链接 EnTT | 02/05/ADR-20260821-Meta |
 | `ecs/core/include/lux/engine/ecs/{Entity,Registry,RegistryMemoryResource}.hpp` | ECS-owned Entity/Registry/handles/allocator/publication/snapshot API；旧 Meta owner 已删除 | 02/05/ADR-20260821-Meta |
 | `modules/core/serialization/CMakeLists.txt` | 只拥有 Archive/NameTable/readSpan；PUBLIC binary/stduuid，无 Meta/Eigen | 02/ADR-20260821-Serialization |
@@ -7723,6 +7759,14 @@ git grep -n -E "resource::(classic_mesh_content|terrain_content|tilemap_content|
 ---
 
 # v2 相对 v1 的架构修订说明
+
+## 2026-08-21：Extension ABI v4 Owner 与 Core 清零
+
+- `engine/extensions/api` 当前只是旧 Core ABI 的转发入口，不能继续写成实体已完成迁移。
+- ABI v4 的 descriptor、ordinal、fingerprint、registrar 对象布局与导出 symbol 冻结；本轮只改变 owner/include/target。
+- `RuntimeContributionRegistrar` 等 ABI-facing 类型在 v4 内不改名；相关旧 Checklist 重命名项由本裁决取代。
+- 通用 `ContributionId` 不在 v4 descriptor 布局中且已无 production 消费，可以直接删除。
+- 静态 reflection pending chain 的移除需要独立 codegen/plugin-entry 裁决，不夹带进 owner 搬迁。
 
 ## 2026-08-21：Core Serialization 与 ECS Component Archive
 
@@ -8366,6 +8410,86 @@ Core Serialization 已删除 TaggedPropertyArchive、Meta 与 Eigen 闭包；ECS
 三条 Unknown Component 路径均在 Registry 发布前失败。Core、ECS Component Archive 与
 Function Animation installed consumers、四 Profile 全量构建及第二轮 no-op 已通过；证据见
 `evidence/core-serialization-ecs-component-archive-6906ccc2.md`。
+
+---
+
+# Extension ABI v4 Owner 与 Core 清零
+
+**状态：** Accepted，代码施工待完成
+
+**日期：** 2026-08-21
+
+**施工基线：** `2259ade725506f11fe247582d1c3be32116bebe0`
+
+## 背景
+
+`engine/extensions/api` 已建立安装 target 和公共 include，但当前实现仍通过 forwarding
+header 与 PUBLIC link 依赖 `modules/core/extension_abi`。因此它只是 Engine-owned 入口，
+并未成为 ABI 定义的真实 owner；Checklist 中把该状态写成“已移动”是不准确的。
+
+同时，Extension ABI v4 的注册回调直接接受
+`RuntimeContributionRegistrar&` / `EditorContributionRegistrar&`。Extension DLL 会编译
+registrar 的 inline 访问器并链接其 C++ 导出方法，因此在仍宣称兼容 ABI v4 时，不能只改
+C++ 类型名而保持三个 `extern "C"` symbol string 不变。
+
+## 决议
+
+### 1. ABI 实体归 Engine
+
+- `ExtensionId`、v4 descriptor/version/result、函数类型和 symbol constants 的唯一源码 owner
+  迁入 `engine/extensions/api`。
+- 保持 namespace `lux::extensions`、`kExtensionAbiV4 == 4`、descriptor 字段顺序、大小、
+  对齐、枚举 ordinal、ABI fingerprint 与三个导出 symbol string 不变。
+- `engine/extensions/api` 直接依赖所需 `lux-cxx::core/abi`，不再经过 Core component。
+- 删除 `modules/core/extension_abi` 的源码、target、安装 component 和旧 include；不保留 alias、
+  shim 或 forwarding header。
+
+### 2. 删除通用 ContributionId
+
+`ContributionId` 不属于 ABI v4 descriptor 布局，production 已全部使用领域 ID。删除
+`ContributionIdTag/View/Id` 与 `contributionId()`，不建立替代通用 ID；Component、Scene
+Feature、Render Effect 与 Extension 继续使用各自 owner 的 stable-name ID。
+
+### 3. 冻结 ABI-facing 名称
+
+在 ABI v4 生命周期内保留以下 ABI-facing 名称与对象布局：
+
+- `RuntimeContributionRegistrar`
+- `EditorContributionRegistrar`
+- registrar 公共头中参与对象布局或 inline 访问的 lease/draft 类型
+- `ExtensionModuleDescriptorV4`、`EExtensionModuleTarget`、
+  `ExtensionRegistrationResult` 与 `EExtensionRegistrationError`
+
+因此旧 Checklist 中把 ABI-facing registrar/draft/lease 直接改名的目标由本 ADR 取代。
+`ExtensionModuleManager` 等纯宿主内部类型仍可在后续独立迁移中改名为 Loader，但不得借此
+改变 v4 plugin surface。
+
+### 4. Reflection 边界
+
+现有 `ReflectionRegistrationDraft` 已提供 validate-before-publish、commit 与 rollback，并由
+Extension 装配链使用。本轮保留该事务语义。删除静态 pending registrar 链需要显式 codegen/
+plugin entry contract，属于后续 ABI/codegen ADR；不得在 v4 owner 搬迁中暗中增加新入口或
+伪装成纯重命名。
+
+## 本轮范围
+
+本轮完成：
+
+- `CORE-005/006/010`
+- `EXT-012/025/026`
+- `FINAL-001`
+- 新增 `EXTABI-*` 证据条目
+
+本轮不推进 `EXT-002..005`、`EXT-013..024`、`CORE-016..018`、`ECS-028`、Platform/Render、
+M0、M7、Scene Runtime、Game/Editor 架构或 Extension ABI v5。
+
+## 验收合同
+
+- ABI v4 layout/ordinal/fingerprint/symbol contract 与现有 Extension DLL fixture 通过。
+- Engine Extension SDK installed consumer 可只查找 `lux-engine-extensions COMPONENTS extension_api`。
+- `lux-engine-core COMPONENTS extension_abi` 必须失败，三个安装前缀不含旧头或旧 export。
+- production/test/CMake 不存在旧 Core include、target/component 或通用 `ContributionId`。
+- 四个 Profile 全量构建和 owner tests 通过，CMake 第二轮为 no-op。
 
 ---
 

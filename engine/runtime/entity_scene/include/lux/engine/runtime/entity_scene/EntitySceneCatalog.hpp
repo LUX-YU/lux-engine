@@ -36,13 +36,13 @@ namespace lux::runtime::entity_scene
             return package_;
         }
 
-        [[nodiscard]] std::span<const lux::scene::SectionRecord> sections()
+        [[nodiscard]] std::span<const lux::ecs::scene_format::SectionRecord> sections()
             const noexcept
         {
             return package_.sections;
         }
 
-        [[nodiscard]] const lux::scene::SectionRecord* findSection(
+        [[nodiscard]] const lux::ecs::scene_format::SectionRecord* findSection(
             lux::ecs::scene_format::EntitySectionId id) const noexcept;
 
     private:

@@ -141,7 +141,7 @@ namespace
 
     struct SectionFixture final
     {
-        lux::scene::SectionRecord record;
+        lux::ecs::scene_format::SectionRecord record;
         lux::ecs::PersistentEntityId entity;
         StoredImage stored;
     };
@@ -165,9 +165,9 @@ namespace
         auto encoded = format::encodeEntitySectionImage(image);
         assert(encoded);
 
-        scene::SectionRecord record;
+        lux::ecs::scene_format::SectionRecord record;
         record.id = image.section;
-        record.source = scene::StoredSectionSource{"/Game/" + path};
+        record.source = lux::ecs::scene_format::StoredSectionSource{"/Game/" + path};
         record.content_digest = format::entitySectionContentDigest(*encoded);
         record.encoded_bytes = encoded->size();
         record.decoded_bytes = encoded->size();
@@ -263,14 +263,14 @@ int main()
 
     catalog::SceneCatalogBand fine_band{
         catalog::SourceId{"lux.spatial3d.source.test"},
-        lux::scene::DemandChannelId{std::string{channel}},
+        lux::ecs::scene_format::DemandChannelId{std::string{channel}},
         0u,
         64.0,
         1.0,
         1.0};
     catalog::SceneCatalogBand coarse_band{
         catalog::SourceId{"lux.spatial3d.source.test"},
-        lux::scene::DemandChannelId{std::string{channel}},
+        lux::ecs::scene_format::DemandChannelId{std::string{channel}},
         1u,
         128.0,
         1.0,
@@ -282,7 +282,7 @@ int main()
     assert(fine_namespace != coarse_namespace);
     const catalog::SceneCatalogBand unrelated_band{
         catalog::SourceId{"lux.spatial3d.source.aaa"},
-        lux::scene::DemandChannelId{
+        lux::ecs::scene_format::DemandChannelId{
             std::string{catalog::kResidentDemandChannelName}},
         0u,
         32.0,
@@ -309,14 +309,14 @@ int main()
         fine_namespace);
     const catalog::SceneCatalogBand ambiguous_left{
         catalog::SourceId{"a.b"},
-        lux::scene::DemandChannelId{"c.d.e"},
+        lux::ecs::scene_format::DemandChannelId{"c.d.e"},
         0u,
         64.0,
         1.0,
         1.0};
     const catalog::SceneCatalogBand ambiguous_right{
         catalog::SourceId{"a.b.c"},
-        lux::scene::DemandChannelId{"d.e"},
+        lux::ecs::scene_format::DemandChannelId{"d.e"},
         0u,
         64.0,
         1.0,

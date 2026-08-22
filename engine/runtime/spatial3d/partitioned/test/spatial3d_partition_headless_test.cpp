@@ -56,7 +56,7 @@ namespace
 
     struct GeneratorState final
     {
-        lux::scene::SectionGeneratorId id{
+        lux::ecs::scene_format::SectionGeneratorId id{
             "org.lux.test.spatial3d.rule_grid"};
         mutable std::atomic<std::uint64_t> generated{0u};
     };
@@ -148,7 +148,7 @@ namespace
         {
             const auto& state = *static_cast<const GeneratorState*>(opaque);
             const auto* source = std::get_if<
-                lux::scene::GeneratedSectionSource>(
+                lux::ecs::scene_format::GeneratedSectionSource>(
                     &request.record.source);
             lux::math::GridCoord3i64 coordinate;
             if (!source || source->generator != state.id ||
@@ -167,13 +167,13 @@ namespace
         return result;
     }
 
-    lux::scene::SectionRecord record(
+    lux::ecs::scene_format::SectionRecord record(
         const GeneratorState& state,
         lux::math::GridCoord3i64 coordinate)
     {
-        lux::scene::SectionRecord result;
+        lux::ecs::scene_format::SectionRecord result;
         result.id = sectionId(coordinate);
-        result.source = lux::scene::GeneratedSectionSource{
+        result.source = lux::ecs::scene_format::GeneratedSectionSource{
             state.id, 0u, parameters(coordinate)};
         auto encoded = lux::ecs::scene_format::encodeEntitySectionImage(
             image(result.id));
@@ -347,7 +347,7 @@ int main()
     auto source = spatial3d::Spatial3DSectionSource::ruleGrid(
         [generator_state](lux::math::GridCoord3i64 coordinate)
             -> lux::cxx::expected<
-                lux::scene::SectionRecord,
+                lux::ecs::scene_format::SectionRecord,
                 spatial3d::Spatial3DSourceFailure>
         {
             return record(*generator_state, coordinate);
@@ -379,7 +379,7 @@ int main()
             "org.lux.test.spatial3d.band0"},
         .sections = std::move(*source),
         .cell_world_size = 64.0,
-        .channel = lux::scene::DemandChannelId{
+        .channel = lux::ecs::scene_format::DemandChannelId{
             std::string{kDemandChannel}},
         .active_distance_scale = 1.0,
         .resident_distance_scale = 1.0,

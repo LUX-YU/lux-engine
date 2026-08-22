@@ -500,7 +500,7 @@ int main()
         if (section_entry == pak->entries.end())
             return 5;
         const auto* stored = std::get_if<
-            lux::scene::StoredSectionSource>(&record.source);
+            lux::ecs::scene_format::StoredSectionSource>(&record.source);
         if (stored == nullptr ||
             stored->content_path != "/Game/" + section_entry->vpath ||
             section_entry->vpath != "EntitySections/" +

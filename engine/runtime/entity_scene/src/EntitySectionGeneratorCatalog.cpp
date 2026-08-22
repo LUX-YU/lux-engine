@@ -17,7 +17,7 @@ namespace lux::runtime::entity_scene
     {
         for (const auto& descriptor : descriptors)
         {
-            if (!lux::scene::isValidSectionGeneratorId(descriptor.id) ||
+            if (!lux::ecs::scene_format::isValidSectionGeneratorId(descriptor.id) ||
                 !descriptor.generate)
             {
                 return lux::cxx::unexpected(EntitySectionGeneratorFailure{
@@ -69,14 +69,14 @@ namespace lux::runtime::entity_scene
     {
         const auto valid = lux::scene::validateSectionRecord(request.record);
         const auto* source =
-            std::get_if<lux::scene::GeneratedSectionSource>(
+            std::get_if<lux::ecs::scene_format::GeneratedSectionSource>(
                 &request.record.source);
         if (!valid || !source)
         {
             return lux::cxx::unexpected(EntitySectionGeneratorFailure{
                 EEntitySectionGeneratorError::GENERATION_FAILED,
                 source ? source->generator
-                       : lux::scene::SectionGeneratorId{},
+                       : lux::ecs::scene_format::SectionGeneratorId{},
                 {},
                 "invalid generated EntitySection request"});
         }
@@ -103,9 +103,9 @@ namespace lux::runtime::entity_scene
     }
 
     bool EntitySectionGeneratorCatalog::contains(
-        const lux::scene::SectionGeneratorId& generator) const noexcept
+        const lux::ecs::scene_format::SectionGeneratorId& generator) const noexcept
     {
-        if (!lux::scene::isValidSectionGeneratorId(generator))
+        if (!lux::ecs::scene_format::isValidSectionGeneratorId(generator))
             return false;
         const auto found = std::lower_bound(
             descriptors_.begin(),

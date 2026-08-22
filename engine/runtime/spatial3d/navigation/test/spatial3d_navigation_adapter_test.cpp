@@ -155,7 +155,7 @@ namespace
             GeneratedRegionState{makeAttachment(std::move(blob))});
         auto catalog = lux::runtime::entity_scene::
             EntitySectionGeneratorCatalog::create({
-                {lux::scene::SectionGeneratorId{generator_name},
+                {lux::ecs::scene_format::SectionGeneratorId{generator_name},
                  &generateRegion,
                  std::shared_ptr<const void>{state},
                  {}}});
@@ -166,10 +166,10 @@ namespace
         auto expected_bytes =
             lux::ecs::scene_format::encodeEntitySectionImage(expected_image);
         assert(expected_bytes);
-        lux::scene::SectionRecord record;
+        lux::ecs::scene_format::SectionRecord record;
         record.id = section;
-        record.source = lux::scene::GeneratedSectionSource{
-            lux::scene::SectionGeneratorId{generator_name},
+        record.source = lux::ecs::scene_format::GeneratedSectionSource{
+            lux::ecs::scene_format::SectionGeneratorId{generator_name},
             0x1234u,
             {std::byte{0x2au}}};
         record.content_digest =

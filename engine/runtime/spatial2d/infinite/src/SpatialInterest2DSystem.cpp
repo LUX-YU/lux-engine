@@ -19,7 +19,7 @@ namespace lux::runtime::spatial2d
     {
         return std::isfinite(section_world_size) &&
             section_world_size > 0.0 &&
-            lux::scene::isValidDemandChannelId(channel) &&
+            lux::ecs::scene_format::isValidDemandChannelId(channel) &&
             resident_priority != 0u && maximum_sources != 0u;
     }
 

@@ -20,7 +20,7 @@ namespace lux::runtime::spatial3d
         if (!source_namespace.isValid() ||
             !lux::extensions::isCanonicalStableName(
                 source_namespace.name()) ||
-            !lux::scene::isValidDemandChannelId(channel) ||
+            !lux::ecs::scene_format::isValidDemandChannelId(channel) ||
             !std::isfinite(cell_world_size) || cell_world_size <= 0.0 ||
             !std::isfinite(active_distance_scale) ||
             active_distance_scale <= 0.0 ||

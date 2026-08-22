@@ -8,6 +8,14 @@
 
 namespace lux::scene
 {
+    using lux::ecs::scene_format::GeneratedSectionSource;
+    using lux::ecs::scene_format::RequiredComponentSchema;
+    using lux::ecs::scene_format::SectionCompression;
+    using lux::ecs::scene_format::SectionRecord;
+    using lux::ecs::scene_format::StoredSectionSource;
+    using lux::ecs::scene_format::isValidDemandChannelId;
+    using lux::ecs::scene_format::isValidSectionGeneratorId;
+
     namespace
     {
         using namespace detail;
@@ -121,6 +129,54 @@ namespace lux::scene
             return true;
         }
 
+        void writeComponentRequirements(
+            ByteWriter& writer,
+            const WireNameTable& names,
+            std::span<const RequiredComponentSchema> components)
+        {
+            writer.u32(static_cast<std::uint32_t>(components.size()));
+            for (const auto& value : components)
+            {
+                writeComponentId(writer, names, value.id);
+                writer.u32(value.schema_version);
+            }
+        }
+
+        [[nodiscard]] bool readComponentRequirements(
+            ByteReader& reader,
+            const WireNameTable& names,
+            std::vector<RequiredComponentSchema>& components,
+            const SceneCodecLimits& limits,
+            DecodeAllocationBudget& budget) noexcept
+        {
+            std::uint32_t count = 0u;
+            if (!readCount(
+                    reader,
+                    limits.maximum_requirements,
+                    count,
+                    "component requirement count exceeds codec limit") ||
+                !prepareVector(
+                    reader,
+                    budget,
+                    components,
+                    count,
+                    16u,
+                    "component requirements cannot fit remaining input",
+                    "component requirements exceed decode allocation budget"))
+            {
+                return false;
+            }
+            for (auto& value : components)
+            {
+                if (!readComponentId(reader, names, value.id, budget) ||
+                    !reader.u32(value.schema_version))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         void writeFeatureNames(
             ByteWriter& writer,
             const WireNameTable& names,
@@ -201,10 +257,8 @@ namespace lux::scene
                 }
                 for (const auto& channel : section.demand_channels)
                     names.add(channel.name());
-                addRequirementsToNames(
-                    names,
-                    section.required_extensions,
-                    section.required_components);
+                for (const auto& component : section.required_components)
+                    names.add(component.id.name);
             }
             names.canonicalize();
             return names;
@@ -247,10 +301,9 @@ namespace lux::scene
             for (const auto& channel : section.demand_channels)
                 writeStableId(writer, names, channel);
 
-            writeRequirements(
+            writeComponentRequirements(
                 writer,
                 names,
-                section.required_extensions,
                 section.required_components);
         }
 
@@ -323,7 +376,7 @@ namespace lux::scene
                 return false;
             }
             if (compression >
-                static_cast<std::uint8_t>(SectionCompression::Zstd))
+                static_cast<std::uint8_t>(SectionCompression::ZSTD))
             {
                 reader.fail("unsupported Section compression");
                 return false;
@@ -380,10 +433,9 @@ namespace lux::scene
                     return false;
                 }
             }
-            return readRequirements(
+            return readComponentRequirements(
                 reader,
                 names,
-                section.required_extensions,
                 section.required_components,
                 limits,
                 budget);

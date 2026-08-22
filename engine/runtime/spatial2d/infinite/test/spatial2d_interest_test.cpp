@@ -98,10 +98,10 @@ int main()
     auto procedural = spatial2d::Spatial2DSectionSource::procedural(
         [](lux::math::GridCoord2i64 coordinate)
             -> lux::cxx::expected<
-                lux::scene::SectionRecord,
+                lux::ecs::scene_format::SectionRecord,
                 spatial2d::Spatial2DIndexFailure>
         {
-            lux::scene::SectionRecord record;
+            lux::ecs::scene_format::SectionRecord record;
             record.id = coordinateSectionId(coordinate);
             return record;
         });

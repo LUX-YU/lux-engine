@@ -270,7 +270,7 @@ namespace lux::runtime::spatial2d
                 result.entries[write++] = Spatial2DWindowEntry{
                     coordinate,
                     section,
-                    std::optional<lux::scene::SectionRecord>{
+                    std::optional<lux::ecs::scene_format::SectionRecord>{
                         std::move(*record)},
                     std::abs(x) <= kSpatial2DActiveRadius &&
                         std::abs(y) <= kSpatial2DActiveRadius};

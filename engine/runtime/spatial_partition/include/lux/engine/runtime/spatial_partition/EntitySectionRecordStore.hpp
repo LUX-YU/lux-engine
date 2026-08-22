@@ -21,7 +21,7 @@ namespace lux::runtime::spatial_partition
             : catalog_(&catalog)
         {}
 
-        [[nodiscard]] const lux::scene::SectionRecord* find(
+        [[nodiscard]] const lux::ecs::scene_format::SectionRecord* find(
             lux::ecs::scene_format::EntitySectionId id) const noexcept
         {
             return catalog_->findSection(id);

@@ -44,15 +44,15 @@ namespace
             (mix(static_cast<std::uint64_t>(coordinate.z)) << 2u));
     }
 
-    lux::scene::SectionRecord record(
+    lux::ecs::scene_format::SectionRecord record(
         lux::math::GridCoord3i64 coordinate,
         std::uint64_t ordinal)
     {
-        lux::scene::SectionRecord result;
+        lux::ecs::scene_format::SectionRecord result;
         result.id = ordinal == 0u
             ? coordinateSectionId(coordinate)
             : sectionId(ordinal);
-        result.source = lux::scene::StoredSectionSource{
+        result.source = lux::ecs::scene_format::StoredSectionSource{
             "/Game/Sections/Spatial3D_lxes"};
         result.content_digest[0] = std::byte{1u};
         result.encoded_bytes = 1u;
@@ -88,7 +88,7 @@ int main()
     auto rules = spatial3d::Spatial3DSectionSource::ruleGrid(
         [](lux::math::GridCoord3i64 coordinate)
             -> lux::cxx::expected<
-                lux::scene::SectionRecord,
+                lux::ecs::scene_format::SectionRecord,
                 spatial3d::Spatial3DSourceFailure>
         {
             return record(coordinate, 0u);

@@ -530,9 +530,9 @@ int main(int argc, char** argv)
     if (!section_bytes)
         return 1;
 
-    scene::SectionRecord record;
+    lux::ecs::scene_format::SectionRecord record;
     record.id = section.section;
-    record.source = scene::StoredSectionSource{"/Game/startup_lxes"};
+    record.source = lux::ecs::scene_format::StoredSectionSource{"/Game/startup_lxes"};
     record.content_digest = format::entitySectionContentDigest(*section_bytes);
     record.encoded_bytes = section_bytes->size();
     record.decoded_bytes = section_bytes->size();

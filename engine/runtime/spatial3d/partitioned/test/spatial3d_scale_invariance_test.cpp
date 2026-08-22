@@ -50,7 +50,7 @@ namespace
 
     struct GeneratorState final
     {
-        lux::scene::SectionGeneratorId id{
+        lux::ecs::scene_format::SectionGeneratorId id{
             "org.lux.test.spatial3d.scale.generator"};
         mutable std::atomic<std::uint64_t> generated{0u};
     };
@@ -81,13 +81,13 @@ namespace
         return result;
     }
 
-    lux::scene::SectionRecord record(
+    lux::ecs::scene_format::SectionRecord record(
         const GeneratorState& generator,
         std::uint64_t ordinal)
     {
-        lux::scene::SectionRecord result;
+        lux::ecs::scene_format::SectionRecord result;
         result.id = sectionId(ordinal);
-        result.source = lux::scene::GeneratedSectionSource{
+        result.source = lux::ecs::scene_format::GeneratedSectionSource{
             generator.id, ordinal, {}};
         const auto encoded = lux::ecs::scene_format::encodeEntitySectionImage(
             image(result.id));
@@ -117,7 +117,7 @@ namespace
         {
             const auto& state = *static_cast<const GeneratorState*>(opaque);
             const auto* source = std::get_if<
-                lux::scene::GeneratedSectionSource>(
+                lux::ecs::scene_format::GeneratedSectionSource>(
                     &request.record.source);
             if (!source || source->generator != state.id)
             {
@@ -337,7 +337,7 @@ namespace
             .sections = spatial3d::Spatial3DSectionSource::catalog(
                 std::move(fixture.spatial)),
             .cell_world_size = 64.0,
-            .channel = lux::scene::DemandChannelId{
+            .channel = lux::ecs::scene_format::DemandChannelId{
                 std::string{kDemandChannel}},
             .active_distance_scale = 1.0,
             .resident_distance_scale = 1.0,

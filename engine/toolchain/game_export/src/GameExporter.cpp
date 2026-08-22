@@ -603,7 +603,7 @@ namespace lux::toolchain
                 const auto expected_source =
                     "/Game/EntitySections/" + key;
                 const auto* stored = std::get_if<
-                    lux::scene::StoredSectionSource>(
+                    lux::ecs::scene_format::StoredSectionSource>(
                         &section.record.source);
                 if (stored == nullptr ||
                     stored->content_path != expected_source)

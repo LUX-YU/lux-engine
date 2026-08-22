@@ -117,7 +117,7 @@ namespace lux::runtime::entity_scene
             const EntitySceneCatalog& catalog,
             EntitySectionLoaderSystem& loader,
             lux::exec::AsyncRuntime& runtime,
-            std::vector<const lux::scene::SectionRecord*> startup,
+            std::vector<const lux::ecs::scene_format::SectionRecord*> startup,
             std::vector<EntitySectionTicket> tickets,
             std::vector<ReleasedGeneration> released) noexcept;
 
@@ -134,7 +134,7 @@ namespace lux::runtime::entity_scene
 
         const EntitySceneCatalog* catalog_{};
         EntitySectionClient client_;
-        std::vector<const lux::scene::SectionRecord*> startup_;
+        std::vector<const lux::ecs::scene_format::SectionRecord*> startup_;
         std::vector<EntitySectionTicket> tickets_;
         std::vector<ReleasedGeneration> released_;
         std::optional<EntitySceneFailure> failure_;

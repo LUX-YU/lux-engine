@@ -30,14 +30,14 @@ namespace lux::runtime::spatial_partition
         }
 
         [[nodiscard]] bool validChannel(
-            const lux::scene::DemandChannelId& channel) noexcept
+            const lux::ecs::scene_format::DemandChannelId& channel) noexcept
         {
-            return lux::scene::isValidDemandChannelId(channel);
+            return lux::ecs::scene_format::isValidDemandChannelId(channel);
         }
 
         [[nodiscard]] bool recordHasChannel(
-            const lux::scene::SectionRecord& record,
-            const lux::scene::DemandChannelId& channel) noexcept
+            const lux::ecs::scene_format::SectionRecord& record,
+            const lux::ecs::scene_format::DemandChannelId& channel) noexcept
         {
             return std::any_of(
                 record.demand_channels.begin(),
@@ -235,7 +235,7 @@ namespace lux::runtime::spatial_partition
     {
         struct Aggregate final
         {
-            lux::scene::SectionRecord record;
+            lux::ecs::scene_format::SectionRecord record;
             std::size_t references{0u};
             std::uint32_t priority{0u};
         };
@@ -243,7 +243,7 @@ namespace lux::runtime::spatial_partition
         std::map<uuids::uuid, Aggregate> aggregate;
         std::map<
             uuids::uuid,
-            const lux::scene::SectionRecord*> dynamic_records;
+            const lux::ecs::scene_format::SectionRecord*> dynamic_records;
         for (const auto& source : plan.sources_)
         {
             for (const auto& record : source.records)
@@ -284,7 +284,7 @@ namespace lux::runtime::spatial_partition
             // canonical record independently (validated above).
             const auto resolveRecord = [this, &source](
                 lux::ecs::scene_format::EntitySectionId id) noexcept
-                -> const lux::scene::SectionRecord*
+                -> const lux::ecs::scene_format::SectionRecord*
             {
                 const auto generated = std::lower_bound(
                     source.records.begin(), source.records.end(), id,

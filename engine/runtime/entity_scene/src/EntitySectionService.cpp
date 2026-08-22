@@ -90,7 +90,7 @@ namespace lux::runtime::entity_scene
 
         [[nodiscard]] LoadResult decodeLoaded(
             lux::asset::AssetBlob blob,
-            lux::scene::SectionRecord record,
+            lux::ecs::scene_format::SectionRecord record,
             std::uint64_t request_generation) noexcept
         {
             if (!blob || blob.bytes.size() != record.encoded_bytes)
@@ -101,12 +101,12 @@ namespace lux::runtime::entity_scene
 
             lux::cxx::SharedBytes<> decoded_bytes;
             if (record.compression ==
-                lux::scene::SectionCompression::None)
+                lux::ecs::scene_format::SectionCompression::NONE)
             {
                 decoded_bytes = std::move(blob.bytes);
             }
             else if (record.compression ==
-                lux::scene::SectionCompression::Zstd)
+                lux::ecs::scene_format::SectionCompression::ZSTD)
             {
                 if (record.decoded_bytes == 0u ||
                     record.decoded_bytes >
@@ -193,7 +193,7 @@ namespace lux::runtime::entity_scene
         [[nodiscard]] LoadResult generateLoaded(
             const std::shared_ptr<const EntitySectionGeneratorCatalog>&
                 generators,
-            lux::scene::SectionRecord record,
+            lux::ecs::scene_format::SectionRecord record,
             std::uint64_t request_generation) noexcept
         {
             if (!generators)
@@ -233,7 +233,7 @@ namespace lux::runtime::entity_scene
 
     LoadEntitySection EntitySectionLoadClient::loadOperation(
         std::shared_ptr<const lux::asset::AssetVfs> vfs,
-        lux::scene::SectionRecord record,
+        lux::ecs::scene_format::SectionRecord record,
         std::uint64_t request_generation) const noexcept
     {
         return {
@@ -249,7 +249,7 @@ namespace lux::runtime::entity_scene
     }
 
     bool EntitySectionLoadClient::supports(
-        const lux::scene::SectionRecord& record) const noexcept
+        const lux::ecs::scene_format::SectionRecord& record) const noexcept
     {
         const auto control = control_.lock();
         if (!control || control->closing.load(std::memory_order_acquire) ||
@@ -257,13 +257,13 @@ namespace lux::runtime::entity_scene
         {
             return false;
         }
-        if (std::holds_alternative<lux::scene::StoredSectionSource>(
+        if (std::holds_alternative<lux::ecs::scene_format::StoredSectionSource>(
                 record.source))
         {
             return true;
         }
         const auto& generated =
-            std::get<lux::scene::GeneratedSectionSource>(
+            std::get<lux::ecs::scene_format::GeneratedSectionSource>(
                 record.source);
         return control->generators &&
             control->generators->contains(generated.generator);
@@ -303,7 +303,7 @@ namespace lux::runtime::entity_scene
                     return;
                 }
                 const auto* stored = std::get_if<
-                    lux::scene::StoredSectionSource>(
+                    lux::ecs::scene_format::StoredSectionSource>(
                         &request.record.source);
                 if (!stored)
                 {
@@ -346,7 +346,7 @@ namespace lux::runtime::entity_scene
 
                 auto vfs = std::move(request.vfs);
                 auto record = std::move(request.record);
-                auto path = std::get<lux::scene::StoredSectionSource>(
+                auto path = std::get<lux::ecs::scene_format::StoredSectionSource>(
                     record.source).content_path;
                 const auto generation = request.request_generation;
                 auto work = ex::schedule(

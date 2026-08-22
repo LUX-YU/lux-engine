@@ -65,7 +65,7 @@ namespace lux::runtime::entity_scene
         using Error = EEntitySectionLoadError;
 
         std::shared_ptr<const lux::asset::AssetVfs> vfs;
-        lux::scene::SectionRecord record;
+        lux::ecs::scene_format::SectionRecord record;
         std::uint64_t request_generation{0u};
     };
 
@@ -85,7 +85,7 @@ namespace lux::runtime::entity_scene
 
         [[nodiscard]] LoadEntitySection loadOperation(
             std::shared_ptr<const lux::asset::AssetVfs> vfs,
-            lux::scene::SectionRecord record,
+            lux::ecs::scene_format::SectionRecord record,
             std::uint64_t request_generation) const noexcept;
 
         [[nodiscard]] const lux::async::OperationPort<
@@ -101,7 +101,7 @@ namespace lux::runtime::entity_scene
         /// generated source requires its full canonical ID in the frozen
         /// catalog.
         [[nodiscard]] bool supports(
-            const lux::scene::SectionRecord& record) const
+            const lux::ecs::scene_format::SectionRecord& record) const
             noexcept;
 
     private:

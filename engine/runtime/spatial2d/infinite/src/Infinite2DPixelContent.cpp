@@ -192,10 +192,10 @@ namespace lux::runtime::spatial2d
     bool Infinite2DPixelSectionConfig::valid() const noexcept
     {
         return !field.empty() &&
-            lux::scene::isValidSectionGeneratorId(generator) &&
+            lux::ecs::scene_format::isValidSectionGeneratorId(generator) &&
             lux::ecs::isValidComponentSchemaId(chunk_schema) &&
             lux::ecs::scene_format::isValidStableId(content_type) &&
-            lux::scene::isValidDemandChannelId(demand_channel) &&
+            lux::ecs::scene_format::isValidDemandChannelId(demand_channel) &&
             foreground_material != lux::ecs::kEmptyMaterial &&
             landmark_material != lux::ecs::kEmptyMaterial &&
             sand_material != lux::ecs::kEmptyMaterial &&
@@ -234,7 +234,7 @@ namespace lux::runtime::spatial2d
         {
             const auto& state = *static_cast<const State*>(opaque);
             const auto* source = std::get_if<
-                lux::scene::GeneratedSectionSource>(
+                lux::ecs::scene_format::GeneratedSectionSource>(
                     &request.record.source);
             ChunkParameters parameters;
             if (!source || source->generator != state.config.generator ||
@@ -268,14 +268,14 @@ namespace lux::runtime::spatial2d
     }
 
     lux::cxx::expected<
-        lux::scene::SectionRecord,
+        lux::ecs::scene_format::SectionRecord,
         Infinite2DPixelContentFailure>
     Infinite2DPixelSectionSource::record(
         lux::math::GridCoord2i64 coordinate) const
     {
-        lux::scene::SectionRecord result;
+        lux::ecs::scene_format::SectionRecord result;
         result.id = makeSectionId(state_->config, coordinate);
-        result.source = lux::scene::GeneratedSectionSource{
+        result.source = lux::ecs::scene_format::GeneratedSectionSource{
             state_->config.generator,
             state_->config.seed,
             encodeParameters(coordinate)};
@@ -293,7 +293,7 @@ namespace lux::runtime::spatial2d
         }
         result.content_digest =
             lux::ecs::scene_format::entitySectionContentDigest(*encoded);
-        result.compression = lux::scene::SectionCompression::None;
+        result.compression = lux::ecs::scene_format::SectionCompression::NONE;
         result.encoded_bytes = encoded->size();
         result.decoded_bytes = encoded->size();
         result.entity_count = 1u;
@@ -311,7 +311,7 @@ namespace lux::runtime::spatial2d
         return [state = std::move(state)](
             lux::math::GridCoord2i64 coordinate)
             -> lux::cxx::expected<
-                lux::scene::SectionRecord,
+                lux::ecs::scene_format::SectionRecord,
                 Spatial2DIndexFailure>
         {
             Infinite2DPixelSectionSource source{state};

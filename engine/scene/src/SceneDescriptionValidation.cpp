@@ -10,6 +10,14 @@
 
 namespace lux::scene
 {
+    using lux::ecs::scene_format::GeneratedSectionSource;
+    using lux::ecs::scene_format::RequiredComponentSchema;
+    using lux::ecs::scene_format::SectionCompression;
+    using lux::ecs::scene_format::SectionRecord;
+    using lux::ecs::scene_format::StoredSectionSource;
+    using lux::ecs::scene_format::isValidDemandChannelId;
+    using lux::ecs::scene_format::isValidSectionGeneratorId;
+
     namespace
     {
         [[nodiscard]] SceneCodecFailure failure(
@@ -260,14 +268,14 @@ namespace lux::scene
                     ESceneCodecError::LIMIT_EXCEEDED,
                     "Section metadata exceeds codec limit"));
             }
-            if (section.compression != SectionCompression::None &&
-                section.compression != SectionCompression::Zstd)
+            if (section.compression != SectionCompression::NONE &&
+                section.compression != SectionCompression::ZSTD)
             {
                 return lux::cxx::unexpected(failure(
                     ESceneCodecError::INVALID_ARGUMENT,
                     "unsupported Section compression"));
             }
-            if (section.compression == SectionCompression::None &&
+            if (section.compression == SectionCompression::NONE &&
                 section.encoded_bytes != section.decoded_bytes)
             {
                 return lux::cxx::unexpected(failure(
@@ -292,7 +300,7 @@ namespace lux::scene
                 if (!isValidSectionGeneratorId(generated->generator) ||
                     generated->generator.name().size() >
                         limits.maximum_string_bytes ||
-                    section.compression != SectionCompression::None ||
+                    section.compression != SectionCompression::NONE ||
                     generated->parameters.size() >
                         limits.maximum_generator_parameter_bytes)
                 {
@@ -362,10 +370,7 @@ namespace lux::scene
                     "demand channels are not canonical"));
             }
 
-            return validateRequirements(
-                section.required_extensions,
-                section.required_components,
-                limits);
+            return validateRequirements({}, section.required_components, limits);
         }
 
         [[nodiscard]] SceneCodecResult<void> validatePackageImpl(
@@ -527,7 +532,7 @@ namespace lux::scene
     } // namespace
 
     SceneCodecResult<void> validateSectionRecord(
-        const SectionRecord& record,
+        const lux::ecs::scene_format::SectionRecord& record,
         const SceneCodecLimits& limits) noexcept
     {
         return validateSectionRecordImpl(record, limits);

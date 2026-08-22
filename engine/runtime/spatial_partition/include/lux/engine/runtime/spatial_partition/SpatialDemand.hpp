@@ -38,7 +38,7 @@ namespace lux::runtime::spatial_partition
     {
         SpatialDemandSourceId source;
         std::uint64_t generation{0u};
-        lux::scene::DemandChannelId channel;
+        lux::ecs::scene_format::DemandChannelId channel;
         std::vector<SpatialDemandEntry> demands;
         /// Source-owned records for procedurally addressable Sections. They
         /// participate in the same prospective transaction as `demands` and
@@ -46,7 +46,7 @@ namespace lux::runtime::spatial_partition
         /// may publish the same record only when every cooked field matches.
         /// Stored package records remain in EntitySectionRecordStore and do
         /// not need to be repeated here.
-        std::vector<lux::scene::SectionRecord> records;
+        std::vector<lux::ecs::scene_format::SectionRecord> records;
     };
 
     struct SpatialPartitionBudget final

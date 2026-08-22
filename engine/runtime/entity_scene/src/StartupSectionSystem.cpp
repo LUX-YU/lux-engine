@@ -53,7 +53,7 @@ namespace lux::runtime::entity_scene
                 package.sections.begin(),
                 package.sections.end(),
                 id,
-                [](const lux::scene::SectionRecord& record,
+                [](const lux::ecs::scene_format::SectionRecord& record,
                    const lux::ecs::scene_format::EntitySectionId& target)
                 {
                     return sectionIdLess(record.id, target);
@@ -63,7 +63,7 @@ namespace lux::runtime::entity_scene
         // Deterministic iterative DFS over canonical startup/dependency lists.
         // Postorder is a topological acquire order: every dependency is
         // admitted before the Section that pins it.
-        std::vector<const lux::scene::SectionRecord*> startup;
+        std::vector<const lux::ecs::scene_format::SectionRecord*> startup;
         std::vector<std::uint8_t> state(package.sections.size(), 0u);
         std::vector<std::pair<std::size_t, std::size_t>> stack;
         for (const auto& id : package.startup_sections)
@@ -142,7 +142,7 @@ namespace lux::runtime::entity_scene
         const EntitySceneCatalog& catalog,
         EntitySectionLoaderSystem& loader,
         lux::exec::AsyncRuntime& runtime,
-        std::vector<const lux::scene::SectionRecord*> startup,
+        std::vector<const lux::ecs::scene_format::SectionRecord*> startup,
         std::vector<EntitySectionTicket> tickets,
         std::vector<ReleasedGeneration> released) noexcept
         : catalog_(&catalog),
@@ -202,7 +202,6 @@ namespace lux::runtime::entity_scene
         if (!preflighted_)
         {
             const auto package_requirements = client_.validateRequirements(
-                catalog_->package().required_extensions,
                 catalog_->package().required_components);
             if (!package_requirements)
             {

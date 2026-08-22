@@ -31,7 +31,7 @@ namespace lux::runtime::spatial3d
             source_namespace;
         Spatial3DSectionSource sections;
         double cell_world_size{64.0};
-        lux::scene::DemandChannelId channel{
+        lux::ecs::scene_format::DemandChannelId channel{
             "lux.spatial3d.resident"};
         double active_distance_scale{1.0};
         double resident_distance_scale{1.0};

@@ -36,7 +36,7 @@ namespace lux::toolchain
             std::less<>>;
         using ComponentMap = std::map<
             std::string,
-            lux::scene::RequiredComponentSchema,
+            lux::ecs::scene_format::RequiredComponentSchema,
             std::less<>>;
         using FeatureSet = std::set<std::string, std::less<>>;
 
@@ -107,7 +107,7 @@ namespace lux::toolchain
         [[nodiscard]] lux::cxx::expected<void, EntitySceneCookFailure>
         mergeComponent(
             ComponentMap& destination,
-            lux::scene::RequiredComponentSchema requirement) noexcept
+            lux::ecs::scene_format::RequiredComponentSchema requirement) noexcept
         {
             if (!lux::ecs::isValidComponentSchemaId(requirement.id) ||
                 requirement.schema_version == 0u)
@@ -134,27 +134,6 @@ namespace lux::toolchain
             return {};
         }
 
-        [[nodiscard]] lux::cxx::expected<
-            std::vector<lux::scene::RequiredExtension>,
-            EntitySceneCookFailure>
-        canonicalExtensions(
-            std::vector<lux::scene::RequiredExtension> requirements) noexcept
-        {
-            ExtensionMap merged;
-            for (auto& requirement : requirements)
-            {
-                if (auto result = mergeExtension(
-                        merged, std::move(requirement)); !result)
-                {
-                    return lux::cxx::unexpected(result.error());
-                }
-            }
-            std::vector<lux::scene::RequiredExtension> result;
-            result.reserve(merged.size());
-            for (auto& [name, requirement] : merged)
-                result.push_back(std::move(requirement));
-            return result;
-        }
     } // namespace
 
     lux::cxx::expected<CookedSceneDescriptionBundle, EntitySceneCookFailure>
@@ -241,12 +220,12 @@ namespace lux::toolchain
                         encoded.error().detail));
             }
 
-            lux::scene::SectionRecord record;
+            lux::ecs::scene_format::SectionRecord record;
             record.id = section.image.section;
             record.source = std::move(section.source);
             record.content_digest =
                 lux::ecs::scene_format::entitySectionContentDigest(*encoded);
-            record.compression = lux::scene::SectionCompression::None;
+            record.compression = lux::ecs::scene_format::SectionCompression::NONE;
             record.encoded_bytes = encoded->size();
             record.decoded_bytes = encoded->size();
             record.entity_count = static_cast<std::uint32_t>(
@@ -260,30 +239,16 @@ namespace lux::toolchain
             std::sort(
                 record.demand_channels.begin(),
                 record.demand_channels.end(),
-                [](const lux::scene::DemandChannelId& lhs,
-                   const lux::scene::DemandChannelId& rhs)
+                [](const lux::ecs::scene_format::DemandChannelId& lhs,
+                   const lux::ecs::scene_format::DemandChannelId& rhs)
                 {
                     return lhs.name() < rhs.name();
                 });
 
-            auto section_extensions = canonicalExtensions(
-                std::move(section.required_extensions));
-            if (!section_extensions)
-                return lux::cxx::unexpected(section_extensions.error());
-            record.required_extensions = std::move(*section_extensions);
-            for (const auto& requirement : record.required_extensions)
-            {
-                if (auto merged = mergeExtension(
-                        package_extensions, requirement); !merged)
-                {
-                    return lux::cxx::unexpected(merged.error());
-                }
-            }
-
             record.required_components.reserve(section.image.schemas.size());
             for (const auto& schema : section.image.schemas)
             {
-                lux::scene::RequiredComponentSchema requirement{
+                lux::ecs::scene_format::RequiredComponentSchema requirement{
                     schema.id,
                     schema.schema_version};
                 record.required_components.push_back(requirement);

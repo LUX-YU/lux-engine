@@ -172,7 +172,7 @@ namespace
 
     struct SectionFixture final
     {
-        lux::scene::SectionRecord record;
+        lux::ecs::scene_format::SectionRecord record;
         lux::asset::asset_id_t asset;
         std::vector<std::byte> bytes;
     };
@@ -217,9 +217,9 @@ namespace
             lux::ecs::scene_format::encodeEntitySectionImage(image);
         assert(encoded);
 
-        lux::scene::SectionRecord record;
+        lux::ecs::scene_format::SectionRecord record;
         record.id = section;
-        record.source = lux::scene::StoredSectionSource{std::move(path)};
+        record.source = lux::ecs::scene_format::StoredSectionSource{std::move(path)};
         record.content_digest =
             lux::ecs::scene_format::entitySectionContentDigest(*encoded);
         record.encoded_bytes = encoded->size();
@@ -487,7 +487,7 @@ int main()
     lux::exec::AsyncRuntimeBuilder builder;
     auto generators = runtime::EntitySectionGeneratorCatalog::create({
         runtime::EntitySectionGeneratorDescriptor{
-            lux::scene::SectionGeneratorId{
+            lux::ecs::scene_format::SectionGeneratorId{
                 "org.lux.test.generator"},
             &generateMarkerSection,
             {},
@@ -712,7 +712,7 @@ int main()
     compressed.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000011")};
     compressed.compression =
-        lux::scene::SectionCompression::Zstd;
+        lux::ecs::scene_format::SectionCompression::ZSTD;
     compressed.encoded_bytes = 140u * 1024u * 1024u;
     compressed.decoded_bytes = 140u * 1024u * 1024u;
     auto compressed_rejected = manual_owner->client().acquire(
@@ -752,7 +752,7 @@ int main()
     unknown_compression.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000013")};
     unknown_compression.compression = static_cast<
-        lux::scene::SectionCompression>(0xffu);
+        lux::ecs::scene_format::SectionCompression>(0xffu);
     auto unknown_rejected = manual_owner->client().acquire(
         std::move(unknown_compression));
     assert(!unknown_rejected);
@@ -798,20 +798,6 @@ int main()
     assert(missing_dependency_result.error() ==
         runtime::EEntitySectionRequestError::MISSING_DEPENDENCY);
 
-    // Extension requirements are also fail-closed until availability is
-    // supplied; component requirements can be proven against the catalogue.
-
-    auto extension_required = common.record;
-    extension_required.id = lux::ecs::scene_format::EntitySectionId{
-        uuid("71000000-0000-4000-8000-000000000015")};
-    extension_required.required_extensions.push_back({
-        lux::extensions::ExtensionId{"org.lux.test.extension"}, 1u, 0u});
-    auto unavailable_extension = manual_owner->client().acquire(
-        std::move(extension_required));
-    assert(!unavailable_extension);
-    assert(unavailable_extension.error() ==
-        runtime::EEntitySectionRequestError::REQUIREMENT_UNAVAILABLE);
-
     auto component_required = common.record;
     component_required.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000016")};
@@ -829,8 +815,8 @@ int main()
     auto generated_valid = common.record;
     generated_valid.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000018")};
-    generated_valid.source = lux::scene::GeneratedSectionSource{
-        lux::scene::SectionGeneratorId{"org.lux.test.generator"},
+    generated_valid.source = lux::ecs::scene_format::GeneratedSectionSource{
+        lux::ecs::scene_format::SectionGeneratorId{"org.lux.test.generator"},
         9u,
         {std::byte{0x2au}}};
     auto generated_image = makeMarkerImage(generated_valid.id);
@@ -863,9 +849,9 @@ int main()
     auto unknown_generator = generated_valid;
     unknown_generator.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000019")};
-    std::get<lux::scene::GeneratedSectionSource>(
+    std::get<lux::ecs::scene_format::GeneratedSectionSource>(
         unknown_generator.source).generator =
-            lux::scene::SectionGeneratorId{
+            lux::ecs::scene_format::SectionGeneratorId{
                 "org.lux.test.unknown_generator"};
     auto unavailable_source =
         manual_owner->client().acquire(std::move(unknown_generator));
@@ -880,8 +866,8 @@ int main()
     auto generated_mismatch = common.record;
     generated_mismatch.id = lux::ecs::scene_format::EntitySectionId{
         uuid("71000000-0000-4000-8000-000000000005")};
-    generated_mismatch.source = lux::scene::GeneratedSectionSource{
-        lux::scene::SectionGeneratorId{"org.lux.test.generator"},
+    generated_mismatch.source = lux::ecs::scene_format::GeneratedSectionSource{
+        lux::ecs::scene_format::SectionGeneratorId{"org.lux.test.generator"},
         7u,
         {}};
     auto mismatch_ticket =

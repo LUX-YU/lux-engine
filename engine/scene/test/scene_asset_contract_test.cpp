@@ -119,16 +119,16 @@ namespace
         package.startup_sections.push_back(
             format::EntitySectionId{section_uuid});
 
-        scene::SectionRecord section;
+        lux::ecs::scene_format::SectionRecord section;
         section.id = format::EntitySectionId{section_uuid};
-        section.source = scene::StoredSectionSource{"/Game/startup_lxes"};
+        section.source = lux::ecs::scene_format::StoredSectionSource{"/Game/startup_lxes"};
         section.content_digest = lux::cxx::algorithm::Sha256::hash(
             std::span<const std::byte>{});
-        section.compression = scene::SectionCompression::None;
+        section.compression = lux::ecs::scene_format::SectionCompression::NONE;
         section.encoded_bytes = 64u;
         section.decoded_bytes = 64u;
         section.entity_count = 1u;
-        section.required_components.push_back(scene::RequiredComponentSchema{
+        section.required_components.push_back(lux::ecs::scene_format::RequiredComponentSchema{
             lux::ecs::componentSchemaId("org.lux.test.component"),
             1u});
         package.sections.push_back(section);

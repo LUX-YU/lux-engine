@@ -411,7 +411,7 @@ namespace
 
     struct FieldSection final
     {
-        lux::scene::SectionRecord record;
+        lux::ecs::scene_format::SectionRecord record;
         lux::asset::asset_id_t asset;
         std::vector<std::byte> bytes;
         std::string path;
@@ -455,7 +455,7 @@ namespace
         result.bytes = std::move(*encoded);
         result.path = "Sections/PixelField_lxes";
         result.record.id = image.section;
-        result.record.source = lux::scene::StoredSectionSource{
+        result.record.source = lux::ecs::scene_format::StoredSectionSource{
             "/Game/" + result.path};
         result.record.content_digest =
             lux::ecs::scene_format::entitySectionContentDigest(result.bytes);
@@ -542,7 +542,7 @@ namespace
     struct TilemapProofState final
     {
         lux::ecs::PersistentEntityId tilemap;
-        lux::scene::SectionGeneratorId generator{
+        lux::ecs::scene_format::SectionGeneratorId generator{
             "lux.tilemap.infinite2d.chunk.test"};
         lux::ecs::ComponentSchemaId schema{
             lux::ecs::componentSchemaId(kTileChunkSchema)};
@@ -679,7 +679,7 @@ namespace
         {
             const auto& state = *static_cast<const TilemapProofState*>(opaque);
             const auto* source = std::get_if<
-                lux::scene::GeneratedSectionSource>(
+                lux::ecs::scene_format::GeneratedSectionSource>(
                     &request.record.source);
             lux::math::GridCoord2i64 coordinate;
             if (!source || source->generator != state.generator ||
@@ -700,13 +700,13 @@ namespace
         return result;
     }
 
-    lux::scene::SectionRecord tileProofRecord(
+    lux::ecs::scene_format::SectionRecord tileProofRecord(
         const TilemapProofState& state,
         lux::math::GridCoord2i64 coordinate)
     {
-        lux::scene::SectionRecord result;
+        lux::ecs::scene_format::SectionRecord result;
         result.id = tileProofSectionId(coordinate);
-        result.source = lux::scene::GeneratedSectionSource{
+        result.source = lux::ecs::scene_format::GeneratedSectionSource{
             state.generator, 0u, tileProofParameters(coordinate)};
         auto image = makeTileProofImage(
             state,
@@ -741,7 +741,7 @@ namespace
         assert(encoded);
         result.bytes = std::move(*encoded);
         result.record.id = section;
-        result.record.source = lux::scene::StoredSectionSource{
+        result.record.source = lux::ecs::scene_format::StoredSectionSource{
             "/Game/" + result.path};
         result.record.content_digest =
             lux::ecs::scene_format::entitySectionContentDigest(result.bytes);
@@ -1025,12 +1025,12 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
 
     auto generated = spatial2d::Infinite2DPixelSectionSource::create({
         .field = field_id,
-        .generator = lux::scene::SectionGeneratorId{
+        .generator = lux::ecs::scene_format::SectionGeneratorId{
             "lux.pixel.infinite2d.chunk"},
         .chunk_schema = lux::ecs::componentSchemaId(kPixelChunkSchema),
         .content_type = lux::ecs::scene_format::ContentTypeId{
             "lux.pixel.chunk"},
-        .demand_channel = lux::scene::DemandChannelId{
+        .demand_channel = lux::ecs::scene_format::DemandChannelId{
             std::string{kDemandChannel}},
         .seed = 0x4c55583244494e46ull,
         .foreground_material = kForegroundMaterial,
@@ -1174,7 +1174,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
             std::move(*spatial_source),
             spatial2d::SpatialInterest2DConfig{
                 .section_world_size = 64.0,
-                .channel = lux::scene::DemandChannelId{
+                .channel = lux::ecs::scene_format::DemandChannelId{
                     std::string{kDemandChannel}},
                 .resident_priority = 1u,
                 .maximum_sources = 2u});

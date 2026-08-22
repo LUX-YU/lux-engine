@@ -27,7 +27,7 @@ namespace lux::runtime::spatial2d
     struct SpatialInterest2DConfig final
     {
         double section_world_size{64.0};
-        lux::scene::DemandChannelId channel{
+        lux::ecs::scene_format::DemandChannelId channel{
             "lux.spatial2d.resident"};
         std::uint32_t resident_priority{1u};
         std::size_t maximum_sources{8u};

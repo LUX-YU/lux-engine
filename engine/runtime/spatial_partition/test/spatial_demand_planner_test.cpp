@@ -16,15 +16,15 @@ namespace
         return uuids::uuid::from_string(value).value();
     }
 
-    lux::scene::SectionRecord record(
+    lux::ecs::scene_format::SectionRecord record(
         const char* id,
         std::uint64_t decoded_bytes,
         std::uint32_t entity_count,
         std::string channel = "org.lux.test.visible")
     {
-        lux::scene::SectionRecord value;
+        lux::ecs::scene_format::SectionRecord value;
         value.id = lux::ecs::scene_format::EntitySectionId{uuid(id)};
-        value.source = lux::scene::StoredSectionSource{
+        value.source = lux::ecs::scene_format::StoredSectionSource{
             "/Game/Sections/Test_lxes"};
         value.content_digest[0] = std::byte{1u};
         value.encoded_bytes = decoded_bytes;
@@ -45,12 +45,12 @@ namespace
             lux::runtime::spatial_partition::SpatialDemandSourceId{
                 std::move(source)},
             generation,
-            lux::scene::DemandChannelId{std::move(channel)},
+            lux::ecs::scene_format::DemandChannelId{std::move(channel)},
             {demands}};
     }
 
     lux::runtime::entity_scene::EntitySceneCatalog catalog(
-        std::vector<lux::scene::SectionRecord> records)
+        std::vector<lux::ecs::scene_format::SectionRecord> records)
     {
         std::sort(
             records.begin(), records.end(),
@@ -194,8 +194,8 @@ int main()
     // identical record; a conflicting digest fails without changing state.
     auto generated = record(
         "81000000-0000-4000-8000-000000000005", 12u, 1u);
-    generated.source = lux::scene::GeneratedSectionSource{
-        lux::scene::SectionGeneratorId{"org.lux.test.generator"},
+    generated.source = lux::ecs::scene_format::GeneratedSectionSource{
+        lux::ecs::scene_format::SectionGeneratorId{"org.lux.test.generator"},
         99u,
         {std::byte{1u}, std::byte{2u}}};
     const auto generated_id = generated.id;

@@ -43,13 +43,13 @@ namespace lux::runtime::spatial2d
     struct Infinite2DPixelSectionConfig final
     {
         lux::ecs::PersistentEntityId field;
-        lux::scene::SectionGeneratorId generator{
+        lux::ecs::scene_format::SectionGeneratorId generator{
             "lux.pixel.infinite2d.chunk"};
         lux::ecs::ComponentSchemaId chunk_schema{
             lux::ecs::componentSchemaId("lux.pixel.chunk2d")};
         lux::ecs::scene_format::ContentTypeId content_type{
             "lux.pixel.chunk"};
-        lux::scene::DemandChannelId demand_channel{
+        lux::ecs::scene_format::DemandChannelId demand_channel{
             "lux.spatial2d.resident"};
         std::uint64_t seed{0u};
         lux::ecs::MaterialId foreground_material{1u};
@@ -81,7 +81,7 @@ namespace lux::runtime::spatial2d
         [[nodiscard]] Spatial2DSectionRecordFactory recordFactory() const;
 
         [[nodiscard]] lux::cxx::expected<
-            lux::scene::SectionRecord,
+            lux::ecs::scene_format::SectionRecord,
             Infinite2DPixelContentFailure>
         record(lux::math::GridCoord2i64 coordinate) const;
 

@@ -37,7 +37,7 @@ namespace
 
     struct SectionFixture final
     {
-        lux::scene::SectionRecord record;
+        lux::ecs::scene_format::SectionRecord record;
         lux::asset::asset_id_t asset;
         std::vector<std::byte> bytes;
         std::string provider_path;
@@ -59,9 +59,9 @@ namespace
         auto bytes = format::encodeEntitySectionImage(image);
         assert(bytes);
 
-        scene::SectionRecord record;
+        lux::ecs::scene_format::SectionRecord record;
         record.id = image.section;
-        record.source = scene::StoredSectionSource{
+        record.source = lux::ecs::scene_format::StoredSectionSource{
             "/Game/" + provider_path};
         record.content_digest = format::entitySectionContentDigest(*bytes);
         record.encoded_bytes = bytes->size();
@@ -170,7 +170,7 @@ namespace
             lux::runtime::spatial_partition::SpatialDemandSourceId{
                 std::move(source)};
         result.generation = generation;
-        result.channel = lux::scene::DemandChannelId{
+        result.channel = lux::ecs::scene_format::DemandChannelId{
             "org.lux.test.visible"};
         for (const auto section : sections)
             result.demands.push_back({section, 1u});
@@ -230,7 +230,7 @@ namespace
     }
 
     lux::runtime::entity_scene::EntitySceneCatalog catalog(
-        std::vector<lux::scene::SectionRecord> records)
+        std::vector<lux::ecs::scene_format::SectionRecord> records)
     {
         std::sort(
             records.begin(), records.end(),

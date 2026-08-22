@@ -13,16 +13,16 @@ namespace
         return *parsed;
     }
 
-    [[nodiscard]] lux::scene::SectionRecord section(
+    [[nodiscard]] lux::ecs::scene_format::SectionRecord section(
         std::string_view id,
         std::string path)
     {
-        lux::scene::SectionRecord result;
+        lux::ecs::scene_format::SectionRecord result;
         result.id = lux::ecs::scene_format::EntitySectionId{uuid(id)};
-        result.source = lux::scene::StoredSectionSource{std::move(path)};
+        result.source = lux::ecs::scene_format::StoredSectionSource{std::move(path)};
         result.content_digest = lux::cxx::algorithm::Sha256::hash(
             std::span<const std::byte>{});
-        result.compression = lux::scene::SectionCompression::None;
+        result.compression = lux::ecs::scene_format::SectionCompression::NONE;
         result.encoded_bytes = 64u;
         result.decoded_bytes = 64u;
         result.entity_count = 1u;
@@ -44,7 +44,7 @@ namespace
             1u,
             0u});
         result.required_components.push_back(
-            lux::scene::RequiredComponentSchema{
+            lux::ecs::scene_format::RequiredComponentSchema{
                 lux::ecs::componentSchemaId("org.lux.test.component"),
                 1u});
         return result;
@@ -60,7 +60,7 @@ int main()
     assert(scene::validateSectionRecord(package.sections.front()));
 
     auto invalid_path = package;
-    std::get<scene::StoredSectionSource>(
+    std::get<lux::ecs::scene_format::StoredSectionSource>(
         invalid_path.sections.front().source).content_path =
             "Game/not-absolute";
     const auto rejected_path = scene::validateSceneDescription(invalid_path);

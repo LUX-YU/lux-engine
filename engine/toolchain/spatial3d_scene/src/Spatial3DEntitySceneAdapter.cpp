@@ -1979,7 +1979,7 @@ namespace lux::toolchain
     {
         using lux::ecs::scene_format::EntityOrdinal;
         using lux::ecs::scene_format::EntitySectionId;
-        using lux::scene::DemandChannelId;
+        using lux::ecs::scene_format::DemandChannelId;
         using lux::ecs::scene_format::kInvalidEntityOrdinal;
 
         if (source.scene.is_nil() ||
@@ -2814,7 +2814,7 @@ namespace lux::toolchain
             }
             EntitySectionCookInput input;
             input.image = std::move(*image);
-            input.source = lux::scene::StoredSectionSource{
+            input.source = lux::ecs::scene_format::StoredSectionSource{
                 config.section_content_prefix + "/" +
                 uuidKey(section.id.value())};
             if (demand)

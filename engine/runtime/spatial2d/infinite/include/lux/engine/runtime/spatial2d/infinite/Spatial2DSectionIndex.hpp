@@ -42,7 +42,7 @@ namespace lux::runtime::spatial2d
         /// Present only for procedurally addressed Sections. The generic
         /// partition owns this record with the demand source and releases it
         /// when that source moves or closes.
-        std::optional<lux::scene::SectionRecord> record;
+        std::optional<lux::ecs::scene_format::SectionRecord> record;
         bool active{false};
     };
 
@@ -120,7 +120,7 @@ namespace lux::runtime::spatial2d
 
     using Spatial2DSectionRecordFactory = lux::cxx::move_only_function<
         lux::cxx::expected<
-            lux::scene::SectionRecord,
+            lux::ecs::scene_format::SectionRecord,
             Spatial2DIndexFailure>(lux::math::GridCoord2i64)>;
 
     /// One dimensional leaf source can be finite (cooked index) or

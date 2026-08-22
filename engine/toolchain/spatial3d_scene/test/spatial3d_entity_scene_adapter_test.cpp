@@ -422,7 +422,7 @@ int main()
         catalog_sections.insert(uuids::to_string(entry.section.value()));
         const auto record = std::ranges::find_if(
             first->package.sections,
-            [&entry](const lux::scene::SectionRecord& value)
+            [&entry](const lux::ecs::scene_format::SectionRecord& value)
             {
                 return value.id.value() == entry.section.value();
             });
@@ -465,8 +465,8 @@ int main()
     for (const auto& section : first->sections)
     {
         assert(section.record.source ==
-            lux::scene::SectionSource{
-                lux::scene::StoredSectionSource{
+            lux::ecs::scene_format::SectionSource{
+                lux::ecs::scene_format::StoredSectionSource{
                     "/Game/EntitySections/" + uuids::to_string(
                         section.record.id.value())}});
         assert(std::ranges::is_sorted(section.image.component_names));
@@ -610,8 +610,8 @@ int main()
     for (const auto& section : custom->sections)
     {
         assert(section.record.source ==
-            lux::scene::SectionSource{
-                lux::scene::StoredSectionSource{
+            lux::ecs::scene_format::SectionSource{
+                lux::ecs::scene_format::StoredSectionSource{
                     "/Game/TestEntitySections/" + uuids::to_string(
                         section.record.id.value())}});
     }

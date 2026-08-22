@@ -40,7 +40,7 @@ namespace lux::spatial3d
     struct SceneCatalogBand final
     {
         SourceId source;
-        lux::scene::DemandChannelId demand_channel;
+        lux::ecs::scene_format::DemandChannelId demand_channel;
         std::uint8_t level{0u};
         double cell_world_size{0.0};
         double active_distance_scale{1.0};

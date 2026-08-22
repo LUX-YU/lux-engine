@@ -23,7 +23,7 @@ namespace lux::runtime::entity_scene
         // Owning record lets a leaf generator derive identity and content from
         // one canonical source recipe. The callback must not retain views into
         // this request.
-        lux::scene::SectionRecord record;
+        lux::ecs::scene_format::SectionRecord record;
     };
 
     enum class EEntitySectionGeneratorError : std::uint8_t
@@ -39,7 +39,7 @@ namespace lux::runtime::entity_scene
     {
         EEntitySectionGeneratorError error{
             EEntitySectionGeneratorError::INVALID_DESCRIPTOR};
-        lux::scene::SectionGeneratorId generator;
+        lux::ecs::scene_format::SectionGeneratorId generator;
         std::string conflicting_name;
         std::string detail;
     };
@@ -56,7 +56,7 @@ namespace lux::runtime::entity_scene
 
     struct EntitySectionGeneratorDescriptor final
     {
-        lux::scene::SectionGeneratorId id;
+        lux::ecs::scene_format::SectionGeneratorId id;
         GenerateEntitySectionFn generate{nullptr};
         // Immutable provider state. The noexcept callback may run concurrently
         // on the background CPU arena and must treat this state as read-only.
@@ -82,7 +82,7 @@ namespace lux::runtime::entity_scene
             GeneratedEntitySectionRequest request) const noexcept;
 
         [[nodiscard]] bool contains(
-            const lux::scene::SectionGeneratorId& generator) const noexcept;
+            const lux::ecs::scene_format::SectionGeneratorId& generator) const noexcept;
 
         [[nodiscard]] std::size_t size() const noexcept
         {

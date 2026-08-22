@@ -65,7 +65,7 @@ namespace lux::spatial3d
             const SceneCatalogBand& band) noexcept
         {
             return lux::ecs::scene_format::isValidStableId(band.source) &&
-                lux::scene::isValidDemandChannelId(
+                lux::ecs::scene_format::isValidDemandChannelId(
                     band.demand_channel) &&
                 std::isfinite(band.cell_world_size) &&
                 band.cell_world_size > 0.0 &&
@@ -334,7 +334,7 @@ namespace lux::spatial3d
         {
             SceneCatalogBand band;
             band.source = SourceId{reader.readString()};
-            band.demand_channel = lux::scene::DemandChannelId{
+            band.demand_channel = lux::ecs::scene_format::DemandChannelId{
                 reader.readString()};
             band.level = reader.readPod<std::uint8_t>();
             band.cell_world_size = reader.readPod<double>();

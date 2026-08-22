@@ -27,14 +27,14 @@ namespace lux::runtime::entity_scene
         return EntitySceneCatalog{std::move(package)};
     }
 
-    const lux::scene::SectionRecord* EntitySceneCatalog::findSection(
+    const lux::ecs::scene_format::SectionRecord* EntitySceneCatalog::findSection(
         lux::ecs::scene_format::EntitySectionId id) const noexcept
     {
         const auto found = std::lower_bound(
             package_.sections.begin(),
             package_.sections.end(),
             id,
-            [](const lux::scene::SectionRecord& record,
+            [](const lux::ecs::scene_format::SectionRecord& record,
                const lux::ecs::scene_format::EntitySectionId& target)
             {
                 return sectionIdLess(record.id, target);

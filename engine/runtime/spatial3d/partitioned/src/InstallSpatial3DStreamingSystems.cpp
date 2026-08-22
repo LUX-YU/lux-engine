@@ -42,8 +42,8 @@ namespace lux::runtime
     namespace
     {
         [[nodiscard]] bool recordHasChannel(
-            const lux::scene::SectionRecord& record,
-            const lux::scene::DemandChannelId& channel) noexcept
+            const lux::ecs::scene_format::SectionRecord& record,
+            const lux::ecs::scene_format::DemandChannelId& channel) noexcept
         {
             return std::any_of(
                 record.demand_channels.begin(),
@@ -73,7 +73,7 @@ namespace lux::runtime
             // opaque config is an exact index over the authoritative LXSC
             // records, rather than a second, drifting world catalog.
             std::map<uuids::uuid, std::uint32_t> configured_sections;
-            std::vector<lux::scene::DemandChannelId>
+            std::vector<lux::ecs::scene_format::DemandChannelId>
                 catalog_channels;
             for (const auto& band : config.bands)
             {
@@ -108,7 +108,7 @@ namespace lux::runtime
 
             for (const auto& record : scene.sections())
             {
-                std::optional<lux::scene::DemandChannelId>
+                std::optional<lux::ecs::scene_format::DemandChannelId>
                     record_catalog_channel;
                 for (const auto& channel : catalog_channels)
                 {

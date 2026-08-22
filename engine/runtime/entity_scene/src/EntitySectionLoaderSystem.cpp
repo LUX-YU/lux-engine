@@ -80,19 +80,19 @@ namespace lux::runtime::entity_scene
         }
 
         [[nodiscard]] std::optional<std::size_t> accountedLoadBytes(
-            const lux::scene::SectionRecord& record) noexcept
+            const lux::ecs::scene_format::SectionRecord& record) noexcept
         {
             std::size_t result = sizeof(LoadEntitySection);
             switch (record.compression)
             {
-            case lux::scene::SectionCompression::None:
+            case lux::ecs::scene_format::SectionCompression::NONE:
                 if (record.encoded_bytes != record.decoded_bytes ||
                     !checkedAdd(result, record.encoded_bytes))
                 {
                     return std::nullopt;
                 }
                 break;
-            case lux::scene::SectionCompression::Zstd:
+            case lux::ecs::scene_format::SectionCompression::ZSTD:
                 if (!checkedAdd(result, record.encoded_bytes) ||
                     !checkedAdd(result, record.decoded_bytes))
                 {
@@ -104,13 +104,13 @@ namespace lux::runtime::entity_scene
             }
 
             if (const auto* stored = std::get_if<
-                    lux::scene::StoredSectionSource>(&record.source))
+                    lux::ecs::scene_format::StoredSectionSource>(&record.source))
             {
                 if (!checkedAdd(result, stored->content_path.size()))
                     return std::nullopt;
             }
             else if (const auto* generated = std::get_if<
-                         lux::scene::GeneratedSectionSource>(
+                         lux::ecs::scene_format::GeneratedSectionSource>(
                          &record.source))
             {
                 if (!checkedAdd(result, generated->generator.name().size()) ||
@@ -121,21 +121,16 @@ namespace lux::runtime::entity_scene
             }
             if (!checkedArrayBytes<lux::ecs::scene_format::EntitySectionId>(
                     result, record.dependencies.size()) ||
-                !checkedArrayBytes<lux::scene::DemandChannelId>(
+                !checkedArrayBytes<lux::ecs::scene_format::DemandChannelId>(
                     result, record.demand_channels.size()) ||
-                !checkedArrayBytes<lux::scene::RequiredExtension>(
-                    result, record.required_extensions.size()) ||
                 !checkedArrayBytes<
-                    lux::scene::RequiredComponentSchema>(
+                    lux::ecs::scene_format::RequiredComponentSchema>(
                     result, record.required_components.size()))
             {
                 return std::nullopt;
             }
             for (const auto& channel : record.demand_channels)
                 if (!checkedAdd(result, channel.name().size()))
-                    return std::nullopt;
-            for (const auto& extension : record.required_extensions)
-                if (!checkedAdd(result, extension.id.name().size()))
                     return std::nullopt;
             for (const auto& component : record.required_components)
                 if (!checkedAdd(result, component.id.name.size()))
@@ -154,7 +149,7 @@ namespace lux::runtime::entity_scene
 
         struct Slot final
         {
-            lux::scene::SectionRecord record;
+            lux::ecs::scene_format::SectionRecord record;
             std::optional<PreparedEntityBatch> prepared;
             std::optional<EntityBatchFailure> batch_failure;
             std::optional<EEntitySectionLoadError> load_failure;
@@ -233,15 +228,9 @@ namespace lux::runtime::entity_scene
 
         [[nodiscard]] std::optional<EEntitySectionRequestError>
         validateRequirements(
-            const lux::scene::SectionRecord& record) const
+            const lux::ecs::scene_format::SectionRecord& record) const
             noexcept
         {
-            // Extension availability belongs to scene assembly. Until that
-            // snapshot is injected here, a requirement cannot be proven.
-            if (!record.required_extensions.empty())
-            {
-                return EEntitySectionRequestError::REQUIREMENT_UNAVAILABLE;
-            }
             for (const auto& requirement : record.required_components)
             {
                 if (!lux::ecs::isValidComponentSchemaId(requirement.id))
@@ -593,7 +582,7 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<EntitySectionTicket, EEntitySectionRequestError>
     EntitySectionClient::acquire(
-        lux::scene::SectionRecord record) const noexcept
+        lux::ecs::scene_format::SectionRecord record) const noexcept
     {
         const auto control = control_.lock();
         if (!control)
@@ -624,7 +613,7 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<void, EEntitySectionRequestError>
     EntitySectionClient::validate(
-        const lux::scene::SectionRecord& record) const noexcept
+        const lux::ecs::scene_format::SectionRecord& record) const noexcept
     {
         const auto control = control_.lock();
         if (!control)
@@ -644,8 +633,7 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<void, EEntitySectionRequestError>
     EntitySectionClient::validateRequirements(
-        std::span<const lux::scene::RequiredExtension> extensions,
-        std::span<const lux::scene::RequiredComponentSchema>
+        std::span<const lux::ecs::scene_format::RequiredComponentSchema>
             components) const noexcept
     {
         const auto control = control_.lock();
@@ -661,7 +649,7 @@ namespace lux::runtime::entity_scene
             return lux::cxx::unexpected(
                 EEntitySectionRequestError::OWNER_CLOSED);
         }
-        return owner->validateRequirements(extensions, components);
+        return owner->validateRequirements(components);
     }
 
     bool EntitySectionClient::boundTo(
@@ -740,7 +728,7 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<EntitySectionTicket, EEntitySectionRequestError>
     EntitySectionLoaderSystem::acquire(
-        lux::scene::SectionRecord record) noexcept
+        lux::ecs::scene_format::SectionRecord record) noexcept
     {
         requireOwnerThread(*impl_->control);
         if (impl_->control->closing.load(std::memory_order_acquire))
@@ -756,7 +744,7 @@ namespace lux::runtime::entity_scene
         if (!impl_->config.valid() || !impl_->loading ||
             !lux::scene::validateSectionRecord(record) ||
             (std::holds_alternative<
-                 lux::scene::StoredSectionSource>(record.source) &&
+                 lux::ecs::scene_format::StoredSectionSource>(record.source) &&
              !impl_->vfs))
         {
             return lux::cxx::unexpected(
@@ -899,7 +887,7 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<void, EEntitySectionRequestError>
     EntitySectionLoaderSystem::validate(
-        const lux::scene::SectionRecord& record) const noexcept
+        const lux::ecs::scene_format::SectionRecord& record) const noexcept
     {
         requireOwnerThread(*impl_->control);
         if (impl_->control->closing.load(std::memory_order_acquire))
@@ -915,7 +903,7 @@ namespace lux::runtime::entity_scene
         if (!impl_->config.valid() || !impl_->loading ||
             !lux::scene::validateSectionRecord(record) ||
             (std::holds_alternative<
-                 lux::scene::StoredSectionSource>(record.source) &&
+                 lux::ecs::scene_format::StoredSectionSource>(record.source) &&
              !impl_->vfs))
         {
             return lux::cxx::unexpected(
@@ -939,14 +927,11 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<void, EEntitySectionRequestError>
     EntitySectionLoaderSystem::validateRequirements(
-        std::span<const lux::scene::RequiredExtension> extensions,
-        std::span<const lux::scene::RequiredComponentSchema>
+        std::span<const lux::ecs::scene_format::RequiredComponentSchema>
             components) const noexcept
     {
         requireOwnerThread(*impl_->control);
-        lux::scene::SectionRecord requirements;
-        requirements.required_extensions.assign(
-            extensions.begin(), extensions.end());
+        lux::ecs::scene_format::SectionRecord requirements;
         requirements.required_components.assign(
             components.begin(), components.end());
         if (const auto failure = impl_->validateRequirements(requirements))

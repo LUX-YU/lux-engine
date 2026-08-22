@@ -149,7 +149,7 @@ namespace lux::runtime::entity_scene
         [[nodiscard]] lux::cxx::expected<
             EntitySectionTicket,
             EEntitySectionRequestError>
-        acquire(lux::scene::SectionRecord record) const noexcept;
+        acquire(lux::ecs::scene_format::SectionRecord record) const noexcept;
 
         /// Side-effect-free admission/requirement preflight. Scene selectors
         /// use this for the whole startup set before acquiring the first
@@ -158,15 +158,14 @@ namespace lux::runtime::entity_scene
             void,
             EEntitySectionRequestError>
         validate(
-            const lux::scene::SectionRecord& record) const
+            const lux::ecs::scene_format::SectionRecord& record) const
             noexcept;
 
         [[nodiscard]] lux::cxx::expected<
             void,
             EEntitySectionRequestError>
         validateRequirements(
-            std::span<const lux::scene::RequiredExtension> extensions,
-            std::span<const lux::scene::RequiredComponentSchema>
+            std::span<const lux::ecs::scene_format::RequiredComponentSchema>
                 components) const noexcept;
 
         [[nodiscard]] explicit operator bool() const noexcept;
@@ -263,19 +262,18 @@ namespace lux::runtime::entity_scene
         [[nodiscard]] lux::cxx::expected<
             EntitySectionTicket,
             EEntitySectionRequestError>
-        acquire(lux::scene::SectionRecord record) noexcept;
+        acquire(lux::ecs::scene_format::SectionRecord record) noexcept;
         [[nodiscard]] lux::cxx::expected<
             void,
             EEntitySectionRequestError>
         validate(
-            const lux::scene::SectionRecord& record) const
+            const lux::ecs::scene_format::SectionRecord& record) const
             noexcept;
         [[nodiscard]] lux::cxx::expected<
             void,
             EEntitySectionRequestError>
         validateRequirements(
-            std::span<const lux::scene::RequiredExtension> extensions,
-            std::span<const lux::scene::RequiredComponentSchema>
+            std::span<const lux::ecs::scene_format::RequiredComponentSchema>
                 components) const noexcept;
         void release(std::uint32_t slot, std::uint64_t generation) noexcept;
         [[nodiscard]] EEntitySectionState state(

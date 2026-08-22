@@ -43,7 +43,7 @@ namespace lux::runtime::spatial3d
         /// are moved into one prospective partition transaction. Catalog
         /// windows leave this empty because their records already live in the
         /// immutable EntitySectionRecordStore.
-        std::vector<lux::scene::SectionRecord> records;
+        std::vector<lux::ecs::scene_format::SectionRecord> records;
         std::size_t active_sections{0u};
     };
 
@@ -119,7 +119,7 @@ namespace lux::runtime::spatial3d
 
     using Spatial3DSectionRecordRule = lux::cxx::move_only_function<
         lux::cxx::expected<
-            lux::scene::SectionRecord,
+            lux::ecs::scene_format::SectionRecord,
             Spatial3DSourceFailure>(lux::math::GridCoord3i64)>;
 
     /// A leaf source is either a finite cooked catalog or an unbounded rule

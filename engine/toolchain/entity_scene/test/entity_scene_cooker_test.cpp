@@ -216,7 +216,7 @@ int main()
     EntitySectionCookInput later;
     later.image = emptyImage(
         "20000000-0000-4000-8000-000000000002");
-    later.source = lux::scene::StoredSectionSource{
+    later.source = lux::ecs::scene_format::StoredSectionSource{
         "/Game/EntitySections/20000000_0000_4000_8000_000000000002"};
     later.dependencies.push_back(
         lux::ecs::scene_format::EntitySectionId{section_id.value()});
@@ -224,10 +224,10 @@ int main()
 
     EntitySectionCookInput startup;
     startup.image = std::move(*image);
-    startup.source = lux::scene::StoredSectionSource{
+    startup.source = lux::ecs::scene_format::StoredSectionSource{
         "/Game/EntitySections/20000000_0000_4000_8000_000000000001"};
     startup.demand_channels.push_back(
-        lux::scene::DemandChannelId{"lux.test.startup"});
+        lux::ecs::scene_format::DemandChannelId{"lux.test.startup"});
     scene.sections.push_back(std::move(startup));
 
     auto cooked = cookSceneDescription(std::move(scene));

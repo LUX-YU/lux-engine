@@ -45,13 +45,13 @@ int main()
         lux::ecs::scene_format::EntitySectionId>);
     static_assert(std::is_same_v<
         decltype(canonical::SceneCatalogBand::demand_channel),
-        lux::scene::DemandChannelId>);
+        lux::ecs::scene_format::DemandChannelId>);
 
     canonical::SceneCatalog catalog;
     catalog.residency = {4096u, 128u, 4u, 16u};
     catalog.bands.push_back({
         canonical::SourceId{"lux.spatial3d.source.test"},
-        lux::scene::DemandChannelId{canonical::kResidentDemandChannelName},
+        lux::ecs::scene_format::DemandChannelId{canonical::kResidentDemandChannelName},
         0u,
         64.0,
         1.0,
@@ -73,7 +73,7 @@ int main()
     auto unordered = catalog;
     unordered.bands.push_back({
         canonical::SourceId{"lux.spatial3d.source.other"},
-        lux::scene::DemandChannelId{canonical::kVisualLodDemandChannelName},
+        lux::ecs::scene_format::DemandChannelId{canonical::kVisualLodDemandChannelName},
         1u,
         256.0,
         4.0,

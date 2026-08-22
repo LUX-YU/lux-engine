@@ -57,7 +57,7 @@ namespace lux::scene
 
     [[nodiscard]] LUX_ENGINE_SCENE_PUBLIC
     SceneCodecResult<void> validateSectionRecord(
-        const SectionRecord& record,
+        const lux::ecs::scene_format::SectionRecord& record,
         const SceneCodecLimits& limits = {}) noexcept;
 
     [[nodiscard]] LUX_ENGINE_SCENE_PUBLIC

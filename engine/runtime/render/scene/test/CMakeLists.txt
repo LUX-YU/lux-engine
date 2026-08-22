@@ -71,15 +71,6 @@ target_link_libraries(
 lux_scene_runtime_test_enable_stdexec(headless_scene_runtime_test)
 
 add_executable(
-    primary_view_presentation_test
-    primary_view_presentation_test.cpp
-)
-target_link_libraries(
-    primary_view_presentation_test
-    PRIVATE runtime_render_scene_test_support
-)
-
-add_executable(
     scene_content_render_contract_test
     scene_content_render_contract_test.cpp
 )

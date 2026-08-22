@@ -130,6 +130,36 @@ component_add_transitive_commands(
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
+add_interface_component(
+    COMPONENT_NAME render_presentation
+    NAMESPACE      lux::engine::ecs
+)
+lux_configure_render_interface(render_presentation)
+target_link_libraries(
+    render_presentation
+    INTERFACE
+        lux::engine::ecs::render_core
+)
+component_add_transitive_commands(
+    render_presentation
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS render_core)"
+)
+
+add_executable(
+    primary_view_presentation_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/primary_view_presentation_test.cpp
+)
+target_link_libraries(
+    primary_view_presentation_test
+    PRIVATE lux::engine::ecs::render_presentation
+)
+lux_classify_target(
+    TARGET  primary_view_presentation_test
+    LAYER   ECS
+    PRODUCT TEST
+    ROLE    INTEGRATION
+)
+
 # 2D extraction is header-only. Sparse Pixel and Tilemap runtimes are excluded
 # into explicit leaves, so an image-only application acquires neither domain.
 add_interface_component(

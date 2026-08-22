@@ -8,7 +8,8 @@
         lux::render::RenderSceneLease scene_lease;
         lux::render::RenderSceneId scene{};
         lux::ecs::Schedule* schedule{};
-        PrimaryViewPresentation* primary_view{};
+        lux::ecs::render::presentation::PrimaryViewPresentation*
+            primary_view{};
         const lux::extensions::ExtensionModuleManager* extension_modules{};
         std::shared_ptr<SceneCloseProgressEndpoint> close_progress;
         std::vector<std::string> scene_feature_roots;

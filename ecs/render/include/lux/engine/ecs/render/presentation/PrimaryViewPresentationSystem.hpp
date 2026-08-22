@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/runtime/render/scene/PrimaryViewPresentation.hpp>
+#include <lux/engine/ecs/render/presentation/PrimaryViewPresentation.hpp>
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/ecs/render/RenderBridgeDiagnostics.hpp>
@@ -12,7 +12,7 @@
 #include <span>
 #include <type_traits>
 
-namespace lux::runtime::detail
+namespace lux::ecs::render::presentation
 {
     struct PrimaryViewPresentationBindingComponent final {};
 
@@ -340,4 +340,4 @@ namespace lux::runtime::detail
         std::uint64_t latest_command_sequence_{0u};
         bool dirty_{true};
     };
-}
+} // namespace lux::ecs::render::presentation

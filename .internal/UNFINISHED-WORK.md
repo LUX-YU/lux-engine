@@ -11,7 +11,7 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 - [x] Remove SceneFeature, SceneContribution and Runtime Pack identities.
 - [x] Reduce render extraction to one RenderSystem and a private static stage
       sequence; remove Runtime RenderEffect.
-- [ ] Move every Runtime-owned ISystem and Component to its ECS domain.
+- [x] Move every Runtime-owned ISystem and Component to its ECS domain.
   - [x] Move EntitySection decode/stage/materialization, loader and startup
         publication into `ecs/entity_scene`; Runtime retains only the typed
         endpoint, generator execution and concrete blob storage.
@@ -49,8 +49,11 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         preparation endpoint and its process-wide budget accounting; remove
         the Runtime Physics3D System target, spatial3d directory and `ISystem`
         allowlist entry.
-  - [ ] Move the remaining presentation System from Runtime into its ECS
-        domain.
+  - [x] Move `PrimaryViewPresentation`, its snapshot/transient binding and
+        `PrimaryViewPresentationSystem` into `ecs/render/presentation`.
+        Runtime render creates the ECS service and exposes its snapshot but
+        owns no presentation `ISystem`; remove the final Runtime `ISystem`
+        allowlist entry.
 - [ ] Split `engine/spatial3d/SceneCatalog` by field ownership.
 - [ ] Collapse Editor panel contribution state into UISystem registration.
 - [ ] Generate build-only project usage and direct game composition.

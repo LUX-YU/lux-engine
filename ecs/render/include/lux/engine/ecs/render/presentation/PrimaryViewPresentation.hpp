@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/runtime/render/scene/visibility.h>
 #include <lux/engine/math/Extent.hpp>
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 
@@ -9,13 +8,9 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace lux::runtime
+namespace lux::ecs::render::presentation
 {
-    namespace detail
-    {
-        class PrimaryViewPresentationSystem;
-    }
-    class RenderSceneIntegration;
+    class PrimaryViewPresentationSystem;
 
     enum class EPrimaryViewPresentationStatus : std::uint8_t
     {
@@ -41,7 +36,7 @@ namespace lux::runtime
 
     /// Main-owner service containing only the host's output intent and an
     /// inspectable result. Cooked scene content never sees RenderTargetId.
-    class LUX_RUNTIME_RENDER_SCENE_PUBLIC PrimaryViewPresentation final
+    class PrimaryViewPresentation final
     {
     public:
         PrimaryViewPresentation(
@@ -73,8 +68,7 @@ namespace lux::runtime
         }
 
     private:
-        friend class detail::PrimaryViewPresentationSystem;
-        friend class RenderSceneIntegration;
+        friend class PrimaryViewPresentationSystem;
 
         struct Intent final
         {
@@ -108,4 +102,4 @@ namespace lux::runtime
         Intent intent_{};
         PrimaryViewPresentationSnapshot snapshot_{};
     };
-}
+} // namespace lux::ecs::render::presentation

@@ -1,5 +1,5 @@
-#include <lux/engine/runtime/render/scene/PrimaryViewPresentation.hpp>
-#include <lux/engine/runtime/render/scene/detail/PrimaryViewPresentationSystem.hpp>
+#include <lux/engine/ecs/render/presentation/PrimaryViewPresentation.hpp>
+#include <lux/engine/ecs/render/presentation/PrimaryViewPresentationSystem.hpp>
 
 #include <lux/engine/ecs/SceneServices.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
@@ -31,7 +31,7 @@ int main()
     lux::ecs::World world;
     lux::ecs::Schedule schedule{world};
     lux::ecs::SceneServices services;
-    lux::runtime::PrimaryViewPresentation presentation{
+    lux::ecs::render::presentation::PrimaryViewPresentation presentation{
         true,
         lux::render::RenderTargetId{3u, 1u},
         lux::math::Extent2u{1280u, 720u}};
@@ -39,7 +39,8 @@ int main()
     lux::ecs::ScheduleBuilder builder{schedule, services};
     const auto system = builder.add(
         std::make_unique<
-            lux::runtime::detail::PrimaryViewPresentationSystem>(
+            lux::ecs::render::presentation::
+                PrimaryViewPresentationSystem>(
                 presentation),
         lux::ecs::kPhasePreTransform);
     expect(system.has_value(), "primary presentation system stages");
@@ -63,7 +64,8 @@ int main()
         "the unique primary camera binds exactly at the barrier");
     expect(
         presentation.snapshot().status ==
-                lux::runtime::EPrimaryViewPresentationStatus::BOUND &&
+                lux::ecs::render::presentation::
+                    EPrimaryViewPresentationStatus::BOUND &&
             presentation.snapshot().candidate_count == 1u &&
             presentation.snapshot().bound_camera == first &&
             !presentation.snapshot().command_pending,
@@ -94,7 +96,8 @@ int main()
     schedule.tick(0.0f);
     expect(
         presentation.snapshot().status ==
-                lux::runtime::EPrimaryViewPresentationStatus::
+                lux::ecs::render::presentation::
+                    EPrimaryViewPresentationStatus::
                     AMBIGUOUS_PRIMARY_CAMERA &&
             presentation.snapshot().candidate_count == 2u &&
             presentation.snapshot().bound_camera == entt::null &&
@@ -106,7 +109,8 @@ int main()
     schedule.tick(0.0f);
     expect(
         presentation.snapshot().status ==
-                lux::runtime::EPrimaryViewPresentationStatus::BOUND &&
+                lux::ecs::render::presentation::
+                    EPrimaryViewPresentationStatus::BOUND &&
             presentation.snapshot().bound_camera == first &&
             registry.all_of<lux::ecs::ViewPresentComponent>(first),
         "resolving ambiguity rebinds the unique camera");
@@ -115,7 +119,8 @@ int main()
     schedule.tick(0.0f);
     expect(
         presentation.snapshot().status ==
-                lux::runtime::EPrimaryViewPresentationStatus::
+                lux::ecs::render::presentation::
+                    EPrimaryViewPresentationStatus::
                     NO_PRIMARY_CAMERA &&
             presentation.snapshot().candidate_count == 0u &&
             presentation.snapshot().bound_camera == entt::null &&

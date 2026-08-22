@@ -1,7 +1,7 @@
 #include <lux/engine/runtime/render/scene/RenderSceneIntegration.hpp>
 
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>
-#include <lux/engine/runtime/render/scene/detail/PrimaryViewPresentationSystem.hpp>
+#include <lux/engine/ecs/render/presentation/PrimaryViewPresentationSystem.hpp>
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
 #include <lux/engine/ecs/render/RenderSystemStages.hpp>
@@ -108,7 +108,7 @@ namespace lux::runtime
         }
 
         auto primary_presentation = context.builder.services().emplace<
-            PrimaryViewPresentation>(
+            lux::ecs::render::presentation::PrimaryViewPresentation>(
                 impl_->config.present_primary_camera,
                 impl_->config.target,
                 impl_->config.extent);
@@ -119,8 +119,8 @@ namespace lux::runtime
         }
         impl_->primary_view = *primary_presentation;
         if (!context.builder.add(
-                std::make_unique<detail::PrimaryViewPresentationSystem>(
-                    **primary_presentation),
+                std::make_unique<lux::ecs::render::presentation::
+                    PrimaryViewPresentationSystem>(**primary_presentation),
                 lux::ecs::kPhasePreTransform))
         {
             return lux::cxx::unexpected<ESceneIntegrationError>(
@@ -335,7 +335,7 @@ namespace lux::runtime
         return impl_->scene;
     }
 
-    const PrimaryViewPresentationSnapshot*
+    const lux::ecs::render::presentation::PrimaryViewPresentationSnapshot*
     RenderSceneIntegration::primaryViewPresentation() const noexcept
     {
         return impl_ && impl_->primary_view

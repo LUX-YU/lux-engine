@@ -587,9 +587,7 @@ function(lux_validate_source_boundaries)
         endif()
     endforeach()
 
-    set(runtime_system_debt
-        "engine/runtime/render/scene/pinclude/lux/engine/runtime/render/scene/detail/PrimaryViewPresentationSystem.hpp"
-    )
+    set(runtime_system_debt)
     file(GLOB_RECURSE runtime_headers LIST_DIRECTORIES false
         "${CMAKE_SOURCE_DIR}/engine/runtime/*.hpp"
     )

@@ -79,6 +79,9 @@ System Registry and installer/catalog/host variants are forbidden.
   preparation and the process-wide request/byte admission policy.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
+- `ecs/render/presentation` owns primary-camera selection, host output intent,
+  transient view binding and the only presentation System. Runtime render may
+  create that ECS service and read its snapshot, but defines no `ISystem`.
 - Shared cooked contracts may remain in `engine/scene` or `ecs/scene_format`;
   being consumed by Runtime does not make a format Runtime implementation.
 - Extension ABI remains in `engine/extensions/api`; dynamic loading and leases

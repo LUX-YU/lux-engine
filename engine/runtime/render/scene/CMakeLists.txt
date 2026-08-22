@@ -96,6 +96,7 @@ target_link_libraries(
     #   `Config::packs` 传进来。留着那条链接等于「运行时认识引擎自带的那两个 pack」，
     #   与批 5 把选择权交给宿主的那次改动自相矛盾。
     lux::engine::ecs::render_core # dimension-neutral render lifecycle
+    lux::engine::ecs::render_presentation
     lux::engine::ecs::render_3d   # built-in Grid3D render-effect factory
     lux::engine::ecs::terrain_components
     lux::engine::resource::asset       # AssetManager (bridge + eviction)
@@ -138,7 +139,7 @@ component_add_transitive_commands(
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(Eigen3 REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm core memory)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format render_core render_3d terrain_components)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format render_core render_presentation render_3d terrain_components)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-content REQUIRED COMPONENTS content)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_features render_standard_content)"

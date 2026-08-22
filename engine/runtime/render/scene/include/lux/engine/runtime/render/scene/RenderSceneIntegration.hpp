@@ -6,7 +6,7 @@
 
 #include <lux/engine/runtime/render/scene/visibility.h>
 #include <lux/engine/runtime/render/scene/StandardFeaturePlan.hpp>
-#include <lux/engine/runtime/render/scene/PrimaryViewPresentation.hpp>
+#include <lux/engine/ecs/render/presentation/PrimaryViewPresentation.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
@@ -77,7 +77,8 @@ namespace lux::runtime
             lux::render::RenderTargetId target,
             lux::math::Extent2u extent) noexcept;
         [[nodiscard]] lux::render::RenderSceneId sceneId() const noexcept;
-        [[nodiscard]] const PrimaryViewPresentationSnapshot*
+        [[nodiscard]] const lux::ecs::render::presentation::
+            PrimaryViewPresentationSnapshot*
         primaryViewPresentation() const noexcept;
 
     private:

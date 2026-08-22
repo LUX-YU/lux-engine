@@ -33,7 +33,7 @@
 #include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelPrepareService.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelSystem.hpp>
 #include <lux/engine/ecs/spatial2d/components/SpatialInterest2DComponent.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/SpatialInterest2DSystem.hpp>
+#include <lux/engine/ecs/spatial2d/streaming/SpatialInterest2DSystem.hpp>
 #include <lux/engine/runtime/spatial2d/tilemap/TilemapChunkSystem.hpp>
 #include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
@@ -797,7 +797,7 @@ namespace
     {
     public:
         explicit TilemapInterestAdapter(
-            const lux::runtime::spatial2d::SpatialInterest2DSystem&
+            const lux::ecs::spatial2d::streaming::SpatialInterest2DSystem&
                 interest) noexcept
             : interest_(&interest)
         {}
@@ -809,7 +809,8 @@ namespace
         }
 
     private:
-        const lux::runtime::spatial2d::SpatialInterest2DSystem* interest_;
+        const lux::ecs::spatial2d::streaming::SpatialInterest2DSystem*
+            interest_;
     };
 
     std::size_t chunkCount(lux::ecs::Registry& registry)
@@ -822,7 +823,8 @@ namespace
         lux::math::GridCoord2i64 center) noexcept
     {
         std::array<bool,
-            lux::runtime::spatial2d::kSpatial2DResidentSectionCount> seen{};
+            lux::ecs::spatial2d::streaming::
+                kSpatial2DResidentSectionCount> seen{};
         std::size_t count = 0u;
         for (const auto entity :
              registry.view<const lux::ecs::PixelChunk2DComponent>())
@@ -850,7 +852,8 @@ namespace
         const lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
         const lux::ecs::entity_scene::residency::EntitySectionResidencySystem&
             partition,
-        const lux::runtime::spatial2d::SpatialInterest2DSystem& interest,
+        const lux::ecs::spatial2d::streaming::SpatialInterest2DSystem&
+            interest,
         const lux::ecs::PixelFieldSystem& fields,
         const lux::runtime::spatial2d::Infinite2DPixelSystem& pixels,
         lux::ecs::Registry& registry,
@@ -996,7 +999,8 @@ namespace
                 assert(material_counts[kPlayerMaterial] != 0u);
             });
         assert(coordinates.size() ==
-            lux::runtime::spatial2d::kSpatial2DResidentSectionCount);
+            lux::ecs::spatial2d::streaming::
+                kSpatial2DResidentSectionCount);
         std::sort(coordinates.begin(), coordinates.end());
         std::vector<lux::math::GridCoord2i64> expected;
         for (std::int64_t y = -2; y <= 2; ++y)
@@ -1013,6 +1017,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     namespace entity_runtime = lux::runtime::entity_scene;
     namespace residency = lux::ecs::entity_scene::residency;
     namespace spatial2d = lux::runtime::spatial2d;
+    namespace streaming2d = lux::ecs::spatial2d::streaming;
 
     Reflections reflections;
     lux::ecs::ComponentTypeCatalog components;
@@ -1163,10 +1168,10 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         std::move(record_store),
         residency::SectionResidencyBudget{
             sample_record->decoded_bytes *
-                spatial2d::kSpatial2DResidentSectionCount,
-            spatial2d::kSpatial2DResidentSectionCount});
+                streaming2d::kSpatial2DResidentSectionCount,
+            streaming2d::kSpatial2DResidentSectionCount});
     assert(demand_planner);
-    auto spatial_source = spatial2d::Spatial2DSectionSource::procedural(
+    auto spatial_source = streaming2d::Spatial2DSectionSource::procedural(
         generated->recordFactory());
     assert(spatial_source);
 
@@ -1189,10 +1194,10 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     auto* partition_owner = partition_system.get();
     assert(schedule.addSystem(std::move(partition_system)));
     auto interest_system = std::make_unique<
-        spatial2d::SpatialInterest2DSystem>(
+        streaming2d::SpatialInterest2DSystem>(
             *partition_owner,
             std::move(*spatial_source),
-            spatial2d::SpatialInterest2DConfig{
+            streaming2d::SpatialInterest2DConfig{
                 .section_world_size = 64.0,
                 .channel = lux::ecs::scene_format::DemandChannelId{
                     std::string{kDemandChannel}},
@@ -1292,26 +1297,26 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
             return field_ticket.state() ==
                     lux::ecs::entity_scene::EEntitySectionState::ACTIVE &&
                 spatial.active_sections ==
-                    spatial2d::kSpatial2DActiveSectionCount &&
+                    streaming2d::kSpatial2DActiveSectionCount &&
                 spatial.resident_sections ==
-                    spatial2d::kSpatial2DResidentSectionCount &&
+                    streaming2d::kSpatial2DResidentSectionCount &&
                 partitions.active_sections ==
-                    spatial2d::kSpatial2DResidentSectionCount &&
+                    streaming2d::kSpatial2DResidentSectionCount &&
                 partitions.demand.dynamic_records ==
-                    spatial2d::kSpatial2DResidentSectionCount &&
+                    streaming2d::kSpatial2DResidentSectionCount &&
                 hasExactChunkWindow(registry, center) &&
                 pixels.ready_chunks ==
-                    spatial2d::kSpatial2DResidentSectionCount &&
+                    streaming2d::kSpatial2DResidentSectionCount &&
                 pixels.resident_chunks ==
-                    spatial2d::kSpatial2DResidentSectionCount &&
+                    streaming2d::kSpatial2DResidentSectionCount &&
                 pixels.active_chunks ==
-                    spatial2d::kSpatial2DActiveSectionCount &&
+                    streaming2d::kSpatial2DActiveSectionCount &&
                 runtime_stats.resident_chunks ==
-                    spatial2d::kSpatial2DResidentSectionCount &&
+                    streaming2d::kSpatial2DResidentSectionCount &&
                 runtime_stats.presentation_active_chunks ==
-                    spatial2d::kSpatial2DActiveSectionCount &&
+                    streaming2d::kSpatial2DActiveSectionCount &&
                 runtime_stats.simulation_active_chunks ==
-                    spatial2d::kSpatial2DActiveSectionCount;
+                    streaming2d::kSpatial2DActiveSectionCount;
         };
     };
 
@@ -1334,7 +1339,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         // a 65,536-cell scan/copy back on the owner thread.
         assert(preparation_stats.synchronous_chunk_preparations == 0u);
         assert(preparation_stats.prepared_chunk_adoptions >=
-            spatial2d::kSpatial2DResidentSectionCount);
+            streaming2d::kSpatial2DResidentSectionCount);
         assert(preparation_stats.capturing_chunk_unloads == 0u);
     }
     const auto field_entity = persistent_entities.find(field_id);
@@ -1489,7 +1494,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     assert(tile_ticket.state() ==
         lux::ecs::entity_scene::EEntitySectionState::ACTIVE);
     assert(pixel_owner->snapshot().ready_chunks ==
-        spatial2d::kSpatial2DResidentSectionCount);
+        streaming2d::kSpatial2DResidentSectionCount);
     registry.patch<lux::ecs::TileChunk2DComponent>(
         generated_tile_entity,
         [&generated_tile_fact](auto& component) noexcept
@@ -1507,7 +1512,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     // window. The optional activity adapter yields the same exact 3x3 active
     // set as Pixel without either domain depending on the other.
     std::vector<entt::entity> tile_window;
-    tile_window.reserve(spatial2d::kSpatial2DResidentSectionCount);
+    tile_window.reserve(streaming2d::kSpatial2DResidentSectionCount);
     entt::entity replaced_tile = entt::null;
     for (std::int64_t y = -2; y <= 2; ++y)
     {
@@ -1540,11 +1545,11 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         const auto tilemap = tilemap_chunk_owner->snapshot();
         const auto storage = tilemap_runtime.stats();
         return tilemap.ready_chunks ==
-                spatial2d::kSpatial2DResidentSectionCount + 1u &&
+                streaming2d::kSpatial2DResidentSectionCount + 1u &&
             storage.resident_chunks ==
-                spatial2d::kSpatial2DResidentSectionCount + 1u &&
+                streaming2d::kSpatial2DResidentSectionCount + 1u &&
             storage.active_chunks ==
-                spatial2d::kSpatial2DActiveSectionCount;
+                streaming2d::kSpatial2DActiveSectionCount;
     });
     const auto tilemap_handle = tilemap_owner_system->resolveTilemap(
         lux::ecs::PersistentEntityRef{field_id});
@@ -1561,15 +1566,15 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         const auto tilemap = tilemap_chunk_owner->snapshot();
         const auto storage = tilemap_runtime.stats();
         return registry.storage<lux::ecs::TileChunk2DComponent>().size() ==
-                spatial2d::kSpatial2DResidentSectionCount &&
+                streaming2d::kSpatial2DResidentSectionCount &&
             tilemap.ready_chunks ==
-                spatial2d::kSpatial2DResidentSectionCount &&
+                streaming2d::kSpatial2DResidentSectionCount &&
             tilemap.owned_blob_leases ==
-                spatial2d::kSpatial2DResidentSectionCount &&
+                streaming2d::kSpatial2DResidentSectionCount &&
             storage.resident_chunks ==
-                spatial2d::kSpatial2DResidentSectionCount &&
+                streaming2d::kSpatial2DResidentSectionCount &&
             storage.active_chunks ==
-                spatial2d::kSpatial2DActiveSectionCount;
+                streaming2d::kSpatial2DActiveSectionCount;
     });
     for (const auto entity : tile_window)
         registry.destroy(entity);
@@ -1620,9 +1625,9 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         return pixel_owner->snapshot().failed_chunks == 1u;
     });
     assert(partition_owner->snapshot().active_sections ==
-        spatial2d::kSpatial2DResidentSectionCount);
+        streaming2d::kSpatial2DResidentSectionCount);
     assert(chunkCount(registry) ==
-        spatial2d::kSpatial2DResidentSectionCount);
+        streaming2d::kSpatial2DResidentSectionCount);
     registry.patch<lux::ecs::PixelChunk2DComponent>(
         center_chunk_entity,
         [&saved_chunk](auto& component) noexcept
@@ -1635,7 +1640,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
 
     tickSchedule(schedule, 1.0f / 60.0f);
     assert(pixel_runtime.stats().simulation_chunks_visited_last_step ==
-        spatial2d::kSpatial2DActiveSectionCount);
+        streaming2d::kSpatial2DActiveSectionCount);
 
     const auto moveInterest = [&](lux::math::Position2d position)
     {

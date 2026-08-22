@@ -304,7 +304,7 @@ namespace lux::runtime::spatial2d
         return result;
     }
 
-    Spatial2DSectionRecordFactory
+    lux::ecs::spatial2d::streaming::Spatial2DSectionRecordFactory
     Infinite2DPixelSectionSource::recordFactory() const
     {
         auto state = state_;
@@ -312,15 +312,17 @@ namespace lux::runtime::spatial2d
             lux::math::GridCoord2i64 coordinate)
             -> lux::cxx::expected<
                 lux::ecs::scene_format::SectionRecord,
-                Spatial2DIndexFailure>
+                lux::ecs::spatial2d::streaming::Spatial2DIndexFailure>
         {
             Infinite2DPixelSectionSource source{state};
             auto record = source.record(coordinate);
             if (!record)
             {
-                return lux::cxx::unexpected(Spatial2DIndexFailure{
-                    .code = ESpatial2DIndexError::INVALID_SECTION,
-                    .coordinate = coordinate});
+                return lux::cxx::unexpected(
+                    lux::ecs::spatial2d::streaming::Spatial2DIndexFailure{
+                        .code = lux::ecs::spatial2d::streaming::
+                            ESpatial2DIndexError::INVALID_SECTION,
+                        .coordinate = coordinate});
             }
             return std::move(*record);
         };

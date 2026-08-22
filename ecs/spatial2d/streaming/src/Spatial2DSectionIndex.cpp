@@ -1,11 +1,11 @@
-#include <lux/engine/runtime/spatial2d/infinite/Spatial2DSectionIndex.hpp>
+#include <lux/engine/ecs/spatial2d/streaming/Spatial2DSectionIndex.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <utility>
 
-namespace lux::runtime::spatial2d
+namespace lux::ecs::spatial2d::streaming
 {
     namespace
     {

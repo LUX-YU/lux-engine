@@ -6,10 +6,10 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/scene/SceneDescription.hpp>
+#include <lux/engine/ecs/scene_format/SceneSectionManifest.hpp>
 #include <lux/engine/math/Position.hpp>
 #include <lux/engine/math/Grid.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/visibility.h>
+#include <lux/engine/ecs/spatial2d/streaming/visibility.h>
 
 #include <array>
 #include <cstddef>
@@ -18,7 +18,7 @@
 #include <optional>
 #include <vector>
 
-namespace lux::runtime::spatial2d
+namespace lux::ecs::spatial2d::streaming
 {
     inline constexpr std::int64_t kSpatial2DActiveRadius = 1;
     inline constexpr std::int64_t kSpatial2DResidentRadius = 2;
@@ -74,7 +74,7 @@ namespace lux::runtime::spatial2d
 
     /// Cheap position-to-grid conversion used by interest tracking before a
     /// procedural source allocates or hashes any Section records.
-    [[nodiscard]] LUX_ENGINE_RUNTIME_SPATIAL2D_INFINITE_PUBLIC
+    [[nodiscard]] LUX_ECS_SPATIAL2D_STREAMING_PUBLIC
     lux::cxx::expected<
         lux::math::GridCoord2i64,
         Spatial2DIndexFailure>
@@ -82,9 +82,9 @@ namespace lux::runtime::spatial2d
         const lux::math::Position2d& position,
         double section_world_size) noexcept;
 
-    /// Dimension-specific lookup kept outside spatial_partition.  The common
+    /// Dimension-specific lookup kept outside generic residency. The common
     /// planner only receives dimension-neutral Section IDs and priorities.
-    class LUX_ENGINE_RUNTIME_SPATIAL2D_INFINITE_PUBLIC
+    class LUX_ECS_SPATIAL2D_STREAMING_PUBLIC
     Spatial2DSectionIndex final
     {
     public:
@@ -127,7 +127,7 @@ namespace lux::runtime::spatial2d
     /// procedural. Both produce the same window shape; only the procedural
     /// form supplies source-owned EntitySection records to the generic
     /// partition transaction.
-    class LUX_ENGINE_RUNTIME_SPATIAL2D_INFINITE_PUBLIC
+    class LUX_ECS_SPATIAL2D_STREAMING_PUBLIC
     Spatial2DSectionSource final
     {
     public:

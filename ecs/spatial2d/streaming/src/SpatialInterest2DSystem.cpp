@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/spatial2d/infinite/SpatialInterest2DSystem.hpp>
+#include <lux/engine/ecs/spatial2d/streaming/SpatialInterest2DSystem.hpp>
 
 #include <lux/engine/ecs/components/ResolvedTransform2DComponent.hpp>
 #include <lux/engine/ecs/transform/systems/Transform2DSystem.hpp>
@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace lux::runtime::spatial2d
+namespace lux::ecs::spatial2d::streaming
 {
     bool SpatialInterest2DConfig::valid() const noexcept
     {

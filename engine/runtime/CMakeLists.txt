@@ -34,7 +34,6 @@ install_components(
                     runtime_logging
                     runtime_entity_scene
                     runtime_spatial2d_tilemap
-                    runtime_spatial2d_infinite
                     runtime_infinite2d_systems
                     runtime_spatial3d_partitioned
                     runtime_spatial3d_streaming_systems

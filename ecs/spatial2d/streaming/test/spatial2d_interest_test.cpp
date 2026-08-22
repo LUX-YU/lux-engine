@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/spatial2d/infinite/Spatial2DSectionIndex.hpp>
+#include <lux/engine/ecs/spatial2d/streaming/Spatial2DSectionIndex.hpp>
 
 #include <algorithm>
 #include <array>
@@ -41,7 +41,9 @@ namespace
     }
 
     void addWindow(
-        std::vector<lux::runtime::spatial2d::Spatial2DSectionIndexEntry>& entries,
+        std::vector<
+            lux::ecs::spatial2d::streaming::Spatial2DSectionIndexEntry>&
+            entries,
         lux::math::GridCoord2i64 center,
         std::uint64_t& ordinal)
     {
@@ -58,7 +60,7 @@ namespace
 
 int main()
 {
-    namespace spatial2d = lux::runtime::spatial2d;
+    namespace spatial2d = lux::ecs::spatial2d::streaming;
     std::vector<spatial2d::Spatial2DSectionIndexEntry> entries;
     std::uint64_t ordinal = 1u;
     addWindow(entries, {0, 0}, ordinal);

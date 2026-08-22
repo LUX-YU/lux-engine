@@ -31,6 +31,8 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
 )
 
+add_subdirectory(streaming)
+
 if(LUX_BUILD_COMPONENT_META)
     include_component_cmake_scripts(meta)
 

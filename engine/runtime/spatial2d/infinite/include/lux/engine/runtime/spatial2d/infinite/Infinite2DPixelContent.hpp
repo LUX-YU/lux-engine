@@ -12,7 +12,7 @@
 #include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/Spatial2DSectionIndex.hpp>
+#include <lux/engine/ecs/spatial2d/streaming/Spatial2DSectionIndex.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/pixel_visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -78,7 +78,8 @@ namespace lux::runtime::spatial2d
         [[nodiscard]] lux::runtime::entity_scene::
             EntitySectionGeneratorDescriptor generatorDescriptor() const;
 
-        [[nodiscard]] Spatial2DSectionRecordFactory recordFactory() const;
+        [[nodiscard]] lux::ecs::spatial2d::streaming::
+            Spatial2DSectionRecordFactory recordFactory() const;
 
         [[nodiscard]] lux::cxx::expected<
             lux::ecs::scene_format::SectionRecord,

@@ -24,10 +24,13 @@ namespace lux::ecs
     class PixelChunkPersistenceStore;
 }
 
-namespace lux::runtime::spatial2d
+namespace lux::ecs::spatial2d::streaming
 {
     class SpatialInterest2DSystem;
+}
 
+namespace lux::runtime::spatial2d
+{
     enum class EPixelChunkDomainState : std::uint8_t
     {
         WAITING_FIELD,
@@ -96,7 +99,8 @@ namespace lux::runtime::spatial2d
             lux::ecs::PixelFieldSystem& fields,
             lux::ecs::PixelChunkPersistenceStore& persistence,
             lux::ecs::entity_scene::ContentBlobClient content,
-            const SpatialInterest2DSystem& activity);
+            const lux::ecs::spatial2d::streaming::SpatialInterest2DSystem&
+                activity);
         ~Infinite2DPixelSystem() override;
 
         Infinite2DPixelSystem(const Infinite2DPixelSystem&) = delete;

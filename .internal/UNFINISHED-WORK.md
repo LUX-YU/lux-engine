@@ -20,6 +20,10 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         borrows a canonical `SectionRecord` span instead of depending on a
         Runtime catalog. Remove `runtime_spatial_partition` and its Runtime
         `ISystem` allowlist entry.
+  - [x] Move the 2D Section index/source and `SpatialInterest2DSystem` into
+        `ecs/spatial2d/streaming`; remove `runtime_spatial2d_infinite` and its
+        Runtime `ISystem` allowlist entry. Runtime Pixel code is now only a
+        consumer of the ECS streaming target.
   - [ ] Move spatial, tilemap, pixel, physics, navigation and presentation
         Systems from Runtime into their ECS domains.
 - [ ] Split `engine/spatial3d/SceneCatalog` by field ownership.

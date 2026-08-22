@@ -1,64 +1,8 @@
 generate_visibility_header(
-    ENABLE_MACRO_NAME       LUX_ENGINE_RUNTIME_SPATIAL2D_INFINITE_LIBRARY
-    PUBLIC_MACRO_NAME       LUX_ENGINE_RUNTIME_SPATIAL2D_INFINITE_PUBLIC
-    DISABLE_DLL_MACRO_NAME  LUX_ENGINE_RUNTIME_SPATIAL2D_INFINITE_DLL_DISABLE
-    GENERATE_FILE_PATH      lux/engine/runtime/spatial2d/infinite/visibility.h
-)
-
-generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_RUNTIME_INFINITE2D_PIXEL_LIBRARY
     PUBLIC_MACRO_NAME       LUX_ENGINE_RUNTIME_INFINITE2D_PIXEL_PUBLIC
     DISABLE_DLL_MACRO_NAME  LUX_ENGINE_RUNTIME_INFINITE2D_PIXEL_DLL_DISABLE
     GENERATE_FILE_PATH      lux/engine/runtime/spatial2d/infinite/pixel_visibility.h
-)
-
-add_component(
-    COMPONENT_NAME runtime_spatial2d_infinite
-    NAMESPACE      lux::engine::runtime
-    OUTPUT_NAME    lux_engine_runtime_spatial2d_infinite
-    SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Spatial2DSectionIndex.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SpatialInterest2DSystem.cpp
-)
-
-component_include_directories(
-    runtime_spatial2d_infinite
-    BUILD_TIME_EXPORT
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${LUX_GENERATE_HEADER_DIR}
-    INSTALL_TIME include
-)
-
-target_compile_definitions(
-    runtime_spatial2d_infinite
-    PRIVATE LUX_ENGINE_RUNTIME_SPATIAL2D_INFINITE_LIBRARY
-)
-
-target_link_libraries(
-    runtime_spatial2d_infinite
-    PUBLIC
-        lux::engine::ecs::core
-        lux::engine::ecs::spatial2d_components
-        lux::engine::ecs::transform
-        lux::engine::ecs::entity_scene
-        lux::engine::scene::scene
-        lux::engine::core::math
-        lux::cxx::compile_time
-)
-
-component_add_transitive_commands(
-    runtime_spatial2d_infinite
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core entity_scene spatial2d_components transform)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
-)
-
-lux_classify_target(
-    TARGET  runtime_spatial2d_infinite
-    LAYER   RUNTIME
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
 )
 
 add_component(
@@ -92,11 +36,11 @@ target_compile_definitions(
 target_link_libraries(
     runtime_infinite2d_systems
     PUBLIC
-        lux::engine::runtime::runtime_spatial2d_infinite
         lux::engine::runtime::runtime_entity_scene
         lux::engine::runtime::runtime_execution
         lux::engine::ecs::pixel
         lux::engine::ecs::scene_format
+        lux::engine::ecs::spatial2d_streaming
     PRIVATE
         lux::cxx::algorithm
         lux::engine::core::serialization
@@ -105,8 +49,8 @@ target_link_libraries(
 
 component_add_transitive_commands(
     runtime_infinite2d_systems
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_execution runtime_spatial2d_infinite)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS pixel scene_format component_archive)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_execution)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS pixel scene_format component_archive spatial2d_streaming)"
 )
 
 lux_classify_target(
@@ -114,27 +58,6 @@ lux_classify_target(
     LAYER   RUNTIME
     PRODUCT RUNTIME
     ROLE    INTEGRATION
-)
-
-add_executable(
-    spatial2d_interest_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/spatial2d_interest_test.cpp
-)
-target_link_libraries(
-    spatial2d_interest_test
-    PRIVATE
-        lux::engine::runtime::runtime_spatial2d_infinite
-)
-if(MSVC)
-    target_compile_options(spatial2d_interest_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(spatial2d_interest_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  spatial2d_interest_test
-    LAYER   RUNTIME
-    PRODUCT TEST
-    ROLE    DOMAIN
 )
 
 add_executable(

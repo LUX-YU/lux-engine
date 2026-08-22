@@ -409,7 +409,7 @@ function(lux_validate_ecs_dimension_closures)
         render_2d render_3d render_components_2d render_components_3d
         render_pixel_integration render_tilemap_integration animation_2d
         animation_3d pixel physics2d physics3d navigation3d
-        runtime_spatial2d_infinite
+        spatial2d_streaming
     )
 
     if(LUX_BUILD_COMPONENT_META)
@@ -590,7 +590,6 @@ function(lux_validate_source_boundaries)
     set(runtime_system_debt
         "engine/runtime/render/scene/pinclude/lux/engine/runtime/render/scene/detail/PrimaryViewPresentationSystem.hpp"
         "engine/runtime/spatial2d/infinite/include/lux/engine/runtime/spatial2d/infinite/Infinite2DPixelSystem.hpp"
-        "engine/runtime/spatial2d/infinite/include/lux/engine/runtime/spatial2d/infinite/SpatialInterest2DSystem.hpp"
         "engine/runtime/spatial2d/tilemap/include/lux/engine/runtime/spatial2d/tilemap/TilemapChunkSystem.hpp"
         "engine/runtime/spatial3d/navigation/include/lux/engine/runtime/spatial3d/navigation/Spatial3DNavigationAdapterSystem.hpp"
         "engine/runtime/spatial3d/partitioned/include/lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp"

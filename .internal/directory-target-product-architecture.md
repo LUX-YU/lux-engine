@@ -51,6 +51,9 @@ System Registry and installer/catalog/host variants are forbidden.
 - `engine/runtime/spatial_partition` and the `runtime_spatial_partition`
   target do not exist. Dimension-specific interest producers belong under
   their ECS `streaming/` domains, not in a new Runtime partition layer.
+- `ecs/spatial2d/streaming` owns 2D Section addressing and interest-to-demand
+  behavior. Runtime Pixel consumers may query its activity but do not own or
+  redefine that System.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
 - Shared cooked contracts may remain in `engine/scene` or `ecs/scene_format`;

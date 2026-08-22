@@ -5,10 +5,9 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/math/Grid.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/Spatial2DSectionIndex.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/visibility.h>
+#include <lux/engine/ecs/spatial2d/streaming/Spatial2DSectionIndex.hpp>
+#include <lux/engine/ecs/spatial2d/streaming/visibility.h>
 #include <lux/engine/ecs/entity_scene/residency/SectionResidencyDemand.hpp>
 
 #include <cstddef>
@@ -22,7 +21,7 @@ namespace lux::ecs::entity_scene::residency
     class EntitySectionResidencySystem;
 }
 
-namespace lux::runtime::spatial2d
+namespace lux::ecs::spatial2d::streaming
 {
     struct SpatialInterest2DConfig final
     {
@@ -72,7 +71,7 @@ namespace lux::runtime::spatial2d
     /// A small-source-count ECS system.  It scans only interest entities, not
     /// scene content, and updates the generic EntitySectionResidencySystem when a
     /// source crosses a Section boundary or changes priority.
-    class LUX_ENGINE_RUNTIME_SPATIAL2D_INFINITE_PUBLIC
+    class LUX_ECS_SPATIAL2D_STREAMING_PUBLIC
     SpatialInterest2DSystem final : public lux::ecs::ISystem
     {
     public:

@@ -6,7 +6,7 @@
 #include <lux/engine/ecs/pixel/systems/PixelChunkPersistence.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelContent.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/PixelChunkBindingComponent.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/SpatialInterest2DSystem.hpp>
+#include <lux/engine/ecs/spatial2d/streaming/SpatialInterest2DSystem.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
@@ -66,7 +66,8 @@ namespace lux::runtime::spatial2d
             lux::ecs::PixelFieldSystem& fields_value,
             lux::ecs::PixelChunkPersistenceStore& persistence_value,
             lux::ecs::entity_scene::ContentBlobClient content_value,
-            const SpatialInterest2DSystem& activity_value) noexcept
+            const lux::ecs::spatial2d::streaming::SpatialInterest2DSystem&
+                activity_value) noexcept
             : async_runtime(&async_runtime_value),
               preparation(std::move(preparation_value)),
               scope(async_runtime_value),
@@ -473,7 +474,8 @@ namespace lux::runtime::spatial2d
         lux::ecs::PixelFieldSystem* fields{nullptr};
         lux::ecs::PixelChunkPersistenceStore* persistence{nullptr};
         lux::ecs::entity_scene::ContentBlobClient content;
-        const SpatialInterest2DSystem* activity{nullptr};
+        const lux::ecs::spatial2d::streaming::SpatialInterest2DSystem*
+            activity{nullptr};
         lux::ecs::Registry* attached{nullptr};
         lux::ecs::EcsCommandWriter commands;
         entt::scoped_connection constructed;
@@ -497,7 +499,8 @@ namespace lux::runtime::spatial2d
         lux::ecs::PixelFieldSystem& fields,
         lux::ecs::PixelChunkPersistenceStore& persistence,
         lux::ecs::entity_scene::ContentBlobClient content,
-        const SpatialInterest2DSystem& activity)
+        const lux::ecs::spatial2d::streaming::SpatialInterest2DSystem&
+            activity)
         : impl_(std::make_unique<Impl>(
               *this,
               async_runtime,
@@ -992,7 +995,8 @@ namespace lux::runtime::spatial2d
     {
         static constexpr Type result[]{
             lux::ecs::systemType<lux::ecs::PixelFieldSystem>(),
-            lux::ecs::systemType<SpatialInterest2DSystem>()};
+            lux::ecs::systemType<
+                lux::ecs::spatial2d::streaming::SpatialInterest2DSystem>()};
         return result;
     }
 

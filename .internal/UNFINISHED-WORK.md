@@ -8,8 +8,8 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 - [x] Introduce the ECS-free typed async port and remove ECS Runtime includes.
 - [x] Replace Extension ABI v4 with v5 and make Physics2D optional.
 - [x] Publish reflection and component projection as one module transaction.
-- [ ] Remove SceneFeature, SceneContribution and Runtime Pack identities.
-- [ ] Reduce render extraction to one RenderSystem and a private static stage
+- [x] Remove SceneFeature, SceneContribution and Runtime Pack identities.
+- [x] Reduce render extraction to one RenderSystem and a private static stage
       sequence; remove Runtime RenderEffect.
 - [ ] Move every Runtime-owned ISystem and Component to its ECS domain.
   - [x] Move EntitySection decode/stage/materialization, loader and startup
@@ -38,8 +38,13 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         the queued preparation endpoint and procedural Section provider;
         remove the Runtime Pixel System target, spatial2d directory and
         `ISystem` allowlist entry.
-  - [ ] Move physics, navigation and presentation Systems from Runtime into
-        their ECS domains.
+  - [x] Move `Spatial3DNavigationAdapterSystem`, its typed preparation port
+        and owner-thread completion inbox into `ecs/navigation/streaming`.
+        Runtime assets retains the Detour endpoint and service-wide
+        queued-plus-running admission budget; remove the Runtime Navigation
+        System target, spatial3d directory and `ISystem` allowlist entry.
+  - [ ] Move physics and presentation Systems from Runtime into their ECS
+        domains.
 - [ ] Split `engine/spatial3d/SceneCatalog` by field ownership.
 - [ ] Collapse Editor panel contribution state into UISystem registration.
 - [ ] Generate build-only project usage and direct game composition.

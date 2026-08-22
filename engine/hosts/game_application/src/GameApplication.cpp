@@ -71,7 +71,7 @@
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/assets/AssetLoadSenders.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
-#include <lux/engine/runtime/spatial3d/navigation/Navigation3DPrepareService.hpp>
+#include <lux/engine/runtime/assets/navigation/Navigation3DPrepareService.hpp>
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp>
 #include <lux/engine/runtime/assets/tilemap/TilemapPrepareService.hpp>
@@ -326,7 +326,7 @@ namespace lux::game
                 "scene geometry preparation assembly failed");
             return false;
         }
-        auto navigation_preparation = lux::runtime::spatial3d::
+        auto navigation_preparation = lux::runtime::assets::navigation::
             Navigation3DPrepareService::addTo(async_builder);
         if (!navigation_preparation)
         {
@@ -406,7 +406,7 @@ namespace lux::game
             lux::runtime::SceneGeometryPrepareService>(
                 std::move(*geometry_preparation));
         application.navigation_preparation = std::make_unique<
-            lux::runtime::spatial3d::Navigation3DPrepareService>(
+            lux::runtime::assets::navigation::Navigation3DPrepareService>(
                 std::move(*navigation_preparation));
         application.physics_preparation = std::make_unique<
             lux::runtime::spatial3d::StaticCollider3DPrepareService>(

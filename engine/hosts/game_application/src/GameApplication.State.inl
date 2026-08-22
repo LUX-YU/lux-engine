@@ -30,8 +30,8 @@
             entity_sections;
         std::unique_ptr<lux::runtime::SceneGeometryPrepareService>
             geometry_preparation;
-        std::unique_ptr<lux::runtime::spatial3d::Navigation3DPrepareService>
-            navigation_preparation;
+        std::unique_ptr<lux::runtime::assets::navigation::
+            Navigation3DPrepareService> navigation_preparation;
         std::unique_ptr<
             lux::runtime::spatial3d::StaticCollider3DPrepareService>
             physics_preparation;

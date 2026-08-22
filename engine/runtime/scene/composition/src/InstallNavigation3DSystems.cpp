@@ -2,11 +2,10 @@
 
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/ecs/navigation/NavigationQueryService.hpp>
+#include <lux/engine/ecs/navigation/streaming/Spatial3DNavigationAdapterSystem.hpp>
 #include <lux/engine/ecs/navigation/systems/Navigation3DSystem.hpp>
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/runtime/scene/SceneAsyncContext.hpp>
-#include <lux/engine/runtime/spatial3d/navigation/Spatial3DNavigationAdapterSystem.hpp>
 
 #include <memory>
 #include <string_view>
@@ -16,7 +15,7 @@ namespace lux::runtime
     bool installNavigation3DSystems(
         lux::ecs::ScheduleBuilder& builder,
         const lux::ecs::ComponentTypeCatalog& components,
-        spatial3d::Navigation3DPrepareClient preparation)
+        lux::ecs::navigation::streaming::Navigation3DPrepareClient preparation)
     {
         using namespace lux::ecs;
         constexpr std::string_view required_components[]{
@@ -30,9 +29,8 @@ namespace lux::runtime
         const auto checkpoint = builder.checkpoint();
         auto* const blobs = builder.services().borrow<
             lux::ecs::entity_scene::ContentBlobClient>();
-        auto* const async = builder.services().borrow<SceneAsyncContext>();
         auto backend = lux::navigation::detour3d::Navigation3DBackend::create();
-        if (!blobs || !async || !preparation || !backend)
+        if (!blobs || !preparation || !backend)
         {
             (void)builder.rollbackTo(checkpoint);
             return false;
@@ -44,10 +42,8 @@ namespace lux::runtime
             !builder.services().emplace<NavigationQueryService>(
                 *navigation) ||
             !builder.add(
-                std::make_unique<spatial3d::
+                std::make_unique<lux::ecs::navigation::streaming::
                     Spatial3DNavigationAdapterSystem>(
-                        async->runtime(),
-                        async->scope(),
                         preparation,
                         *navigation,
                         *blobs)))

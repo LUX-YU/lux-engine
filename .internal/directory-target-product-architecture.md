@@ -67,6 +67,11 @@ System Registry and installer/catalog/host variants are forbidden.
   `engine/runtime/assets/pixel` implements the background endpoint and the
   adapter from the generic generated-Section catalog to Pixel content; it
   owns no World behavior.
+- `ecs/navigation/streaming` owns the EntityScene-to-Navigation3D adapter,
+  transient request state and typed preparation port.
+  `engine/runtime/assets/navigation` implements only the Detour background
+  endpoint and its process-wide queued-plus-running admission budget; it
+  defines no `ISystem`.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
 - Shared cooked contracts may remain in `engine/scene` or `ecs/scene_format`;

@@ -59,7 +59,7 @@
 #include <lux/engine/runtime/logging/LogRouter.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
-#include <lux/engine/runtime/spatial3d/navigation/Navigation3DPrepareService.hpp>
+#include <lux/engine/runtime/assets/navigation/Navigation3DPrepareService.hpp>
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
 #include <lux/engine/runtime/assets/tilemap/TilemapPrepareService.hpp>
 
@@ -228,7 +228,8 @@ namespace lux::editor
         std::unique_ptr<lux::asset_runtime::AssetLoadService>   asset_load_;
         std::unique_ptr<lux::runtime::entity_scene::EntitySectionService> entity_sections_;
         std::unique_ptr<lux::runtime::SceneGeometryPrepareService> geometry_preparation_;
-        std::unique_ptr<lux::runtime::spatial3d::Navigation3DPrepareService> navigation_preparation_;
+        std::unique_ptr<lux::runtime::assets::navigation::
+            Navigation3DPrepareService> navigation_preparation_;
         std::unique_ptr<lux::runtime::spatial3d::StaticCollider3DPrepareService> physics_preparation_;
         std::unique_ptr<
             lux::runtime::assets::tilemap::TilemapPrepareService>
@@ -556,7 +557,8 @@ namespace lux::editor
             shutdown();
             return false;
         }
-        auto navigation_preparation = lux::runtime::spatial3d::Navigation3DPrepareService::addTo(async_builder);
+        auto navigation_preparation = lux::runtime::assets::navigation::
+            Navigation3DPrepareService::addTo(async_builder);
         if (!navigation_preparation)
         {
             std::fprintf(
@@ -611,7 +613,9 @@ namespace lux::editor
         runtime_->asset_load_                   = std::make_unique<lux::asset_runtime::AssetLoadService>(std::move(*asset_load));
         runtime_->entity_sections_              = std::make_unique<lux::runtime::entity_scene::EntitySectionService>(std::move(*entity_sections));
         runtime_->geometry_preparation_         = std::make_unique<lux::runtime::SceneGeometryPrepareService>(std::move(*geometry_preparation));
-        runtime_->navigation_preparation_       = std::make_unique<lux::runtime::spatial3d::Navigation3DPrepareService>(std::move(*navigation_preparation));
+        runtime_->navigation_preparation_ = std::make_unique<
+            lux::runtime::assets::navigation::Navigation3DPrepareService>(
+                std::move(*navigation_preparation));
         runtime_->physics_preparation_          = std::make_unique<lux::runtime::spatial3d::StaticCollider3DPrepareService>(std::move(*physics_preparation));
         runtime_->tilemap_preparation_ = std::make_unique<
             lux::runtime::assets::tilemap::TilemapPrepareService>(

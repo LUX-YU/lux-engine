@@ -2,8 +2,8 @@
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
+#include <lux/engine/ecs/navigation/streaming/Navigation3DPreparePort.hpp>
 #include <lux/engine/runtime/scene/composition/navigation3d_visibility.h>
-#include <lux/engine/runtime/spatial3d/navigation/Navigation3DPrepareService.hpp>
 
 namespace lux::runtime
 {
@@ -11,5 +11,6 @@ namespace lux::runtime
     bool installNavigation3DSystems(
         lux::ecs::ScheduleBuilder& builder,
         const lux::ecs::ComponentTypeCatalog& components,
-        spatial3d::Navigation3DPrepareClient preparation);
+        lux::ecs::navigation::streaming::Navigation3DPrepareClient
+            preparation);
 }

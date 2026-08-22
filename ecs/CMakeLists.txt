@@ -90,7 +90,7 @@ else()
         tilemap tilemap_streaming pixel pixel_streaming terrain_components
         scripting scripting_lua scripting_native
         physics physics2d physics3d
-        navigation3d
+        navigation3d navigation3d_streaming
         render_components render_components_2d render_components_3d
         render_core render_2d render_3d render_pixel_integration
         render_tilemap_integration

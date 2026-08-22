@@ -1,21 +1,20 @@
 generate_visibility_header(
-    ENABLE_MACRO_NAME       LUX_ENGINE_RUNTIME_SPATIAL3D_NAVIGATION_LIBRARY
-    PUBLIC_MACRO_NAME       LUX_ENGINE_RUNTIME_SPATIAL3D_NAVIGATION_PUBLIC
-    DISABLE_DLL_MACRO_NAME  LUX_ENGINE_RUNTIME_SPATIAL3D_NAVIGATION_DLL_DISABLE
-    GENERATE_FILE_PATH      lux/engine/runtime/spatial3d/navigation/visibility.h
+    ENABLE_MACRO_NAME       LUX_ENGINE_RUNTIME_ASSETS_NAVIGATION_LIBRARY
+    PUBLIC_MACRO_NAME       LUX_ENGINE_RUNTIME_ASSETS_NAVIGATION_PUBLIC
+    DISABLE_DLL_MACRO_NAME  LUX_ENGINE_RUNTIME_ASSETS_NAVIGATION_DLL_DISABLE
+    GENERATE_FILE_PATH      lux/engine/runtime/assets/navigation/visibility.h
 )
 
 add_component(
-    COMPONENT_NAME runtime_spatial3d_navigation_adapter
+    COMPONENT_NAME runtime_navigation3d_prepare
     NAMESPACE      lux::engine::runtime
-    OUTPUT_NAME    lux_engine_runtime_spatial3d_navigation_adapter
+    OUTPUT_NAME    lux_engine_runtime_navigation3d_prepare
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Navigation3DPrepareService.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Spatial3DNavigationAdapterSystem.cpp
 )
 
 component_include_directories(
-    runtime_spatial3d_navigation_adapter
+    runtime_navigation3d_prepare
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
@@ -23,32 +22,38 @@ component_include_directories(
 )
 
 target_compile_definitions(
-    runtime_spatial3d_navigation_adapter
-    PRIVATE LUX_ENGINE_RUNTIME_SPATIAL3D_NAVIGATION_LIBRARY
+    runtime_navigation3d_prepare
+    PRIVATE LUX_ENGINE_RUNTIME_ASSETS_NAVIGATION_LIBRARY
 )
 
+if(MSVC)
+    target_compile_options(
+        runtime_navigation3d_prepare
+        PRIVATE /permissive- /Zc:__cplusplus /Zc:preprocessor
+    )
+endif()
+
 target_link_libraries(
-    runtime_spatial3d_navigation_adapter
+    runtime_navigation3d_prepare
     PUBLIC
         lux::engine::runtime::runtime_execution
-        lux::engine::runtime::runtime_entity_scene
-        lux::engine::ecs::navigation3d
-        lux::engine::ecs::scene_format
+        lux::engine::ecs::navigation3d_streaming
+    PRIVATE
         lux::engine::function::navigation_detour3d
 )
 
 component_add_transitive_commands(
-    runtime_spatial3d_navigation_adapter
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_entity_scene)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS navigation3d scene_format)"
+    runtime_navigation3d_prepare
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS navigation3d_streaming)"
     "find_package(lux-engine-function REQUIRED COMPONENTS navigation_detour3d)"
 )
 
 lux_classify_target(
-    TARGET  runtime_spatial3d_navigation_adapter
+    TARGET  runtime_navigation3d_prepare
     LAYER   RUNTIME
     PRODUCT RUNTIME
-    ROLE    INTEGRATION
+    ROLE    DOMAIN
 )
 
 add_executable(
@@ -58,7 +63,9 @@ add_executable(
 target_link_libraries(
     spatial3d_navigation_adapter_test
     PRIVATE
-        lux::engine::runtime::runtime_spatial3d_navigation_adapter
+        lux::engine::runtime::runtime_navigation3d_prepare
+        lux::engine::runtime::runtime_entity_scene
+        lux::engine::ecs::navigation3d_streaming
 )
 if(MSVC)
     target_compile_options(spatial3d_navigation_adapter_test PRIVATE /UNDEBUG)

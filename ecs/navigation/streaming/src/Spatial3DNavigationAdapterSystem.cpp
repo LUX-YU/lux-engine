@@ -1,12 +1,8 @@
-#include <lux/engine/runtime/spatial3d/navigation/Spatial3DNavigationAdapterSystem.hpp>
+#include <lux/engine/ecs/navigation/streaming/Spatial3DNavigationAdapterSystem.hpp>
 
-#include <lux/engine/runtime/execution/AsyncRuntime.hpp>
-#include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
-
-#include <stdexec/execution.hpp>
+#include <lux/engine/core/async/OperationInbox.hpp>
 
 #include <algorithm>
-#include <atomic>
 #include <cstdlib>
 #include <limits>
 #include <optional>
@@ -14,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace lux::runtime::spatial3d
+namespace lux::ecs::navigation::streaming
 {
     namespace
     {
@@ -42,9 +38,10 @@ namespace lux::runtime::spatial3d
             std::size_t owned_bytes{0u};
         };
 
-        struct CompletionControl final
+        struct PreparationCompletionKey final
         {
-            std::atomic<Spatial3DNavigationAdapterSystem*> owner{nullptr};
+            std::uint32_t slot{0u};
+            std::uint32_t generation{0u};
         };
 
         [[nodiscard]] lux::navigation::detour3d::NavigationRegion3DFailure
@@ -58,25 +55,19 @@ namespace lux::runtime::spatial3d
 
     struct Spatial3DNavigationAdapterSystem::Impl final
     {
-        Impl(Spatial3DNavigationAdapterSystem& owner_value,
-             lux::exec::AsyncRuntime& async_runtime_value,
-             lux::exec::AsyncScope& scene_scope_value,
-             Navigation3DPrepareClient preparation_value,
+        Impl(Navigation3DPrepareClient preparation_value,
              lux::ecs::Navigation3DSystem& navigation_value,
              lux::ecs::entity_scene::ContentBlobClient content_value,
              Spatial3DNavigationAdapterConfig config_value)
-            : async_runtime(&async_runtime_value),
-              preparation(std::move(preparation_value)),
+            : preparation(std::move(preparation_value)),
+              completions(config_value.maximum_owned_requests),
               navigation(&navigation_value), content(std::move(content_value)),
-              scope(&scene_scope_value),
-              completion(std::make_shared<CompletionControl>()),
               config(config_value)
         {
             if (config.maximum_owned_requests == 0u ||
                 config.maximum_owned_bytes == 0u)
                 std::abort();
             requests.resize(config.maximum_owned_requests);
-            completion->owner.store(&owner_value, std::memory_order_release);
         }
 
         [[nodiscard]] OwnedRequest* find(std::uint32_t slot,
@@ -191,8 +182,13 @@ namespace lux::runtime::spatial3d
 
             const auto slot = slotOf(request);
             const auto slot_generation = request.generation;
-            auto submitted = preparation.execute(BuildNavigationRegion3D{
-                std::move(*blob), request.navigation_generation});
+            auto submitted = completions.submit(
+                preparation.operation(),
+                BuildNavigationRegion3D{
+                    std::move(*blob), request.navigation_generation},
+                PreparationCompletionKey{slot, slot_generation},
+                lux::async::SubmitOptions{
+                    .accounted_bytes = request.owned_bytes});
             if (!submitted)
             {
                 if (submitted.error() ==
@@ -208,49 +204,7 @@ namespace lux::runtime::spatial3d
                     invalidContent("navigation preparation service is closed"));
                 return;
             }
-            auto pipeline =
-                std::move(*submitted) |
-                stdexec::continues_on(
-                    lux::exec::mainThreadScheduler(*async_runtime)) |
-                stdexec::then(
-                    [weak = std::weak_ptr{completion}, slot, slot_generation](
-                        lux::async::OperationOutcome<BuildNavigationRegion3D>
-                            outcome) mutable noexcept
-                    {
-                        const auto locked = weak.lock();
-                        if (!locked)
-                            return;
-                        auto* target =
-                            locked->owner.load(std::memory_order_acquire);
-                        if (target)
-                        {
-                            target->acceptPreparation(
-                                slot, slot_generation, std::move(outcome));
-                        }
-                    }) |
-                stdexec::upon_stopped(
-                    [weak = std::weak_ptr{completion},
-                     slot,
-                     slot_generation]() noexcept
-                    {
-                        const auto locked = weak.lock();
-                        if (!locked)
-                            return;
-                        auto* target =
-                            locked->owner.load(std::memory_order_acquire);
-                        if (target)
-                        {
-                            target->acceptPreparationStopped(slot,
-                                                             slot_generation);
-                        }
-                    });
             request.state = EOwnedRequestState::IN_FLIGHT;
-            if (!lux::exec::spawn(*scope, std::move(pipeline)))
-            {
-                request.state = EOwnedRequestState::WAITING_ADMISSION;
-                ++snapshot.queue_backpressure;
-                return;
-            }
             ++snapshot.submitted_requests;
         }
 
@@ -388,12 +342,12 @@ namespace lux::runtime::spatial3d
             navigation->consumePreparationRequests(consumed);
         }
 
-        lux::exec::AsyncRuntime* async_runtime{nullptr};
         Navigation3DPrepareClient preparation;
+        lux::async::OperationInbox<
+            BuildNavigationRegion3D,
+            PreparationCompletionKey> completions;
         lux::ecs::Navigation3DSystem* navigation{nullptr};
         lux::ecs::entity_scene::ContentBlobClient content;
-        lux::exec::AsyncScope* scope{nullptr};
-        std::shared_ptr<CompletionControl> completion;
         Spatial3DNavigationAdapterConfig config;
         std::vector<OwnedRequest> requests;
         Spatial3DNavigationAdapterSnapshot snapshot;
@@ -401,16 +355,11 @@ namespace lux::runtime::spatial3d
     };
 
     Spatial3DNavigationAdapterSystem::Spatial3DNavigationAdapterSystem(
-        lux::exec::AsyncRuntime& async_runtime,
-        lux::exec::AsyncScope& scene_scope,
         Navigation3DPrepareClient preparation,
         lux::ecs::Navigation3DSystem& navigation,
         lux::ecs::entity_scene::ContentBlobClient content,
         Spatial3DNavigationAdapterConfig config)
-        : impl_(std::make_unique<Impl>(*this,
-                                       async_runtime,
-                                       scene_scope,
-                                       std::move(preparation),
+        : impl_(std::make_unique<Impl>(std::move(preparation),
                                        navigation,
                                        std::move(content),
                                        config))
@@ -419,7 +368,7 @@ namespace lux::runtime::spatial3d
 
     Spatial3DNavigationAdapterSystem::~Spatial3DNavigationAdapterSystem()
     {
-        impl_->completion->owner.store(nullptr, std::memory_order_release);
+        impl_->completions.close();
         if (impl_->snapshot.current_requests != 0u ||
             impl_->snapshot.current_completions != 0u ||
             impl_->snapshot.current_bytes != 0u)
@@ -433,6 +382,14 @@ namespace lux::runtime::spatial3d
     void Spatial3DNavigationAdapterSystem::update(
         const lux::ecs::SystemUpdateContext&)
     {
+        impl_->completions.drain(
+            [this](auto completion) noexcept
+            {
+                acceptPreparation(
+                    completion.key.slot,
+                    completion.key.generation,
+                    std::move(completion.outcome));
+            });
         impl_->deliverReady();
         if (impl_->closing)
             return;
@@ -477,6 +434,7 @@ namespace lux::runtime::spatial3d
             return;
         impl_->closing = true;
         impl_->snapshot.closing = true;
+        impl_->completions.close();
         for (auto& request : impl_->requests)
         {
             if (request.state == EOwnedRequestState::FREE ||
@@ -493,7 +451,8 @@ namespace lux::runtime::spatial3d
     bool Spatial3DNavigationAdapterSystem::closeComplete() const noexcept
     {
         const auto state = snapshot();
-        return state.closing && state.current_requests == 0u &&
+        return state.closing && impl_->completions.terminal() &&
+               state.current_requests == 0u &&
                state.current_completions == 0u &&
                state.waiting_admission_requests == 0u &&
                state.in_flight_requests == 0u && state.current_bytes == 0u;
@@ -503,6 +462,8 @@ namespace lux::runtime::spatial3d
     {
         if (!impl_->closing || closeComplete())
             return false;
+        if (!impl_->completions.empty())
+            return true;
         return std::ranges::any_of(
             impl_->requests,
             [](const OwnedRequest& request) noexcept
@@ -572,22 +533,4 @@ namespace lux::runtime::spatial3d
         ++impl_->snapshot.current_completions;
     }
 
-    void Spatial3DNavigationAdapterSystem::acceptPreparationStopped(
-        std::uint32_t slot, std::uint32_t slot_generation) noexcept
-    {
-        auto* request = impl_->find(slot, slot_generation);
-        if (!request || request->state != EOwnedRequestState::IN_FLIGHT)
-        {
-            ++impl_->snapshot.stale_completions;
-            return;
-        }
-        if (impl_->closing)
-        {
-            ++impl_->snapshot.cancelled_requests;
-            impl_->release(*request);
-            return;
-        }
-        impl_->readyFailure(
-            *request, invalidContent("navigation preparation was stopped"));
-    }
-} // namespace lux::runtime::spatial3d
+} // namespace lux::ecs::navigation::streaming

@@ -104,16 +104,16 @@ target_link_libraries(
     PUBLIC
         lux::engine::runtime::runtime_scene_core
         lux::engine::runtime::runtime_entity_scene
-        lux::engine::runtime::runtime_spatial3d_navigation_adapter
         lux::engine::ecs::core
         lux::engine::ecs::navigation3d
+        lux::engine::ecs::navigation3d_streaming
         lux::engine::function::navigation_detour3d
 )
 component_add_transitive_commands(
     runtime_navigation3d_systems
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core navigation3d)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core navigation3d navigation3d_streaming)"
     "find_package(lux-engine-function REQUIRED COMPONENTS navigation_detour3d)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_scene_core runtime_spatial3d_navigation_adapter)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_scene_core)"
 )
 
 generate_visibility_header(

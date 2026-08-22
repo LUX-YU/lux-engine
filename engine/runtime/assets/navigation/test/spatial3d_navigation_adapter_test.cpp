@@ -1,23 +1,19 @@
 #include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/navigation/components/NavigationRegion3DComponent.hpp>
+#include <lux/engine/ecs/navigation/streaming/Spatial3DNavigationAdapterSystem.hpp>
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
+#include <lux/engine/core/async/OperationInbox.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
-#include <lux/engine/runtime/execution/AsyncScope.hpp>
-#include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
-#include <lux/engine/runtime/spatial3d/navigation/Navigation3DPrepareService.hpp>
-#include <lux/engine/runtime/spatial3d/navigation/Spatial3DNavigationAdapterSystem.hpp>
+#include <lux/engine/runtime/assets/navigation/Navigation3DPrepareService.hpp>
 
-#include <exec/start_detached.hpp>
-#include <stdexec/execution.hpp>
 #include <uuid.h>
 
-#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -191,8 +187,8 @@ namespace
     void drive(lux::exec::AsyncRuntime& runtime,
                lux::ecs::Schedule& schedule,
                const lux::ecs::Navigation3DSystem& navigation,
-               const lux::runtime::spatial3d::Spatial3DNavigationAdapterSystem&
-                   adapter,
+               const lux::ecs::navigation::streaming::
+                   Spatial3DNavigationAdapterSystem& adapter,
                Predicate&& done)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
@@ -212,28 +208,13 @@ namespace
             });
     }
 
-    template <class Sender>
-    void closeOwner(lux::exec::AsyncRuntime& runtime, Sender sender)
-    {
-        lux::exec::testing::CloseEpoch progress{runtime};
-        std::atomic<bool> closed{false};
-        auto completion = std::move(sender) |
-                          stdexec::then(
-                              [&closed, &progress]() noexcept
-                              {
-                                  closed.store(true, std::memory_order_release);
-                                  progress.notify();
-                              });
-        ::experimental::execution::start_detached(std::move(completion));
-        progress.drive([&closed]() noexcept
-                       { return closed.load(std::memory_order_acquire); });
-    }
 } // namespace
 
 int main()
 {
     namespace nav = lux::navigation::detour3d;
-    namespace runtime = lux::runtime::spatial3d;
+    namespace runtime = lux::runtime::assets::navigation;
+    namespace streaming = lux::ecs::navigation::streaming;
 
     lux::exec::AsyncRuntimeBuilder builder;
     auto service_result = runtime::Navigation3DPrepareService::addTo(
@@ -250,23 +231,47 @@ int main()
         std::move(*plan),
         lux::exec::AsyncRuntimeConfig{.blocking_io_threads = 1u,
                                       .background_cpu_concurrency = 1u}};
-    lux::exec::AsyncScope scene_scope{async_runtime};
-
     auto cached_service_client = service.client();
     assert(cached_service_client);
+    lux::async::OperationInbox<
+        streaming::BuildNavigationRegion3D,
+        std::uint32_t> probe_completions{4u};
+    const auto drain_probes = [&]() noexcept
+    {
+        lux::exec::testing::CloseEpoch progress{async_runtime};
+        progress.driveWithStep(
+            [&]() noexcept
+            {
+                probe_completions.drain([](auto) noexcept {});
+            },
+            [&]() noexcept
+            {
+                return probe_completions.terminal();
+            },
+            [&]() noexcept
+            {
+                return !probe_completions.empty();
+            });
+    };
     {
         // The service reservation spans queued and running work, rather than
         // ending when AsyncRuntime drains its endpoint queue.
-        auto held = cached_service_client.execute(runtime::BuildNavigationRegion3D{
-            makeRegion({91u, 901u}, 0.0, 0.0), 1u});
+        auto held = probe_completions.submit(
+            cached_service_client.operation(),
+            streaming::BuildNavigationRegion3D{
+                makeRegion({91u, 901u}, 0.0, 0.0), 1u},
+            1u);
         assert(held);
-        auto count_saturated = cached_service_client.execute(
-            runtime::BuildNavigationRegion3D{
-                makeRegion({92u, 902u}, 128.0, 0.0), 1u});
+        auto count_saturated = probe_completions.submit(
+            cached_service_client.operation(),
+            streaming::BuildNavigationRegion3D{
+                makeRegion({92u, 902u}, 128.0, 0.0), 1u},
+            2u);
         assert(!count_saturated);
         assert(count_saturated.error() ==
                lux::async::ESubmitError::QUEUE_FULL);
     }
+    drain_probes();
     {
         std::vector<std::byte> oversized_storage(
             4u * 1024u * 1024u + 1u, std::byte{0x5au});
@@ -274,18 +279,24 @@ int main()
             {93u, 903u},
             nav::kNavigationRegion3DSchemaVersion,
             lux::cxx::SharedBytes<>::copyOf(oversized_storage)};
-        auto byte_saturated = cached_service_client.execute(
-            runtime::BuildNavigationRegion3D{std::move(oversized), 1u});
+        auto byte_saturated = probe_completions.submit(
+            cached_service_client.operation(),
+            streaming::BuildNavigationRegion3D{
+                std::move(oversized), 1u},
+            3u);
         assert(!byte_saturated);
         assert(byte_saturated.error() ==
                lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
     }
     {
-        auto retried = cached_service_client.execute(
-            runtime::BuildNavigationRegion3D{
-                makeRegion({94u, 904u}, 256.0, 0.0), 1u});
+        auto retried = probe_completions.submit(
+            cached_service_client.operation(),
+            streaming::BuildNavigationRegion3D{
+                makeRegion({94u, 904u}, 256.0, 0.0), 1u},
+            4u);
         assert(retried);
     }
+    drain_probes();
 
     lux::runtime::entity_scene::SectionBlobStore blobs;
     std::vector<lux::ecs::entity_scene::ContentBlobLease> blob_owners;
@@ -336,13 +347,11 @@ int main()
         assert(navigation_handle);
 
         auto adapter_owner =
-            std::make_unique<runtime::Spatial3DNavigationAdapterSystem>(
-                async_runtime,
-                scene_scope,
+            std::make_unique<streaming::Spatial3DNavigationAdapterSystem>(
                 service.client(),
                 *navigation,
                 blobs.client(),
-                runtime::Spatial3DNavigationAdapterConfig{
+                streaming::Spatial3DNavigationAdapterConfig{
                     2u, 4u * 1024u * 1024u});
         auto* adapter = adapter_owner.get();
         const auto adapter_handle =
@@ -447,11 +456,6 @@ int main()
         // Once its main-thread completion is pumped, the adapter exposes a
         // new bounded local granule (or becomes closed) and Schedule can
         // finish normally.
-        scene_scope.requestStop();
-        closeOwner(async_runtime, scene_scope.closeAsync());
-        assert(adapter->closeComplete() ||
-               schedule.closeState().owner_work_pending);
-
         lux::exec::testing::CloseEpoch close_progress{async_runtime};
         close_progress.driveWithStep(
             [&]() noexcept
@@ -507,9 +511,11 @@ int main()
 
     service.close();
     assert(!cached_service_client);
-    auto after_close = cached_service_client.execute(
-        runtime::BuildNavigationRegion3D{
-            makeRegion({95u, 905u}, 384.0, 0.0), 1u});
+    auto after_close = probe_completions.submit(
+        cached_service_client.operation(),
+        streaming::BuildNavigationRegion3D{
+            makeRegion({95u, 905u}, 384.0, 0.0), 1u},
+        5u);
     assert(!after_close);
     assert(after_close.error() ==
            lux::async::ESubmitError::FEATURE_CLOSING);

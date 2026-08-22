@@ -11,7 +11,7 @@
  * 引用是安全的,而持有彼此的指针不是(节点可以被摘掉)。
  *
  * 这里只放**已经有真实消费者**的那些。设计稿列了一串(ActiveRenderScene /
- * SceneFeatureBindings / ResidencyView / …),但一次性把它们都建出来只会得到一堆
+ * RenderFeatureBindings / ResidencyView / …),但一次性把它们都建出来只会得到一堆
  * 零消费者的空壳 —— 每个都等到它那一批有人读时再加。
  */
 

@@ -22,14 +22,14 @@
  * protocol; they move to feature-scoped typed-ops in the op-downloading stage (D-3).
  */
 
-#include <lux/engine/render/SceneFeature.hpp>
+#include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <string>
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC StandardMaterialFeature final : public SceneFeature
+    class LUX_FUNCTION_PUBLIC StandardMaterialFeature final : public RenderFeature
     {
     public:
         struct Config

@@ -217,9 +217,9 @@ namespace lux::render
     //  Feature Management
     // ─────────────────────────────────────────────────────────────────────
 
-    bool RenderScene::ensureFeatureViewState(SceneFeature& feature, uint32_t view_index)
+    bool RenderScene::ensureFeatureViewState(RenderFeature& feature, uint32_t view_index)
     {
-        // 记账在 SceneFeatureSet(纯数据),**调虚函数留在这里** —— allocateViewState
+        // 记账在 RenderFeatureSet(纯数据),**调虚函数留在这里** —— allocateViewState
         // 的签名要 RenderScene&。只有登记成功才记账,保证 deallocateViewState 与之
         // 恰好一一对应。
         const uint32_t f_index = feature.featureId().index;
@@ -231,7 +231,7 @@ namespace lux::render
         return true;
     }
 
-    void RenderScene::releaseFeatureViewState(SceneFeature& feature, uint32_t view_index) noexcept
+    void RenderScene::releaseFeatureViewState(RenderFeature& feature, uint32_t view_index) noexcept
     {
         const uint32_t f_index = feature.featureId().index;
         if (!feature_set_.ownsViewState(f_index, view_index))
@@ -240,7 +240,7 @@ namespace lux::render
         feature_set_.forgetViewState(f_index, view_index);
     }
 
-    Expected<void> RenderScene::beginInstall(SceneFeature& feature)
+    Expected<void> RenderScene::beginInstall(RenderFeature& feature)
     {
         // Unified install entry (3-2): dependency / conflict / multiplicity validation
         // lives HERE — the single internal install path that the comm AddFeature
@@ -316,10 +316,10 @@ namespace lux::render
         return {};
     }
 
-    Expected<FeatureHandle> RenderScene::finishInstall(SceneFeature& feature, FeatureHandle handle)
+    Expected<FeatureHandle> RenderScene::finishInstall(RenderFeature& feature, FeatureHandle handle)
     {
         // 容器已在 installFeature 里插好(那里才有具体类型,好让它自行判定"产不产
-        // pass")。这里回填私有 id —— 本类是 SceneFeature 的 friend。
+        // pass")。这里回填私有 id —— 本类是 RenderFeature 的 friend。
         auto* raw = &feature;
         raw->feature_id_ = handle;
 
@@ -383,7 +383,7 @@ namespace lux::render
         return installFeature(std::move(feature));
     }
 
-    SceneFeature *RenderScene::getFeature(FeatureHandle feature_id) const
+    RenderFeature *RenderScene::getFeature(FeatureHandle feature_id) const
     {
         // get() 内部用 tryGet,同时挡掉未知句柄与陈旧句柄(代数不匹配)。
         return feature_set_.get(feature_id);
@@ -392,7 +392,7 @@ namespace lux::render
     void RenderScene::setFeatureDescriptor(FeatureHandle feature_id, const FeatureDescriptor& descriptor) noexcept
     {
         if (auto* f = getFeature(feature_id))
-            f->descriptor_ = descriptor;   // RenderScene is a friend of SceneFeature
+            f->descriptor_ = descriptor;   // RenderScene is a friend of RenderFeature
     }
 
     bool RenderScene::hasFeatureOfType(FeatureTypeId type) const noexcept
@@ -422,7 +422,7 @@ namespace lux::render
         // (kInvalidFeatureTypeId) are never depended upon, so they bypass the scan.
         if (check_reverse_deps)
         {
-            if (const SceneFeature* dependent =
+            if (const RenderFeature* dependent =
                     feature_set_.firstRequiring(ptr->descriptor_.type, ptr))
                 return renderFailure<err::feature::StillRequiredByAnother>(
                     encodeFeatureType(ptr->descriptor_.type),
@@ -574,7 +574,7 @@ namespace lux::render
     ViewHandle RenderScene::addView(const ViewCreateInfo &info)
     {
         // 视图容器 + 每视图 GPU 槽由 SceneViewSet 负责;特性侧的每视图状态由场景
-        // 编排 —— SceneFeature::allocateViewState 的签名要 RenderScene&,让视图集合
+        // 编排 —— RenderFeature::allocateViewState 的签名要 RenderScene&,让视图集合
         // 反手持有场景引用会造出一条反向依赖,不值当。
         const ViewHandle handle = view_set_.add(info);
 
@@ -702,12 +702,12 @@ namespace lux::render
         return *render_ctx_;
     }
 
-    std::span<SceneFeature* const> RenderScene::enabledFeatures() const noexcept
+    std::span<RenderFeature* const> RenderScene::enabledFeatures() const noexcept
     {
         return feature_set_.enabled();
     }
 
-    std::span<SceneFeature* const> RenderScene::features() const noexcept
+    std::span<RenderFeature* const> RenderScene::features() const noexcept
     {
         return feature_set_.all();
     }

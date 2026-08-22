@@ -237,7 +237,7 @@ namespace lux::render
             }
 
             // 让场景把该出的 pass 声明进来。本类不认识特性 —— 谁去声明、
-            // 按什么顺序,由场景决定(见 SceneFeatureSet::contributePasses)。
+            // 按什么顺序,由场景决定(见 RenderFeatureSet::contributePasses)。
             const auto build_started = std::chrono::steady_clock::now();
             if (contribute_passes)
                 contribute_passes(builder);

@@ -76,8 +76,8 @@ set(RENDER_VULKAN_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/resources/vertex/VertexProduction.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/RenderScene.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/RenderSceneView.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/SceneFeature.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/SceneFeatureSet.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/RenderFeature.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/RenderFeatureSet.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/SceneGraphCache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/SceneViewSet.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/View.cpp

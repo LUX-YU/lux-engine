@@ -697,6 +697,8 @@ function(lux_validate_source_boundaries)
     string(CONCAT retired_runtime_usage "RuntimeUsage" "Manifest")
     string(CONCAT retired_usage_manager "UsageManifest" "Manager")
     string(CONCAT retired_system_registry "System" "Registry")
+    string(CONCAT retired_scene_feature "Scene" "Feature")
+    string(CONCAT retired_feature_manager "Feature" "Manager")
     set(retired_semantic_names
         ${retired_scene_contribution}
         ${retired_world_feature}
@@ -714,6 +716,8 @@ function(lux_validate_source_boundaries)
         ${retired_runtime_usage}
         ${retired_usage_manager}
         ${retired_system_registry}
+        ${retired_scene_feature}
+        ${retired_feature_manager}
     )
     set(report "# retired-semantic|count|required\n")
     foreach(debt_name IN LISTS retired_semantic_names)

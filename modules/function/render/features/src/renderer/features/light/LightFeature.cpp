@@ -12,7 +12,7 @@
 namespace lux::render
 {
     LightFeature::LightFeature(Config cfg)
-        : SceneFeature(SceneFeature::Config{std::move(cfg.name)})
+        : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
     {}
 
     lux::render::Expected<void> LightFeature::initAndAttachTo(RenderScene& sc){
@@ -117,6 +117,6 @@ namespace lux::render
 
     // (原先这里有一个空的 addPasses:本单元只拥有光照**数据**,不产 render-graph
     //  pass —— 光照计算在 DeferredLighting / Forward 这些消费者里。现在它继承
-    //  SceneFeature,不再被迫实现 addPasses。)
+    //  RenderFeature,不再被迫实现 addPasses。)
 
 } // namespace lux::render

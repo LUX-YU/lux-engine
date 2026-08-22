@@ -16,7 +16,7 @@ namespace lux::render
     // resources/material/MaterialResources.hpp。理由同 StandardMeshStackFeature.cpp。)
 
     StandardMaterialFeature::StandardMaterialFeature(Config cfg)
-        : SceneFeature(SceneFeature::Config{std::move(cfg.name)})
+        : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
     {}
 
     lux::render::Expected<void> StandardMaterialFeature::initAndAttachTo(RenderScene& sc){
@@ -53,7 +53,7 @@ namespace lux::render
 
     // (原先这里有一个空的 addPasses:本单元只拥有资源,不产 render-graph pass ——
     //  材质 set-4 绑定与逐 family 管线在网格绘制的消费者里(DeferredGBuffer /
-    //  ForwardMesh / Highlight)。现在它继承 SceneFeature,不再被迫实现 addPasses。)
+    //  ForwardMesh / Highlight)。现在它继承 RenderFeature,不再被迫实现 addPasses。)
 
     // The factory (kMaterialFeatureFactory) + its createFn + the 3
     // feature-scoped material ops live in MaterialOperationHandlers.cpp, next to

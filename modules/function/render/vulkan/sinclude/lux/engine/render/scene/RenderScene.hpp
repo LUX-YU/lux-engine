@@ -23,15 +23,14 @@
 #include <lux/engine/function/render/client/core/FrameStamp.hpp>
 
 #include <iosfwd>   // std::ostream (dumpCompiledGraph)
-#include <lux/engine/render/SceneFeature.hpp>
-#include <lux/engine/render/RenderFeature.hpp>   // addFeature<T> 的 is_base_of 判定
+#include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/render/core/FrameRetireScheduler.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>   // sceneId()
 #include <lux/engine/function/render/client/core/RenderTypes.hpp> // lux::math::Extent2u
 #include <lux/engine/render/scene/View.hpp>
 #include <lux/engine/render/scene/SceneGraphCache.hpp>   // SceneGraphState + 图缓存组件
 #include <lux/engine/render/scene/SceneViewSet.hpp>      // ViewCreateInfo + 视图集合组件
-#include <lux/engine/render/scene/SceneFeatureSet.hpp>   // 特性容器 + 查询 + 每(特性,视图)账本
+#include <lux/engine/render/scene/RenderFeatureSet.hpp>   // 特性容器 + 查询 + 每(特性,视图)账本
 #include <lux/engine/render/scene/PipelineConfig.hpp>
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp>
 #include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
@@ -146,7 +145,7 @@ namespace lux::render
          *
          * 三段式,因为**只有中间那段需要具体类型**:
          *   1. beginInstall  依赖/冲突/多重性/特性等级校验 + attach。类型擦除。
-         *   2. 插入容器      SceneFeatureSet::insert<T> 在这里用 if constexpr 判定
+         *   2. 插入容器      RenderFeatureSet::insert<T> 在这里用 if constexpr 判定
          *                    "产不产 pass" —— 类型信息到此为止,不再外泄。
          *   3. finishInstall 置启用态、回填已有视图的每视图状态(失败则整体回滚)。
          *                    类型擦除。
@@ -157,8 +156,8 @@ namespace lux::render
         template <typename T>
         Expected<FeatureHandle> installFeature(std::unique_ptr<T> feature)
         {
-            static_assert(std::is_base_of_v<SceneFeature, T>,
-                          "只能装入 SceneFeature 及其派生类");
+            static_assert(std::is_base_of_v<RenderFeature, T>,
+                          "只能装入 RenderFeature 及其派生类");
             if (auto begun = beginInstall(*feature); !begun)
                 return lux::cxx::unexpected(begun.error());
 
@@ -168,7 +167,7 @@ namespace lux::render
         }
 
         /// O(1) lookup by handle.  Returns nullptr if the handle is invalid or stale.
-        [[nodiscard]] SceneFeature *getFeature(FeatureHandle feature_id) const;
+        [[nodiscard]] RenderFeature *getFeature(FeatureHandle feature_id) const;
 
         /// Typed convenience — static_cast after O(1) lookup.
         template <typename T>
@@ -227,17 +226,17 @@ namespace lux::render
         /// `struct_name`/`data`/`size` are empty/null/0 for features that expose
         /// no tunable params (paramStructName() == ""). All views point at
         /// render-thread-owned storage valid for the duration of the call.
-        /// 编辑器特性设置面板用;结构随实现迁入 SceneFeatureSet。
+        /// 编辑器特性设置面板用;结构随实现迁入 RenderFeatureSet。
         /// 保留别名:comm 的 QueryFeatureParams handler 显式命名了
         /// RenderScene::FeatureParamDesc(lambda 形参),别名让它零改动。
-        using FeatureParamDesc = SceneFeatureSet::FeatureParamDesc;
+        using FeatureParamDesc = RenderFeatureSet::FeatureParamDesc;
         std::vector<FeatureParamDesc> queryFeatureParamDescs() const;
 
         /// Dense vector of all live features (for iteration).
         /// 全部已装特性(含未启用)。
-        [[nodiscard]] std::span<SceneFeature* const> features() const noexcept;
+        [[nodiscard]] std::span<RenderFeature* const> features() const noexcept;
         /// 已启用的特性。
-        [[nodiscard]] std::span<SceneFeature* const> enabledFeatures() const noexcept;
+        [[nodiscard]] std::span<RenderFeature* const> enabledFeatures() const noexcept;
 
         /// 全部已装特性的额外输出槽需求并集(TargetSlot 位掩码)。
         /// 按**已装**而非已启用计 —— 关掉特性不缩池(影像小,进出反而抖动)。
@@ -477,9 +476,9 @@ namespace lux::render
 
         /// 装载事务的第 1 段:校验 + attach。失败即拒绝装载(此时尚未插入容器、
         /// 也没登记任何东西,无需回滚);错误原样来自被拒的那道闸或特性自己的 attach。
-        [[nodiscard]] Expected<void> beginInstall(SceneFeature& feature);
+        [[nodiscard]] Expected<void> beginInstall(RenderFeature& feature);
         /// 装载事务的第 3 段:置启用态 + 回填每视图状态(失败则整体回滚)。
-        [[nodiscard]] Expected<FeatureHandle> finishInstall(SceneFeature& feature, FeatureHandle handle);
+        [[nodiscard]] Expected<FeatureHandle> finishInstall(RenderFeature& feature, FeatureHandle handle);
 
         // Core feature removal. check_reverse_deps=true (public removeFeature) refuses
         // to remove a feature another installed feature still requires; =false
@@ -509,11 +508,11 @@ namespace lux::render
         /// Keyed by the view's index (== ViewHandle::index); the generation is a
         /// scene-level concern validated at the views_ lookup boundary, so the
         /// feature-facing per-view id stays a bare uint32.
-        bool ensureFeatureViewState(SceneFeature& feature, uint32_t view_index);
+        bool ensureFeatureViewState(RenderFeature& feature, uint32_t view_index);
 
         /// Release this feature's state for @p view_index if present. Idempotent;
         /// calls deallocateViewState() exactly once for a recorded pair.
-        void releaseFeatureViewState(SceneFeature& feature, uint32_t view_index) noexcept;
+        void releaseFeatureViewState(RenderFeature& feature, uint32_t view_index) noexcept;
 
         // (三条延迟销毁 FIFO 全部迁出:两条图相关的在 SceneGraphCache,
         //  视图那条 pending_destroys_ 在 SceneViewSet。)
@@ -538,7 +537,7 @@ namespace lux::render
         ResourceRegistry scene_registry_;
 
         /// 特性容器、查询与每(特性,视图)状态账本(纯数据;事务编排留在本类)。
-        SceneFeatureSet feature_set_;
+        RenderFeatureSet feature_set_;
 
         /// 编译图 + 图基础设施 + 图相关退休。unique_ptr 而非值成员:它的构造需要
         /// debug_name_,而后者按声明序在本成员之后初始化 —— 值成员会用到未初始化的
@@ -575,7 +574,7 @@ namespace lux::render
         std::string debug_name_;
 
         // (活跃视图 / 启用特性的稠密缓存与脏标记,已分别随各自集合迁入
-        //  SceneViewSet / SceneFeatureSet。)
+        //  SceneViewSet / RenderFeatureSet。)
         bool recompile_suppressed_{false};
     };
 

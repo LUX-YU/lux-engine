@@ -11,6 +11,10 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 - [x] Remove SceneFeature, SceneContribution and Runtime Pack identities.
 - [x] Reduce render extraction to one RenderSystem and a private static stage
       sequence; remove Runtime RenderEffect.
+  - [x] Collapse the Renderer-internal `SceneFeature` base and container into
+        the single `RenderFeature` identity. Resource-only capabilities inherit
+        the default empty `addPasses`; `FeatureCatalog` remains the only
+        capability graph and the per-Scene view is `RenderCapabilities`.
 - [x] Move every Runtime-owned ISystem and Component to its ECS domain.
   - [x] Move EntitySection decode/stage/materialization, loader and startup
         publication into `ecs/entity_scene`; Runtime retains only the typed

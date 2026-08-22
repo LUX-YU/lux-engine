@@ -70,7 +70,7 @@ namespace lux::ecs
 
         [[nodiscard]] bool applyPendingSceneOriginRebase() noexcept;
 
-        [[nodiscard]] lux::render::SceneFeatures features() const noexcept
+        [[nodiscard]] lux::render::RenderCapabilities features() const noexcept
         {
             return {
                 catalog_ ? &catalog_->get() : nullptr,
@@ -149,7 +149,7 @@ namespace lux::ecs
         lux::render::FeatureCatalog::ResolveOutcome resolve;
     };
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC FeatureSettleReport settleSceneFeatures(
+    [[nodiscard]] LUX_FUNCTION_PUBLIC FeatureSettleReport settleRenderCapabilities(
         SceneRenderBinding&                     ctx,
         std::span<const lux::render::FeatureAttach> plan,
         std::span<const std::string_view>           roots,

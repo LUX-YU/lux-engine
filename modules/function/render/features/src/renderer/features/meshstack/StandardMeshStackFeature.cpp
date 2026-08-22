@@ -27,7 +27,7 @@ namespace lux::render
     // 它把一条 L4→L6 向上两层的链接期依赖藏成了一行看不出问题的声明。)
 
     StandardMeshStackFeature::StandardMeshStackFeature(Config cfg)
-        : SceneFeature(SceneFeature::Config{std::move(cfg.name)})
+        : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
     {}
 
     lux::render::Expected<void> StandardMeshStackFeature::initAndAttachTo(RenderScene& sc){
@@ -208,7 +208,7 @@ namespace lux::render
 
     // (原先这里有一个空的 addPasses:本单元只拥有资源,不产 render-graph pass ——
     //  网格绘制的 pass 在 ForwardMesh / DeferredGBuffer / MeshShadow 里,它们是这些
-    //  资源的消费者。现在它继承 SceneFeature,不再被迫实现 addPasses。)
+    //  资源的消费者。现在它继承 RenderFeature,不再被迫实现 addPasses。)
 
     // The factory (kMeshStackFeatureFactory) + its createFn + the 8
     // feature-scoped instance ops live in MeshStackOperationHandlers.cpp, next to

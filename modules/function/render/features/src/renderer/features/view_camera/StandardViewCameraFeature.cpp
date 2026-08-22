@@ -8,7 +8,7 @@
 namespace lux::render
 {
     StandardViewCameraFeature::StandardViewCameraFeature(Config cfg)
-        : SceneFeature(SceneFeature::Config{std::move(cfg.name)})
+        : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
     {}
 
     lux::render::Expected<void> StandardViewCameraFeature::initAndAttachTo(RenderScene& sc){
@@ -56,7 +56,7 @@ namespace lux::render
     }
 
     // (原先这里有一个空的 addPasses:本单元只拥有资源,不产 render-graph pass。
-    //  现在它继承 SceneFeature,不再被迫实现 addPasses。)
+    //  现在它继承 RenderFeature,不再被迫实现 addPasses。)
 
     // The factory (kViewCameraFeatureFactory) + its createFn + the camera
     // update op live in ViewCameraOperationHandlers.cpp, next to the handler their

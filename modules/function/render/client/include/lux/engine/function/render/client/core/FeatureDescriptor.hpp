@@ -6,12 +6,12 @@
  * Promotes the relationships that today live only in comments + add-order (draft
  * §5.1) into declared data: a feature's stable type, its dependencies, the types
  * it conflicts with, and capability flags. Lives at the TYPE level (carried by the
- * FeatureFactory), because the FeatureManager must resolve dependencies BEFORE any
+ * FeatureFactory), because FeatureCatalog must resolve dependencies BEFORE any
  * instance exists.
  *
  * This introduces it as data; the dependency/conflict RESOLUTION that consumes
- * it (topological install order, conflict rejection, transactional rollback) lands
- * in the SceneFeatureManager — see .internal/UNFINISHED-WORK.md §2bis (slices 3c).
+ * it (topological install order, conflict rejection, transactional rollback)
+ * belongs to FeatureCatalog and RenderScene.
  * A descriptor with empty deps/conflicts (the makeSimpleFactory default) preserves
  * today's "caller-ordered, no validation" behaviour exactly.
  */

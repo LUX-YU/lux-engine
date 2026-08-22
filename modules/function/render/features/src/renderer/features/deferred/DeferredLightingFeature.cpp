@@ -110,7 +110,7 @@ namespace lux::render
         // **插件自选的字符串** —— 一个第三方特性把自己命名成 "ShadowMap",就会通过
         // 这个判断然后被 static_cast 成 ShadowMapFeature。而插件系统正在建。
         //
-        // typeId() 是 SceneFeature 早就有的稳定身份(RenderScene 在安装期从工厂
+        // typeId() 是 RenderFeature 早就有的稳定身份(RenderScene 在安装期从工厂
         // 描述符填入),而描述符的 type 来自 LUX_COMM_CONFIG 的
         // `id=lux.render.shadow_map.v1` 反射标注。取工厂的 descriptor.type 而不是
         // 在这里写 featureId("lux.render.shadow_map.v1") 字面量:与注册**同源**,

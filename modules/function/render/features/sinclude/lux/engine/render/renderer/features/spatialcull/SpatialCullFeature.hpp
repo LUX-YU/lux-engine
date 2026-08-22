@@ -25,7 +25,7 @@
  * Contract C2 — scene resources are feature-owned; C4 — domain-neutral scene primitives).
  */
 
-#include <lux/engine/render/SceneFeature.hpp>
+#include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/client/features/spatialcull/SpatialCullParams.hpp>
 #include <lux/engine/function/visibility.h>
 
@@ -41,7 +41,7 @@ namespace lux::render
     class InstanceResources;
     class ViewCameraResource;
 
-    class LUX_FUNCTION_PUBLIC SpatialCullFeature final : public SceneFeature
+    class LUX_FUNCTION_PUBLIC SpatialCullFeature final : public RenderFeature
     {
     public:
         struct Config

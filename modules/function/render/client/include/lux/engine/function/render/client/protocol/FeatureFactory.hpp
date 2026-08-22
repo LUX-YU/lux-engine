@@ -48,7 +48,7 @@ namespace lux::render
         int                    param_set_op_index{-1};
         /// Static type-level metadata: stable FeatureTypeId, declared dependencies /
         /// conflicts, capability flags. Default-empty (type == invalid) for
-        /// factories that don't declare one — the SceneFeatureManager then treats the
+        /// factories that don't declare one — RenderScene then treats the
         /// feature as today: caller-ordered, no dependency/conflict validation.
         FeatureDescriptor      descriptor{};
     };

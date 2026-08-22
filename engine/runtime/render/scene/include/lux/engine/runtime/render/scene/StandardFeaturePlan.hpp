@@ -53,7 +53,7 @@ namespace lux::runtime
     /// 预览档:前向管线 + 阴影,无延迟栈/后处理 —— 缩略图与材质预览这类
     /// 「一个物体 + 一盏灯 + 离屏小图」的场景。name = "preview" 是配置变体
     /// 匹配键:ShadowMap 的 "preview" 小图集配置行(见 registerStandardRenderFeatures)
-    /// 因此在 `settleSceneFeatures` 时胜过标准大图集。
+    /// 因此在 `settleRenderCapabilities` 时胜过标准大图集。
     LUX_RUNTIME_RENDER_SCENE_PUBLIC const RenderProfile& previewProfile() noexcept;
 
     /// Register every standard feature TYPE (name → type-id + dynamic op-ids)

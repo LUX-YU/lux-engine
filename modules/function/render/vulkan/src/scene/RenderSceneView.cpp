@@ -1,5 +1,5 @@
 // 头在 include/ 根(公开 SDK 面),实现在 src/render/scene/(它属于场景关注点)。
-// 理由同 SceneFeature.cpp:头文件层级表达"交给谁",src/ 目录表达"属于哪个关注点"。
+// 理由同 RenderFeature.cpp:头文件层级表达"交给谁",src/ 目录表达"属于哪个关注点"。
 #include <lux/engine/render/RenderSceneView.hpp>
 
 // The subject this facade forwards to. RenderSceneView HOLDS a RenderScene&

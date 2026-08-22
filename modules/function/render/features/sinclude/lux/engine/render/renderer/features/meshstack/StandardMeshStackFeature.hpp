@@ -22,14 +22,14 @@
  * See .internal/feature-classification-and-2d-coupling-2026-06-21.md §1D.
  */
 
-#include <lux/engine/render/SceneFeature.hpp>
+#include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <string>
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC StandardMeshStackFeature final : public SceneFeature
+    class LUX_FUNCTION_PUBLIC StandardMeshStackFeature final : public RenderFeature
     {
     public:
         struct Config

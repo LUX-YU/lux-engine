@@ -4,7 +4,7 @@
 // -----------------------------------------------------------------------------
 //  从 DescriptorSetLayoutContract.hpp 拆出。为什么值得单独一个头:
 //
-//  树外作者的**作者环**(RenderFeature → SceneFeature → RenderContextView)只
+//  树外作者的**作者环**(RenderFeature → RenderFeature → RenderContextView)只
 //  需要这个枚举 —— `RenderContextView::engineSetLayout(EDescriptorSetSlot)` 是
 //  实证在用的外部 API(lux-robotics 的 GaussianSplatFeature 以它绑引擎 Scene 集)。
 //  而完整的契约头会把 per-set binding 枚举与 description 模块的

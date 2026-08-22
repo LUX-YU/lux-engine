@@ -43,7 +43,7 @@ namespace lux::ecs
         return true;
     }
 
-    FeatureSettleReport settleSceneFeatures(
+    FeatureSettleReport settleRenderCapabilities(
         SceneRenderBinding&                     ctx,
         std::span<const lux::render::FeatureAttach> plan,
         std::span<const std::string_view>           input_roots,

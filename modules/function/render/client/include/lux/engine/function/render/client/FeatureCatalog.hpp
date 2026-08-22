@@ -11,7 +11,7 @@
 //
 //  ⚠️ 目录里**没有**每场景句柄(装配归属 ADR 裁决二):Entry 的字段全是
 //  进程域的。句柄是唯一的场景域状态,住在 FeatureBindings(RenderSystem
-//  每场景一份),子系统经 SceneFeatures 视图同时看到两半。
+//  每场景一份),子系统经 RenderCapabilities 视图同时看到两半。
 //
 //  本头**不再 include RenderServer.hpp**(曾经如此,四十来个线协议载荷跟着
 //  进来):add() 收调用方自己拿到的 addFeatureFactory 回执(type_id + ops),
@@ -353,11 +353,11 @@ namespace lux::render
     /// 两指针轻量视图 —— 子系统的取用面(`ctx.features()` 的返回型,按值传)。
     /// 方法与旧的「带句柄的目录」同形,所以全部子系统调用点零改动;
     /// 空指针 no-op 内建,不再需要静态空对象回退。
-    class SceneFeatures
+    class RenderCapabilities
     {
     public:
-        SceneFeatures() = default;
-        SceneFeatures(const FeatureCatalog*  catalog,
+        RenderCapabilities() = default;
+        RenderCapabilities(const FeatureCatalog*  catalog,
                       const FeatureBindings* bindings) noexcept
             : catalog_(catalog), bindings_(bindings) {}
 

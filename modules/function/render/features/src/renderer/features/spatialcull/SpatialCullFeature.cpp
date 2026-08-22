@@ -15,7 +15,7 @@
 namespace lux::render
 {
     SpatialCullFeature::SpatialCullFeature(Config cfg)
-        : SceneFeature(SceneFeature::Config{std::move(cfg.name)})
+        : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
         , params_{cfg.cell_size, cfg.cull_distance}
     {}
 
@@ -50,7 +50,7 @@ namespace lux::render
 
     // (原先这里有一个空的 addPasses:本单元不产 render-graph pass —— 网格是一块
     //  host-mapped 的 GPU 缓冲,网格剔除经 buffer-device-address 读它,地址在
-    //  onFrameBegin 里发布到场景的实例剔除掩码原语上。现在它继承 SceneFeature,
+    //  onFrameBegin 里发布到场景的实例剔除掩码原语上。现在它继承 RenderFeature,
     //  不再被迫实现 addPasses。)
 
     void SpatialCullFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
@@ -96,7 +96,7 @@ namespace lux::render
         renderScene().setInstanceCullMaskAddress(grid_->activeMaskAddress());
     }
 
-    SceneFeature::EParamApply SpatialCullFeature::applyParams(const void* src, std::size_t size)
+    RenderFeature::EParamApply SpatialCullFeature::applyParams(const void* src, std::size_t size)
     {
         if (src == nullptr || size != sizeof(SpatialCullParams))
             return EParamApply::UNSUPPORTED;

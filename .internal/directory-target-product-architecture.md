@@ -81,6 +81,11 @@ System Registry and installer/catalog/host variants are forbidden.
   preparation and the process-wide request/byte admission policy.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
+- Renderer capabilities have one object identity: `RenderFeature`. A
+  resource-only capability uses its default empty `addPasses`, while a pass
+  producer overrides it. `RenderFeatureSet` is RenderScene's private ownership
+  container, `RenderCapabilities` is a non-owning Catalog/binding view, and
+  neither creates another capability graph beside `FeatureCatalog`.
 - `ecs/render/presentation` owns primary-camera selection, host output intent,
   transient view binding and the only presentation System. Runtime render may
   create that ECS service and read its snapshot, but defines no `ISystem`.

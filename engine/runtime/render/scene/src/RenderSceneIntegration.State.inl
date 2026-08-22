@@ -35,7 +35,7 @@
                 services.profile.pass_roots.end());
             for (const auto& root : scene_feature_roots)
                 roots.emplace_back(root);
-            const auto report = lux::ecs::settleSceneFeatures(
+            const auto report = lux::ecs::settleRenderCapabilities(
                 render->binding(),
                 services.feature_plan,
                 std::span<const std::string_view>{roots},

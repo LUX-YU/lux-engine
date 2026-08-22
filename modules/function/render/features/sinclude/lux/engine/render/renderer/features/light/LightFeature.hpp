@@ -19,14 +19,14 @@
  * COMPUTE pass — this owns the light data it consumes.
  */
 
-#include <lux/engine/render/SceneFeature.hpp>
+#include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <string>
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC LightFeature final : public SceneFeature
+    class LUX_FUNCTION_PUBLIC LightFeature final : public RenderFeature
     {
     public:
         struct Config

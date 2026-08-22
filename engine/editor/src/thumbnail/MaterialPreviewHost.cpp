@@ -28,11 +28,11 @@
 #include "thumbnail/PreviewWorldCommon.hpp"
 
 #include <lux/engine/editor/app/LuxEditor.hpp>            // EditorRenderInfra
-#include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
+#include <lux/engine/content/BuiltinAssetIds.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetEvents.hpp>   // AssetUnreferenced(批E 订阅)
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
 #include <lux/engine/ecs/render/RenderResourceEvents.hpp>
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>          // 进程域驻留三件套(贴图槽解析)
@@ -57,7 +57,7 @@
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 
 #include <lux/engine/input/ActionMapper.hpp>
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <uuid.h>   // std::hash<uuids::uuid>(retire/owned 集合)
@@ -81,9 +81,9 @@ namespace lux::editor
         lux::input::ActionMapper                    mapper;
         std::unique_ptr<lux::runtime::SceneRuntime> runtime;
         lux::render::RenderTargetLease              target{};
-        lux::meta::entity_id                        camera{entt::null};
-        lux::meta::entity_id                        key_light{entt::null};
-        lux::meta::entity_id                        sphere{entt::null};
+        lux::ecs::Entity                        camera{entt::null};
+        lux::ecs::Entity                        key_light{entt::null};
+        lux::ecs::Entity                        sphere{entt::null};
         lux::asset::asset_id_t                      sphere_mesh_id{};
         lux::asset::asset_id_t                      preview_grey_id{};
         lux::render::MaterialOperationIds           material_ops{};
@@ -164,12 +164,12 @@ namespace lux::editor
         auto host = std::make_unique<Host>();
         host->cur_w = host->cur_h = render_size ? render_size : 512u;
         if (!parseBuiltinId(
-                lux::asset::kBuiltinSphereMeshIdStr,
+                lux::engine::content::kBuiltinSphereMeshIdStr,
                 host->sphere_mesh_id))
             return false;   // programmer error — the literal is compile-time
         // 预览灰缺席不致命:球以 nil 材质起步(渲染侧默认),首刀落地后无差异。
         (void)parseBuiltinId(
-            lux::asset::kBuiltinPreviewGreyMaterialIdStr,
+            lux::engine::content::kBuiltinPreviewGreyMaterialIdStr,
             host->preview_grey_id);
         if (!assets_.hasAsset(host->preview_grey_id))
             host->preview_grey_id = {};
@@ -177,7 +177,7 @@ namespace lux::editor
         // ── HOST step 1: SAMPLED offscreen target(面板经 ImGui target sentinel
         //    采样显示;非 SAMPLED 目标的 sentinel 解析为 VK_NULL_HANDLE)。
         //    OURS to create and (in releaseGpu) destroy。
-        const lux::common::Size2D extent{host->cur_w, host->cur_h};
+        const lux::math::Extent2u extent{host->cur_w, host->cur_h};
         auto target_result = infra_.control->syncCall(
             infra_.control->createOffscreenRenderTarget(
                 extent,
@@ -199,7 +199,10 @@ namespace lux::editor
 
         lux::runtime::SceneRuntime::Config rcfg;
         rcfg.name            = "MaterialPreview";
-        rcfg.transient_package = makePreviewScenePackage(rcfg.name);
+        rcfg.scene_asset_id = registerPreviewSceneAsset(
+            assets_, rcfg.name);
+        if (rcfg.scene_asset_id.is_nil())
+            return false;
         rcfg.events          = infra_.events;      // 进程域同一个 bus(批B,可空)
         // ★ 批 D2:守卫在这里,因为 `RenderInfra::residency` 按设计可空 —— 详见
         //   `EditorScene::bringUp` 同位置的说明。
@@ -355,7 +358,7 @@ namespace lux::editor
         //    排空并重设 layer;aspect 由 syncAspect 随 extent 对齐。
         if (h.pending_resize)
         {
-            const lux::common::Size2D extent{h.pend_w, h.pend_h};
+            const lux::math::Extent2u extent{h.pend_w, h.pend_h};
             // M2c:改尺寸直达渲染目标图像池(视图渲染尺寸随 binding 派生)。
             infra_.control->resizeTarget(h.target.id(), extent);
             // 走 patch:直接写字段不发 on_update(EnTT 契约),layer 不会重设。

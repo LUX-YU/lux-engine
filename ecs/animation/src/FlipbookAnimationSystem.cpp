@@ -29,7 +29,7 @@ namespace lux::ecs
         auto& registry = ctx.registry();
         const float dt = ctx.dt();
         auto view = registry.view<FlipbookAnimationComponent, FlipbookAnimCacheComponent, Image2DComponent>();
-        view.each([dt, &registry](lux::meta::entity_id       e,
+        view.each([dt, &registry](lux::ecs::Entity       e,
                                   FlipbookAnimationComponent& anim,
                                   FlipbookAnimCacheComponent& cache,
                                   Image2DComponent&          sp)

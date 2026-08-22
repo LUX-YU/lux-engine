@@ -2,9 +2,8 @@
 
 #include <lux/engine/ecs/physics3d/Physics3DConfig.hpp>
 #include <lux/engine/ecs/physics3d/StaticHeightfieldBatch3D.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <memory>
@@ -173,7 +172,7 @@ namespace lux::ecs
         Physics3DScene& operator=(const Physics3DScene&) = delete;
 
         void advance(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             float frame_dt) noexcept;
 
         [[nodiscard]] Physics3DExp<

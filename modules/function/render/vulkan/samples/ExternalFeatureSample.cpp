@@ -156,9 +156,9 @@ namespace sample_ext
         {
             builder.addPass("SampleExternalPass", ERGPassType::GRAPHICS)
                 .write(builder.referenceTexture(cfg_.color_target),
-                       lux::common::ETextureRole::COLOR_ATTACHMENT)
+                       lux::render::ETextureRole::COLOR_ATTACHMENT)
                 .write(builder.referenceTexture(cfg_.depth_target),
-                       lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                       lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                 .setPipeline(pipeline_)
                 .bindSceneDS(0)
                 .setKernelFn(

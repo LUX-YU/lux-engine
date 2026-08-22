@@ -7,9 +7,6 @@ generate_visibility_header(
     GENERATE_FILE_PATH      lux/engine/function/visibility.h
 )
 
-# get sublist
-subdirectory_list(dir_list)
-
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # EntityScene cooks materialize built-in 3D component schemas. Their
     # schema-only ECS targets use the backend-neutral render client vocabulary
@@ -17,27 +14,27 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # Input or Lua. Keep this list explicit so an offline-tool configure cannot
     # discover Vulkan, GLFW, ImGui or a Runtime script backend by directory
     # enumeration.
-    set(dir_list animation render/client)
+    add_subdirectory(animation)
+    add_subdirectory(render/client)
+    add_subdirectory(render/standard_content)
     # Spatial3D EntityScene cooking emits the engine-owned LXNR payload through
     # navigation_detour3d's codec.  This lower-layer dependency is Recast-only
     # and must exist in the Toolchain profile without pulling Render/Vulkan.
-    list(APPEND dir_list navigation)
+    add_subdirectory(navigation)
     if(LUX_ENABLE_FLOWFORGE_MLIR)
-        list(APPEND dir_list script)
+        add_subdirectory(script)
+    endif()
+else()
+    add_subdirectory(animation)
+    add_subdirectory(input)
+    add_subdirectory(navigation)
+    add_subdirectory(render)
+    add_subdirectory(script)
+    # ui is the imgui-over-GLFW overlay stack and remains desktop-only.
+    if(NOT ANDROID)
+        add_subdirectory(ui)
     endif()
 endif()
-
-foreach(subdir ${dir_list})
-    # ui is the imgui-over-GLFW overlay stack (find_package(imgui COMPONENTS
-    # glfw3)) — desktop-only until the ImGui_ImplAndroid backend lands
-    # (mobile investigation §3 item 3-6). Staged, not cut.
-    if(ANDROID AND subdir STREQUAL "ui")
-        continue()
-    endif()
-    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt)
-        add_subdirectory(${subdir})
-    endif()
-endforeach()
 
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     set(LUX_FUNCTION_COMPONENTS
@@ -45,6 +42,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         navigation
         navigation_detour3d
         render_client
+        render_standard_content
     )
     if(LUX_ENABLE_FLOWFORGE_MLIR)
         list(APPEND LUX_FUNCTION_COMPONENTS script_core)
@@ -55,6 +53,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
 else()
     set(LUX_FUNCTION_COMPONENTS
         render_client
+        render_standard_content
         render_graph
         render_vulkan
         render_features

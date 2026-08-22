@@ -2,9 +2,9 @@
 
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/ecs/animation/systems/AnimationSystem.hpp>
-#include <lux/engine/ecs/animation/systems/SkeletalAnimationResolver.hpp>
 #include <lux/engine/runtime/assets/SceneAssetServices.hpp>
 #include <lux/engine/runtime/spatial3d/transform/Spatial3DTransformContribution.hpp>
+#include <lux/engine/runtime/packs/scene3d/SkeletalAnimationResolver.hpp>
 
 #include <memory>
 #include <span>
@@ -55,15 +55,10 @@ namespace lux::runtime
                         typeToken<lux::asset_runtime::
                             SceneAssetServices>()});
             }
-            const auto request_load = [client = assets->loads](
-                const lux::asset::asset_id_t& id) noexcept
-            {
-                static_cast<void>(client.request(id));
-            };
             if (auto added = builder.add(
                     std::make_unique<SkeletalAnimationResolver>(
                         assets->manager,
-                        request_load),
+                        assets->loads),
                     kPhasePreTransform); !added)
             {
                 return added;

@@ -1,9 +1,10 @@
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 
-#include <cassert>
 #include <array>
+#include <cassert>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <uuid.h>
 
 namespace
@@ -24,8 +25,12 @@ int main()
         lux::ecs::PersistentEntityIdComponent>);
     static_assert(!std::is_move_assignable_v<
         lux::ecs::PersistentEntityIdComponent>);
+    static_assert(std::is_same_v<
+        decltype(std::declval<
+            const lux::ecs::PersistentEntityIdComponent&>().id()),
+        const lux::ecs::PersistentEntityId&>);
 
-    lux::meta::EntityRegistry registry;
+    lux::ecs::Registry registry;
     lux::ecs::PersistentEntityIndex index{registry};
     assert(index.boundTo(registry));
 

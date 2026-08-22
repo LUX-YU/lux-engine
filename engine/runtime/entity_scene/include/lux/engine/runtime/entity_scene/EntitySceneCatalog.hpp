@@ -1,11 +1,11 @@
 #pragma once
 /**
  * @file EntitySceneCatalog.hpp
- * @brief Scene-scoped immutable owner of one validated Engine ScenePackage.
+ * @brief Scene-scoped immutable owner of one validated Engine SceneDescription.
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/runtime/entity_scene/visibility.h>
 
 #include <span>
@@ -15,15 +15,15 @@ namespace lux::runtime::entity_scene
 {
     /// The sole runtime owner of decoded scene-package metadata. Runtime
     /// loading code borrows immutable Section records from this catalog; the
-    /// historical Resource EntityScene DTO is confined to ScenePackage's
+    /// historical Resource EntityScene DTO is confined to SceneDescription's
     /// private compatibility adapter.
     class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC EntitySceneCatalog final
     {
     public:
         [[nodiscard]] static lux::cxx::expected<
             EntitySceneCatalog,
-            lux::scene::ScenePackageCodecFailure>
-        create(lux::scene::ScenePackage package) noexcept;
+            lux::scene::SceneCodecFailure>
+        create(lux::scene::SceneDescription package) noexcept;
 
         EntitySceneCatalog(EntitySceneCatalog&&) noexcept = default;
         EntitySceneCatalog& operator=(EntitySceneCatalog&&) noexcept =
@@ -31,7 +31,7 @@ namespace lux::runtime::entity_scene
         EntitySceneCatalog(const EntitySceneCatalog&) = delete;
         EntitySceneCatalog& operator=(const EntitySceneCatalog&) = delete;
 
-        [[nodiscard]] const lux::scene::ScenePackage& package() const noexcept
+        [[nodiscard]] const lux::scene::SceneDescription& package() const noexcept
         {
             return package_;
         }
@@ -49,10 +49,10 @@ namespace lux::runtime::entity_scene
             lux::scene::SceneFeatureIdView id) const noexcept;
 
     private:
-        explicit EntitySceneCatalog(lux::scene::ScenePackage package) noexcept
+        explicit EntitySceneCatalog(lux::scene::SceneDescription package) noexcept
             : package_(std::move(package))
         {}
 
-        lux::scene::ScenePackage package_;
+        lux::scene::SceneDescription package_;
     };
 } // namespace lux::runtime::entity_scene

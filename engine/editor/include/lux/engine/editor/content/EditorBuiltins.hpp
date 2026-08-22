@@ -18,7 +18,7 @@
  */
 
 #include <lux/engine/resource/asset/Asset.hpp>           // asset_id_t
-#include <lux/engine/resource/asset/BuiltinAssetIds.hpp> // 引擎级冻结 id(M_Missing)
+#include <lux/engine/content/BuiltinAssetIds.hpp> // 引擎级冻结 id(M_Missing)
 #include <lux/engine/editor/visibility.h>
 
 namespace lux::asset { class AssetManager; }

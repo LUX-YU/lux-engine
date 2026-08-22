@@ -69,7 +69,7 @@
             || reader.readPod<std::uint32_t>() != kWorldTerrainPageVersion)
             return lux::cxx::unexpected(std::string{"invalid LXTP v1 header"});
         WorldTerrainPageDocument page;
-        page.world = readId<lux::entity_scene::EntitySceneId>(reader);
+        page.world = readId<lux::authoring::WorldId>(reader);
         page.terrain_set = readId<lux::authoring::TerrainSetId>(reader);
         page.space = readId<lux::authoring::PartitionSpaceId>(reader);
         if (!readCell(reader, page.cell))
@@ -194,7 +194,7 @@
             || reader.readPod<std::uint32_t>() != kWorldTilePageVersion)
             return lux::cxx::unexpected(std::string{"invalid LXTL v1 header"});
         WorldTilePageDocument page;
-        page.world = readId<lux::entity_scene::EntitySceneId>(reader);
+        page.world = readId<lux::authoring::WorldId>(reader);
         page.tilemap = readId<lux::authoring::TilemapId>(reader);
         page.space = readId<lux::authoring::PartitionSpaceId>(reader);
         if (!readCell(reader, page.cell))
@@ -314,7 +314,7 @@
             || reader.readPod<std::uint32_t>() != kWorldPixelPageVersion)
             return lux::cxx::unexpected(std::string{"invalid LXPP v1 header"});
         WorldPixelPageDocument page;
-        page.world = readId<lux::entity_scene::EntitySceneId>(reader);
+        page.world = readId<lux::authoring::WorldId>(reader);
         page.field = readId<lux::authoring::PixelFieldId>(reader);
         page.space = readId<lux::authoring::PartitionSpaceId>(reader);
         if (!readCell(reader, page.cell))

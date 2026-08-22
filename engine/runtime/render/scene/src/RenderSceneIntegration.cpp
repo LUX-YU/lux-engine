@@ -14,6 +14,7 @@
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
 #include <lux/engine/function/render/client/core/RenderErrorRegistry.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/content/BuiltinAssetIds.hpp>
 #include <lux/engine/log/Log.hpp>
 
 #include <algorithm>
@@ -136,8 +137,10 @@ namespace lux::runtime
                 ESceneIntegrationError::PREPARE_FAILED);
         }
 
-        auto residency =
-            std::make_unique<lux::ecs::ResidencySubsystem>(context.assets);
+        auto residency = std::make_unique<lux::ecs::ResidencySubsystem>(
+            context.assets,
+            lux::engine::content::builtinMissingMaterialId()
+        );
         residency->setCallbacks(**residency_callbacks);
         auto* residency_service = residency.get();
         if (!impl_->builder->add(std::move(residency)) ||
@@ -292,7 +295,7 @@ namespace lux::runtime
 
     void RenderSceneIntegration::reattachTarget(
         lux::render::RenderTargetId target,
-        lux::common::Size2D extent) noexcept
+        lux::math::Extent2u extent) noexcept
     {
         if (!target.isValid() || !impl_->primary_view)
             return;

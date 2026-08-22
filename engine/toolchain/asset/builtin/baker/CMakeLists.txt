@@ -19,7 +19,8 @@ lux_classify_target(
 target_link_libraries(
     lux_content_baker
     PRIVATE
-        lux::engine::resource::asset_codecs
+        lux::cxx::core
+        lux::engine::resource::asset
         lux::engine::toolchain::toolchain_builtin_content
         lux::engine::toolchain::toolchain_material_compiler
 )

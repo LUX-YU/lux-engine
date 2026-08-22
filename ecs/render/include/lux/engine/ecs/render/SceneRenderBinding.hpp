@@ -19,7 +19,8 @@
 #include <lux/engine/function/render/client/genops/Canvas2DOperation.ops.hpp>
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
+#include <lux/engine/math/Grid.hpp>
 
 namespace lux::render {
     class RenderFrameSession;
@@ -55,17 +56,17 @@ namespace lux::ecs
         }
         [[nodiscard]] lux::render::RenderSceneId   scene()   const noexcept { return scene_; }
 
-        [[nodiscard]] const lux::spatial::GridCoord3i64&
+        [[nodiscard]] const lux::math::GridCoord3i64&
         sceneOriginTile3D() const noexcept
         {
             return scene_origin_tile_3d_;
         }
 
         void requestSceneOriginRebase(
-            const lux::spatial::Position3D& position) noexcept;
+            const lux::math::Position3d& position) noexcept;
 
         void requestSceneOriginRebase(
-            const lux::spatial::Position2D& position) noexcept;
+            const lux::math::Position2d& position) noexcept;
 
         [[nodiscard]] bool applyPendingSceneOriginRebase() noexcept;
 
@@ -120,8 +121,8 @@ namespace lux::ecs
         std::reference_wrapper<lux::render::RenderControlSession> control_;
         lux::render::RenderUploadClient upload_;
         lux::render::RenderSceneId scene_{};
-        lux::spatial::GridCoord3i64 scene_origin_tile_3d_{};
-        std::optional<lux::spatial::GridCoord3i64>
+        lux::math::GridCoord3i64 scene_origin_tile_3d_{};
+        std::optional<lux::math::GridCoord3i64>
             pending_scene_origin_tile_;
         std::optional<std::reference_wrapper<
             const lux::render::FeatureCatalog>> catalog_;

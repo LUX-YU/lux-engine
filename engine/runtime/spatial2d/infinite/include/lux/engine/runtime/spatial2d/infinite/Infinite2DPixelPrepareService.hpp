@@ -8,7 +8,7 @@
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
 #include <lux/engine/ecs/scene_format/PersistenceJournal.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/pixel_visibility.h>
 
@@ -47,7 +47,7 @@ namespace lux::runtime::spatial2d
 
         lux::cxx::SharedBytes<> content;
         lux::ecs::scene_format::ContentBlobRef reference;
-        lux::spatial::GridCoord2i64 expected_coordinate;
+        lux::math::GridCoord2i64 expected_coordinate;
         lux::ecs::PixelChunkPreparationContext preparation;
         std::optional<lux::ecs::scene_format::PersistenceJournalRecord>
             persistence;

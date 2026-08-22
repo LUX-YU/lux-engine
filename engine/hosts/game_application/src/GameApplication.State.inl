@@ -15,8 +15,8 @@
         lux::render::RenderControlSession* control{nullptr};
         lux::render::RenderTargetLease surface_target{};
         lux::render::RenderTargetLease diagnostic_capture_target{};
-        lux::common::Size2D surface_extent{};
-        lux::common::Size2D diagnostic_capture_extent{};
+        lux::math::Extent2u surface_extent{};
+        lux::math::Extent2u diagnostic_capture_extent{};
         bool backend_started{false};
         lux::render::CapacityPlan capacity_plan{};
         std::optional<lux::render::CapacityShortfall> capacity_shortfall{};
@@ -43,9 +43,7 @@
 
         std::unique_ptr<lux::runtime::ResidencyAssembly> residency;
 
-        lux::input::InputActionRegistry action_registry;
-        lux::input::InputContextStack context_stack;
-        std::unique_ptr<lux::input::ActionMapper> mapper;
+        std::unique_ptr<lux::input::Input> input;
 
         std::unique_ptr<lux::runtime::SceneRuntime> runtime;
         std::unique_ptr<lux::runtime::SceneScriptRuntime> simulation;
@@ -89,7 +87,7 @@
 
         template <class Component>
         [[nodiscard]] static std::optional<Component> singletonComponent(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             bool& ambiguous) noexcept
         {
             ambiguous = false;
@@ -339,7 +337,7 @@
                 return false;
             auto& registry = runtime->world().registry();
             const auto position = pose.position;
-            if (!lux::spatial::isFinite(position))
+            if (!lux::math::isFinite(position))
                 return false;
             const auto camera = mainCamera();
             if (camera == entt::null || !registry.valid(camera))
@@ -580,7 +578,7 @@
 
         [[nodiscard]] bool attachSurface(
             std::uint64_t native_surface,
-            lux::common::Size2D extent)
+            lux::math::Extent2u extent)
         {
             if (!control || native_surface == 0u ||
                 extent.width == 0u || extent.height == 0u)

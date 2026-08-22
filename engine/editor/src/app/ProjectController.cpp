@@ -10,7 +10,7 @@
 #include <lux/engine/ui/Panel.hpp>                        // setVisible / isVisible
 #include <lux/engine/ui/UISystem.hpp>                     // layout load/save/clear
 #include <lux/engine/resource/asset/AssetManager.hpp>              // setVfs / registerContentFolder arg
-#include <lux/engine/resource/asset/AssetVfs.hpp>                  // AssetVfs
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>                  // AssetVfs
 #include <lux/engine/authoring/assets/LooseAssetProvider.hpp>
 #include <lux/engine/authoring/project/RecentProjects.hpp>
 
@@ -120,9 +120,12 @@ namespace lux::editor
                 path = current_project_->root() / path;
             requirements.push_back(
                 lux::extensions::ExtensionModuleRequirement::fromPath(
-                    entry.id,
+                    lux::extensions::ExtensionId{entry.id.name()},
                     std::move(path),
-                    entry.target,
+                    entry.target ==
+                            lux::authoring::EProjectExtensionTarget::EDITOR
+                        ? lux::extensions::EExtensionModuleTarget::EDITOR
+                        : lux::extensions::EExtensionModuleTarget::RUNTIME,
                     entry.required_major,
                     entry.minimum_minor));
         }

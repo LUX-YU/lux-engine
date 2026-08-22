@@ -5,8 +5,8 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
+#include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/Spatial2DSectionIndex.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/visibility.h>
 #include <lux/engine/runtime/spatial_partition/SpatialDemand.hpp>
@@ -95,7 +95,7 @@ namespace lux::runtime::spatial2d
         /// SpatialDemand priority is never interpreted as a domain
         /// visibility/simulation flag.
         [[nodiscard]] bool isActive(
-            lux::spatial::GridCoord2i64 coordinate) const noexcept;
+            lux::math::GridCoord2i64 coordinate) const noexcept;
 
         void onAdded(const lux::ecs::SystemSetupContext& setup) override;
         void update(const lux::ecs::SystemUpdateContext& context) override;

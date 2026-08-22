@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 // ============================================================================
 //  Image2DSubsystem.hpp — ECS Image2DComponent → GPU-resident Canvas2D instance
 //  (lux::ecs, v2 — .internal/2d-gpu-driven-rewrite.md §3.5).
@@ -51,7 +53,7 @@
 #include <lux/engine/ecs/render/components/2d/Camera2DComponent.hpp>
 #include <lux/engine/function/render/client/features/canvas2d/Canvas2DOperation.hpp>  // Image2DInstanceData / Image2DHandle
 #include <lux/engine/function/render/client/RenderRequest.hpp>                      // in-flight create handle
-#include <lux/engine/meta/LuxObject.hpp>   // EntityRegistry / entity_id
+#include <lux/engine/ecs/Registry.hpp>   // EntityRegistry / entity_id
 
 #include <cstdint>
 #include <cstring>
@@ -150,7 +152,7 @@ namespace lux::ecs
 
             // Parallax origin: the active camera's world centre (A2-03). One
             // lookup per tick; scenes without a camera get a zero origin.
-            lux::spatial::Position2D camera_position{};
+            lux::math::Position2d camera_position{};
             for (auto ce : registry.view<PrimaryCameraTag, ResolvedTransform2DComponent>())
             {
                 const auto& cw = registry.get<ResolvedTransform2DComponent>(ce);
@@ -202,7 +204,7 @@ namespace lux::ecs
 
             // ④ 逐实体处理:换出语义与 VERIFY 对拍都在 drain 里。
             changes_.drain(registry, renderSubsystemType<Image2DSubsystem>().name,
-                [&](lux::meta::entity_id e, Image2DComponent& sp)
+                [&](lux::ecs::Entity e, Image2DComponent& sp)
                 {
                     return processEntity(registry, ctx, canvas, camera_position, e, sp,
                                          registry.get<ResolvedTransform2DComponent>(e));
@@ -217,10 +219,10 @@ namespace lux::ecs
 
     private:
         /// 一个实体的全部维护。@return 本次是否做了实质动作(VERIFY oracle 的判据)。
-        bool processEntity(lux::meta::EntityRegistry& registry, SceneRenderBinding& ctx,
+        bool processEntity(lux::ecs::Registry& registry, SceneRenderBinding& ctx,
                            auto& canvas,
-                           const lux::spatial::Position2D& camera_position,
-                           lux::meta::entity_id e, const Image2DComponent& sp,
+                           const lux::math::Position2d& camera_position,
+                           lux::ecs::Entity e, const Image2DComponent& sp,
                            const ResolvedTransform2DComponent& wt)
         {
             bool did_work = false;
@@ -238,7 +240,7 @@ namespace lux::ecs
                     auto spatial = wt.position;
                     spatial.x += static_cast<double>(m[0] * px + m[2] * py);
                     spatial.y += static_cast<double>(m[1] * px + m[3] * py);
-                    if (!lux::spatial::isFinite(spatial))
+                    if (!lux::math::isFinite(spatial))
                         return false;
 
                     // A2-03 opt-in modifiers, applied at BAKE time (never written
@@ -405,7 +407,7 @@ namespace lux::ecs
         void onAdded(const SystemSetupContext& setup) override
         {
             auto& registry = setup.registry();
-            leave_.attach(registry, [this](lux::meta::entity_id e) { onLeave(e); });
+            leave_.attach(registry, [this](lux::ecs::Entity e) { onLeave(e); });
             attachStateSignal(registry);
             attachChangeSources(registry);
         }
@@ -428,13 +430,13 @@ namespace lux::ecs
         using Exclude = ComponentList<>;
 
         TrackedRenderRequest<
-            lux::meta::entity_id,
+            lux::ecs::Entity,
             lux::render::Image2DSlotReply,
             Live> create_requests_;
-        std::unordered_map<lux::meta::entity_id, FailRecord> failed_;
+        std::unordered_map<lux::ecs::Entity, FailRecord> failed_;
         std::vector<lux::render::Image2DTransformEntry> batch_;   // dirty transforms this frame
         /// 已离开组件集合、状态组件还没摘掉的实体(实体本身仍然活着)。
-        std::vector<lux::meta::entity_id> to_unbind_;
+        std::vector<lux::ecs::Entity> to_unbind_;
         /// 已离场、`removeImage` 还没发出去的实例句柄。信号填，`update` 开头排空。
         std::vector<lux::render::Image2DHandle> leaving_;
 
@@ -442,15 +444,15 @@ namespace lux::ecs
         ExtractionChangeSet<Image2DComponent, Require, Exclude> changes_;
         /// 上一帧的视差原点(相机世界中心)。它变了 = 所有视差图的烘焙平移都变了,
         /// 而那**不产生任何针对这些实体的组件信号** —— 见 markAllWith 的说明。
-        lux::spatial::Position2D last_camera_position_{};
+        lux::math::Position2d last_camera_position_{};
         bool camera_position_seeded_{false};
 
         ComponentSetLeaveObserver<Image2DComponent, Require, Exclude> leave_;
         /// `on_destroy<Live>` 的连接靠它解绑。
-        lux::meta::EntityRegistry* reg_{nullptr};
+        lux::ecs::Registry* reg_{nullptr};
 
         [[nodiscard]] FailRecord& rememberFailure(
-            lux::meta::entity_id entity
+            lux::ecs::Entity entity
         )
         {
             auto [failure, inserted] = failed_.try_emplace(
@@ -463,14 +465,14 @@ namespace lux::ecs
 
         /// 「实体离开了本子系统关心的组件集合」——**实体本身可能还活着**。
         /// 只记账;真正的 `remove<Live>` 在 `update()` 里做(CLAUDE.md 规矩一)。
-        void onLeave(lux::meta::entity_id e)
+        void onLeave(lux::ecs::Entity e)
         {
             (void)create_requests_.abandon(e);
             to_unbind_.push_back(e);
             failed_.erase(e);   // G-05 的失败记录同样按离场清理，保持有界
         }
 
-        void drainCreateCompletions(lux::meta::EntityRegistry& registry)
+        void drainCreateCompletions(lux::ecs::Registry& registry)
         {
             create_requests_.drain(
                 [this, &registry](auto completion)
@@ -576,13 +578,13 @@ namespace lux::ecs
         /// 锚点必须是**状态组件自己的** on_destroy —— `registry.destroy` 清各池的
         /// 顺序不保证,挂在别的组件上可能读到已经清掉的池。
         void onStateDestroyed(
-            lux::meta::EntityRegistryBase& reg,
-            lux::meta::entity_id e)
+            lux::ecs::RegistryBase& reg,
+            lux::ecs::Entity e)
         {
             leaving_.push_back(reg.get<Live>(e).handle);
         }
 
-        void attachStateSignal(lux::meta::EntityRegistry& reg)
+        void attachStateSignal(lux::ecs::Registry& reg)
         {
             if (reg_ == &reg) return;
             detachStateSignal();
@@ -598,7 +600,7 @@ namespace lux::ecs
 
         /// 什么算「这个实体需要重新处理」。逐条显式列出 —— 漏一条的后果是
         /// 那一类变化下游永远收不到,而它不报错。
-        void attachChangeSources(lux::meta::EntityRegistry& reg)
+        void attachChangeSources(lux::ecs::Registry& reg)
         {
             changes_.attach(reg,
                 static_cast<entt::id_type>(renderSubsystemType<Image2DSubsystem>().hash),

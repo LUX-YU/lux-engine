@@ -34,16 +34,15 @@
 #include <lux/engine/authoring/project/Project.hpp>
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>   // clampFrameDt (§2.4)
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/runtime/render/scene/RenderDiagnostics.hpp>   // 诊断出口装配(§7.1)
 #include <lux/engine/runtime/extensions/EngineExtensions.hpp>
 #include <lux/engine/editor/extensions/EditorContributionRegistrar.hpp>
 #include <lux/engine/runtime/extensions/ExtensionModuleManager.hpp>
 #include <lux/engine/log/Log.hpp>                          // setOutput / LogRecord(事件批C)
 
-#include <lux/engine/input/ActionMapper.hpp>
+#include <lux/engine/input/Input.hpp>
 #include <lux/engine/input/InputContext.hpp>
-#include <lux/engine/input/InputContextStack.hpp>
-#include <lux/engine/window/InputSnapshot.hpp>
 
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
@@ -77,8 +76,6 @@
 #include <lux/engine/ecs/components/Transform2DComponent.hpp>   // Spinner2D demo script (temporary)
 #include <lux/engine/ecs/script/systems/ScriptRegistry.hpp>             // scriptRegistry() — register demo script
 #include <lux/engine/ecs/script/systems/ScriptBehavior.hpp>             // ScriptBehavior base — demo script
-#include <lux/engine/ecs/script/backends/LuaScriptBackend.hpp>  // Lua backend serves SCRIPT assets
-#include <lux/engine/ecs/script/backends/NativeModuleScriptBackend.hpp>  // native-module (lux_script_abi) assets
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/ui/ImGuiLuxWidgets.hpp>
 #include <lux/engine/editor/panels/InspectorPanel.hpp>
@@ -102,7 +99,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <fstream>
 #include <optional>
 #include <sstream>
@@ -125,7 +122,7 @@ namespace lux::editor
         class Spinner2DBehavior final : public lux::ecs::ScriptBehavior
         {
         public:
-            void onUpdate(float dt) override
+            void onUpdate(float dt) noexcept
             {
                 if (!hasComponent<lux::ecs::Transform2DComponent>())
                     return;
@@ -140,8 +137,7 @@ namespace lux::editor
             static constexpr float kSpinRadPerSec = 1.5f;   // ~86°/s — clearly visible
         };
 
-        void registerBuiltinDemoScripts(
-            const lux::ecs::ComponentTypeCatalog& components)
+        void registerBuiltinDemoScripts()
         {
             auto& reg = lux::ecs::scriptRegistry();
             if (reg.hasCppScript("Spinner2D"))
@@ -150,17 +146,6 @@ namespace lux::editor
             // per-type pool + DEVIRTUALIZED shims for exactly the overridden
             // lifecycle methods (Spinner2D → onUpdate only).
             reg.registerCppScript<Spinner2DBehavior>("Spinner2D");
-            // The Lua backend serves SCRIPT assets of kind LuaSource:
-            // .lua imports become assets, ScriptComponent references them, and
-            // play-start routes here. Registered once with the demo scripts.
-            reg.registerBackend(
-                std::make_unique<lux::ecs::LuaScriptBackend>(components));
-            // Native-module backend: claims NativeModuleScript
-            // assets (lux_script_abi dll payloads — hand-written plugins and
-            // cooked FlowForge-AOT artefacts). Empty resolver: import-free
-            // modules load; modules importing host symbols are LOUDLY rejected.
-            reg.registerBackend(
-                std::make_unique<lux::ecs::NativeModuleScriptBackend>());
         }
 
         // ── UIRenderServer bring-up — RenderBackendHost 的 bring_up 回调正文,
@@ -267,8 +252,7 @@ namespace lux::editor
         std::unique_ptr<MaterialPreviewHost>                material_preview_;
         std::unique_ptr<ThumbnailService>                   thumbnail_service_;
 
-        std::unique_ptr<lux::input::ActionMapper>           action_mapper_;
-        std::unique_ptr<lux::input::InputContextStack>      input_stack_;
+        std::unique_ptr<lux::input::Input>                  input_;
         bool                                                cursor_captured_{false};
 
         // Panels borrow the process services above. Controllers and command
@@ -423,7 +407,7 @@ namespace lux::editor
         //     openProject,先落 cwd/.lux 兜底;工程一开 repointFlowGraphCache()
         //     就把它搬到 <工程根>/.lux/cache/flowforge(此前恒落 cwd 是被已删的
         //     EditorConfig::project_root 恒空字段藏住的缺口,清理批补上重指)。
-        registerBuiltinDemoScripts(runtime_->component_types_);
+        registerBuiltinDemoScripts();
         // 2. GLFW + window.
         runtime_->glfw_ = std::make_unique<lux::window::GlfwRuntime>();
         if (!runtime_->glfw_->valid())
@@ -446,9 +430,19 @@ namespace lux::editor
         runtime_->ui_system_ = std::make_unique<lux::ui::UISystem>(*runtime_->window_);
 
         // 4. Process-wide AssetManager — survives scene swaps.
+        const auto scene_codecs = lux::scene::makeSceneAssetCodecCatalog(
+            *lux::authoring::authoringAssetCodecCatalog());
+        if (!scene_codecs)
+        {
+            std::fprintf(
+                stderr,
+                "[LuxEditor] Scene asset codec catalog composition failed (%u)\n",
+                static_cast<unsigned>(scene_codecs.error()));
+            shutdown();
+            return false;
+        }
         runtime_->asset_mgr_ = std::make_shared<lux::asset::AssetManager>(
-            lux::authoring::authoringAssetCodecCatalog()
-        );
+            *scene_codecs);
 
         // 4a. Register editor builtin assets (cube / plane / white PBR /
         //     skybox texture) so demo entities and any drag-drop targets
@@ -749,7 +743,7 @@ namespace lux::editor
             [this](const lux::ui::SceneViewportPanel::ViewportPointer& click) {
                 // "Create HERE": resolve the tap to a 2D world position when the
                 // scene has a 2D camera (3D uses the focal target inside).
-                std::optional<lux::spatial::Position2D> pos2d;
+                std::optional<lux::math::Position2d> pos2d;
                 if (auto* scene = currentScene())
                     pos2d = scene->viewportToWorld2D(
                         click.pos_in_content.x, click.pos_in_content.y,
@@ -1138,15 +1132,14 @@ namespace lux::editor
                                   runtime_->material_preview_.get());
 
 
-        // 9. Editor input layer — ActionMapper + a single default
+        // 9. Editor input layer — one Input + a single default
         //    InputContext carrying the M2 viewport bindings (WASD for fly,
         //    LMB / RMB / MMB for camera modes + picking, F / End hotkeys).
         //    Owned by LuxEditor; ticked in run(). EditorScene reads it
         //    each frame for camera control. Built BEFORE the initial scene
         //    so EditorScene::tick can rely on it from frame 0.
-        runtime_->action_mapper_ = std::make_unique<lux::input::ActionMapper>();
-        runtime_->input_stack_   = std::make_unique<lux::input::InputContextStack>();
-        actions::registerAll(*runtime_->action_mapper_);
+        runtime_->input_ = std::make_unique<lux::input::Input>();
+        actions::registerAll(runtime_->input_->mapper());
         auto* editor_ctx = actions::editorContext();
         if (!editor_ctx)
         {
@@ -1156,7 +1149,7 @@ namespace lux::editor
             shutdown();
             return false;
         }
-        runtime_->input_stack_->push(editor_ctx);
+        runtime_->input_->contexts().push(editor_ctx);
 
         // 10. Initial scene is NOT brought up here. Caller (main.cpp / the
         //     File menu) decides which scene the editor should open first
@@ -1203,7 +1196,7 @@ namespace lux::editor
                 .thumbnails = runtime_->thumbnail_service_.get(),
                 .events = runtime_->events_.get(),
                 .components = runtime_->component_types_,
-                .scene_registry = [this]() -> lux::meta::EntityRegistry*
+                .scene_registry = [this]() -> lux::ecs::Registry*
                 {
                     auto* sc = runtime_->scene_controller_ ? runtime_->scene_controller_->currentScene()
                                                  : nullptr;
@@ -1301,7 +1294,10 @@ namespace lux::editor
         // actions = nullptr for now: the editor registers only camera actions, not
         // game actions, so name→id resolution isn't meaningful in play yet (input-in-
         // play is a follow-up). Scripts still receive the ActionMapper (ctx.input).
-        if (!scene->enterPlay(*runtime_->action_mapper_, nullptr))
+        if (!scene->enterPlay(
+                runtime_->input_->mapper(),
+                &runtime_->input_->actionRegistry()
+            ))
             std::fprintf(stderr, "[LuxEditor] enterPlayMode: failed to enter play.\n");
     }
 
@@ -1323,7 +1319,7 @@ namespace lux::editor
     //  The built-ins live beside their registry (SpawnRecipes.cpp);
     //  this shell only draws the menu and selects the spawn result.
     // ──────────────────────────────────────────────────────────────────
-    void LuxEditor::drawSpawnMenuItems(const std::optional<lux::spatial::Position2D>& pos2d)
+    void LuxEditor::drawSpawnMenuItems(const std::optional<lux::math::Position2d>& pos2d)
     {
         auto* scene = currentScene();
         if (!scene)
@@ -1337,7 +1333,7 @@ namespace lux::editor
             "org.lux.builtin.presentation3d");
 
         // 3D placement (v1): the camera's focal target — where the user is looking.
-        std::optional<lux::spatial::Position3D> pos3d;
+        std::optional<lux::math::Position3d> pos3d;
         if (presents_3d)
         {
             pos3d = scene->viewportFocus3D();
@@ -1459,7 +1455,7 @@ namespace lux::editor
                 ? lux::authoring::EPartitionTopology::PLANAR_XY
                 : lux::authoring::EPartitionTopology::PLANAR_XZ);
         source.contributions.push_back({
-            lux::extensions::ContributionId{
+            lux::authoring::WorldSceneFeatureId{
                 spatial_2d
                     ? "org.lux.builtin.presentation2d"
                     : "org.lux.builtin.presentation3d"},
@@ -1606,7 +1602,7 @@ namespace lux::editor
             // to ActionMapper below (after ImGui::NewFrame so we can ask
             // ImGui whether it is capturing keyboard / mouse for its own
             // text inputs and drag handles).
-            lux::window::InputSnapshot snapshot = runtime_->window_->captureInputSnapshot();
+            runtime_->input_->sample(*runtime_->window_);
 
             // Drain the deferred-action queue BEFORE starting the next
             // ImGui frame. Menu callbacks (EditorMenuBar::paint) cannot
@@ -1662,9 +1658,7 @@ namespace lux::editor
             const bool  route_to_gp  = over_view || owns_mb;
             const bool  want_kb      = route_to_gp || !io.WantCaptureKeyboard;
             const bool  want_ms      = route_to_gp || !io.WantCaptureMouse;
-            snapshot.keyboard_captured_by_ui = !want_kb;
-            snapshot.mouse_captured_by_ui    = !want_ms;
-            runtime_->action_mapper_->update(snapshot, *runtime_->input_stack_, dt, want_kb, want_ms);
+            runtime_->input_->evaluate(dt, want_kb, want_ms);
 
             ImDrawData* draw_data = ImGui::GetDrawData();
 
@@ -1697,7 +1691,7 @@ namespace lux::editor
                 {
                     scene->processPendingResize();
                     const auto cs = runtime_->shell_->viewportPanel()->contentSize();
-                    scene->tick(dt, cs.x, cs.y, *runtime_->action_mapper_);
+                    scene->tick(dt, cs.x, cs.y, runtime_->input_->mapper());
 
                     const bool fly = scene->cameraWantsCursorCapture();
                     if (fly != runtime_->cursor_captured_)

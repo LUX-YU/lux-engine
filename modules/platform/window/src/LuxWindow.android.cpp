@@ -25,15 +25,12 @@
 #endif
 #include <vulkan/vulkan.h>
 
+#include <utility>
+
 namespace lux::window
 {
     LuxWindow::LuxWindow(int width, int height, std::string title)
         : _parameter{width, height, std::move(title)}
-    {
-    }
-
-    LuxWindow::LuxWindow(common::Size2D size, std::string title)
-        : LuxWindow(static_cast<int>(size.width), static_cast<int>(size.height), std::move(title))
     {
     }
 
@@ -57,11 +54,13 @@ namespace lux::window
 
     const char* LuxWindow::title() const { return _parameter.title.c_str(); }
 
-    common::Size2D LuxWindow::size() const
+    void LuxWindow::size(
+        std::uint32_t& width,
+        std::uint32_t& height
+    ) const
     {
-        return common::Size2D{
-            static_cast<uint32_t>(_parameter.width),
-            static_cast<uint32_t>(_parameter.height)};
+        width = static_cast<std::uint32_t>(_parameter.width);
+        height = static_cast<std::uint32_t>(_parameter.height);
     }
 
     bool LuxWindow::shouldClose() { return false; }
@@ -84,14 +83,11 @@ namespace lux::window
 
     void LuxWindow::setCursorPos(double, double) {}
 
-    KeyState LuxWindow::queryKey(KeyEnum) const { return KeyState::RELEASE; }
-
-    InputSnapshot LuxWindow::captureInputSnapshot()
+    std::vector<WindowInputEvent> LuxWindow::drainInputEvents()
     {
-        InputSnapshot snapshot{};
-        snapshot.window_width      = static_cast<uint32_t>(_parameter.width);
-        snapshot.window_height     = static_cast<uint32_t>(_parameter.height);
-        return snapshot;
+        auto events = std::move(pending_input_events_);
+        pending_input_events_.clear();
+        return events;
     }
 
     int LuxWindow::exec() { return 0; }
@@ -106,7 +102,13 @@ namespace lux::window
 
     float LuxWindow::lastFrameDelayTime() const { return _delta_time; }
 
-    common::Size2D LuxWindow::framebufferSize() const { return size(); }
+    void LuxWindow::framebufferSize(
+        std::uint32_t& width,
+        std::uint32_t& height
+    ) const
+    {
+        size(width, height);
+    }
 
     bool LuxWindow::createVulkanSurface(VkInstance,
                                         const VkAllocationCallbacks*,

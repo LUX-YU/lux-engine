@@ -19,7 +19,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/TypeToken.hpp>
-#include <lux/engine/function/visibility.h>
+#include <lux/engine/ecs/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -85,7 +85,7 @@ namespace lux::ecs
 
     namespace detail
     {
-        struct LUX_FUNCTION_PUBLIC SceneServiceOwner
+        struct LUX_ECS_PUBLIC SceneServiceOwner
         {
             virtual ~SceneServiceOwner() noexcept;
         };
@@ -154,7 +154,7 @@ namespace lux::ecs
     /// Move-only lifetime token for one dynamically published service. Reset
     /// invalidates every outstanding SceneServiceRef before destroying the
     /// service. It deliberately carries no raw SceneServices pointer.
-    class LUX_FUNCTION_PUBLIC SceneServiceLease final
+    class LUX_ECS_PUBLIC SceneServiceLease final
     {
     public:
         SceneServiceLease() noexcept = default;
@@ -180,7 +180,7 @@ namespace lux::ecs
     /// Unpublished owner-thread batch used by dynamic scene contributions.
     /// Construction may fail; installing a validated batch is an ownership
     /// move with no domain-specific callbacks or type switches.
-    class LUX_FUNCTION_PUBLIC SceneServiceMutationBatch final
+    class LUX_ECS_PUBLIC SceneServiceMutationBatch final
     {
     public:
         SceneServiceMutationBatch() = default;
@@ -269,7 +269,7 @@ namespace lux::ecs
         std::vector<std::shared_ptr<detail::SceneServiceState>> states_;
     };
 
-    class LUX_FUNCTION_PUBLIC InstalledSceneServiceBatch final
+    class LUX_ECS_PUBLIC InstalledSceneServiceBatch final
     {
     public:
         InstalledSceneServiceBatch() = default;
@@ -297,7 +297,7 @@ namespace lux::ecs
         std::vector<SceneServiceLease> leases_;
     };
 
-    class LUX_FUNCTION_PUBLIC SceneServices
+    class LUX_ECS_PUBLIC SceneServices
     {
     private:
         enum class EState : std::uint8_t
@@ -532,7 +532,7 @@ namespace lux::ecs
     /// Assembly is owner-thread confined, so this transaction needs neither a
     /// lock nor shared ownership. Type identity remains TypeToken
     /// (lux::cxx::type_hash + type_name); no RTTI participates.
-    class LUX_FUNCTION_PUBLIC SceneServiceTransaction final
+    class LUX_ECS_PUBLIC SceneServiceTransaction final
     {
     public:
         explicit SceneServiceTransaction(SceneServices& base) noexcept
@@ -714,7 +714,7 @@ namespace lux::ecs
             std::size_t deferred_edits{0};
         };
 
-        struct LUX_FUNCTION_PUBLIC DeferredEdit
+        struct LUX_ECS_PUBLIC DeferredEdit
         {
             virtual ~DeferredEdit() noexcept;
             virtual void apply() noexcept = 0;

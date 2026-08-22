@@ -11,7 +11,7 @@
 
 find_package(imgui       REQUIRED COMPONENTS glfw3 vulkan)
 find_package(node_editor REQUIRED COMPONENTS node_editor)
-find_package(lux-cxx     REQUIRED COMPONENTS container reflection_runtime event)
+find_package(lux-cxx     REQUIRED COMPONENTS core container reflection_runtime event)
 
 # Editor-only frameworks are owned and configured by the Editor product. They
 # are invisible to Runtime and Toolchain configuration.
@@ -29,15 +29,15 @@ if(TARGET nfd)
     )
 endif()
 
-# (FormatCompat 的编辑器私有复制已删除 —— lux::format 统一来自
-#  modules/platform/common 的 <lux/engine/platform/FormatCompat.h>。)
+# (格式兼容层的编辑器私有复制已删除 —— lux::format 统一来自
+#  lux-cxx core 的 <lux/cxx/core/Format.hpp>。)
 
 # Asset path header — EditorScene loads the built-in skybox texture
 # (modules/function/render/features/assets/textures/blue_nebulae_1.luxasset) so the
 # SkyboxPass node has a real texture to render against. The render
 # component already registers its runtime assets, so we just generate a
 # header pointing at that root.
-include_component_cmake_scripts(lux::engine::resource::asset_codecs)
+include_component_cmake_scripts(lux::engine::resource::asset)
 component_generate_runtime_asset_path_header(
     COMPONENT     render_features
     OUTPUT_HEADER ${CMAKE_CURRENT_BINARY_DIR}/include/lux/engine/editor/content/RuntimeAssetPath.hpp
@@ -177,19 +177,23 @@ component_add_transitive_commands(
     "find_package (lux-engine-ecs REQUIRED COMPONENTS core render_2d render_3d animation_2d animation_3d navigation3d)"
     "find_package (lux-engine-core REQUIRED COMPONENTS meta)"
     "find_package (lux-engine-function REQUIRED COMPONENTS script_lua)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS asset_codecs)"
+    "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package(lux-engine-content REQUIRED COMPONENTS content)"
     "find_package (lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS project authoring_flowforge authoring_assets authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_spatial3d_scene_cook)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_logging runtime_frame runtime_assets runtime_scene_script runtime_extension_loader runtime_contribution_host runtime_render_scene runtime_render_backend_host runtime_spatial2d_tilemap runtime_pack_tilemap2d runtime_spatial3d_navigation_adapter runtime_spatial3d_physics)"
+    "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"
     "find_package (imgui REQUIRED COMPONENTS glfw3 vulkan)"
     "find_package (node_editor REQUIRED COMPONENTS node_editor)"
-    "find_package (lux-cxx REQUIRED COMPONENTS container reflection_runtime)"
+    "find_package (lux-cxx REQUIRED COMPONENTS core container reflection_runtime)"
 )
 
 target_link_libraries(
     editor
     PUBLIC
+    lux::cxx::core
+    lux::engine::extensions::extension_api
     lux::engine::function::ui
     lux::engine::function::ui_vulkan
     lux::engine::function::navigation
@@ -204,10 +208,12 @@ target_link_libraries(
     lux::engine::function::input           # ActionMapper / input action mapping
     lux::engine::function::script_lua
     lux::engine::core::meta
-    lux::engine::resource::asset_codecs
+    lux::engine::resource::asset
+    lux::engine::content
     lux::engine::toolchain::toolchain_model_importer
     lux::engine::toolchain::toolchain_texture_importer
     lux::engine::core::serialization
+    lux::engine::ecs::component_archive
     lux::engine::runtime::runtime_render_scene             # the host-neutral scene runtime EditorScene hosts
     lux::engine::runtime::runtime_render_backend_host      # process-level render thread/channel owner
     lux::engine::authoring::project
@@ -380,16 +386,6 @@ target_link_libraries(
         lux::engine::toolchain::toolchain_material_compiler
         lux::engine::toolchain::toolchain_builtin_content
 )
-
-# Link format library if needed
-if(USE_LIBFMT)
-    if(FMT_TARGET)
-        target_link_libraries(editor PRIVATE ${FMT_TARGET})
-    elseif(FMT_LIBRARIES)
-        target_link_libraries(editor PRIVATE ${FMT_LIBRARIES})
-        target_include_directories(editor PRIVATE ${FMT_INCLUDE_DIRS})
-    endif()
-endif()
 
 set(ENABLE_EDITOR_TEST OFF CACHE BOOL "Enable Editor Test")
 if(ENABLE_EDITOR_TEST)

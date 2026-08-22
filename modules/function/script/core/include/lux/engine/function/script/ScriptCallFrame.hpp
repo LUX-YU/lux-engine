@@ -20,37 +20,37 @@ namespace lux::script
     class CallFrame
     {
     public:
-        CallFrame() = default;
+        CallFrame() = delete;
 
-        explicit CallFrame(lux_script_call_frame* raw) noexcept : raw_(raw) {}
+        explicit CallFrame(lux_script_call_frame& raw) noexcept : raw_(raw) {}
 
-        lux_script_call_frame*       raw()       noexcept { return raw_; }
-        const lux_script_call_frame* raw() const noexcept { return raw_; }
+        lux_script_call_frame&       raw()       noexcept { return raw_; }
+        const lux_script_call_frame& raw() const noexcept { return raw_; }
 
         std::uint32_t argCount() const noexcept
         {
-            return raw_ ? raw_->arg_count : 0u;
+            return raw_.arg_count;
         }
 
         std::uint32_t returnCount() const noexcept
         {
-            return raw_ ? raw_->return_count : 0u;
+            return raw_.return_count;
         }
 
         ConstValueView arg(std::uint32_t i) const noexcept
         {
-            return make_const_view(raw_->args[i]);
+            return make_const_view(raw_.args[i]);
         }
 
         ValueView ret(std::uint32_t i) noexcept
         {
-            return make_view(raw_->returns[i]);
+            return make_view(raw_.returns[i]);
         }
 
-        void* worldContext() const noexcept { return raw_ ? raw_->world_context : nullptr; }
-        void* userContext()  const noexcept { return raw_ ? raw_->user_context  : nullptr; }
+        void* worldContext() const noexcept { return raw_.world_context; }
+        void* userContext()  const noexcept { return raw_.user_context; }
 
     private:
-        lux_script_call_frame* raw_ = nullptr;
+        lux_script_call_frame& raw_;
     };
 }

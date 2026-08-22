@@ -277,7 +277,7 @@ int main()
     // LDR scene so the forward pass writes the readback target (SceneColor) directly.
     RenderControlSession::CreateSceneConfig scfg{};
     scfg.name             = "GraphForwardScene";
-    scfg.lit_color_format = lux::common::ETextureFormat::RGBA8_SRGB;
+    scfg.lit_color_format = lux::rdesc::ETextureFormat::RGBA8_SRGB;
     s.beginFrame({});
     const auto scene = await(control, w, control.createScene(scfg));
     s.beginFrame({});

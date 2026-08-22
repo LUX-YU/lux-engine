@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Grid.hpp>
 
 namespace lux::ecs
 {
@@ -40,7 +40,7 @@ namespace lux::runtime::spatial2d::testing
             lux::ecs::World& world,
             lux::ecs::PixelFieldRuntime& pixels,
             lux::ecs::PixelFieldHandle field,
-            lux::spatial::GridCoord2i64 center) = 0;
+            lux::math::GridCoord2i64 center) = 0;
 
         virtual void shutdown(lux::ecs::World&) noexcept = 0;
     };

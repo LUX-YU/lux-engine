@@ -35,7 +35,7 @@ namespace lux::ecs
         LUX_MEMBER(display_name=Wave Scale, min=0.0001)
         float wave_scale{0.08f};
 
-        LUX_MEMBER(display_name=Normal Texture)
+        LUX_MEMBER(display_name=Normal Texture, asset_type=texture)
         lux::asset::asset_id_t normal_texture{};
     };
 } // namespace lux::ecs

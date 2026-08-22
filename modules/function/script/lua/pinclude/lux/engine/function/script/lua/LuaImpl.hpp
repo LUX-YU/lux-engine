@@ -38,7 +38,7 @@ namespace lux::script::lua
         }
     
         /// Runs a registry ref
-        void runScript(const ScriptRef& program)
+        bool runScript(const ScriptRef& program)
         {
             // push traceback(err) closure
             lua_pushlightuserdata(L_, this);
@@ -47,9 +47,11 @@ namespace lux::script::lua
 
             lua_rawgeti(L_, LUA_REGISTRYINDEX, program.ref());   // push func
     
-            if (lua_pcall(L_, 0, 0, errfunc) != LUA_OK)
+            const bool succeeded = lua_pcall(L_, 0, 0, errfunc) == LUA_OK;
+            if (!succeeded)
                 reportAndPopError(); // the error message is already on top of the stack
             lua_remove(L_, errfunc); // pop the traceback closure
+            return succeeded;
         }
     
         ScriptEngineImpl(const ScriptEngineImpl&)            = delete;

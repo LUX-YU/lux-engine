@@ -1,15 +1,16 @@
 #include <lux/engine/toolchain/game_export/GameExporter.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/PakAssetProvider.hpp>
-#include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
+#include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/game/LaunchManifest.hpp>
 
 #include <chrono>
@@ -104,15 +105,15 @@ namespace
         const auto actor_id = uuids::uuid::from_string(
             "560e8400-e29b-41d4-a716-446655440001").value();
         lux::authoring::WorldActorDocument actor_document;
-        actor_document.world = lux::entity_scene::EntitySceneId{world_id};
+        actor_document.world = lux::authoring::WorldId{world_id};
         actor_document.actor =
-            lux::entity_scene::PersistentEntityId{actor_id};
+            lux::authoring::WorldActorId{actor_id};
         actor_document.name_table = {
             std::byte{1u}, std::byte{0u},
             std::byte{0u}, std::byte{0u}};
         using namespace lux::authoring;
         lux::authoring::WorldSourceDocument source;
-        source.world = lux::entity_scene::EntitySceneId{world_id};
+        source.world = lux::authoring::WorldId{world_id};
         PartitionSpaceDescriptor space;
         space.id = PartitionSpaceId{
             uuids::uuid::from_string(
@@ -122,11 +123,11 @@ namespace
         space.macro_edge_cells = 32u;
         source.spaces.push_back(space);
         lux::authoring::WorldActorSourceDescriptor actor;
-        actor.id = lux::entity_scene::PersistentEntityId{actor_id};
+        actor.id = lux::authoring::WorldActorId{actor_id};
         actor.display_name = "Exporter Smoke Actor";
         actor.actor_class = "org.lux.test.exporter_actor";
         actor.space = space.id;
-        actor.position = lux::spatial::Position3D{0.0, 0.0, 0.0};
+        actor.position = lux::math::Position3d{0.0, 0.0, 0.0};
         actor_document.actor_class = actor.actor_class;
         actor_document.space = actor.space;
         actor_document.position = actor.position;
@@ -207,7 +208,7 @@ namespace
                 PlanarCellCoord{static_cast<std::int64_t>(index), 0}};
             lux::authoring::EditableWorldInstance instance;
             instance.id = {page.instance_set, 1u};
-            instance.position = lux::spatial::Position3D{
+            instance.position = lux::math::Position3d{
                 static_cast<double>(index) * space.cell_edge + 4.0,
                 0.0,
                 4.0};
@@ -374,7 +375,7 @@ int main()
         return 4;
     }
 
-    auto pak = lux::toolchain::inspectPak(cooked->game_pak);
+    auto pak = lux::asset::inspectPak(cooked->game_pak);
     const auto shader_entry = pak
         ? std::find_if(
               pak->entries.begin(),
@@ -389,7 +390,7 @@ int main()
               pak->entries,
               [](const auto& entry)
               {
-                  return entry.type == lux::asset::EAssetType::ENTITY_SCENE;
+                  return entry.magic_number == lux::scene::kSceneAssetMagic;
               })
         : 0u;
     const auto section_count = pak
@@ -397,7 +398,8 @@ int main()
               pak->entries,
               [](const auto& entry)
               {
-                  return entry.type == lux::asset::EAssetType::ENTITY_SECTION;
+                  return entry.magic_number ==
+                      lux::ecs::scene_format::kEntitySectionImageMagic;
               })
         : 0u;
     const auto mesh_count = pak
@@ -405,7 +407,9 @@ int main()
               pak->entries,
               [](const auto& entry)
               {
-                  return entry.type == lux::asset::EAssetType::MESH;
+                  return entry.magic_number ==
+                      lux::asset::asset_magic_number_of<
+                          lux::asset::EAssetType::MESH>::value;
               })
         : 0u;
     const auto scene_entry = pak
@@ -414,8 +418,8 @@ int main()
               pak->entries.end(),
               [](const auto& entry)
               {
-                  return entry.type ==
-                      lux::asset::EAssetType::ENTITY_SCENE;
+                  return entry.magic_number ==
+                      lux::scene::kSceneAssetMagic;
               })
         : decltype(pak->entries.begin()){};
     const auto generated_hlod_entry = pak
@@ -424,7 +428,9 @@ int main()
               pak->entries.end(),
               [](const auto& entry)
               {
-                  return entry.type == lux::asset::EAssetType::MESH &&
+                  return entry.magic_number ==
+                          lux::asset::asset_magic_number_of<
+                              lux::asset::EAssetType::MESH>::value &&
                       entry.vpath.starts_with("Generated/HlodMeshes/");
               })
         : decltype(pak->entries.begin()){};
@@ -433,12 +439,14 @@ int main()
         pak->entries,
         [&runtime_codecs](const auto& entry)
         {
-            if (entry.type == lux::asset::EAssetType::ENTITY_SCENE ||
-                entry.type == lux::asset::EAssetType::ENTITY_SECTION)
+            if (entry.magic_number == lux::scene::kSceneAssetMagic ||
+                entry.magic_number ==
+                    lux::ecs::scene_format::kEntitySectionImageMagic)
             {
                 return true;
             }
-            const auto* codec = runtime_codecs->find(entry.type);
+            const auto* codec = runtime_codecs->findByMagic(
+                entry.magic_number);
             return codec != nullptr &&
                 codec->shipping ==
                     lux::asset::EAssetShippingClass::RUNTIME;
@@ -456,7 +464,7 @@ int main()
         return 5;
     }
 
-    // LXWA is Authoring-only. The Player Pak contains one LXSC ScenePackage plus
+    // LXWA is Authoring-only. The Player Pak contains one LXSC SceneDescription plus
     // its startup, fine-cell and coarse-LOD LXES images, each linked through
     // one absolute mounted source.
     auto provider = lux::asset::PakAssetProvider::loadFromFile(
@@ -466,11 +474,11 @@ int main()
     const auto scene_image = (*provider)->open(scene_entry->id);
     if (!scene_image)
         return 5;
-    const auto scene_package = lux::scene::decodeScenePackage(
+    const auto scene_description = lux::scene::SceneAssetSerDeser::decodeData(
         scene_image->bytes.view());
-    if (!scene_package ||
-        scene_package->sections.size() != section_count ||
-        scene_package->startup_sections.size() != 1u)
+    if (!scene_description ||
+        (*scene_description)->sections.size() != section_count ||
+        (*scene_description)->startup_sections.size() != 1u)
     {
         return 5;
     }
@@ -478,15 +486,15 @@ int main()
     std::size_t published_attachments = 0u;
     bool startup_found = false;
     bool generated_hlod_referenced = false;
-    for (const auto& record : scene_package->sections)
+    for (const auto& record : (*scene_description)->sections)
     {
         const auto section_entry = std::find_if(
             pak->entries.begin(),
             pak->entries.end(),
             [&record](const auto& entry)
             {
-                return entry.type ==
-                           lux::asset::EAssetType::ENTITY_SECTION &&
+                return entry.magic_number ==
+                           lux::ecs::scene_format::kEntitySectionImageMagic &&
                     entry.id == record.id.value();
             });
         if (section_entry == pak->entries.end())
@@ -539,7 +547,7 @@ int main()
                     });
         }
         startup_found = startup_found ||
-            record.id == scene_package->startup_sections.front();
+            record.id == (*scene_description)->startup_sections.front();
     }
     if (!startup_found || !generated_hlod_referenced ||
         published_entities == 0u ||

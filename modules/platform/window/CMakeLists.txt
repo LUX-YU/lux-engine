@@ -3,7 +3,7 @@
 find_package(Vulkan  REQUIRED)
 
 # Backend source selection — same pattern as dynamic_library (win32/posix):
-# one public header set (LuxWindow.hpp / InputSnapshot.hpp / ...), one backend
+# one public header set (LuxWindow.hpp / WindowEvents.hpp / ...), one backend
 # implementation chosen at configure time. An Android backend adds
 # src/LuxWindow.android.cpp (+ its runtime) here WITHOUT touching consumers —
 # see .internal/lux-engine-mobile-adaptation-investigation.md §3.
@@ -40,7 +40,7 @@ generate_visibility_header(
 # The window component is responsible for creating and managing the window
 # Introduced dependencies:
 # glfw3
-# common
+# platform-neutral window values
 add_component(
     COMPONENT_NAME window
     NAMESPACE      lux::engine::platform
@@ -81,11 +81,6 @@ target_link_libraries(
 if(NOT ANDROID)
     target_link_libraries(window PUBLIC glfw)
 endif()
-
-component_add_internal_dependencies(
-    window
-    common
-)
 
 component_add_transitive_commands(
     window

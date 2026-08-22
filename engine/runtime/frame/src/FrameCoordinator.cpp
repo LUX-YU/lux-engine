@@ -1,7 +1,7 @@
 #include <lux/engine/runtime/frame/FrameCoordinator.hpp>
 
 #include <lux/engine/events/DomainEvents.hpp>
-#include <lux/engine/common/AtomicWait.hpp>
+#include <lux/cxx/concurrent/AtomicWait.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/detail/MainThreadMailbox.hpp>
 #include <lux/engine/function/render/client/FrameProgram.hpp>
@@ -277,7 +277,7 @@ namespace lux::runtime
         std::uint64_t observed,
         std::chrono::steady_clock::time_point deadline) const noexcept
     {
-        return lux::common::waitAtomicU64Until(
+        return lux::cxx::concurrent::waitAtomicU64Until(
             impl_->progress->work_epoch,
             observed,
             deadline);

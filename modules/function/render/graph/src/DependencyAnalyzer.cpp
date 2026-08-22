@@ -55,8 +55,8 @@ namespace lux::render
                 {
                     if (ref.resource.index >= resource_count)
                         continue;
-                    if (ref.role != lux::common::ETextureRole::COLOR_ATTACHMENT
-                        && ref.role != lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                    if (ref.role != lux::render::ETextureRole::COLOR_ATTACHMENT
+                        && ref.role != lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                         continue;
                     auto [it, inserted] = attachment_writer.try_emplace(ref.resource.index, i);
                     if (!inserted)
@@ -71,7 +71,7 @@ namespace lux::render
 
             for (uint32_t i = 0; i < pass_count; ++i)
                 for (const auto& ref : graph.passes[i].textures)
-                    if (ref.role == lux::common::ETextureRole::INPUT_ATTACHMENT)
+                    if (ref.role == lux::render::ETextureRole::INPUT_ATTACHMENT)
                     {
                         auto it = attachment_writer.find(ref.resource.index);
                         if (it != attachment_writer.end() && it->second != i)

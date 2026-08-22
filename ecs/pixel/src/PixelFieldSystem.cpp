@@ -33,28 +33,28 @@ namespace lux::ecs
         }
 
         void onFieldConstructed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueue(entity);
         }
 
         void onFieldUpdated(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueue(entity);
         }
 
         void onFieldDestroyed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueue(entity);
         }
 
         void onBindingDestroyed(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity) noexcept
         {
             // EnTT on_destroy fires while the component is still readable.
@@ -76,7 +76,7 @@ namespace lux::ecs
         }
 
         void attach(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             EcsCommandWriter writer)
         {
             if (attached || !persistent->boundTo(registry))
@@ -121,7 +121,7 @@ namespace lux::ecs
 
         PixelFieldRuntime* runtime{nullptr};
         PersistentEntityIndex* persistent{nullptr};
-        lux::meta::EntityRegistryBase* attached{nullptr};
+        lux::ecs::RegistryBase* attached{nullptr};
         EcsCommandWriter commands;
         entt::scoped_connection constructed;
         entt::scoped_connection updated;
@@ -145,7 +145,7 @@ namespace lux::ecs
     }
 
     void PixelFieldSystem::applyIntent(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity) noexcept
     {
         if (impl_->attached != &registry)
@@ -306,7 +306,7 @@ namespace lux::ecs
     }
 
     void PixelFieldIntentCommand::prepareRegistryPublication(
-        lux::meta::EntityRegistry& registry) const noexcept
+        lux::ecs::Registry& registry) const noexcept
     {
         if (action == EPixelFieldIntentAction::RECONCILE_ENTITY)
         {

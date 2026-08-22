@@ -20,7 +20,7 @@
         if (!live_ || !pending_resize_)
             return;
         // M2c:改尺寸直达渲染目标图像池(视图渲染尺寸随 binding 派生)。
-        const lux::common::Size2D extent{pending_resize_w_, pending_resize_h_};
+        const lux::math::Extent2u extent{pending_resize_w_, pending_resize_h_};
         infra_.control->resizeTarget(main_target_.id(), extent);
 
         // 出图槽位的尺寸也要跟上 —— 它是相机投影 aspect 的数据源(CameraViewSubsystem)。
@@ -85,7 +85,7 @@
         }
     } // namespace
 
-    std::optional<lux::spatial::Position2D>
+    std::optional<lux::math::Position2d>
     EditorScene::viewportToWorld2D(float cx, float cy, float cw, float ch) const
     {
         if (!live_ || !runtime_ || isPlaying() || cw <= 0.f || ch <= 0.f)
@@ -102,7 +102,7 @@
             {cx, cy});
     }
 
-    std::optional<lux::spatial::Position3D>
+    std::optional<lux::math::Position3d>
     EditorScene::viewportFocus3D() const
     {
         if (!live_ || !runtime_)
@@ -111,7 +111,7 @@
         if (!system)
             return std::nullopt;
         return system->worldFocus3D(
-            const_cast<lux::meta::EntityRegistry&>(
+            const_cast<lux::ecs::Registry&>(
                 runtime_->world().registry()));
     }
 
@@ -131,18 +131,18 @@
             return;
 
         const auto best   = (this->*pick_fn_)(cx, cy, cw, ch);
-        const auto rooted = (best != lux::meta::null_entity)
+        const auto rooted = (best != lux::ecs::kNullEntity)
             ? lux::ecs::hierarchyRoot(reg, best) : best;
         selection_.selectEntity(rooted);
     }
 
     // ── 2D pick strategy: ortho screen→world point, image-rect hit test ──────
-    lux::meta::entity_id EditorScene::pickImage2D(float cx, float cy, float cw, float ch)
+    lux::ecs::Entity EditorScene::pickImage2D(float cx, float cy, float cw, float ch)
     {
         auto& reg = runtime_->world().registry();
         if (!reg.all_of<lux::ecs::Camera2DComponent,
                         lux::ecs::Camera2DCacheComponent>(camera_entity_))
-            return lux::meta::null_entity;
+            return lux::ecs::kNullEntity;
 
         const auto& cache = reg.get<lux::ecs::Camera2DCacheComponent>(camera_entity_);
         const Eigen::Vector2f world = lux::ecs::screenToWorld(
@@ -151,7 +151,7 @@
         // Topmost image whose world rect contains the point. Rotation is
         // ignored (axis-aligned rect from pivot/size × world scale) — the
         // standard 2D-editor MVP approximation; priority breaks ties.
-        lux::meta::entity_id best   = lux::meta::null_entity;
+        lux::ecs::Entity best   = lux::ecs::kNullEntity;
         float                best_p = -std::numeric_limits<float>::infinity();
         for (auto e : reg.view<lux::ecs::Image2DComponent,
                                lux::ecs::ResolvedTransform2DComponent>())
@@ -184,14 +184,14 @@
     }
 
     // ── 3D pick strategy: screen ray vs world-AABB sweep ─────────────────────
-    lux::meta::entity_id EditorScene::pickMesh3D(float cx, float cy, float cw, float ch)
+    lux::ecs::Entity EditorScene::pickMesh3D(float cx, float cy, float cw, float ch)
     {
         auto& reg = runtime_->world().registry();
         if (!reg.all_of<
                 lux::ecs::Camera3DComponent,
                 lux::ecs::Camera3DCacheComponent,
                 lux::ecs::ResolvedTransform3DComponent>(camera_entity_))
-            return lux::meta::null_entity;
+            return lux::ecs::kNullEntity;
 
         const auto& cc = reg.get<lux::ecs::Camera3DComponent>(camera_entity_);
         const auto& camera_cache = reg.get<
@@ -213,7 +213,7 @@
         // an O(N) scan over scene meshes; demo scenes are tiny so a true
         // BVH over the scene is over-engineering for the MVP. (Per-mesh
         // BVH precision lives in F2 stage B — see plan §3.3.)
-        lux::meta::entity_id best_entity = lux::meta::null_entity;
+        lux::ecs::Entity best_entity = lux::ecs::kNullEntity;
         float                best_t      = std::numeric_limits<float>::infinity();
 
         // Shared per-candidate test: resolve the mesh asset's local AABB
@@ -221,7 +221,7 @@
         // Skeletal meshes use the same BIND-POSE bounds the asset carries —
         // skinning is GPU-only, so an animated AABB has no CPU source; the
         // bind-pose box is the standard editor-pick approximation.
-        auto testCandidate = [&](lux::meta::entity_id e,
+        auto testCandidate = [&](lux::ecs::Entity e,
                                  const lux::asset::asset_id_t& mesh_asset_id,
                                  const Eigen::Matrix4f& world)
         {

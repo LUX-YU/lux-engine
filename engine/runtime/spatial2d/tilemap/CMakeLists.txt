@@ -45,14 +45,14 @@ target_link_libraries(
         lux::engine::runtime::runtime_entity_scene
         lux::engine::runtime::runtime_execution
         lux::engine::ecs::tilemap
-        lux::engine::resource::tilemap_content
+        lux::engine::resource::asset
 )
 
 component_add_transitive_commands(
     runtime_spatial2d_tilemap
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_execution)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS tilemap)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS tilemap_content)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 add_subdirectory(test)

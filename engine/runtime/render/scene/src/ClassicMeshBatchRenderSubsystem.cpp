@@ -16,7 +16,7 @@
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/genops/RenderClusterOperation.ops.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
+#include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 
 #include <stdexec/execution.hpp>
@@ -54,8 +54,8 @@ namespace lux::runtime
         }
 
         [[nodiscard]] lux::render::RenderClusterWireId entityWireId(
-            lux::meta::EntityRegistry& registry,
-            lux::meta::entity_id entity) noexcept
+            lux::ecs::Registry& registry,
+            lux::ecs::Entity entity) noexcept
         {
             if (const auto* persistent = registry.try_get<
                     lux::ecs::PersistentEntityIdComponent>(entity))
@@ -103,7 +103,7 @@ namespace lux::runtime
     {
         using Producer = ClassicMeshBatchRenderSubsystem;
 
-        lux::meta::entity_id entity{entt::null};
+        lux::ecs::Entity entity{entt::null};
         bool topology{false};
 
         [[nodiscard]] std::size_t registryPublicationBytes() const noexcept
@@ -111,11 +111,11 @@ namespace lux::runtime
             return 0u;
         }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry&) const noexcept
+            lux::ecs::Registry&) const noexcept
         {}
 
         void apply(
-            lux::meta::EntityRegistry&,
+            lux::ecs::Registry&,
             ClassicMeshBatchRenderSubsystem& owner) const noexcept
         {
             owner.applyObservedChange(entity, topology);
@@ -195,7 +195,7 @@ namespace lux::runtime
 
         struct UploadContext final
         {
-            lux::meta::entity_id entity{entt::null};
+            lux::ecs::Entity entity{entt::null};
             std::uint64_t owner_generation{0u};
             std::uint64_t revision{0u};
             lux::render::RenderClusterWireId id{};
@@ -220,28 +220,28 @@ namespace lux::runtime
             return revisions.next();
         }
 
-        void enqueue(lux::meta::entity_id entity, bool topology) noexcept
+        void enqueue(lux::ecs::Entity entity, bool topology) noexcept
         {
             (void)commands.push(ClassicMeshBatchObservedCommand{
                 entity, topology});
         }
 
         void onTopology(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueue(entity, true);
         }
 
         void onPresentationFact(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueue(entity, false);
         }
 
         void attach(
-            lux::meta::EntityRegistry& value,
+            lux::ecs::Registry& value,
             lux::ecs::EcsCommandWriter writer)
         {
             registry = &value;
@@ -249,13 +249,13 @@ namespace lux::runtime
             topology_dirty = true;
             changes.attach(
                 value,
-                [this](lux::meta::entity_id entity)
+                [this](lux::ecs::Entity entity)
                 {
                     enqueue(entity, false);
                 });
             leaves.attach(
                 value,
-                [this](lux::meta::entity_id entity)
+                [this](lux::ecs::Entity entity)
                 {
                     enqueue(entity, false);
                 });
@@ -332,7 +332,7 @@ namespace lux::runtime
                 ++metrics.compensated_removals;
         }
 
-        void retire(lux::meta::entity_id entity) noexcept
+        void retire(lux::ecs::Entity entity) noexcept
         {
             const auto found = entries.find(entity);
             if (found == entries.end())
@@ -356,7 +356,7 @@ namespace lux::runtime
             dirty.erase(entity);
         }
 
-        void observed(lux::meta::entity_id entity, bool topology) noexcept
+        void observed(lux::ecs::Entity entity, bool topology) noexcept
         {
             if (!registry || !lux::ecs::inComponentView<
                     lux::ecs::ClassicMeshBatchComponent>(
@@ -375,7 +375,7 @@ namespace lux::runtime
 
         #include <lux/engine/runtime/render/scene/detail/ClassicMeshBatchRenderPreparation.inl>
         void submit(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             Entry& entry,
             const lux::render::RenderUploadClient& upload)
         {
@@ -442,7 +442,7 @@ namespace lux::runtime
         }
 
         void uploadFinished(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t revision,
             lux::render::RenderClusterWireId id,
@@ -616,7 +616,7 @@ namespace lux::runtime
         }
 
         SceneContentRenderEntrySnapshot status(
-            lux::meta::entity_id entity) const noexcept
+            lux::ecs::Entity entity) const noexcept
         {
             const auto found = entries.find(entity);
             if (found == entries.end())
@@ -652,14 +652,14 @@ namespace lux::runtime
         ClassicMeshPrepareClient preparation_client;
         lux::exec::AsyncScope* async_scope{nullptr};
         std::shared_ptr<CallbackControl> callbacks;
-        lux::meta::EntityRegistry* registry{nullptr};
+        lux::ecs::Registry* registry{nullptr};
         lux::ecs::EcsCommandWriter commands;
-        lux::spatial::GridCoord3i64 scene_origin{};
-        std::unordered_map<lux::meta::entity_id, Entry> entries;
-        std::unordered_set<lux::meta::entity_id> dirty;
+        lux::math::GridCoord3i64 scene_origin{};
+        std::unordered_map<lux::ecs::Entity, Entry> entries;
+        std::unordered_set<lux::ecs::Entity> dirty;
         std::unordered_map<
             uuids::uuid,
-            std::vector<lux::meta::entity_id>> children_by_parent;
+            std::vector<lux::ecs::Entity>> children_by_parent;
         lux::ecs::TrackedRenderRequest<
             std::uint64_t,
             lux::render::RenderClusterUploadedReply,
@@ -762,7 +762,7 @@ namespace lux::runtime
         impl_->closed = true;
         impl_->detach();
         impl_->callbacks->owner = nullptr;
-        std::vector<lux::meta::entity_id> entities;
+        std::vector<lux::ecs::Entity> entities;
         entities.reserve(impl_->entries.size());
         for (const auto& [entity, _] : impl_->entries)
             entities.push_back(entity);
@@ -771,7 +771,7 @@ namespace lux::runtime
     }
 
     SceneContentRenderEntrySnapshot ClassicMeshBatchRenderSubsystem::status(
-        lux::meta::entity_id entity) const noexcept
+        lux::ecs::Entity entity) const noexcept
     {
         return impl_->status(entity);
     }
@@ -783,7 +783,7 @@ namespace lux::runtime
     }
 
     void ClassicMeshBatchRenderSubsystem::applyObservedChange(
-        lux::meta::entity_id entity,
+        lux::ecs::Entity entity,
         bool topology) noexcept
     {
         impl_->observed(entity, topology);

@@ -5,8 +5,8 @@
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
@@ -148,8 +148,8 @@ namespace
         namespace spatial3d = lux::runtime::spatial3d;
 
         const auto section_count = kBaseCatalogSections * scale;
-        lux::scene::ScenePackage package;
-        package.id = lux::scene::ScenePackageId{
+        lux::scene::SceneDescription package;
+        package.id = lux::asset::asset_id_t{
             uuids::uuid::from_string(
                 "8a000000-0000-4000-8000-000000000001").value()};
         package.sections.reserve(section_count);
@@ -157,7 +157,7 @@ namespace
         entries.reserve(section_count);
 
         std::uint64_t ordinal = 1u;
-        const auto append = [&](lux::spatial::GridCoord3i64 coordinate)
+        const auto append = [&](lux::math::GridCoord3i64 coordinate)
         {
             auto section = record(generator, ordinal++);
             entries.push_back({coordinate, section.id});
@@ -188,15 +188,16 @@ namespace
         }
 
         const auto section_bytes = package.sections.front().decoded_bytes;
-        const auto encoded = lux::scene::encodeScenePackage(
+        const auto encoded = lux::scene::SceneAssetSerDeser::encodeData(
+            package.id,
             package);
         assert(encoded);
-        const auto decoded = lux::scene::decodeScenePackage(
+        const auto decoded = lux::scene::SceneAssetSerDeser::decodeData(
             *encoded);
         assert(decoded);
         auto catalog =
             lux::runtime::entity_scene::EntitySceneCatalog::create(
-                std::move(*decoded));
+                std::move(**decoded));
         assert(catalog);
         auto spatial = spatial3d::Spatial3DSectionCatalog::create(
             std::move(entries));
@@ -355,7 +356,7 @@ namespace
         registry.emplace<lux::ecs::ResolvedTransform3DComponent>(
             interest_entity);
 
-        const auto readyAt = [&](lux::spatial::GridCoord3i64 center)
+        const auto readyAt = [&](lux::math::GridCoord3i64 center)
         {
             return [&, center]() noexcept
             {

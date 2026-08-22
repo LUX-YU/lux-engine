@@ -46,7 +46,6 @@ target_link_libraries(
         lux::cxx::core
         lux::cxx::container
         lux::cxx::concurrent
-        lux::engine::platform::common
         lux::cxx::memory
         lux::engine::core::math
         lux::engine::core::meta
@@ -56,7 +55,6 @@ target_link_libraries(
 component_add_transitive_commands(
     render_client
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time container concurrent memory)"
-    "find_package(lux-engine-platform REQUIRED COMPONENTS common)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math meta)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
@@ -127,6 +125,21 @@ target_link_libraries(
 )
 lux_classify_target(
     TARGET  render_effect_id_test
+    LAYER   FUNCTION
+    PRODUCT TEST
+    ROLE    DOMAIN
+)
+
+add_executable(
+    render_platform_value_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/render_platform_value_contract_test.cpp
+)
+target_link_libraries(
+    render_platform_value_contract_test
+    PRIVATE lux::engine::function::render_client
+)
+lux_classify_target(
+    TARGET  render_platform_value_contract_test
     LAYER   FUNCTION
     PRODUCT TEST
     ROLE    DOMAIN

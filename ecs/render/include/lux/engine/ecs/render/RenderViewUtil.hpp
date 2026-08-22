@@ -21,7 +21,7 @@
 #include <type_traits>
 #include <vector>
 
-#include <lux/engine/meta/LuxObject.hpp>   // EntityRegistry / entt::exclude
+#include <lux/engine/ecs/Registry.hpp>   // EntityRegistry / entt::exclude
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
 
@@ -41,7 +41,7 @@ namespace lux::ecs
     /// source of truth. (曾是 INSTANCE 桥每帧全扫 reap 的判据;全扫换成
     /// `ComponentSetLeaveObserver` 之后留作按实体查询的工具。)
     template <class C, class... Rs, class... Es>
-    [[nodiscard]] inline bool inComponentView(lux::meta::EntityRegistry& reg, lux::meta::entity_id e, ComponentList<Rs...>, ComponentList<Es...>)
+    [[nodiscard]] inline bool inComponentView(lux::ecs::Registry& reg, lux::ecs::Entity e, ComponentList<Rs...>, ComponentList<Es...>)
     {
         if (!reg.valid(e) || !reg.template all_of<C, Rs...>(e)) return false;
         if constexpr (sizeof...(Es) > 0)
@@ -54,13 +54,13 @@ namespace lux::ecs
     template <class C, class... Rs, class... Es>
     class ComponentSetLeaveObserver<C, ComponentList<Rs...>, ComponentList<Es...>>
     {
-        lux::meta::EntityRegistry*                 reg_{nullptr};
-        std::function<void(lux::meta::entity_id)>  on_leave_{};
+        lux::ecs::Registry*                 reg_{nullptr};
+        std::function<void(lux::ecs::Entity)>  on_leave_{};
 
         /// EnTT 信号传入 canonical EntityRegistryBase。
         void onLeft(
-            lux::meta::EntityRegistryBase&,
-            lux::meta::entity_id e)
+            lux::ecs::RegistryBase&,
+            lux::ecs::Entity e)
         {
             if (on_leave_)
                 on_leave_(e);
@@ -76,7 +76,7 @@ namespace lux::ecs
         ComponentSetLeaveObserver(ComponentSetLeaveObserver&&)                 = delete;
         ComponentSetLeaveObserver& operator=(ComponentSetLeaveObserver&&)      = delete;
 
-        void attach(lux::meta::EntityRegistry& reg, std::function<void(lux::meta::entity_id)> cb)
+        void attach(lux::ecs::Registry& reg, std::function<void(lux::ecs::Entity)> cb)
         {
             if (reg_ == &reg) return;
             detach();
@@ -102,12 +102,12 @@ namespace lux::ecs
     template <class C, class... Rs, class... Es>
     class ComponentSetChangeObserver<C, ComponentList<Rs...>, ComponentList<Es...>>
     {
-        lux::meta::EntityRegistry*                 reg_{nullptr};
-        std::function<void(lux::meta::entity_id)>  on_change_{};
+        lux::ecs::Registry*                 reg_{nullptr};
+        std::function<void(lux::ecs::Entity)>  on_change_{};
 
         void onChanged(
-            lux::meta::EntityRegistryBase&,
-            lux::meta::entity_id e)
+            lux::ecs::RegistryBase&,
+            lux::ecs::Entity e)
         {
             if (on_change_)
                 on_change_(e);
@@ -123,7 +123,7 @@ namespace lux::ecs
         ComponentSetChangeObserver(ComponentSetChangeObserver&&)                 = delete;
         ComponentSetChangeObserver& operator=(ComponentSetChangeObserver&&)      = delete;
 
-        void attach(lux::meta::EntityRegistry& reg, std::function<void(lux::meta::entity_id)> cb)
+        void attach(lux::ecs::Registry& reg, std::function<void(lux::ecs::Entity)> cb)
         {
             if (reg_ == &reg) return;
             detach();
@@ -135,7 +135,7 @@ namespace lux::ecs
             (reg.template on_destroy  <Es>().template connect<&ComponentSetChangeObserver::onChanged>(*this), ...);
             // 折入存量:此刻已在集合里的实体一个不漏地补发。
             componentView<C>(reg, ComponentList<Rs...>{}, ComponentList<Es...>{}).each(
-                [this](lux::meta::entity_id e, auto&&...) { on_change_(e); });
+                [this](lux::ecs::Entity e, auto&&...) { on_change_(e); });
         }
 
         void detach()

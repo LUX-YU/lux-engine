@@ -18,37 +18,37 @@ namespace
     };
 
     bool has(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.all_of<DynamicTestComponent>(entity);
     }
 
     void* get(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.try_get<DynamicTestComponent>(entity);
     }
 
     void* emplace(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return &registry.get_or_emplace<DynamicTestComponent>(entity);
     }
 
     void remove(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         (void)registry.remove<DynamicTestComponent>(entity);
     }
 
     void* clone(
-        lux::meta::EntityRegistryBase& source,
+        lux::ecs::RegistryBase& source,
         entt::entity source_entity,
-        lux::meta::EntityRegistryBase& destination,
+        lux::ecs::RegistryBase& destination,
         entt::entity destination_entity)
     {
         const auto* component =
@@ -61,14 +61,14 @@ namespace
     }
 
     void notify(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         registry.patch<DynamicTestComponent>(entity, [](auto&) noexcept {});
     }
 
     void reserve(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         std::size_t additional)
     {
         auto& storage = registry.storage<DynamicTestComponent>();
@@ -76,9 +76,9 @@ namespace
     }
 
     void* transfer(
-        lux::meta::EntityRegistryBase& source,
+        lux::ecs::RegistryBase& source,
         entt::entity source_entity,
-        lux::meta::EntityRegistryBase& destination,
+        lux::ecs::RegistryBase& destination,
         entt::entity destination_entity) noexcept
     {
         auto* component = source.try_get<DynamicTestComponent>(source_entity);

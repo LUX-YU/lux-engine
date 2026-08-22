@@ -124,7 +124,7 @@ endif()
 
 component_add_transitive_commands(
     render_vulkan
-    "find_package(lux-engine-platform REQUIRED COMPONENTS window gapi common)"
+    "find_package(lux-engine-platform REQUIRED COMPONENTS window gapi)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
     "find_package(lux-cxx REQUIRED COMPONENTS core container concurrent memory)"
@@ -147,7 +147,6 @@ target_link_libraries(
         lux::cxx::concurrent
         lux::engine::platform::window
         lux::engine::platform::gapi
-        lux::engine::platform::common
         lux::cxx::memory
         lux::engine::core::math
         lux::engine::resource::description

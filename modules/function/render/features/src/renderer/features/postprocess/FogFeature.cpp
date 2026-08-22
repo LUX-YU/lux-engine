@@ -104,9 +104,9 @@ namespace lux::render
                  EImageLayout::SHADER_READ_ONLY_OPTIMAL},
             });
         builder.addPass("FogComposite", ERGPassType::GRAPHICS)
-            .read(hdr, lux::common::ETextureRole::SAMPLED)
-            .read(depth, lux::common::ETextureRole::SAMPLED)
-            .write(output, lux::common::ETextureRole::COLOR_ATTACHMENT)
+            .read(hdr, lux::render::ETextureRole::SAMPLED)
+            .read(depth, lux::render::ETextureRole::SAMPLED)
+            .write(output, lux::render::ETextureRole::COLOR_ATTACHMENT)
             .setPipeline(pipeline_)
             .bindSceneDS()
             .bindTransientDS(1, descriptors)

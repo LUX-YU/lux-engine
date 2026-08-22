@@ -3,7 +3,7 @@
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/components/ParentComponent.hpp>
@@ -12,12 +12,13 @@
 #include <lux/engine/ecs/components/Transform2DComponent.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/systems/HierarchicalTransformSystem.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <random>
+#include <type_traits>
 #include <unordered_map>
 
 namespace lux::editor
@@ -34,25 +35,37 @@ namespace lux::editor
             return uuids::uuid_random_generator{generator}();
         }
 
-        [[nodiscard]] lux::entity_scene::PersistentEntityId
+        [[nodiscard]] lux::authoring::WorldActorId
         toAuthoringId(const lux::ecs::PersistentEntityId& id) noexcept
         {
-            return lux::entity_scene::PersistentEntityId{id.value()};
+            return lux::authoring::WorldActorId{id.value()};
         }
 
         [[nodiscard]] lux::ecs::PersistentEntityId
-        toRuntimeId(const lux::entity_scene::PersistentEntityId& id) noexcept
+        toRuntimeId(const lux::authoring::WorldActorId& id) noexcept
         {
             return lux::ecs::PersistentEntityId{id.value()};
         }
 
-    }
+        static_assert(!std::is_constructible_v<
+            lux::authoring::WorldActorId,
+            lux::ecs::PersistentEntityId>);
+        static_assert(!std::is_constructible_v<
+            lux::ecs::PersistentEntityId,
+            lux::authoring::WorldActorId>);
+        static_assert(!std::is_assignable_v<
+            lux::authoring::WorldActorId&,
+            lux::ecs::PersistentEntityId>);
+        static_assert(!std::is_assignable_v<
+            lux::ecs::PersistentEntityId&,
+            lux::authoring::WorldActorId>);
+    } // namespace
 
     lux::cxx::expected<lux::authoring::WorldActorDocument, std::string>
     WorldActorEcsAdapter::capture(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
-        lux::entity_scene::EntitySceneId world,
+        lux::authoring::WorldId world,
         std::string_view origin)
     {
         if (!persistent_entities_.boundTo(registry))
@@ -160,7 +173,7 @@ namespace lux::editor
         if (has_2d)
         {
             const auto* source = hierarchy
-                ? static_cast<const lux::spatial::Position2D*>(nullptr)
+                ? static_cast<const lux::math::Position2d*>(nullptr)
                 : &registry.get<lux::ecs::Transform2DComponent>(entity).position;
             if (hierarchy)
             {
@@ -172,7 +185,7 @@ namespace lux::editor
                         std::string{origin} + "'");
                 source = &resolved->position;
             }
-            if (!lux::spatial::isFinite(*source))
+            if (!lux::math::isFinite(*source))
                 return lux::cxx::unexpected(
                     std::string{"2D Actor position is invalid in '"} +
                     std::string{origin} + "'");
@@ -181,7 +194,7 @@ namespace lux::editor
         else
         {
             const auto* source = hierarchy
-                ? static_cast<const lux::spatial::Position3D*>(nullptr)
+                ? static_cast<const lux::math::Position3d*>(nullptr)
                 : &registry.get<lux::ecs::Transform3DComponent>(entity).position;
             if (hierarchy)
             {
@@ -193,7 +206,7 @@ namespace lux::editor
                         std::string{origin} + "'");
                 source = &resolved->position;
             }
-            if (!lux::spatial::isFinite(*source))
+            if (!lux::math::isFinite(*source))
                 return lux::cxx::unexpected(
                     std::string{"3D Actor position is invalid in '"} +
                     std::string{origin} + "'");
@@ -239,8 +252,16 @@ namespace lux::editor
                 return lux::cxx::unexpected(
                     std::string{"component disappeared while authoring '"}
                     + std::string{origin} + "'");
-            lux::serialize::TaggedPropertyWriter tagged{writer, names};
-            tagged.writeObject(*schema.ref_class, component);
+            lux::ecs::serialization::TaggedPropertyWriter tagged{writer, names};
+            const auto encoded =
+                tagged.writeObject(*schema.ref_class, component);
+            if (!encoded)
+            {
+                return lux::cxx::unexpected(
+                    std::string{"component archive encode failed for '"}
+                    + std::string{schema.fullName()} + "': "
+                    + encoded.error().detail);
+            }
             document.components.push_back(std::move(record));
         }
         {
@@ -253,7 +274,7 @@ namespace lux::editor
     lux::cxx::expected<entt::entity, std::string>
     WorldActorEcsAdapter::materialize(
         const lux::authoring::WorldActorDocument& document,
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         std::string_view origin) const
     {
         if (!persistent_entities_.boundTo(registry))
@@ -312,14 +333,17 @@ namespace lux::editor
             }
             lux::serialize::ArchiveReader payload_reader{
                 record.tagged_payload.data(), record.tagged_payload.size()};
-            lux::serialize::TaggedPropertyReader tagged{payload_reader, names};
-            tagged.readObject(*schema->ref_class, component);
-            if (!payload_reader.ok())
+            lux::ecs::serialization::TaggedPropertyReader tagged{payload_reader, names};
+            const auto decoded =
+                tagged.readObject(*schema->ref_class, component);
+            if (!decoded || !payload_reader.ok() || !payload_reader.eof())
             {
                 registry.destroy(entity);
                 return lux::cxx::unexpected(
                     std::string{"invalid tagged component payload for '"}
-                    + record.schema_name + "'");
+                    + record.schema_name + "': "
+                    + (decoded ? std::string{"trailing bytes"}
+                               : decoded.error().detail));
             }
         }
         const auto assigned = lux::ecs::setPersistentEntityId(
@@ -332,7 +356,7 @@ namespace lux::editor
                 + std::string{origin} + "'");
         }
 
-        if (const auto* position = std::get_if<lux::spatial::Position2D>(
+        if (const auto* position = std::get_if<lux::math::Position2d>(
                 &document.position))
         {
             auto* transform = registry.try_get<
@@ -347,7 +371,7 @@ namespace lux::editor
             }
             if (!document.transform_parent)
             {
-                if (!lux::spatial::isFinite(*position))
+                if (!lux::math::isFinite(*position))
                 {
                     registry.destroy(entity);
                     return lux::cxx::unexpected(
@@ -373,8 +397,8 @@ namespace lux::editor
             if (!document.transform_parent)
             {
                 const auto* position = std::get_if<
-                    lux::spatial::Position3D>(&document.position);
-                if (!position || !lux::spatial::isFinite(*position))
+                    lux::math::Position3d>(&document.position);
+                if (!position || !lux::math::isFinite(*position))
                 {
                     registry.destroy(entity);
                     return lux::cxx::unexpected(

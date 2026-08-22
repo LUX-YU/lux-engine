@@ -2,7 +2,7 @@
 
 #include <lux/engine/input/ActionMapper.hpp>
 #include <lux/engine/input/InputContext.hpp>
-#include <lux/engine/window/LuxWindowDefination.hpp>
+#include <lux/engine/input/PhysicalInput.hpp>
 
 #include <memory>
 #include <utility>
@@ -29,8 +29,8 @@ namespace lux::editor::actions
                 /*priority=*/0);
             auto& m = ctx->actionMap();
 
-            using K = lux::window::KeyEnum;
-            using B = lux::window::MouseButton;
+            using K = lux::input::EKey;
+            using B = lux::input::EMouseButton;
             using A = input::MouseAxisInput::EAxis;
 
             // ── Picking ────────────────────────────────────────────────

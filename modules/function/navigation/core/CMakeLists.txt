@@ -20,12 +20,12 @@ component_include_directories(
 target_link_libraries(
     navigation
     INTERFACE
-        lux::engine::resource::spatial
+        lux::engine::core::math
 )
 
 component_add_transitive_commands(
     navigation
-    "find_package(lux-engine-resource REQUIRED COMPONENTS spatial)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math)"
 )
 
 add_subdirectory(test)

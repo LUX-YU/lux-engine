@@ -63,7 +63,7 @@ int main()
     const auto root = makeWorldSourceDocument(
         lux::authoring::EPartitionTopology::PLANAR_XZ);
     std::vector pages{makePage(root, 0), makePage(root, 1)};
-    const lux::spatial::Position3D center{128.0, 0.0, 64.0};
+    const lux::math::Position3d center{128.0, 0.0, 64.0};
 
     WorldTerrainBrush raise;
     raise.mode = EWorldTerrainBrushMode::RAISE_LOWER;

@@ -21,9 +21,9 @@ namespace lux::ecs
     {}
 
     bool Physics2DSystem::ensurePhysicsOrigin(
-        const lux::spatial::Position2D& position) noexcept
+        const lux::math::Position2d& position) noexcept
     {
-        if (!lux::spatial::isFinite(position))
+        if (!lux::math::isFinite(position))
             return false;
         if (!physics_origin_)
         {
@@ -49,7 +49,7 @@ namespace lux::ecs
         return true;
     }
 
-    void Physics2DSystem::step(lux::meta::EntityRegistry& registry, float fixed_dt)
+    void Physics2DSystem::step(lux::ecs::Registry& registry, float fixed_dt)
     {
         for (const auto entity : registry.view<
                  RigidBody2DComponent,
@@ -69,7 +69,7 @@ namespace lux::ecs
             Collider2DComponent,
             Transform2DComponent,
             ResolvedTransform2DComponent>().each(
-            [&](lux::meta::entity_id e, const Collider2DComponent& col,
+            [&](lux::ecs::Entity e, const Collider2DComponent& col,
                 const Transform2DComponent& t,
                 const ResolvedTransform2DComponent& wt)
             {
@@ -91,7 +91,7 @@ namespace lux::ecs
                 const Eigen::Vector2f world_offset = wt.linear * col.offset;
                 center.x += static_cast<double>(world_offset.x());
                 center.y += static_cast<double>(world_offset.y());
-                if (!lux::spatial::isFinite(center))
+                if (!lux::math::isFinite(center))
                     return;
                 const auto relative = relativePosition(
                     center,
@@ -178,7 +178,7 @@ namespace lux::ecs
             RigidBody2DComponent,
             Collider2DComponent,
             Transform2DComponent>().each(
-            [&](lux::meta::entity_id e, RigidBody2DComponent& rb,
+            [&](lux::ecs::Entity e, RigidBody2DComponent& rb,
                 const Collider2DComponent& col,
                 Transform2DComponent& t)
             {
@@ -200,7 +200,7 @@ namespace lux::ecs
                 const auto offset = rotation * scaled_offset;
                 world_position.x -= static_cast<double>(offset.x());
                 world_position.y -= static_cast<double>(offset.y());
-                if (!lux::spatial::isFinite(world_position))
+                if (!lux::math::isFinite(world_position))
                     return;
                 registry.patch<Transform2DComponent>(
                     e,

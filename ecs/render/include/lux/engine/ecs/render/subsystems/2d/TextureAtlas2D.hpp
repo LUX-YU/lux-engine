@@ -10,7 +10,7 @@
 // ============================================================================
 
 #include <lux/engine/ecs/render/components/2d/Image2DComponent.hpp>
-#include <lux/engine/resource/asset/TextureAtlasAssets.hpp>   // rdesc types + assetIdFromOpaque
+#include <lux/engine/resource/asset/texture/TextureAtlasAssets.hpp>   // rdesc types + assetIdFromOpaque
 
 #include <string_view>
 

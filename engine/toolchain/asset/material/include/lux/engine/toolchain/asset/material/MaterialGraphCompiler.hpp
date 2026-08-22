@@ -10,7 +10,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>            // lux::asset::asset_id_t
-#include <lux/engine/resource/asset/MaterialAsset.hpp> // lux::asset::MaterialData
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp> // lux::asset::MaterialData
 
 #include <filesystem>
 #include <memory>

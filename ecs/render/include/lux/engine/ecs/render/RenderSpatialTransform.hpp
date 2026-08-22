@@ -2,7 +2,8 @@
 
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
+#include <lux/engine/math/Grid.hpp>
 
 #include <cmath>
 #include <cstddef>
@@ -30,25 +31,25 @@ namespace lux::ecs
         return static_cast<std::int64_t>(tile);
     }
 
-    [[nodiscard]] inline std::optional<lux::spatial::GridCoord3i64>
-    renderTileOf(const lux::spatial::Position3D& position) noexcept
+    [[nodiscard]] inline std::optional<lux::math::GridCoord3i64>
+    renderTileOf(const lux::math::Position3d& position) noexcept
     {
         const auto x = renderTileOf(position.x);
         const auto y = renderTileOf(position.y);
         const auto z = renderTileOf(position.z);
         if (!x || !y || !z)
             return std::nullopt;
-        return lux::spatial::GridCoord3i64{*x, *y, *z};
+        return lux::math::GridCoord3i64{*x, *y, *z};
     }
 
-    [[nodiscard]] inline std::optional<lux::spatial::GridCoord3i64>
-    renderTileOf(const lux::spatial::Position2D& position) noexcept
+    [[nodiscard]] inline std::optional<lux::math::GridCoord3i64>
+    renderTileOf(const lux::math::Position2d& position) noexcept
     {
         const auto x = renderTileOf(position.x);
         const auto y = renderTileOf(position.y);
         if (!x || !y)
             return std::nullopt;
-        return lux::spatial::GridCoord3i64{*x, *y, 0};
+        return lux::math::GridCoord3i64{*x, *y, 0};
     }
 
     namespace render_spatial_detail
@@ -113,8 +114,8 @@ namespace lux::ecs
 
     [[nodiscard]] inline std::optional<lux::render::RenderLargePosition3D>
     makeRenderLargePosition(
-        const lux::spatial::Position2D& position,
-        const lux::spatial::GridCoord3i64& scene_origin_tile) noexcept
+        const lux::math::Position2d& position,
+        const lux::math::GridCoord3i64& scene_origin_tile) noexcept
     {
         lux::render::RenderLargePosition3D result{};
         if (!render_spatial_detail::splitAxis(
@@ -143,8 +144,8 @@ namespace lux::ecs
 
     [[nodiscard]] inline std::optional<lux::render::RenderLargePosition3D>
     makeRenderLargePosition(
-        const lux::spatial::Position3D& position,
-        const lux::spatial::GridCoord3i64& scene_origin_tile) noexcept
+        const lux::math::Position3d& position,
+        const lux::math::GridCoord3i64& scene_origin_tile) noexcept
     {
         lux::render::RenderLargePosition3D result{};
         if (!render_spatial_detail::splitAxis(
@@ -171,7 +172,7 @@ namespace lux::ecs
     [[nodiscard]] inline std::optional<lux::render::RenderSpatialTransform3D>
     makeRenderSpatialTransform(
         const ResolvedTransform3DComponent& transform,
-        const lux::spatial::GridCoord3i64& scene_origin_tile) noexcept
+        const lux::math::GridCoord3i64& scene_origin_tile) noexcept
     {
         const auto large_position = makeRenderLargePosition(
             transform.position,

@@ -4,19 +4,16 @@
 //  ScriptEventRegistry ADR v2 §3.2: an instance is a bind-time-resolved event
 //  entry table, IScriptInstance is retired).
 //
-//    ScriptEventFn   — the ONE dispatch entry convention every backend
-//                      satisfies: packed args (the existing lux_script_abi /
-//                      reflection-trampoline convention), bool = clean run.
+//    BoundScriptCall — final ABI entry + per-instance context. All language
+//                      selection and signature checks happen before binding.
 //    ScriptInstance  — a live per-entity script instance: opaque backend
 //                      state + destructor + a dense [ScriptEventId] → entry
 //                      table resolved ONCE at bind (instance creation).
-//                      Hot-path dispatch is table[id](state, id, args):
+//                      Hot-path dispatch is one final ABI function call:
 //                      no virtual call, no string, empty slot = skip.
-//    ScriptBehavior  — the C++ AUTHORING base (user face unchanged, ADR §4):
-//                      inherit and override onCreate/onUpdate/onDestroy. The
-//                      built-in shims call through these virtuals for now;
-//                      step 4's generator emits direct per-type shims.
-//    IScriptBackend  — resolves a script ASSET into a ScriptInstance.
+//    ScriptBehavior  — non-polymorphic C++ authoring context base. Optional
+//                      exact noexcept members are detected by registration.
+//    IScriptBackend  — cold-path session binder. Never entered by dispatch.
 //
 //  STATE DISCIPLINE (ADR §A note): transient runtime state → instance members
 //  (play-scoped, reset on OnCreate); authored/persistent/tunable state →
@@ -25,14 +22,18 @@
 // ============================================================================
 
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/function/script/abi/lux_script_abi.h>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/description/Script.hpp>   // rdesc::Script — asset-routed creation
 #include <lux/engine/ecs/script/systems/ScriptEventRegistry.hpp>   // ScriptEventId
+#include <lux/engine/resource/asset/Asset.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -41,15 +42,19 @@ namespace lux::ecs
     class World;
     struct ScriptContext;
 
-    /// The one dispatch-entry convention (ADR §3.2, refined: the dispatcher
-    /// passes the event id it already holds, so one backend thunk can serve
-    /// every slot; per-event shims simply ignore it).
-    ///   state — the instance's opaque backend state
-    ///   args  — packed payload, args[i] points at param i's storage; valid
-    ///           ONLY for the duration of the call (scripts must not keep it)
-    ///   return false = the script REPORTED failure (dispatcher disables it)
-    using ScriptEventFn = bool (*)(void* state, ScriptEventId id,
-                                   void* const* args);
+    struct BoundScriptCall final
+    {
+        lux_script_invoke_fn invoke{nullptr};
+        void*                context{nullptr};
+
+        friend bool operator==(
+            const BoundScriptCall&,
+            const BoundScriptCall&
+        ) = default;
+    };
+
+    static_assert(sizeof(BoundScriptCall) == 2 * sizeof(void*));
+    static_assert(std::is_trivially_copyable_v<BoundScriptCall>);
 
     /// A live per-entity script instance (replaces the IScriptInstance
     /// inheritance). Move-only RAII: destruction runs `drop` on the state.
@@ -80,20 +85,20 @@ namespace lux::ecs
         ~ScriptInstance() { release(); }
 
         /// Bind an event entry (instance-creation time only).
-        void bind(ScriptEventId id, ScriptEventFn fn)
+        void bind(ScriptEventId id, BoundScriptCall call)
         {
-            if (id == kInvalidScriptEvent || fn == nullptr) return;
-            if (events_.size() <= id) events_.resize(id + 1, nullptr);
-            events_[id] = fn;
+            if (id == kInvalidScriptEvent || call.invoke == nullptr) return;
+            if (events_.size() <= id) events_.resize(id + 1);
+            events_[id] = call;
         }
 
         /// The entry for @p id — nullptr = this instance does not implement it.
-        [[nodiscard]] ScriptEventFn entry(ScriptEventId id) const noexcept
+        [[nodiscard]] BoundScriptCall entry(ScriptEventId id) const noexcept
         {
-            return id < events_.size() ? events_[id] : nullptr;
+            return id < events_.size() ? events_[id] : BoundScriptCall{};
         }
 
-        [[nodiscard]] std::span<const ScriptEventFn> events() const noexcept
+        [[nodiscard]] std::span<const BoundScriptCall> events() const noexcept
         { return events_; }
         [[nodiscard]] void* state() const noexcept { return state_; }
         [[nodiscard]] explicit operator bool() const noexcept { return state_ != nullptr; }
@@ -108,24 +113,17 @@ namespace lux::ecs
 
         void*                      state_ = nullptr;
         void                     (*drop_)(void*) = nullptr;
-        std::vector<ScriptEventFn> events_;   // [ScriptEventId] → entry; empty slot = not implemented
+        std::vector<BoundScriptCall> events_;
     };
 
     /// C++ authoring base: `class PlayerBehavior : public ScriptBehavior { ... }`.
     /// Named XxxBehavior — a behavior attached to an entity, NOT the entity.
-    /// The virtuals remain the USER FACE (ADR §4); the built-in shims route
-    /// through them (one virtual hop — the cheapest link in §1's table) until
-    /// step 4's generator emits direct per-type shims.
+    /// Lifecycle methods are optional concrete members on the derived type;
+    /// registration emits exact noexcept ABI thunks with no vtable.
     class LUX_FUNCTION_PUBLIC ScriptBehavior
     {
-    public:
-        virtual ~ScriptBehavior() = default;
-        virtual void onCreate()         {}
-        virtual void onUpdate(float dt) { (void)dt; }
-        virtual void onDestroy()        {}
-
     protected:
-        template<typename C> C&   getComponent()       { return self_.get<C>(); }
+        template<typename C> const C& getComponent() const { return self_.get<C>(); }
         template<typename C> bool hasComponent() const { return self_.all_of<C>(); }
 
         /// **改组件走这里。**
@@ -145,16 +143,16 @@ namespace lux::ecs
         ///  那边由借用检查强制经过打戳的包装,这边由 API 形状引导。)
         template<typename C, typename Fn>
         void patchComponent(Fn&& fn) { self_.patch<C>(std::forward<Fn>(fn)); }
-        [[nodiscard]] lux::meta::EntityHandle self() const noexcept
+        [[nodiscard]] lux::ecs::EntityHandle self() const noexcept
         {
             return self_;
         }
-        [[nodiscard]] lux::meta::entity_id entity() const noexcept { return self_.entity(); }
+        [[nodiscard]] lux::ecs::Entity entity() const noexcept { return self_.entity(); }
         [[nodiscard]] World& world() const noexcept { return *world_; }
 
     private:
-        friend class ScriptRegistry;   // injects self_/world_ before onCreate
-        lux::meta::EntityHandle self_{};
+        template<class T> friend struct ScriptBehaviorAccess;
+        lux::ecs::EntityHandle self_{};
         World*       world_{nullptr};
     };
 
@@ -164,24 +162,26 @@ namespace lux::ecs
     {
     public:
         virtual ~IScriptBackend() = default;
-        [[nodiscard]] virtual std::string_view kind() const = 0;   // "lua"/"native"/"flowforge"
+        [[nodiscard]] virtual lux::rdesc::Script::Kind kind() const noexcept = 0;
 
         /// Called once per frame BEFORE dispatch, so a backend can capture the
         /// current per-frame services (input, …) for its scripts. Default no-op.
         virtual void beginFrame(const ScriptContext&) {}
 
+        /// Drop every derived-code cache after all instances have gone.
+        virtual void resetSession() noexcept = 0;
+
         /// Asset-routed creation: the backend inspects the asset's
         /// DESCRIPTION and claims kinds it owns (Lua backend → LuaSourceScript;
         /// native loader → NativeModuleScript). @p payload is the asset's raw
-        /// body (Lua source text / DLL bytes); @p cache_key is a stable
-        /// per-asset key (the uuid string) for compile caching / hot reload.
-        /// Return an EMPTY instance for "not mine" — the registry tries the
-        /// next backend. Event entries are resolved HERE, once (ADR §3.2).
+        /// body (Lua source text / DLL bytes); @p asset_id keys the playback
+        /// session cache. Event entries are resolved and validated HERE once.
         virtual ScriptInstance
-            createInstanceFromAsset(lux::meta::EntityHandle, World&,
+            createInstanceFromAsset(lux::ecs::EntityHandle, World&,
                                     const lux::rdesc::Script& /*desc*/,
                                     std::span<const std::byte> /*payload*/,
-                                    std::string_view /*cache_key*/)
+                                    lux::asset::asset_id_t /*asset_id*/,
+                                    std::uint32_t /*content_revision*/)
         { return {}; }
     };
 } // namespace lux::ecs

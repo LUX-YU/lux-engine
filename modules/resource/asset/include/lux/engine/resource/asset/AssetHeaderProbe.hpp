@@ -1,14 +1,12 @@
 #pragma once
 // ============================================================================
 //  AssetHeaderProbe — cheap, header-only read of a .luxasset/.luxmodel file's
-//  AssetFileHeader (magic + UUID) WITHOUT loading the payload, plus the single
-//  runtime magic->EAssetType table. This is the SSOT for "what type is this
-//  file" — the editor (AssetBrowser/AssetRegistry), the import pipeline and
-//  the pak cooker all dispatch through here so the table can never fork.
+//  AssetFileHeader (magic + UUID) WITHOUT loading the payload. Type dispatch
+//  belongs to the immutable product-composed AssetCodecCatalog.
 // ============================================================================
 
-#include "Asset.hpp"          // EAssetType, asset_id_t
-#include "AssetSerDeser.hpp"  // AssetFileHeader, asset_magic_number_of
+#include <lux/engine/resource/asset/Asset.hpp>          // EAssetType, asset_id_t
+#include <lux/engine/resource/asset/AssetSerDeser.hpp>  // AssetFileHeader, asset_magic_number_of
 
 #include <cstdint>
 #include <filesystem>
@@ -16,9 +14,6 @@
 
 namespace lux::asset
 {
-    inline constexpr std::uint32_t kEntitySceneImageMagic = 0x4353584cu;
-    inline constexpr std::uint32_t kEntitySectionImageMagic = 0x5345584cu;
-
     /// Magic + UUID from a file's AssetFileHeader (offset 0, fixed-size). magic==0
     /// / nil id on any read error — caller treats that as an unrecognized file.
     struct AssetHeaderProbe
@@ -38,27 +33,6 @@ namespace lux::asset
         out.magic = h.magic_number;
         out.id    = h.info.id;
         return out;
-    }
-
-    /// Map a 4-byte header magic to its EAssetType (mirrors asset_magic_number_of;
-    /// kept in sync by hand because the specs aren't runtime-queryable).
-    inline EAssetType assetTypeOfMagic(std::uint32_t magic) noexcept
-    {
-        if (magic == asset_magic_number_of<EAssetType::MATERIAL>::value)          return EAssetType::MATERIAL;
-        if (magic == asset_magic_number_of<EAssetType::MATERIAL_INSTANCE>::value) return EAssetType::MATERIAL_INSTANCE;
-        if (magic == asset_magic_number_of<EAssetType::MESH>::value)              return EAssetType::MESH;
-        if (magic == asset_magic_number_of<EAssetType::MODEL>::value)             return EAssetType::MODEL;
-        if (magic == asset_magic_number_of<EAssetType::TEXTURE>::value)           return EAssetType::TEXTURE;
-        if (magic == asset_magic_number_of<EAssetType::SHADER>::value)            return EAssetType::SHADER;
-        if (magic == asset_magic_number_of<EAssetType::SCRIPT>::value)            return EAssetType::SCRIPT;
-        if (magic == asset_magic_number_of<EAssetType::SKELETON>::value)          return EAssetType::SKELETON;
-        if (magic == asset_magic_number_of<EAssetType::ANIMATION_CLIP>::value)    return EAssetType::ANIMATION_CLIP;
-        if (magic == asset_magic_number_of<EAssetType::TEXTURE_ATLAS>::value)      return EAssetType::TEXTURE_ATLAS;
-        if (magic == asset_magic_number_of<EAssetType::FLIPBOOK_CLIP>::value)  return EAssetType::FLIPBOOK_CLIP;
-        if (magic == asset_magic_number_of<EAssetType::FLOW_GRAPH>::value)        return EAssetType::FLOW_GRAPH;
-        if (magic == kEntitySceneImageMagic)                                      return EAssetType::ENTITY_SCENE;
-        if (magic == kEntitySectionImageMagic)                                    return EAssetType::ENTITY_SECTION;
-        return EAssetType::UNKNOWN;
     }
 
 } // namespace lux::asset

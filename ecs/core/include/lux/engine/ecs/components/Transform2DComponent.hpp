@@ -10,8 +10,9 @@
 //  wired when the editor gains 2D support.
 // ============================================================================
 
+#include <lux/engine/ecs/reflection/SpatialValueReflectionTraits.hpp>
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <Eigen/Core>
 
 namespace lux::ecs
@@ -21,7 +22,7 @@ namespace lux::ecs
         /// Absolute registry-space position for a root; parent-relative for a
         /// child. Streaming and render-origin representations never leak here.
         LUX_MEMBER(display_name=Position, tooltip=2D position (x, y))
-        lux::spatial::Position2D position{};
+        lux::math::Position2d position{};
 
         /// Local rotation in RADIANS about +Z (counter-clockwise, screen-space
         /// convention). A single scalar — 2D has one rotational DOF.

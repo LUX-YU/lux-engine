@@ -71,8 +71,8 @@ void LinearDepthFeature::addPasses(RGBuilder& builder)
     });
 
     builder.addPass("LinearDepthResolve", ERGPassType::GRAPHICS)
-        .read(scene_depth, lux::common::ETextureRole::SAMPLED)
-        .write(linear, lux::common::ETextureRole::COLOR_ATTACHMENT)
+        .read(scene_depth, lux::render::ETextureRole::SAMPLED)
+        .write(linear, lux::render::ETextureRole::COLOR_ATTACHMENT)
         .setPipeline(pipeline_)
         .bindSceneDS()                // set0:uViews(near/far)
         .bindTransientDS(1, tds)      // set1:uSceneDepth(局部资源,发射器自动 b0)

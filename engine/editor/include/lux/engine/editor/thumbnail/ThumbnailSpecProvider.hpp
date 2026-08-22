@@ -29,7 +29,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -38,17 +37,6 @@ namespace lux::asset { class AssetManager; }
 
 namespace lux::editor
 {
-    /// Request that this asset's data be loaded asynchronously (it is
-    /// currently registered as an empty shell). Idempotent — the executor
-    /// dedupes by id.
-    ///
-    /// Since startup switched to registering assets as info-only shells,
-    /// asset data that has never entered a scene (e.g. only seen in the
-    /// browser) needs something to trigger its load, or its thumbnail stays
-    /// blank forever — a provider missing its data uses this to request the
-    /// load and reports `pending`.
-    using ThumbnailLoadFn = std::function<void(const lux::asset::asset_id_t&)>;
-
     /// A requested output resolution (thumbnails are typically square).
     struct ThumbnailSize
     {
@@ -84,6 +72,10 @@ namespace lux::editor
         /// meaningful when `valid == false`.
         bool pending{false};
 
+        /// Missing dependencies reported by the pure provider. The service
+        /// owns request de-duplication and all AssetClient interaction.
+        std::vector<lux::asset::asset_id_t> missing_assets;
+
         // Texture path: ready RGBA8 pixels (no scene render needed).
         bool                   has_cpu_pixels{false};
         std::vector<std::byte> rgba8;
@@ -108,13 +100,12 @@ namespace lux::editor
         /// provider needs; nil when the builtin failed to register (a material
         /// spec then reports invalid). Returns `{valid=false}` on failure /
         /// unsupported asset; `{valid=false, pending=true}` when a needed asset
-        /// is a data-less shell whose load was just requested via
-        /// @p request_load (retry later). @p request_load is idempotent.
+        /// is a data-less shell (retry later). The returned spec lists every
+        /// missing dependency; providers never perform loading themselves.
         [[nodiscard]] virtual ThumbnailSpec buildSpec(
             lux::asset::AssetManager&     assets,
             const lux::asset::asset_id_t& sphere_mesh_id,
-            const lux::asset::asset_id_t& asset_id,
-            const ThumbnailLoadFn&        request_load) = 0;
+            const lux::asset::asset_id_t& asset_id) = 0;
     };
 
     /// Maps `EAssetType` → provider. Owns the provider instances.

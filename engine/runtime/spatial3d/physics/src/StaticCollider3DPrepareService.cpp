@@ -1,6 +1,6 @@
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
 
-#include <lux/engine/resource/physics3d/StaticColliderBatch3D.hpp>
+#include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 
@@ -217,7 +217,7 @@ namespace lux::runtime::spatial3d
             const lux::ecs::ResolvedTransform3DComponent& transform)
         {
             constexpr float tolerance = 1.0e-4f;
-            if (!lux::spatial::isFinite(transform.position) ||
+            if (!lux::math::isFinite(transform.position) ||
                 !transform.linear.allFinite())
             {
                 return lux::cxx::unexpected(failure(
@@ -258,7 +258,7 @@ namespace lux::runtime::spatial3d
                 heightfield.height_min = source.height_min * diagonal.y();
                 heightfield.height_max = source.height_max * diagonal.y();
                 heightfield.samples = std::move(source.samples);
-                if (!lux::spatial::isFinite(heightfield.origin) ||
+                if (!lux::math::isFinite(heightfield.origin) ||
                     !std::isfinite(heightfield.sample_spacing) ||
                     !std::isfinite(heightfield.height_min) ||
                     !std::isfinite(heightfield.height_max) ||

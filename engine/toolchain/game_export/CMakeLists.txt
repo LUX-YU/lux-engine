@@ -41,7 +41,7 @@ target_link_libraries(
         lux::engine::authoring::project
         lux::engine::toolchain::toolchain_asset_cook
         lux::engine::toolchain::toolchain_texture_importer
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::game::deployment
     PRIVATE
         lux::engine::toolchain::toolchain_spatial3d_scene_cook
@@ -162,7 +162,9 @@ if(TARGET lux_player AND TARGET render_features)
         PRIVATE
             lux::engine::toolchain::toolchain_game_export
             lux::engine::authoring::authoring_world
-            lux::engine::resource::classic_mesh_content
+            lux::engine::ecs::scene_format
+            lux::engine::scene::scene
+            lux::engine::function::render_standard_content
     )
     lux_link_game_export_component_meta(game_export_smoke)
     target_compile_definitions(

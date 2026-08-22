@@ -6,7 +6,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/runtime/entity_scene/visibility.h>
 
 #include <cstddef>

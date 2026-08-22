@@ -20,7 +20,7 @@
         const auto world_uuid = named(
             recipe_namespace,
             "org.lux.benchmark.world:" + std::to_string(options.seed));
-        const lux::entity_scene::EntitySceneId world{world_uuid};
+        const lux::authoring::WorldId world{world_uuid};
         const lux::authoring::PartitionSpaceId space{
             named(world_uuid, "space:surface")};
         const lux::authoring::InstanceSetId instance_set{
@@ -119,15 +119,15 @@
             std::fprintf(stderr, "cannot encode benchmark Skeleton\n");
             return 1;
         }
-        std::array<uuids::uuid, 1u + lux::asset::kBuiltinEmissiveCount>
+        std::array<uuids::uuid, 1u + lux::engine::content::kBuiltinEmissiveCount>
             benchmark_materials{};
         benchmark_materials[0] = uuids::uuid::from_string(
-            lux::asset::kBuiltinWhitePbrMaterialIdStr).value();
+            lux::engine::content::kBuiltinWhitePbrMaterialIdStr).value();
         for (std::size_t index = 0u;
-             index < lux::asset::kBuiltinEmissiveCount; ++index)
+             index < lux::engine::content::kBuiltinEmissiveCount; ++index)
         {
             benchmark_materials[index + 1u] = uuids::uuid::from_string(
-                lux::asset::kBuiltinEmissiveIdStrs[index]).value();
+                lux::engine::content::kBuiltinEmissiveIdStrs[index]).value();
         }
         constexpr std::array<std::array<float, 3u>, 9u>
             showcase_material_colors{{
@@ -153,12 +153,14 @@
         std::vector<BenchmarkAssetImage> builtin_assets;
         builtin_assets.push_back({
             sky_texture_id,
-            lux::asset::EAssetType::TEXTURE,
+            lux::asset::asset_magic_number_of<
+                lux::asset::EAssetType::TEXTURE>::value,
             "Benchmark/Texture/SkyGradient",
             std::move(*sky_texture_image)});
         builtin_assets.push_back({
             skeleton_id,
-            lux::asset::EAssetType::SKELETON,
+            lux::asset::asset_magic_number_of<
+                lux::asset::EAssetType::SKELETON>::value,
             "Benchmark/Skeleton/" + uuids::to_string(skeleton_id),
             std::move(*skeleton_image)});
         {
@@ -234,7 +236,8 @@
                     return 1;
                 builtin_assets.push_back({
                     showcase_materials[index],
-                    lux::asset::EAssetType::MATERIAL,
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MATERIAL>::value,
                     "Benchmark/Material/Showcase" +
                         std::to_string(index),
                     std::move(*image)});
@@ -289,7 +292,8 @@
                 }
                 builtin_assets.push_back({
                     id,
-                    lux::asset::EAssetType::MATERIAL,
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MATERIAL>::value,
                     "Benchmark/Material/" +
                         fs::path{filename}.stem().string(),
                     std::move(*image)});
@@ -298,7 +302,7 @@
             if (!addMaterial(benchmark_materials[0], "M_WhitePbr.luxasset"))
                 return 1;
             for (std::size_t index = 0u;
-                 index < lux::asset::kBuiltinEmissiveCount; ++index)
+                 index < lux::engine::content::kBuiltinEmissiveCount; ++index)
             {
                 if (!addMaterial(
                         benchmark_materials[index + 1u],
@@ -310,7 +314,7 @@
             }
             if (!addMaterial(
                     uuids::uuid::from_string(
-                        lux::asset::kBuiltinMissingMaterialIdStr).value(),
+                        lux::engine::content::kBuiltinMissingMaterialIdStr).value(),
                     "M_Missing.luxasset"))
             {
                 return 1;
@@ -490,7 +494,7 @@
                     instance.id = {instance_set, next_instance++};
                     const auto surface_height = terrainHeight(
                         wx, wz, options.scale.terrain_edge);
-                    instance.position = lux::spatial::Position3D{
+                    instance.position = lux::math::Position3d{
                         wx,
                         surface_height + (showcase_road ? 0.12 : 0.0),
                         wz};
@@ -534,7 +538,7 @@
                                 (random_key % 23u == 0u)
                                     ? 1u + static_cast<std::size_t>(
                                         mix(random_key) %
-                                        lux::asset::kBuiltinEmissiveCount)
+                                        lux::engine::content::kBuiltinEmissiveCount)
                                     : 0u;
                             instance.material_instance =
                                 benchmark_materials[material_variant];
@@ -652,10 +656,10 @@
                     lux::authoring::WorldActorDocument actor;
                     actor.world = world;
                     actor.actor =
-                        lux::entity_scene::PersistentEntityId{actor_uuid};
+                        lux::authoring::WorldActorId{actor_uuid};
                     actor.actor_class = "org.lux.benchmark.semantic";
                     actor.space = space;
-                    actor.position = lux::spatial::Position3D{
+                    actor.position = lux::math::Position3d{
                         wx,
                         terrainHeight(wx, wz, options.scale.terrain_edge),
                         wz};
@@ -863,7 +867,7 @@
                     {
                         actor.actor_class =
                             "org.lux.benchmark.environment.water";
-                        actor.position = lux::spatial::Position3D{
+                        actor.position = lux::math::Position3d{
                             static_cast<double>(x) * 1024.0 + 512.0,
                             terrainHeight(
                                 static_cast<double>(x) * 1024.0 + 512.0,
@@ -1041,7 +1045,9 @@
                 mesh_assets.meshes.push_back({id, image});
             for (const auto& asset : builtin_assets)
             {
-                if (asset.type == lux::asset::EAssetType::MESH)
+                if (asset.magic_number ==
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MESH>::value)
                 {
                     mesh_assets.meshes.push_back({
                         asset.id, asset.image});

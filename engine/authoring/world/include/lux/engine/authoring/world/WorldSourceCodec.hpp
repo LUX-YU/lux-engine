@@ -60,12 +60,12 @@ namespace lux::authoring
     /// subtly different directory layouts for the same World contract.
     [[nodiscard]] LUX_ENGINE_AUTHORING_WORLD_PUBLIC
     std::string makeWorldActorDocumentPath(
-        lux::entity_scene::PersistentEntityId actor,
+        lux::authoring::WorldActorId actor,
         const lux::cxx::algorithm::Sha256Digest& content_digest);
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_WORLD_PUBLIC
     uuids::uuid makeWorldDescriptorPageId(
-        lux::entity_scene::EntitySceneId world,
+        lux::authoring::WorldId world,
         lux::authoring::PartitionSpaceId space,
         const lux::authoring::WorldMacroCoord& macro);
 

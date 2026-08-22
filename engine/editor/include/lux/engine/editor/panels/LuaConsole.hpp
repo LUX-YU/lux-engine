@@ -32,7 +32,7 @@
 #include <cstdarg>
 #include <sstream>
 #include <cstring>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 
 namespace lux::asset { class AssetManager; }
 
@@ -61,7 +61,7 @@ namespace lux::editor
          *   lux.asset_exists(path) -> bool
          *   lux.find_assets(prefix)-> sorted array of absolute vpaths
          * Relative paths sugar to /Game. NOTE: hand-registered sol2 today;
-         * relocates verbatim into the shared runtime ScriptHost when the
+         * relocates verbatim into the playback-session Lua backend when the
          * ship-side Lua host lands (one registration, no editor variant).
          */
         void setAssetManager(std::shared_ptr<lux::asset::AssetManager> mgr);

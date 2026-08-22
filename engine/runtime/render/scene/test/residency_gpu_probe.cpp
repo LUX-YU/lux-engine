@@ -19,13 +19,13 @@
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
-#include <lux/engine/resource/asset/MeshAsset.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>   // kMaterialFeatureFactory
 #include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>  // kMeshStackFeatureFactory
-#include <lux/engine/platform/FormatCompat.h>                        // lux::format
+#include <lux/cxx/core/Format.hpp>                        // lux::format
 
 #include <atomic>
 #include <algorithm>

@@ -1,6 +1,6 @@
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
 
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 
 #include <algorithm>
@@ -108,10 +108,10 @@ namespace lux::runtime::spatial3d
         }
 
         [[nodiscard]] lux::cxx::expected<
-            std::vector<lux::spatial::GridCoord3i64>,
+            std::vector<lux::math::GridCoord3i64>,
             Spatial3DSourceFailure>
         coordinates(
-            lux::spatial::GridCoord3i64 center,
+            lux::math::GridCoord3i64 center,
             std::int64_t radius,
             std::size_t maximum_sections)
         {
@@ -124,7 +124,7 @@ namespace lux::runtime::spatial3d
                     .requested_sections = count,
                     .maximum_sections = maximum_sections});
             }
-            std::vector<lux::spatial::GridCoord3i64> result;
+            std::vector<lux::math::GridCoord3i64> result;
             result.reserve(count);
             for (std::int64_t x = -radius; x <= radius; ++x)
             {
@@ -132,7 +132,7 @@ namespace lux::runtime::spatial3d
                 {
                     for (std::int64_t z = -radius; z <= radius; ++z)
                     {
-                        lux::spatial::GridCoord3i64 coordinate;
+                        lux::math::GridCoord3i64 coordinate;
                         if (!checkedOffset(center.x, x, coordinate.x) ||
                             !checkedOffset(center.y, y, coordinate.y) ||
                             !checkedOffset(center.z, z, coordinate.z))
@@ -163,8 +163,8 @@ namespace lux::runtime::spatial3d
         }
 
         [[nodiscard]] bool insideCube(
-            lux::spatial::GridCoord3i64 coordinate,
-            lux::spatial::GridCoord3i64 center,
+            lux::math::GridCoord3i64 coordinate,
+            lux::math::GridCoord3i64 center,
             std::int64_t radius) noexcept
         {
             const auto extent = static_cast<std::uint64_t>(radius);
@@ -182,19 +182,19 @@ namespace lux::runtime::spatial3d
     }
 
     lux::cxx::expected<
-        lux::spatial::GridCoord3i64,
+        lux::math::GridCoord3i64,
         Spatial3DSourceFailure>
     spatial3DSectionCoordinate(
-        const lux::spatial::Position3D& position,
+        const lux::math::Position3d& position,
         double cell_world_size) noexcept
     {
-        if (!lux::spatial::isFinite(position) ||
+        if (!lux::math::isFinite(position) ||
             !std::isfinite(cell_world_size) || cell_world_size <= 0.0)
         {
             return lux::cxx::unexpected(Spatial3DSourceFailure{
                 .code = ESpatial3DSourceError::INVALID_REQUEST});
         }
-        lux::spatial::GridCoord3i64 result;
+        lux::math::GridCoord3i64 result;
         if (!positionAxisToCoordinate(
                 position.x, cell_world_size, result.x) ||
             !positionAxisToCoordinate(
@@ -268,7 +268,7 @@ namespace lux::runtime::spatial3d
     }
 
     const Spatial3DSectionCatalogEntry* Spatial3DSectionCatalog::find(
-        lux::spatial::GridCoord3i64 coordinate) const noexcept
+        lux::math::GridCoord3i64 coordinate) const noexcept
     {
         const Spatial3DSectionCatalogEntry key{coordinate, {}};
         const auto found = std::lower_bound(
@@ -314,7 +314,7 @@ namespace lux::runtime::spatial3d
             request.center, request.cell_world_size);
         if (!center)
             return lux::cxx::unexpected(std::move(center.error()));
-        const lux::spatial::Position3D predicted_position{
+        const lux::math::Position3d predicted_position{
             request.center.x + request.prediction_offset_x,
             request.center.y + request.prediction_offset_y,
             request.center.z + request.prediction_offset_z};
@@ -349,7 +349,7 @@ namespace lux::runtime::spatial3d
         if (!predicted)
             return lux::cxx::unexpected(std::move(predicted.error()));
 
-        std::vector<lux::spatial::GridCoord3i64> merged;
+        std::vector<lux::math::GridCoord3i64> merged;
         const auto combined_capacity = current->size() >
                 request.maximum_sections - predicted->size()
                 ? request.maximum_sections

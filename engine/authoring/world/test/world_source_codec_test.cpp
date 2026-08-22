@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -32,10 +33,10 @@ namespace
         using namespace lux::authoring;
         Fixture fixture;
         auto& root = fixture.root;
-        root.world = lux::entity_scene::EntitySceneId{
+        root.world = lux::authoring::WorldId{
             uuid("81000000-0000-4000-8000-000000000001")};
         root.contributions.push_back({
-            lux::extensions::ContributionId{"org.example.scene"},
+            lux::authoring::WorldSceneFeatureId{"org.example.scene"},
             1u,
             {std::byte{0x42u}}});
         PartitionSpaceDescriptor surface;
@@ -48,7 +49,7 @@ namespace
         root.data_layers.push_back(
             DataLayerId{"org.example.gameplay"});
         root.required_extensions.push_back({
-            lux::extensions::ExtensionId{"org.example.runtime"},
+            lux::authoring::WorldExtensionId{"org.example.runtime"},
             1u,
             2u});
         root.instance_sets.push_back({
@@ -66,7 +67,7 @@ namespace
             root.world, page.space, page.macro);
 
         WorldActorSourceDescriptor actor_a;
-        actor_a.id = lux::entity_scene::PersistentEntityId{
+        actor_a.id = lux::authoring::WorldActorId{
             uuid("83000000-0000-4000-8000-000000000001")};
         actor_a.display_name = "Gate A";
         actor_a.actor_class = "org.example.gate";
@@ -76,17 +77,17 @@ namespace
         actor_a.document_path = makeWorldActorDocumentPath(
             actor_a.id, actor_a.content_digest);
         actor_a.space = surface.id;
-        actor_a.position = lux::spatial::Position3D{100.0, 0.0, 15.0};
+        actor_a.position = lux::math::Position3d{100.0, 0.0, 15.0};
         actor_a.bounds_half_extent = {2.0f, 3.0f, 4.0f};
         actor_a.data_layers.push_back(DataLayerId{"org.example.gameplay"});
 
         WorldActorSourceDescriptor actor_b = actor_a;
-        actor_b.id = lux::entity_scene::PersistentEntityId{
+        actor_b.id = lux::authoring::WorldActorId{
             uuid("83000000-0000-4000-8000-000000000002")};
         actor_b.display_name = "Gate B";
         actor_b.document_path = makeWorldActorDocumentPath(
             actor_b.id, actor_b.content_digest);
-        actor_b.position = lux::spatial::Position3D{200.0, 0.0, 15.0};
+        actor_b.position = lux::math::Position3d{200.0, 0.0, 15.0};
         actor_a.transform_parent = actor_b.id;
         actor_a.references.push_back({
             actor_b.id, EWorldActorReferenceKind::LOCAL});
@@ -121,6 +122,16 @@ namespace
             static_cast<std::uint32_t>(page.pages.size())});
         return fixture;
     }
+
+    void assertGoldenWire(
+        const std::span<const std::byte> bytes,
+        const std::size_t expected_size,
+        const std::string_view expected_sha256)
+    {
+        assert(bytes.size() == expected_size);
+        assert(lux::cxx::algorithm::toHex(
+            lux::cxx::algorithm::Sha256::hash(bytes)) == expected_sha256);
+    }
 }
 
 int main()
@@ -133,7 +144,7 @@ int main()
     generated_source.data_layers.push_back(
         lux::authoring::DataLayerId{"org.example.generated"});
     generated_source.contributions.push_back({
-        lux::extensions::ContributionId{"org.example.pixel"},
+        lux::authoring::WorldSceneFeatureId{"org.example.pixel"},
         2u,
         {std::byte{0x7fu}}});
     const auto generated_bytes = encodeWorldSource(generated_source);
@@ -147,6 +158,10 @@ int main()
     const auto page_first = encodeWorldDescriptorPage(
         fixture.root, fixture.page);
     assert(page_first);
+    assertGoldenWire(
+        *page_first,
+        833u,
+        "4accd05f5535f022ed8ab9f81ebdd7405e9d1c04aa47291b655a018ba8bea49e");
     std::ranges::reverse(fixture.page.actors);
     const auto page_second = encodeWorldDescriptorPage(
         fixture.root, fixture.page);
@@ -154,8 +169,14 @@ int main()
 
     const auto root_first = encodeWorldSource(fixture.root);
     assert(root_first);
+    assertGoldenWire(
+        *root_first,
+        418u,
+        "f87f9770da62de58b43b41615032b01851ac9a8024ba4bb5cc716392f7afaf72");
     const auto root_decoded = decodeWorldSource(*root_first);
     assert(root_decoded && root_decoded->descriptor_pages.size() == 1u);
+    const auto root_reencoded = encodeWorldSource(*root_decoded);
+    assert(root_reencoded && *root_reencoded == *root_first);
     assert(root_decoded->contributions == fixture.root.contributions);
     assert(root_decoded->required_extensions ==
         fixture.root.required_extensions);
@@ -171,6 +192,9 @@ int main()
     const auto page_decoded = decodeWorldDescriptorPage(
         *root_decoded, *page_first);
     assert(page_decoded && page_decoded->actors.size() == 2u);
+    const auto page_reencoded = encodeWorldDescriptorPage(
+        *root_decoded, *page_decoded);
+    assert(page_reencoded && *page_reencoded == *page_first);
     assert(page_decoded->actors.front().id.value() ==
         uuid("83000000-0000-4000-8000-000000000001"));
     auto legacy_descriptor_page = *page_first;
@@ -188,7 +212,7 @@ int main()
     assert(!encodeWorldDescriptorPage(fixture.root, invalid_page));
     invalid_page = fixture.page;
     invalid_page.actors.front().position =
-        lux::spatial::Position3D{100000.0, 0.0, 0.0};
+        lux::math::Position3d{100000.0, 0.0, 0.0};
     assert(!encodeWorldDescriptorPage(fixture.root, invalid_page));
     std::vector<std::byte> oversized_descriptor_page(
         static_cast<std::size_t>(WorldSourceCodecLimits{}
@@ -202,7 +226,7 @@ int main()
     assert(!decodeWorldSource(corrupt));
     auto invalid_contribution = fixture.root;
     invalid_contribution.contributions.front().id =
-        lux::extensions::ContributionId{"Org.Example.Scene"};
+        lux::authoring::WorldSceneFeatureId{"Org.Example.Scene"};
     assert(!encodeWorldSource(invalid_contribution));
 
     const auto nonce = std::chrono::steady_clock::now()
@@ -259,7 +283,7 @@ int main()
         cache_path, *loaded_root);
     assert(loaded_index && loaded_index->actorCount() == 2u);
     assert(loaded_index->stats().cached_bytes == 0u);
-    const auto actor_id = lux::entity_scene::PersistentEntityId{
+    const auto actor_id = lux::authoring::WorldActorId{
         uuid("83000000-0000-4000-8000-000000000001")};
     const auto indexed_actor = loaded_index->find(actor_id);
     assert(indexed_actor && indexed_actor->display_name == "Gate A");
@@ -295,12 +319,12 @@ int main()
     distant_page.id = makeWorldDescriptorPageId(
         distant_page.world, distant_page.space, distant_page.macro);
     auto distant_actor = fixture.page.actors.front();
-    distant_actor.id = lux::entity_scene::PersistentEntityId{
+    distant_actor.id = lux::authoring::WorldActorId{
         uuid("93000000-0000-4000-8000-000000000001")};
     distant_actor.display_name = "Distant Gate";
     distant_actor.document_path = makeWorldActorDocumentPath(
         distant_actor.id, distant_actor.content_digest);
-    distant_actor.position = lux::spatial::Position3D{
+    distant_actor.position = lux::math::Position3d{
         5000.0, 0.0, 15.0};
     distant_actor.transform_parent.reset();
     distant_actor.references.clear();
@@ -376,7 +400,7 @@ int main()
     const std::array<std::byte, 1u> actor_data{std::byte{0x12u}};
     const auto actor_digest = lux::cxx::algorithm::Sha256::hash(actor_data);
     assert(makeWorldActorDocumentPath(
-        lux::entity_scene::PersistentEntityId{
+        lux::authoring::WorldActorId{
             uuid("83000000-0000-4000-8000-000000000001")},
         actor_digest) ==
         "Actors/83/83000000-0000-4000-8000-000000000001/"
@@ -398,6 +422,10 @@ int main()
     const auto encoded_actor_document = encodeWorldActorDocument(
         actor_document);
     assert(encoded_actor_document);
+    assertGoldenWire(
+        *encoded_actor_document,
+        191u,
+        "d27d7ea13333dcb8343bd5e443b82f6c1025df7d6aa6ea1afd4bf36571b122dd");
     const auto decoded_actor_document = decodeWorldActorDocument(
         *encoded_actor_document);
     assert(decoded_actor_document &&
@@ -408,7 +436,11 @@ int main()
             actor_document.transform_parent &&
         decoded_actor_document->data_layers == actor_document.data_layers &&
         decoded_actor_document->references == actor_document.references);
-    actor_document.position = lux::spatial::Position3D{
+    const auto reencoded_actor_document = encodeWorldActorDocument(
+        *decoded_actor_document);
+    assert(reencoded_actor_document &&
+        *reencoded_actor_document == *encoded_actor_document);
+    actor_document.position = lux::math::Position3d{
         1'000'000'000'000.001,
         -1'000'000'000'000.001,
         0.001};
@@ -420,7 +452,7 @@ int main()
     assert(decoded_large_actor_document &&
         decoded_large_actor_document->position == actor_document.position);
     auto planar_actor_document = actor_document;
-    planar_actor_document.position = lux::spatial::Position2D{
+    planar_actor_document.position = lux::math::Position2d{
         -1'000'000'000'000.001,
         1'000'000'000'000.001};
     const auto encoded_planar_actor_document = encodeWorldActorDocument(
@@ -440,7 +472,7 @@ int main()
         sizeof(legacy_actor_version));
     assert(!decodeWorldActorDocument(legacy_actor_document));
     auto invalid_actor_position = actor_document;
-    invalid_actor_position.position = lux::spatial::Position3D{
+    invalid_actor_position.position = lux::math::Position3d{
         std::numeric_limits<double>::infinity(), 0.0, 0.0};
     assert(!encodeWorldActorDocument(invalid_actor_position));
 
@@ -454,7 +486,7 @@ int main()
         lux::authoring::PlanarCellCoord{0, 0}};
     EditableWorldInstance instance;
     instance.id = {instance_page.instance_set, 2u};
-    instance.position = lux::spatial::Position3D{10.0, 2.0, 12.0};
+    instance.position = lux::math::Position3d{10.0, 2.0, 12.0};
     instance.rotation = {0.0f, 0.0f, 0.0f, 2.0f};
     instance.mesh = uuid("86000000-0000-4000-8000-000000000001");
     instance.data_layers.push_back(
@@ -464,11 +496,18 @@ int main()
     const auto encoded_instances = encodeWorldInstancePage(
         fixture.root, instance_page);
     assert(encoded_instances);
+    assertGoldenWire(
+        *encoded_instances,
+        290u,
+        "9df9c2d68322b93aad0ea97cd674fe0fc2529df85426bb8bf1b1352b02f229e2");
     const auto decoded_instances = decodeWorldInstancePage(
         fixture.root, *encoded_instances);
     assert(decoded_instances && decoded_instances->instances.size() == 1u);
     assert(decoded_instances->instances.front().id.local_id == 2u);
     assert(decoded_instances->instances.front().rotation[3] == 1.0f);
+    const auto reencoded_instances = encodeWorldInstancePage(
+        fixture.root, *decoded_instances);
+    assert(reencoded_instances && *reencoded_instances == *encoded_instances);
     auto legacy_instances = *encoded_instances;
     const std::uint32_t legacy_instance_version = 1u;
     std::memcpy(
@@ -490,7 +529,7 @@ int main()
     assert(reencoded_rotated && *reencoded_rotated == *encoded_rotated);
     auto invalid_instances = instance_page;
     invalid_instances.instances.front().position =
-        lux::spatial::Position3D{4096.0, 0.0, 0.0};
+        lux::math::Position3d{4096.0, 0.0, 0.0};
     assert(!encodeWorldInstancePage(fixture.root, invalid_instances));
     const auto instance_digest = lux::cxx::algorithm::Sha256::hash(*encoded_instances);
     const auto instance_path = makeWorldInstancePagePath(
@@ -502,7 +541,7 @@ int main()
         root_path, instance_path, fixture.root));
 
     WorldActorSourceDescriptor converted_descriptor;
-    converted_descriptor.id = lux::entity_scene::PersistentEntityId{
+    converted_descriptor.id = lux::authoring::WorldActorId{
         uuid("87000000-0000-4000-8000-000000000001")};
     converted_descriptor.display_name = "Converted Instance";
     converted_descriptor.actor_class = "org.example.static_actor";
@@ -550,7 +589,7 @@ int main()
         fixture.root,
         instance_page,
         instance.id,
-        lux::spatial::Position3D{20.0, 2.0, 20.0});
+        lux::math::Position3d{20.0, 2.0, 20.0});
     assert(duplicated);
     assert(duplicated->created_instance.id.local_id == 4u);
     assert(duplicated->page.instances.size() == 2u);
@@ -568,9 +607,9 @@ int main()
         instance_page,
         instance_page,
         instance.id,
-        lux::spatial::Position3D{25.0, 2.0, 25.0});
+        lux::math::Position3d{25.0, 2.0, 25.0});
     assert(moved_in_page && !moved_in_page->crossedCell());
-    assert(std::get<lux::spatial::Position3D>(
+    assert(std::get<lux::math::Position3d>(
         moved_in_page->moved_instance.position).x == 25.0);
 
     auto destination_page = instance_page;
@@ -582,7 +621,7 @@ int main()
         instance_page,
         destination_page,
         instance.id,
-        lux::spatial::Position3D{130.0, 2.0, 20.0});
+        lux::math::Position3d{130.0, 2.0, 20.0});
     assert(moved_across_cell && moved_across_cell->crossedCell());
     assert(moved_across_cell->source_page.instances.empty());
     assert(moved_across_cell->destination_page->instances.size() == 1u);
@@ -593,7 +632,7 @@ int main()
         advanced_root,
         *moved_across_cell->destination_page,
         instance.id,
-        lux::spatial::Position3D{140.0, 2.0, 20.0});
+        lux::math::Position3d{140.0, 2.0, 20.0});
     assert(duplicated_after_move);
     assert(duplicated_after_move->created_instance.id.local_id == 5u);
     assert(duplicated_after_move->instance_set.next_local_id == 6u);
@@ -602,7 +641,7 @@ int main()
         instance_page,
         destination_page,
         instance.id,
-        lux::spatial::Position3D{20.0, 2.0, 20.0}));
+        lux::math::Position3d{20.0, 2.0, 20.0}));
 
     constexpr std::size_t terrain_samples =
         static_cast<std::size_t>(kWorldTerrainSampleEdge)
@@ -625,10 +664,23 @@ int main()
     const auto encoded_terrain = encodeWorldTerrainPage(
         fixture.root, terrain);
     assert(encoded_terrain);
-    assert(decodeWorldTerrainPage(fixture.root, *encoded_terrain));
+    assertGoldenWire(
+        *encoded_terrain,
+        800931u,
+        "e7e4705b3df8c4980e5721ae7db595f141784584f5feea6d4da13135bd4a4316");
+    const auto decoded_terrain = decodeWorldTerrainPage(
+        fixture.root, *encoded_terrain);
+    assert(decoded_terrain);
+    const auto reencoded_terrain = encodeWorldTerrainPage(
+        fixture.root, *decoded_terrain);
+    assert(reencoded_terrain && *reencoded_terrain == *encoded_terrain);
 
-    const auto root_2d = makeWorldSourceDocument(
+    auto root_2d = makeWorldSourceDocument(
         lux::authoring::EPartitionTopology::PLANAR_XY);
+    root_2d.world = lux::authoring::WorldId{
+        uuid("8c000000-0000-4000-8000-000000000001")};
+    root_2d.spaces.front().id = lux::authoring::PartitionSpaceId{
+        uuid("8d000000-0000-4000-8000-000000000001")};
     WorldTilePageDocument tile;
     tile.world = root_2d.world;
     tile.tilemap = lux::authoring::TilemapId{
@@ -648,9 +700,15 @@ int main()
     tile.collision_boxes = {{2u, 3u, 4u, 5u}};
     const auto encoded_tile = encodeWorldTilePage(root_2d, tile);
     assert(encoded_tile);
+    assertGoldenWire(
+        *encoded_tile,
+        262261u,
+        "92077efc0b4f80b2e7b14b53ad210db0b12d7e63c6f4ecb8f632a53a82dd1ce7");
     const auto decoded_tile = decodeWorldTilePage(root_2d, *encoded_tile);
     assert(decoded_tile && decoded_tile->tile_ordinals[17] == 42u &&
         decoded_tile->collision_boxes == tile.collision_boxes);
+    const auto reencoded_tile = encodeWorldTilePage(root_2d, *decoded_tile);
+    assert(reencoded_tile && *reencoded_tile == *encoded_tile);
 
     WorldPixelPageDocument pixel;
     pixel.world = root_2d.world;
@@ -671,10 +729,16 @@ int main()
         {std::byte{0x5u}}};
     const auto encoded_pixel = encodeWorldPixelPage(root_2d, pixel);
     assert(encoded_pixel);
+    assertGoldenWire(
+        *encoded_pixel,
+        131214u,
+        "9a63918a703b798c167db527e4f60e5a35500dba8ffb8891e06eaf60d5f7126f");
     const auto decoded_pixel = decodeWorldPixelPage(root_2d, *encoded_pixel);
     assert(decoded_pixel && decoded_pixel->material_base[33] == 9u);
     assert(decoded_pixel->generator
         && decoded_pixel->generator->id == pixel.generator->id);
+    const auto reencoded_pixel = encodeWorldPixelPage(root_2d, *decoded_pixel);
+    assert(reencoded_pixel && *reencoded_pixel == *encoded_pixel);
     auto generated_pixel = pixel;
     generated_pixel.material_base.clear();
     const auto encoded_generated = encodeWorldPixelPage(

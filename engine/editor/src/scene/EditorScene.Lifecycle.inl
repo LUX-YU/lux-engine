@@ -91,7 +91,7 @@
         //    the view/scene. The runtime only composes the scene's view onto
         //    it (setLayer); a game host passes a surface target through the
         //    same seam.
-        const lux::common::Size2D view_extent{cfg.initial_width, cfg.initial_height};
+        const lux::math::Extent2u view_extent{cfg.initial_width, cfg.initial_height};
         auto target_result = infra_.control->syncCall(
             infra_.control->createOffscreenRenderTarget(
                 view_extent,
@@ -123,7 +123,22 @@
         lux::runtime::SceneRuntime::Config rcfg;
         rcfg.name               = cfg.name;
         if (incoming_source)
-            rcfg.transient_package = runtimePackage(*incoming_source);
+        {
+            auto description = runtimePackage(*incoming_source);
+            rcfg.scene_asset_id = description.id;
+            if (!registerSceneDescription(
+                    assets_, std::move(description)))
+                return false;
+        }
+        else
+        {
+            lux::scene::SceneDescription description;
+            description.id = assets_.generateUUID(rcfg.name);
+            rcfg.scene_asset_id = description.id;
+            if (!registerSceneDescription(
+                    assets_, std::move(description)))
+                return false;
+        }
         rcfg.events             = infra_.events;      // 进程域同一个 bus(批B,可空)
         // ★ 批 D2:`SceneRuntime::Dependencies::residency` 是引用,而 `RenderInfra`
         //   的这一项按设计是**可空指针**(LuxEditor 装配到一定阶段才填)。检查没有
@@ -238,7 +253,7 @@
                 }
             }
             runtime_.reset();
-            camera_entity_ = lux::meta::null_entity;
+            camera_entity_ = lux::ecs::kNullEntity;
             return false;
         };
 
@@ -350,7 +365,7 @@
         // —— 那正好把「每个可见的 view 都有相机」这条不变量倒过来了。
         viewport_slot_ = lux::ecs::ViewPresentComponent{
             main_target_.id(), 0u,
-            lux::common::Size2D{cfg.initial_width, cfg.initial_height}};
+            lux::math::Extent2u{cfg.initial_width, cfg.initial_height}};
         world.emplace<lux::ecs::ViewPresentComponent>(camera_entity_, viewport_slot_);
         // 第一帧提交之前 view 必须在位,否则 target 上没有任何层 —— 黑屏几帧、不报错。
         lux::runtime::renderScene(*runtime_)->settleViewCreation();
@@ -631,7 +646,7 @@
         terrain_load_pending_ = false;
         terrain_heightmap_io_pending_ = false;
 
-        camera_entity_ = lux::meta::null_entity;
+        camera_entity_ = lux::ecs::kNullEntity;
         live_          = false;
 
         // M2 cleanup: drop the per-mesh AABB cache so the next bringUp starts
@@ -718,7 +733,7 @@
     {
         if (!live_ || generation != play_generation_ || play_runtime_)
             return;
-        if (value.pak_file.empty() || value.scene_id.empty())
+        if (value.pak_file.empty() || value.scene_id.is_nil())
         {
             lux::log::error(
                 "editor",
@@ -728,7 +743,8 @@
             play_actions_ = nullptr;
             return;
         }
-        auto image = makePlayScenePackageImage(
+        auto image = makePlaySceneAsset(
+            assets_,
             value.pak_file,
             value.scene_id);
         if (!image)
@@ -773,7 +789,7 @@
         };
         lux::runtime::SceneRuntime::Config config;
         config.name = "EditorCookedPlay";
-        config.scene_package_image = image->package_image;
+        config.scene_asset_id = image->scene_id;
         config.scene_origin = std::move(value.scene_origin);
         config.section_vfs = image->vfs;
         config.events = infra_.events;
@@ -801,8 +817,18 @@
                 candidate->world(),
                 candidate->schedule(),
                 candidate->services(),
-                assets_);
-        if (!play_mapper_ ||
+                assets_,
+                asset_client_);
+        const bool backends_ready =
+            candidate_simulation->addBackend(
+                std::make_unique<lux::ecs::LuaScriptBackend>(
+                    components_
+                )
+            )
+            && candidate_simulation->addBackend(
+                std::make_unique<lux::ecs::NativeModuleScriptBackend>()
+            );
+        if (!backends_ready || !play_mapper_ ||
             !candidate_simulation->start(*play_mapper_, play_actions_))
         {
             if (!infra_.close_driver->close(*candidate))
@@ -864,7 +890,7 @@
         if (restore_edit_view && runtime_)
         {
             auto& registry = runtime_->world().registry();
-            if (camera_entity_ != lux::meta::null_entity &&
+            if (camera_entity_ != lux::ecs::kNullEntity &&
                 registry.valid(camera_entity_))
             {
                 registry.emplace_or_replace<
@@ -901,11 +927,11 @@
             std::move(completion));
     }
 
-    lux::meta::entity_id EditorScene::commitSpawnModel(
+    lux::ecs::Entity EditorScene::commitSpawnModel(
         InstanceSpawnPlan&& plan)
     {
         if (!live_ || !runtime_ || plan.submeshes.empty())
-            return lux::meta::null_entity;
+            return lux::ecs::kNullEntity;
         auto& w = runtime_->world();
         const bool skinned = !plan.skeleton.is_nil();
 

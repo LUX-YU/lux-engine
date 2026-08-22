@@ -1,0 +1,134 @@
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+
+#include <lux/engine/resource/asset/animation/AnimationClipSerDeser.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceSerDeser.hpp>
+#include <lux/engine/resource/asset/material/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/model/ModelSerDeser.hpp>
+#include <lux/engine/resource/asset/script/ScriptSerDeser.hpp>
+#include <lux/engine/resource/asset/shader/ShaderSerDeser.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/texture/TextureAtlasSerDeser.hpp>
+#include <lux/engine/resource/asset/texture/TextureSerDeser.hpp>
+
+#include <lux/cxx/compile_time/type_info.hpp>
+
+#include <cstdlib>
+#include <utility>
+
+namespace lux::asset
+{
+    namespace
+    {
+        template <class Codec>
+        std::unique_ptr<AssetSerDeser> createCodec(
+            EAssetType,
+            std::shared_ptr<AssetManager> manager)
+        {
+            return std::make_unique<Codec>(std::move(manager));
+        }
+
+        template <class Asset>
+        std::unique_ptr<LuxAsset> createShell(
+            std::unique_ptr<AssetInfo> info) noexcept
+        {
+            return std::make_unique<Asset>(std::move(info));
+        }
+
+        template <class Asset, class Codec>
+        AssetCodecDescriptor descriptor(
+            EAssetType type,
+            std::uint32_t primary_magic,
+            AssetShellCreateFn shell = nullptr)
+        {
+            return AssetCodecDescriptor{
+                type,
+                lux::cxx::type_hash<Asset>(),
+                std::string{lux::cxx::type_name<Asset>()},
+                EAssetShippingClass::RUNTIME,
+                &createCodec<Codec>,
+                shell,
+                primary_magic,
+                0u,
+                nullptr,
+                {}};
+        }
+    } // namespace
+
+    std::shared_ptr<const AssetCodecCatalog>
+    runtimeAssetCodecCatalog() noexcept
+    {
+        static const auto catalog = []
+        {
+            std::vector<AssetCodecDescriptor> descriptors;
+            descriptors.reserve(11u);
+            descriptors.push_back(descriptor<TextureAsset, TextureSerDeser>(
+                EAssetType::TEXTURE,
+                asset_magic_number_of<EAssetType::TEXTURE>::value,
+                &createShell<TextureAsset>
+            ));
+            descriptors.push_back(descriptor<MaterialAsset, MaterialSerDeser>(
+                EAssetType::MATERIAL,
+                asset_magic_number_of<EAssetType::MATERIAL>::value,
+                &createShell<MaterialAsset>
+            ));
+            descriptors.push_back(descriptor<
+                MaterialInstanceAsset,
+                MaterialInstanceSerDeser>(
+                    EAssetType::MATERIAL_INSTANCE,
+                    asset_magic_number_of<EAssetType::MATERIAL_INSTANCE>::value,
+                    &createShell<MaterialInstanceAsset>
+            ));
+            descriptors.push_back(descriptor<MeshAsset, MeshSerDeser>(
+                EAssetType::MESH,
+                asset_magic_number_of<EAssetType::MESH>::value,
+                &createShell<MeshAsset>
+            ));
+            descriptors.push_back(descriptor<ModelAsset, ModelSerDeser>(
+                EAssetType::MODEL,
+                asset_magic_number_of<EAssetType::MODEL>::value
+            ));
+            descriptors.push_back(descriptor<ShaderAsset, ShaderSerDeser>(
+                EAssetType::SHADER,
+                asset_magic_number_of<EAssetType::SHADER>::value
+            ));
+            descriptors.push_back(descriptor<ScriptAsset, ScriptSerDeser>(
+                EAssetType::SCRIPT,
+                asset_magic_number_of<EAssetType::SCRIPT>::value
+            ));
+            descriptors.push_back(descriptor<SkeletonAsset, SkeletonSerDeser>(
+                EAssetType::SKELETON,
+                asset_magic_number_of<EAssetType::SKELETON>::value,
+                &createShell<SkeletonAsset>
+            ));
+            descriptors.push_back(descriptor<
+                AnimationClipAsset,
+                AnimationClipSerDeser>(
+                    EAssetType::ANIMATION_CLIP,
+                    asset_magic_number_of<EAssetType::ANIMATION_CLIP>::value,
+                    &createShell<AnimationClipAsset>
+            ));
+            descriptors.push_back(descriptor<
+                TextureAtlasAsset,
+                TextureAtlasSerDeser>(
+                    EAssetType::TEXTURE_ATLAS,
+                    asset_magic_number_of<EAssetType::TEXTURE_ATLAS>::value,
+                    &createShell<TextureAtlasAsset>
+            ));
+            descriptors.push_back(descriptor<
+                FlipbookClipAsset,
+                FlipbookClipSerDeser>(
+                    EAssetType::FLIPBOOK_CLIP,
+                    asset_magic_number_of<EAssetType::FLIPBOOK_CLIP>::value,
+                    &createShell<FlipbookClipAsset>
+            ));
+
+            auto built = AssetCodecCatalog::build(std::move(descriptors));
+            if (!built)
+                std::abort();
+            return std::make_shared<const AssetCodecCatalog>(
+                std::move(*built));
+        }();
+        return catalog;
+    }
+} // namespace lux::asset

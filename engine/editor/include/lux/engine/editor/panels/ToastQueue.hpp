@@ -14,7 +14,7 @@
 //
 #include <algorithm>
 #include <cstdint>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <string>
 #include <string_view>
 #include <utility>

@@ -4,8 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <span>
-#include <lux/engine/window/LuxWindowDefination.hpp>
-#include <lux/engine/window/InputSnapshot.hpp>
+#include <vector>
 #include <lux/engine/window/WindowEvents.hpp>
 #include <lux/engine/window/visibility.h>
 
@@ -46,6 +45,12 @@ namespace lux::window
         BACKEND_CREATE_FAILED
     };
 
+    enum class EExitBehavior
+    {
+        EXIT,
+        HIDE
+    };
+
     class LuxWindow;
 
     class LUX_PLATFORM_WINDOW_PUBLIC LuxWindow
@@ -60,8 +65,6 @@ namespace lux::window
          * no-op. GLFW must already be up (see GlfwRuntime).
         */
         LuxWindow(int width, int height, std::string title);
-
-        LuxWindow(common::Size2D size, std::string title);
 
         explicit LuxWindow(const InitParameter& parameter);
 
@@ -84,7 +87,10 @@ namespace lux::window
 
         [[nodiscard]] const char* title() const;
 
-        [[nodiscard]] common::Size2D size() const;
+        void size(
+            std::uint32_t& width,
+            std::uint32_t& height
+        ) const;
 
         bool shouldClose();
 
@@ -96,24 +102,9 @@ namespace lux::window
         
         void setCursorPos(double x, double y);
 
-        /// Query the instantaneous held state of a single key.
-        /// Returns only KeyState::PRESS or KeyState::RELEASE — glfwGetKey()
-        /// never produces REPEAT.  REPEAT events are only available through
-        /// InputSnapshot::events.
-        [[nodiscard]] KeyState queryKey(KeyEnum) const;
-
-        /**
-         * @brief Capture the complete input state into a value-type snapshot.
-         *
-         * Must be called from the main/render thread AFTER glfwPollEvents().
-         * Queries all key states, mouse button states, cursor position, window
-         * geometry, and drains the per-frame event queue into the result.
-         *
-         * The returned snapshot is suitable for transfer to the game thread via
-         * TripleBuffer<InputSnapshot> — the game thread must not call
-         * queryKey() / getCursorPos() etc. after this handoff.
-         */
-        InputSnapshot captureInputSnapshot();
+        /// Transfer the backend-native events recorded since the previous
+        /// drain. Must be called on the Window owner thread.
+        [[nodiscard]] std::vector<WindowInputEvent> drainInputEvents();
 
         int exec();
 
@@ -129,7 +120,10 @@ namespace lux::window
 
         float lastFrameDelayTime() const;
 
-        common::Size2D framebufferSize() const;
+        void framebufferSize(
+            std::uint32_t& width,
+            std::uint32_t& height
+        ) const;
 
         // ── Vulkan surface seam (backend-specific) ───────────────────
         // These two are the ONLY sanctioned way for render/ui code to get a
@@ -202,9 +196,9 @@ namespace lux::window
         EventSlot<CursorEnterEvent>        on_cursor_enter;
         EventSlot<CursorLeaveEvent>        on_cursor_leave;
         EventSlot<CursorMoveEvent>         on_cursor_move;
-        EventSlot<MouseButtonEvent>        on_mouse_button;
-        EventSlot<MouseScrollEvent>        on_mouse_scroll;
-        EventSlot<KeyEvent>                on_key;
+        EventSlot<WindowMouseButtonEvent>  on_mouse_button;
+        EventSlot<WindowScrollEvent>       on_mouse_scroll;
+        EventSlot<WindowKeyEvent>          on_key;
         EventSlot<DrawReadyEvent>          on_draw_ready;
         EventSlot<DrawFinishedEvent>       on_draw_finished;
         EventSlot<FileDropEvent>           on_file_drop;
@@ -241,43 +235,6 @@ namespace lux::window
         EWindowInitError                init_error_{EWindowInitError::NONE};
         EExitBehavior                   _exit_behavior{ EExitBehavior::EXIT };
 
-        // --- State for captureInputSnapshot() ----------------------------
-        // Callback-driven live state and per-frame edge accumulators.
-        // All only accessed from the main thread.
-        double                          _snapshot_cursor_x{0.0};
-        double                          _snapshot_cursor_y{0.0};
-        double                          _snapshot_time{0.0};
-        bool                            _snapshot_initialized{false};
-
-        static constexpr size_t         kKeyboardBitCount = 512;
-        static constexpr int            kMouseButtonCount = 8;
-
-        /// Real-time held state maintained by key callback.
-        std::bitset<kKeyboardBitCount>  _live_keys_held{};
-
-        /// Press edges accumulated by key callback since last snapshot.
-        std::bitset<kKeyboardBitCount>  _pending_keys_pressed{};
-
-        /// Release edges accumulated by key callback since last snapshot.
-        std::bitset<kKeyboardBitCount>  _pending_keys_released{};
-
-        /// Real-time held state maintained by mouse button callback.
-        uint8_t                         _live_mouse_held{0};
-
-        /// Press edges accumulated by mouse button callback since last snapshot.
-        uint8_t                         _pending_mouse_pressed{0};
-
-        /// Release edges accumulated by mouse button callback since last snapshot.
-        uint8_t                         _pending_mouse_released{0};
-
-        // Scroll delta accumulated by the GLFW scroll callback between captures.
-        double                          _pending_scroll_dx{0.0};
-        double                          _pending_scroll_dy{0.0};
-
-        // Events accumulated by GLFW callbacks between captures.
-        std::vector<InputEvent>         _pending_events;
-
-        // Unicode codepoints accumulated by glfwSetCharCallback between captures.
-        std::vector<CharInput>          _pending_char_inputs;
+        std::vector<WindowInputEvent>   pending_input_events_;
     };
 } // namespace lux-engine::platform

@@ -31,14 +31,14 @@
 
 #include <lux/engine/toolchain/asset/builtin/BuiltinGeometry.hpp>
 #include <lux/engine/toolchain/asset/material/MaterialGraphCompiler.hpp>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MeshAsset.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/MaterialSerDeser.hpp>
+#include <lux/engine/content/BuiltinAssetIds.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/material/MaterialSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
 #include <lux/engine/authoring/assets/material/MaterialGraph.hpp>
@@ -57,6 +57,7 @@
 namespace
 {
     using namespace lux::asset;
+    using namespace lux::engine::content;
     using namespace lux::toolchain;
 
     std::unique_ptr<lux::asset::AssetInfo>

@@ -1,6 +1,7 @@
 #include <lux/engine/hosts/game_application/GameApplication.hpp>
 
 #include <lux/engine/scene/SceneFeatureId.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/runtime/frame/FrameCoordinator.hpp>
 #include <lux/engine/runtime/frame/MainCloseDriver.hpp>
 #include <lux/engine/runtime/scene/script/SceneScriptRuntime.hpp>
@@ -48,6 +49,8 @@
 #include <lux/engine/ecs/components/ParentComponent.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
+#include <lux/engine/ecs/script/backends/LuaScriptBackend.hpp>
+#include <lux/engine/ecs/script/backends/NativeModuleScriptBackend.hpp>
 
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
@@ -62,23 +65,22 @@
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetEvents.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/PakAssetProvider.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/detail/MainThreadMailbox.hpp>
 #include <lux/engine/runtime/logging/LogRouter.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
+#include <lux/engine/runtime/assets/AssetLoadSenders.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/spatial3d/navigation/Navigation3DPrepareService.hpp>
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp>
 #include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
 
-#include <lux/engine/input/ActionMapper.hpp>
-#include <lux/engine/input/InputActionRegistry.hpp>
-#include <lux/engine/input/InputContext.hpp>
+#include <lux/engine/input/Input.hpp>
 
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/log/Log.hpp>
@@ -93,6 +95,7 @@
 #include <cmath>
 #include <limits>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 namespace lux::game
@@ -161,7 +164,7 @@ namespace lux::game
     bool GameApplication::start(
         GameApplicationConfig config,
         std::uint64_t native_surface,
-        lux::common::Size2D extent)
+        lux::math::Extent2u extent)
     {
         if (impl_ && impl_->live)
             return true;
@@ -220,9 +223,17 @@ namespace lux::game
             application.subs
         );
 
-        application.assets = std::make_shared<lux::asset::AssetManager>(
-            lux::asset::runtimeAssetCodecCatalog()
-        );
+        const auto scene_codecs = lux::scene::makeSceneAssetCodecCatalog(
+            *lux::asset::runtimeAssetCodecCatalog());
+        if (!scene_codecs)
+        {
+            lux::log::error(
+                "game_application",
+                "Scene asset codec catalog composition failed ({})",
+                static_cast<unsigned>(scene_codecs.error()));
+            return false;
+        }
+        application.assets = std::make_shared<lux::asset::AssetManager>(*scene_codecs);
         auto vfs = std::make_shared<lux::asset::AssetVfs>();
         auto game_pak = lux::asset::PakAssetProvider::loadFromFile(
             application.config.game_pak_file
@@ -508,54 +519,92 @@ namespace lux::game
         if (!application.attachSurface(native_surface, extent))
             return false;
 
-        const auto boot = lux::asset::resolveBootScene(
-            *game_pak.value(),
-            application.config.boot_scene
-        );
-        if (!boot)
-        {
-            switch (boot.error())
-            {
-            case lux::asset::EBootSceneError::VPathNotFound:
-                lux::log::error(
-                    "game_application",
-                    "scene vpath '{}' was not found in the game pak",
-                    application.config.boot_scene
-                );
-                break;
-            case lux::asset::EBootSceneError::EntryTypeMismatch:
-                lux::log::error(
-                    "game_application",
-                    "boot vpath '{}' is not an EntityScene",
-                    application.config.boot_scene
-                );
-                break;
-            case lux::asset::EBootSceneError::NoSceneEntry:
-                lux::log::error(
-                    "game_application",
-                    "game pak contains no EntityScene"
-                );
-                break;
-            case lux::asset::EBootSceneError::MultipleScenes:
-                lux::log::error(
-                    "game_application",
-                    "game pak contains several EntityScenes; select boot_scene"
-                );
-                break;
-            }
-            return false;
-        }
-        auto scene_image = application.assets->vfs()->open(boot->id);
-        if (!scene_image)
+        if (application.config.boot_scene.empty())
         {
             lux::log::error(
                 "game_application",
-                "cannot open boot scene (error={})",
-                static_cast<int>(scene_image.error())
-            );
+                "RuntimeLaunchManifest must specify boot_scene");
             return false;
         }
-        const auto scene_origin = boot->vpath + " @ " +
+
+        const auto boot_id = game_pak.value()->resolve(
+            application.config.boot_scene);
+        if (!boot_id)
+        {
+            lux::log::error(
+                "game_application",
+                "scene vpath '{}' was not found in the game pak",
+                application.config.boot_scene);
+            return false;
+        }
+        bool boot_is_scene = false;
+        game_pak.value()->enumerate(
+            [&](const lux::asset::ProviderEntry& entry)
+            {
+                if (entry.id != *boot_id)
+                    return;
+                const auto* descriptor =
+                    application.assets->codecCatalog().findByMagic(
+                        entry.magic_number);
+                boot_is_scene = descriptor != nullptr &&
+                    descriptor->type == lux::scene::kSceneAssetType;
+            });
+        if (!boot_is_scene)
+        {
+            lux::log::error(
+                "game_application",
+                "boot vpath '{}' is not a SceneAsset",
+                application.config.boot_scene);
+            return false;
+        }
+
+        struct BootSceneLoad final
+        {
+            std::atomic<bool> done{false};
+            std::atomic<bool> loaded{false};
+            std::atomic<int> error{0};
+        } boot_load;
+        std::thread boot_waiter(
+            [client = application.asset_load->client(),
+             id = *boot_id,
+             &boot_load]() mutable
+            {
+                auto terminal = stdexec::sync_wait(
+                    lux::asset_runtime::loadAsset(client, id));
+                if (terminal)
+                {
+                    auto& outcome = std::get<0>(*terminal);
+                    if (outcome)
+                    {
+                        boot_load.loaded.store(
+                            true, std::memory_order_relaxed);
+                    }
+                    else if (!outcome.error().isRuntime())
+                    {
+                        boot_load.error.store(
+                            static_cast<int>(
+                                outcome.error().domainError()),
+                            std::memory_order_relaxed);
+                    }
+                }
+                boot_load.done.store(true, std::memory_order_release);
+            });
+        while (!boot_load.done.load(std::memory_order_acquire))
+        {
+            (void)application.async->drainMainThreadCompletions();
+            std::this_thread::yield();
+        }
+        boot_waiter.join();
+        if (!boot_load.loaded.load(std::memory_order_relaxed))
+        {
+            lux::log::error(
+                "game_application",
+                "cannot load boot SceneAsset (error={})",
+                boot_load.error.load(std::memory_order_relaxed));
+            return false;
+        }
+
+        const auto scene_origin = application.config.boot_scene + " @ " +
             application.config.game_pak_file.filename().string();
         lux::log::info(
             "game_application",
@@ -563,12 +612,10 @@ namespace lux::game
             scene_origin
         );
 
-        application.mapper = std::make_unique<lux::input::ActionMapper>();
+        application.input = std::make_unique<lux::input::Input>();
         if (application.config.hooks.configure_input &&
             !application.config.hooks.configure_input(
-                *application.mapper,
-                application.action_registry,
-                application.context_stack
+                *application.input
             ))
         {
             lux::log::error(
@@ -651,7 +698,7 @@ namespace lux::game
 
         lux::runtime::SceneRuntime::Config runtime_config;
         runtime_config.name = application.config.title;
-        runtime_config.scene_package_image = std::move(scene_image.value());
+        runtime_config.scene_asset_id = *boot_id;
         runtime_config.scene_origin = scene_origin;
         runtime_config.events = application.events.get();
 
@@ -703,11 +750,21 @@ namespace lux::game
                 application.runtime->world(),
                 application.runtime->schedule(),
                 application.runtime->services(),
-                *application.assets
+                *application.assets,
+                application.asset_load->client()
             );
-        if (!application.simulation->start(
-                *application.mapper,
-                &application.action_registry
+        const bool script_backends_ready =
+            application.simulation->addBackend(
+                std::make_unique<lux::ecs::LuaScriptBackend>(
+                    application.component_types
+                )
+            )
+            && application.simulation->addBackend(
+                std::make_unique<lux::ecs::NativeModuleScriptBackend>()
+            );
+        if (!script_backends_ready || !application.simulation->start(
+                application.input->mapper(),
+                &application.input->actionRegistry()
             ))
         {
             lux::log::error(
@@ -724,7 +781,7 @@ namespace lux::game
 
     bool GameApplication::attachSurface(
         std::uint64_t native_surface,
-        lux::common::Size2D extent)
+        lux::math::Extent2u extent)
     {
         return impl_ && impl_->attachSurface(native_surface, extent);
     }
@@ -734,7 +791,7 @@ namespace lux::game
         return !impl_ || impl_->detachSurface();
     }
 
-    bool GameApplication::tick(float dt, lux::common::Size2D extent)
+    bool GameApplication::tick(float dt, lux::math::Extent2u extent)
     {
         if (!impl_ || !impl_->live || !impl_->surface_target ||
             !impl_->runtime)
@@ -791,7 +848,7 @@ namespace lux::game
                     frame_dt,
                     static_cast<float>(extent.width),
                     static_cast<float>(extent.height),
-                    *impl_->mapper,
+                    impl_->input->mapper(),
                     frame.sequence()
                 );
                 impl_->observeVisualRevisions();
@@ -1089,7 +1146,7 @@ namespace lux::game
 
         constexpr auto spatial3d_feature =
             lux::scene::sceneFeatureId(
-                lux::spatial3d_scene::kSpatial3DContributionName);
+                lux::spatial3d::kPartitionedFeatureName);
         telemetry.spatial3d_catalog_present =
             impl_->runtime->entityScene().findFeature(
                 spatial3d_feature) != nullptr;
@@ -1697,21 +1754,9 @@ namespace lux::game
         return impl_ && static_cast<bool>(impl_->surface_target);
     }
 
-    lux::input::ActionMapper& GameApplication::inputMapper() noexcept
+    lux::input::Input& GameApplication::input() noexcept
     {
-        return *impl_->mapper;
-    }
-
-    lux::input::InputActionRegistry&
-    GameApplication::inputActions() noexcept
-    {
-        return impl_->action_registry;
-    }
-
-    lux::input::InputContextStack&
-    GameApplication::inputContexts() noexcept
-    {
-        return impl_->context_stack;
+        return *impl_->input;
     }
 
     lux::extensions::EngineExtensions&

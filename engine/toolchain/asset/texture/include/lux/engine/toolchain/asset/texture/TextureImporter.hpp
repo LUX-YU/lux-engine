@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/resource/asset/texture/TextureSerDeser.hpp>
 #include <lux/engine/description/Texture.hpp>
 
 namespace lux::toolchain
@@ -32,8 +32,8 @@ namespace lux::toolchain
     };
 
     /// Authoring image decoder and texture cooker. Runtime code must use
-    /// asset::TextureCodec, which only understands cooked .luxasset payloads.
-    class TextureImporter final : public lux::asset::TextureCodec
+    /// asset::TextureSerDeser, which only understands cooked .luxasset payloads.
+    class TextureImporter final : public lux::asset::TextureSerDeser
     {
     public:
         explicit TextureImporter(

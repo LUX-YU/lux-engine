@@ -35,12 +35,12 @@ namespace
         const lux::authoring::WorldSourceDocument& source,
         uuids::uuid id,
         std::string schema,
-        lux::spatial::Position3D position,
+        lux::math::Position3d position,
         bool save)
     {
         lux::authoring::WorldActorDocument document;
         document.world = source.world;
-        document.actor = lux::entity_scene::PersistentEntityId{id};
+        document.actor = lux::authoring::WorldActorId{id};
         document.actor_class = "org.lux.test.actor";
         document.space = source.spaces.front().id;
         document.position = position;
@@ -184,7 +184,7 @@ int main()
     std::vector<lux::editor::detail::WorldActorComponentSchemaSnapshot>
         rewritten_actors{
             {live->id, {"org.lux.test.live"}},
-            {lux::entity_scene::PersistentEntityId{
+            {lux::authoring::WorldActorId{
                  uuid("74000000-0000-4000-8000-000000000001")},
              {"org.lux.test.transient"}}};
     const std::array rewritten_pages{rewritten_page};

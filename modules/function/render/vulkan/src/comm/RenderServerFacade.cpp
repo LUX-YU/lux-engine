@@ -255,7 +255,7 @@ namespace lux::render
     GeneralRenderServer::CreateSceneResult GeneralRenderServer::createScene(
         std::string_view name,
         std::span<const FeatureInitParam> features,
-        lux::common::ETextureFormat lit_color_format
+        lux::rdesc::ETextureFormat lit_color_format
     )
     {
         RenderScene::Config config{};

@@ -141,6 +141,14 @@ lux_add_spatial2d_pack(
     Presentation2DContribution.cpp
     LUX_ENGINE_PACK_PRESENTATION2D_LIBRARY
 )
+target_sources(
+    runtime_pack_presentation2d
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/Flipbook2DResolver.cpp
+)
+target_include_directories(
+    runtime_pack_presentation2d
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+)
 if(MSVC)
     target_compile_options(
         runtime_pack_presentation2d
@@ -163,11 +171,27 @@ target_link_libraries(
         lux::engine::ecs::animation_2d
         lux::engine::ecs::physics
         lux::engine::ecs::physics2d_pixel_integration
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     runtime_pack_presentation2d
     "find_package(lux-engine-ecs REQUIRED COMPONENTS animation_2d core physics physics2d_pixel_integration pixel render_2d render_pixel_integration render_tilemap_integration tilemap)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_assets runtime_pack_simulation2d runtime_pack_spatial2d_transform runtime_scene_contributions)"
 )
+
+if(ENABLE_EXECUTION_TEST)
+    add_executable(
+        flipbook_asset_demand_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/flipbook_asset_demand_test.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Flipbook2DResolver.cpp
+    )
+    target_include_directories(
+        flipbook_asset_demand_test
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    )
+    target_link_libraries(
+        flipbook_asset_demand_test
+        PRIVATE runtime_pack_presentation2d
+    )
+endif()

@@ -1,6 +1,6 @@
 #include <lux/engine/ui/WidgetDispatch.hpp>
 
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 
 #include <lux/cxx/compile_time/type_info.hpp>
 

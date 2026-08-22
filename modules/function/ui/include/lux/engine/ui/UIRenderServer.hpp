@@ -9,7 +9,7 @@
 //  - tick() override: offscreen render → update descriptors → swapchain/ImGui render
 // ============================================================================
 
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>

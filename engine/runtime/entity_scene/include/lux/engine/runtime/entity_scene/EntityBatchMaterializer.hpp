@@ -17,8 +17,11 @@
 #include <memory>
 #include <span>
 
-namespace lux::meta { class EntityRegistry; }
-namespace lux::ecs { class PersistentEntityIndex; }
+namespace lux::ecs
+{
+    class PersistentEntityIndex;
+    class Registry;
+}
 
 namespace lux::runtime::entity_scene
 {
@@ -49,8 +52,7 @@ namespace lux::runtime::entity_scene
         explicit EntityBatchMaterializer(lux::ecs::PersistentEntityIndex& persistent_entities);
         ~EntityBatchMaterializer();
         EntityBatchMaterializer(const EntityBatchMaterializer&) = delete;
-        EntityBatchMaterializer& operator=(
-            const EntityBatchMaterializer&) = delete;
+        EntityBatchMaterializer& operator=(const EntityBatchMaterializer&) = delete;
 
         // arm() excludes ordinary input/registry errors and preflights the
         // known packed/payload capacities, including every earlier batch
@@ -59,27 +61,27 @@ namespace lux::runtime::entity_scene
         // result makes publishAtBarrier() free of recoverable content errors
         // and forbids registry upstream growth until its atomic publication
         // has completed.
-        [[nodiscard]] lux::cxx::expected<void, EntityBatchFailure> arm(
-            PreparedEntityBatch& batch,
-            lux::meta::EntityRegistry& live) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EntityBatchFailure>
+        arm(PreparedEntityBatch& batch, lux::ecs::Registry& live) noexcept;
 
-        [[nodiscard]] const SectionCommitReceipt& publishAtBarrier(
-            PreparedEntityBatch& batch,
-            lux::meta::EntityRegistry& live) noexcept;
+        [[nodiscard]] const SectionCommitReceipt&
+        publishAtBarrier(PreparedEntityBatch& batch, lux::ecs::Registry& live) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, EntityBatchFailure>
-        cancelArmed(
-            PreparedEntityBatch& batch,
-            lux::meta::EntityRegistry& live) noexcept;
+        cancelArmed(PreparedEntityBatch& batch, lux::ecs::Registry& live) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, EntityBatchFailure> deactivate(
+        [[nodiscard]] lux::cxx::expected<void, EntityBatchFailure>
+        deactivate(
             const lux::ecs::scene_format::EntitySectionId& section,
             std::uint64_t generation,
-            lux::meta::EntityRegistry& live) noexcept;
+            lux::ecs::Registry& live
+        ) noexcept;
 
-        [[nodiscard]] const SectionCommitReceipt* find(
-            const lux::ecs::scene_format::EntitySectionId& section) const noexcept;
-        [[nodiscard]] EntityBatchMaterializerSnapshot snapshot() const noexcept;
+        [[nodiscard]] const SectionCommitReceipt*
+        find(const lux::ecs::scene_format::EntitySectionId& section) const noexcept;
+
+        [[nodiscard]] EntityBatchMaterializerSnapshot
+        snapshot() const noexcept;
 
     private:
         struct Impl;

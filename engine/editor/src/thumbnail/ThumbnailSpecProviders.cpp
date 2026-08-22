@@ -1,11 +1,11 @@
 #include <lux/engine/editor/thumbnail/ThumbnailSpecProvider.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/MeshAsset.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
-#include <lux/engine/resource/asset/ModelAsset.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/editor/content/ModelMaterialResolve.hpp>   // resolveModelSubmeshes
 
 #include <lux/engine/description/Mesh.hpp>
@@ -82,18 +82,27 @@ namespace lux::editor
         }
 
         // ── Spec providers ───────────────────────────────────────────────────
+        void reportMissing(
+            ThumbnailSpec& spec,
+            const lux::asset::asset_id_t& id)
+        {
+            if (id.is_nil())
+                return;
+            spec.pending = true;
+            spec.missing_assets.push_back(id);
+        }
+
         class TextureThumbnailSpecProvider final : public IThumbnailSpecProvider
         {
         public:
             ThumbnailSpec buildSpec(lux::asset::AssetManager& assets,
                                     const lux::asset::asset_id_t&,
-                                    const lux::asset::asset_id_t& id,
-                                    const ThumbnailLoadFn& request_load) override
+                                    const lux::asset::asset_id_t& id) override
             {
                 ThumbnailSpec spec;
                 const auto* asset = assets.fetchAssetAs<lux::asset::TextureAsset>(id);
                 if (!asset) return spec;                                  // unknown id
-                if (!asset->data()) { request_load(id); spec.pending = true; return spec; }
+                if (!asset->data()) { reportMissing(spec, id); return spec; }
                 std::uint32_t w = 0, h = 0;
                 auto rgba = textureToRgba8(*asset->data(), w, h);
                 if (!rgba) return spec;
@@ -111,14 +120,13 @@ namespace lux::editor
         public:
             ThumbnailSpec buildSpec(lux::asset::AssetManager& assets,
                                     const lux::asset::asset_id_t&,
-                                    const lux::asset::asset_id_t& id,
-                                    const ThumbnailLoadFn& request_load) override
+                                    const lux::asset::asset_id_t& id) override
             {
                 ThumbnailSpec spec;
                 const auto* asset = assets.fetchAssetAs<lux::asset::MeshAsset>(id);
                 if (!asset) return spec;                                  // unknown id
                 // 网格数据本体只为算 bounds(上传归资源解析器,它自己会再取)。
-                if (!asset->data()) { request_load(id); spec.pending = true; return spec; }
+                if (!asset->data()) { reportMissing(spec, id); return spec; }
                 spec.instances.push_back(ThumbnailInstanceSpec{id, {}});  // 无材质 → PreviewGrey
                 spec.bounds = computeBounds(*asset->data());
                 spec.valid  = true;
@@ -131,12 +139,13 @@ namespace lux::editor
         public:
             ThumbnailSpec buildSpec(lux::asset::AssetManager& assets,
                                     const lux::asset::asset_id_t&,
-                                    const lux::asset::asset_id_t& id,
-                                    const ThumbnailLoadFn& request_load) override
+                                    const lux::asset::asset_id_t& id) override
             {
                 ThumbnailSpec spec;
                 const auto* model = assets.fetchAssetAs<lux::asset::ModelAsset>(id);
-                if (!model || model->meshAssetIds().empty()) return spec;
+                if (!model) return spec;
+                if (!model->hasData()) { reportMissing(spec, id); return spec; }
+                if (model->meshAssetIds().empty()) return spec;
 
                 // Model mesh/material/texture sub-assets are now on-demand
                 // streaming shells. First make sure their data is resident
@@ -149,17 +158,20 @@ namespace lux::editor
                 // everything is in place.
                 bool deps_pending = false;
                 for (const auto& mid : model->meshAssetIds())
-                    if (!mid.is_nil() && !assets.hasData(mid)) { request_load(mid); deps_pending = true; }
+                    if (!mid.is_nil() && !assets.hasData(mid))
+                    { reportMissing(spec, mid); deps_pending = true; }
                 for (const auto& mid : model->materialAssetIds())
                 {
                     if (mid.is_nil()) continue;
                     const auto* ma = assets.fetchAssetAs<lux::asset::MaterialAsset>(mid);
-                    if (!ma || !ma->data()) { request_load(mid); deps_pending = true; continue; }
+                    if (!ma || !ma->data())
+                    { reportMissing(spec, mid); deps_pending = true; continue; }
                     const lux::asset::MaterialData& mp = *ma->data();
                     for (std::uint32_t s = 0; s < lux::asset::MaterialData::kMaxTextures; ++s)
                     {
                         const auto& tid = mp.texture_slot_ids[s];
-                        if (!tid.is_nil() && !assets.hasData(tid)) { request_load(tid); deps_pending = true; }
+                        if (!tid.is_nil() && !assets.hasData(tid))
+                        { reportMissing(spec, tid); deps_pending = true; }
                     }
                 }
                 if (deps_pending) { spec.pending = true; return spec; }
@@ -199,13 +211,12 @@ namespace lux::editor
         public:
             ThumbnailSpec buildSpec(lux::asset::AssetManager& assets,
                                     const lux::asset::asset_id_t& sphere_mesh_id,
-                                    const lux::asset::asset_id_t& id,
-                                    const ThumbnailLoadFn& request_load) override
+                                    const lux::asset::asset_id_t& id) override
             {
                 ThumbnailSpec spec;
                 const auto* asset = assets.fetchAssetAs<lux::asset::MaterialAsset>(id);
                 if (!asset) return spec;                                  // unknown id
-                if (!asset->data()) { request_load(id); spec.pending = true; return spec; }
+                if (!asset->data()) { reportMissing(spec, id); return spec; }
                 if (sphere_mesh_id.is_nil()) return spec;   // builtin sphere absent
 
                 // The texture slots a material references are also
@@ -218,7 +229,8 @@ namespace lux::editor
                 for (std::uint32_t s = 0; s < lux::asset::MaterialData::kMaxTextures; ++s)
                 {
                     const auto& tid = payload.texture_slot_ids[s];
-                    if (!tid.is_nil() && !assets.hasData(tid)) { request_load(tid); tex_pending = true; }
+                    if (!tid.is_nil() && !assets.hasData(tid))
+                    { reportMissing(spec, tid); tex_pending = true; }
                 }
                 if (tex_pending) { spec.pending = true; return spec; }
 
@@ -243,13 +255,12 @@ namespace lux::editor
         public:
             ThumbnailSpec buildSpec(lux::asset::AssetManager& assets,
                                     const lux::asset::asset_id_t& sphere_mesh_id,
-                                    const lux::asset::asset_id_t& id,
-                                    const ThumbnailLoadFn& request_load) override
+                                    const lux::asset::asset_id_t& id) override
             {
                 ThumbnailSpec spec;
                 const auto* inst = assets.fetchAssetAs<lux::asset::MaterialInstanceAsset>(id);
                 if (!inst) return spec;                                   // unknown id
-                if (!inst->data()) { request_load(id); spec.pending = true; return spec; }
+                if (!inst->data()) { reportMissing(spec, id); return spec; }
                 if (sphere_mesh_id.is_nil()) return spec;   // builtin sphere absent
 
                 const auto& idata = *inst->data();
@@ -257,9 +268,8 @@ namespace lux::editor
 
                 const auto* parent =
                     assets.fetchAssetAs<lux::asset::MaterialAsset>(idata.parent_material_id);
-                if (!parent) return spec;
-                if (!parent->data())
-                { request_load(idata.parent_material_id); spec.pending = true; return spec; }
+                if (!parent || !parent->data())
+                { reportMissing(spec, idata.parent_material_id); return spec; }
 
                 bool tex_pending = false;
                 for (std::uint32_t s = 0; s < lux::asset::MaterialData::kMaxTextures; ++s)
@@ -267,7 +277,8 @@ namespace lux::editor
                     const auto& tid = (idata.tex_override_mask & (1u << s))
                                           ? idata.texture_slot_ids[s]
                                           : parent->data()->texture_slot_ids[s];
-                    if (!tid.is_nil() && !assets.hasData(tid)) { request_load(tid); tex_pending = true; }
+                    if (!tid.is_nil() && !assets.hasData(tid))
+                    { reportMissing(spec, tid); tex_pending = true; }
                 }
                 if (tex_pending) { spec.pending = true; return spec; }
 

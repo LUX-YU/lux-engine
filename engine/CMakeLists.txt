@@ -23,9 +23,8 @@ generate_visibility_header(
     GENERATE_FILE_PATH      lux/engine/editor/visibility.h
 )
 
-# CORE-001: establish the Engine-owned Extension API target before moving the
-# ABI headers out of modules/core. The compatibility implementation remains
-# lux::engine::core::extension_abi until CORE-002..005 are complete.
+# Engine-owned Extension ABI target. Modules/Core does not publish Extension
+# types; concrete extensions remain leaf targets configured separately.
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/extensions/api/CMakeLists.txt)
     add_subdirectory(extensions/api)
 endif()
@@ -33,8 +32,21 @@ endif()
 # Stable Scene-domain contracts are configured before Runtime, Authoring, and
 # Toolchain so those layers share one identity vocabulary without depending on
 # a concrete Scene owner or scheduler.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/content/CMakeLists.txt)
+    add_subdirectory(content)
+endif()
+
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/scene/CMakeLists.txt)
     add_subdirectory(scene)
+endif()
+
+# Spatial3D scene-catalog contracts are shared by Runtime and Toolchain. They
+# belong to the Engine domain because they select Scene demand channels and
+# canonical ECS EntitySections; modules/resource retains only the frozen v1
+# compatibility codec during migration.
+if((LUX_PROFILE_HAS_RUNTIME OR LUX_PROFILE_HAS_TOOLCHAIN) AND
+   EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/spatial3d/CMakeLists.txt)
+    add_subdirectory(spatial3d)
 endif()
 
 # The cooked game-launch protocol is shared by Player front ends and the

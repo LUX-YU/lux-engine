@@ -21,7 +21,7 @@
 #include <memory>
 #include <vector>
 
-#include <lux/engine/meta/LuxObject.hpp>   // entity_id
+#include <lux/engine/ecs/Registry.hpp>   // entity_id
 
 namespace lux::editor
 {
@@ -50,7 +50,7 @@ namespace lux::editor
 
         /// 差集写入的临时缓冲(成员而非局部:每帧复用,不反复分配)。
         /// 边遍历 `view<HighlightedComponent>` 边 `remove` 会让迭代失效,所以先收后删。
-        std::vector<lux::meta::entity_id> stale_;
+        std::vector<lux::ecs::Entity> stale_;
     };
 
 } // namespace lux::editor

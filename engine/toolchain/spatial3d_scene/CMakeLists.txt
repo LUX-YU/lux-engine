@@ -45,12 +45,12 @@ target_link_libraries(
     toolchain_spatial3d_scene_cook
     PUBLIC
         lux::engine::toolchain::toolchain_entity_scene_cook
-        lux::engine::scene::scene_package
+        lux::engine::scene::scene
         lux::engine::ecs::core
         lux::engine::ecs::identity
-        lux::engine::resource::asset_identity
-        lux::engine::resource::spatial
-        lux::engine::resource::spatial3d_scene
+        lux::engine::resource::asset
+        lux::engine::core::math
+        lux::engine::spatial3d::scene_catalog
     PRIVATE
         lux::engine::authoring::authoring_world
         lux::engine::ecs::render_components_3d
@@ -59,11 +59,10 @@ target_link_libraries(
         lux::engine::ecs::physics3d
         lux::engine::ecs::navigation3d
         lux::engine::function::navigation_detour3d
-        lux::engine::resource::classic_mesh_content
-        lux::engine::resource::asset_codecs
-        lux::engine::resource::terrain_content
-        lux::engine::resource::physics3d_content
+        lux::engine::function::render_standard_content
+        lux::engine::resource::asset
         lux::engine::core::serialization
+        lux::engine::ecs::component_archive
         lux::cxx::algorithm
         RecastNavigation::Recast
         meshoptimizer::meshoptimizer
@@ -76,11 +75,12 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_entity_scene_cook)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core identity render_components_3d spatial3d_components terrain_components physics3d navigation3d)"
-    "find_package(lux-engine-function REQUIRED COMPONENTS navigation_detour3d)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_identity asset_codecs spatial classic_mesh_content spatial3d_scene terrain_content physics3d_content)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core identity component_archive render_components_3d spatial3d_components terrain_components physics3d navigation3d)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS navigation_detour3d render_standard_content)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package(lux-engine-spatial3d REQUIRED COMPONENTS scene_catalog)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math serialization)"
 )
 
 if(TARGET ecs_meta AND
@@ -103,9 +103,8 @@ if(TARGET ecs_meta AND
             lux::engine::ecs::terrain_components
             lux::engine::ecs::physics3d
             lux::engine::ecs::navigation3d
-            lux::engine::resource::classic_mesh_content
-            lux::engine::resource::terrain_content
-            lux::engine::resource::physics3d_content
+            lux::engine::function::render_standard_content
+            lux::engine::resource::asset
             ecs_meta
             render_components_meta
             render_components_3d_meta
@@ -114,6 +113,7 @@ if(TARGET ecs_meta AND
             physics3d_meta
             navigation3d_meta
             lux::engine::core::meta
+            lux::engine::ecs::component_archive
     )
     if(MSVC)
         target_compile_options(

@@ -33,7 +33,7 @@ namespace lux::authoring
 
     struct WorldDescriptorIndexActor final
     {
-        lux::entity_scene::PersistentEntityId actor;
+        lux::authoring::WorldActorId actor;
         uuids::uuid descriptor_page{};
         std::string display_name;
         std::string actor_class;
@@ -93,7 +93,7 @@ namespace lux::authoring
             std::span<const WorldDescriptorPageDocument> changed_pages);
 
         [[nodiscard]] std::optional<WorldDescriptorIndexActor> find(
-            lux::entity_scene::PersistentEntityId actor) const;
+            lux::authoring::WorldActorId actor) const;
 
         [[nodiscard]] const WorldDescriptorPageReference* page(
             uuids::uuid page_id) const noexcept;
@@ -104,7 +104,7 @@ namespace lux::authoring
 
         /// Page-local lookup used by viewport streaming. Its cost is O(Actors
         /// in the requested Macro Page), never O(total World Actors).
-        [[nodiscard]] std::vector<lux::entity_scene::PersistentEntityId>
+        [[nodiscard]] std::vector<lux::authoring::WorldActorId>
             actorsInPage(
             uuids::uuid page_id) const;
 
@@ -117,7 +117,7 @@ namespace lux::authoring
 
         [[nodiscard]] std::size_t pageCount() const noexcept;
 
-        [[nodiscard]] lux::entity_scene::EntitySceneId world() const noexcept;
+        [[nodiscard]] lux::authoring::WorldId world() const noexcept;
 
         [[nodiscard]] lux::cxx::algorithm::Sha256Digest sourceDigest() const noexcept;
 
@@ -133,5 +133,5 @@ namespace lux::authoring
     [[nodiscard]] LUX_ENGINE_AUTHORING_WORLD_PUBLIC std::filesystem::path
     worldDescriptorIndexCachePath(
         const std::filesystem::path& cache_root,
-        lux::entity_scene::EntitySceneId world);
+        lux::authoring::WorldId world);
 } // namespace lux::authoring

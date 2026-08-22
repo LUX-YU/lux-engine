@@ -37,7 +37,7 @@ namespace lux::script::lua
         ~ScriptEngine();
         lua_State* state();
         std::optional<ScriptRef> parseScript(std::string_view script);
-        void runScript(const ScriptRef& program);
+        [[nodiscard]] bool runScript(const ScriptRef& program);
 
         using ErrorHandler =
             lux::cxx::move_only_function<void(std::string_view)>;

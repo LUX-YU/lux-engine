@@ -4,9 +4,9 @@
 
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <cassert>
 #include <cstddef>
@@ -26,8 +26,8 @@ namespace
     struct Field final
     {
         std::uint32_t name{0u};
-        lux::serialize::EArchiveType type{
-            lux::serialize::EArchiveType::UInt32};
+        lux::ecs::serialization::EArchiveType type{
+            lux::ecs::serialization::EArchiveType::UInt32};
         std::vector<std::byte> payload;
     };
 
@@ -52,7 +52,7 @@ namespace
                 field.payload.size()));
             writer.writeBytes(field.payload.data(), field.payload.size());
         }
-        writer.writePod(lux::serialize::kEndOfObject);
+        writer.writePod(lux::ecs::serialization::kEndOfObject);
         return bytes;
     }
 
@@ -69,7 +69,7 @@ namespace
 
     lux::toolchain::TaggedPayloadSource referencePayload()
     {
-        using lux::serialize::EArchiveType;
+        using lux::ecs::serialization::EArchiveType;
         lux::toolchain::TaggedPayloadSource source;
         source.names = {"", "target", "persistent", "blob"};
         const std::vector<Field> fields{
@@ -100,14 +100,14 @@ int main()
     nested_source.names = {"", "zeta", "alpha", "inner"};
     const std::vector<Field> nested_fields{
         {3u,
-         lux::serialize::EArchiveType::UInt32,
+         lux::ecs::serialization::EArchiveType::UInt32,
          pod<std::uint32_t>(7u)}};
     const auto nested = tagged(nested_fields);
     const std::vector<Field> outer_fields{
         {1u,
-         lux::serialize::EArchiveType::UInt32,
+         lux::ecs::serialization::EArchiveType::UInt32,
          pod<std::uint32_t>(9u)},
-        {2u, lux::serialize::EArchiveType::Struct, nested}};
+        {2u, lux::ecs::serialization::EArchiveType::Struct, nested}};
     nested_source.payload = tagged(outer_fields);
 
     const auto canonical_names = canonicalTaggedPayloadNames(
@@ -207,8 +207,8 @@ int main()
     assert(image->attachments[1u].reference.type.name() ==
         "lux.test.z_blob");
 
-    ScenePackageCookInput scene;
-    scene.id = ScenePackageId{
+    SceneDescriptionCookInput scene;
+    scene.id = lux::asset::asset_id_t{
         uuid("10000000-0000-4000-8000-000000000001")};
     scene.features.push_back({
         SceneFeatureId{"lux.test.presentation"},
@@ -234,9 +234,9 @@ int main()
         lux::scene::DemandChannelId{"lux.test.startup"});
     scene.sections.push_back(std::move(startup));
 
-    auto cooked = cookScenePackage(std::move(scene));
+    auto cooked = cookSceneDescription(std::move(scene));
     assert(cooked);
-    assert(validateScenePackage(cooked->package));
+    assert(validateSceneDescription(cooked->package));
     assert(cooked->sections.size() == 2u);
     assert(cooked->sections[0u].record.id ==
         lux::ecs::scene_format::EntitySectionId{section_id.value()});
@@ -247,9 +247,9 @@ int main()
             cooked->sections[0u].encoded_image));
     assert(cooked->sections[0u].record.required_components.size() == 2u);
     assert(cooked->package.required_components.size() == 2u);
-    const auto decoded_package = decodeScenePackage(
+    const auto decoded_package = SceneAssetSerDeser::decodeData(
         cooked->encoded_package);
-    assert(decoded_package && *decoded_package == cooked->package);
+    assert(decoded_package && **decoded_package == cooked->package);
 
     return 0;
 }

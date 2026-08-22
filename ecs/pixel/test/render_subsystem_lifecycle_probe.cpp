@@ -32,7 +32,7 @@
 #include <lux/engine/ecs/render/subsystems/2d/PixelField2DSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Tilemap2DSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/MeshSubsystems.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/function/render/client/core/RenderErrorRegistry.hpp>
 
 #include <cstdio>
@@ -97,7 +97,7 @@ namespace
     template <class System>
     void update(
         System& system,
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         lux::bridgetest::HeadlessBridgeFixture& fixture,
         lux::ecs::SceneRenderBinding& binding,
         lux::ecs::ActiveRenderView* supplied_view = nullptr)
@@ -113,7 +113,7 @@ namespace
     template <class System>
     void frame(
         System& system,
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         lux::bridgetest::HeadlessBridgeFixture& fixture,
         lux::ecs::SceneRenderBinding& binding,
         lux::ecs::ActiveRenderView* supplied_view = nullptr)
@@ -125,7 +125,7 @@ namespace
     template <class System>
     void frame(
         System& system,
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         lux::bridgetest::HeadlessBridgeFixture& fixture)
     {
         lux::ecs::SceneRenderBinding binding{
@@ -138,7 +138,7 @@ namespace
     template <class System>
     void close(
         System& system,
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         lux::bridgetest::HeadlessBridgeFixture& fixture,
         lux::ecs::SceneRenderBinding& binding)
     {
@@ -149,7 +149,7 @@ namespace
         system.close(context);
     }
 
-    lux::meta::entity_id makeImage(lux::meta::EntityRegistry& registry)
+    lux::ecs::Entity makeImage(lux::ecs::Registry& registry)
     {
         const auto entity = registry.create();
         registry.emplace<lux::ecs::Image2DComponent>(entity);
@@ -157,7 +157,7 @@ namespace
         return entity;
     }
 
-    lux::meta::entity_id makeMesh(lux::meta::EntityRegistry& registry)
+    lux::ecs::Entity makeMesh(lux::ecs::Registry& registry)
     {
         const auto entity = registry.create();
         auto& mesh = registry.emplace<lux::ecs::MeshComponent>(entity);
@@ -177,8 +177,8 @@ namespace
         return entity;
     }
 
-    lux::meta::entity_id makeTilemap(
-        lux::meta::EntityRegistry& registry,
+    lux::ecs::Entity makeTilemap(
+        lux::ecs::Registry& registry,
         lux::ecs::TilemapRuntime& runtime)
     {
         const auto id = lux::ecs::TilemapId{
@@ -212,8 +212,8 @@ namespace
         return entity;
     }
 
-    lux::meta::entity_id makePixelField(
-        lux::meta::EntityRegistry& registry,
+    lux::ecs::Entity makePixelField(
+        lux::ecs::Registry& registry,
         lux::ecs::PixelFieldHandle field)
     {
         const auto entity = registry.create();
@@ -253,7 +253,7 @@ namespace
     void testImageDestroyBeforePump()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         fixture.registerCanvas2DOps();
 
         lux::ecs::SceneRenderBinding binding{
@@ -292,7 +292,7 @@ namespace
     void testImageLeaveAndReenterBeforePump()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         fixture.registerCanvas2DOps();
 
         lux::ecs::SceneRenderBinding binding{
@@ -343,7 +343,7 @@ namespace
     {
         DiagnosticCapture diagnostics;
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         fixture.registerCanvas2DOps();
         fixture.recorder().add_image_dispatch_error =
             lux::render::renderError<
@@ -387,7 +387,7 @@ namespace
     void testMeshDestroyBeforePump()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         fixture.registerMeshStackOps();
 
         lux::ecs::ActiveRenderView active_view{fixture.view()};
@@ -434,7 +434,7 @@ namespace
     {
         DiagnosticCapture diagnostics;
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         fixture.registerMeshStackOps();
         fixture.recorder().add_instance_dispatch_error =
             lux::render::renderError<
@@ -479,7 +479,7 @@ namespace
     void testSparseTilemapAtlasLifecycle()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         lux::ecs::TilemapRuntime runtime;
         fixture.registerCanvas2DOps();
         fixture.registerPersistentTextureOps();
@@ -538,16 +538,16 @@ namespace
     void testCanvasLargePositionWire()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         lux::ecs::TilemapRuntime tile_runtime;
         lux::ecs::PixelFieldRuntime pixel_runtime;
         fixture.registerCanvas2DOps();
         fixture.registerPersistentTextureOps();
 
-        constexpr lux::spatial::GridCoord2i64 kFarTile{
+        constexpr lux::math::GridCoord2i64 kFarTile{
             1'000'000'000,
             -1'000'000'000};
-        constexpr lux::spatial::Position2D kFarPosition{
+        constexpr lux::math::Position2d kFarPosition{
             static_cast<double>(kFarTile.x) *
                 lux::ecs::kRenderSpatialTileSize,
             static_cast<double>(kFarTile.y) *
@@ -637,7 +637,7 @@ namespace
     void testPixelFieldSwapKeepsPendingSlotOwned()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         lux::ecs::PixelFieldRuntime runtime;
         fixture.registerCanvas2DOps();
         fixture.registerPersistentTextureOps();
@@ -710,7 +710,7 @@ namespace
     void testPixelFieldSwapKeepsUploadingSlotOwned()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         lux::ecs::PixelFieldRuntime runtime;
         fixture.registerCanvas2DOps();
         fixture.registerPersistentTextureOps();
@@ -777,7 +777,7 @@ namespace
     void testPixelSlotWaitsForConcurrentUploads()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         lux::ecs::PixelFieldRuntime runtime;
         fixture.registerCanvas2DOps();
         fixture.registerPersistentTextureOps();
@@ -859,7 +859,7 @@ namespace
     void testPixelSubsystemCancelRestoresDirtyExport()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         lux::ecs::PixelFieldRuntime runtime;
         fixture.registerCanvas2DOps();
         fixture.registerPersistentTextureOps();
@@ -913,7 +913,7 @@ namespace
     void testPixelSharedTextureCapacityUsesBoundedRetry()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         lux::ecs::PixelFieldRuntime runtime;
         fixture.registerCanvas2DOps();
         fixture.registerPersistentTextureOps();
@@ -955,7 +955,7 @@ namespace
     void testPixelPermanentUploadFailureIsLatched()
     {
         lux::bridgetest::HeadlessBridgeFixture fixture;
-        lux::meta::EntityRegistry registry;
+        lux::ecs::Registry registry;
         lux::ecs::PixelFieldRuntime runtime;
         fixture.registerCanvas2DOps();
         fixture.registerPersistentTextureOps();

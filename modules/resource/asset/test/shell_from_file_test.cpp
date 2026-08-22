@@ -16,7 +16,7 @@
 //=============================================================================
 
 #include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
-#include <lux/engine/resource/asset/MeshAsset.hpp>        // MeshAsset (the shelled concrete type)
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>        // MeshAsset (the shelled concrete type)
 
 #include <cstring>
 #include <filesystem>

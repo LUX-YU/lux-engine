@@ -212,8 +212,8 @@ namespace lux::render
 
         // ---- Forward draw (graphics) ----
         auto &draw_pass = builder.addPass("ForwardMeshForwardDraw", ERGPassType::GRAPHICS)
-            .write(builder.referenceTexture(cfg_.color_target), lux::common::ETextureRole::COLOR_ATTACHMENT)
-            .write(builder.referenceTexture(cfg_.depth_target), lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+            .write(builder.referenceTexture(cfg_.color_target), lux::render::ETextureRole::COLOR_ATTACHMENT)
+            .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(bucket_pipelines_.pick(0u, variant_buckets[0]))
             .bindSceneDS()
             .useEngineSet(EDescriptorSetSlot::Instance)
@@ -230,7 +230,7 @@ namespace lux::render
 
         {
             auto shadow_atlas = builder.referenceTexture(cfg_.shadow_atlas);
-            draw_pass.read(shadow_atlas, lux::common::ETextureRole::SAMPLED);
+            draw_pass.read(shadow_atlas, lux::render::ETextureRole::SAMPLED);
             draw_pass.after(kShadowViewUploadPassName);
         }
 

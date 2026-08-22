@@ -18,6 +18,36 @@ namespace lux::authoring
 {
     namespace
     {
+        [[nodiscard]] bool isCanonicalExtensionName(
+            std::string_view name) noexcept
+        {
+            if (name.empty() || name.front() == '.' || name.back() == '.')
+                return false;
+            bool has_dot = false;
+            bool previous_dot = false;
+            for (const char value : name)
+            {
+                const bool dot = value == '.';
+                if (dot)
+                {
+                    if (previous_dot)
+                        return false;
+                    has_dot = true;
+                }
+                else if (!((value >= 'a' && value <= 'z') ||
+                           (value >= '0' && value <= '9') ||
+                           value == '_' || value == '-'))
+                {
+                    return false;
+                }
+                previous_dot = dot;
+            }
+            return has_dot;
+        }
+    }
+
+    namespace
+    {
         /// Engine version stamp baked at compile time. Manifests created
         /// fresh by the editor adopt this value; older manifests keep
         /// whatever string they were saved with (the editor reads but
@@ -172,7 +202,7 @@ namespace lux::authoring
                     (*table)["minimum_minor"].value<std::int64_t>();
                 if (!id || !module_path || !target || !major ||
                     !minimum_minor ||
-                    !lux::extensions::isCanonicalStableName(*id) ||
+                    !isCanonicalExtensionName(*id) ||
                     module_path->empty() || *major < 0 || *major > 65535 ||
                     *minimum_minor < 0 || *minimum_minor > 65535)
                 {
@@ -181,16 +211,16 @@ namespace lux::authoring
                         "' has an invalid [[extensions]] entry");
                 }
 
-                lux::extensions::EExtensionModuleTarget parsed_target;
+                EProjectExtensionTarget parsed_target;
                 if (*target == "runtime")
                 {
                     parsed_target =
-                        lux::extensions::EExtensionModuleTarget::RUNTIME;
+                        EProjectExtensionTarget::RUNTIME;
                 }
                 else if (*target == "editor")
                 {
                     parsed_target =
-                        lux::extensions::EExtensionModuleTarget::EDITOR;
+                        EProjectExtensionTarget::EDITOR;
                 }
                 else
                 {
@@ -199,7 +229,7 @@ namespace lux::authoring
                         "' has unknown extension target '" + *target + "'");
                 }
 
-                lux::extensions::ExtensionId parsed_id{*id};
+                ProjectExtensionId parsed_id{*id};
                 for (const auto& existing : m.extensions)
                 {
                     if (existing.id.hash() != parsed_id.hash())
@@ -257,8 +287,7 @@ namespace lux::authoring
                     extension.path.generic_string());
                 table.insert_or_assign(
                     "target",
-                    extension.target ==
-                            lux::extensions::EExtensionModuleTarget::EDITOR
+                    extension.target == EProjectExtensionTarget::EDITOR
                         ? "editor"
                         : "runtime");
                 table.insert_or_assign(

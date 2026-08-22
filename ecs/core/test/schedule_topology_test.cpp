@@ -19,10 +19,10 @@
 #  include <malloc.h>
 #endif
 
-static_assert(!std::is_copy_constructible_v<lux::meta::EntityRegistry>);
-static_assert(!std::is_copy_assignable_v<lux::meta::EntityRegistry>);
-static_assert(!std::is_move_constructible_v<lux::meta::EntityRegistry>);
-static_assert(!std::is_move_assignable_v<lux::meta::EntityRegistry>);
+static_assert(!std::is_copy_constructible_v<lux::ecs::Registry>);
+static_assert(!std::is_copy_assignable_v<lux::ecs::Registry>);
+static_assert(!std::is_move_constructible_v<lux::ecs::Registry>);
+static_assert(!std::is_move_assignable_v<lux::ecs::Registry>);
 
 namespace
 {
@@ -277,9 +277,9 @@ namespace
         [[nodiscard]] std::size_t registryPublicationBytes()
             const noexcept { return 0u; }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry&) const noexcept {}
+            lux::ecs::Registry&) const noexcept {}
         void apply(
-            lux::meta::EntityRegistry&,
+            lux::ecs::Registry&,
             BarrierPublicationSystem&) const noexcept;
     };
 
@@ -296,7 +296,7 @@ namespace
             return lux::ecs::ecsCommandSparsePublicationBytes(4u);
         }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry& registry) const noexcept
+            lux::ecs::Registry& registry) const noexcept
         {
             lux::ecs::reserveEcsCommandStorage(
                 registry.storage<BarrierPublicationComponent>(), 1u);
@@ -308,7 +308,7 @@ namespace
         }
 
         void apply(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             BarrierPublicationSystem&) const noexcept
         {
             registry.emplace<BarrierPublicationComponent>(
@@ -351,7 +351,7 @@ namespace
         }
 
         void onConstructed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity) noexcept
         {
             if (writer.push(BarrierObservedCommand{}))
@@ -362,7 +362,7 @@ namespace
     };
 
     void BarrierObservedCommand::apply(
-        lux::meta::EntityRegistry&,
+        lux::ecs::Registry&,
         BarrierPublicationSystem& producer) const noexcept
     {
         ++producer.followups_applied;
@@ -390,11 +390,11 @@ namespace
         }
 
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry&) const noexcept
+            lux::ecs::Registry&) const noexcept
         {}
 
         void apply(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             ZeroByteBarrierObserverSystem&) const noexcept
         {
             if (registry.valid(entity))
@@ -415,14 +415,14 @@ namespace
         }
 
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry& registry) const noexcept
+            lux::ecs::Registry& registry) const noexcept
         {
             lux::ecs::reserveEcsCommandStorage(
                 registry.storage<ZeroByteBarrierFollowupComponent>(), 1u);
         }
 
         void apply(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             ZeroByteBarrierObserverSystem& producer) const noexcept;
     };
 
@@ -453,7 +453,7 @@ namespace
         }
 
         void onTriggerDestroyed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity) noexcept
         {
             if (writer.push(
@@ -467,7 +467,7 @@ namespace
     };
 
     void ZeroByteObserverFollowupCommand::apply(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         ZeroByteBarrierObserverSystem& producer) const noexcept
     {
         if (registry.valid(entity) &&
@@ -573,9 +573,9 @@ namespace
         [[nodiscard]] std::size_t registryPublicationBytes()
             const noexcept { return 0u; }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry&) const noexcept {}
+            lux::ecs::Registry&) const noexcept {}
         void apply(
-            lux::meta::EntityRegistry&,
+            lux::ecs::Registry&,
             ReentrantProbe&
         ) const noexcept;
     };
@@ -665,7 +665,7 @@ namespace
     };
 
     void MarkReentrantUpdate::apply(
-        lux::meta::EntityRegistry&,
+        lux::ecs::Registry&,
         ReentrantProbe&
     ) const noexcept
     {

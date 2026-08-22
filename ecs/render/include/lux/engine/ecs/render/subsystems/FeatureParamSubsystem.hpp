@@ -13,7 +13,7 @@
 #include <optional>
 #include <unordered_map>
 
-#include <lux/engine/meta/LuxObject.hpp>   // entity_id / EntityRegistry
+#include <lux/engine/ecs/Registry.hpp>   // entity_id / EntityRegistry
 
 #include <lux/engine/ecs/render/IRenderSubsystem.hpp>
 #include "lux/engine/ecs/render/SceneRenderBinding.hpp"
@@ -29,7 +29,7 @@ namespace lux::ecs
     {
         using T = Traits;
         using C = typename Traits::Component;
-        std::unordered_map<lux::meta::entity_id, typename T::Payload> last_;
+        std::unordered_map<lux::ecs::Entity, typename T::Payload> last_;
 
         /// 实体离场 → 把它的脏比较缓存删掉。
         ///
@@ -69,7 +69,7 @@ namespace lux::ecs
             if (!feat.isValid()) return;   // feature absent in this scene → no-op (graceful)
             const auto ops = ctx.features().template ops<typename T::Ops>(T::feature);
 
-            reg.template view<C>().each([&](lux::meta::entity_id e, const C& c)
+            reg.template view<C>().each([&](lux::ecs::Entity e, const C& c)
             {
                 std::optional<typename T::Payload> p = T::extract(e, c, reg, ctx, feat);
                 if (!p) return;                          // not ready this frame (e.g. texture pending) → skip
@@ -93,7 +93,7 @@ namespace lux::ecs
         void onAdded(const SystemSetupContext& setup) override
         {
             leave_.attach(setup.registry(),
-                          [this](lux::meta::entity_id e) { last_.erase(e); });
+                          [this](lux::ecs::Entity e) { last_.erase(e); });
         }
         void onRemoved(const SystemRemovalContext&) override { leave_.detach(); }
 

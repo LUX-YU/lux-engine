@@ -55,11 +55,16 @@ namespace lux::serialize
     {
         NameTable nt;
         const auto count = ar.readPod<std::uint32_t>();
-        if (!ar.ok() || count == 0)
-            return nt; // empty file — index 0 already present
+        if (!ar.ok())
+            return nt;
+        if (count == 0)
+        {
+            ar.invalidate();
+            return nt;
+        }
         if (count - 1u > ar.remaining() / sizeof(std::uint32_t))
         {
-            ar.skip(ar.remaining() + 1u);
+            ar.invalidate();
             return nt;
         }
         // The first entry on disk is at logical index 1; index 0 is the

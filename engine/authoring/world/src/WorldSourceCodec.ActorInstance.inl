@@ -17,7 +17,7 @@
                 std::string{"LXAD has invalid identity or bounds"});
         }
         const bool finite_position = std::visit(
-            [](const auto& value) { return lux::spatial::isFinite(value); },
+            [](const auto& value) { return lux::math::isFinite(value); },
             document.position);
         if (!finite_position)
             return lux::cxx::unexpected(
@@ -171,9 +171,9 @@
                 std::string{"LXAD has an invalid v2 header"});
         }
         WorldActorDocument document;
-        document.world = readId<lux::entity_scene::EntitySceneId>(reader);
+        document.world = readId<lux::authoring::WorldId>(reader);
         document.actor = readId<
-            lux::entity_scene::PersistentEntityId>(reader);
+            lux::authoring::WorldActorId>(reader);
         if (!readString(
                 reader,
                 limits.maximum_string_bytes,
@@ -192,7 +192,7 @@
                 std::string{"LXAD has malformed Transform parent"});
         if (has_parent != 0u)
             document.transform_parent =
-                readId<lux::entity_scene::PersistentEntityId>(reader);
+                readId<lux::authoring::WorldActorId>(reader);
         std::uint32_t source_count = 0u;
         if (!readCount(reader, limits.maximum_data_layers, source_count))
             return lux::cxx::unexpected(
@@ -219,7 +219,7 @@
         {
             WorldActorSourceReference reference;
             reference.target = readId<
-                lux::entity_scene::PersistentEntityId>(reader);
+                lux::authoring::WorldActorId>(reader);
             const auto kind = reader.readPod<std::uint8_t>();
             if (kind > static_cast<std::uint8_t>(
                     EWorldActorReferenceKind::OPTIONAL_REFERENCE))
@@ -451,7 +451,7 @@
                 std::string{"invalid LXIP v2 header"});
         }
         WorldInstancePageDocument page;
-        page.world = readId<lux::entity_scene::EntitySceneId>(reader);
+        page.world = readId<lux::authoring::WorldId>(reader);
         page.instance_set = readId<lux::authoring::InstanceSetId>(reader);
         page.space = readId<lux::authoring::PartitionSpaceId>(reader);
         if (!readCell(reader, page.cell))

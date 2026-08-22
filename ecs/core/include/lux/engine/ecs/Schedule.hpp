@@ -20,7 +20,7 @@
 #include <lux/engine/ecs/SystemPhase.hpp>
 #include <lux/engine/ecs/SystemUpdateContext.hpp>
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/function/visibility.h>
+#include <lux/engine/ecs/visibility.h>
 
 #include <concepts>
 #include <array>
@@ -259,7 +259,7 @@ namespace lux::ecs
         std::size_t pending_systems{0u};
     };
 
-    class LUX_FUNCTION_PUBLIC Schedule final
+    class LUX_ECS_PUBLIC Schedule final
     {
     public:
         explicit Schedule(World& world) noexcept;

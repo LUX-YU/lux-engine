@@ -24,7 +24,7 @@ int main()
     assert(initial_memory.capacity_bytes >= config.temporary_allocator_bytes);
     assert(initial_memory.allocation_count >= 2u);
 
-    lux::meta::EntityRegistry registry;
+    lux::ecs::Registry registry;
     const auto entity = registry.create();
     auto& transform = registry.emplace<Transform3DComponent>(entity);
     transform.position = {

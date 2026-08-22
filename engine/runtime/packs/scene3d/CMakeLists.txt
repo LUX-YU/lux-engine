@@ -36,6 +36,14 @@ lux_add_spatial3d_pack(
     Animation3DContribution.cpp
     LUX_ENGINE_PACK_ANIMATION3D_LIBRARY
 )
+target_sources(
+    runtime_pack_animation3d
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/SkeletalAnimationResolver.cpp
+)
+target_include_directories(
+    runtime_pack_animation3d
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+)
 target_link_libraries(
     runtime_pack_animation3d
     PUBLIC
@@ -44,14 +52,30 @@ target_link_libraries(
         lux::engine::ecs::animation_3d
         lux::engine::runtime::runtime_assets
         lux::engine::runtime::runtime_pack_spatial3d_transform
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     runtime_pack_animation3d
     "find_package(lux-engine-ecs REQUIRED COMPONENTS animation_3d core)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_assets runtime_pack_spatial3d_transform runtime_scene_contributions)"
 )
+
+if(ENABLE_EXECUTION_TEST)
+    add_executable(
+        skeletal_asset_demand_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/skeletal_asset_demand_test.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SkeletalAnimationResolver.cpp
+    )
+    target_include_directories(
+        skeletal_asset_demand_test
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    )
+    target_link_libraries(
+        skeletal_asset_demand_test
+        PRIVATE runtime_pack_animation3d
+    )
+endif()
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_PACK_PHYSICS3D_LIBRARY
@@ -141,11 +165,11 @@ target_link_libraries(
         lux::engine::runtime::runtime_pack_spatial3d_transform
         lux::engine::ecs::core
         lux::engine::ecs::render_3d
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     runtime_pack_presentation3d
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core render_3d)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_assets runtime_entity_scene runtime_render_scene runtime_scene_contributions runtime_scene_core runtime_pack_spatial3d_transform)"
 )

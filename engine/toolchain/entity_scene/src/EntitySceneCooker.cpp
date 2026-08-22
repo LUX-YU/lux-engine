@@ -1,7 +1,7 @@
 #include <lux/engine/toolchain/entity_scene/EntitySceneCooker.hpp>
 
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <algorithm>
 #include <map>
@@ -125,16 +125,16 @@ namespace lux::toolchain
         }
     } // namespace
 
-    lux::cxx::expected<CookedScenePackageBundle, EntitySceneCookFailure>
-    cookScenePackage(ScenePackageCookInput input) noexcept
+    lux::cxx::expected<CookedSceneDescriptionBundle, EntitySceneCookFailure>
+    cookSceneDescription(SceneDescriptionCookInput input) noexcept
     {
         using lux::ecs::scene_format::EntitySectionId;
 
-        if (input.id.empty())
+        if (input.id.is_nil())
         {
             return lux::cxx::unexpected(failure(
                 EEntitySceneCookError::INVALID_ARGUMENT,
-                "ScenePackage cook input has a nil package id"));
+                "SceneDescription cook input has a nil package id"));
         }
 
         std::sort(
@@ -177,7 +177,7 @@ namespace lux::toolchain
             }
         }
 
-        CookedScenePackageBundle bundle;
+        CookedSceneDescriptionBundle bundle;
         bundle.package.id = input.id;
         bundle.package.features = std::move(input.features);
         bundle.package.startup_sections = std::move(input.startup_sections);
@@ -287,21 +287,23 @@ namespace lux::toolchain
                 std::move(requirement));
         }
 
-        const auto valid_package = lux::scene::validateScenePackage(
+        const auto valid_package = lux::scene::validateSceneDescription(
             bundle.package);
         if (!valid_package)
         {
             return lux::cxx::unexpected(failure(
                 EEntitySceneCookError::CONTRACT_REJECTED,
-                "derived ScenePackage rejected: " +
+                "derived SceneDescription rejected: " +
                     valid_package.error().detail));
         }
-        auto encoded_package = lux::scene::encodeScenePackage(bundle.package);
+        auto encoded_package = lux::scene::SceneAssetSerDeser::encodeData(
+            bundle.package.id,
+            bundle.package);
         if (!encoded_package)
         {
             return lux::cxx::unexpected(failure(
                 EEntitySceneCookError::ENCODE_FAILED,
-                "cannot encode ScenePackage: " +
+                "cannot encode SceneDescription: " +
                     encoded_package.error().detail));
         }
         bundle.encoded_package = std::move(*encoded_package);

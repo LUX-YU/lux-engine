@@ -1,7 +1,7 @@
 #include <lux/engine/runtime/entity_scene/EntityBatchStager.hpp>
 
 #include <lux/engine/core/serialization/Archive.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/meta/Meta.hpp>
 
@@ -119,50 +119,6 @@ namespace lux::runtime::entity_scene
                 detail::EStagingPhase::PERSISTENT_REFERENCE_RELOCATIONS;
         }
 
-        [[nodiscard]] bool validateTaggedObject(
-            std::span<const std::byte> payload,
-            std::size_t name_count) noexcept
-        {
-            std::size_t cursor = 0u;
-            const auto readU32 = [&payload, &cursor](std::uint32_t& value)
-            {
-                if (cursor > payload.size() ||
-                    payload.size() - cursor < sizeof(value))
-                {
-                    return false;
-                }
-                std::memcpy(&value, payload.data() + cursor, sizeof(value));
-                cursor += sizeof(value);
-                return true;
-            };
-
-            while (true)
-            {
-                std::uint32_t name = 0u;
-                if (!readU32(name))
-                    return false;
-                if (name == lux::serialize::kEndOfObject)
-                    return cursor == payload.size();
-                if (name == 0u || name >= name_count ||
-                    cursor >= payload.size())
-                {
-                    return false;
-                }
-                const auto wire_type = static_cast<
-                    lux::serialize::EArchiveType>(
-                        std::to_integer<std::uint8_t>(payload[cursor++]));
-                std::uint32_t size = 0u;
-                if (!readU32(size) || size > payload.size() - cursor)
-                    return false;
-                const auto field_payload = payload.subspan(cursor, size);
-                if (wire_type == lux::serialize::EArchiveType::Struct &&
-                    !validateTaggedObject(field_payload, name_count))
-                {
-                    return false;
-                }
-                cursor += size;
-            }
-        }
     }
 
     lux::cxx::expected<PreparedEntityBatch, EntityBatchFailure>
@@ -172,7 +128,7 @@ namespace lux::runtime::entity_scene
     {
         const auto section = decoded.section();
         const auto generation = decoded.generation();
-        if (!components_ || section.empty() || generation == 0u)
+        if (section.empty() || generation == 0u)
         {
             return lux::cxx::unexpected(detail::makeFailure(
                 EEntityBatchError::INVALID_ARGUMENT,
@@ -182,9 +138,8 @@ namespace lux::runtime::entity_scene
         }
 
         auto impl = std::make_unique<detail::PreparedEntityBatchImpl>(
-            std::move(decoded));
+            std::move(decoded), blobs);
         auto& image = impl->decoded.image_;
-        impl->blob_store = &blobs;
         impl->schemas.reserve(image.schemas.size());
         impl->schema_counts.assign(image.schemas.size(), 0u);
         impl->archetype_first.resize(image.archetypes.size(), 0u);
@@ -210,8 +165,8 @@ namespace lux::runtime::entity_scene
 
         for (const auto& schema : image.schemas)
         {
-            const auto* descriptor = components_->findBySchema(
-                schema.id.name());
+            const auto* descriptor = components_.findBySchema(
+                schema.id.name);
             if (!descriptor)
             {
                 return lux::cxx::unexpected(detail::makeFailure(
@@ -219,10 +174,10 @@ namespace lux::runtime::entity_scene
                     section,
                     generation,
                     "component schema is not registered",
-                    std::string{schema.id.name()}));
+                    std::string{schema.id.name}));
             }
-            if (descriptor->schema_id.hash != schema.id.hash() ||
-                descriptor->schema_id.name != schema.id.name() ||
+            if (descriptor->schema_id.hash != schema.id.hash ||
+                descriptor->schema_id.name != schema.id.name ||
                 descriptor->schema_version != schema.schema_version)
             {
                 return lux::cxx::unexpected(detail::makeFailure(
@@ -230,7 +185,7 @@ namespace lux::runtime::entity_scene
                     section,
                     generation,
                     "component schema identity or version does not match",
-                    std::string{schema.id.name()}));
+                    std::string{schema.id.name}));
             }
             if (descriptor->serialization ==
                 lux::ecs::EComponentSerializationPolicy::TRANSIENT)
@@ -240,7 +195,7 @@ namespace lux::runtime::entity_scene
                     section,
                     generation,
                     "transient component cannot appear in LXES",
-                    std::string{schema.id.name()}));
+                    std::string{schema.id.name}));
             }
             if (!descriptor->operations.get ||
                 !descriptor->operations.emplace ||
@@ -256,7 +211,7 @@ namespace lux::runtime::entity_scene
                     section,
                     generation,
                     "component does not satisfy cooked staging contract",
-                    std::string{schema.id.name()}));
+                    std::string{schema.id.name}));
             }
             impl->schemas.push_back(*descriptor);
         }
@@ -550,7 +505,7 @@ namespace lux::runtime::entity_scene
                         continue;
                     }
                     {
-                        auto lease = prepared.blob_store->acquire(
+                        auto lease = prepared.blob_store.acquire(
                             std::move(image.attachments[prepared.attachment]),
                             section,
                             generation);
@@ -619,8 +574,12 @@ namespace lux::runtime::entity_scene
                                 column.offsets[prepared.component_value + 1u];
                             const auto payload = std::span<const std::byte>{
                                 column.payload.data() + first, last - first};
-                            if (!validateTaggedObject(
-                                    payload, image.component_names.size()))
+                            const auto framed = lux::ecs::serialization::
+                                validateTaggedPropertyObject(
+                                    payload,
+                                    static_cast<std::uint32_t>(
+                                        image.component_names.size()));
+                            if (!framed)
                             {
                                 return failBatch(
                                     prepared,
@@ -628,15 +587,17 @@ namespace lux::runtime::entity_scene
                                         EEntityBatchError::INVALID_COMPONENT_PAYLOAD,
                                         section,
                                         generation,
-                                        "malformed tagged component payload",
+                                        "malformed tagged component payload: " +
+                                            framed.error().detail,
                                         descriptor.schema_id.name));
                             }
                             lux::serialize::ArchiveReader reader{
                                 payload.data(), payload.size()};
-                            lux::serialize::TaggedPropertyReader tagged{
+                            lux::ecs::serialization::TaggedPropertyReader tagged{
                                 reader, prepared.names};
-                            if (!tagged.readObjectExact(
-                                    *descriptor.ref_class, component) ||
+                            const auto decoded = tagged.readObjectExact(
+                                *descriptor.ref_class, component);
+                            if (!decoded ||
                                 !reader.ok() || !reader.eof())
                             {
                                 return failBatch(
@@ -645,7 +606,10 @@ namespace lux::runtime::entity_scene
                                         EEntityBatchError::INVALID_COMPONENT_PAYLOAD,
                                         section,
                                         generation,
-                                        "invalid tagged component payload",
+                                        "invalid tagged component payload: " +
+                                            (decoded
+                                                ? std::string{"trailing bytes"}
+                                                : decoded.error().detail),
                                         descriptor.schema_id.name));
                             }
                         }

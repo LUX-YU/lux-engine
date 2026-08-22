@@ -2,7 +2,7 @@
 
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/render/components/PrimaryCameraTag.hpp>
 #include <lux/engine/ecs/render/components/3d/Camera3DComponent.hpp>
@@ -14,16 +14,17 @@
 #include <lux/engine/ecs/render/components/3d/VisualLodNodeComponent.hpp>
 #include <lux/engine/ecs/navigation/components/NavigationRegion3DComponent.hpp>
 #include <lux/engine/ecs/physics3d/components/Physics3DComponents.hpp>
+#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
 #include <lux/engine/ecs/terrain/components/TerrainTileComponent.hpp>
 #include <lux/engine/meta/Meta.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
-#include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
+#include <lux/engine/ecs/Registry.hpp>
+#include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>
-#include <lux/engine/resource/physics3d/StaticColliderBatch3D.hpp>
-#include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
-#include <lux/engine/resource/terrain/TerrainTile.hpp>
+#include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
+#include <lux/engine/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
 
 #include <algorithm>
@@ -105,14 +106,14 @@ namespace
             const auto index = names_.intern(name);
             writer_.writePod(index);
             writer_.writePod(static_cast<std::uint8_t>(
-                lux::serialize::EArchiveType::Float));
+                lux::ecs::serialization::EArchiveType::Float));
             writer_.writePod<std::uint32_t>(sizeof(value));
             writer_.writePod(value);
         }
 
         void finish()
         {
-            writer_.writePod(lux::serialize::kEndOfObject);
+            writer_.writePod(lux::ecs::serialization::kEndOfObject);
         }
 
     private:
@@ -139,7 +140,7 @@ namespace
     [[nodiscard]] lux::toolchain::Spatial3DAuthoringSource sourceFixture()
     {
         lux::toolchain::Spatial3DAuthoringSource source;
-        source.scene = lux::scene::ScenePackageId{
+        source.scene = lux::asset::asset_id_t{
             uuid("10000000-0000-4000-8000-000000000001")};
         const auto space =
             uuid("12000000-0000-4000-8000-000000000001");
@@ -310,6 +311,18 @@ int main()
         source, components, mesh_assets);
     assert(first && second);
     assert(first->encoded_package == second->encoded_package);
+
+    auto unknown_component_source = source;
+    unknown_component_source.actors.front().components.front().schema_name =
+        "org.lux.test.unregistered_component";
+    const auto unknown_component =
+        lux::toolchain::adaptSpatial3DEntityScene(
+            unknown_component_source, components, mesh_assets);
+    assert(!unknown_component);
+    assert(unknown_component.error().code ==
+        lux::toolchain::ESpatial3DEntitySceneAdapterError::
+            MISSING_COMPONENT_SCHEMA);
+
     assert(first->generated_meshes.size() == 1u);
     assert(second->generated_meshes.size() == 1u);
     assert(first->generated_meshes.front().id ==
@@ -364,7 +377,7 @@ int main()
         assert(first->sections[index].encoded_image ==
             second->sections[index].encoded_image);
     }
-    assert(first->package.id.value() == source.scene.value());
+    assert(first->package.id == source.scene);
     assert(first->package.startup_sections.size() == 1u);
     assert(first->package.features.size() == 5u);
     for (const auto name : {
@@ -383,16 +396,16 @@ int main()
     }
     const auto spatial3d = std::ranges::find(
         first->package.features,
-        lux::spatial3d_scene::kSpatial3DContributionName,
+        lux::spatial3d::kPartitionedFeatureName,
         [](const auto& feature)
         {
             return feature.id.name();
         });
     assert(spatial3d != first->package.features.end());
     assert(spatial3d->config_schema_version ==
-        lux::spatial3d_scene::kSpatial3DSceneCatalogSchemaVersion);
+        lux::spatial3d::kSceneCatalogSchemaVersion);
     const auto catalog =
-        lux::spatial3d_scene::decodeSpatial3DSceneCatalog(
+        lux::spatial3d::decodeSceneCatalog(
             spatial3d->config);
     assert(catalog);
     assert(catalog->bands.size() == 2u);
@@ -402,7 +415,7 @@ int main()
         [](const auto& entry)
         {
             return entry.coordinate ==
-                lux::spatial::GridCoord3i64{-1, 0, 0};
+                lux::math::GridCoord3i64{-1, 0, 0};
         }));
 
     const auto startup = std::ranges::find(
@@ -671,7 +684,7 @@ int main()
     assert(portal_bundle);
     const auto portal_feature = std::ranges::find(
         portal_bundle->package.features,
-        lux::spatial3d_scene::kSpatial3DContributionName,
+        lux::spatial3d::kPartitionedFeatureName,
         [](const auto& feature)
         {
             return feature.id.name();
@@ -679,12 +692,12 @@ int main()
     assert(portal_feature !=
            portal_bundle->package.features.end());
     const auto portal_catalog =
-        lux::spatial3d_scene::decodeSpatial3DSceneCatalog(
+        lux::spatial3d::decodeSceneCatalog(
             portal_feature->config);
     assert(portal_catalog);
     struct CookedNavigationRegion final
     {
-        lux::spatial::GridCoord3i64 coordinate;
+        lux::math::GridCoord3i64 coordinate;
         lux::navigation::NavigationRegionId id;
         lux::navigation::detour3d::NavigationRegion3DBlob blob;
     };
@@ -725,9 +738,9 @@ int main()
         });
     assert(cooked_regions.size() == 2u);
     assert((cooked_regions[0].coordinate ==
-            lux::spatial::GridCoord3i64{0, 0, 0}));
+            lux::math::GridCoord3i64{0, 0, 0}));
     assert((cooked_regions[1].coordinate ==
-            lux::spatial::GridCoord3i64{1, 0, 0}));
+            lux::math::GridCoord3i64{1, 0, 0}));
 
     auto backend_result =
         lux::navigation::detour3d::Navigation3DBackend::create();

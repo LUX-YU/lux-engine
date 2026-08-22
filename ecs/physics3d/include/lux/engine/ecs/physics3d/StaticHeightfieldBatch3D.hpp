@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 
 #include <cstdint>
 #include <vector>
@@ -16,7 +16,7 @@ namespace lux::ecs
     /// and never enter the physics domain.
     struct StaticHeightfield3D final
     {
-        lux::spatial::Position3D origin;
+        lux::math::Position3d origin;
         std::uint32_t sample_edge{0u};
         float sample_spacing{1.0f};
         float height_min{0.0f};

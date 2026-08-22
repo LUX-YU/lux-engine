@@ -3,8 +3,8 @@
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/World.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
@@ -122,7 +122,7 @@ namespace
             {
                 fn({
                     value.asset,
-                    lux::asset::EAssetType::ENTITY_SECTION,
+                    lux::ecs::scene_format::kEntitySectionImageMagic,
                     value.provider_path,
                     false});
             }
@@ -238,8 +238,8 @@ namespace
             {
                 return lhs.id.value() < rhs.id.value();
             });
-        lux::scene::ScenePackage package;
-        package.id = lux::scene::ScenePackageId{uuid(
+        lux::scene::SceneDescription package;
+        package.id = lux::asset::asset_id_t{uuid(
             "82000000-0000-4000-8000-000000000001")};
         package.sections = std::move(records);
         auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(

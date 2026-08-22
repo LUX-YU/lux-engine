@@ -245,7 +245,7 @@ int main()
 
     RenderControlSession::CreateSceneConfig scfg{};
     scfg.name             = "GraphLitScene";
-    scfg.lit_color_format = lux::common::ETextureFormat::RGBA8_SRGB;  // LDR: lighting writes readback target
+    scfg.lit_color_format = lux::rdesc::ETextureFormat::RGBA8_SRGB;  // LDR: lighting writes readback target
     s.beginFrame({});
     const auto scene = await(control, w, control.createScene(scfg));
     s.beginFrame({});

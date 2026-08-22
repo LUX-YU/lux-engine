@@ -76,8 +76,8 @@ namespace lux::render
         uint32_t                mip_levels   = 1;
         uint32_t                array_layers = 1;
 
-        lux::common::ETextureDimension     dimension{ lux::common::ETextureDimension::TEX_2D };
-        lux::common::ETextureFormat        format{ lux::common::ETextureFormat::RGBA8_UNORM };
+        lux::rdesc::ETextureDimension     dimension{ lux::rdesc::ETextureDimension::TEX_2D };
+        lux::rdesc::ETextureFormat        format{ lux::rdesc::ETextureFormat::RGBA8_UNORM };
 
         uint32_t                sample{ 1 };
         ERGTextureUsageFlags    usage{ 0 };
@@ -92,14 +92,14 @@ namespace lux::render
         /// 显存代价由创建者用本开关显式拒绝。
         bool                    keep_transient = false;
 
-        static RGTextureDescription Absolute(uint32_t w, uint32_t h, lux::common::ETextureFormat fmt = lux::common::ETextureFormat::RGBA8_UNORM) {
+        static RGTextureDescription Absolute(uint32_t w, uint32_t h, lux::rdesc::ETextureFormat fmt = lux::rdesc::ETextureFormat::RGBA8_UNORM) {
             RGTextureDescription d;
             d.width = w; d.height = h; d.format = fmt;
             d.sizing_mode = ERGSizeMode::ABSOLUTE_MODE;
             return d;
         }
 
-        static RGTextureDescription Relative(float scale_w, float scale_h, lux::common::ETextureFormat fmt = lux::common::ETextureFormat::RGBA8_UNORM) {
+        static RGTextureDescription Relative(float scale_w, float scale_h, lux::rdesc::ETextureFormat fmt = lux::rdesc::ETextureFormat::RGBA8_UNORM) {
             RGTextureDescription d;
             d.width_scale = scale_w; d.height_scale = scale_h; d.format = fmt;
             d.sizing_mode = ERGSizeMode::RELATIVE_MODE;

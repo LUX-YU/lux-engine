@@ -12,7 +12,7 @@ namespace lux::render
     {
         /// Texture format for the intermediate lit-colour target.
         /// RGBA16_SFLOAT → HDR pipeline; RGBA8_UNORM → LDR pipeline.
-        lux::common::ETextureFormat lit_color_format{lux::common::ETextureFormat::RGBA16_SFLOAT};
+        lux::rdesc::ETextureFormat lit_color_format{lux::rdesc::ETextureFormat::RGBA16_SFLOAT};
 
         /// True when lit_color_format is an 8-bit (LDR) format.
         /// LDR pipelines skip the intermediate "LitColor" buffer and write
@@ -21,10 +21,10 @@ namespace lux::render
         {
             switch (lit_color_format)
             {
-            case lux::common::ETextureFormat::RGBA8_UNORM:
-            case lux::common::ETextureFormat::RGBA8_SRGB:
-            case lux::common::ETextureFormat::BGRA8_UNORM:
-            case lux::common::ETextureFormat::BGRA8_SRGB:
+            case lux::rdesc::ETextureFormat::RGBA8_UNORM:
+            case lux::rdesc::ETextureFormat::RGBA8_SRGB:
+            case lux::rdesc::ETextureFormat::BGRA8_UNORM:
+            case lux::rdesc::ETextureFormat::BGRA8_SRGB:
                 return true;
             default:
                 return false;

@@ -29,7 +29,7 @@
 #include <lux/engine/input/ActionMapper.hpp>
 #include <lux/engine/input/ActionDispatcher.hpp>
 #include <lux/engine/input/BindingIdAllocator.hpp>
-#include <lux/engine/window/InputSnapshot.hpp>
+#include <lux/engine/input/Input.hpp>
 
 #include <cassert>
 #include <cmath>
@@ -46,7 +46,27 @@
 #endif
 
 using namespace lux::input;
-using namespace lux::window;
+
+static_assert(static_cast<int>(EKey::KEY_SPACE) == 32);
+static_assert(static_cast<int>(EKey::KEY_MENU) == 348);
+static_assert(static_cast<int>(EMouseButton::MOUSE_BUTTON_LEFT) == 0);
+static_assert(static_cast<int>(EMouseButton::MOUSE_BUTTON_8) == 7);
+static_assert(static_cast<int>(EMouseButton::UNKNOWN) == 8);
+static_assert(static_cast<int>(EKeyModifier::KEY_MOD_SHIFT) == 0x0001);
+static_assert(static_cast<int>(EKeyModifier::KEY_MOD_CONTROL) == 0x0002);
+static_assert(static_cast<int>(EKeyModifier::KEY_MOD_ALT) == 0x0004);
+static_assert(static_cast<int>(EKeyModifier::KEY_MOD_SUPER) == 0x0008);
+static_assert(static_cast<int>(EKeyModifier::KEY_MOD_CAPS_LOCK) == 0x0010);
+static_assert(static_cast<int>(EKeyModifier::KEY_MOD_NUM_LOCK) == 0x0020);
+static_assert(static_cast<int>(EInputState::PRESS) == 0);
+static_assert(static_cast<int>(EInputState::RELEASE) == 1);
+static_assert(static_cast<int>(EInputState::REPEAT) == 2);
+static_assert(static_cast<int>(EInputState::UNKNOWN) == 3);
+static_assert(static_cast<int>(ETouchPhase::BEGAN) == 0);
+static_assert(static_cast<int>(ETouchPhase::MOVED) == 1);
+static_assert(static_cast<int>(ETouchPhase::STATIONARY) == 2);
+static_assert(static_cast<int>(ETouchPhase::ENDED) == 3);
+static_assert(static_cast<int>(ETouchPhase::CANCELED) == 4);
 
 // ═══════════════════════════════════════════════════════════════════════════ //
 //  Test action IDs                                                          //
@@ -79,7 +99,7 @@ static InputSnapshot makeBlankSnapshot(float dt = 1.f / 60.f)
 }
 
 /// Press a key: just_pressed + held.
-static void pressKey(InputSnapshot& s, KeyEnum k)
+static void pressKey(InputSnapshot& s, EKey k)
 {
     auto i = static_cast<size_t>(static_cast<int>(k));
     s.keys_just_pressed.set(i);
@@ -87,14 +107,14 @@ static void pressKey(InputSnapshot& s, KeyEnum k)
 }
 
 /// Hold a key (already pressed in previous frame): held only, no edge.
-static void holdKey(InputSnapshot& s, KeyEnum k)
+static void holdKey(InputSnapshot& s, EKey k)
 {
     auto i = static_cast<size_t>(static_cast<int>(k));
     s.keys_held.set(i);
 }
 
 /// Release a key: just_released, clear held.
-static void releaseKey(InputSnapshot& s, KeyEnum k)
+static void releaseKey(InputSnapshot& s, EKey k)
 {
     auto i = static_cast<size_t>(static_cast<int>(k));
     s.keys_just_released.set(i);
@@ -102,7 +122,7 @@ static void releaseKey(InputSnapshot& s, KeyEnum k)
 }
 
 /// Press a mouse button.
-static void pressMouse(InputSnapshot& s, MouseButton btn)
+static void pressMouse(InputSnapshot& s, EMouseButton btn)
 {
     auto i = static_cast<int>(btn);
     s.mouse_just_pressed |= (1u << i);
@@ -110,14 +130,14 @@ static void pressMouse(InputSnapshot& s, MouseButton btn)
 }
 
 /// Hold a mouse button.
-static void holdMouse(InputSnapshot& s, MouseButton btn)
+static void holdMouse(InputSnapshot& s, EMouseButton btn)
 {
     auto i = static_cast<int>(btn);
     s.mouse_held |= (1u << i);
 }
 
 /// Release a mouse button.
-static void releaseMouse(InputSnapshot& s, MouseButton btn)
+static void releaseMouse(InputSnapshot& s, EMouseButton btn)
 {
     auto i = static_cast<int>(btn);
     s.mouse_just_released |= (1u << i);
@@ -531,12 +551,12 @@ static void test_action_map_builder()
 
     ActionMap map;
 
-    map.bindKey(Actions::Jump, KeyEnum::KEY_SPACE, InputValue::makeBool(true))
-       .bindKey(Actions::Move, KeyEnum::KEY_W, InputValue::makeAxis2D(0.f, 1.f))
-       .bindKey(Actions::Move, KeyEnum::KEY_S, InputValue::makeAxis2D(0.f, -1.f))
-       .bindKey(Actions::Move, KeyEnum::KEY_A, InputValue::makeAxis2D(-1.f, 0.f))
-       .bindKey(Actions::Move, KeyEnum::KEY_D, InputValue::makeAxis2D(1.f, 0.f))
-       .bindMouseButton(Actions::Fire, MouseButton::MOUSE_BUTTON_LEFT)
+    map.bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true))
+       .bindKey(Actions::Move, EKey::KEY_W, InputValue::makeAxis2D(0.f, 1.f))
+       .bindKey(Actions::Move, EKey::KEY_S, InputValue::makeAxis2D(0.f, -1.f))
+       .bindKey(Actions::Move, EKey::KEY_A, InputValue::makeAxis2D(-1.f, 0.f))
+       .bindKey(Actions::Move, EKey::KEY_D, InputValue::makeAxis2D(1.f, 0.f))
+       .bindMouseButton(Actions::Fire, EMouseButton::MOUSE_BUTTON_LEFT)
        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_X,
                       InputValue::makeAxis2D(1.f, 0.f))
        .bindMouseAxis(Actions::Look, MouseAxisInput::EAxis::DELTA_Y,
@@ -556,7 +576,7 @@ static void test_action_map_builder()
 
     // IDs from a different ActionMap must also be unique vs the first map.
     ActionMap map2;
-    map2.bindKey(Actions::Crouch, KeyEnum::KEY_C, InputValue::makeBool(true));
+    map2.bindKey(Actions::Crouch, EKey::KEY_C, InputValue::makeBool(true));
     BindingId map2_id = map2.bindings()[0].binding_id;
     for (auto& id : ids)
         assert(id != map2_id);
@@ -677,7 +697,7 @@ static void test_mapper_basic_key()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindKey(Actions::Jump, KeyEnum::KEY_SPACE, InputValue::makeBool(true));
+        .bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -685,7 +705,7 @@ static void test_mapper_basic_key()
     // Frame 1: press Space
     {
         auto snap = makeBlankSnapshot();
-        pressKey(snap, KeyEnum::KEY_SPACE);
+        pressKey(snap, EKey::KEY_SPACE);
         mapper.update(snap, stack, snap.sample_dt);
 
         assert(mapper.triggered(Actions::Jump));
@@ -697,7 +717,7 @@ static void test_mapper_basic_key()
     // Frame 2: release Space
     {
         auto snap = makeBlankSnapshot();
-        releaseKey(snap, KeyEnum::KEY_SPACE);
+        releaseKey(snap, EKey::KEY_SPACE);
         mapper.update(snap, stack, snap.sample_dt);
 
         assert(!mapper.triggered(Actions::Jump));
@@ -732,10 +752,10 @@ static void test_mapper_wasd_accumulation()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindKey(Actions::Move, KeyEnum::KEY_W, InputValue::makeAxis2D(0.f,  1.f))
-        .bindKey(Actions::Move, KeyEnum::KEY_S, InputValue::makeAxis2D(0.f, -1.f))
-        .bindKey(Actions::Move, KeyEnum::KEY_A, InputValue::makeAxis2D(-1.f, 0.f))
-        .bindKey(Actions::Move, KeyEnum::KEY_D, InputValue::makeAxis2D( 1.f, 0.f));
+        .bindKey(Actions::Move, EKey::KEY_W, InputValue::makeAxis2D(0.f,  1.f))
+        .bindKey(Actions::Move, EKey::KEY_S, InputValue::makeAxis2D(0.f, -1.f))
+        .bindKey(Actions::Move, EKey::KEY_A, InputValue::makeAxis2D(-1.f, 0.f))
+        .bindKey(Actions::Move, EKey::KEY_D, InputValue::makeAxis2D( 1.f, 0.f));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -743,7 +763,7 @@ static void test_mapper_wasd_accumulation()
     // Frame: press W only → (0, 1)
     {
         auto snap = makeBlankSnapshot();
-        pressKey(snap, KeyEnum::KEY_W);
+        pressKey(snap, EKey::KEY_W);
         mapper.update(snap, stack, snap.sample_dt);
 
         auto v = mapper.getValue(Actions::Move).as2D();
@@ -754,8 +774,8 @@ static void test_mapper_wasd_accumulation()
     // Frame: hold W + press D → (1, 1) diagonal
     {
         auto snap = makeBlankSnapshot();
-        holdKey(snap, KeyEnum::KEY_W);
-        pressKey(snap, KeyEnum::KEY_D);
+        holdKey(snap, EKey::KEY_W);
+        pressKey(snap, EKey::KEY_D);
         mapper.update(snap, stack, snap.sample_dt);
 
         auto v = mapper.getValue(Actions::Move).as2D();
@@ -787,7 +807,7 @@ static void test_mapper_mouse_button()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindMouseButton(Actions::Fire, MouseButton::MOUSE_BUTTON_LEFT,
+        .bindMouseButton(Actions::Fire, EMouseButton::MOUSE_BUTTON_LEFT,
                          InputValue::makeBool(true));
 
     InputContextStack stack;
@@ -796,7 +816,7 @@ static void test_mapper_mouse_button()
     // Press left mouse
     {
         auto snap = makeBlankSnapshot();
-        pressMouse(snap, MouseButton::MOUSE_BUTTON_LEFT);
+        pressMouse(snap, EMouseButton::MOUSE_BUTTON_LEFT);
         mapper.update(snap, stack, snap.sample_dt);
         assert(mapper.triggered(Actions::Fire));
     }
@@ -804,7 +824,7 @@ static void test_mapper_mouse_button()
     // Release
     {
         auto snap = makeBlankSnapshot();
-        releaseMouse(snap, MouseButton::MOUSE_BUTTON_LEFT);
+        releaseMouse(snap, EMouseButton::MOUSE_BUTTON_LEFT);
         mapper.update(snap, stack, snap.sample_dt);
         assert(!mapper.triggered(Actions::Fire));
         assert(mapper.state(Actions::Fire).completed());
@@ -860,8 +880,8 @@ static void test_mapper_ui_capture()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindKey(Actions::Jump, KeyEnum::KEY_SPACE, InputValue::makeBool(true))
-        .bindMouseButton(Actions::Fire, MouseButton::MOUSE_BUTTON_LEFT,
+        .bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true))
+        .bindMouseButton(Actions::Fire, EMouseButton::MOUSE_BUTTON_LEFT,
                          InputValue::makeBool(true));
 
     InputContextStack stack;
@@ -870,7 +890,7 @@ static void test_mapper_ui_capture()
     // Keyboard captured by UI → Jump should not fire
     {
         auto snap = makeBlankSnapshot();
-        pressKey(snap, KeyEnum::KEY_SPACE);
+        pressKey(snap, EKey::KEY_SPACE);
         snap.keyboard_captured_by_ui = true;
         mapper.update(snap, stack, snap.sample_dt, !snap.keyboard_captured_by_ui,
                       !snap.mouse_captured_by_ui);
@@ -880,7 +900,7 @@ static void test_mapper_ui_capture()
     // Mouse captured by UI → Fire should not fire
     {
         auto snap = makeBlankSnapshot();
-        pressMouse(snap, MouseButton::MOUSE_BUTTON_LEFT);
+        pressMouse(snap, EMouseButton::MOUSE_BUTTON_LEFT);
         snap.mouse_captured_by_ui = true;
         mapper.update(snap, stack, snap.sample_dt, !snap.keyboard_captured_by_ui,
                       !snap.mouse_captured_by_ui);
@@ -905,19 +925,19 @@ static void test_mapper_context_consume()
     // High priority UI context consumes keyboard
     InputContext ui_ctx("ui", /*consumes_kb=*/true, /*consumes_mouse=*/false, /*prio=*/10);
     ui_ctx.actionMap()
-        .bindKey(Actions::Interact, KeyEnum::KEY_SPACE, InputValue::makeBool(true));
+        .bindKey(Actions::Interact, EKey::KEY_SPACE, InputValue::makeBool(true));
 
     // Low priority gameplay context also binds Space
     InputContext gameplay_ctx("gameplay", false, false, 0);
     gameplay_ctx.actionMap()
-        .bindKey(Actions::Jump, KeyEnum::KEY_SPACE, InputValue::makeBool(true));
+        .bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&gameplay_ctx);
     stack.push(&ui_ctx);
 
     auto snap = makeBlankSnapshot();
-    pressKey(snap, KeyEnum::KEY_SPACE);
+    pressKey(snap, EKey::KEY_SPACE);
     mapper.update(snap, stack, snap.sample_dt);
 
     // UI context fires Interact
@@ -941,7 +961,7 @@ static void test_mapper_disabled_context()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindKey(Actions::Jump, KeyEnum::KEY_SPACE, InputValue::makeBool(true));
+        .bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -950,7 +970,7 @@ static void test_mapper_disabled_context()
     ctx.setEnabled(false);
     {
         auto snap = makeBlankSnapshot();
-        pressKey(snap, KeyEnum::KEY_SPACE);
+        pressKey(snap, EKey::KEY_SPACE);
         mapper.update(snap, stack, snap.sample_dt);
         assert(!mapper.triggered(Actions::Jump));
     }
@@ -959,7 +979,7 @@ static void test_mapper_disabled_context()
     ctx.setEnabled(true);
     {
         auto snap = makeBlankSnapshot();
-        pressKey(snap, KeyEnum::KEY_SPACE);
+        pressKey(snap, EKey::KEY_SPACE);
         mapper.update(snap, stack, snap.sample_dt);
         assert(mapper.triggered(Actions::Jump));
     }
@@ -1047,16 +1067,16 @@ static void test_mapper_action_modifier()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindKey(Actions::Move, KeyEnum::KEY_W, InputValue::makeAxis2D(0.f,  1.f))
-        .bindKey(Actions::Move, KeyEnum::KEY_D, InputValue::makeAxis2D(1.f,  0.f));
+        .bindKey(Actions::Move, EKey::KEY_W, InputValue::makeAxis2D(0.f,  1.f))
+        .bindKey(Actions::Move, EKey::KEY_D, InputValue::makeAxis2D(1.f,  0.f));
 
     InputContextStack stack;
     stack.push(&ctx);
 
     // Press W + D → diagonal, then Normalize2D brings to unit length
     auto snap = makeBlankSnapshot();
-    pressKey(snap, KeyEnum::KEY_W);
-    pressKey(snap, KeyEnum::KEY_D);
+    pressKey(snap, EKey::KEY_W);
+    pressKey(snap, EKey::KEY_D);
     mapper.update(snap, stack, snap.sample_dt);
 
     auto v = mapper.getValue(Actions::Move).as2D();
@@ -1084,7 +1104,7 @@ static void test_mapper_action_trigger()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindMouseButton(Actions::Aim, MouseButton::MOUSE_BUTTON_RIGHT,
+        .bindMouseButton(Actions::Aim, EMouseButton::MOUSE_BUTTON_RIGHT,
                          InputValue::makeBool(true));
 
     InputContextStack stack;
@@ -1095,7 +1115,7 @@ static void test_mapper_action_trigger()
     // Frame 1: press right mouse — hold timer starts, Ongoing
     {
         auto snap = makeBlankSnapshot(dt);
-        pressMouse(snap, MouseButton::MOUSE_BUTTON_RIGHT);
+        pressMouse(snap, EMouseButton::MOUSE_BUTTON_RIGHT);
         mapper.update(snap, stack, dt);
         assert(mapper.ongoing(Actions::Aim));
         assert(!mapper.triggered(Actions::Aim));
@@ -1104,7 +1124,7 @@ static void test_mapper_action_trigger()
     // Frames 2-5: hold — still Ongoing
     for (int i = 0; i < 4; ++i) {
         auto snap = makeBlankSnapshot(dt);
-        holdMouse(snap, MouseButton::MOUSE_BUTTON_RIGHT);
+        holdMouse(snap, EMouseButton::MOUSE_BUTTON_RIGHT);
         mapper.update(snap, stack, dt);
     }
     assert(!mapper.triggered(Actions::Aim));
@@ -1112,7 +1132,7 @@ static void test_mapper_action_trigger()
     // Keep holding until hold_time exceeded (0.1s ≈ 6 frames at 60fps)
     for (int i = 0; i < 5; ++i) {
         auto snap = makeBlankSnapshot(dt);
-        holdMouse(snap, MouseButton::MOUSE_BUTTON_RIGHT);
+        holdMouse(snap, EMouseButton::MOUSE_BUTTON_RIGHT);
         mapper.update(snap, stack, dt);
     }
     // By now elapsed ≈ 10 * dt ≈ 0.167s > 0.1s → should be Triggered
@@ -1138,7 +1158,7 @@ static void test_mapper_binding_trigger()
         {ETriggerKind::PRESSED, ETriggerLogicType::EXPLICIT, 0.5f}
     };
     ctx.actionMap()
-        .bindKey(Actions::Jump, KeyEnum::KEY_SPACE, InputValue::makeBool(true),
+        .bindKey(Actions::Jump, EKey::KEY_SPACE, InputValue::makeBool(true),
                  {}, pressed_trigger);
 
     InputContextStack stack;
@@ -1147,7 +1167,7 @@ static void test_mapper_binding_trigger()
     // Frame 1: press → fires (rising edge)
     {
         auto snap = makeBlankSnapshot();
-        pressKey(snap, KeyEnum::KEY_SPACE);
+        pressKey(snap, EKey::KEY_SPACE);
         mapper.update(snap, stack, snap.sample_dt);
         assert(mapper.triggered(Actions::Jump));
     }
@@ -1155,7 +1175,7 @@ static void test_mapper_binding_trigger()
     // Frame 2: hold → does NOT fire (no edge)
     {
         auto snap = makeBlankSnapshot();
-        holdKey(snap, KeyEnum::KEY_SPACE);
+        holdKey(snap, EKey::KEY_SPACE);
         mapper.update(snap, stack, snap.sample_dt);
         assert(!mapper.triggered(Actions::Jump));
     }
@@ -1163,7 +1183,7 @@ static void test_mapper_binding_trigger()
     // Frame 3: release → does NOT fire (Pressed is rising-edge only)
     {
         auto snap = makeBlankSnapshot();
-        releaseKey(snap, KeyEnum::KEY_SPACE);
+        releaseKey(snap, EKey::KEY_SPACE);
         mapper.update(snap, stack, snap.sample_dt);
         assert(!mapper.triggered(Actions::Jump));
     }
@@ -1171,7 +1191,7 @@ static void test_mapper_binding_trigger()
     // Frame 4: press again → fires again
     {
         auto snap = makeBlankSnapshot();
-        pressKey(snap, KeyEnum::KEY_SPACE);
+        pressKey(snap, EKey::KEY_SPACE);
         mapper.update(snap, stack, snap.sample_dt);
         assert(mapper.triggered(Actions::Jump));
     }
@@ -1192,7 +1212,7 @@ static void test_mapper_held_seconds()
 
     InputContext ctx("gameplay");
     ctx.actionMap()
-        .bindKey(Actions::Sprint, KeyEnum::KEY_LEFT_SHIFT, InputValue::makeBool(true));
+        .bindKey(Actions::Sprint, EKey::KEY_LEFT_SHIFT, InputValue::makeBool(true));
 
     InputContextStack stack;
     stack.push(&ctx);
@@ -1202,12 +1222,12 @@ static void test_mapper_held_seconds()
     // Press and hold for 10 frames
     {
         auto snap = makeBlankSnapshot(dt);
-        pressKey(snap, KeyEnum::KEY_LEFT_SHIFT);
+        pressKey(snap, EKey::KEY_LEFT_SHIFT);
         mapper.update(snap, stack, dt);
     }
     for (int i = 0; i < 9; ++i) {
         auto snap = makeBlankSnapshot(dt);
-        holdKey(snap, KeyEnum::KEY_LEFT_SHIFT);
+        holdKey(snap, EKey::KEY_LEFT_SHIFT);
         mapper.update(snap, stack, dt);
     }
 
@@ -1218,7 +1238,7 @@ static void test_mapper_held_seconds()
     // Release — held_seconds should reset
     {
         auto snap = makeBlankSnapshot(dt);
-        releaseKey(snap, KeyEnum::KEY_LEFT_SHIFT);
+        releaseKey(snap, EKey::KEY_LEFT_SHIFT);
         mapper.update(snap, stack, dt);
     }
     // After one more idle frame
@@ -1348,12 +1368,12 @@ static void test_mapper_multi_context_mouse_consume()
 
     InputContext ui_ctx("ui", false, true, 10); // consumes mouse
     ui_ctx.actionMap()
-        .bindMouseButton(UIClick, MouseButton::MOUSE_BUTTON_LEFT,
+        .bindMouseButton(UIClick, EMouseButton::MOUSE_BUTTON_LEFT,
                          InputValue::makeBool(true));
 
     InputContext game_ctx("game", false, false, 0);
     game_ctx.actionMap()
-        .bindMouseButton(GameShoot, MouseButton::MOUSE_BUTTON_LEFT,
+        .bindMouseButton(GameShoot, EMouseButton::MOUSE_BUTTON_LEFT,
                          InputValue::makeBool(true));
 
     InputContextStack stack;
@@ -1361,13 +1381,43 @@ static void test_mapper_multi_context_mouse_consume()
     stack.push(&ui_ctx);
 
     auto snap = makeBlankSnapshot();
-    pressMouse(snap, MouseButton::MOUSE_BUTTON_LEFT);
+    pressMouse(snap, EMouseButton::MOUSE_BUTTON_LEFT);
     mapper.update(snap, stack, snap.sample_dt);
 
     assert(mapper.triggered(UIClick));
     assert(!mapper.triggered(GameShoot)); // consumed by UI context
 
     TEST_SECTION("ActionMapper multi-context mouse consume");
+}
+
+static void test_input_ownership_and_synthetic_evaluation()
+{
+    Input input;
+    assert(&input.actionRegistry() == &input.mapper().actionRegistry());
+
+    const ActionId action = input.actionRegistry().registerAction(
+        {0, "input.synthetic", EInputValueType::BOOL}
+    );
+    InputContext context("synthetic");
+    context.actionMap().bindKey(
+        action,
+        EKey::KEY_SPACE,
+        InputValue::makeBool(true)
+    );
+    input.contexts().push(&context);
+
+    auto snapshot = makeBlankSnapshot();
+    pressKey(snapshot, EKey::KEY_SPACE);
+    input.evaluate(snapshot, snapshot.sample_dt);
+
+    assert(input.mapper().triggered(action));
+    assert(input.snapshot().isKeyJustPressed(EKey::KEY_SPACE));
+    assert(!input.snapshot().isKeyHeld(EKey::UNKNOWN));
+
+    Input empty;
+    empty.evaluate(1.0f / 60.0f);
+
+    TEST_SECTION("Input ownership + synthetic evaluation");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════ //
@@ -1403,6 +1453,7 @@ int main()
     test_mapper_binding_modifiers();
     test_mapper_scroll_axis();
     test_mapper_multi_context_mouse_consume();
+    test_input_ownership_and_synthetic_evaluation();
 
     std::printf("==============================\n");
     std::printf("All %d tests passed.\n", tests_passed);

@@ -1,5 +1,5 @@
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <lux/engine/dynamic_library/LibraryDecoration.hpp>
 
 #include <atomic>

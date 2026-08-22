@@ -70,6 +70,9 @@ namespace lux::flowforge {
           object_(this, DataPinInfo{"Object", &cls.type}),
           value_(this, DataPinInfo{std::string(field.name), &field.type})
     {
+        // The object input is mandatory and cannot be represented as a wire
+        // scalar constant. Keep it invalid until a producer is linked.
+        object_.constantData() = lux::meta::RuntimeObject{};
         setName("Get " + std::string(cls.name) + "." + std::string(field.name));
     }
 
@@ -87,6 +90,8 @@ namespace lux::flowforge {
           value_in_(this, DataPinInfo{std::string(field.name), &field.type}, /*allow_default=*/true),
           object_out_(this, DataPinInfo{"Object", &cls.type})
     {
+        // See GetFieldNode: only the field value has a default payload.
+        object_.constantData() = lux::meta::RuntimeObject{};
         setName("Set " + std::string(cls.name) + "." + std::string(field.name));
     }
 

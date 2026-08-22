@@ -1277,9 +1277,13 @@ namespace lux::render
             return renderFailure<err::internal::Unspecified>();
         }
 
-        const auto fb = window.framebufferSize();
+        std::uint32_t framebuffer_width = 0;
+        std::uint32_t framebuffer_height = 0;
+        window.framebufferSize(framebuffer_width, framebuffer_height);
         auto r = impl_->createSurfaceTargetInternal(
-            std::move(surface), VkExtent2D{fb.width, fb.height});
+            std::move(surface),
+            VkExtent2D{framebuffer_width, framebuffer_height}
+        );
         if (!r)
         {
             return lux::cxx::unexpected(r.error());

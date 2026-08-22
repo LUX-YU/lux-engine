@@ -364,7 +364,7 @@ namespace lux::runtime::entity_scene
         return failure_;
     }
 
-    const lux::scene::ScenePackageId& StartupSectionSystem::packageId()
+    const lux::asset::asset_id_t& StartupSectionSystem::packageId()
         const noexcept
     {
         return catalog_->package().id;

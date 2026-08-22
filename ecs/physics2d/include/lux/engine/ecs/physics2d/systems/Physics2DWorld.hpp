@@ -21,9 +21,9 @@
 
 #include <lux/engine/ecs/physics2d/components/Physics2DComponents.hpp>
 #include <lux/engine/ecs/physics2d/Physics2DConfig.hpp>
-#include <lux/engine/meta/LuxObject.hpp>            // EntityRegistry
+#include <lux/engine/ecs/Registry.hpp>            // EntityRegistry
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 
 #include <vector>
 
@@ -39,7 +39,7 @@ namespace lux::ecs
 
         /// One fixed substep: gather static colliders, then sweep every
         /// character controller and write its new position into Transform2D.
-        void step(lux::meta::EntityRegistry& registry, float fixed_dt);
+        void step(lux::ecs::Registry& registry, float fixed_dt);
 
         /// Register an external solid source (non-owning; caller keeps it alive
         /// while registered — the I2-00 FieldCollisionAdapter seam).
@@ -63,7 +63,7 @@ namespace lux::ecs
         Physics2DConfig                 cfg_;
         std::vector<StaticBox>          statics_;
         std::vector<ICollision2DProbe*> probes_;
-        lux::spatial::Position2D        physics_origin_{};
+        lux::math::Position2d        physics_origin_{};
     };
 
 } // namespace lux::ecs

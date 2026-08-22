@@ -4,7 +4,7 @@
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/description/Mesh.hpp>
@@ -12,12 +12,14 @@
 #include <lux/engine/description/Texture.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialSerDeser.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/SkeletonSerDeser.hpp>
-#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/content/BuiltinAssetIds.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/scene/SceneAsset.hpp>
+#include <lux/engine/ecs/scene_format/EntitySection.hpp>
+#include <lux/engine/resource/asset/material/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonSerDeser.hpp>
+#include <lux/engine/resource/asset/texture/TextureSerDeser.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
 
@@ -220,7 +222,7 @@ namespace
     struct BenchmarkAssetImage final
     {
         uuids::uuid id;
-        lux::asset::EAssetType type{lux::asset::EAssetType::UNKNOWN};
+        std::uint32_t magic_number{0u};
         std::string virtual_path;
         std::vector<std::byte> image;
     };
@@ -562,7 +564,7 @@ namespace
             return lux::cxx::unexpected(
                 lux::asset::EAssetError::ASSET_DESERIALIZE_FAIL);
         }
-        return lux::asset::TextureCodec::encodeData(id, *texture);
+        return lux::asset::TextureSerDeser::encodeData(id, *texture);
     }
 
     /// Toolchain must not link ECS merely to construct benchmark Authoring
@@ -593,31 +595,31 @@ namespace
         void boolean(std::string_view name, bool value)
         {
             const std::uint8_t wire = value ? 1u : 0u;
-            field(name, lux::serialize::EArchiveType::Bool, &wire,
+            field(name, lux::ecs::serialization::EArchiveType::Bool, &wire,
                 sizeof(wire));
         }
 
         void uint32(std::string_view name, std::uint32_t value)
         {
-            field(name, lux::serialize::EArchiveType::UInt32, &value,
+            field(name, lux::ecs::serialization::EArchiveType::UInt32, &value,
                 sizeof(value));
         }
 
         void floating(std::string_view name, float value)
         {
-            field(name, lux::serialize::EArchiveType::Float, &value,
+            field(name, lux::ecs::serialization::EArchiveType::Float, &value,
                 sizeof(value));
         }
 
         void vec2(std::string_view name, const std::array<float, 2>& value)
         {
-            field(name, lux::serialize::EArchiveType::Vec2f, value.data(),
+            field(name, lux::ecs::serialization::EArchiveType::Vec2f, value.data(),
                 sizeof(value));
         }
 
         void vec3(std::string_view name, const std::array<float, 3>& value)
         {
-            field(name, lux::serialize::EArchiveType::Vec3f, value.data(),
+            field(name, lux::ecs::serialization::EArchiveType::Vec3f, value.data(),
                 sizeof(value));
         }
 
@@ -626,7 +628,7 @@ namespace
             const auto index = names_.intern(name);
             writer_.writePod(index);
             writer_.writePod(static_cast<std::uint8_t>(
-                lux::serialize::EArchiveType::AssetRef));
+                lux::ecs::serialization::EArchiveType::Uuid));
             writer_.writePod(std::uint32_t{16u});
             writer_.writeUuid(value);
         }
@@ -635,14 +637,14 @@ namespace
         {
             if (finished_)
                 return;
-            writer_.writePod(lux::serialize::kEndOfObject);
+            writer_.writePod(lux::ecs::serialization::kEndOfObject);
             finished_ = true;
         }
 
     private:
         void field(
             std::string_view name,
-            lux::serialize::EArchiveType type,
+            lux::ecs::serialization::EArchiveType type,
             const void* data,
             std::size_t size)
         {
@@ -772,8 +774,10 @@ namespace
                 return std::nullopt;
             }
             const auto header = lux::asset::readAssetHeader(path);
-            const auto type = lux::asset::assetTypeOfMagic(header.magic);
-            if (type == lux::asset::EAssetType::UNKNOWN ||
+            const auto* codec =
+                lux::asset::runtimeAssetCodecCatalog()->findByMagic(
+                    header.magic);
+            if (codec == nullptr ||
                 header.id.is_nil())
             {
                 std::fprintf(
@@ -784,7 +788,7 @@ namespace
             }
             result.images.push_back({
                 header.id,
-                type,
+                header.magic,
                 virtualPath(spec.relative_path),
                 std::move(*image)});
         }
@@ -843,7 +847,7 @@ namespace
         staged_files.reserve(entries.capacity());
         const auto add_bytes = [&](
             uuids::uuid id,
-            lux::asset::EAssetType type,
+            std::uint32_t magic_number,
             std::string vpath,
             std::span<const std::byte> bytes) -> bool
         {
@@ -851,13 +855,13 @@ namespace
                 (uuids::to_string(id) + ".image");
             if (!writeBytes(path, bytes))
                 return false;
-            entries.push_back({id, type, std::move(vpath), path});
+            entries.push_back({id, magic_number, std::move(vpath), path});
             staged_files.push_back(path);
             return true;
         };
         if (!add_bytes(
-                bundle.package.id.value(),
-                lux::asset::EAssetType::ENTITY_SCENE,
+                bundle.package.id,
+                lux::scene::kSceneAssetMagic,
                 "Scenes/Benchmark",
                 bundle.encoded_package))
             return false;
@@ -872,7 +876,7 @@ namespace
             if (!stored || stored->content_path != expected_source ||
                 !add_bytes(
                     section.record.id.value(),
-                    lux::asset::EAssetType::ENTITY_SECTION,
+                    lux::ecs::scene_format::kEntitySectionImageMagic,
                     "EntitySections/" + key,
                     section.encoded_image))
             {
@@ -883,7 +887,8 @@ namespace
         {
             if (!add_bytes(
                     id,
-                    lux::asset::EAssetType::MESH,
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MESH>::value,
                     "Benchmark/Mesh/" + uuids::to_string(id),
                     image))
             {
@@ -894,7 +899,8 @@ namespace
         {
             if (!add_bytes(
                     mesh.id,
-                    lux::asset::EAssetType::MESH,
+                    lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MESH>::value,
                     mesh.virtual_path,
                     mesh.encoded_image))
             {
@@ -905,7 +911,7 @@ namespace
         {
             if (!add_bytes(
                     asset.id,
-                    asset.type,
+                    asset.magic_number,
                     asset.virtual_path,
                     asset.image))
             {

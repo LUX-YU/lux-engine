@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/RegistryStorageCapacity.hpp>
 #include <lux/engine/ecs/components/ParentComponent.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -24,10 +24,10 @@ namespace lux::ecs
         struct HierarchyMembershipState final {};
 
         inline void ensureHierarchyMembership(
-            lux::meta::EntityRegistryBase& registry,
-            lux::meta::entity_id entity)
+            lux::ecs::RegistryBase& registry,
+            lux::ecs::Entity entity)
         {
-            if (entity != lux::meta::null_entity && registry.valid(entity) &&
+            if (entity != lux::ecs::kNullEntity && registry.valid(entity) &&
                 !registry.all_of<HierarchyMembershipState>(entity))
             {
                 registry.emplace<HierarchyMembershipState>(entity);
@@ -49,7 +49,7 @@ namespace lux::ecs
     {
     public:
         explicit HierarchyIndex(
-            lux::meta::EntityRegistryBase& registry) noexcept
+            lux::ecs::RegistryBase& registry) noexcept
             : registry_(&registry)
         {
         }
@@ -142,14 +142,14 @@ namespace lux::ecs
             return unresolved_count_;
         }
 
-        [[nodiscard]] std::span<const lux::meta::entity_id> preorder()
+        [[nodiscard]] std::span<const lux::ecs::Entity> preorder()
         {
             (void)refresh();
             return preorder_;
         }
 
         [[nodiscard]] std::optional<HierarchySubtreeRange> subtreeRange(
-            lux::meta::entity_id entity)
+            lux::ecs::Entity entity)
         {
             (void)refresh();
             const auto found = findSubtreeRange(entity);
@@ -158,30 +158,30 @@ namespace lux::ecs
             return std::nullopt;
         }
 
-        [[nodiscard]] std::span<const lux::meta::entity_id> childrenOf(
-            lux::meta::entity_id entity)
+        [[nodiscard]] std::span<const lux::ecs::Entity> childrenOf(
+            lux::ecs::Entity entity)
         {
             (void)refresh();
             return childrenOfReady(entity);
         }
 
-        [[nodiscard]] bool hasChildren(lux::meta::entity_id entity)
+        [[nodiscard]] bool hasChildren(lux::ecs::Entity entity)
         {
             return !childrenOf(entity).empty();
         }
 
-        [[nodiscard]] lux::meta::entity_id parentOf(
-            lux::meta::entity_id entity)
+        [[nodiscard]] lux::ecs::Entity parentOf(
+            lux::ecs::Entity entity)
         {
             (void)refresh();
             const auto found = findParent(entity);
             if (found != parent_entries_.end() && found->child == entity)
                 return found->parent;
-            return lux::meta::null_entity;
+            return lux::ecs::kNullEntity;
         }
 
         template <class Visit>
-        void forEachInSubtree(lux::meta::entity_id root, Visit&& visit)
+        void forEachInSubtree(lux::ecs::Entity root, Visit&& visit)
         {
             static_cast<void>(refresh());
             if (const auto range = subtreeRangeReady(root))
@@ -216,32 +216,32 @@ namespace lux::ecs
     private:
         struct ParentEntry final
         {
-            lux::meta::entity_id child{lux::meta::null_entity};
-            lux::meta::entity_id parent{lux::meta::null_entity};
+            lux::ecs::Entity child{lux::ecs::kNullEntity};
+            lux::ecs::Entity parent{lux::ecs::kNullEntity};
         };
 
         struct ChildEdge final
         {
-            lux::meta::entity_id parent{lux::meta::null_entity};
-            lux::meta::entity_id child{lux::meta::null_entity};
+            lux::ecs::Entity parent{lux::ecs::kNullEntity};
+            lux::ecs::Entity child{lux::ecs::kNullEntity};
         };
 
         struct ChildRange final
         {
-            lux::meta::entity_id parent{lux::meta::null_entity};
+            lux::ecs::Entity parent{lux::ecs::kNullEntity};
             std::uint32_t first{0u};
             std::uint32_t count{0u};
         };
 
         struct SubtreeEntry final
         {
-            lux::meta::entity_id entity{lux::meta::null_entity};
+            lux::ecs::Entity entity{lux::ecs::kNullEntity};
             HierarchySubtreeRange range{};
         };
 
         struct DfsFrame final
         {
-            lux::meta::entity_id entity{lux::meta::null_entity};
+            lux::ecs::Entity entity{lux::ecs::kNullEntity};
             std::size_t next_child{0u};
             std::uint32_t first{0u};
         };
@@ -344,7 +344,7 @@ namespace lux::ecs
             ++rebuild_count_;
         }
 
-        void appendSubtree(lux::meta::entity_id root)
+        void appendSubtree(lux::ecs::Entity root)
         {
             auto* root_state = visitState(root);
             if (!root_state || *root_state != 0u)
@@ -384,70 +384,70 @@ namespace lux::ecs
         }
 
         [[nodiscard]] std::vector<ParentEntry>::iterator findParent(
-            lux::meta::entity_id entity)
+            lux::ecs::Entity entity)
         {
             return std::lower_bound(
                 parent_entries_.begin(),
                 parent_entries_.end(),
                 entity,
-                [](const ParentEntry& entry, lux::meta::entity_id value)
+                [](const ParentEntry& entry, lux::ecs::Entity value)
                 {
                     return entityLess(entry.child, value);
                 });
         }
 
         [[nodiscard]] std::vector<ParentEntry>::const_iterator findParent(
-            lux::meta::entity_id entity) const
+            lux::ecs::Entity entity) const
         {
             return std::lower_bound(
                 parent_entries_.begin(),
                 parent_entries_.end(),
                 entity,
-                [](const ParentEntry& entry, lux::meta::entity_id value)
+                [](const ParentEntry& entry, lux::ecs::Entity value)
                 {
                     return entityLess(entry.child, value);
                 });
         }
 
         [[nodiscard]] std::vector<ChildRange>::const_iterator findChildRange(
-            lux::meta::entity_id entity) const
+            lux::ecs::Entity entity) const
         {
             return std::lower_bound(
                 child_ranges_.begin(),
                 child_ranges_.end(),
                 entity,
-                [](const ChildRange& entry, lux::meta::entity_id value)
+                [](const ChildRange& entry, lux::ecs::Entity value)
                 {
                     return entityLess(entry.parent, value);
                 });
         }
 
-        [[nodiscard]] std::span<const lux::meta::entity_id> childrenOfReady(
-            lux::meta::entity_id entity) const noexcept
+        [[nodiscard]] std::span<const lux::ecs::Entity> childrenOfReady(
+            lux::ecs::Entity entity) const noexcept
         {
             const auto found = findChildRange(entity);
             if (found == child_ranges_.end() || found->parent != entity)
                 return {};
-            return std::span<const lux::meta::entity_id>{
+            return std::span<const lux::ecs::Entity>{
                 children_.data() + found->first,
                 found->count};
         }
 
         [[nodiscard]] std::vector<SubtreeEntry>::const_iterator
-        findSubtreeRange(lux::meta::entity_id entity) const
+        findSubtreeRange(lux::ecs::Entity entity) const
         {
             return std::lower_bound(
                 subtree_ranges_.begin(),
                 subtree_ranges_.end(),
                 entity,
-                [](const SubtreeEntry& entry, lux::meta::entity_id value)
+                [](const SubtreeEntry& entry, lux::ecs::Entity value)
                 {
                     return entityLess(entry.entity, value);
                 });
         }
 
         [[nodiscard]] std::optional<HierarchySubtreeRange> subtreeRangeReady(
-            lux::meta::entity_id entity) const noexcept
+            lux::ecs::Entity entity) const noexcept
         {
             const auto found = findSubtreeRange(entity);
             if (found == subtree_ranges_.end() || found->entity != entity)
@@ -456,7 +456,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] std::uint8_t* visitState(
-            lux::meta::entity_id entity) noexcept
+            lux::ecs::Entity entity) noexcept
         {
             const auto found = std::lower_bound(
                 nodes_.begin(), nodes_.end(), entity, entityLess);
@@ -467,13 +467,13 @@ namespace lux::ecs
         }
 
         [[nodiscard]] static bool entityLess(
-            lux::meta::entity_id left,
-            lux::meta::entity_id right) noexcept
+            lux::ecs::Entity left,
+            lux::ecs::Entity right) noexcept
         {
             return entt::to_integral(left) < entt::to_integral(right);
         }
 
-        lux::meta::EntityRegistryBase* registry_{nullptr};
+        lux::ecs::RegistryBase* registry_{nullptr};
         bool topology_dirty_{true};
         std::uint64_t topology_revision_{0u};
         std::uint64_t rebuild_count_{0u};
@@ -481,58 +481,58 @@ namespace lux::ecs
 
         std::vector<ParentEntry> parent_entries_;
         std::vector<ChildEdge> child_edges_;
-        std::vector<lux::meta::entity_id> children_;
+        std::vector<lux::ecs::Entity> children_;
         std::vector<ChildRange> child_ranges_;
         std::vector<SubtreeEntry> subtree_ranges_;
         std::vector<std::uint8_t> visit_state_;
-        std::vector<lux::meta::entity_id> nodes_;
-        std::vector<lux::meta::entity_id> roots_;
-        std::vector<lux::meta::entity_id> preorder_;
+        std::vector<lux::ecs::Entity> nodes_;
+        std::vector<lux::ecs::Entity> roots_;
+        std::vector<lux::ecs::Entity> preorder_;
         std::vector<DfsFrame> dfs_stack_;
     };
 
     inline void detail_hierarchyIndexOnConstruct(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity)
     {
         registry.ctx().get<HierarchyIndex>().markTopologyDirty();
     }
 
     inline void detail_hierarchyIndexOnUpdate(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity)
     {
         registry.ctx().get<HierarchyIndex>().markTopologyDirty();
     }
 
     inline void detail_hierarchyIndexOnDestroy(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity)
     {
         registry.ctx().get<HierarchyIndex>().markTopologyDirty();
     }
 
     inline void detail_hierarchyMembershipOnDestroy(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity)
     {
         registry.ctx().get<HierarchyIndex>().markTopologyDirty();
     }
 
     [[nodiscard]] inline HierarchyIndex& hierarchyIndex(
-        lux::meta::EntityRegistryBase& registry)
+        lux::ecs::RegistryBase& registry)
     {
         return registry.ctx().get<HierarchyIndex>();
     }
 
     [[nodiscard]] inline const HierarchyIndex& hierarchyIndex(
-        const lux::meta::EntityRegistryBase& registry)
+        const lux::ecs::RegistryBase& registry)
     {
         return registry.ctx().get<HierarchyIndex>();
     }
 
     inline HierarchyIndex& ensureHierarchyIndex(
-        lux::meta::EntityRegistryBase& registry)
+        lux::ecs::RegistryBase& registry)
     {
         if (auto* existing = registry.ctx().find<HierarchyIndex>())
             return *existing;
@@ -557,13 +557,13 @@ namespace lux::ecs
         return index;
     }
 
-    inline lux::meta::entity_id hierarchyRoot(
-        const lux::meta::EntityRegistryBase& registry,
-        lux::meta::entity_id entity) noexcept
+    inline lux::ecs::Entity hierarchyRoot(
+        const lux::ecs::RegistryBase& registry,
+        lux::ecs::Entity entity) noexcept
     {
         const auto* storage = registry.storage<ParentComponent>();
         std::size_t budget = (storage ? storage->size() : 0u) + 1u;
-        while (entity != lux::meta::null_entity && budget-- != 0u)
+        while (entity != lux::ecs::kNullEntity && budget-- != 0u)
         {
             const auto* parent = registry.try_get<const ParentComponent>(entity);
             if (!parent || !registry.valid(parent->parent()))

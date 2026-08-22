@@ -128,28 +128,28 @@ namespace lux::ecs
         }
 
         void onConstructed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueue(entity);
         }
 
         void onUpdated(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueue(entity);
         }
 
         void onDestroyed(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueue(entity);
         }
 
         void attach(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             EcsCommandWriter writer)
         {
             if (attached)
@@ -169,7 +169,7 @@ namespace lux::ecs
             }
         }
 
-        void detach(lux::meta::EntityRegistry& registry) noexcept
+        void detach(lux::ecs::Registry& registry) noexcept
         {
             if (!closeComplete())
                 std::abort();
@@ -258,7 +258,7 @@ namespace lux::ecs
         std::shared_ptr<lux::navigation::detour3d::Navigation3DBackend> backend;
         Navigation3DSystemConfig config;
         const std::thread::id owner_thread;
-        lux::meta::EntityRegistryBase* attached{nullptr};
+        lux::ecs::RegistryBase* attached{nullptr};
         EcsCommandWriter commands;
         entt::scoped_connection constructed;
         entt::scoped_connection updated;
@@ -316,7 +316,7 @@ namespace lux::ecs
     }
 
     void Navigation3DSystem::applyReconcile(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity) noexcept
     {
         if (impl_->attached != &registry)
@@ -769,7 +769,7 @@ namespace lux::ecs
     }
 
     void Navigation3DSystem::applyPublish(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
         std::uint64_t generation) noexcept
     {
@@ -808,7 +808,7 @@ namespace lux::ecs
     }
 
     void Navigation3DSystem::applyFailure(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
         std::uint64_t generation,
         ENavigationRegion3DFailureCode failure) noexcept

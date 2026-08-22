@@ -287,7 +287,7 @@ void FrameOrchestrator::renderTargets(RenderTargetRegistry& targets,
                 continue;
             const auto slot = static_cast<TargetSlot>(i);
             const auto d    = defaultTargetSlotDesc(slot);
-            if (d.format == lux::common::ETextureFormat::UNDEFINED)
+            if (d.format == lux::rdesc::ETextureFormat::UNDEFINED)
                 continue;   // 主槽/未知槽不经形状表
             t.layout.slots[i] = d;
             renderer.renderContext().reportError(

@@ -58,8 +58,8 @@ namespace
             {
                 return lhs.id.value() < rhs.id.value();
             });
-        lux::scene::ScenePackage package;
-        package.id = lux::scene::ScenePackageId{uuid(
+        lux::scene::SceneDescription package;
+        package.id = lux::asset::asset_id_t{uuid(
             "80000000-0000-4000-8000-000000000001")};
         package.sections = std::move(records);
         auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(

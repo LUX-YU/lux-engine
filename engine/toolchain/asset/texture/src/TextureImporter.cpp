@@ -1,6 +1,6 @@
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
 
-#include <AssetManagerImpl.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -493,7 +493,7 @@ namespace lux::toolchain
     TextureImporter::TextureImporter(
         std::shared_ptr<lux::asset::AssetManager> manager
     )
-        : TextureCodec(std::move(manager))
+        : TextureSerDeser(std::move(manager))
     {
     }
 

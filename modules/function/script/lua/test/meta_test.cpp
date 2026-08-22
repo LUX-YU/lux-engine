@@ -63,8 +63,6 @@ int main()
 		test_class_meta->construct(mem);
 		auto obj = reinterpret_cast<TestClass*>(mem);
 		assert(obj);
-		std::cout << "Object id:" << static_cast<uint32_t>(obj->id()) << std::endl;
-	
 		int arg1 = 10;
 		std::string arg2 = "Hello";
 		void* args[2]{
@@ -115,7 +113,7 @@ assert(a:func(5,"hi") == 6)
 		auto ref = script_engine->parseScript(code);
 		if (!ref) { std::cerr << "parseScript failed"; return 1; }
 
-		script_engine->runScript(*ref);
+		(void)script_engine->runScript(*ref);
 		std::cout << "[C++] all tests passed 🎉\n";
 	}
 

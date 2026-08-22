@@ -6,7 +6,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
-#include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
+#include <lux/engine/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/runtime/extensions/SceneContributions.hpp>
 #include <lux/engine/runtime/spatial_partition/SpatialDemand.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/contribution_visibility.h>
@@ -18,7 +18,7 @@ namespace lux::runtime
     [[nodiscard]] LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_CONTRIBUTION_PUBLIC
     lux::runtime::spatial_partition::SpatialDemandSourceId
     spatial3DDemandSourceNamespace(
-        const lux::spatial3d_scene::Spatial3DSceneCatalogBand& band);
+        const lux::spatial3d::SceneCatalogBand& band);
 
     [[nodiscard]] LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_CONTRIBUTION_PUBLIC
     lux::cxx::expected<

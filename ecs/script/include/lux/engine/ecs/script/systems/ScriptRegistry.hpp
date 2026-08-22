@@ -1,22 +1,19 @@
 #pragma once
 // ============================================================================
-//  ScriptRegistry.hpp — the script backend + factory registry (lux::ecs).
+//  ScriptRegistry.hpp — process-global C++ behavior registry (lux::ecs).
 //
-//  Owns the IScriptBackends and, for the C++ path, a name→ops table that
+//  Owns only the process-global C++ behavior name→ops table that
 //  LUX_REGISTER_SCRIPT populates by SELF-REGISTRATION (delivery-agnostic: a game
 //  DLL registers on load; a statically-linked module registers at startup — same
 //  table).
 //
 //  ADR v2 — the C++ ops are emitted by a TEMPLATE at registration, so the
 //  compiler (not the meta generator) does the two jobs the ADR wanted:
-//    · OVERRIDE DETECTION: `decltype(&T::onUpdate)` is a pointer-to-member of
-//      the class that DECLARES the override — comparing against the base's
-//      member-pointer type tells, at compile time, which lifecycle events T
-//      actually implements. Only those get event-table entries, so C++ joins
+//    · MEMBER DETECTION: requires-expressions determine which exact noexcept
+//      lifecycle members T implements. Only those get event-table entries, so C++ joins
 //      the "only dispatch to implementers" subscription-index contract.
-//    · DEVIRTUALIZED SHIMS: the shim calls `T::onUpdate` by QUALIFIED name —
-//      a direct, inlinable call (T is the most-derived registered type; the
-//      factory constructs exactly T, so bypassing the vtable is sound).
+//    · DIRECT SHIMS: the ABI thunk calls `T::onUpdate` by qualified name.
+//      ScriptBehavior has no vtable and the concrete type is known here.
 //  Instances live in a per-type chunked pool (stable addresses — locality
 //  without the relocation hazards of a compacting arena).
 //
@@ -29,6 +26,7 @@
 #include <lux/engine/function/visibility.h>
 
 #include <cstddef>
+#include <concepts>
 #include <memory>
 #include <new>
 #include <string>
@@ -50,9 +48,21 @@ namespace lux::ecs
     {
         void* (*construct)()      = nullptr;
         void  (*destroy)(void*)   = nullptr;
-        ScriptEventFn on_create   = nullptr;
-        ScriptEventFn on_update   = nullptr;
-        ScriptEventFn on_destroy  = nullptr;
+        void  (*bind_context)(void*, EntityHandle, World&) = nullptr;
+        lux_script_invoke_fn on_create  = nullptr;
+        lux_script_invoke_fn on_update  = nullptr;
+        lux_script_invoke_fn on_destroy = nullptr;
+    };
+
+    template<class T>
+    struct ScriptBehaviorAccess
+    {
+        static void bind(T& behavior, EntityHandle self, World& world) noexcept
+        {
+            auto& base = static_cast<ScriptBehavior&>(behavior);
+            base.self_ = self;
+            base.world_ = &world;
+        }
     };
 
     namespace detail
@@ -103,17 +113,23 @@ namespace lux::ecs
             std::vector<void*>                  free_;
         };
 
-        /// Compile-time "does T override this lifecycle method": the member
-        /// pointer's class is the one DECLARING the (most-derived) override.
         template<class T>
-        inline constexpr bool overrides_on_create =
-            !std::is_same_v<decltype(&T::onCreate), void (ScriptBehavior::*)()>;
+        concept HasOnCreate = requires(T& value)
+        {
+            { value.onCreate() } noexcept -> std::same_as<void>;
+        };
+
         template<class T>
-        inline constexpr bool overrides_on_update =
-            !std::is_same_v<decltype(&T::onUpdate), void (ScriptBehavior::*)(float)>;
+        concept HasOnUpdate = requires(T& value, float dt)
+        {
+            { value.onUpdate(dt) } noexcept -> std::same_as<void>;
+        };
+
         template<class T>
-        inline constexpr bool overrides_on_destroy =
-            !std::is_same_v<decltype(&T::onDestroy), void (ScriptBehavior::*)()>;
+        concept HasOnDestroy = requires(T& value)
+        {
+            { value.onDestroy() } noexcept -> std::same_as<void>;
+        };
 
         template<class T>
         CppBehaviorOps makeCppBehaviorOps()
@@ -122,41 +138,51 @@ namespace lux::ecs
                           "a registered script must derive from ScriptBehavior");
             static_assert(std::is_default_constructible_v<T>,
                           "a registered script must be default-constructible");
+            static_assert(std::is_nothrow_destructible_v<T>,
+                          "a registered script must be nothrow-destructible");
+            static_assert(!std::is_polymorphic_v<T>,
+                          "a registered script must not contain a vptr");
 
             CppBehaviorOps ops{};
             ops.construct = []() -> void*
             {
                 void* slot = BehaviorPool<T>::instance().acquire();
-                // state convention: void* = ScriptBehavior* (single upcast).
-                return static_cast<ScriptBehavior*>(new (slot) T());
+                return new (slot) T();
             };
             ops.destroy = [](void* state)
             {
-                T* t = static_cast<T*>(static_cast<ScriptBehavior*>(state));
+                T* t = static_cast<T*>(state);
                 t->~T();
                 BehaviorPool<T>::instance().release(t);
             };
-            // Qualified calls — direct, inlinable, no vtable hop. Bound ONLY
-            // when T actually overrides, so absent events stay absent from
-            // the subscription index.
-            if constexpr (overrides_on_create<T>)
-                ops.on_create = [](void* s, ScriptEventId, void* const*) -> bool
+            ops.bind_context = [](void* state, EntityHandle self, World& world)
+            {
+                ScriptBehaviorAccess<T>::bind(
+                    *static_cast<T*>(state),
+                    self,
+                    world
+                );
+            };
+            if constexpr (HasOnCreate<T>)
+                ops.on_create = [](lux_script_call_frame* frame) noexcept -> int
                 {
-                    static_cast<T*>(static_cast<ScriptBehavior*>(s))->T::onCreate();
-                    return true;
+                    static_cast<T*>(frame->user_context)->T::onCreate();
+                    return 0;
                 };
-            if constexpr (overrides_on_update<T>)
-                ops.on_update = [](void* s, ScriptEventId, void* const* a) -> bool
+            if constexpr (HasOnUpdate<T>)
+                ops.on_update = [](lux_script_call_frame* frame) noexcept -> int
                 {
-                    static_cast<T*>(static_cast<ScriptBehavior*>(s))
-                        ->T::onUpdate(*static_cast<const float*>(a[0]));
-                    return true;
+                    const auto& slot = frame->args[0];
+                    static_cast<T*>(frame->user_context)->T::onUpdate(
+                        *static_cast<const float*>(slot.data)
+                    );
+                    return 0;
                 };
-            if constexpr (overrides_on_destroy<T>)
-                ops.on_destroy = [](void* s, ScriptEventId, void* const*) -> bool
+            if constexpr (HasOnDestroy<T>)
+                ops.on_destroy = [](lux_script_call_frame* frame) noexcept -> int
                 {
-                    static_cast<T*>(static_cast<ScriptBehavior*>(s))->T::onDestroy();
-                    return true;
+                    static_cast<T*>(frame->user_context)->T::onDestroy();
+                    return 0;
                 };
             return ops;
         }
@@ -166,9 +192,7 @@ namespace lux::ecs
     {
     public:
         ScriptRegistry() = default;
-        // Non-copyable (singleton + a vector<unique_ptr> member). Explicitly deleted
-        // so the dllexport (LUX_FUNCTION_PUBLIC) does not try to instantiate an
-        // implicit copy of the move-only backend vector.
+        // Non-copyable process-global registration table.
         ScriptRegistry(const ScriptRegistry&)            = delete;
         ScriptRegistry& operator=(const ScriptRegistry&) = delete;
 
@@ -184,26 +208,13 @@ namespace lux::ecs
             registerCppScript(name, detail::makeCppBehaviorOps<T>());
         }
 
-        /// Register a non-Cpp backend (Lua/native/flowforge — later phases).
-        void registerBackend(std::unique_ptr<IScriptBackend> backend);
-
-        /// Forward the per-frame context to every backend (input, …). Called by
-        /// ScriptSystem before dispatch.
-        void beginFrame(const ScriptContext& ctx);
-
-        /// Asset-routed creation — the ONLY creation door (the name path
-        /// retired with ScriptComponent.entry). CppBehaviorScript
-        /// resolves against the registry's own factory table (the lifecycle
-        /// shims are bound here); every other kind is offered to the backends
-        /// in registration order — the first that claims it wins. Returns an
-        /// EMPTY instance when nothing accepts.
+        /// C++ behavior creation. Lua/Native backends are playback-session
+        /// owners and never enter this process-global registry.
         [[nodiscard]] ScriptInstance
-            createInstanceFromAsset(
-                lux::meta::EntityHandle entity,
+            createCppInstanceFromAsset(
+                lux::ecs::EntityHandle entity,
                 World& world,
-                                    const lux::rdesc::Script&  desc,
-                                    std::span<const std::byte> payload,
-                                    std::string_view           cache_key) const;
+                const lux::rdesc::Script& desc) const;
 
         [[nodiscard]] bool hasCppScript(std::string_view name) const;
 
@@ -214,7 +225,6 @@ namespace lux::ecs
 
     private:
         std::unordered_map<std::string, CppBehaviorOps> cpp_scripts_;
-        std::vector<std::unique_ptr<IScriptBackend>>    backends_;
     };
 
     /// Process-wide registry (function-local static — safe static-init order).

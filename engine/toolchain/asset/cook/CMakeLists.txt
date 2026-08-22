@@ -26,8 +26,6 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
-    PRIVATE
-        ${PROJECT_SOURCE_DIR}/modules/resource/asset/pinclude
 )
 
 target_compile_definitions(
@@ -38,13 +36,13 @@ target_compile_definitions(
 target_link_libraries(
     toolchain_asset_cook
     PUBLIC
-        lux::engine::resource::asset_pak
+        lux::engine::resource::asset
         lux::cxx::algorithm
-    PRIVATE lux::engine::platform::common
+    PRIVATE lux::cxx::core
 )
 
 component_add_transitive_commands(
     toolchain_asset_cook
-    "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_pak)"
+    "find_package(lux-cxx REQUIRED COMPONENTS algorithm core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )

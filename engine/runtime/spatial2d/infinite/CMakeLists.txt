@@ -40,8 +40,8 @@ target_link_libraries(
         lux::engine::ecs::core
         lux::engine::ecs::spatial2d_components
         lux::engine::ecs::transform
-        lux::engine::scene::scene_package
-        lux::engine::resource::spatial
+        lux::engine::scene::scene
+        lux::engine::core::math
         lux::engine::runtime::runtime_spatial_partition
         lux::cxx::compile_time
 )
@@ -49,8 +49,8 @@ target_link_libraries(
 component_add_transitive_commands(
     runtime_spatial2d_infinite
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core spatial2d_components transform)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_package)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS spatial)"
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_spatial_partition)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
@@ -101,12 +101,13 @@ target_link_libraries(
     PRIVATE
         lux::cxx::algorithm
         lux::engine::core::serialization
+        lux::engine::ecs::component_archive
 )
 
 component_add_transitive_commands(
     runtime_pack_infinite2d
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_execution runtime_spatial2d_infinite)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS pixel scene_format)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS pixel scene_format component_archive)"
 )
 
 lux_classify_target(
@@ -149,8 +150,9 @@ target_link_libraries(
         lux::engine::runtime::runtime_execution
         lux::engine::runtime::runtime_spatial2d_tilemap
         lux::engine::core::serialization
+        lux::engine::ecs::component_archive
         lux::engine::ecs::tilemap
-        lux::engine::resource::tilemap_content
+        lux::engine::resource::asset
 )
 if(MSVC)
     target_compile_options(infinite2d_headless_test PRIVATE /UNDEBUG)

@@ -238,8 +238,8 @@ namespace
         [[nodiscard]] std::size_t registryPublicationBytes()
             const noexcept { return 0u; }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry&) const noexcept {}
-        void apply(lux::meta::EntityRegistry&, CommandProbe<Id>&) const;
+            lux::ecs::Registry&) const noexcept {}
+        void apply(lux::ecs::Registry&, CommandProbe<Id>&) const;
     };
 
     /// 应用时**再入队一条**:验证「barrier 期新入队的留到下一轮」。
@@ -251,8 +251,8 @@ namespace
         [[nodiscard]] std::size_t registryPublicationBytes()
             const noexcept { return 0u; }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry&) const noexcept {}
-        void apply(lux::meta::EntityRegistry&, CommandProbe<Id>&) const;
+            lux::ecs::Registry&) const noexcept {}
+        void apply(lux::ecs::Registry&, CommandProbe<Id>&) const;
     };
 
     template <int Id>
@@ -292,14 +292,14 @@ namespace
 
     template <int Id>
     void RecordCommand<Id>::apply(
-        lux::meta::EntityRegistry&, CommandProbe<Id>& self) const
+        lux::ecs::Registry&, CommandProbe<Id>& self) const
     {
         if (self.trace) self.trace->applied.push_back(tag);
     }
 
     template <int Id>
     void ReentrantCommand<Id>::apply(
-        lux::meta::EntityRegistry&, CommandProbe<Id>& self) const
+        lux::ecs::Registry&, CommandProbe<Id>& self) const
     {
         if (self.trace) self.trace->applied.push_back(tag);
         (void)self.writer.push(RecordCommand<Id>{tag + 1});

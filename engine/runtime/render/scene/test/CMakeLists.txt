@@ -12,6 +12,28 @@ function(lux_scene_runtime_test_enable_stdexec target)
     endif()
 endfunction()
 
+# The loader fixtures are declared before runtime_render_scene.  Keep this
+# vertical transaction test with the first point where every participant is a
+# real target; configuring it in loader/test made the old TARGET guard always
+# false because CMake had not visited render/scene yet.
+add_executable(engine_extensions_test engine_extensions_test.cpp)
+target_link_libraries(
+    engine_extensions_test
+    PRIVATE
+        runtime_render_scene
+        runtime_render_scene_test_support
+        lux::engine::runtime::runtime_execution
+        lux::engine::runtime::runtime_contribution_host
+)
+lux_scene_runtime_test_enable_stdexec(engine_extensions_test)
+add_dependencies(
+    engine_extensions_test
+    minimal_extension_module
+    dependent_extension_module
+    component_extension_module
+    rollback_extension_module
+)
+
 add_executable(render_request_sender_test render_request_sender_test.cpp)
 target_link_libraries(
     render_request_sender_test
@@ -34,7 +56,7 @@ target_link_libraries(render_resource_manager_test
     PRIVATE
     runtime_render_scene_test_support
     lux::engine::runtime::runtime_execution          # 直接驱动 AsyncRuntime(drainMainThreadCompletions/构造)
-    lux::engine::resource::asset_codecs
+    lux::engine::resource::asset
 )
 lux_scene_runtime_test_enable_stdexec(render_resource_manager_test)
 
@@ -50,7 +72,7 @@ target_link_libraries(
         lux::engine::runtime::runtime_scene_core
         lux::engine::runtime::runtime_execution
         lux::engine::function::input
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
 )
 lux_scene_runtime_test_enable_stdexec(headless_scene_runtime_test)
 
@@ -71,7 +93,7 @@ target_link_libraries(
     scene_content_render_contract_test
     PRIVATE
         runtime_render_scene_test_support
-        lux::engine::resource::classic_mesh_content
+        lux::engine::function::render_standard_content
 )
 
 add_executable(
@@ -113,7 +135,7 @@ target_link_libraries(residency_gpu_probe
     runtime_render_scene_test_support
     lux::engine::runtime::runtime_execution                          # AsyncRuntime
     lux::engine::platform::window      # DeviceRenderFixture 的窗口面
-    lux::engine::resource::asset_codecs
+    lux::engine::resource::asset
 )
 lux_scene_runtime_test_enable_stdexec(residency_gpu_probe)
 
@@ -226,9 +248,10 @@ target_link_libraries(
         lux::engine::ecs::render_2d
         lux::engine::ecs::render_pixel_integration
         lux::engine::function::render_features
-        lux::engine::resource::asset_codecs
-        lux::engine::resource::tilemap_content
+        lux::engine::resource::asset
+        lux::engine::resource::asset
         lux::engine::core::serialization
+        lux::engine::ecs::component_archive
         lux::engine::platform::window
 )
 if(MSVC)

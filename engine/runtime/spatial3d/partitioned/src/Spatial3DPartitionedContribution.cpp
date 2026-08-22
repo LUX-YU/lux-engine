@@ -1,6 +1,6 @@
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DPartitionedContribution.hpp>
 
-#include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
+#include <lux/engine/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
@@ -24,7 +24,7 @@ namespace lux::runtime
 {
     lux::runtime::spatial_partition::SpatialDemandSourceId
     spatial3DDemandSourceNamespace(
-        const lux::spatial3d_scene::Spatial3DSceneCatalogBand& band)
+        const lux::spatial3d::SceneCatalogBand& band)
     {
         // Length-prefix both canonical identities.  Dot concatenation alone
         // is ambiguous because dots are legal inside either operand.
@@ -49,7 +49,7 @@ namespace lux::runtime
             return {
                 ESceneContributionBuildError::INVALID_CONFIG,
                 lux::ecs::typeToken<
-                    lux::spatial3d_scene::Spatial3DSceneCatalogConfig>()};
+                    lux::spatial3d::SceneCatalog>()};
         }
 
         [[nodiscard]] bool recordHasChannel(
@@ -61,8 +61,7 @@ namespace lux::runtime
                 record.demand_channels.end(),
                 [&channel](const auto& candidate)
                 {
-                    return lux::extensions::sameStableId(
-                        candidate.view(), channel.view());
+                    return candidate.view() == channel.view();
                 });
         }
 
@@ -77,11 +76,11 @@ namespace lux::runtime
             SceneContributionBuildFailure>
         validateAndBuildCatalog(
             const entity_scene::EntitySceneCatalog& scene,
-            lux::spatial3d_scene::Spatial3DSceneCatalogConfig config)
+            lux::spatial3d::SceneCatalog config)
         {
-            using lux::spatial3d_scene::Spatial3DSceneCatalogEntry;
+            using lux::spatial3d::SceneCatalogEntry;
 
-            // The resource codec already guarantees canonical bands, one
+            // The Engine-owned codec already guarantees canonical bands, one
             // entry per Section, one cell per band and at least one entry in
             // every band. Here the contribution additionally proves that the
             // opaque config is an exact index over the authoritative LXSC
@@ -96,9 +95,8 @@ namespace lux::runtime
                         catalog_channels.end(),
                         [&band](const auto& channel)
                         {
-                            return lux::extensions::sameStableId(
-                                channel.view(),
-                                band.demand_channel.view());
+                            return channel.view() ==
+                                band.demand_channel.view();
                         }))
                 {
                     catalog_channels.push_back(band.demand_channel);
@@ -145,9 +143,8 @@ namespace lux::runtime
                     }
                     const auto& assigned =
                         config.bands[configured->second].demand_channel;
-                    if (!lux::extensions::sameStableId(
-                            assigned.view(),
-                            record_catalog_channel->view()))
+                    if (assigned.view() !=
+                        record_catalog_channel->view())
                     {
                         return lux::cxx::unexpected(invalidConfig());
                     }
@@ -173,7 +170,7 @@ namespace lux::runtime
                         std::string{source_namespace.name()}).second)
                     return lux::cxx::unexpected(invalidConfig());
                 std::vector<spatial3d::Spatial3DSectionCatalogEntry> entries;
-                for (const Spatial3DSceneCatalogEntry& entry : config.entries)
+                for (const SceneCatalogEntry& entry : config.entries)
                 {
                     if (entry.band == band_index)
                     {
@@ -227,7 +224,7 @@ namespace lux::runtime
         SceneContributionDescriptor descriptor;
         descriptor.id = lux::scene::SceneFeatureId{
             std::string{
-                lux::spatial3d_scene::kSpatial3DContributionName}};
+                lux::spatial3d::kPartitionedFeatureName}};
         descriptor.display_name = "Partitioned 3D spatial residency";
         descriptor.required_contributions.emplace_back(
             std::string{kSpatial3DTransformContributionName});
@@ -239,7 +236,7 @@ namespace lux::runtime
                 spatial_partition::SpatialPartitionSystem>(),
             lux::ecs::typeToken<spatial3d::SpatialInterest3DSystem>()};
         descriptor.config_schema_version =
-            lux::spatial3d_scene::kSpatial3DSceneCatalogSchemaVersion;
+            lux::spatial3d::kSceneCatalogSchemaVersion;
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [](
@@ -247,7 +244,7 @@ namespace lux::runtime
             const SceneContributionBuildContext& context,
             ContributionConfig contribution) -> BuildResult
         {
-            auto decoded = lux::spatial3d_scene::decodeSpatial3DSceneCatalog(
+            auto decoded = lux::spatial3d::decodeSceneCatalog(
                 contribution.bytes.view());
             if (!decoded)
                 return lux::cxx::unexpected(invalidConfig());

@@ -12,17 +12,18 @@
  */
 
 #include <lux/engine/runtime/extensions/SceneContributions.hpp>
-#include <lux/engine/meta/LuxObject.hpp>              // entity_id
+#include <lux/engine/ecs/Registry.hpp>              // entity_id
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>   // RenderTargetId
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>                 // asset_id_t
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 
 #include <Eigen/Core>
 
 #include <string_view>
 
 namespace lux::ecs { class World; }
+namespace lux::asset { class AssetManager; }
 
 namespace lux::editor
 {
@@ -47,11 +48,18 @@ namespace lux::editor
     /// Build the transient LXSC value for one private preview world. Registering
     /// the descriptor in a catalog is not activation: the manifest must select
     /// it so SceneRuntime installs the mesh resolver and extraction subsystem.
-    [[nodiscard]] lux::scene::ScenePackage
-    makePreviewScenePackage(std::string_view scene_name);
+    [[nodiscard]] lux::scene::SceneDescription
+    makePreviewSceneDescription(std::string_view scene_name);
+
+    /// Register the deterministic private preview SceneAsset in the existing
+    /// process AssetManager and return its id. Repeated registration of the
+    /// same preview id reuses the already-present asset.
+    [[nodiscard]] lux::asset::asset_id_t registerPreviewSceneAsset(
+        lux::asset::AssetManager& assets,
+        std::string_view scene_name);
 
     /// 常驻 key light(方向/暖白/强度/投影与旧手写预览场景的常驻灯同参)。
-    lux::meta::entity_id createPreviewKeyLight(lux::ecs::World& world);
+    lux::ecs::Entity createPreviewKeyLight(lux::ecs::World& world);
 
     /// 取景相机实体：Transform3D + ResolvedTransform3D + Camera3D（fov 45°，
     /// render-client canonical Y-down projection)+ ViewPresentComponent{target, 0, extent}。
@@ -59,9 +67,9 @@ namespace lux::editor
     /// 派生(活预览面板改尺寸时 patch extent 即可)。
     /// 调用方装配末尾要自己 `runtime->settleViewCreation()`(第一帧提交之前
     /// view 必须在位,否则 target 上没有任何层)。
-    lux::meta::entity_id createPreviewCamera(lux::ecs::World&            world,
+    lux::ecs::Entity createPreviewCamera(lux::ecs::World&            world,
                                              lux::render::RenderTargetId target,
-                                             lux::common::Size2D         extent,
+                                             lux::math::Extent2u         extent,
                                              bool                        auto_aspect);
 
     /// 把相机实体摆到 @p eye、看向 @p center:写 Transform3D 位姿(相机沿局部
@@ -69,7 +77,7 @@ namespace lux::editor
     /// 前置:eye→center 方向不与世界 up(+Y)平行(两处调用方的取景方向都带
     /// 水平分量,叉积无退化)。
     void aimPreviewCamera(lux::ecs::World&       world,
-                          lux::meta::entity_id   camera,
+                          lux::ecs::Entity   camera,
                           const Eigen::Vector3f& eye,
                           const Eigen::Vector3f& center);
 

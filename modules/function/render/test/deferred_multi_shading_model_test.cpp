@@ -259,7 +259,7 @@ int main()
     // readback needs no tonemap pass).
     RenderControlSession::CreateSceneConfig scfg{};
     scfg.name             = "MultiSMScene";
-    scfg.lit_color_format = lux::common::ETextureFormat::RGBA8_SRGB;
+    scfg.lit_color_format = lux::rdesc::ETextureFormat::RGBA8_SRGB;
     s.beginFrame({});
     const auto scene = await(control, w, control.createScene(scfg));
     s.beginFrame({});

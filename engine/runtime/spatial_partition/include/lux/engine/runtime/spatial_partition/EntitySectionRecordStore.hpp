@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file EntitySectionRecordStore.hpp
- * @brief Immutable lookup table for one ScenePackage's Section records.
+ * @brief Immutable lookup table for one SceneDescription's Section records.
  */
 
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>

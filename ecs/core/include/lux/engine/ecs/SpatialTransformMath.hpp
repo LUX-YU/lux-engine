@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
+#include <lux/engine/math/RelativePosition.hpp>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -19,11 +20,11 @@ namespace lux::ecs
     };
 
     [[nodiscard]] inline std::optional<Eigen::Vector2f> relativePosition(
-        const lux::spatial::Position2D& position,
-        const lux::spatial::Position2D& origin,
+        const lux::math::Position2d& position,
+        const lux::math::Position2d& origin,
         float maximum_extent) noexcept
     {
-        const auto relative = lux::spatial::relativeFloat(
+        const auto relative = lux::math::relativeFloat(
             position,
             origin,
             maximum_extent
@@ -34,11 +35,11 @@ namespace lux::ecs
     }
 
     [[nodiscard]] inline std::optional<Eigen::Vector3f> relativePosition(
-        const lux::spatial::Position3D& position,
-        const lux::spatial::Position3D& origin,
+        const lux::math::Position3d& position,
+        const lux::math::Position3d& origin,
         float maximum_extent) noexcept
     {
-        const auto relative = lux::spatial::relativeFloat(
+        const auto relative = lux::math::relativeFloat(
             position,
             origin,
             maximum_extent
@@ -52,28 +53,28 @@ namespace lux::ecs
     }
 
     [[nodiscard]] inline bool offsetByScaledPosition(
-        lux::spatial::Position2D& position,
-        const lux::spatial::Position2D& delta,
+        lux::math::Position2d& position,
+        const lux::math::Position2d& delta,
         const Eigen::Vector2f& factor) noexcept
     {
-        if (!lux::spatial::isFinite(position) ||
-            !lux::spatial::isFinite(delta) || !factor.allFinite())
+        if (!lux::math::isFinite(position) ||
+            !lux::math::isFinite(delta) || !factor.allFinite())
         {
             return false;
         }
-        const auto next = lux::spatial::Position2D{
+        const auto next = lux::math::Position2d{
             position.x + delta.x * static_cast<double>(factor.x()),
             position.y + delta.y * static_cast<double>(factor.y())};
-        if (!lux::spatial::isFinite(next))
+        if (!lux::math::isFinite(next))
             return false;
         position = next;
         return true;
     }
 
     [[nodiscard]] inline std::optional<Eigen::Matrix4f> relativeTransform(
-        const lux::spatial::Position3D& position,
+        const lux::math::Position3d& position,
         const Eigen::Matrix3f& linear,
-        const lux::spatial::Position3D& origin,
+        const lux::math::Position3d& origin,
         float maximum_extent) noexcept
     {
         const auto relative = relativePosition(
@@ -90,9 +91,9 @@ namespace lux::ecs
     }
 
     [[nodiscard]] inline std::optional<Eigen::Matrix4f> relativeTransform(
-        const lux::spatial::Position2D& position,
+        const lux::math::Position2d& position,
         const Eigen::Matrix2f& linear,
-        const lux::spatial::Position2D& origin,
+        const lux::math::Position2d& origin,
         float maximum_extent) noexcept
     {
         const auto relative = relativePosition(
@@ -110,9 +111,9 @@ namespace lux::ecs
 
     [[nodiscard]] inline std::optional<PhysicsRelativePose3D>
     makePhysicsRelativePose(
-        const lux::spatial::Position3D& position,
+        const lux::math::Position3d& position,
         const Eigen::Quaternionf& rotation,
-        const lux::spatial::Position3D& origin,
+        const lux::math::Position3d& origin,
         float maximum_extent) noexcept
     {
         const auto relative = relativePosition(

@@ -35,9 +35,9 @@
 #include <lux/engine/editor/visibility.h>
 
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <lux/engine/math/AABB.hpp>
-#include <lux/engine/meta/LuxObject.hpp>   // entity_id, null_entity
+#include <lux/engine/ecs/Registry.hpp>   // entity_id, null_entity
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
@@ -228,9 +228,9 @@ namespace lux::editor
         /// cache — the same math the 2D pick uses). Empty when the scene is not
         /// live / not a 2D-camera scene. Used by "create HERE" (viewport
         /// right-click → spawn at the tap).
-        [[nodiscard]] std::optional<lux::spatial::Position2D>
+        [[nodiscard]] std::optional<lux::math::Position2d>
             viewportToWorld2D(float cx, float cy, float cw, float ch) const;
-        [[nodiscard]] std::optional<lux::spatial::Position3D>
+        [[nodiscard]] std::optional<lux::math::Position3d>
             viewportFocus3D() const;
 
         /// True only while the camera is in fly mode (RMB held in the
@@ -335,7 +335,7 @@ namespace lux::editor
                 std::size_t offset,
                 std::size_t maximum) const;
         [[nodiscard]] bool requestWorldActorProxy(
-            lux::entity_scene::PersistentEntityId actor,
+            lux::authoring::WorldActorId actor,
             bool select = true);
 
         [[nodiscard]] std::optional<lux::authoring::EditableWorldInstance>
@@ -350,7 +350,7 @@ namespace lux::editor
         [[nodiscard]] lux::cxx::expected<void, std::string>
             deleteWorldInstance(lux::authoring::WorldInstanceId instance);
         [[nodiscard]] lux::cxx::expected<
-            lux::entity_scene::PersistentEntityId,
+            lux::authoring::WorldActorId,
             std::string>
             convertWorldInstanceToActor(
                 lux::authoring::WorldInstanceId instance);
@@ -358,7 +358,7 @@ namespace lux::editor
             lux::authoring::WorldInstanceId,
             std::string>
             convertWorldActorToInstance(
-                lux::entity_scene::PersistentEntityId actor);
+                lux::authoring::WorldActorId actor);
         [[nodiscard]] const std::string& worldInstanceEditError() const noexcept
         {
             return instance_edit_error_;
@@ -376,7 +376,7 @@ namespace lux::editor
         [[nodiscard]] bool applyWorldTerrainBrush(
             lux::authoring::TerrainSetId terrain,
             std::span<const lux::authoring::WorldCellKey> cells,
-            const lux::spatial::Position3D& center,
+            const lux::math::Position3d& center,
             const lux::authoring::WorldTerrainBrush& brush);
         [[nodiscard]] bool undoWorldTerrainEdit();
         [[nodiscard]] bool redoWorldTerrainEdit();
@@ -401,7 +401,7 @@ namespace lux::editor
         [[nodiscard]] WorldTerrainEditStats worldTerrainEditStats() const;
         [[nodiscard]] std::optional<lux::authoring::PartitionSpaceId>
             defaultWorldTerrainSpace() const;
-        [[nodiscard]] std::optional<lux::spatial::Position3D>
+        [[nodiscard]] std::optional<lux::math::Position3d>
             makeWorldTerrainPosition(
                 lux::authoring::PartitionSpaceId space,
                 const lux::authoring::WorldCellKey& cell,
@@ -486,7 +486,7 @@ namespace lux::editor
         // Generation-checked observation into the runtime-owned Schedule.
         lux::ecs::SystemHandle<CameraSceneSystem> camera_system_{};
 
-        [[nodiscard]] lux::meta::entity_id commitSpawnModel(InstanceSpawnPlan&& plan);
+        [[nodiscard]] lux::ecs::Entity commitSpawnModel(InstanceSpawnPlan&& plan);
         [[nodiscard]] std::shared_ptr<const EntityScenePlayCookJob>
             buildEntityScenePlayCookJob(
                 const std::filesystem::path& root_document);
@@ -509,14 +509,14 @@ namespace lux::editor
             lux::authoring::WorldInstancePageDocument page);
         void clearAuthoringInstanceClusters() noexcept;
         void restoreAuthoringViewpoint(
-            lux::meta::entity_id source_camera) noexcept;
+            lux::ecs::Entity source_camera) noexcept;
 
         // Pick strategy: bound once at bringUp next to
         // the camera navigator; onPick calls it kind-blind and applies the
         // shared root-promotion + selection epilogue.
-        lux::meta::entity_id (EditorScene::*pick_fn_)(float, float, float, float){nullptr};
-        lux::meta::entity_id pickImage2D(float cx, float cy, float cw, float ch);
-        lux::meta::entity_id pickMesh3D(float cx, float cy, float cw, float ch);
+        lux::ecs::Entity (EditorScene::*pick_fn_)(float, float, float, float){nullptr};
+        lux::ecs::Entity pickImage2D(float cx, float cy, float cw, float ch);
+        lux::ecs::Entity pickMesh3D(float cx, float cy, float cw, float ch);
 
         // The HOST-owned render target: bringUp creates the offscreen SAMPLED
         // target the viewport panel samples, hands its id to the runtime
@@ -537,7 +537,7 @@ namespace lux::editor
         bool     pending_resize_{false};
 
         // ECS-driven editor camera.
-        lux::meta::entity_id                camera_entity_{lux::meta::null_entity};
+        lux::ecs::Entity                camera_entity_{lux::ecs::kNullEntity};
         OrbitCameraState                    orbit_{};
         float                               elapsed_{0.f};
 
@@ -575,7 +575,7 @@ namespace lux::editor
         struct AuthoringEntityState final
         {
             std::vector<entt::entity> created_entities;
-            std::vector<lux::entity_scene::PersistentEntityId> world_entity_ids;
+            std::vector<lux::authoring::WorldActorId> world_entity_ids;
             entt::entity primary_camera{entt::null};
         }                                   authoring_load_result_{};
         std::unordered_set<std::string>      pending_actor_proxies_;

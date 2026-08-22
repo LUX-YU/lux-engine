@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file StartupSectionSystem.hpp
- * @brief ScenePackage-driven fixed startup EntitySection selector.
+ * @brief SceneDescription-driven fixed startup EntitySection selector.
  *
  * This system selects startup EntitySections and observes their publication;
  * it does not install scene features or know any presentation domain. The
@@ -64,7 +64,7 @@ namespace lux::runtime::entity_scene
         std::size_t features{0u};
     };
 
-    /// Fixed-content selector for one validated Engine ScenePackage.
+    /// Fixed-content selector for one validated Engine SceneDescription.
     /// Construction and onAdded perform no VFS access. The first update
     /// preflights the complete startup closure before acquiring any ticket.
     class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC StartupSectionSystem final
@@ -104,7 +104,7 @@ namespace lux::runtime::entity_scene
         [[nodiscard]] EntitySceneSnapshot snapshot() const noexcept;
         [[nodiscard]] const std::optional<EntitySceneFailure>& failure()
             const noexcept;
-        [[nodiscard]] const lux::scene::ScenePackageId& packageId()
+        [[nodiscard]] const lux::asset::asset_id_t& packageId()
             const noexcept;
 
         /// Validated assembly requests only. This selector never installs or

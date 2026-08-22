@@ -12,7 +12,7 @@
 #include <lux/engine/ecs/terrain/components/TerrainTileComponent.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/genops/TerrainOperation.ops.hpp>
-#include <lux/engine/resource/terrain/TerrainTile.hpp>
+#include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 
 #include <stdexec/execution.hpp>
@@ -45,8 +45,8 @@ namespace lux::runtime
         }
 
         [[nodiscard]] lux::render::TerrainWireId terrainEntityWireId(
-            lux::meta::EntityRegistry& registry,
-            lux::meta::entity_id entity) noexcept
+            lux::ecs::Registry& registry,
+            lux::ecs::Entity entity) noexcept
         {
             if (const auto* persistent = registry.try_get<
                     lux::ecs::PersistentEntityIdComponent>(entity))
@@ -68,7 +68,7 @@ namespace lux::runtime
     {
         using Producer = TerrainTileRenderSubsystem;
 
-        lux::meta::entity_id entity{entt::null};
+        lux::ecs::Entity entity{entt::null};
         bool topology{false};
 
         [[nodiscard]] std::size_t registryPublicationBytes() const noexcept
@@ -76,11 +76,11 @@ namespace lux::runtime
             return 0u;
         }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry&) const noexcept
+            lux::ecs::Registry&) const noexcept
         {}
 
         void apply(
-            lux::meta::EntityRegistry&,
+            lux::ecs::Registry&,
             TerrainTileRenderSubsystem& owner) const noexcept
         {
             owner.applyObservedChange(entity, topology);
@@ -140,7 +140,7 @@ namespace lux::runtime
 
         struct UploadContext final
         {
-            lux::meta::entity_id entity{entt::null};
+            lux::ecs::Entity entity{entt::null};
             std::uint64_t owner_generation{0u};
             std::uint64_t revision{0u};
             lux::render::TerrainWireId id{};
@@ -161,27 +161,27 @@ namespace lux::runtime
             return revisions.next();
         }
 
-        void enqueue(lux::meta::entity_id entity, bool topology) noexcept
+        void enqueue(lux::ecs::Entity entity, bool topology) noexcept
         {
             (void)commands.push(TerrainTileObservedCommand{entity, topology});
         }
 
         void onTopology(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueue(entity, true);
         }
 
         void onPresentationFact(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             enqueue(entity, false);
         }
 
         void attach(
-            lux::meta::EntityRegistry& value,
+            lux::ecs::Registry& value,
             lux::ecs::EcsCommandWriter writer)
         {
             registry = &value;
@@ -189,13 +189,13 @@ namespace lux::runtime
             topology_dirty = true;
             changes.attach(
                 value,
-                [this](lux::meta::entity_id entity)
+                [this](lux::ecs::Entity entity)
                 {
                     enqueue(entity, false);
                 });
             leaves.attach(
                 value,
-                [this](lux::meta::entity_id entity)
+                [this](lux::ecs::Entity entity)
                 {
                     enqueue(entity, false);
                 });
@@ -273,7 +273,7 @@ namespace lux::runtime
                 ++metrics.compensated_removals;
         }
 
-        void retire(lux::meta::entity_id entity) noexcept
+        void retire(lux::ecs::Entity entity) noexcept
         {
             const auto found = entries.find(entity);
             if (found == entries.end())
@@ -297,7 +297,7 @@ namespace lux::runtime
             dirty.erase(entity);
         }
 
-        void observed(lux::meta::entity_id entity, bool topology) noexcept
+        void observed(lux::ecs::Entity entity, bool topology) noexcept
         {
             if (!registry || !lux::ecs::inComponentView<
                     lux::ecs::TerrainTileComponent>(
@@ -323,7 +323,7 @@ namespace lux::runtime
         }
 
         [[nodiscard]] bool fillTopology(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             lux::render::UploadTerrainPagePayload& payload) const noexcept
         {
             if (const auto* lod = registry->try_get<
@@ -393,7 +393,7 @@ namespace lux::runtime
             }
         }
 
-        void begin(lux::meta::entity_id entity, Entry& entry)
+        void begin(lux::ecs::Entity entity, Entry& entry)
         {
             const auto& component = registry->get<
                 lux::ecs::TerrainTileComponent>(entity);
@@ -405,7 +405,7 @@ namespace lux::runtime
                 component.content.schema_version !=
                     lux::terrain::kTerrainTileSchemaVersion ||
                 !transform.linear.allFinite() ||
-                !lux::spatial::isFinite(transform.position))
+                !lux::math::isFinite(transform.position))
             {
                 fail(entry, ESceneContentRenderFailure::INVALID_COMPONENT);
                 return;
@@ -460,7 +460,7 @@ namespace lux::runtime
         }
 
         void launchPreparation(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             Entry& entry) noexcept
         {
             if (!entry.preparation || entry.preparation->in_flight)
@@ -536,7 +536,7 @@ namespace lux::runtime
         }
 
         void preparationStopped(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t desired_generation) noexcept
         {
@@ -558,7 +558,7 @@ namespace lux::runtime
         }
 
         void acceptPreparation(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t desired_generation,
             lux::exec::AsyncOutcome<PrepareTerrainTile> outcome) noexcept
@@ -628,7 +628,7 @@ namespace lux::runtime
             Eigen::Matrix3f off_diagonal = transform.linear;
             off_diagonal.diagonal().setZero();
             if (!transform.linear.allFinite() ||
-                !lux::spatial::isFinite(transform.position) ||
+                !lux::math::isFinite(transform.position) ||
                 off_diagonal.cwiseAbs().maxCoeff() > tolerance ||
                 diagonal.minCoeff() <= 0.0f ||
                 std::abs(diagonal.x() - diagonal.z()) > tolerance)
@@ -676,7 +676,7 @@ namespace lux::runtime
         }
 
         void submit(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             Entry& entry,
             const lux::render::RenderUploadClient& upload)
         {
@@ -738,7 +738,7 @@ namespace lux::runtime
         }
 
         void uploadFinished(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t revision,
             lux::render::TerrainWireId id,
@@ -894,7 +894,7 @@ namespace lux::runtime
         }
 
         SceneContentRenderEntrySnapshot status(
-            lux::meta::entity_id entity) const noexcept
+            lux::ecs::Entity entity) const noexcept
         {
             const auto found = entries.find(entity);
             if (found == entries.end())
@@ -928,14 +928,14 @@ namespace lux::runtime
         TerrainPrepareClient preparation_client;
         lux::exec::AsyncScope* async_scope{nullptr};
         std::shared_ptr<CallbackControl> callbacks;
-        lux::meta::EntityRegistry* registry{nullptr};
+        lux::ecs::Registry* registry{nullptr};
         lux::ecs::EcsCommandWriter commands;
-        lux::spatial::GridCoord3i64 scene_origin{};
-        std::unordered_map<lux::meta::entity_id, Entry> entries;
-        std::unordered_set<lux::meta::entity_id> dirty;
+        lux::math::GridCoord3i64 scene_origin{};
+        std::unordered_map<lux::ecs::Entity, Entry> entries;
+        std::unordered_set<lux::ecs::Entity> dirty;
         std::unordered_map<
             uuids::uuid,
-            std::vector<lux::meta::entity_id>> children_by_parent;
+            std::vector<lux::ecs::Entity>> children_by_parent;
         lux::ecs::TrackedRenderRequest<
             std::uint64_t,
             lux::render::TerrainPageUploadedReply,
@@ -1024,7 +1024,7 @@ namespace lux::runtime
         impl_->closed = true;
         impl_->detach();
         impl_->callbacks->owner = nullptr;
-        std::vector<lux::meta::entity_id> entities;
+        std::vector<lux::ecs::Entity> entities;
         entities.reserve(impl_->entries.size());
         for (const auto& [entity, _] : impl_->entries)
             entities.push_back(entity);
@@ -1033,7 +1033,7 @@ namespace lux::runtime
     }
 
     SceneContentRenderEntrySnapshot TerrainTileRenderSubsystem::status(
-        lux::meta::entity_id entity) const noexcept
+        lux::ecs::Entity entity) const noexcept
     {
         return impl_->status(entity);
     }
@@ -1045,7 +1045,7 @@ namespace lux::runtime
     }
 
     void TerrainTileRenderSubsystem::applyObservedChange(
-        lux::meta::entity_id entity,
+        lux::ecs::Entity entity,
         bool topology) noexcept
     {
         impl_->observed(entity, topology);

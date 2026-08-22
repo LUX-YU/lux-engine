@@ -23,14 +23,14 @@ namespace lux::render::vk_convert
         return { { s.x, s.y }, { s.width, s.height } };
     }
 
-    /// Convert common::Size2D → VkExtent2D.
-    inline VkExtent2D toVk(const common::Size2D& e) noexcept
+    /// Convert lux::math::Extent2u → VkExtent2D.
+    inline VkExtent2D toVk(const lux::math::Extent2u& e) noexcept
     {
         return { e.width, e.height };
     }
 
-    /// Convert VkExtent2D → common::Size2D (for ingesting Vulkan query results).
-    inline common::Size2D fromVk(VkExtent2D e) noexcept
+    /// Convert VkExtent2D → lux::math::Extent2u (for ingesting Vulkan query results).
+    inline lux::math::Extent2u fromVk(VkExtent2D e) noexcept
     {
         return { e.width, e.height };
     }

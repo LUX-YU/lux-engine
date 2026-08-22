@@ -1,5 +1,5 @@
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
-#include <lux/engine/common/AtomicWait.hpp>
+#include <lux/cxx/concurrent/AtomicWait.hpp>
 
 #include <cstring>
 #include <utility>
@@ -124,7 +124,7 @@ namespace lux::render
         std::chrono::steady_clock::time_point deadline) const noexcept
     {
         auto domain = client_.progressDomain();
-        return lux::common::waitAtomicU64Until(
+        return lux::cxx::concurrent::waitAtomicU64Until(
             domain->work_epoch,
             observed,
             deadline);

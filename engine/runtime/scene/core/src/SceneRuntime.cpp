@@ -11,7 +11,7 @@
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -51,47 +51,35 @@ namespace lux::runtime
         }
 
         [[nodiscard]] lux::cxx::expected<
-            lux::scene::ScenePackage,
+            lux::scene::SceneDescription,
             std::string>
-        openScenePackage(const SceneRuntime::Config& config) noexcept
+        openSceneDescription(
+            const SceneRuntime::Config& config,
+            const lux::asset::AssetManager& assets) noexcept
         {
-            const auto source_count = static_cast<unsigned>(
-                static_cast<bool>(config.scene_package_image)) +
-                static_cast<unsigned>(config.transient_package.has_value());
-            if (source_count > 1u)
+            if (config.scene_asset_id.is_nil())
             {
                 return lux::cxx::unexpected(std::string{
-                    "SceneRuntime accepts at most one LXSC or transient "
-                    "ScenePackage"});
+                    "SceneRuntime requires a non-nil SceneAsset id"});
             }
-
-            if (source_count == 0u)
+            const auto* scene = assets.fetchAssetAs<lux::scene::SceneAsset>(
+                config.scene_asset_id);
+            if (scene == nullptr || !scene->hasData())
             {
-                static const auto transient_namespace =
-                    uuids::uuid::from_string(
-                        "797ce40a-1ed7-5e90-87f5-99fcdfc10ee2")
-                        .value();
-                uuids::uuid_name_generator ids{transient_namespace};
-                lux::scene::ScenePackage empty;
-                empty.id = lux::scene::ScenePackageId{
-                    ids(config.name)};
-                return empty;
+                return lux::cxx::unexpected(std::string{
+                    "SceneAsset is absent or has no decoded data"});
             }
-
-            if (config.scene_package_image)
+            if (scene->info() == nullptr ||
+                scene->info()->id != scene->data()->id)
             {
-                auto decoded = lux::scene::decodeScenePackage(
-                    config.scene_package_image.bytes.view());
-                if (!decoded)
-                    return lux::cxx::unexpected(decoded.error().detail);
-                return std::move(*decoded);
+                return lux::cxx::unexpected(std::string{
+                    "SceneAsset shell and SceneDescription identity differ"});
             }
-
-            const auto valid = lux::scene::validateScenePackage(
-                *config.transient_package);
+            const auto valid = lux::scene::validateSceneDescription(
+                *scene->data());
             if (!valid)
                 return lux::cxx::unexpected(valid.error().detail);
-            return *config.transient_package;
+            return *scene->data();
         }
     }
 
@@ -226,12 +214,12 @@ namespace lux::runtime
             return true;
         events_ = config.events;
 
-        auto package_result = openScenePackage(config);
+        auto package_result = openSceneDescription(config, assets_);
         if (!package_result)
         {
             lux::log::error(
                 "scene",
-                "bringUp: failed to open ScenePackage '{}': {}",
+                "bringUp: failed to open SceneDescription '{}': {}",
                 config.scene_origin,
                 package_result.error());
             return failBringUp();
@@ -242,7 +230,7 @@ namespace lux::runtime
         {
             lux::log::error(
                 "scene",
-                "bringUp: ScenePackage catalog rejected '{}': {}",
+                "bringUp: SceneDescription catalog rejected '{}': {}",
                 config.scene_origin,
                 catalog_result.error().detail);
             return failBringUp();
@@ -252,6 +240,15 @@ namespace lux::runtime
                 std::move(*catalog_result));
         auto* const catalog = catalog_owner.get();
         const auto& package = catalog->package();
+        scene_asset_ref_ = assets_.acquire(config.scene_asset_id);
+        if (!scene_asset_ref_)
+        {
+            lux::log::error(
+                "scene",
+                "bringUp: failed to retain SceneAsset '{}'",
+                uuids::to_string(config.scene_asset_id));
+            return failBringUp();
+        }
 
         for (const auto& requirement : package.required_extensions)
         {
@@ -308,7 +305,7 @@ namespace lux::runtime
         {
             lux::log::error(
                 "scene",
-                "failed to publish immutable ScenePackage catalog service");
+                "failed to publish immutable SceneDescription catalog service");
             return failBringUp();
         }
 
@@ -377,7 +374,7 @@ namespace lux::runtime
             {
                 lux::log::error(
                     "scene",
-                    "ScenePackage features require a catalog");
+                    "SceneDescription features require a catalog");
                 return failBringUp();
             }
             std::vector<SceneContributionSelection> selected;

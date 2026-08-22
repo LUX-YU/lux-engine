@@ -45,14 +45,14 @@ namespace lux::runtime
         }
 
         [[nodiscard]] SceneContentRenderEntrySnapshot status(
-            lux::meta::entity_id entity) const noexcept;
+            lux::ecs::Entity entity) const noexcept;
         [[nodiscard]] SceneContentRenderSubsystemSnapshot snapshot()
             const noexcept;
 
     private:
         friend struct TerrainTileObservedCommand;
         void applyObservedChange(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             bool topology) noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;

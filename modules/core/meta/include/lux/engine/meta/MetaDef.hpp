@@ -12,9 +12,9 @@
 
 namespace lux::meta
 {
-    /// Opt-in for reflected, non-EntityObject value records which can appear
-    /// as nested tagged properties. The generated field descriptor resolves
-    /// these records to their RefClass at module-registration time.
+    /// Opt-in for externally reflected value records which can appear as
+    /// nested tagged properties. Records marked in the current generator unit
+    /// are recognized directly from generator-owned record identity.
     template <class T>
     inline constexpr bool is_reflected_value_v = false;
 

@@ -1,10 +1,10 @@
 #pragma once
 /**
  * @file Spatial3DEntitySceneAdapter.hpp
- * @brief Toolchain-only LXWA v4 to ScenePackage/LXES bridge for 3D data.
+ * @brief Toolchain-only LXWA v4 to SceneDescription/LXES bridge for 3D data.
  *
  * The input is the owning, page-free Spatial3D Authoring model. The result
- * contains exclusively ScenePackage records and domain-owned content blobs;
+ * contains exclusively SceneDescription records and domain-owned content blobs;
  * no Runtime target needs a legacy cooked-World reader for this path.
  */
 
@@ -14,8 +14,8 @@
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
-#include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
+#include <lux/engine/math/Position.hpp>
+#include <lux/engine/spatial3d/SceneCatalog.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -63,7 +63,7 @@ namespace lux::toolchain
     /// Spatial3D-specific cook result.  The generic EntityScene bundle stays
     /// domain blind; generated geometry belongs to this Toolchain leaf.
     struct CookedSpatial3DEntitySceneBundle final
-        : CookedScenePackageBundle
+        : CookedSceneDescriptionBundle
     {
         std::vector<CookedSpatial3DMeshAsset> generated_meshes;
     };
@@ -73,7 +73,7 @@ namespace lux::toolchain
     struct Spatial3DEntitySceneAdapterConfig final
     {
         /// Empty preserves the Authoring scene UUID in the cooked Scene.
-        lux::scene::ScenePackageId scene_id;
+        lux::asset::asset_id_t scene_id;
         /// Explicit domain leaves selected for a general 3D scene. Tools may
         /// remove Presentation for a headless cook, or omit Physics/
         /// Navigation when the authored product does not use them. There is
@@ -98,7 +98,7 @@ namespace lux::toolchain
                  {}}};
         /// Absolute, extensionless Pak directory for emitted LXES objects.
         std::string section_content_prefix{"/Game/EntitySections"};
-        lux::spatial::Position3D fallback_camera_position{
+        lux::math::Position3d fallback_camera_position{
             512.0, 256.0, 512.0};
         /// 3D selector policy belongs to this leaf adapter/configuration, not
         /// to the dimension-neutral LXWA root.
@@ -125,7 +125,7 @@ namespace lux::toolchain
         double visual_lod_resident_scale{4.0};
         /// Cooked, fixed resident-set admission.  It does not scale with the
         /// number of distant catalog entries.
-        lux::spatial3d_scene::Spatial3DResidencyCapacity residency;
+        lux::spatial3d::ResidencyCapacity residency;
         std::vector<lux::scene::SceneFeatureRequest>
             additional_features;
     };

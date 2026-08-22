@@ -7,7 +7,7 @@
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/TypeToken.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/render/components/PrimaryCameraTag.hpp>
@@ -22,14 +22,13 @@
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
 #include <lux/engine/ecs/terrain/components/TerrainTileComponent.hpp>
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
-#include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
+#include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/entity_scene/EntitySceneIdentifiers.hpp>
-#include <lux/engine/resource/physics3d/StaticColliderBatch3D.hpp>
-#include <lux/engine/resource/spatial3d_scene/Spatial3DSceneCatalog.hpp>
-#include <lux/engine/resource/terrain/TerrainTile.hpp>
+#include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
+#include <lux/engine/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -84,14 +83,14 @@ namespace lux::toolchain
             return uuids::to_string(value);
         }
 
-        [[nodiscard]] lux::spatial3d_scene::Spatial3DSourceId
+        [[nodiscard]] lux::spatial3d::SourceId
         spatialSourceId(const uuids::uuid& space)
         {
             auto identity = uuidKey(space);
             identity.erase(
                 std::remove(identity.begin(), identity.end(), '-'),
                 identity.end());
-            return lux::spatial3d_scene::Spatial3DSourceId{
+            return lux::spatial3d::SourceId{
                 "lux.spatial3d.source." + identity};
         }
 
@@ -133,12 +132,12 @@ namespace lux::toolchain
         }
 
         [[nodiscard]] lux::ecs::scene_format::EntitySectionId derivedSectionId(
-            const lux::scene::ScenePackageId& scene,
+            const lux::asset::asset_id_t& scene,
             std::string_view purpose)
         {
             std::vector<std::byte> identity;
             lux::serialize::ArchiveWriter writer{identity};
-            writer.writeUuid(scene.value());
+            writer.writeUuid(scene);
             writer.writeString(purpose);
             const auto digest = lux::cxx::algorithm::Sha256::hash(identity);
             std::array<std::uint8_t, 16u> bytes{};
@@ -196,19 +195,6 @@ namespace lux::toolchain
             return *added;
         }
 
-        [[nodiscard]] lux::entity_scene::DemandChannelId
-        legacyDemandChannel(const lux::scene::DemandChannelId& id)
-        {
-            return lux::entity_scene::DemandChannelId{std::string{id.name()}};
-        }
-
-        [[nodiscard]] lux::entity_scene::EntitySectionId
-        legacySectionId(
-            const lux::ecs::scene_format::EntitySectionId& id) noexcept
-        {
-            return lux::entity_scene::EntitySectionId{id.value()};
-        }
-
         [[nodiscard]] lux::navigation::NavigationRegionId
         navigationRegionId(
             const lux::ecs::scene_format::EntitySectionId& section,
@@ -238,7 +224,7 @@ namespace lux::toolchain
         };
 
         [[nodiscard]] double portalNormal(
-            const lux::spatial::Position3D& point,
+            const lux::math::Position3d& point,
             ENavigationPortalBoundary boundary) noexcept
         {
             return boundary == ENavigationPortalBoundary::POSITIVE_X
@@ -247,7 +233,7 @@ namespace lux::toolchain
         }
 
         [[nodiscard]] double portalTangent(
-            const lux::spatial::Position3D& point,
+            const lux::math::Position3d& point,
             ENavigationPortalBoundary boundary) noexcept
         {
             return boundary == ENavigationPortalBoundary::POSITIVE_X
@@ -334,8 +320,8 @@ namespace lux::toolchain
                 return std::nullopt;
             }
 
-            std::vector<lux::spatial::Position3D> first_candidates;
-            std::vector<lux::spatial::Position3D> second_candidates;
+            std::vector<lux::math::Position3d> first_candidates;
+            std::vector<lux::math::Position3d> second_candidates;
             const auto collectCandidates = [
                 boundary,
                 seam,
@@ -374,8 +360,8 @@ namespace lux::toolchain
                     static_cast<double>(std::max(
                         first.vertical_resolution,
                         second.vertical_resolution)) * 2.0);
-            const lux::spatial::Position3D* selected_first = nullptr;
-            const lux::spatial::Position3D* selected_second = nullptr;
+            const lux::math::Position3d* selected_first = nullptr;
+            const lux::math::Position3d* selected_second = nullptr;
             auto selected_score = (std::numeric_limits<double>::max)();
             for (const auto& first_point : first_candidates)
             {
@@ -463,8 +449,17 @@ namespace lux::toolchain
             TaggedPayloadSource result;
             lux::serialize::NameTable names;
             lux::serialize::ArchiveWriter writer{result.payload};
-            lux::serialize::TaggedPropertyWriter tagged{writer, names};
-            tagged.writeObject(*descriptor.ref_class, component);
+            lux::ecs::serialization::TaggedPropertyWriter tagged{writer, names};
+            const auto encoded =
+                tagged.writeObject(*descriptor.ref_class, component);
+            if (!encoded)
+            {
+                return lux::cxx::unexpected(failure(
+                    AdapterError::INVALID_COMPONENT_PAYLOAD,
+                    "component archive encode failed for '" +
+                        descriptor.schema_id.name + "': " +
+                        encoded.error().detail));
+            }
             result.names = namesOf(names);
             return result;
         }
@@ -645,7 +640,7 @@ namespace lux::toolchain
                         names.error().detail));
             }
 
-            lux::meta::EntityRegistry staging;
+            lux::ecs::Registry staging;
             const auto entity = staging.create();
             std::vector<const lux::ecs::ComponentSchemaDescriptor*>
                 descriptors;
@@ -701,16 +696,19 @@ namespace lux::toolchain
                     record.tagged_payload.data(),
                     record.tagged_payload.size()
                 };
-                lux::serialize::TaggedPropertyReader tagged{
+                lux::ecs::serialization::TaggedPropertyReader tagged{
                     reader, source_names
                 };
-                tagged.readObject(*descriptor->ref_class, value);
-                if (!reader.ok() || !reader.eof())
+                const auto decoded =
+                    tagged.readObject(*descriptor->ref_class, value);
+                if (!decoded || !reader.ok() || !reader.eof())
                 {
                     return lux::cxx::unexpected(failure(
                         AdapterError::INVALID_COMPONENT_PAYLOAD,
                         "legacy Actor component payload is malformed: '" +
-                            schema + "'"));
+                            schema + "': " +
+                            (decoded ? std::string{"trailing bytes"}
+                                     : decoded.error().detail)));
                 }
                 descriptors.push_back(descriptor);
             }
@@ -765,7 +763,7 @@ namespace lux::toolchain
             }
             if (!actor.transform_parent)
             {
-                if (!lux::spatial::isFinite(actor.position))
+                if (!lux::math::isFinite(actor.position))
                 {
                     return lux::cxx::unexpected(failure(
                         AdapterError::INVALID_POSITION,
@@ -976,22 +974,22 @@ namespace lux::toolchain
             return result;
         }
 
-        [[nodiscard]] std::optional<lux::spatial::GridCoord2i64>
-        planarCoordinate(const lux::spatial::GridCoord3i64& cell) noexcept
+        [[nodiscard]] std::optional<lux::math::GridCoord2i64>
+        planarCoordinate(const lux::math::GridCoord3i64& cell) noexcept
         {
             if (cell.y != 0)
                 return std::nullopt;
-            return lux::spatial::GridCoord2i64{
+            return lux::math::GridCoord2i64{
                 cell.x, cell.z};
         }
 
-        [[nodiscard]] lux::spatial::GridCoord3i64
-        spatialCoordinate(const lux::spatial::GridCoord3i64& cell) noexcept
+        [[nodiscard]] lux::math::GridCoord3i64
+        spatialCoordinate(const lux::math::GridCoord3i64& cell) noexcept
         {
             return cell;
         }
 
-        [[nodiscard]] std::optional<lux::spatial::GridCoord3i64> actorCell(
+        [[nodiscard]] std::optional<lux::math::GridCoord3i64> actorCell(
             const Spatial3DAuthoringSource& source,
             const Spatial3DActorSource& actor) noexcept
         {
@@ -1000,7 +998,7 @@ namespace lux::toolchain
                 actor.space,
                 &Spatial3DSourceSpace::id);
             if (found == source.spaces.end() ||
-                !lux::spatial::isFinite(actor.position) ||
+                !lux::math::isFinite(actor.position) ||
                 !std::isfinite(found->cell_edge) || found->cell_edge <= 0.0f)
                 return std::nullopt;
             const auto coordinate = [edge = static_cast<double>(
@@ -1023,13 +1021,13 @@ namespace lux::toolchain
                 return std::nullopt;
             if (found->topology == ESpatial3DSourceTopology::PLANAR_XZ)
             {
-                return lux::spatial::GridCoord3i64{*x, 0, *z};
+                return lux::math::GridCoord3i64{*x, 0, *z};
             }
             if (found->topology == ESpatial3DSourceTopology::VOLUMETRIC_XYZ)
             {
                 const auto y = coordinate(actor.position.y);
                 return y
-                    ? std::optional{lux::spatial::GridCoord3i64{
+                    ? std::optional{lux::math::GridCoord3i64{
                           *x, *y, *z}}
                     : std::nullopt;
             }
@@ -1061,7 +1059,7 @@ namespace lux::toolchain
             std::int64_t>
         pageOrder(
             const uuids::uuid& space,
-            const lux::spatial::GridCoord3i64& cell)
+            const lux::math::GridCoord3i64& cell)
         {
             return {
                 uuidKey(space), 0u, cell.x, cell.y, cell.z};
@@ -1075,9 +1073,9 @@ namespace lux::toolchain
             return value % divisor < 0 ? quotient - 1 : quotient;
         }
 
-        [[nodiscard]] std::optional<lux::spatial::GridCoord3i64>
+        [[nodiscard]] std::optional<lux::math::GridCoord3i64>
         visualLodParentCell(
-            const lux::spatial::GridCoord3i64& cell,
+            const lux::math::GridCoord3i64& cell,
             std::uint8_t level = 1u) noexcept
         {
             if (cell.y != 0 || level == 0u ||
@@ -1087,7 +1085,7 @@ namespace lux::toolchain
             }
             const auto edge = std::int64_t{1}
                 << (static_cast<unsigned>(level) * 2u);
-            return lux::spatial::GridCoord3i64{
+            return lux::math::GridCoord3i64{
                 floorDivide(cell.x, edge) * edge,
                 0,
                 floorDivide(cell.z, edge) * edge
@@ -1096,7 +1094,7 @@ namespace lux::toolchain
 
         [[nodiscard]] std::string visualLodKey(
             const uuids::uuid& space,
-            const lux::spatial::GridCoord3i64& cell,
+            const lux::math::GridCoord3i64& cell,
             std::span<const std::string> layers = {})
         {
             const auto order = pageOrder(space, cell);
@@ -1112,14 +1110,14 @@ namespace lux::toolchain
 
         [[nodiscard]] lux::ecs::PersistentEntityId
         visualLodEntityId(
-            const lux::scene::ScenePackageId& scene,
+            const lux::asset::asset_id_t& scene,
             std::string_view kind,
             const uuids::uuid& space,
-            const lux::spatial::GridCoord3i64& cell,
+            const lux::math::GridCoord3i64& cell,
             std::uint8_t level,
             std::span<const std::string> layers = {})
         {
-            uuids::uuid_name_generator generator{scene.value()};
+            uuids::uuid_name_generator generator{scene};
             return lux::ecs::PersistentEntityId{generator(
                 "lux.visual-lod/" + std::string{kind} + "/" +
                 std::to_string(level) + "/" +
@@ -1129,7 +1127,7 @@ namespace lux::toolchain
         struct VisualHlodNodePlan final
         {
             uuids::uuid space{};
-            lux::spatial::GridCoord3i64 cell;
+            lux::math::GridCoord3i64 cell;
             std::vector<std::string> data_layers;
             std::vector<std::size_t> pages;
             std::optional<std::size_t> parent;
@@ -1145,7 +1143,7 @@ namespace lux::toolchain
 
         [[nodiscard]] VisualHlodPlan visualHlodPlan(
             const Spatial3DAuthoringSource& source,
-            const lux::scene::ScenePackageId& scene)
+            const lux::asset::asset_id_t& scene)
         {
             VisualHlodPlan result;
             result.page_parents.resize(source.instance_pages.size());
@@ -1282,7 +1280,7 @@ namespace lux::toolchain
         {
             lux::classic_mesh::ClassicMeshBatchBlobV1 blob;
             lux::ecs::ClassicMeshBatchComponent component;
-            lux::spatial::Position3D origin;
+            lux::math::Position3d origin;
             float geometric_error{0.0f};
         };
 
@@ -1322,11 +1320,11 @@ namespace lux::toolchain
                 (std::numeric_limits<double>::lowest)(),
                 (std::numeric_limits<double>::lowest)()
             };
-            std::vector<lux::spatial::Position3D> positions;
+            std::vector<lux::math::Position3d> positions;
             positions.reserve(instances.size());
             for (const auto* instance : instances)
             {
-                if (!lux::spatial::isFinite(instance->position))
+                if (!lux::math::isFinite(instance->position))
                 {
                     return lux::cxx::unexpected(failure(
                         AdapterError::INVALID_POSITION,
@@ -1352,7 +1350,7 @@ namespace lux::toolchain
                         maximum[axis], values[axis] + extent);
                 }
             }
-            const lux::spatial::Position3D origin{
+            const lux::math::Position3d origin{
                 (minimum[0] + maximum[0]) * 0.5,
                 (minimum[1] + maximum[1]) * 0.5,
                 (minimum[2] + maximum[2]) * 0.5
@@ -1362,7 +1360,7 @@ namespace lux::toolchain
             const auto half_z = (maximum[2] - minimum[2]) * 0.5;
             const auto radius = std::sqrt(
                 half_x * half_x + half_y * half_y + half_z * half_z);
-            if (!lux::spatial::isFinite(origin) ||
+            if (!lux::math::isFinite(origin) ||
                 !std::isfinite(radius) ||
                 radius > (std::numeric_limits<float>::max)())
             {
@@ -1526,7 +1524,7 @@ namespace lux::toolchain
 
         [[nodiscard]] lux::cxx::expected<PreparedVisualHlod, AdapterFailure>
         cookVisualHlod(
-            const lux::scene::ScenePackageId& scene,
+            const lux::asset::asset_id_t& scene,
             const VisualHlodNodePlan& node,
             const Spatial3DInstancePageSource& aggregate,
             DecodedMeshCatalog& meshes,
@@ -1887,7 +1885,7 @@ namespace lux::toolchain
                 node_mesh_bounds.merge(mesh_bounds);
                 merged.lods.clear();
 
-                uuids::uuid_name_generator generator{scene.value()};
+                uuids::uuid_name_generator generator{scene};
                 const auto content_identity_bytes = std::as_bytes(
                     std::span{content_identity.data(),
                         content_identity.size()});
@@ -2019,9 +2017,9 @@ namespace lux::toolchain
         using lux::scene::DemandChannelId;
         using lux::ecs::scene_format::kInvalidEntityOrdinal;
 
-        if (source.scene.empty() ||
+        if (source.scene.is_nil() ||
             !validSectionContentPrefix(config.section_content_prefix) ||
-            !lux::spatial::isFinite(config.fallback_camera_position) ||
+            !lux::math::isFinite(config.fallback_camera_position) ||
             !std::isfinite(config.fine_active_distance) ||
             config.fine_active_distance <= 0.0 ||
             !std::isfinite(config.fine_resident_distance) ||
@@ -2053,7 +2051,7 @@ namespace lux::toolchain
         auto decoded_meshes = indexMeshAssets(mesh_assets);
         if (!decoded_meshes)
             return lux::cxx::unexpected(std::move(decoded_meshes.error()));
-        const lux::scene::ScenePackageId scene = config.scene_id.empty()
+        const lux::asset::asset_id_t scene = config.scene_id.is_nil()
             ? source.scene
             : config.scene_id;
         const auto startup_section = derivedSectionId(
@@ -2063,8 +2061,8 @@ namespace lux::toolchain
         {
             FineSection(
                 EntitySectionId id,
-                lux::spatial3d_scene::Spatial3DSourceId source_value,
-                lux::spatial::GridCoord3i64 coordinate_value,
+                lux::spatial3d::SourceId source_value,
+                lux::math::GridCoord3i64 coordinate_value,
                 double cell_world_size_value)
                 : section(id),
                   source(std::move(source_value)),
@@ -2073,8 +2071,8 @@ namespace lux::toolchain
             {}
 
             EntitySectionAssembly section;
-            lux::spatial3d_scene::Spatial3DSourceId source;
-            lux::spatial::GridCoord3i64 coordinate;
+            lux::spatial3d::SourceId source;
+            lux::math::GridCoord3i64 coordinate;
             double cell_world_size{0.0};
         };
         std::map<std::string, FineSection> fine_sections;
@@ -2083,7 +2081,7 @@ namespace lux::toolchain
             &scene,
             &source](
             const uuids::uuid& space,
-            const lux::spatial::GridCoord3i64& cell)
+            const lux::math::GridCoord3i64& cell)
             -> lux::cxx::expected<FineSection*, AdapterFailure>
         {
             const auto coordinate = spatialCoordinate(cell);
@@ -2129,7 +2127,7 @@ namespace lux::toolchain
         for (const auto index : actor_order)
         {
             const auto& actor = source.actors[index];
-            if (actor.id.empty() || !lux::spatial::isFinite(actor.position) ||
+            if (actor.id.empty() || !lux::math::isFinite(actor.position) ||
                 !actor_indices.emplace(
                     uuidKey(actor.id.value()), index).second)
             {
@@ -2398,8 +2396,8 @@ namespace lux::toolchain
         {
             CoarseSection(
                 EntitySectionId id,
-                lux::spatial3d_scene::Spatial3DSourceId source_value,
-                lux::spatial::GridCoord3i64 coordinate_value,
+                lux::spatial3d::SourceId source_value,
+                lux::math::GridCoord3i64 coordinate_value,
                 std::uint8_t level_value,
                 double cell_world_size_value)
                 : section(id),
@@ -2410,8 +2408,8 @@ namespace lux::toolchain
             {}
 
             EntitySectionAssembly section;
-            lux::spatial3d_scene::Spatial3DSourceId source;
-            lux::spatial::GridCoord3i64 coordinate;
+            lux::spatial3d::SourceId source;
+            lux::math::GridCoord3i64 coordinate;
             std::uint8_t level{1u};
             double cell_world_size{0.0};
         };
@@ -2456,7 +2454,7 @@ namespace lux::toolchain
                 << (static_cast<unsigned>(node.level) * 2u);
             const auto coarse_edge = *fine_edge *
                 static_cast<double>(factor);
-            const lux::spatial::GridCoord3i64 coarse_coordinate{
+            const lux::math::GridCoord3i64 coarse_coordinate{
                 floorDivide(coordinate.x,
                     static_cast<std::int64_t>(factor)),
                 floorDivide(coordinate.y,
@@ -2826,7 +2824,7 @@ namespace lux::toolchain
             }
         }
 
-        ScenePackageCookInput cook;
+        SceneDescriptionCookInput cook;
         cook.id = scene;
         cook.startup_sections.push_back(startup_section);
         while (config.section_content_prefix.size() > 1u &&
@@ -2863,10 +2861,10 @@ namespace lux::toolchain
         if (!startup_added)
             return lux::cxx::unexpected(std::move(startup_added.error()));
 
-        lux::spatial3d_scene::Spatial3DSceneCatalogConfig spatial_catalog;
+        lux::spatial3d::SceneCatalog spatial_catalog;
         spatial_catalog.residency = config.residency;
         const auto internBand = [&spatial_catalog](
-            lux::spatial3d_scene::Spatial3DSceneCatalogBand band)
+            lux::spatial3d::SceneCatalogBand band)
             -> std::uint32_t
         {
             const auto found = std::ranges::find(
@@ -2882,27 +2880,20 @@ namespace lux::toolchain
             return index;
         };
         const DemandChannelId fine_channel{
-            std::string{
-            lux::spatial3d_scene::kSpatial3DResidentDemandChannelName
-            }
-        };
+            std::string{lux::spatial3d::kResidentDemandChannelName}};
         const DemandChannelId visual_lod_channel{
-            std::string{
-            lux::spatial3d_scene::
-                kSpatial3DVisualLodDemandChannelName
-            }
-        };
+            std::string{lux::spatial3d::kVisualLodDemandChannelName}};
         for (auto& [_, fine] : fine_sections)
         {
             const auto band = internBand({
                 fine.source,
-                legacyDemandChannel(fine_channel),
+                fine_channel,
                 0u,
                 fine.cell_world_size,
                 1.0,
                 1.0});
             spatial_catalog.entries.push_back({
-                fine.coordinate, band, legacySectionId(fine.section.id)});
+                fine.coordinate, band, fine.section.id});
             const auto added = appendSection(
                 fine.section, fine_channel);
             if (!added)
@@ -2919,13 +2910,13 @@ namespace lux::toolchain
                 config.visual_lod_resident_scale * level_scale);
             const auto band = internBand({
                 coarse.source,
-                legacyDemandChannel(visual_lod_channel),
+                visual_lod_channel,
                 coarse.level,
                 coarse.cell_world_size,
                 active_scale,
                 resident_scale});
             spatial_catalog.entries.push_back({
-                coarse.coordinate, band, legacySectionId(coarse.section.id)});
+                coarse.coordinate, band, coarse.section.id});
             const auto added = appendSection(
                 coarse.section, visual_lod_channel);
             if (!added)
@@ -2934,7 +2925,7 @@ namespace lux::toolchain
         if (!spatial_catalog.entries.empty())
         {
             auto encoded =
-                lux::spatial3d_scene::encodeSpatial3DSceneCatalog(
+                lux::spatial3d::encodeSceneCatalog(
                     std::move(spatial_catalog));
             if (!encoded)
             {
@@ -2946,10 +2937,8 @@ namespace lux::toolchain
                 cook.features,
                 lux::scene::SceneFeatureRequest{
                     lux::scene::SceneFeatureId{std::string{
-                        lux::spatial3d_scene::
-                            kSpatial3DContributionName}},
-                    lux::spatial3d_scene::
-                        kSpatial3DSceneCatalogSchemaVersion,
+                        lux::spatial3d::kPartitionedFeatureName}},
+                    lux::spatial3d::kSceneCatalogSchemaVersion,
                     std::move(*encoded)});
             if (!added)
                 return lux::cxx::unexpected(std::move(added.error()));
@@ -2979,12 +2968,12 @@ namespace lux::toolchain
         }
         cook.required_extensions = source.required_extensions;
 
-        auto cooked = cookScenePackage(std::move(cook));
+        auto cooked = cookSceneDescription(std::move(cook));
         if (!cooked)
         {
             return lux::cxx::unexpected(entityFailure(
                 cooked.error(),
-                "generic ScenePackage cooker rejected Spatial3D output"));
+                "generic SceneDescription cooker rejected Spatial3D output"));
         }
         std::ranges::sort(
             generated_meshes,
@@ -3004,7 +2993,7 @@ namespace lux::toolchain
                 "generated visual HLOD Mesh identity is duplicated"));
         }
         CookedSpatial3DEntitySceneBundle result;
-        static_cast<CookedScenePackageBundle&>(result) = std::move(*cooked);
+        static_cast<CookedSceneDescriptionBundle&>(result) = std::move(*cooked);
         result.generated_meshes = std::move(generated_meshes);
         return result;
     }

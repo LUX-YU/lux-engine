@@ -1,5 +1,4 @@
 #include <lux/engine/window/LuxWindow.hpp>
-#include <lux/engine/window/LuxWindowDefination.hpp>
 
 #include <thread>
 
@@ -27,81 +26,6 @@
 
 namespace lux::window
 {
-    static KeyEnum glfwKeyEnumConvert(int key)
-    {
-        return static_cast<KeyEnum>(key);
-    }
-
-    static KeyState glfwKeyStateEnumConvert(int key)
-    {
-        switch (key)
-        {
-        case GLFW_RELEASE:
-            return KeyState::RELEASE;
-        case GLFW_PRESS:
-            return KeyState::PRESS;
-        case GLFW_REPEAT:
-            return KeyState::REPEAT;
-        }
-        return KeyState::UNKNOWN;
-    }
-
-    static ModifierKey glfwModifierKeyMaskConvert(int mods)
-    {
-        int result = 0;
-        if (mods & GLFW_MOD_SHIFT)
-        {
-            result |= ModifierKey::KEY_MOD_SHIFT;
-        }
-        if (mods & GLFW_MOD_CONTROL)
-        {
-            result |= ModifierKey::KEY_MOD_CONTROL;
-        }
-        if (mods & GLFW_MOD_ALT)
-        {
-            result |= ModifierKey::KEY_MOD_ALT;
-        }
-        if (mods & GLFW_MOD_SUPER)
-        {
-            result |= ModifierKey::KEY_MOD_SUPER;
-        }
-        if (mods & GLFW_MOD_CAPS_LOCK)
-        {
-            result |= ModifierKey::KEY_MOD_CAPS_LOCK;
-        }
-        if (mods & GLFW_MOD_NUM_LOCK)
-        {
-            result |= ModifierKey::KEY_MOD_NUM_LOCK;
-        }
-        return static_cast<ModifierKey>(result);
-    }
-
-    static MouseButton glfwMouseButtonEnumConvert(int key)
-    {
-        switch (key)
-        {
-        case GLFW_MOUSE_BUTTON_1:
-            return MouseButton::MOUSE_BUTTON_LEFT;
-        case GLFW_MOUSE_BUTTON_2:
-            return MouseButton::MOUSE_BUTTON_RIGHT;
-        case GLFW_MOUSE_BUTTON_3:
-            return MouseButton::MOUSE_BUTTON_MIDDLE;
-        case GLFW_MOUSE_BUTTON_4:
-            return MouseButton::MOUSE_BUTTON_4;
-        case GLFW_MOUSE_BUTTON_5:
-            return MouseButton::MOUSE_BUTTON_5;
-        case GLFW_MOUSE_BUTTON_6:
-            return MouseButton::MOUSE_BUTTON_6;
-        case GLFW_MOUSE_BUTTON_7:
-            return MouseButton::MOUSE_BUTTON_7;
-        case GLFW_MOUSE_BUTTON_8:
-            return MouseButton::MOUSE_BUTTON_8;
-        default:
-            break;
-        }
-        return MouseButton::UNKNOWN;
-    }
-
     void LuxWindow::window_close_callback(GLFWwindow* window) 
     {
         // hide the window
@@ -125,12 +49,6 @@ namespace lux::window
         : _parameter{ width, height, std::move(title) }
     {
         _init = init();
-    }
-
-    LuxWindow::LuxWindow(common::Size2D size, std::string title)
-        : LuxWindow(size.width, size.height, std::move(title))
-    {
-
     }
 
     LuxWindow::LuxWindow(const InitParameter& parameter)
@@ -296,22 +214,16 @@ namespace lux::window
         return glfwGetTime();
     }
 
-    KeyState LuxWindow::queryKey(KeyEnum key) const
+    void LuxWindow::size(
+        std::uint32_t& width,
+        std::uint32_t& height
+    ) const
     {
-        return glfwKeyStateEnumConvert(
-            glfwGetKey(_glfw_window, static_cast<int>(key))
-        );
-    }
-
-    common::Size2D LuxWindow::size() const
-    {
-		int width, height;
-        glfwGetWindowSize(_glfw_window, &width, &height);
-        common::Size2D size{
-            .width  = (uint32_t)width,
-            .height = (uint32_t)height
-        };
-        return size;
+        int native_width = 0;
+        int native_height = 0;
+        glfwGetWindowSize(_glfw_window, &native_width, &native_height);
+        width = static_cast<std::uint32_t>(native_width);
+        height = static_cast<std::uint32_t>(native_height);
     }
 
     std::string LuxWindow::windowFrameworkName() const
@@ -326,40 +238,16 @@ namespace lux::window
             _glfw_window,
             [](GLFWwindow* window, int key, int scancode, int action, int mods) {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-
-                // Maintain live held state and accumulate edge events.
-                // GLFW may pass key == -1 for unknown keys; guard against it.
-                if (key >= 0 && key < static_cast<int>(kKeyboardBitCount))
-                {
-                    const auto idx = static_cast<size_t>(key);
-                    if (action == GLFW_PRESS)
-                    {
-                        self->_live_keys_held.set(idx);
-                        self->_pending_keys_pressed.set(idx);
-                    }
-                    else if (action == GLFW_RELEASE)
-                    {
-                        self->_live_keys_held.reset(idx);
-                        self->_pending_keys_released.set(idx);
-                    }
-                    else if (action == GLFW_REPEAT)
-                    {
-                        // REPEAT does not create a new press edge;
-                        // it only appears in the events vector.
-                        self->_live_keys_held.set(idx);
-                    }
-                }
-
-                KeyAction data{
-                    glfwKeyEnumConvert(key),
+                WindowKeyEvent event{
+                    key,
                     scancode,
-                    glfwKeyStateEnumConvert(action),
-                    glfwModifierKeyMaskConvert(mods)
+                    action,
+                    mods
                 };
-                self->_pending_events.emplace_back(data);
+                self->pending_input_events_.emplace_back(event);
                 if (self->on_key)
                 {
-                    self->on_key(KeyEvent{data});
+                    self->on_key(event);
                 }
             }
         );
@@ -387,13 +275,11 @@ namespace lux::window
             [](GLFWwindow* window, double xoffset, double yoffset)
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                MouseScrollAction data{xoffset, yoffset};
-                self->_pending_events.emplace_back(data);
-                self->_pending_scroll_dx += xoffset;
-                self->_pending_scroll_dy += yoffset;
+                const WindowScrollEvent event{xoffset, yoffset};
+                self->pending_input_events_.emplace_back(event);
                 if (self->on_mouse_scroll)
                 {
-                    self->on_mouse_scroll(MouseScrollEvent{data});
+                    self->on_mouse_scroll(event);
                 }
             }
         );
@@ -427,7 +313,9 @@ namespace lux::window
             [](GLFWwindow* window, unsigned int codepoint)
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-                self->_pending_char_inputs.push_back(CharInput{.codepoint=codepoint});
+                self->pending_input_events_.emplace_back(
+                    WindowTextEvent{.codepoint=codepoint}
+                );
             }
         );
     }
@@ -440,31 +328,15 @@ namespace lux::window
             {
                 auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
 
-                if (button >= 0 && button < kMouseButtonCount)
-                {
-                    const uint8_t bit = static_cast<uint8_t>(1u << button);
-                    if (action == GLFW_PRESS)
-                    {
-                        self->_live_mouse_held |= bit;
-                        self->_pending_mouse_pressed |= bit;
-                    }
-                    else if (action == GLFW_RELEASE)
-                    {
-                        self->_live_mouse_held = static_cast<uint8_t>(
-                            self->_live_mouse_held & ~bit);
-                        self->_pending_mouse_released |= bit;
-                    }
-                }
-
-                MouseButtonAction data{
-                    glfwMouseButtonEnumConvert(button),
-                    glfwKeyStateEnumConvert(action),
-                    glfwModifierKeyMaskConvert(mods)
+                WindowMouseButtonEvent event{
+                    button,
+                    action,
+                    mods
                 };
-                self->_pending_events.emplace_back(data);
+                self->pending_input_events_.emplace_back(event);
                 if (self->on_mouse_button)
                 {
-                    self->on_mouse_button(MouseButtonEvent{data});
+                    self->on_mouse_button(event);
                 }
             }
         );
@@ -480,7 +352,8 @@ namespace lux::window
                 if (self->on_resize)
                 {
                     self->on_resize(WindowResizeEvent{
-                        common::Size2D{(uint32_t)width, (uint32_t)height}
+                        static_cast<std::uint32_t>(width),
+                        static_cast<std::uint32_t>(height)
                     });
                 }
             }
@@ -497,7 +370,8 @@ namespace lux::window
                 if (self->on_framebuffer_resize)
                 {
                     self->on_framebuffer_resize(FramebufferResizeEvent{
-                        common::Size2D{(uint32_t)width, (uint32_t)height}
+                        static_cast<std::uint32_t>(width),
+                        static_cast<std::uint32_t>(height)
                     });
                 }
             }
@@ -509,15 +383,20 @@ namespace lux::window
         return _delta_time;
     }
 
-    common::Size2D LuxWindow::framebufferSize() const
+    void LuxWindow::framebufferSize(
+        std::uint32_t& width,
+        std::uint32_t& height
+    ) const
     {
-		int width, height;
-        glfwGetFramebufferSize(_glfw_window, &width, &height);
-        common::Size2D size{
-            .width  = (uint32_t)width,
-            .height = (uint32_t)height
-        };
-        return size;
+        int native_width = 0;
+        int native_height = 0;
+        glfwGetFramebufferSize(
+            _glfw_window,
+            &native_width,
+            &native_height
+        );
+        width = static_cast<std::uint32_t>(native_width);
+        height = static_cast<std::uint32_t>(native_height);
     }
 
 #ifdef __PLATFORM_WIN32__
@@ -591,67 +470,10 @@ namespace lux::window
 
     void LuxWindow::newFrame(){}
 
-    InputSnapshot LuxWindow::captureInputSnapshot()
+    std::vector<WindowInputEvent> LuxWindow::drainInputEvents()
     {
-        InputSnapshot snap;
-
-        // --- Keyboard: held + edge (callback-driven, no polling) ------------
-        snap.keys_held          = _live_keys_held;
-        snap.keys_just_pressed  = _pending_keys_pressed;
-        snap.keys_just_released = _pending_keys_released;
-        _pending_keys_pressed.reset();
-        _pending_keys_released.reset();
-
-        // --- Mouse buttons: held + edge (callback-driven) -------------------
-        snap.mouse_held          = _live_mouse_held;
-        snap.mouse_just_pressed  = _pending_mouse_pressed;
-        snap.mouse_just_released = _pending_mouse_released;
-        _pending_mouse_pressed  = 0;
-        _pending_mouse_released = 0;
-
-        // --- Cursor position & delta ----------------------------------------
-        double cx = 0.0, cy = 0.0;
-        glfwGetCursorPos(_glfw_window, &cx, &cy);
-        snap.cursor_x  = cx;
-        snap.cursor_y  = cy;
-        snap.cursor_dx = _snapshot_initialized ? (cx - _snapshot_cursor_x) : 0.0;
-        snap.cursor_dy = _snapshot_initialized ? (cy - _snapshot_cursor_y) : 0.0;
-        _snapshot_cursor_x = cx;
-        _snapshot_cursor_y = cy;
-
-        // --- Scroll delta (accumulated by callback since last capture) -------
-        snap.scroll_dx     = _pending_scroll_dx;
-        snap.scroll_dy     = _pending_scroll_dy;
-        _pending_scroll_dx = 0.0;
-        _pending_scroll_dy = 0.0;
-
-        // --- Window / framebuffer size --------------------------------------
-        {
-            const auto ws = size();
-            snap.window_width  = ws.width;
-            snap.window_height = ws.height;
-            const auto fs = framebufferSize();
-            snap.framebuffer_width  = fs.width;
-            snap.framebuffer_height = fs.height;
-        }
-
-        // --- Discrete events (drained from the callback buffer) -------------
-        snap.events = std::move(_pending_events);
-        _pending_events.clear();  // leave capacity for next frame
-
-        // --- Character input (drained from glfwSetCharCallback buffer) ------
-        snap.text_events = std::move(_pending_char_inputs);
-        _pending_char_inputs.clear();
-
-        // --- Timing ---------------------------------------------------------
-        const double now = timeAfterFirstInitialization();
-        snap.sample_timestamp = now;
-        snap.sample_dt = _snapshot_initialized
-                   ? static_cast<float>(now - _snapshot_time)
-                   : 0.0f;
-        _snapshot_time        = now;
-        _snapshot_initialized = true;
-
-        return snap;
+        auto events = std::move(pending_input_events_);
+        pending_input_events_.clear();
+        return events;
     }
 }

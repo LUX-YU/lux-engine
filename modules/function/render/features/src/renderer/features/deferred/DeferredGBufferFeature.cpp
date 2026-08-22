@@ -207,17 +207,17 @@ namespace lux::render
             | (lr_scope ? static_cast<ERGTextureUsageFlags>(0)
                         : static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::SAMPLED));
 
-        RGTextureDescription albedo_desc = RGTextureDescription::Relative(1.0f, 1.0f, lux::common::ETextureFormat::RGBA8_UNORM);
+        RGTextureDescription albedo_desc = RGTextureDescription::Relative(1.0f, 1.0f, lux::rdesc::ETextureFormat::RGBA8_UNORM);
         albedo_desc.usage = gbuf_usage;
         auto gbuf_albedo = builder.createTexture(cfg_.gbuffer.albedo_metallic, albedo_desc);
 
-        RGTextureDescription normal_desc = RGTextureDescription::Relative(1.0f, 1.0f, lux::common::ETextureFormat::RGBA16_SFLOAT);
+        RGTextureDescription normal_desc = RGTextureDescription::Relative(1.0f, 1.0f, lux::rdesc::ETextureFormat::RGBA16_SFLOAT);
         normal_desc.usage = gbuf_usage;
         auto gbuf_normal = builder.createTexture(cfg_.gbuffer.normal_roughness, normal_desc);
 
         auto emissive_fmt = renderScene().pipelineConfig().isLdr()
-                                ? lux::common::ETextureFormat::RGBA8_UNORM
-                                : lux::common::ETextureFormat::RGBA16_SFLOAT;
+                                ? lux::rdesc::ETextureFormat::RGBA8_UNORM
+                                : lux::rdesc::ETextureFormat::RGBA16_SFLOAT;
         RGTextureDescription emissive_desc = RGTextureDescription::Relative(1.0f, 1.0f, emissive_fmt);
         emissive_desc.usage = gbuf_usage;
         auto gbuf_emissive = builder.createTexture(cfg_.gbuffer.emissive_ao, emissive_desc);
@@ -252,10 +252,10 @@ namespace lux::render
 
         // ---- Pass 3: GBuffer draw (graphics, MRT) ----
         auto draw_pass = builder.addPass(kDeferredGBufferDrawPassName, ERGPassType::GRAPHICS)
-                             .write(gbuf_albedo, lux::common::ETextureRole::COLOR_ATTACHMENT)
-                             .write(gbuf_normal, lux::common::ETextureRole::COLOR_ATTACHMENT)
-                             .write(gbuf_emissive, lux::common::ETextureRole::COLOR_ATTACHMENT)
-                             .write(builder.referenceTexture(cfg_.depth_target), lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                             .write(gbuf_albedo, lux::render::ETextureRole::COLOR_ATTACHMENT)
+                             .write(gbuf_normal, lux::render::ETextureRole::COLOR_ATTACHMENT)
+                             .write(gbuf_emissive, lux::render::ETextureRole::COLOR_ATTACHMENT)
+                             .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                              .setPipeline(bucket_pipelines_.pick(0u, variant_buckets[0]))
                              .bindSceneDS()
                              .useEngineSet(EDescriptorSetSlot::Instance)

@@ -1,5 +1,5 @@
 set(LUX_SCRIPT_CORE_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptHost.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptCore.cpp
 )
 
 add_component(
@@ -30,3 +30,18 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
+
+find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+
+target_link_libraries(
+    script_core
+    PUBLIC
+        lux::cxx::compile_time
+)
+
+component_add_transitive_commands(
+    script_core
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+)
+
+add_subdirectory(test)

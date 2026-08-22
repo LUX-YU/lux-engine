@@ -67,7 +67,7 @@ namespace lux::authoring
         struct SearchRow final
         {
             std::uint64_t token{0u};
-            lux::entity_scene::PersistentEntityId actor;
+            lux::authoring::WorldActorId actor;
 
             friend bool operator==(const SearchRow&, const SearchRow&) =
                 default;
@@ -88,7 +88,7 @@ namespace lux::authoring
         }
 
         [[nodiscard]] std::uint16_t actorBucket(
-            lux::entity_scene::PersistentEntityId actor) noexcept
+            lux::authoring::WorldActorId actor) noexcept
         {
             const auto bytes = actor.value().as_bytes();
             return static_cast<std::uint16_t>(
@@ -299,14 +299,14 @@ namespace lux::authoring
             const WorldActorSourcePosition& position)
         {
             if (const auto* planar = std::get_if<
-                    lux::spatial::Position2D>(&position))
+                    lux::math::Position2d>(&position))
             {
                 writer.writePod(std::uint8_t{0u});
                 writer.writePod(planar->x);
                 writer.writePod(planar->y);
                 return;
             }
-            const auto& volume = std::get<lux::spatial::Position3D>(
+            const auto& volume = std::get<lux::math::Position3d>(
                 position);
             writer.writePod(std::uint8_t{1u});
             writer.writePod(volume.x);
@@ -321,9 +321,9 @@ namespace lux::authoring
             const auto kind = reader.readPod<std::uint8_t>();
             if (kind == 0u)
             {
-                const lux::spatial::Position2D value{
+                const lux::math::Position2d value{
                     reader.readPod<double>(), reader.readPod<double>()};
-                if (!reader.ok() || !lux::spatial::isFinite(value))
+                if (!reader.ok() || !lux::math::isFinite(value))
                 {
                     return false;
                 }
@@ -332,11 +332,11 @@ namespace lux::authoring
             }
             if (kind == 1u)
             {
-                const lux::spatial::Position3D value{
+                const lux::math::Position3d value{
                     reader.readPod<double>(),
                     reader.readPod<double>(),
                     reader.readPod<double>()};
-                if (!reader.ok() || !lux::spatial::isFinite(value))
+                if (!reader.ok() || !lux::math::isFinite(value))
                 {
                     return false;
                 }
@@ -372,7 +372,7 @@ namespace lux::authoring
             ArchiveReader& reader,
             WorldDescriptorIndexActor& actor)
         {
-            actor.actor = lux::entity_scene::PersistentEntityId{
+            actor.actor = lux::authoring::WorldActorId{
                 reader.readUuid()};
             actor.descriptor_page = reader.readUuid();
             actor.display_name = reader.readString();
@@ -458,7 +458,7 @@ namespace lux::authoring
                 lux::authoring::EPartitionTopology::PLANAR_XY)
             {
                 const auto* position = std::get_if<
-                    lux::spatial::Position2D>(&actor.position);
+                    lux::math::Position2d>(&actor.position);
                 if (!position)
                 {
                     return std::nullopt;
@@ -475,7 +475,7 @@ namespace lux::authoring
                 lux::authoring::EPartitionTopology::PLANAR_XZ)
             {
                 const auto* position = std::get_if<
-                    lux::spatial::Position3D>(&actor.position);
+                    lux::math::Position3d>(&actor.position);
                 if (!position)
                 {
                     return std::nullopt;
@@ -491,7 +491,7 @@ namespace lux::authoring
             else
             {
                 const auto* position = std::get_if<
-                    lux::spatial::Position3D>(&actor.position);
+                    lux::math::Position3d>(&actor.position);
                 if (!position)
                 {
                     return std::nullopt;
@@ -735,7 +735,7 @@ namespace lux::authoring
             {
                 SearchRow row{
                     reader.readPod<std::uint64_t>(),
-                    lux::entity_scene::PersistentEntityId{
+                    lux::authoring::WorldActorId{
                         reader.readUuid()}};
                 if (!reader.ok() || row.actor.empty() ||
                     searchBucket(row.token) != expected_bucket)
@@ -804,7 +804,7 @@ namespace lux::authoring
             std::list<std::uint16_t>::iterator lru;
         };
 
-        lux::entity_scene::EntitySceneId world;
+        lux::authoring::WorldId world;
         lux::cxx::algorithm::Sha256Digest source_digest;
         WorldSourceDocument source;
         std::filesystem::path cache_file;
@@ -1357,7 +1357,7 @@ namespace lux::authoring
                         static_cast<std::streamsize>(actor_bytes.size()));
                     SearchRow row{
                         token,
-                        lux::entity_scene::PersistentEntityId{
+                        lux::authoring::WorldActorId{
                             uuids::uuid(actor_bytes)}};
                     if (!stream || bucket >= kSearchBucketCount ||
                         bucket / kBucketsPerStagingShard != shard ||
@@ -1487,7 +1487,7 @@ namespace lux::authoring
             return lux::cxx::unexpected(
                 std::string{"invalid LXDI v5 header"});
         }
-        const auto world = lux::entity_scene::EntitySceneId{reader.readUuid()};
+        const auto world = lux::authoring::WorldId{reader.readUuid()};
         lux::cxx::algorithm::Sha256Digest source_digest;
         reader.readBytes(
             source_digest.data(), source_digest.size());
@@ -1851,7 +1851,7 @@ namespace lux::authoring
     }
 
     std::optional<WorldDescriptorIndexActor> WorldDescriptorIndex::find(
-        lux::entity_scene::PersistentEntityId actor) const
+        lux::authoring::WorldActorId actor) const
     {
         if (!data_ || actor.empty())
         {
@@ -1876,7 +1876,7 @@ namespace lux::authoring
             (*loaded)->end(),
             actor,
             [](const WorldDescriptorIndexActor& row,
-               lux::entity_scene::PersistentEntityId key)
+               lux::authoring::WorldActorId key)
             {
                 return std::ranges::lexicographical_compare(
                     row.actor.value().as_bytes(), key.value().as_bytes());
@@ -1913,10 +1913,10 @@ namespace lux::authoring
             : &data_->source.descriptor_pages[found->second];
     }
 
-    std::vector<lux::entity_scene::PersistentEntityId>
+    std::vector<lux::authoring::WorldActorId>
     WorldDescriptorIndex::actorsInPage(uuids::uuid page_id) const
     {
-        std::vector<lux::entity_scene::PersistentEntityId> result;
+        std::vector<lux::authoring::WorldActorId> result;
         if (!data_)
         {
             return result;
@@ -2069,9 +2069,9 @@ namespace lux::authoring
         return data_ ? data_->source.descriptor_pages.size() : 0u;
     }
 
-    lux::entity_scene::EntitySceneId WorldDescriptorIndex::world() const noexcept
+    lux::authoring::WorldId WorldDescriptorIndex::world() const noexcept
     {
-        return data_ ? data_->world : lux::entity_scene::EntitySceneId{};
+        return data_ ? data_->world : lux::authoring::WorldId{};
     }
 
     lux::cxx::algorithm::Sha256Digest
@@ -2098,7 +2098,7 @@ namespace lux::authoring
 
     std::filesystem::path worldDescriptorIndexCachePath(
         const std::filesystem::path& cache_root,
-        lux::entity_scene::EntitySceneId world)
+        lux::authoring::WorldId world)
     {
         return cache_root / "descriptor-index" /
             (uuids::to_string(world.value()) + ".lxdi");

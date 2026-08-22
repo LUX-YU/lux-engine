@@ -8,7 +8,7 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/components/NameComponent.hpp>
 #include <lux/engine/meta/Meta.hpp>          // RefClass/RefField 真定义(注册表只前置声明)
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/log/Log.hpp>
 
 #include <imgui.h>
@@ -46,8 +46,8 @@ namespace lux::editor
         auto* reg = svc_.scene_registry ? svc_.scene_registry() : nullptr;
         if (!reg) return;
 
-        // 场景内引用者:逐组件类型 × 逐 AssetRef 字段 × 逐实体。判据复用序列化
-        // 的分类表(isAssetRefField)—— 「什么算资产引用」只有一处定义。实体数 ×
+        // 场景内引用者:逐组件类型 × 逐显式资产 UUID 字段 × 逐实体。判据复用
+        // Component Archive metadata；普通 UUID 不属于资产引用。实体数 ×
         // 组件类型数的一次性扫描,只在用户点了 Delete… 时跑,不在每帧。
         const auto entries = svc_.components.all();
         for (const auto e : reg->view<entt::entity>())
@@ -60,7 +60,7 @@ namespace lux::editor
                 const void* comp = entry.operations.get(*reg, e);
                 for (const auto& field : entry.ref_class->fields)
                 {
-                    if (!lux::serialize::isAssetRefField(field)) continue;
+                    if (!lux::ecs::serialization::isAssetReferenceField(field)) continue;
                     uuids::uuid value{};
                     std::memcpy(&value,
                                 static_cast<const std::byte*>(comp) + field.offset,

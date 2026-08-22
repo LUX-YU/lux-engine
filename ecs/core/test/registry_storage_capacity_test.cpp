@@ -1,5 +1,5 @@
 #include <lux/engine/ecs/RegistryStorageCapacity.hpp>
-#include <lux/engine/meta/RegistryMemoryResource.hpp>
+#include <lux/engine/ecs/RegistryMemoryResource.hpp>
 
 #include <entt/entt.hpp>
 
@@ -77,7 +77,7 @@ namespace
     };
 
     class CountingMemoryResource final
-        : public lux::meta::IRegistryMemoryUpstream
+        : public lux::ecs::IRegistryMemoryUpstream
     {
     public:
         [[nodiscard]] std::size_t allocationCalls() const noexcept
@@ -101,7 +101,7 @@ namespace
         {
             ++allocation_calls_;
             auto* result =
-                lux::meta::defaultRegistryMemoryUpstream().tryAllocate(
+                lux::ecs::defaultRegistryMemoryUpstream().tryAllocate(
                 bytes, alignment);
             if (result)
             {
@@ -120,7 +120,7 @@ namespace
                 std::abort();
             --live_blocks_;
             live_bytes_ -= bytes;
-            lux::meta::defaultRegistryMemoryUpstream().deallocate(
+            lux::ecs::defaultRegistryMemoryUpstream().deallocate(
                 pointer, bytes, alignment);
         }
 
@@ -201,12 +201,12 @@ int main()
     // EntityRegistry ABI. Both batches arm first; neither is allowed to
     // consume the other's private block.
     CountingMemoryResource upstream;
-    auto resource = lux::meta::RegistryMemoryResource::create(&upstream);
+    auto resource = lux::ecs::RegistryMemoryResource::create(&upstream);
     using StrictRegistry = entt::basic_registry<
         entt::entity,
-        lux::meta::RegistryAllocator<entt::entity>>;
+        lux::ecs::RegistryAllocator<entt::entity>>;
     StrictRegistry strict{
-        lux::meta::RegistryAllocator<entt::entity>{resource}};
+        lux::ecs::RegistryAllocator<entt::entity>{resource}};
 
     constexpr auto page_size =
         entt::entt_traits<entt::entity>::page_size;
@@ -253,7 +253,7 @@ int main()
         expect(
             !nested.has_value() &&
                 nested.error() ==
-                    lux::meta::ERegistryPublicationReservationError::
+                    lux::ecs::ERegistryPublicationReservationError::
                         PUBLICATION_ACTIVE,
             "active publication accepted a nested upstream reservation");
         strict.emplace<ProbeComponent>(first_high, ProbeComponent{17u});
@@ -319,12 +319,12 @@ int main()
     // allowed to become one permanent block per historical reallocation.
     CountingMemoryResource reallocation_upstream;
     auto reallocation_resource =
-        lux::meta::RegistryMemoryResource::create(&reallocation_upstream);
+        lux::ecs::RegistryMemoryResource::create(&reallocation_upstream);
     {
         std::vector<
             std::uint64_t,
-            lux::meta::RegistryAllocator<std::uint64_t>> vector{
-                lux::meta::RegistryAllocator<std::uint64_t>{
+            lux::ecs::RegistryAllocator<std::uint64_t>> vector{
+                lux::ecs::RegistryAllocator<std::uint64_t>{
                     reallocation_resource}};
         vector.reserve(4u);
         const auto after_first_reserve =

@@ -118,7 +118,7 @@
                 lux::authoring::EPartitionTopology::PLANAR_XY)
             {
                 const auto* point = std::get_if<
-                    lux::spatial::Position2D>(&position);
+                    lux::math::Position2d>(&position);
                 if (!point)
                     return std::nullopt;
                 const auto x = coordinate(point->x);
@@ -130,7 +130,7 @@
             else
             {
                 const auto* point = std::get_if<
-                    lux::spatial::Position3D>(&position);
+                    lux::math::Position3d>(&position);
                 if (!point)
                     return std::nullopt;
                 if (space->topology ==
@@ -199,12 +199,11 @@
             return result;
         }
 
-        [[nodiscard]] lux::scene::ScenePackage runtimePackage(
+        [[nodiscard]] lux::scene::SceneDescription runtimePackage(
             const lux::authoring::WorldSourceDocument& source)
         {
-            lux::scene::ScenePackage package;
-            package.id = lux::scene::ScenePackageId{
-                source.world.value()};
+            lux::scene::SceneDescription package;
+            package.id = source.world.value();
             package.features.reserve(source.contributions.size());
             for (const auto& contribution : source.contributions)
             {
@@ -227,6 +226,25 @@
             return package;
         }
 
+        [[nodiscard]] bool registerSceneDescription(
+            lux::asset::AssetManager& assets,
+            lux::scene::SceneDescription description)
+        {
+            const auto id = description.id;
+            if (id.is_nil())
+                return false;
+            auto info = std::make_unique<lux::asset::AssetInfo>();
+            info->id = id;
+            info->type = lux::scene::kSceneAssetType;
+            auto scene = std::make_unique<lux::scene::SceneAsset>(
+                std::move(info),
+                std::make_unique<lux::scene::SceneDescription>(
+                    std::move(description)));
+            return assets.hasAsset(id)
+                ? assets.replaceAsset(std::move(scene))
+                : assets.registerAsset(std::move(scene));
+        }
+
         /// Early LXWA v4 editor/demo writers emitted roots with an empty
         /// contribution plan. Such a scene has neither Camera2DSystem nor
         /// Camera3DSystem and its editor viewport remains black. Repair that
@@ -242,7 +260,7 @@
                 source.spaces.front().topology ==
                 lux::authoring::EPartitionTopology::PLANAR_XY;
             source.contributions.push_back({
-                lux::extensions::ContributionId{
+                lux::authoring::WorldSceneFeatureId{
                     is_2d
                         ? "org.lux.builtin.presentation2d"
                         : "org.lux.builtin.presentation3d"},
@@ -251,33 +269,42 @@
             return true;
         }
 
-        struct PlayScenePackageImage final
+        struct PlaySceneAsset final
         {
-            lux::asset::AssetBlob package_image;
+            lux::asset::asset_id_t scene_id{};
             std::shared_ptr<const lux::asset::AssetVfs> vfs;
         };
 
-        [[nodiscard]] lux::cxx::expected<PlayScenePackageImage, std::string>
-        makePlayScenePackageImage(
+        [[nodiscard]] lux::cxx::expected<PlaySceneAsset, std::string>
+        makePlaySceneAsset(
+            lux::asset::AssetManager& assets,
             const std::filesystem::path& pak_file,
-            lux::scene::ScenePackageId scene_id) noexcept
+            lux::asset::asset_id_t scene_id) noexcept
         {
             auto pak = lux::asset::PakAssetProvider::loadFromFile(pak_file);
             if (!pak)
                 return lux::cxx::unexpected(std::move(pak.error()));
-            auto selected = lux::asset::resolveBootScene(
-                **pak, "Scenes/Play");
-            if (!selected || selected->id != scene_id.value())
+            auto selected = (*pak)->resolve("Scenes/Play");
+            if (!selected || *selected != scene_id)
             {
                 return lux::cxx::unexpected(std::string{
                     "cooked Play Pak does not expose the expected "
-                    "ENTITY_SCENE entry"});
+                    "SceneAsset entry"});
             }
-            auto manifest = (*pak)->open(scene_id.value());
+            auto manifest = (*pak)->open(scene_id);
             if (!manifest)
             {
                 return lux::cxx::unexpected(
-                    std::string{"cannot open cooked Play LXSC manifest"});
+                    std::string{"cannot open cooked Play SceneAsset"});
+            }
+            auto description = lux::scene::SceneAssetSerDeser::decodeData(
+                manifest->bytes.view());
+            if (!description || (*description)->id != scene_id ||
+                !registerSceneDescription(
+                    assets, std::move(**description)))
+            {
+                return lux::cxx::unexpected(
+                    std::string{"cannot register cooked Play SceneAsset"});
             }
             auto vfs = std::make_shared<lux::asset::AssetVfs>();
             if (vfs->mount({"/Game", std::move(*pak), 0}) ==
@@ -286,8 +313,8 @@
                 return lux::cxx::unexpected(
                     std::string{"cannot mount cooked Play EntityScene"});
             }
-            return PlayScenePackageImage{
-                std::move(*manifest),
+            return PlaySceneAsset{
+                scene_id,
                 std::move(vfs)};
         }
 
@@ -394,7 +421,7 @@
     }
 
     void EditorScene::restoreAuthoringViewpoint(
-        lux::meta::entity_id source_camera) noexcept
+        lux::ecs::Entity source_camera) noexcept
     {
         if (!runtime_ || camera_entity_ == entt::null)
             return;
@@ -467,7 +494,7 @@
         const bool finite_position = std::visit(
             [](const auto& position)
             {
-                return lux::spatial::isFinite(position);
+                return lux::math::isFinite(position);
             },
             instance.position);
         float rotation_norm = 0.0f;
@@ -696,7 +723,7 @@
         return lux::cxx::unexpected(instance_edit_error_);
     }
 
-    lux::cxx::expected<lux::entity_scene::PersistentEntityId, std::string>
+    lux::cxx::expected<lux::authoring::WorldActorId, std::string>
     EditorScene::convertWorldInstanceToActor(
         lux::authoring::WorldInstanceId instance_id)
     {
@@ -739,7 +766,7 @@
             instance_id,
             &lux::authoring::EditableWorldInstance::id);
         if (source == instance_page->second.page.instances.end() ||
-            !std::holds_alternative<lux::spatial::Position3D>(
+            !std::holds_alternative<lux::math::Position3d>(
                 source->position))
         {
             instance_edit_error_ =
@@ -747,14 +774,14 @@
             return lux::cxx::unexpected(instance_edit_error_);
         }
 
-        lux::meta::EntityRegistry staging;
+        lux::ecs::Registry staging;
         const auto staging_entity = staging.create();
         staging.emplace<lux::ecs::NameComponent>(
             staging_entity,
             lux::ecs::NameComponent{
                 "Instance " + std::to_string(instance_id.local_id)});
         lux::ecs::Transform3DComponent transform;
-        transform.position = std::get<lux::spatial::Position3D>(
+        transform.position = std::get<lux::math::Position3d>(
             source->position);
         transform.rotation = Eigen::Quaternionf{
             source->rotation[3],
@@ -884,17 +911,17 @@
         dirty_instance_pages_.insert(instance_page->first);
         authoring_load_result_.created_entities.push_back(*entity);
         authoring_load_result_.world_entity_ids.push_back(
-            lux::entity_scene::PersistentEntityId{
+            lux::authoring::WorldActorId{
                 transaction->actor_document.actor.value()});
         selection_.select(&registry, *entity);
         trimAuthoringDescriptorPageCache();
-        return lux::entity_scene::PersistentEntityId{
+        return lux::authoring::WorldActorId{
             transaction->actor_document.actor.value()};
     }
 
     lux::cxx::expected<lux::authoring::WorldInstanceId, std::string>
     EditorScene::convertWorldActorToInstance(
-        lux::entity_scene::PersistentEntityId actor)
+        lux::authoring::WorldActorId actor)
     {
         instance_edit_error_.clear();
         if (!world_source_ || actor.empty())
@@ -1180,7 +1207,7 @@
     }
 
     bool EditorScene::requestWorldActorProxy(
-        lux::entity_scene::PersistentEntityId actor,
+        lux::authoring::WorldActorId actor,
         bool select)
     {
         if (!live_ || !world_source_ || !world_descriptor_index_ ||
@@ -1218,7 +1245,7 @@
             return true;
         }
         const auto persistent_actor =
-            lux::entity_scene::PersistentEntityId{actor.value()};
+            lux::authoring::WorldActorId{actor.value()};
         const auto indexed = world_descriptor_index_->find(persistent_actor);
         const auto* page = indexed
             ? world_descriptor_index_->page(indexed->descriptor_page)
@@ -1313,7 +1340,7 @@
                 owner->authoring_load_result_.created_entities.push_back(
                     entity);
                 owner->authoring_load_result_.world_entity_ids.push_back(
-                    lux::entity_scene::PersistentEntityId{
+                    lux::authoring::WorldActorId{
                         outcome->descriptor.id.value()});
                 owner->materialized_actor_ids_.insert(key);
                 owner->materialized_actor_descriptors_.insert_or_assign(
@@ -1327,7 +1354,7 @@
                 owner->selection_.resolveProxy(
                     &registry,
                     entity,
-                    EditorObjectId{lux::entity_scene::PersistentEntityId{
+                    EditorObjectId{lux::authoring::WorldActorId{
                         outcome->descriptor.id.value()}});
                 owner->updateAuthoringProxyWindow();
             });

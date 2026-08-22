@@ -24,8 +24,8 @@
 #include "graph_test_helpers.hpp"
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/ShaderAsset.hpp>
-#include <lux/engine/resource/asset/ShaderSerDeser.hpp>
+#include <lux/engine/resource/asset/shader/ShaderAsset.hpp>
+#include <lux/engine/resource/asset/shader/ShaderSerDeser.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>
 
 #include <uuid.h>

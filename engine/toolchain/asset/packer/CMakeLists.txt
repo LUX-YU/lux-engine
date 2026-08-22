@@ -1,6 +1,6 @@
 ## engine/toolchain/asset/packer — build-time asset packing tools.
 ##
-## lux_asset_packer links ONLY lux::engine::resource::asset_codecs (no imgui / no MLIR).
+## lux_asset_packer links ONLY lux::engine::resource::asset (no imgui / no MLIR).
 ## It is a build-time dependency of the RUNTIME itself:
 ##   - modules/function/render/features/cmake/embed_builtin_shaders.cmake invokes it to
 ##     embed builtin shader .luxasset files into the render library;
@@ -20,7 +20,7 @@ add_executable(
 target_link_libraries(
     lux_asset_packer
     PRIVATE
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::engine::toolchain::toolchain_asset_cook
         lux::engine::toolchain::toolchain_shader_asset
         lux::engine::toolchain::toolchain_texture_importer

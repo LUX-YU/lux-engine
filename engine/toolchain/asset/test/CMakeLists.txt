@@ -2,7 +2,7 @@ add_executable(asset_vfs_test asset_vfs_test.cpp)
 target_link_libraries(
     asset_vfs_test
     PRIVATE
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::engine::authoring::authoring_assets
 )
 
@@ -10,21 +10,19 @@ add_executable(asset_pak_test asset_pak_test.cpp)
 target_link_libraries(
     asset_pak_test
     PRIVATE
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::engine::authoring::authoring_assets
         lux::engine::toolchain::toolchain_asset_cook
 )
-target_include_directories(
-    asset_pak_test
-    PRIVATE ${PROJECT_SOURCE_DIR}/modules/resource/asset/pinclude
-)
-
 add_executable(flow_graph_codec_test flow_graph_codec_test.cpp)
 target_link_libraries(
     flow_graph_codec_test
     PRIVATE
         lux::engine::authoring::authoring_assets
 )
+if(TARGET ecs_meta)
+    target_link_libraries(flow_graph_codec_test PRIVATE ecs_meta)
+endif()
 target_include_directories(
     flow_graph_codec_test
     PRIVATE ${PROJECT_SOURCE_DIR}/engine/authoring/assets/pinclude

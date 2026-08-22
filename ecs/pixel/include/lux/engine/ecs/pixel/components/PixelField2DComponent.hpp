@@ -23,7 +23,7 @@ namespace lux::ecs
 
     struct LUX_COMPONENT() PixelField2DComponent
     {
-        LUX_MEMBER(display_name=Definition, asset_type=pixel_field, tooltip=Pixel field definition asset)
+        LUX_MEMBER(display_name=Definition, tooltip=Opaque pixel field definition identity)
         lux::asset::asset_id_t definition{};
 
         LUX_MEMBER(display_name=Material, asset_type=material, tooltip=Pixel field presentation material)

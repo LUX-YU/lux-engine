@@ -39,7 +39,7 @@
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/SceneServices.hpp>
-#include <lux/engine/function/visibility.h>
+#include <lux/engine/ecs/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -167,7 +167,7 @@ namespace lux::ecs
         std::size_t   index_{kInvalidIndex};
     };
 
-    class LUX_FUNCTION_PUBLIC ScheduleBuilder final
+    class LUX_ECS_PUBLIC ScheduleBuilder final
     {
     private:
         enum class EState : std::uint8_t

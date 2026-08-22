@@ -27,7 +27,6 @@ add_component(
     OUTPUT_NAME    lux_engine_ecs_animation_2d
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/FlipbookAnimationSystem.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Flipbook2DResolver.cpp
 )
 lux_configure_animation_target(animation_2d)
 target_link_libraries(
@@ -35,13 +34,13 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::render_2d
         lux::engine::function::animation
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     animation_2d
     "find_package(lux-engine-ecs REQUIRED COMPONENTS render_2d)"
     "find_package(lux-engine-function REQUIRED COMPONENTS animation)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 add_component(
@@ -50,7 +49,6 @@ add_component(
     OUTPUT_NAME    lux_engine_ecs_animation_3d
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AnimationSystem.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SkeletalAnimationResolver.cpp
 )
 lux_configure_animation_target(animation_3d)
 target_link_libraries(
@@ -58,13 +56,13 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::render_3d
         lux::engine::function::animation
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     animation_3d
     "find_package(lux-engine-ecs REQUIRED COMPONENTS render_3d)"
     "find_package(lux-engine-function REQUIRED COMPONENTS animation)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 # FlipbookAnimationComponent belongs to the 2D animation target. 3D animation

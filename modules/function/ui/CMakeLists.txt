@@ -8,7 +8,7 @@
 ## live in engine/editor and link this component.
 
 find_package(imgui   REQUIRED COMPONENTS glfw3 vulkan)
-find_package(lux-cxx REQUIRED COMPONENTS container reflection_runtime)
+find_package(lux-cxx REQUIRED COMPONENTS core container reflection_runtime)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_FUNCTION_UI_LIBRARY
@@ -98,7 +98,7 @@ component_add_internal_dependencies(
 component_add_transitive_commands(
     ui
     "find_package (imgui REQUIRED COMPONENTS glfw3 vulkan)"
-    "find_package (lux-cxx REQUIRED COMPONENTS container reflection_runtime)"
+    "find_package (lux-cxx REQUIRED COMPONENTS core container reflection_runtime)"
     "find_package (lux-engine-platform REQUIRED COMPONENTS window)"
 )
 
@@ -117,6 +117,7 @@ target_link_libraries(
     lux::cxx::container
     lux::cxx::reflection_runtime
     PRIVATE
+    lux::cxx::core
     lux::engine::platform::window
 )
 

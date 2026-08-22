@@ -355,7 +355,7 @@ int main(int argc, char** argv)
         sp.tint = 0xFF20D0FFu;   // warm
         sp.priority = -8.f;
     }
-    std::vector<lux::meta::entity_id> stars;
+    std::vector<lux::ecs::Entity> stars;
     stars.reserve(200);
     for (int i = 0; i < 200; ++i)
     {
@@ -373,7 +373,7 @@ int main(int argc, char** argv)
     // the swirl ring ABOVE the field (priority +10): 512 images, ECS-animated —
     // direct field writes each frame; the value-compare bridge turns exactly the
     // moved ones into ONE transform bulk.
-    std::vector<lux::meta::entity_id> swirl;
+    std::vector<lux::ecs::Entity> swirl;
     swirl.reserve(512);
     for (int i = 0; i < 512; ++i)
     {

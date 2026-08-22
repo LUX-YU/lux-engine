@@ -3,16 +3,11 @@
 ## Provides:
 ##   - ArchiveReader / ArchiveWriter (byte-level POD + string I/O over a byte buffer)
 ##   - NameTable (string interning table for binary file headers)
-##   - TaggedPropertyArchive (reflection-driven structured serialization;
-##     write/read reflected structs as named/typed/sized property streams,
-##     skipping unknown fields cleanly for forward compatibility)
 ##
-## Depends on lux::engine::core::meta (RefClass/RefField iteration) and stduuid
-## (asset_id_t encoding). It has no scene, asset, runtime, render or editor
-## knowledge; domain formats build on top of this foundation target.
+## This target deliberately has no reflection, Eigen, ECS, scene, asset,
+## runtime, render or editor knowledge. Domain formats build on this foundation.
 
 find_package(stduuid CONFIG REQUIRED)
-find_package(Eigen3 CONFIG REQUIRED)
 find_package(lux-cxx REQUIRED COMPONENTS binary)
 
 generate_visibility_header(
@@ -25,7 +20,6 @@ generate_visibility_header(
 set(LUX_SERIALIZE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Archive.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/NameTable.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/TaggedPropertyArchive.cpp
 )
 
 add_component(
@@ -52,16 +46,12 @@ target_link_libraries(
     serialization
     PUBLIC
     lux::cxx::binary
-    lux::engine::core::meta
     stduuid
-    PRIVATE
-    Eigen3::Eigen
 )
 
 component_add_transitive_commands(
     serialization
     "find_package(lux-cxx REQUIRED COMPONENTS binary)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
     "find_package(stduuid CONFIG REQUIRED)"
 )
 

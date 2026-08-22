@@ -19,19 +19,24 @@
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/PakAssetProvider.hpp>
-#include <lux/engine/resource/asset/MeshAsset.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/scene/SceneAsset.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/ecs/render/components/3d/AnimatorComponent.hpp>
 #include <lux/engine/ecs/systems/HierarchicalTransformSystem.hpp> // setParent (per the write contract)
 #include <lux/engine/ecs/script/systems/ScriptSystem.hpp>                 // dispatchTo (play wiring)
+#include <lux/engine/ecs/script/backends/LuaScriptBackend.hpp>
+#include <lux/engine/ecs/script/backends/NativeModuleScriptBackend.hpp>
 
-#include <lux/engine/platform/FormatCompat.h>   // lux::format — spawnModel entity naming
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/cxx/core/Format.hpp>   // lux::format — spawnModel entity naming
+#include <lux/engine/math/Extent.hpp>
 #include <lux/engine/math/Intersection.hpp>
 #include <lux/engine/math/Picking.hpp>
 #include <lux/engine/math/Ray.hpp>
+#include <lux/engine/math/RelativePosition.hpp>
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/render/components/3d/Camera3DComponent.hpp>
@@ -61,7 +66,6 @@
 #include <lux/engine/ecs/HierarchyIndex.hpp>   // hierarchyRoot (pick -> whole object)
 
 #include <iostream>   // teardown-drain overflow diagnostic
-#include <lux/engine/ecs/animation/systems/SkeletalAnimationResolver.hpp>
 #include <lux/engine/ecs/script/systems/ScriptSystem.hpp>     // play-scoped ScriptSystem + ScriptContext
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>

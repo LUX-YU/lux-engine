@@ -24,7 +24,7 @@
  *                 (CLAUDE.md:EnTT 没有 cleanup 组件留存机制,句柄必须当场读走)
  */
 
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <entt/entt.hpp>
 
@@ -51,7 +51,7 @@ namespace
     std::vector<int> g_reclaimed;
 
     void onStateDestroyed(
-        lux::meta::EntityRegistryBase& reg,
+        lux::ecs::RegistryBase& reg,
         entt::entity e)
     {
         // 关键断言点:信号触发时组件**仍然可读**。
@@ -64,7 +64,7 @@ int main()
     using namespace entt::literals;
     std::printf("=== reactive_storage_probe (R1a) ===\n");
 
-    lux::meta::EntityRegistry reg;
+    lux::ecs::Registry reg;
 
     // ── ① 绑定 ─────────────────────────────────────────────────────────
     // mixin 的 bind_any 与 assure() 都使用 canonical basic_registry base，

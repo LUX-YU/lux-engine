@@ -126,12 +126,12 @@ namespace lux::ecs
 
       private:
         friend struct Navigation3DIntentCommand;
-        void applyReconcile(lux::meta::EntityRegistry& registry,
+        void applyReconcile(lux::ecs::Registry& registry,
                             entt::entity entity) noexcept;
-        void applyPublish(lux::meta::EntityRegistry& registry,
+        void applyPublish(lux::ecs::Registry& registry,
                           entt::entity entity,
                           std::uint64_t generation) noexcept;
-        void applyFailure(lux::meta::EntityRegistry& registry,
+        void applyFailure(lux::ecs::Registry& registry,
                           entt::entity entity,
                           std::uint64_t generation,
                           ENavigationRegion3DFailureCode failure) noexcept;
@@ -162,13 +162,13 @@ namespace lux::ecs
             return ecsCommandSparsePublicationBytes(1u);
         }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry& registry) const noexcept
+            lux::ecs::Registry& registry) const noexcept
         {
             reserveEcsCommandStorage(
                 registry.storage<NavigationRegion3DStatusComponent>(), 1u);
         }
 
-        void apply(lux::meta::EntityRegistry& registry,
+        void apply(lux::ecs::Registry& registry,
                    Navigation3DSystem& system) const noexcept
         {
             switch (action)

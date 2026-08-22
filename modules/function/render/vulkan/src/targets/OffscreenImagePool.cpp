@@ -1,6 +1,6 @@
 #include <lux/engine/render/targets/OffscreenImagePool.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <vk_mem_alloc.h>
 
 #include <cassert>

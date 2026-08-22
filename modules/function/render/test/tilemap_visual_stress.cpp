@@ -55,7 +55,7 @@
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/description/Texture.hpp>
 #include <lux/engine/meta/Meta.hpp>
 
@@ -403,7 +403,7 @@ int main(int argc, char** argv)
         sp.tint = 0xFF60E0FFu;
         sp.priority = -5.f;   // behind the map (shows through empty tiles)
     }
-    std::vector<lux::meta::entity_id> clouds;
+    std::vector<lux::ecs::Entity> clouds;
     for (int i = 0; i < 24; ++i)
     {
         const auto e = world.createEntity();

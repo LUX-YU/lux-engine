@@ -65,6 +65,17 @@ lux::entity_scene::PersistenceJournal
 
 运行时类名中的历史 `EntityScene` 暂时保留到目录迁入 `engine/scene/loading` 的独立阶段；这不是旧 DTO 继续拥有运行时语义的许可。
 
+## 必需依赖与构造不变量
+
+运行时 staging 对象构造完成后必须立即满足全部必需依赖：
+
+- `EntityBatchStager` 以 `const ComponentTypeCatalog&` 保存组件目录；它不能默认构造，也不存在“稍后再设置目录”的状态；
+- `PreparedEntityBatchImpl` 在构造时同时取得 `DecodedEntityBatch` 与 `SectionBlobStore&`；Blob Store 不得先置空再由 `begin()` 补接；
+- canonical `ComponentSchemaId` 是 `{hash, name}` 值对象，运行时不得继续按旧 `StableNameId` 的 `name()` / `hash()` accessor 使用；
+- `EntitySectionImage::persistent_id` 已经是 ECS-owned `PersistentEntityId`，Materializer 不得再经过 legacy wire 转换 helper。
+
+这些规则用于消除必需裸指针、两阶段初始化和新旧 ID 模型混用。可空指针只允许表达真实的可选状态，不得用于“构造后理论上永远非空”的依赖。
+
 ## 构建边界
 
 - `runtime_entity_scene` 的生产目标必须 PUBLIC 链接 `ecs::scene_format` 与 `scene::scene_package`；

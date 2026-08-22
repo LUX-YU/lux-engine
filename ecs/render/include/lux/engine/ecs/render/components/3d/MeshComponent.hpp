@@ -15,6 +15,7 @@ namespace lux::ecs
     struct LUX_COMPONENT() MeshComponent
     {
         /// UUID of the MeshAsset to render.
+        LUX_MEMBER(display_name=Mesh, asset_type=mesh, tooltip=Cooked mesh asset)
         lux::asset::asset_id_t mesh_asset_id;
 
         /// UUID of the material to use (Material or Material Instance). Optional;

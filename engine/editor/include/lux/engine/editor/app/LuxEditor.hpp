@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 
 /**
  * @file LuxEditor.hpp
@@ -397,7 +397,7 @@ namespace lux::editor
         // spawn + select on click) inside an already-open ImGui popup/menu.
         // @p pos2d — world position for "create HERE" (viewport right-click);
         // nullopt for position-less entry points (Hierarchy).
-        void drawSpawnMenuItems(const std::optional<lux::spatial::Position2D>& pos2d);
+        void drawSpawnMenuItems(const std::optional<lux::math::Position2d>& pos2d);
 
 
         EditorConfig                                            config_;

@@ -730,7 +730,7 @@ namespace lux::render
         {
             RenderTargetLayout layout;
             RenderTargetSlotDesc color{};
-            color.format       = lux::common::ETextureFormat::BGRA8_SRGB;
+            color.format       = lux::rdesc::ETextureFormat::BGRA8_SRGB;
             color.aspect       = ERenderAspect::COLOR;
             color.is_presentable = false;
             if (sampled)
@@ -751,7 +751,7 @@ namespace lux::render
             layout.slots[static_cast<size_t>(TargetSlot::SCENE_COLOR)] = color;
 
             RenderTargetSlotDesc depth{};
-            depth.format = lux::common::ETextureFormat::D32_SFLOAT;
+            depth.format = lux::rdesc::ETextureFormat::D32_SFLOAT;
             depth.usage = ERenderImageUsage::DEPTH_STENCIL_ATTACHMENT;
             depth.aspect = ERenderAspect::DEPTH;
             depth.final_state = ERenderResourceState::DEPTH_STENCIL_ATTACHMENT;
@@ -922,7 +922,7 @@ namespace lux::render
 
         // Clamp a requested target extent to the device's framebuffer / image
         // limits(原 UI 层 clampViewExtent 的职责,随命令面下沉到 base)。
-        VkExtent2D clampTargetExtent(GeneralRenderServer::Impl& im, common::Size2D extent)
+        VkExtent2D clampTargetExtent(GeneralRenderServer::Impl& im, lux::math::Extent2u extent)
         {
             const auto& limits = im.res_ctx_->deviceContext()
                                      .physicalDevice().properties().properties.limits;

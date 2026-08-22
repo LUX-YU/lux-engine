@@ -25,7 +25,7 @@ namespace
     }
 
     lux::ecs::scene_format::EntitySectionId coordinateSectionId(
-        lux::spatial::GridCoord2i64 coordinate)
+        lux::math::GridCoord2i64 coordinate)
     {
         auto mix = [](std::uint64_t value) noexcept
         {
@@ -42,7 +42,7 @@ namespace
 
     void addWindow(
         std::vector<lux::runtime::spatial2d::Spatial2DSectionIndexEntry>& entries,
-        lux::spatial::GridCoord2i64 center,
+        lux::math::GridCoord2i64 center,
         std::uint64_t& ordinal)
     {
         for (std::int64_t y = -2; y <= 2; ++y)
@@ -72,7 +72,7 @@ int main()
 
     const auto origin = index->window({0.0, 0.0}, 64.0);
     assert(origin);
-    assert((origin->center == lux::spatial::GridCoord2i64{0, 0}));
+    assert((origin->center == lux::math::GridCoord2i64{0, 0}));
     assert(std::count_if(
         origin->entries.begin(), origin->entries.end(),
         [](const auto& entry) { return entry.active; }) ==
@@ -83,20 +83,20 @@ int main()
     // Floor division, rather than truncation, owns the negative boundary.
     const auto negative = index->window({-640.0, -640.0}, 64.0);
     assert(negative);
-    assert((negative->center == lux::spatial::GridCoord2i64{-10, -10}));
+    assert((negative->center == lux::math::GridCoord2i64{-10, -10}));
 
     // 10k cells at 0.25 units/cell lies in chunk floor(10000 / 256).
     const auto ten_k_cells = index->window({2500.0, 2500.0}, 64.0);
     assert(ten_k_cells);
-    assert((ten_k_cells->center == lux::spatial::GridCoord2i64{39, 39}));
+    assert((ten_k_cells->center == lux::math::GridCoord2i64{39, 39}));
 
     constexpr double kFar = 64.0 * 1'000'000.0;
     const auto far_window = index->window({kFar, -kFar}, 64.0);
     assert(far_window);
-    assert((far_window->center == lux::spatial::GridCoord2i64{1'000'000, -1'000'000}));
+    assert((far_window->center == lux::math::GridCoord2i64{1'000'000, -1'000'000}));
 
     auto procedural = spatial2d::Spatial2DSectionSource::procedural(
-        [](lux::spatial::GridCoord2i64 coordinate)
+        [](lux::math::GridCoord2i64 coordinate)
             -> lux::cxx::expected<
                 lux::scene::SectionRecord,
                 spatial2d::Spatial2DIndexFailure>
@@ -108,7 +108,7 @@ int main()
     assert(procedural);
     const auto arbitrary = procedural->window({64.0 * 7'654'321.0, 64.0 * -6'543'210.0}, 64.0);
     assert(arbitrary);
-    assert((arbitrary->center == lux::spatial::GridCoord2i64{7'654'321, -6'543'210}));
+    assert((arbitrary->center == lux::math::GridCoord2i64{7'654'321, -6'543'210}));
     assert(std::ranges::all_of(
         arbitrary->entries,
         [](const auto& entry) 

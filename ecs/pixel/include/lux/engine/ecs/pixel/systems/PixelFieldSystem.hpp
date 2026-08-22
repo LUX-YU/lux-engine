@@ -63,7 +63,7 @@ namespace lux::ecs
     private:
         friend struct PixelFieldIntentCommand;
         void applyIntent(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             entt::entity entity) noexcept;
         void releaseOwned(PixelFieldHandle handle) noexcept;
 
@@ -90,10 +90,10 @@ namespace lux::ecs
             return ecsCommandSparsePublicationBytes(1u);
         }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry& registry) const noexcept;
+            lux::ecs::Registry& registry) const noexcept;
 
         void apply(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             PixelFieldSystem& system) const noexcept
         {
             if (action == EPixelFieldIntentAction::DESTROY_OWNED_HANDLE)

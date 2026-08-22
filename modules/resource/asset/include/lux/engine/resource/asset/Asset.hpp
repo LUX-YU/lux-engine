@@ -9,8 +9,7 @@
 #include <type_traits>
 #include <variant>
 #include <vector>
-#include <lux/engine/resource/visibility.h>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/resource/asset/visibility.h>
 #include <lux/engine/resource/asset/AssetId.hpp>
 
 namespace lux::asset
@@ -74,28 +73,23 @@ namespace lux::asset
      *
      * These asset types specify the kind of resource represented by an asset.
      */
-    enum class EAssetType
+    enum class EAssetType : std::uint32_t
     {
-        TEXTURE,         ///< Texture asset.
-        MODEL,           ///< Model asset.
-        SHADER,          ///< Shader asset.
-        MESH,            ///< Mesh asset.
-        FONT,            ///< Font asset.
-        SOUND,           ///< Sound asset.
-        SCRIPT,          ///< Compiled script asset (shared library + manifest).
-        SKELETON,        ///< Skeletal animation skeleton (bone hierarchy + bind pose).
-        ANIMATION_CLIP,  ///< Keyframe animation clip targeting a Skeleton.
-        MATERIAL,        ///< Node-graph material (authoring graph + baked SPIR-V + params). Every material is a graph.
-        MATERIAL_INSTANCE, ///< References a parent MATERIAL; overrides params/textures only (no own shader).
-        TEXTURE_ATLAS,    ///< 2D image atlas: named uv sub-rects + pivots over one TEXTURE.
-        FLIPBOOK_CLIP,///< 2D image frame animation over a TEXTURE_ATLAS (NOT the skeletal ANIMATION_CLIP).
-        FLOW_GRAPH,      ///< FlowForge visual-script graph (authoring graph; compiled editor-side).
-        UNKNOWN,         ///< Unknown asset type.
-        /// Raw LXSC EntityScene manifest. SceneRuntime opens it directly
-        /// through the VFS; AssetManager deliberately treats it as opaque.
-        ENTITY_SCENE,
-        /// Raw LXES EntitySection image owned by EntitySectionService.
-        ENTITY_SECTION
+        TEXTURE = 0u,          ///< Texture asset.
+        MODEL = 1u,            ///< Model asset.
+        SHADER = 2u,           ///< Shader asset.
+        MESH = 3u,             ///< Mesh asset.
+        FONT = 4u,             ///< Font asset.
+        SOUND = 5u,            ///< Sound asset.
+        SCRIPT = 6u,           ///< Compiled script asset (shared library + manifest).
+        SKELETON = 7u,         ///< Skeletal animation skeleton (bone hierarchy + bind pose).
+        ANIMATION_CLIP = 8u,   ///< Keyframe animation clip targeting a Skeleton.
+        MATERIAL = 9u,         ///< Node-graph material (authoring graph + baked SPIR-V + params).
+        MATERIAL_INSTANCE = 10u, ///< Parent MATERIAL plus parameter/texture overrides.
+        TEXTURE_ATLAS = 11u,   ///< Named UV sub-rects and pivots over one TEXTURE.
+        FLIPBOOK_CLIP = 12u,   ///< Frame animation over a TEXTURE_ATLAS.
+        FLOW_GRAPH = 13u,      ///< FlowForge authoring graph.
+        UNKNOWN = 14u          ///< Unknown or unsupported Resource asset type.
     };
 
     /**
@@ -132,7 +126,7 @@ namespace lux::asset
      * The LuxAsset class encapsulates common functionalities for all assets,
      * including management of asset metadata and providing an interface to access raw asset data.
      */
-	class LuxAsset : public lux::meta::LuxObject
+	class LuxAsset
     {
     public:
         /**
@@ -273,7 +267,7 @@ namespace lux::asset
          *
          * Keys the stored EAssetType (see type()) against the target's
          * `asset_type` constant (every concrete asset declares one). A base or
-         * self type (LuxAsset / LuxObject) is always a valid upcast. Returns
+         * self type (LuxAsset) is always a valid upcast. Returns
          * nullptr on a type mismatch — exactly the contract of the dynamic_cast
          * it replaces, but without depending on RTTI.
          *
@@ -312,47 +306,6 @@ namespace lux::asset
          * @return true if the asset has data; false otherwise.
          */
         [[nodiscard]] virtual bool hasData() const = 0;
-
-        /**
-         * @brief Retrieves mutable access to the raw asset data.
-         *
-         * This is a pure virtual function that must be implemented by derived classes.
-         *
-         * @return Pointer to the raw asset data.
-         */
-        virtual void* rawData() = 0;
-
-        /**
-         * @brief Retrieves constant access to the raw asset data.
-         *
-         * This is a pure virtual function that must be implemented by derived classes.
-         *
-         * @return Constant pointer to the raw asset data.
-         */
-        [[nodiscard]] virtual const void* rawData() const = 0;
-
-        /**
-         * @brief Helper template to obtain the asset data casted to a specific type.
-         *
-         * @tparam T The type to which the raw data should be cast.
-         * @return Pointer to the asset data of type T.
-         */
-        template<typename T>
-        T* data() {
-            return static_cast<T*>(rawData());
-        }
-
-        /**
-         * @brief Helper template to obtain the asset data casted to a specific const type.
-         *
-         * @tparam T The type to which the raw data should be cast.
-         * @return Constant pointer to the asset data of type T.
-         */
-        template<typename T>
-        const T* data() const
-        {
-            return static_cast<const T*>(rawData());
-        }
 
         /// Open-world (W2c): drop the CPU-side data back to an empty shell to
         /// free CPU memory. Returns whether data was actually released. VRAM is
@@ -455,32 +408,12 @@ namespace lux::asset
         }
 
         /**
-         * @brief Retrieves mutable access to the raw asset data.
-         *
-         * @return Pointer to the raw asset data.
-         */
-        void* rawData() override
-        {
-            return data_.get();
-        }
-
-        /**
-         * @brief Retrieves constant access to the raw asset data.
-         *
-         * @return Constant pointer to the raw asset data.
-         */
-        const void* rawData() const override
-        {
-            return data_.get();
-        }
-
-        /**
          * @brief Retrieves the asset data cast to the specific DataType.
          *
          * @return Pointer to the asset data of type DataType.
          */
         DataType* data() {
-            return LuxAsset::data<DataType>();
+            return data_.get();
         }
 
         /**
@@ -489,7 +422,7 @@ namespace lux::asset
          * @return Constant pointer to the asset data of type DataType.
          */
         const DataType* data() const {
-            return LuxAsset::data<DataType>();
+            return data_.get();
         }
 
         //（freezeForUpload / markUploaded / dataState 已删:全仓零调用。上传路径

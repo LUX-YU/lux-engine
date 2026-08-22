@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/math/Position.hpp>
+
 #include <lux/engine/ecs/SpatialTransformMath.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform2DComponent.hpp>
 #include <lux/engine/ecs/render/IRenderSubsystem.hpp>
@@ -17,7 +19,7 @@
 #include <lux/engine/ecs/tilemap/systems/TilemapRuntime.hpp>
 #include <lux/engine/function/render/client/features/canvas2d/Canvas2DOperation.hpp>
 #include <lux/engine/function/render/client/RenderRequest.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/SparseCanvasAtlasCache.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/SparseCanvasSpatial.hpp>
 
@@ -77,7 +79,7 @@ namespace lux::ecs
         {
             leave_.attach(
                 setup.registry(),
-                [this](lux::meta::entity_id entity) { retireLive(entity); });
+                [this](lux::ecs::Entity entity) { retireLive(entity); });
         }
 
         void onRemoved(const SystemRemovalContext&) override
@@ -113,7 +115,7 @@ namespace lux::ecs
 
             Eigen::Vector2f camera_min{-1e9f, -1e9f};
             Eigen::Vector2f camera_max{1e9f, 1e9f};
-            lux::spatial::Position2D camera_origin{};
+            lux::math::Position2d camera_origin{};
             for (auto entity : registry.view<
                      PrimaryCameraTag,
                      Camera2DComponent,
@@ -139,7 +141,7 @@ namespace lux::ecs
                 TilemapComponent,
                 TilemapBindingComponent,
                 ResolvedTransform2DComponent>().each(
-                [&](lux::meta::entity_id entity,
+                [&](lux::ecs::Entity entity,
                     const TilemapComponent& component,
                     const TilemapBindingComponent& binding,
                     const ResolvedTransform2DComponent& transform)
@@ -274,7 +276,7 @@ namespace lux::ecs
                 TileChunkCoord,
                 ChunkRecord,
                 TileChunkCoordHash> chunks;
-            lux::spatial::Position2D origin{};
+            lux::math::Position2d origin{};
             float tile_size{0.1f};
             float priority{0.0f};
             bool visible{true};
@@ -282,7 +284,7 @@ namespace lux::ecs
 
         struct ChunkKey final
         {
-            lux::meta::entity_id entity{entt::null};
+            lux::ecs::Entity entity{entt::null};
             TileChunkCoord coordinate;
 
             friend bool operator==(
@@ -296,7 +298,7 @@ namespace lux::ecs
                 const ChunkKey& key) const noexcept
             {
                 const auto entity =
-                    std::hash<lux::meta::entity_id>{}(key.entity);
+                    std::hash<lux::ecs::Entity>{}(key.entity);
                 const auto coordinate = TileChunkCoordHash{}(key.coordinate);
                 return entity ^ (coordinate + 0x9e3779b9u +
                     (entity << 6u) + (entity >> 2u));
@@ -334,12 +336,12 @@ namespace lux::ecs
         void driveLive(
             SceneRenderBinding& render,
             lux::render::Canvas2DProxy& canvas,
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             Live& live,
             const TilemapComponent& component,
-            const lux::spatial::Position2D& origin,
+            const lux::math::Position2d& origin,
             float priority,
-            const lux::spatial::Position2D& camera_origin,
+            const lux::math::Position2d& camera_origin,
             const Eigen::Vector2f& camera_min,
             const Eigen::Vector2f& camera_max)
         {
@@ -824,7 +826,7 @@ namespace lux::ecs
                 });
         }
 
-        void retireLive(lux::meta::entity_id entity)
+        void retireLive(lux::ecs::Entity entity)
         {
             (void)create_requests_.abandonIf(
                 [entity](const ChunkKey& key)
@@ -967,7 +969,7 @@ namespace lux::ecs
         };
 
         TilemapRuntime* runtime_{nullptr};
-        std::unordered_map<lux::meta::entity_id, Live> live_;
+        std::unordered_map<lux::ecs::Entity, Live> live_;
         std::vector<Live> leaving_;
         ComponentSetLeaveObserver<
             TilemapComponent,

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/ecs/render/components/VisualTransitionComponent.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -22,8 +22,8 @@ namespace lux::ecs
     };
 
     [[nodiscard]] inline VisualTransitionParameters visualTransitionOf(
-        const lux::meta::EntityRegistry& registry,
-        lux::meta::entity_id entity) noexcept
+        const lux::ecs::Registry& registry,
+        lux::ecs::Entity entity) noexcept
     {
         const auto* component =
             registry.try_get<VisualTransitionComponent>(entity);

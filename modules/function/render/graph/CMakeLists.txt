@@ -20,17 +20,6 @@ target_compile_definitions(
         LUX_FUNCTION_LIBRARY
 )
 
-target_link_libraries(
-    render_graph
-    PUBLIC
-        lux::engine::platform::common
-)
-
-component_add_transitive_commands(
-    render_graph
-    "find_package(lux-engine-platform REQUIRED COMPONENTS common)"
-)
-
 lux_classify_target(
     TARGET  render_graph
     LAYER   FUNCTION

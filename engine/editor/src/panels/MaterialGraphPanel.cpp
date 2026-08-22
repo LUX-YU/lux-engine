@@ -11,14 +11,14 @@
 #include <lux/engine/description/ShaderInfo.hpp>
 #include "thumbnail/MaterialPreviewHost.hpp"
 #include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
-#include <lux/engine/platform/FormatCompat.h>   // lux::format — impl-only (kept out of the header)
+#include <lux/cxx/core/Format.hpp>   // lux::format — impl-only (kept out of the header)
 #include <lux/engine/editor/AssetRegistry.hpp>
 #include <lux/engine/editor/app/EditorEvents.hpp>
 #include <lux/engine/events/DomainEvents.hpp>
 #include <lux/engine/editor/thumbnail/ThumbnailService.hpp>   // 原地保存后作废旧缩略图
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialSerDeser.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceSerDeser.hpp>   // 实例模式 Save
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialSerDeser.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceSerDeser.hpp>   // 实例模式 Save
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/ui/AssetDragDrop.hpp>                 // 实例模式贴图槽拖放
 

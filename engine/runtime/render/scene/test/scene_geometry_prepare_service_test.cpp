@@ -1,8 +1,8 @@
 #include <lux/engine/runtime/render/scene/SceneGeometryPrepareService.hpp>
 
-#include <lux/engine/resource/classic_mesh/ClassicMeshBatch.hpp>
+#include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/terrain/TerrainTile.hpp>
+#include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncScope.hpp>

@@ -1,0 +1,149 @@
+# LUX Engine 架构重构执行文档 v2.0
+
+**代码基线：** `LUX-YU/lux-engine@09b2a82582550bcbe03afeef77d2591e1656a656`
+**Scene Asset 实施提交：** `36ce56c634f1e03959910fc1761ec62b2fb4671e`
+**当前施工基线：** `fe4422ba`
+**Asset 领域内聚实施提交：** `1364810c`；wire/storage 契约提交：`e7348155`
+**Asset Pipeline/Core Meta 实施提交：** `ed5fb7eb`
+**当前 Serialization 施工基线：** `6906ccc2`
+**Component Archive 实施提交：** `d1ead288`
+**Extension ABI 文档裁决提交：** `2a916295`
+**Extension ABI 实施提交：** `c56efbc4`
+**GAPI/Input 裁决代码基线：** `d7f364d0`
+**单体 Input 实施提交：** `08e3d590`
+**Script Runtime 裁决代码基线：** `de11c05c`
+**Script Runtime 实施提交：** `c792c816`
+**Script 直接分派代码基线：** `db8ed375`
+**Script 直接分派实施提交：** `a478e173`
+**当前事实基线：** `a478e173`
+**文档日期：** 2026-08-21
+
+本套文档替代此前 v1.x 文档。新版以以下哲学为中心：
+
+```text
+modules = 可独立分发的公共 SDK（含通用 AssetManager/Codec/VFS/Pak）
+ecs     = Entity/Component/World/Schedule 与 ECS 领域 Payload
+engine  = Scene/Execution/Extension/Game/Editor 领域
+products= 最终入口与可执行程序
+```
+
+关键修正：
+
+- 不创建 `engine/module/Modules.hpp` 或通用 Module Runtime。
+- `Extension`、Library Module、CMake Module、`ScriptModule` 严格分离。
+- `modules/resource` 只保留 `description` 与 `asset` 两个一级语义。
+- Extension ABI、Game Manifest、Entity Scene、World Partition 等回到真实上层。
+- 保留公共 `AssetManager`、`LuxAsset`、Codec、Provider、VFS 与 Pak，不建立第二套 Engine AssetStore。
+- Engine-owned Scene 复用公共资产机制；场景 Payload 由对应 ECS 领域拥有。
+- Asset 按领域族内聚；Provider/VFS/Pak 是 opaque bytes 存储面，Pak 读写检查属公共 SDK。
+- 冻结的 Engine 内置资产身份归 `engine/content`，ECS fallback 由 Engine Runtime 装配注入。
+- 资产加载统一为 SerDeser 纯解析、AssetLoadService 编排、AssetManager 安装；AssetRef 不隐式 IO。
+- Core Meta 不拥有 EnTT/Registry/LuxObject；Registry 与 allocator/handles 归 ECS Core。
+- Core Serialization 只保留 Archive/NameTable；反射 Component Archive 归 ECS，Registry 不形成文件镜像。
+- Extension ABI v4 的真实 owner 是 `engine/extensions/api`；Core 不安装 Extension API，ABI-facing 名称与布局在 v4 内冻结。
+- GAPI 保持公共 Platform Vulkan SDK；Input 已收敛为一个 target 与一个完整领域对象，平台采集由配置期私有源选择。
+- Script Asset 的执行代码按播放会话驻留；语言多态只留在冷绑定路径，ECS 事件热路径直接调用最终 ABI 函数指针。
+- 先纯化公共 Modules 和 ECS 依赖方向，再实施 Game/Editor 重构。
+
+## 文档目录
+
+| 编号 | 文档 | 内容 | 文件 |
+| --- | --- | --- | --- |
+| 00 | 架构宪章与变更控制 | 不可变决议、层级、命名、所有权和执行顺序 | 00_架构宪章与变更控制.md |
+| 01 | modules 公共 SDK 边界 | 公共库准入、安装包、隔离 Profile 与架构扫描 | 01_modules公共SDK边界与分发体系重构.md |
+| 02 | Core 与 Platform | extension_abi/meta/common 清理、GAPI 保留与 window 边界 | 02_Core与Platform基础库清理.md |
+| 03 | Resource | Description/Asset 两级语义、既有 AssetManager、Codec、Provider 与 VFS/Pak | 03_Resource-Description与Asset重构.md |
+| 04 | Function | Render/Input/Animation/Navigation/Script/UI 公共闭包纯化 | 04_Function公共模块重构.md |
+| 05 | ECS | Registry、ComponentSchema、Serialization、Scene Format | 05_ECS内核-序列化与SceneFormat重构.md |
+| 06 | Engine | Executor、Scene Asset、ExtensionLoader、Render Bridge、关闭协议 | 06_Engine执行-资产-场景与扩展重构.md |
+| 07 | Game 与 Editor 产品 | 共享 Session、删除 Host、Game Manifest 与导出语义 | 07_Game-Editor与共享Session产品重构.md |
+| 08 | Editor | Workspace、Workbench、Documents、Panels、Flow/Material/Script/Preview | 08_Editor-Workspace-Workbench-Documents-Panels重构.md |
+| 09 | CMake 与 SDK | Target、Namespace、Package、Compatibility、Profile | 09_CMake-命名空间-SDK包与兼容迁移.md |
+| 10 | 测试与验收 | 持续集成、Sanitizer、Golden、故障注入、PR 路线 | 10_测试-CI-PR路线与验收.md |
+| 11 | 施工 Checklist | 680 个可勾选施工项 | 11_详细施工Checklist_已更新_20260819_b1a25d3.md |
+| 12 | 迁移映射总表 | 149 条当前→目标映射 | 12_迁移映射总表.md |
+| 13 | 当前代码事实索引 | 82 个关键文件锚点 | 13_当前代码事实索引.md |
+
+补充 ADR：`ADR-20260820_SceneAsset与Resource边界.md`。它取代旧文档中关于
+`AssetId`、`AssetTypeId`、`engine/assets/AssetStore` 与 Resource 场景 Payload 最终归属的目标；
+冲突内容只保留为历史设计记录，不再作为施工要求。
+
+`ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md` 进一步裁决 Asset 目录、Storage/Pak 公共边界、Engine Content owner 与 ECS fallback 注入；该裁决已由 `1364810c`、`e7348155` 实施并验收。
+
+`ADR-20260821_Asset运行期需求与SerDeser边界.md` 与 `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md` 裁决的唯一加载链、Runtime demand、Registry owner 与纯 Meta 合同已在当前分支实施并完成 owner/installed consumer/四 Profile 验收。
+
+`ADR-20260821_CoreSerialization与ECSComponentArchive边界.md` 裁决 Core/ECS 序列化边界、详细错误合同、UUID/资产 annotation 语义以及 Unknown Component 拒绝策略；`d1ead288` 已完成施工和安装闭包验收。
+
+`ADR-20260821_ExtensionAbiV4Owner与Core清零.md` 裁决 Extension ABI 实体 owner、v4 二进制兼容边界与通用 `ContributionId` 删除；`c56efbc4` 已完成施工和安装/ABI 验收。
+
+`ADR-20260821_GAPI保留裁决.md` 取代 GAPI 并入 Render/删除 Platform owner 的旧目标；`ADR-20260821_单体Input子系统边界.md` 规定单一 Input target、完整领域所有权与配置期平台源选择。`08e3d590` 已完成 Input 施工；GAPI production 与安装接口保持不变。
+
+`ADR-20260821_ScriptRuntime契约与错误边界.md` 规定保留真实 Lua/Native backend 多态，删除
+`ScriptHost`、invalid handle/lastError 与 module 内裸函数指针，并把旧 UI 四 target 结构降为待重审候选；
+`c792c816` 已完成代码、owner tests、installed consumer 与多 Profile 验收。
+
+`ADR-20260821_ScriptAsset会话驻留与直接调用.md` 取代上述 ADR 的 invoke-time handle
+模型：AssetRef 继续表达需求，Lua/Native 派生代码按播放会话驻留；全部 ABI、签名和名称解析
+移到绑定期，Native/C++ 热路径只执行一个最终函数指针调用。`a478e173` 已完成代码、
+owner tests、installed consumers、四个 Windows Profile 和机器码契约验收。
+
+## 推荐阅读与施工顺序
+
+```text
+00
+ ↓
+01 → 02 → 03 → 04
+               ↓
+              05
+               ↓
+              06
+               ↓
+           07 → 08
+               ↓
+              09
+               ↓
+              10
+
+11 全程勾选
+12 全程更新
+13 用于定位当前代码
+```
+
+## 已完成的 Pipeline/Core Meta 施工波次
+
+1. 停止 modules 聚合目录自动枚举，并用 installed consumers 验证公共闭包。
+2. 统一 Catalog/SerDeser/LoadService/Manager 资产加载链。
+3. 把 Animation/Script 的加载需求归 Runtime integration，删除裸回调与 Runtime 同步 IO。
+4. 将 Registry 归 ECS Core，删除 Core Meta 的 EnTT 与 OO 根类。
+5. 用四个现有 Profile 全量构建、安装 consumer 与 Golden 契约验收。
+
+以上五步均已完成，wire、AssetRef 账本和产品可见行为保持既有合同。
+
+## 文件说明
+
+- `00-13_全部执行文档与Checklist_合订本.md`：单文件全文。
+- `11_详细施工Checklist_已更新_20260819_b1a25d3.md`：项目管理与 Pull Request 跟踪用。
+- `12_迁移映射总表.md`：路径/类型/Target 映射。
+- `13_当前代码事实索引.md`：固定提交上的代码锚点。
+- `ADR-20260820_SceneAsset与Resource边界.md`：Scene Asset 与公共 Resource 的现行裁决。
+- `ADR-20260821_Asset领域内聚-Pak边界与EngineContent.md`：Asset 领域内聚、Pak 和 Engine Content 的现行裁决。
+- `ADR-20260821_Asset运行期需求与SerDeser边界.md`：SerDeser、加载编排、Manager 安装与 Runtime demand 的现行裁决。
+- `ADR-20260821_CoreMeta纯化与ECSRegistry归位.md`：Registry owner 与 Core Meta/Reflection 的现行裁决。
+- `ADR-20260821_CoreSerialization与ECSComponentArchive边界.md`：Core byte archive 与 ECS Component Archive 的现行裁决。
+- `ADR-20260821_ExtensionAbiV4Owner与Core清零.md`：Extension ABI v4 owner、冻结表面与 Core 清零裁决。
+- `ADR-20260821_GAPI保留裁决.md`：保留 Platform GAPI 公共 SDK，取代并入 Render/删除 owner 的旧目标。
+- `ADR-20260821_单体Input子系统边界.md`：单一 Input target、完整 Input 领域对象与编译期平台实现。
+- `ADR-20260821_ScriptRuntime契约与错误边界.md`：ScriptRuntime、结构化错误、安全句柄与 UI 后续重审边界。
+- `ADR-20260821_ScriptAsset会话驻留与直接调用.md`：取代 Runtime handle 的会话驻留、冷绑定和直接 ABI 分派裁决。
+- `evidence/asset-domain-cohesion-f35e245a.md`：本轮基线公共面、12 组 wire 指纹与验收结论。
+- `evidence/asset-pipeline-core-meta-fe4422ba.md`：统一加载链、Runtime demand、Registry/Meta 边界与安装闭包验收。
+- `evidence/core-serialization-ecs-component-archive-6906ccc2.md`：Core/Component Archive 迁移、wire 回归与四 Profile/安装闭包验收。
+- `evidence/extension-abi-core-retirement-2259ade7.md`：Extension ABI v4 owner、动态 DLL、四 Profile 与安装 component 验收。
+- `evidence/input-subsystem-cohesion-d7f364d0.md`：GAPI 不变、单体 Input、四 Profile、installed consumer 与 Android 源编译证据。
+- `evidence/script-direct-dispatch-db8ed375.md`：会话驻留、直接 ABI 分派、机器码与多 Profile 验收记录。
+- `SHA256SUMS.txt`：校验值。
+- `manifest.json`：机器可读文件清单。
+
+## 状态说明
+
+这些文档同时记录施工规范与已验证状态。`SCENEASSET-001..020`、`ASSETCOHESION-001..012`、`ASSETPIPE-001..012`、`ECSSER-001..009`、`EXTABI-001..010`、`FUNC-001..005` 与 `SCRIPTDIRECT-001..011` 已按 ADR 完成；其余未勾选目标仍须在后续变更中引用 Checklist ID，并同步更新映射表和事实索引。

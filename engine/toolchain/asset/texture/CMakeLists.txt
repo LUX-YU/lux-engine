@@ -35,7 +35,6 @@ component_include_directories(
     INSTALL_TIME
         include
     PRIVATE
-        ${CMAKE_SOURCE_DIR}/modules/resource/asset/pinclude
         ${STB_SOURCE_DIR}
         ${BC7ENC_SOURCE_DIR}
 )
@@ -49,7 +48,7 @@ target_compile_definitions(
 target_link_libraries(
     toolchain_texture_importer
     PUBLIC
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
 )
 
 set_target_properties(

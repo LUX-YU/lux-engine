@@ -780,17 +780,17 @@ namespace lux::render
         }
         else
         {
-            lighting_pass.read(gbuf_albedo, lux::common::ETextureRole::SAMPLED)
-                         .read(gbuf_normal, lux::common::ETextureRole::SAMPLED)
-                         .read(gbuf_emissive, lux::common::ETextureRole::SAMPLED)
-                         .read(gbuf_depth, lux::common::ETextureRole::SAMPLED);
+            lighting_pass.read(gbuf_albedo, lux::render::ETextureRole::SAMPLED)
+                         .read(gbuf_normal, lux::render::ETextureRole::SAMPLED)
+                         .read(gbuf_emissive, lux::render::ETextureRole::SAMPLED)
+                         .read(gbuf_depth, lux::render::ETextureRole::SAMPLED);
         }
         lighting_pass
                                  .read(cluster_params, ERGBufferRole::CONSTANT)
                                  .read(cluster_offsets, ERGBufferRole::STORAGE)
                                  .read(cluster_indices, ERGBufferRole::STORAGE)
                                  .read(cluster_overflow, ERGBufferRole::STORAGE)
-                                 .write(lit_color, lux::common::ETextureRole::COLOR_ATTACHMENT)
+                                 .write(lit_color, lux::render::ETextureRole::COLOR_ATTACHMENT)
                                  .setPipeline(lighting_pipeline_)
                                  .bindSceneDS()
                                  .bindTransientDS(1, gbuffer_tds)
@@ -801,7 +801,7 @@ namespace lux::render
         // Shadow atlas must be rendered before the lighting pass reads it via
         // the Light descriptor set (bindings 4-6).  Declaring a read dependency
         // ensures the render graph schedules MeshShadowDraw before this pass.
-        lighting_pass.read(shadow_atlas, lux::common::ETextureRole::SAMPLED);
+        lighting_pass.read(shadow_atlas, lux::render::ETextureRole::SAMPLED);
         lighting_pass.after(kShadowViewUploadPassName);
         // Light DS samples shadow atlas (bindings 4-6). Enforce explicit ordering
         // against the shadow draw pass to avoid sampling stale atlas contents.
@@ -826,7 +826,7 @@ namespace lux::render
         if (cfg_.technique == EShadowTechnique::EVSM)
         {
             lighting_pass.read(builder.referenceTexture("evsm_moment_atlas"),
-                               lux::common::ETextureRole::SAMPLED);
+                               lux::render::ETextureRole::SAMPLED);
             lighting_pass.after(kEvsmBlurVPassName);
         }
 

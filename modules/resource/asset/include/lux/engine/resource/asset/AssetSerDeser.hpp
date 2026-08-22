@@ -7,11 +7,10 @@
 #include <filesystem>
 #include <cstring>
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/cxx/core/move_only_function.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
-#include <lux/engine/resource/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 
-#include "Asset.hpp"
+#include <lux/engine/resource/asset/Asset.hpp>
 
 namespace lux::asset
 {
@@ -137,6 +136,18 @@ namespace lux::asset
         }
     }
 
+    /// Serialized header width for a supported AssetFileHeader version.
+    /// Decoders must validate section offsets against the on-disk version,
+    /// not against sizeof(the current in-memory header).
+    [[nodiscard]] inline constexpr std::size_t assetFileHeaderSize(
+        asset_version_t version
+    ) noexcept
+    {
+        if (version == current_asset_version) return sizeof(AssetFileHeader);
+        if (version == asset_version_v1) return sizeof(compat::AssetFileHeaderV1);
+        return 0u;
+    }
+
     class AssetManager;
     
     /**
@@ -152,7 +163,7 @@ namespace lux::asset
      * Derived classes implement specific serialization logic for different asset types
      * such as textures, meshes, materials, and models.
      */
-    class LUX_RESOURCE_PUBLIC AssetSerDeser
+    class LUX_ASSET_PUBLIC AssetSerDeser
     {
     public:
         /**
@@ -578,8 +589,6 @@ namespace lux::asset
     /// type's setData to call — and invoked on the shell at a main-thread sync
     /// point to complete the injection. move-only (captures a unique_ptr to
     /// the data).
-    using AssetDataInjector = lux::cxx::move_only_function<void(LuxAsset&)>;
-
     template<typename Config>
 	class TAssetSerDeser : public AssetSerDeser
     {

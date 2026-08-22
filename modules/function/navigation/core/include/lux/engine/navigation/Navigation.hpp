@@ -7,7 +7,7 @@
  * backend storage terminology deliberately stay outside this contract.
  */
 
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 
 #include <cmath>
 #include <compare>
@@ -63,8 +63,8 @@ namespace lux::navigation
         NavigationPortalId id;
         NavigationRegionId first_region;
         NavigationRegionId second_region;
-        lux::spatial::Position3D first_position;
-        lux::spatial::Position3D second_position;
+        lux::math::Position3d first_position;
+        lux::math::Position3d second_position;
         float traversal_cost_scale{1.0f};
         bool bidirectional{true};
     };
@@ -89,8 +89,8 @@ namespace lux::navigation
 
     struct NavigationPathRequest final
     {
-        lux::spatial::Position3D start;
-        lux::spatial::Position3D destination;
+        lux::math::Position3d start;
+        lux::math::Position3d destination;
         NavigationAgentConstraints agent;
         std::optional<NavigationRegionId> start_region;
         std::optional<NavigationRegionId> destination_region;
@@ -104,7 +104,7 @@ namespace lux::navigation
     {
         ENavigationPathStatus status{ENavigationPathStatus::FAILED};
         ENavigationPathFailure failure{ENavigationPathFailure::NONE};
-        std::vector<lux::spatial::Position3D> points;
+        std::vector<lux::math::Position3d> points;
         std::vector<NavigationRegionId> missing_regions;
         std::string detail;
         std::uint64_t generation{0u};
@@ -124,8 +124,8 @@ namespace lux::navigation
 
     [[nodiscard]] inline bool valid(const NavigationPathRequest& value) noexcept
     {
-        return lux::spatial::isFinite(value.start) &&
-               lux::spatial::isFinite(value.destination) &&
+        return lux::math::isFinite(value.start) &&
+               lux::math::isFinite(value.destination) &&
                valid(value.agent) &&
                std::isfinite(value.nearest_horizontal_extent) &&
                std::isfinite(value.nearest_vertical_extent) &&

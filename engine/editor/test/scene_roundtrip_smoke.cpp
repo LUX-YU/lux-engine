@@ -2,7 +2,7 @@
 #include <lux/engine/editor/scene/DemoSceneTemplate.hpp>
 #include <lux/engine/editor/scene/WorldActorEcsAdapter.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
@@ -37,42 +37,42 @@ namespace
     };
 
     bool transientProbeHas(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.all_of<TransientProbe>(entity);
     }
 
     void* transientProbeGet(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.try_get<TransientProbe>(entity);
     }
 
     void* transientProbeEmplace(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return &registry.get_or_emplace<TransientProbe>(entity);
     }
 
     void transientProbeRemove(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         (void)registry.remove<TransientProbe>(entity);
     }
 
     void transientProbeNotify(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         registry.patch<TransientProbe>(entity, [](auto&) noexcept {});
     }
 
     void transientProbeReserve(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         std::size_t additional)
     {
         auto& storage = registry.storage<TransientProbe>();
@@ -80,9 +80,9 @@ namespace
     }
 
     void* transientProbeTransfer(
-        lux::meta::EntityRegistryBase&,
+        lux::ecs::RegistryBase&,
         entt::entity,
-        lux::meta::EntityRegistryBase&,
+        lux::ecs::RegistryBase&,
         entt::entity) noexcept
     {
         return nullptr;
@@ -154,15 +154,15 @@ int main()
             position_field->type.ptr != nullptr &&
             static_cast<const lux::meta::RefClass*>(
                 position_field->type.ptr)->full_name ==
-                "lux::spatial::Position3D",
+                "lux::math::Position3d",
         "non-final Position field retains its nested reflection link");
 
-    const lux::entity_scene::EntitySceneId world_id{
+    const lux::authoring::WorldId world_id{
         *uuids::uuid::from_string(
             "99999999-0000-4000-8000-000000000001")};
     const auto mesh_id = *uuids::uuid::from_string(
         "00000000-0000-4000-8000-cccccccccccc");
-    lux::meta::EntityRegistry source_registry;
+    lux::ecs::Registry source_registry;
     lux::ecs::PersistentEntityIndex source_persistent_entities{
         source_registry};
     const auto hello = source_registry.create();
@@ -172,7 +172,7 @@ int main()
         lux::ecs::Transform3DComponent>(hello);
     transform.position = {1.5, 2.5, -3.0};
     transform.scale = Eigen::Vector3f(2.0f, 1.0f, 0.5f);
-    const lux::spatial::Position3D hello_position{1.5, 2.5, -3.0};
+    const lux::math::Position3d hello_position{1.5, 2.5, -3.0};
     source_registry.emplace<lux::ecs::MeshComponent>(
         hello,
         lux::ecs::MeshComponent{
@@ -232,14 +232,14 @@ int main()
     {
         peer_source->actor_class = "org.lux.test.actor";
         peer_source->space = space_id;
-        peer_source->position = lux::spatial::Position3D{0.0, 0.0, 0.0};
+        peer_source->position = lux::math::Position3d{0.0, 0.0, 0.0};
     }
     if (child_source)
     {
         child_source->actor_class = "org.lux.test.actor";
         child_source->space = space_id;
         child_source->position =
-            lux::spatial::Position3D{5.5, 2.5, -3.0};
+            lux::math::Position3d{5.5, 2.5, -3.0};
     }
     auto hello_bytes = hello_source
         ? lux::authoring::encodeWorldActorDocument(*hello_source)
@@ -263,6 +263,25 @@ int main()
         : decltype(lux::authoring::decodeWorldActorDocument({})){};
     expect(hello_document && peer_document && child_document,
         "LXAD v2 hierarchy documents decoded");
+
+    if (hello_document)
+    {
+        auto unknown_component = *hello_document;
+        unknown_component.components.front().schema_name =
+            "org.lux.test.unregistered_component";
+        lux::ecs::Registry rejected_registry;
+        lux::ecs::PersistentEntityIndex rejected_ids{rejected_registry};
+        lux::editor::WorldActorEcsAdapter rejected_adapter{
+            components, rejected_ids};
+        const auto rejected = rejected_adapter.materialize(
+            unknown_component, rejected_registry, "unknown-schema fixture");
+        const auto rejected_entities =
+            rejected_registry.view<entt::entity>();
+        expect(
+            !rejected &&
+                rejected_entities.begin() == rejected_entities.end(),
+            "Authoring rejects unknown Component schema before Registry mutation");
+    }
     expect(
         hello_document && std::ranges::none_of(
             hello_document->components,
@@ -272,10 +291,10 @@ int main()
             }),
         "encoded LXAD bytes exclude transient component schemas");
 
-    const auto hello_id = lux::entity_scene::PersistentEntityId{
+    const auto hello_id = lux::authoring::WorldActorId{
         source_registry.get<
         lux::ecs::PersistentEntityIdComponent>(hello).id().value()};
-    const auto peer_id = lux::entity_scene::PersistentEntityId{
+    const auto peer_id = lux::authoring::WorldActorId{
         source_registry.get<
         lux::ecs::PersistentEntityIdComponent>(peer).id().value()};
     expect(!hello_id.empty() && hello_id != peer_id,
@@ -287,7 +306,8 @@ int main()
         lux::authoring::makeWorldSourceDocument(
             lux::authoring::EPartitionTopology::PLANAR_XZ);
     root.contributions.push_back({
-        lux::extensions::ContributionId{"org.lux.builtin.physics3d"},
+        lux::authoring::WorldSceneFeatureId{
+            "org.lux.builtin.physics3d"},
         0u,
         {std::byte{0x10u}, std::byte{0x20u}}});
     auto encoded_root = lux::authoring::encodeWorldSource(root);
@@ -336,12 +356,17 @@ int main()
     }
     expect(cooked_demo && !cooked_demo->sections.empty(),
         "demo Authoring World cooked through LXAD -> LXSC/LXES");
-    auto decoded_package = cooked_demo
-        ? lux::scene::decodeScenePackage(cooked_demo->encoded_package)
-        : decltype(lux::scene::decodeScenePackage({})){};
+    bool decoded_scene_identity = false;
+    if (cooked_demo)
+    {
+        const auto decoded_package =
+            lux::scene::SceneAssetSerDeser::decodeData(
+                cooked_demo->encoded_package);
+        decoded_scene_identity = decoded_package &&
+            (*decoded_package)->id == cooked_demo->package.id;
+    }
     expect(
-        decoded_package && cooked_demo &&
-            decoded_package->id == cooked_demo->package.id,
+        decoded_scene_identity,
         "cooked LXSC package decodes with the expected Scene identity");
     bool sections_decode = cooked_demo.has_value();
     if (cooked_demo)

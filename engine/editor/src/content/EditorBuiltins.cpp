@@ -1,15 +1,15 @@
 #include <lux/engine/editor/content/EditorBuiltins.hpp>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <lux/engine/toolchain/asset/builtin/BuiltinGeometry.hpp>
 #include <lux/engine/editor/content/EngineContentPath.hpp>
 #include <lux/engine/editor/content/RuntimeAssetPath.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>   // 内置材质的实例包装
-#include <lux/engine/resource/asset/MeshAsset.hpp>
-#include <lux/engine/resource/asset/MeshSerDeser.hpp>
-#include <lux/engine/resource/asset/TextureCodec.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>   // 内置材质的实例包装
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
+#include <lux/engine/resource/asset/texture/TextureSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/description/Vertex.hpp>
 #include <lux/engine/math/AABB.hpp>
@@ -29,17 +29,17 @@
 
 namespace lux::editor
 {
-    using lux::asset::kBuiltinCubeMeshIdStr;
-    using lux::asset::kBuiltinEmissiveColors;
-    using lux::asset::kBuiltinEmissiveCount;
-    using lux::asset::kBuiltinEmissiveIdStrs;
-    using lux::asset::kBuiltinEmissiveInstanceIdStrs;
-    using lux::asset::kBuiltinMissingMaterialIdStr;
-    using lux::asset::kBuiltinPlaneMeshIdStr;
-    using lux::asset::kBuiltinPreviewGreyMaterialIdStr;
-    using lux::asset::kBuiltinSphereMeshIdStr;
-    using lux::asset::kBuiltinWhitePbrInstanceIdStr;
-    using lux::asset::kBuiltinWhitePbrMaterialIdStr;
+    using lux::engine::content::kBuiltinCubeMeshIdStr;
+    using lux::engine::content::kBuiltinEmissiveColors;
+    using lux::engine::content::kBuiltinEmissiveCount;
+    using lux::engine::content::kBuiltinEmissiveIdStrs;
+    using lux::engine::content::kBuiltinEmissiveInstanceIdStrs;
+    using lux::engine::content::kBuiltinMissingMaterialIdStr;
+    using lux::engine::content::kBuiltinPlaneMeshIdStr;
+    using lux::engine::content::kBuiltinPreviewGreyMaterialIdStr;
+    using lux::engine::content::kBuiltinSphereMeshIdStr;
+    using lux::engine::content::kBuiltinWhitePbrInstanceIdStr;
+    using lux::engine::content::kBuiltinWhitePbrMaterialIdStr;
     using lux::toolchain::buildCubeGeometry;
     using lux::toolchain::buildFloorPlaneGeometry;
     using lux::toolchain::buildSphereGeometry;
@@ -497,7 +497,7 @@ namespace lux::editor
 
             if (fs::exists(sky_path))
             {
-                lux::asset::TextureCodec tex_ser(mgr_ref);
+                lux::asset::TextureSerDeser tex_ser(mgr_ref);
                 auto tex_res = tex_ser.fromLuxAsset(sky_path);
                 if (!tex_res)
                 {

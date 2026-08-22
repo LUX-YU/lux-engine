@@ -36,7 +36,7 @@ namespace
     }
 
     lux::ecs::scene_format::EntitySectionId coordinateSectionId(
-        lux::spatial::GridCoord3i64 coordinate)
+        lux::math::GridCoord3i64 coordinate)
     {
         return sectionId(
             mix(static_cast<std::uint64_t>(coordinate.x)) ^
@@ -45,7 +45,7 @@ namespace
     }
 
     lux::scene::SectionRecord record(
-        lux::spatial::GridCoord3i64 coordinate,
+        lux::math::GridCoord3i64 coordinate,
         std::uint64_t ordinal)
     {
         lux::scene::SectionRecord result;
@@ -70,13 +70,13 @@ int main()
     const auto negative = spatial3d::spatial3DSectionCoordinate(
         {-0.001, -64.001, 63.999}, 64.0);
     assert(negative);
-    assert((*negative == lux::spatial::GridCoord3i64{-1, -2, 0}));
+    assert((*negative == lux::math::GridCoord3i64{-1, -2, 0}));
 
     constexpr double kLarge = 1'000'000'000'000.0;
     const auto large = spatial3d::spatial3DSectionCoordinate(
         {kLarge, -kLarge, kLarge + 0.001}, 64.0);
     assert(large);
-    assert((*large == lux::spatial::GridCoord3i64{
+    assert((*large == lux::math::GridCoord3i64{
         15'625'000'000ll, -15'625'000'000ll, 15'625'000'000ll}));
 
     const auto non_finite = spatial3d::spatial3DSectionCoordinate(
@@ -86,7 +86,7 @@ int main()
         spatial3d::ESpatial3DSourceError::INVALID_REQUEST);
 
     auto rules = spatial3d::Spatial3DSectionSource::ruleGrid(
-        [](lux::spatial::GridCoord3i64 coordinate)
+        [](lux::math::GridCoord3i64 coordinate)
             -> lux::cxx::expected<
                 lux::scene::SectionRecord,
                 spatial3d::Spatial3DSourceFailure>
@@ -102,7 +102,7 @@ int main()
         .maximum_sections = 256u};
     const auto origin = rules->window(origin_request);
     assert(origin);
-    assert((origin->center == lux::spatial::GridCoord3i64{0, 0, 0}));
+    assert((origin->center == lux::math::GridCoord3i64{0, 0, 0}));
     assert(origin->active_sections == 27u);
     assert(origin->entries.size() == 125u);
     assert(origin->records.size() == origin->entries.size());
@@ -112,7 +112,7 @@ int main()
     const auto predicted = rules->window(predicted_request);
     assert(predicted);
     assert((predicted->predicted_center ==
-        lux::spatial::GridCoord3i64{4, 0, 0}));
+        lux::math::GridCoord3i64{4, 0, 0}));
     assert(predicted->active_sections == 27u);
     assert(predicted->entries.size() == 225u);
 
@@ -131,7 +131,7 @@ int main()
         {
             for (std::int64_t z = -2; z <= 2; ++z)
             {
-                const lux::spatial::GridCoord3i64 coordinate{x, y, z};
+                const lux::math::GridCoord3i64 coordinate{x, y, z};
                 entries.push_back({
                     coordinate, record(coordinate, ordinal++).id});
             }

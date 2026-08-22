@@ -1126,7 +1126,7 @@ namespace lux::render
         [[nodiscard]] CreateSceneResult createScene(
             std::string_view name,
             std::span<const FeatureInitParam> features = {},
-            lux::common::ETextureFormat lit_color_format = lux::common::ETextureFormat::RGBA16_SFLOAT);
+            lux::rdesc::ETextureFormat lit_color_format = lux::rdesc::ETextureFormat::RGBA16_SFLOAT);
 
         /// 设备实际启用了哪些能力。init 之后可读;失败或未初始化时返回错误。
         ///
@@ -1141,7 +1141,7 @@ namespace lux::render
         /// Parameter for creating a view (always offscreen).
         struct ViewInitParam {
             RenderSceneId    scene_id;
-            common::Size2D         extent;
+            lux::math::Extent2u         extent;
             std::string_view name;
         };
 

@@ -5,7 +5,7 @@
 #include <lux/engine/ecs/tilemap/TilemapId.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/description/Tilemap2D.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Grid.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -16,7 +16,7 @@ namespace lux::ecs
 {
     struct TilemapRuntimeTag final {};
     using TilemapHandle = lux::cxx::SlotKey<TilemapRuntimeTag>;
-    using TileChunkCoord = lux::spatial::GridCoord2i64;
+    using TileChunkCoord = lux::math::GridCoord2i64;
 
     struct TileChunkCoordHash final
     {

@@ -304,7 +304,7 @@ int main()
     // ---- 2. Scene (LDR) + offscreen view ----
     RenderControlSession::CreateSceneConfig scfg{};
     scfg.name             = "GraphDistinctPsoScene";
-    scfg.lit_color_format = lux::common::ETextureFormat::RGBA8_SRGB;
+    scfg.lit_color_format = lux::rdesc::ETextureFormat::RGBA8_SRGB;
     s.beginFrame({});
     const auto scene = await(control, w, control.createScene(scfg));
     s.beginFrame({});

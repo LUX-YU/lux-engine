@@ -736,7 +736,7 @@ int main()
     RenderControlSession::CreateSceneConfig deferred_scene_config{};
     deferred_scene_config.name = "Render3DSemanticDeferred";
     deferred_scene_config.lit_color_format =
-        lux::common::ETextureFormat::RGBA8_SRGB;
+        lux::rdesc::ETextureFormat::RGBA8_SRGB;
     const auto deferred_scene = fixture.makeSceneWithView(
         deferred_scene_config,
         "Render3DSemanticDeferredView");

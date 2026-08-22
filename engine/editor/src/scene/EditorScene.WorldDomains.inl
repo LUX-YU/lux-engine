@@ -96,7 +96,7 @@
     bool EditorScene::applyWorldTerrainBrush(
         lux::authoring::TerrainSetId terrain,
         std::span<const lux::authoring::WorldCellKey> cells,
-        const lux::spatial::Position3D& center,
+        const lux::math::Position3d& center,
         const lux::authoring::WorldTerrainBrush& brush)
     {
         terrain_edit_error_.clear();
@@ -392,7 +392,7 @@
             : std::optional{found->id};
     }
 
-    std::optional<lux::spatial::Position3D>
+    std::optional<lux::math::Position3d>
     EditorScene::makeWorldTerrainPosition(
         lux::authoring::PartitionSpaceId space_id,
         const lux::authoring::WorldCellKey& cell,
@@ -426,7 +426,7 @@
         {
             return std::nullopt;
         }
-        return lux::spatial::Position3D{
+        return lux::math::Position3d{
             static_cast<double>(x),
             0.0,
             static_cast<double>(z)};
@@ -625,7 +625,7 @@
             return;
 
         const bool is_2d = std::holds_alternative<
-            lux::spatial::Position2D>(camera_position);
+            lux::math::Position2d>(camera_position);
         const auto space = std::ranges::find_if(
             world_source_->spaces,
             [is_2d](const auto& candidate)
@@ -768,12 +768,12 @@
                 const auto maximum_extent = proxy_radius + maximum_bound + 1.0f;
                 bool intersects = false;
                 if (const auto* camera_2d = std::get_if<
-                        lux::spatial::Position2D>(&camera_position))
+                        lux::math::Position2d>(&camera_position))
                 {
                     const auto* actor_2d = std::get_if<
-                        lux::spatial::Position2D>(&indexed->position);
+                        lux::math::Position2d>(&indexed->position);
                     const auto delta = actor_2d
-                        ? lux::spatial::relativeFloat(
+                        ? lux::math::relativeFloat(
                               *actor_2d,
                               *camera_2d,
                               maximum_extent)
@@ -787,11 +787,11 @@
                 else
                 {
                     const auto* camera_3d = std::get_if<
-                        lux::spatial::Position3D>(&camera_position);
+                        lux::math::Position3d>(&camera_position);
                     const auto* actor_3d = std::get_if<
-                        lux::spatial::Position3D>(&indexed->position);
+                        lux::math::Position3d>(&indexed->position);
                     const auto delta = camera_3d && actor_3d
-                        ? lux::spatial::relativeFloat(
+                        ? lux::math::relativeFloat(
                               *actor_3d,
                               *camera_3d,
                               maximum_extent)
@@ -835,7 +835,7 @@
                             {
                                 ++proxy_admissions;
                                 (void)requestWorldActorProxy(
-                                    lux::entity_scene::PersistentEntityId{
+                                    lux::authoring::WorldActorId{
                                         reference.target.value()},
                                     false);
                             }
@@ -851,7 +851,7 @@
                 {
                     ++proxy_admissions;
                     (void)requestWorldActorProxy(
-                        lux::entity_scene::PersistentEntityId{actor.value()},
+                        lux::authoring::WorldActorId{actor.value()},
                         false);
                 }
             }
@@ -918,7 +918,7 @@
         if (const auto& selected = selection_.object(); selected)
         {
             if (const auto* actor = std::get_if<
-                    lux::entity_scene::PersistentEntityId>(&*selected))
+                    lux::authoring::WorldActorId>(&*selected))
             {
                 desired.insert(uuids::to_string(actor->value()));
             }
@@ -1035,7 +1035,7 @@
             }
             const auto digest = lux::cxx::algorithm::Sha256::hash(*encoded);
             if (lux::authoring::makeWorldActorDocumentPath(
-                    lux::entity_scene::PersistentEntityId{found->value()},
+                    lux::authoring::WorldActorId{found->value()},
                     digest) !=
                     descriptor->document_path)
             {

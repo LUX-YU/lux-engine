@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 #include <lux/engine/function/visibility.h>
 
 // Forward declaration: keep <lux/engine/description/Texture.hpp> out of this
@@ -58,7 +58,7 @@ namespace lux::render
     };
 
     /// @brief Platform-agnostic 2D extent (replaces VkExtent2D in public API).
-    /// Now consolidated into lux::common::Size2D.
+    /// Now consolidated into lux::math::Extent2u.
 
     // =========================================================================
     //  Texture / sampler types (replaces VkFormat, VkSamplerCreateInfo in

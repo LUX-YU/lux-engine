@@ -28,7 +28,7 @@
  *         entt::entity entity;                   // 纯值载荷
  *         std::size_t registryPublicationBytes() const noexcept;
  *         void prepareRegistryPublication(EntityRegistry&) const noexcept;
- *         void apply(lux::meta::EntityRegistry&, CameraViewSubsystem&) const;
+ *         void apply(lux::ecs::Registry&, CameraViewSubsystem&) const;
  *     };
  *
  * `apply` 拿到的是**已经过代次校验**的生产者引用。类型身份在 `push` 时校验一次
@@ -44,8 +44,8 @@
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/RegistryStorageCapacity.hpp>
 #include <lux/engine/ecs/TypeToken.hpp>
-#include <lux/engine/function/visibility.h>
-#include <lux/engine/meta/LuxObject.hpp>   // lux::meta::EntityRegistry
+#include <lux/engine/ecs/visibility.h>
+#include <lux/engine/ecs/Registry.hpp>   // lux::ecs::Registry
 
 #include <concepts>
 #include <cstddef>
@@ -198,7 +198,7 @@ namespace lux::ecs
         /// therefore gives each PE module a different slot on Windows.  Keep
         /// the slot behind the ecs_core export so every thunk observes the
         /// scope installed by Schedule::prepareCommandBarrier().
-        [[nodiscard]] LUX_FUNCTION_PUBLIC
+        [[nodiscard]] LUX_ECS_PUBLIC
         EcsCommandStorageReservationPlan*&
         activeCommandStorageReservationPlan() noexcept;
 
@@ -258,12 +258,12 @@ namespace lux::ecs
     public:
         /// 载荷已经过代次校验,`producer` 保证是命令声明的那个具体类型。
         using ApplyFn = void (*)(
-            lux::meta::EntityRegistry&,
+            lux::ecs::Registry&,
             IEcsCommandProducer&,
             const void*
         );
         using PrepareFn = void (*)(
-            lux::meta::EntityRegistry&,
+            lux::ecs::Registry&,
             const void*
         ) noexcept;
 
@@ -279,7 +279,7 @@ namespace lux::ecs
             std::uint32_t payload_offset{0};
             std::size_t publication_bytes{0u};
             bool publication_prepared{false};
-            lux::meta::RegistryPublicationReservation
+            lux::ecs::RegistryPublicationReservation
                 publication_reservation;
 
             Header() = default;
@@ -290,7 +290,7 @@ namespace lux::ecs
                 std::uint32_t sequence_value,
                 std::uint32_t offset_value,
                 std::size_t publication_bytes_value,
-                lux::meta::RegistryPublicationReservation reservation)
+                lux::ecs::RegistryPublicationReservation reservation)
                 noexcept
                 : apply(apply_value),
                   prepare(prepare_value),
@@ -326,7 +326,7 @@ namespace lux::ecs
         [[nodiscard]] CommandEnqueueResult emplace(
             const Cmd& cmd,
             std::uint32_t producer_generation,
-            lux::meta::EntityRegistry& registry)
+            lux::ecs::Registry& registry)
         {
             static_assert(std::is_trivially_copyable_v<Cmd>,
                 "ECS 命令必须平凡可复制:载荷住在会 memcpy 扩容的 arena 里"
@@ -344,7 +344,7 @@ namespace lux::ecs
                 "registryPublicationBytes() must be noexcept.");
             static_assert(requires(
                 const Cmd& value,
-                lux::meta::EntityRegistry& target)
+                lux::ecs::Registry& target)
                 {
                     { value.prepareRegistryPublication(target) } ->
                         std::same_as<void>;
@@ -357,7 +357,7 @@ namespace lux::ecs
 
             const auto publication_bytes =
                 cmd.registryPublicationBytes();
-            lux::meta::RegistryPublicationReservation reservation;
+            lux::ecs::RegistryPublicationReservation reservation;
             if (publication_bytes != 0u)
             {
                 auto armed = registry.reservePublication(publication_bytes);
@@ -366,7 +366,7 @@ namespace lux::ecs
                     reservation = std::move(*armed);
                 }
                 else if (armed.error() !=
-                    lux::meta::ERegistryPublicationReservationError::
+                    lux::ecs::ERegistryPublicationReservationError::
                         PUBLICATION_ACTIVE)
                 {
                     return lux::cxx::unexpected(
@@ -424,7 +424,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] bool armReservations(
-            lux::meta::EntityRegistry& registry) noexcept
+            lux::ecs::Registry& registry) noexcept
         {
             for (auto& header : headers_)
             {
@@ -505,7 +505,7 @@ namespace lux::ecs
 
         template <class Cmd>
         static void prepareThunk(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             const void* payload) noexcept
         {
             static_cast<const Cmd*>(payload)->prepareRegistryPublication(
@@ -513,7 +513,7 @@ namespace lux::ecs
         }
 
         template <class Cmd>
-        static void applyThunk(lux::meta::EntityRegistry& registry,
+        static void applyThunk(lux::ecs::Registry& registry,
                                IEcsCommandProducer& producer,
                                const void* payload)
         {
@@ -570,7 +570,7 @@ namespace lux::ecs
             EcsCommandBuffer& buffer,
             TypeToken producer_type,
             std::uint32_t generation,
-            lux::meta::EntityRegistry& registry) noexcept
+            lux::ecs::Registry& registry) noexcept
             : buffer_(&buffer), producer_type_(producer_type),
               generation_(generation), registry_(&registry)
         {
@@ -579,7 +579,7 @@ namespace lux::ecs
         EcsCommandBuffer* buffer_{nullptr};
         TypeToken         producer_type_{};
         std::uint32_t     generation_{0};
-        lux::meta::EntityRegistry* registry_{nullptr};
+        lux::ecs::Registry* registry_{nullptr};
     };
 
     /// Owns one producer's stable command shard and its generation.
@@ -602,7 +602,7 @@ namespace lux::ecs
         EcsCommandOwner& operator=(EcsCommandOwner&&) noexcept = default;
 
         [[nodiscard]] EcsCommandWriter writer(
-            lux::meta::EntityRegistry& registry) noexcept
+            lux::ecs::Registry& registry) noexcept
         {
             if (!buffer_)
                 return {};

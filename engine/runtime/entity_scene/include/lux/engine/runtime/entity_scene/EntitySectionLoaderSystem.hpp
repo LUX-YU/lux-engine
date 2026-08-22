@@ -5,7 +5,7 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchTypes.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
@@ -31,7 +31,7 @@ namespace lux::ecs
     class PersistentEntityIndex;
 }
 namespace lux::exec { class AsyncRuntime; }
-namespace lux::meta { class EntityRegistry; }
+namespace lux::ecs { class Registry; }
 
 namespace lux::runtime::entity_scene
 {
@@ -171,7 +171,7 @@ namespace lux::runtime::entity_scene
 
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] bool boundTo(
-            const lux::meta::EntityRegistry& registry) const noexcept;
+            const lux::ecs::Registry& registry) const noexcept;
 
         /// True once this caller's released interest either retired its exact
         /// generation through the ECS barrier, or another owner still pins
@@ -212,11 +212,11 @@ namespace lux::runtime::entity_scene
             return 0u;
         }
         void prepareRegistryPublication(
-            lux::meta::EntityRegistry&) const noexcept
+            lux::ecs::Registry&) const noexcept
         {}
 
         void apply(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             EntitySectionLoaderSystem& owner) const noexcept;
     };
 
@@ -286,7 +286,7 @@ namespace lux::runtime::entity_scene
             std::uint64_t generation) const noexcept;
         void applyCommand(
             const EntitySectionCommand& command,
-            lux::meta::EntityRegistry& registry) noexcept;
+            lux::ecs::Registry& registry) noexcept;
         void acceptCloseScopeClosed() noexcept;
 
         struct Impl;

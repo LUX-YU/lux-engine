@@ -27,7 +27,7 @@
 
 #include <span>
 
-#include <lux/engine/function/visibility.h>
+#include <lux/engine/ecs/visibility.h>
 #include <lux/engine/meta/MetaAnnotations.hpp>
 
 namespace lux::ecs::debugdraw
@@ -42,10 +42,10 @@ namespace lux::ecs::debugdraw
 
     /// Host-side read API (NOT script-exposed): the owning scene reads this
     /// every frame and merges it into its single line-list upload.
-    LUX_FUNCTION_PUBLIC std::span<const DebugLine> lines() noexcept;
+    LUX_ECS_PUBLIC std::span<const DebugLine> lines() noexcept;
 
     /// Drops all retained lines (host-side twin of lux_debug_draw_clear).
-    LUX_FUNCTION_PUBLIC void clear() noexcept;
+    LUX_ECS_PUBLIC void clear() noexcept;
 
 } // namespace lux::ecs::debugdraw
 
@@ -53,10 +53,10 @@ namespace lux::ecs::debugdraw
 
 /// Adds a world-space line from (x0,y0,z0) to (x1,y1,z1) colored (r,g,b).
 /// The line PERSISTS until lux_debug_draw_clear(). Main thread only.
-LUX_FUNCTION_PUBLIC void LUX_FUNC() lux_debug_draw_line(
+LUX_ECS_PUBLIC void LUX_FUNC() lux_debug_draw_line(
     float x0, float y0, float z0,
     float x1, float y1, float z1,
     float r, float g, float b);
 
 /// Removes every line added by lux_debug_draw_line. Main thread only.
-LUX_FUNCTION_PUBLIC void LUX_FUNC() lux_debug_draw_clear();
+LUX_ECS_PUBLIC void LUX_FUNC() lux_debug_draw_clear();

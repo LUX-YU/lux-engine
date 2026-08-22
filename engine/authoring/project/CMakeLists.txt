@@ -11,7 +11,7 @@
 
 find_package(stduuid CONFIG REQUIRED)
 find_package(tomlplusplus CONFIG REQUIRED)
-find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+find_package(lux-cxx REQUIRED COMPONENTS compile_time core)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_AUTHORING_PROJECT_LIBRARY
@@ -58,7 +58,7 @@ target_link_libraries(
     PUBLIC
     stduuid
     lux::cxx::compile_time
-    lux::engine::core::extension_abi
+    lux::cxx::core
     PRIVATE
     tomlplusplus::tomlplusplus
 )
@@ -66,6 +66,5 @@ target_link_libraries(
 component_add_transitive_commands(
     project
     "find_package(stduuid CONFIG REQUIRED)"
-    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS extension_abi)"
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time core)"
 )

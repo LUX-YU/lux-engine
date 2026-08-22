@@ -1,5 +1,5 @@
 #include <lux/engine/core/serialization/Archive.hpp>
-#include <lux/engine/core/serialization/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
@@ -15,11 +15,11 @@
 #include <lux/engine/ecs/tilemap/systems/TilemapRuntime.hpp>
 #include <lux/engine/ecs/tilemap/systems/TilemapSystem.hpp>
 #include <lux/engine/meta/Meta.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/scene/ScenePackageCodec.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/resource/tilemap/TilemapChunk.hpp>
+#include <lux/engine/ecs/tilemap/TilemapChunkCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
@@ -88,8 +88,8 @@ namespace
 
     lux::runtime::entity_scene::EntitySceneCatalog emptyCatalog()
     {
-        lux::scene::ScenePackage package;
-        package.id = lux::scene::ScenePackageId{
+        lux::scene::SceneDescription package;
+        package.id = lux::asset::asset_id_t{
             uuids::uuid::from_string(
                 "85000000-0000-4000-8000-000000000001").value()};
         auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(
@@ -113,7 +113,7 @@ namespace
 
     template<class Component>
     bool has(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.all_of<Component>(entity);
@@ -121,7 +121,7 @@ namespace
 
     template<class Component>
     void* get(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.try_get<Component>(entity);
@@ -129,7 +129,7 @@ namespace
 
     template<class Component>
     void* emplace(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return &registry.emplace_or_replace<Component>(entity);
@@ -137,7 +137,7 @@ namespace
 
     template<class Component>
     void remove(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         static_cast<void>(registry.remove<Component>(entity));
@@ -145,7 +145,7 @@ namespace
 
     template<class Component>
     void notify(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         if (registry.all_of<Component>(entity))
@@ -154,7 +154,7 @@ namespace
 
     template<class Component>
     void reserve(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         std::size_t additional)
     {
         auto& storage = registry.storage<Component>();
@@ -163,9 +163,9 @@ namespace
 
     template<class Component>
     void* transfer(
-        lux::meta::EntityRegistryBase& source,
+        lux::ecs::RegistryBase& source,
         entt::entity source_entity,
-        lux::meta::EntityRegistryBase& destination,
+        lux::ecs::RegistryBase& destination,
         entt::entity destination_entity) noexcept
     {
         auto* value = source.try_get<Component>(source_entity);
@@ -187,11 +187,11 @@ namespace
         Reflections()
         {
             coordinate.name = "GridCoord2i64";
-            coordinate.full_name = "lux::spatial::GridCoord2i64";
+            coordinate.full_name = "lux::math::GridCoord2i64";
             coordinate.hash = lux::meta::ref_type_of_v<
-                lux::spatial::GridCoord2i64>.hash;
+                lux::math::GridCoord2i64>.hash;
             coordinate.type = lux::meta::ref_type_of_v<
-                lux::spatial::GridCoord2i64>;
+                lux::math::GridCoord2i64>;
             coordinate.fields = {
                 lux::meta::RefField{
                     "x",
@@ -199,14 +199,14 @@ namespace
                     lux::meta::EVisibility::Public,
                     &coordinate,
                     static_cast<std::uint32_t>(offsetof(
-                        lux::spatial::GridCoord2i64, x))},
+                        lux::math::GridCoord2i64, x))},
                 lux::meta::RefField{
                     "y",
                     lux::meta::ref_type_of_v<std::int64_t>,
                     lux::meta::EVisibility::Public,
                     &coordinate,
                     static_cast<std::uint32_t>(offsetof(
-                        lux::spatial::GridCoord2i64, y))}};
+                        lux::math::GridCoord2i64, y))}};
 
             field.name = "PixelField2DComponent";
             field.full_name = "lux::ecs::PixelField2DComponent";
@@ -266,7 +266,7 @@ namespace
             chunk.type = lux::meta::ref_type_of_v<
                 lux::ecs::PixelChunk2DComponent>;
             auto coordinate_type = lux::meta::ref_type_of_v<
-                lux::spatial::GridCoord2i64>;
+                lux::math::GridCoord2i64>;
             coordinate_type.ptr = &coordinate;
             chunk.fields = {
                 lux::meta::RefField{
@@ -283,7 +283,10 @@ namespace
                     lux::meta::EVisibility::Public,
                     &chunk,
                     static_cast<std::uint32_t>(offsetof(
-                        lux::ecs::PixelChunk2DComponent, field))},
+                        lux::ecs::PixelChunk2DComponent, field)),
+                    false,
+                    false,
+                    "luxref::property::member, cooked_relocation=persistent_entity_ref"},
                 lux::meta::RefField{
                     "content",
                     lux::meta::ref_type_of_v<
@@ -291,7 +294,10 @@ namespace
                     lux::meta::EVisibility::Public,
                     &chunk,
                     static_cast<std::uint32_t>(offsetof(
-                        lux::ecs::PixelChunk2DComponent, content))}};
+                        lux::ecs::PixelChunk2DComponent, content)),
+                    false,
+                    false,
+                    "luxref::property::member, cooked_relocation=content_blob_ref"}};
 
             tile_chunk.name = "TileChunk2DComponent";
             tile_chunk.full_name = "lux::ecs::TileChunk2DComponent";
@@ -314,7 +320,10 @@ namespace
                     lux::meta::EVisibility::Public,
                     &tile_chunk,
                     static_cast<std::uint32_t>(offsetof(
-                        lux::ecs::TileChunk2DComponent, tilemap))},
+                        lux::ecs::TileChunk2DComponent, tilemap)),
+                    false,
+                    false,
+                    "luxref::property::member, cooked_relocation=persistent_entity_ref"},
                 lux::meta::RefField{
                     "content",
                     lux::meta::ref_type_of_v<
@@ -322,7 +331,10 @@ namespace
                     lux::meta::EVisibility::Public,
                     &tile_chunk,
                     static_cast<std::uint32_t>(offsetof(
-                        lux::ecs::TileChunk2DComponent, content))}};
+                        lux::ecs::TileChunk2DComponent, content)),
+                    false,
+                    false,
+                    "luxref::property::member, cooked_relocation=content_blob_ref"}};
         }
     };
 
@@ -370,30 +382,30 @@ namespace
         lux::serialize::ArchiveWriter writer{result};
         const auto writeHeader = [&](
             std::uint32_t name,
-            lux::serialize::EArchiveType type,
+            lux::ecs::serialization::EArchiveType type,
             std::uint32_t size)
         {
             writer.writePod(name);
             writer.writePod(static_cast<std::uint8_t>(type));
             writer.writePod(size);
         };
-        writeHeader(2u, lux::serialize::EArchiveType::AssetRef, 16u);
+        writeHeader(2u, lux::ecs::serialization::EArchiveType::Uuid, 16u);
         writer.writeUuid(facts.definition);
-        writeHeader(4u, lux::serialize::EArchiveType::AssetRef, 16u);
+        writeHeader(4u, lux::ecs::serialization::EArchiveType::Uuid, 16u);
         writer.writeUuid(facts.material);
-        writeHeader(1u, lux::serialize::EArchiveType::Double, sizeof(double));
+        writeHeader(1u, lux::ecs::serialization::EArchiveType::Double, sizeof(double));
         writer.writePod(facts.cell_size);
         writeHeader(
             3u,
-            lux::serialize::EArchiveType::Int32,
+            lux::ecs::serialization::EArchiveType::Int32,
             sizeof(std::int32_t));
         writer.writePod(facts.draw_priority);
-        writeHeader(6u, lux::serialize::EArchiveType::Bool, 1u);
+        writeHeader(6u, lux::ecs::serialization::EArchiveType::Bool, 1u);
         writer.writePod<std::uint8_t>(facts.visible ? 1u : 0u);
-        writeHeader(5u, lux::serialize::EArchiveType::Bool, 1u);
+        writeHeader(5u, lux::ecs::serialization::EArchiveType::Bool, 1u);
         writer.writePod<std::uint8_t>(
             facts.simulation_enabled ? 1u : 0u);
-        writer.writePod(lux::serialize::kEndOfObject);
+        writer.writePod(lux::ecs::serialization::kEndOfObject);
         return result;
     }
 
@@ -505,7 +517,7 @@ namespace
             {
                 fn({
                     section.asset,
-                    lux::asset::EAssetType::UNKNOWN,
+                    lux::ecs::scene_format::kEntitySectionImageMagic,
                     section.path,
                     false});
             }
@@ -539,7 +551,7 @@ namespace
     };
 
     lux::ecs::scene_format::EntitySectionId tileProofSectionId(
-        lux::spatial::GridCoord2i64 coordinate)
+        lux::math::GridCoord2i64 coordinate)
     {
         std::uint64_t hash = 1469598103934665603ull;
         const auto append = [&hash](std::uint64_t value) noexcept
@@ -556,7 +568,7 @@ namespace
     }
 
     std::vector<std::byte> tileProofParameters(
-        lux::spatial::GridCoord2i64 coordinate)
+        lux::math::GridCoord2i64 coordinate)
     {
         std::vector<std::byte> result;
         lux::serialize::ArchiveWriter writer{result};
@@ -568,7 +580,7 @@ namespace
 
     bool decodeTileProofParameters(
         std::span<const std::byte> bytes,
-        lux::spatial::GridCoord2i64& coordinate) noexcept
+        lux::math::GridCoord2i64& coordinate) noexcept
     {
         lux::serialize::ArchiveReader reader{bytes.data(), bytes.size()};
         const auto magic = reader.readPod<std::uint32_t>();
@@ -579,38 +591,38 @@ namespace
     }
 
     std::vector<std::byte> tileProofCoordinatePayload(
-        lux::spatial::GridCoord2i64 coordinate)
+        lux::math::GridCoord2i64 coordinate)
     {
         std::vector<std::byte> nested;
         lux::serialize::ArchiveWriter nested_writer{nested};
         nested_writer.writePod<std::uint32_t>(4u);
         nested_writer.writePod<std::uint8_t>(static_cast<std::uint8_t>(
-            lux::serialize::EArchiveType::Int64));
+            lux::ecs::serialization::EArchiveType::Int64));
         nested_writer.writePod<std::uint32_t>(sizeof(coordinate.x));
         nested_writer.writePod(coordinate.x);
         nested_writer.writePod<std::uint32_t>(5u);
         nested_writer.writePod<std::uint8_t>(static_cast<std::uint8_t>(
-            lux::serialize::EArchiveType::Int64));
+            lux::ecs::serialization::EArchiveType::Int64));
         nested_writer.writePod<std::uint32_t>(sizeof(coordinate.y));
         nested_writer.writePod(coordinate.y);
-        nested_writer.writePod(lux::serialize::kEndOfObject);
+        nested_writer.writePod(lux::ecs::serialization::kEndOfObject);
 
         std::vector<std::byte> result;
         lux::serialize::ArchiveWriter writer{result};
         writer.writePod<std::uint32_t>(2u);
         writer.writePod<std::uint8_t>(static_cast<std::uint8_t>(
-            lux::serialize::EArchiveType::Struct));
+            lux::ecs::serialization::EArchiveType::Struct));
         writer.writePod<std::uint32_t>(
             static_cast<std::uint32_t>(nested.size()));
         writer.writeBytes(nested.data(), nested.size());
-        writer.writePod(lux::serialize::kEndOfObject);
+        writer.writePod(lux::ecs::serialization::kEndOfObject);
         return result;
     }
 
     lux::ecs::scene_format::EntitySectionImage makeTileProofImage(
         const TilemapProofState& state,
         lux::ecs::scene_format::EntitySectionId section,
-        lux::spatial::GridCoord2i64 coordinate)
+        lux::math::GridCoord2i64 coordinate)
     {
         using namespace lux::ecs::scene_format;
         EntitySectionImage image;
@@ -669,7 +681,7 @@ namespace
             const auto* source = std::get_if<
                 lux::scene::GeneratedSectionSource>(
                     &request.record.source);
-            lux::spatial::GridCoord2i64 coordinate;
+            lux::math::GridCoord2i64 coordinate;
             if (!source || source->generator != state.generator ||
                 !decodeTileProofParameters(source->parameters, coordinate) ||
                 request.record.id != tileProofSectionId(coordinate))
@@ -690,7 +702,7 @@ namespace
 
     lux::scene::SectionRecord tileProofRecord(
         const TilemapProofState& state,
-        lux::spatial::GridCoord2i64 coordinate)
+        lux::math::GridCoord2i64 coordinate)
     {
         lux::scene::SectionRecord result;
         result.id = tileProofSectionId(coordinate);
@@ -716,7 +728,7 @@ namespace
 
     FieldSection storedTileProofSection(
         const TilemapProofState& state,
-        lux::spatial::GridCoord2i64 coordinate)
+        lux::math::GridCoord2i64 coordinate)
     {
         FieldSection result;
         result.asset = ordinalUuid(201u);
@@ -743,10 +755,10 @@ namespace
     }
 
     bool validateTileProof(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         lux::ecs::PersistentEntityIndex& persistent_entities,
         lux::runtime::entity_scene::ContentBlobClient blobs,
-        lux::spatial::GridCoord2i64 expected,
+        lux::math::GridCoord2i64 expected,
         const lux::ecs::PersistentEntityId& expected_owner)
     {
         auto view = registry.view<const lux::ecs::TileChunk2DComponent>();
@@ -798,14 +810,14 @@ namespace
         const lux::runtime::spatial2d::SpatialInterest2DSystem* interest_;
     };
 
-    std::size_t chunkCount(lux::meta::EntityRegistry& registry)
+    std::size_t chunkCount(lux::ecs::Registry& registry)
     {
         return registry.storage<lux::ecs::PixelChunk2DComponent>().size();
     }
 
     bool hasExactChunkWindow(
-        lux::meta::EntityRegistry& registry,
-        lux::spatial::GridCoord2i64 center) noexcept
+        lux::ecs::Registry& registry,
+        lux::math::GridCoord2i64 center) noexcept
     {
         std::array<bool,
             lux::runtime::spatial2d::kSpatial2DResidentSectionCount> seen{};
@@ -839,7 +851,7 @@ namespace
         const lux::runtime::spatial2d::SpatialInterest2DSystem& interest,
         const lux::ecs::PixelFieldSystem& fields,
         const lux::runtime::spatial2d::Infinite2DPixelSystem& pixels,
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         Predicate&& done)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
@@ -930,12 +942,12 @@ namespace
     }
 
     void validateWindow(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         lux::runtime::entity_scene::ContentBlobClient blobs,
-        lux::spatial::GridCoord2i64 center,
+        lux::math::GridCoord2i64 center,
         const lux::ecs::PersistentEntityId& field_id)
     {
-        std::vector<lux::spatial::GridCoord2i64> coordinates;
+        std::vector<lux::math::GridCoord2i64> coordinates;
         registry.view<const lux::ecs::PixelChunk2DComponent>().each(
             [&](const lux::ecs::PixelChunk2DComponent& chunk)
             {
@@ -967,7 +979,7 @@ namespace
         assert(coordinates.size() ==
             lux::runtime::spatial2d::kSpatial2DResidentSectionCount);
         std::sort(coordinates.begin(), coordinates.end());
-        std::vector<lux::spatial::GridCoord2i64> expected;
+        std::vector<lux::math::GridCoord2i64> expected;
         for (std::int64_t y = -2; y <= 2; ++y)
             for (std::int64_t x = -2; x <= 2; ++x)
                 expected.push_back({center.x + x, center.y + y});
@@ -994,7 +1006,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
 
     const lux::ecs::PersistentEntityId field_id{
         ordinalUuid(10u)};
-    constexpr lux::spatial::GridCoord2i64 kTileProofCoordinate{
+    constexpr lux::math::GridCoord2i64 kTileProofCoordinate{
         -1'234'567, 7'654'321};
     const FieldFacts field_facts;
     auto field_section = makeFieldSection(field_id, field_facts);
@@ -1249,7 +1261,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     registry.emplace<lux::ecs::SpatialInterest2DComponent>(interest);
     registry.emplace<lux::ecs::ResolvedTransform2DComponent>(interest);
 
-    const auto readyAt = [&](lux::spatial::GridCoord2i64 center)
+    const auto readyAt = [&](lux::math::GridCoord2i64 center)
     {
         return [&, center]() noexcept
         {
@@ -1568,7 +1580,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         [&](entt::entity entity)
         {
             return registry.get<lux::ecs::PixelChunk2DComponent>(entity)
-                .coordinate == lux::spatial::GridCoord2i64{0, 0};
+                .coordinate == lux::math::GridCoord2i64{0, 0};
         });
     assert(center_chunk != pixel_chunk_view.end());
     const auto center_chunk_entity = *center_chunk;
@@ -1605,7 +1617,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     assert(pixel_runtime.stats().simulation_chunks_visited_last_step ==
         spatial2d::kSpatial2DActiveSectionCount);
 
-    const auto moveInterest = [&](lux::spatial::Position2D position)
+    const auto moveInterest = [&](lux::math::Position2d position)
     {
         registry.patch<lux::ecs::ResolvedTransform2DComponent>(
             interest,
@@ -1655,7 +1667,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
             [&](entt::entity entity)
             {
                 return registry.get<lux::ecs::PixelChunk2DComponent>(entity)
-                    .coordinate == lux::spatial::GridCoord2i64{
+                    .coordinate == lux::math::GridCoord2i64{
                         1'000'000, -1'000'000};
             });
     });

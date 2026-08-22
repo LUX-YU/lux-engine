@@ -53,7 +53,7 @@ void DepthPrepassFeature::addPasses(RGBuilder& builder)
         return;
 
     builder.addPass("DepthPrepass", ERGPassType::GRAPHICS)
-        .write(builder.referenceTexture(cfg_.depth_target), lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+        .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
         .setPipeline(pipeline_handle_)
         .bindSceneDS()
         .useEngineSet(EDescriptorSetSlot::Instance)

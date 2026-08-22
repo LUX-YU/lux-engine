@@ -105,7 +105,7 @@ namespace lux::runtime::detail
             std::size_t candidate_count{0u};
             entt::entity selected{entt::null};
             lux::render::RenderTargetId target{};
-            lux::common::Size2D extent{};
+            lux::math::Extent2u extent{};
             std::uint64_t intent_revision{0u};
 
             friend bool operator==(
@@ -135,7 +135,7 @@ namespace lux::runtime::detail
                 return lux::ecs::ecsCommandSparsePublicationBytes(2u);
             }
             void prepareRegistryPublication(
-                lux::meta::EntityRegistry& registry) const noexcept
+                lux::ecs::Registry& registry) const noexcept
             {
                 lux::ecs::reserveEcsCommandStorage(
                     registry.storage<lux::ecs::ViewPresentComponent>(), 1u);
@@ -145,7 +145,7 @@ namespace lux::runtime::detail
             }
 
             void apply(
-                lux::meta::EntityRegistry& registry,
+                lux::ecs::Registry& registry,
                 PrimaryViewPresentationSystem& producer) const
             {
                 producer.apply(registry, *this);
@@ -154,7 +154,7 @@ namespace lux::runtime::detail
         static_assert(std::is_trivially_copyable_v<Command>);
 
         [[nodiscard]] static Desired desiredOf(
-            const lux::meta::EntityRegistry& registry,
+            const lux::ecs::Registry& registry,
             const PrimaryViewPresentation::Intent& intent) noexcept
         {
             Desired result;
@@ -200,7 +200,7 @@ namespace lux::runtime::detail
         }
 
         void apply(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             const Command& command)
         {
             if (command.sequence != latest_command_sequence_ ||
@@ -278,7 +278,7 @@ namespace lux::runtime::detail
         }
 
         void onSelectionChanged(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity) noexcept
         {
             dirty_ = true;
@@ -286,7 +286,7 @@ namespace lux::runtime::detail
         }
 
         void onViewChanged(
-            lux::meta::EntityRegistryBase& registry,
+            lux::ecs::RegistryBase& registry,
             entt::entity entity)
             noexcept
         {
@@ -299,7 +299,7 @@ namespace lux::runtime::detail
         }
 
         void onBindingRemoved(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity entity) noexcept
         {
             if (entity == bound_camera_)
@@ -331,7 +331,7 @@ namespace lux::runtime::detail
         }
 
         PrimaryViewPresentation* presentation_{};
-        lux::meta::EntityRegistry* registry_{};
+        lux::ecs::Registry* registry_{};
         lux::ecs::EcsCommandWriter commands_{};
         std::optional<Desired> enqueued_;
         entt::entity bound_camera_{entt::null};

@@ -32,22 +32,32 @@
 #include <lux/engine/authoring/project/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/core/extension_abi/ModuleAbi.hpp>
+#include <lux/cxx/core/StableNameId.hpp>
 
 #include <uuid.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
 
 namespace lux::authoring
 {
+    struct ProjectExtensionIdTag final {};
+    using ProjectExtensionId =
+        lux::cxx::StableNameId<ProjectExtensionIdTag>;
+
+    enum class EProjectExtensionTarget : std::uint8_t
+    {
+        RUNTIME = 0u,
+        EDITOR = 1u
+    };
+
     struct ProjectExtensionEntry final
     {
-        lux::extensions::ExtensionId id;
+        ProjectExtensionId id;
         std::filesystem::path path;
-        lux::extensions::EExtensionModuleTarget target{
-            lux::extensions::EExtensionModuleTarget::RUNTIME};
+        EProjectExtensionTarget target{EProjectExtensionTarget::RUNTIME};
         std::uint16_t required_major{0u};
         std::uint16_t minimum_minor{0u};
     };

@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 // ============================================================================
 //  Camera2DSystem.hpp — derive 2D orthographic view/proj (lux::ecs).
 //
@@ -137,7 +139,7 @@ namespace lux::ecs
         static constexpr float kFarZ  =  1024.0f;
 
         /// Reused scratch for the ONE-TIME derived-cache-maintenance backfill.
-        std::vector<lux::meta::entity_id> scratch_;
+        std::vector<lux::ecs::Entity> scratch_;
         /// G-07 signals are wired lazily on the first update.
         bool cache_maintenance_connected_{false};
 #ifndef NDEBUG
@@ -151,12 +153,12 @@ namespace lux::ecs
     /// Camera2DComponent). Returns null_entity when there is zero (a Canvas can then
     /// skip rendering rather than read garbage) OR more than one (ambiguous). NEVER the
     /// implicit "first camera" — selection is explicit (design T2-03).
-    [[nodiscard]] inline lux::meta::entity_id activeCamera(lux::meta::EntityRegistry& reg)
+    [[nodiscard]] inline lux::ecs::Entity activeCamera(lux::ecs::Registry& reg)
     {
-        lux::meta::entity_id found = lux::meta::null_entity;
+        lux::ecs::Entity found = lux::ecs::kNullEntity;
         int count = 0;
         for (auto e : reg.view<PrimaryCameraTag, Camera2DComponent>()) { found = e; ++count; }
-        return count == 1 ? found : lux::meta::null_entity;
+        return count == 1 ? found : lux::ecs::kNullEntity;
     }
 
     /// Screen pixel → view-relative point on the z=0 plane via a camera's
@@ -175,7 +177,7 @@ namespace lux::ecs
     }
 
     /// Double-precision absolute-position counterpart used by authoring commands.
-    [[nodiscard]] inline std::optional<lux::spatial::Position2D>
+    [[nodiscard]] inline std::optional<lux::math::Position2d>
     screenToWorldPosition(
         const Camera2DCacheComponent& cache,
         const Eigen::Vector2f& viewport,
@@ -189,10 +191,10 @@ namespace lux::ecs
         const auto relative = screenToWorld(cache, viewport, screen);
         if (!relative.allFinite())
             return std::nullopt;
-        const lux::spatial::Position2D result{
+        const lux::math::Position2d result{
             cache.render_origin.x + static_cast<double>(relative.x()),
             cache.render_origin.y + static_cast<double>(relative.y())};
-        if (!lux::spatial::isFinite(result))
+        if (!lux::math::isFinite(result))
             return std::nullopt;
         return result;
     }

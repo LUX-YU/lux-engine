@@ -12,7 +12,6 @@
 #include <type_traits>  // type_identity — carries the return type into the invoker lambdas
 #include <memory>
 #include <utility>
-#include <entt/entt.hpp>
 #include <lux/engine/meta/Meta.hpp>
 {# Detect whether any reflected record in this TU is an ECS component
    (LUX_COMPONENT() == LUX_META(luxref::class, component=true)). Uses the
@@ -25,144 +24,24 @@
     {%- endif -%}
 {%- endfor -%}
 {%- if has_any_component %}
-// Component registry catalogue lives in the ECS layer, not in `core::meta`.
-#include <lux/engine/ecs/ComponentTypeCatalog.hpp>
-#include <lux/engine/ecs/RegistryStorageCapacity.hpp>
-
-// ── Component-catalogue accessor shims ────────────────────────────────────────
-// Function templates so each `if constexpr` branch is DISCARDED UNCHECKED — a
-// plain (non-generic) lambda body is fully semantic-checked even behind a
-// false `if constexpr`, which breaks on:
-//   • empty types (tag components): entt's empty-type optimisation stores no
-//     instance — try_get / emplace_or_replace / patch are void or ill-formed
-//     there. A tag's get() hands back a shared static probe: non-null still
-//     means "present", and the reflection walker reads zero fields through it.
-//   • move-only types: the copy-clone branch would fail to compile. Their
-//     clone now exists but is a no-op returning null — RegistrySnapshot and
-//     Duplicate treat that exactly like the null clone POINTER they used to
-//     see (both skip silently on a null).
-namespace
-{
-    template <class C>
-    void* lux_meta_component_get(
-        lux::meta::EntityRegistryBase& r,
-        entt::entity e)
-    {
-        if constexpr (std::is_empty_v<C>)
-        {
-            static C probe{};
-            return r.all_of<C>(e) ? &probe : nullptr;
-        }
-        else
-            return r.try_get<C>(e);
-    }
-
-    template <class C>
-    void* lux_meta_component_emplace(
-        lux::meta::EntityRegistryBase& r,
-        entt::entity e)
-    {
-        if constexpr (std::is_empty_v<C>)
-        {
-            r.emplace_or_replace<C>(e);
-            static C probe{};
-            return &probe;
-        }
-        else
-            return &r.emplace_or_replace<C>(e);
-    }
-
-    template <class C>
-    void lux_meta_component_notify(
-        lux::meta::EntityRegistryBase& r,
-        entt::entity e)
-    {
-        // Empty type: no fields to poke and registry::patch is ill-formed for
-        // it — the write contract has nothing to observe. No-op.
-        if constexpr (!std::is_empty_v<C>)
-        {
-            if (r.all_of<C>(e))
-                r.patch<C>(e);
-        }
-    }
-
-    template <class C>
-    void* lux_meta_component_clone(
-        lux::meta::EntityRegistryBase& sr,
-        entt::entity src,
-        lux::meta::EntityRegistryBase& dr,
-        entt::entity dst)
-    {
-        if constexpr (std::is_empty_v<C>)
-        {
-            // Presence IS the value: clone copies the tag bit. Without this,
-            // RegistrySnapshot would drop tags across an Edit/Play restore.
-            if (!sr.all_of<C>(src))
-                return nullptr;
-            dr.emplace_or_replace<C>(dst);
-            static C probe{};
-            return &probe;
-        }
-        else if constexpr (std::is_copy_constructible_v<C>)
-        {
-            const auto* s = sr.try_get<C>(src);
-            return s ? &dr.emplace_or_replace<C>(dst, *s) : nullptr;
-        }
-        else
-            return nullptr;   // move-only: silent skip, like the old null clone
-    }
-
-    template <class C>
-    void lux_meta_component_reserve(
-        lux::meta::EntityRegistryBase& r,
-        std::size_t additional)
-    {
-        auto& storage = r.storage<C>();
-        // The current operation ABI has no error return. Decoded entity
-        // counts are bounded before this adapter is called, so overflow here
-        // is an engine invariant. This still reserves only EnTT packed/payload
-        // capacity; it is not a sparse-page or allocator reservation.
-        if (!lux::ecs::reserveAdditionalStorageCapacity(
-                storage, additional))
-        {
-            std::abort();
-        }
-    }
-
-    template <class C>
-    void* lux_meta_component_transfer(
-        lux::meta::EntityRegistryBase& sr,
-        entt::entity src,
-        lux::meta::EntityRegistryBase& dr,
-        entt::entity dst) noexcept
-    {
-        if constexpr (std::is_empty_v<C>)
-        {
-            if (!sr.all_of<C>(src))
-                return nullptr;
-            dr.emplace_or_replace<C>(dst);
-            sr.remove<C>(src);
-            static C probe{};
-            return &probe;
-        }
-        else if constexpr (std::is_nothrow_move_constructible_v<C>)
-        {
-            auto* source = sr.try_get<C>(src);
-            if (!source)
-                return nullptr;
-            auto* result = &dr.emplace_or_replace<C>(dst, std::move(*source));
-            sr.remove<C>(src);
-            return result;
-        }
-        else
-            return nullptr;
-    }
-} // namespace
+#include <lux/engine/ecs/reflection/ComponentReflectionAdapter.hpp>
 {%- endif %}
 {% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
 {% if custom_include %}
 #include <{{ custom_include }}>
 {% endif %}
+
+namespace
+{
+    template <class T>
+    inline constexpr bool lux_meta_generated_record_v = false
+    {%- for rec_idx in marked_record_decls -%}
+        {%- set reflected_rec = decl_from_index(rec_idx) %}
+        || std::is_same_v<
+            lux::meta::remove_one_modifier_t<T>,
+            {{ reflected_rec.fq_name }}>
+    {%- endfor %};
+}
 
 // I'm not sure how robust the use of
 // lux::cxx::type_name<lux::meta::remove_one_modifier_t<T>> is, and
@@ -197,12 +76,16 @@ static void reflect_func_{{ fn.hash }}(lux::meta::ReflectionRegistry& registry, 
     /* return type ---------------------------------------------------------- */
     using ret_type  = {{ fn.result_type_id }};
     static constexpr auto ret_qt = lux::meta::__builtin_qual_type<ret_type>;
-    static constexpr auto is_lux_obj = std::is_base_of_v<lux::meta::EntityObject, ret_type>;
+    static constexpr auto is_reflected_record =
+        lux_meta_generated_record_v<ret_type>;
+    static constexpr auto is_reflected_value =
+        lux::meta::is_reflected_value_v<
+            lux::meta::remove_one_modifier_t<ret_type>>;
     static_assert(static_cast<lux::meta::EBaseType>(ret_qt.base) != lux::meta::EBaseType::Unknown, "Unsupported return type in {{ fn.spelling }}");
 
     inv.return_type = lux::meta::ref_type_of_v<ret_type>;
 
-    if constexpr(is_lux_obj){
+    if constexpr(is_reflected_record || is_reflected_value){
         fix_list.push_back({lux::cxx::type_name<lux::meta::remove_one_modifier_t<{{ fn.result_type_id }}>>(),&inv.return_type});
     }
 
@@ -216,10 +99,14 @@ static void reflect_func_{{ fn.hash }}(lux::meta::ReflectionRegistry& registry, 
         using param_type_{{ loop.index }} = {{ pty.id }};
 
         static constexpr auto qt = lux::meta::__builtin_qual_type<param_type_{{ loop.index }}>;
-        static constexpr auto is_lux_obj = std::is_base_of_v<lux::meta::EntityObject, param_type_{{ loop.index }}>;
+        static constexpr auto is_reflected_record =
+            lux_meta_generated_record_v<param_type_{{ loop.index }}>;
+        static constexpr auto is_reflected_value =
+            lux::meta::is_reflected_value_v<
+                lux::meta::remove_one_modifier_t<param_type_{{ loop.index }}>>;
         static_assert(static_cast<lux::meta::EBaseType>(qt.base) != lux::meta::EBaseType::Unknown, "Unsupported param type in {{ fn.spelling }}");
         rp.type = lux::meta::ref_type_of_v<{{pty.id}}>;
-        if constexpr(is_lux_obj){
+        if constexpr(is_reflected_record || is_reflected_value){
             fix_list.push_back({lux::cxx::type_name<lux::meta::remove_one_modifier_t<{{ pty.id }}>>(),&rp.type});
         }
         rp.is_out = false;  /* TODO: mark out‑params */
@@ -335,10 +222,17 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         {%- endif -%}
     {%- endfor %}
     
-    {% set parent_chain = parent_chain(rec.id, "lux::meta::EntityObject") %}
-    {% for parent_info in parent_chain -%}
-        cls.parent_chain.push_back({{ parent_info.hash }}ull);
-    {% endfor %}
+    {# Parent metadata contains only real, marked reflection bases. There is
+       no synthetic EntityObject root and no inheritance-based opt-in. #}
+    {%- for parent_idx in marked_record_decls -%}
+        {%- set parent_rec = decl_from_index(parent_idx) -%}
+        {%- if parent_rec.id != rec.id %}
+    if constexpr (std::is_base_of_v<
+                      {{ parent_rec.fq_name }},
+                      {{ rec.fq_name }}>)
+        cls.parent_chain.push_back({{ parent_rec.hash }}ull);
+        {%- endif -%}
+    {%- endfor %}
 
     /* The fix list stores RefType addresses until every class in the module
        has been registered.  Reserve before taking any field address so later
@@ -370,14 +264,15 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
 
         using field_type_{{ loop.index }} = decltype({{ field.fq_name }});
         static constexpr auto qt = lux::meta::__builtin_qual_type<field_type_{{ loop.index }}>;
-        static constexpr auto is_lux_obj = std::is_base_of_v<lux::meta::EntityObject, field_type_{{ loop.index }}>;
+        static constexpr auto is_reflected_record =
+            lux_meta_generated_record_v<field_type_{{ loop.index }}>;
         static constexpr auto is_reflected_value =
             lux::meta::is_reflected_value_v<
                 lux::meta::remove_one_modifier_t<field_type_{{ loop.index }}>>;
         static_assert(static_cast<lux::meta::EBaseType>(qt.base) != lux::meta::EBaseType::Unknown, "Unsupported field type {{ field.name }}");
 
         f.type = lux::meta::ref_type_of_v<{{ field.type_id }}>;
-        if constexpr(is_lux_obj || is_reflected_value){
+        if constexpr(is_reflected_record || is_reflected_value){
             fix_list.push_back({lux::cxx::type_name<lux::meta::remove_one_modifier_t<{{ field.type_id }}>>(),&f.type});
         }
         f.is_const    = std::is_const_v<std::remove_reference_t<field_type_{{ loop.index }}>>;
@@ -406,11 +301,15 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         /* return ----------------------------------------------------------- */
         using ret_type = {{ method.result_type_id }};
         static constexpr auto qt_ret = lux::meta::__builtin_qual_type<ret_type>;
-        static constexpr auto is_lux_obj = std::is_base_of_v<lux::meta::EntityObject, ret_type>;
+        static constexpr auto is_reflected_record =
+            lux_meta_generated_record_v<ret_type>;
+        static constexpr auto is_reflected_value =
+            lux::meta::is_reflected_value_v<
+                lux::meta::remove_one_modifier_t<ret_type>>;
         static_assert(static_cast<lux::meta::EBaseType>(qt_ret.base) != lux::meta::EBaseType::Unknown, "Unsupported return type for {{ method.spelling }}");
 
         inv.return_type = lux::meta::ref_type_of_v<ret_type>;
-        if constexpr(is_lux_obj){
+        if constexpr(is_reflected_record || is_reflected_value){
             fix_list.push_back({lux::cxx::type_name<lux::meta::remove_one_modifier_t<{{ method.result_type_id }}>>(),&inv.return_type});
         }
 
@@ -422,11 +321,15 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
             rp.name = "{{ param.name }}";
             using param_type_{{ loop.index }} = {{ p_type.id }};
             static constexpr auto qt = lux::meta::__builtin_qual_type<param_type_{{ loop.index }}>;
-            static constexpr auto is_lux_obj = std::is_base_of_v<lux::meta::EntityObject, param_type_{{ loop.index }}>;
+            static constexpr auto is_reflected_record =
+                lux_meta_generated_record_v<param_type_{{ loop.index }}>;
+            static constexpr auto is_reflected_value =
+                lux::meta::is_reflected_value_v<
+                    lux::meta::remove_one_modifier_t<param_type_{{ loop.index }}>>;
             static_assert(static_cast<lux::meta::EBaseType>(qt.base) != lux::meta::EBaseType::Unknown, "Unsupported param type for {{ method.spelling }}");
 
             rp.type = lux::meta::ref_type_of_v<{{ p_type.id }}>;
-            if constexpr(is_lux_obj){
+            if constexpr(is_reflected_record || is_reflected_value){
                 fix_list.push_back({lux::cxx::type_name<lux::meta::remove_one_modifier_t<{{ p_type.id }}>>(),&rp.type});
             }
             rp.is_out = false; /* TODO out‑params */
@@ -482,54 +385,25 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
     /* Pushed into the ECS-layer catalogue (function::ecs) rather than */
     /* the reflection registry — components are an ECS concept and stay    */
     /* out of `core::meta`. The include lives in the per-class block       */
-    /* below so non-component reflected types do not drag in entt.         */
+    /* below so non-component reflected types do not drag in ECS.          */
     {%- if is_component %}
     {
-        lux::ecs::ComponentSchemaDescriptor _cte_{{ rec.hash }};
-        _cte_{{ rec.hash }}.cpp_type.hash =
-            lux::ecs::typeToken<{{ rec.fq_name }}>().hash;
-        _cte_{{ rec.hash }}.cpp_type.name =
-            lux::ecs::typeToken<{{ rec.fq_name }}>().name;
-        _cte_{{ rec.hash }}.schema_id.name =
-            lux::ecs::defaultComponentSchemaName("{{ rec.fq_name }}");
-        _cte_{{ rec.hash }}.schema_version = 1u;
-        _cte_{{ rec.hash }}.ref_class = &cls;
-        _cte_{{ rec.hash }}.operations.has = +[](
-            lux::meta::EntityRegistryBase& r,
-            entt::entity e) -> bool
-            { return r.all_of<{{ rec.fq_name }}>(e); };
-        /* Accessors route through the shims above: empty tag types and
-           move-only types get well-formed, correct behaviour instead of a
-           compile error (see the shim block's comment). */
-        _cte_{{ rec.hash }}.operations.get     = &lux_meta_component_get<{{ rec.fq_name }}>;
-        _cte_{{ rec.hash }}.operations.emplace = &lux_meta_component_emplace<{{ rec.fq_name }}>;
-        _cte_{{ rec.hash }}.operations.remove = +[](
-            lux::meta::EntityRegistryBase& r,
-            entt::entity e)
-            { r.remove<{{ rec.fq_name }}>(e); };
-        /* notify = fire on_update after a reflection field write (write contract C5): */
-        /* offset pokes bypass entt's signals; the write paths (Lua proxy,     */
-        /* Inspector) call this so event-driven consumers still observe them.  */
-        _cte_{{ rec.hash }}.operations.notify  = &lux_meta_component_notify<{{ rec.fq_name }}>;
-        /* Cross-registry (src and dst may differ) so RegistrySnapshot can    */
-        /* shadow-copy. Move-only clone exists but no-ops (returns null).     */
-        _cte_{{ rec.hash }}.operations.clone   = &lux_meta_component_clone<{{ rec.fq_name }}>;
-        _cte_{{ rec.hash }}.operations.reserve = &lux_meta_component_reserve<{{ rec.fq_name }}>;
-        _cte_{{ rec.hash }}.operations.transfer = &lux_meta_component_transfer<{{ rec.fq_name }}>;
-        _cte_{{ rec.hash }}.operations.no_throw_transfer =
-            std::is_empty_v<{{ rec.fq_name }}> ||
-            std::is_nothrow_move_constructible_v<{{ rec.fq_name }}>;
         {%- if component_serialization == "transient" %}
-        _cte_{{ rec.hash }}.serialization =
+        constexpr auto _serialization_{{ rec.hash }} =
             lux::ecs::EComponentSerializationPolicy::TRANSIENT;
         {%- else if component_serialization == "persistent" %}
-        _cte_{{ rec.hash }}.serialization =
+        constexpr auto _serialization_{{ rec.hash }} =
             lux::ecs::EComponentSerializationPolicy::PERSISTENT;
         {%- else %}
-        _cte_{{ rec.hash }}.serialization =
+        constexpr auto _serialization_{{ rec.hash }} =
             lux::ecs::EComponentSerializationPolicy::COOKED;
         {%- endif %}
-        _cte_{{ rec.hash }}.provider = "org.lux.builtin";
+        auto _cte_{{ rec.hash }} =
+            lux::ecs::makeGeneratedComponentDescriptor<{{ rec.fq_name }}>(
+                cls,
+                lux::ecs::defaultComponentSchemaName("{{ rec.fq_name }}"),
+                _serialization_{{ rec.hash }}
+            );
         lux::ecs::queueGeneratedComponent(std::move(_cte_{{ rec.hash }}));
     }
     {%- endif %}

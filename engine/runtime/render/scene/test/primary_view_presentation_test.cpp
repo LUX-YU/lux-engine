@@ -34,7 +34,7 @@ int main()
     lux::runtime::PrimaryViewPresentation presentation{
         true,
         lux::render::RenderTargetId{3u, 1u},
-        lux::common::Size2D{1280u, 720u}};
+        lux::math::Extent2u{1280u, 720u}};
 
     lux::ecs::ScheduleBuilder builder{schedule, services};
     const auto system = builder.add(
@@ -73,7 +73,7 @@ int main()
         presentation.snapshot().committed_revision;
     presentation.setOutputIntent(
         lux::render::RenderTargetId{7u, 2u},
-        lux::common::Size2D{1920u, 1080u});
+        lux::math::Extent2u{1920u, 1080u});
     expect(
         registry.get<lux::ecs::ViewPresentComponent>(first).target ==
             lux::render::RenderTargetId{3u, 1u},

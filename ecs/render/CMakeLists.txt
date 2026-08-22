@@ -35,18 +35,20 @@ lux_configure_render_interface(render_components)
 target_link_libraries(
     render_components
     INTERFACE
+        lux::cxx::core
         lux::engine::ecs::core
         lux::engine::function::render_client
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
         lux::engine::resource::description
         lux::engine::core::math
         lux::engine::core::meta
 )
 component_add_transitive_commands(
     render_components
+    "find_package(lux-cxx REQUIRED COMPONENTS core)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core description)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset description)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math meta)"
 )
 
@@ -119,13 +121,13 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::render_components
         lux::engine::function::render_client
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
 )
 component_add_transitive_commands(
     render_core
     "find_package(lux-engine-ecs REQUIRED COMPONENTS render_components)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 # 2D extraction is header-only. Sparse Pixel and Tilemap runtimes are excluded

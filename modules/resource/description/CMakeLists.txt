@@ -29,7 +29,6 @@ target_compile_definitions(description
 target_link_libraries(description
     PUBLIC
     lux::cxx::memory
-    lux::engine::core::extension_abi
     lux::engine::core::math
     stduuid
 )
@@ -38,7 +37,7 @@ component_add_transitive_commands(
     description
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS memory)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS extension_abi math)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math)"
 )
 
 lux_classify_target(
@@ -46,4 +45,19 @@ lux_classify_target(
     LAYER RESOURCE
     PRODUCT RUNTIME
     ROLE FOUNDATION
+)
+
+add_executable(
+    image_description_contract_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/image_description_contract_test.cpp
+)
+target_link_libraries(
+    image_description_contract_test
+    PRIVATE lux::engine::resource::description
+)
+lux_classify_target(
+    TARGET  image_description_contract_test
+    LAYER   RESOURCE
+    PRODUCT TEST
+    ROLE    FOUNDATION
 )

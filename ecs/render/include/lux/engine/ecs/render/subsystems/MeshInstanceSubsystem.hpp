@@ -44,7 +44,7 @@
 // (与消费它的 `ExtractionChangeSet::drain` 同处)。**只有一个真相源** ——
 // 两处各写一份默认值,迟早有人翻一个不翻另一个,而那是静默的。
 
-#include <lux/engine/meta/LuxObject.hpp>                    // entity_id / EntityRegistry
+#include <lux/engine/ecs/Registry.hpp>                    // entity_id / EntityRegistry
 #include <lux/engine/resource/asset/Asset.hpp>                       // asset_id_t
 
 #include <lux/engine/function/render/client/RenderProtocol.hpp>        // MeshInstanceSlotReply / kInstanceFlag*
@@ -112,14 +112,14 @@ namespace lux::ecs
         ///
         ///   条例是「观察者内不得直接改世界」—— 本队列**遵守**它,只是用节点
         ///   私有队列而非共享分片,而消费者就是自己时这是正当的。
-        std::vector<lux::meta::entity_id> to_unbind_;
+        std::vector<lux::ecs::Entity> to_unbind_;
 
         /// ★ 批 R2:变更驱动的入口。稳态下它是空的 —— 那就是整个改造的目的。
         ExtractionChangeSet<C, typename T::Require, typename T::Exclude> changes_;
         /// 上一次见到的出图 view 代次。换了就要给所有实例重发可见性。
         std::uint32_t last_seen_view_gen_{0};
         TrackedRenderRequest<
-            lux::meta::entity_id,
+            lux::ecs::Entity,
             lux::render::MeshInstanceSlotReply,
             State> create_requests_;
         FrameState                                     frame_{};   // per-frame skinning scratch (empty for static)
@@ -141,7 +141,7 @@ namespace lux::ecs
             bool                   reply_reported{false};
             int                    retry_in{0};        // transient (capacity): drives until next retry
         };
-        std::unordered_map<lux::meta::entity_id, FailRecord> failed_;
+        std::unordered_map<lux::ecs::Entity, FailRecord> failed_;
         static constexpr int kTransientRetryDrives = 120;   // ~2s @ 60fps between capacity retries
 
         /// 已离场、`removeMeshInstance` 还没发出去的对象句柄。观察者填，`tick` 开头排空。
@@ -151,7 +151,7 @@ namespace lux::ecs
         struct Leaving
         {
             lux::render::RenderObjectHandle object{};
-            lux::meta::entity_id            entity{entt::null};
+            lux::ecs::Entity            entity{entt::null};
             std::uint32_t transition_milliseconds{0u};
             std::uint32_t transition_seed{0u};
         };
@@ -159,7 +159,7 @@ namespace lux::ecs
         ComponentSetLeaveObserver<C, typename T::Require, typename T::Exclude> leave_;
         /// `on_destroy<State>` 的连接靠它解绑(Schedule 先于 World 析构,
         /// 所以本节点消亡时 registry 一定还在)。
-        lux::meta::EntityRegistry* reg_{nullptr};
+        lux::ecs::Registry* reg_{nullptr};
 
         /// 「实体离开了本子系统关心的组件集合」——**实体本身可能还活着**。
         /// 只记账，不发命令、不改世界（构建器此刻多半没开，而且信号正处在
@@ -167,7 +167,7 @@ namespace lux::ecs
         ///
         /// 真正的归还由 `update()` 里的 `remove<State>` 触发的
         /// `on_destroy<State>` 完成 —— 见 onStateDestroyed。
-        void onLeave(lux::meta::entity_id e)
+        void onLeave(lux::ecs::Entity e)
         {
             (void)create_requests_.abandon(e);
             to_unbind_.push_back(e);
@@ -191,7 +191,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] FailRecord& rememberFailure(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             lux::asset::asset_id_t mesh_id,
             lux::asset::asset_id_t material_id,
             lux::render::RMeshHandle mesh,
@@ -231,7 +231,7 @@ namespace lux::ecs
             return failure->second;
         }
 
-        void drainCreateCompletions(lux::meta::EntityRegistry& reg)
+        void drainCreateCompletions(lux::ecs::Registry& reg)
         {
             create_requests_.drain(
                 [this, &reg](auto completion)
@@ -370,8 +370,8 @@ namespace lux::ecs
         ///    `registry.destroy` 清各池的**顺序不保证**,可能先清 State 再发
         ///    MeshComponent 的信号,句柄就读了个空。
         void onStateDestroyed(
-            lux::meta::EntityRegistryBase& reg,
-            lux::meta::entity_id e)
+            lux::ecs::RegistryBase& reg,
+            lux::ecs::Entity e)
         {
             const auto& state = reg.get<State>(e);
             leaving_.push_back(Leaving{
@@ -522,7 +522,7 @@ namespace lux::ecs
             //    于是这一整段一个实体都不碰(批 R2)。
             //    换出语义与 VERIFY 对拍都在 `drain` 里(批 R3 从本节点收上去的)。
             changes_.drain(reg, renderSubsystemType<MeshInstanceSubsystem>().name,
-                [&](lux::meta::entity_id e, C& c)
+                [&](lux::ecs::Entity e, C& c)
                 { return processEntity(reg, ctx, active_view, mesh, e, c); });
 
             // ★ 此前这是第二个相位 `flush(ctx)` —— `RenderSystem` 对**全部**子系统
@@ -546,11 +546,11 @@ namespace lux::ecs
         /// @return 本次是否做了任何**实质动作**(发了命令 / 改了世界)。
         ///         VERIFY 构型靠这个判断反应式路径有没有漏信号。
         bool processEntity(
-            lux::meta::EntityRegistry& reg,
+            lux::ecs::Registry& reg,
             SceneRenderBinding&        ctx,
             ActiveRenderView&          active_view,
             auto&                      mesh,
-            lux::meta::entity_id       e,
+            lux::ecs::Entity       e,
             C&                         c
         )
         {
@@ -739,7 +739,7 @@ namespace lux::ecs
         void onAdded(const SystemSetupContext& setup) override
         {
             auto& reg = setup.registry();
-            leave_.attach(reg, [this](lux::meta::entity_id e) { onLeave(e); });
+            leave_.attach(reg, [this](lux::ecs::Entity e) { onLeave(e); });
             attachStateSignal(reg);
             attachChangeSources(reg);
         }
@@ -792,7 +792,7 @@ namespace lux::ecs
             s.template on_destroy  <State>();
         }
 
-        void attachChangeSources(lux::meta::EntityRegistry& reg)
+        void attachChangeSources(lux::ecs::Registry& reg)
         {
             changes_.attach(reg,
                 static_cast<entt::id_type>(renderSubsystemType<MeshInstanceSubsystem>().hash),
@@ -804,7 +804,7 @@ namespace lux::ecs
         /// 连接发生在节点装配时、任何实例建成之前 —— 不存在「连接之前就已经
         /// 有状态组件」的实体。(这与 `connectAndSeed` 要解决的问题不同:
         /// 那里的源组件是**别人**写的,可能早就在了。)
-        void attachStateSignal(lux::meta::EntityRegistry& reg)
+        void attachStateSignal(lux::ecs::Registry& reg)
         {
             if (reg_ == &reg) return;
             detachStateSignal();

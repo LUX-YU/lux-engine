@@ -37,7 +37,7 @@ namespace lux::editor
         if (auto_select_countdown_ > 0)
             --auto_select_countdown_;
         if (auto_select_countdown_ == 0 && !auto_select_done_ && selection_ &&
-            selection_->entity() == lux::meta::null_entity)
+            selection_->entity() == lux::ecs::kNullEntity)
         {
             for (auto e : reg.view<lux::ecs::MeshComponent>())
             {
@@ -57,18 +57,18 @@ namespace lux::editor
         // 概念开了一条具名入口，还在上下文里存着一份世界状态的镜像。现在编辑器
         // 只管给实体挂 / 摘 `HighlightedComponent`，网格子系统 `all_of` 一下就行；
         // 渲染侧不再认识「选中」，本系统也不再需要够得着 `RenderSystem`。
-        std::unordered_set<lux::meta::entity_id> selected;
+        std::unordered_set<lux::ecs::Entity> selected;
 
-        const lux::meta::entity_id sel =
-            selection_ ? selection_->entity() : lux::meta::null_entity;
-        if (sel != lux::meta::null_entity && reg.valid(sel))
+        const lux::ecs::Entity sel =
+            selection_ ? selection_->entity() : lux::ecs::kNullEntity;
+        if (sel != lux::ecs::kNullEntity && reg.valid(sel))
         {
             // Highlight the WHOLE object: the selected root plus every descendant
             // mesh entity (W1-B promotes picks to the root, which may itself be
             // meshless). The HierarchyIndex walks the subtree cycle-safely.
             auto& hierarchy = lux::ecs::hierarchyIndex(reg);
             hierarchy.forEachInSubtree(sel,
-                [&](lux::meta::entity_id e) { selected.insert(e); });
+                [&](lux::ecs::Entity e) { selected.insert(e); });
         }
 
         // 差集写入：只加该加的、只摘该摘的。全量重推（先清空再重挂）会让

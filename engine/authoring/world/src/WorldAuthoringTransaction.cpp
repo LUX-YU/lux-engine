@@ -44,7 +44,7 @@ namespace lux::authoring
             };
             if (space->topology == lux::authoring::EPartitionTopology::PLANAR_XY)
             {
-                const auto* point = std::get_if<lux::spatial::Position2D>(
+                const auto* point = std::get_if<lux::math::Position2d>(
                     &position);
                 const auto x = point ? coordinate(point->x) : std::nullopt;
                 const auto y = point ? coordinate(point->y) : std::nullopt;
@@ -53,7 +53,7 @@ namespace lux::authoring
                 return x && y && expected &&
                     lux::authoring::PlanarCellCoord{*x, *y} == *expected;
             }
-            const auto* point = std::get_if<lux::spatial::Position3D>(&position);
+            const auto* point = std::get_if<lux::math::Position3d>(&position);
             if (!point)
                 return false;
             if (space->topology == lux::authoring::EPartitionTopology::PLANAR_XZ)

@@ -119,7 +119,7 @@
                 descriptor = old->second;
             const auto previous_transform_parent =
                 descriptor.transform_parent;
-            descriptor.id = lux::entity_scene::PersistentEntityId{
+            descriptor.id = lux::authoring::WorldActorId{
                 stable->id().value()};
             descriptor.actor_class = descriptor.actor_class.empty()
                 ? "org.lux.actor"
@@ -471,7 +471,7 @@
         for (auto& feature : persistence.features)
         {
             source.contributions.push_back({
-                lux::extensions::ContributionId{
+                lux::authoring::WorldSceneFeatureId{
                     std::string{feature.id.name()}},
                 feature.config_schema_version,
                 std::move(feature.config)});
@@ -482,7 +482,7 @@
         for (const auto& requirement : persistence.required_extensions)
         {
             source.required_extensions.push_back({
-                lux::extensions::ExtensionId{
+                lux::authoring::WorldExtensionId{
                     std::string{requirement.id.name()}},
                 requirement.required_major,
                 requirement.minimum_minor});

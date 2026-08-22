@@ -10,7 +10,7 @@ if(TARGET ecs_meta AND TARGET spatial3d_components_meta)
             lux::engine::runtime::runtime_scene_core
             lux::engine::runtime::runtime_execution
             lux::engine::function::input
-            lux::engine::resource::asset_codecs
+            lux::engine::resource::asset
             lux::engine::core::meta
             ecs_meta
             spatial3d_components_meta

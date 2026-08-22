@@ -13,7 +13,7 @@
 
 #include <cstdint>
 #include <cstring>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <functional>
 #include <string>
 #include <utility>
@@ -32,7 +32,7 @@ namespace lux::editor
         std::function<std::size_t()> count,
         std::function<std::vector<HierarchyWorldActorItem>(
             std::string_view, std::size_t, std::size_t)> query,
-        std::function<void(lux::entity_scene::PersistentEntityId)> open)
+        std::function<void(lux::authoring::WorldActorId)> open)
     {
         world_actor_count_ = std::move(count);
         world_actor_query_ = std::move(query);
@@ -56,7 +56,7 @@ namespace lux::editor
     }
 
     void HierarchyPanel::beginRename(
-        lux::meta::EntityRegistryBase& reg,
+        lux::ecs::RegistryBase& reg,
         entt::entity e)
     {
         renaming_ = e;
@@ -73,7 +73,7 @@ namespace lux::editor
     {
         // Immediate-mode: read the SCENE'S selection each frame. Null between
         // scenes (C11 — the Selection lives and dies with the scene).
-        lux::meta::EntityRegistryBase* reg =
+        lux::ecs::RegistryBase* reg =
             sel_ ? sel_->registry() : nullptr;
         if (!reg)
         {

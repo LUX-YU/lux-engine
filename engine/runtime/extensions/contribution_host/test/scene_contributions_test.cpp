@@ -387,10 +387,6 @@ namespace
 
 int main()
 {
-    static_assert(!std::is_same_v<
-        lux::scene::SceneFeatureId,
-        lux::extensions::ContributionId>);
-
     std::vector<int> trace;
     lux::runtime::SceneContributionCatalog catalog;
     expect(catalog.add(makeRoot(trace)).has_value(),

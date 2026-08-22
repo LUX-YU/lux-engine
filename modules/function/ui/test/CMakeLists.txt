@@ -1,5 +1,5 @@
 include_component_cmake_scripts(meta)
-include_component_cmake_scripts(lux::engine::resource::asset_codecs)
+include_component_cmake_scripts(lux::engine::resource::asset)
 
 set(RENDER_PINCLUDE_DIR "${CMAKE_SOURCE_DIR}/modules/function/render/vulkan/pinclude")
 set(UI_TEST_CONFIG_OUT  "${CMAKE_BINARY_DIR}/gen/test/function/ui/include")

@@ -37,6 +37,7 @@ endif()
 # Add our cmake modules to the module path
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 include(TargetArchitecture)
+include(ModuleLayout)
 include(TargetPlatform)
 include(HostTools)
 lux_detect_build_platform()
@@ -85,8 +86,8 @@ else()
     )
 endif()
 
-# (std::format 兼容层已下沉到 modules/platform/common —— 生成与安装随
-#  组件走,消费方链接 lux::engine::platform::common 即得 lux::format;
+# (格式兼容层由 lux-cxx core 所有，消费方直接包含
+#  <lux/cxx/core/Format.hpp>；
 #  此前这里的全局 include_directories 挂法与编辑器私有复制均已收编。)
 
 # Product profiles are explicit: a Boolean "editor on/off" cannot express a
@@ -114,6 +115,7 @@ if(NOT LUX_BUILD_PROFILE IN_LIST _lux_valid_profiles)
     )
 endif()
 lux_validate_profile_platform("${LUX_BUILD_PROFILE}")
+lux_validate_module_layout("${CMAKE_CURRENT_SOURCE_DIR}/modules")
 lux_configure_host_tools()
 
 set(LUX_PROFILE_HAS_RUNTIME OFF)
@@ -294,8 +296,8 @@ if(LUX_PROFILE_HAS_EDITOR)
     )
 endif()
 
-# platform (bottom layer).  The TOOLCHAIN profile installs only platform/common
-# and therefore must not acquire GLFW/Vulkan package dependencies by metadata.
+# platform (bottom layer).  The TOOLCHAIN profile does not configure interactive
+# platform domains and therefore must not acquire GLFW/Vulkan dependencies.
 set(CPACK_DEBIAN_LUX_ENGINE_PLATFORM_PACKAGE_NAME "lux-engine-platform")
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     set(CPACK_DEBIAN_LUX_ENGINE_PLATFORM_PACKAGE_DEPENDS

@@ -40,8 +40,8 @@ namespace lux::game
         /// Optional cooked base-content pak mounted at the legacy /Engine VFS root.
         std::filesystem::path base_pak_file;
 
-        /// EntityScene virtual path inside the pak ("Scenes/BigDemo"). Empty
-        /// selects the pak's single ENTITY_SCENE entry.
+        /// Boot Scene Asset virtual path inside the pak ("Scenes/BigDemo").
+        /// Required; an empty path is rejected during application startup.
         std::string scene_vpath;
 
         /// Writable save root selected by the platform adapter.

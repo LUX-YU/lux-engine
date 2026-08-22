@@ -16,7 +16,6 @@
 #include <span>
 
 #include "MetaDef.hpp"        // QualType & compile‑time helpers
-#include "LuxObject.hpp"      // EntityObject – used by the generated is_lux_obj check
 
 #include <lux/cxx/reflection/runtime/Marker.hpp>
 #include <lux/cxx/algorithm/hash.hpp>

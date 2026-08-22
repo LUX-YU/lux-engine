@@ -1,5 +1,5 @@
 #include <lux/engine/input/ActionMapper.hpp>
-#include <lux/engine/window/InputSnapshot.hpp>
+#include <lux/engine/input/InputSnapshot.hpp>
 #include <cassert>
 #include <cmath>
 
@@ -16,7 +16,7 @@ namespace lux::input
     // -----------------------------------------------------------------------
 
     ActionMapper::RawExtract ActionMapper::extractRaw(
-        const lux::window::InputSnapshot& snapshot,
+        const InputSnapshot& snapshot,
         const ActionBinding& binding)
     {
         return std::visit([&](const auto& input) -> RawExtract
@@ -85,7 +85,7 @@ namespace lux::input
     //  Pipeline entry point
     // -----------------------------------------------------------------------
 
-    void ActionMapper::update(const lux::window::InputSnapshot& snapshot,
+    void ActionMapper::update(const InputSnapshot& snapshot,
                               InputContextStack& stack,
                               float dt,
                               bool want_kb,
@@ -160,7 +160,7 @@ namespace lux::input
     //  2. evaluateBindings — extract raw, run trigger evaluation, fill state
     // -----------------------------------------------------------------------
 
-    void ActionMapper::evaluateBindings(const lux::window::InputSnapshot& snapshot,
+    void ActionMapper::evaluateBindings(const InputSnapshot& snapshot,
                                         InputContextStack& stack,
                                         float dt,
                                         bool want_kb,

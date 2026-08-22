@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 /**
  * @file EditorCamera2DController.hpp — the editor 2D viewport navigator.
  *
@@ -20,7 +22,7 @@
 #include <lux/engine/ecs/components/Transform2DComponent.hpp>
 #include <lux/engine/ecs/render/components/2d/Camera2DComponent.hpp>
 #include <lux/engine/input/ActionMapper.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -50,7 +52,7 @@ namespace lux::editor
             float zoom_max    = 100000.f;
         };
 
-        void attach(lux::meta::entity_id cam, lux::meta::EntityRegistry* reg)
+        void attach(lux::ecs::Entity cam, lux::ecs::Registry* reg)
         {
             entity_ = cam;
             reg_  = reg;
@@ -113,11 +115,11 @@ namespace lux::editor
         [[nodiscard]] bool wantsCursorCapture() const noexcept { return false; }
 
     private:
-        lux::meta::entity_id entity_{lux::meta::null_entity};
-        lux::meta::EntityRegistry* reg_{nullptr};
+        lux::ecs::Entity entity_{lux::ecs::kNullEntity};
+        lux::ecs::Registry* reg_{nullptr};
         ActionIds            ids_{};
         Config               cfg_{};
-        lux::spatial::Position2D home_pos_{};
+        lux::math::Position2d home_pos_{};
         float                home_upvh_{10.f};
     };
 

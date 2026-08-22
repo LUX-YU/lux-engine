@@ -1,5 +1,5 @@
         [[nodiscard]] bool fillTopology(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             lux::render::UploadRenderClusterPayload& payload) const noexcept
         {
             if (!registry)
@@ -74,7 +74,7 @@
             entry.state = ESceneContentRenderState::FAILED;
         }
 
-        void begin(lux::meta::entity_id entity, Entry& entry)
+        void begin(lux::ecs::Entity entity, Entry& entry)
         {
             if (!residency.await || !residency.request)
             {
@@ -94,7 +94,7 @@
                 component.local_bounds_radius < 0.0f ||
                 !component.local_bounds_center.allFinite() ||
                 !transform.linear.allFinite() ||
-                !lux::spatial::isFinite(transform.position))
+                !lux::math::isFinite(transform.position))
             {
                 fail(entry, ESceneContentRenderFailure::INVALID_COMPONENT);
                 return;
@@ -138,7 +138,7 @@
         }
 
         void launchPreparation(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             Entry& entry) noexcept
         {
             if (!entry.preparation || entry.preparation->in_flight)
@@ -215,7 +215,7 @@
         }
 
         void preparationStopped(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t desired_generation) noexcept
         {
@@ -237,7 +237,7 @@
         }
 
         void acceptPreparation(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t desired_generation,
             lux::exec::AsyncOutcome<PrepareClassicMeshBatch> outcome)
@@ -320,7 +320,7 @@
             pending.payload.instance_count = static_cast<std::uint32_t>(
                 prepared.decoded->instances.size());
             pending.payload.transition_milliseconds = 350u;
-            const auto center = lux::spatial::Position3D{
+            const auto center = lux::math::Position3d{
                 transform.position.x + static_cast<double>((
                     transform.linear * component.local_bounds_center).x()),
                 transform.position.y + static_cast<double>((
@@ -421,7 +421,7 @@
         }
 
         void assetDelivered(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t desired_generation,
             const lux::asset::asset_id_t& id,
@@ -485,7 +485,7 @@
         }
 
         [[nodiscard]] bool buildRows(
-            lux::meta::entity_id entity,
+            lux::ecs::Entity entity,
             Entry& entry)
         {
             auto& pending = *entry.pending;
@@ -532,7 +532,7 @@
                     rotation.toRotationMatrix() * local_scale.asDiagonal();
                 const Eigen::Vector3f translated =
                     transform.linear * local_translation;
-                const auto position = lux::spatial::Position3D{
+                const auto position = lux::math::Position3d{
                     transform.position.x + translated.x(),
                     transform.position.y + translated.y(),
                     transform.position.z + translated.z()};

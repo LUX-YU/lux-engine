@@ -384,7 +384,7 @@ namespace lux::authoring
             const WorldActorSourcePosition& position)
         {
             if (const auto* planar = std::get_if<
-                    lux::spatial::Position2D>(&position))
+                    lux::math::Position2d>(&position))
             {
                 writer.writePod(std::uint8_t{0u});
                 writer.writePod(planar->x);
@@ -393,7 +393,7 @@ namespace lux::authoring
             else
             {
                 const auto& volume = std::get<
-                    lux::spatial::Position3D>(position);
+                    lux::math::Position3d>(position);
                 writer.writePod(std::uint8_t{1u});
                 writer.writePod(volume.x);
                 writer.writePod(volume.y);
@@ -408,20 +408,20 @@ namespace lux::authoring
             const auto kind = reader.readPod<std::uint8_t>();
             if (kind == 0u)
             {
-                const lux::spatial::Position2D value{
+                const lux::math::Position2d value{
                     reader.readPod<double>(), reader.readPod<double>()};
-                if (!reader.ok() || !lux::spatial::isFinite(value))
+                if (!reader.ok() || !lux::math::isFinite(value))
                     return false;
                 position = value;
                 return true;
             }
             if (kind == 1u)
             {
-                const lux::spatial::Position3D value{
+                const lux::math::Position3d value{
                     reader.readPod<double>(),
                     reader.readPod<double>(),
                     reader.readPod<double>()};
-                if (!reader.ok() || !lux::spatial::isFinite(value))
+                if (!reader.ok() || !lux::math::isFinite(value))
                     return false;
                 position = value;
                 return true;
@@ -464,7 +464,7 @@ namespace lux::authoring
             const WorldSourceCodecLimits& limits,
             WorldActorSourceDescriptor& actor)
         {
-            actor.id = readId<lux::entity_scene::PersistentEntityId>(reader);
+            actor.id = readId<lux::authoring::WorldActorId>(reader);
             if (!readString(reader, limits.maximum_string_bytes, actor.display_name)
                 || !readString(reader, limits.maximum_string_bytes, actor.actor_class)
                 || !readString(reader, limits.maximum_string_bytes, actor.document_path))
@@ -480,7 +480,7 @@ namespace lux::authoring
                 return false;
             if (has_parent != 0u)
                 actor.transform_parent =
-                    readId<lux::entity_scene::PersistentEntityId>(reader);
+                    readId<lux::authoring::WorldActorId>(reader);
             actor.bounds_half_extent = {
                 reader.readPod<float>(),
                 reader.readPod<float>(),
@@ -503,7 +503,7 @@ namespace lux::authoring
             {
                 WorldActorSourceReference reference;
                 reference.target = readId<
-                    lux::entity_scene::PersistentEntityId>(reader);
+                    lux::authoring::WorldActorId>(reader);
                 const auto kind = reader.readPod<std::uint8_t>();
                 if (kind > static_cast<std::uint8_t>(
                         EWorldActorReferenceKind::OPTIONAL_REFERENCE))
@@ -620,7 +620,7 @@ namespace lux::authoring
             cell.topology = space.topology;
             if (space.topology == lux::authoring::EPartitionTopology::PLANAR_XY)
             {
-                const auto* point = std::get_if<lux::spatial::Position2D>(
+                const auto* point = std::get_if<lux::math::Position2d>(
                     &position);
                 if (!point)
                     return std::nullopt;
@@ -632,7 +632,7 @@ namespace lux::authoring
             }
             else
             {
-                const auto* point = std::get_if<lux::spatial::Position3D>(
+                const auto* point = std::get_if<lux::math::Position3d>(
                     &position);
                 if (!point)
                     return std::nullopt;
@@ -740,9 +740,7 @@ namespace lux::authoring
             std::unordered_set<std::string> contribution_ids;
             for (const auto& contribution : root.contributions)
             {
-                if (!contribution.id.isValid() ||
-                    !lux::extensions::isCanonicalStableName(
-                        contribution.id.name()) ||
+                if (!contribution.id.valid() ||
                     contribution.id.name().size() >
                         limits.maximum_string_bytes ||
                     contribution.config.size() > limits.maximum_bytes ||
@@ -779,9 +777,7 @@ namespace lux::authoring
             std::unordered_set<std::string> extensions;
             for (const auto& extension : root.required_extensions)
             {
-                if (!extension.id.isValid() ||
-                    !lux::extensions::isCanonicalStableName(
-                        extension.id.name()) ||
+                if (!extension.id.valid() ||
                     extension.id.name().size() > limits.maximum_string_bytes ||
                     !extensions.insert(
                         std::string{extension.id.name()}).second)

@@ -7,6 +7,7 @@
 # Domain-free by contract: no 2D/3D/render types ever land here.
 
 find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time)
+find_package(EnTT CONFIG REQUIRED)
 
 set(LUX_ECS_CORE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ComponentTypeCatalog.cpp
@@ -15,6 +16,8 @@ set(LUX_ECS_CORE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Schedule.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ScheduleTopology.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ScheduleBuilder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Registry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/RegistryMemoryResource.cpp
 )
 
 add_component(
@@ -47,7 +50,7 @@ lux_classify_target(
 target_compile_definitions(
     core
     PRIVATE
-    LUX_FUNCTION_LIBRARY
+    LUX_ECS_LIBRARY
 )
 
 target_link_libraries(
@@ -56,10 +59,9 @@ target_link_libraries(
     lux::cxx::algorithm                # stable schema ids (FNV-1a)
     lux::cxx::compile_time             # SceneServices type_hash + expected
     lux::engine::core::math
-    lux::engine::core::meta            # EntityRegistry / reflection seam
-    lux::engine::resource::asset_core       # AssetLoadFn carries asset_id_t
+    lux::engine::core::meta            # generic reflection vocabulary
     lux::engine::ecs::identity              # component + persistent entity identity
-    lux::engine::resource::spatial
+    EnTT::EnTT
 )
 
 component_add_transitive_commands(
@@ -67,7 +69,7 @@ component_add_transitive_commands(
     "find_package (lux-cxx             REQUIRED COMPONENTS algorithm compile_time)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS identity)"
     "find_package (lux-engine-core     REQUIRED COMPONENTS math meta)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS asset_core spatial)"
+    "find_package (EnTT CONFIG REQUIRED)"
 )
 
 # ---------------------------------------------------------------------------
@@ -145,11 +147,34 @@ if(LUX_BUILD_COMPONENT_META)
             #   链哪个目标，就带哪些反射符号。这是 ecs 将来能作为插件模块存在的前提。
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/components/Transform2DComponent.hpp
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/components/Transform3DComponent.hpp
-            # Position is a public RESOURCE value type. It is reflected in
-            # this consumer sidecar so Transform's nested tagged-property
-            # payload has a concrete RefClass rather than an opaque record.
-            ${CMAKE_SOURCE_DIR}/modules/resource/spatial/include/lux/engine/resource/spatial/Spatial.hpp
+            # Core Math stays reflection-free. ECS owns the non-intrusive
+            # reflection adapter needed by nested tagged properties.
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/reflection/SpatialValueReflectionMeta.hpp
         ${_ecs_core_lua_meta_args}
+    )
+
+    add_executable(
+        spatial_value_reflection_contract_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/spatial_value_reflection_contract_test.cpp
+    )
+    target_link_libraries(
+        spatial_value_reflection_contract_test
+        PRIVATE
+            core
+            ecs_meta
+    )
+    if(MSVC)
+        target_compile_options(
+            spatial_value_reflection_contract_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(
+            spatial_value_reflection_contract_test PRIVATE -UNDEBUG)
+    endif()
+    lux_classify_target(
+        TARGET  spatial_value_reflection_contract_test
+        LAYER   ECS
+        PRODUCT TEST
+        ROLE    FOUNDATION
     )
 endif()
 

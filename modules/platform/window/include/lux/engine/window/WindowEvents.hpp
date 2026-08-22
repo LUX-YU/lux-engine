@@ -1,83 +1,78 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <variant>
 #include <vector>
-#include <lux/engine/common/Size2D.hpp>
-#include <lux/engine/window/LuxWindowDefination.hpp>
 
 namespace lux::window
 {
-    // ── Window Events ────────────────────────────────────────────
-    // Plain structs — the type itself is the identity (no manual ID).
-    // Each satisfies the lux::event::Event concept (movable + destructible).
-
     struct WindowResizeEvent
     {
-        common::Size2D size;
+        std::uint32_t width{0};
+        std::uint32_t height{0};
     };
 
     struct FramebufferResizeEvent
     {
-        common::Size2D size;
+        std::uint32_t width{0};
+        std::uint32_t height{0};
     };
 
-    struct WindowCloseEvent
-    {
-    };
-    struct WindowFocusEvent
-    {
-    };
-    struct WindowLostFocusEvent
-    {
-    };
-    struct WindowMovedEvent
-    {
-    };
-    struct WindowMinimizedEvent
-    {
-    };
-    struct CursorEnterEvent
-    {
-    };
-    struct CursorLeaveEvent
-    {
-    };
+    struct WindowCloseEvent {};
+    struct WindowFocusEvent {};
+    struct WindowLostFocusEvent {};
+    struct WindowMovedEvent {};
+    struct WindowMinimizedEvent {};
+    struct CursorEnterEvent {};
+    struct CursorLeaveEvent {};
 
     struct CursorMoveEvent
     {
-        double x;
-        double y;
+        double x{0.0};
+        double y{0.0};
     };
 
-    struct MouseButtonEvent
+    // Backend-native facts. Window records them without assigning Input
+    // semantics; the Function Input platform source performs translation.
+    struct WindowKeyEvent
     {
-        MouseButtonAction action;
+        int key{0};
+        int scancode{0};
+        int action{0};
+        int modifiers{0};
     };
 
-    struct MouseScrollEvent
+    struct WindowMouseButtonEvent
     {
-        MouseScrollAction action;
+        int button{0};
+        int action{0};
+        int modifiers{0};
     };
 
-    struct KeyEvent
+    struct WindowScrollEvent
     {
-        KeyAction action;
+        double x{0.0};
+        double y{0.0};
     };
 
-    struct DrawReadyEvent
+    struct WindowTextEvent
     {
-    };
-    struct DrawFinishedEvent
-    {
+        std::uint32_t codepoint{0};
     };
 
-    /// Emitted when the OS drops one or more files onto the window (GLFW drop
-    /// callback). Paths are absolute. Fired on the main thread during
-    /// glfwPollEvents(); subscribers should defer heavy work (e.g. asset
-    /// import) rather than block the callback.
+    using WindowInputEvent = std::variant<
+        WindowKeyEvent,
+        WindowMouseButtonEvent,
+        WindowScrollEvent,
+        WindowTextEvent
+    >;
+
+    struct DrawReadyEvent {};
+    struct DrawFinishedEvent {};
+
     struct FileDropEvent
     {
         std::vector<std::filesystem::path> paths;
     };
-
-} // namespace lux::window
+}

@@ -23,7 +23,7 @@ namespace
     };
 
     void addResolved(
-        lux::meta::EntityRegistry& registry,
+        lux::ecs::Registry& registry,
         entt::entity entity,
         double x) noexcept
     {

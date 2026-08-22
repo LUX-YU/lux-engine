@@ -1,14 +1,14 @@
 #pragma once
 
-#include "Asset.hpp"
+#include <lux/engine/resource/asset/Asset.hpp>
 #include "AssetRef.hpp"
-#include "AssetCodecCatalog.hpp"
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string_view>
 #include <vector>
-#include <lux/engine/resource/visibility.h>
+#include <lux/engine/resource/asset/visibility.h>
 
 namespace lux::asset
 {
@@ -31,7 +31,7 @@ namespace lux::asset
      * assets. It handles asset lifetime management, caching, and provides type-safe access
      * to different asset types such as textures, materials, meshes, and models.
      */
-    class LUX_RESOURCE_PUBLIC AssetManager
+    class LUX_ASSET_PUBLIC AssetManager
     {
         // Grant access to AssetSerDeser for serialization/deserialization.
         friend class AssetSerDeser;
@@ -382,6 +382,20 @@ namespace lux::asset
         /// 常有效)。id 未注册返回 false(那是 registerAsset 的活)。
         bool replaceAsset(std::unique_ptr<LuxAsset> asset);
 
+        /**
+         * @brief Install a fully decoded, unregistered asset at a main-thread
+         *        synchronization point.
+         *
+         * Registers an absent object, replaces a same-type data-less shell
+         * without changing revision/events, or returns an already-complete
+         * object. The expected locator identity must match the image identity.
+         */
+        [[nodiscard]] lux::cxx::expected<LuxAsset*, EAssetError>
+        installLoadedAsset(
+            const asset_id_t& expected_id,
+            std::unique_ptr<LuxAsset> decoded
+        );
+
         // (曾有 onLoaded/onWillUnload/unsubscribe 生命周期订阅面 —— 批E2
         //  退役,见文件头部的同名注释。)
 
@@ -429,16 +443,6 @@ namespace lux::asset
         friend class AssetRef;
         void retain(const asset_id_t& id);
         std::uint32_t release(const asset_id_t& id);
-
-        /**
-         * @brief Internal function to query asset data.
-         *
-         * Returns a void pointer to the asset data associated with the given asset ID.
-         *
-         * @param id The unique asset identifier.
-         * @return Void pointer to the asset data.
-         */
-        void* queryData(const asset_id_t& id);
 
         /**
          * @brief Internal function to query an asset by its identifier.

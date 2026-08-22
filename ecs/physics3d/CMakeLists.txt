@@ -11,11 +11,13 @@
 
 find_package(Jolt CONFIG REQUIRED)
 find_package(TBB CONFIG REQUIRED)
+find_package(lux-cxx REQUIRED COMPONENTS compile_time)
 
 set(LUX_ECS_PHYSICS3D_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JoltPhysics3D.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Physics3DScene.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Physics3DSystem.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/StaticColliderBatch3DCodec.cpp
 )
 
 add_component(
@@ -65,14 +67,16 @@ target_link_libraries(
     lux::engine::core::math
     lux::engine::core::meta
     lux::engine::ecs::scene_format
-    lux::engine::resource::spatial
+    lux::cxx::compile_time
+    PRIVATE
+    lux::engine::core::serialization
 )
 
 component_add_transitive_commands(
     physics3d
     "find_package (lux-engine-ecs  REQUIRED COMPONENTS core scene_format)"
-    "find_package (lux-engine-core REQUIRED COMPONENTS math meta)"
-    "find_package (lux-engine-resource REQUIRED COMPONENTS spatial)"
+    "find_package (lux-engine-core REQUIRED COMPONENTS math meta serialization)"
+    "find_package (lux-cxx REQUIRED COMPONENTS compile_time)"
 )
 # 注意：Jolt 刻意不在传递命令里（内部封装裁定）。
 

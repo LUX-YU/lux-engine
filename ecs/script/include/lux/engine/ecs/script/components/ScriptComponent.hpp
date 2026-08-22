@@ -33,12 +33,12 @@ namespace lux::ecs
     /// its methods.
     struct ScriptInstanceSlot
     {
-        ScriptInstance inst;
-        bool           created = false;   ///< onCreate already fired?
         /// SCRIPT 资产的驻留票 —— 实例活着期间源资产不得被流送驱逐
         /// (此前脚本消费者对账本全瞎)。与实例同生命期:play-stop/fault 的
         /// reset() 一并还票。
         lux::asset::AssetRef ref;
+        ScriptInstance inst;
+        bool           created = false;   ///< onCreate already fired?
 
         ScriptInstanceSlot() = default;
         ScriptInstanceSlot(const ScriptInstanceSlot&) noexcept {}
@@ -69,7 +69,7 @@ namespace lux::ecs
         // select inside the ASSET's description, not on the component.)
 
         LUX_MEMBER(display_name=Enabled)
-        bool        enabled = true;  ///< false ⇒ skipped (also set by the crash guard on fault)
+        bool        enabled = true;  ///< false ⇒ skipped (also set after an ABI-reported failure)
 
         // ── runtime-only (never serialized / reflected): per-entity instance ──
         ScriptInstanceSlot LUX_NO_MEMBER() instance;   ///< play-scoped; created on play-start

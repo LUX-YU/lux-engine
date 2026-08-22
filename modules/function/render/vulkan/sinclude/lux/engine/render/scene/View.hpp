@@ -5,7 +5,7 @@
  * View is a plain data struct with no methods.  All lifecycle
  * (init, destroy, tick, resize, …) is driven by RenderScene.
  */
-#include <lux/engine/function/render/client/core/RenderTypes.hpp> // common::Size2D + kViewDataStrideBytes
+#include <lux/engine/function/render/client/core/RenderTypes.hpp> // lux::math::Extent2u + kViewDataStrideBytes
 #include <lux/engine/render/core/FrustumCuller.hpp> // exact-origin ViewCullData stride
 #include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp> // ViewHandle (generational)
@@ -50,7 +50,7 @@ namespace lux::render
         /// 渲染期从 target binding 派生的缓存(renderSingleView 每次录制前
         /// 回写;首次渲染前 = addView 的初始值,供相机帧数据兜底)。视图
         /// 不再自持尺寸账本——改尺寸走 ResizeTarget 直达图像池。
-        common::Size2D current_extent{};
+        lux::math::Extent2u current_extent{};
 
         // ── Per-frame lifecycle ─────────────────────────────────────────
         bool frame_systems_done{false};

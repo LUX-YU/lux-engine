@@ -153,9 +153,11 @@ namespace lux::render
         instance_  = instance;
         allocator_ = allocator;
 
-        const auto fb  = window.framebufferSize();
-        extent_.width  = (fb.width  > 0) ? fb.width  : 1u;
-        extent_.height = (fb.height > 0) ? fb.height : 1u;
+        std::uint32_t framebuffer_width = 0;
+        std::uint32_t framebuffer_height = 0;
+        window.framebufferSize(framebuffer_width, framebuffer_height);
+        extent_.width = framebuffer_width > 0 ? framebuffer_width : 1u;
+        extent_.height = framebuffer_height > 0 ? framebuffer_height : 1u;
         return true;
     }
 }

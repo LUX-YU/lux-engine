@@ -1,6 +1,6 @@
 #include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
 
-#include <lux/engine/resource/tilemap/TilemapChunk.hpp>
+#include <lux/engine/ecs/tilemap/TilemapChunkCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 

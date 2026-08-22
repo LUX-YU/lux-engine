@@ -44,11 +44,11 @@
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
-#include <lux/engine/resource/asset/ModelAsset.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>
 #include <lux/engine/authoring/assets/material/MaterialGraph.hpp>
 #include <lux/engine/authoring/assets/material/Nodes.hpp>
 #include <lux/engine/toolchain/asset/material/MaterialGraphCompiler.hpp>
@@ -214,10 +214,10 @@ int main(int argc, char** argv)
             check(builtins.registerInto(mgr), "EditorBuiltins::registerInto");
         }
         auto id = [](const char* s){ return uuids::uuid::from_string(s).value(); };
-        const auto cube_id = id(lux::asset::kBuiltinCubeMeshIdStr);
-        const auto sphere_id = id(lux::asset::kBuiltinSphereMeshIdStr);
+        const auto cube_id = id(lux::engine::content::kBuiltinCubeMeshIdStr);
+        const auto sphere_id = id(lux::engine::content::kBuiltinSphereMeshIdStr);
         const auto white_id = id(
-            lux::asset::kBuiltinWhitePbrMaterialIdStr);
+            lux::engine::content::kBuiltinWhitePbrMaterialIdStr);
 
         const char* kTexId   = "00000000-0000-4000-8000-a00000000003";
         const char* kModelId = "00000000-0000-4000-8000-a00000000004";
@@ -340,15 +340,15 @@ int main(int argc, char** argv)
             const auto material = lux::asset::readAssetHeader(argv[1]);
             const auto instance = lux::asset::readAssetHeader(argv[2]);
             check(
-                !material.id.is_nil()
-                    && lux::asset::assetTypeOfMagic(material.magic)
-                        == lux::asset::EAssetType::MATERIAL,
+                !material.id.is_nil() &&
+                    material.magic == lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MATERIAL>::value,
                 "field graph-material header is valid"
             );
             check(
-                !instance.id.is_nil()
-                    && lux::asset::assetTypeOfMagic(instance.magic)
-                        == lux::asset::EAssetType::MATERIAL_INSTANCE,
+                !instance.id.is_nil() &&
+                    instance.magic == lux::asset::asset_magic_number_of<
+                        lux::asset::EAssetType::MATERIAL_INSTANCE>::value,
                 "field material-instance header is valid"
             );
             if (!material.id.is_nil() && !instance.id.is_nil())
@@ -402,18 +402,21 @@ int main(int argc, char** argv)
         // ── Provider-level spec checks (pure CPU, new id-shaped contract) ──
         {
             auto registry = makeDefaultThumbnailSpecProviders();
-            const ThumbnailLoadFn noLoad = [](const lux::asset::asset_id_t&){};
 
             auto* tr = registry.get(lux::asset::EAssetType::TEXTURE);
             check(tr != nullptr, "texture provider registered");
-            const auto tspec = tr ? tr->buildSpec(mgr, sphere_id, id(kTexId), noLoad) : ThumbnailSpec{};
+            const auto tspec = tr
+                ? tr->buildSpec(mgr, sphere_id, id(kTexId))
+                : ThumbnailSpec{};
             check(tspec.valid && tspec.has_cpu_pixels, "texture spec has cpu pixels");
             check(tspec.cpu_width == 64 && tspec.cpu_height == 64, "texture spec dims 64x64");
             check(tspec.rgba8 == texpix, "texture spec is lossless 1:1 copy of source");
 
             auto* mr = registry.get(lux::asset::EAssetType::MESH);
             check(mr != nullptr, "mesh provider registered");
-            const auto mspec = mr ? mr->buildSpec(mgr, sphere_id, cube_id, noLoad) : ThumbnailSpec{};
+            const auto mspec = mr
+                ? mr->buildSpec(mgr, sphere_id, cube_id)
+                : ThumbnailSpec{};
             check(mspec.valid && mspec.instances.size() == 1, "mesh spec has 1 instance");
             check(!mspec.instances.empty()
                       && mspec.instances[0].mesh_asset_id == cube_id
@@ -422,7 +425,9 @@ int main(int argc, char** argv)
 
             auto* gr = registry.get(lux::asset::EAssetType::MATERIAL);
             check(gr != nullptr, "graph-material provider registered");
-            const auto gspec = gr ? gr->buildSpec(mgr, sphere_id, white_id, noLoad) : ThumbnailSpec{};
+            const auto gspec = gr
+                ? gr->buildSpec(mgr, sphere_id, white_id)
+                : ThumbnailSpec{};
             check(gspec.valid && gspec.instances.size() == 1, "graph-material spec has 1 instance");
             check(!gspec.instances.empty()
                       && gspec.instances[0].mesh_asset_id == sphere_id
@@ -435,8 +440,7 @@ int main(int argc, char** argv)
                 ? ir->buildSpec(
                     mgr,
                     sphere_id,
-                    id(kMaterialInstanceId),
-                    noLoad
+                    id(kMaterialInstanceId)
                 )
                 : ThumbnailSpec{};
             check(
@@ -453,7 +457,9 @@ int main(int argc, char** argv)
 
             auto* dr = registry.get(lux::asset::EAssetType::MODEL);
             check(dr != nullptr, "model provider registered");
-            const auto dspec = dr ? dr->buildSpec(mgr, sphere_id, id(kModelId), noLoad) : ThumbnailSpec{};
+            const auto dspec = dr
+                ? dr->buildSpec(mgr, sphere_id, id(kModelId))
+                : ThumbnailSpec{};
             check(dspec.valid && dspec.instances.size() == 1, "model spec has 1 instance");
             check(!dspec.instances.empty()
                       && dspec.instances[0].mesh_asset_id == cube_id

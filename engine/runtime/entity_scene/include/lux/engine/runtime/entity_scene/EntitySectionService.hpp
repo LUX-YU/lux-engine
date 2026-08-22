@@ -4,8 +4,8 @@
  * @brief Bounded, typed LXES loading operation for EntitySection owners.
  */
 
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/visibility.h>

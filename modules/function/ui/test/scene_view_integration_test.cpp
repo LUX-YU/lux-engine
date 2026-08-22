@@ -58,8 +58,8 @@
 
 // ── Asset loading ───────────────────────────────────────────────────────
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/TextureCodec.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
+#include <lux/engine/resource/asset/texture/TextureSerDeser.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 
 // ── Window ──────────────────────────────────────────────────────────────
 #include <lux/engine/window/LuxWindow.hpp>
@@ -983,7 +983,7 @@ int main()
     {
         auto tex_mgr = std::make_shared<lux::asset::AssetManager>(
             lux::asset::runtimeAssetCodecCatalog());
-        lux::asset::TextureCodec tex_ser(tex_mgr);
+        lux::asset::TextureSerDeser tex_ser(tex_mgr);
         auto tex_res = tex_ser.fromLuxAsset(asset_dir / "textures" / "blue_nebulae_1.luxasset");
         if (tex_res)
         {

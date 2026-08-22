@@ -431,7 +431,7 @@ consumer，不能只搬源文件并留下 alias/shim。
 |---|---|---|
 | `modules/core/meta` | metadata 与 ECS/Render policy 混合 | 拆为通用 metadata、ECS adapter、engine policy |
 | `modules/core/serialization` | binary、reflection、EntityScene policy 混合 | 拆为基础 codec 与 engine cooked codec |
-| `modules/core/extension_abi` | 名称通用，生命周期是 Runtime | ABI value 下沉，manager 上移 Runtime |
+| `modules/core/extension_abi`（已删除） | 曾把 Engine plugin ABI 放入公共 Core | ABI v4 实体已归 `engine/extensions/api`；loader/manager 保持 Runtime owner |
 | `modules/core/events` | Engine main-thread fact broadcast | `engine/runtime/events` |
 | `modules/resource/*` | 多数是 engine cooked vocabulary | `engine/resource/*`，逐 codec 独立 target |
 | `modules/function/render` | foundation 与 Scene Feature 混合 | render foundation + engine feature packs |

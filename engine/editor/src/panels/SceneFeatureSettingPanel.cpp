@@ -19,7 +19,7 @@
 #include <cstring>
 #include <filesystem>
 #include <limits>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <string>
 
 namespace lux::editor

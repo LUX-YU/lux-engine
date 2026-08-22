@@ -17,12 +17,12 @@
 #include <lux/engine/editor/AssetRegistry.hpp>
 #include <lux/engine/editor/thumbnail/ThumbnailService.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceSerDeser.hpp>
-#include <lux/engine/resource/asset/ScriptSerDeser.hpp>   // New-Script authoring
-#include <lux/engine/resource/asset/ModelAsset.hpp>       // A-4 describe: model meshes/skeleton
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceSerDeser.hpp>
+#include <lux/engine/resource/asset/script/ScriptSerDeser.hpp>   // New-Script authoring
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>       // A-4 describe: model meshes/skeleton
 #include <lux/engine/log/Log.hpp>
-#include <lux/engine/resource/asset/MeshAsset.hpp>        // A-4 describe: vert/index counts
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>        // A-4 describe: vert/index counts
 #include <lux/engine/ecs/script/systems/ScriptRegistry.hpp>   // A-5: cppScriptNames manifest
 
 #include <lux/engine/ui/SceneViewportPanel.hpp>
@@ -827,14 +827,14 @@ namespace lux::editor
                         for (auto& actor : indexed)
                         {
                             result.push_back({
-                                lux::entity_scene::PersistentEntityId{
+                                lux::authoring::WorldActorId{
                                     actor.actor.value()},
                                 std::move(actor.display_name),
                                 std::move(actor.actor_class)});
                         }
                         return result;
                     },
-                    [scene](lux::entity_scene::PersistentEntityId actor)
+                    [scene](lux::authoring::WorldActorId actor)
                     {
                         (void)scene->requestWorldActorProxy(actor);
                     });

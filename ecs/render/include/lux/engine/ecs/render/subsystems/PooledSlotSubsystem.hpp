@@ -34,7 +34,7 @@
 #include <utility>
 #include <vector>
 
-#include <lux/engine/meta/LuxObject.hpp>   // entity_id / EntityRegistry
+#include <lux/engine/ecs/Registry.hpp>   // entity_id / EntityRegistry
 #include <lux/engine/ecs/render/VisualTransition.hpp>
 
 #include <lux/engine/ecs/render/IRenderSubsystem.hpp>
@@ -69,9 +69,9 @@ namespace lux::ecs
             typename T::Desc   last_sent{};
             std::uint32_t      transition_milliseconds{0u};
         };
-        std::unordered_map<lux::meta::entity_id, Live> live_;
+        std::unordered_map<lux::ecs::Entity, Live> live_;
         TrackedRenderRequest<
-            lux::meta::entity_id,
+            lux::ecs::Entity,
             typename T::Reply,
             typename T::Desc> create_requests_;
 
@@ -87,7 +87,7 @@ namespace lux::ecs
             bool             reply_reported{false};
             int              retry_in{0};
         };
-        std::unordered_map<lux::meta::entity_id, FailRecord> failed_;
+        std::unordered_map<lux::ecs::Entity, FailRecord> failed_;
         static constexpr int kTransientRetryDrives = 120;
 
         /// 已离场、destroy 命令还没发出去的句柄。观察者填，`update` 开头排空。
@@ -111,7 +111,7 @@ namespace lux::ecs
         void onAdded(const SystemSetupContext& setup) override
         {
             leave_.attach(setup.registry(),
-                          [this](lux::meta::entity_id e) { onLeave(e); });
+                          [this](lux::ecs::Entity e) { onLeave(e); });
         }
 
         void onRemoved(const SystemRemovalContext&) override { leave_.detach(); }
@@ -268,7 +268,7 @@ namespace lux::ecs
 
             // Require/Exclude companions (Point/Spot require ResolvedTransformComponent).
             auto view = componentView<C>(reg, typename T::Require{}, typename T::Exclude{});
-            view.each([&](lux::meta::entity_id e, const C& c, auto&&...)
+            view.each([&](lux::ecs::Entity e, const C& c, auto&&...)
             {
                 std::optional<typename T::Desc> extracted = T::extract(
                     e,
@@ -371,8 +371,8 @@ namespace lux::ecs
 
     private:
         [[nodiscard]] static std::uint32_t transitionMilliseconds(
-            const lux::meta::EntityRegistry& registry,
-            lux::meta::entity_id entity) noexcept
+            const lux::ecs::Registry& registry,
+            lux::ecs::Entity entity) noexcept
         {
             if constexpr (requires { T::supports_visual_transition; })
             {
@@ -386,7 +386,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] FailRecord& rememberFailure(
-            lux::meta::entity_id e,
+            lux::ecs::Entity e,
             const typename T::Desc& intent
         )
         {
@@ -404,7 +404,7 @@ namespace lux::ecs
 
         /// 观察者回调。**只记账，不发命令**（理由见 `ComponentSetLeaveObserver` 的注释：
         /// 此刻帧构建器多半没开，就地发命令会被静默丢掉）。
-        void onLeave(lux::meta::entity_id e)
+        void onLeave(lux::ecs::Entity e)
         {
             failed_.erase(e);
             if (auto it = live_.find(e); it != live_.end())

@@ -51,7 +51,7 @@ namespace lux::script::lua
         return impl_->state();
     }
 
-    void ScriptEngine::runScript(const ScriptRef& program)
+    bool ScriptEngine::runScript(const ScriptRef& program)
     {
         return impl_->runScript(program);
     }

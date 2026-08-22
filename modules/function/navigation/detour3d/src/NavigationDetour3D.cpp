@@ -124,7 +124,7 @@ namespace lux::navigation::detour3d
 
         struct DecodedArea final
         {
-            std::vector<lux::spatial::Position3D> boundary;
+            std::vector<lux::math::Position3d> boundary;
             std::uint8_t area_class{0u};
             std::uint16_t traversal_flags{1u};
         };
@@ -168,7 +168,7 @@ namespace lux::navigation::detour3d
                     !std::ranges::all_of(
                         area.boundary,
                         [](const auto& point)
-                        { return lux::spatial::isFinite(point); }))
+                        { return lux::math::isFinite(point); }))
                 {
                     return false;
                 }
@@ -202,8 +202,8 @@ namespace lux::navigation::detour3d
                     portal.first_region == portal.second_region ||
                     (portal.first_region != value.region &&
                      portal.second_region != value.region) ||
-                    !lux::spatial::isFinite(portal.first_position) ||
-                    !lux::spatial::isFinite(portal.second_position) ||
+                    !lux::math::isFinite(portal.first_position) ||
+                    !lux::math::isFinite(portal.second_position) ||
                     !finitePositive(portal.traversal_cost_scale))
                 {
                     return false;
@@ -426,7 +426,7 @@ namespace lux::navigation::detour3d
         auto decoded = decodeRegion(blob);
         if (!decoded)
             return lux::cxx::unexpected(std::move(decoded.error()));
-        lux::spatial::Position3D minimum =
+        lux::math::Position3d minimum =
             decoded->areas.front().boundary.front();
         auto maximum = minimum;
         for (const auto& area : decoded->areas)
@@ -564,7 +564,7 @@ namespace lux::navigation::detour3d
         std::size_t maximum_polygons_per_layer = 1u;
         std::uint32_t connection_id = 1u;
         const auto toLocal = [&minimum](
-            const lux::spatial::Position3D& point) noexcept
+            const lux::math::Position3d& point) noexcept
         {
             return std::array<float, 3u>{
                 static_cast<float>(point.x - minimum.x),
@@ -572,10 +572,10 @@ namespace lux::navigation::detour3d
                 static_cast<float>(point.z - minimum.z)};
         };
         const auto interiorPoint = [](const DecodedArea& area,
-                                      const lux::spatial::Position3D& midpoint,
+                                      const lux::math::Position3d& midpoint,
                                       double epsilon) noexcept
         {
-            lux::spatial::Position3D centroid{};
+            lux::math::Position3d centroid{};
             for (const auto& point : area.boundary)
             {
                 centroid.x += point.x;
@@ -591,7 +591,7 @@ namespace lux::navigation::detour3d
             const auto length = std::sqrt(dx * dx + dz * dz);
             if (length <= 1.0e-12)
                 return midpoint;
-            return lux::spatial::Position3D{
+            return lux::math::Position3d{
                 midpoint.x + dx / length * epsilon,
                 midpoint.y,
                 midpoint.z + dz / length * epsilon};
@@ -659,7 +659,7 @@ namespace lux::navigation::detour3d
                     const auto& first = boundary[edge];
                     const auto& second =
                         boundary[(edge + 1u) % boundary.size()];
-                    const lux::spatial::Position3D midpoint{
+                    const lux::math::Position3d midpoint{
                         (first.x + second.x) * 0.5,
                         (first.y + second.y) * 0.5,
                         (first.z + second.z) * 0.5};

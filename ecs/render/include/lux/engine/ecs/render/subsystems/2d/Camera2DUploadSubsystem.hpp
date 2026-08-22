@@ -22,7 +22,7 @@
 #include <lux/engine/ecs/render/components/2d/Camera2DCacheComponent.hpp>     // Camera2DCacheComponent
 #include <lux/engine/ecs/render/RenderSpatialTransform.hpp>
 #include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp> // ViewCameraProxy / ViewCameraOperationIds
-#include <lux/engine/meta/LuxObject.hpp>   // EntityRegistry
+#include <lux/engine/ecs/Registry.hpp>   // EntityRegistry
 
 namespace lux::ecs
 {

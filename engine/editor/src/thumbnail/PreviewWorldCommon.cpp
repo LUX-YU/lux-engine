@@ -15,6 +15,8 @@
 #include <lux/engine/ecs/render/components/ViewPresentComponent.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
+#include <lux/engine/resource/asset/AssetManager.hpp>
+#include <lux/engine/scene/SceneAsset.hpp>
 
 #include <Eigen/Geometry>
 #include <uuid.h>
@@ -88,16 +90,16 @@ namespace lux::editor
         return descriptor;
     }
 
-    lux::scene::ScenePackage
-    makePreviewScenePackage(std::string_view scene_name)
+    lux::scene::SceneDescription
+    makePreviewSceneDescription(std::string_view scene_name)
     {
         static const auto preview_namespace = uuids::uuid::from_string(
             "34bb613e-67ec-5f7d-ad21-232394516043"
         ).value();
         uuids::uuid_name_generator ids{preview_namespace};
 
-        lux::scene::ScenePackage package;
-        package.id = lux::scene::ScenePackageId{ids(scene_name)};
+        lux::scene::SceneDescription package;
+        package.id = lux::asset::asset_id_t{ids(scene_name)};
         package.features.push_back(
             lux::scene::SceneFeatureRequest{
                 lux::scene::SceneFeatureId{
@@ -108,7 +110,28 @@ namespace lux::editor
         return package;
     }
 
-    lux::meta::entity_id createPreviewKeyLight(lux::ecs::World& world)
+    lux::asset::asset_id_t registerPreviewSceneAsset(
+        lux::asset::AssetManager& assets,
+        std::string_view scene_name)
+    {
+        auto description = makePreviewSceneDescription(scene_name);
+        const auto id = description.id;
+        if (assets.fetchAssetAs<lux::scene::SceneAsset>(id) != nullptr)
+            return id;
+        auto info = std::make_unique<lux::asset::AssetInfo>();
+        info->id = id;
+        info->type = lux::scene::kSceneAssetType;
+        if (!assets.registerAsset(std::make_unique<lux::scene::SceneAsset>(
+                std::move(info),
+                std::make_unique<lux::scene::SceneDescription>(
+                    std::move(description)))))
+        {
+            return {};
+        }
+        return id;
+    }
+
+    lux::ecs::Entity createPreviewKeyLight(lux::ecs::World& world)
     {
         const auto e = world.createEntity();
         auto& dl = world.emplace<lux::ecs::DirectionalLightComponent>(e);
@@ -119,9 +142,9 @@ namespace lux::editor
         return e;
     }
 
-    lux::meta::entity_id createPreviewCamera(lux::ecs::World&            world,
+    lux::ecs::Entity createPreviewCamera(lux::ecs::World&            world,
                                              lux::render::RenderTargetId target,
-                                             lux::common::Size2D         extent,
+                                             lux::math::Extent2u         extent,
                                              bool                        auto_aspect)
     {
         const auto e = world.createEntity();
@@ -141,7 +164,7 @@ namespace lux::editor
     }
 
     void aimPreviewCamera(lux::ecs::World&       world,
-                          lux::meta::entity_id   camera,
+                          lux::ecs::Entity   camera,
                           const Eigen::Vector3f& eye,
                           const Eigen::Vector3f& center)
     {
@@ -152,7 +175,7 @@ namespace lux::editor
         Eigen::Matrix3f R;
         R.col(0) = x; R.col(1) = y; R.col(2) = z;
         const auto rotation = Eigen::Quaternionf(R);
-        const lux::spatial::Position3D position{
+        const lux::math::Position3d position{
             static_cast<double>(eye.x()),
             static_cast<double>(eye.y()),
             static_cast<double>(eye.z())};

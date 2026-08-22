@@ -6,8 +6,9 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
+#include <lux/engine/math/Position.hpp>
+#include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/visibility.h>
 
 #include <array>
@@ -26,7 +27,7 @@ namespace lux::runtime::spatial2d
 
     struct Spatial2DSectionIndexEntry final
     {
-        lux::spatial::GridCoord2i64 coordinate;
+        lux::math::GridCoord2i64 coordinate;
         lux::ecs::scene_format::EntitySectionId section;
 
         friend bool operator==(
@@ -36,7 +37,7 @@ namespace lux::runtime::spatial2d
 
     struct Spatial2DWindowEntry final
     {
-        lux::spatial::GridCoord2i64 coordinate;
+        lux::math::GridCoord2i64 coordinate;
         lux::ecs::scene_format::EntitySectionId section;
         /// Present only for procedurally addressed Sections. The generic
         /// partition owns this record with the demand source and releases it
@@ -47,7 +48,7 @@ namespace lux::runtime::spatial2d
 
     struct Spatial2DWindow final
     {
-        lux::spatial::GridCoord2i64 center;
+        lux::math::GridCoord2i64 center;
         std::array<
             Spatial2DWindowEntry,
             kSpatial2DResidentSectionCount> entries{};
@@ -67,7 +68,7 @@ namespace lux::runtime::spatial2d
     struct Spatial2DIndexFailure final
     {
         ESpatial2DIndexError code{ESpatial2DIndexError::EMPTY_INDEX};
-        lux::spatial::GridCoord2i64 coordinate;
+        lux::math::GridCoord2i64 coordinate;
         lux::ecs::scene_format::EntitySectionId section;
     };
 
@@ -75,10 +76,10 @@ namespace lux::runtime::spatial2d
     /// procedural source allocates or hashes any Section records.
     [[nodiscard]] LUX_ENGINE_RUNTIME_SPATIAL2D_INFINITE_PUBLIC
     lux::cxx::expected<
-        lux::spatial::GridCoord2i64,
+        lux::math::GridCoord2i64,
         Spatial2DIndexFailure>
     spatial2DSectionCoordinate(
-        const lux::spatial::Position2D& position,
+        const lux::math::Position2d& position,
         double section_world_size) noexcept;
 
     /// Dimension-specific lookup kept outside spatial_partition.  The common
@@ -93,13 +94,13 @@ namespace lux::runtime::spatial2d
         create(std::vector<Spatial2DSectionIndexEntry> entries);
 
         [[nodiscard]] const lux::ecs::scene_format::EntitySectionId* find(
-            lux::spatial::GridCoord2i64 coordinate) const noexcept;
+            lux::math::GridCoord2i64 coordinate) const noexcept;
 
         [[nodiscard]] lux::cxx::expected<
             Spatial2DWindow,
             Spatial2DIndexFailure>
         window(
-            const lux::spatial::Position2D& position,
+            const lux::math::Position2d& position,
             double section_world_size) const noexcept;
 
         [[nodiscard]] std::span<const Spatial2DSectionIndexEntry> entries()
@@ -120,7 +121,7 @@ namespace lux::runtime::spatial2d
     using Spatial2DSectionRecordFactory = lux::cxx::move_only_function<
         lux::cxx::expected<
             lux::scene::SectionRecord,
-            Spatial2DIndexFailure>(lux::spatial::GridCoord2i64)>;
+            Spatial2DIndexFailure>(lux::math::GridCoord2i64)>;
 
     /// One dimensional leaf source can be finite (cooked index) or
     /// procedural. Both produce the same window shape; only the procedural
@@ -147,7 +148,7 @@ namespace lux::runtime::spatial2d
             Spatial2DWindow,
             Spatial2DIndexFailure>
         window(
-            const lux::spatial::Position2D& position,
+            const lux::math::Position2d& position,
             double section_world_size);
 
     private:

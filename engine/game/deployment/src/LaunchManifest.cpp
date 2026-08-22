@@ -84,11 +84,11 @@ namespace lux::game
             const LaunchManifest& manifest,
             const std::filesystem::path& path) noexcept
         {
-            if (manifest.game_pak.empty())
+            if (manifest.game_pak.empty() || manifest.boot_scene.empty())
             {
                 return lux::cxx::unexpected(
                     std::string{"runtime manifest '"} + path.string() +
-                    "' cannot be written without game_pak");
+                    "' cannot be written without game_pak and boot_scene");
             }
             const auto capacityFitsToml = [](lux::render::CapacityValue value)
             {
@@ -214,8 +214,14 @@ namespace lux::game
             base_pak = (*runtime)["engine_pak"].value<std::string>();
         if (base_pak)
             result.base_pak = std::filesystem::path{*base_pak};
-        if (const auto scene = (*runtime)["boot_scene"].value<std::string>())
-            result.boot_scene = *scene;
+        const auto scene = (*runtime)["boot_scene"].value<std::string>();
+        if (!scene || scene->empty())
+        {
+            return lux::cxx::unexpected(
+                std::string{"runtime manifest '"} + path.string() +
+                "' is missing runtime.boot_scene");
+        }
+        result.boot_scene = *scene;
 
         if (const auto* capacity = root["capacity"].as_table())
         {

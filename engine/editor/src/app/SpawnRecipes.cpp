@@ -29,7 +29,7 @@ namespace lux::editor
     void registerBuiltinSpawnRecipes(SpawnRegistry& registry)
     {
 
-        const auto place2d = [](lux::meta::EntityRegistryBase& reg,
+        const auto place2d = [](lux::ecs::RegistryBase& reg,
                                 entt::entity entity,
                                 const SpawnContext& ctx)
         {
@@ -38,7 +38,7 @@ namespace lux::editor
             if (ctx.pos2d)
                 transform.position = *ctx.pos2d;
         };
-        const auto place3d = [](lux::meta::EntityRegistryBase& reg,
+        const auto place3d = [](lux::ecs::RegistryBase& reg,
                                 entt::entity entity,
                                 const SpawnContext& ctx)
         {

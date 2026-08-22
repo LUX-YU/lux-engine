@@ -1,7 +1,7 @@
 #include <lux/engine/editor/scene/InstanceSpawnClient.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/ModelAsset.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/runtime/assets/AssetLoadSenders.hpp>
 #include <lux/engine/editor/content/ModelMaterialResolve.hpp>
 #include <lux/engine/ecs/render/RenderResourceEvents.hpp>
@@ -428,7 +428,7 @@ namespace lux::editor
             const auto model = (*prepared)->model;
             const auto revision = (*prepared)->model_revision;
             const auto root = commit(std::move(**prepared));
-            if (root == lux::meta::null_entity)
+            if (root == lux::ecs::kNullEntity)
             {
                 terminal->complete(lux::cxx::unexpected(
                     InstanceSpawnFailure{

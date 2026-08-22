@@ -8,17 +8,17 @@
 namespace lux::render
 {
 
-	inline VkImageType convertTextureDimension(lux::common::ETextureDimension dimension, VkImageCreateFlags& flags)
+	inline VkImageType convertTextureDimension(lux::rdesc::ETextureDimension dimension, VkImageCreateFlags& flags)
 	{
 		flags = 0;
 		switch (dimension)
 		{
-			case lux::common::ETextureDimension::TEX_2D:
-			case lux::common::ETextureDimension::TEX_2D_ARRAY:
+			case lux::rdesc::ETextureDimension::TEX_2D:
+			case lux::rdesc::ETextureDimension::TEX_2D_ARRAY:
 				return VK_IMAGE_TYPE_2D;
-			case lux::common::ETextureDimension::TEX_3D:
+			case lux::rdesc::ETextureDimension::TEX_3D:
 				return VK_IMAGE_TYPE_3D;
-			case lux::common::ETextureDimension::CUBE:
+			case lux::rdesc::ETextureDimension::CUBE:
 				flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 				return VK_IMAGE_TYPE_2D;
 			default:
@@ -124,21 +124,21 @@ namespace lux::render
 	//  且自首次提交起零调用点。其 70 条映射已作为唯一权威表搬入 FormatMap.hpp 的
 	//  tryMapVkFormat(返 optional,不再静默 fallback)。)
 
-	inline lux::common::ETextureDimension convertVkImageType(VkImageType imageType, VkImageCreateFlags flags)
+	inline lux::rdesc::ETextureDimension convertVkImageType(VkImageType imageType, VkImageCreateFlags flags)
 	{
 		if (flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
 		{
-			return lux::common::ETextureDimension::CUBE;
+			return lux::rdesc::ETextureDimension::CUBE;
 		}
 
 		switch (imageType)
 		{
 			case VK_IMAGE_TYPE_2D:
-				return lux::common::ETextureDimension::TEX_2D;
+				return lux::rdesc::ETextureDimension::TEX_2D;
 			case VK_IMAGE_TYPE_3D:
-				return lux::common::ETextureDimension::TEX_3D;
+				return lux::rdesc::ETextureDimension::TEX_3D;
 			default:
-				return lux::common::ETextureDimension::TEX_2D;
+				return lux::rdesc::ETextureDimension::TEX_2D;
 		}
 	}
 

@@ -4,9 +4,10 @@
  * @brief Authored identity and content reference for one terrain tile.
  */
 
+#include <lux/engine/ecs/reflection/SpatialValueReflectionTraits.hpp>
 #include <lux/engine/meta/MetaAnnotations.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Grid.hpp>
 
 namespace lux::ecs
 {
@@ -16,7 +17,7 @@ namespace lux::ecs
     struct LUX_COMPONENT() TerrainTileComponent final
     {
         LUX_MEMBER(display_name=Coordinate)
-        lux::spatial::GridCoord2i64 coordinate;
+        lux::math::GridCoord2i64 coordinate;
 
         LUX_MEMBER(display_name=Content,
                    readonly=true,

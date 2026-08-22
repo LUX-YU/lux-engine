@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 /**
  * @file EditorCamera3DController.hpp — the editor 3D viewport navigator (UE-style
  * @brief UE-style editor viewport camera controller.
@@ -115,7 +117,7 @@ namespace lux::editor
         /// must already carry a Transform3DComponent (the controller writes
         /// position / rotation each tick). Records the entity's current
         /// pose as `home` for End-reset.
-        void attach(lux::meta::entity_id entity, lux::meta::EntityRegistry& reg)
+        void attach(lux::ecs::Entity entity, lux::ecs::Registry& reg)
         {
             entity_ = entity;
             reg_  = &reg;
@@ -138,7 +140,7 @@ namespace lux::editor
 
         /// Pull the focal point for F-focus / pan / orbit from a selection
         /// provider. Returning `null_entity` disables F-focus (no-op).
-        using SelectionProvider = std::function<lux::meta::entity_id()>;
+        using SelectionProvider = std::function<lux::ecs::Entity()>;
         void setSelectionProvider(SelectionProvider fn) { sel_fn_ = std::move(fn); }
 
         /// True only while RMB is held → caller (LuxEditor) uses this to
@@ -220,11 +222,11 @@ namespace lux::editor
         [[nodiscard]] Mode  mode()      const noexcept { return mode_;       }
         [[nodiscard]] float flySpeed()  const noexcept { return fly_speed_;  }
         [[nodiscard]] float orbitDist() const noexcept { return orbit_dist_; }
-        [[nodiscard]] const lux::spatial::Position3D& orbitTarget() const noexcept
+        [[nodiscard]] const lux::math::Position3d& orbitTarget() const noexcept
         {
             return orbit_target_;
         }
-        [[nodiscard]] std::optional<lux::spatial::Position3D>
+        [[nodiscard]] std::optional<lux::math::Position3d>
         orbitTargetWorld() const noexcept
         {
             if (!reg_ || !reg_->valid(entity_))
@@ -296,7 +298,7 @@ namespace lux::editor
             const auto rot = composeRotation();
             const Eigen::Vector3f back =
                 rot * Eigen::Vector3f(0.f, 0.f, orbit_dist_);
-            const lux::spatial::Position3D next{
+            const lux::math::Position3d next{
                 orbit_target_.x + static_cast<double>(back.x()),
                 orbit_target_.y + static_cast<double>(back.y()),
                 orbit_target_.z + static_cast<double>(back.z())};
@@ -329,7 +331,7 @@ namespace lux::editor
             // Keep the camera looking at the new target by sliding it along
             // the existing view axis.
             const Eigen::Vector3f back = rot * Eigen::Vector3f(0.f, 0.f, orbit_dist_);
-            const lux::spatial::Position3D next{
+            const lux::math::Position3d next{
                 orbit_target_.x + static_cast<double>(back.x()),
                 orbit_target_.y + static_cast<double>(back.y()),
                 orbit_target_.z + static_cast<double>(back.z())};
@@ -349,7 +351,7 @@ namespace lux::editor
         {
             if (!sel_fn_) return;
             const auto sel = sel_fn_();
-            if (sel == lux::meta::null_entity) return;
+            if (sel == lux::ecs::kNullEntity) return;
             auto& reg = (*reg_);
             if (!reg.all_of<ResolvedTransform3DComponent>(sel)) return;
 
@@ -363,7 +365,7 @@ namespace lux::editor
             );
             if (!center_relative) return;
             const auto relative = *center_relative;
-            const lux::spatial::Position3D center{
+            const lux::math::Position3d center{
                 camera_position.x + static_cast<double>(relative.x()),
                 camera_position.y + static_cast<double>(relative.y()),
                 camera_position.z + static_cast<double>(relative.z())};
@@ -383,7 +385,7 @@ namespace lux::editor
 
             const auto rot      = composeRotation();
             const Eigen::Vector3f back = rot * Eigen::Vector3f(0.f, 0.f, dist);
-            const lux::spatial::Position3D tgt{
+            const lux::math::Position3d tgt{
                 center.x + static_cast<double>(back.x()),
                 center.y + static_cast<double>(back.y()),
                 center.z + static_cast<double>(back.z())};
@@ -417,15 +419,15 @@ namespace lux::editor
             bool                 active   = false;
             float                t        = 0.f;
             float                duration = 0.15f;
-            lux::spatial::Position3D from_p;
-            lux::spatial::Position3D to_p;
+            lux::math::Position3d from_p;
+            lux::math::Position3d to_p;
             Eigen::Quaternionf   from_r;
             Eigen::Quaternionf   to_r;
         } snap_;
 
-        void snapTo(const lux::spatial::Position3D& from_p,
+        void snapTo(const lux::math::Position3d& from_p,
                     const Eigen::Quaternionf&  from_r,
-                    const lux::spatial::Position3D& to_p,
+                    const lux::math::Position3d& to_p,
                     const Eigen::Quaternionf&  to_r,
                     float                      duration)
         {
@@ -445,7 +447,7 @@ namespace lux::editor
             // Smoothstep ease so the head / tail of the lerp are gentle.
             const float s = u * u * (3.f - 2.f * u);
             const double alpha = static_cast<double>(s);
-            const lux::spatial::Position3D position{
+            const lux::math::Position3d position{
                 snap_.from_p.x * (1.0 - alpha) + snap_.to_p.x * alpha,
                 snap_.from_p.y * (1.0 - alpha) + snap_.to_p.y * alpha,
                 snap_.from_p.z * (1.0 - alpha) + snap_.to_p.z * alpha};
@@ -529,7 +531,7 @@ namespace lux::editor
                 return;
             }
             const auto& transform = reg_->get<Transform3DComponent>(entity_);
-            (void)lux::spatial::isFinite(transform.position);
+            (void)lux::math::isFinite(transform.position);
         }
 
         // -----------------------------------------------------------------
@@ -538,8 +540,8 @@ namespace lux::editor
 
         Config              cfg_{};
         ActionIds           ids_{};
-        lux::meta::EntityRegistry* reg_ = nullptr;
-        lux::meta::entity_id entity_ = lux::meta::null_entity;
+        lux::ecs::Registry* reg_ = nullptr;
+        lux::ecs::Entity entity_ = lux::ecs::kNullEntity;
         SelectionProvider   sel_fn_;
 
         Mode                mode_ = Mode::Idle;
@@ -548,9 +550,9 @@ namespace lux::editor
         float               pitch_deg_   = 0.f;
         float               fly_speed_   = 5.f;
         float               orbit_dist_  = 5.f;
-        lux::spatial::Position3D orbit_target_{};
+        lux::math::Position3d orbit_target_{};
 
-        lux::spatial::Position3D home_position_{};
+        lux::math::Position3d home_position_{};
         Eigen::Quaternionf  home_rotation_ = Eigen::Quaternionf::Identity();
     };
 

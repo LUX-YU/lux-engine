@@ -3,7 +3,7 @@
  * @file Archive.hpp
  * @brief Byte-level POD / string / UUID I/O over a contiguous buffer.
  *
- * The serialization stack has three layers:
+ * The core serialization stack has two domain-neutral layers:
  *
  *   - `Archive{Reader,Writer}` (this file) — byte-level primitives. POD writes
  *     are little-endian, strings are length-prefixed (`u32 + utf-8`, no null
@@ -13,10 +13,6 @@
  *
  *   - `NameTable` — string interning. Written once at file head, referenced
  *     by `u32` index everywhere else.
- *
- *   - `TaggedPropertyArchive` — reflection-driven structured layer. Walks
- *     `RefClass::fields` and writes each as `(name_idx, type_id, size, value)`
- *     so unknown fields can be skipped on read for forward compatibility.
  *
  * Endianness contract: all files written by this stack are LE on disk. Reads
  * on a LE host (x86, ARM little-mode — everything Lux currently targets)
@@ -33,6 +29,7 @@
 #include <cstring>
 #include <string>
 #include <string_view>
+#include <span>
 #include <type_traits>
 #include <vector>
 
@@ -124,6 +121,20 @@ namespace lux::serialize
         /// Skip `n` bytes. Used by tagged-property reads to drop unknown
         /// fields by their declared size.
         void skip(std::size_t n);
+
+        /// Borrow and consume the next `n` bytes. Invalid input latches the
+        /// reader and returns an empty span. The returned view never outlives
+        /// the input buffer owned by the caller.
+        [[nodiscard]] std::span<const std::byte> readSpan(std::size_t n) noexcept;
+
+        /// Borrow the unread suffix without advancing. Structured owners use
+        /// this to create strictly bounded sub-readers for nested payloads.
+        [[nodiscard]] std::span<const std::byte> remainingSpan() const noexcept
+        {
+            if (!valid_)
+                return {};
+            return {cur_, remaining()};
+        }
 
         [[nodiscard]] std::size_t tell() const noexcept
         {

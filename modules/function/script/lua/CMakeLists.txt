@@ -8,7 +8,6 @@ add_component(
     OUTPUT_NAME     lux_engine_function_script_lua
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Lua.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/LuaBackend.cpp
 )
 
 component_include_directories(

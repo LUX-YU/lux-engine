@@ -16,13 +16,13 @@
  *
  * 引用者扫描的两层账(互补,缺一个都会漏):
  *   · **场景内组件字段**(可列举):ComponentTypeCatalog × RefClass.fields ×
- *     serialize::isAssetRefField —— 「什么算资产引用」与序列化同一张表;
+ *     ecs::serialization::isAssetReferenceField —— 只认显式 asset_type 注解;
  *   · **驻留票**(不可列举,只能否决):AssetManager::isReferenced —— 材质级联
  *     钉的贴图、动画/脚本的票都在这本账上,但账本是数字不是名单。
  */
 
 #include <lux/engine/editor/panels/AssetBrowser.hpp>   // DeleteAssetCommand
-#include <lux/engine/meta/LuxObject.hpp>               // EntityRegistry
+#include <lux/engine/ecs/Registry.hpp>               // EntityRegistry
 
 #include <filesystem>
 #include <functional>
@@ -48,7 +48,7 @@ namespace lux::editor
             lux::events::DomainEvents* events{nullptr};       ///< committed facts
             const lux::ecs::ComponentTypeCatalog& components;
             /// 当前场景的注册表(无场景 = null)。每次扫描现取 —— 场景会换。
-            std::function<lux::meta::EntityRegistry*()> scene_registry;
+            std::function<lux::ecs::Registry*()> scene_registry;
         };
 
         explicit AssetDeleteController(Services services)

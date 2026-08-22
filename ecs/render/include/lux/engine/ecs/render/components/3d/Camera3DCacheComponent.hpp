@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 
 #include <Eigen/Core>
 
@@ -13,7 +13,7 @@ namespace lux::ecs
         Eigen::Matrix4f proj = Eigen::Matrix4f::Identity();
         Eigen::Matrix4f view_proj = Eigen::Matrix4f::Identity();
         Eigen::Matrix4f prev_view_proj = Eigen::Matrix4f::Identity();
-        lux::spatial::Position3D render_origin{};
+        lux::math::Position3d render_origin{};
         float effective_aspect{16.0f / 9.0f};
         bool ancestry_scale_warning{false};
     };

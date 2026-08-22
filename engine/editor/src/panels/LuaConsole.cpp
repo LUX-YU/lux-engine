@@ -1,8 +1,8 @@
 #include <lux/engine/editor/panels/LuaConsole.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/AssetVfs.hpp>
-#include <lux/engine/resource/asset/ScriptAsset.hpp>      // in-place SCRIPT editing
-#include <lux/engine/resource/asset/ScriptSerDeser.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/resource/asset/script/ScriptAsset.hpp>      // in-place SCRIPT editing
+#include <lux/engine/resource/asset/script/ScriptSerDeser.hpp>
 #include <lux/cxx/algorithm/string_operations.hpp>
 #include <imgui_stdlib.h>
 #include <sol/sol.hpp>
@@ -194,7 +194,7 @@ namespace lux::editor
 			addLog("[error] syntax error");
 			return;
 		}
-		runScript(*prog);
+		(void)runScript(*prog);
 
 		addLog("# done");
 	}

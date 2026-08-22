@@ -1,9 +1,9 @@
 # Input System — 类型参考手册
 
-本文档描述 `lux::gameplay` 输入系统中所有核心类型的作用、字段含义和设计意图。
+本文档描述 `lux::input` 输入系统中所有核心类型的作用、字段含义和设计意图。
 
-> 头文件路径前缀: `lux/engine/gameplay/input/`  
-> 命名空间: `lux::gameplay`
+> 头文件路径前缀: `lux/engine/input/`
+> 命名空间: `lux::input`
 
 ---
 
@@ -150,8 +150,8 @@ using PhysicalInput = std::variant<KeyInput, MouseButtonInput, MouseAxisInput>;
 
 | 类型 | 字段 | 说明 |
 |------|------|------|
-| `KeyInput` | `key: KeyEnum` | 键盘按键 |
-| `MouseButtonInput` | `button: MouseButton` | 鼠标按键 |
+| `KeyInput` | `key: EKey` | 键盘按键 |
+| `MouseButtonInput` | `button: EMouseButton` | 鼠标按键 |
 | `MouseAxisInput` | `axis: Axis`, `scale: float` | 鼠标轴（DeltaX/DeltaY/ScrollX/ScrollY） |
 
 `MouseAxisInput::scale` 是设备层的原始缩放，在绑定修改器之前生效。

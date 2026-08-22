@@ -92,7 +92,7 @@ namespace lux::authoring
     }
 
     std::optional<PlanarCellCoord> planarXyCellOf(
-        const lux::spatial::Position2D& position,
+        const lux::math::Position2d& position,
         float cell_edge) noexcept
     {
         const auto x = cellAxis(position.x, cell_edge);
@@ -103,7 +103,7 @@ namespace lux::authoring
     }
 
     std::optional<PlanarCellCoord> planarXzCellOf(
-        const lux::spatial::Position3D& position,
+        const lux::math::Position3d& position,
         float cell_edge) noexcept
     {
         const auto x = cellAxis(position.x, cell_edge);
@@ -114,7 +114,7 @@ namespace lux::authoring
     }
 
     std::optional<VolumeCellCoord> volumeCellOf(
-        const lux::spatial::Position3D& position,
+        const lux::math::Position3d& position,
         float cell_edge) noexcept
     {
         const auto x = cellAxis(position.x, cell_edge);

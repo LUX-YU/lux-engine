@@ -45,7 +45,7 @@ namespace
 
     template <class Component>
     bool has(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.all_of<Component>(entity);
@@ -53,7 +53,7 @@ namespace
 
     template <class Component>
     void* get(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return registry.try_get<Component>(entity);
@@ -61,7 +61,7 @@ namespace
 
     template <class Component>
     void* emplace(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         return &registry.get_or_emplace<Component>(entity);
@@ -69,7 +69,7 @@ namespace
 
     template <class Component>
     void remove(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         (void)registry.remove<Component>(entity);
@@ -77,7 +77,7 @@ namespace
 
     template <class Component>
     void notify(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         entt::entity entity)
     {
         registry.patch<Component>(entity, [](auto&) noexcept {});
@@ -85,7 +85,7 @@ namespace
 
     template <class Component>
     void reserve(
-        lux::meta::EntityRegistryBase& registry,
+        lux::ecs::RegistryBase& registry,
         std::size_t additional)
     {
         auto& storage = registry.storage<Component>();
@@ -94,9 +94,9 @@ namespace
 
     template <class Component>
     void* transferValue(
-        lux::meta::EntityRegistryBase& source,
+        lux::ecs::RegistryBase& source,
         entt::entity source_entity,
-        lux::meta::EntityRegistryBase& destination,
+        lux::ecs::RegistryBase& destination,
         entt::entity destination_entity) noexcept
     {
         auto* component = source.try_get<Component>(source_entity);
@@ -111,9 +111,9 @@ namespace
     }
 
     void* unsupportedTransfer(
-        lux::meta::EntityRegistryBase&,
+        lux::ecs::RegistryBase&,
         entt::entity,
-        lux::meta::EntityRegistryBase&,
+        lux::ecs::RegistryBase&,
         entt::entity) noexcept
     {
         return nullptr;
@@ -150,7 +150,7 @@ namespace
     struct ConstructCounter final
     {
         void onConstruct(
-            lux::meta::EntityRegistryBase&,
+            lux::ecs::RegistryBase&,
             entt::entity) noexcept
         {
             ++count;
@@ -179,8 +179,8 @@ int main()
            *registered);
     assert(catalog.findByCppName("lux::ecs::MissingComponent") == nullptr);
 
-    lux::meta::EntityRegistry staging;
-    lux::meta::EntityRegistry live;
+    lux::ecs::Registry staging;
+    lux::ecs::Registry live;
     const auto staged_entity = staging.create();
     staging.emplace<Transferable>(staged_entity, 42u);
 

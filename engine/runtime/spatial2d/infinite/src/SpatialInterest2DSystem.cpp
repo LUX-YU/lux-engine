@@ -98,7 +98,7 @@ namespace lux::runtime::spatial2d
         void reconcile(
             entt::entity entity,
             const lux::ecs::SpatialInterest2DComponent& interest,
-            const lux::spatial::Position2D& position)
+            const lux::math::Position2d& position)
         {
             auto found = std::lower_bound(
                 tracked.begin(), tracked.end(), entity, entityLess);
@@ -264,7 +264,7 @@ namespace lux::runtime::spatial2d
         std::vector<TrackedSource> tracked;
         std::vector<lux::ecs::scene_format::EntitySectionId> active_scratch;
         std::vector<lux::ecs::scene_format::EntitySectionId> resident_scratch;
-        lux::meta::EntityRegistry* registry{nullptr};
+        lux::ecs::Registry* registry{nullptr};
         SpatialInterest2DSnapshot snapshot;
         bool closing{false};
     };
@@ -309,7 +309,7 @@ namespace lux::runtime::spatial2d
     }
 
     bool SpatialInterest2DSystem::isActive(
-        lux::spatial::GridCoord2i64 coordinate) const noexcept
+        lux::math::GridCoord2i64 coordinate) const noexcept
     {
         return std::any_of(
             impl_->tracked.begin(),

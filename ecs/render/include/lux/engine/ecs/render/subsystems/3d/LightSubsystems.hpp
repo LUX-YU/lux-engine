@@ -102,9 +102,9 @@ namespace lux::ecs
         static constexpr bool supports_visual_transition = false;
 
         static std::optional<Desc> extract(
-            lux::meta::entity_id,
+            lux::ecs::Entity,
             const DirectionalLightComponent& c,
-            lux::meta::EntityRegistry&,
+            lux::ecs::Registry&,
             SceneRenderBinding&)
         {
             Desc d{};
@@ -138,9 +138,9 @@ namespace lux::ecs
         static constexpr bool supports_visual_transition = true;
 
         static std::optional<Desc> extract(
-            lux::meta::entity_id e,
+            lux::ecs::Entity e,
             const PointLightComponent& c,
-            lux::meta::EntityRegistry& reg,
+            lux::ecs::Registry& reg,
             SceneRenderBinding& render)
         {
             Desc d{};
@@ -202,9 +202,9 @@ namespace lux::ecs
         static constexpr bool supports_visual_transition = true;
 
         static std::optional<Desc> extract(
-            lux::meta::entity_id e,
+            lux::ecs::Entity e,
             const SpotLightComponent& c,
-            lux::meta::EntityRegistry& reg,
+            lux::ecs::Registry& reg,
             SceneRenderBinding& render)
         {
             Desc d{};

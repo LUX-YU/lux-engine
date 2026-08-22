@@ -166,7 +166,7 @@ namespace lux::render
             RGTextureDescription::Relative(
                 1.0f,
                 1.0f,
-                lux::common::ETextureFormat::R8_UNORM);
+                lux::rdesc::ETextureFormat::R8_UNORM);
         mask_description.usage =
             static_cast<ERGTextureUsageFlags>(
                 ERGTextureUsageBits::COLOR_ATTACHMENT) |
@@ -210,7 +210,7 @@ namespace lux::render
         auto draw = builder.addPass(
                 "StreamingFeedbackMaskDraw",
                 ERGPassType::GRAPHICS)
-            .write(mask, lux::common::ETextureRole::COLOR_ATTACHMENT)
+            .write(mask, lux::render::ETextureRole::COLOR_ATTACHMENT)
             .setPipeline(bucket_pipelines_.pick(0u, buckets[0]))
             .bindSceneDS()
             .useEngineSet(EDescriptorSetSlot::Instance)

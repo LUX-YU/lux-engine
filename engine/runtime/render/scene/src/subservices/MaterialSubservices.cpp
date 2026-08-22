@@ -7,8 +7,8 @@
 #include <lux/engine/runtime/render/scene/detail/residency/OwnerReplyReaper.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/MaterialAsset.hpp>
-#include <lux/engine/resource/asset/MaterialInstanceAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialAsset.hpp>
+#include <lux/engine/resource/asset/material/MaterialInstanceAsset.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/runtime/execution/AsyncCallbackSender.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
@@ -18,7 +18,7 @@
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
 #include <lux/engine/function/render/client/features/material/MaterialOperation.hpp>   // 便捷面 uploadGraphMaterial
-#include <lux/engine/platform/FormatCompat.h>   // lux::format
+#include <lux/cxx/core/Format.hpp>   // lux::format
 
 #include <algorithm>
 #include <memory>

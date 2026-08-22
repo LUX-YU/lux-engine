@@ -1122,7 +1122,7 @@ namespace lux::render
                 }
             }
 
-            if (tex_ref.role == lux::common::ETextureRole::COLOR_ATTACHMENT)
+            if (tex_ref.role == lux::render::ETextureRole::COLOR_ATTACHMENT)
             {
                 const uint32_t decl = color_decl++;
                 if (view == VK_NULL_HANDLE)
@@ -1145,7 +1145,7 @@ namespace lux::render
                     out_color[color_idx++].imageView = view;
                 }
             }
-            else if (tex_ref.role == lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT &&
+            else if (tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT &&
                      view != VK_NULL_HANDLE)
             {
                 if (out_depth.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD &&

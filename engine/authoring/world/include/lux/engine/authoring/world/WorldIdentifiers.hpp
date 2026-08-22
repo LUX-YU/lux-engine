@@ -39,12 +39,16 @@ namespace lux::authoring
         uuids::uuid value_{};
     };
 
+    struct WorldIdTag final {};
+    struct WorldActorIdTag final {};
     struct InstanceSetIdTag final {};
     struct PartitionSpaceIdTag final {};
     struct TerrainSetIdTag final {};
     struct TilemapIdTag final {};
     struct PixelFieldIdTag final {};
 
+    using WorldId = BasicUuid<WorldIdTag>;
+    using WorldActorId = BasicUuid<WorldActorIdTag>;
     using InstanceSetId = BasicUuid<InstanceSetIdTag>;
     using PartitionSpaceId = BasicUuid<PartitionSpaceIdTag>;
     using TerrainSetId = BasicUuid<TerrainSetIdTag>;
@@ -105,9 +109,13 @@ namespace lux::authoring
         std::string name_;
     };
 
+    struct WorldSceneFeatureIdTag final {};
+    struct WorldExtensionIdTag final {};
     struct DataLayerIdTag final {};
     struct ChunkGeneratorIdTag final {};
 
+    using WorldSceneFeatureId = BasicStableNameId<WorldSceneFeatureIdTag>;
+    using WorldExtensionId = BasicStableNameId<WorldExtensionIdTag>;
     using DataLayerId = BasicStableNameId<DataLayerIdTag>;
     using ChunkGeneratorId = BasicStableNameId<ChunkGeneratorIdTag>;
 

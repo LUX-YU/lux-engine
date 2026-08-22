@@ -5,8 +5,8 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
+#include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/visibility.h>
 #include <lux/engine/runtime/spatial_partition/SpatialDemand.hpp>
@@ -110,7 +110,7 @@ namespace lux::runtime::spatial3d
         [[nodiscard]] bool closeNeedsOwnerTick() const noexcept override;
         [[nodiscard]] SpatialInterest3DSnapshot snapshot() const;
         [[nodiscard]] bool isActive(
-            lux::spatial::GridCoord3i64 coordinate) const noexcept;
+            lux::math::GridCoord3i64 coordinate) const noexcept;
 
         void onAdded(const lux::ecs::SystemSetupContext& setup) override;
         void onRemoved(

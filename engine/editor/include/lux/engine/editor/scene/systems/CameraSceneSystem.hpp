@@ -22,11 +22,12 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/ecs/Registry.hpp>
+#include <lux/engine/math/Position.hpp>
 
 #include <Eigen/Core>
 #include <memory>
+#include <optional>
 
 namespace lux::input { class ActionMapper; }
 namespace lux::ecs { class Camera2DSystem; class Camera3DSystem; }
@@ -46,7 +47,7 @@ namespace lux::editor
 
         /// One-time wiring on the first valid tick: home pose from the live
         /// camera entity, action ids, selection provider (3D F-focus).
-        virtual void attach(lux::meta::EntityRegistry& reg) = 0;
+        virtual void attach(lux::ecs::Registry& reg) = 0;
 
         /// Per-frame: input → the camera entity的 transform 组件。跑在
         /// `kPhasePreTransform`——必须先于变换/相机把矩阵算出来。
@@ -55,7 +56,7 @@ namespace lux::editor
         ///   由宿主每帧转手;而那份数据**世界里本来就有** ——
         ///   `ViewPresentComponent::extent`(批 3:谁在出图、出多大,写在世界里)。
         ///   要用的人自己查。
-        virtual void tick(lux::meta::EntityRegistry& reg,
+        virtual void tick(lux::ecs::Registry& reg,
                           const lux::input::ActionMapper& mapper, float dt,
                           float content_w, float content_h) = 0;
 
@@ -65,10 +66,10 @@ namespace lux::editor
 
         /// Camera world position, read after Schedule refreshed the derived
         /// transform. 2D reports zero (no consumer; streaming is 3D-only).
-        [[nodiscard]] virtual Eigen::Vector3f eye(lux::meta::EntityRegistry&) const
+        [[nodiscard]] virtual Eigen::Vector3f eye(lux::ecs::Registry&) const
         { return Eigen::Vector3f::Zero(); }
-        [[nodiscard]] virtual std::optional<lux::spatial::Position3D>
-        worldFocus3D(lux::meta::EntityRegistry&) const
+        [[nodiscard]] virtual std::optional<lux::math::Position3d>
+        worldFocus3D(lux::ecs::Registry&) const
         { return std::nullopt; }
     };
 
@@ -78,15 +79,15 @@ namespace lux::editor
     ///            的知识,批 3 把 `camera_entity` 从共享 tick 上下文里删掉了
     ///            (运行时不再镜像「谁在出图」),所以由这里注入。
     [[nodiscard]] std::unique_ptr<IEditorCameraController>
-    makeEditorCamera3DNavigator(Selection* selection, lux::meta::entity_id camera);
+    makeEditorCamera3DNavigator(Selection* selection, lux::ecs::Entity camera);
     [[nodiscard]] std::unique_ptr<IEditorCameraController>
-    makeEditorCamera2DNavigator(lux::meta::entity_id camera);
+    makeEditorCamera2DNavigator(lux::ecs::Entity camera);
 
     class CameraSceneSystem final : public lux::ecs::ISystem
     {
     public:
         CameraSceneSystem(std::unique_ptr<IEditorCameraController> navigator,
-                          lux::meta::entity_id                     camera,
+                          lux::ecs::Entity                     camera,
                           lux::ecs::SystemType                     camera_system);
         ~CameraSceneSystem() override;
 
@@ -116,16 +117,16 @@ namespace lux::editor
         [[nodiscard]] bool wantsCursorCapture() const noexcept;
 
         /// Camera world position after Schedule::tick。宿主 F-focus 一类的功能读它。
-        [[nodiscard]] Eigen::Vector3f eye(lux::meta::EntityRegistry& reg) const;
-        [[nodiscard]] std::optional<lux::spatial::Position3D>
-            worldFocus3D(lux::meta::EntityRegistry& reg) const;
+        [[nodiscard]] Eigen::Vector3f eye(lux::ecs::Registry& reg) const;
+        [[nodiscard]] std::optional<lux::math::Position3d>
+            worldFocus3D(lux::ecs::Registry& reg) const;
 
     private:
         std::unique_ptr<IEditorCameraController> nav_;
         const lux::input::ActionMapper*          mapper_{nullptr};
         float                                    content_w_{0.f};
         float                                    content_h_{0.f};
-        lux::meta::entity_id                     camera_{lux::meta::null_entity};
+        lux::ecs::Entity                     camera_{lux::ecs::kNullEntity};
         lux::ecs::SystemType                     camera_system_{};
         bool                                     attached_{false};
     };

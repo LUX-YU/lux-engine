@@ -15,19 +15,22 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     INSTALL_TIME
         include
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/modules/resource/asset/pinclude
 )
 
 target_link_libraries(
     toolchain_model_importer
     PUBLIC
-        lux::engine::resource::asset_codecs
+        lux::engine::resource::asset
         lux::engine::toolchain::toolchain_texture_importer
     PRIVATE
         assimp::assimp
         meshoptimizer::meshoptimizer
-        lux::engine::platform::common
+        lux::cxx::core
+)
+
+component_add_transitive_commands(
+    toolchain_model_importer
+    "find_package(lux-cxx REQUIRED COMPONENTS core)"
 )
 
 lux_classify_target(

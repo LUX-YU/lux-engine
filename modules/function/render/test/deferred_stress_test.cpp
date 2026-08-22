@@ -42,8 +42,8 @@
 #include "graph_test_helpers.hpp"
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
-#include <lux/engine/resource/asset/TextureCodec.hpp>
-#include <lux/engine/resource/asset/TextureAsset.hpp>
+#include <lux/engine/resource/asset/texture/TextureSerDeser.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 
 #include <lux/engine/window/LuxWindow.hpp>
 #include <GLFW/glfw3.h>
@@ -373,7 +373,7 @@ static RenderTask<void> stressTask(
     // Load the texture .luxasset (packed by CMake alongside shaders)
     auto tex_mgr = std::make_shared<lux::asset::AssetManager>(
         lux::asset::runtimeAssetCodecCatalog());
-    lux::asset::TextureCodec tex_ser(tex_mgr);
+    lux::asset::TextureSerDeser tex_ser(tex_mgr);
     auto tex_res = tex_ser.fromLuxAsset(asset_dir / "textures" / "blue_nebulae_1.luxasset");
     if (!tex_res)
         throw std::runtime_error("Failed to load skybox texture");
@@ -1090,7 +1090,7 @@ int main(int argc, char** argv)
                   << srv_init.skybox_tid << ", " << srv_init.grid_tid << ")\n";
 
         // ── Pre-initialize: create scene + view ─────────────────────
-        auto scene = server.createScene("DeferredStress", {}, lux::common::ETextureFormat::RGBA8_SRGB);
+        auto scene = server.createScene("DeferredStress", {}, lux::rdesc::ETextureFormat::RGBA8_SRGB);
         srv_init.scene_id = scene.scene_id;
         std::cout << "  Scene created\n";
 

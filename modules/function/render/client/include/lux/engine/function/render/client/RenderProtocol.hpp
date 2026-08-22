@@ -16,7 +16,7 @@
 #include <lux/engine/function/render/client/core/RenderErrorEvent.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
-#include <lux/engine/common/ImageEnums.hpp>
+#include <lux/engine/description/Image.hpp>
 
 // Resource operation payloads — needed for CommandTraits specializations below
 // Mesh data ops moved to a feature: comm/genops/MeshStackOperation.ops.hpp
@@ -174,7 +174,7 @@ namespace lux::render
         uint32_t flags{0};
 
         /// Pipeline format — RGBA16_SFLOAT = HDR, RGBA8_SRGB = LDR.
-        lux::common::ETextureFormat lit_color_format{lux::common::ETextureFormat::RGBA16_SFLOAT};
+        lux::rdesc::ETextureFormat lit_color_format{lux::rdesc::ETextureFormat::RGBA16_SFLOAT};
 
         double coordinate_page_size{1024.0};
         std::int64_t scene_origin_page[3]{};
@@ -200,7 +200,7 @@ namespace lux::render
     struct AddViewPayload
     {
         RenderSceneId scene_id{};
-        common::Size2D extent{};
+        lux::math::Extent2u extent{};
         char name[64]{};
         // (initial camera removed — now that View is no longer inherently 3D, AddView is neutral; the client sends a
         //  StandardViewCamera op for this view after addView. See ViewCameraOperation.hpp.)
@@ -234,7 +234,7 @@ namespace lux::render
     /// 定制随编译 key 拆解开放)。
     struct CreateOffscreenTargetPayload
     {
-        common::Size2D extent{};
+        lux::math::Extent2u extent{};
         uint32_t       flags{0};
     };
     static_assert(std::is_trivially_copyable_v<CreateOffscreenTargetPayload>);
@@ -246,7 +246,7 @@ namespace lux::render
     struct CreateSurfaceTargetPayload
     {
         uint64_t       native_window_handle{0};  ///< Win32 = HWND;Android 口子留待实机
-        common::Size2D extent{};
+        lux::math::Extent2u extent{};
     };
     static_assert(std::is_trivially_copyable_v<CreateSurfaceTargetPayload>);
 
@@ -288,7 +288,7 @@ namespace lux::render
     struct ResizeTargetPayload
     {
         RenderTargetId target{};
-        common::Size2D new_extent{};
+        lux::math::Extent2u new_extent{};
     };
     static_assert(std::is_trivially_copyable_v<ResizeTargetPayload>);
 
@@ -513,7 +513,7 @@ namespace lux::render
         uint32_t height{0};
         uint32_t bytes_per_pixel{0};
         uint64_t bytes_written{0};
-        uint32_t format{0};           ///< lux::common::ETextureFormat of written pixels
+        uint32_t format{0};           ///< lux::rdesc::ETextureFormat of written pixels
     };
     static_assert(std::is_trivially_copyable_v<ReadbackTargetReply>);
 

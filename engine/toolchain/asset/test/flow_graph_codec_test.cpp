@@ -15,8 +15,13 @@
 // =============================================================================
 
 #include <cstdio>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <lux/engine/authoring/assets/FlowGraphCodec.hpp>
@@ -61,6 +66,65 @@ static void registerTestNatives()
         return std::make_unique<NativeFuncCall>(sink_fn);
     };
     NodeRegistry::global().registerNode(std::move(info));  // dup-safe
+}
+
+static bool replaceLengthPrefixedString(
+    std::vector<std::byte>& blob,
+    std::string_view current,
+    std::string_view replacement)
+{
+    if (current.empty() || blob.size() < current.size() + sizeof(std::uint32_t))
+        return false;
+
+    for (std::size_t offset = sizeof(std::uint32_t);
+         offset + current.size() <= blob.size();
+         ++offset)
+    {
+        const bool matches = std::equal(
+            current.begin(),
+            current.end(),
+            blob.begin() + static_cast<std::ptrdiff_t>(offset),
+            [](char lhs, std::byte rhs)
+            {
+                return static_cast<unsigned char>(lhs) ==
+                    std::to_integer<unsigned char>(rhs);
+            });
+        if (!matches)
+            continue;
+
+        const auto length_offset = offset - sizeof(std::uint32_t);
+        const auto encoded_length =
+            std::to_integer<std::uint32_t>(blob[length_offset]) |
+            (std::to_integer<std::uint32_t>(blob[length_offset + 1u]) << 8u) |
+            (std::to_integer<std::uint32_t>(blob[length_offset + 2u]) << 16u) |
+            (std::to_integer<std::uint32_t>(blob[length_offset + 3u]) << 24u);
+        if (encoded_length != current.size())
+            continue;
+
+        const auto replacement_length =
+            static_cast<std::uint32_t>(replacement.size());
+        for (std::size_t byte = 0u; byte < sizeof(std::uint32_t); ++byte)
+        {
+            blob[length_offset + byte] = std::byte{
+                static_cast<unsigned char>(
+                    (replacement_length >> (byte * 8u)) & 0xffu)};
+        }
+        const auto begin = blob.begin() + static_cast<std::ptrdiff_t>(offset);
+        blob.erase(begin, begin + static_cast<std::ptrdiff_t>(current.size()));
+        std::vector<std::byte> replacement_bytes;
+        replacement_bytes.reserve(replacement.size());
+        for (const char value : replacement)
+        {
+            replacement_bytes.push_back(std::byte{
+                static_cast<unsigned char>(value)});
+        }
+        blob.insert(
+            blob.begin() + static_cast<std::ptrdiff_t>(offset),
+            replacement_bytes.begin(),
+            replacement_bytes.end());
+        return true;
+    }
+    return false;
 }
 
 static FlowGraph buildRepresentativeGraph()
@@ -190,6 +254,85 @@ int main()
     }
     check(found_placed_start, "canvas position round-tripped");
     check(found_native,       "native call re-instantiated via the registry");
+
+    // Field nodes persist the canonical reflected class name. Math values are
+    // now owned and named by Core Math; the old Resource name is a hard cut.
+    const auto* position_class =
+        lux::meta::ReflectionRegistry::instance().findClass(
+            "lux::math::Position3d");
+    const lux::meta::RefField* x_field = nullptr;
+    if (position_class)
+    {
+        const auto found = std::ranges::find(
+            position_class->fields,
+            std::string_view{"x"},
+            &lux::meta::RefField::name);
+        if (found != position_class->fields.end())
+            x_field = &*found;
+    }
+    check(position_class != nullptr && x_field != nullptr,
+          "canonical Math reflection class and field are registered");
+    if (position_class && x_field)
+    {
+        static lux::meta::RefFunction position_source{};
+        position_source.invokable.name = "lux_test_position_source";
+        position_source.invokable.full_name = "lux_test_position_source";
+        position_source.invokable.return_type = position_class->type;
+        auto position_source_info = std::make_unique<NodeCreatInfo>();
+        position_source_info->name = "Test Position Source";
+        position_source_info->category = "Test";
+        position_source_info->creator = []() -> std::unique_ptr<Node>
+        {
+            return std::make_unique<NativeFuncCall>(position_source);
+        };
+        NodeRegistry::global().registerNode(std::move(position_source_info));
+
+        FlowGraph field_graph;
+        auto* source_info =
+            NodeRegistry::global().findNodeByName("Test Position Source");
+        auto source = source_info->creator();
+        auto* source_call = static_cast<NativeFuncCall*>(source.get());
+        auto get_field =
+            std::make_unique<GetFieldNode>(*position_class, *x_field);
+        LastLink field_link;
+        const_cast<DataOutPin&>(source_call->result()).linkTo(
+            const_cast<DataInPin*>(&get_field->objectPin()),
+            field_link);
+        field_graph.addNodes(std::move(source));
+        field_graph.addNodes(std::move(get_field));
+        const auto field_blob =
+            lux::authoring::detail::encodeFlowGraph(field_graph, &err);
+        check(!field_blob.empty(), ("Math field node encoded: " + err).c_str());
+
+        FlowGraph decoded_field_graph;
+        check(lux::authoring::detail::decodeFlowGraph(
+                  std::span<const std::byte>(field_blob),
+                  decoded_field_graph,
+                  NodeRegistry::global(),
+                  &err),
+              ("Math field node decoded: " + err).c_str());
+        const auto field_blob_roundtrip =
+            lux::authoring::detail::encodeFlowGraph(decoded_field_graph, &err);
+        check(field_blob == field_blob_roundtrip,
+              "Math field node re-encodes byte-for-byte");
+
+        auto legacy_field_blob = field_blob;
+        const std::string legacy_name =
+            std::string{"lux::"} + "spa" + "tial::" +
+            "Position" + "3D";
+        check(replaceLengthPrefixedString(
+                  legacy_field_blob,
+                  position_class->full_name,
+                  legacy_name),
+              "legacy class-name payload constructed");
+        FlowGraph rejected_field_graph;
+        check(!lux::authoring::detail::decodeFlowGraph(
+                  std::span<const std::byte>(legacy_field_blob),
+                  rejected_field_graph,
+                  NodeRegistry::global(),
+                  &err),
+              "legacy Resource field-node class name is rejected");
+    }
 
     // The first variable's persistent type identity is the frozen
     // ScalarSchema triplet, never a compiler-derived type_hash.

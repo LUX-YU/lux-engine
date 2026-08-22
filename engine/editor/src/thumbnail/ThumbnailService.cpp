@@ -30,7 +30,7 @@
 #include <lux/engine/editor/thumbnail/ImageCodec.hpp>
 #include "thumbnail/PreviewWorldCommon.hpp"               // 预览世界共用装配件(批 2 提取)
 #include <lux/engine/editor/app/LuxEditor.hpp>            // EditorRenderInfra
-#include <lux/engine/resource/asset/BuiltinAssetIds.hpp>
+#include <lux/engine/content/BuiltinAssetIds.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/function/render/client/RenderFrameSession.hpp>
@@ -52,7 +52,7 @@
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 
 #include <lux/engine/input/ActionMapper.hpp>
-#include <lux/engine/common/Size2D.hpp>
+#include <lux/engine/math/Extent.hpp>
 
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
@@ -66,6 +66,7 @@
 #include <Eigen/Geometry>
 
 #include <atomic>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -120,8 +121,8 @@ namespace lux::editor
         lux::input::ActionMapper                    mapper;
         std::unique_ptr<lux::runtime::SceneRuntime> runtime;
         lux::render::RenderTargetLease              target{};
-        lux::meta::entity_id                        camera{entt::null};
-        lux::meta::entity_id                        key_light{entt::null};
+        lux::ecs::Entity                        camera{entt::null};
+        lux::ecs::Entity                        key_light{entt::null};
         lux::asset::asset_id_t                      sphere_mesh_id{};
         lux::asset::asset_id_t                      preview_grey_id{};
         std::uint32_t                               render_size{256};
@@ -162,7 +163,7 @@ namespace lux::editor
         /// The job's world entities (one per spec instance). Their whole GPU
         /// footprint — mesh/material upload, instance, refcounts — is owned by
         /// the resolver + mesh subsystem; destroying the entities reclaims it.
-        std::vector<lux::meta::entity_id> entities;
+        std::vector<lux::ecs::Entity> entities;
 
         lux::render::RenderRequest<lux::render::ReadbackTargetReply>   capture_req;
         lux::render::RenderRequest<lux::render::Texture2DCreatedReply> display_req;
@@ -189,7 +190,7 @@ namespace lux::editor
         /// fov/near/far 进 Camera3D。Camera3DSystem 用同一个 TLookAt/TPerspective
         /// 帮手推导矩阵,所以像旧实现一样取景。
         void frameCameraForBounds(lux::ecs::World&           world,
-                                  lux::meta::entity_id       camera,
+                                  lux::ecs::Entity       camera,
                                   const lux::math::AABB&     bounds)
         {
             const Eigen::Vector3f center = bounds.center();
@@ -264,7 +265,7 @@ namespace lux::editor
         auto host = std::make_unique<RuntimeHost>();
         host->render_size = render_size ? render_size : 256u;
         if (!parseBuiltinId(
-                lux::asset::kBuiltinSphereMeshIdStr,
+                lux::engine::content::kBuiltinSphereMeshIdStr,
                 host->sphere_mesh_id))
             return false;   // programmer error — the literal is compile-time
         // Mesh-instance creation requires a real material handle; nil is not a
@@ -272,12 +273,12 @@ namespace lux::editor
         // builtin white material, but never let a thumbnail job reach the
         // render bridge with an invalid material configuration.
         (void)parseBuiltinId(
-            lux::asset::kBuiltinPreviewGreyMaterialIdStr,
+            lux::engine::content::kBuiltinPreviewGreyMaterialIdStr,
             host->preview_grey_id);
         if (!assets_.hasAsset(host->preview_grey_id))
         {
             (void)parseBuiltinId(
-                lux::asset::kBuiltinWhitePbrMaterialIdStr,
+                lux::engine::content::kBuiltinWhitePbrMaterialIdStr,
                 host->preview_grey_id
             );
             if (!assets_.hasAsset(host->preview_grey_id))
@@ -296,7 +297,7 @@ namespace lux::editor
         //    composes the camera's view onto it. SAMPLED 形态与 EditorScene 的
         //    主视口 target 同款(显示路径要可采样;readback 在两种形态上都走
         //    readbackTarget* 命令面)。
-        const lux::common::Size2D extent{host->render_size, host->render_size};
+        const lux::math::Extent2u extent{host->render_size, host->render_size};
         auto target_result = infra_.control->syncCall(
             infra_.control->createOffscreenRenderTarget(
                 extent,
@@ -318,7 +319,10 @@ namespace lux::editor
 
         lux::runtime::SceneRuntime::Config rcfg;
         rcfg.name            = "Thumbnail";
-        rcfg.transient_package = makePreviewScenePackage(rcfg.name);
+        rcfg.scene_asset_id = registerPreviewSceneAsset(
+            assets_, rcfg.name);
+        if (rcfg.scene_asset_id.is_nil())
+            return false;
         rcfg.events          = infra_.events;      // 进程域同一个 bus(批B,可空)
         // ★ 批 D2:守卫在这里,因为 `RenderInfra::residency` 按设计可空 —— 详见
         //   `EditorScene::bringUp` 同位置的说明。
@@ -468,11 +472,23 @@ namespace lux::editor
         case Job::Stage::Spec:
         {
             auto* r = providers_.get(j.type);
-            // W2b: provider requests an async load for any data-less shell it needs.
-            const ThumbnailLoadFn load = [this](const lux::asset::asset_id_t& dep)
-            { (void)asset_client_.request(dep); };
-            j.spec = r ? r->buildSpec(assets_, host_->sphere_mesh_id, j.id, load)
+            j.spec = r ? r->buildSpec(assets_, host_->sphere_mesh_id, j.id)
                        : ThumbnailSpec{};
+            std::vector<lux::asset::asset_id_t> requested;
+            requested.reserve(j.spec.missing_assets.size());
+            for (const auto& dependency : j.spec.missing_assets)
+            {
+                if (dependency.is_nil() ||
+                    std::find(
+                        requested.begin(),
+                        requested.end(),
+                        dependency) != requested.end())
+                {
+                    continue;
+                }
+                requested.push_back(dependency);
+                static_cast<void>(asset_client_.request(dependency));
+            }
             if (!j.spec.valid)
             {
                 // Deps still streaming in → re-queue (cache stays Pending) instead

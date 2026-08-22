@@ -1,4 +1,6 @@
 #pragma once
+
+#include <lux/engine/math/Position.hpp>
 // ============================================================================
 //  Transform3DSystem.hpp — local 3D TRS → world, hierarchy-aware (lux::ecs).
 //  (Renamed from the pack-era `TransformSystem` — symmetric-suffix naming §5:
@@ -30,7 +32,7 @@ namespace lux::ecs
 
         struct Composed final
         {
-            lux::spatial::Position3D position;
+            lux::math::Position3d position;
             Eigen::Matrix3f linear;
         };
 

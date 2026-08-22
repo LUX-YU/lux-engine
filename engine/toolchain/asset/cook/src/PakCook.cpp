@@ -1,10 +1,11 @@
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
-#include <lux/engine/resource/asset/PakCodec.hpp>
-#include <lux/engine/resource/asset/VirtualPath.hpp>
+#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
+#include <lux/engine/resource/asset/storage/VirtualPath.hpp>
 
 #include <algorithm>
-#include <lux/engine/platform/FormatCompat.h>
+#include <lux/cxx/core/Format.hpp>
 #include <fstream>
 #include <memory>
 #include <limits>
@@ -15,59 +16,12 @@
 
 namespace lux::toolchain
 {
-    using lux::asset::EAssetType;
     using lux::asset::VirtualPath;
-    using lux::asset::assetTypeOfMagic;
     using lux::asset::asset_id_t;
     using lux::asset::foldCaseAscii;
-    using lux::asset::kEntitySceneImageMagic;
-    using lux::asset::kEntitySectionImageMagic;
     using lux::asset::readAssetHeader;
     namespace
     {
-        [[nodiscard]] std::uint32_t entryMagic(
-            EAssetType type) noexcept
-        {
-            using lux::asset::asset_magic_number_of;
-            switch (type)
-            {
-            case EAssetType::MESH:
-                return asset_magic_number_of<EAssetType::MESH>::value;
-            case EAssetType::MODEL:
-                return asset_magic_number_of<EAssetType::MODEL>::value;
-            case EAssetType::TEXTURE:
-                return asset_magic_number_of<EAssetType::TEXTURE>::value;
-            case EAssetType::SHADER:
-                return asset_magic_number_of<EAssetType::SHADER>::value;
-            case EAssetType::SCRIPT:
-                return asset_magic_number_of<EAssetType::SCRIPT>::value;
-            case EAssetType::SKELETON:
-                return asset_magic_number_of<EAssetType::SKELETON>::value;
-            case EAssetType::ANIMATION_CLIP:
-                return asset_magic_number_of<
-                    EAssetType::ANIMATION_CLIP>::value;
-            case EAssetType::MATERIAL:
-                return asset_magic_number_of<EAssetType::MATERIAL>::value;
-            case EAssetType::MATERIAL_INSTANCE:
-                return asset_magic_number_of<
-                    EAssetType::MATERIAL_INSTANCE>::value;
-            case EAssetType::TEXTURE_ATLAS:
-                return asset_magic_number_of<
-                    EAssetType::TEXTURE_ATLAS>::value;
-            case EAssetType::FLIPBOOK_CLIP:
-                return asset_magic_number_of<
-                    EAssetType::FLIPBOOK_CLIP>::value;
-            case EAssetType::FLOW_GRAPH:
-                return asset_magic_number_of<EAssetType::FLOW_GRAPH>::value;
-            case EAssetType::ENTITY_SCENE:
-                return kEntitySceneImageMagic;
-            case EAssetType::ENTITY_SECTION:
-                return kEntitySectionImageMagic;
-            default:
-                return 0u;
-            }
-        }
-
         lux::cxx::expected<lux::cxx::SharedBytes<>, std::string>
         cookedAssetImage(
             const std::filesystem::path& file,
@@ -138,7 +92,7 @@ namespace lux::toolchain
 
         struct PendingPakEntry final
         {
-            lux::asset::detail::PakWriteEntry entry;
+            lux::asset::PakWriteEntry entry;
             std::string origin;
         };
 
@@ -264,8 +218,9 @@ namespace lux::toolchain
                         vpath = source.vpath_prefix + "/" + vpath;
 
                     const auto probe = readAssetHeader(file);
-                    const auto type = assetTypeOfMagic(probe.magic);
-                    if (type == EAssetType::UNKNOWN || probe.id.is_nil())
+                    if (probe.id.is_nil() ||
+                        lux::asset::runtimeAssetCodecCatalog()->findByMagic(
+                            probe.magic) == nullptr)
                     {
                         draft.violations.push_back(lux::format(
                             "'{}': unrecognized or corrupt asset header",
@@ -273,7 +228,7 @@ namespace lux::toolchain
                         continue;
                     }
 
-                    lux::asset::detail::PakWriteEntry pak_entry{
+                    lux::asset::PakWriteEntry pak_entry{
                         probe.id,
                         probe.magic,
                         std::move(vpath),
@@ -297,7 +252,11 @@ namespace lux::toolchain
                             std::move(cooked.error()));
                         continue;
                     }
-                    pak_entry.source_bytes = std::move(*cooked);
+                    if (!cooked->empty())
+                    {
+                        pak_entry.source_file.clear();
+                        pak_entry.source_bytes = std::move(*cooked);
+                    }
                     draft.entries.push_back({
                         std::move(pak_entry),
                         lux::format("source '{}'", file.string())});
@@ -316,9 +275,9 @@ namespace lux::toolchain
                     "explicit memory entry '{}'",
                     input.vpath);
                 draft.entries.push_back({
-                    lux::asset::detail::PakWriteEntry{
+                    lux::asset::PakWriteEntry{
                         input.id,
-                        entryMagic(input.type),
+                        input.magic_number,
                         std::move(input.vpath),
                         {},
                         std::move(input.image)},
@@ -338,9 +297,9 @@ namespace lux::toolchain
                     input.vpath,
                     input.image_path.string());
                 draft.entries.push_back({
-                    lux::asset::detail::PakWriteEntry{
+                    lux::asset::PakWriteEntry{
                         input.id,
-                        entryMagic(input.type),
+                        input.magic_number,
                         std::move(input.vpath),
                         std::move(input.image_path),
                         {}},
@@ -392,7 +351,7 @@ namespace lux::toolchain
                 if (entry.asset_magic == 0u)
                 {
                     draft.violations.push_back(lux::format(
-                        "{}: unsupported asset type",
+                        "{}: missing asset magic",
                         pending.origin));
                 }
 
@@ -482,14 +441,14 @@ namespace lux::toolchain
                     rejectionMessage(draft.violations));
             }
 
-            std::vector<lux::asset::detail::PakWriteEntry> entries;
+            std::vector<lux::asset::PakWriteEntry> entries;
             entries.reserve(draft.entries.size());
             for (auto& pending : draft.entries)
                 entries.push_back(std::move(pending.entry));
 
             const auto count = entries.size();
             std::string write_error;
-            if (!lux::asset::detail::writePakFile(
+            if (!lux::asset::writePakFile(
                     out_pak,
                     std::move(entries),
                     mount_hint,
@@ -569,50 +528,4 @@ namespace lux::toolchain
             mount_hint);
     }
 
-    lux::cxx::expected<PakInspectInfo, std::string>
-    inspectPak(const std::filesystem::path& pak_path)
-    {
-        std::error_code ec;
-        const auto file_size = std::filesystem::file_size(pak_path, ec);
-        if (ec)
-            return lux::cxx::unexpected(
-                lux::format("cannot stat '{}'", pak_path.string()));
-
-        std::ifstream stream(pak_path, std::ios::binary);
-        if (!stream)
-            return lux::cxx::unexpected(
-                lux::format("cannot open '{}'", pak_path.string()));
-
-        lux::asset::detail::PakHeader header;
-        std::string err;
-        if (!lux::asset::detail::readPakHeader(
-                stream, file_size, header, &err))
-            return lux::cxx::unexpected(std::move(err));
-
-        std::vector<lux::asset::detail::PakEntry> entries;
-        if (!lux::asset::detail::readAllPakEntries(
-                stream, file_size, header, entries, &err))
-            return lux::cxx::unexpected(std::move(err));
-
-        PakInspectInfo info;
-        info.mount_hint.assign(
-            header.mount_hint,
-            header.mount_hint + header.mount_hint_size);
-        info.entries.reserve(entries.size());
-
-        for (const auto& e : entries)
-        {
-            PakInspectEntry out;
-            out.id           = e.id;
-            out.type         = assetTypeOfMagic(e.asset_magic);
-            out.offset       = e.offset;
-            out.size         = e.size;
-            out.compression  = e.compression;
-            out.tombstone    = e.tombstone();
-            out.content_digest = e.content_digest;
-            out.vpath = e.vpath;
-            info.entries.push_back(std::move(out));
-        }
-        return info;
-    }
 } // namespace lux::toolchain

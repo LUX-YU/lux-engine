@@ -21,7 +21,7 @@ target_link_libraries(
     runtime_assets
     PUBLIC
         lux::engine::runtime::runtime_execution
-        lux::engine::resource::asset_core
+        lux::engine::resource::asset
     PRIVATE
         STDEXEC::stdexec
         lux::engine::core::log
@@ -37,7 +37,7 @@ component_add_transitive_commands(
     runtime_assets
     "find_package(stdexec CONFIG REQUIRED)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS asset_core)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 
 lux_classify_target(

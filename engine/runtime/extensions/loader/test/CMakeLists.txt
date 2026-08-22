@@ -62,32 +62,3 @@ add_dependencies(
     minimal_extension_module
     dependent_extension_module
 )
-
-
-if(TARGET runtime_render_scene AND TARGET runtime_render_scene_test_support AND TARGET runtime_execution)
-    add_executable(
-        engine_extensions_test
-        ${CMAKE_SOURCE_DIR}/engine/runtime/render/scene/test/engine_extensions_test.cpp
-    )
-    target_link_libraries(
-        engine_extensions_test
-        PRIVATE
-            runtime_render_scene
-            runtime_render_scene_test_support
-            lux::engine::runtime::runtime_execution
-            lux::engine::runtime::runtime_contribution_host
-    )
-    if(MSVC)
-        target_compile_options(
-            engine_extensions_test
-            PRIVATE /permissive- /Zc:__cplusplus /Zc:preprocessor
-        )
-    endif()
-    add_dependencies(
-        engine_extensions_test
-        minimal_extension_module
-        dependent_extension_module
-        component_extension_module
-        rollback_extension_module
-    )
-endif()

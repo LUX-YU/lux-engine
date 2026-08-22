@@ -3,7 +3,7 @@
 #include <lux/engine/hosts/game_application/GameApplication.hpp>
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
-#include <lux/engine/input/ActionMapper.hpp>
+#include <lux/engine/input/Input.hpp>
 #include <lux/engine/log/Log.hpp>
 
 #include <chrono>
@@ -74,7 +74,12 @@ namespace lux::game
             return false;
         }
 
-        const auto framebuffer = next->window->framebufferSize();
+        std::uint32_t framebuffer_width = 0;
+        std::uint32_t framebuffer_height = 0;
+        next->window->framebufferSize(
+            framebuffer_width,
+            framebuffer_height
+        );
         GameApplicationConfig application_config;
         application_config.title = config.title;
         application_config.game_pak_file = config.pak_file;
@@ -95,9 +100,9 @@ namespace lux::game
         if (!next->application.start(
                 std::move(application_config),
                 native_surface,
-                lux::common::Size2D{
-                    framebuffer.width,
-                    framebuffer.height
+                lux::math::Extent2u{
+                    framebuffer_width,
+                    framebuffer_height
                 }
             ))
         {
@@ -142,8 +147,13 @@ namespace lux::game
             const float dt = std::chrono::duration<float>(now - last).count();
             last = now;
 
-            const auto framebuffer = host.window->framebufferSize();
-            if (framebuffer.width == 0u || framebuffer.height == 0u)
+            std::uint32_t framebuffer_width = 0;
+            std::uint32_t framebuffer_height = 0;
+            host.window->framebufferSize(
+                framebuffer_width,
+                framebuffer_height
+            );
+            if (framebuffer_width == 0u || framebuffer_height == 0u)
             {
                 (void)host.application.pumpIdleFor(
                     std::chrono::milliseconds{10}
@@ -151,21 +161,17 @@ namespace lux::game
                 continue;
             }
 
-            const auto snapshot = host.window->captureInputSnapshot();
-            host.application.inputMapper().update(
-                snapshot,
-                host.application.inputContexts(),
-                dt
-            );
+            host.application.input().sample(*host.window);
+            host.application.input().evaluate(dt);
 
             if (host.config.dump_graph && ++frame_count == 120u)
                 dumpRenderGraph();
 
             (void)host.application.tick(
                 dt,
-                lux::common::Size2D{
-                    framebuffer.width,
-                    framebuffer.height
+                lux::math::Extent2u{
+                    framebuffer_width,
+                    framebuffer_height
                 }
             );
         }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/math/Position.hpp>
+
 #include <lux/engine/authoring/world/visibility.h>
 #include <lux/engine/authoring/world/WorldSource.hpp>
 
@@ -73,7 +75,7 @@ namespace lux::authoring
     applyWorldTerrainBrush(
         const WorldSourceDocument& root,
         std::span<const WorldTerrainPageDocument> pages,
-        const lux::spatial::Position3D& center,
+        const lux::math::Position3d& center,
         const WorldTerrainBrush& brush);
 
     struct WorldTerrainHeightmap16 final

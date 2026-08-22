@@ -4,8 +4,7 @@
 
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/authoring/world/WorldPartition.hpp>
-#include <lux/engine/resource/entity_scene/EntityScene.hpp>
-#include <lux/engine/resource/spatial/Spatial.hpp>
+#include <lux/engine/math/Position.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
 
 #include <uuid.h>
@@ -46,7 +45,7 @@ namespace lux::authoring
 
     struct WorldActorSourceReference final
     {
-        lux::entity_scene::PersistentEntityId target;
+        WorldActorId target;
         EWorldActorReferenceKind kind{
             EWorldActorReferenceKind::OPTIONAL_REFERENCE};
 
@@ -67,16 +66,16 @@ namespace lux::authoring
     };
 
     using WorldActorSourcePosition = std::variant<
-        lux::spatial::Position2D,
-        lux::spatial::Position3D>;
+        lux::math::Position2d,
+        lux::math::Position3d>;
 
     /// LXAD v2 is an Authoring-only, single-Actor tagged document. The opaque
     /// NameTable is required by TaggedPropertyReader; Toolchain validates and
     /// remaps the records directly into LXES component columns.
     struct WorldActorDocument final
     {
-        lux::entity_scene::EntitySceneId world;
-        lux::entity_scene::PersistentEntityId actor;
+        WorldId world;
+        WorldActorId actor;
         std::string actor_class;
         lux::authoring::PartitionSpaceId space;
         WorldActorSourcePosition position;
@@ -84,7 +83,7 @@ namespace lux::authoring
         /// root. `position` is always the absolute placement used by the
         /// Authoring partition index; a Transform component may additionally
         /// carry the relative value used after parent relocation.
-        std::optional<lux::entity_scene::PersistentEntityId> transform_parent;
+        std::optional<WorldActorId> transform_parent;
         std::vector<lux::authoring::DataLayerId> data_layers;
         std::vector<WorldActorSourceReference> references;
         std::vector<std::byte> name_table;
@@ -115,7 +114,7 @@ namespace lux::authoring
 
     struct WorldInstancePageDocument final
     {
-        lux::entity_scene::EntitySceneId world;
+        WorldId world;
         lux::authoring::InstanceSetId instance_set;
         lux::authoring::PartitionSpaceId space;
         lux::authoring::WorldCellKey cell;
@@ -129,7 +128,7 @@ namespace lux::authoring
 
     struct WorldTerrainPageDocument final
     {
-        lux::entity_scene::EntitySceneId world;
+        WorldId world;
         lux::authoring::TerrainSetId terrain_set;
         lux::authoring::PartitionSpaceId space;
         lux::authoring::WorldCellKey cell;
@@ -160,7 +159,7 @@ namespace lux::authoring
 
     struct WorldTilePageDocument final
     {
-        lux::entity_scene::EntitySceneId world;
+        WorldId world;
         lux::authoring::TilemapId tilemap;
         lux::authoring::PartitionSpaceId space;
         lux::authoring::WorldCellKey cell;
@@ -191,7 +190,7 @@ namespace lux::authoring
 
     struct WorldPixelPageDocument final
     {
-        lux::entity_scene::EntitySceneId world;
+        WorldId world;
         lux::authoring::PixelFieldId field;
         lux::authoring::PartitionSpaceId space;
         lux::authoring::WorldCellKey cell;
@@ -208,14 +207,14 @@ namespace lux::authoring
     /// without materializing their ECS proxy.
     struct WorldActorSourceDescriptor final
     {
-        lux::entity_scene::PersistentEntityId id;
+        WorldActorId id;
         std::string display_name;
         std::string actor_class;
         std::string document_path;
         lux::cxx::algorithm::Sha256Digest content_digest;
         lux::authoring::PartitionSpaceId space;
         WorldActorSourcePosition position;
-        std::optional<lux::entity_scene::PersistentEntityId> transform_parent;
+        std::optional<WorldActorId> transform_parent;
         std::array<float, 3u> bounds_half_extent{};
         std::vector<lux::authoring::DataLayerId> data_layers;
         std::vector<WorldActorSourceReference> references;
@@ -282,26 +281,47 @@ namespace lux::authoring
             const WorldInstanceSetSourceDescriptor&) = default;
     };
 
+    struct WorldSceneFeatureRequest final
+    {
+        WorldSceneFeatureId id;
+        std::uint32_t config_schema_version{0u};
+        std::vector<std::byte> config;
+
+        friend bool operator==(
+            const WorldSceneFeatureRequest&,
+            const WorldSceneFeatureRequest&) = default;
+    };
+
+    struct WorldRequiredExtension final
+    {
+        WorldExtensionId id;
+        std::uint16_t required_major{0u};
+        std::uint16_t minimum_minor{0u};
+
+        friend bool operator==(
+            const WorldRequiredExtension&,
+            const WorldRequiredExtension&) = default;
+    };
+
     struct WorldSourceDocument final
     {
-        lux::entity_scene::EntitySceneId world;
-        /// Dimension-neutral scene contributions. Spatial selection, render,
-        /// physics and navigation configuration belongs to each contribution,
+        WorldId world;
+        /// Dimension-neutral scene features. Spatial selection, render,
+        /// physics and navigation configuration belongs to each feature,
         /// never to this Authoring root.
-        std::vector<lux::entity_scene::SceneContribution> contributions;
+        std::vector<WorldSceneFeatureRequest> contributions;
         std::vector<lux::authoring::PartitionSpaceDescriptor> spaces;
         /// Authoring membership vocabulary only. Runtime loading/activation
         /// policy belongs to a contribution, not to the LXWA root.
         std::vector<lux::authoring::DataLayerId> data_layers;
-        std::vector<lux::entity_scene::RequiredExtension>
-            required_extensions;
+        std::vector<WorldRequiredExtension> required_extensions;
         std::vector<WorldInstanceSetSourceDescriptor> instance_sets;
         std::vector<WorldDescriptorPageReference> descriptor_pages;
     };
 
     struct WorldDescriptorPageDocument final
     {
-        lux::entity_scene::EntitySceneId world;
+        WorldId world;
         uuids::uuid id{};
         lux::authoring::PartitionSpaceId space;
         lux::authoring::WorldMacroCoord macro;

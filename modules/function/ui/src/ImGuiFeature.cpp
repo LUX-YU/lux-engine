@@ -28,7 +28,7 @@ namespace lux::ui
     void ImGuiFeature::addPasses(lux::render::RGBuilder &builder)
     {
         builder.addPass("ImGuiOverlay", lux::render::ERGPassType::GRAPHICS)
-            .write(builder.referenceTexture(init_config_.color_target), ::lux::common::ETextureRole::COLOR_ATTACHMENT)
+            .write(builder.referenceTexture(init_config_.color_target), ::lux::render::ETextureRole::COLOR_ATTACHMENT)
             .setRecorder(
                 [this](const lux::render::PassRecordContext &ctx)
                 {

@@ -109,7 +109,7 @@ namespace lux::render
             // 绕过 RenderPassPlanner 的 VK_FORMAT_UNDEFINED 报错门,把错格式烙进
             // VkPipeline(dynamic rendering 格式失配,无诊断)。
             const auto color_fmt = color_slot.format;
-            if (color_fmt == lux::common::ETextureFormat::UNDEFINED)
+            if (color_fmt == lux::rdesc::ETextureFormat::UNDEFINED)
             {
                 ctx_.reportError(renderError<err::graph::SlotFormatUnmapped>(
                                      static_cast<std::uint32_t>(TargetSlot::SCENE_COLOR),
@@ -148,7 +148,7 @@ namespace lux::render
                 TargetSlot::SCENE_COLOR, "SceneColor", bb_desc, bb_import);
 
             RGTextureDescription depth_desc = RGTextureDescription::Relative(
-                1.0f, 1.0f, lux::common::ETextureFormat::D32_SFLOAT);
+                1.0f, 1.0f, lux::rdesc::ETextureFormat::D32_SFLOAT);
             depth_desc.usage = static_cast<uint32_t>(ERGTextureUsageBits::DEPTH_STENCIL)
                              | static_cast<uint32_t>(ERGTextureUsageBits::SAMPLED)
                              // INPUT_ATTACHMENT: the local-read merged scope reads depth
@@ -181,7 +181,7 @@ namespace lux::render
                 }
                 const auto slot_desc = defaultTargetSlotDesc(slot);
                 if (slot_desc.format ==
-                    lux::common::ETextureFormat::UNDEFINED)
+                    lux::rdesc::ETextureFormat::UNDEFINED)
                 {
                     continue;
                 }
@@ -223,7 +223,7 @@ namespace lux::render
                 imp.final_layout = toVkImageLayout(sd.final_state);
                 imp.preserve_content = sd.preserve_content;
                 const auto extra_fmt = sd.format;
-                if (extra_fmt == lux::common::ETextureFormat::UNDEFINED)
+                if (extra_fmt == lux::rdesc::ETextureFormat::UNDEFINED)
                 {
                     ctx_.reportError(renderError<err::graph::SlotFormatUnmapped>(
                                          static_cast<std::uint32_t>(extra_slot),

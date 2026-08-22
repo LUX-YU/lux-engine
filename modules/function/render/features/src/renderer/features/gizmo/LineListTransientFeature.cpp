@@ -122,8 +122,8 @@ namespace lux::render
     void LineListTransientFeature::addPasses(RGBuilder &builder)
     {
         builder.addPass("ForwardLineListTransient", ERGPassType::GRAPHICS)
-            .write(builder.referenceTexture(cfg_.color_target), lux::common::ETextureRole::COLOR_ATTACHMENT)
-            .write(builder.referenceTexture(cfg_.depth_target), lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+            .write(builder.referenceTexture(cfg_.color_target), lux::render::ETextureRole::COLOR_ATTACHMENT)
+            .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
             .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::Gizmo)))

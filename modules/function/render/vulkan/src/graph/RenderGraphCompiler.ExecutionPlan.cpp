@@ -93,7 +93,7 @@ namespace lux::render
             {
             uint32_t color_slot_idx = 0;
             for (const auto& tex_ref : cpass.pass->textures) {
-                if (tex_ref.role == lux::common::ETextureRole::COLOR_ATTACHMENT
+                if (tex_ref.role == lux::render::ETextureRole::COLOR_ATTACHMENT
                     && color_slot_idx < group.key.color_count)
                 {
                     ViewPatch vp{};
@@ -102,7 +102,7 @@ namespace lux::render
                     vp.color_slot = static_cast<uint8_t>(color_slot_idx++);
                     patches.push_back(vp);
                 }
-                else if (tex_ref.role == lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                else if (tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                 {
                     ViewPatch vp{};
                     vp.resource_index = tex_ref.resource.index;
@@ -402,7 +402,7 @@ namespace lux::render
                                                     : std::numeric_limits<uint32_t>::max();
                 for (const auto& tr : cpass.pass->textures)
                 {
-                    if (tr.role == lux::common::ETextureRole::COLOR_ATTACHMENT)
+                    if (tr.role == lux::render::ETextureRole::COLOR_ATTACHMENT)
                     {
                         const uint32_t cr = tr.resource.index;
                         VkAttachmentLoadOp op = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -415,7 +415,7 @@ namespace lux::render
                         gp.pass_color_load_ops.push_back(op);
                         gp.pass_color_store_ops.push_back(derive_store_op(cr, self_order));
                     }
-                    else if (tr.role == lux::common::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
+                    else if (tr.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                     {
                         const uint32_t dr = tr.resource.index;
                         if (dr < res_count)
@@ -484,7 +484,7 @@ namespace lux::render
                     uint32_t decl = 0;
                     for (const auto& tr : cpass.pass->textures)
                     {
-                        if (tr.role != lux::common::ETextureRole::COLOR_ATTACHMENT)
+                        if (tr.role != lux::render::ETextureRole::COLOR_ATTACHMENT)
                         {
                             continue;
                         }

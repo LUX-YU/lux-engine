@@ -69,7 +69,7 @@ namespace lux::runtime::entity_scene
         {
             ESlotState state{ESlotState::EMPTY};
             std::unique_ptr<SectionCommitReceipt> receipt;
-            lux::meta::RegistryPublicationReservation
+            lux::ecs::RegistryPublicationReservation
                 publication_reservation;
             std::size_t reserved_entities{0u};
             std::size_t reserved_parents{0u};
@@ -109,7 +109,7 @@ namespace lux::runtime::entity_scene
             slot.reserved_components.clear();
         }
 
-        lux::meta::EntityRegistry* registry{nullptr};
+        lux::ecs::Registry* registry{nullptr};
         lux::ecs::PersistentEntityIndex& persistent_entities;
         std::map<uuids::uuid, Slot> slots;
         std::size_t armed_entities{0u};
@@ -159,7 +159,7 @@ namespace lux::runtime::entity_scene
     lux::cxx::expected<void, EntityBatchFailure>
     EntityBatchMaterializer::arm(
         PreparedEntityBatch& batch,
-        lux::meta::EntityRegistry& live) noexcept
+        lux::ecs::Registry& live) noexcept
     {
         if (!batch.impl_ ||
             batch.impl_->state != EPreparedEntityBatchState::READY)
@@ -268,8 +268,8 @@ namespace lux::runtime::entity_scene
         {
             if (!image.entities[ordinal].persistent_id)
                 continue;
-            persistent_ids.push_back(detail::toRuntimePersistentId(
-                *image.entities[ordinal].persistent_id));
+            persistent_ids.push_back(
+                *image.entities[ordinal].persistent_id);
             persistent_ordinals.push_back(ordinal);
         }
         const auto persistent_count = persistent_ids.size();
@@ -429,7 +429,7 @@ namespace lux::runtime::entity_scene
 
     const SectionCommitReceipt& EntityBatchMaterializer::publishAtBarrier(
         PreparedEntityBatch& batch,
-        lux::meta::EntityRegistry& live) noexcept
+        lux::ecs::Registry& live) noexcept
     {
         if (!batch.impl_ ||
             batch.impl_->state != EPreparedEntityBatchState::ARMED ||
@@ -545,7 +545,7 @@ namespace lux::runtime::entity_scene
     lux::cxx::expected<void, EntityBatchFailure>
     EntityBatchMaterializer::cancelArmed(
         PreparedEntityBatch& batch,
-        lux::meta::EntityRegistry& live) noexcept
+        lux::ecs::Registry& live) noexcept
     {
         if (!batch.impl_ ||
             batch.impl_->state != EPreparedEntityBatchState::ARMED)
@@ -592,7 +592,7 @@ namespace lux::runtime::entity_scene
     EntityBatchMaterializer::deactivate(
         const lux::ecs::scene_format::EntitySectionId& section,
         std::uint64_t generation,
-        lux::meta::EntityRegistry& live) noexcept
+        lux::ecs::Registry& live) noexcept
     {
         if (impl_->registry && impl_->registry != &live)
         {

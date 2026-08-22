@@ -17,6 +17,7 @@ int main()
     lux::game::LaunchManifest manifest;
     manifest.game_pak = "game.pak";
     manifest.base_pak = "base.pak";
+    manifest.boot_scene = "Scenes/Boot";
     manifest.render_capacity.set(
         lux::render::kActiveInstancesCapacity,
         lux::render::CapacityValue::exact(100'000u));
@@ -27,6 +28,7 @@ int main()
     assert(roundtrip);
     assert(roundtrip->game_pak == "game.pak");
     assert(roundtrip->base_pak == "base.pak");
+    assert(roundtrip->boot_scene == "Scenes/Boot");
 
     const auto* instances = roundtrip->render_capacity.find(
         lux::render::kActiveInstancesCapacity);
@@ -53,6 +55,22 @@ int main()
     const auto legacy = lux::game::LaunchManifest::loadFromFile(manifest_path);
     assert(legacy);
     assert(legacy->base_pak == "engine.pak");
+
+    // A boot Scene is a product decision and must never be inferred from Pak
+    // contents by the reusable Resource layer.
+    {
+        std::ofstream missing_boot(
+            manifest_path,
+            std::ios::binary | std::ios::trunc);
+        missing_boot << "[runtime]\n"
+                     << "schema = 5\n"
+                     << "title = \"Missing boot Scene\"\n"
+                     << "game_pak = \"game.pak\"\n"
+                     << "base_pak = \"base.pak\"\n"
+                     << "\n[capacity]\n"
+                     << "domains = []\n";
+    }
+    assert(!lux::game::LaunchManifest::loadFromFile(manifest_path));
 
     manifest.render_capacity.set(
         lux::render::kActiveInstancesCapacity,

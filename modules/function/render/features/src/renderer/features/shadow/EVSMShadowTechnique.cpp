@@ -146,8 +146,8 @@ namespace lux::render
         builder.addPass("EVSMBlurH", ERGPassType::COMPUTE)
             .setComputePipeline(blur_h)
             .bindTransientDS(0, blur_h_tds)
-            .read(builder.referenceTexture("evsm_moment_atlas"),  lux::common::ETextureRole::SAMPLED)
-            .write(builder.referenceTexture("evsm_scratch_atlas"), lux::common::ETextureRole::UNORDERED_ACCESS)
+            .read(builder.referenceTexture("evsm_moment_atlas"),  lux::render::ETextureRole::SAMPLED)
+            .write(builder.referenceTexture("evsm_scratch_atlas"), lux::render::ETextureRole::UNORDERED_ACCESS)
             .after(kMeshShadowDrawPassName)
             .setKernelFn(blur_kernel);
 
@@ -165,8 +165,8 @@ namespace lux::render
         builder.addPass(kEvsmBlurVPassName, ERGPassType::COMPUTE)
             .setComputePipeline(blur_v)
             .bindTransientDS(0, blur_v_tds)
-            .read(builder.referenceTexture("evsm_scratch_atlas"),  lux::common::ETextureRole::SAMPLED)
-            .write(builder.referenceTexture("evsm_moment_atlas"), lux::common::ETextureRole::UNORDERED_ACCESS)
+            .read(builder.referenceTexture("evsm_scratch_atlas"),  lux::render::ETextureRole::SAMPLED)
+            .write(builder.referenceTexture("evsm_moment_atlas"), lux::render::ETextureRole::UNORDERED_ACCESS)
             .after("EVSMBlurH")
             .setKernelFn(blur_kernel);
     }

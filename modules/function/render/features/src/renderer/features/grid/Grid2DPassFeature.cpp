@@ -63,7 +63,7 @@ namespace lux::render
         // (Overlay, 7000), so the grid sits beneath sprites/tilemaps/fields.
         builder.addPass("Grid2DUnder", ERGPassType::GRAPHICS)
             .write(builder.referenceTexture(cfg_.color_target),
-                   lux::common::ETextureRole::COLOR_ATTACHMENT)
+                   lux::render::ETextureRole::COLOR_ATTACHMENT)
             .setPipeline(pipeline_)
             .bindSceneDS()
             .setKernelFn(record(false))
@@ -74,7 +74,7 @@ namespace lux::render
         // write-after-write tie-break orders this pass after the content.
         builder.addPass("Grid2DOver", ERGPassType::GRAPHICS)
             .write(builder.referenceTexture(cfg_.color_target),
-                   lux::common::ETextureRole::COLOR_ATTACHMENT)
+                   lux::render::ETextureRole::COLOR_ATTACHMENT)
             .setPipeline(pipeline_)
             .bindSceneDS()
             .setKernelFn(record(true))

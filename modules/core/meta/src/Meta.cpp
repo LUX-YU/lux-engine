@@ -1,5 +1,4 @@
 #include <lux/engine/meta/Meta.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
 #include <cassert>
 #include <cstdio>
 #include <utility>

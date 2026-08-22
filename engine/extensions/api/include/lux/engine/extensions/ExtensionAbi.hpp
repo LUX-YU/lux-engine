@@ -1,14 +1,25 @@
 #pragma once
-/**
- * @file ExtensionAbi.hpp
- * @brief Stable public include path for the Lux Engine Extension ABI.
- *
- * This is intentionally a compatibility forwarding header while the lower
- * layers are being disentangled from the historical core/extension_abi
- * component. Keeping exactly one definition of the ABI types prevents a
- * translation unit from seeing duplicate declarations through mixed old and
- * new include paths. The definitions move here only after Resource and ECS no
- * longer depend on the legacy component.
- */
+/** @file ExtensionAbi.hpp @brief Aggregated Lux Engine Extension ABI v4. */
 
-#include <lux/engine/core/extension_abi/ModuleAbi.hpp>
+#include <lux/engine/extensions/ExtensionDescriptor.hpp>
+#include <lux/engine/extensions/ExtensionId.hpp>
+#include <lux/engine/extensions/ExtensionRegistrarFwd.hpp>
+#include <lux/engine/extensions/ExtensionResult.hpp>
+#include <lux/engine/extensions/ExtensionVersion.hpp>
+
+namespace lux::extensions
+{
+    using GetExtensionModuleV4Fn =
+        const ExtensionModuleDescriptorV4*() noexcept;
+    using RegisterRuntimeContributionsV4Fn =
+        ExtensionRegistrationResult(RuntimeContributionRegistrar&) noexcept;
+    using RegisterEditorContributionsV4Fn =
+        ExtensionRegistrationResult(EditorContributionRegistrar&) noexcept;
+
+    inline constexpr const char* kGetExtensionModuleV4Symbol =
+        "luxGetExtensionModuleV4";
+    inline constexpr const char* kRegisterRuntimeContributionsV4Symbol =
+        "luxRegisterRuntimeContributionsV4";
+    inline constexpr const char* kRegisterEditorContributionsV4Symbol =
+        "luxRegisterEditorContributionsV4";
+}

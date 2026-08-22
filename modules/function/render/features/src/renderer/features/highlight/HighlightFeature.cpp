@@ -213,7 +213,7 @@ namespace lux::render
 
         // ---- R8 highlight mask (transient; format RG-inferred at bake) ----
         RGTextureDescription mask_desc =
-            RGTextureDescription::Relative(1.0f, 1.0f, lux::common::ETextureFormat::R8_UNORM);
+            RGTextureDescription::Relative(1.0f, 1.0f, lux::rdesc::ETextureFormat::R8_UNORM);
         mask_desc.usage = static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT)
                         | static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::SAMPLED);
         auto mask_rg = builder.createTexture(cfg_.mask_target, mask_desc);
@@ -254,7 +254,7 @@ namespace lux::render
 
         // ---- Mask draw (depth-less, R8) ----
         auto draw_pass = builder.addPass("HighlightMaskDraw", ERGPassType::GRAPHICS)
-            .write(mask_rg, lux::common::ETextureRole::COLOR_ATTACHMENT)
+            .write(mask_rg, lux::render::ETextureRole::COLOR_ATTACHMENT)
             .setPipeline(bucket_pipelines_.pick(0u, variant_buckets[0]))
             .bindSceneDS()
             .useEngineSet(EDescriptorSetSlot::Instance)
@@ -305,7 +305,7 @@ namespace lux::render
 
         // ---- Separable Gaussian blur of the mask (H then V) into two R8 transients ----
         RGTextureDescription blur_desc =
-            RGTextureDescription::Relative(1.0f, 1.0f, lux::common::ETextureFormat::R8_UNORM);
+            RGTextureDescription::Relative(1.0f, 1.0f, lux::rdesc::ETextureFormat::R8_UNORM);
         blur_desc.usage = static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT)
                         | static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::SAMPLED);
         auto blur_h_rg = builder.createTexture("HighlightBlurH", blur_desc);

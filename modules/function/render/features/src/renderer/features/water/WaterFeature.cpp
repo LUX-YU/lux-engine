@@ -402,10 +402,10 @@ namespace lux::render
             });
         auto& context = renderContext();
         builder.addPass("WaterComposite", ERGPassType::GRAPHICS)
-            .read(color, lux::common::ETextureRole::SAMPLED)
-            .read(depth, lux::common::ETextureRole::SAMPLED)
+            .read(color, lux::render::ETextureRole::SAMPLED)
+            .read(depth, lux::render::ETextureRole::SAMPLED)
             .read(surfaces, ERGBufferRole::STORAGE)
-            .write(output, lux::common::ETextureRole::COLOR_ATTACHMENT)
+            .write(output, lux::render::ETextureRole::COLOR_ATTACHMENT)
             .setPipeline(pipeline_)
             .bindSceneDS()
             .bindTransientDS(input_slot_, descriptors)

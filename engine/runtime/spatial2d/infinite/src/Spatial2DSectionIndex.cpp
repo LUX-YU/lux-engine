@@ -62,20 +62,20 @@ namespace lux::runtime::spatial2d
     }
 
     lux::cxx::expected<
-        lux::spatial::GridCoord2i64,
+        lux::math::GridCoord2i64,
         Spatial2DIndexFailure>
     spatial2DSectionCoordinate(
-        const lux::spatial::Position2D& position,
+        const lux::math::Position2d& position,
         double section_world_size) noexcept
     {
-        if (!lux::spatial::isFinite(position) ||
+        if (!lux::math::isFinite(position) ||
             !std::isfinite(section_world_size) ||
             !(section_world_size > 0.0))
         {
             return lux::cxx::unexpected(Spatial2DIndexFailure{
                 .code = ESpatial2DIndexError::INVALID_POSITION});
         }
-        lux::spatial::GridCoord2i64 result;
+        lux::math::GridCoord2i64 result;
         if (!positionToCoordinate(
                 position.x, section_world_size, result.x) ||
             !positionToCoordinate(
@@ -142,7 +142,7 @@ namespace lux::runtime::spatial2d
     }
 
     const lux::ecs::scene_format::EntitySectionId* Spatial2DSectionIndex::find(
-        lux::spatial::GridCoord2i64 coordinate) const noexcept
+        lux::math::GridCoord2i64 coordinate) const noexcept
     {
         const Spatial2DSectionIndexEntry key{coordinate, {}};
         const auto found = std::lower_bound(
@@ -154,7 +154,7 @@ namespace lux::runtime::spatial2d
 
     lux::cxx::expected<Spatial2DWindow, Spatial2DIndexFailure>
     Spatial2DSectionIndex::window(
-        const lux::spatial::Position2D& position,
+        const lux::math::Position2d& position,
         double section_world_size) const noexcept
     {
         Spatial2DWindow result;
@@ -173,7 +173,7 @@ namespace lux::runtime::spatial2d
                  x <= kSpatial2DResidentRadius;
                  ++x)
             {
-                lux::spatial::GridCoord2i64 coordinate;
+                lux::math::GridCoord2i64 coordinate;
                 if (!checkedOffset(result.center.x, x, coordinate.x) ||
                     !checkedOffset(result.center.y, y, coordinate.y))
                 {
@@ -219,7 +219,7 @@ namespace lux::runtime::spatial2d
 
     lux::cxx::expected<Spatial2DWindow, Spatial2DIndexFailure>
     Spatial2DSectionSource::window(
-        const lux::spatial::Position2D& position,
+        const lux::math::Position2d& position,
         double section_world_size)
     {
         if (finite_)
@@ -245,7 +245,7 @@ namespace lux::runtime::spatial2d
                  x <= kSpatial2DResidentRadius;
                  ++x)
             {
-                lux::spatial::GridCoord2i64 coordinate;
+                lux::math::GridCoord2i64 coordinate;
                 if (!checkedOffset(result.center.x, x, coordinate.x) ||
                     !checkedOffset(result.center.y, y, coordinate.y))
                 {

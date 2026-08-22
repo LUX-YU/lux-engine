@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/ecs/render/RenderExtractionResources.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
-#include <lux/engine/meta/LuxObject.hpp>
+#include <lux/engine/ecs/Registry.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -17,7 +17,7 @@ namespace lux::ecs
     {
     public:
         RenderSubsystemContext(
-            lux::meta::EntityRegistry& registry,
+            lux::ecs::Registry& registry,
             EcsCommandWriter           commands,
             SceneRenderBinding&        render,
             ActiveRenderView&          active_view,
@@ -33,7 +33,7 @@ namespace lux::ecs
         {
         }
 
-        [[nodiscard]] lux::meta::EntityRegistry& registry() const noexcept
+        [[nodiscard]] lux::ecs::Registry& registry() const noexcept
         {
             return registry_.get();
         }
@@ -60,7 +60,7 @@ namespace lux::ecs
         }
 
     private:
-        std::reference_wrapper<lux::meta::EntityRegistry> registry_;
+        std::reference_wrapper<lux::ecs::Registry> registry_;
         EcsCommandWriter                               commands_{};
         std::reference_wrapper<SceneRenderBinding>     render_;
         std::reference_wrapper<ActiveRenderView>       active_view_;

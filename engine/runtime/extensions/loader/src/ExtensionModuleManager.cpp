@@ -181,10 +181,10 @@ namespace lux::extensions
             result.module_->library().get_symbol<
                 InstallRenderFeaturesV5Fn>(
                 kInstallRenderFeaturesV5Symbol);
-        result.editor_entry_ =
+        result.editor_panels_entry_ =
             result.module_->library().get_symbol<
-                RegisterEditorContributionsV5Fn>(
-                kRegisterEditorContributionsV5Symbol);
+                InstallEditorPanelsV5Fn>(
+                kInstallEditorPanelsV5Symbol);
         return result;
     }
 
@@ -337,7 +337,7 @@ namespace lux::extensions
                 std::move(prepared.dependencies_),
                 prepared.world_systems_entry_,
                 prepared.render_features_entry_,
-                prepared.editor_entry_});
+                prepared.editor_panels_entry_});
         }
         return committed;
     }
@@ -407,7 +407,7 @@ namespace lux::extensions
         return {
             record->world_systems_entry,
             record->render_features_entry,
-            record->editor_entry,
+            record->editor_panels_entry,
             record->module};
     }
 

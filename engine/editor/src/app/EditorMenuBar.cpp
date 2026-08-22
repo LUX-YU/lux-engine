@@ -308,18 +308,16 @@ namespace lux::editor
                 // Every registered window gets a visibility checkbox — no hardcoded
                 // list, so a newly registered panel (built-in or plugin) appears here
                 // automatically. Display label is the panel's live title().
-                auto tools = editor_.tools();
-                for (const auto& panel : tools.snapshot())
+                auto& panels = editor_.panels();
+                for (const auto& panel : panels.snapshot())
                 {
-                    if (!panel.active)
-                        continue;
                     bool visible = panel.visible;
                     if (ImGui::MenuItem(
                             panel.display_name.c_str(),
                             nullptr,
                             &visible))
                     {
-                        (void)tools.requestVisible(
+                        (void)panels.setVisible(
                             panel.panel.view(),
                             visible);
                     }

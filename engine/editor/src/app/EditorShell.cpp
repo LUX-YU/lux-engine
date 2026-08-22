@@ -132,50 +132,50 @@ namespace lux::editor
 
     AssetBrowser* EditorShell::assetBrowser() noexcept
     {
-        return tool_host_ ? static_cast<AssetBrowser*>(
-            tool_host_->activePanel(kAssetBrowser)) : nullptr;
+        return panels_ ? static_cast<AssetBrowser*>(
+            panels_->find(kAssetBrowser)) : nullptr;
     }
 
     InspectorPanel* EditorShell::inspectorPanel() noexcept
     {
-        return tool_host_ ? static_cast<InspectorPanel*>(
-            tool_host_->activePanel(kInspector)) : nullptr;
+        return panels_ ? static_cast<InspectorPanel*>(
+            panels_->find(kInspector)) : nullptr;
     }
 
     lux::ui::SceneViewportPanel* EditorShell::viewportPanel() noexcept
     {
-        return tool_host_ ? static_cast<lux::ui::SceneViewportPanel*>(
-            tool_host_->activePanel(kViewport)) : nullptr;
+        return panels_ ? static_cast<lux::ui::SceneViewportPanel*>(
+            panels_->find(kViewport)) : nullptr;
     }
 
     HierarchyPanel* EditorShell::hierarchyPanel() noexcept
     {
-        return tool_host_ ? static_cast<HierarchyPanel*>(
-            tool_host_->activePanel(kHierarchy)) : nullptr;
+        return panels_ ? static_cast<HierarchyPanel*>(
+            panels_->find(kHierarchy)) : nullptr;
     }
 
     SceneSettingsPanel* EditorShell::sceneSettingsPanel() noexcept
     {
-        return tool_host_ ? static_cast<SceneSettingsPanel*>(
-            tool_host_->activePanel(kSceneSettings)) : nullptr;
+        return panels_ ? static_cast<SceneSettingsPanel*>(
+            panels_->find(kSceneSettings)) : nullptr;
     }
 
     FlowGraphPanel* EditorShell::flowGraphPanel() noexcept
     {
-        return tool_host_ ? static_cast<FlowGraphPanel*>(
-            tool_host_->activePanel(kFlowGraph)) : nullptr;
+        return panels_ ? static_cast<FlowGraphPanel*>(
+            panels_->find(kFlowGraph)) : nullptr;
     }
 
     MaterialGraphPanel* EditorShell::materialGraphPanel() noexcept
     {
-        return tool_host_ ? static_cast<MaterialGraphPanel*>(
-            tool_host_->activePanel(kMaterialGraph)) : nullptr;
+        return panels_ ? static_cast<MaterialGraphPanel*>(
+            panels_->find(kMaterialGraph)) : nullptr;
     }
 
     LuaConsole* EditorShell::scriptEditorPanel() noexcept
     {
-        return tool_host_ ? static_cast<LuaConsole*>(
-            tool_host_->activePanel(kScriptEditor)) : nullptr;
+        return panels_ ? static_cast<LuaConsole*>(
+            panels_->find(kScriptEditor)) : nullptr;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -189,180 +189,81 @@ namespace lux::editor
         lux::flowforge::NodeRegistry& flow_nodes,
         FlowGraphCompiler& compiler)
     {
-        auto add = [this](EditorPanelContributionDescriptor descriptor)
-        {
-            return panel_catalog_.add(std::move(descriptor)).has_value();
-        };
+        panels_ = std::make_unique<EditorPanels>(host.uiSystem());
         auto base = [](std::string_view id, std::string display_name)
         {
-            EditorPanelContributionDescriptor descriptor;
-            descriptor.id = PanelId{std::string{id}};
-            descriptor.display_name = std::move(display_name);
-            descriptor.provider = lux::extensions::ExtensionId{
+            EditorPanelSpec spec;
+            spec.id = PanelId{std::string{id}};
+            spec.display_name = std::move(display_name);
+            spec.provider = lux::extensions::ExtensionId{
                 "org.lux.editor.core"};
-            return descriptor;
+            return spec;
+        };
+        auto add = [this](EditorPanelSpec spec, auto panel)
+        {
+            return panels_->add(
+                std::move(spec),
+                std::unique_ptr<lux::ui::Panel>{std::move(panel)}
+            ).has_value();
         };
 
-        auto descriptor = base(kViewport.name(), "Scene Viewport");
-        descriptor.supports_deactivation = false;
-        descriptor.create = [](const EditorPanelCreateContext&)
-        {
-            return lux::cxx::expected<
-                std::unique_ptr<lux::ui::Panel>,
-                EEditorPanelCreateError>{
+        auto spec = base(kViewport.name(), "Scene Viewport");
+        spec.supports_removal = false;
+        if (!add(
+                std::move(spec),
                 std::make_unique<lux::ui::SceneViewportPanel>(
                     "Scene Viewport",
-                    std::array<float, 2>{1280.f, 720.f})};
-        };
-        if (!add(std::move(descriptor)))
+                    std::array<float, 2>{1280.f, 720.f})))
             return false;
 
-        descriptor = base(kHierarchy.name(), "Hierarchy");
-        descriptor.required_editor_services.push_back(
-            lux::cxx::typeToken<lux::ecs::ComponentTypeCatalog>());
-        descriptor.create = [](const EditorPanelCreateContext& context)
-        {
-            const auto* components =
-                context.find<lux::ecs::ComponentTypeCatalog>();
-            if (!components)
-                return lux::cxx::expected<
-                    std::unique_ptr<lux::ui::Panel>,
-                    EEditorPanelCreateError>{lux::cxx::unexpected(
-                        EEditorPanelCreateError::REQUIRED_SERVICE_MISSING)};
-            return lux::cxx::expected<
-                std::unique_ptr<lux::ui::Panel>,
-                EEditorPanelCreateError>{
+        if (!add(
+                base(kHierarchy.name(), "Hierarchy"),
                 std::make_unique<HierarchyPanel>(
-                    "Hierarchy", *components)};
-        };
-        if (!add(std::move(descriptor)))
+                    "Hierarchy", host.componentTypes())))
             return false;
 
-        descriptor = base(kInspector.name(), "Inspector");
-        descriptor.required_editor_services.push_back(
-            lux::cxx::typeToken<lux::ecs::ComponentTypeCatalog>());
-        descriptor.create = [](const EditorPanelCreateContext& context)
-        {
-            const auto* components =
-                context.find<lux::ecs::ComponentTypeCatalog>();
-            if (!components)
-                return lux::cxx::expected<
-                    std::unique_ptr<lux::ui::Panel>,
-                    EEditorPanelCreateError>{lux::cxx::unexpected(
-                        EEditorPanelCreateError::REQUIRED_SERVICE_MISSING)};
-            return lux::cxx::expected<
-                std::unique_ptr<lux::ui::Panel>,
-                EEditorPanelCreateError>{
+        if (!add(
+                base(kInspector.name(), "Inspector"),
                 std::make_unique<InspectorPanel>(
-                    "Inspector", *components)};
-        };
-        if (!add(std::move(descriptor)))
+                    "Inspector", host.componentTypes())))
             return false;
 
-        descriptor = base(kSceneSettings.name(), "SceneFeatureSetting");
-        descriptor.create = [](const EditorPanelCreateContext&)
-        {
-            return lux::cxx::expected<
-                std::unique_ptr<lux::ui::Panel>,
-                EEditorPanelCreateError>{
-                std::make_unique<SceneSettingsPanel>(
-                    "SceneFeatureSetting")};
-        };
-        if (!add(std::move(descriptor)))
+        if (!add(
+                base(kSceneSettings.name(), "Scene Settings"),
+                std::make_unique<SceneSettingsPanel>("Scene Settings")))
             return false;
 
-        descriptor = base(kAssetBrowser.name(), "Asset Browser");
-        descriptor.supports_deactivation = false;
-        descriptor.required_editor_services.push_back(
-            lux::cxx::typeToken<lux::asset::AssetManager>());
-        descriptor.create = [](const EditorPanelCreateContext& context)
-        {
-            auto assets = context.findShared<lux::asset::AssetManager>();
-            if (!assets)
-                return lux::cxx::expected<
-                    std::unique_ptr<lux::ui::Panel>,
-                    EEditorPanelCreateError>{lux::cxx::unexpected(
-                        EEditorPanelCreateError::REQUIRED_SERVICE_MISSING)};
-            return lux::cxx::expected<
-                std::unique_ptr<lux::ui::Panel>,
-                EEditorPanelCreateError>{
+        spec = base(kAssetBrowser.name(), "Asset Browser");
+        spec.supports_removal = false;
+        if (!add(
+                std::move(spec),
                 std::make_unique<AssetBrowser>(
                     "Asset Browser",
-                    std::move(assets))};
-        };
-        if (!add(std::move(descriptor)))
+                    assets)))
             return false;
 
-        descriptor = base(kMaterialGraph.name(), "Material Graph");
-        descriptor.create = [](const EditorPanelCreateContext&)
-        {
-            return lux::cxx::expected<
-                std::unique_ptr<lux::ui::Panel>,
-                EEditorPanelCreateError>{
-                std::make_unique<MaterialGraphPanel>("Material Graph")};
-        };
-        if (!add(std::move(descriptor)))
+        if (!add(
+                base(kMaterialGraph.name(), "Material Graph"),
+                std::make_unique<MaterialGraphPanel>("Material Graph")))
             return false;
 
-        descriptor = base(kFlowGraph.name(), "Flow Graph");
-        descriptor.create =
-            [&asset_registry, assets, &events, &flow_nodes, &compiler](
-                const EditorPanelCreateContext&)
-            {
-                return lux::cxx::expected<
-                    std::unique_ptr<lux::ui::Panel>,
-                    EEditorPanelCreateError>{
-                    std::make_unique<FlowGraphPanel>(
-                        "Flow Graph",
-                        asset_registry,
-                        assets,
-                        events,
-                        flow_nodes,
-                        compiler)};
-            };
-        if (!add(std::move(descriptor)))
+        if (!add(
+                base(kFlowGraph.name(), "Flow Graph"),
+                std::make_unique<FlowGraphPanel>(
+                    "Flow Graph",
+                    asset_registry,
+                    assets,
+                    events,
+                    flow_nodes,
+                    compiler)))
             return false;
 
-        descriptor = base(kScriptEditor.name(), "Script Editor");
-        descriptor.required_editor_services.push_back(
-            lux::cxx::typeToken<lux::asset::AssetManager>());
-        descriptor.create = [](const EditorPanelCreateContext& context)
-        {
-            auto assets = context.findShared<lux::asset::AssetManager>();
-            if (!assets)
-                return lux::cxx::expected<
-                    std::unique_ptr<lux::ui::Panel>,
-                    EEditorPanelCreateError>{lux::cxx::unexpected(
-                        EEditorPanelCreateError::REQUIRED_SERVICE_MISSING)};
-            auto panel = std::make_unique<LuaConsole>("Script Editor");
-            panel->setAssetManager(std::move(assets));
-            return lux::cxx::expected<
-                std::unique_ptr<lux::ui::Panel>,
-                EEditorPanelCreateError>{std::move(panel)};
-        };
-        if (!add(std::move(descriptor)))
+        auto script = std::make_unique<LuaConsole>("Script Editor");
+        script->setAssetManager(assets);
+        if (!add(
+                base(kScriptEditor.name(), "Script Editor"),
+                std::move(script)))
             return false;
-
-        EditorPanelCreateContext context;
-        if (!context.addShared(host.assetManagerShared()) ||
-            !context.add(host) ||
-            !context.add(host.componentTypes()))
-            return false;
-        tool_host_ = std::make_unique<EditorToolHost>(
-            host.uiSystem(),
-            panel_catalog_,
-            std::move(context),
-            &host.events());
-
-        auto tools = tool_host_->facade();
-        for (const auto& panel : panel_catalog_.all())
-        {
-            auto ticket = tools.requestOpen(panel.id.view());
-            (void)tool_host_->processSafePoint();
-            if (ticket.snapshot().terminal !=
-                lux::extensions::EOperationTerminalState::SUCCEEDED)
-                return false;
-        }
 
         if (!assetBrowser() || !inspectorPanel() || !viewportPanel() ||
             !hierarchyPanel() || !sceneSettingsPanel() ||

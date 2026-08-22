@@ -96,7 +96,7 @@ namespace lux::extensions
     {
         InstallWorldSystemsV5Fn* world_systems{nullptr};
         InstallRenderFeaturesV5Fn* render_features{nullptr};
-        RegisterEditorContributionsV5Fn* editor{nullptr};
+        InstallEditorPanelsV5Fn* editor_panels{nullptr};
         ModuleLease module;
     };
 
@@ -141,7 +141,7 @@ namespace lux::extensions
         std::vector<ExtensionDependency> dependencies_;
         InstallWorldSystemsV5Fn* world_systems_entry_{nullptr};
         InstallRenderFeaturesV5Fn* render_features_entry_{nullptr};
-        RegisterEditorContributionsV5Fn* editor_entry_{nullptr};
+        InstallEditorPanelsV5Fn* editor_panels_entry_{nullptr};
     };
 
     enum class EExtensionModuleCommitError : std::uint8_t
@@ -242,7 +242,7 @@ namespace lux::extensions
             std::vector<ExtensionDependency> dependencies;
             InstallWorldSystemsV5Fn* world_systems_entry{nullptr};
             InstallRenderFeaturesV5Fn* render_features_entry{nullptr};
-            RegisterEditorContributionsV5Fn* editor_entry{nullptr};
+            InstallEditorPanelsV5Fn* editor_panels_entry{nullptr};
         };
 
         [[nodiscard]] Record* findRecord(ExtensionIdView id) noexcept;

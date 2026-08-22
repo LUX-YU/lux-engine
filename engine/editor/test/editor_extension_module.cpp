@@ -1,5 +1,5 @@
 #include <lux/engine/extensions/ExtensionAbi.hpp>
-#include <lux/engine/editor/extensions/EditorContributionRegistrar.hpp>
+#include <lux/engine/editor/extensions/EditorPanels.hpp>
 #include <lux/engine/ui/Panel.hpp>
 
 #include <memory>
@@ -42,22 +42,16 @@ luxGetExtensionModuleV5() noexcept
 
 extern "C" LUX_TEST_EDITOR_EXTENSION_EXPORT
 lux::extensions::ExtensionRegistrationResult
-luxRegisterEditorContributionsV5(
-    lux::extensions::EditorContributionRegistrar& registrar) noexcept
+luxInstallEditorPanelsV5(
+    lux::editor::EditorPanelInstallContext& context) noexcept
 {
-    lux::editor::EditorPanelContributionDescriptor panel;
-    panel.id = lux::editor::PanelId{
+    lux::editor::EditorPanelSpec spec;
+    spec.id = lux::editor::PanelId{
         "org.lux.test.editor-module.panel"};
-    panel.display_name = "Cross-module fixture";
-    panel.create = [](const lux::editor::EditorPanelCreateContext&)
-        -> lux::cxx::expected<
-            std::unique_ptr<lux::ui::Panel>,
-            lux::editor::EEditorPanelCreateError>
-    {
-        return std::unique_ptr<lux::ui::Panel>{
-            std::make_unique<FixturePanel>()};
-    };
-    if (!registrar.panels().add(std::move(panel)))
+    spec.display_name = "Cross-module fixture";
+    if (!context.add(
+            std::move(spec),
+            std::make_unique<FixturePanel>()))
     {
         return {
             lux::extensions::EExtensionRegistrationError::INVALID_CONFIG};

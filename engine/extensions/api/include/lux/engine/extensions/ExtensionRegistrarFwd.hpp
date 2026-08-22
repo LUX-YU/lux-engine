@@ -10,7 +10,7 @@ namespace lux::render
     class FeatureCatalog;
 }
 
-namespace lux::extensions
+namespace lux::editor
 {
-    class EditorContributionRegistrar;
+    class EditorPanelInstallContext;
 }

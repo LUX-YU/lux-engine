@@ -32,7 +32,7 @@ namespace lux::editor
     class SceneController;
     class AssetRegistry;
     class AssetBrowser;
-    class EditorToolHost;
+    class EditorPanels;
 
     class ProjectController
     {
@@ -42,7 +42,7 @@ namespace lux::editor
                           std::shared_ptr<lux::asset::AssetManager> asset_mgr,
                           AssetRegistry&                            asset_registry,
                           AssetBrowser&                             asset_browser,
-                          EditorToolHost&                           tools,
+                          EditorPanels&                            panels,
                           lux::extensions::EngineExtensions&       extensions) noexcept;
 
         ProjectController(const ProjectController&)            = delete;
@@ -91,7 +91,7 @@ namespace lux::editor
         std::shared_ptr<lux::asset::AssetManager> asset_mgr_;
         AssetRegistry&                            asset_registry_;
         AssetBrowser&                             asset_browser_;
-        EditorToolHost&                           tools_;
+        EditorPanels&                            panels_;
         lux::extensions::EngineExtensions&        extensions_;
 
         std::unique_ptr<lux::authoring::Project>                  current_project_;

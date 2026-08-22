@@ -88,6 +88,10 @@ System Registry and installer/catalog/host variants are forbidden.
   being consumed by Runtime does not make a format Runtime implementation.
 - Extension ABI remains in `engine/extensions/api`; dynamic loading and leases
   belong in `engine/runtime/extensions/loader`.
+- Editor panel actions are synchronous main-thread calls. `EditorPanels` owns
+  each concrete `Panel`, its UISystem `PanelRegistration` and its optional
+  provider `ModuleLease`; there is no panel descriptor catalog, activation
+  host, command queue or operation ticket.
 - Directory moves happen after semantic ownership is established. Moves do not
   leave forwarding headers, namespace aliases or target aliases.
 

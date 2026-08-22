@@ -37,7 +37,7 @@
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/runtime/render/scene/RenderDiagnostics.hpp>   // 诊断出口装配(§7.1)
 #include <lux/engine/runtime/extensions/EngineExtensions.hpp>
-#include <lux/engine/editor/extensions/EditorContributionRegistrar.hpp>
+#include <lux/engine/editor/extensions/EditorPanelExtension.hpp>
 #include <lux/engine/runtime/extensions/ExtensionModuleManager.hpp>
 #include <lux/engine/log/Log.hpp>                          // setOutput / LogRecord(事件批C)
 
@@ -864,78 +864,32 @@ namespace lux::editor
                     .async = *runtime_->async_,
                     .components = runtime_->component_types_,
                     .events = runtime_->events_.get(),
-                    .prepare_editor =
-                        lux::extensions::makeEditorRegistrationAdapter(
-                            runtime_->shell_->panelCatalog())},
+                    .install_editor_panels =
+                        lux::extensions::makeEditorPanelInstallAdapter(
+                            runtime_->shell_->panels())},
                 std::vector<
                     lux::extensions::ExtensionModuleRequirement>{});
 
         {
-            auto& tools = runtime_->shell_->toolHost();
-            if (!tools.addService(*runtime_->extensions_) ||
-                !tools.addService(runtime_->shell_->panelCatalog()))
-            {
-                std::fprintf(
-                    stderr,
-                    "[LuxEditor] duplicate or invalid editor service "
-                    "registration\n");
-                shutdown();
-                return false;
-            }
-
-            lux::editor::EditorPanelContributionDescriptor descriptor;
-            descriptor.id = PanelId{
+            lux::editor::EditorPanelSpec spec;
+            spec.id = PanelId{
                 "org.lux.editor.extension-monitor"};
-            descriptor.display_name = "Extension Monitor";
-            descriptor.default_visible = true;
-            descriptor.provider = lux::extensions::ExtensionId{
+            spec.display_name = "Extension Monitor";
+            spec.default_visible = true;
+            spec.provider = lux::extensions::ExtensionId{
                 "org.lux.editor.core"};
-            descriptor.required_editor_services = {
-                lux::cxx::typeToken<
-                    lux::extensions::EngineExtensions>(),
-                lux::cxx::typeToken<
-                    lux::editor::EditorPanelCatalog>()};
-            descriptor.create = [](const auto& context)
-                -> lux::cxx::expected<
-                    std::unique_ptr<lux::ui::Panel>,
-                    lux::editor::EEditorPanelCreateError>
-            {
-                auto* extensions = context.template find<
-                    lux::extensions::EngineExtensions>();
-                auto* panels = context.template find<
-                    lux::editor::EditorPanelCatalog>();
-                if (!extensions || !panels)
-                {
-                    return lux::cxx::unexpected(
-                        lux::editor::EEditorPanelCreateError::
-                            REQUIRED_SERVICE_MISSING);
-                }
-                return std::unique_ptr<lux::ui::Panel>{
-                    std::make_unique<
-                        lux::editor::ExtensionMonitorPanel>(
-                            "Extension Monitor",
-                            *extensions,
-                            *panels)};
-            };
-            if (!runtime_->shell_->panelCatalog().add(
-                    std::move(descriptor)))
+            auto monitor = std::make_unique<
+                lux::editor::ExtensionMonitorPanel>(
+                    "Extension Monitor",
+                    *runtime_->extensions_,
+                    runtime_->shell_->panels());
+            if (!runtime_->shell_->panels().add(
+                    std::move(spec),
+                    std::move(monitor)))
             {
                 std::fprintf(
                     stderr,
                     "[LuxEditor] ExtensionMonitor registration failed\n");
-                shutdown();
-                return false;
-            }
-            const auto ticket = runtime_->shell_->tools().requestOpen(
-                panelId(
-                    "org.lux.editor.extension-monitor"));
-            (void)runtime_->shell_->processToolSafePoint();
-            if (ticket.snapshot().terminal !=
-                lux::extensions::EOperationTerminalState::SUCCEEDED)
-            {
-                std::fprintf(
-                    stderr,
-                    "[LuxEditor] ExtensionMonitor activation failed\n");
                 shutdown();
                 return false;
             }
@@ -1148,7 +1102,7 @@ namespace lux::editor
         runtime_->project_controller_ = std::make_unique<ProjectController>(
             *runtime_->scene_controller_, *runtime_->ui_system_, runtime_->asset_mgr_,
             *runtime_->asset_registry_, *runtime_->shell_->assetBrowser(),
-            runtime_->shell_->toolHost(), *runtime_->extensions_);
+            runtime_->shell_->panels(), *runtime_->extensions_);
 
         // 资产删除流程(列引用者 + 允许强删)。scene_registry 回调每次现取 ——
         // 场景会换;AssetBrowser 的 Delete… 信号由 shell 在 wireAssetServices
@@ -1224,9 +1178,9 @@ namespace lux::editor
     // Panel accessors — the composition lives on the EditorShell;
     // out-of-line because the shell is a src-private type.
     AssetBrowser&                LuxEditor::assetBrowser()   noexcept { return *runtime_->shell_->assetBrowser(); }
-    EditorTools LuxEditor::tools() const noexcept
+    EditorPanels& LuxEditor::panels() noexcept
     {
-        return runtime_->shell_ ? runtime_->shell_->tools() : EditorTools{};
+        return runtime_->shell_->panels();
     }
 
     // Scene accessors — forward to the SceneController (which owns the live
@@ -1575,7 +1529,6 @@ namespace lux::editor
             if (runtime_->project_controller_)
                 (void)runtime_->project_controller_->processSafePoint();
             if (runtime_->shell_)
-                (void)runtime_->shell_->processToolSafePoint();
 
             if (!runtime_->pending_actions_.empty())
             {
@@ -1751,11 +1704,8 @@ namespace lux::editor
             if (!runtime_->material_preview_->releaseGpu())
                 return;
 
-        // Built-in panels are owned by EditorToolHost. Destroy every
-        // controller which borrows a panel before close() clears that host's
-        // active panel storage. Declaration order alone cannot protect this
-        // boundary because close() is an eager protocol, not passive Runtime
-        // destruction.
+        // EditorPanels owns built-in and extension panels. Destroy every
+        // controller which borrows one before clearing the registrations.
         runtime_->asset_watcher_.reset();
         runtime_->asset_delete_.reset();
         runtime_->project_controller_.reset();
@@ -1764,7 +1714,7 @@ namespace lux::editor
         runtime_->menu_bar_.reset();
 
         if (runtime_->shell_)
-            (void)runtime_->shell_->toolHost().close();
+            (void)runtime_->shell_->panels().close();
         if (runtime_->extensions_)
         {
             const auto report = runtime_->close_driver_->close(

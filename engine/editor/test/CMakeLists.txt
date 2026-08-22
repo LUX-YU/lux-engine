@@ -5,11 +5,11 @@
 ## executable runnable from the build tree.
 
 add_executable(
-    editor_tool_catalog_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/editor_tool_catalog_test.cpp
+    editor_panel_install_context_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/editor_panel_install_context_test.cpp
 )
 
-target_link_libraries(editor_tool_catalog_test PRIVATE editor)
+target_link_libraries(editor_panel_install_context_test PRIVATE editor)
 
 add_executable(
     editor_camera_large_coordinate_test
@@ -24,8 +24,8 @@ lux_classify_target(
 target_link_libraries(editor_camera_large_coordinate_test PRIVATE editor)
 
 # A real editor-only MODULE fixture. This locks the public SDK seam across a
-# DLL boundary: ABI descriptor -> editor registrar draft -> atomic catalog
-# publication -> panel factory, while proving it cannot satisfy Runtime.
+# DLL boundary: ABI descriptor -> direct panel install context, while proving
+# it cannot satisfy Runtime and its pending panel pins the provider module.
 add_library(editor_extension_module MODULE editor_extension_module.cpp)
 lux_classify_target(
     TARGET  editor_extension_module

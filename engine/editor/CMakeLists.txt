@@ -96,8 +96,8 @@ set(LUX_EDITOR_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app/LuxEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/app/SpawnRecipes.cpp
     # extensions/
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/EditorTools.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/EditorContributionRegistrar.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/EditorPanels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/EditorPanelExtension.cpp
     # flow/ — editor-side FlowGraph compile coordination
     ${CMAKE_CURRENT_SOURCE_DIR}/src/flow/FlowGraphCompiler.cpp
     # content/

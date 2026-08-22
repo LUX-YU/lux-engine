@@ -15,8 +15,9 @@ namespace lux::extensions
         ExtensionRegistrationResult(lux::ecs::ScheduleBuilder&) noexcept;
     using InstallRenderFeaturesV5Fn =
         ExtensionRegistrationResult(lux::render::FeatureCatalog&) noexcept;
-    using RegisterEditorContributionsV5Fn =
-        ExtensionRegistrationResult(EditorContributionRegistrar&) noexcept;
+    using InstallEditorPanelsV5Fn =
+        ExtensionRegistrationResult(
+            lux::editor::EditorPanelInstallContext&) noexcept;
 
     inline constexpr const char* kGetExtensionModuleV5Symbol =
         "luxGetExtensionModuleV5";
@@ -24,6 +25,6 @@ namespace lux::extensions
         "luxInstallWorldSystemsV5";
     inline constexpr const char* kInstallRenderFeaturesV5Symbol =
         "luxInstallRenderFeaturesV5";
-    inline constexpr const char* kRegisterEditorContributionsV5Symbol =
-        "luxRegisterEditorContributionsV5";
+    inline constexpr const char* kInstallEditorPanelsV5Symbol =
+        "luxInstallEditorPanelsV5";
 }

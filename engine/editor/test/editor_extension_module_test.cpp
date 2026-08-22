@@ -1,9 +1,9 @@
-#include <lux/engine/editor/extensions/EditorContributionRegistrar.hpp>
+#include <lux/engine/editor/extensions/EditorPanels.hpp>
 #include <lux/engine/runtime/extensions/ExtensionModuleManager.hpp>
 
 #include <cstdio>
 #include <filesystem>
-#include <memory>
+#include <vector>
 
 namespace
 {
@@ -44,64 +44,35 @@ int main(int argc, char** argv)
     expect(
         modules.beginRegistration(
             lux::extensions::extensionId("org.lux.test.editor-module")),
-        "the committed module enters its registration transaction");
+        "the committed module enters registration");
 
     auto entrypoints = modules.entrypoints(
         lux::extensions::extensionId("org.lux.test.editor-module"));
     expect(
-        entrypoints.editor != nullptr &&
+        entrypoints.editor_panels != nullptr &&
             entrypoints.world_systems == nullptr &&
             entrypoints.render_features == nullptr,
-        "the module exposes only the editor registrar entrypoint");
+        "the module exposes only the direct editor-panel entrypoint");
 
-    lux::editor::EditorPanelCatalog catalog;
-    auto prepare_editor =
-        lux::extensions::makeEditorRegistrationAdapter(catalog);
-    auto transaction = prepare_editor(entrypoints);
-    expect(transaction.has_value(), "the module builds an unpublished draft");
-    if (!transaction)
-        return 1;
+    const auto baseline_leases = entrypoints.module.use_count();
+    {
+        lux::editor::EditorPanelInstallContext context{entrypoints.module};
+        const auto installed = entrypoints.editor_panels(context);
+        expect(
+            static_cast<bool>(installed),
+            "the DLL directly supplies a real Panel to the install context");
+        expect(
+            entrypoints.module.use_count() > baseline_leases,
+            "pending panel ownership pins the provider ModuleLease");
+    }
     expect(
-        (*transaction)->validate().has_value(),
-        "the editor contribution validates before publication");
-    expect(
-        (*transaction)->commit().has_value(),
-        "the editor contribution publishes atomically");
+        entrypoints.module.use_count() == baseline_leases,
+        "discarding an unpublished install context releases its leases");
+
     expect(
         modules.markReady(
             lux::extensions::extensionId("org.lux.test.editor-module")),
-        "the module becomes READY only after catalog publication");
-
-    auto* descriptor = catalog.find(
-        lux::editor::panelId(
-            "org.lux.test.editor-module.panel"));
-    expect(descriptor != nullptr, "the cross-module panel is discoverable");
-    if (!descriptor)
-        return 1;
-    expect(
-        descriptor->provider.name() == "org.lux.test.editor-module" &&
-            static_cast<bool>(descriptor->module),
-        "the catalog descriptor pins its provider DLL with ModuleLease");
-
-    lux::editor::EditorPanelCreateContext context;
-    auto panel = descriptor->create(context);
-    expect(
-        panel.has_value() && (*panel)->title() == "Cross-module fixture",
-        "factory code in the extension DLL creates a real editor panel");
-
-    // Replaying the registrar produces a second unpublished draft. Validation
-    // rejects it and the already published catalog remains unchanged.
-    auto duplicate = prepare_editor(entrypoints);
-    expect(duplicate.has_value(), "a duplicate draft can still be collected");
-    if (duplicate)
-    {
-        expect(
-            !(*duplicate)->validate(),
-            "duplicate contribution fails during pre-publication validation");
-    }
-    expect(
-        catalog.all().size() == 1u,
-        "a failed editor transaction leaves the live catalog unchanged");
+        "the module becomes READY after direct panel assembly");
 
     auto runtime_mismatch =
         lux::extensions::ExtensionModuleManager::prepare(

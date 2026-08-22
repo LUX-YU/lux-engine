@@ -103,23 +103,10 @@ namespace lux::extensions
         STOPPING
     };
 
-    /// Editor-only catalogue types stay outside runtime_render_scene. This narrow
-    /// transaction is prepared by the editor adapter and participates in the
-    /// same validate-before-publish protocol as runtime catalogues.
-    class LUX_RUNTIME_EXTENSION_ORCHESTRATION_PUBLIC EditorRegistrationTransaction
-    {
-    public:
-        virtual ~EditorRegistrationTransaction() = default;
-        [[nodiscard]] virtual lux::cxx::expected<void, std::uint32_t>
-        validate() noexcept = 0;
-        [[nodiscard]] virtual lux::cxx::expected<void, std::uint32_t>
-        commit() noexcept = 0;
-    };
-
-    using PrepareEditorRegistration = lux::cxx::move_only_function<
-        lux::cxx::expected<
-            std::unique_ptr<EditorRegistrationTransaction>,
-            std::uint32_t>(ExtensionModuleEntrypoints)>;
+    /// Editor-only types stay outside Runtime. The Editor supplies one narrow
+    /// main-thread callback that invokes the module's direct panel entrypoint.
+    using InstallEditorPanels = lux::cxx::move_only_function<
+        lux::cxx::expected<void, std::uint32_t>(ExtensionModuleEntrypoints)>;
 
     struct EngineExtensionServices final
     {
@@ -127,7 +114,7 @@ namespace lux::extensions
         lux::exec::AsyncRuntime& async;
         lux::ecs::ComponentTypeCatalog& components;
         lux::events::DomainEvents* events{nullptr};
-        PrepareEditorRegistration prepare_editor;
+        InstallEditorPanels install_editor_panels;
     };
 
     struct EngineExtensionsCloseReport final

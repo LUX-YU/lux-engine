@@ -123,8 +123,8 @@ int main(int argc, char** argv)
             "luxInstallRenderFeaturesV5",
         "v5 render-feature installation symbol remains compatible");
     check(
-        std::string_view{kRegisterEditorContributionsV5Symbol} ==
-            "luxRegisterEditorContributionsV5",
+        std::string_view{kInstallEditorPanelsV5Symbol} ==
+            "luxInstallEditorPanelsV5",
         "v5 editor registration symbol remains compatible");
     check(argc == 4, "test module paths supplied");
     if (argc != 4)

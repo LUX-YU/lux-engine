@@ -8,7 +8,7 @@
 namespace lux::extensions { class EngineExtensions; }
 namespace lux::editor
 {
-    class EditorPanelCatalog;
+    class EditorPanels;
 
     class LUX_EDITOR_PUBLIC ExtensionMonitorPanel final
         : public lux::ui::Panel
@@ -17,12 +17,12 @@ namespace lux::editor
         ExtensionMonitorPanel(
             std::string title,
             lux::extensions::EngineExtensions& extensions,
-            const EditorPanelCatalog& editor_panels);
+            const EditorPanels& editor_panels);
 
     private:
         void paint() override;
 
         lux::extensions::EngineExtensions* extensions_{nullptr};
-        const EditorPanelCatalog* editor_panels_{nullptr};
+        const EditorPanels* editor_panels_{nullptr};
     };
 }

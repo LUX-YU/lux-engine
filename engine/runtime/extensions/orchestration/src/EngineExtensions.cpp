@@ -319,7 +319,6 @@ namespace lux::extensions
             std::vector<PendingMetadata> pending_metadata;
             std::size_t registration_index{0u};
             std::optional<ModuleMetadataBatch> metadata_batch;
-            std::unique_ptr<EditorRegistrationTransaction> editor_draft;
         };
 
         Impl(
@@ -380,15 +379,6 @@ namespace lux::extensions
                 std::terminate();
             active->metadata_batch->commit();
             active->metadata_batch.reset();
-            if (active->editor_draft)
-            {
-                auto editor = active->editor_draft->commit();
-                active->editor_draft.reset();
-                if (!editor)
-                {
-                    std::terminate();
-                }
-            }
             if (!services.modules.markReady(module->id().view()))
                 std::terminate();
             if (services.events)
@@ -400,7 +390,6 @@ namespace lux::extensions
 
             ++active->registration_index;
             active->metadata_batch.reset();
-            active->editor_draft.reset();
             if (active->registration_index <
                 active->modules_to_register.size())
             {
@@ -444,31 +433,19 @@ namespace lux::extensions
             }
             active->metadata_batch.emplace(std::move(metadata->batch));
             active->pending_metadata.erase(metadata);
-            if (entrypoints.editor)
+            if (entrypoints.editor_panels)
             {
-                if (!services.prepare_editor)
+                if (!services.install_editor_panels)
                 {
                     (void)services.modules.markFailed(module->id().view());
                     finishFailure(EExtensionLoadError::REGISTRATION_FAILED);
                     return;
                 }
-                auto prepared = services.prepare_editor(entrypoints);
-                if (!prepared || !*prepared)
+                auto installed = services.install_editor_panels(entrypoints);
+                if (!installed)
                 {
                     (void)services.modules.markFailed(module->id().view());
                     finishFailure(EExtensionLoadError::REGISTRATION_FAILED);
-                    return;
-                }
-                active->editor_draft = std::move(*prepared);
-            }
-
-            if (active->editor_draft)
-            {
-                if (auto checked = active->editor_draft->validate(); !checked)
-                {
-                    (void)services.modules.markFailed(module->id().view());
-                    finishFailure(
-                        EExtensionLoadError::CATALOG_VALIDATION_FAILED);
                     return;
                 }
             }

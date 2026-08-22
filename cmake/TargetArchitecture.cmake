@@ -657,6 +657,15 @@ function(lux_validate_source_boundaries)
     string(CONCAT retired_extension_v4 "luxGetExtensionModule" "V4")
     string(CONCAT retired_registration_v4
         "luxRegisterRuntimeContributions" "V4")
+    string(CONCAT retired_editor_panel_catalog "EditorPanel" "Catalog")
+    string(CONCAT retired_editor_tool_host "EditorTool" "Host")
+    string(CONCAT retired_editor_tool_ticket "EditorTool" "Ticket")
+    string(CONCAT retired_editor_panel_contribution
+        "EditorPanelContribution" "Descriptor")
+    string(CONCAT retired_editor_registrar
+        "EditorContribution" "Registrar")
+    string(CONCAT retired_editor_entrypoint
+        "luxRegisterEditorContributions" "V5")
     set(retired_semantic_names
         ${retired_scene_contribution}
         ${retired_world_feature}
@@ -665,6 +674,12 @@ function(lux_validate_source_boundaries)
         ${retired_host_kind}
         ${retired_extension_v4}
         ${retired_registration_v4}
+        ${retired_editor_panel_catalog}
+        ${retired_editor_tool_host}
+        ${retired_editor_tool_ticket}
+        ${retired_editor_panel_contribution}
+        ${retired_editor_registrar}
+        ${retired_editor_entrypoint}
     )
     set(report "# retired-semantic|count|required\n")
     foreach(debt_name IN LISTS retired_semantic_names)

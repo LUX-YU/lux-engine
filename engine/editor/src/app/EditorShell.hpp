@@ -1,7 +1,7 @@
 #pragma once
 // ============================================================================
-//  EditorShell — the editor's PANEL COMPOSITION: owns every
-//  default panel contributions, their activation host, and the
+//  EditorShell — the editor's PANEL COMPOSITION: directly constructs every
+//  default panel, owns its UISystem registration, and provides the
 //  inter-panel signal wiring (browser double-click → graph/script editors,
 //  viewport drop → spawn, content-changed → rescan). Pure composition — no
 //  domain state: scene state lives in EditorScene, app services stay on
@@ -15,13 +15,13 @@
 //    wireAssetServices() — the wiring that needs the render session + asset
 //                          services (thumbnails, registry, texture cache,
 //                          material preview) — after those exist.
-//  Destruction is passive RAII: subscriptions die first, then EditorToolHost
-//  unregisters every panel before releasing its owner.
+//  Destruction is passive RAII: subscriptions die first, then EditorPanels
+//  unregisters every panel before releasing its owner or provider lease.
 //
 //  Private editor header (engine/editor/src/app — not installed).
 // ============================================================================
 
-#include <lux/engine/editor/extensions/EditorTools.hpp>
+#include <lux/engine/editor/extensions/EditorPanels.hpp>
 #include <lux/engine/events/DomainEvents.hpp>   // SubscriptionGroup panel_subs_(事件批D)
 
 #include <memory>
@@ -87,26 +87,16 @@ namespace lux::editor
         SceneSettingsPanel*           sceneSettingsPanel() noexcept;
         FlowGraphPanel*              flowGraphPanel() noexcept;
         MaterialGraphPanel*          materialGraphPanel() noexcept;
-        EditorToolHost&              toolHost()          noexcept { return *tool_host_; }
-        EditorTools                  tools() const noexcept { return tool_host_->facade(); }
-        EditorPanelCatalog&          panelCatalog() noexcept
-        {
-            return panel_catalog_;
-        }
-        std::size_t processToolSafePoint(std::size_t budget = 32u) noexcept
-        {
-            return tool_host_ ? tool_host_->processSafePoint(budget) : 0u;
-        }
+        EditorPanels&                panels() noexcept { return *panels_; }
 
     private:
-        EditorPanelCatalog                          panel_catalog_;
-        std::unique_ptr<EditorToolHost>             tool_host_;
+        std::unique_ptr<EditorPanels>               panels_;
 
         [[nodiscard]] LuaConsole* scriptEditorPanel() noexcept;
 
         // 装配层事实订阅(browser/registry 只对目录结构变化重扫;
         // §7.95 的「shell 的 panel_subs_」)。Declared LAST so RAII
-        // unsubscribes before EditorToolHost and its panels die.
+        // unsubscribes before EditorPanels and its panels die.
         // (曾并列一个 ConnectionGroup panel_conns_:viewport asset_dropped 的
         //  Signal 连接。信号层退役批改为面板单槽回调,槽随面板亡,无连接对象。)
         lux::events::SubscriptionGroup               panel_subs_;

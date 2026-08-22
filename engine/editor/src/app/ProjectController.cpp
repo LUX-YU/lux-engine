@@ -6,7 +6,7 @@
 #include <lux/engine/editor/content/EngineContentPath.hpp>// engine_content_path
 #include <lux/engine/editor/panels/AssetBrowser.hpp>      // setWorkingDirectory
 #include <lux/engine/editor/AssetRegistry.hpp>            // scan / size / provider
-#include <lux/engine/editor/extensions/EditorTools.hpp>
+#include <lux/engine/editor/extensions/EditorPanels.hpp>
 #include <lux/engine/ui/Panel.hpp>                        // setVisible / isVisible
 #include <lux/engine/ui/UISystem.hpp>                     // layout load/save/clear
 #include <lux/engine/resource/asset/AssetManager.hpp>              // setVfs / registerContentFolder arg
@@ -37,14 +37,14 @@ namespace lux::editor
         std::shared_ptr<lux::asset::AssetManager> asset_mgr,
         AssetRegistry&                            asset_registry,
         AssetBrowser&                             asset_browser,
-        EditorToolHost&                           tools,
+        EditorPanels&                            panels,
         lux::extensions::EngineExtensions&       extensions) noexcept
         : scene_(scene)
         , ui_system_(ui_system)
         , asset_mgr_(std::move(asset_mgr))
         , asset_registry_(asset_registry)
         , asset_browser_(asset_browser)
-        , tools_(tools)
+        , panels_(panels)
         , extensions_(extensions)
     {
     }
@@ -66,17 +66,14 @@ namespace lux::editor
                 continue;
             saved.emplace(line.substr(0, eq), line.substr(eq + 1) != "0");
         }
-        for (const auto& panel : tools_.snapshot())
+        for (const auto& panel : panels_.snapshot())
         {
-            if (!panel.active)
-                continue;
             const auto it = saved.find(
                 std::string{panel.panel.name()});
-            (void)tools_.facade().requestVisible(
+            (void)panels_.setVisible(
                 panel.panel.view(),
                 it != saved.end() ? it->second : panel.default_visible);
         }
-        (void)tools_.processSafePoint();
     }
 
     void ProjectController::saveWindowVisibility() const
@@ -91,10 +88,9 @@ namespace lux::editor
             return;
         f << "# Editor window visibility — auto-saved per project (no manual save).\n"
              "# <id>=<0|1>; a window not listed here uses its built-in default.\n";
-        for (const auto& panel : tools_.snapshot())
-            if (panel.active)
-                f << panel.panel.name() << '='
-                  << (panel.visible ? '1' : '0') << '\n';
+        for (const auto& panel : panels_.snapshot())
+            f << panel.panel.name() << '='
+              << (panel.visible ? '1' : '0') << '\n';
     }
 
     bool ProjectController::openProject(const std::filesystem::path& luxproject_file)

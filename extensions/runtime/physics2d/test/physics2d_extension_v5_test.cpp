@@ -46,7 +46,7 @@ int main(int argc, char** argv)
     check(
         entrypoints.world_systems != nullptr &&
             entrypoints.render_features == nullptr &&
-            entrypoints.editor == nullptr,
+            entrypoints.editor_panels == nullptr,
         "Physics2D exposes only direct World-system installation");
 
     {

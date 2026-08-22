@@ -1,6 +1,6 @@
 #include <lux/engine/editor/panels/ExtensionMonitorPanel.hpp>
 
-#include <lux/engine/editor/extensions/EditorTools.hpp>
+#include <lux/engine/editor/extensions/EditorPanels.hpp>
 #include <lux/engine/runtime/extensions/EngineExtensions.hpp>
 
 #include <imgui.h>
@@ -27,7 +27,7 @@ namespace lux::editor
     ExtensionMonitorPanel::ExtensionMonitorPanel(
         std::string title,
         lux::extensions::EngineExtensions& extensions,
-        const EditorPanelCatalog& editor_panels)
+        const EditorPanels& editor_panels)
         : Panel(std::move(title), {620.f, 460.f})
         , extensions_(&extensions)
         , editor_panels_(&editor_panels)
@@ -102,12 +102,13 @@ namespace lux::editor
 
         if (ImGui::CollapsingHeader("Editor registrations"))
         {
-            ImGui::Text("Editor panels: %zu", editor_panels_->all().size());
-            for (const auto& descriptor : editor_panels_->all())
+            const auto panels = editor_panels_->snapshot();
+            ImGui::Text("Editor panels: %zu", panels.size());
+            for (const auto& panel : panels)
                 ImGui::BulletText(
                     "%.*s",
-                    static_cast<int>(descriptor.id.name().size()),
-                    descriptor.id.name().data());
+                    static_cast<int>(panel.panel.name().size()),
+                    panel.panel.name().data());
         }
     }
 }

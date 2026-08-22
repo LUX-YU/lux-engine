@@ -17,7 +17,7 @@
  *   ctor          — store config only; no GPU / threads spun up yet
  *   init()        — bring up window, render thread, session, default panels,
  *                   and the initial EditorScene
- *   tools()       — request editor contribution activation at safe points
+ *   panels()      — direct main-thread panel visibility/ownership surface
  *   run()         — block in the main loop until the window is closed
  *   dtor / shutdown — tear down the scene, stop the render thread, release
  *                     everything
@@ -25,7 +25,7 @@
 
 #include <lux/engine/editor/visibility.h>
 #include <lux/engine/editor/app/EditorEvents.hpp>
-#include <lux/engine/editor/extensions/EditorTools.hpp>
+#include <lux/engine/editor/extensions/EditorPanels.hpp>
 #include <lux/engine/editor/panels/ToastQueue.hpp>
 #include <lux/engine/editor/scene/InstanceSpawnClient.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>   // asset_id_t for spawnModelEntity
@@ -337,9 +337,8 @@ namespace lux::editor
         /// iteration, between frames, where scene tearDown/bringUp is safe.
         void enqueue(std::function<void()> action);
 
-        /// Narrow public facade for opening, hiding and deactivating editor
-        /// panel contributions. It does not expose UISystem or panel pointers.
-        [[nodiscard]] EditorTools tools() const noexcept;
+        /// Direct main-thread panel ownership and visibility surface.
+        [[nodiscard]] EditorPanels& panels() noexcept;
 
         /// Native OS window handle (HWND on Windows, nullptr elsewhere) used to
         /// parent owner-modal file dialogs.

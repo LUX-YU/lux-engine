@@ -12,7 +12,9 @@ add_component(
     STATIC
     NAMESPACE      lux::engine::toolchain
     OUTPUT_NAME    lux_engine_toolchain_game_export
-    SOURCE_FILES   ${CMAKE_CURRENT_SOURCE_DIR}/src/GameExporter.cpp
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/GameExporter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/GameBuildClosure.cpp
 )
 
 lux_classify_target(
@@ -28,6 +30,11 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
+)
+
+target_include_directories(
+    toolchain_game_export
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 
 target_compile_definitions(

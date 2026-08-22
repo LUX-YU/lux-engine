@@ -69,7 +69,16 @@ This ledger tracks implementation state only. Decisions live in ADRs.
   - [x] Replace the Editor contribution registrar symbol with the direct ABI
         v5 `luxInstallEditorPanelsV5(EditorPanelInstallContext&)` entrypoint;
         the Editor adapter binds every installed panel to its `ModuleLease`.
-- [ ] Generate build-only project usage and direct game composition.
+- [x] Generate build-only project usage and direct game composition.
+  - [x] Aggregate canonical Component schemas, derived renderer requirements,
+        Spatial3D streaming use and selected Extensions from cooked Scenes into
+        `build/ProjectUsageManifest.toml`.
+  - [x] Generate `build/GameComposition.cpp` with direct built-in System and
+        standard Renderer assembly calls; it contains no Runtime registry and
+        Physics2D remains a manifest-deployed Extension.
+  - [x] Reject a Scene-required Extension not satisfied by project selection,
+        compile-check generated composition, and prove neither build artifact
+        is copied into the Player deployment.
 - [ ] Remove legacy paths/targets and set all semantic-debt limits to zero.
 - [ ] Complete Windows profile, installed-prefix and Android validation.
 

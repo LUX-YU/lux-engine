@@ -1,4 +1,5 @@
 #include <lux/engine/toolchain/game_export/GameExporter.hpp>
+#include <lux/engine/toolchain/game_export/GameBuildClosure.hpp>
 
 #include <lux/engine/authoring/project/Project.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
@@ -106,6 +107,7 @@ namespace lux::toolchain
         struct AuthoredCookOutput final
         {
             std::vector<PakCookFileEntry> scene_entries;
+            detail::ProjectBuildUsage build_usage;
         };
 
         struct BuiltinComponentCatalog final
@@ -541,7 +543,8 @@ namespace lux::toolchain
             const std::filesystem::path& generated_root,
             const lux::ecs::ComponentTypeCatalog& components,
             const Spatial3DMeshAssetCatalog& mesh_assets,
-            std::vector<PakCookFileEntry>& entries)
+            std::vector<PakCookFileEntry>& entries,
+            detail::ProjectBuildUsage& build_usage)
         {
             auto cooked = cookSpatial3DEntitySceneSource(
                 source,
@@ -555,6 +558,13 @@ namespace lux::toolchain
                     "cannot cook Spatial3D EntityScene from '" +
                         source.string() +
                         "': " + cooked.error().detail));
+            }
+
+            if (auto merged = detail::mergeSceneUsage(
+                    build_usage,
+                    cooked->package); !merged)
+            {
+                return lux::cxx::unexpected(std::move(merged.error()));
             }
 
             std::error_code error;
@@ -887,7 +897,8 @@ namespace lux::toolchain
                             generated_root,
                             **component_catalog,
                             mesh_assets,
-                            output.scene_entries); !cooked)
+                            output.scene_entries,
+                            output.build_usage); !cooked)
                     {
                         return lux::cxx::unexpected(
                             std::move(cooked.error()));
@@ -1175,6 +1186,46 @@ namespace lux::toolchain
         {
             return lux::cxx::unexpected(std::move(transformed.error()));
         }
+
+        CookReceipt receipt{
+            binary_name,
+            project->manifest().display_name,
+            bootSceneVpath(project->manifest().default_world),
+            game_pak_name,
+            {}};
+        transformed->build_usage.binary_name = binary_name;
+        for (const auto& extension : project->manifest().extensions)
+        {
+            if (extension.target !=
+                lux::authoring::EProjectExtensionTarget::RUNTIME)
+            {
+                continue;
+            }
+            auto source = extension.path.is_absolute()
+                ? extension.path
+                : project->root() / extension.path;
+            receipt.extensions.push_back(CookedExtension{
+                lux::extensions::ExtensionId{extension.id.name()},
+                source.lexically_normal(),
+                extension.required_major,
+                extension.minimum_minor});
+            transformed->build_usage.selected_extensions.push_back(
+                detail::BuildExtension{
+                    lux::extensions::ExtensionId{extension.id.name()},
+                    source.lexically_normal(),
+                    extension.required_major,
+                    extension.minimum_minor});
+        }
+
+        // Build-closure validation precedes Pak publication. A Scene that
+        // requires an unselected Extension cannot leave a successful cooked
+        // package behind and fail only during deployment.
+        auto build_artifacts = detail::writeGameBuildArtifacts(
+            std::move(transformed->build_usage),
+            request.output_directory);
+        if (!build_artifacts)
+            return lux::cxx::unexpected(std::move(build_artifacts.error()));
+
         auto cooked = cookSourcesAndFileEntriesToPak(
             {
                 PakCookSource{project->contentRoot(), ""},
@@ -1226,29 +1277,6 @@ namespace lux::toolchain
             }
         }
 
-        CookReceipt receipt{
-            binary_name,
-            project->manifest().display_name,
-            bootSceneVpath(project->manifest().default_world),
-            game_pak_name,
-            {}};
-        for (const auto& extension : project->manifest().extensions)
-        {
-            if (extension.target !=
-                lux::authoring::EProjectExtensionTarget::RUNTIME)
-            {
-                continue;
-            }
-            auto source = extension.path.is_absolute()
-                ? extension.path
-                : project->root() / extension.path;
-            receipt.extensions.push_back(CookedExtension{
-                lux::extensions::ExtensionId{extension.id.name()},
-                source.lexically_normal(),
-                extension.required_major,
-                extension.minimum_minor});
-        }
-
         const auto receipt_path = request.output_directory /
                                   std::filesystem::path{kCookReceiptName};
         if (auto written = writeCookReceipt(receipt, receipt_path); !written)
@@ -1257,6 +1285,8 @@ namespace lux::toolchain
         return GameCookReport{
             receipt_path,
             game_pak,
+            build_artifacts->usage_manifest,
+            build_artifacts->composition_source,
             binary_name,
             cooked->asset_count,
             cooked->payload_bytes};

@@ -99,6 +99,10 @@ namespace lux::toolchain
     {
         std::filesystem::path cook_receipt;
         std::filesystem::path game_pak;
+        /// Build-graph input. Never copied to a Player deployment.
+        std::filesystem::path project_usage_manifest;
+        /// Generated direct composition source. Never loaded by Runtime.
+        std::filesystem::path game_composition_source;
         std::string           binary_name;
         std::size_t           asset_count{0u};
         std::uintmax_t        payload_bytes{0u};

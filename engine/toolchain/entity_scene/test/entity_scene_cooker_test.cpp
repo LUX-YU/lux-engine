@@ -167,7 +167,8 @@ int main()
     EntityCookInput child;
     child.parent = *parent_ordinal;
     EntityComponentCookInput data;
-    data.schema = lux::ecs::componentSchemaId("lux.test.a_data");
+    data.schema = lux::ecs::componentSchemaId(
+        "lux.test.a_camera3dcomponent");
     data.value = referencePayload();
     data.local_references.push_back({"target", *parent_ordinal});
     data.persistent_references.push_back({
@@ -188,7 +189,8 @@ int main()
     assert(image);
     assert(lux::ecs::scene_format::validateEntitySectionImage(*image));
     assert(image->schemas.size() == 2u);
-    assert(image->schemas[0u].id.name == "lux.test.a_data");
+    assert(image->schemas[0u].id.name ==
+        "lux.test.a_camera3dcomponent");
     assert(image->schemas[1u].id.name == "lux.test.b_tag");
     assert(image->archetypes.size() == 2u);
     assert((image->archetypes[0u].schemas ==
@@ -243,6 +245,8 @@ int main()
             cooked->sections[0u].encoded_image));
     assert(cooked->sections[0u].record.required_components.size() == 2u);
     assert(cooked->package.required_components.size() == 2u);
+    assert((cooked->package.required_render_features ==
+        std::vector<std::string>{"StandardViewCamera"}));
     const auto decoded_package = SceneAssetSerDeser::decodeData(
         cooked->encoded_package);
     assert(decoded_package && **decoded_package == cooked->package);

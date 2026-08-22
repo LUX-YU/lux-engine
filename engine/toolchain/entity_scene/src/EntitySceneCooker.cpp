@@ -4,6 +4,7 @@
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <iterator>
 #include <map>
 #include <set>
@@ -44,29 +45,37 @@ namespace lux::toolchain
             FeatureSet& destination,
             std::string_view schema_name)
         {
+            std::string canonical{schema_name};
+            std::ranges::transform(
+                canonical,
+                canonical.begin(),
+                [](unsigned char character)
+                {
+                    return static_cast<char>(std::tolower(character));
+                });
             const auto addWhen = [&](std::string_view token,
                                      std::string_view feature)
             {
-                if (schema_name.find(token) != std::string_view::npos)
+                if (canonical.find(token) != std::string::npos)
                     destination.emplace(feature);
             };
-            addWhen("Camera", "StandardViewCamera");
-            addWhen("Image2D", "Canvas2D");
-            addWhen("Tilemap", "Canvas2D");
-            addWhen("TileChunk2D", "Canvas2D");
-            addWhen("PixelField2D", "Canvas2D");
-            addWhen("Grid2D", "Grid2D");
-            addWhen("MeshComponent", "MeshStack");
-            addWhen("SkeletalMesh", "MeshStack");
-            addWhen("ClassicMeshBatch", "RenderCluster");
-            addWhen("Skybox", "Skybox");
-            addWhen("HeightFog", "Fog");
-            addWhen("WaterSurface", "Water");
-            addWhen("Grid3D", "Grid3D");
-            addWhen("DirectionalLight", "Light");
-            addWhen("PointLight", "Light");
-            addWhen("SpotLight", "Light");
-            addWhen("Terrain", "Terrain");
+            addWhen("camera", "StandardViewCamera");
+            addWhen("image2d", "Canvas2D");
+            addWhen("tilemap", "Canvas2D");
+            addWhen("tilechunk2d", "Canvas2D");
+            addWhen("pixelfield2d", "Canvas2D");
+            addWhen("grid2d", "Grid2D");
+            addWhen("meshcomponent", "MeshStack");
+            addWhen("skeletalmesh", "MeshStack");
+            addWhen("classicmeshbatch", "RenderCluster");
+            addWhen("skybox", "Skybox");
+            addWhen("heightfog", "Fog");
+            addWhen("watersurface", "Water");
+            addWhen("grid3d", "Grid3D");
+            addWhen("directionallight", "Light");
+            addWhen("pointlight", "Light");
+            addWhen("spotlight", "Light");
+            addWhen("terrain", "Terrain");
         }
 
         [[nodiscard]] lux::cxx::expected<void, EntitySceneCookFailure>

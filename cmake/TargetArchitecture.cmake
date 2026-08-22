@@ -632,6 +632,34 @@ function(lux_validate_source_boundaries)
         endif()
     endforeach()
 
+    file(GLOB_RECURSE runtime_product_sources LIST_DIRECTORIES false
+        "${CMAKE_SOURCE_DIR}/modules/*.hpp"
+        "${CMAKE_SOURCE_DIR}/modules/*.cpp"
+        "${CMAKE_SOURCE_DIR}/ecs/*.hpp"
+        "${CMAKE_SOURCE_DIR}/ecs/*.cpp"
+        "${CMAKE_SOURCE_DIR}/engine/runtime/*.hpp"
+        "${CMAKE_SOURCE_DIR}/engine/runtime/*.cpp"
+        "${CMAKE_SOURCE_DIR}/engine/game/*.hpp"
+        "${CMAKE_SOURCE_DIR}/engine/game/*.cpp"
+        "${CMAKE_SOURCE_DIR}/engine/hosts/*.hpp"
+        "${CMAKE_SOURCE_DIR}/engine/hosts/*.cpp"
+        "${CMAKE_SOURCE_DIR}/extensions/*.hpp"
+        "${CMAKE_SOURCE_DIR}/extensions/*.cpp"
+    )
+    string(CONCAT build_usage_contract "ProjectUsage" "Manifest")
+    string(CONCAT generated_game_composition "Game" "Composition")
+    foreach(source IN LISTS runtime_product_sources)
+        file(READ "${source}" content)
+        if(content MATCHES
+           "${build_usage_contract}|${generated_game_composition}")
+            message(FATAL_ERROR
+                "Architecture: Runtime/product source '${source}' mentions a "
+                "Toolchain-only build-closure artifact. Build usage and "
+                "generated composition must stop at the build graph."
+            )
+        endif()
+    endforeach()
+
     file(GLOB_RECURSE semantic_sources LIST_DIRECTORIES false
         "${CMAKE_SOURCE_DIR}/cmake/*.cmake"
         "${CMAKE_SOURCE_DIR}/modules/*.hpp"
@@ -666,6 +694,9 @@ function(lux_validate_source_boundaries)
         "EditorContribution" "Registrar")
     string(CONCAT retired_editor_entrypoint
         "luxRegisterEditorContributions" "V5")
+    string(CONCAT retired_runtime_usage "RuntimeUsage" "Manifest")
+    string(CONCAT retired_usage_manager "UsageManifest" "Manager")
+    string(CONCAT retired_system_registry "System" "Registry")
     set(retired_semantic_names
         ${retired_scene_contribution}
         ${retired_world_feature}
@@ -680,6 +711,9 @@ function(lux_validate_source_boundaries)
         ${retired_editor_panel_contribution}
         ${retired_editor_registrar}
         ${retired_editor_entrypoint}
+        ${retired_runtime_usage}
+        ${retired_usage_manager}
+        ${retired_system_registry}
     )
     set(report "# retired-semantic|count|required\n")
     foreach(debt_name IN LISTS retired_semantic_names)

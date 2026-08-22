@@ -92,6 +92,13 @@ System Registry and installer/catalog/host variants are forbidden.
   each concrete `Panel`, its UISystem `PanelRegistration` and its optional
   provider `ModuleLease`; there is no panel descriptor catalog, activation
   host, command queue or operation ticket.
+- Game Cook writes `build/ProjectUsageManifest.toml` and
+  `build/GameComposition.cpp` as ephemeral Toolchain/build-graph inputs. The
+  manifest is derived from cooked Scene component/renderer requirements plus
+  project Extension selection; the source calls concrete System and Renderer
+  assembly functions directly. Neither artifact is installed, copied into a
+  Player deployment or read by Runtime. Optional Extensions remain DLL leaves
+  selected and deployed by `LaunchManifest`.
 - Directory moves happen after semantic ownership is established. Moves do not
   leave forwarding headers, namespace aliases or target aliases.
 

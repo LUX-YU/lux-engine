@@ -41,6 +41,14 @@ namespace
         }
     };
 
+    std::string readText(const std::filesystem::path& path)
+    {
+        std::ifstream stream(path, std::ios::binary);
+        return std::string{
+            std::istreambuf_iterator<char>{stream},
+            std::istreambuf_iterator<char>{}};
+    }
+
     bool writeProject(
         const std::filesystem::path& path,
         bool with_default_world = false)
@@ -98,7 +106,9 @@ namespace
         return mesh;
     }
 
-    bool writeWorldSource(const std::filesystem::path& path)
+    bool writeWorldSource(
+        const std::filesystem::path& path,
+        bool require_unselected_extension = false)
     {
         const auto world_id = uuids::uuid::from_string(
             "560e8400-e29b-41d4-a716-446655440000").value();
@@ -114,6 +124,14 @@ namespace
         using namespace lux::authoring;
         lux::authoring::WorldSourceDocument source;
         source.world = lux::authoring::WorldId{world_id};
+        if (require_unselected_extension)
+        {
+            source.required_extensions.push_back({
+                lux::authoring::WorldExtensionId{
+                    "org.lux.test.unselected"},
+                1u,
+                0u});
+        }
         PartitionSpaceDescriptor space;
         space.id = PartitionSpaceId{
             uuids::uuid::from_string(
@@ -365,7 +383,11 @@ int main()
     );
     if (!cooked ||
         !std::filesystem::is_regular_file(cooked->cook_receipt) ||
-        !std::filesystem::is_regular_file(cooked->game_pak))
+        !std::filesystem::is_regular_file(cooked->game_pak) ||
+        !std::filesystem::is_regular_file(
+            cooked->project_usage_manifest) ||
+        !std::filesystem::is_regular_file(
+            cooked->game_composition_source))
     {
         if (!cooked)
             std::cerr << "cook failed: " << cooked.error().detail << '\n';
@@ -374,6 +396,30 @@ int main()
                 cooked->asset_count << '\n';
         return 4;
     }
+
+    const auto project_usage = readText(cooked->project_usage_manifest);
+    const auto composition = readText(cooked->game_composition_source);
+    const auto has = [](const std::string& text, std::string_view token)
+    {
+        return text.find(token) != std::string::npos;
+    };
+    if (!has(project_usage, "[project_usage]") ||
+        !has(project_usage, "spatial3d_streaming = true") ||
+        !has(project_usage, "lux.runtime.installSpatial3DSystems") ||
+        !has(composition, "lux::runtime::installSpatial3DSystems") ||
+        !has(composition, "lux::runtime::installPresentation3DSystems") ||
+        !has(composition, "lux::runtime::registerStandardRenderFeatures") ||
+        has(composition, "org.lux.physics2d"))
+    {
+        std::cerr << "unexpected project usage manifest:\n" <<
+            project_usage << "\nunexpected generated composition:\n" <<
+            composition << '\n';
+        return 40;
+    }
+#if defined(LUX_GAME_EXPORT_TEST_WITH_EXTENSION)
+    if (!has(project_usage, "org.lux.physics2d"))
+        return 41;
+#endif
 
     auto pak = lux::asset::inspectPak(cooked->game_pak);
     const auto shader_entry = pak
@@ -627,6 +673,38 @@ int main()
         return 5;
     }
 
+    // A cooked Scene cannot name a Runtime extension that the project build
+    // did not select. This fails in Toolchain before writing a deployment.
+    const auto missing_extension_root = tree.root / "missing-extension-project";
+    std::filesystem::create_directories(
+        missing_extension_root / "Content",
+        error);
+    std::filesystem::create_directories(
+        missing_extension_root / "Worlds",
+        error);
+    const auto missing_extension_project =
+        missing_extension_root / "ExporterSmoke.luxproject";
+    if (error || !writeProject(missing_extension_project, true) ||
+        !writeWorldSource(
+            missing_extension_root / "Worlds" / "Main.luxworld",
+            true))
+    {
+        return 5;
+    }
+    auto missing_extension = lux::toolchain::cookGame(
+        lux::toolchain::GameCookRequest{
+            missing_extension_project,
+            tree.root / "missing-extension-cooked"});
+    if (missing_extension ||
+        missing_extension.error().code !=
+            lux::toolchain::EGameExportError::EXTENSION_DEPENDENCY_MISSING ||
+        std::filesystem::exists(
+            tree.root / "missing-extension-cooked" /
+            "ExporterSmoke.luxpak"))
+    {
+        return 5;
+    }
+
     const auto baked_project_root = tree.root / "baked-only-project";
     std::filesystem::create_directories(
         baked_project_root / "Content",
@@ -721,7 +799,10 @@ int main()
         return 9;
     if (!std::filesystem::is_regular_file(assembled->executable) ||
         !std::filesystem::is_regular_file(assembled->runtime_manifest) ||
-        !std::filesystem::is_regular_file(assembled->game_pak))
+        !std::filesystem::is_regular_file(assembled->game_pak) ||
+        std::filesystem::exists(output / "ProjectUsageManifest.toml") ||
+        std::filesystem::exists(output / "GameComposition.cpp") ||
+        std::filesystem::exists(output / "build"))
     {
         return 10;
     }

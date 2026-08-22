@@ -11,10 +11,9 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
-#include <lux/engine/runtime/entity_scene/visibility.h>
-#include <lux/engine/runtime/execution/AsyncScope.hpp>
+#include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
+#include <lux/engine/ecs/entity_scene/visibility.h>
+#include <lux/engine/resource/asset/AssetId.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -24,7 +23,7 @@
 #include <string>
 #include <vector>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
     enum class EEntitySceneState : std::uint8_t
     {
@@ -66,7 +65,7 @@ namespace lux::runtime::entity_scene
     /// Fixed-content selector for one validated Engine SceneDescription.
     /// Construction and onAdded perform no VFS access. The first update
     /// preflights the complete startup closure before acquiring any ticket.
-    class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC StartupSectionSystem final
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC StartupSectionSystem final
         : public lux::ecs::ISystem
     {
     public:
@@ -74,9 +73,14 @@ namespace lux::runtime::entity_scene
             std::unique_ptr<StartupSectionSystem>,
             EntitySceneFailure>
         create(
-            const EntitySceneCatalog& catalog,
-            EntitySectionLoaderSystem& loader,
-            lux::exec::AsyncRuntime& runtime) noexcept;
+            lux::asset::asset_id_t package_id,
+            std::span<const lux::ecs::scene_format::SectionRecord> sections,
+            std::span<const lux::ecs::scene_format::EntitySectionId>
+                startup_sections,
+            std::span<
+                const lux::ecs::scene_format::RequiredComponentSchema>
+                required_components,
+            EntitySectionLoaderSystem& loader) noexcept;
 
         ~StartupSectionSystem() override;
         StartupSectionSystem(const StartupSectionSystem&) = delete;
@@ -96,8 +100,6 @@ namespace lux::runtime::entity_scene
             noexcept override;
         [[nodiscard]] bool closeComplete() const noexcept override;
         [[nodiscard]] bool closeNeedsOwnerTick() const noexcept override;
-        [[nodiscard]] lux::exec::AsyncScopeCloseSender closeAsync() noexcept;
-
         [[nodiscard]] EEntitySceneState state() const noexcept;
         [[nodiscard]] std::uint64_t revision() const noexcept;
         [[nodiscard]] EntitySceneSnapshot snapshot() const noexcept;
@@ -114,10 +116,12 @@ namespace lux::runtime::entity_scene
         };
 
         StartupSectionSystem(
-            const EntitySceneCatalog& catalog,
+            lux::asset::asset_id_t package_id,
             EntitySectionLoaderSystem& loader,
-            lux::exec::AsyncRuntime& runtime,
-            std::vector<const lux::ecs::scene_format::SectionRecord*> startup,
+            std::vector<lux::ecs::scene_format::SectionRecord> startup,
+            std::vector<
+                lux::ecs::scene_format::RequiredComponentSchema>
+                required_components,
             std::vector<EntitySectionTicket> tickets,
             std::vector<ReleasedGeneration> released) noexcept;
 
@@ -128,25 +132,22 @@ namespace lux::runtime::entity_scene
             std::optional<EEntitySectionRequestError> request_error = {})
             noexcept;
         [[nodiscard]] bool releasesSettled() const noexcept;
-        void acceptCloseScopeClosed() noexcept;
         void tryCompleteClose() noexcept;
         void releaseTicketsReverse() noexcept;
 
-        const EntitySceneCatalog* catalog_{};
+        lux::asset::asset_id_t package_id_;
         EntitySectionClient client_;
-        std::vector<const lux::ecs::scene_format::SectionRecord*> startup_;
+        std::vector<lux::ecs::scene_format::SectionRecord> startup_;
+        std::vector<lux::ecs::scene_format::RequiredComponentSchema>
+            required_components_;
         std::vector<EntitySectionTicket> tickets_;
         std::vector<ReleasedGeneration> released_;
         std::optional<EntitySceneFailure> failure_;
-        lux::exec::AsyncScope close_scope_;
-        lux::exec::AsyncScope::AdmissionTicket close_admission_;
         EEntitySceneState state_{EEntitySceneState::LOADING};
         std::uint64_t revision_{0u};
         bool added_{false};
         bool preflighted_{false};
         bool acquired_{false};
-        bool close_scope_subscribed_{false};
-        bool close_scope_closed_{false};
         lux::ecs::SystemCloseProgressSink close_progress_;
     };
-} // namespace lux::runtime::entity_scene
+} // namespace lux::ecs::entity_scene

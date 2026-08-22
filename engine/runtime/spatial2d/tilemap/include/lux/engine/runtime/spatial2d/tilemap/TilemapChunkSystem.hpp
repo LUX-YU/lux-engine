@@ -112,7 +112,7 @@ namespace lux::runtime::spatial2d
             TilemapPrepareClient preparation,
             lux::ecs::TilemapRuntime& runtime,
             lux::ecs::TilemapSystem& tilemaps,
-            lux::runtime::entity_scene::ContentBlobClient content,
+            lux::ecs::entity_scene::ContentBlobClient content,
             const TilemapChunkActivity2D* activity = nullptr,
             TilemapChunkSystemConfig config = {});
         ~TilemapChunkSystem() override;

@@ -4,10 +4,10 @@
  * @brief Failure-free command-barrier publication of prepared EntitySections.
  */
 
-#include <lux/engine/runtime/entity_scene/EntityBatchTypes.hpp>
-#include <lux/engine/runtime/entity_scene/PreparedEntityBatch.hpp>
-#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/runtime/entity_scene/visibility.h>
+#include <lux/engine/ecs/entity_scene/EntityBatchTypes.hpp>
+#include <lux/engine/ecs/entity_scene/PreparedEntityBatch.hpp>
+#include <lux/engine/ecs/entity_scene/ContentBlobStorage.hpp>
+#include <lux/engine/ecs/entity_scene/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -23,9 +23,9 @@ namespace lux::ecs
     class Registry;
 }
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
-    class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC SectionCommitReceipt final
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC SectionCommitReceipt final
     {
     public:
         ~SectionCommitReceipt();
@@ -44,7 +44,7 @@ namespace lux::runtime::entity_scene
         std::unique_ptr<Impl> impl_;
     };
 
-    class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC EntityBatchMaterializer final
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC EntityBatchMaterializer final
     {
     public:
         /// Borrows the one sparse identity authority for the live registry.

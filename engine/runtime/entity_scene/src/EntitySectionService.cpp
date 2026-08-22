@@ -16,6 +16,10 @@
 namespace lux::runtime::entity_scene
 {
     namespace ex = stdexec;
+    using lux::ecs::entity_scene::EEntitySectionLoadError;
+    using lux::ecs::entity_scene::EntityBatchDecoder;
+    using lux::ecs::entity_scene::EntitySectionLoadResult;
+    using lux::ecs::entity_scene::LoadEntitySection;
 
     namespace
     {
@@ -225,50 +229,6 @@ namespace lux::runtime::entity_scene
         }
     }
 
-    EntitySectionLoadClient::EntitySectionLoadClient(
-        std::weak_ptr<detail::EntitySectionOperationControl> control,
-        lux::async::OperationPort<LoadEntitySection> operation) noexcept
-        : control_(std::move(control)), operation_(std::move(operation))
-    {}
-
-    LoadEntitySection EntitySectionLoadClient::loadOperation(
-        std::shared_ptr<const lux::asset::AssetVfs> vfs,
-        lux::ecs::scene_format::SectionRecord record,
-        std::uint64_t request_generation) const noexcept
-    {
-        return {
-            std::move(vfs), std::move(record), request_generation};
-    }
-
-    EntitySectionLoadClient::operator bool() const noexcept
-    {
-        const auto control = control_.lock();
-        return control &&
-            !control->closing.load(std::memory_order_acquire) &&
-            static_cast<bool>(operation_);
-    }
-
-    bool EntitySectionLoadClient::supports(
-        const lux::ecs::scene_format::SectionRecord& record) const noexcept
-    {
-        const auto control = control_.lock();
-        if (!control || control->closing.load(std::memory_order_acquire) ||
-            !operation_)
-        {
-            return false;
-        }
-        if (std::holds_alternative<lux::ecs::scene_format::StoredSectionSource>(
-                record.source))
-        {
-            return true;
-        }
-        const auto& generated =
-            std::get<lux::ecs::scene_format::GeneratedSectionSource>(
-                record.source);
-        return control->generators &&
-            control->generators->contains(generated.generator);
-    }
-
     lux::cxx::expected<
         EntitySectionService,
         lux::exec::AsyncAssemblyFailure>
@@ -276,11 +236,19 @@ namespace lux::runtime::entity_scene
         lux::exec::AsyncRuntimeBuilder& builder,
         std::shared_ptr<const EntitySectionGeneratorCatalog> generators)
     {
-        auto control =
-            std::make_shared<detail::EntitySectionOperationControl>();
-        control->generators = std::move(generators);
+        auto control = std::make_shared<
+            lux::ecs::entity_scene::detail::EntitySectionLoadState>();
+        control->generator_provider = generators;
+        control->supports_generated = +[](
+            const void* provider,
+            const lux::ecs::scene_format::SectionGeneratorId& generator)
+            noexcept
+        {
+            return static_cast<const EntitySectionGeneratorCatalog*>(
+                provider)->contains(generator);
+        };
         auto operation = builder.addOperation<LoadEntitySection>(
-            [control](
+            [control, generators = std::move(generators)](
                 LoadEntitySection&& request,
                 lux::exec::AsyncOperationContext& context,
                 lux::exec::AsyncOperationCompletion<LoadEntitySection>&&
@@ -309,12 +277,12 @@ namespace lux::runtime::entity_scene
                 {
                     auto record = std::move(request.record);
                     const auto generation = request.request_generation;
-                    auto generators = control->generators;
+                    auto generator_catalog = generators;
                     auto work = ex::schedule(
                             lux::exec::backgroundCpuScheduler(
                                 context.runtime()))
                         | ex::then(
-                              [generators = std::move(generators),
+                              [generators = std::move(generator_catalog),
                                record = std::move(record),
                                generation]() mutable noexcept -> LoadResult
                               {
@@ -383,15 +351,19 @@ namespace lux::runtime::entity_scene
             },
             {},
             lux::exec::AsyncOperationQueueConfig{
-                .capacity = kEntitySectionLoadQueueCapacity,
-                .byte_budget = kEntitySectionLoadByteBudget,
-                .drain_batch = kEntitySectionLoadDrainBatch});
+                .capacity =
+                    lux::ecs::entity_scene::kEntitySectionLoadQueueCapacity,
+                .byte_budget =
+                    lux::ecs::entity_scene::kEntitySectionLoadByteBudget,
+                .drain_batch =
+                    lux::ecs::entity_scene::kEntitySectionLoadDrainBatch});
         if (!operation)
             return lux::cxx::unexpected(std::move(operation.error()));
         return EntitySectionService{control, std::move(*operation)};
     }
     EntitySectionService::EntitySectionService(
-        std::shared_ptr<detail::EntitySectionOperationControl> control,
+        std::shared_ptr<
+            lux::ecs::entity_scene::detail::EntitySectionLoadState> control,
         lux::async::OperationPort<LoadEntitySection> operation) noexcept
         : control_(std::move(control)), operation_(std::move(operation))
     {}
@@ -420,11 +392,13 @@ namespace lux::runtime::entity_scene
         close();
     }
 
-    EntitySectionLoadClient EntitySectionService::loadClient() const noexcept
+    lux::ecs::entity_scene::EntitySectionLoadPort
+    EntitySectionService::loadClient() const noexcept
     {
         return closed_ || !control_
-            ? EntitySectionLoadClient{}
-            : EntitySectionLoadClient{control_, operation_};
+            ? lux::ecs::entity_scene::EntitySectionLoadPort{}
+            : lux::ecs::entity_scene::EntitySectionLoadPort{
+                  control_, operation_};
     }
 
     void EntitySectionService::close() noexcept

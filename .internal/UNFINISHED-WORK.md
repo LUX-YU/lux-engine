@@ -12,6 +12,11 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 - [ ] Reduce render extraction to one RenderSystem and a private static stage
       sequence; remove Runtime RenderEffect.
 - [ ] Move every Runtime-owned ISystem and Component to its ECS domain.
+  - [x] Move EntitySection decode/stage/materialization, loader and startup
+        publication into `ecs/entity_scene`; Runtime retains only the typed
+        endpoint, generator execution and concrete blob storage.
+  - [ ] Move spatial, tilemap, pixel, physics, navigation and presentation
+        Systems from Runtime into their ECS domains.
 - [ ] Split `engine/spatial3d/SceneCatalog` by field ownership.
 - [ ] Collapse Editor panel contribution state into UISystem registration.
 - [ ] Generate build-only project usage and direct game composition.

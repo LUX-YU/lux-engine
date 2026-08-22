@@ -21,7 +21,7 @@ namespace lux::runtime
     {
     public:
         explicit TerrainTileRenderSubsystem(
-            entity_scene::ContentBlobClient blobs,
+            lux::ecs::entity_scene::ContentBlobClient blobs,
             TerrainPrepareClient preparation,
             SceneAsyncContext& async) noexcept;
         ~TerrainTileRenderSubsystem() override;

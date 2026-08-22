@@ -6,7 +6,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
+#include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/spatial_partition/SpatialDemandPlanner.hpp>
 #include <lux/engine/runtime/spatial_partition/visibility.h>
 
@@ -39,7 +39,7 @@ namespace lux::runtime::spatial_partition
     {
     public:
         SpatialPartitionSystem(
-            lux::runtime::entity_scene::EntitySectionClient client,
+            lux::ecs::entity_scene::EntitySectionClient client,
             SpatialDemandPlanner planner) noexcept;
         ~SpatialPartitionSystem() override;
 
@@ -76,7 +76,7 @@ namespace lux::runtime::spatial_partition
         void recordFailure(ESpatialPartitionError error) noexcept;
         void requireOwnerThread() const noexcept;
 
-        lux::runtime::entity_scene::EntitySectionClient client_;
+        lux::ecs::entity_scene::EntitySectionClient client_;
         SpatialDemandPlanner planner_;
         std::vector<ResidentTicket> resident_tickets_;
         std::thread::id owner_thread_;

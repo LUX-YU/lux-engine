@@ -1,10 +1,10 @@
-#include <lux/engine/runtime/entity_scene/StartupSectionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/StartupSectionSystem.hpp>
 
 #include <algorithm>
 #include <cstdlib>
 #include <utility>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
     namespace
     {
@@ -40,18 +40,29 @@ namespace lux::runtime::entity_scene
 
     lux::cxx::expected<std::unique_ptr<StartupSectionSystem>, EntitySceneFailure>
     StartupSectionSystem::create(
-        const EntitySceneCatalog& catalog,
-        EntitySectionLoaderSystem& loader,
-        lux::exec::AsyncRuntime& runtime) noexcept
+        lux::asset::asset_id_t package_id,
+        std::span<const lux::ecs::scene_format::SectionRecord> sections,
+        std::span<const lux::ecs::scene_format::EntitySectionId>
+            startup_sections,
+        std::span<const lux::ecs::scene_format::RequiredComponentSchema>
+            required_components,
+        EntitySectionLoaderSystem& loader) noexcept
     {
-        const auto& package = catalog.package();
+        if (package_id.is_nil())
+        {
+            return lux::cxx::unexpected(EntitySceneFailure{
+                EEntitySceneError::INVALID_PACKAGE,
+                {},
+                {},
+                "startup EntityScene package id is nil"});
+        }
 
-        const auto findSection = [&package](
+        const auto findSection = [sections](
             const lux::ecs::scene_format::EntitySectionId& id)
         {
             return std::lower_bound(
-                package.sections.begin(),
-                package.sections.end(),
+                sections.begin(),
+                sections.end(),
                 id,
                 [](const lux::ecs::scene_format::SectionRecord& record,
                    const lux::ecs::scene_format::EntitySectionId& target)
@@ -63,15 +74,15 @@ namespace lux::runtime::entity_scene
         // Deterministic iterative DFS over canonical startup/dependency lists.
         // Postorder is a topological acquire order: every dependency is
         // admitted before the Section that pins it.
-        std::vector<const lux::ecs::scene_format::SectionRecord*> startup;
-        std::vector<std::uint8_t> state(package.sections.size(), 0u);
+        std::vector<lux::ecs::scene_format::SectionRecord> startup;
+        std::vector<std::uint8_t> state(sections.size(), 0u);
         std::vector<std::pair<std::size_t, std::size_t>> stack;
-        for (const auto& id : package.startup_sections)
+        for (const auto& id : startup_sections)
         {
             const auto found = findSection(id);
             // validateEntitySceneManifest() already proved this. Keeping the
             // branch makes the factory fail closed if that contract drifts.
-            if (found == package.sections.end() || found->id != id)
+            if (found == sections.end() || found->id != id)
             {
                 return lux::cxx::unexpected(EntitySceneFailure{
                     EEntitySceneError::INVALID_PACKAGE,
@@ -80,7 +91,7 @@ namespace lux::runtime::entity_scene
                     "startup Section is absent from the validated package"});
             }
             const auto root = static_cast<std::size_t>(
-                found - package.sections.begin());
+                found - sections.begin());
             if (state[root] == 2u)
                 continue;
             stack.emplace_back(root, 0u);
@@ -88,12 +99,12 @@ namespace lux::runtime::entity_scene
             while (!stack.empty())
             {
                 auto& [section_index, dependency_index] = stack.back();
-                const auto& record = package.sections[section_index];
+                const auto& record = sections[section_index];
                 if (dependency_index < record.dependencies.size())
                 {
                     const auto dependency =
                         findSection(record.dependencies[dependency_index++]);
-                    if (dependency == package.sections.end() ||
+                    if (dependency == sections.end() ||
                         dependency->id !=
                             record.dependencies[dependency_index - 1u])
                     {
@@ -104,7 +115,7 @@ namespace lux::runtime::entity_scene
                             "dependency is absent from the validated package"});
                     }
                     const auto dependency_slot = static_cast<std::size_t>(
-                        dependency - package.sections.begin());
+                        dependency - sections.begin());
                     if (state[dependency_slot] == 1u)
                     {
                         return lux::cxx::unexpected(EntitySceneFailure{
@@ -121,7 +132,7 @@ namespace lux::runtime::entity_scene
                     continue;
                 }
                 state[section_index] = 2u;
-                startup.push_back(&record);
+                startup.push_back(record);
                 stack.pop_back();
             }
         }
@@ -131,31 +142,31 @@ namespace lux::runtime::entity_scene
         tickets.reserve(startup.size());
         released.reserve(startup.size());
         return std::unique_ptr<StartupSectionSystem>{new StartupSectionSystem(
-            catalog,
+            package_id,
             loader,
-            runtime,
             std::move(startup),
+            std::vector<
+                lux::ecs::scene_format::RequiredComponentSchema>(
+                required_components.begin(),
+                required_components.end()),
             std::move(tickets),
             std::move(released))};
     }
     StartupSectionSystem::StartupSectionSystem(
-        const EntitySceneCatalog& catalog,
+        lux::asset::asset_id_t package_id,
         EntitySectionLoaderSystem& loader,
-        lux::exec::AsyncRuntime& runtime,
-        std::vector<const lux::ecs::scene_format::SectionRecord*> startup,
+        std::vector<lux::ecs::scene_format::SectionRecord> startup,
+        std::vector<lux::ecs::scene_format::RequiredComponentSchema>
+            required_components,
         std::vector<EntitySectionTicket> tickets,
         std::vector<ReleasedGeneration> released) noexcept
-        : catalog_(&catalog),
+        : package_id_(package_id),
           client_(loader.client()),
           startup_(std::move(startup)),
+          required_components_(std::move(required_components)),
           tickets_(std::move(tickets)),
-          released_(std::move(released)),
-          close_scope_(runtime),
-          close_admission_(close_scope_.tryAcquireAdmission())
-    {
-        if (!close_admission_)
-            std::abort();
-    }
+          released_(std::move(released))
+    {}
 
     StartupSectionSystem::~StartupSectionSystem()
     {
@@ -202,7 +213,7 @@ namespace lux::runtime::entity_scene
         if (!preflighted_)
         {
             const auto package_requirements = client_.validateRequirements(
-                catalog_->package().required_components);
+                required_components_);
             if (!package_requirements)
             {
                 fail(
@@ -212,15 +223,15 @@ namespace lux::runtime::entity_scene
                     package_requirements.error());
                 return;
             }
-            for (const auto* section : startup_)
+            for (const auto& section : startup_)
             {
-                const auto valid = client_.validate(*section);
+                const auto valid = client_.validate(section);
                 if (!valid)
                 {
                     fail(
                         sceneError(valid.error()),
                         "startup EntitySection failed admission preflight",
-                        section->id,
+                        section.id,
                         valid.error());
                     return;
                 }
@@ -230,15 +241,15 @@ namespace lux::runtime::entity_scene
 
         if (!acquired_)
         {
-            for (const auto* section : startup_)
+            for (const auto& section : startup_)
             {
-                auto ticket = client_.acquire(*section);
+                auto ticket = client_.acquire(section);
                 if (!ticket)
                 {
                     fail(
                         sceneError(ticket.error()),
                         "startup EntitySection request was rejected",
-                        section->id,
+                        section.id,
                         ticket.error());
                     return;
                 }
@@ -259,7 +270,7 @@ namespace lux::runtime::entity_scene
                 fail(
                     EEntitySceneError::STARTUP_SECTION_FAILED,
                     "startup EntitySection failed before Scene publication",
-                    startup_[index]->id);
+                    startup_[index].id);
                 return;
             default:
                 break;
@@ -301,32 +312,18 @@ namespace lux::runtime::entity_scene
         {
             state_ = EEntitySceneState::CLOSING;
             releaseTicketsReverse();
-            close_scope_.requestStop();
             tryCompleteClose();
-        }
-        if (!close_scope_subscribed_)
-        {
-            close_scope_subscribed_ = true;
-            lux::exec::detail::subscribeScopeClose(
-                close_scope_,
-                [this]() noexcept { acceptCloseScopeClosed(); });
         }
     }
 
     bool StartupSectionSystem::closeComplete() const noexcept
     {
-        return state_ == EEntitySceneState::CLOSED && close_scope_closed_;
+        return state_ == EEntitySceneState::CLOSED;
     }
 
     bool StartupSectionSystem::closeNeedsOwnerTick() const noexcept
     {
         return state_ == EEntitySceneState::CLOSING;
-    }
-
-    lux::exec::AsyncScopeCloseSender StartupSectionSystem::closeAsync() noexcept
-    {
-        requestClose();
-        return close_scope_.closeAsync();
     }
 
     EEntitySceneState StartupSectionSystem::state() const noexcept
@@ -365,7 +362,7 @@ namespace lux::runtime::entity_scene
     const lux::asset::asset_id_t& StartupSectionSystem::packageId()
         const noexcept
     {
-        return catalog_->package().id;
+        return package_id_;
     }
 
     void StartupSectionSystem::fail(
@@ -394,21 +391,15 @@ namespace lux::runtime::entity_scene
             });
     }
 
-    void StartupSectionSystem::acceptCloseScopeClosed() noexcept
-    {
-        close_scope_closed_ = true;
-        if (close_progress_)
-            close_progress_.notify();
-    }
-
     void StartupSectionSystem::tryCompleteClose() noexcept
     {
         if (state_ != EEntitySceneState::CLOSING || !releasesSettled())
             return;
         client_ = {};
         released_.clear();
-        close_admission_ = {};
         state_ = EEntitySceneState::CLOSED;
+        if (close_progress_)
+            close_progress_.notify();
     }
 
     void StartupSectionSystem::releaseTicketsReverse() noexcept
@@ -417,7 +408,7 @@ namespace lux::runtime::entity_scene
         {
             const auto index = tickets_.size() - 1u;
             released_.push_back(ReleasedGeneration{
-                startup_[index]->id, tickets_.back().generation()});
+                startup_[index].id, tickets_.back().generation()});
             tickets_.back().reset();
             tickets_.pop_back();
         }

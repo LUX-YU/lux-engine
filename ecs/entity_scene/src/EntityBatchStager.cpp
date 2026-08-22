@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/entity_scene/EntityBatchStager.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchStager.hpp>
 
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
     namespace
     {
@@ -124,7 +124,7 @@ namespace lux::runtime::entity_scene
     lux::cxx::expected<PreparedEntityBatch, EntityBatchFailure>
     EntityBatchStager::begin(
         DecodedEntityBatch decoded,
-        SectionBlobStore& blobs) const noexcept
+        IContentBlobStorage& blobs) const noexcept
     {
         const auto section = decoded.section();
         const auto generation = decoded.generation();

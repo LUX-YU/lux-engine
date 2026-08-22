@@ -21,8 +21,9 @@
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/tilemap/TilemapChunkCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
+#include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
+#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
@@ -757,7 +758,7 @@ namespace
     bool validateTileProof(
         lux::ecs::Registry& registry,
         lux::ecs::PersistentEntityIndex& persistent_entities,
-        lux::runtime::entity_scene::ContentBlobClient blobs,
+        lux::ecs::entity_scene::ContentBlobClient blobs,
         lux::math::GridCoord2i64 expected,
         const lux::ecs::PersistentEntityId& expected_owner)
     {
@@ -845,7 +846,7 @@ namespace
     void drive(
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule,
-        const lux::runtime::entity_scene::EntitySectionLoaderSystem& loader,
+        const lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
         const lux::runtime::spatial_partition::SpatialPartitionSystem&
             partition,
         const lux::runtime::spatial2d::SpatialInterest2DSystem& interest,
@@ -941,9 +942,26 @@ namespace
             });
     }
 
+    void closeSystem(
+        lux::exec::AsyncRuntime& runtime,
+        lux::ecs::Schedule& schedule,
+        lux::ecs::ISystem& system)
+    {
+        system.requestClose();
+        lux::exec::testing::CloseEpoch progress{runtime};
+        progress.driveWithStep(
+            [&schedule]() noexcept { tickSchedule(schedule, 0.0f); },
+            [&system]() noexcept { return system.closeComplete(); },
+            [&system]() noexcept
+            {
+                return system.closeNeedsOwnerTick();
+            });
+        assert(system.closeComplete());
+    }
+
     void validateWindow(
         lux::ecs::Registry& registry,
-        lux::runtime::entity_scene::ContentBlobClient blobs,
+        lux::ecs::entity_scene::ContentBlobClient blobs,
         lux::math::GridCoord2i64 center,
         const lux::ecs::PersistentEntityId& field_id)
     {
@@ -1154,13 +1172,13 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     lux::ecs::PersistentEntityIndex persistent_entities{world.registry()};
     lux::ecs::Schedule schedule{world};
     auto loader = std::make_unique<
-        entity_runtime::EntitySectionLoaderSystem>(
-            runtime,
+        lux::ecs::entity_scene::EntitySectionLoaderSystem>(
             section_service->loadClient(),
             vfs,
+            std::make_unique<entity_runtime::SectionBlobStore>(),
             components,
             persistent_entities,
-            entity_runtime::EntitySectionLoaderConfig{2u});
+            lux::ecs::entity_scene::EntitySectionLoaderConfig{2u});
     auto* loader_owner = loader.get();
     assert(schedule.addSystem(std::move(loader)));
     auto partition_system = std::make_unique<
@@ -1270,7 +1288,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
             const auto pixels = pixel_owner->snapshot();
             const auto runtime_stats = pixel_runtime.stats();
             return field_ticket.state() ==
-                    entity_runtime::EEntitySectionState::ACTIVE &&
+                    lux::ecs::entity_scene::EEntitySectionState::ACTIVE &&
                 spatial.active_sections ==
                     spatial2d::kSpatial2DActiveSectionCount &&
                 spatial.resident_sections ==
@@ -1380,7 +1398,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         *interest_owner, *field_owner, *pixel_owner, registry, [&]()
     {
         return stored_tile_ticket.state() ==
-                entity_runtime::EEntitySectionState::ACTIVE &&
+                lux::ecs::entity_scene::EEntitySectionState::ACTIVE &&
             tilemap_chunk_owner->snapshot().ready_chunks == 1u &&
             tilemap_runtime.stats().resident_chunks == 1u;
     });
@@ -1422,7 +1440,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         *interest_owner, *field_owner, *pixel_owner, registry, [&]()
     {
         return tile_ticket.state() ==
-                entity_runtime::EEntitySectionState::ACTIVE &&
+                lux::ecs::entity_scene::EEntitySectionState::ACTIVE &&
             registry.storage<lux::ecs::TileChunk2DComponent>().size() == 1u &&
             tilemap_chunk_owner->snapshot().ready_chunks == 1u &&
             tilemap_runtime.stats().resident_chunks == 1u;
@@ -1467,7 +1485,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
             tilemap_runtime.stats().resident_chunks == 0u;
     });
     assert(tile_ticket.state() ==
-        entity_runtime::EEntitySectionState::ACTIVE);
+        lux::ecs::entity_scene::EEntitySectionState::ACTIVE);
     assert(pixel_owner->snapshot().ready_chunks ==
         spatial2d::kSpatial2DResidentSectionCount);
     registry.patch<lux::ecs::TileChunk2DComponent>(
@@ -1798,9 +1816,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         extension->shutdown(world);
     g_test_extension = nullptr;
     g_tilemap_chunk_system = nullptr;
-    loader_owner->requestClose();
-    tickSchedule(schedule, 0.0f);
-    closeOwner(runtime, loader_owner->closeAsync());
+    closeSystem(runtime, schedule, *loader_owner);
     pixel_prepare_service->close();
     tilemap_prepare_service->close();
     section_service->close();

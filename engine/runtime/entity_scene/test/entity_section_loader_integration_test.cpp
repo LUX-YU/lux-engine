@@ -6,9 +6,12 @@
 #include <lux/engine/ecs/components/ParentComponent.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
+#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
-#include <lux/engine/runtime/entity_scene/StartupSectionSystem.hpp>
+#include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
+#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
+#include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
+#include <lux/engine/ecs/entity_scene/StartupSectionSystem.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
@@ -338,10 +341,10 @@ namespace
     void drive(
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& first,
-        lux::runtime::entity_scene::EntitySectionLoaderSystem& first_owner,
-        lux::runtime::entity_scene::StartupSectionSystem* first_scene,
+        lux::ecs::entity_scene::EntitySectionLoaderSystem& first_owner,
+        lux::ecs::entity_scene::StartupSectionSystem* first_scene,
         lux::ecs::Schedule& second,
-        lux::runtime::entity_scene::EntitySectionLoaderSystem& second_owner,
+        lux::ecs::entity_scene::EntitySectionLoaderSystem& second_owner,
         Predicate&& done)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
@@ -362,7 +365,7 @@ namespace
                 };
                 const auto first_state = first_owner.snapshot();
                 const auto selector_observation_pending = first_scene &&
-                    first_scene->state() == lux::runtime::entity_scene::
+                    first_scene->state() == lux::ecs::entity_scene::
                         EEntitySceneState::LOADING &&
                     first_state.waiting_sections == 0u &&
                     first_state.staging_sections == 0u &&
@@ -375,37 +378,26 @@ namespace
     }
 
     void closeOwner(
-        lux::runtime::entity_scene::EntitySectionLoaderSystem& owner,
+        lux::ecs::entity_scene::EntitySectionLoaderSystem& owner,
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
-        std::atomic<bool> closed{false};
         const auto required_barrier =
             owner.snapshot().active_sections != 0u;
-        auto close = owner.closeAsync()
-            | stdexec::then(
-                  [&closed, &progress]() noexcept
-                  {
-                      closed.store(true, std::memory_order_release);
-                      progress.notify();
-                  });
-        ::experimental::execution::start_detached(std::move(close));
+        owner.requestClose();
         static_cast<void>(runtime.drainMainThreadCompletions(256u));
         // When live rows existed, async work alone is insufficient: the close
         // sender retains one scope admission until the unique ECS barrier
         // destroys them. An already-empty owner may settle immediately.
         if (required_barrier)
-            assert(!closed.load(std::memory_order_acquire));
+            assert(!owner.closeComplete());
         progress.driveWithStep(
             [&schedule]() noexcept { schedule.tick(0.0f); },
-            [&closed]() noexcept
+            [&owner]() noexcept { return owner.closeComplete(); },
+            [&owner]() noexcept
             {
-                return closed.load(std::memory_order_acquire);
-            },
-            [&owner, &closed]() noexcept
-            {
-                if (closed.load(std::memory_order_acquire))
+                if (owner.closeComplete())
                     return false;
                 const auto state = owner.snapshot();
                 return state.waiting_admission_sections != 0u ||
@@ -416,39 +408,28 @@ namespace
     }
 
     void closeScene(
-        lux::runtime::entity_scene::StartupSectionSystem& scene,
+        lux::ecs::entity_scene::StartupSectionSystem& scene,
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
-        std::atomic<bool> closed{false};
-        auto close = scene.closeAsync()
-            | stdexec::then(
-                  [&closed, &progress]() noexcept
-                  {
-                      closed.store(true, std::memory_order_release);
-                      progress.notify();
-                  });
-        ::experimental::execution::start_detached(std::move(close));
+        scene.requestClose();
         static_cast<void>(runtime.drainMainThreadCompletions(256u));
-        assert(!closed.load(std::memory_order_acquire));
+        assert(!scene.closeComplete());
         progress.driveWithStep(
             [&schedule]() noexcept
             {
                 schedule.tick(0.0f, lux::ecs::kPhaseSceneLoading);
             },
-            [&closed]() noexcept
+            [&scene]() noexcept { return scene.closeComplete(); },
+            [&scene]() noexcept
             {
-                return closed.load(std::memory_order_acquire);
-            },
-            [&scene, &closed]() noexcept
-            {
-                return !closed.load(std::memory_order_acquire) &&
-                    scene.state() == lux::runtime::entity_scene::
+                return !scene.closeComplete() &&
+                    scene.state() == lux::ecs::entity_scene::
                         EEntitySceneState::CLOSING;
             });
         assert(scene.state() ==
-            lux::runtime::entity_scene::EEntitySceneState::CLOSED);
+            lux::ecs::entity_scene::EEntitySceneState::CLOSED);
     }
 }
 
@@ -534,10 +515,10 @@ int main()
     lux::ecs::PersistentEntityIndex fixed_persistent_entities{
         fixed_world.registry()};
     lux::ecs::Schedule fixed_schedule{fixed_world};
-    auto fixed_loader = std::make_unique<runtime::EntitySectionLoaderSystem>(
-        async,
+    auto fixed_loader = std::make_unique<lux::ecs::entity_scene::EntitySectionLoaderSystem>(
         service.loadClient(),
         vfs,
+        std::make_unique<runtime::SectionBlobStore>(),
         components,
         fixed_persistent_entities);
     auto* fixed_owner = fixed_loader.get();
@@ -553,13 +534,19 @@ int main()
         std::move(fixed_package));
     assert(fixed_catalog_result);
     auto fixed_catalog = std::move(*fixed_catalog_result);
-    auto fixed_scene_result = runtime::StartupSectionSystem::create(
-        fixed_catalog, *fixed_owner, async);
+    const auto& fixed_scene_package = fixed_catalog.package();
+    auto fixed_scene_result =
+        lux::ecs::entity_scene::StartupSectionSystem::create(
+            fixed_scene_package.id,
+            fixed_scene_package.sections,
+            fixed_scene_package.startup_sections,
+            fixed_scene_package.required_components,
+            *fixed_owner);
     assert(fixed_scene_result);
     auto fixed_scene = std::move(*fixed_scene_result);
     auto* fixed_scene_owner = fixed_scene.get();
     assert(fixed_scene_owner->state() ==
-        runtime::EEntitySceneState::LOADING);
+        lux::ecs::entity_scene::EEntitySceneState::LOADING);
     assert(fixed_scene_owner->revision() == 0u);
     assert(fixed_schedule.addSystem(
         std::move(fixed_scene), lux::ecs::kPhaseSceneLoading));
@@ -569,10 +556,10 @@ int main()
     lux::ecs::PersistentEntityIndex manual_persistent_entities{
         manual_world.registry()};
     lux::ecs::Schedule manual_schedule{manual_world};
-    auto manual_loader = std::make_unique<runtime::EntitySectionLoaderSystem>(
-        async,
+    auto manual_loader = std::make_unique<lux::ecs::entity_scene::EntitySectionLoaderSystem>(
         service.loadClient(),
         vfs,
+        std::make_unique<runtime::SectionBlobStore>(),
         components,
         manual_persistent_entities);
     auto* manual_owner = manual_loader.get();
@@ -593,10 +580,11 @@ int main()
     // Hold the coordinator so the bounded EntitySection queue reaches a
     // deterministic admission boundary. The rejected ticket remains on the
     // same generation and update() retries it after capacity becomes free.
-    std::vector<runtime::EntitySectionTicket> saturated;
-    saturated.reserve(runtime::kEntitySectionLoadQueueCapacity + 4u);
+    std::vector<lux::ecs::entity_scene::EntitySectionTicket> saturated;
+    saturated.reserve(
+        lux::ecs::entity_scene::kEntitySectionLoadQueueCapacity + 4u);
     for (std::size_t index = 0u;
-         index < runtime::kEntitySectionLoadQueueCapacity + 4u;
+         index < lux::ecs::entity_scene::kEntitySectionLoadQueueCapacity + 4u;
          ++index)
     {
         auto record = common.record;
@@ -609,14 +597,14 @@ int main()
     static_cast<void>(async.drainMainThreadCompletions(256u));
     auto retry = std::find_if(
         saturated.begin(), saturated.end(),
-        [](const runtime::EntitySectionTicket& ticket)
+        [](const lux::ecs::entity_scene::EntitySectionTicket& ticket)
         {
             return ticket.state() ==
-                runtime::EEntitySectionState::WAITING_ADMISSION;
+                lux::ecs::entity_scene::EEntitySectionState::WAITING_ADMISSION;
         });
     assert(retry != saturated.end());
     const auto retry_generation = retry->generation();
-    runtime::EntitySectionTicket retry_ticket = std::move(*retry);
+    lux::ecs::entity_scene::EntitySectionTicket retry_ticket = std::move(*retry);
     saturated.clear();
     gate_state->release.store(true, std::memory_order_release);
     gate_state->release.notify_all();
@@ -632,11 +620,11 @@ int main()
         [&]() noexcept
         {
             return fixed_scene_owner->state() ==
-                    runtime::EEntitySceneState::READY &&
-                manual_ticket->state() == runtime::EEntitySectionState::ACTIVE &&
+                    lux::ecs::entity_scene::EEntitySceneState::READY &&
+                manual_ticket->state() == lux::ecs::entity_scene::EEntitySectionState::ACTIVE &&
                 manual_leaf_ticket->state() ==
-                    runtime::EEntitySectionState::ACTIVE &&
-                retry_ticket.state() == runtime::EEntitySectionState::FAILED;
+                    lux::ecs::entity_scene::EEntitySectionState::ACTIVE &&
+                retry_ticket.state() == lux::ecs::entity_scene::EEntitySectionState::FAILED;
         });
     assert(retry_ticket.generation() == retry_generation);
     assert(manual_owner->snapshot().queue_backpressure != 0u);
@@ -672,7 +660,7 @@ int main()
         [&]() noexcept
         {
             return release_ticket->state() ==
-                    runtime::EEntitySectionState::ACTIVE &&
+                    lux::ecs::entity_scene::EEntitySectionState::ACTIVE &&
                 manual_owner->snapshot().stale_completions != 0u;
         });
     auto delayed_retry = manual_owner->client().acquire(delayed.record);
@@ -688,7 +676,7 @@ int main()
         [&]() noexcept
         {
             return delayed_retry->state() ==
-                runtime::EEntitySectionState::ACTIVE;
+                lux::ecs::entity_scene::EEntitySectionState::ACTIVE;
         });
     // These tickets exist only to order the cancelled delayed load. Release
     // their live rows before the following dependency fixture asserts the
@@ -706,7 +694,7 @@ int main()
     auto rejected = manual_owner->client().acquire(std::move(oversized));
     assert(!rejected);
     assert(rejected.error() ==
-        runtime::EEntitySectionRequestError::INVALID_REQUEST);
+        lux::ecs::entity_scene::EEntitySectionRequestError::INVALID_REQUEST);
 
     auto compressed = common.record;
     compressed.id = lux::ecs::scene_format::EntitySectionId{
@@ -719,7 +707,7 @@ int main()
         std::move(compressed));
     assert(!compressed_rejected);
     assert(compressed_rejected.error() ==
-        runtime::EEntitySectionRequestError::INVALID_REQUEST);
+        lux::ecs::entity_scene::EEntitySectionRequestError::INVALID_REQUEST);
 
     // NONE owns one moved byte image rather than simultaneous encoded and
     // decoded copies, so the same declaration is admissible below the queue
@@ -757,7 +745,7 @@ int main()
         std::move(unknown_compression));
     assert(!unknown_rejected);
     assert(unknown_rejected.error() ==
-        runtime::EEntitySectionRequestError::INVALID_REQUEST);
+        lux::ecs::entity_scene::EEntitySectionRequestError::INVALID_REQUEST);
 
     // A dependency must already have a ticket, then the dependent owns an
     // internal pin and cannot arm before that dependency is ACTIVE. Dropping
@@ -779,7 +767,7 @@ int main()
         [&]() noexcept
         {
             return dependent_ticket->state() ==
-                runtime::EEntitySectionState::FAILED;
+                lux::ecs::entity_scene::EEntitySectionState::FAILED;
         });
     assert(manual_world.registry().view<MarkerComponent>().size() == 2u);
     dependent_ticket->reset();
@@ -796,7 +784,7 @@ int main()
         manual_owner->client().acquire(std::move(missing_dependency));
     assert(!missing_dependency_result);
     assert(missing_dependency_result.error() ==
-        runtime::EEntitySectionRequestError::MISSING_DEPENDENCY);
+        lux::ecs::entity_scene::EEntitySectionRequestError::MISSING_DEPENDENCY);
 
     auto component_required = common.record;
     component_required.id = lux::ecs::scene_format::EntitySectionId{
@@ -807,7 +795,7 @@ int main()
         std::move(component_required));
     assert(!unavailable_component);
     assert(unavailable_component.error() ==
-        runtime::EEntitySectionRequestError::REQUIREMENT_UNAVAILABLE);
+        lux::ecs::entity_scene::EEntitySectionRequestError::REQUIREMENT_UNAVAILABLE);
 
     // A generated Section does not require VFS and is reconstructed on the
     // background CPU arena. Its output still passes the exact same LXES,
@@ -841,7 +829,7 @@ int main()
         [&]() noexcept
         {
             return generated_ticket->state() ==
-                runtime::EEntitySectionState::ACTIVE;
+                lux::ecs::entity_scene::EEntitySectionState::ACTIVE;
         });
     generated_ticket->reset();
     manual_schedule.tick(0.0f, lux::ecs::kPhaseSceneLoading);
@@ -857,7 +845,7 @@ int main()
         manual_owner->client().acquire(std::move(unknown_generator));
     assert(!unavailable_source);
     assert(unavailable_source.error() ==
-        runtime::EEntitySectionRequestError::SOURCE_UNAVAILABLE);
+        lux::ecs::entity_scene::EEntitySectionRequestError::SOURCE_UNAVAILABLE);
 
     // A registered generator with output that disagrees with the declared
     // digest fails asynchronously. The failure is adopted only after the
@@ -883,7 +871,7 @@ int main()
         [&]() noexcept
         {
             return mismatch_ticket->state() ==
-                runtime::EEntitySectionState::FAILED;
+                lux::ecs::entity_scene::EEntitySectionState::FAILED;
         });
     // A terminal generation remains immutable while any tickets refer to it.
     // Reacquiring the same record shares that FAILED generation rather than
@@ -893,7 +881,7 @@ int main()
     assert(same_failed->generation() == mismatch_ticket->generation());
     const auto failed_generation = same_failed->generation();
     mismatch_ticket->reset();
-    assert(same_failed->state() == runtime::EEntitySectionState::FAILED);
+    assert(same_failed->state() == lux::ecs::entity_scene::EEntitySectionState::FAILED);
     same_failed->reset();
     auto mismatch_retry =
         manual_owner->client().acquire(generated_mismatch);
@@ -909,7 +897,7 @@ int main()
         [&]() noexcept
         {
             return mismatch_retry->state() ==
-                runtime::EEntitySectionState::FAILED;
+                lux::ecs::entity_scene::EEntitySectionState::FAILED;
         });
     mismatch_retry->reset();
 
@@ -971,10 +959,10 @@ int main()
         rejected_world.registry()};
     lux::ecs::Schedule rejected_schedule{rejected_world};
     auto rejected_loader =
-        std::make_unique<runtime::EntitySectionLoaderSystem>(
-            async,
+        std::make_unique<lux::ecs::entity_scene::EntitySectionLoaderSystem>(
             service.loadClient(),
             vfs,
+            std::make_unique<runtime::SectionBlobStore>(),
             components,
             rejected_persistent_entities);
     auto* rejected_loader_owner = rejected_loader.get();
@@ -991,8 +979,14 @@ int main()
         std::move(rejected_package));
     assert(rejected_catalog_result);
     auto rejected_catalog = std::move(*rejected_catalog_result);
-    auto rejected_scene_result = runtime::StartupSectionSystem::create(
-        rejected_catalog, *rejected_loader_owner, async);
+    const auto& rejected_scene_package = rejected_catalog.package();
+    auto rejected_scene_result =
+        lux::ecs::entity_scene::StartupSectionSystem::create(
+            rejected_scene_package.id,
+            rejected_scene_package.sections,
+            rejected_scene_package.startup_sections,
+            rejected_scene_package.required_components,
+            *rejected_loader_owner);
     assert(rejected_scene_result);
     auto rejected_scene = std::move(*rejected_scene_result);
     auto* rejected_scene_owner = rejected_scene.get();
@@ -1001,33 +995,18 @@ int main()
     assert(rejected_schedule.compile().valid());
     rejected_schedule.tick(0.0f, lux::ecs::kPhaseSceneLoading);
     assert(rejected_scene_owner->state() ==
-        runtime::EEntitySceneState::FAILED);
+        lux::ecs::entity_scene::EEntitySceneState::FAILED);
     assert(rejected_scene_owner->revision() == 0u);
     assert(rejected_scene_owner->failure());
     assert(rejected_scene_owner->failure()->error ==
-        runtime::EEntitySceneError::REQUIREMENT_UNAVAILABLE);
+        lux::ecs::entity_scene::EEntitySceneError::REQUIREMENT_UNAVAILABLE);
     assert(rejected_world.registry().view<MarkerComponent>().empty());
     assert(rejected_loader_owner->snapshot().section_mappings == 0u);
-    auto rejected_close = rejected_scene_owner->closeAsync();
-    lux::exec::testing::CloseEpoch rejected_progress{async};
-    std::atomic<bool> rejected_closed{false};
-    auto rejected_done = std::move(rejected_close) |
-        stdexec::then(
-            [&rejected_closed, &rejected_progress]() noexcept
-            {
-                rejected_closed.store(true, std::memory_order_release);
-                rejected_progress.notify();
-            });
-    ::experimental::execution::start_detached(std::move(rejected_done));
-    rejected_progress.drive(
-        [&rejected_closed]() noexcept
-        {
-            return rejected_closed.load(std::memory_order_acquire);
-        });
+    rejected_scene_owner->requestClose();
     rejected_schedule.tick(0.0f, lux::ecs::kPhaseSceneLoading);
-    assert(rejected_closed.load(std::memory_order_acquire));
+    assert(rejected_scene_owner->closeComplete());
     assert(rejected_scene_owner->state() ==
-        runtime::EEntitySceneState::CLOSED);
+        lux::ecs::entity_scene::EEntitySceneState::CLOSED);
     assert(rejected_loader_owner->snapshot().blobs.current_bytes == 0u);
     assert(rejected_loader_owner->client());
     closeOwner(*rejected_loader_owner, async, rejected_schedule);
@@ -1040,10 +1019,10 @@ int main()
         rebuilt_world.registry()};
     lux::ecs::Schedule rebuilt_schedule{rebuilt_world};
     auto rebuilt_loader =
-        std::make_unique<runtime::EntitySectionLoaderSystem>(
-            async,
+        std::make_unique<lux::ecs::entity_scene::EntitySectionLoaderSystem>(
             service.loadClient(),
             vfs,
+            std::make_unique<runtime::SectionBlobStore>(),
             components,
             rebuilt_persistent_entities);
     auto* rebuilt_loader_owner = rebuilt_loader.get();
@@ -1055,22 +1034,7 @@ int main()
     assert(rebuilt_ticket);
     assert(rebuilt_ticket->generation() > first_loader_generation);
     rebuilt_ticket->reset();
-    lux::exec::testing::CloseEpoch rebuilt_progress{async};
-    std::atomic<bool> rebuilt_closed{false};
-    auto rebuilt_close = rebuilt_loader_owner->closeAsync()
-        | stdexec::then(
-              [&rebuilt_closed, &rebuilt_progress]() noexcept
-              {
-                  rebuilt_closed.store(true, std::memory_order_release);
-                  rebuilt_progress.notify();
-              });
-    ::experimental::execution::start_detached(std::move(rebuilt_close));
-    rebuilt_progress.drive(
-        [&rebuilt_closed]() noexcept
-        {
-            return rebuilt_closed.load(std::memory_order_acquire);
-        });
-    rebuilt_schedule.tick(0.0f, lux::ecs::kPhaseSceneLoading);
+    closeOwner(*rebuilt_loader_owner, async, rebuilt_schedule);
     assert(rebuilt_loader_owner->snapshot().section_mappings == 0u);
     assert(rebuilt_loader_owner->snapshot().blobs.current_bytes == 0u);
 

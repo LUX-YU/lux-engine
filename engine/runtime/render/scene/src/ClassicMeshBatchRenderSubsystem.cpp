@@ -145,7 +145,7 @@ namespace lux::runtime
             std::uint64_t revision{0u};
             lux::render::RenderClusterWireId id{};
             lux::render::UploadRenderClusterPayload payload{};
-            entity_scene::ContentBlobLease blob;
+            lux::ecs::entity_scene::ContentBlobLease blob;
             std::shared_ptr<lux::classic_mesh::ClassicMeshBatchBlobV1>
                 decoded;
             std::shared_ptr<std::vector<
@@ -159,7 +159,7 @@ namespace lux::runtime
         {
             std::uint64_t desired_generation{0u};
             std::uint64_t owner_generation{0u};
-            entity_scene::ContentBlobLease blob;
+            lux::ecs::entity_scene::ContentBlobLease blob;
             bool in_flight{false};
         };
 
@@ -168,7 +168,7 @@ namespace lux::runtime
             std::uint64_t revision{0u};
             std::uint32_t item_count{0u};
             lux::render::RenderClusterWireId id{};
-            entity_scene::ContentBlobLease blob;
+            lux::ecs::entity_scene::ContentBlobLease blob;
             std::vector<lux::asset::AssetRef> assets;
         };
 
@@ -202,7 +202,7 @@ namespace lux::runtime
         };
 
         Impl(
-            entity_scene::ContentBlobClient blob_client,
+            lux::ecs::entity_scene::ContentBlobClient blob_client,
             lux::ecs::ResidencyCallbacks callbacks,
             lux::asset::AssetManager& asset_manager,
             ClassicMeshPrepareClient preparation_client,
@@ -646,7 +646,7 @@ namespace lux::runtime
             return result;
         }
 
-        entity_scene::ContentBlobClient blobs;
+        lux::ecs::entity_scene::ContentBlobClient blobs;
         lux::ecs::ResidencyCallbacks residency;
         lux::asset::AssetManager* assets{nullptr};
         ClassicMeshPrepareClient preparation_client;
@@ -691,7 +691,7 @@ namespace lux::runtime
     };
 
     ClassicMeshBatchRenderSubsystem::ClassicMeshBatchRenderSubsystem(
-        entity_scene::ContentBlobClient blobs,
+        lux::ecs::entity_scene::ContentBlobClient blobs,
         lux::ecs::ResidencyCallbacks residency,
         lux::asset::AssetManager& assets,
         ClassicMeshPrepareClient preparation,

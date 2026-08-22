@@ -33,7 +33,7 @@ namespace lux::runtime
 
         const auto checkpoint = builder.checkpoint();
         auto* const blobs = builder.services().borrow<
-            entity_scene::ContentBlobClient>();
+            lux::ecs::entity_scene::ContentBlobClient>();
         auto* const async = builder.services().borrow<SceneAsyncContext>();
         const auto* configured = builder.services().get<Physics3DConfig>();
         auto scene = Physics3DScene::create(

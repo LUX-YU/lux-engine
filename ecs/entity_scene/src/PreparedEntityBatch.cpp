@@ -1,10 +1,10 @@
-#include <lux/engine/runtime/entity_scene/PreparedEntityBatch.hpp>
+#include <lux/engine/ecs/entity_scene/PreparedEntityBatch.hpp>
 
 #include "EntityBatchInternal.hpp"
 
 #include <utility>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
     PreparedEntityBatch::PreparedEntityBatch(
         std::unique_ptr<detail::PreparedEntityBatchImpl> impl) noexcept

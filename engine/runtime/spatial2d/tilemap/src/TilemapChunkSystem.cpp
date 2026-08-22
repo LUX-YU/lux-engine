@@ -42,7 +42,7 @@ namespace lux::runtime::spatial2d
             lux::ecs::TileChunkCoord coordinate;
             lux::ecs::PersistentEntityRef tilemap_reference;
             lux::ecs::scene_format::ContentBlobRef content_reference;
-            lux::runtime::entity_scene::ContentBlobLease content;
+            lux::ecs::entity_scene::ContentBlobLease content;
             std::optional<lux::ecs::TileChunkLoad> prepared;
             ETilemapChunkDomainError prepare_error{
                 ETilemapChunkDomainError::NONE};
@@ -75,7 +75,7 @@ namespace lux::runtime::spatial2d
             TilemapPrepareClient preparation_value,
             lux::ecs::TilemapRuntime& runtime_value,
             lux::ecs::TilemapSystem& tilemaps_value,
-            lux::runtime::entity_scene::ContentBlobClient content_value,
+            lux::ecs::entity_scene::ContentBlobClient content_value,
             const TilemapChunkActivity2D* activity_value,
             TilemapChunkSystemConfig config_value) noexcept
             : async_runtime(&async_runtime_value),
@@ -467,7 +467,7 @@ namespace lux::runtime::spatial2d
         TilemapPrepareClient preparation;
         lux::ecs::TilemapRuntime* runtime{nullptr};
         lux::ecs::TilemapSystem* tilemaps{nullptr};
-        lux::runtime::entity_scene::ContentBlobClient content;
+        lux::ecs::entity_scene::ContentBlobClient content;
         const TilemapChunkActivity2D* activity{nullptr};
         TilemapChunkSystemConfig config;
         std::shared_ptr<CompletionControl> completion;
@@ -491,7 +491,7 @@ namespace lux::runtime::spatial2d
         TilemapPrepareClient preparation,
         lux::ecs::TilemapRuntime& runtime,
         lux::ecs::TilemapSystem& tilemaps,
-        lux::runtime::entity_scene::ContentBlobClient content,
+        lux::ecs::entity_scene::ContentBlobClient content,
         const TilemapChunkActivity2D* activity,
         TilemapChunkSystemConfig config)
         : impl_(std::make_unique<Impl>(

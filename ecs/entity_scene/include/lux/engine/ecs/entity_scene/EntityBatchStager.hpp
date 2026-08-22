@@ -4,18 +4,18 @@
  * @brief Budgeted LXES component materialization into a private registry.
  */
 
-#include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
-#include <lux/engine/runtime/entity_scene/PreparedEntityBatch.hpp>
-#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/runtime/entity_scene/visibility.h>
+#include <lux/engine/ecs/entity_scene/EntityBatchDecoder.hpp>
+#include <lux/engine/ecs/entity_scene/PreparedEntityBatch.hpp>
+#include <lux/engine/ecs/entity_scene/ContentBlobStorage.hpp>
+#include <lux/engine/ecs/entity_scene/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
 namespace lux::ecs { class ComponentTypeCatalog; }
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
-    class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC EntityBatchStager final
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC EntityBatchStager final
     {
     public:
         explicit EntityBatchStager(
@@ -28,7 +28,7 @@ namespace lux::runtime::entity_scene
             EntityBatchFailure>
         begin(
             DecodedEntityBatch decoded,
-            SectionBlobStore& blobs) const noexcept;
+            IContentBlobStorage& blobs) const noexcept;
 
         [[nodiscard]] lux::cxx::expected<
             EntityBatchStageResult,

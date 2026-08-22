@@ -58,7 +58,7 @@ namespace lux::runtime::spatial3d
             lux::exec::AsyncScope& scene_scope,
             Navigation3DPrepareClient preparation,
             lux::ecs::Navigation3DSystem& navigation,
-            lux::runtime::entity_scene::ContentBlobClient content,
+            lux::ecs::entity_scene::ContentBlobClient content,
             Spatial3DNavigationAdapterConfig config = {});
         ~Spatial3DNavigationAdapterSystem() override;
 

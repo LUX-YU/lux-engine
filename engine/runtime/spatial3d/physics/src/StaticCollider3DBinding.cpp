@@ -9,7 +9,7 @@ namespace lux::runtime::spatial3d
     StaticCollider3DBinding::StaticCollider3DBinding(
         std::uint64_t generation,
         std::shared_ptr<lux::ecs::Physics3DScene> scene,
-        lux::runtime::entity_scene::ContentBlobLease content,
+        lux::ecs::entity_scene::ContentBlobLease content,
         StaticCollider3DPrepareBudgetLease budget,
         std::unique_ptr<lux::ecs::Physics3DStaticBatchLease> physics) noexcept
         : generation_(generation),

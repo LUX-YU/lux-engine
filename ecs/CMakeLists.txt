@@ -44,6 +44,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # extraction outside this product.
     add_subdirectory(core)
     add_subdirectory(serialization)
+    add_subdirectory(entity_scene)
     add_subdirectory(spatial3d)
     add_subdirectory(terrain)
     add_subdirectory(physics3d)
@@ -55,6 +56,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         scene_format
         core
         component_archive
+        entity_scene
         spatial3d_components
         terrain_components
         physics3d
@@ -65,6 +67,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
 else()
     add_subdirectory(core)
     add_subdirectory(serialization)
+    add_subdirectory(entity_scene)
     add_subdirectory(transform)
     add_subdirectory(spatial2d)
     add_subdirectory(spatial3d)
@@ -83,7 +86,7 @@ else()
     set(LUX_ECS_COMPONENTS
         identity
         scene_format
-        core component_archive transform spatial2d_components spatial3d_components
+        core component_archive entity_scene transform spatial2d_components spatial3d_components
         tilemap pixel terrain_components
         scripting scripting_lua scripting_native
         physics physics2d physics3d

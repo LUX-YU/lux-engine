@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
     enum class EEntitySectionRequestError : std::uint8_t;
 }
@@ -93,8 +93,7 @@ namespace lux::runtime::spatial_partition
         lux::ecs::scene_format::EntitySectionId section;
         std::uint64_t requested{0u};
         std::uint64_t available{0u};
-        std::optional<
-        lux::runtime::entity_scene::EEntitySectionRequestError>
+        std::optional<lux::ecs::entity_scene::EEntitySectionRequestError>
             loader_error;
     };
 

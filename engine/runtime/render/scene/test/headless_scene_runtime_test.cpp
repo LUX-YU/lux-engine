@@ -337,7 +337,7 @@ namespace
 
     struct CrossPhaseBlobCloseProbe final
     {
-        lux::runtime::entity_scene::ContentBlobLease lease;
+        lux::ecs::entity_scene::ContentBlobLease lease;
         bool close_requested{false};
         bool released_on_simulation_tick{false};
     };
@@ -666,10 +666,10 @@ int main(int argc, char** argv)
                     .parent() == root,
         "batch-local parent ordinal relocates at the command barrier");
     auto* const content_blobs = scene_runtime->services().get<
-        lux::runtime::entity_scene::ContentBlobClient>();
+        lux::ecs::entity_scene::ContentBlobClient>();
     check(content_blobs != nullptr, "scene publishes ContentBlobClient");
     std::shared_ptr<
-        lux::runtime::entity_scene::ContentBlobLease>
+        lux::ecs::entity_scene::ContentBlobLease>
         delayed_scope_blob;
     bool delayed_scope_blob_released = false;
     if (content_blobs)
@@ -693,7 +693,7 @@ int main(int argc, char** argv)
         if (scope_blob_lease)
         {
             delayed_scope_blob = std::make_shared<
-                lux::runtime::entity_scene::ContentBlobLease>(
+                lux::ecs::entity_scene::ContentBlobLease>(
                     std::move(*scope_blob_lease));
             const auto release_scope_blob =
                 [delayed_scope_blob,

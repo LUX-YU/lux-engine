@@ -40,7 +40,7 @@ namespace
     struct StoredBatch final
     {
         lux::ecs::scene_format::ContentBlobRef reference;
-        lux::runtime::entity_scene::ContentBlobLease owner;
+        lux::ecs::entity_scene::ContentBlobLease owner;
         lux::cxx::SharedBytes<> bytes;
     };
 

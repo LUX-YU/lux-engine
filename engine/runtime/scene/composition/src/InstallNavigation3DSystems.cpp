@@ -29,7 +29,7 @@ namespace lux::runtime
 
         const auto checkpoint = builder.checkpoint();
         auto* const blobs = builder.services().borrow<
-            entity_scene::ContentBlobClient>();
+            lux::ecs::entity_scene::ContentBlobClient>();
         auto* const async = builder.services().borrow<SceneAsyncContext>();
         auto backend = lux::navigation::detour3d::Navigation3DBackend::create();
         if (!blobs || !async || !preparation || !backend)

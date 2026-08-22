@@ -6,9 +6,9 @@
 #include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchMaterializer.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchStager.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchDecoder.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchMaterializer.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchStager.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 
 #include <lux/cxx/algorithm/hash.hpp>
@@ -351,28 +351,28 @@ namespace
         return std::move(*encoded);
     }
 
-    lux::runtime::entity_scene::PreparedEntityBatch prepare(
+    lux::ecs::entity_scene::PreparedEntityBatch prepare(
         std::span<const std::byte> encoded,
         std::uint64_t generation,
-        lux::runtime::entity_scene::EntityBatchStager& stager,
+        lux::ecs::entity_scene::EntityBatchStager& stager,
         lux::runtime::entity_scene::SectionBlobStore& blobs)
     {
-        lux::runtime::entity_scene::EntityBatchDecoder decoder;
+        lux::ecs::entity_scene::EntityBatchDecoder decoder;
         auto decoded = decoder.decode(
             lux::cxx::SharedBytes<>::copyOf(encoded), generation);
         assert(decoded);
         auto prepared = stager.begin(std::move(*decoded), blobs);
         assert(prepared);
         while (prepared->state() ==
-               lux::runtime::entity_scene::EPreparedEntityBatchState::STAGING)
+               lux::ecs::entity_scene::EPreparedEntityBatchState::STAGING)
         {
             auto result = stager.advance(
                 *prepared,
-                lux::runtime::entity_scene::EntityBatchStageBudget{1u});
+                lux::ecs::entity_scene::EntityBatchStageBudget{1u});
             assert(result);
         }
         assert(prepared->state() ==
-            lux::runtime::entity_scene::EPreparedEntityBatchState::READY);
+            lux::ecs::entity_scene::EPreparedEntityBatchState::READY);
         return std::move(*prepared);
     }
 
@@ -399,7 +399,7 @@ int main()
         field.owner_class = &reflection;
     lux::ecs::ComponentTypeCatalog catalog;
     registerLinkComponent(catalog, reflection);
-    runtime::EntityBatchStager stager{catalog};
+    lux::ecs::entity_scene::EntityBatchStager stager{catalog};
 
     const auto good_image = sectionImage();
     const auto good_bytes = encode(good_image);
@@ -411,7 +411,7 @@ int main()
             const auto encoded =
                 lux::ecs::scene_format::encodeEntitySectionImage(image);
             assert(encoded);
-            runtime::EntityBatchDecoder decoder;
+            lux::ecs::entity_scene::EntityBatchDecoder decoder;
             auto decoded = decoder.decode(
                 lux::cxx::SharedBytes<>::copyOf(*encoded), generation);
             assert(decoded);
@@ -420,7 +420,7 @@ int main()
                 std::move(*decoded), rejected_blobs);
             assert(!rejected);
             assert(rejected.error().error ==
-                runtime::EEntityBatchError::INVALID_REFERENCE_RELOCATION);
+                lux::ecs::entity_scene::EEntityBatchError::INVALID_REFERENCE_RELOCATION);
             assert(rejected_blobs.snapshot().allocation_count == 0u);
         };
 
@@ -432,7 +432,7 @@ int main()
         lux::ecs::Registry empty_live;
         lux::ecs::PersistentEntityIndex empty_persistent_entities{
             empty_live};
-        runtime::EntityBatchMaterializer empty_materializer{
+        lux::ecs::entity_scene::EntityBatchMaterializer empty_materializer{
             empty_persistent_entities};
         const auto empty_image = emptyComponentSectionImage();
         const auto empty_bytes = encode(empty_image);
@@ -451,7 +451,7 @@ int main()
     // must not invalidate later staging or publication.
     {
         runtime::SectionBlobStore growth_blobs;
-        runtime::EntityBatchDecoder decoder;
+        lux::ecs::entity_scene::EntityBatchDecoder decoder;
         auto decoded = decoder.decode(
             lux::cxx::SharedBytes<>::copyOf(good_bytes), 40u);
         assert(decoded);
@@ -459,16 +459,16 @@ int main()
         assert(prepared);
         growCatalog(catalog);
         while (prepared->state() ==
-               runtime::EPreparedEntityBatchState::STAGING)
+               lux::ecs::entity_scene::EPreparedEntityBatchState::STAGING)
         {
             const auto advanced = stager.advance(
-                *prepared, runtime::EntityBatchStageBudget{64u});
+                *prepared, lux::ecs::entity_scene::EntityBatchStageBudget{64u});
             assert(advanced);
         }
         lux::ecs::Registry growth_live;
         lux::ecs::PersistentEntityIndex growth_persistent_entities{
             growth_live};
-        runtime::EntityBatchMaterializer growth_materializer{
+        lux::ecs::entity_scene::EntityBatchMaterializer growth_materializer{
             growth_persistent_entities};
         assert(growth_materializer.arm(*prepared, growth_live));
         const auto& receipt = growth_materializer.publishAtBarrier(
@@ -479,7 +479,6 @@ int main()
         assert(growth_materializer.deactivate(
             good_image.section, 40u, growth_live));
     }
-
     // Every READY batch can arm before the Schedule reaches its single
     // command barrier. Capacity admission must therefore include all earlier
     // ARMED batches, not just the current live storage size. Publishing one
@@ -503,7 +502,7 @@ int main()
         lux::ecs::Registry armed_live;
         lux::ecs::PersistentEntityIndex armed_persistent_entities{
             armed_live};
-        runtime::EntityBatchMaterializer armed_materializer{
+        lux::ecs::entity_scene::EntityBatchMaterializer armed_materializer{
             armed_persistent_entities};
         auto first = prepare(
             encode(first_image), 41u, stager, armed_blobs);
@@ -589,7 +588,7 @@ int main()
             std::move(corrupt_attachment), good_image.section, 1u);
         assert(!rejected);
         assert(rejected.error().error ==
-            runtime::EEntityBatchError::ATTACHMENT_FAILURE);
+            lux::ecs::entity_scene::EEntityBatchError::ATTACHMENT_FAILURE);
         assert(digest_store.snapshot().allocation_count == 0u);
     }
 
@@ -628,15 +627,15 @@ int main()
             const auto missing = history_client.resolve(reference);
             assert(!missing);
             assert(missing.error() ==
-                runtime::EContentBlobLookupError::NOT_FOUND);
+                lux::ecs::entity_scene::EContentBlobLookupError::NOT_FOUND);
         }
     }
 
     // A client is tied to one store control generation. Even an outstanding
     // byte lease cannot make resolution legal after the store owner dies.
     {
-        runtime::ContentBlobClient expired_client;
-        runtime::ContentBlobLease pinned;
+        lux::ecs::entity_scene::ContentBlobClient expired_client;
+        lux::ecs::entity_scene::ContentBlobLease pinned;
         auto reference = good_image.attachments.front().reference;
         {
             runtime::SectionBlobStore temporary_store;
@@ -651,7 +650,7 @@ int main()
         const auto expired = expired_client.resolve(reference);
         assert(!expired);
         assert(expired.error() ==
-            runtime::EContentBlobLookupError::OWNER_EXPIRED);
+            lux::ecs::entity_scene::EContentBlobLookupError::OWNER_EXPIRED);
         assert(pinned);
         pinned = {};
     }
@@ -670,23 +669,23 @@ int main()
     {
         runtime::SectionBlobStore failed_blobs;
         lux::ecs::Registry live;
-        runtime::EntityBatchDecoder decoder;
+        lux::ecs::entity_scene::EntityBatchDecoder decoder;
         const auto corrupt_bytes = encode(sectionImage(shape));
         auto decoded = decoder.decode(
             lux::cxx::SharedBytes<>::copyOf(corrupt_bytes), 1u);
         assert(decoded);
         auto failed = stager.begin(std::move(*decoded), failed_blobs);
         assert(failed);
-        runtime::EntityBatchStageBudget budget{1u};
+        lux::ecs::entity_scene::EntityBatchStageBudget budget{1u};
         bool observed_failure = false;
-        while (failed->state() == runtime::EPreparedEntityBatchState::STAGING)
+        while (failed->state() == lux::ecs::entity_scene::EPreparedEntityBatchState::STAGING)
         {
             auto step = stager.advance(*failed, budget);
             if (!step)
             {
                 observed_failure = true;
                 assert(step.error().error ==
-                    runtime::EEntityBatchError::INVALID_COMPONENT_PAYLOAD);
+                    lux::ecs::entity_scene::EEntityBatchError::INVALID_COMPONENT_PAYLOAD);
                 break;
             }
         }
@@ -790,7 +789,7 @@ int main()
         unknown_path.relocations.front().property_path += 1u;
         unknown_path.persistent_reference_relocations.front().property_path =
             2u;
-        runtime::EntityBatchDecoder decoder;
+        lux::ecs::entity_scene::EntityBatchDecoder decoder;
         auto decoded = decoder.decode(
             lux::cxx::SharedBytes<>::copyOf(encode(unknown_path)), 56u);
         assert(decoded);
@@ -798,13 +797,13 @@ int main()
         auto rejected = stager.begin(std::move(*decoded), rejected_blobs);
         assert(!rejected);
         assert(rejected.error().error ==
-            runtime::EEntityBatchError::INVALID_REFERENCE_RELOCATION);
+            lux::ecs::entity_scene::EEntityBatchError::INVALID_REFERENCE_RELOCATION);
     }
     {
         auto wrong_type = good_image;
         wrong_type.persistent_reference_relocations.front().property_path =
             4u; // value: int32, not PersistentEntityRef
-        runtime::EntityBatchDecoder decoder;
+        lux::ecs::entity_scene::EntityBatchDecoder decoder;
         auto decoded = decoder.decode(
             lux::cxx::SharedBytes<>::copyOf(encode(wrong_type)), 57u);
         assert(decoded);
@@ -812,14 +811,14 @@ int main()
         auto rejected = stager.begin(std::move(*decoded), rejected_blobs);
         assert(!rejected);
         assert(rejected.error().error ==
-            runtime::EEntityBatchError::INVALID_REFERENCE_RELOCATION);
+            lux::ecs::entity_scene::EEntityBatchError::INVALID_REFERENCE_RELOCATION);
     }
     {
         auto unknown_schema = good_image;
         unknown_schema.schemas.front().id =
             lux::ecs::componentSchemaId(
                 "org.lux.test.unknown_link");
-        runtime::EntityBatchDecoder decoder;
+        lux::ecs::entity_scene::EntityBatchDecoder decoder;
         auto decoded = decoder.decode(
             lux::cxx::SharedBytes<>::copyOf(encode(unknown_schema)), 58u);
         assert(decoded);
@@ -827,7 +826,7 @@ int main()
         auto rejected = stager.begin(std::move(*decoded), rejected_blobs);
         assert(!rejected);
         assert(rejected.error().error ==
-            runtime::EEntityBatchError::MISSING_SCHEMA);
+            lux::ecs::entity_scene::EEntityBatchError::MISSING_SCHEMA);
     }
 
     runtime::SectionBlobStore blobs;
@@ -836,7 +835,7 @@ int main()
     ConstructCounter counter;
     live.on_construct<TestLinkComponent>()
         .connect<&ConstructCounter::receive>(counter);
-    runtime::EntityBatchMaterializer materializer{persistent_entities};
+    lux::ecs::entity_scene::EntityBatchMaterializer materializer{persistent_entities};
 
     // Claims live in the explicit registry-bound index rather than either
     // materializer: two Section owners cannot both pass arm() with the same
@@ -844,8 +843,8 @@ int main()
     // the gap before either command barrier runs. Cancelling the first arm
     // releases the claim and permits the unchanged second batch to retry.
     {
-        runtime::EntityBatchMaterializer claim_owner{persistent_entities};
-        runtime::EntityBatchMaterializer competing_materializer{
+        lux::ecs::entity_scene::EntityBatchMaterializer claim_owner{persistent_entities};
+        lux::ecs::entity_scene::EntityBatchMaterializer competing_materializer{
             persistent_entities};
         auto owner = prepare(good_bytes, 10u, stager, blobs);
         auto contender = prepare(good_bytes, 10u, stager, blobs);
@@ -853,7 +852,7 @@ int main()
         const auto blocked = competing_materializer.arm(contender, live);
         assert(!blocked);
         assert(blocked.error().error ==
-            runtime::EEntityBatchError::REGISTRY_DRIFT);
+            lux::ecs::entity_scene::EEntityBatchError::REGISTRY_DRIFT);
         assert(claim_owner.cancelArmed(owner, live));
         assert(competing_materializer.arm(contender, live));
         assert(competing_materializer.cancelArmed(contender, live));
@@ -865,7 +864,7 @@ int main()
         assert(materializer.snapshot().armed_sections == 1u);
         assert(materializer.cancelArmed(cancelled, live));
         assert(cancelled.state() ==
-            runtime::EPreparedEntityBatchState::CANCELLED);
+            lux::ecs::entity_scene::EPreparedEntityBatchState::CANCELLED);
         assert(materializer.snapshot().armed_sections == 0u);
         assert(blobs.snapshot().current_bytes == 0u);
     }
@@ -930,7 +929,7 @@ int main()
     const auto released = blob_client.resolve(
         good_image.attachments.front().reference);
     assert(!released);
-    assert(released.error() == runtime::EContentBlobLookupError::NOT_FOUND);
+    assert(released.error() == lux::ecs::entity_scene::EContentBlobLookupError::NOT_FOUND);
     live.destroy(replacement);
     assert(live.storage<entt::entity>().free_list() == 0u);
     assert(blobs.snapshot().current_bytes == 0u);
@@ -955,7 +954,7 @@ int main()
         good_image.section, 2u, live);
     assert(!stale_deactivate);
     assert(stale_deactivate.error().error ==
-        runtime::EEntityBatchError::STALE_GENERATION);
+        lux::ecs::entity_scene::EEntityBatchError::STALE_GENERATION);
     // The production owner reaches this operation only from its Schedule
     // command barrier. This low-level materializer fixture invokes the same
     // barrier operation directly and must still retire the final generation.

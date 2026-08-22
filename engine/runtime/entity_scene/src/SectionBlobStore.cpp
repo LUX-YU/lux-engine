@@ -2,12 +2,11 @@
 
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 
-#include "EntityBatchInternal.hpp"
-
 #include <algorithm>
 #include <atomic>
 #include <map>
 #include <mutex>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -69,70 +68,93 @@ namespace lux::runtime::entity_scene::detail
 
 namespace lux::runtime::entity_scene
 {
-    ContentBlobLease::operator bool() const noexcept
-    {
-        return static_cast<bool>(entry_);
-    }
+    using lux::ecs::entity_scene::EEntityBatchError;
 
-    const lux::ecs::scene_format::ContentBlobRef& ContentBlobLease::reference()
-        const noexcept
+    namespace
     {
-        static const lux::ecs::scene_format::ContentBlobRef empty;
-        return entry_ ? entry_->reference : empty;
-    }
-
-    lux::cxx::SharedBytes<> ContentBlobLease::bytes() const noexcept
-    {
-        return entry_ ? entry_->bytes : lux::cxx::SharedBytes<>{};
-    }
-
-    lux::cxx::expected<ContentBlobLease, EContentBlobLookupError>
-    ContentBlobClient::resolve(
-        const lux::ecs::scene_format::ContentBlobRef& reference) const noexcept
-    {
-        if (!reference.valid())
+        [[nodiscard]] lux::ecs::entity_scene::EntityBatchFailure blobFailure(
+            EEntityBatchError error,
+            const lux::ecs::scene_format::EntitySectionId& section,
+            std::uint64_t generation,
+            std::string detail)
         {
-            return lux::cxx::unexpected(
-                EContentBlobLookupError::INVALID_REFERENCE);
-        }
-        auto control = control_.lock();
-        if (!control)
-        {
-            return lux::cxx::unexpected(
-                EContentBlobLookupError::OWNER_EXPIRED);
+            return {
+                error,
+                section,
+                generation,
+                {},
+                std::move(detail)};
         }
 
-        std::shared_ptr<const detail::SectionBlobEntry> entry;
+        lux::cxx::expected<
+            lux::ecs::entity_scene::ContentBlobLease,
+            lux::ecs::entity_scene::EContentBlobLookupError>
+        resolveContentBlob(
+            const void* state,
+            const lux::ecs::scene_format::ContentBlobRef& reference) noexcept
         {
-            std::lock_guard lock{control->mutex};
-            if (!control->owner_alive || control->generation != generation_)
+            const auto& control = *static_cast<
+                const detail::SectionBlobStoreControl*>(state);
+            if (!reference.valid())
             {
                 return lux::cxx::unexpected(
-                    EContentBlobLookupError::OWNER_EXPIRED);
+                    lux::ecs::entity_scene::EContentBlobLookupError::
+                        INVALID_REFERENCE);
             }
-            const auto found = control->entries.find(reference.id);
-            if (found == control->entries.end() ||
-                !(entry = found->second.lock()))
+
+            std::shared_ptr<const detail::SectionBlobEntry> entry;
+            {
+                std::lock_guard lock{control.mutex};
+                if (!control.owner_alive)
+                {
+                    return lux::cxx::unexpected(
+                        lux::ecs::entity_scene::EContentBlobLookupError::
+                            OWNER_EXPIRED);
+                }
+                const auto found = control.entries.find(reference.id);
+                if (found == control.entries.end() ||
+                    !(entry = found->second.lock()))
+                {
+                    return lux::cxx::unexpected(
+                        lux::ecs::entity_scene::EContentBlobLookupError::
+                            NOT_FOUND);
+                }
+            }
+            if (entry->reference != reference)
             {
                 return lux::cxx::unexpected(
-                    EContentBlobLookupError::NOT_FOUND);
+                    lux::ecs::entity_scene::EContentBlobLookupError::
+                        REFERENCE_MISMATCH);
             }
+            auto entry_reference = entry->reference;
+            auto entry_bytes = entry->bytes;
+            std::shared_ptr<const void> entry_lifetime = std::move(entry);
+            return lux::ecs::entity_scene::ContentBlobLease{
+                std::move(entry_reference),
+                std::move(entry_bytes),
+                std::move(entry_lifetime)};
         }
-        if (entry->reference != reference)
-        {
-            return lux::cxx::unexpected(
-                EContentBlobLookupError::REFERENCE_MISMATCH);
-        }
-        return ContentBlobLease{std::move(entry)};
-    }
 
-    ContentBlobClient::operator bool() const noexcept
-    {
-        const auto control = control_.lock();
-        if (!control)
-            return false;
-        std::lock_guard lock{control->mutex};
-        return control->owner_alive && control->generation == generation_;
+        bool contentBlobStoreAlive(const void* state) noexcept
+        {
+            const auto& control = *static_cast<
+                const detail::SectionBlobStoreControl*>(state);
+            std::lock_guard lock{control.mutex};
+            return control.owner_alive;
+        }
+
+        [[nodiscard]] lux::ecs::entity_scene::ContentBlobLease
+        leaseFromEntry(
+            std::shared_ptr<const detail::SectionBlobEntry> entry) noexcept
+        {
+            auto reference = entry->reference;
+            auto bytes = entry->bytes;
+            std::shared_ptr<const void> lifetime = std::move(entry);
+            return lux::ecs::entity_scene::ContentBlobLease{
+                std::move(reference),
+                std::move(bytes),
+                std::move(lifetime)};
+        }
     }
 
     SectionBlobStore::SectionBlobStore()
@@ -162,7 +184,9 @@ namespace lux::runtime::entity_scene
         return *this;
     }
 
-    lux::cxx::expected<ContentBlobLease, EntityBatchFailure>
+    lux::cxx::expected<
+        lux::ecs::entity_scene::ContentBlobLease,
+        lux::ecs::entity_scene::EntityBatchFailure>
     SectionBlobStore::acquire(
         lux::ecs::scene_format::EntitySectionAttachment attachment,
         const lux::ecs::scene_format::EntitySectionId& section,
@@ -171,7 +195,7 @@ namespace lux::runtime::entity_scene
         const auto control = control_;
         if (!control || !attachment.reference.valid())
         {
-            return lux::cxx::unexpected(detail::makeFailure(
+            return lux::cxx::unexpected(blobFailure(
                 EEntityBatchError::ATTACHMENT_FAILURE,
                 section,
                 generation,
@@ -183,7 +207,7 @@ namespace lux::runtime::entity_scene
             attachment.payload);
         if (computed != attachment.reference.id)
         {
-            return lux::cxx::unexpected(detail::makeFailure(
+            return lux::cxx::unexpected(blobFailure(
                 EEntityBatchError::ATTACHMENT_FAILURE,
                 section,
                 generation,
@@ -195,7 +219,7 @@ namespace lux::runtime::entity_scene
             std::lock_guard lock{control->mutex};
             if (!control->owner_alive)
             {
-                return lux::cxx::unexpected(detail::makeFailure(
+                return lux::cxx::unexpected(blobFailure(
                     EEntityBatchError::ATTACHMENT_FAILURE,
                     section,
                     generation,
@@ -220,13 +244,13 @@ namespace lux::runtime::entity_scene
                     existing_bytes.end(),
                     attachment.payload.begin()))
             {
-                return lux::cxx::unexpected(detail::makeFailure(
+                return lux::cxx::unexpected(blobFailure(
                     EEntityBatchError::ATTACHMENT_FAILURE,
                     section,
                     generation,
                     "content-address collision in SectionBlobStore"));
             }
-            return ContentBlobLease{std::move(existing)};
+            return leaseFromEntry(std::move(existing));
         }
 
         auto storage = std::make_shared<std::vector<std::byte>>(
@@ -237,7 +261,7 @@ namespace lux::runtime::entity_scene
             std::shared_ptr<const void>{storage, view.data()}, view);
         if (shared.empty())
         {
-            return lux::cxx::unexpected(detail::makeFailure(
+            return lux::cxx::unexpected(blobFailure(
                 EEntityBatchError::ATTACHMENT_FAILURE,
                 section,
                 generation,
@@ -255,7 +279,7 @@ namespace lux::runtime::entity_scene
             std::lock_guard lock{control->mutex};
             if (!control->owner_alive)
             {
-                return lux::cxx::unexpected(detail::makeFailure(
+                return lux::cxx::unexpected(blobFailure(
                     EEntityBatchError::ATTACHMENT_FAILURE,
                     section,
                     generation,
@@ -273,7 +297,7 @@ namespace lux::runtime::entity_scene
                 static_cast<void>(inserted_at);
                 if (!inserted)
                 {
-                    return lux::cxx::unexpected(detail::makeFailure(
+                    return lux::cxx::unexpected(blobFailure(
                         EEntityBatchError::INTERNAL_INVARIANT,
                         section,
                         generation,
@@ -299,34 +323,40 @@ namespace lux::runtime::entity_scene
                     existing_bytes.end(),
                     entry->bytes.view().begin()))
             {
-                return lux::cxx::unexpected(detail::makeFailure(
+                return lux::cxx::unexpected(blobFailure(
                     EEntityBatchError::ATTACHMENT_FAILURE,
                     section,
                     generation,
                     "content-address collision in SectionBlobStore"));
             }
-            return ContentBlobLease{std::move(existing)};
+            return leaseFromEntry(std::move(existing));
         }
-        return ContentBlobLease{std::move(entry)};
+        return leaseFromEntry(std::move(entry));
     }
-    ContentBlobClient SectionBlobStore::client() const noexcept
+
+    lux::ecs::entity_scene::ContentBlobClient
+    SectionBlobStore::client() const noexcept
     {
         const auto control = control_;
         if (!control)
             return {};
         std::lock_guard lock{control->mutex};
         return control->owner_alive
-            ? ContentBlobClient{control, control->generation}
-            : ContentBlobClient{};
+            ? lux::ecs::entity_scene::ContentBlobClient{
+                  control,
+                  resolveContentBlob,
+                  contentBlobStoreAlive}
+            : lux::ecs::entity_scene::ContentBlobClient{};
     }
 
-    SectionBlobStoreSnapshot SectionBlobStore::snapshot() const noexcept
+    lux::ecs::entity_scene::ContentBlobStorageSnapshot
+    SectionBlobStore::snapshot() const noexcept
     {
         const auto control = control_;
         if (!control)
             return {};
         std::lock_guard lock{control->mutex};
-        return SectionBlobStoreSnapshot{
+        return lux::ecs::entity_scene::ContentBlobStorageSnapshot{
             control->current_bytes,
             control->high_water_bytes,
             control->allocation_count,

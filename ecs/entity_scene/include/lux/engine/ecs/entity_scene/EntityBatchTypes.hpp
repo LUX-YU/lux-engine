@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <string>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
     enum class EEntityBatchError : std::uint8_t
     {

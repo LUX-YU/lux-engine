@@ -10,7 +10,7 @@ namespace lux::runtime::spatial_partition
     struct SpatialPartitionSystem::ResidentTicket final
     {
         lux::ecs::scene_format::EntitySectionId section;
-        lux::runtime::entity_scene::EntitySectionTicket ticket;
+        lux::ecs::entity_scene::EntitySectionTicket ticket;
     };
 
     namespace
@@ -24,7 +24,7 @@ namespace lux::runtime::spatial_partition
     }
 
     SpatialPartitionSystem::SpatialPartitionSystem(
-        lux::runtime::entity_scene::EntitySectionClient client,
+        lux::ecs::entity_scene::EntitySectionClient client,
         SpatialDemandPlanner planner) noexcept
         : client_(std::move(client)),
           planner_(std::move(planner)),
@@ -299,7 +299,7 @@ namespace lux::runtime::spatial_partition
                 stale_generation_rejections_};
         for (const auto& resident : resident_tickets_)
         {
-            using lux::runtime::entity_scene::EEntitySectionState;
+            using lux::ecs::entity_scene::EEntitySectionState;
             switch (resident.ticket.state())
             {
             case EEntitySectionState::WAITING_ADMISSION:
@@ -343,7 +343,7 @@ namespace lux::runtime::spatial_partition
     {
         static constexpr Type prerequisites[]{
             lux::ecs::systemType<
-                lux::runtime::entity_scene::EntitySectionLoaderSystem>()};
+                lux::ecs::entity_scene::EntitySectionLoaderSystem>()};
         return prerequisites;
     }
 

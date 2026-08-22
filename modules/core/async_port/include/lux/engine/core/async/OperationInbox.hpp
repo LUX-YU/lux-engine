@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <memory>
 #include <mutex>
@@ -70,35 +71,55 @@ namespace lux::async
                 control_->in_flight.fetch_sub(1u, std::memory_order_release);
                 return lux::cxx::unexpected(ESubmitError::QUEUE_FULL);
             }
-            auto* raw_state = state.release();
+            auto* raw_state = state.get();
             auto submitted = port.submit(
                 std::move(operation),
                 raw_state,
                 +[](void* value, OperationOutcome<T>&& outcome) noexcept
                 {
-                    std::unique_ptr<CallbackState> callback{
-                        static_cast<CallbackState*>(value)};
-                    auto& owner = *callback->control;
+                    auto* callback = static_cast<CallbackState*>(value);
+                    callback->outcome.emplace(std::move(outcome));
+                    const auto previous = callback->phase.exchange(
+                        ECallbackPhase::COMPLETED,
+                        std::memory_order_acq_rel);
+                    if (previous == ECallbackPhase::CALLBACK_OWNED)
                     {
-                        std::lock_guard lock{owner.mutex};
-                        if (owner.completions.size() >= owner.capacity)
-                            std::terminate();
-                        owner.completions.push_back(Completion{
-                            std::move(callback->key),
-                            std::move(outcome)});
+                        std::unique_ptr<CallbackState> owner{callback};
+                        publish(*owner);
                     }
-                    owner.in_flight.fetch_sub(
-                        1u,
-                        std::memory_order_release);
+                    else if (previous == ECallbackPhase::REJECTED)
+                    {
+                        std::unique_ptr<CallbackState> owner{callback};
+                        discard(*owner);
+                    }
+                    else if (previous != ECallbackPhase::SUBMITTING)
+                    {
+                        std::terminate();
+                    }
                 },
                 options
             );
-            if (!submitted)
+
+            const auto next = submitted
+                ? ECallbackPhase::CALLBACK_OWNED
+                : ECallbackPhase::REJECTED;
+            const auto previous = state->phase.exchange(
+                next,
+                std::memory_order_acq_rel);
+            if (previous == ECallbackPhase::COMPLETED)
             {
-                std::unique_ptr<CallbackState> rejected{raw_state};
-                rejected->control->in_flight.fetch_sub(
-                    1u,
-                    std::memory_order_release);
+                if (submitted)
+                    publish(*state);
+                else
+                    discard(*state);
+            }
+            else if (previous == ECallbackPhase::SUBMITTING)
+            {
+                static_cast<void>(state.release());
+            }
+            else
+            {
+                std::terminate();
             }
             return submitted;
         }
@@ -119,6 +140,9 @@ namespace lux::async
                     control_->completions.pop_back();
                 }
                 consume(std::move(*completion));
+                control_->in_flight.fetch_sub(
+                    1u,
+                    std::memory_order_release);
                 ++count;
             }
             return count;
@@ -151,6 +175,14 @@ namespace lux::async
         }
 
     private:
+        enum class ECallbackPhase : std::uint8_t
+        {
+            SUBMITTING,
+            CALLBACK_OWNED,
+            COMPLETED,
+            REJECTED
+        };
+
         struct Control final
         {
             explicit Control(std::size_t requested_capacity)
@@ -170,7 +202,30 @@ namespace lux::async
         {
             std::shared_ptr<Control> control;
             Key key;
+            std::optional<OperationOutcome<T>> outcome;
+            std::atomic<ECallbackPhase> phase{
+                ECallbackPhase::SUBMITTING};
         };
+
+        static void publish(CallbackState& callback) noexcept
+        {
+            if (!callback.outcome)
+                std::terminate();
+            auto& owner = *callback.control;
+            std::lock_guard lock{owner.mutex};
+            if (owner.completions.size() >= owner.capacity)
+                std::terminate();
+            owner.completions.push_back(Completion{
+                std::move(callback.key),
+                std::move(*callback.outcome)});
+        }
+
+        static void discard(CallbackState& callback) noexcept
+        {
+            callback.control->in_flight.fetch_sub(
+                1u,
+                std::memory_order_release);
+        }
 
         std::shared_ptr<Control> control_;
     };

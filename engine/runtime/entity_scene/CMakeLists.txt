@@ -17,16 +17,10 @@ add_component(
     NAMESPACE      lux::engine::runtime
     OUTPUT_NAME    lux_engine_runtime_entity_scene
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/EntityBatchDecoder.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/PreparedEntityBatch.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SectionBlobStore.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/EntityBatchStager.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/EntityBatchMaterializer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EntitySceneCatalog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EntitySectionGeneratorCatalog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EntitySectionService.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/EntitySectionLoaderSystem.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/StartupSectionSystem.cpp
 )
 
 component_include_directories(
@@ -48,27 +42,21 @@ target_link_libraries(
     PUBLIC
         lux::cxx::compile_time
         lux::cxx::memory
-        lux::engine::ecs::core
+        lux::engine::ecs::entity_scene
         lux::engine::ecs::scene_format
         lux::engine::scene::scene
         lux::engine::resource::asset
         lux::engine::runtime::runtime_execution
         lux::engine::scene::scene
-        EnTT::EnTT
         STDEXEC::stdexec
     PRIVATE
-        lux::engine::core::meta
-        lux::engine::core::serialization
-        lux::engine::ecs::component_archive
         zstd::libzstd
 )
 
 component_add_transitive_commands(
     runtime_entity_scene
-    "find_package(EnTT CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time memory)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS meta serialization)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format component_archive)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS entity_scene scene_format)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution)"

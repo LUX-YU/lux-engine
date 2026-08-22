@@ -6,8 +6,8 @@
 
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchTypes.hpp>
-#include <lux/engine/runtime/entity_scene/visibility.h>
+#include <lux/engine/ecs/entity_scene/EntityBatchTypes.hpp>
+#include <lux/engine/ecs/entity_scene/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -15,9 +15,9 @@
 #include <cstdint>
 #include <utility>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
-    class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC DecodedEntityBatch final
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC DecodedEntityBatch final
     {
     public:
         DecodedEntityBatch(DecodedEntityBatch&&) noexcept = default;
@@ -65,7 +65,7 @@ namespace lux::runtime::entity_scene
         std::size_t encoded_bytes_{0u};
     };
 
-    class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC EntityBatchDecoder final
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC EntityBatchDecoder final
     {
     public:
         [[nodiscard]] lux::cxx::expected<

@@ -58,7 +58,7 @@ namespace lux::runtime
         auto* const assets = builder.services().borrow<
             lux::asset::AssetServices>();
         auto* const blobs = builder.services().borrow<
-            entity_scene::ContentBlobClient>();
+            lux::ecs::entity_scene::ContentBlobClient>();
         auto* const async = builder.services().borrow<SceneAsyncContext>();
         auto* const render = builder.services().borrow<RenderSystemStages>();
         auto* const residency = builder.services().borrow<ResidencySubsystem>();

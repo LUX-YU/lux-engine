@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/entity_scene/EntityBatchMaterializer.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchMaterializer.hpp>
 
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
     struct SectionCommitReceipt::Impl final
     {

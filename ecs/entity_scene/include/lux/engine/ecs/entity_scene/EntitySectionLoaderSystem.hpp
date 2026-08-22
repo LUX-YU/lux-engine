@@ -5,12 +5,10 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/scene/SceneDescription.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchTypes.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
-#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/runtime/entity_scene/visibility.h>
-#include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchTypes.hpp>
+#include <lux/engine/ecs/entity_scene/ContentBlobStorage.hpp>
+#include <lux/engine/ecs/entity_scene/EntitySectionLoadPort.hpp>
+#include <lux/engine/ecs/entity_scene/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -30,10 +28,9 @@ namespace lux::ecs
     class ComponentTypeCatalog;
     class PersistentEntityIndex;
 }
-namespace lux::exec { class AsyncRuntime; }
 namespace lux::ecs { class Registry; }
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
     class EntitySectionLoaderSystem;
 
@@ -89,9 +86,9 @@ namespace lux::runtime::entity_scene
         std::size_t allocated_slots{0u};
         std::size_t free_slots{0u};
         std::size_t section_mappings{0u};
-        SectionBlobStoreSnapshot blobs;
+        ContentBlobStorageSnapshot blobs;
         bool closing{false};
-        bool scope_closed{false};
+        bool operations_drained{false};
         bool closed{false};
     };
 
@@ -108,7 +105,7 @@ namespace lux::runtime::entity_scene
         };
     }
 
-    class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC EntitySectionTicket final
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC EntitySectionTicket final
     {
     public:
         // Tickets are owner-main-thread handles. Moving, querying, resetting
@@ -141,7 +138,7 @@ namespace lux::runtime::entity_scene
         std::uint64_t generation_{0u};
     };
 
-    class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC EntitySectionClient final
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC EntitySectionClient final
     {
     public:
         EntitySectionClient() noexcept = default;
@@ -221,7 +218,7 @@ namespace lux::runtime::entity_scene
 
     static_assert(std::is_trivially_copyable_v<EntitySectionCommand>);
 
-    class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC
     EntitySectionLoaderSystem final : public lux::ecs::ISystem
     {
     public:
@@ -229,9 +226,9 @@ namespace lux::runtime::entity_scene
         /// It must be bound to the registry which later reaches onAdded() and
         /// outlive this loader and every ticket issued by it.
         EntitySectionLoaderSystem(
-            lux::exec::AsyncRuntime& runtime,
-            EntitySectionLoadClient loading,
+            EntitySectionLoadPort loading,
             std::shared_ptr<const lux::asset::AssetVfs> vfs,
+            std::unique_ptr<IContentBlobStorage> blobs,
             const lux::ecs::ComponentTypeCatalog& components,
             lux::ecs::PersistentEntityIndex& persistent_entities,
             EntitySectionLoaderConfig config = {});
@@ -249,7 +246,6 @@ namespace lux::runtime::entity_scene
             noexcept override;
         [[nodiscard]] bool closeComplete() const noexcept override;
         [[nodiscard]] bool closeNeedsOwnerTick() const noexcept override;
-        [[nodiscard]] lux::exec::AsyncScopeCloseSender closeAsync() noexcept;
 
         void onAdded(const lux::ecs::SystemSetupContext& setup) override;
         void update(const lux::ecs::SystemUpdateContext& context) override;
@@ -285,8 +281,6 @@ namespace lux::runtime::entity_scene
         void applyCommand(
             const EntitySectionCommand& command,
             lux::ecs::Registry& registry) noexcept;
-        void acceptCloseScopeClosed() noexcept;
-
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

@@ -56,7 +56,7 @@ namespace
     struct StoredRegion final
     {
         lux::ecs::scene_format::ContentBlobRef reference;
-        lux::runtime::entity_scene::ContentBlobLease owner;
+        lux::ecs::entity_scene::ContentBlobLease owner;
     };
 
     [[nodiscard]] lux::ecs::scene_format::EntitySectionAttachment
@@ -288,7 +288,7 @@ int main()
     }
 
     lux::runtime::entity_scene::SectionBlobStore blobs;
-    std::vector<lux::runtime::entity_scene::ContentBlobLease> blob_owners;
+    std::vector<lux::ecs::entity_scene::ContentBlobLease> blob_owners;
     blob_owners.reserve(3u);
 
     // One blob models stored cooked bytes.  The second is generated at

@@ -34,7 +34,7 @@ namespace lux::runtime::spatial3d
             entt::entity entity{entt::null};
             std::uint64_t navigation_generation{0u};
             lux::ecs::scene_format::ContentBlobRef reference;
-            lux::runtime::entity_scene::ContentBlobLease content;
+            lux::ecs::entity_scene::ContentBlobLease content;
             std::optional<lux::navigation::detour3d::PreparedNavigationRegion3D>
                 prepared;
             std::optional<lux::navigation::detour3d::NavigationRegion3DFailure>
@@ -63,7 +63,7 @@ namespace lux::runtime::spatial3d
              lux::exec::AsyncScope& scene_scope_value,
              Navigation3DPrepareClient preparation_value,
              lux::ecs::Navigation3DSystem& navigation_value,
-             lux::runtime::entity_scene::ContentBlobClient content_value,
+             lux::ecs::entity_scene::ContentBlobClient content_value,
              Spatial3DNavigationAdapterConfig config_value)
             : async_runtime(&async_runtime_value),
               preparation(std::move(preparation_value)),
@@ -391,7 +391,7 @@ namespace lux::runtime::spatial3d
         lux::exec::AsyncRuntime* async_runtime{nullptr};
         Navigation3DPrepareClient preparation;
         lux::ecs::Navigation3DSystem* navigation{nullptr};
-        lux::runtime::entity_scene::ContentBlobClient content;
+        lux::ecs::entity_scene::ContentBlobClient content;
         lux::exec::AsyncScope* scope{nullptr};
         std::shared_ptr<CompletionControl> completion;
         Spatial3DNavigationAdapterConfig config;
@@ -405,7 +405,7 @@ namespace lux::runtime::spatial3d
         lux::exec::AsyncScope& scene_scope,
         Navigation3DPrepareClient preparation,
         lux::ecs::Navigation3DSystem& navigation,
-        lux::runtime::entity_scene::ContentBlobClient content,
+        lux::ecs::entity_scene::ContentBlobClient content,
         Spatial3DNavigationAdapterConfig config)
         : impl_(std::make_unique<Impl>(*this,
                                        async_runtime,

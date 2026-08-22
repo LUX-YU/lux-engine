@@ -27,7 +27,7 @@ namespace lux::runtime
     {
     public:
         ClassicMeshBatchRenderSubsystem(
-            entity_scene::ContentBlobClient blobs,
+            lux::ecs::entity_scene::ContentBlobClient blobs,
             lux::ecs::ResidencyCallbacks residency,
             lux::asset::AssetManager& assets,
             ClassicMeshPrepareClient preparation,

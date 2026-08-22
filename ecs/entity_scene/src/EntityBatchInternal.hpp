@@ -5,9 +5,9 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
-#include <lux/engine/runtime/entity_scene/PreparedEntityBatch.hpp>
-#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchDecoder.hpp>
+#include <lux/engine/ecs/entity_scene/PreparedEntityBatch.hpp>
+#include <lux/engine/ecs/entity_scene/ContentBlobStorage.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace lux::runtime::entity_scene::detail
+namespace lux::ecs::entity_scene::detail
 {
     struct ResolvedReferenceRelocation final
     {
@@ -61,7 +61,7 @@ namespace lux::runtime::entity_scene::detail
     {
         PreparedEntityBatchImpl(
             DecodedEntityBatch decoded_batch,
-            SectionBlobStore& blob_store_value)
+            IContentBlobStorage& blob_store_value)
             : decoded(std::move(decoded_batch)),
               staging(std::make_unique<lux::ecs::Registry>()),
               blob_store(blob_store_value)
@@ -69,7 +69,7 @@ namespace lux::runtime::entity_scene::detail
 
         DecodedEntityBatch decoded;
         std::unique_ptr<lux::ecs::Registry> staging;
-        SectionBlobStore& blob_store;
+        IContentBlobStorage& blob_store;
         lux::serialize::NameTable names;
 
         // Own the exact descriptor snapshot used to validate this batch.

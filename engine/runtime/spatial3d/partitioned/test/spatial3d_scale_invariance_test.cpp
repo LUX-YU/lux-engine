@@ -10,8 +10,9 @@
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
+#include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
+#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
@@ -215,7 +216,7 @@ namespace
     void drive(
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule,
-        const lux::runtime::entity_scene::EntitySectionLoaderSystem& loader,
+        const lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
         const lux::runtime::spatial_partition::SpatialPartitionSystem&
             partition,
         const lux::runtime::spatial3d::SpatialInterest3DSystem& interest,
@@ -245,26 +246,15 @@ namespace
     }
 
     void closeLoader(
-        lux::runtime::entity_scene::EntitySectionLoaderSystem& loader,
+        lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
-        std::atomic<bool> closed{false};
-        auto close = loader.closeAsync()
-            | stdexec::then(
-                  [&closed, &progress]() noexcept
-                  {
-                      closed.store(true, std::memory_order_release);
-                      progress.notify();
-                  });
-        ::experimental::execution::start_detached(std::move(close));
+        loader.requestClose();
         progress.driveWithStep(
             [&schedule]() noexcept { schedule.tick(0.0f); },
-            [&closed]() noexcept
-            {
-                return closed.load(std::memory_order_acquire);
-            },
+            [&loader]() noexcept { return loader.closeComplete(); },
             [&loader]() noexcept
             {
                 const auto state = loader.snapshot();
@@ -282,13 +272,13 @@ namespace
         std::uint64_t generated_sections{0u};
         lux::runtime::spatial3d::SpatialInterest3DSnapshot interest;
         lux::runtime::spatial_partition::SpatialPartitionSnapshot partition;
-        lux::runtime::entity_scene::EntitySectionLoaderSnapshot loader;
+        lux::ecs::entity_scene::EntitySectionLoaderSnapshot loader;
     };
 
     ScaleSample runScale(
         std::uint32_t scale,
         lux::exec::AsyncRuntime& runtime,
-        const lux::runtime::entity_scene::EntitySectionLoadClient&
+        const lux::ecs::entity_scene::EntitySectionLoadPort&
             load_client,
         const std::shared_ptr<const GeneratorState>& generator)
     {
@@ -314,13 +304,13 @@ namespace
         lux::ecs::Schedule schedule{world};
         auto vfs = std::make_shared<lux::asset::AssetVfs>();
         auto loader = std::make_unique<
-            entity_runtime::EntitySectionLoaderSystem>(
-                runtime,
+            lux::ecs::entity_scene::EntitySectionLoaderSystem>(
                 load_client,
                 std::move(vfs),
+                std::make_unique<entity_runtime::SectionBlobStore>(),
                 components,
                 persistent_entities,
-                entity_runtime::EntitySectionLoaderConfig{64u});
+                lux::ecs::entity_scene::EntitySectionLoaderConfig{64u});
         auto* loader_owner = loader.get();
         assert(schedule.addSystem(std::move(loader)));
         auto partition_system =

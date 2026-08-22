@@ -5,18 +5,18 @@
  */
 
 #include <lux/engine/ecs/scene_format/Identifiers.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchTypes.hpp>
-#include <lux/engine/runtime/entity_scene/visibility.h>
+#include <lux/engine/ecs/entity_scene/EntityBatchTypes.hpp>
+#include <lux/engine/ecs/entity_scene/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
     namespace detail { struct PreparedEntityBatchImpl; }
 
-    class LUX_ENGINE_RUNTIME_ENTITY_SCENE_PUBLIC PreparedEntityBatch final
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC PreparedEntityBatch final
     {
     public:
         ~PreparedEntityBatch();

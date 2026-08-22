@@ -96,7 +96,7 @@ namespace lux::runtime::spatial3d
                 EStaticCollider3DState::WAITING_CONTENT};
             EStaticCollider3DFailure failure{
                 EStaticCollider3DFailure::NONE};
-            lux::runtime::entity_scene::ContentBlobLease candidate_content;
+            lux::ecs::entity_scene::ContentBlobLease candidate_content;
             StaticCollider3DPrepareBudgetLease candidate_budget;
             std::unique_ptr<lux::ecs::Physics3DPreparedStaticBatch> prepared;
             std::unique_ptr<lux::ecs::Physics3DStaticBatchStager> stager;
@@ -116,7 +116,7 @@ namespace lux::runtime::spatial3d
             lux::exec::AsyncScope& scene_scope_value,
             StaticCollider3DPrepareClient preparation_value,
             std::shared_ptr<lux::ecs::Physics3DScene> scene_value,
-            lux::runtime::entity_scene::ContentBlobClient content_value,
+            lux::ecs::entity_scene::ContentBlobClient content_value,
             StaticCollider3DSystemConfig config_value)
             : async_runtime(&async_runtime_value),
               scope(&scene_scope_value),
@@ -1080,7 +1080,7 @@ namespace lux::runtime::spatial3d
         lux::exec::AsyncScope* scope{nullptr};
         StaticCollider3DPrepareClient preparation;
         std::shared_ptr<lux::ecs::Physics3DScene> scene;
-        lux::runtime::entity_scene::ContentBlobClient content;
+        lux::ecs::entity_scene::ContentBlobClient content;
         std::shared_ptr<CompletionControl> completion;
         StaticCollider3DSystemConfig config;
         lux::ecs::Registry* attached{nullptr};
@@ -1111,7 +1111,7 @@ namespace lux::runtime::spatial3d
         lux::exec::AsyncScope& scene_scope,
         StaticCollider3DPrepareClient preparation,
         std::shared_ptr<lux::ecs::Physics3DScene> scene,
-        lux::runtime::entity_scene::ContentBlobClient content,
+        lux::ecs::entity_scene::ContentBlobClient content,
         StaticCollider3DSystemConfig config)
         : impl_(std::make_unique<Impl>(
               *this,
@@ -1134,7 +1134,7 @@ namespace lux::runtime::spatial3d
     StaticCollider3DSystem::makeBinding(
         std::uint64_t generation,
         std::shared_ptr<lux::ecs::Physics3DScene> scene,
-        lux::runtime::entity_scene::ContentBlobLease content,
+        lux::ecs::entity_scene::ContentBlobLease content,
         StaticCollider3DPrepareBudgetLease budget,
         std::unique_ptr<lux::ecs::Physics3DStaticBatchLease> physics) noexcept
     {

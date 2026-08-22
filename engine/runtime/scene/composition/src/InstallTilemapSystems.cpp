@@ -31,7 +31,7 @@ namespace lux::runtime
         const auto checkpoint = builder.checkpoint();
         auto* const async = builder.services().borrow<SceneAsyncContext>();
         auto* const blobs = builder.services().borrow<
-            entity_scene::ContentBlobClient>();
+            lux::ecs::entity_scene::ContentBlobClient>();
         auto* const persistent = builder.services().borrow<
             PersistentEntityIndex>();
         if (!async || !blobs || !persistent || !preparation)

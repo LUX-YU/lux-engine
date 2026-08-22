@@ -1,8 +1,8 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchStager.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchDecoder.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchStager.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
-#include <lux/engine/runtime/entity_scene/PreparedEntityBatch.hpp>
+#include <lux/engine/ecs/entity_scene/PreparedEntityBatch.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 
 #include <concepts>
@@ -13,11 +13,11 @@
 
 namespace
 {
-    using lux::runtime::entity_scene::ContentBlobLease;
-    using lux::runtime::entity_scene::DecodedEntityBatch;
-    using lux::runtime::entity_scene::EntityBatchStager;
+    using lux::ecs::entity_scene::ContentBlobLease;
+    using lux::ecs::entity_scene::DecodedEntityBatch;
+    using lux::ecs::entity_scene::EntityBatchStager;
     using lux::runtime::entity_scene::EntitySceneCatalog;
-    using lux::runtime::entity_scene::PreparedEntityBatch;
+    using lux::ecs::entity_scene::PreparedEntityBatch;
 
     static_assert(std::same_as<
         decltype(std::declval<const DecodedEntityBatch&>().section()),

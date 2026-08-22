@@ -95,7 +95,7 @@ namespace lux::runtime::spatial2d
             lux::ecs::PixelFieldRuntime& runtime,
             lux::ecs::PixelFieldSystem& fields,
             lux::ecs::PixelChunkPersistenceStore& persistence,
-            lux::runtime::entity_scene::ContentBlobClient content,
+            lux::ecs::entity_scene::ContentBlobClient content,
             const SpatialInterest2DSystem& activity);
         ~Infinite2DPixelSystem() override;
 

@@ -12,10 +12,10 @@
 #include <lux/engine/runtime/scene/visibility.h>
 #include <lux/engine/resource/asset/AssetLoadPort.hpp>
 #include <lux/engine/resource/asset/AssetRef.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
+#include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
-#include <lux/engine/runtime/entity_scene/StartupSectionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/StartupSectionSystem.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
@@ -219,7 +219,7 @@ namespace lux::runtime
             lux::asset_runtime::AssetClient            asset_client;
             lux::exec::AsyncRuntime&                   async;
             const lux::ecs::ComponentTypeCatalog&      components;
-            entity_scene::EntitySectionLoadClient      entity_sections{};
+            lux::ecs::entity_scene::EntitySectionLoadPort entity_sections{};
             const lux::extensions::ExtensionModuleManager*
                 extension_modules{nullptr};
         };
@@ -305,12 +305,12 @@ namespace lux::runtime
         /// Domain-neutral loading telemetry. Scene Features receive
         /// only EntitySectionClient/ContentBlobClient values and cannot mutate
         /// or inspect the concrete loader system.
-        [[nodiscard]] entity_scene::EntitySectionLoaderSnapshot
+        [[nodiscard]] lux::ecs::entity_scene::EntitySectionLoaderSnapshot
         entitySectionLoaderSnapshot() const noexcept
         {
             return entity_section_loader_
                 ? entity_section_loader_->snapshot()
-                : entity_scene::EntitySectionLoaderSnapshot{};
+                : lux::ecs::entity_scene::EntitySectionLoaderSnapshot{};
         }
         [[nodiscard]] SceneRuntimePersistenceSnapshot
         persistenceSnapshot(
@@ -364,7 +364,7 @@ namespace lux::runtime
         lux::asset_runtime::AssetClient           asset_client_;
         lux::exec::AsyncRuntime&                  async_;
         const lux::ecs::ComponentTypeCatalog&     components_;
-        entity_scene::EntitySectionLoadClient      entity_section_loading_;
+        lux::ecs::entity_scene::EntitySectionLoadPort entity_section_loading_;
         const lux::extensions::ExtensionModuleManager*
             extension_modules_{};
         lux::events::DomainEvents*                events_{};
@@ -379,8 +379,9 @@ namespace lux::runtime
         // live in an extension DLL into the Schedule.  Keep the module alive
         // until those systems and their services have been destroyed.
         std::vector<lux::extensions::ModuleLease> extension_module_leases_;
-        entity_scene::EntitySectionLoaderSystem*   entity_section_loader_{};
-        entity_scene::StartupSectionSystem*        startup_sections_{};
+        lux::ecs::entity_scene::EntitySectionLoaderSystem*
+                                                entity_section_loader_{};
+        lux::ecs::entity_scene::StartupSectionSystem* startup_sections_{};
         const entity_scene::EntitySceneCatalog*    entity_scene_catalog_{};
         lux::asset::AssetRef                       scene_asset_ref_{};
 

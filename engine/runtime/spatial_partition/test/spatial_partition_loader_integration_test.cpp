@@ -7,6 +7,7 @@
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
+#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
@@ -181,7 +182,7 @@ namespace
     void drive(
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule,
-        lux::runtime::entity_scene::EntitySectionLoaderSystem& loader,
+        lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
         Predicate&& done)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
@@ -199,26 +200,15 @@ namespace
     }
 
     void closeLoader(
-        lux::runtime::entity_scene::EntitySectionLoaderSystem& loader,
+        lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
-        std::atomic<bool> closed{false};
-        auto close = loader.closeAsync()
-            | stdexec::then(
-                  [&closed, &progress]() noexcept
-                  {
-                      closed.store(true, std::memory_order_release);
-                      progress.notify();
-                  });
-        ::experimental::execution::start_detached(std::move(close));
+        loader.requestClose();
         progress.driveWithStep(
             [&schedule]() noexcept { schedule.tick(0.0f); },
-            [&closed]() noexcept
-            {
-                return closed.load(std::memory_order_acquire);
-            },
+            [&loader]() noexcept { return loader.closeComplete(); },
             [&loader]() noexcept
             {
                 const auto snapshot = loader.snapshot();
@@ -267,7 +257,7 @@ int main()
         lux::ecs::World missing_world;
         lux::ecs::Schedule missing_schedule{missing_world};
         auto owner = std::make_unique<partition::SpatialPartitionSystem>(
-            entity_runtime::EntitySectionClient{},
+            lux::ecs::entity_scene::EntitySectionClient{},
             std::move(*empty_planner));
         auto rejected = missing_schedule.addSystem(std::move(owner));
         assert(!rejected);
@@ -320,10 +310,10 @@ int main()
     lux::ecs::PersistentEntityIndex persistent_entities{world.registry()};
     lux::ecs::Schedule schedule{world};
     auto loader = std::make_unique<
-        entity_runtime::EntitySectionLoaderSystem>(
-            runtime,
+        lux::ecs::entity_scene::EntitySectionLoaderSystem>(
             service.loadClient(),
             vfs,
+            std::make_unique<entity_runtime::SectionBlobStore>(),
             components,
             persistent_entities);
     auto* loader_owner = loader.get();
@@ -339,10 +329,10 @@ int main()
             cross_world.registry()};
         lux::ecs::Schedule cross_schedule{cross_world};
         auto cross_loader = std::make_unique<
-            entity_runtime::EntitySectionLoaderSystem>(
-                runtime,
+            lux::ecs::entity_scene::EntitySectionLoaderSystem>(
                 service.loadClient(),
                 vfs,
+                std::make_unique<entity_runtime::SectionBlobStore>(),
                 components,
                 cross_persistent_entities);
         auto* cross_loader_owner = cross_loader.get();
@@ -466,15 +456,7 @@ int main()
     // legal in that interval, otherwise interest close can never clear its
     // final tracked source.
     lux::exec::testing::CloseEpoch loader_close_progress{runtime};
-    std::atomic<bool> loader_closed{false};
-    auto loader_close = loader_owner->closeAsync()
-        | stdexec::then(
-              [&loader_closed, &loader_close_progress]() noexcept
-              {
-                  loader_closed.store(true, std::memory_order_release);
-                  loader_close_progress.notify();
-              });
-    ::experimental::execution::start_detached(std::move(loader_close));
+    loader_owner->requestClose();
     auto sealed_client = loader_owner->client();
     assert(!sealed_client);
     auto acquire_after_seal = partition_owner->replaceDemandSource(demand(
@@ -489,9 +471,9 @@ int main()
     assert(partition_owner->snapshot().loader_tickets == 0u);
     loader_close_progress.driveWithStep(
         [&schedule]() noexcept { schedule.tick(0.0f); },
-        [&loader_closed]() noexcept
+        [&loader_owner]() noexcept
         {
-            return loader_closed.load(std::memory_order_acquire);
+            return loader_owner->closeComplete();
         },
         [&loader_owner]() noexcept
         {
@@ -501,7 +483,7 @@ int main()
                 snapshot.armed_sections != 0u ||
                 snapshot.active_sections != 0u;
         });
-    assert(loader_closed.load(std::memory_order_acquire));
+    assert(loader_owner->closeComplete());
     assert(loader_owner->snapshot().active_sections == 0u);
     assert(partition_owner->snapshot().demand.source_count == 0u);
     assert(partition_owner->snapshot().demand.decoded_bytes == 0u);

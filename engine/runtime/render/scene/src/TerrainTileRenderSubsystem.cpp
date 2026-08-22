@@ -97,7 +97,7 @@ namespace lux::runtime
             std::uint64_t revision{0u};
             lux::render::TerrainWireId id{};
             lux::render::UploadTerrainPagePayload payload{};
-            entity_scene::ContentBlobLease blob;
+            lux::ecs::entity_scene::ContentBlobLease blob;
             std::shared_ptr<std::vector<std::byte>> wire;
             bool upload_submitted{false};
         };
@@ -106,7 +106,7 @@ namespace lux::runtime
         {
             std::uint64_t desired_generation{0u};
             std::uint64_t owner_generation{0u};
-            entity_scene::ContentBlobLease blob;
+            lux::ecs::entity_scene::ContentBlobLease blob;
             bool in_flight{false};
         };
 
@@ -114,7 +114,7 @@ namespace lux::runtime
         {
             std::uint64_t revision{0u};
             lux::render::TerrainWireId id{};
-            entity_scene::ContentBlobLease blob;
+            lux::ecs::entity_scene::ContentBlobLease blob;
         };
 
         struct Entry final
@@ -147,7 +147,7 @@ namespace lux::runtime
         };
 
         Impl(
-            entity_scene::ContentBlobClient client,
+            lux::ecs::entity_scene::ContentBlobClient client,
             TerrainPrepareClient preparation_value,
             SceneAsyncContext& async) noexcept
             : blobs(std::move(client)),
@@ -924,7 +924,7 @@ namespace lux::runtime
             return result;
         }
 
-        entity_scene::ContentBlobClient blobs;
+        lux::ecs::entity_scene::ContentBlobClient blobs;
         TerrainPrepareClient preparation_client;
         lux::exec::AsyncScope* async_scope{nullptr};
         std::shared_ptr<CallbackControl> callbacks;
@@ -967,7 +967,7 @@ namespace lux::runtime
     };
 
     TerrainTileRenderSubsystem::TerrainTileRenderSubsystem(
-        entity_scene::ContentBlobClient blobs,
+        lux::ecs::entity_scene::ContentBlobClient blobs,
         TerrainPrepareClient preparation,
         SceneAsyncContext& async) noexcept
         : impl_(std::make_unique<Impl>(

@@ -2,7 +2,7 @@
 
 #include <lux/engine/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
+#include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
 #include <lux/engine/runtime/spatial_partition/EntitySectionRecordStore.hpp>
@@ -217,7 +217,7 @@ namespace lux::runtime
         auto decoded = lux::spatial3d::decodeSceneCatalog(
             scene->package().spatial3d_catalog);
         auto* const sections = builder.services().borrow<
-            entity_scene::EntitySectionClient>();
+            lux::ecs::entity_scene::EntitySectionClient>();
         if (!decoded || !sections)
         {
             (void)builder.rollbackTo(checkpoint);

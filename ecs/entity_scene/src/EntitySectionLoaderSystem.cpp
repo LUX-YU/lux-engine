@@ -1,15 +1,11 @@
-#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
+#include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
+#include <lux/engine/core/async/OperationInbox.hpp>
 #include <lux/engine/ecs/scene_format/Identifiers.hpp>
-#include <lux/engine/scene/SceneAssetSerDeser.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchMaterializer.hpp>
-#include <lux/engine/runtime/entity_scene/EntityBatchStager.hpp>
-#include <lux/engine/runtime/execution/AsyncRuntime.hpp>
-#include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
-
-#include <stdexec/execution.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchMaterializer.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchStager.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -21,10 +17,8 @@
 #include <thread>
 #include <utility>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
-    namespace ex = stdexec;
-
     detail::EntitySectionOwnerControl::EntitySectionOwnerControl(
         EntitySectionLoaderSystem* value) noexcept
         : owner(value), owner_thread(std::this_thread::get_id())
@@ -137,6 +131,30 @@ namespace lux::runtime::entity_scene
                     return std::nullopt;
             return result;
         }
+
+        [[nodiscard]] bool validRecordForLoad(
+            const lux::ecs::scene_format::SectionRecord& record) noexcept
+        {
+            if (record.id.empty() || record.encoded_bytes == 0u ||
+                record.decoded_bytes == 0u ||
+                record.content_digest ==
+                    lux::cxx::algorithm::Sha256Digest{})
+            {
+                return false;
+            }
+            if (const auto* stored = std::get_if<
+                    lux::ecs::scene_format::StoredSectionSource>(
+                    &record.source))
+            {
+                return !stored->content_path.empty();
+            }
+            const auto* generated = std::get_if<
+                lux::ecs::scene_format::GeneratedSectionSource>(
+                &record.source);
+            return generated &&
+                lux::ecs::scene_format::isValidSectionGeneratorId(
+                    generated->generator);
+        }
     }
 
     struct EntitySectionLoaderSystem::Impl final
@@ -158,23 +176,27 @@ namespace lux::runtime::entity_scene
             std::size_t references{0u};
             std::size_t external_references{0u};
             std::vector<DependencyPin> dependencies;
-            bool launch_failed{false};
+        };
+
+        struct CompletionKey final
+        {
+            std::uint32_t slot{~std::uint32_t{0u}};
+            std::uint64_t generation{0u};
         };
 
         Impl(
             EntitySectionLoaderSystem& owner_value,
-            lux::exec::AsyncRuntime& runtime,
-            EntitySectionLoadClient loading_value,
+            EntitySectionLoadPort loading_value,
             std::shared_ptr<const lux::asset::AssetVfs> vfs_value,
+            std::unique_ptr<IContentBlobStorage> blobs_value,
             const lux::ecs::ComponentTypeCatalog& components,
             lux::ecs::PersistentEntityIndex& persistent_entities,
             EntitySectionLoaderConfig config_value)
-            : runtime_owner(&runtime),
-              scope(runtime),
-              close_barrier_admission(scope.tryAcquireAdmission()),
-              loading(std::move(loading_value)),
+            : loading(std::move(loading_value)),
               vfs(std::move(vfs_value)),
+              completions(kEntitySectionLoadQueueCapacity),
               stager(components),
+              blobs(std::move(blobs_value)),
               materializer(persistent_entities),
               config(config_value),
               components(&components),
@@ -182,7 +204,7 @@ namespace lux::runtime::entity_scene
               control(std::make_shared<detail::EntitySectionOwnerControl>(
                   &owner_value))
         {
-            if (!close_barrier_admission)
+            if (!blobs)
                 std::abort();
             owner_thread = control->owner_thread;
         }
@@ -293,7 +315,7 @@ namespace lux::runtime::entity_scene
                 return;
             }
             auto prepared = stager.begin(
-                std::move(outcome->decoded), blobs);
+                std::move(outcome->decoded), *blobs);
             if (!prepared)
             {
                 slot.batch_failure = std::move(prepared.error());
@@ -304,29 +326,12 @@ namespace lux::runtime::entity_scene
             slot.state = EEntitySectionState::STAGING;
         }
 
-        void acceptStopped(
-            std::uint32_t index,
-            std::uint64_t generation) noexcept
-        {
-            if (std::this_thread::get_id() != owner_thread)
-                std::abort();
-            if (!validSlot(index, generation) ||
-                slots[index].state !=
-                    EEntitySectionState::WAITING_BACKGROUND)
-            {
-                ++stale_completions;
-                return;
-            }
-            slots[index].state = EEntitySectionState::FAILED;
-        }
-
         void launch(std::uint32_t index) noexcept
         {
             auto& slot = slots[index];
             if (slot.state != EEntitySectionState::WAITING_ADMISSION)
                 std::abort();
             slot.state = EEntitySectionState::WAITING_BACKGROUND;
-            slot.launch_failed = false;
             const auto generation = slot.generation;
             const auto accounted = accountedLoadBytes(slot.record);
             if (!accounted)
@@ -334,51 +339,23 @@ namespace lux::runtime::entity_scene
                 slot.state = EEntitySectionState::FAILED;
                 return;
             }
-            auto pipeline = lux::exec::execute(
+            auto submitted = completions.submit(
                     loading.operation(),
                     loading.loadOperation(vfs, slot.record, generation),
+                    CompletionKey{index, generation},
                     lux::async::SubmitOptions{
-                        .accounted_bytes = *accounted})
-                | ex::continues_on(
-                      lux::exec::mainThreadScheduler(*runtime_owner))
-                | ex::then(
-                      [control = std::weak_ptr{control}, index, generation](
-                          lux::async::OperationOutcome<LoadEntitySection> outcome)
-                          mutable noexcept
-                      {
-                          const auto locked = control.lock();
-                          if (!locked)
-                              return;
-                          requireOwnerThread(*locked);
-                          auto* owner_value = locked->owner.load(
-                              std::memory_order_acquire);
-                          if (owner_value)
-                          {
-                              owner_value->impl_->acceptOutcome(
-                                  index, generation, std::move(outcome));
-                          }
-                      })
-                | ex::upon_stopped(
-                      [control = std::weak_ptr{control}, index, generation]()
-                          noexcept
-                      {
-                          const auto locked = control.lock();
-                          if (!locked)
-                              return;
-                          requireOwnerThread(*locked);
-                          auto* owner_value = locked->owner.load(
-                              std::memory_order_acquire);
-                          if (owner_value)
-                          {
-                              owner_value->impl_->acceptStopped(
-                                  index, generation);
-                          }
-                      });
-            if (!lux::exec::spawn(scope, std::move(pipeline)))
+                        .accounted_bytes = *accounted});
+            if (!submitted)
             {
-                // update() adopts this on the owner thread; never complete a
-                // ticket inline from the submitter's call stack.
-                slot.launch_failed = true;
+                if (submitted.error() == lux::async::ESubmitError::QUEUE_FULL ||
+                    submitted.error() ==
+                        lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED)
+                {
+                    ++queue_backpressure;
+                    slot.state = EEntitySectionState::WAITING_ADMISSION;
+                    return;
+                }
+                slot.state = EEntitySectionState::FAILED;
             }
         }
 
@@ -462,29 +439,31 @@ namespace lux::runtime::entity_scene
         void tryCompleteClose() noexcept
         {
             if (!control->closing.load(std::memory_order_acquire) ||
-                !close_barrier_admission)
+                close_complete)
             {
                 return;
             }
             const auto snapshot = materializer.snapshot();
-            const auto blob_snapshot = blobs.snapshot();
+            const auto blob_snapshot = blobs->snapshot();
             if (snapshot.active_sections == 0u &&
                 snapshot.armed_sections == 0u &&
                 section_slots.empty() &&
                 blob_snapshot.current_bytes == 0u &&
-                blob_snapshot.allocation_count == 0u)
+                blob_snapshot.allocation_count == 0u &&
+                completions.terminal())
             {
-                close_barrier_admission = {};
+                close_complete = true;
+                if (close_progress)
+                    close_progress.notify();
             }
         }
 
-        lux::exec::AsyncRuntime* runtime_owner{nullptr};
-        lux::exec::AsyncScope scope;
-        lux::exec::AsyncScope::AdmissionTicket close_barrier_admission;
-        EntitySectionLoadClient loading;
+        EntitySectionLoadPort loading;
         std::shared_ptr<const lux::asset::AssetVfs> vfs;
+        lux::async::OperationInbox<LoadEntitySection, CompletionKey>
+            completions;
         EntityBatchStager stager;
-        SectionBlobStore blobs;
+        std::unique_ptr<IContentBlobStorage> blobs;
         EntityBatchMaterializer materializer;
         EntitySectionLoaderConfig config;
         const lux::ecs::ComponentTypeCatalog* components{nullptr};
@@ -501,8 +480,7 @@ namespace lux::runtime::entity_scene
         std::uint64_t cancelled_requests{0u};
         std::uint64_t queue_backpressure{0u};
         std::uint64_t command_rejections{0u};
-        bool scope_close_subscribed{false};
-        bool scope_closed{false};
+        bool close_complete{false};
         lux::ecs::SystemCloseProgressSink close_progress;
     };
 
@@ -678,17 +656,17 @@ namespace lux::runtime::entity_scene
     }
 
     EntitySectionLoaderSystem::EntitySectionLoaderSystem(
-        lux::exec::AsyncRuntime& runtime,
-        EntitySectionLoadClient loading,
+        EntitySectionLoadPort loading,
         std::shared_ptr<const lux::asset::AssetVfs> vfs,
+        std::unique_ptr<IContentBlobStorage> blobs,
         const lux::ecs::ComponentTypeCatalog& components,
         lux::ecs::PersistentEntityIndex& persistent_entities,
         EntitySectionLoaderConfig config)
         : impl_(std::make_unique<Impl>(
               *this,
-              runtime,
               std::move(loading),
               std::move(vfs),
+              std::move(blobs),
               components,
               persistent_entities,
               config))
@@ -699,14 +677,14 @@ namespace lux::runtime::entity_scene
         requireOwnerThread(*impl_->control);
         impl_->control->closing.store(true, std::memory_order_release);
         impl_->control->owner.store(nullptr, std::memory_order_release);
-        impl_->scope.requestStop();
         const auto materialized = impl_->materializer.snapshot();
-        const auto blobs = impl_->blobs.snapshot();
+        const auto blobs = impl_->blobs->snapshot();
         if (materialized.active_sections != 0u ||
             materialized.armed_sections != 0u ||
             !impl_->section_slots.empty() ||
             blobs.current_bytes != 0u ||
-            blobs.allocation_count != 0u)
+            blobs.allocation_count != 0u ||
+            !impl_->completions.terminal())
         {
             std::abort();
         }
@@ -723,7 +701,7 @@ namespace lux::runtime::entity_scene
     ContentBlobClient EntitySectionLoaderSystem::contentBlobs() const noexcept
     {
         requireOwnerThread(*impl_->control);
-        return impl_->blobs.client();
+        return impl_->blobs->client();
     }
 
     lux::cxx::expected<EntitySectionTicket, EEntitySectionRequestError>
@@ -742,7 +720,7 @@ namespace lux::runtime::entity_scene
                 EEntitySectionRequestError::OWNER_NOT_ADDED);
         }
         if (!impl_->config.valid() || !impl_->loading ||
-            !lux::scene::validateSectionRecord(record) ||
+            !validRecordForLoad(record) ||
             (std::holds_alternative<
                  lux::ecs::scene_format::StoredSectionSource>(record.source) &&
              !impl_->vfs))
@@ -901,7 +879,7 @@ namespace lux::runtime::entity_scene
                 EEntitySectionRequestError::OWNER_NOT_ADDED);
         }
         if (!impl_->config.valid() || !impl_->loading ||
-            !lux::scene::validateSectionRecord(record) ||
+            !validRecordForLoad(record) ||
             (std::holds_alternative<
                  lux::ecs::scene_format::StoredSectionSource>(record.source) &&
              !impl_->vfs))
@@ -1002,6 +980,15 @@ namespace lux::runtime::entity_scene
         if (impl_->registry != &context.registry())
             std::abort();
 
+        impl_->completions.drain(
+            [this](auto completion) noexcept
+            {
+                impl_->acceptOutcome(
+                    completion.key.slot,
+                    completion.key.generation,
+                    std::move(completion.outcome));
+            });
+
         std::size_t work = 0u;
         const auto count = impl_->slots.size();
         for (std::size_t visited = 0u;
@@ -1017,14 +1004,6 @@ namespace lux::runtime::entity_scene
             {
                 impl_->launch(static_cast<std::uint32_t>(index));
                 ++work;
-                continue;
-            }
-            if (slot.state == EEntitySectionState::WAITING_BACKGROUND &&
-                slot.launch_failed)
-            {
-                slot.launch_failed = false;
-                impl_->acceptStopped(
-                    static_cast<std::uint32_t>(index), slot.generation);
                 continue;
             }
             if (slot.state == EEntitySectionState::ACTIVE &&
@@ -1092,7 +1071,7 @@ namespace lux::runtime::entity_scene
         }
         if (count != 0u)
             impl_->staging_cursor = (impl_->staging_cursor + 1u) % count;
-        impl_->blobs.pruneExpired();
+        impl_->blobs->pruneExpired();
         impl_->tryCompleteClose();
     }
 
@@ -1157,7 +1136,7 @@ namespace lux::runtime::entity_scene
             true, std::memory_order_acq_rel);
         if (first_close)
         {
-            impl_->scope.requestStop();
+            impl_->completions.close();
             // Close tears down the complete dependency graph as one owner.
             // Drop its internal edges first; normal recycle then cannot
             // recursively decrement a peer whose forced close reference is
@@ -1210,36 +1189,20 @@ namespace lux::runtime::entity_scene
             }
             impl_->tryCompleteClose();
         }
-        if (!impl_->scope_close_subscribed)
-        {
-            impl_->scope_close_subscribed = true;
-            lux::exec::detail::subscribeScopeClose(
-                impl_->scope,
-                [weak = std::weak_ptr{impl_->control}]() noexcept
-                {
-                    const auto control = weak.lock();
-                    if (!control)
-                        return;
-                    auto* owner = control->owner.load(
-                        std::memory_order_acquire);
-                    if (owner)
-                        owner->acceptCloseScopeClosed();
-                });
-        }
     }
 
     bool EntitySectionLoaderSystem::closeComplete() const noexcept
     {
         requireOwnerThread(*impl_->control);
         return impl_->control->closing.load(std::memory_order_acquire) &&
-            !impl_->close_barrier_admission && impl_->scope_closed;
+            impl_->close_complete;
     }
 
     bool EntitySectionLoaderSystem::closeNeedsOwnerTick() const noexcept
     {
         requireOwnerThread(*impl_->control);
         if (!impl_->control->closing.load(std::memory_order_acquire) ||
-            !impl_->close_barrier_admission)
+            impl_->close_complete)
         {
             return false;
         }
@@ -1251,29 +1214,16 @@ namespace lux::runtime::entity_scene
         {
             return true;
         }
+        if (!impl_->completions.terminal())
+            return true;
 
         // External ContentBlobLease owners change the ledger themselves and
         // wake through their owning scope/system. Re-ticking the loader while
         // bytes remain cannot make progress. Once the last lease is gone, one
         // owner tick is actionable to prune/settle the close barrier.
-        const auto blobs = impl_->blobs.snapshot();
+        const auto blobs = impl_->blobs->snapshot();
         return blobs.current_bytes == 0u &&
             blobs.allocation_count == 0u;
-    }
-
-    lux::exec::AsyncScopeCloseSender EntitySectionLoaderSystem::closeAsync()
-        noexcept
-    {
-        requestClose();
-        return impl_->scope.closeAsync();
-    }
-
-    void EntitySectionLoaderSystem::acceptCloseScopeClosed() noexcept
-    {
-        requireOwnerThread(*impl_->control);
-        impl_->scope_closed = true;
-        if (impl_->close_progress)
-            impl_->close_progress.notify();
     }
 
     EntitySectionLoaderSnapshot EntitySectionLoaderSystem::snapshot()
@@ -1292,9 +1242,9 @@ namespace lux::runtime::entity_scene
         result.section_mappings = impl_->section_slots.size();
         result.closing = impl_->control->closing.load(
             std::memory_order_acquire);
-        result.scope_closed = impl_->scope_closed;
+        result.operations_drained = impl_->completions.terminal();
         result.closed = closeComplete();
-        result.blobs = impl_->blobs.snapshot();
+        result.blobs = impl_->blobs->snapshot();
         for (const auto& slot : impl_->slots)
         {
             result.outstanding_tickets += slot.external_references;

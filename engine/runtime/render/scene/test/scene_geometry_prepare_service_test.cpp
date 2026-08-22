@@ -87,7 +87,7 @@ namespace
     struct StoredBlob final
     {
         lux::ecs::scene_format::ContentBlobRef reference;
-        lux::runtime::entity_scene::ContentBlobLease lease;
+        lux::ecs::entity_scene::ContentBlobLease lease;
     };
 
     [[nodiscard]] StoredBlob storeBlob(

@@ -2,6 +2,7 @@
 #include <lux/engine/runtime/scene/SceneAsyncContext.hpp>
 
 #include <lux/engine/resource/asset/AssetServices.hpp>
+#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncScope.hpp>
 #include <lux/engine/ecs/HierarchyIndex.hpp>
@@ -301,16 +302,18 @@ namespace lux::runtime
         }
 
         auto loader = std::make_unique<
-            entity_scene::EntitySectionLoaderSystem>(
-                async_,
+            lux::ecs::entity_scene::EntitySectionLoaderSystem>(
                 entity_section_loading_,
                 config.section_vfs ? config.section_vfs : assets_.vfs(),
+                std::make_unique<entity_scene::SectionBlobStore>(),
                 components_,
                 *candidate_persistent_entities);
         auto* const loader_owner = loader.get();
-        if (!builder.services().emplace<entity_scene::EntitySectionClient>(
+        if (!builder.services().emplace<
+                lux::ecs::entity_scene::EntitySectionClient>(
                 loader_owner->client()) ||
-            !builder.services().emplace<entity_scene::ContentBlobClient>(
+            !builder.services().emplace<
+                lux::ecs::entity_scene::ContentBlobClient>(
                 loader_owner->contentBlobs()))
         {
             lux::log::error(
@@ -357,10 +360,13 @@ namespace lux::runtime
             return failBringUp();
         }
 
-        auto startup_result = entity_scene::StartupSectionSystem::create(
-            *catalog,
-            *loader_owner,
-            async_);
+        auto startup_result =
+            lux::ecs::entity_scene::StartupSectionSystem::create(
+                package.id,
+                package.sections,
+                package.startup_sections,
+                package.required_components,
+                *loader_owner);
         if (!startup_result)
         {
             lux::log::error(
@@ -471,10 +477,10 @@ namespace lux::runtime
                 frame_serial);
             switch (startup_sections_->state())
             {
-            case entity_scene::EEntitySceneState::READY:
+            case lux::ecs::entity_scene::EEntitySceneState::READY:
                 state_ = ESceneRuntimeState::READY;
                 break;
-            case entity_scene::EEntitySceneState::FAILED:
+            case lux::ecs::entity_scene::EEntitySceneState::FAILED:
                 state_ = ESceneRuntimeState::FAILED;
                 live_ = false;
                 if (const auto& failure = startup_sections_->failure())

@@ -3,8 +3,8 @@
 
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
-#include <lux/engine/runtime/entity_scene/StartupSectionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
+#include <lux/engine/ecs/entity_scene/StartupSectionSystem.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncScope.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
@@ -41,7 +41,8 @@ namespace lux::runtime
         };
 
         [[nodiscard]] EntitySectionCloseState sectionCloseState(
-            const entity_scene::EntitySectionLoaderSystem& loader) noexcept
+            const lux::ecs::entity_scene::EntitySectionLoaderSystem& loader)
+            noexcept
         {
             const auto snapshot = loader.snapshot();
             return {
@@ -142,20 +143,16 @@ namespace lux::runtime
                         });
                 }
 
-                if (startup_sections_ && !startup_close_started_)
+                if (startup_sections_)
                 {
-                    startup_close_started_ = true;
-                    auto close = startup_sections_->closeAsync()
-                        | stdexec::then(
-                              [this]() noexcept
-                              {
-                                  startup_closed_ = true;
-                                  requestCloseProgress();
-                              });
-                    ::experimental::execution::start_detached(
-                        std::move(close));
+                    if (!startup_close_started_)
+                    {
+                        startup_close_started_ = true;
+                        startup_sections_->requestClose();
+                    }
+                    startup_closed_ = startup_sections_->closeComplete();
                 }
-                else if (!startup_sections_)
+                else
                 {
                     startup_closed_ = true;
                 }
@@ -169,9 +166,11 @@ namespace lux::runtime
                     schedule_->tick(
                         0.f,
                         lux::ecs::kPhaseSceneLoading);
+                    startup_closed_ = startup_sections_->closeComplete();
                     if (!startup_closed_ && has_loader &&
                         startup_sections_->state() ==
-                            entity_scene::EEntitySceneState::CLOSING &&
+                            lux::ecs::entity_scene::EEntitySceneState::
+                                CLOSING &&
                         before != sectionCloseState(
                             *entity_section_loader_))
                     {
@@ -190,27 +189,25 @@ namespace lux::runtime
                         ESceneCloseError::NONE);
                 }
 
-                if (entity_section_loader_ &&
-                    !entity_loader_close_started_)
+                if (entity_section_loader_)
                 {
-                    entity_loader_close_started_ = true;
-                    auto close = entity_section_loader_->closeAsync()
-                        | stdexec::then(
-                              [this]() noexcept
-                              {
-                                  entity_loader_closed_ = true;
-                                  requestCloseProgress();
-                              });
-                    ::experimental::execution::start_detached(
-                        std::move(close));
+                    if (!entity_loader_close_started_)
+                    {
+                        entity_loader_close_started_ = true;
+                        entity_section_loader_->requestClose();
+                    }
+                    entity_loader_closed_ =
+                        entity_section_loader_->closeComplete();
                 }
-                else if (!entity_section_loader_)
+                else
                 {
                     entity_loader_closed_ = true;
                 }
                 if (schedule_ && !entity_loader_closed_)
                 {
                     schedule_->tick(0.f);
+                    entity_loader_closed_ =
+                        entity_section_loader_->closeComplete();
                     const auto owner_state = schedule_->closeState();
                     if (!entity_loader_closed_ && owner_state.valid &&
                         owner_state.owner_work_pending)

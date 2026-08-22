@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/entity_scene/EntityBatchDecoder.hpp>
+#include <lux/engine/ecs/entity_scene/EntityBatchDecoder.hpp>
 
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 
@@ -6,7 +6,7 @@
 
 #include <utility>
 
-namespace lux::runtime::entity_scene
+namespace lux::ecs::entity_scene
 {
     lux::cxx::expected<DecodedEntityBatch, EntityBatchFailure>
     EntityBatchDecoder::decode(

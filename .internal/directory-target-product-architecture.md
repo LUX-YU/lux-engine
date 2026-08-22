@@ -42,6 +42,10 @@ System Registry and installer/catalog/host variants are forbidden.
   for code with two equal domain owners.
 - Runtime execution owns queue/thread/scheduler implementations. ECS consumes
   only narrow modules-level ports.
+- `ecs/entity_scene` owns Section decode/stage/materialization and the
+  residency/publication Systems. `engine/runtime/entity_scene` implements the
+  typed load endpoint, generator execution and concrete content-blob storage;
+  it defines no `ISystem`.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
 - Shared cooked contracts may remain in `engine/scene` or `ecs/scene_format`;

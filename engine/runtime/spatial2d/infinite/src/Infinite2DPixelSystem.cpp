@@ -43,7 +43,7 @@ namespace lux::runtime::spatial2d
             lux::math::GridCoord2i64 coordinate;
             lux::ecs::PersistentEntityRef field_reference;
             lux::ecs::scene_format::ContentBlobRef content_reference;
-            lux::runtime::entity_scene::ContentBlobLease content;
+            lux::ecs::entity_scene::ContentBlobLease content;
             bool active{false};
             bool adopted{false};
             EPixelChunkDomainError prepare_error{
@@ -65,7 +65,7 @@ namespace lux::runtime::spatial2d
             lux::ecs::PixelFieldRuntime& runtime_value,
             lux::ecs::PixelFieldSystem& fields_value,
             lux::ecs::PixelChunkPersistenceStore& persistence_value,
-            lux::runtime::entity_scene::ContentBlobClient content_value,
+            lux::ecs::entity_scene::ContentBlobClient content_value,
             const SpatialInterest2DSystem& activity_value) noexcept
             : async_runtime(&async_runtime_value),
               preparation(std::move(preparation_value)),
@@ -472,7 +472,7 @@ namespace lux::runtime::spatial2d
         lux::ecs::PixelFieldRuntime* runtime{nullptr};
         lux::ecs::PixelFieldSystem* fields{nullptr};
         lux::ecs::PixelChunkPersistenceStore* persistence{nullptr};
-        lux::runtime::entity_scene::ContentBlobClient content;
+        lux::ecs::entity_scene::ContentBlobClient content;
         const SpatialInterest2DSystem* activity{nullptr};
         lux::ecs::Registry* attached{nullptr};
         lux::ecs::EcsCommandWriter commands;
@@ -496,7 +496,7 @@ namespace lux::runtime::spatial2d
         lux::ecs::PixelFieldRuntime& runtime,
         lux::ecs::PixelFieldSystem& fields,
         lux::ecs::PixelChunkPersistenceStore& persistence,
-        lux::runtime::entity_scene::ContentBlobClient content,
+        lux::ecs::entity_scene::ContentBlobClient content,
         const SpatialInterest2DSystem& activity)
         : impl_(std::make_unique<Impl>(
               *this,

@@ -125,7 +125,7 @@ namespace lux::editor
         /// lifetime operations are legal independently of the lexical frame.
         lux::render::RenderControlSession* control{nullptr};
         lux::render::RenderUploadClient    upload;
-        lux::runtime::entity_scene::EntitySectionLoadClient entity_sections;
+        lux::ecs::entity_scene::EntitySectionLoadPort entity_sections;
 
         // Name-keyed feature TYPE catalog: dynamic op-ids by name —
         // reg.ops<LightOperationIds>("Light") / reg.paramSetOp("Tonemap")。

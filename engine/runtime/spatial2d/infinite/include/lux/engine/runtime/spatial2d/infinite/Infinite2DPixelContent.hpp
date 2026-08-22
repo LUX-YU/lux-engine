@@ -108,7 +108,7 @@ namespace lux::runtime::spatial2d
         lux::ecs::PixelChunkLoad,
         Infinite2DPixelContentFailure>
     decodeInfinite2DPixelChunk(
-        const lux::runtime::entity_scene::ContentBlobLease& content);
+        const lux::ecs::entity_scene::ContentBlobLease& content);
 
     [[nodiscard]] LUX_ENGINE_RUNTIME_INFINITE2D_PIXEL_PUBLIC
     lux::cxx::expected<

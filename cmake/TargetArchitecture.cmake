@@ -588,8 +588,6 @@ function(lux_validate_source_boundaries)
     endforeach()
 
     set(runtime_system_debt
-        "engine/runtime/entity_scene/include/lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp"
-        "engine/runtime/entity_scene/include/lux/engine/runtime/entity_scene/StartupSectionSystem.hpp"
         "engine/runtime/render/scene/pinclude/lux/engine/runtime/render/scene/detail/PrimaryViewPresentationSystem.hpp"
         "engine/runtime/spatial2d/infinite/include/lux/engine/runtime/spatial2d/infinite/Infinite2DPixelSystem.hpp"
         "engine/runtime/spatial2d/infinite/include/lux/engine/runtime/spatial2d/infinite/SpatialInterest2DSystem.hpp"

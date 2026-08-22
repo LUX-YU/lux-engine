@@ -83,7 +83,13 @@ This ledger tracks implementation state only. Decisions live in ADRs.
   - [x] Reject a Scene-required Extension not satisfied by project selection,
         compile-check generated composition, and prove neither build artifact
         is copied into the Player deployment.
-- [ ] Remove legacy paths/targets and set all semantic-debt limits to zero.
+- [x] Remove legacy paths/targets and set all semantic-debt limits to zero.
+  - [x] Remove the empty Runtime Pack/spatial/launch/world trees and the former
+        `engine/spatial3d` tree; the source gate rejects their reappearance.
+  - [x] Rename product assembly targets to `runtime_scene_*_composition` and
+        retire the misleading `runtime_*_systems` names without aliases.
+  - [x] Run the zero-debt source gate both at configure time and through the
+        fixed `lux_architecture_check` target in every `all` build.
 - [ ] Complete Windows profile, installed-prefix and Android validation.
 
 The working tree modification under

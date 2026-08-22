@@ -60,6 +60,8 @@ System Registry and installer/catalog/host variants are forbidden.
   Section records, format limits and stable L3SC codec. Product-level direct
   System assembly lives in `engine/runtime/scene/composition`; neither
   `engine/spatial3d` nor `engine/runtime/spatial3d` is a source boundary.
+  Its product assembly targets are named `runtime_scene_*_composition`;
+  Runtime-domain `runtime_*_systems` target names are retired without aliases.
 - `ecs/tilemap/streaming` owns Tilemap chunk observation, preparation intent,
   publication, activity and retirement. `engine/runtime/assets/tilemap`
   implements only the typed background decode endpoint and queue policy; the
@@ -117,3 +119,6 @@ System Registry and installer/catalog/host variants are forbidden.
 
 All production targets call `lux_classify_target`. Build-tool dependencies use
 generated files/custom commands and never become Runtime link dependencies.
+The configure-time checks and the `lux_architecture_check` build target share
+`cmake/ValidateSourceArchitecture.cmake`; no temporary source-debt allowlist
+remains.

@@ -17,18 +17,23 @@ Platform -> Core -> Resource -> Function -> ECS -> Runtime -> Host
                                       Runtime ----^       ^
 ```
 
+Its ownership spine is `modules/ -> ecs/ -> engine/ -> hosts/products`:
+
 More precisely:
 
 - `modules/platform` wraps OS, window, dynamic-library, file-watch and graphics-API entry points.
 - `modules/core` contains domain-neutral values and infrastructure: bytes,
-  serialization, events, logging, math, meta and the extension ABI.
+  serialization, events, logging, math, meta and narrow typed async ports.
 - `modules/resource` contains cooked runtime resource descriptions, asset identity,
   the asset ledger, runtime codecs and pak reading.
 - `modules/function` contains reusable non-ECS domains such as rendering, scripting,
   input, UI and FlowForge runtime vocabulary.
-- `ecs` contains components, `ISystem`, `IRenderSubsystem` and ECS-domain adapters.
-- `engine/runtime` composes asynchronous execution, assets, scenes, rendering,
-  extensions, frame coordination and runtime packs.
+- `ecs` contains every Component, all Entity/Component-aware domain behavior,
+  `ISystem`, the sole `Schedule`, and World-to-render extraction.
+- `engine/runtime` composes execution, assets, Scene/World lifetime, extension
+  loading, render sessions/backends, frame coordination and logging. It defines
+  no domain Component or System.
+- `engine/extensions/api` is the thin Plugin-to-Engine ABI shared contract.
 - `engine/authoring` contains editable source documents and project data.
 - `engine/toolchain` converts authoring data into cooked runtime data. Assimp,
   shaderc, SPIR-V reflection and MLIR/LLVM belong here and never in Player.
@@ -39,22 +44,26 @@ More precisely:
 
 CMake targets declare `LAYER`, `PRODUCT`, and `ROLE`. Configuration fails on an
 illegal classified dependency, an unclassified production target, or a concrete
-extension linked back into the engine.
+extension linked back into the engine. The `lux_architecture_check` target also
+revalidates source boundaries and retired vocabulary as part of `all`.
 
 ## Runtime model
 
 - A scene owns a `World`, a topologically compiled `Schedule`, and at most one
-  top-level `RenderSystem`. Omitting the render pack produces a headless scene.
+  top-level `RenderSystem`. Omitting `RenderSystem` produces a headless scene.
 - Frame, control, and persistent GPU upload use separate channels. A single transfer
   pipeline owns transfer recording/submission without a queue-submit mutex.
-- `AsyncRuntime` uses registration-owned typed bounded queues, one standalone-Asio
-  coordinator, a small blocking-I/O compatibility executor, and oneTBB for CPU work.
+- ECS Systems receive narrow typed `OperationPort<T>` values. Runtime owns their
+  Asio/TBB/stdexec/concurrentqueue endpoint implementations and thread lifetime.
 - `MainThreadMailbox` is the only cross-thread completion path into ECS,
   `AssetManager`, UI state, and `DomainEvents`.
 - `DomainEvents` broadcasts already-committed facts; it is not a command bus or a
   request/reply mechanism.
-- Runtime extension is split into module loading, contribution registration, and
-  per-world/render-scene/editor activation. Type identity does not use RTTI.
+- ABI v5 Extensions are same-toolchain modules with fingerprint validation.
+  Loaders bind direct System/RenderFeature/panel installation and metadata batches
+  to `ModuleLease`; there is no contribution or activation framework.
+- `SceneDescription` stores cooked Entity/Component data. Component schemas,
+  required Extensions and renderer capabilities are derived by Cook.
 
 The codebase forbids RTTI and exception-driven control flow in engine code. Fallible
 APIs use `expected`, ownership is expressed with RAII/owning packets, and hot paths
@@ -135,12 +144,10 @@ Install/CPack components distinguish reusable layers from products, including
 
 ## Current status
 
-The large directory/target migration is active. The product profiles, dependency
-classification, runtime/editor host split, Render four-way target split, asset
-identity/core/codecs/pak split, authoring/toolchain trees, extension module, and
-runtime inventory/export checks are implemented. Some physical source splits and
-full platform validation remain; the authoritative list is
-[`.internal/UNFINISHED-WORK.md`](./.internal/UNFINISHED-WORK.md).
+The semantic-deduplication migration is implemented: Contribution/Pack identities,
+the second render graph, duplicate component registration, and Runtime-owned ECS
+domains are removed. The remaining validation ledger, including platform/profile
+evidence, is [`.internal/UNFINISHED-WORK.md`](./.internal/UNFINISHED-WORK.md).
 
 ## License
 

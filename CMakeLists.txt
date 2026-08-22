@@ -46,6 +46,38 @@ include(TargetArchitecture)
 include(ModuleLayout)
 include(TargetPlatform)
 include(HostTools)
+file(GLOB_RECURSE lux_architecture_inputs CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/cmake/*.cmake"
+    "${CMAKE_SOURCE_DIR}/modules/*.hpp"
+    "${CMAKE_SOURCE_DIR}/modules/*.cpp"
+    "${CMAKE_SOURCE_DIR}/modules/CMakeLists.txt"
+    "${CMAKE_SOURCE_DIR}/ecs/*.hpp"
+    "${CMAKE_SOURCE_DIR}/ecs/*.cpp"
+    "${CMAKE_SOURCE_DIR}/ecs/CMakeLists.txt"
+    "${CMAKE_SOURCE_DIR}/engine/*.hpp"
+    "${CMAKE_SOURCE_DIR}/engine/*.cpp"
+    "${CMAKE_SOURCE_DIR}/engine/CMakeLists.txt"
+    "${CMAKE_SOURCE_DIR}/extensions/*.hpp"
+    "${CMAKE_SOURCE_DIR}/extensions/*.cpp"
+    "${CMAKE_SOURCE_DIR}/extensions/CMakeLists.txt"
+)
+set(lux_architecture_stamp
+    "${CMAKE_BINARY_DIR}/lux-architecture-check.stamp")
+add_custom_command(
+    OUTPUT "${lux_architecture_stamp}"
+    COMMAND
+        ${CMAKE_COMMAND}
+        "-DLUX_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+        "-DLUX_REPORT_PATH=${CMAKE_BINARY_DIR}/semantic-architecture-debt.txt"
+        -P "${CMAKE_SOURCE_DIR}/cmake/ValidateSourceArchitecture.cmake"
+    COMMAND ${CMAKE_COMMAND} -E touch "${lux_architecture_stamp}"
+    DEPENDS ${lux_architecture_inputs}
+    COMMENT "Validate source-level architecture boundaries"
+    VERBATIM
+)
+add_custom_target(
+    lux_architecture_check ALL DEPENDS "${lux_architecture_stamp}"
+)
 lux_detect_build_platform()
 cmake_language(DEFER CALL lux_validate_foundation_targets)
 cmake_language(DEFER CALL lux_validate_target_dag)

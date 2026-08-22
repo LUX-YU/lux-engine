@@ -569,176 +569,40 @@ endfunction()
 # 2026-08-22 baseline so new uses fail configure immediately; each migration
 # wave lowers the limit until the final value is zero.
 function(lux_validate_source_boundaries)
+    string(CONCAT retired_spatial3d_systems
+        "runtime" "_spatial3d_" "systems")
+    string(CONCAT retired_tilemap_systems
+        "runtime" "_tilemap_" "systems")
+    string(CONCAT retired_physics3d_systems
+        "runtime" "_physics3d_" "systems")
+    string(CONCAT retired_navigation3d_systems
+        "runtime" "_navigation3d_" "systems")
+    string(CONCAT retired_presentation3d_systems
+        "runtime" "_presentation3d_" "systems")
     foreach(retired_target IN ITEMS
             scene_catalog
-            runtime_spatial3d_streaming_systems)
+            runtime_spatial3d_streaming_systems
+            ${retired_spatial3d_systems}
+            ${retired_tilemap_systems}
+            ${retired_physics3d_systems}
+            ${retired_navigation3d_systems}
+            ${retired_presentation3d_systems})
         if(TARGET ${retired_target})
             message(FATAL_ERROR
-                "Architecture: retired Spatial3D target "
-                "'${retired_target}' reappeared."
+                "Architecture: retired target '${retired_target}' reappeared."
             )
         endif()
     endforeach()
 
-    file(GLOB_RECURSE retired_spatial_sources LIST_DIRECTORIES false
-        "${CMAKE_SOURCE_DIR}/engine/spatial3d/*.hpp"
-        "${CMAKE_SOURCE_DIR}/engine/spatial3d/*.cpp"
-        "${CMAKE_SOURCE_DIR}/engine/spatial3d/CMakeLists.txt"
-        "${CMAKE_SOURCE_DIR}/engine/runtime/spatial3d/*.hpp"
-        "${CMAKE_SOURCE_DIR}/engine/runtime/spatial3d/*.cpp"
-        "${CMAKE_SOURCE_DIR}/engine/runtime/spatial3d/CMakeLists.txt"
+    execute_process(
+        COMMAND
+            ${CMAKE_COMMAND}
+            "-DLUX_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+            "-DLUX_REPORT_PATH=${CMAKE_BINARY_DIR}/semantic-architecture-debt.txt"
+            -P "${CMAKE_SOURCE_DIR}/cmake/ValidateSourceArchitecture.cmake"
+        RESULT_VARIABLE source_validation_result
     )
-    if(retired_spatial_sources)
-        message(FATAL_ERROR
-            "Architecture: retired engine Spatial3D source boundary "
-            "reappeared: ${retired_spatial_sources}"
-        )
+    if(NOT source_validation_result EQUAL 0)
+        message(FATAL_ERROR "Architecture: source validation failed.")
     endif()
-
-    file(GLOB_RECURSE ecs_sources LIST_DIRECTORIES false
-        "${CMAKE_SOURCE_DIR}/ecs/*.hpp"
-        "${CMAKE_SOURCE_DIR}/ecs/*.cpp"
-    )
-    foreach(source IN LISTS ecs_sources)
-        file(TO_CMAKE_PATH "${source}" normalized)
-        if(normalized MATCHES "/test/")
-            continue()
-        endif()
-        file(READ "${source}" content)
-        if(content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/runtime/")
-            message(FATAL_ERROR
-                "Architecture: ECS production source '${source}' includes "
-                "engine/runtime. Inject a modules-level port instead."
-            )
-        endif()
-    endforeach()
-
-    set(runtime_system_debt)
-    file(GLOB_RECURSE runtime_headers LIST_DIRECTORIES false
-        "${CMAKE_SOURCE_DIR}/engine/runtime/*.hpp"
-    )
-    foreach(source IN LISTS runtime_headers)
-        file(READ "${source}" content)
-        if(NOT content MATCHES "ISystem")
-            continue()
-        endif()
-        file(RELATIVE_PATH relative "${CMAKE_SOURCE_DIR}" "${source}")
-        file(TO_CMAKE_PATH "${relative}" relative)
-        if(NOT relative IN_LIST runtime_system_debt)
-            message(FATAL_ERROR
-                "Architecture: Runtime header '${relative}' mentions ISystem. "
-                "World behavior belongs under ecs/."
-            )
-        endif()
-    endforeach()
-
-    file(GLOB_RECURSE runtime_product_sources LIST_DIRECTORIES false
-        "${CMAKE_SOURCE_DIR}/modules/*.hpp"
-        "${CMAKE_SOURCE_DIR}/modules/*.cpp"
-        "${CMAKE_SOURCE_DIR}/ecs/*.hpp"
-        "${CMAKE_SOURCE_DIR}/ecs/*.cpp"
-        "${CMAKE_SOURCE_DIR}/engine/runtime/*.hpp"
-        "${CMAKE_SOURCE_DIR}/engine/runtime/*.cpp"
-        "${CMAKE_SOURCE_DIR}/engine/game/*.hpp"
-        "${CMAKE_SOURCE_DIR}/engine/game/*.cpp"
-        "${CMAKE_SOURCE_DIR}/engine/hosts/*.hpp"
-        "${CMAKE_SOURCE_DIR}/engine/hosts/*.cpp"
-        "${CMAKE_SOURCE_DIR}/extensions/*.hpp"
-        "${CMAKE_SOURCE_DIR}/extensions/*.cpp"
-    )
-    string(CONCAT build_usage_contract "ProjectUsage" "Manifest")
-    string(CONCAT generated_game_composition "Game" "Composition")
-    foreach(source IN LISTS runtime_product_sources)
-        file(READ "${source}" content)
-        if(content MATCHES
-           "${build_usage_contract}|${generated_game_composition}")
-            message(FATAL_ERROR
-                "Architecture: Runtime/product source '${source}' mentions a "
-                "Toolchain-only build-closure artifact. Build usage and "
-                "generated composition must stop at the build graph."
-            )
-        endif()
-    endforeach()
-
-    file(GLOB_RECURSE semantic_sources LIST_DIRECTORIES false
-        "${CMAKE_SOURCE_DIR}/cmake/*.cmake"
-        "${CMAKE_SOURCE_DIR}/modules/*.hpp"
-        "${CMAKE_SOURCE_DIR}/modules/*.cpp"
-        "${CMAKE_SOURCE_DIR}/modules/CMakeLists.txt"
-        "${CMAKE_SOURCE_DIR}/ecs/*.hpp"
-        "${CMAKE_SOURCE_DIR}/ecs/*.cpp"
-        "${CMAKE_SOURCE_DIR}/ecs/CMakeLists.txt"
-        "${CMAKE_SOURCE_DIR}/engine/*.hpp"
-        "${CMAKE_SOURCE_DIR}/engine/*.cpp"
-        "${CMAKE_SOURCE_DIR}/engine/CMakeLists.txt"
-        "${CMAKE_SOURCE_DIR}/extensions/*.hpp"
-        "${CMAKE_SOURCE_DIR}/extensions/*.cpp"
-        "${CMAKE_SOURCE_DIR}/extensions/CMakeLists.txt"
-    )
-    # Construct retired identifiers from fragments so the architecture gate
-    # itself does not keep forbidden production vocabulary alive.
-    string(CONCAT retired_scene_contribution "Scene" "Contribution")
-    string(CONCAT retired_world_feature "World" "Scene" "Feature")
-    string(CONCAT retired_render_effect "Render" "Effect")
-    string(CONCAT retired_runtime_pack "runtime" "_pack_")
-    string(CONCAT retired_host_kind "contribution" "_host")
-    string(CONCAT retired_extension_v4 "luxGetExtensionModule" "V4")
-    string(CONCAT retired_registration_v4
-        "luxRegisterRuntimeContributions" "V4")
-    string(CONCAT retired_editor_panel_catalog "EditorPanel" "Catalog")
-    string(CONCAT retired_editor_tool_host "EditorTool" "Host")
-    string(CONCAT retired_editor_tool_ticket "EditorTool" "Ticket")
-    string(CONCAT retired_editor_panel_contribution
-        "EditorPanelContribution" "Descriptor")
-    string(CONCAT retired_editor_registrar
-        "EditorContribution" "Registrar")
-    string(CONCAT retired_editor_entrypoint
-        "luxRegisterEditorContributions" "V5")
-    string(CONCAT retired_runtime_usage "RuntimeUsage" "Manifest")
-    string(CONCAT retired_usage_manager "UsageManifest" "Manager")
-    string(CONCAT retired_system_registry "System" "Registry")
-    string(CONCAT retired_scene_feature "Scene" "Feature")
-    string(CONCAT retired_feature_manager "Feature" "Manager")
-    set(retired_semantic_names
-        ${retired_scene_contribution}
-        ${retired_world_feature}
-        ${retired_render_effect}
-        ${retired_runtime_pack}
-        ${retired_host_kind}
-        ${retired_extension_v4}
-        ${retired_registration_v4}
-        ${retired_editor_panel_catalog}
-        ${retired_editor_tool_host}
-        ${retired_editor_tool_ticket}
-        ${retired_editor_panel_contribution}
-        ${retired_editor_registrar}
-        ${retired_editor_entrypoint}
-        ${retired_runtime_usage}
-        ${retired_usage_manager}
-        ${retired_system_registry}
-        ${retired_scene_feature}
-        ${retired_feature_manager}
-    )
-    set(report "# retired-semantic|count|required\n")
-    foreach(debt_name IN LISTS retired_semantic_names)
-        set(actual 0)
-        foreach(source IN LISTS semantic_sources)
-            # Do not count the gate's own token table as architecture debt.
-            if(source STREQUAL CMAKE_CURRENT_FUNCTION_LIST_FILE)
-                continue()
-            endif()
-            file(READ "${source}" content)
-            string(REGEX MATCHALL "${debt_name}" matches "${content}")
-            list(LENGTH matches match_count)
-            math(EXPR actual "${actual} + ${match_count}")
-        endforeach()
-        string(APPEND report "${debt_name}|${actual}|0\n")
-        if(NOT actual EQUAL 0)
-            message(FATAL_ERROR
-                "Architecture: retired semantic '${debt_name}' reappeared "
-                "${actual} time(s)."
-            )
-        endif()
-    endforeach()
-    file(WRITE "${CMAKE_BINARY_DIR}/semantic-architecture-debt.txt" "${report}")
 endfunction()

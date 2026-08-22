@@ -182,7 +182,7 @@ component_add_transitive_commands(
     "find_package (lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS project authoring_flowforge authoring_assets authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_spatial3d_scene_cook)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_logging runtime_frame runtime_assets runtime_scene_script runtime_extension_loader runtime_extension_orchestration runtime_render_scene runtime_render_backend_host runtime_tilemap_prepare runtime_tilemap_systems runtime_navigation3d_prepare runtime_physics3d_prepare)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_logging runtime_frame runtime_assets runtime_scene_script runtime_extension_loader runtime_extension_orchestration runtime_render_scene runtime_render_backend_host runtime_tilemap_prepare runtime_scene_tilemap_composition runtime_navigation3d_prepare runtime_physics3d_prepare)"
     "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"
     "find_package (imgui REQUIRED COMPONENTS glfw3 vulkan)"
     "find_package (node_editor REQUIRED COMPONENTS node_editor)"
@@ -297,11 +297,11 @@ target_include_directories(editor PRIVATE
     $<TARGET_PROPERTY:physics,INTERFACE_INCLUDE_DIRECTORIES>
     $<TARGET_PROPERTY:transform,INTERFACE_INCLUDE_DIRECTORIES>
     $<TARGET_PROPERTY:animation_3d,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_tilemap_systems,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_navigation3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_physics3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_presentation3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_spatial3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_scene_tilemap_composition,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_scene_navigation3d_composition,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_scene_physics3d_composition,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_scene_presentation3d_composition,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_scene_spatial3d_composition,INTERFACE_INCLUDE_DIRECTORIES>
     $<TARGET_PROPERTY:physics2d,INTERFACE_INCLUDE_DIRECTORIES>)
 
 # ecs::scripting — ScriptSystem / ScriptComponent / scriptRegistry, used by EditorScene

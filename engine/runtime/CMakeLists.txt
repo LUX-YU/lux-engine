@@ -35,12 +35,12 @@ install_components(
                     runtime_pixel_assets
                     runtime_navigation3d_prepare
                     runtime_physics3d_prepare
-                    runtime_spatial3d_systems
+                    runtime_scene_spatial3d_composition
                     runtime_scene_core
-                    runtime_tilemap_systems
-                    runtime_navigation3d_systems
-                    runtime_physics3d_systems
-                    runtime_presentation3d_systems
+                    runtime_scene_tilemap_composition
+                    runtime_scene_navigation3d_composition
+                    runtime_scene_physics3d_composition
+                    runtime_scene_presentation3d_composition
                     runtime_render_scene
                     runtime_render_backend_host
                     runtime_scene_script

@@ -19,12 +19,12 @@ target_link_libraries(
         lux::engine::ecs::physics
         lux::engine::ecs::presentation_2d
         lux::engine::ecs::transform
-        lux::engine::runtime::runtime_tilemap_systems
+        lux::engine::runtime::runtime_scene_tilemap_composition
         lux::engine::runtime::runtime_tilemap_prepare
-        lux::engine::runtime::runtime_navigation3d_systems
-        lux::engine::runtime::runtime_physics3d_systems
-        lux::engine::runtime::runtime_presentation3d_systems
-        lux::engine::runtime::runtime_spatial3d_systems
+        lux::engine::runtime::runtime_scene_navigation3d_composition
+        lux::engine::runtime::runtime_scene_physics3d_composition
+        lux::engine::runtime::runtime_scene_presentation3d_composition
+        lux::engine::runtime::runtime_scene_spatial3d_composition
         lux::engine::ecs::scripting
         lux::engine::ecs::scripting_lua
         lux::engine::ecs::scripting_native

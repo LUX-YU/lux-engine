@@ -16,13 +16,18 @@ Platform -> Core -> Resource -> Function -> ECS -> Runtime -> Host
                                       Runtime ----^       ^
 ```
 
+源码所有权主干为 `modules/ -> ecs/ -> engine/ -> hosts/products`：
+
 - `modules/platform`：OS、窗口、动态库、文件通知和图形 API 入口。
 - `modules/core`：无游戏领域语义的 bytes、serialization、events、log、math、meta
-  与 extension ABI。
+  与窄类型异步端口。
 - `modules/resource`：cooked runtime 资源描述、资产身份/账本、运行时 codec 与 pak reader。
 - `modules/function`：不认识 EnTT entity 的 render、script、input、UI、FlowForge 等功能。
-- `ecs`：Component、`ISystem`、`IRenderSubsystem` 和 ECS 领域适配。
-- `engine/runtime`：execution、assets、scene、render、extensions、frame 与 runtime packs。
+- `ecs`：全部 Component、所有知道 Entity/Component 的领域行为、`ISystem`、唯一
+  `Schedule`，以及 World 到 renderer 的 extraction。
+- `engine/runtime`：execution、assets、Scene/World 生命周期、extension loader、render
+  session/backend、frame 与 logging；不定义领域 Component 或 System。
+- `engine/extensions/api`：极薄的 Plugin ↔ Engine 共享 ABI 契约。
 - `engine/authoring`：可编辑的源文档和项目数据。
 - `engine/toolchain`：authoring→cooked 转换；Assimp、shaderc、SPIR-V reflection、
   MLIR/LLVM 只允许出现在这里。
@@ -31,20 +36,25 @@ Platform -> Core -> Resource -> Function -> ECS -> Runtime -> Host
 - `extensions`：可部署的 `MODULE`；引擎 target 不反向链接具体扩展。
 
 每个 production target 声明 `LAYER`、`PRODUCT` 和 `ROLE`。非法层依赖、非法产品
-依赖、未分类 production target、引擎反向链接具体 Extension 都会在配置期失败。
+依赖、未分类 production target、引擎反向链接具体 Extension 都会在配置期失败；
+固定的 `lux_architecture_check` Target 还会随 `all` 复检源码边界和退役词汇。
 
 ## 运行时模型
 
 - Scene 拥有 `World`、已拓扑编译的 `Schedule`，并且至多有一个顶层
-  `RenderSystem`；不安装 render pack 即为 headless。
+  `RenderSystem`；不安装 `RenderSystem` 即为 headless。
 - Frame、Control、持久 GPU Upload 使用三条独立通道；单一 transfer pipeline
   负责传输录制/提交，不用 queue-submit mutex。
-- `AsyncRuntime` 使用注册方拥有的强类型有界队列、单一 standalone-Asio coordinator、
-  小型 BlockingIO 兼容 executor 与 oneTBB CPU 后端。
+- ECS System 只接收窄类型 `OperationPort<T>`；Runtime 持有其 Asio/TBB/stdexec/
+  concurrentqueue endpoint 实现和线程生命周期。
 - `MainThreadMailbox` 是异步 completion 回到 ECS、`AssetManager`、UI 与
   `DomainEvents` 的唯一入口。
 - `DomainEvents` 只广播已经提交的事实，不承载命令或请求/回复。
-- 动态扩展拆为 Module、Contribution、Activation；类型身份不使用 RTTI。
+- ABI v5 Extension 是强制 fingerprint 的同工具链模块；Loader 将直接的 System/
+  RenderFeature/panel 装配和 metadata batch 绑定到 `ModuleLease`，不存在 Contribution
+  或 Activation framework。
+- `SceneDescription` 只保存 cooked Entity/Component 数据；Component schema、所需
+  Extension 与 renderer capability 均由 Cook 推导。
 
 引擎代码禁止 RTTI 和异常控制流。失败使用 `expected`，跨线程载荷必须拥有数据，
 热路径避免锁、无界队列和隐式等待。
@@ -115,9 +125,8 @@ extension。Player 不再支持 loose authoring/project 内容；导出发现 au
 
 ## 当前状态
 
-目录/target 大迁移仍在收口。产品 profile、依赖分类、Runtime/Editor host 拆分、Render
-四 target、Asset identity/core/codecs/pak、Authoring/Toolchain、Extension module 与
-Player inventory/export 门禁已经落地；尚未完成的物理目录拆分与平台验证只以
+语义去重迁移已经落地：Contribution/Pack 身份、第二套 Render 图、Component 双注册和
+Runtime 所有的 ECS 领域均已删除。剩余的平台/Profile 验证证据只以
 [`UNFINISHED-WORK.md`](../.internal/UNFINISHED-WORK.md) 为准。
 
 ## License

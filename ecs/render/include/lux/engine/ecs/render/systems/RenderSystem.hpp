@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/render/RenderSystemBuilder.hpp>
+#include <lux/engine/ecs/render/RenderSystemStages.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/function/visibility.h>
@@ -30,7 +30,7 @@ namespace lux::ecs
             lux::render::RenderControlSession&  control,
             lux::render::RenderUploadClient     upload,
             lux::render::RenderSceneLease       scene,
-            RenderSystemPlan                    plan
+            RenderSystemStages                  stages
         );
         ~RenderSystem() override;
 
@@ -42,7 +42,7 @@ namespace lux::ecs
         void update(const SystemUpdateContext& context) override;
 
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept;
+        requiredFeatures() const noexcept;
 
         void setFeatures(const lux::render::FeatureCatalog& catalog) noexcept;
         void bindFeature(
@@ -54,12 +54,6 @@ namespace lux::ecs
             lux::render::FeatureHandle expected = {}) noexcept;
 
         void settle();
-        [[nodiscard]] lux::cxx::expected<
-            InstalledRenderSubsystemBatch,
-            RenderAssemblyFailure>
-        installSubsystemBatch(RenderSubsystemMutationBatch&& batch);
-        [[nodiscard]] lux::cxx::expected<void, RenderAssemblyFailure>
-        removeSubsystemBatch(InstalledRenderSubsystemBatch&& batch);
         [[nodiscard]] lux::render::ERenderLeaseCloseStatus close() noexcept;
 
         [[nodiscard]] SceneRenderBinding& binding() noexcept;

@@ -1,7 +1,7 @@
 #include <lux/engine/runtime/scene/composition/InstallPresentation3DSystems.hpp>
 
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
-#include <lux/engine/ecs/render/RenderSystemBuilder.hpp>
+#include <lux/engine/ecs/render/RenderSystemStages.hpp>
 #include <lux/engine/ecs/render/subsystems/ResidencySubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/Camera3DUploadSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/HeightFogSubsystem.hpp>
@@ -60,7 +60,7 @@ namespace lux::runtime
         auto* const blobs = builder.services().borrow<
             entity_scene::ContentBlobClient>();
         auto* const async = builder.services().borrow<SceneAsyncContext>();
-        auto* const render = builder.services().borrow<RenderSystemBuilder>();
+        auto* const render = builder.services().borrow<RenderSystemStages>();
         auto* const residency = builder.services().borrow<ResidencySubsystem>();
         auto* const residency_callbacks = builder.services().borrow<
             ResidencyCallbacks>();

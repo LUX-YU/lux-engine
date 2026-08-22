@@ -4,7 +4,7 @@
 
 #include <lux/engine/ecs/SpatialTransformMath.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform2DComponent.hpp>
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/RenderViewUtil.hpp>
 #include <lux/engine/ecs/render/RenderSpatialTransform.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
@@ -41,7 +41,7 @@ namespace lux::ecs
 
     /// Sparse TilemapRuntime -> fixed-capacity Canvas2D tile-index atlas.
     /// Only resident chunks receive records, slots and canvas instances.
-    class Tilemap2DSubsystemImplementation final : public IRenderSubsystem
+    class Tilemap2DSubsystemImplementation final : public RenderStage
     {
     public:
         static constexpr std::uint32_t kNoSlot = 0xFFFFFFFFu;
@@ -60,19 +60,10 @@ namespace lux::ecs
         ~Tilemap2DSubsystemImplementation() override { leave_.detach(); }
 
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static const std::string_view features[] = {"Canvas2D"};
             return features;
-        }
-
-        [[nodiscard]] std::span<const RenderSubsystemType>
-        runsAfter() const noexcept override
-        {
-            static constexpr RenderSubsystemType dependencies[] = {
-                renderSubsystemType<ResidencySubsystem>(),
-                renderSubsystemType<Camera2DUploadSubsystem>()};
-            return dependencies;
         }
 
         void onAdded(const SystemSetupContext& setup) override
@@ -92,7 +83,7 @@ namespace lux::ecs
             releaseOwned(context.render());
         }
 
-        void update(RenderSubsystemContext& context) override
+        void extract(RenderSubsystemContext& context) override
         {
             auto& registry = context.registry();
             auto& render = context.render();

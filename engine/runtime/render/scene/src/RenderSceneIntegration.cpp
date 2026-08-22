@@ -4,7 +4,7 @@
 #include <lux/engine/runtime/render/scene/detail/PrimaryViewPresentationSystem.hpp>
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
-#include <lux/engine/ecs/render/RenderSystemBuilder.hpp>
+#include <lux/engine/ecs/render/RenderSystemStages.hpp>
 #include <lux/engine/ecs/render/systems/RenderSystem.hpp>
 #include <lux/engine/ecs/render/subsystems/CameraViewSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/DebugLineSubsystem.hpp>
@@ -149,12 +149,12 @@ namespace lux::runtime
                 ESceneIntegrationError::PREPARE_FAILED);
         }
 
-        auto staged_builder = context.builder.services().emplace<
-            lux::ecs::RenderSystemBuilder>();
-        if (!staged_builder)
+        auto staged_sequence = context.builder.services().emplace<
+            lux::ecs::RenderSystemStages>();
+        if (!staged_sequence)
             return lux::cxx::unexpected<ESceneIntegrationError>(
                 ESceneIntegrationError::PREPARE_FAILED);
-        impl_->builder = *staged_builder;
+        impl_->stages = *staged_sequence;
 
         auto residency_callbacks = context.builder.services().emplace<
             lux::ecs::ResidencyCallbacks>(
@@ -171,15 +171,15 @@ namespace lux::runtime
         );
         residency->setCallbacks(**residency_callbacks);
         auto* residency_service = residency.get();
-        if (!impl_->builder->add(std::move(residency)) ||
+        if (!impl_->stages->add(std::move(residency)) ||
             !context.builder.services().adopt(*residency_service))
         {
             return lux::cxx::unexpected<ESceneIntegrationError>(
                 ESceneIntegrationError::PREPARE_FAILED);
         }
-        if (!impl_->builder->add(
+        if (!impl_->stages->add(
                 std::make_unique<lux::ecs::DebugLineSubsystem>()) ||
-            !impl_->builder->add(
+            !impl_->stages->add(
                 std::make_unique<lux::ecs::CameraViewSubsystem>()))
         {
             return lux::cxx::unexpected<ESceneIntegrationError>(
@@ -192,25 +192,23 @@ namespace lux::runtime
     RenderSceneIntegration::finalize(
         SceneRuntimeAssemblyContext& context) noexcept
     {
-        if (!impl_->builder)
+        if (!impl_->stages)
             return lux::cxx::unexpected<ESceneIntegrationError>(
                 ESceneIntegrationError::FINALIZE_FAILED);
-        auto plan = std::move(*impl_->builder).compile();
-        if (!plan)
+        const auto frozen = impl_->stages->freeze();
+        if (!frozen)
         {
             lux::log::error(
                 "scene",
-                "render subsystem graph rejected (status={}, subject='{}', "
-                "related='{}')",
-                static_cast<unsigned>(plan.error().code),
-                plan.error().subject.name(),
-                plan.error().related.name());
+                "render stage sequence rejected (status={}, subject='{}')",
+                static_cast<unsigned>(frozen.error().code),
+                frozen.error().subject.name());
             return lux::cxx::unexpected<ESceneIntegrationError>(
                 ESceneIntegrationError::FINALIZE_FAILED);
         }
         std::vector<std::string_view> roots{
-            plan->features().begin(),
-            plan->features().end()};
+            impl_->stages->requiredFeatures().begin(),
+            impl_->stages->requiredFeatures().end()};
         roots.insert(
             roots.end(),
             impl_->services.profile.pass_roots.begin(),
@@ -247,7 +245,7 @@ namespace lux::runtime
             impl_->services.control,
             impl_->services.upload,
             std::move(impl_->scene_lease),
-            std::move(*plan));
+            std::move(*impl_->stages));
         render_system->setFeatures(impl_->services.feature_catalog);
         auto added = context.builder.add(
             std::move(render_system),

@@ -64,7 +64,7 @@ namespace lux::ecs
     /// Type-erased lifetime anchor for deferred ECS command producers.
     ///
     /// This deliberately carries no scheduler surface. Both top-level
-    /// `ISystem` nodes and RenderSystem-internal `IRenderSubsystem` nodes can
+    /// `ISystem` nodes and RenderSystem-internal `RenderStage` nodes can
     /// produce structural commands without pretending to be the same kind of
     /// scheduler node. Concrete identity remains `TypeToken`; no RTTI is used.
     class IEcsCommandProducer

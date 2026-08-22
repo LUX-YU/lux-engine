@@ -15,7 +15,7 @@
 
 #include <lux/engine/ecs/Registry.hpp>   // entity_id / EntityRegistry
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include "lux/engine/ecs/render/SceneRenderBinding.hpp"
 #include "lux/engine/ecs/render/RenderViewUtil.hpp"
 
@@ -25,7 +25,7 @@ namespace lux::ecs
     ///   本形状没有异步 create、没有 per-entity 的远端对象,所以既不需要
     ///   releaseRefs 也不需要延迟命令 —— 离场就地 erase 脏比较缓存即可。
     template <class Traits>
-    class FeatureParamSubsystem final : public IRenderSubsystem
+    class FeatureParamSubsystem final : public RenderStage
     {
         using T = Traits;
         using C = typename Traits::Component;
@@ -47,21 +47,13 @@ namespace lux::ecs
 
         /// 本节点驱动的那个 feature（Grid2D / Grid3D / Skybox）—— trait 说了算。
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static const std::string_view kFeatures[] = { T::feature };
             return kFeatures;
         }
 
-        [[nodiscard]] std::span<const RenderSubsystemType>
-        runsAfter() const noexcept override
-        {
-            if constexpr (requires { T::runsAfter(); })
-                return T::runsAfter();
-            return {};
-        }
-
-        void update(RenderSubsystemContext& uctx) override
+        void extract(RenderSubsystemContext& uctx) override
         {
             auto& reg = uctx.registry();
             auto& ctx = uctx.render();
@@ -97,16 +89,11 @@ namespace lux::ecs
         }
         void onRemoved(const SystemRemovalContext&) override { leave_.detach(); }
 
-        [[nodiscard]] bool supportsDynamicRemoval() const noexcept override
-        {
-            return true;
-        }
-
         // ★ 这里此前有 `releaseRefs`,它做两件事:调 `Traits::clear(ctx)` 与清
         //   脏比较缓存。两件都删了。
         //
         //   `clear` 的理由写着「so a REUSED scene does not keep sampling」——
-        //   **场景复用早就没了**(`IRenderSubsystem` 自己的注释也写着那条
+        //   **场景复用早就没了**(`RenderStage` 自己的注释也写着那条
         //   drain-don't-cancel 协议「existed only because the editor once reused
         //   one render scene across swaps」)。生产里唯一的调用者是
         //   `SceneRuntime::tearDown`,紧接着就 `scene_lease_.close()`——

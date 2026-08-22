@@ -54,7 +54,7 @@
 #include <lux/engine/resource/asset/AssetRef.hpp>
 
 #include <lux/engine/ecs/render/ResidencyCallbacks.hpp>
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include "lux/engine/ecs/render/RenderResourceEvents.hpp"   // 域/失败词汇 + 句柄位解包
 #include "lux/engine/ecs/render/RenderViewUtil.hpp"         // Change/Leave 观察者 + inComponentView
 #include "lux/engine/ecs/render/components/MeshGpuCacheComponent.hpp"
@@ -580,7 +580,7 @@ namespace lux::ecs
     /// 驻留胶水 —— 解析器集合 + 失效观察接线。
     ///
     /// ★ 批 B1 起它是一个**普通的 schedule node**(`ISystem`),不再是
-    ///   `RenderSystem` 里被特殊对待的那一个 `IRenderSubsystem`。
+    ///   `RenderSystem` 里被特殊对待的那一个 `RenderStage`。
     ///
     ///   这一步几乎是免费的:它此前的 `tick`/`releaseRefs` 都**收下
     ///   `SceneRenderBinding` 然后忽略** —— 它要的只有 AssetManager、回调和
@@ -589,7 +589,7 @@ namespace lux::ecs
     ///   「排在消费者之前」从此是一条**类型化的边**:消费方声明
     ///   `runsAfter<ResidencySubsystem>()`(由消费者声明依赖,不由本类声明它的
     ///   消费者是谁),而不是「被插到 vector 的第 0 位」。
-    class ResidencySubsystem final : public IRenderSubsystem
+    class ResidencySubsystem final : public RenderStage
     {
     public:
         explicit ResidencySubsystem(
@@ -631,7 +631,7 @@ namespace lux::ecs
         // Residency is data preparation, not the render consumer. Mesh and
         // material feature requirements are declared by MeshSubsystem /
         // SkeletalMeshSubsystem, which are the nodes that actually submit the
-        // operations. Keeping resolver configuration out of renderFeatures()
+        // operations. Keeping resolver configuration out of requiredFeatures()
         // also makes an ISystem descriptor immutable across transactional
         // resolver installation.
 
@@ -646,7 +646,7 @@ namespace lux::ecs
 
         void onRemoved(const SystemRemovalContext&) override { detach(); }
 
-        void update(RenderSubsystemContext& ctx) override
+        void extract(RenderSubsystemContext& ctx) override
         {
             drainResolvers(ctx.registry());
         }

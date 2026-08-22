@@ -2,7 +2,7 @@
     {
         RenderSceneServices services;
         RenderSceneConfig config;
-        lux::ecs::RenderSystemBuilder* builder{};
+        lux::ecs::RenderSystemStages* stages{};
         lux::ecs::PendingSystemToken<lux::ecs::RenderSystem> pending_system{};
         lux::ecs::SystemHandle<lux::ecs::RenderSystem> system{};
         lux::render::RenderSceneLease scene_lease;
@@ -26,8 +26,8 @@
                 return false;
 
             std::vector<std::string_view> roots{
-                render->renderFeatures().begin(),
-                render->renderFeatures().end()};
+                render->requiredFeatures().begin(),
+                render->requiredFeatures().end()};
             roots.insert(
                 roots.end(),
                 services.profile.pass_roots.begin(),

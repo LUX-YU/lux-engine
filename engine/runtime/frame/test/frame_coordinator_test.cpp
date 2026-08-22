@@ -8,7 +8,7 @@
 #include <lux/engine/runtime/frame/MainCloseDriver.hpp>
 #include <lux/engine/ecs/render/components/RenderViewBindingComponent.hpp>
 #include <lux/engine/ecs/render/components/ViewPresentComponent.hpp>
-#include <lux/engine/ecs/render/RenderSystemBuilder.hpp>
+#include <lux/engine/ecs/render/RenderSystemStages.hpp>
 #include <lux/engine/ecs/render/subsystems/CameraViewSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Camera2DUploadSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/Camera3DUploadSubsystem.hpp>
@@ -41,7 +41,7 @@ namespace
         int value;
     };
 
-    class SceneCloseProbe final : public lux::ecs::IRenderSubsystem
+    class SceneCloseProbe final : public lux::ecs::RenderStage
     {
     public:
         SceneCloseProbe(
@@ -52,7 +52,7 @@ namespace
         {
         }
 
-        void update(lux::ecs::RenderSubsystemContext&) override {}
+        void extract(lux::ecs::RenderSubsystemContext&) override {}
 
         void close(lux::ecs::RenderSubsystemContext&) noexcept override
         {
@@ -621,12 +621,12 @@ int main()
             camera,
             lux::ecs::ViewPresentComponent{{30, 4}, 0, {320, 180}});
 
-        lux::ecs::RenderSystemBuilder render_builder;
+        lux::ecs::RenderSystemStages render_builder;
         if (!expect(static_cast<bool>(render_builder.add(
                         std::make_unique<lux::ecs::CameraViewSubsystem>())),
                     "CameraViewSubsystem joins the pre-update close plan"))
             return 1;
-        auto render_plan = std::move(render_builder).compile();
+        auto render_plan = render_builder.freeze();
         if (!expect(static_cast<bool>(render_plan),
                     "pre-update close render plan compiles"))
             return 1;
@@ -635,7 +635,7 @@ int main()
             control_session,
             lux::render::RenderUploadClient{},
             control_session.adoptScene(scene_id),
-            std::move(*render_plan));
+            std::move(render_builder));
         auto* const render = render_owner.get();
         if (!expect(static_cast<bool>(schedule.addSystem(
                         std::move(render_owner),
@@ -673,14 +673,14 @@ int main()
         std::uint32_t scene_closes = 0u;
         lux::ecs::World world;
         lux::ecs::Schedule schedule{world};
-        lux::ecs::RenderSystemBuilder render_builder;
+        lux::ecs::RenderSystemStages render_builder;
         if (!expect(static_cast<bool>(render_builder.add(
                         std::make_unique<SceneCloseProbe>(
                             dynamic_closes,
                             scene_closes))),
                     "scene-close probe joins the render plan"))
             return 1;
-        auto render_plan = std::move(render_builder).compile();
+        auto render_plan = render_builder.freeze();
         if (!expect(static_cast<bool>(render_plan),
                     "scene-close probe plan compiles"))
             return 1;
@@ -689,7 +689,7 @@ int main()
             control_session,
             lux::render::RenderUploadClient{},
             control_session.adoptScene(lux::render::RenderSceneId{30, 8}),
-            std::move(*render_plan)
+            std::move(render_builder)
         );
         auto* const render = render_owner.get();
         if (!expect(static_cast<bool>(schedule.addSystem(
@@ -728,12 +728,12 @@ int main()
         registry.emplace<lux::ecs::ViewPresentComponent>(
             camera, lux::ecs::ViewPresentComponent{{41, 1}, 0, {320, 180}});
         // 系统**晚于**组件装入 —— 走的是折入存量那条路(信号只对连接之后的事说话)。
-        lux::ecs::RenderSystemBuilder render_builder;
+        lux::ecs::RenderSystemStages render_builder;
         if (!expect(static_cast<bool>(render_builder.add(
                         std::make_unique<lux::ecs::CameraViewSubsystem>())),
                     "CameraViewSubsystem joins the render plan"))
             return 1;
-        auto render_plan = std::move(render_builder).compile();
+        auto render_plan = render_builder.freeze();
         if (!expect(static_cast<bool>(render_plan),
                     "camera-only render plan compiles"))
             return 1;
@@ -742,7 +742,7 @@ int main()
                 view_session, control_session,
                 lux::render::RenderUploadClient{},
                 control_session.adoptScene(scene_id),
-                std::move(*render_plan)),
+                std::move(render_builder)),
             lux::ecs::kPhaseRender);
         if (!expect(static_cast<bool>(render_system),
                     "RenderSystem installs into the schedule"))
@@ -846,8 +846,8 @@ int main()
 
         lux::ecs::Camera2DUploadSubsystem upload_2d;
         lux::ecs::Camera3DUploadSubsystem upload_3d;
-        static_cast<lux::ecs::IRenderSubsystem&>(upload_2d).settle(context);
-        static_cast<lux::ecs::IRenderSubsystem&>(upload_3d).settle(context);
+        static_cast<lux::ecs::RenderStage&>(upload_2d).settle(context);
+        static_cast<lux::ecs::RenderStage&>(upload_3d).settle(context);
         if (!expect(!view_session.isRecording(),
                     "bring-up camera settle leaves the frame session closed"))
             return 1;
@@ -875,12 +875,12 @@ int main()
         const auto camera = registry.create();
         registry.emplace<lux::ecs::ViewPresentComponent>(
             camera, lux::ecs::ViewPresentComponent{{61, 2}, 7, {640, 360}});
-        lux::ecs::RenderSystemBuilder render_builder;
+        lux::ecs::RenderSystemStages render_builder;
         if (!expect(static_cast<bool>(render_builder.add(
                         std::make_unique<lux::ecs::CameraViewSubsystem>())),
                     "CameraViewSubsystem joins the success-path plan"))
             return 1;
-        auto render_plan = std::move(render_builder).compile();
+        auto render_plan = render_builder.freeze();
         if (!expect(static_cast<bool>(render_plan),
                     "success-path render plan compiles"))
             return 1;
@@ -889,7 +889,7 @@ int main()
                 view_session, control_session,
                 lux::render::RenderUploadClient{},
                 control_session.adoptScene(scene_id),
-                std::move(*render_plan)),
+                std::move(render_builder)),
             lux::ecs::kPhaseRender);
         if (!expect(static_cast<bool>(render_system),
                     "RenderSystem installs for the success path"))

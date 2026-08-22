@@ -37,7 +37,7 @@
 //  (hysteresis); a hot path would justify a new op, not sooner.
 // ============================================================================
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/RenderSpatialTransform.hpp>
 #include <lux/engine/ecs/render/RenderViewUtil.hpp>    // ComponentSetLeaveObserver
 #include <lux/engine/ecs/render/TrackedRenderRequest.hpp>
@@ -80,7 +80,7 @@ namespace lux::ecs
     ///   单 RPC 全部经 `TrackedRenderRequest` 管理代次与迟到回执；多步 engine
     ///   异步仍归 stdexec/AsyncScope。节点本身不安装裸 continuation。
     class PixelField2DSubsystemImplementation final
-        : public lux::ecs::IRenderSubsystem
+        : public lux::ecs::RenderStage
     {
     public:
         ~PixelField2DSubsystemImplementation() override
@@ -95,19 +95,10 @@ namespace lux::ecs
 
         /// 像素场同样落在 Canvas2D 上。
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static const std::string_view kFeatures[] = { "Canvas2D" };
             return kFeatures;
-        }
-
-        [[nodiscard]] std::span<const RenderSubsystemType>
-        runsAfter() const noexcept override
-        {
-            static constexpr RenderSubsystemType kAfter[] = {
-                renderSubsystemType<Camera2DUploadSubsystem>()
-            };
-            return kAfter;
         }
 
         static constexpr std::uint32_t kNoSlot      = 0xFFFFFFFFu;
@@ -245,7 +236,7 @@ namespace lux::ecs
         {}
 
 
-        void update(RenderSubsystemContext& uctx) override
+        void extract(RenderSubsystemContext& uctx) override
         {
             auto& registry = uctx.registry();
             auto& ctx = uctx.render();

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/RenderBridgeDiagnostics.hpp>
 #include <lux/engine/ecs/render/components/3d/HeightFogComponent.hpp>
 #include <lux/engine/function/render/client/genops/FogOperation.ops.hpp>
@@ -19,17 +19,17 @@ namespace lux::ecs
     /// Bridges an optional singleton HeightFogComponent to both the Fog pass
     /// and Water's atmospheric inputs. The ECS component is authoritative;
     /// renderer-side copies are only dirty-diff caches.
-    class HeightFogSubsystem final : public IRenderSubsystem
+    class HeightFogSubsystem final : public RenderStage
     {
     public:
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static constexpr std::string_view features[]{"Fog"};
             return features;
         }
 
-        void update(RenderSubsystemContext& context) override
+        void extract(RenderSubsystemContext& context) override
         {
             auto& registry = context.registry();
             lux::ecs::Entity selected = lux::ecs::kNullEntity;
@@ -77,11 +77,6 @@ namespace lux::ecs
             }
             invalid_reported_ = false;
             apply(context.render(), *next);
-        }
-
-        [[nodiscard]] bool supportsDynamicRemoval() const noexcept override
-        {
-            return true;
         }
 
         void close(RenderSubsystemContext& context) noexcept override

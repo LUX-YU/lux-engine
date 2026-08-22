@@ -41,7 +41,7 @@
 #include <lux/engine/ecs/render/components/AssetStreamingStateComponent.hpp>
 #include <lux/engine/ecs/render/components/VisualTransitionComponent.hpp>
 #include <lux/engine/ecs/render/subsystems/ResidencySubsystem.hpp>  // ⑨:引用计数端到端(驻留胶水)
-#include <lux/engine/ecs/render/RenderSystemBuilder.hpp>
+#include <lux/engine/ecs/render/RenderSystemStages.hpp>
 #include <lux/engine/ecs/render/systems/RenderSystem.hpp>
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>           // 驻留三件套(T12 起探针走真装配)
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
@@ -64,16 +64,16 @@
 
 namespace
 {
-    struct PlanA final : lux::ecs::IRenderSubsystem
+    struct PlanA final : lux::ecs::RenderStage
     {
         explicit PlanA(std::vector<int>* trace = nullptr) noexcept
             : trace(trace) {}
-        void update(lux::ecs::RenderSubsystemContext&) override
+        void extract(lux::ecs::RenderSubsystemContext&) override
         {
             if (trace) trace->push_back(1);
         }
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static constexpr std::string_view kFeatures[]{"feature.z", "feature.a"};
             return kFeatures;
@@ -81,23 +81,16 @@ namespace
         std::vector<int>* trace{};
     };
 
-    struct PlanB final : lux::ecs::IRenderSubsystem
+    struct PlanB final : lux::ecs::RenderStage
     {
         explicit PlanB(std::vector<int>* trace = nullptr) noexcept
             : trace(trace) {}
-        [[nodiscard]] std::span<const lux::ecs::RenderSubsystemType>
-        prerequisites() const noexcept override
-        {
-            static constexpr lux::ecs::RenderSubsystemType kRequired[]{
-                lux::ecs::renderSubsystemType<PlanA>()};
-            return kRequired;
-        }
-        void update(lux::ecs::RenderSubsystemContext&) override
+        void extract(lux::ecs::RenderSubsystemContext&) override
         {
             if (trace) trace->push_back(2);
         }
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static constexpr std::string_view kFeatures[]{"feature.a", "feature.m"};
             return kFeatures;
@@ -105,109 +98,15 @@ namespace
         std::vector<int>* trace{};
     };
 
-    struct PlanC final : lux::ecs::IRenderSubsystem
+    struct PlanC final : lux::ecs::RenderStage
     {
         explicit PlanC(std::vector<int>* trace = nullptr) noexcept
             : trace(trace) {}
-        void update(lux::ecs::RenderSubsystemContext&) override
+        void extract(lux::ecs::RenderSubsystemContext&) override
         {
             if (trace) trace->push_back(3);
         }
         std::vector<int>* trace{};
-    };
-
-    struct MissingPlanDependency final : lux::ecs::IRenderSubsystem
-    {
-        [[nodiscard]] std::span<const lux::ecs::RenderSubsystemType>
-        prerequisites() const noexcept override
-        {
-            static constexpr lux::ecs::RenderSubsystemType kRequired[]{
-                lux::ecs::renderSubsystemType<PlanA>()};
-            return kRequired;
-        }
-        void update(lux::ecs::RenderSubsystemContext&) override {}
-    };
-
-    struct CyclePlanRight;
-    struct CyclePlanLeft final : lux::ecs::IRenderSubsystem
-    {
-        [[nodiscard]] std::span<const lux::ecs::RenderSubsystemType>
-        runsAfter() const noexcept override;
-        void update(lux::ecs::RenderSubsystemContext&) override {}
-    };
-    struct CyclePlanRight final : lux::ecs::IRenderSubsystem
-    {
-        [[nodiscard]] std::span<const lux::ecs::RenderSubsystemType>
-        runsAfter() const noexcept override
-        {
-            static constexpr lux::ecs::RenderSubsystemType kAfter[]{
-                lux::ecs::renderSubsystemType<CyclePlanLeft>()};
-            return kAfter;
-        }
-        void update(lux::ecs::RenderSubsystemContext&) override {}
-    };
-    std::span<const lux::ecs::RenderSubsystemType>
-    CyclePlanLeft::runsAfter() const noexcept
-    {
-        static constexpr lux::ecs::RenderSubsystemType kAfter[]{
-            lux::ecs::renderSubsystemType<CyclePlanRight>()};
-        return kAfter;
-    }
-
-    struct DynamicPlanRoot final : lux::ecs::IRenderSubsystem
-    {
-        explicit DynamicPlanRoot(std::vector<int>* trace) noexcept
-            : trace(trace)
-        {}
-
-        void update(lux::ecs::RenderSubsystemContext&) override
-        {
-            trace->push_back(4);
-        }
-
-        void onRemoved(const lux::ecs::SystemRemovalContext&) override
-        {
-            trace->push_back(-4);
-        }
-
-        [[nodiscard]] bool supportsDynamicRemoval() const noexcept override
-        {
-            return true;
-        }
-
-        std::vector<int>* trace;
-    };
-
-    struct DynamicPlanLeaf final : lux::ecs::IRenderSubsystem
-    {
-        explicit DynamicPlanLeaf(std::vector<int>* trace) noexcept
-            : trace(trace)
-        {}
-
-        [[nodiscard]] std::span<const lux::ecs::RenderSubsystemType>
-        prerequisites() const noexcept override
-        {
-            static constexpr lux::ecs::RenderSubsystemType kRequired[]{
-                lux::ecs::renderSubsystemType<DynamicPlanRoot>()};
-            return kRequired;
-        }
-
-        void update(lux::ecs::RenderSubsystemContext&) override
-        {
-            trace->push_back(5);
-        }
-
-        void onRemoved(const lux::ecs::SystemRemovalContext&) override
-        {
-            trace->push_back(-5);
-        }
-
-        [[nodiscard]] bool supportsDynamicRemoval() const noexcept override
-        {
-            return true;
-        }
-
-        std::vector<int>* trace;
     };
 
     template <class Subsystem>
@@ -228,7 +127,7 @@ namespace
             0,
         };
         subsystem.prepare(context);
-        subsystem.update(context);
+        subsystem.extract(context);
     }
 
     int g_failures = 0;
@@ -237,17 +136,6 @@ namespace
     {
         std::fprintf(stderr, "[%s] %s\n", ok ? " ok " : "FAIL", what);
         if (!ok) ++g_failures;
-    }
-
-    bool containsSubsystemType(
-        std::span<const lux::ecs::RenderSubsystemType> types,
-        lux::ecs::RenderSubsystemType expected
-    ) noexcept
-    {
-        for (const auto type : types)
-            if (type == expected)
-                return true;
-        return false;
     }
 
     /// 批E:资产广播的探针装配 —— 三队列退役后,探针自建 bus+pump,把账本
@@ -545,48 +433,36 @@ namespace
 
 int main()
 {
-    // RenderSystemBuilder is a scene-assembly compiler, not another runtime
-    // scheduler: reject malformed graphs once, then execute a frozen stable list.
+    // Render stages form one append-only sequence, not a second behavior graph.
     {
-        lux::ecs::RenderSystemBuilder duplicates;
+        lux::ecs::RenderSystemStages duplicates;
         check(duplicates.add(std::make_unique<PlanA>()).has_value(),
-              "RenderPlan/duplicate: first type is accepted");
+              "RenderStages/duplicate: first type is accepted");
         const auto duplicate = duplicates.add(std::make_unique<PlanA>());
         check(!duplicate && duplicate.error().code ==
-                  lux::ecs::ERenderAssemblyError::DuplicateType,
-              "RenderPlan/duplicate: repeated type is rejected without RTTI");
-
-        lux::ecs::RenderSystemBuilder missing_builder;
-        check(missing_builder.add(
-                  std::make_unique<MissingPlanDependency>()).has_value(),
-              "RenderPlan/missing: candidate is staged");
-        const auto missing = std::move(missing_builder).compile();
-        check(!missing && missing.error().code ==
-                  lux::ecs::ERenderAssemblyError::MissingPrerequisite,
-              "RenderPlan/missing: hard prerequisite fails compilation");
-
-        lux::ecs::RenderSystemBuilder cycle_builder;
-        (void)cycle_builder.add(std::make_unique<CyclePlanLeft>());
-        (void)cycle_builder.add(std::make_unique<CyclePlanRight>());
-        const auto cycle = std::move(cycle_builder).compile();
-        check(!cycle && cycle.error().code ==
-                  lux::ecs::ERenderAssemblyError::TopologyCycle,
-              "RenderPlan/cycle: internal dependency cycle is rejected");
+                  lux::ecs::ERenderStageAssemblyError::DuplicateType,
+              "RenderStages/duplicate: repeated type is rejected");
 
         std::vector<int> trace;
-        lux::ecs::RenderSystemBuilder builder;
-        (void)builder.add(std::make_unique<PlanB>(&trace));
-        (void)builder.add(std::make_unique<PlanC>(&trace));
-        (void)builder.add(std::make_unique<PlanA>(&trace));
-        auto plan = std::move(builder).compile();
-        check(plan.has_value(), "RenderPlan/stable: valid graph compiles");
-        if (plan)
+        lux::ecs::RenderSystemStages stages;
+        (void)stages.add(std::make_unique<PlanB>(&trace));
+        (void)stages.add(std::make_unique<PlanC>(&trace));
+        (void)stages.add(std::make_unique<PlanA>(&trace));
+        const auto frozen = stages.freeze();
+        check(frozen.has_value(), "RenderStages/freeze: sequence freezes once");
+        if (frozen)
         {
-            check(std::vector<std::string_view>(plan->features().begin(),
-                                                plan->features().end()) ==
+            check(std::vector<std::string_view>(
+                      stages.requiredFeatures().begin(),
+                      stages.requiredFeatures().end()) ==
                       std::vector<std::string_view>{
                           "feature.a", "feature.m", "feature.z"},
-                  "RenderPlan/features: feature roots are sorted and unique");
+                  "RenderStages/features: feature roots are sorted and unique");
+
+            const auto frozen_add = stages.add(std::make_unique<PlanC>());
+            check(!frozen_add && frozen_add.error().code ==
+                      lux::ecs::ERenderStageAssemblyError::Frozen,
+                  "RenderStages/frozen: runtime mutation is rejected");
 
             lux::bridgetest::HeadlessBridgeFixture fixture;
             lux::ecs::World world;
@@ -595,87 +471,17 @@ int main()
                     fixture.session(), fixture.control(),
                     lux::render::RenderUploadClient{},
                     fixture.control().adoptScene(fixture.scene()),
-                    std::move(*plan));
-            auto* render_system_ptr = render_system.get();
+                    std::move(stages));
             auto installed = schedule.addSystem(
                 std::move(render_system),
                 lux::ecs::kPhaseRender);
             check(installed.has_value(),
-                  "RenderPlan/install: one top-level RenderSystem is installed");
+                  "RenderStages/install: one top-level RenderSystem is installed");
             fixture.beginFrame();
             schedule.tick(0.0f);
-            check(trace == std::vector<int>{3, 1, 2},
-                  "RenderPlan/stable: ready nodes keep registration order around dependencies");
-
-            lux::ecs::RenderSubsystemMutationBatch mutation;
-            check(mutation.add(
-                      std::make_unique<DynamicPlanLeaf>(&trace)).has_value(),
-                  "RenderPlan/mutation: dependent can be staged before its prerequisite");
-            check(mutation.add(
-                      std::make_unique<DynamicPlanRoot>(&trace)).has_value(),
-                  "RenderPlan/mutation: prerequisite joins the same atomic batch");
-            auto dynamic = render_system_ptr->installSubsystemBatch(
-                std::move(mutation));
-            check(dynamic.has_value(),
-                  "RenderPlan/mutation: a complete batch installs atomically");
-            trace.clear();
-            schedule.tick(0.0f);
-            check(trace == std::vector<int>{3, 1, 2, 4, 5},
-                  "RenderPlan/mutation: hot plan remains one stable topological pointer walk");
-
-            if (dynamic)
-            {
-                trace.clear();
-                auto removed = render_system_ptr->removeSubsystemBatch(
-                    std::move(*dynamic));
-                check(removed.has_value(),
-                      "RenderPlan/mutation: a complete batch removes atomically");
-                check(trace == std::vector<int>{-5, -4},
-                      "RenderPlan/mutation: teardown follows reverse execution order");
-                trace.clear();
-                schedule.tick(0.0f);
-                check(trace == std::vector<int>{3, 1, 2},
-                      "RenderPlan/mutation: retired slots leave no hot-path entry");
-            }
+            check(trace == std::vector<int>{2, 3, 1},
+                  "RenderStages/order: direct composition order is immutable");
         }
-        auto frozen_add = builder.add(std::make_unique<PlanC>());
-        check(!frozen_add && frozen_add.error().code ==
-                  lux::ecs::ERenderAssemblyError::BuilderFrozen,
-              "RenderPlan/frozen: compiled builder rejects runtime mutation");
-    }
-
-    // ── ⓪ 渲染节点的数据依赖必须由类型边表达 ─────────────────────────────
-    // 包安装顺序只负责构造，不能再暗中兼任帧内执行顺序。这里直接钉住消费
-    // 关系，防止以后拆包、插入新节点或并行编译 schedule 时重新依赖偶然顺序。
-    {
-        lux::bridgetest::HeadlessBridgeFixture fx;
-        lux::ecs::SceneRenderBinding render_ctx{
-            fx.session(), fx.control(), {}, fx.scene()};
-        lux::ecs::ActiveRenderView active_view{fx.view()};
-
-        lux::ecs::Image2DSubsystem image{};
-        lux::ecs::Tilemap2DSubsystem tilemap{nullptr};
-        lux::ecs::PixelField2DSubsystem pixels{nullptr};
-        lux::ecs::MeshSubsystem meshes{};
-        lux::ecs::SkyboxSubsystem skybox{};
-
-        const auto residency =
-            lux::ecs::renderSubsystemType<lux::ecs::ResidencySubsystem>();
-        const auto camera2d =
-            lux::ecs::renderSubsystemType<lux::ecs::Camera2DUploadSubsystem>();
-
-        check(containsSubsystemType(image.runsAfter(), residency) &&
-                  containsSubsystemType(image.runsAfter(), camera2d),
-              "⓪-a：Image2D 显式依赖 Residency + Camera2DUpload");
-        check(containsSubsystemType(tilemap.runsAfter(), residency) &&
-                  containsSubsystemType(tilemap.runsAfter(), camera2d),
-              "⓪-b：Tilemap2D 显式依赖 Residency + Camera2DUpload");
-        check(containsSubsystemType(pixels.runsAfter(), camera2d),
-              "⓪-c：PixelField2D 显式依赖 Camera2DUpload");
-        check(containsSubsystemType(meshes.runsAfter(), residency),
-              "⓪-d：Mesh 实例显式依赖 Residency");
-        check(containsSubsystemType(skybox.runsAfter(), residency),
-              "⓪-e：Skybox 参数显式依赖 Residency");
     }
 
     // ── ① 销毁实体 → 资源被还 ────────────────────────────────────────────

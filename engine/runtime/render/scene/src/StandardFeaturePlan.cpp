@@ -61,7 +61,7 @@ namespace lux::runtime
     {
         /// 前向小场景:阴影双 pass + 前向网格,无延迟栈/后处理。相机/灯光/网格栈/
         /// 材质等 ECS 提取节点驱动的 feature 不在这里 ——
-        /// `IRenderSubsystem::renderFeatures` 由 RenderSystemBuilder 取并集。
+        /// `RenderStage::requiredFeatures` 由 RenderSystemStages 取并集。
         /// name = "preview" 让 ShadowMap 的小图集配置行胜出。
         static constexpr std::string_view kPassRoots[] = {
             "ShadowMap",     // 预览小阴影图集(profile="preview" 的那行配置)

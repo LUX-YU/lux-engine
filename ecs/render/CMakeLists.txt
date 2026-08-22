@@ -98,7 +98,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderBinding.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderBridgeDiagnostics.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystemBuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystemStages.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CameraViewSubsystem.cpp
 )
@@ -335,3 +335,4 @@ if(LUX_BUILD_COMPONENT_META)
         ${LUX_ECS_RENDER_INCLUDE_DIR}/lux/engine/ecs/render/components/3d/SceneSettingsComponent.hpp
     )
 endif()
+

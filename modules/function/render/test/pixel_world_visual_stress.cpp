@@ -33,7 +33,7 @@
 #include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 
-#include <lux/engine/ecs/render/RenderSystemBuilder.hpp>
+#include <lux/engine/ecs/render/RenderSystemStages.hpp>
 #include <lux/engine/ecs/render/subsystems/CameraViewSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/ResidencySubsystem.hpp>
 #include <lux/engine/ecs/render/systems/RenderSystem.hpp>
@@ -169,7 +169,7 @@ int main(int argc, char** argv)
     auto residency_glue = std::make_unique<lux::ecs::ResidencySubsystem>(assets);
     residency_glue->setCallbacks(residency.makeCallbacks());
     auto* const residency_owner = residency_glue.get();
-    lux::ecs::RenderSystemBuilder render_builder;
+    lux::ecs::RenderSystemStages render_builder;
     if (!render_builder.add(std::move(residency_glue)) ||
         !render_builder.add(std::make_unique<lux::ecs::CameraViewSubsystem>()))
     {
@@ -214,7 +214,7 @@ int main(int argc, char** argv)
         std::printf("2D system assembly failed\n");
         return 1;
     }
-    auto render_plan = std::move(render_builder).compile();
+    auto render_plan = render_builder.freeze();
     if (!render_plan)
     {
         std::printf("render subsystem graph failed\n");
@@ -225,7 +225,7 @@ int main(int argc, char** argv)
         fx.control(),
         async.uploadClient(),
         fx.control().adoptScene(sv.scene_id),
-        std::move(*render_plan));
+        std::move(render_builder));
     auto* const render_owner = render_system.get();
     render_system->setFeatures(features);
     if (!assembly.add(std::move(render_system), lux::ecs::kPhaseRender))

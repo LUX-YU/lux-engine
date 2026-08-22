@@ -11,15 +11,9 @@ namespace lux::ecs
     Tilemap2DSubsystem::~Tilemap2DSubsystem() = default;
 
     std::span<const std::string_view>
-    Tilemap2DSubsystem::renderFeatures() const noexcept
+    Tilemap2DSubsystem::requiredFeatures() const noexcept
     {
-        return impl_->renderFeatures();
-    }
-
-    std::span<const RenderSubsystemType>
-    Tilemap2DSubsystem::runsAfter() const noexcept
-    {
-        return impl_->runsAfter();
+        return impl_->requiredFeatures();
     }
 
     void Tilemap2DSubsystem::onAdded(const SystemSetupContext& setup)
@@ -33,9 +27,9 @@ namespace lux::ecs
         impl_->onRemoved(context);
     }
 
-    void Tilemap2DSubsystem::update(RenderSubsystemContext& context)
+    void Tilemap2DSubsystem::extract(RenderSubsystemContext& context)
     {
-        impl_->update(context);
+        impl_->extract(context);
     }
 
     void Tilemap2DSubsystem::close(

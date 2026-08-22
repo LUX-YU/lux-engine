@@ -7,7 +7,7 @@
 #include <lux/engine/runtime/render/scene/visibility.h>
 #include <lux/engine/runtime/render/scene/SceneContentRenderStatus.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/ResidencyCallbacks.hpp>
 
 #include <memory>
@@ -23,7 +23,7 @@ namespace lux::runtime
     /// are translated directly into RenderCluster instances and never become
     /// ECS entities.
     class LUX_RUNTIME_RENDER_SCENE_PUBLIC
-    ClassicMeshBatchRenderSubsystem final : public lux::ecs::IRenderSubsystem
+    ClassicMeshBatchRenderSubsystem final : public lux::ecs::RenderStage
     {
     public:
         ClassicMeshBatchRenderSubsystem(
@@ -41,20 +41,13 @@ namespace lux::runtime
 
         void onAdded(const lux::ecs::SystemSetupContext& setup) override;
         void onRemoved(const lux::ecs::SystemRemovalContext& removal) override;
-        [[nodiscard]] std::span<const lux::ecs::RenderSubsystemType>
-        runsAfter() const noexcept override;
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override;
+        requiredFeatures() const noexcept override;
         void prepare(lux::ecs::RenderSubsystemContext& context) noexcept
             override;
-        void update(lux::ecs::RenderSubsystemContext& context) override;
+        void extract(lux::ecs::RenderSubsystemContext& context) override;
         void close(lux::ecs::RenderSubsystemContext& context) noexcept
             override;
-        [[nodiscard]] bool supportsDynamicRemoval() const noexcept override
-        {
-            return true;
-        }
-
         [[nodiscard]] SceneContentRenderEntrySnapshot status(
             lux::ecs::Entity entity) const noexcept;
         [[nodiscard]] SceneContentRenderSubsystemSnapshot snapshot()

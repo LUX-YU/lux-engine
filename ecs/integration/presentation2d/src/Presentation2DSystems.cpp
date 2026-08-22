@@ -8,7 +8,7 @@
 #include <lux/engine/ecs/physics/systems/Simulation2DSystem.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldSystem.hpp>
-#include <lux/engine/ecs/render/RenderSystemBuilder.hpp>
+#include <lux/engine/ecs/render/RenderSystemStages.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Camera2DUploadSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Grid2DSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Image2DSubsystem.hpp>
@@ -99,7 +99,7 @@ namespace lux::ecs
             probes->add(makePixelCollisionProbe(*pixels));
         }
 
-        auto* const render = builder.services().borrow<RenderSystemBuilder>();
+        auto* const render = builder.services().borrow<RenderSystemStages>();
         if (!render)
             return true;
         auto* const residency = builder.services().borrow<ResidencySubsystem>();

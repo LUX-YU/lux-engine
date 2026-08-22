@@ -26,7 +26,7 @@
 
 #include <lux/engine/function/visibility.h>
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 
 #include <memory>
@@ -35,7 +35,7 @@ namespace lux::ecs
 {
 
     class LUX_FUNCTION_PUBLIC CameraViewSubsystem final
-        : public lux::ecs::IRenderSubsystem
+        : public lux::ecs::RenderStage
     {
     public:
         CameraViewSubsystem();
@@ -58,7 +58,7 @@ namespace lux::ecs
         /// **不再排空命令队列**:排空归 `Schedule::applyCommandBarrier()`,全项目
         /// 只有那一个 apply 点。
         void prepare(RenderSubsystemContext& context) noexcept override;
-        void update(RenderSubsystemContext& context) override;
+        void extract(RenderSubsystemContext& context) override;
 
         /// 编辑器相机导航通过普通 `ISystem` 依赖声明与本子系统的
         /// 先后，不再经过可拼错的字符串名字。

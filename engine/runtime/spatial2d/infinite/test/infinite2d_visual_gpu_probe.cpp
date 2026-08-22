@@ -322,9 +322,9 @@ namespace
                 0.0f,
                 frame_index_++};
             camera_upload_->prepare(context);
-            camera_upload_->update(context);
+            camera_upload_->extract(context);
             pixels_->prepare(context);
-            pixels_->update(context);
+            pixels_->extract(context);
             fixture_->flush();
         }
 

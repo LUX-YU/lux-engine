@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <cstdint>
@@ -16,7 +16,7 @@ namespace lux::ecs
     /// Tilemap ECS-to-Canvas2D extraction. Sparse atlas and request state stay
     /// private to the compiled integration target.
     class LUX_FUNCTION_PUBLIC Tilemap2DSubsystem final
-        : public IRenderSubsystem
+        : public RenderStage
     {
     public:
         explicit Tilemap2DSubsystem(TilemapRuntime* runtime);
@@ -26,12 +26,10 @@ namespace lux::ecs
         Tilemap2DSubsystem& operator=(const Tilemap2DSubsystem&) = delete;
 
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override;
-        [[nodiscard]] std::span<const RenderSubsystemType>
-        runsAfter() const noexcept override;
+        requiredFeatures() const noexcept override;
         void onAdded(const SystemSetupContext& setup) override;
         void onRemoved(const SystemRemovalContext& context) override;
-        void update(RenderSubsystemContext& context) override;
+        void extract(RenderSubsystemContext& context) override;
         void close(RenderSubsystemContext& context) noexcept override;
 
         [[nodiscard]] std::uint32_t residentChunks() const noexcept;

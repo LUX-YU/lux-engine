@@ -724,16 +724,8 @@ namespace lux::runtime
         impl_->detach();
     }
 
-    std::span<const lux::ecs::RenderSubsystemType>
-    ClassicMeshBatchRenderSubsystem::runsAfter() const noexcept
-    {
-        static constexpr std::array dependencies{
-            lux::ecs::renderSubsystemType<lux::ecs::ResidencySubsystem>()};
-        return dependencies;
-    }
-
     std::span<const std::string_view>
-    ClassicMeshBatchRenderSubsystem::renderFeatures() const noexcept
+    ClassicMeshBatchRenderSubsystem::requiredFeatures() const noexcept
     {
         static constexpr std::array<std::string_view, 1u> features{
             "RenderCluster"};
@@ -746,7 +738,7 @@ namespace lux::runtime
         impl_->prepare(context);
     }
 
-    void ClassicMeshBatchRenderSubsystem::update(
+    void ClassicMeshBatchRenderSubsystem::extract(
         lux::ecs::RenderSubsystemContext& context)
     {
         if (!impl_->closed)

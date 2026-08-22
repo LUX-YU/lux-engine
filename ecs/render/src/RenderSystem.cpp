@@ -13,15 +13,15 @@ namespace lux::ecs
             lux::render::RenderControlSession& control,
             lux::render::RenderUploadClient upload,
             lux::render::RenderSceneLease scene,
-            RenderSystemPlan            compiled_plan
+            RenderSystemStages stages_value
         )
-            : plan(std::move(compiled_plan)),
+            : stages(std::move(stages_value)),
               scene_lease(std::move(scene)),
               binding(session, control, std::move(upload), scene_lease.id())
         {
         }
 
-        RenderSystemPlan             plan;
+        RenderSystemStages            stages;
         lux::render::RenderSceneLease scene_lease;
         SceneRenderBinding           binding;
         ActiveRenderView             active_view;
@@ -36,14 +36,14 @@ namespace lux::ecs
         lux::render::RenderControlSession& control,
         lux::render::RenderUploadClient upload,
         lux::render::RenderSceneLease scene,
-        RenderSystemPlan            plan
+        RenderSystemStages stages
     )
         : impl_(std::make_unique<Impl>(
               session,
               control,
               std::move(upload),
               std::move(scene),
-              std::move(plan)
+              std::move(stages)
           ))
     {
     }
@@ -52,18 +52,18 @@ namespace lux::ecs
     {
         (void)close();
         if (impl_ && impl_->registry)
-            impl_->plan.detach(*impl_->registry);
+            impl_->stages.detach(*impl_->registry);
     }
 
     void RenderSystem::onAdded(const SystemSetupContext& setup)
     {
         impl_->registry = &setup.registry();
-        impl_->plan.activate(setup.registry());
+        impl_->stages.activate(setup.registry());
     }
 
     void RenderSystem::onRemoved(const SystemRemovalContext& removal)
     {
-        impl_->plan.detach(removal.registry());
+        impl_->stages.detach(removal.registry());
         impl_->registry = nullptr;
     }
 
@@ -72,7 +72,7 @@ namespace lux::ecs
         if (impl_->closing)
             return;
         impl_->tick_index = context.tickIndex();
-        impl_->plan.update(
+        impl_->stages.extract(
             context.registry(),
             impl_->binding,
             impl_->active_view,
@@ -81,44 +81,10 @@ namespace lux::ecs
         );
     }
 
-    lux::cxx::expected<
-        InstalledRenderSubsystemBatch,
-        RenderAssemblyFailure>
-    RenderSystem::installSubsystemBatch(
-        RenderSubsystemMutationBatch&& batch)
-    {
-        if (!impl_ || !impl_->registry || impl_->closing)
-        {
-            return lux::cxx::unexpected(RenderAssemblyFailure{
-                ERenderAssemblyError::MutationUnavailable});
-        }
-        return impl_->plan.installBatch(
-            std::move(batch),
-            impl_->binding,
-            impl_->active_view,
-            impl_->tick_index);
-    }
-
-    lux::cxx::expected<void, RenderAssemblyFailure>
-    RenderSystem::removeSubsystemBatch(
-        InstalledRenderSubsystemBatch&& batch)
-    {
-        if (!impl_ || !impl_->registry || impl_->closing)
-        {
-            return lux::cxx::unexpected(RenderAssemblyFailure{
-                ERenderAssemblyError::MutationUnavailable});
-        }
-        return impl_->plan.removeBatch(
-            std::move(batch),
-            impl_->binding,
-            impl_->active_view,
-            impl_->tick_index);
-    }
-
     std::span<const std::string_view>
-    RenderSystem::renderFeatures() const noexcept
+    RenderSystem::requiredFeatures() const noexcept
     {
-        return impl_->plan.features();
+        return impl_->stages.requiredFeatures();
     }
 
     void RenderSystem::setFeatures(
@@ -147,7 +113,7 @@ namespace lux::ecs
     {
         if (!impl_->registry || impl_->closing)
             return;
-        impl_->plan.settle(
+        impl_->stages.settle(
             *impl_->registry,
             impl_->binding,
             impl_->active_view,
@@ -160,7 +126,7 @@ namespace lux::ecs
         if (impl_->closed)
             return lux::render::ERenderLeaseCloseStatus::AlreadyClosed;
         if (!impl_->closing && impl_->registry)
-            impl_->plan.close(
+            impl_->stages.close(
                 *impl_->registry,
                 impl_->binding,
                 impl_->active_view,
@@ -186,7 +152,7 @@ namespace lux::ecs
 
     std::uint64_t RenderSystem::droppedStaleCommands() const noexcept
     {
-        return impl_->plan.droppedStaleCommands();
+        return impl_->stages.droppedStaleCommands();
     }
 
 } // namespace lux::ecs

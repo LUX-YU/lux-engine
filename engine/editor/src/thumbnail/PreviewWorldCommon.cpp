@@ -5,7 +5,7 @@
 #include <lux/engine/ecs/render/systems/3d/Camera3DSystem.hpp>
 #include <lux/engine/ecs/animation/systems/AnimationSystem.hpp>
 #include <lux/engine/ecs/render/subsystems/ResidencySubsystem.hpp>
-#include <lux/engine/ecs/render/RenderSystemBuilder.hpp>
+#include <lux/engine/ecs/render/RenderSystemStages.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/MeshSubsystems.hpp>          // MeshSubsystem
 #include <lux/engine/ecs/render/subsystems/3d/Camera3DUploadSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/LightSubsystems.hpp>         // DirectionalLightSubsystem
@@ -37,7 +37,7 @@ namespace lux::editor
             return false;
         }
         auto* const render = builder.services().borrow<
-            lux::ecs::RenderSystemBuilder>();
+            lux::ecs::RenderSystemStages>();
         auto* const residency = builder.services().borrow<
             lux::ecs::ResidencySubsystem>();
         if (!render || !residency)

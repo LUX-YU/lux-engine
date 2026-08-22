@@ -379,7 +379,7 @@ namespace lux::ecs
         impl_->active_view = &context.activeView();
     }
 
-    void CameraViewSubsystem::update(RenderSubsystemContext& context)
+    void CameraViewSubsystem::extract(RenderSubsystemContext& context)
     {
         auto& registry = context.registry();
 

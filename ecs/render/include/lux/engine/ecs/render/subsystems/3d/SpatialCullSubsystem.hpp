@@ -23,7 +23,7 @@
 #include <span>
 #include <string_view>
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
 #include <lux/engine/ecs/render/components/3d/SceneSettingsComponent.hpp>
 
@@ -40,19 +40,19 @@ namespace lux::ecs
     ///   没有在途 create),所以既不需要观察者、也不需要 releaseRefs —— 迁移只是
     ///   把 `tick(reg, ctx)` 改成 `update(SystemUpdateContext&)`,渲染绑定由构造
     ///   注入(与 CameraViewSubsystem 同款),而不是每帧由调度循环递进来。
-    class SpatialCullSubsystem final : public IRenderSubsystem
+    class SpatialCullSubsystem final : public RenderStage
     {
     public:
         SpatialCullSubsystem() = default;
 
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static const std::string_view kFeatures[] = { "SpatialCull" };
             return kFeatures;
         }
 
-        void update(RenderSubsystemContext& uctx) override
+        void extract(RenderSubsystemContext& uctx) override
         {
             auto& reg = uctx.registry();
             auto& ctx = uctx.render();

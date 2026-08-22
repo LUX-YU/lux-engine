@@ -37,7 +37,7 @@
 #include <lux/engine/ecs/Registry.hpp>   // entity_id / EntityRegistry
 #include <lux/engine/ecs/render/VisualTransition.hpp>
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include "lux/engine/ecs/render/SceneRenderBinding.hpp"
 #include "lux/engine/ecs/render/RenderViewUtil.hpp"
 #include "lux/engine/ecs/render/TrackedRenderRequest.hpp"
@@ -59,7 +59,7 @@ namespace lux::ecs
     /// 承担;这里的 tracker 只表达「一个 ECS owner 等一个 RPC 回执」,
     /// 避免把 stdexec 的重模板头拉进 ECS 公开头。架构门禁按文件
     /// 白名单锁住这个边界,新业务节点无法再直接添加续体。
-    class PooledSlotSubsystem final : public IRenderSubsystem
+    class PooledSlotSubsystem final : public RenderStage
     {
         using T = Traits;
         using C = typename Traits::Component;
@@ -118,13 +118,13 @@ namespace lux::ecs
 
         /// 本节点驱动的那个 feature（Light）—— 由 trait 声明,不在这里写死。
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static const std::string_view kFeatures[] = { T::feature };
             return kFeatures;
         }
 
-        void update(RenderSubsystemContext& uctx) override
+        void extract(RenderSubsystemContext& uctx) override
         {
             auto& reg = uctx.registry();
             auto& ctx = uctx.render();

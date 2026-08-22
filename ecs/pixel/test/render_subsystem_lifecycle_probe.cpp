@@ -107,7 +107,7 @@ namespace
         lux::ecs::RenderSubsystemContext context{
             registry, {}, binding, active_view, kDt, 0};
         system.prepare(context);
-        system.update(context);
+        system.extract(context);
     }
 
     template <class System>

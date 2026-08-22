@@ -11,15 +11,9 @@ namespace lux::ecs
     PixelField2DSubsystem::~PixelField2DSubsystem() = default;
 
     std::span<const std::string_view>
-    PixelField2DSubsystem::renderFeatures() const noexcept
+    PixelField2DSubsystem::requiredFeatures() const noexcept
     {
-        return impl_->renderFeatures();
-    }
-
-    std::span<const RenderSubsystemType>
-    PixelField2DSubsystem::runsAfter() const noexcept
-    {
-        return impl_->runsAfter();
+        return impl_->requiredFeatures();
     }
 
     void PixelField2DSubsystem::onAdded(const SystemSetupContext& setup)
@@ -33,9 +27,9 @@ namespace lux::ecs
         impl_->onRemoved(context);
     }
 
-    void PixelField2DSubsystem::update(RenderSubsystemContext& context)
+    void PixelField2DSubsystem::extract(RenderSubsystemContext& context)
     {
-        impl_->update(context);
+        impl_->extract(context);
     }
 
     void PixelField2DSubsystem::close(

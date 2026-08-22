@@ -23,7 +23,7 @@
 #include <vector>
 
 #include <lux/engine/ecs/DebugDraw.hpp>
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
 #include <lux/engine/function/render/client/RenderRequest.hpp>   // 本头持 RenderRequest 成员(此前经旧缓存头搭车)
 #include <lux/engine/function/render/client/genops/LineListOperation.ops.hpp>
@@ -38,7 +38,7 @@ namespace lux::ecs
     ///   没有在途 create),所以既不需要观察者、也不需要 releaseRefs —— 迁移只是
     ///   把 `tick(reg, ctx)` 改成 `update(SystemUpdateContext&)`,渲染绑定由构造
     ///   注入(与 CameraViewSubsystem 同款),而不是每帧由调度循环递进来。
-    class DebugLineSubsystem final : public IRenderSubsystem
+    class DebugLineSubsystem final : public RenderStage
     {
     public:
         DebugLineSubsystem() = default;
@@ -46,13 +46,13 @@ namespace lux::ecs
         /// 线段走 LineList 那个 transient feature。名字是注册名，不是类型名 ——
         /// 曾经写成 "LineList" 导致 attach 静默漏掉（阶段 3 的诊断抓到的）。
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static const std::string_view kFeatures[] = { "LineListTransient" };
             return kFeatures;
         }
 
-        void update(RenderSubsystemContext& uctx) override
+        void extract(RenderSubsystemContext& uctx) override
         {
             auto& ctx = uctx.render();
             const auto ops = ctx.features().ops<lux::render::LineListOperationIds>("LineListTransient");

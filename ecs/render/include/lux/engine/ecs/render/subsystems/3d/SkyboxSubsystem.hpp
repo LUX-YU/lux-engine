@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/RenderBridgeDiagnostics.hpp>
 #include <lux/engine/ecs/render/components/3d/SkyboxComponent.hpp>
 #include <lux/engine/ecs/render/components/TextureGpuCacheComponent.hpp>
@@ -18,25 +18,17 @@ namespace lux::ecs
     /// Bridges the scene's optional singleton SkyboxComponent. Unlike the
     /// generic feature-parameter shape, this owner explicitly clears the
     /// renderer when the component disappears and rejects ambiguous content.
-    class SkyboxSubsystem final : public IRenderSubsystem
+    class SkyboxSubsystem final : public RenderStage
     {
     public:
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static constexpr std::string_view features[]{"Skybox"};
             return features;
         }
 
-        [[nodiscard]] std::span<const RenderSubsystemType>
-        runsAfter() const noexcept override
-        {
-            static constexpr RenderSubsystemType dependencies[]{
-                renderSubsystemType<ResidencySubsystem>()};
-            return dependencies;
-        }
-
-        void update(RenderSubsystemContext& context) override
+        void extract(RenderSubsystemContext& context) override
         {
             auto& registry = context.registry();
             auto& render = context.render();
@@ -123,11 +115,6 @@ namespace lux::ecs
             lux::render::SkyboxProxy{render.session(), operations}
                 .setEquirect(payload);
             last_ = next;
-        }
-
-        [[nodiscard]] bool supportsDynamicRemoval() const noexcept override
-        {
-            return true;
         }
 
         void close(RenderSubsystemContext& context) noexcept override

@@ -39,7 +39,7 @@
 //  releaseRefs drops scoped in-flight continuations and clears local bookkeeping.
 // ============================================================================
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/RenderSpatialTransform.hpp>
 #include <lux/engine/ecs/render/components/PrimaryCameraTag.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>       // ctx.canvas2d() / scene()
@@ -71,7 +71,7 @@ namespace lux::ecs
     ///
     ///   它的 `RenderRequest::then` **不迁 sender**(批 C2)—— 裁决与三条理由
     ///   记在 `PooledSlotSubsystem.hpp` 的类头。
-    class Image2DSubsystem final : public lux::ecs::IRenderSubsystem
+    class Image2DSubsystem final : public lux::ecs::RenderStage
     {
     public:
         Image2DSubsystem() = default;
@@ -80,20 +80,10 @@ namespace lux::ecs
 
         /// Canvas2D 的实例竞技场就是它画的地方。
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static const std::string_view kFeatures[] = { "Canvas2D" };
             return kFeatures;
-        }
-
-        [[nodiscard]] std::span<const RenderSubsystemType>
-        runsAfter() const noexcept override
-        {
-            static constexpr RenderSubsystemType kAfter[] = {
-                renderSubsystemType<ResidencySubsystem>(),
-                renderSubsystemType<Camera2DUploadSubsystem>()
-            };
-            return kAfter;
         }
 
         /// One live GPU instance + the LAST-SENT state every diff compares against.
@@ -139,7 +129,7 @@ namespace lux::ecs
         static constexpr int kTransientRetryDrives = 120;   // ~2s @ 60fps
 
     public:
-        void update(RenderSubsystemContext& uctx) override
+        void extract(RenderSubsystemContext& uctx) override
         {
             auto& registry = uctx.registry();
             auto& ctx = uctx.render();
@@ -205,7 +195,7 @@ namespace lux::ecs
             // ④ 逐实体处理:换出语义与 VERIFY 对拍都在 drain 里。
             changes_.drain(
                 registry,
-                renderSubsystemType<Image2DSubsystem>().name(),
+                lux::cxx::typeToken<Image2DSubsystem>().name(),
                 [&](lux::ecs::Entity e, Image2DComponent& sp)
                 {
                     return processEntity(registry, ctx, canvas, camera_position, e, sp,
@@ -606,7 +596,7 @@ namespace lux::ecs
         {
             changes_.attach(reg,
                 static_cast<entt::id_type>(
-                    renderSubsystemType<Image2DSubsystem>().hash()),
+                    lux::cxx::typeToken<Image2DSubsystem>().hash()),
                 [](auto& s)
             {
                 s.template on_construct<Image2DComponent>();

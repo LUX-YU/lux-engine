@@ -2,7 +2,7 @@
 // ============================================================================
 //  Camera2DUploadSubsystem.hpp — active Camera2D → render per-view camera (d2).
 //
-//  A BESPOKE IRenderSubsystem that mirrors the 3D CameraSceneSystem: each frame it
+//  A BESPOKE RenderStage that mirrors the 3D CameraSceneSystem: each frame it
 //  uploads the active Camera2D's ortho view/proj into the scene's per-view ViewGpuData
 //  (descriptor set 0, binding 1) via ViewCameraProxy — REUSING the same per-view camera
 //  path as 3D (design/recon: 2D does not duplicate a camera upload). The Canvas2D image
@@ -14,7 +14,7 @@
 //  no-op (ViewCameraProxy is invalid / activeCamera returns null).
 // ============================================================================
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>          // session()/scene()/features()
 #include <lux/engine/ecs/render/subsystems/CameraViewSubsystem.hpp>
@@ -30,29 +30,21 @@ namespace lux::ecs
 
     /// ★ 批 B4 起它是一个**普通的 schedule node**(`ISystem`)。渲染绑定由构造
     ///   注入,不再每帧由 `RenderSystem` 的调度循环递进来。
-    class Camera2DUploadSubsystem final : public lux::ecs::IRenderSubsystem
+    class Camera2DUploadSubsystem final : public lux::ecs::RenderStage
     {
     public:
         Camera2DUploadSubsystem() = default;
 
         /// 每帧把 2D 相机的矩阵推进 per-view 状态。
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             static const std::string_view kFeatures[] = { "StandardViewCamera" };
             return kFeatures;
         }
 
-        [[nodiscard]] std::span<const RenderSubsystemType>
-        runsAfter() const noexcept override
-        {
-            static constexpr RenderSubsystemType dependencies[]{
-                renderSubsystemType<CameraViewSubsystem>()};
-            return dependencies;
-        }
-
     public:
-        void update(RenderSubsystemContext& uctx) override
+        void extract(RenderSubsystemContext& uctx) override
         {
             auto& registry = uctx.registry();
             auto& ctx = uctx.render();

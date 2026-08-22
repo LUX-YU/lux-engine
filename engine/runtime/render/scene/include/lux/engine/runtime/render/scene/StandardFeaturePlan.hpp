@@ -28,7 +28,7 @@ namespace lux::runtime
     /// 一个渲染 profile —— **产品/平台维度**的管线选择(装配归属 ADR 裁决一
     /// 的第一层),纯数据:
     ///   · pass_roots:没有 ECS 渲染节点驱动的纯渲染图 pass(管线的形状,
-    ///     例如延迟栈 + 后处理)。它与节点的 `renderFeatures` 并集拼成
+    ///     例如延迟栈 + 后处理)。它与节点的 `requiredFeatures` 并集拼成
     ///     attach 解析器的根。
     ///   · name:配置变体的匹配键 —— 同名 feature 的 FeatureAttach 行里
     ///     `profile == name` 的胜出(缩略图预览的小阴影图集就是这样一行)。

@@ -56,7 +56,7 @@
 #include <lux/engine/function/render/client/genops/HighlightOperation.ops.hpp>  // kInstanceFlagHighlight
 #include <lux/engine/function/render/client/features/streaming_feedback/StreamingFeedbackOperation.hpp>
 
-#include <lux/engine/ecs/render/IRenderSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include "lux/engine/ecs/render/SceneRenderBinding.hpp"
 #include "lux/engine/ecs/render/RenderExtractionResources.hpp"
 #include "lux/engine/ecs/render/RenderViewUtil.hpp"
@@ -83,7 +83,7 @@ namespace lux::ecs
     ///   它的 `RenderRequest::then` 状态机**原地保留,不迁 sender** ——
     ///   批 C2 的裁决与三条理由记在 `PooledSlotSubsystem.hpp` 的类头,
     ///   那里是全仓 8 处 ecs 层 `.then` 的共同裁决点。
-    class MeshInstanceSubsystem final : public IRenderSubsystem
+    class MeshInstanceSubsystem final : public RenderStage
     {
         using T          = Traits;
         using C          = typename Traits::Component;
@@ -408,7 +408,7 @@ namespace lux::ecs
         ///  · Highlight         —— 实例标志位里的高亮位由它画出轮廓;
         ///  · Skinning          —— 仅骨骼网格(trait 有 beginFrame 的那一支)。
         [[nodiscard]] std::span<const std::string_view>
-        renderFeatures() const noexcept override
+        requiredFeatures() const noexcept override
         {
             if constexpr (requires { typename T::FrameState; })
             {
@@ -426,16 +426,7 @@ namespace lux::ecs
             }
         }
 
-        [[nodiscard]] std::span<const RenderSubsystemType>
-        runsAfter() const noexcept override
-        {
-            static constexpr RenderSubsystemType kAfter[] = {
-                renderSubsystemType<ResidencySubsystem>()
-            };
-            return kAfter;
-        }
-
-        void update(RenderSubsystemContext& uctx) override
+        void extract(RenderSubsystemContext& uctx) override
         {
             auto& reg = uctx.registry();
             auto& ctx = uctx.render();
@@ -523,7 +514,7 @@ namespace lux::ecs
             //    换出语义与 VERIFY 对拍都在 `drain` 里(批 R3 从本节点收上去的)。
             changes_.drain(
                 reg,
-                renderSubsystemType<MeshInstanceSubsystem>().name(),
+                lux::cxx::typeToken<MeshInstanceSubsystem>().name(),
                 [&](lux::ecs::Entity e, C& c)
                 { return processEntity(reg, ctx, active_view, mesh, e, c); });
 
@@ -798,7 +789,7 @@ namespace lux::ecs
         {
             changes_.attach(reg,
                 static_cast<entt::id_type>(
-                    renderSubsystemType<MeshInstanceSubsystem>().hash()),
+                    lux::cxx::typeToken<MeshInstanceSubsystem>().hash()),
                 [](auto& s)
                 { declareSources(s, typename T::Require{}, typename T::Exclude{}); });
         }

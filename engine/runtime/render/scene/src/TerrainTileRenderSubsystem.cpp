@@ -995,7 +995,7 @@ namespace lux::runtime
     }
 
     std::span<const std::string_view>
-    TerrainTileRenderSubsystem::renderFeatures() const noexcept
+    TerrainTileRenderSubsystem::requiredFeatures() const noexcept
     {
         static constexpr std::array<std::string_view, 1u> features{
             "Terrain"};
@@ -1008,7 +1008,7 @@ namespace lux::runtime
         impl_->prepare(context);
     }
 
-    void TerrainTileRenderSubsystem::update(
+    void TerrainTileRenderSubsystem::extract(
         lux::ecs::RenderSubsystemContext& context)
     {
         if (!impl_->closed)

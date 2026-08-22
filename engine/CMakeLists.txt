@@ -40,15 +40,6 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/scene/CMakeLists.txt)
     add_subdirectory(scene)
 endif()
 
-# Spatial3D scene-catalog contracts are shared by Runtime and Toolchain. They
-# belong to the Engine domain because they select Scene demand channels and
-# canonical ECS EntitySections; modules/resource retains only the frozen v1
-# compatibility codec during migration.
-if((LUX_PROFILE_HAS_RUNTIME OR LUX_PROFILE_HAS_TOOLCHAIN) AND
-   EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/spatial3d/CMakeLists.txt)
-    add_subdirectory(spatial3d)
-endif()
-
 # The cooked game-launch protocol is shared by Player front ends and the
 # offline exporter. It is an Engine product contract, not a Resource format.
 if((LUX_PROFILE_HAS_RUNTIME OR LUX_PROFILE_HAS_TOOLCHAIN) AND

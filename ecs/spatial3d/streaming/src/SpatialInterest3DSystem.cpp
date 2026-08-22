@@ -15,6 +15,24 @@
 
 namespace lux::ecs::spatial3d::streaming
 {
+    lux::ecs::entity_scene::residency::SectionDemandSourceId
+    demandSourceNamespace(
+        const lux::ecs::scene_format::spatial3d::SceneCatalogBand& band)
+    {
+        // Length-prefix both identities. Dot concatenation alone is
+        // ambiguous because dots are legal inside either operand.
+        const auto source = band.source.name();
+        const auto channel = band.demand_channel.name();
+        auto name = std::string{"lux.spatial3d.band."} +
+            std::to_string(source.size()) + ".";
+        name.append(source);
+        name += "." + std::to_string(channel.size()) + ".";
+        name.append(channel);
+        name += ".l" + std::to_string(band.level);
+        return lux::ecs::entity_scene::residency::SectionDemandSourceId{
+            std::move(name)};
+    }
+
     bool SpatialInterest3DBand::valid() const noexcept
     {
         if (!source_namespace.isValid() ||

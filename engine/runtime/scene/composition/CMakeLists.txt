@@ -60,6 +60,34 @@ function(lux_add_spatial3d_systems TARGET_NAME OUTPUT_NAME SOURCE VISIBILITY)
 endfunction()
 
 generate_visibility_header(
+    ENABLE_MACRO_NAME       LUX_ENGINE_RUNTIME_SPATIAL3D_SYSTEMS_LIBRARY
+    PUBLIC_MACRO_NAME       LUX_ENGINE_RUNTIME_SPATIAL3D_SYSTEMS_PUBLIC
+    DISABLE_DLL_MACRO_NAME  LUX_ENGINE_RUNTIME_SPATIAL3D_SYSTEMS_DLL_DISABLE
+    GENERATE_FILE_PATH
+        lux/engine/runtime/scene/composition/spatial3d_visibility.h
+)
+lux_add_spatial3d_systems(
+    runtime_spatial3d_systems
+    lux_engine_runtime_spatial3d_systems
+    InstallSpatial3DSystems.cpp
+    LUX_ENGINE_RUNTIME_SPATIAL3D_SYSTEMS_LIBRARY
+)
+target_link_libraries(
+    runtime_spatial3d_systems
+    PUBLIC
+        lux::engine::runtime::runtime_entity_scene
+        lux::engine::ecs::core
+        lux::engine::ecs::entity_scene
+        lux::engine::ecs::spatial3d_scene_format
+        lux::engine::ecs::spatial3d_streaming
+)
+component_add_transitive_commands(
+    runtime_spatial3d_systems
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core entity_scene spatial3d_scene_format spatial3d_streaming)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene)"
+)
+
+generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_RUNTIME_PHYSICS3D_SYSTEMS_LIBRARY
     PUBLIC_MACRO_NAME       LUX_ENGINE_RUNTIME_PHYSICS3D_SYSTEMS_PUBLIC
     DISABLE_DLL_MACRO_NAME  LUX_ENGINE_RUNTIME_PHYSICS3D_SYSTEMS_DLL_DISABLE

@@ -27,7 +27,7 @@
 #include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
-#include <lux/engine/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
 
 #include <Eigen/Core>
@@ -83,14 +83,14 @@ namespace lux::toolchain
             return uuids::to_string(value);
         }
 
-        [[nodiscard]] lux::spatial3d::SourceId
+        [[nodiscard]] lux::ecs::scene_format::spatial3d::SourceId
         spatialSourceId(const uuids::uuid& space)
         {
             auto identity = uuidKey(space);
             identity.erase(
                 std::remove(identity.begin(), identity.end(), '-'),
                 identity.end());
-            return lux::spatial3d::SourceId{
+            return lux::ecs::scene_format::spatial3d::SourceId{
                 "lux.spatial3d.source." + identity};
         }
 
@@ -2026,7 +2026,7 @@ namespace lux::toolchain
         {
             FineSection(
                 EntitySectionId id,
-                lux::spatial3d::SourceId source_value,
+                lux::ecs::scene_format::spatial3d::SourceId source_value,
                 lux::math::GridCoord3i64 coordinate_value,
                 double cell_world_size_value)
                 : section(id),
@@ -2036,7 +2036,7 @@ namespace lux::toolchain
             {}
 
             EntitySectionAssembly section;
-            lux::spatial3d::SourceId source;
+            lux::ecs::scene_format::spatial3d::SourceId source;
             lux::math::GridCoord3i64 coordinate;
             double cell_world_size{0.0};
         };
@@ -2361,7 +2361,7 @@ namespace lux::toolchain
         {
             CoarseSection(
                 EntitySectionId id,
-                lux::spatial3d::SourceId source_value,
+                lux::ecs::scene_format::spatial3d::SourceId source_value,
                 lux::math::GridCoord3i64 coordinate_value,
                 std::uint8_t level_value,
                 double cell_world_size_value)
@@ -2373,7 +2373,7 @@ namespace lux::toolchain
             {}
 
             EntitySectionAssembly section;
-            lux::spatial3d::SourceId source;
+            lux::ecs::scene_format::spatial3d::SourceId source;
             lux::math::GridCoord3i64 coordinate;
             std::uint8_t level{1u};
             double cell_world_size{0.0};
@@ -2826,10 +2826,14 @@ namespace lux::toolchain
         if (!startup_added)
             return lux::cxx::unexpected(std::move(startup_added.error()));
 
-        lux::spatial3d::SceneCatalog spatial_catalog;
-        spatial_catalog.residency = config.residency;
+        lux::ecs::scene_format::spatial3d::SceneCatalog spatial_catalog;
+        spatial_catalog.residency = {
+            config.residency.maximum_decoded_bytes,
+            config.residency.maximum_entities,
+            config.residency.maximum_interest_sources,
+            config.residency.maximum_sections_per_interest};
         const auto internBand = [&spatial_catalog](
-            lux::spatial3d::SceneCatalogBand band)
+            lux::ecs::scene_format::spatial3d::SceneCatalogBand band)
             -> std::uint32_t
         {
             const auto found = std::ranges::find(
@@ -2845,9 +2849,11 @@ namespace lux::toolchain
             return index;
         };
         const DemandChannelId fine_channel{
-            std::string{lux::spatial3d::kResidentDemandChannelName}};
+            std::string{lux::ecs::spatial3d::streaming::
+                kResidentDemandChannelName}};
         const DemandChannelId visual_lod_channel{
-            std::string{lux::spatial3d::kVisualLodDemandChannelName}};
+            std::string{lux::ecs::spatial3d::streaming::
+                kVisualLodDemandChannelName}};
         for (auto& [_, fine] : fine_sections)
         {
             const auto band = internBand({
@@ -2890,7 +2896,7 @@ namespace lux::toolchain
         if (!spatial_catalog.entries.empty())
         {
             auto encoded =
-                lux::spatial3d::encodeSceneCatalog(
+                lux::ecs::scene_format::spatial3d::encodeSceneCatalog(
                     std::move(spatial_catalog));
             if (!encoded)
             {

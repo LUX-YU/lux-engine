@@ -54,7 +54,14 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         Runtime render creates the ECS service and exposes its snapshot but
         owns no presentation `ISystem`; remove the final Runtime `ISystem`
         allowlist entry.
-- [ ] Split `engine/spatial3d/SceneCatalog` by field ownership.
+- [x] Split `engine/spatial3d/SceneCatalog` by field ownership.
+  - [x] Move SourceId, cell/LOD/Section records, format limits and the frozen
+        L3SC v1 codec into `ecs/scene_format/spatial3d`.
+  - [x] Move residency capacity and built-in demand-channel policy into
+        `ecs/spatial3d/streaming`; remove the obsolete partition Feature name.
+  - [x] Move direct System assembly into `engine/runtime/scene/composition`,
+        remove the `engine/runtime/spatial3d` source target and retain no old
+        include, namespace or target alias.
 - [ ] Collapse Editor panel contribution state into UISystem registration.
 - [ ] Generate build-only project usage and direct game composition.
 - [ ] Remove legacy paths/targets and set all semantic-debt limits to zero.

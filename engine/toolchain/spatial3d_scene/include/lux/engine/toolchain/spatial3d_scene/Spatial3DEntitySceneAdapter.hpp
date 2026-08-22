@@ -15,7 +15,8 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/resource/asset/AssetId.hpp>
 #include <lux/engine/math/Position.hpp>
-#include <lux/engine/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/Spatial3DStreamingPolicy.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -103,7 +104,7 @@ namespace lux::toolchain
         double visual_lod_resident_scale{4.0};
         /// Cooked, fixed resident-set admission.  It does not scale with the
         /// number of distant catalog entries.
-        lux::spatial3d::ResidencyCapacity residency;
+        lux::ecs::spatial3d::streaming::ResidencyCapacity residency;
     };
 
     enum class ESpatial3DEntitySceneAdapterError : std::uint8_t

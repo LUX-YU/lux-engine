@@ -21,7 +21,7 @@
 #include <lux/engine/ecs/physics/InstallSimulationSystems.hpp>
 #include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
 #include <lux/engine/runtime/scene/composition/InstallTilemapSystems.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallSpatial3DSystems.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
@@ -644,7 +644,7 @@ namespace lux::game
                     builder,
                     application.component_types,
                     application.tilemap_preparation->client()) &&
-                lux::runtime::installSpatial3DStreamingSystems(
+                lux::runtime::installSpatial3DSystems(
                     builder,
                     application.component_types) &&
                 lux::runtime::installPresentation3DSystems(

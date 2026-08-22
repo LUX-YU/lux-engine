@@ -5,8 +5,10 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
+#include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/math/Grid.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/Spatial3DSectionSource.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/Spatial3DStreamingPolicy.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/visibility.h>
 #include <lux/engine/ecs/entity_scene/residency/SectionResidencyDemand.hpp>
 
@@ -24,6 +26,13 @@ namespace lux::ecs::entity_scene::residency
 
 namespace lux::ecs::spatial3d::streaming
 {
+    /// Stable identity of a cooked source/channel/level band. Policy fields
+    /// and canonical vector ordinals deliberately do not participate.
+    [[nodiscard]] LUX_ECS_SPATIAL3D_STREAMING_PUBLIC
+    lux::ecs::entity_scene::residency::SectionDemandSourceId
+    demandSourceNamespace(
+        const lux::ecs::scene_format::spatial3d::SceneCatalogBand& band);
+
     struct SpatialInterest3DBand final
     {
         lux::ecs::entity_scene::residency::SectionDemandSourceId
@@ -31,7 +40,7 @@ namespace lux::ecs::spatial3d::streaming
         Spatial3DSectionSource sections;
         double cell_world_size{64.0};
         lux::ecs::scene_format::DemandChannelId channel{
-            "lux.spatial3d.resident"};
+            kResidentDemandChannelName};
         double active_distance_scale{1.0};
         double resident_distance_scale{1.0};
         std::size_t maximum_sections_per_source{4096u};

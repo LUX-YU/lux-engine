@@ -50,7 +50,8 @@ target_link_libraries(
         lux::engine::ecs::identity
         lux::engine::resource::asset
         lux::engine::core::math
-        lux::engine::spatial3d::scene_catalog
+        lux::engine::ecs::spatial3d_scene_format
+        lux::engine::ecs::spatial3d_streaming_policy
     PRIVATE
         lux::engine::authoring::authoring_world
         lux::engine::ecs::render_components_3d
@@ -76,10 +77,9 @@ component_add_transitive_commands(
     "find_package(lux-engine-authoring REQUIRED COMPONENTS authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_entity_scene_cook)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core identity component_archive render_components_3d spatial3d_components terrain_components physics3d navigation3d)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core identity component_archive render_components_3d spatial3d_components spatial3d_scene_format spatial3d_streaming_policy terrain_components physics3d navigation3d)"
     "find_package(lux-engine-function REQUIRED COMPONENTS navigation_detour3d render_standard_content)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
-    "find_package(lux-engine-spatial3d REQUIRED COMPONENTS scene_catalog)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math serialization)"
 )
 

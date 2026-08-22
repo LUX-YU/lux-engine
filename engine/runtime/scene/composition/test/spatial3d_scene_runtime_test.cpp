@@ -10,14 +10,14 @@
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallSpatial3DSystems.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
 #include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
@@ -228,14 +228,14 @@ int main()
 {
     namespace residency = lux::ecs::entity_scene::residency;
     namespace spatial3d = lux::ecs::spatial3d::streaming;
-    namespace catalog = lux::spatial3d;
+    namespace catalog = lux::ecs::scene_format::spatial3d;
 
     lux::meta::meta_module_init();
     lux::ecs::ComponentTypeCatalog components;
     assert(lux::ecs::registerGeneratedComponents(components));
 
     constexpr auto channel =
-        catalog::kVisualLodDemandChannelName;
+        spatial3d::kVisualLodDemandChannelName;
     auto fine_origin = makeSection(
         "51000000-0000-4000-8000-000000000001",
         "52000000-0000-4000-8000-000000000001",
@@ -276,21 +276,21 @@ int main()
         1.0,
         1.0};
     const auto fine_namespace =
-        lux::runtime::spatial3DDemandSourceNamespace(fine_band);
+        spatial3d::demandSourceNamespace(fine_band);
     const auto coarse_namespace =
-        lux::runtime::spatial3DDemandSourceNamespace(coarse_band);
+        spatial3d::demandSourceNamespace(coarse_band);
     assert(fine_namespace != coarse_namespace);
     const catalog::SceneCatalogBand unrelated_band{
         catalog::SourceId{"lux.spatial3d.source.aaa"},
         lux::ecs::scene_format::DemandChannelId{
-            std::string{catalog::kResidentDemandChannelName}},
+            std::string{spatial3d::kResidentDemandChannelName}},
         0u,
         32.0,
         1.0,
         1.0};
-    assert(lux::runtime::spatial3DDemandSourceNamespace(fine_band) ==
+    assert(spatial3d::demandSourceNamespace(fine_band) ==
         fine_namespace);
-    assert(lux::runtime::spatial3DDemandSourceNamespace(unrelated_band) !=
+    assert(spatial3d::demandSourceNamespace(unrelated_band) !=
         fine_namespace);
     std::vector<catalog::SceneCatalogBand>
         bands_with_unrelated{fine_band, coarse_band};
@@ -305,7 +305,7 @@ int main()
                 band.level == 0u;
         });
     assert(relocated_fine != bands_with_unrelated.end());
-    assert(lux::runtime::spatial3DDemandSourceNamespace(*relocated_fine) ==
+    assert(spatial3d::demandSourceNamespace(*relocated_fine) ==
         fine_namespace);
     const catalog::SceneCatalogBand ambiguous_left{
         catalog::SourceId{"a.b"},
@@ -321,8 +321,8 @@ int main()
         64.0,
         1.0,
         1.0};
-    assert(lux::runtime::spatial3DDemandSourceNamespace(ambiguous_left) !=
-        lux::runtime::spatial3DDemandSourceNamespace(ambiguous_right));
+    assert(spatial3d::demandSourceNamespace(ambiguous_left) !=
+        spatial3d::demandSourceNamespace(ambiguous_right));
 
     catalog::SceneCatalog spatial_config;
     spatial_config.bands = {fine_band, coarse_band};
@@ -397,7 +397,7 @@ int main()
         {
             return lux::ecs::installSpatial3DTransformSystems(
                        builder, components) &&
-                lux::runtime::installSpatial3DStreamingSystems(
+                lux::runtime::installSpatial3DSystems(
                        builder, components);
         };
     auto scene = lux::runtime::SceneRuntime::create(

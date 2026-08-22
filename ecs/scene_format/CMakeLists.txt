@@ -59,6 +59,8 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
+add_subdirectory(spatial3d)
+
 add_executable(
     scene_format_contract_test
     ${CMAKE_CURRENT_SOURCE_DIR}/test/scene_format_contract_test.cpp

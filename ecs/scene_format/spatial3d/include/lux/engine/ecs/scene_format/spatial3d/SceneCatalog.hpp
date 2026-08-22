@@ -1,35 +1,28 @@
 #pragma once
 /**
  * @file SceneCatalog.hpp
- * @brief Engine-owned finite Spatial3D catalog and its stable L3SC codec.
+ * @brief Cooked finite Spatial3D catalog and its stable L3SC codec.
  *
- * This contract indexes canonical ECS EntitySection identities and Engine
- * Scene demand channels. L3SC v1 is owned and implemented here; Resource does
- * not expose a parallel catalog contract.
+ * This format indexes canonical EntitySection identities by source, demand
+ * channel, LOD band and cell. Runtime streaming policy is intentionally kept
+ * outside this wire-format contract.
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/StableNameId.hpp>
 #include <lux/engine/ecs/scene_format/Identifiers.hpp>
+#include <lux/engine/ecs/scene_format/SceneSectionManifest.hpp>
 #include <lux/engine/math/Grid.hpp>
-#include <lux/engine/scene/SceneDescription.hpp>
-#include <lux/engine/spatial3d/visibility.h>
+#include <lux/engine/ecs/scene_format/spatial3d/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
-#include <string_view>
 #include <vector>
 
-namespace lux::spatial3d
+namespace lux::ecs::scene_format::spatial3d
 {
-    inline constexpr std::string_view kPartitionedFeatureName =
-        "org.lux.builtin.spatial3d.partitioned";
-    inline constexpr std::string_view kResidentDemandChannelName =
-        "lux.spatial3d.resident";
-    inline constexpr std::string_view kVisualLodDemandChannelName =
-        "lux.spatial3d.visual_lod";
     inline constexpr std::uint32_t kSceneCatalogMagic =
         0x4353334cu; // L3SC
     inline constexpr std::uint32_t kSceneCatalogSchemaVersion = 1u;
@@ -59,7 +52,9 @@ namespace lux::spatial3d
         friend bool operator==(const SceneCatalogEntry&, const SceneCatalogEntry&) = default;
     };
 
-    struct ResidencyCapacity final
+    /// Values serialized in the L3SC header. They become a streaming-domain
+    /// ResidencyCapacity only after a product validates the cooked catalog.
+    struct SceneCatalogResidencyLimits final
     {
         std::uint64_t maximum_decoded_bytes{1024ull * 1024ull * 1024ull};
         std::uint64_t maximum_entities{1'000'000u};
@@ -74,12 +69,14 @@ namespace lux::spatial3d
                 maximum_sections_per_interest != 0u;
         }
 
-        friend bool operator==(const ResidencyCapacity&, const ResidencyCapacity&) = default;
+        friend bool operator==(
+            const SceneCatalogResidencyLimits&,
+            const SceneCatalogResidencyLimits&) = default;
     };
 
     struct SceneCatalog final
     {
-        ResidencyCapacity residency;
+        SceneCatalogResidencyLimits residency;
         std::vector<SceneCatalogBand> bands;
         std::vector<SceneCatalogEntry> entries;
 
@@ -117,18 +114,18 @@ namespace lux::spatial3d
     template <class T>
     using SceneCatalogResult = lux::cxx::expected<T, SceneCatalogFailure>;
 
-    [[nodiscard]] LUX_ENGINE_SPATIAL3D_SCENE_CATALOG_PUBLIC
+    [[nodiscard]] LUX_ECS_SPATIAL3D_SCENE_FORMAT_PUBLIC
     SceneCatalogResult<void> validateSceneCatalog(
         const SceneCatalog& catalog,
         const SceneCatalogCodecLimits& limits = {}) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SPATIAL3D_SCENE_CATALOG_PUBLIC
+    [[nodiscard]] LUX_ECS_SPATIAL3D_SCENE_FORMAT_PUBLIC
     SceneCatalogResult<std::vector<std::byte>> encodeSceneCatalog(
         SceneCatalog catalog,
         const SceneCatalogCodecLimits& limits = {}) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SPATIAL3D_SCENE_CATALOG_PUBLIC
+    [[nodiscard]] LUX_ECS_SPATIAL3D_SCENE_FORMAT_PUBLIC
     SceneCatalogResult<SceneCatalog> decodeSceneCatalog(
         std::span<const std::byte> bytes,
         const SceneCatalogCodecLimits& limits = {}) noexcept;
-} // namespace lux::spatial3d
+} // namespace lux::ecs::scene_format::spatial3d

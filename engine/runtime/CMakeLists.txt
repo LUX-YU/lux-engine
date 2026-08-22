@@ -10,7 +10,6 @@ add_subdirectory(entity_scene)
 add_subdirectory(assets/pixel)
 add_subdirectory(assets/navigation)
 add_subdirectory(assets/physics3d)
-add_subdirectory(spatial3d/partitioned)
 add_subdirectory(scene/core)
 add_subdirectory(scene/composition)
 add_subdirectory(render/scene)
@@ -18,9 +17,9 @@ add_subdirectory(render/backend_host)
 add_subdirectory(scene/script)
 add_subdirectory(frame)
 
-# This vertical integration test needs SceneRuntime, whose target is declared
-# after the dimension-specific production leaves above.
-add_subdirectory(spatial3d/partitioned/test)
+# These vertical integration tests need SceneRuntime and the final product
+# composition targets, so configure them after every Runtime component.
+add_subdirectory(scene/composition/test)
 
 install_components(
     PROJECT_NAME    lux-engine-runtime
@@ -36,7 +35,7 @@ install_components(
                     runtime_pixel_assets
                     runtime_navigation3d_prepare
                     runtime_physics3d_prepare
-                    runtime_spatial3d_streaming_systems
+                    runtime_spatial3d_systems
                     runtime_scene_core
                     runtime_tilemap_systems
                     runtime_navigation3d_systems

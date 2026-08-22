@@ -23,7 +23,7 @@
 #include <lux/engine/resource/asset/mesh/MeshSerDeser.hpp>
 #include <lux/engine/description/Mesh.hpp>
 #include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
-#include <lux/engine/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
 #include <lux/engine/navigation/detour3d/NavigationDetour3D.hpp>
 
@@ -380,7 +380,7 @@ int main()
     assert(first->package.id == source.scene);
     assert(first->package.startup_sections.size() == 1u);
     const auto catalog =
-        lux::spatial3d::decodeSceneCatalog(
+        lux::ecs::scene_format::spatial3d::decodeSceneCatalog(
             first->package.spatial3d_catalog);
     assert(catalog);
     assert(catalog->bands.size() == 2u);
@@ -658,7 +658,7 @@ int main()
         portal_source, components, mesh_assets);
     assert(portal_bundle);
     const auto portal_catalog =
-        lux::spatial3d::decodeSceneCatalog(
+        lux::ecs::scene_format::spatial3d::decodeSceneCatalog(
             portal_bundle->package.spatial3d_catalog);
     assert(portal_catalog);
     struct CookedNavigationRegion final

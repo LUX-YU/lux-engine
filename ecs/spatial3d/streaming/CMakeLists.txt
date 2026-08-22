@@ -1,5 +1,26 @@
 find_package(lux-cxx REQUIRED COMPONENTS compile_time core)
 
+add_interface_component(
+    COMPONENT_NAME spatial3d_streaming_policy
+    NAMESPACE      lux::engine::ecs
+)
+component_include_directories(
+    spatial3d_streaming_policy
+    BUILD_TIME_EXPORT
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    INSTALL_TIME include
+)
+lux_classify_target(
+    TARGET  spatial3d_streaming_policy
+    LAYER   ECS
+    PRODUCT RUNTIME
+    ROLE    DOMAIN
+)
+
+if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
+    return()
+endif()
+
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ECS_SPATIAL3D_STREAMING_LIBRARY
     PUBLIC_MACRO_NAME       LUX_ECS_SPATIAL3D_STREAMING_PUBLIC
@@ -38,6 +59,8 @@ target_link_libraries(
         lux::engine::ecs::core
         lux::engine::ecs::entity_scene
         lux::engine::ecs::scene_format
+        lux::engine::ecs::spatial3d_scene_format
+        lux::engine::ecs::spatial3d_streaming_policy
         lux::engine::ecs::spatial3d_components
         lux::engine::ecs::transform
 )
@@ -46,7 +69,7 @@ component_add_transitive_commands(
     spatial3d_streaming
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time core)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core entity_scene scene_format spatial3d_components transform)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core entity_scene scene_format spatial3d_components spatial3d_scene_format spatial3d_streaming_policy transform)"
 )
 
 lux_classify_target(

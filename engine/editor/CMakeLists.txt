@@ -301,7 +301,7 @@ target_include_directories(editor PRIVATE
     $<TARGET_PROPERTY:runtime_navigation3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
     $<TARGET_PROPERTY:runtime_physics3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
     $<TARGET_PROPERTY:runtime_presentation3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_spatial3d_streaming_systems,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_spatial3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
     $<TARGET_PROPERTY:physics2d,INTERFACE_INCLUDE_DIRECTORIES>)
 
 # ecs::scripting — ScriptSystem / ScriptComponent / scriptRegistry, used by EditorScene

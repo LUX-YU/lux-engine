@@ -1,4 +1,4 @@
-#include <lux/engine/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
 
 #include <lux/engine/core/serialization/Archive.hpp>
 
@@ -8,7 +8,7 @@
 #include <set>
 #include <utility>
 
-namespace lux::spatial3d
+namespace lux::ecs::scene_format::spatial3d
 {
     namespace
     {
@@ -285,7 +285,7 @@ namespace lux::spatial3d
         }
         const auto band_count = reader.readPod<std::uint32_t>();
         const auto entry_count = reader.readPod<std::uint32_t>();
-        ResidencyCapacity residency;
+        SceneCatalogResidencyLimits residency;
         residency.maximum_decoded_bytes = reader.readPod<std::uint64_t>();
         residency.maximum_entities = reader.readPod<std::uint64_t>();
         residency.maximum_interest_sources = reader.readPod<std::uint32_t>();
@@ -376,4 +376,4 @@ namespace lux::spatial3d
             return lux::cxx::unexpected(valid.error());
         return result;
     }
-} // namespace lux::spatial3d
+} // namespace lux::ecs::scene_format::spatial3d

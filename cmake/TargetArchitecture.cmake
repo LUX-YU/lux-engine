@@ -569,6 +569,32 @@ endfunction()
 # 2026-08-22 baseline so new uses fail configure immediately; each migration
 # wave lowers the limit until the final value is zero.
 function(lux_validate_source_boundaries)
+    foreach(retired_target IN ITEMS
+            scene_catalog
+            runtime_spatial3d_streaming_systems)
+        if(TARGET ${retired_target})
+            message(FATAL_ERROR
+                "Architecture: retired Spatial3D target "
+                "'${retired_target}' reappeared."
+            )
+        endif()
+    endforeach()
+
+    file(GLOB_RECURSE retired_spatial_sources LIST_DIRECTORIES false
+        "${CMAKE_SOURCE_DIR}/engine/spatial3d/*.hpp"
+        "${CMAKE_SOURCE_DIR}/engine/spatial3d/*.cpp"
+        "${CMAKE_SOURCE_DIR}/engine/spatial3d/CMakeLists.txt"
+        "${CMAKE_SOURCE_DIR}/engine/runtime/spatial3d/*.hpp"
+        "${CMAKE_SOURCE_DIR}/engine/runtime/spatial3d/*.cpp"
+        "${CMAKE_SOURCE_DIR}/engine/runtime/spatial3d/CMakeLists.txt"
+    )
+    if(retired_spatial_sources)
+        message(FATAL_ERROR
+            "Architecture: retired engine Spatial3D source boundary "
+            "reappeared: ${retired_spatial_sources}"
+        )
+    endif()
+
     file(GLOB_RECURSE ecs_sources LIST_DIRECTORIES false
         "${CMAKE_SOURCE_DIR}/ecs/*.hpp"
         "${CMAKE_SOURCE_DIR}/ecs/*.cpp"

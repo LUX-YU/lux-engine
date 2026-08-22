@@ -1,6 +1,6 @@
-#include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallSpatial3DSystems.hpp>
 
-#include <lux/engine/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/Spatial3DSectionSource.hpp>
@@ -21,24 +21,6 @@
 
 namespace lux::runtime
 {
-    lux::ecs::entity_scene::residency::SectionDemandSourceId
-    spatial3DDemandSourceNamespace(
-        const lux::spatial3d::SceneCatalogBand& band)
-    {
-        // Length-prefix both canonical identities.  Dot concatenation alone
-        // is ambiguous because dots are legal inside either operand.
-        const auto source = band.source.name();
-        const auto channel = band.demand_channel.name();
-        auto name = std::string{"lux.spatial3d.band."} +
-            std::to_string(source.size()) + ".";
-        name.append(source);
-        name += "." + std::to_string(channel.size()) + ".";
-        name.append(channel);
-        name += ".l" + std::to_string(band.level);
-        return lux::ecs::entity_scene::residency::SectionDemandSourceId{
-            std::move(name)};
-    }
-
     namespace
     {
         [[nodiscard]] bool recordHasChannel(
@@ -63,9 +45,17 @@ namespace lux::runtime
         [[nodiscard]] std::optional<ValidatedCatalog>
         validateAndBuildCatalog(
             const entity_scene::EntitySceneCatalog& scene,
-            lux::spatial3d::SceneCatalog config)
+            lux::ecs::scene_format::spatial3d::SceneCatalog config)
         {
-            using lux::spatial3d::SceneCatalogEntry;
+            using lux::ecs::scene_format::spatial3d::SceneCatalogEntry;
+
+            const lux::ecs::spatial3d::streaming::ResidencyCapacity capacity{
+                config.residency.maximum_decoded_bytes,
+                config.residency.maximum_entities,
+                config.residency.maximum_interest_sources,
+                config.residency.maximum_sections_per_interest};
+            if (!capacity.valid())
+                return std::nullopt;
 
             // The Engine-owned codec already guarantees canonical bands, one
             // entry per Section, one cell per band and at least one entry in
@@ -144,17 +134,18 @@ namespace lux::runtime
 
             lux::ecs::spatial3d::streaming::SpatialInterest3DConfig interest;
             interest.maximum_sources =
-                config.residency.maximum_interest_sources;
+                capacity.maximum_interest_sources;
             interest.bands.reserve(config.bands.size());
             const auto maximum_sections_per_source =
-                config.residency.maximum_sections_per_interest;
+                capacity.maximum_sections_per_interest;
             std::set<std::string> source_names;
             for (std::uint32_t band_index = 0u;
                  band_index < config.bands.size(); ++band_index)
             {
                 const auto& cooked_band = config.bands[band_index];
                 auto source_namespace =
-                    spatial3DDemandSourceNamespace(cooked_band);
+                    lux::ecs::spatial3d::streaming::demandSourceNamespace(
+                        cooked_band);
                 if (!source_names.insert(
                         std::string{source_namespace.name()}).second)
                     return std::nullopt;
@@ -194,13 +185,13 @@ namespace lux::runtime
 
             return ValidatedCatalog{
                 lux::ecs::entity_scene::residency::SectionResidencyBudget{
-                    config.residency.maximum_decoded_bytes,
-                    config.residency.maximum_entities},
+                    capacity.maximum_decoded_bytes,
+                    capacity.maximum_entities},
                 std::move(interest)};
         }
     }
 
-    bool installSpatial3DStreamingSystems(
+    bool installSpatial3DSystems(
         lux::ecs::ScheduleBuilder& builder,
         const lux::ecs::ComponentTypeCatalog& components)
     {
@@ -220,7 +211,7 @@ namespace lux::runtime
         }
 
         const auto checkpoint = builder.checkpoint();
-        auto decoded = lux::spatial3d::decodeSceneCatalog(
+        auto decoded = lux::ecs::scene_format::spatial3d::decodeSceneCatalog(
             scene->package().spatial3d_catalog);
         auto* const sections = builder.services().borrow<
             lux::ecs::entity_scene::EntitySectionClient>();

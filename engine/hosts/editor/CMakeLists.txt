@@ -24,7 +24,7 @@ target_link_libraries(
         lux::engine::runtime::runtime_navigation3d_systems
         lux::engine::runtime::runtime_physics3d_systems
         lux::engine::runtime::runtime_presentation3d_systems
-        lux::engine::runtime::runtime_spatial3d_streaming_systems
+        lux::engine::runtime::runtime_spatial3d_systems
         lux::engine::ecs::scripting
         lux::engine::ecs::scripting_lua
         lux::engine::ecs::scripting_native

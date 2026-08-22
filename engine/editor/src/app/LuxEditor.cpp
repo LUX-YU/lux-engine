@@ -55,7 +55,7 @@
 #include <lux/engine/ecs/physics/InstallSimulationSystems.hpp>
 #include <lux/engine/runtime/scene/composition/InstallTilemapSystems.hpp>
 #include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallSpatial3DSystems.hpp>
 #include <lux/engine/runtime/logging/LogRouter.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
@@ -664,7 +664,7 @@ namespace lux::editor
                     builder,
                     runtime->component_types_,
                     runtime->tilemap_preparation_->client()) &&
-                lux::runtime::installSpatial3DStreamingSystems(
+                lux::runtime::installSpatial3DSystems(
                     builder,
                     runtime->component_types_) &&
                 lux::runtime::installPresentation3DSystems(

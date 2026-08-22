@@ -54,10 +54,12 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     set(LUX_ECS_COMPONENTS
         identity
         scene_format
+        spatial3d_scene_format
         core
         component_archive
         entity_scene
         spatial3d_components
+        spatial3d_streaming_policy
         terrain_components
         physics3d
         navigation3d
@@ -86,7 +88,8 @@ else()
     set(LUX_ECS_COMPONENTS
         identity
         scene_format
-        core component_archive entity_scene transform spatial2d_components spatial2d_streaming spatial3d_components spatial3d_streaming
+        spatial3d_scene_format
+        core component_archive entity_scene transform spatial2d_components spatial2d_streaming spatial3d_components spatial3d_streaming_policy spatial3d_streaming
         tilemap tilemap_streaming pixel pixel_streaming terrain_components
         scripting scripting_lua scripting_native
         physics physics2d physics3d physics3d_streaming

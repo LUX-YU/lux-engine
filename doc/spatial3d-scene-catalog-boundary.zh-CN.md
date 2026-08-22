@@ -2,39 +2,57 @@
 
 ## 目的
 
-Spatial3D Catalog 同时选择 Engine Scene 的 Demand Channel、引用 ECS
-EntitySection，并配置 World Partition 驻留预算。因此其规范所有者是
-`engine/spatial3d`，不是公共 Resource SDK。
+Spatial3D Catalog 曾把 cooked 格式、ECS streaming 策略和 Engine 产品装配
+放在 `engine/spatial3d` 的同一个类型里。现在按字段性质拆分，目录和 target
+共同表达 owner，不再保留 Engine 侧的平行 Spatial3D domain。
 
-## 规范模型
+## Cooked 格式
 
-`lux::spatial3d::SceneCatalog` 使用：
+`ecs/scene_format/spatial3d` 与 target
+`lux::engine::ecs::spatial3d_scene_format` 拥有：
 
-- `lux::scene::DemandChannelId`；
-- `lux::ecs::scene_format::EntitySectionId`；
-- `lux::math::GridCoord3i64`；
-- Engine-owned residency policy。
+- `SourceId`；
+- source/channel/LOD band；
+- cell coordinate 与 `EntitySectionId` 映射；
+- L3SC header 中的序列化 limits；
+- `encodeSceneCatalog()` / `decodeSceneCatalog()` 与格式校验。
 
-Runtime 和 Toolchain 只能 include：
+消费者直接 include：
 
 ```cpp
-#include <lux/engine/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
 ```
 
-不得直接 include `resource/spatial3d_scene`，也不得在 Runtime 中把 legacy ID
-隐式转换成 canonical ID。
+## Streaming 策略
+
+`ecs/spatial3d/streaming` 拥有：
+
+- `ResidencyCapacity`；
+- resident 与 visual-LOD demand channel 名称；
+- cooked band 到稳定 demand-source identity 的映射；
+- Section source、interest-to-demand 行为和对应 `ISystem`。
+
+Toolchain 配置使用 streaming policy，并在写 L3SC 时显式投影为 wire limits；
+Runtime 解码 L3SC 后再显式构造 streaming capacity。格式对象不是运行时行为对象。
+
+## 产品装配
+
+`engine/runtime/scene/composition/InstallSpatial3DSystems.hpp` 只提供普通的
+直接装配函数。它在 World 发布前把已验证的 cooked catalog 转换成 ECS 配置并
+加入 Schedule，不定义 Component、`ISystem`、catalog、host 或动态 installer
+framework。
+
+以下边界和 target 已删除且不得恢复：
+
+```text
+engine/spatial3d
+engine/runtime/spatial3d
+lux::engine::spatial3d::scene_catalog
+lux::engine::runtime::runtime_spatial3d_streaming_systems
+```
 
 ## 文件兼容
 
-`encodeSceneCatalog()` / `decodeSceneCatalog()` 原生实现既有 L3SC v1 字节协议。
-`modules/resource/spatial3d_scene` 暂时保留，只由兼容测试逐字节比较。
-目录迁移不改变 Magic、Version、字段顺序、Stable Name 或 UUID wire 表达。
-
-## 删除闸门
-
-删除旧 Resource Component 前必须确认：
-
-1. Runtime、Toolchain、Authoring 和产品代码均无 legacy include/namespace；
-2. installed Engine Spatial3D target 的 public-link probe 通过；
-3. L3SC v1 Golden Files 与交叉解码测试通过；
-4. 外部兼容期已经结束，或旧 include 由明确的 SDK 版本策略处理。
+迁移不改变 L3SC v1 的 Magic、Version、字段顺序、Stable Name 或 UUID wire
+表达。`spatial3d_scene_catalog_contract_test` 使用冻结的逐字节 fixture 验证解码
+与重编码；旧 include、namespace 和 target 不提供 shim 或 alias。

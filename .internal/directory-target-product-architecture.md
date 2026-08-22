@@ -55,9 +55,11 @@ System Registry and installer/catalog/host variants are forbidden.
   behavior. Runtime Pixel consumers may query its activity but do not own or
   redefine that System.
 - `ecs/spatial3d/streaming` owns 3D Section catalog/rule sources and
-  interest-to-demand behavior. The remaining Runtime spatial3d installer is
-  only a product adapter from the current Engine cooked catalog; it must move
-  or disappear when `engine/spatial3d/SceneCatalog` is split by field owner.
+  interest-to-demand behavior, residency capacity and the built-in demand
+  channel names. `ecs/scene_format/spatial3d` owns the SourceId, cell/LOD/
+  Section records, format limits and stable L3SC codec. Product-level direct
+  System assembly lives in `engine/runtime/scene/composition`; neither
+  `engine/spatial3d` nor `engine/runtime/spatial3d` is a source boundary.
 - `ecs/tilemap/streaming` owns Tilemap chunk observation, preparation intent,
   publication, activity and retirement. `engine/runtime/assets/tilemap`
   implements only the typed background decode endpoint and queue policy; the

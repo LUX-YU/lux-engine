@@ -1,4 +1,4 @@
-#include <lux/engine/spatial3d/SceneCatalog.hpp>
+#include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
 
 #include <algorithm>
 #include <array>
@@ -39,7 +39,7 @@ namespace
 
 int main()
 {
-    namespace canonical = lux::spatial3d;
+    namespace canonical = lux::ecs::scene_format::spatial3d;
     static_assert(std::is_same_v<
         decltype(canonical::SceneCatalogEntry::section),
         lux::ecs::scene_format::EntitySectionId>);
@@ -51,7 +51,7 @@ int main()
     catalog.residency = {4096u, 128u, 4u, 16u};
     catalog.bands.push_back({
         canonical::SourceId{"lux.spatial3d.source.test"},
-        lux::ecs::scene_format::DemandChannelId{canonical::kResidentDemandChannelName},
+        lux::ecs::scene_format::DemandChannelId{"lux.spatial3d.resident"},
         0u,
         64.0,
         1.0,
@@ -73,7 +73,7 @@ int main()
     auto unordered = catalog;
     unordered.bands.push_back({
         canonical::SourceId{"lux.spatial3d.source.other"},
-        lux::ecs::scene_format::DemandChannelId{canonical::kVisualLodDemandChannelName},
+        lux::ecs::scene_format::DemandChannelId{"lux.spatial3d.visual_lod"},
         1u,
         256.0,
         4.0,

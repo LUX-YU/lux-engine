@@ -5,13 +5,13 @@
         lux::ecs::RenderSystemBuilder* builder{};
         lux::ecs::PendingSystemToken<lux::ecs::RenderSystem> pending_system{};
         lux::ecs::SystemHandle<lux::ecs::RenderSystem> system{};
-        std::unique_ptr<RenderEffectHost> effects;
         lux::render::RenderSceneLease scene_lease;
         lux::render::RenderSceneId scene{};
         lux::ecs::Schedule* schedule{};
         PrimaryViewPresentation* primary_view{};
         const lux::extensions::ExtensionModuleManager* extension_modules{};
         std::shared_ptr<SceneCloseProgressEndpoint> close_progress;
+        std::vector<std::string> scene_feature_roots;
         bool closed{false};
 
         [[nodiscard]] lux::ecs::RenderSystem* renderSystem() const noexcept
@@ -32,6 +32,8 @@
                 roots.end(),
                 services.profile.pass_roots.begin(),
                 services.profile.pass_roots.end());
+            for (const auto& root : scene_feature_roots)
+                roots.emplace_back(root);
             const auto report = lux::ecs::settleSceneFeatures(
                 render->binding(),
                 services.feature_plan,

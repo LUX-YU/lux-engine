@@ -74,28 +74,6 @@ namespace lux::toolchain
     {
         /// Empty preserves the Authoring scene UUID in the cooked Scene.
         lux::asset::asset_id_t scene_id;
-        /// Explicit domain leaves selected for a general 3D scene. Tools may
-        /// remove Presentation for a headless cook, or omit Physics/
-        /// Navigation when the authored product does not use them. There is
-        /// deliberately no top-level dimension or Scene3D contribution.
-        std::vector<lux::scene::SceneFeatureRequest>
-            selected_features{
-                {lux::scene::SceneFeatureId{
-                     "org.lux.builtin.animation3d"},
-                 0u,
-                 {}},
-                {lux::scene::SceneFeatureId{
-                     "org.lux.builtin.presentation3d"},
-                 0u,
-                 {}},
-                {lux::scene::SceneFeatureId{
-                     "org.lux.builtin.physics3d"},
-                 0u,
-                 {}},
-                {lux::scene::SceneFeatureId{
-                     "org.lux.builtin.navigation3d"},
-                 0u,
-                 {}}};
         /// Absolute, extensionless Pak directory for emitted LXES objects.
         std::string section_content_prefix{"/Game/EntitySections"};
         lux::math::Position3d fallback_camera_position{
@@ -126,8 +104,6 @@ namespace lux::toolchain
         /// Cooked, fixed resident-set admission.  It does not scale with the
         /// number of distant catalog entries.
         lux::spatial3d::ResidencyCapacity residency;
-        std::vector<lux::scene::SceneFeatureRequest>
-            additional_features;
     };
 
     enum class ESpatial3DEntitySceneAdapterError : std::uint8_t

@@ -9,7 +9,7 @@ namespace lux::extensions
     {
         NONE = 0u,
         INVALID_DESCRIPTOR = 1u,
-        DUPLICATE_CONTRIBUTION = 2u,
+        DUPLICATE_REGISTRATION = 2u,
         DUPLICATE_COMPONENT = 3u,
         HASH_COLLISION = 4u,
         MISSING_DEPENDENCY = 5u,

@@ -1,5 +1,5 @@
 #include <lux/engine/runtime/scene/script/SceneScriptRuntime.hpp>
-#include <lux/engine/runtime/scene/script/ScriptAssetRequestSystem.hpp>
+#include <lux/engine/ecs/script/systems/ScriptAssetRequestSystem.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/ecs/SceneServices.hpp>
@@ -55,7 +55,7 @@ namespace lux::runtime
             !asset_client_ || request_system_ || system_)
             return false;
 
-        auto request = std::make_unique<ScriptAssetRequestSystem>(
+        auto request = std::make_unique<lux::ecs::ScriptAssetRequestSystem>(
             *assets_,
             asset_client_
         );

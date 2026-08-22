@@ -5,7 +5,7 @@
 //  static floor between two walls — real rigid-body dynamics the swept demo
 //  solver cannot do (box-vs-box, rotation, resting contacts).
 //
-//  The scene is assembled through the real SceneContribution descriptors.
+//  The scene is assembled directly into the unique Schedule.
 //  Physics2DSystem is driven by
 //  the shared Simulation2DSystem fixed step — nothing bespoke.
 //
@@ -35,11 +35,9 @@
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
 #include <lux/engine/ecs/render/components/2d/Image2DComponent.hpp>
-#include <lux/engine/scene/SceneFeatureId.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Physics2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Presentation2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Simulation2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Transform2DContribution.hpp>
+#include <lux/engine/ecs/integration/presentation2d/InstallPresentation2DSystems.hpp>
+#include <lux/engine/ecs/physics/InstallSimulationSystems.hpp>
+#include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
 #include <lux/engine/ecs/physics/systems/Simulation2DSystem.hpp>
 #include <lux/engine/ecs/physics/FixedStepConfig.hpp>
 #include <lux/engine/ecs/physics2d/Physics2DConfig.hpp>
@@ -136,23 +134,6 @@ int main(int argc, char** argv)
     if (!lux::ecs::registerGeneratedComponents(components))
         return 1;
 
-    lux::runtime::SceneContributionCatalog contributions;
-    auto transform2d =
-        lux::runtime::makeSpatial2DTransformContribution(components);
-    auto simulation2d =
-        lux::runtime::makeSimulation2DContribution(components);
-    auto presentation2d =
-        lux::runtime::makePresentation2DContribution(components);
-    auto physics2d = lux::runtime::makePhysics2DContribution(components);
-    if (!transform2d || !simulation2d || !presentation2d || !physics2d)
-        return 1;
-    std::vector<lux::runtime::SceneContributionDescriptor> descriptors;
-    descriptors.push_back(std::move(*transform2d));
-    descriptors.push_back(std::move(*simulation2d));
-    descriptors.push_back(std::move(*presentation2d));
-    descriptors.push_back(std::move(*physics2d));
-    if (!contributions.addBatch(std::move(descriptors)))
-        return 1;
     // 驻留三件套(裁决二):声明在渲染绑定之前 —— 逆序析构。
     lux::runtime::testing::AsyncTestServices async(
         assets,
@@ -207,16 +188,27 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    constexpr std::array selected{
-        lux::scene::sceneFeatureId(
-            lux::runtime::kPresentation2DContributionName),
-        lux::scene::sceneFeatureId(
-            lux::runtime::kPhysics2DContributionName)};
-    if (!contributions.assembleDefaults(assembly, selected))
+    if (!lux::ecs::installSpatial2DTransformSystems(
+            assembly, components) ||
+        !lux::ecs::installSimulation2DSystems(
+            assembly, components) ||
+        !lux::ecs::installPresentation2DSystems(
+            assembly, components) ||
+        !staged.emplace<d2::Physics2DSystem>(gravity))
     {
-        std::printf("scene feature assembly failed\n");
+        std::printf("2D system assembly failed\n");
         return 1;
     }
+    auto* const simulation = staged.borrow<d2::Simulation2DSystem>();
+    auto* const physics = staged.borrow<d2::Physics2DSystem>();
+    if (!simulation || !physics)
+        return 1;
+    simulation->setPhase(
+        d2::Simulation2DSystem::Phase::SimulatePhysics,
+        [physics](lux::ecs::Registry& registry, float dt)
+        {
+            physics->step(registry, dt);
+        });
     auto render_plan = std::move(render_builder).compile();
     if (!render_plan)
     {

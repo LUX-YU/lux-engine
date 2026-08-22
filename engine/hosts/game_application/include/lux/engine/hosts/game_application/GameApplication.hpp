@@ -40,8 +40,6 @@ namespace lux::ecs
     struct ScheduleSystemFrameTrace;
 }
 
-namespace lux::runtime { class SceneContributionCatalog; }
-
 namespace lux::extensions
 {
     class EngineExtensions;
@@ -97,14 +95,6 @@ namespace lux::game
 
     struct GameApplicationHooks final
     {
-        /// Called after built-in descriptors are registered and before the
-        /// scene is created. Compiled game code may add its own runtime-leaf
-        /// contributions without depending on ECS assembly internals.
-        std::function<bool(
-            lux::runtime::SceneContributionCatalog&,
-            lux::ecs::ComponentTypeCatalog&)>
-            configure_contributions;
-
         /// Called before SceneScriptRuntime starts. Compiled game code can
         /// register actions and contexts without modifying a platform shell.
         std::function<bool(lux::input::Input&)> configure_input;

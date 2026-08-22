@@ -12,11 +12,6 @@ namespace lux::scene
     {
         using namespace detail;
 
-        [[nodiscard]] bool validFeatureId(const SceneFeatureId& id) noexcept
-        {
-            return id.isValid() && isValidSceneFeatureIdName(id.name());
-        }
-
         void addRequirementsToNames(
             WireNameTable& names,
             std::span<const RequiredExtension> extensions,
@@ -126,15 +121,72 @@ namespace lux::scene
             return true;
         }
 
+        void writeFeatureNames(
+            ByteWriter& writer,
+            const WireNameTable& names,
+            std::span<const std::string> features)
+        {
+            writer.u32(static_cast<std::uint32_t>(features.size()));
+            for (const auto& feature : features)
+                writer.u32(names.index(feature));
+        }
+
+        [[nodiscard]] bool readFeatureNames(
+            ByteReader& reader,
+            const WireNameTable& names,
+            std::vector<std::string>& features,
+            const SceneCodecLimits& limits,
+            DecodeAllocationBudget& budget) noexcept
+        {
+            std::uint32_t count = 0u;
+            if (!readCount(
+                    reader,
+                    limits.maximum_requirements,
+                    count,
+                    "render feature requirement count exceeds codec limit") ||
+                !prepareVector(
+                    reader,
+                    budget,
+                    features,
+                    count,
+                    sizeof(std::uint32_t),
+                    "render feature requirements cannot fit remaining input",
+                    "render feature requirements exceed decode allocation budget"))
+            {
+                return false;
+            }
+            for (auto& feature : features)
+            {
+                std::uint32_t name_index = 0u;
+                if (!reader.u32(name_index))
+                    return false;
+                const auto name = names.at(name_index);
+                if (name.empty() || !budget.consume(
+                        reader,
+                        name.size(),
+                        sizeof(char),
+                        "render feature names exceed decode allocation budget"))
+                {
+                    if (name.empty())
+                        reader.fail("render feature references an invalid name");
+                    return false;
+                }
+                feature.assign(name);
+            }
+            return true;
+        }
+
         [[nodiscard]] WireNameTable packageNames(const SceneDescription& package)
         {
             WireNameTable names;
-            for (const auto& feature : package.features)
-                names.add(feature.id.name());
             addRequirementsToNames(
                 names,
                 package.required_extensions,
                 package.required_components);
+            for (const auto& feature : package.required_render_features)
+                names.add(feature);
+            for (const auto& feature : package.optional_render_features)
+                names.add(feature);
             for (const auto& section : package.sections)
             {
                 if (const auto* stored =
@@ -361,14 +413,16 @@ namespace lux::scene
         writer.u32(kSceneDescriptionVersion);
         names.write(writer);
         writeUuid(writer, package.id);
+        writeBlob(writer, package.spatial3d_catalog);
+        writeFeatureNames(
+            writer,
+            names,
+            package.required_render_features);
+        writeFeatureNames(
+            writer,
+            names,
+            package.optional_render_features);
 
-        writer.u32(static_cast<std::uint32_t>(package.features.size()));
-        for (const auto& feature : package.features)
-        {
-            writeStableId(writer, names, feature.id);
-            writer.u32(feature.config_schema_version);
-            writeBlob(writer, feature.config);
-        }
         writer.u32(static_cast<std::uint32_t>(
             package.startup_sections.size()));
         for (const auto& section : package.startup_sections)
@@ -436,42 +490,31 @@ namespace lux::scene
                 ESceneCodecError::TRUNCATED,
                 error));
         }
-        std::uint32_t count = 0u;
-        if (!readCount(
+        if (!readBlob(
                 reader,
-                limits.maximum_features,
-                count,
-                "feature count exceeds codec limit") ||
-            !prepareVector(
+                package.spatial3d_catalog,
+                limits.maximum_manifest_bytes,
+                budget))
+        {
+            return lux::cxx::unexpected(failure(
+                readerError(error), error));
+        }
+        if (!readFeatureNames(
                 reader,
-                budget,
-                package.features,
-                count,
-                20u,
-                "features cannot fit remaining input",
-                "features exceed decode allocation budget"))
+                names,
+                package.required_render_features,
+                limits,
+                budget) ||
+            !readFeatureNames(
+                reader,
+                names,
+                package.optional_render_features,
+                limits,
+                budget))
         {
             return lux::cxx::unexpected(failure(readerError(error), error));
         }
-        for (auto& feature : package.features)
-        {
-            if (!readStableId(
-                    reader,
-                    names,
-                    feature.id,
-                    budget,
-                    validFeatureId) ||
-                !reader.u32(feature.config_schema_version) ||
-                !readBlob(
-                    reader,
-                    feature.config,
-                    limits.maximum_generator_parameter_bytes,
-                    budget))
-            {
-                return lux::cxx::unexpected(failure(
-                    readerError(error), error));
-            }
-        }
+        std::uint32_t count = 0u;
         if (!readCount(
                 reader,
                 limits.maximum_sections,

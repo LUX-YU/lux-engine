@@ -27,11 +27,11 @@ namespace lux::extensions::physics2d
             : 0u;
     }
 
-    class Physics2DContributionSystem final : public lux::ecs::ISystem
+    class Physics2DExtensionSystem final : public lux::ecs::ISystem
     {
     public:
-        Physics2DContributionSystem(
-            Physics2DContributionConfig config)
+        Physics2DExtensionSystem(
+            Physics2DInstallConfig config)
             : physics_(config.physics)
             , fixed_(config.fixed_step)
             , state_(std::make_shared<PhysicsWorldApi::State>())
@@ -85,14 +85,14 @@ namespace lux::extensions::physics2d
     ExtensionRegistrationResult installWorldSystems(
         lux::ecs::ScheduleBuilder& builder) noexcept
     {
-        Physics2DContributionConfig defaults;
-        auto system = std::make_unique<Physics2DContributionSystem>(defaults);
+        Physics2DInstallConfig defaults;
+        auto system = std::make_unique<Physics2DExtensionSystem>(defaults);
         auto api = system->makeApi();
         const auto checkpoint = builder.checkpoint();
         if (!builder.services().emplace(std::move(api)))
         {
             return ExtensionRegistrationResult{
-                EExtensionRegistrationError::DUPLICATE_CONTRIBUTION};
+                EExtensionRegistrationError::DUPLICATE_REGISTRATION};
         }
         if (!builder.add(
                 std::move(system),
@@ -100,7 +100,7 @@ namespace lux::extensions::physics2d
         {
             (void)builder.rollbackTo(checkpoint);
             return ExtensionRegistrationResult{
-                EExtensionRegistrationError::DUPLICATE_CONTRIBUTION};
+                EExtensionRegistrationError::DUPLICATE_REGISTRATION};
         }
         return {};
     }

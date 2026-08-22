@@ -35,10 +35,6 @@ namespace
         auto& root = fixture.root;
         root.world = lux::authoring::WorldId{
             uuid("81000000-0000-4000-8000-000000000001")};
-        root.contributions.push_back({
-            lux::authoring::WorldSceneFeatureId{"org.example.scene"},
-            1u,
-            {std::byte{0x42u}}});
         PartitionSpaceDescriptor surface;
         surface.id = PartitionSpaceId{
             uuid("82000000-0000-4000-8000-000000000001")};
@@ -143,16 +139,10 @@ int main()
         lux::authoring::EPartitionTopology::PLANAR_XY);
     generated_source.data_layers.push_back(
         lux::authoring::DataLayerId{"org.example.generated"});
-    generated_source.contributions.push_back({
-        lux::authoring::WorldSceneFeatureId{"org.example.pixel"},
-        2u,
-        {std::byte{0x7fu}}});
     const auto generated_bytes = encodeWorldSource(generated_source);
     assert(generated_bytes);
     const auto generated_roundtrip = decodeWorldSource(*generated_bytes);
     assert(generated_roundtrip &&
-        generated_roundtrip->contributions ==
-            generated_source.contributions &&
         generated_roundtrip->data_layers == generated_source.data_layers);
 
     const auto page_first = encodeWorldDescriptorPage(
@@ -171,24 +161,25 @@ int main()
     assert(root_first);
     assertGoldenWire(
         *root_first,
-        418u,
-        "f87f9770da62de58b43b41615032b01851ac9a8024ba4bb5cc716392f7afaf72");
+        372u,
+        "2327246c14cc883896efc5ce49e28b2c9a6d8c3e1567cec8d4752bd501bf88c6");
     const auto root_decoded = decodeWorldSource(*root_first);
     assert(root_decoded && root_decoded->descriptor_pages.size() == 1u);
     const auto root_reencoded = encodeWorldSource(*root_decoded);
     assert(root_reencoded && *root_reencoded == *root_first);
-    assert(root_decoded->contributions == fixture.root.contributions);
     assert(root_decoded->required_extensions ==
         fixture.root.required_extensions);
     assert(root_decoded->descriptor_pages.front().actor_count == 2u);
     assert(root_decoded->descriptor_pages.front().page_count == 1u);
     auto legacy_root = *root_first;
-    const std::uint32_t legacy_root_version = 3u;
+    const std::uint32_t legacy_root_version = 4u;
     std::memcpy(
         legacy_root.data() + sizeof(std::uint32_t),
         &legacy_root_version,
         sizeof(legacy_root_version));
-    assert(!decodeWorldSource(legacy_root));
+    const auto rejected_v4 = decodeWorldSource(legacy_root);
+    assert(!rejected_v4 && rejected_v4.error().error ==
+        EWorldSourceCodecError::UNSUPPORTED_VERSION);
     const auto page_decoded = decodeWorldDescriptorPage(
         *root_decoded, *page_first);
     assert(page_decoded && page_decoded->actors.size() == 2u);
@@ -224,15 +215,10 @@ int main()
     auto corrupt = *root_first;
     corrupt.push_back(std::byte{0u});
     assert(!decodeWorldSource(corrupt));
-    auto invalid_contribution = fixture.root;
-    invalid_contribution.contributions.front().id =
-        lux::authoring::WorldSceneFeatureId{"Org.Example.Scene"};
-    assert(!encodeWorldSource(invalid_contribution));
-
     const auto nonce = std::chrono::steady_clock::now()
         .time_since_epoch().count();
     const auto directory = std::filesystem::temp_directory_path()
-        / ("lux-world-source-v4-" + std::to_string(nonce));
+        / ("lux-world-source-v5-" + std::to_string(nonce));
     const auto root_path = directory / "Worlds" / "Main.luxworld";
     const auto& reference = fixture.root.descriptor_pages.front();
     assert(saveWorldSourceDocument(
@@ -382,7 +368,8 @@ int main()
     assert(!WorldDescriptorIndex::load(cache_path, expanded_root));
 
     auto stale_root = changed_root;
-    stale_root.contributions.front().config.push_back(std::byte{0x11u});
+    stale_root.data_layers.push_back(
+        lux::authoring::DataLayerId{"org.example.stale"});
     assert(!WorldDescriptorIndex::load(cache_path, stale_root));
 
     auto bad_reference = loaded_root->descriptor_pages.front();

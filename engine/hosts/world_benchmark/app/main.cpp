@@ -34,7 +34,6 @@ namespace
         "main_completion",
         "event_drain",
         "texture_streaming",
-        "contribution_safe_point",
         "integration_safe_point",
         "schedule_input",
         "schedule_pre_transform",

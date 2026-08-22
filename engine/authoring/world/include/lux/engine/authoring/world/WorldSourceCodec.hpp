@@ -14,6 +14,19 @@
 
 namespace lux::authoring
 {
+    enum class EWorldSourceCodecError : std::uint8_t
+    {
+        INVALID_DATA,
+        LIMIT_EXCEEDED,
+        UNSUPPORTED_VERSION
+    };
+
+    struct WorldSourceCodecFailure final
+    {
+        EWorldSourceCodecError error{EWorldSourceCodecError::INVALID_DATA};
+        std::string detail;
+    };
+
     struct WorldSourceCodecLimits final
     {
         std::uint64_t maximum_bytes{256u * 1024u * 1024u};
@@ -22,7 +35,6 @@ namespace lux::authoring
         std::uint32_t maximum_spaces{4096u};
         std::uint32_t maximum_data_layers{65536u};
         std::uint32_t maximum_requirements{65536u};
-        std::uint32_t maximum_contributions{65536u};
         std::uint32_t maximum_instance_sets{4u * 1024u * 1024u};
         std::uint32_t maximum_generator_config_bytes{64u * 1024u};
         std::uint32_t maximum_descriptor_pages{4u * 1024u * 1024u};
@@ -101,7 +113,7 @@ namespace lux::authoring
     encodeWorldSource(const WorldSourceDocument& document) noexcept;
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_WORLD_PUBLIC
-    lux::cxx::expected<WorldSourceDocument, std::string>
+    lux::cxx::expected<WorldSourceDocument, WorldSourceCodecFailure>
     decodeWorldSource(
         std::span<const std::byte> bytes,
         const WorldSourceCodecLimits& limits = {}) noexcept;

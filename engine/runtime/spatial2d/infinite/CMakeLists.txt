@@ -63,9 +63,9 @@ lux_classify_target(
 )
 
 add_component(
-    COMPONENT_NAME runtime_pack_infinite2d
+    COMPONENT_NAME runtime_infinite2d_systems
     NAMESPACE      lux::engine::runtime
-    OUTPUT_NAME    lux_engine_runtime_pack_infinite2d
+    OUTPUT_NAME    lux_engine_runtime_infinite2d_systems
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Infinite2DPixelContent.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Infinite2DPixelPrepareService.cpp
@@ -73,7 +73,7 @@ add_component(
 )
 
 component_include_directories(
-    runtime_pack_infinite2d
+    runtime_infinite2d_systems
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
@@ -81,17 +81,17 @@ component_include_directories(
 )
 
 target_include_directories(
-    runtime_pack_infinite2d
+    runtime_infinite2d_systems
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
 )
 
 target_compile_definitions(
-    runtime_pack_infinite2d
+    runtime_infinite2d_systems
     PRIVATE LUX_ENGINE_RUNTIME_INFINITE2D_PIXEL_LIBRARY
 )
 
 target_link_libraries(
-    runtime_pack_infinite2d
+    runtime_infinite2d_systems
     PUBLIC
         lux::engine::runtime::runtime_spatial2d_infinite
         lux::engine::runtime::runtime_entity_scene
@@ -105,13 +105,13 @@ target_link_libraries(
 )
 
 component_add_transitive_commands(
-    runtime_pack_infinite2d
+    runtime_infinite2d_systems
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_execution runtime_spatial2d_infinite)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS pixel scene_format component_archive)"
 )
 
 lux_classify_target(
-    TARGET  runtime_pack_infinite2d
+    TARGET  runtime_infinite2d_systems
     LAYER   RUNTIME
     PRODUCT RUNTIME
     ROLE    INTEGRATION
@@ -146,7 +146,7 @@ add_executable(
 target_link_libraries(
     infinite2d_headless_test
     PRIVATE
-        lux::engine::runtime::runtime_pack_infinite2d
+        lux::engine::runtime::runtime_infinite2d_systems
         lux::engine::runtime::runtime_execution
         lux::engine::runtime::runtime_spatial2d_tilemap
         lux::engine::core::serialization

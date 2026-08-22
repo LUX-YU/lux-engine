@@ -34,10 +34,7 @@ namespace
         lux::scene::SceneDescription result;
         result.id = lux::asset::asset_id_t{
             uuid("11111111-2222-4333-8444-555555555555")};
-        result.features.push_back(lux::scene::SceneFeatureRequest{
-            lux::scene::SceneFeatureId{"org.lux.test.presentation"},
-            1u,
-            {std::byte{0x2a}}});
+        result.spatial3d_catalog = {std::byte{0x2a}};
         result.sections.push_back(section(
             "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
             "/Game/startup_lxes"));
@@ -69,26 +66,6 @@ int main()
     const auto rejected_path = scene::validateSceneDescription(invalid_path);
     assert(!rejected_path);
     assert(rejected_path.error().error ==
-        scene::ESceneCodecError::INVALID_ARGUMENT);
-
-    auto duplicate_feature = package;
-    duplicate_feature.features.push_back(
-        duplicate_feature.features.front());
-    const auto rejected_feature =
-        scene::validateSceneDescription(duplicate_feature);
-    assert(!rejected_feature);
-    assert(rejected_feature.error().error ==
-        scene::ESceneCodecError::DUPLICATE_ID);
-
-    auto noncanonical_feature = package;
-    noncanonical_feature.features.push_back(scene::SceneFeatureRequest{
-        scene::SceneFeatureId{"org.lux.aaa"},
-        1u,
-        {}});
-    const auto rejected_order =
-        scene::validateSceneDescription(noncanonical_feature);
-    assert(!rejected_order);
-    assert(rejected_order.error().error ==
         scene::ESceneCodecError::INVALID_ARGUMENT);
 
     auto missing_digest = package;

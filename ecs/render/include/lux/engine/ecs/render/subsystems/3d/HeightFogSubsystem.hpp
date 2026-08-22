@@ -25,7 +25,7 @@ namespace lux::ecs
         [[nodiscard]] std::span<const std::string_view>
         renderFeatures() const noexcept override
         {
-            static constexpr std::string_view features[]{"Fog", "Water"};
+            static constexpr std::string_view features[]{"Fog"};
             return features;
         }
 

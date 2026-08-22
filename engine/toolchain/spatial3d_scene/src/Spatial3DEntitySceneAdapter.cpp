@@ -1966,41 +1966,6 @@ namespace lux::toolchain
             return result;
         }
 
-        [[nodiscard]] lux::cxx::expected<void, AdapterFailure>
-        appendFeature(
-            std::vector<lux::scene::SceneFeatureRequest>& values,
-            lux::scene::SceneFeatureRequest feature)
-        {
-            if (!feature.id.isValid() ||
-                !lux::scene::isValidSceneFeatureIdName(feature.id.name()))
-            {
-                return lux::cxx::unexpected(failure(
-                    AdapterError::INVALID_ARGUMENT,
-                    "Scene Feature request has a non-canonical id"));
-            }
-            const auto found = std::ranges::find(
-                values,
-                feature.id.name(),
-                [](const auto& value)
-                {
-                    return value.id.name();
-                });
-            if (found == values.end())
-            {
-                values.push_back(std::move(feature));
-                return {};
-            }
-            if (*found != feature)
-            {
-                return lux::cxx::unexpected(failure(
-                    AdapterError::INVALID_ARGUMENT,
-                    std::string{
-                        "Scene Feature requests define conflicting configuration for '"} +
-                        std::string{feature.id.name()} + "'"));
-            }
-            return {};
-        }
-
     } // namespace
 
     lux::cxx::expected<
@@ -2933,38 +2898,7 @@ namespace lux::toolchain
                     AdapterError::SPATIAL_CATALOG_REJECTED,
                     encoded.error().detail));
             }
-            const auto added = appendFeature(
-                cook.features,
-                lux::scene::SceneFeatureRequest{
-                    lux::scene::SceneFeatureId{std::string{
-                        lux::spatial3d::kPartitionedFeatureName}},
-                    lux::spatial3d::kSceneCatalogSchemaVersion,
-                    std::move(*encoded)});
-            if (!added)
-                return lux::cxx::unexpected(std::move(added.error()));
-        }
-        for (auto& feature : config.selected_features)
-        {
-            const auto added = appendFeature(
-                cook.features,
-                std::move(feature));
-            if (!added)
-                return lux::cxx::unexpected(std::move(added.error()));
-        }
-        for (auto& feature : config.additional_features)
-        {
-            const auto added = appendFeature(
-                cook.features, std::move(feature));
-            if (!added)
-                return lux::cxx::unexpected(std::move(added.error()));
-        }
-        for (const auto& feature : source.features)
-        {
-            const auto added = appendFeature(
-                cook.features,
-                feature);
-            if (!added)
-                return lux::cxx::unexpected(std::move(added.error()));
+            cook.spatial3d_catalog = std::move(*encoded);
         }
         cook.required_extensions = source.required_extensions;
 

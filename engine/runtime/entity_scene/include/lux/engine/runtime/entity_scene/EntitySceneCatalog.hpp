@@ -45,9 +45,6 @@ namespace lux::runtime::entity_scene
         [[nodiscard]] const lux::scene::SectionRecord* findSection(
             lux::ecs::scene_format::EntitySectionId id) const noexcept;
 
-        [[nodiscard]] const lux::scene::SceneFeatureRequest* findFeature(
-            lux::scene::SceneFeatureIdView id) const noexcept;
-
     private:
         explicit EntitySceneCatalog(lux::scene::SceneDescription package) noexcept
             : package_(std::move(package))

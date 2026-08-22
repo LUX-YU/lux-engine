@@ -43,15 +43,20 @@ namespace lux::editor
         std::optional<lux::math::Position3d> pos3d;
     };
 
+    enum class ESpawnDomain : std::uint8_t
+    {
+        ANY,
+        SPATIAL_2D,
+        SPATIAL_3D
+    };
+
     struct SpawnRecipe
     {
         std::string id;         ///< stable identifier ("empty", "image2d", ...)
         std::string label;      ///< menu label ("Empty", "Image", ...)
         std::string category;   ///< "" = top-level item; else a submenu ("2D", "3D")
 
-        /// Empty means universally available. Otherwise the exact LXSC/LXWA
-        /// contribution must be selected; no top-level scene kind shadows it.
-        std::string required_contribution;
+        ESpawnDomain domain{ESpawnDomain::ANY};
 
         std::function<entt::entity(const SpawnContext&)> spawn;
     };

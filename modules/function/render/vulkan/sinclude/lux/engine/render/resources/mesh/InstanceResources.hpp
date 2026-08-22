@@ -210,7 +210,7 @@ namespace lux::render
         void writeTransform(InstanceSlot slot, const InstanceTransform &xform);
         /// 未接线(运动矢量路径整体未接):prev-transform 流已分配并上传,但没有
         /// 写入者或消费 pass。写点、prevTransformBuffer 与 motion-vector pass
-        /// 应由一个 RenderEffect 成套接入。
+        /// 应由对应的 renderer feature 成套接入。
         void writePrevTransform(InstanceSlot slot, const InstanceTransformPrev& xform_prev);
         void writeProperty(InstanceSlot slot, const InstanceProperty &prop);
         /// Writes draw/cull metadata and then refreshes world-space bsphere from

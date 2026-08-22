@@ -61,7 +61,6 @@ namespace lux::runtime::entity_scene
         std::size_t startup_sections{0u};
         std::size_t active_startup_sections{0u};
         std::size_t failed_startup_sections{0u};
-        std::size_t features{0u};
     };
 
     /// Fixed-content selector for one validated Engine SceneDescription.
@@ -106,11 +105,6 @@ namespace lux::runtime::entity_scene
             const noexcept;
         [[nodiscard]] const lux::asset::asset_id_t& packageId()
             const noexcept;
-
-        /// Validated assembly requests only. This selector never installs or
-        /// switches on a concrete feature ID.
-        [[nodiscard]] std::span<const lux::scene::SceneFeatureRequest>
-        features() const noexcept;
 
     private:
         struct ReleasedGeneration final

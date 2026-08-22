@@ -6,7 +6,7 @@ if(TARGET ecs_meta AND TARGET spatial3d_components_meta)
     target_link_libraries(
         spatial3d_scene_runtime_test
         PRIVATE
-            lux::engine::runtime::runtime_pack_spatial3d_partitioned
+            lux::engine::runtime::runtime_spatial3d_streaming_systems
             lux::engine::runtime::runtime_scene_core
             lux::engine::runtime::runtime_execution
             lux::engine::function::input

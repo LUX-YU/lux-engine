@@ -27,6 +27,7 @@ add_component(
     OUTPUT_NAME    lux_engine_ecs_animation_2d
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/FlipbookAnimationSystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/FlipbookAssetResolver.cpp
 )
 lux_configure_animation_target(animation_2d)
 target_link_libraries(
@@ -49,6 +50,7 @@ add_component(
     OUTPUT_NAME    lux_engine_ecs_animation_3d
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AnimationSystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SkeletalAnimationAssetResolver.cpp
 )
 lux_configure_animation_target(animation_3d)
 target_link_libraries(
@@ -115,4 +117,30 @@ if(LUX_BUILD_COMPONENT_META)
             ${LUX_ECS_ANIMATION_INCLUDE_DIR}/lux/engine/ecs/animation/components/FlipbookAnimationComponent.hpp
         LUA_BINDING
     )
+endif()
+
+if(ENABLE_EXECUTION_TEST)
+    add_executable(
+        flipbook_asset_demand_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/flipbook_asset_demand_test.cpp)
+    target_link_libraries(
+        flipbook_asset_demand_test
+        PRIVATE lux::engine::ecs::animation_2d)
+    lux_classify_target(
+        TARGET flipbook_asset_demand_test
+        LAYER ECS
+        PRODUCT TEST
+        ROLE DOMAIN)
+
+    add_executable(
+        skeletal_asset_demand_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/skeletal_asset_demand_test.cpp)
+    target_link_libraries(
+        skeletal_asset_demand_test
+        PRIVATE lux::engine::ecs::animation_3d)
+    lux_classify_target(
+        TARGET skeletal_asset_demand_test
+        LAYER ECS
+        PRODUCT TEST
+        ROLE DOMAIN)
 endif()

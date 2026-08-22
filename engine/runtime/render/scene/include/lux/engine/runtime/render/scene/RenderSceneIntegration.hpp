@@ -8,7 +8,6 @@
 #include <lux/engine/runtime/render/scene/StandardFeaturePlan.hpp>
 #include <lux/engine/runtime/render/scene/PrimaryViewPresentation.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
-#include <lux/engine/runtime/extensions/RenderEffects.hpp>
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
@@ -36,10 +35,6 @@ namespace lux::runtime
         const std::vector<lux::render::FeatureAttach>& feature_plan;
         ResidencyAssembly&                             residency;
         const RenderProfile&                           profile;
-        RenderEffectCatalog*                           render_effect_catalog{
-            nullptr};
-        RenderEffectTypeRegistry*                      render_effect_types{
-            nullptr};
     };
 
     struct RenderSceneConfig
@@ -81,7 +76,6 @@ namespace lux::runtime
         void reattachTarget(
             lux::render::RenderTargetId target,
             lux::math::Extent2u extent) noexcept;
-        [[nodiscard]] RenderEffects effects() const noexcept;
         [[nodiscard]] lux::render::RenderSceneId sceneId() const noexcept;
         [[nodiscard]] const PrimaryViewPresentationSnapshot*
         primaryViewPresentation() const noexcept;

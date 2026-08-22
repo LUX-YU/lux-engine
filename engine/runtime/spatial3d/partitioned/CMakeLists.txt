@@ -123,25 +123,25 @@ lux_classify_target(
 
 generate_visibility_header(
     ENABLE_MACRO_NAME
-        LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_CONTRIBUTION_LIBRARY
+        LUX_ENGINE_RUNTIME_SPATIAL3D_STREAMING_SYSTEMS_LIBRARY
     PUBLIC_MACRO_NAME
-        LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_CONTRIBUTION_PUBLIC
+        LUX_ENGINE_RUNTIME_SPATIAL3D_STREAMING_SYSTEMS_PUBLIC
     DISABLE_DLL_MACRO_NAME
-        LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_CONTRIBUTION_DLL_DISABLE
+        LUX_ENGINE_RUNTIME_SPATIAL3D_STREAMING_SYSTEMS_DLL_DISABLE
     GENERATE_FILE_PATH
-        lux/engine/runtime/spatial3d/partitioned/contribution_visibility.h
+        lux/engine/runtime/spatial3d/partitioned/systems_visibility.h
 )
 
 add_component(
-    COMPONENT_NAME runtime_pack_spatial3d_partitioned
+    COMPONENT_NAME runtime_spatial3d_streaming_systems
     NAMESPACE      lux::engine::runtime
-    OUTPUT_NAME    lux_engine_runtime_pack_spatial3d_partitioned
+    OUTPUT_NAME    lux_engine_runtime_spatial3d_streaming_systems
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Spatial3DPartitionedContribution.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/InstallSpatial3DStreamingSystems.cpp
 )
 
 component_include_directories(
-    runtime_pack_spatial3d_partitioned
+    runtime_spatial3d_streaming_systems
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
@@ -149,32 +149,31 @@ component_include_directories(
 )
 
 target_compile_definitions(
-    runtime_pack_spatial3d_partitioned
+    runtime_spatial3d_streaming_systems
     PRIVATE
-        LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_CONTRIBUTION_LIBRARY
+        LUX_ENGINE_RUNTIME_SPATIAL3D_STREAMING_SYSTEMS_LIBRARY
 )
 
 target_link_libraries(
-    runtime_pack_spatial3d_partitioned
+    runtime_spatial3d_streaming_systems
     PUBLIC
         lux::engine::runtime::runtime_spatial3d_partitioned
         lux::engine::runtime::runtime_spatial_partition
         lux::engine::runtime::runtime_entity_scene
-        lux::engine::runtime::runtime_scene_contributions
-        lux::engine::runtime::runtime_pack_spatial3d_transform
+        lux::engine::ecs::transform
         lux::engine::spatial3d::scene_catalog
         lux::engine::ecs::core
 )
 
 component_add_transitive_commands(
-    runtime_pack_spatial3d_partitioned
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
+    runtime_spatial3d_streaming_systems
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core transform)"
     "find_package(lux-engine-spatial3d REQUIRED COMPONENTS scene_catalog)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_scene_contributions runtime_pack_spatial3d_transform runtime_spatial_partition runtime_spatial3d_partitioned)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_spatial_partition runtime_spatial3d_partitioned)"
 )
 
 lux_classify_target(
-    TARGET  runtime_pack_spatial3d_partitioned
+    TARGET  runtime_spatial3d_streaming_systems
     LAYER   RUNTIME
     PRODUCT RUNTIME
     ROLE    INTEGRATION

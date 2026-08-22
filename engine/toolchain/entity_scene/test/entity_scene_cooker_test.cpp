@@ -210,10 +210,6 @@ int main()
     SceneDescriptionCookInput scene;
     scene.id = lux::asset::asset_id_t{
         uuid("10000000-0000-4000-8000-000000000001")};
-    scene.features.push_back({
-        SceneFeatureId{"lux.test.presentation"},
-        1u,
-        {}});
     scene.startup_sections.push_back(
         lux::ecs::scene_format::EntitySectionId{section_id.value()});
 

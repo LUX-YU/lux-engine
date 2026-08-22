@@ -44,16 +44,4 @@ namespace lux::runtime::entity_scene
             : &*found;
     }
 
-    const lux::scene::SceneFeatureRequest* EntitySceneCatalog::findFeature(
-        lux::scene::SceneFeatureIdView id) const noexcept
-    {
-        const auto found = std::find_if(
-            package_.features.begin(),
-            package_.features.end(),
-            [id](const lux::scene::SceneFeatureRequest& feature)
-            {
-                return feature.id.view() == id;
-            });
-        return found == package_.features.end() ? nullptr : &*found;
-    }
 } // namespace lux::runtime::entity_scene

@@ -44,7 +44,6 @@ add_component(
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/subservices/MaterialSubservices.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/ResidencyAssembly.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/StandardFeaturePlan.cpp
-                    ${CMAKE_CURRENT_SOURCE_DIR}/src/BuiltinRenderEffects.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderDiagnostics.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneGeometryPrepareService.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/ClassicMeshBatchRenderSubsystem.cpp
@@ -109,8 +108,6 @@ target_link_libraries(
     lux::engine::core::events          # 统一事件总线(段C:渲染错误事件化)
     lux::engine::runtime::runtime_assets # public AssetClient dependency seam
     lux::engine::runtime::runtime_extension_loader
-    lux::engine::runtime::runtime_scene_contributions
-    lux::engine::runtime::runtime_render_effects
     EnTT::EnTT
     Eigen3::Eigen
     PUBLIC
@@ -146,7 +143,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-content REQUIRED COMPONENTS content)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_features render_standard_content)"
     "find_package(lux-engine-core REQUIRED COMPONENTS log events)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_assets runtime_entity_scene runtime_extension_loader runtime_scene_contributions runtime_render_effects runtime_scene_core)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_assets runtime_entity_scene runtime_extension_loader runtime_scene_core)"
 )
 
 # 单元测试(驻留 T4 起;headless,自校验 exe)。

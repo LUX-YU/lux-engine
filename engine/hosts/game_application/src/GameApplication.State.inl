@@ -5,7 +5,6 @@
         // Root code lease owner is declared first and therefore dies last.
         lux::extensions::ExtensionModuleManager extension_modules;
         lux::ecs::ComponentTypeCatalog component_types;
-        lux::runtime::SceneContributionCatalog scene_contribution_catalog;
 
         std::unique_ptr<lux::events::DomainEvents> events;
         lux::events::EventPump* frame_pump{nullptr};

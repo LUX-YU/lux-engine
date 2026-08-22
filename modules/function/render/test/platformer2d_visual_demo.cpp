@@ -35,13 +35,12 @@
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
 #include <lux/engine/ecs/render/components/2d/Image2DComponent.hpp>
-#include <lux/engine/scene/SceneFeatureId.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Physics2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Presentation2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Simulation2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Transform2DContribution.hpp>
-#include <lux/engine/runtime/assets/SceneAssetServices.hpp>
+#include <lux/engine/ecs/integration/presentation2d/InstallPresentation2DSystems.hpp>
+#include <lux/engine/ecs/physics/InstallSimulationSystems.hpp>
+#include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
+#include <lux/engine/resource/asset/AssetServices.hpp>
 #include <lux/engine/ecs/physics/systems/Simulation2DSystem.hpp>
+#include <lux/engine/ecs/physics/CollisionProbe2D.hpp>
 #include <lux/engine/ecs/physics/FixedStepConfig.hpp>
 #include <lux/engine/ecs/physics2d/Physics2DConfig.hpp>
 #include <lux/engine/ecs/render/components/RenderViewBindingComponent.hpp>
@@ -284,22 +283,6 @@ int main(int argc, char** argv)
     if (!lux::ecs::registerGeneratedComponents(components))
         return 1;
 
-    lux::runtime::SceneContributionCatalog contributions;
-    auto transform2d =
-        lux::runtime::makeSpatial2DTransformContribution(components);
-    auto simulation2d =
-        lux::runtime::makeSimulation2DContribution(components);
-    auto presentation2d =
-        lux::runtime::makePresentation2DContribution(components);
-    if (!transform2d || !simulation2d || !presentation2d)
-        return 1;
-    std::vector<lux::runtime::SceneContributionDescriptor> descriptors;
-    descriptors.push_back(std::move(*transform2d));
-    descriptors.push_back(std::move(*simulation2d));
-    descriptors.push_back(std::move(*presentation2d));
-    descriptors.push_back(lux::runtime::makeDemoPhysics2DContribution());
-    if (!contributions.addBatch(std::move(descriptors)))
-        return 1;
     // 驻留三件套(裁决二):声明在渲染绑定之前 —— 逆序析构。
     lux::runtime::testing::AsyncTestServices async(
         assets,
@@ -341,7 +324,7 @@ int main(int argc, char** argv)
     // Reverse destruction is intentional: builder → schedule systems → owned
     // services → residency observers → World registry. Longer-lived borrowed
     // render/asset resources remain below that graph.
-    lux::asset_runtime::SceneAssetServices asset_services{
+    lux::asset::AssetServices asset_services{
         assets,
         async.assetClient()};
     lux::ecs::SceneServices   services;
@@ -360,16 +343,30 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    constexpr std::array selected{
-        lux::scene::sceneFeatureId(
-            lux::runtime::kPresentation2DContributionName),
-        lux::scene::sceneFeatureId(
-            lux::runtime::kDemoPhysics2DContributionName)};
-    if (!contributions.assembleDefaults(assembly, selected))
+    if (!lux::ecs::installSpatial2DTransformSystems(
+            assembly, components) ||
+        !lux::ecs::installSimulation2DSystems(
+            assembly, components) ||
+        !lux::ecs::installPresentation2DSystems(
+            assembly, components) ||
+        !staged.emplace<d2::Physics2DWorld>(gravity))
     {
-        std::printf("scene feature assembly failed\n");
+        std::printf("2D system assembly failed\n");
         return 1;
     }
+    auto* const simulation = staged.borrow<d2::Simulation2DSystem>();
+    auto* const physics = staged.borrow<d2::Physics2DWorld>();
+    auto* const probes = staged.borrow<d2::CollisionProbes2D>();
+    if (!simulation || !physics || !probes)
+        return 1;
+    for (d2::ICollision2DProbe* probe : probes->probes)
+        physics->addProbe(probe);
+    simulation->setPhase(
+        d2::Simulation2DSystem::Phase::SimulatePhysics,
+        [physics](lux::ecs::Registry& registry, float dt)
+        {
+            physics->step(registry, dt);
+        });
     auto render_plan = std::move(render_builder).compile();
     if (!render_plan)
     {

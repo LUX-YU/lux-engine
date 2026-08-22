@@ -23,7 +23,7 @@ target_link_libraries(
         runtime_render_scene
         runtime_render_scene_test_support
         lux::engine::runtime::runtime_execution
-        lux::engine::runtime::runtime_contribution_host
+        lux::engine::runtime::runtime_extension_orchestration
 )
 lux_scene_runtime_test_enable_stdexec(engine_extensions_test)
 add_dependencies(
@@ -39,14 +39,8 @@ target_link_libraries(
     render_request_sender_test
     PRIVATE
         runtime_render_scene_test_support
-        lux::engine::runtime::runtime_render_effects
         STDEXEC::stdexec
         lux::engine::function::render_features
-)
-target_include_directories(
-    render_request_sender_test
-    PRIVATE
-        ${PROJECT_SOURCE_DIR}/engine/runtime/extensions/contribution_host/pinclude
 )
 lux_scene_runtime_test_enable_stdexec(render_request_sender_test)
 
@@ -142,18 +136,6 @@ lux_scene_runtime_test_enable_stdexec(residency_gpu_probe)
 target_include_directories(residency_gpu_probe PRIVATE
     ${CMAKE_SOURCE_DIR}/modules/function/render/test)
 
-add_executable(render_effect_gpu_probe render_effect_gpu_probe.cpp)
-target_link_libraries(
-    render_effect_gpu_probe
-    PRIVATE
-        runtime_render_scene
-        lux::engine::platform::window
-)
-target_include_directories(
-    render_effect_gpu_probe
-    PRIVATE ${CMAKE_SOURCE_DIR}/modules/function/render/test
-)
-
 add_executable(
     scene_visual_components_semantic_gpu_probe
     scene_visual_components_semantic_gpu_probe.cpp
@@ -241,7 +223,7 @@ target_link_libraries(
     infinite2d_visual_gpu_probe
     PRIVATE
         runtime_render_scene_test_support
-        lux::engine::runtime::runtime_pack_infinite2d
+        lux::engine::runtime::runtime_infinite2d_systems
         lux::engine::runtime::runtime_execution
         lux::engine::runtime::runtime_spatial2d_tilemap
         lux::engine::ecs::tilemap

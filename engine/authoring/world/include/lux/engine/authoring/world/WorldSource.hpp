@@ -20,7 +20,7 @@
 namespace lux::authoring
 {
     inline constexpr std::uint32_t kWorldSourceMagic = 0x4157584cu;
-    inline constexpr std::uint32_t kWorldSourceVersion = 4u;
+    inline constexpr std::uint32_t kWorldSourceVersion = 5u;
     inline constexpr std::uint32_t kWorldDescriptorPageMagic = 0x4941584cu;
     inline constexpr std::uint32_t kWorldDescriptorPageVersion = 2u;
     inline constexpr std::uint32_t kWorldActorDocumentMagic = 0x4441584cu;
@@ -281,17 +281,6 @@ namespace lux::authoring
             const WorldInstanceSetSourceDescriptor&) = default;
     };
 
-    struct WorldSceneFeatureRequest final
-    {
-        WorldSceneFeatureId id;
-        std::uint32_t config_schema_version{0u};
-        std::vector<std::byte> config;
-
-        friend bool operator==(
-            const WorldSceneFeatureRequest&,
-            const WorldSceneFeatureRequest&) = default;
-    };
-
     struct WorldRequiredExtension final
     {
         WorldExtensionId id;
@@ -306,13 +295,9 @@ namespace lux::authoring
     struct WorldSourceDocument final
     {
         WorldId world;
-        /// Dimension-neutral scene features. Spatial selection, render,
-        /// physics and navigation configuration belongs to each feature,
-        /// never to this Authoring root.
-        std::vector<WorldSceneFeatureRequest> contributions;
         std::vector<lux::authoring::PartitionSpaceDescriptor> spaces;
         /// Authoring membership vocabulary only. Runtime loading/activation
-        /// policy belongs to a contribution, not to the LXWA root.
+        /// policy is derived by the cooker, not stored in the LXWA root.
         std::vector<lux::authoring::DataLayerId> data_layers;
         std::vector<WorldRequiredExtension> required_extensions;
         std::vector<WorldInstanceSetSourceDescriptor> instance_sets;

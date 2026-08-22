@@ -60,7 +60,7 @@ namespace lux::editor
 
         // 2D ▸ Image — flat white 1×1 quad until a texture is assigned.
         registry.add({ .id = "image2d", .label = "Image", .category = "2D",
-            .required_contribution = "org.lux.builtin.presentation2d",
+            .domain = ESpawnDomain::SPATIAL_2D,
             .spawn = [place2d](const SpawnContext& ctx)
             {
                 auto& reg = ctx.world.registry();
@@ -80,7 +80,7 @@ namespace lux::editor
         // 2D ▸ Camera — a SCENE camera (unbound; inert in-editor by design —
         // the editor camera keeps the viewport; scene cameras matter at runtime).
         registry.add({ .id = "camera2d", .label = "Camera", .category = "2D",
-            .required_contribution = "org.lux.builtin.presentation2d",
+            .domain = ESpawnDomain::SPATIAL_2D,
             .spawn = [place2d](const SpawnContext& ctx)
             {
                 auto& reg = ctx.world.registry();
@@ -93,7 +93,7 @@ namespace lux::editor
 
         // 3D ▸ Camera — likewise a scene camera, unbound in-editor.
         registry.add({ .id = "camera3d", .label = "Camera", .category = "3D",
-            .required_contribution = "org.lux.builtin.presentation3d",
+            .domain = ESpawnDomain::SPATIAL_3D,
             .spawn = [place3d](const SpawnContext& ctx)
             {
                 auto& reg = ctx.world.registry();
@@ -108,7 +108,7 @@ namespace lux::editor
         // 3D ▸ lights.
         registry.add({ .id = "dirlight3d", .label = "Directional Light",
             .category = "3D",
-            .required_contribution = "org.lux.builtin.presentation3d",
+            .domain = ESpawnDomain::SPATIAL_3D,
             .spawn = [place3d](const SpawnContext& ctx)
             {
                 auto& reg = ctx.world.registry();
@@ -121,7 +121,7 @@ namespace lux::editor
             }});
         registry.add({ .id = "pointlight3d", .label = "Point Light",
             .category = "3D",
-            .required_contribution = "org.lux.builtin.presentation3d",
+            .domain = ESpawnDomain::SPATIAL_3D,
             .spawn = [place3d](const SpawnContext& ctx)
             {
                 auto& reg = ctx.world.registry();

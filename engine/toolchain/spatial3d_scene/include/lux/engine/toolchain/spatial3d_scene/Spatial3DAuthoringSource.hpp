@@ -104,7 +104,6 @@ namespace lux::toolchain
     struct Spatial3DAuthoringSource final
     {
         lux::asset::asset_id_t scene;
-        std::vector<lux::scene::SceneFeatureRequest> features;
         std::vector<Spatial3DSourceSpace> spaces;
         std::vector<lux::scene::RequiredExtension> required_extensions;
         std::vector<Spatial3DActorSource> actors;
@@ -120,7 +119,7 @@ namespace lux::toolchain
             64ull * 1024ull * 1024ull};
     };
 
-    /// Reads the LXWA v4 Authoring object graph into the owning, 3D-only
+    /// Reads the LXWA v5 Authoring object graph into the owning, 3D-only
     /// source above. 2D spaces and their pages are deliberately ignored;
     /// mixed-dimension scenes can install a separate 2D cooker without either
     /// leaf knowing the other's source model.

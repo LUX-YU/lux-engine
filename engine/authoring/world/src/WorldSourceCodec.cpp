@@ -670,10 +670,6 @@ namespace lux::authoring
 
         void canonicalizeRoot(WorldSourceDocument& root)
         {
-            std::ranges::sort(root.contributions, {}, [](const auto& value)
-            {
-                return value.id.name();
-            });
             std::ranges::sort(root.spaces, {}, [](const auto& value)
             {
                 return uuids::to_string(value.id.value());
@@ -728,7 +724,6 @@ namespace lux::authoring
             if (root.world.empty()
                 || root.spaces.empty()
                 || root.spaces.size() > limits.maximum_spaces
-                || root.contributions.size() > limits.maximum_contributions
                 || root.data_layers.size() > limits.maximum_data_layers
                 || root.required_extensions.size() > limits.maximum_requirements
                 || root.instance_sets.size() > limits.maximum_instance_sets
@@ -736,20 +731,6 @@ namespace lux::authoring
             {
                 return lux::cxx::unexpected(
                     std::string{"World source has invalid root bounds"});
-            }
-            std::unordered_set<std::string> contribution_ids;
-            for (const auto& contribution : root.contributions)
-            {
-                if (!contribution.id.valid() ||
-                    contribution.id.name().size() >
-                        limits.maximum_string_bytes ||
-                    contribution.config.size() > limits.maximum_bytes ||
-                    !contribution_ids.insert(
-                        std::string{contribution.id.name()}).second)
-                {
-                    return lux::cxx::unexpected(std::string{
-                        "World source has invalid scene contributions"});
-                }
             }
             std::unordered_map<std::string, const lux::authoring::PartitionSpaceDescriptor*> spaces;
             for (const auto& space : root.spaces)

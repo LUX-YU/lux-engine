@@ -71,21 +71,6 @@ namespace lux::toolchain
             return result == 0u ? 1u : result;
         }
 
-        [[nodiscard]] std::optional<lux::scene::SceneFeatureRequest>
-        toSceneFeature(
-            const lux::authoring::WorldSceneFeatureRequest& feature)
-        {
-            if (!feature.id.valid() ||
-                !lux::scene::isValidSceneFeatureIdName(feature.id.name()))
-            {
-                return std::nullopt;
-            }
-            return lux::scene::SceneFeatureRequest{
-                lux::scene::SceneFeatureId{feature.id.name()},
-                feature.config_schema_version,
-                feature.config};
-        }
-
         [[nodiscard]] std::optional<lux::scene::RequiredExtension>
         toRequiredExtension(
             const lux::authoring::WorldRequiredExtension& requirement)
@@ -135,17 +120,6 @@ namespace lux::toolchain
 
         Spatial3DAuthoringSource result;
         result.scene = lux::asset::asset_id_t{root->world.value()};
-        result.features.reserve(root->contributions.size());
-        for (const auto& feature : root->contributions)
-        {
-            auto cooked = toSceneFeature(feature);
-            if (!cooked)
-            {
-                return lux::cxx::unexpected(
-                    std::string{"invalid Authoring scene feature ID"});
-            }
-            result.features.push_back(std::move(*cooked));
-        }
         result.spaces.reserve(root->spaces.size());
         std::unordered_set<std::string> spaces;
         for (const auto& space : root->spaces)

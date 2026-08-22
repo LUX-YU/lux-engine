@@ -37,7 +37,7 @@ namespace lux::editor
     class AssetBrowser;
     class InspectorPanel;
     class HierarchyPanel;
-    class SceneFeatureSettingPanel;
+    class SceneSettingsPanel;
     class MaterialGraphPanel;
     class FlowGraphPanel;
     class LuaConsole;
@@ -84,7 +84,7 @@ namespace lux::editor
         InspectorPanel*              inspectorPanel() noexcept;
         lux::ui::SceneViewportPanel* viewportPanel() noexcept;
         HierarchyPanel*              hierarchyPanel() noexcept;
-        SceneFeatureSettingPanel*    sceneSettingsPanel() noexcept;
+        SceneSettingsPanel*           sceneSettingsPanel() noexcept;
         FlowGraphPanel*              flowGraphPanel() noexcept;
         MaterialGraphPanel*          materialGraphPanel() noexcept;
         EditorToolHost&              toolHost()          noexcept { return *tool_host_; }

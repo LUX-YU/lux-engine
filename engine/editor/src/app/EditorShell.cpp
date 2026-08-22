@@ -8,7 +8,7 @@
 #include <lux/engine/editor/panels/HierarchyPanel.hpp>
 #include <lux/engine/editor/panels/InspectorPanel.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
-#include <lux/engine/editor/panels/SceneFeatureSettingPanel.hpp>
+#include <lux/engine/editor/panels/SceneSettingsPanel.hpp>
 #include <lux/engine/editor/panels/LuaConsole.hpp>
 #include "panels/MaterialGraphPanel.hpp"    // private — material-graph node editor
 #include "panels/FlowGraphPanel.hpp"        // private — the first GraphKit host
@@ -154,9 +154,9 @@ namespace lux::editor
             tool_host_->activePanel(kHierarchy)) : nullptr;
     }
 
-    SceneFeatureSettingPanel* EditorShell::sceneSettingsPanel() noexcept
+    SceneSettingsPanel* EditorShell::sceneSettingsPanel() noexcept
     {
-        return tool_host_ ? static_cast<SceneFeatureSettingPanel*>(
+        return tool_host_ ? static_cast<SceneSettingsPanel*>(
             tool_host_->activePanel(kSceneSettings)) : nullptr;
     }
 
@@ -265,7 +265,7 @@ namespace lux::editor
             return lux::cxx::expected<
                 std::unique_ptr<lux::ui::Panel>,
                 EEditorPanelCreateError>{
-                std::make_unique<SceneFeatureSettingPanel>(
+                std::make_unique<SceneSettingsPanel>(
                     "SceneFeatureSetting")};
         };
         if (!add(std::move(descriptor)))

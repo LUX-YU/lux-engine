@@ -23,71 +23,44 @@
 
 namespace lux::editor
 {
-    lux::runtime::SceneContributionDescriptor
-    makePreviewWorldContribution()
+    bool installPreviewWorldSystems(lux::ecs::ScheduleBuilder& builder)
     {
-        lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::scene::SceneFeatureId{
-            std::string{kPreviewWorldContributionName}};
-        descriptor.display_name = "Editor preview 3D";
-        descriptor.required_services = {
-            lux::cxx::typeToken<lux::ecs::ResidencySubsystem>(),
-            lux::cxx::typeToken<lux::ecs::RenderSystemBuilder>()};
-        descriptor.provider = lux::extensions::ExtensionId{
-            "org.lux.editor"};
-        descriptor.build = [](
-            lux::runtime::SceneContributionBatchBuilder& builder,
-            const lux::runtime::SceneContributionBuildContext& context,
-            lux::runtime::ContributionConfig)
-            -> lux::cxx::expected<
-                void,
-                lux::runtime::SceneContributionBuildFailure>
+        const auto checkpoint = builder.checkpoint();
+        if (!builder.add(
+                std::make_unique<lux::ecs::Transform3DSystem>()) ||
+            !builder.add(
+                std::make_unique<lux::ecs::Camera3DSystem>()) ||
+            !builder.add(
+                std::make_unique<lux::ecs::AnimationSystem>()))
         {
-            if (!builder.add(
-                    std::make_unique<lux::ecs::Transform3DSystem>()) ||
-                !builder.add(
-                    std::make_unique<lux::ecs::Camera3DSystem>()) ||
-                !builder.add(
-                    std::make_unique<lux::ecs::AnimationSystem>()))
-            {
-                return lux::cxx::unexpected(
-                    lux::runtime::SceneContributionBuildFailure{
-                        lux::runtime::ESceneContributionBuildError::
-                            BUILD_REJECTED});
-            }
-            auto* const render = builder.findService<
-                lux::ecs::RenderSystemBuilder>(context);
-            auto* const residency = builder.findService<
-                lux::ecs::ResidencySubsystem>(context);
-            if (!render || !residency)
-            {
-                return lux::cxx::unexpected(
-                    lux::runtime::SceneContributionBuildFailure{
-                        lux::runtime::ESceneContributionBuildError::
-                            MISSING_SERVICE});
-            }
-            residency->resolveMeshOf<
-                lux::ecs::MeshComponent,
-                &lux::ecs::MeshComponent::mesh_asset_id,
-                &lux::ecs::MeshComponent::material_asset_id>();
-            const auto node = [render](auto system)
-            {
-                return render->add(std::move(system)).has_value();
-            };
-            if (!node(std::make_unique<lux::ecs::MeshSubsystem>()) ||
-                !node(std::make_unique<
-                    lux::ecs::DirectionalLightSubsystem>()) ||
-                !node(std::make_unique<
-                    lux::ecs::Camera3DUploadSubsystem>()))
-            {
-                return lux::cxx::unexpected(
-                    lux::runtime::SceneContributionBuildFailure{
-                        lux::runtime::ESceneContributionBuildError::
-                            BUILD_REJECTED});
-            }
-            return {};
+            (void)builder.rollbackTo(checkpoint);
+            return false;
+        }
+        auto* const render = builder.services().borrow<
+            lux::ecs::RenderSystemBuilder>();
+        auto* const residency = builder.services().borrow<
+            lux::ecs::ResidencySubsystem>();
+        if (!render || !residency)
+        {
+            (void)builder.rollbackTo(checkpoint);
+            return false;
+        }
+        residency->resolveMeshOf<
+            lux::ecs::MeshComponent,
+            &lux::ecs::MeshComponent::mesh_asset_id,
+            &lux::ecs::MeshComponent::material_asset_id>();
+        const auto node = [render](auto system)
+        {
+            return render->add(std::move(system)).has_value();
         };
-        return descriptor;
+        if (!node(std::make_unique<lux::ecs::MeshSubsystem>()) ||
+            !node(std::make_unique<lux::ecs::DirectionalLightSubsystem>()) ||
+            !node(std::make_unique<lux::ecs::Camera3DUploadSubsystem>()))
+        {
+            (void)builder.rollbackTo(checkpoint);
+            return false;
+        }
+        return true;
     }
 
     lux::scene::SceneDescription
@@ -100,13 +73,6 @@ namespace lux::editor
 
         lux::scene::SceneDescription package;
         package.id = lux::asset::asset_id_t{ids(scene_name)};
-        package.features.push_back(
-            lux::scene::SceneFeatureRequest{
-                lux::scene::SceneFeatureId{
-                    std::string{kPreviewWorldContributionName}},
-                0u,
-                {}}
-        );
         return package;
     }
 

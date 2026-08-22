@@ -17,9 +17,9 @@
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/Spatial3DPartitionedContribution.hpp>
+#include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
-#include <lux/engine/runtime/spatial3d/transform/Spatial3DTransformContribution.hpp>
+#include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
 #include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
 
 #include <algorithm>
@@ -338,11 +338,7 @@ int main()
     lux::scene::SceneDescription package;
     package.id = lux::asset::asset_id_t{
         uuid("50000000-0000-4000-8000-000000000001")};
-    package.features.push_back({
-        lux::scene::SceneFeatureId{
-            std::string{catalog::kPartitionedFeatureName}},
-        catalog::kSceneCatalogSchemaVersion,
-        std::move(*encoded_config)});
+    package.spatial3d_catalog = std::move(*encoded_config);
     package.sections = {
         fine_origin.record,
         fine_next.record,
@@ -384,27 +380,26 @@ int main()
     auto asset_owner = std::move(*assets_service);
     auto section_owner = std::move(*sections_service);
 
-    lux::runtime::SceneContributionCatalog contributions;
-    auto transform_descriptor =
-        lux::runtime::makeSpatial3DTransformContribution(components);
-    auto descriptor =
-        lux::runtime::makeSpatial3DPartitionedContribution(components);
-    assert(transform_descriptor && descriptor);
-    assert(contributions.add(std::move(*transform_descriptor)));
-    assert(contributions.add(std::move(*descriptor)));
     lux::runtime::SceneRuntime::Dependencies dependencies{
         .assets = assets,
         .asset_client = asset_owner.client(),
         .async = async,
         .components = components,
-        .entity_sections = section_owner.loadClient(),
-        .scene_contribution_catalog = &contributions};
+        .entity_sections = section_owner.loadClient()};
     lux::runtime::SceneRuntime::Config scene_config;
     scene_config.name = "Spatial3D LXSC integration";
     scene_config.scene_origin = "/Game/spatial3d_scene_lxsc";
     assert(registerScene(assets, package));
     scene_config.scene_asset_id = package.id;
     scene_config.section_vfs = vfs;
+    scene_config.install_systems =
+        [&components](lux::ecs::ScheduleBuilder& builder)
+        {
+            return lux::ecs::installSpatial3DTransformSystems(
+                       builder, components) &&
+                lux::runtime::installSpatial3DStreamingSystems(
+                       builder, components);
+        };
     auto scene = lux::runtime::SceneRuntime::create(
         dependencies, scene_config);
     assert(scene);

@@ -70,6 +70,34 @@ namespace lux::runtime
     RenderSceneIntegration::prepare(
         SceneRuntimeAssemblyContext& context) noexcept
     {
+        for (const auto& required :
+             context.description.required_render_features)
+        {
+            if (impl_->services.feature_catalog.descriptor(required))
+                continue;
+            lux::log::error(
+                "scene",
+                "required renderer feature '{}' is unavailable",
+                required);
+            return lux::cxx::unexpected<ESceneIntegrationError>(
+                ESceneIntegrationError::PREPARE_FAILED);
+        }
+        impl_->scene_feature_roots =
+            context.description.required_render_features;
+        for (const auto& optional :
+             context.description.optional_render_features)
+        {
+            if (impl_->services.feature_catalog.descriptor(optional))
+            {
+                impl_->scene_feature_roots.push_back(optional);
+                continue;
+            }
+            lux::log::warn(
+                "scene",
+                "optional renderer feature '{}' is unavailable; path disabled",
+                optional);
+        }
+
         if (!impl_->config.target.isValid())
         {
             lux::log::error(
@@ -180,6 +208,40 @@ namespace lux::runtime
             return lux::cxx::unexpected<ESceneIntegrationError>(
                 ESceneIntegrationError::FINALIZE_FAILED);
         }
+        std::vector<std::string_view> roots{
+            plan->features().begin(),
+            plan->features().end()};
+        roots.insert(
+            roots.end(),
+            impl_->services.profile.pass_roots.begin(),
+            impl_->services.profile.pass_roots.end());
+        for (const auto& root : impl_->scene_feature_roots)
+            roots.emplace_back(root);
+        const auto resolved =
+            impl_->services.feature_catalog.resolveAttachOrder(
+                std::span<const std::string_view>{roots});
+        if (!resolved.unknown.empty() || !resolved.missing_deps.empty() ||
+            !resolved.cycle.empty())
+        {
+            for (const auto name : resolved.unknown)
+                lux::log::error(
+                    "scene",
+                    "required renderer feature '{}' is unavailable",
+                    name);
+            for (const auto& missing : resolved.missing_deps)
+                lux::log::error(
+                    "scene",
+                    "renderer feature '{}' is missing dependency {:#x}",
+                    missing.dependent,
+                    missing.dep);
+            for (const auto name : resolved.cycle)
+                lux::log::error(
+                    "scene",
+                    "renderer feature dependency cycle contains '{}'",
+                    name);
+            return lux::cxx::unexpected<ESceneIntegrationError>(
+                ESceneIntegrationError::FINALIZE_FAILED);
+        }
         auto render_system = std::make_unique<lux::ecs::RenderSystem>(
             impl_->services.frame,
             impl_->services.control,
@@ -217,26 +279,6 @@ namespace lux::runtime
             return lux::cxx::unexpected<ESceneIntegrationError>(
                 ESceneIntegrationError::PUBLICATION_FAILED);
 
-        if (impl_->services.render_effect_catalog &&
-            impl_->services.render_effect_types)
-        {
-            impl_->effects = std::make_unique<RenderEffectHost>(
-                *render_system,
-                context.services,
-                impl_->scene,
-                impl_->services.control,
-                impl_->services.feature_catalog,
-                *impl_->services.render_effect_catalog,
-                *impl_->services.render_effect_types,
-                context.scene_contributions,
-                context.events,
-                [progress = std::weak_ptr<SceneCloseProgressEndpoint>{
-                     impl_->close_progress}]() noexcept
-                {
-                    if (auto endpoint = progress.lock())
-                        endpoint->notify();
-                });
-        }
         if (!impl_->settleFeatures())
             return lux::cxx::unexpected<ESceneIntegrationError>(
                 ESceneIntegrationError::PUBLICATION_FAILED);
@@ -245,24 +287,12 @@ namespace lux::runtime
 
     void RenderSceneIntegration::processSafePoint() noexcept
     {
-        if (impl_->effects)
-            (void)impl_->effects->processSafePoint();
     }
 
     ESceneIntegrationCloseStatus RenderSceneIntegration::close() noexcept
     {
         if (impl_->closed)
             return ESceneIntegrationCloseStatus::CLOSED;
-        if (impl_->effects)
-        {
-            const auto report = impl_->effects->close();
-            if (!report.terminal() || report.failed != 0)
-            {
-                lux::log::warn("world.render", "close wait: effects");
-                return ESceneIntegrationCloseStatus::RETRY_REQUIRED;
-            }
-            impl_->effects.reset();
-        }
         if (!impl_->services.control.flushDeferredReleases())
         {
             lux::log::warn(
@@ -300,11 +330,6 @@ namespace lux::runtime
         if (!target.isValid() || !impl_->primary_view)
             return;
         impl_->primary_view->setOutputIntent(target, extent);
-    }
-
-    RenderEffects RenderSceneIntegration::effects() const noexcept
-    {
-        return impl_->effects ? impl_->effects->facade() : RenderEffects{};
     }
 
     lux::render::RenderSceneId RenderSceneIntegration::sceneId() const noexcept

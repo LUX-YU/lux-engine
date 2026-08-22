@@ -346,7 +346,6 @@ namespace lux::runtime::entity_scene
         result.state = state_;
         result.revision = revision_;
         result.startup_sections = startup_.size();
-        result.features = catalog_->package().features.size();
         for (const auto& ticket : tickets_)
         {
             const auto ticket_state = ticket.state();
@@ -368,12 +367,6 @@ namespace lux::runtime::entity_scene
         const noexcept
     {
         return catalog_->package().id;
-    }
-
-    std::span<const lux::scene::SceneFeatureRequest>
-    StartupSectionSystem::features() const noexcept
-    {
-        return catalog_->package().features;
     }
 
     void StartupSectionSystem::fail(

@@ -5,8 +5,7 @@
  *
  * EntitySection images belong to ecs::scene_format. Scene selection, required
  * extensions and Section source recipes belong to Engine SceneDescription. The
- * cooker deliberately exposes only those canonical owners; the legacy LXSC v1
- * wire model remains private to the Scene component's compatibility codec.
+ * cooker deliberately exposes only those canonical owners.
  */
 
 #include <lux/engine/toolchain/entity_scene/EntitySceneCookError.hpp>
@@ -32,13 +31,17 @@ namespace lux::toolchain
     struct SceneDescriptionCookInput final
     {
         lux::asset::asset_id_t id;
-        std::vector<lux::scene::SceneFeatureRequest> features;
+        std::vector<std::byte> spatial3d_catalog;
         std::vector<lux::ecs::scene_format::EntitySectionId> startup_sections;
         std::vector<EntitySectionCookInput> sections;
         std::vector<lux::scene::RequiredExtension> required_extensions;
-        /// Extra schemas required by Scene Features but absent from Section
-        /// images. Schemas present in an image are added automatically.
+        /// Extra derived schemas absent from Section images. Schemas present
+        /// in an image are added automatically.
         std::vector<lux::scene::RequiredComponentSchema> required_components;
+        /// Build-configuration roots. These are consumed by Cook and become
+        /// derived LXSC requirements; no runtime usage-manifest object exists.
+        std::vector<std::string> project_required_render_features;
+        std::vector<std::string> project_optional_render_features;
     };
 
     struct CookedEntitySection final
@@ -63,7 +66,7 @@ namespace lux::toolchain
 
     /// Validates and encodes every canonical LXES image, derives Section record
     /// digests/counts/requirements, canonicalizes package collections, and
-    /// finally encodes LXSC v1 through the Engine-owned SceneDescription codec.
+    /// finally encodes LXSC v2 through the Engine-owned SceneDescription codec.
     /// Compression is deliberately outside this generic target; all records
     /// emitted here use SectionCompression::None and exact encoded sizes.
     [[nodiscard]] LUX_ENGINE_TOOLCHAIN_ENTITY_SCENE_PUBLIC

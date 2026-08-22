@@ -48,8 +48,6 @@ int main(int argc, char** argv)
     check(
         lux::ecs::registerGeneratedComponents(*components).has_value(),
         "built-in generated schemas publish before dynamic module loading");
-    lux::runtime::SceneContributionCatalog scene;
-    lux::runtime::RenderEffectCatalog render;
     lux::events::DomainEvents events;
     auto& pump = events.createPump("extensions-test");
 
@@ -96,7 +94,7 @@ int main(int argc, char** argv)
         lux::extensions::EngineExtensionServices{
             modules,
             async,
-            {*components, scene, render},
+            *components,
             &events,
             {}},
         std::move(requirements));
@@ -183,8 +181,6 @@ int main(int argc, char** argv)
     const auto component_count = components->all().size();
     const auto reflected_count =
         lux::meta::ReflectionRegistry::instance().classes().size();
-    const auto scene_count = scene.all().size();
-    const auto render_count = render.all().size();
     const auto rollback_ticket = extensions->requestLoad(
         lux::extensions::extensionId("org.lux.test.rollback"));
     for (;;)
@@ -212,10 +208,8 @@ int main(int argc, char** argv)
                 reflected_count,
         "failed DLL publishes no reflected metadata");
     check(
-        components->all().size() == component_count &&
-            scene.all().size() == scene_count &&
-            render.all().size() == render_count,
-        "failed DLL leaves every runtime catalog unchanged");
+        components->all().size() == component_count,
+        "failed DLL leaves the component catalog unchanged");
     pump.drain();
     check(loaded_facts == 3u,
           "failed DLL publishes no successful module fact");

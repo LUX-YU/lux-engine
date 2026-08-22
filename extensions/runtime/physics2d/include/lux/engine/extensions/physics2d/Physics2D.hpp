@@ -9,7 +9,7 @@
 
 namespace lux::extensions::physics2d
 {
-    struct Physics2DContributionConfig final
+    struct Physics2DInstallConfig final
     {
         lux::ecs::Physics2DConfig physics;
         lux::ecs::FixedStepConfig fixed_step;
@@ -24,6 +24,6 @@ namespace lux::extensions::physics2d
         struct State;
         explicit PhysicsWorldApi(std::shared_ptr<State> state) noexcept;
         std::shared_ptr<State> state_;
-        friend class Physics2DContributionSystem;
+        friend class Physics2DExtensionSystem;
     };
 } // namespace lux::extensions::physics2d

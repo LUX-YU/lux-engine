@@ -54,9 +54,6 @@ namespace lux::asset    { class AssetManager; }
 namespace lux::runtime  {
     class ResidencyAssembly;
     class MainCloseDriver;
-    class RenderEffectCatalog;
-    class RenderEffectTypeRegistry;
-    class SceneContributionCatalog;
 }
 namespace lux::extensions {
     class EngineExtensions;
@@ -66,6 +63,7 @@ namespace lux::input { class ActionMapper; class InputContextStack; }
 namespace lux::ecs
 {
     class ComponentTypeCatalog;
+    class ScheduleBuilder;
 }
 
 namespace lux::ui
@@ -132,9 +130,8 @@ namespace lux::editor
         // Name-keyed feature TYPE catalog: dynamic op-ids by name —
         // reg.ops<LightOperationIds>("Light") / reg.paramSetOp("Tonemap")。
         // 进程域只读;每场景句柄住在各场景 RenderSystem 的绑定表里(裁决二)。
-        // Catalog declarations are cold-path mutable at the main-thread
-        // RenderEffect activation safe point. Editor consumers otherwise hold
-        // a const RenderInfra view and perform read-only lookups each frame.
+        // Catalog declarations are cold-path mutable before scene publication.
+        // Editor consumers hold a const RenderInfra view afterwards.
         mutable lux::render::FeatureCatalog feature_catalog;
 
         /// Per-scene attach plan, in attach order (Light before Shadow, …).
@@ -146,12 +143,10 @@ namespace lux::editor
         /// SceneRuntime 宿主从这里取,填进各自 SceneRuntime::Config::residency;
         /// 预览面板经它 request/peekReadyBits(贴图槽)。
         lux::runtime::ResidencyAssembly* residency{nullptr};
-        lux::runtime::RenderEffectCatalog* render_effect_catalog{nullptr};
-        lux::runtime::RenderEffectTypeRegistry* render_effect_types{nullptr};
-        lux::runtime::SceneContributionCatalog*       scene_contribution_catalog{nullptr};
         const lux::extensions::ExtensionModuleManager*
                                                extension_modules{nullptr};
         const lux::ecs::ComponentTypeCatalog*   components{nullptr};
+        std::function<bool(lux::ecs::ScheduleBuilder&)> install_systems;
 
         /// 进程域事件总线(统一事件系统批B)—— 同为**非拥有指针**(所有权在
         /// LuxEditor::Runtime::events_)。三个 SceneRuntime 宿主从这里取,填进各自

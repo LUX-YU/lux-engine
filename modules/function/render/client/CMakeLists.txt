@@ -116,21 +116,6 @@ lux_classify_target(
 )
 
 add_executable(
-    render_effect_id_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/render_effect_id_test.cpp
-)
-target_link_libraries(
-    render_effect_id_test
-    PRIVATE lux::engine::function::render_client
-)
-lux_classify_target(
-    TARGET  render_effect_id_test
-    LAYER   FUNCTION
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-
-add_executable(
     render_platform_value_contract_test
     ${CMAKE_CURRENT_SOURCE_DIR}/test/render_platform_value_contract_test.cpp
 )

@@ -3,17 +3,15 @@
  * @file SceneRuntime.hpp
  * @brief Domain-blind owner of one ECS registry, Schedule and SceneDescription.
  *
- * SceneRuntime decodes one Engine SceneDescription, enables its requested features,
- * publishes startup LXES Sections through the unique ECS command barrier, and
- * closes the resulting registry. Optional domains are
- * installed through ISceneRuntimeIntegration during the unpublished assembly
- * transaction. The core never names render sessions, views, physics backends,
- * script backends, editor UI, or their concrete systems.
+ * SceneRuntime decodes one Engine SceneDescription, publishes startup LXES
+ * Sections through the unique ECS command barrier, and closes the resulting
+ * registry. Product composition and optional integrations receive the same
+ * unpublished ScheduleBuilder; the core never names concrete domain Systems.
  */
 
 #include <lux/engine/runtime/scene/visibility.h>
-#include <lux/engine/runtime/extensions/SceneContributions.hpp>
-#include <lux/engine/runtime/assets/AssetLoadService.hpp>
+#include <lux/engine/resource/asset/AssetLoadPort.hpp>
+#include <lux/engine/resource/asset/AssetRef.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
@@ -29,6 +27,7 @@
 
 #include <cstdint>
 #include <array>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -58,7 +57,6 @@ namespace lux::runtime
     struct SceneRuntimeFrameTrace final
     {
         std::uint64_t frame_serial{0u};
-        std::uint64_t contribution_safe_point_nanoseconds{0u};
         std::uint64_t integration_safe_point_nanoseconds{0u};
         std::array<std::uint64_t, 6u> schedule_phase_nanoseconds{};
         std::uint64_t command_barrier_nanoseconds{0u};
@@ -82,6 +80,7 @@ namespace lux::runtime
     {
         lux::ecs::ScheduleBuilder& builder;
         lux::asset::AssetManager&  assets;
+        const lux::scene::SceneDescription& description;
         std::string_view            scene_name;
     };
 
@@ -91,7 +90,6 @@ namespace lux::runtime
         lux::ecs::Schedule&        schedule;
         lux::ecs::World&           world;
         lux::ecs::SceneServices&   services;
-        SceneContributionHost*     scene_contributions;
         lux::events::DomainEvents* events;
         const lux::extensions::ExtensionModuleManager* extension_modules;
         lux::cxx::move_only_function<void()> request_close_progress;
@@ -143,7 +141,7 @@ namespace lux::runtime
     {
         NONE,
         INTEGRATION_CLOSE_REJECTED,
-        CONTRIBUTION_REMOVAL_REJECTED,
+        SCHEDULE_CLOSE_REJECTED,
     };
 
     [[nodiscard]] constexpr std::string_view toString(
@@ -167,8 +165,8 @@ namespace lux::runtime
             return "none";
         case ESceneCloseError::INTEGRATION_CLOSE_REJECTED:
             return "integration_close_rejected";
-        case ESceneCloseError::CONTRIBUTION_REMOVAL_REJECTED:
-            return "contribution_removal_rejected";
+        case ESceneCloseError::SCHEDULE_CLOSE_REJECTED:
+            return "schedule_close_rejected";
         }
         return "unknown";
     }
@@ -190,13 +188,10 @@ namespace lux::runtime
         }
     };
 
-    /// Cold Authoring export of the currently selected Scene behavior. This is
-    /// rebuilt from persistent live feature roots and the final serialized
-    /// component-schema closure supplied by Authoring capture; it is never
-    /// consumed to publish runtime entities.
+    /// Cold Authoring export of the Extension closure derived from the final
+    /// serialized Component-schema set.
     struct SceneRuntimePersistenceSnapshot final
     {
-        std::vector<lux::scene::SceneFeatureRequest> features;
         std::vector<lux::scene::RequiredExtension> required_extensions;
     };
 
@@ -225,8 +220,6 @@ namespace lux::runtime
             lux::exec::AsyncRuntime&                   async;
             const lux::ecs::ComponentTypeCatalog&      components;
             entity_scene::EntitySectionLoadClient      entity_sections{};
-            SceneContributionCatalog*                  scene_contribution_catalog{
-                nullptr};
             const lux::extensions::ExtensionModuleManager*
                 extension_modules{nullptr};
         };
@@ -242,6 +235,10 @@ namespace lux::runtime
             /// without mutating the process-wide Authoring asset namespace.
             std::shared_ptr<const lux::asset::AssetVfs> section_vfs{};
             lux::events::DomainEvents* events{nullptr};
+            /// Product-owned cold assembly function. It stages ordinary
+            /// world systems into the only Schedule and is never retained
+            /// as a runtime domain object.
+            std::function<bool(lux::ecs::ScheduleBuilder&)> install_systems;
         };
 
         [[nodiscard]] static std::unique_ptr<SceneRuntime> create(
@@ -304,27 +301,6 @@ namespace lux::runtime
             const noexcept
         {
             return *entity_scene_catalog_;
-        }
-        [[nodiscard]] SceneContributions sceneContributions() const noexcept
-        {
-            return scene_contribution_host_
-                ? scene_contribution_host_->facade()
-                : SceneContributions{};
-        }
-        [[nodiscard]] bool hasActiveFeature(
-            std::string_view feature) const noexcept
-        {
-            return scene_contribution_host_ &&
-                scene_contribution_host_->active(
-                    lux::scene::sceneFeatureId(feature));
-        }
-
-        /// Compatibility spelling retained until SceneContribution* types are
-        /// renamed to SceneFeature*. New code should use hasActiveFeature().
-        [[nodiscard]] bool hasActiveContribution(
-            std::string_view contribution) const noexcept
-        {
-            return hasActiveFeature(contribution);
         }
         /// Domain-neutral loading telemetry. Scene Features receive
         /// only EntitySectionClient/ContentBlobClient values and cannot mutate
@@ -389,7 +365,6 @@ namespace lux::runtime
         lux::exec::AsyncRuntime&                  async_;
         const lux::ecs::ComponentTypeCatalog&     components_;
         entity_scene::EntitySectionLoadClient      entity_section_loading_;
-        SceneContributionCatalog*                  scene_contribution_catalog_{};
         const lux::extensions::ExtensionModuleManager*
             extension_modules_{};
         lux::events::DomainEvents*                events_{};
@@ -404,7 +379,6 @@ namespace lux::runtime
         // live in an extension DLL into the Schedule.  Keep the module alive
         // until those systems and their services have been destroyed.
         std::vector<lux::extensions::ModuleLease> extension_module_leases_;
-        std::unique_ptr<SceneContributionHost>     scene_contribution_host_;
         entity_scene::EntitySectionLoaderSystem*   entity_section_loader_{};
         entity_scene::StartupSectionSystem*        startup_sections_{};
         const entity_scene::EntitySceneCatalog*    entity_scene_catalog_{};

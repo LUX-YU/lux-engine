@@ -1,6 +1,5 @@
 #include <lux/engine/hosts/game_application/GameApplication.hpp>
 
-#include <lux/engine/scene/SceneFeatureId.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/runtime/frame/FrameCoordinator.hpp>
 #include <lux/engine/runtime/frame/MainCloseDriver.hpp>
@@ -14,18 +13,16 @@
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>
 #include <lux/engine/runtime/render/scene/SceneGeometryPrepareService.hpp>
 #include <lux/engine/runtime/extensions/EngineExtensions.hpp>
-#include <lux/engine/runtime/extensions/SceneContributions.hpp>
-#include <lux/engine/runtime/packs/spatial3d/Animation3DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial3d/Navigation3DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial3d/Physics3DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial3d/Presentation3DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Presentation2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Simulation2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Transform2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Tilemap2DContribution.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/Spatial3DPartitionedContribution.hpp>
+#include <lux/engine/ecs/animation/InstallAnimationSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallNavigation3DSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallPhysics3DSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallPresentation3DSystems.hpp>
+#include <lux/engine/ecs/integration/presentation2d/InstallPresentation2DSystems.hpp>
+#include <lux/engine/ecs/physics/InstallSimulationSystems.hpp>
+#include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallTilemapSystems.hpp>
+#include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
-#include <lux/engine/runtime/spatial3d/transform/Spatial3DTransformContribution.hpp>
 #include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
 
 #include <lux/engine/ecs/World.hpp>
@@ -418,90 +415,12 @@ namespace lux::game
             lux::runtime::spatial2d::TilemapPrepareService>(
                 std::move(*tilemap_preparation));
 
-        // Static scene capabilities are catalog dependencies of extensions,
-        // so publish their descriptors before validating/loading any module.
-        auto animation3d = lux::runtime::makeAnimation3DContribution(
-            application.component_types);
-        auto presentation3d =
-            lux::runtime::makePresentation3DContribution(
-                application.component_types,
-                application.geometry_preparation->classicMeshClient(),
-                application.geometry_preparation->terrainClient());
-        auto physics3d = lux::runtime::makePhysics3DContribution(
-            application.component_types,
-            application.physics_preparation->client());
-        auto navigation3d = lux::runtime::makeNavigation3DContribution(
-            application.component_types,
-            application.navigation_preparation->client());
-        auto spatial3d_transform =
-            lux::runtime::makeSpatial3DTransformContribution(
-                application.component_types);
-        auto spatial2d_transform =
-            lux::runtime::makeSpatial2DTransformContribution(
-                application.component_types);
-        auto simulation2d = lux::runtime::makeSimulation2DContribution(
-            application.component_types);
-        auto presentation2d = lux::runtime::makePresentation2DContribution(
-            application.component_types);
-        auto tilemap2d = lux::runtime::makeTilemap2DContribution(
-            application.component_types,
-            application.tilemap_preparation->client());
-        auto spatial3d =
-            lux::runtime::makeSpatial3DPartitionedContribution(
-                application.component_types);
-        if (!spatial3d_transform || !animation3d || !presentation3d ||
-            !physics3d || !navigation3d || !spatial2d_transform ||
-            !simulation2d || !presentation2d || !tilemap2d || !spatial3d ||
-            !application.scene_contribution_catalog.add(
-                std::move(*spatial3d_transform)) ||
-            !application.scene_contribution_catalog.add(
-                std::move(*animation3d)) ||
-            !application.scene_contribution_catalog.add(
-                std::move(*presentation3d)) ||
-            !application.scene_contribution_catalog.add(
-                std::move(*physics3d)) ||
-            !application.scene_contribution_catalog.add(
-                std::move(*navigation3d)) ||
-            !application.scene_contribution_catalog.add(
-                std::move(*spatial2d_transform)) ||
-            !application.scene_contribution_catalog.add(
-                std::move(*simulation2d)) ||
-            !application.scene_contribution_catalog.add(
-                std::move(*presentation2d)) ||
-            !application.scene_contribution_catalog.add(
-                std::move(*tilemap2d)) ||
-            !application.scene_contribution_catalog.add(
-                std::move(*spatial3d)))
-        {
-            lux::log::error(
-                "game_application",
-                "built-in scene contribution registration failed"
-            );
-            return false;
-        }
-        if (application.config.hooks.configure_contributions &&
-            !application.config.hooks.configure_contributions(
-                application.scene_contribution_catalog,
-                application.component_types
-            ))
-        {
-            lux::log::error(
-                "game_application",
-                "compiled game pack registration failed"
-            );
-            return false;
-        }
-
         application.extensions =
             std::make_unique<lux::extensions::EngineExtensions>(
                 lux::extensions::EngineExtensionServices{
                     application.extension_modules,
                     *application.async,
-                    {
-                        application.component_types,
-                        application.scene_contribution_catalog,
-                        application.render_host.renderEffectCatalog()
-                    },
+                    application.component_types,
                     application.events.get(),
                     {}
                 },
@@ -695,6 +614,48 @@ namespace lux::game
         runtime_config.scene_asset_id = *boot_id;
         runtime_config.scene_origin = scene_origin;
         runtime_config.events = application.events.get();
+        runtime_config.install_systems = [&application](
+            lux::ecs::ScheduleBuilder& builder)
+        {
+            // Ordinary code composition over the only Schedule. Ordering here
+            // is construction ordering for typed service borrows; execution
+            // ordering remains exclusively declared by each ISystem.
+            return lux::ecs::installSpatial3DTransformSystems(
+                       builder,
+                       application.component_types) &&
+                lux::ecs::installAnimation3DSystems(
+                    builder,
+                    application.component_types) &&
+                lux::runtime::installPhysics3DSystems(
+                    builder,
+                    application.component_types,
+                    application.physics_preparation->client()) &&
+                lux::runtime::installNavigation3DSystems(
+                    builder,
+                    application.component_types,
+                    application.navigation_preparation->client()) &&
+                lux::ecs::installSpatial2DTransformSystems(
+                    builder,
+                    application.component_types) &&
+                lux::ecs::installSimulation2DSystems(
+                    builder,
+                    application.component_types) &&
+                lux::runtime::installTilemap2DSystems(
+                    builder,
+                    application.component_types,
+                    application.tilemap_preparation->client()) &&
+                lux::runtime::installSpatial3DStreamingSystems(
+                    builder,
+                    application.component_types) &&
+                lux::runtime::installPresentation3DSystems(
+                    builder,
+                    application.component_types,
+                    application.geometry_preparation->classicMeshClient(),
+                    application.geometry_preparation->terrainClient()) &&
+                lux::ecs::installPresentation2DSystems(
+                    builder,
+                    application.component_types);
+        };
 
         lux::runtime::RenderSceneServices render_services{
             .frame = *application.session,
@@ -703,11 +664,7 @@ namespace lux::game
             .feature_catalog = application.render_host.featureCatalog(),
             .feature_plan = application.render_host.featurePlan(),
             .residency = *application.residency,
-            .profile = lux::runtime::standardDesktopProfile(),
-            .render_effect_catalog =
-                &application.render_host.renderEffectCatalog(),
-            .render_effect_types =
-                &application.render_host.renderEffectTypes()
+            .profile = lux::runtime::standardDesktopProfile()
         };
         const lux::runtime::SceneRuntime::Dependencies dependencies{
             .assets = *application.assets,
@@ -715,7 +672,6 @@ namespace lux::game
             .async = *application.async,
             .components = application.component_types,
             .entity_sections = application.entity_sections->loadClient(),
-            .scene_contribution_catalog = &application.scene_contribution_catalog,
             .extension_modules = &application.extension_modules
         };
         application.runtime = lux::runtime::SceneRuntime::create(
@@ -847,10 +803,6 @@ namespace lux::game
                 );
                 impl_->observeVisualRevisions();
                 const auto& trace = impl_->runtime->latestFrameTrace();
-                frame.recordPhase(
-                    lux::runtime::EFrameTracePhase::
-                        CONTRIBUTION_SAFE_POINT,
-                    trace.contribution_safe_point_nanoseconds);
                 frame.recordPhase(
                     lux::runtime::EFrameTracePhase::
                         INTEGRATION_SAFE_POINT,
@@ -1138,12 +1090,9 @@ namespace lux::game
             }
         }
 
-        constexpr auto spatial3d_feature =
-            lux::scene::sceneFeatureId(
-                lux::spatial3d::kPartitionedFeatureName);
         telemetry.spatial3d_catalog_present =
-            impl_->runtime->entityScene().findFeature(
-                spatial3d_feature) != nullptr;
+            !impl_->runtime->entityScene().package()
+                 .spatial3d_catalog.empty();
         if (const auto* interest = impl_->runtime->services().get<
                 lux::runtime::spatial3d::SpatialInterest3DSystem>())
         {

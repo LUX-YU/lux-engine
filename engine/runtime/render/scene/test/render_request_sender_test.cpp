@@ -26,7 +26,7 @@
 
 #include <stdexec/execution.hpp>
 
-#include <lux/engine/runtime/extensions/detail/RenderRequestSender.hpp>
+#include <lux/engine/runtime/render/scene/detail/RenderRequestSender.hpp>
 #include <lux/engine/function/render/client/RenderClient.hpp>
 #include <lux/engine/function/render/client/RenderRequest.hpp>
 #include <lux/engine/function/render/client/FrameProgram.hpp>     // ReplyPacket
@@ -125,7 +125,7 @@ int main()
         bool      fired = false;
         TestReply out{};
         auto req = Factory::makeImmediate(TestReply{42, true});
-        auto op  = stdexec::connect(lux::runtime::render_detail::asSender(req),
+        auto op  = stdexec::connect(lux::runtime::render_scene_detail::asSender(req),
                                     RecordRecv<TestReply>{&fired, &out});
         stdexec::start(op);
         check(fired, "case1: already-ready request completes synchronously in start()");
@@ -135,7 +135,7 @@ int main()
     // ── Case 1b: sync_wait round-trips an already-ready value ──
     {
         auto res = stdexec::sync_wait(
-            lux::runtime::render_detail::asSender(Factory::makeImmediate(TestReply{7, false})));
+            lux::runtime::render_scene_detail::asSender(Factory::makeImmediate(TestReply{7, false})));
         check(res.has_value(), "case1b: sync_wait completes on an immediate request");
         check(res && std::get<0>(*res).id == 7, "case1b: sync_wait yields the value");
     }
@@ -145,7 +145,7 @@ int main()
         bool      fired = false;
         TestReply out{};
         auto r  = Factory::make();                       // {request (pending), callback}
-        auto op = stdexec::connect(lux::runtime::render_detail::asSender(r.request),
+        auto op = stdexec::connect(lux::runtime::render_scene_detail::asSender(r.request),
                                    RecordRecv<TestReply>{&fired, &out});
         stdexec::start(op);
         check(!fired, "case2: pending request does NOT fire before the reply");
@@ -163,7 +163,7 @@ int main()
         lux::render::RenderError observed{};
         auto r = Factory::make();
         auto op = stdexec::connect(
-            lux::runtime::render_detail::asSender(r.request),
+            lux::runtime::render_scene_detail::asSender(r.request),
             RecordRecv<TestReply>{&fired, &out, &errored, &observed});
         stdexec::start(op);
 
@@ -296,8 +296,8 @@ int main()
     {
         auto pipe =
             stdexec::when_all(
-                lux::runtime::render_detail::asSender(Factory::makeImmediate(TestReply{3, true})),
-                lux::runtime::render_detail::asSender(Factory::makeImmediate(TestReply{4, true})))
+                lux::runtime::render_scene_detail::asSender(Factory::makeImmediate(TestReply{3, true})),
+                lux::runtime::render_scene_detail::asSender(Factory::makeImmediate(TestReply{4, true})))
             | stdexec::then([](TestReply a, TestReply b) { return a.id + b.id; });
         auto res = stdexec::sync_wait(std::move(pipe));
         check(res.has_value(), "case3: when_all | then completes");

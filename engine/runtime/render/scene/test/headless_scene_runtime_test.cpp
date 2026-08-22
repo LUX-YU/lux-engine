@@ -2,6 +2,8 @@
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
+#include <lux/engine/ecs/Schedule.hpp>
+#include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/components/ParentComponent.hpp>
@@ -267,7 +269,7 @@ namespace
         void requestClose(lux::ecs::SystemCloseProgressSink progress)
             noexcept override
         {
-            // SceneContributionHost closes admission before SceneRuntime
+            // SceneRuntime closes Schedule admission before teardown
             // supplies its wake sink through the whole Schedule. A repeated
             // request must therefore upgrade the retained sink without
             // starting a second close subscription.
@@ -314,41 +316,23 @@ namespace
         bool removed_{false};
     };
 
-    [[nodiscard]] lux::runtime::SceneContributionDescriptor
-    makeRuntimeCloseContribution(
+    [[nodiscard]] bool installRuntimeCloseSystems(
+        lux::ecs::ScheduleBuilder& builder,
         lux::exec::AsyncRuntime& runtime,
         RuntimeCloseProbe& probe)
     {
-        lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::scene::SceneFeatureId{
-            "org.test.scene.runtime_close"};
-        descriptor.display_name = "SceneRuntime close ownership probe";
-        descriptor.provided_services = {
-            lux::cxx::typeToken<RuntimeCloseService>()};
-        descriptor.config_schema_version = 0u;
-        descriptor.provider = lux::extensions::ExtensionId{
-            "org.test.runtime_close"};
-        descriptor.build = [&runtime, &probe](
-            lux::runtime::SceneContributionBatchBuilder& builder,
-            const lux::runtime::SceneContributionBuildContext&,
-            lux::runtime::ContributionConfig)
-            -> lux::cxx::expected<
-                void,
-                lux::runtime::SceneContributionBuildFailure>
-        {
-            const auto service = builder.publishService(
-                std::make_unique<RuntimeCloseService>(probe));
-            if (!service)
-                return lux::cxx::unexpected(service.error());
-            const auto provider = builder.add(
-                std::make_unique<RuntimeCloseProviderSystem>(probe));
-            if (!provider)
-                return lux::cxx::unexpected(provider.error());
-            return builder.add(
+        const auto checkpoint = builder.checkpoint();
+        if (!builder.services().emplace<RuntimeCloseService>(probe) ||
+            !builder.add(
+                std::make_unique<RuntimeCloseProviderSystem>(probe)) ||
+            !builder.add(
                 std::make_unique<RuntimeCloseAsyncConsumerSystem>(
-                    runtime, probe));
-        };
-        return descriptor;
+                    runtime, probe)))
+        {
+            (void)builder.rollbackTo(checkpoint);
+            return false;
+        }
+        return true;
     }
 
     struct CrossPhaseBlobCloseProbe final
@@ -398,30 +382,13 @@ namespace
         CrossPhaseBlobCloseProbe* probe_{};
     };
 
-    [[nodiscard]] lux::runtime::SceneContributionDescriptor
-    makeCrossPhaseBlobCloseContribution(
+    [[nodiscard]] bool installCrossPhaseBlobCloseSystem(
+        lux::ecs::ScheduleBuilder& builder,
         CrossPhaseBlobCloseProbe& probe)
     {
-        lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::scene::SceneFeatureId{
-            "org.test.scene.cross_phase_blob_close"};
-        descriptor.display_name = "Cross-phase blob close probe";
-        descriptor.config_schema_version = 0u;
-        descriptor.provider = lux::extensions::ExtensionId{
-            "org.test.cross_phase_blob_close"};
-        descriptor.build = [&probe](
-            lux::runtime::SceneContributionBatchBuilder& builder,
-            const lux::runtime::SceneContributionBuildContext&,
-            lux::runtime::ContributionConfig)
-            -> lux::cxx::expected<
-                void,
-                lux::runtime::SceneContributionBuildFailure>
-        {
-            return builder.add(
-                std::make_unique<CrossPhaseBlobCloseSystem>(probe),
-                lux::ecs::kPhaseSimulation);
-        };
-        return descriptor;
+        return builder.add(
+            std::make_unique<CrossPhaseBlobCloseSystem>(probe),
+            lux::ecs::kPhaseSimulation).has_value();
     }
 
     class NonTerminalRollbackIntegration final
@@ -576,11 +543,6 @@ int main(int argc, char** argv)
         uuid("10000000-0000-4000-8000-000000000001")};
     package.startup_sections.push_back(record.id);
     package.sections.push_back(record);
-    package.features.push_back({
-        lux::scene::SceneFeatureId{
-            "org.test.scene.cross_phase_blob_close"},
-        0u,
-        {}});
     auto package_bytes = scene::SceneAssetSerDeser::encodeData(
         package.id,
         package);
@@ -622,15 +584,6 @@ int main(int argc, char** argv)
     lux::exec::AsyncRuntime async{std::move(*runtime_plan)};
     RuntimeCloseProbe runtime_close_probe;
     CrossPhaseBlobCloseProbe cross_phase_blob_close_probe;
-    lux::runtime::SceneContributionCatalog contribution_catalog;
-    check(
-        contribution_catalog.add(makeRuntimeCloseContribution(
-            async, runtime_close_probe)).has_value(),
-        "SceneRuntime close probe contribution registers");
-    check(
-        contribution_catalog.add(makeCrossPhaseBlobCloseContribution(
-            cross_phase_blob_close_probe)).has_value(),
-        "cross-phase blob close contribution registers");
     lux::ecs::ComponentTypeCatalog components;
     lux::runtime::SceneRuntime::Dependencies dependencies{
         assets,
@@ -638,7 +591,6 @@ int main(int argc, char** argv)
         async,
         components,
         section_service.loadClient()};
-    dependencies.scene_contribution_catalog = &contribution_catalog;
     lux::runtime::SceneRuntime::Config config;
     config.name = "LXSC Headless Scene";
     config.scene_origin = "/Game/scene_lxsc";
@@ -651,6 +603,12 @@ int main(int argc, char** argv)
     config.scene_asset_id = registerScene(
         assets, std::move(**decoded_package));
     config.section_vfs = vfs;
+    config.install_systems =
+        [&cross_phase_blob_close_probe](lux::ecs::ScheduleBuilder& builder)
+        {
+            return installCrossPhaseBlobCloseSystem(
+                builder, cross_phase_blob_close_probe);
+        };
 
     auto scene_runtime = lux::runtime::SceneRuntime::create(dependencies, config);
     check(scene_runtime != nullptr, "headless SceneRuntime accepts LXSC");
@@ -776,13 +734,14 @@ int main(int argc, char** argv)
     scene::SceneDescription ordered_close_description{
         lux::asset::asset_id_t{
             uuid("10000000-0000-4000-8000-000000000004")}};
-    ordered_close_description.features.push_back({
-        lux::scene::SceneFeatureId{
-            "org.test.scene.runtime_close"},
-        0u,
-        {}});
     ordered_close_config.scene_asset_id = registerScene(
         assets, std::move(ordered_close_description));
+    ordered_close_config.install_systems =
+        [&async, &runtime_close_probe](lux::ecs::ScheduleBuilder& builder)
+        {
+            return installRuntimeCloseSystems(
+                builder, async, runtime_close_probe);
+        };
     auto ordered_close_scene = lux::runtime::SceneRuntime::create(
         dependencies, ordered_close_config);
         check(
@@ -792,15 +751,11 @@ int main(int argc, char** argv)
             "SceneRuntime installs an externally-owned close scope");
     if (ordered_close_scene)
     {
-        const auto persistence = ordered_close_scene->persistenceSnapshot(
-            std::span<const std::string>{});
         check(
-            ordered_close_scene->hasActiveContribution(
-                "org.test.scene.runtime_close") &&
-                persistence.features.size() == 1u &&
-                persistence.features.front().id.name() ==
-                    "org.test.scene.runtime_close",
-            "manifest contribution is adopted as the authoritative persistent root");
+            ordered_close_scene->schedule().systemCount() >= 2u &&
+                ordered_close_scene->services().contains<
+                    RuntimeCloseService>(),
+            "directly installed systems use the authoritative Schedule");
         std::size_t completions = 0u;
         const auto report = closeScene(
             *ordered_close_scene, async, completions);

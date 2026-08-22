@@ -11,6 +11,7 @@
 
 set(LUX_ECS_SCRIPT_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptEventRegistry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptAssetRequestSystem.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptSystem.cpp
 )

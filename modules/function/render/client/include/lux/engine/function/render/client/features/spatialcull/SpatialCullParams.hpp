@@ -3,7 +3,7 @@
 //  SpatialCullParams.hpp — live-tunable spatial coarse-cull parameters.
 //
 //  A reflected (LUX_CLASS + LUX_MEMBER) struct so the editor's
-//  SceneFeatureSettingPanel enumerates it generically (the feature-driven
+//  SceneSettingsPanel enumerates it generically (the feature-driven
 //  quality seam, same machinery as TonemapParams) — no per-feature UI code.
 //  These are a true image-quality-vs-performance trade-off (view distance / cell granularity), so
 //  they belong in the settings panel. Trivially copyable, so the same struct

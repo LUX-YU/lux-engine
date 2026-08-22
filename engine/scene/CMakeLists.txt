@@ -59,7 +59,6 @@ lux_classify_target(
 )
 
 foreach(test_target IN ITEMS
-    scene_feature_id_test
     scene_public_link_test
     scene_validation_test
     scene_asset_contract_test

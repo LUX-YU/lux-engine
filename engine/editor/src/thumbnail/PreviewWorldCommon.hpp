@@ -11,7 +11,7 @@
  * 状态机各归各家。编辑器私有(src/ 下,不进公共 include/)。
  */
 
-#include <lux/engine/runtime/extensions/SceneContributions.hpp>
+#include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/ecs/Registry.hpp>              // entity_id
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>   // RenderTargetId
 #include <lux/engine/math/Extent.hpp>
@@ -27,27 +27,15 @@ namespace lux::asset { class AssetManager; }
 
 namespace lux::editor
 {
-    inline constexpr std::string_view kPreviewWorldContributionName =
-        "org.lux.editor.preview3d";
-
-    [[nodiscard]] constexpr lux::scene::SceneFeatureIdView
-    previewWorldContributionId() noexcept
-    {
-        return lux::scene::sceneFeatureId(
-            kPreviewWorldContributionName);
-    }
-
     /// 手工 preview pack —— 故意**不用 addScene3D**:预览世界只要「网格实例画得
     /// 出来」这一件事。骨骼/天空盒/流送/剔除都不装 —— 少装的每一项都是每帧的
     /// 空查询与一次 feature attach。AnimationSystem 仍要装:SceneRuntime 无条件
     /// 安装的 SkeletalAnimationResolver 声明了「先于 AnimationSystem」,不装的话
     /// 那条约束悬空,Schedule::compile 每次装配都会 warn 一行。
-    [[nodiscard]] lux::runtime::SceneContributionDescriptor
-    makePreviewWorldContribution();
+    [[nodiscard]] bool installPreviewWorldSystems(
+        lux::ecs::ScheduleBuilder& builder);
 
-    /// Build the transient LXSC value for one private preview world. Registering
-    /// the descriptor in a catalog is not activation: the manifest must select
-    /// it so SceneRuntime installs the mesh resolver and extraction subsystem.
+    /// Build the transient LXSC value for one private preview world.
     [[nodiscard]] lux::scene::SceneDescription
     makePreviewSceneDescription(std::string_view scene_name);
 

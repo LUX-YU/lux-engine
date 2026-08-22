@@ -431,10 +431,8 @@ namespace lux::editor
         /// True only between a successful `bringUp` and a `tearDown`.
         [[nodiscard]] bool isLive() const noexcept { return live_; }
 
-        /// Capability selection comes only from the LXSC/LXWA contribution
-        /// list. There is no top-level 2D/3D scene discriminator.
-        [[nodiscard]] bool hasContribution(
-            std::string_view contribution) const noexcept;
+        /// Authoring placement topology, derived from the WorldSource data.
+        [[nodiscard]] bool isPlanar2D() const noexcept;
 
         /// FQNs of component schemas installed in this editor process. Scene
         /// contributions assemble behavior and services; they are deliberately

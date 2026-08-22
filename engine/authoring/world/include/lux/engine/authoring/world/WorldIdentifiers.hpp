@@ -109,12 +109,10 @@ namespace lux::authoring
         std::string name_;
     };
 
-    struct WorldSceneFeatureIdTag final {};
     struct WorldExtensionIdTag final {};
     struct DataLayerIdTag final {};
     struct ChunkGeneratorIdTag final {};
 
-    using WorldSceneFeatureId = BasicStableNameId<WorldSceneFeatureIdTag>;
     using WorldExtensionId = BasicStableNameId<WorldExtensionIdTag>;
     using DataLayerId = BasicStableNameId<DataLayerIdTag>;
     using ChunkGeneratorId = BasicStableNameId<ChunkGeneratorIdTag>;

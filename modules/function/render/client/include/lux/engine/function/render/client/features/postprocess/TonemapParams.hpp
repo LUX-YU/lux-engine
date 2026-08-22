@@ -4,7 +4,7 @@
 //
 //  The FIRST adopter of the RenderFeature param seam (feature-driven quality
 //  system). A plain reflected struct (LUX_CLASS + LUX_MEMBER) so the editor's
-//  SceneFeatureSettingPanel enumerates it generically and quality tiers can pin
+//  SceneSettingsPanel enumerates it generically and quality tiers can pin
 //  its fields — no per-feature UI code. Trivially copyable, so the same struct
 //  doubles as the TonemapSetParams comm payload body.
 //

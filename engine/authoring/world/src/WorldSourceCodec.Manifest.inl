@@ -165,18 +165,6 @@
         writer.writePod(kWorldSourceMagic);
         writer.writePod(kWorldSourceVersion);
         writeId(writer, root.world);
-        writer.writePod(static_cast<std::uint32_t>(
-            root.contributions.size()));
-        for (const auto& contribution : root.contributions)
-        {
-            writer.writePod(contribution.id.hash());
-            writer.writeString(contribution.id.name());
-            writer.writePod(contribution.config_schema_version);
-            writer.writePod(static_cast<std::uint64_t>(
-                contribution.config.size()));
-            writer.writeBytes(
-                contribution.config.data(), contribution.config.size());
-        }
         writer.writePod(static_cast<std::uint32_t>(root.spaces.size()));
         for (const auto& space : root.spaces)
         {
@@ -221,60 +209,31 @@
         return bytes;
     }
 
-    lux::cxx::expected<WorldSourceDocument, std::string>
+    lux::cxx::expected<WorldSourceDocument, WorldSourceCodecFailure>
     decodeWorldSource(
         std::span<const std::byte> bytes,
         const WorldSourceCodecLimits& limits) noexcept
     {
         if (bytes.size() > limits.maximum_bytes)
-            return lux::cxx::unexpected(
-                std::string{"World source exceeds byte limit"});
+            return lux::cxx::unexpected(WorldSourceCodecFailure{
+                EWorldSourceCodecError::LIMIT_EXCEEDED,
+                "World source exceeds byte limit"});
         ArchiveReader reader{bytes.data(), bytes.size()};
-        if (reader.readPod<std::uint32_t>() != kWorldSourceMagic
-            || reader.readPod<std::uint32_t>() != kWorldSourceVersion)
-            return lux::cxx::unexpected(
-                std::string{"World source has invalid LXWA v4 header"});
+        if (reader.readPod<std::uint32_t>() != kWorldSourceMagic)
+            return lux::cxx::unexpected(WorldSourceCodecFailure{
+                EWorldSourceCodecError::INVALID_DATA,
+                "invalid LXWA magic"});
+        if (reader.readPod<std::uint32_t>() != kWorldSourceVersion)
+            return lux::cxx::unexpected(WorldSourceCodecFailure{
+                EWorldSourceCodecError::UNSUPPORTED_VERSION,
+                "unsupported LXWA version"});
         WorldSourceDocument root;
         root.world = readId<lux::authoring::WorldId>(reader);
         std::uint32_t count = 0u;
-        if (!readCount(reader, limits.maximum_contributions, count))
-        {
-            return lux::cxx::unexpected(
-                std::string{"too many scene contributions"});
-        }
-        root.contributions.reserve(count);
-        for (std::uint32_t index = 0u; index < count; ++index)
-        {
-            const auto hash = reader.readPod<std::uint64_t>();
-            std::string name;
-            if (!readString(reader, limits.maximum_string_bytes, name))
-            {
-                return lux::cxx::unexpected(
-                    std::string{"malformed scene contribution id"});
-            }
-            lux::authoring::WorldSceneFeatureRequest contribution;
-            contribution.id = lux::authoring::WorldSceneFeatureId{name};
-            if (contribution.id.hash() != hash)
-            {
-                return lux::cxx::unexpected(
-                    std::string{"scene contribution id hash mismatch"});
-            }
-            contribution.config_schema_version =
-                reader.readPod<std::uint32_t>();
-            const auto size = reader.readPod<std::uint64_t>();
-            if (!reader.ok() || size > limits.maximum_bytes ||
-                size > reader.remaining())
-            {
-                return lux::cxx::unexpected(
-                    std::string{"malformed scene contribution config"});
-            }
-            contribution.config.resize(static_cast<std::size_t>(size));
-            reader.readBytes(
-                contribution.config.data(), contribution.config.size());
-            root.contributions.push_back(std::move(contribution));
-        }
         if (!readCount(reader, limits.maximum_spaces, count))
-            return lux::cxx::unexpected(std::string{"too many Partition Spaces"});
+            return lux::cxx::unexpected(WorldSourceCodecFailure{
+                EWorldSourceCodecError::LIMIT_EXCEEDED,
+                "too many Partition Spaces"});
         root.spaces.reserve(count);
         for (std::uint32_t i = 0u; i < count; ++i)
         {
@@ -285,42 +244,55 @@
             space.macro_edge_cells = reader.readPod<std::uint16_t>();
             if (topology > static_cast<std::uint8_t>(
                     lux::authoring::EPartitionTopology::VOLUMETRIC_XYZ))
-                return lux::cxx::unexpected(std::string{"invalid Space topology"});
+                return lux::cxx::unexpected(WorldSourceCodecFailure{
+                    EWorldSourceCodecError::INVALID_DATA,
+                    "invalid Space topology"});
             space.topology = static_cast<lux::authoring::EPartitionTopology>(topology);
             root.spaces.push_back(space);
         }
         if (!readCount(reader, limits.maximum_data_layers, count))
-            return lux::cxx::unexpected(std::string{"too many Data Layers"});
+            return lux::cxx::unexpected(WorldSourceCodecFailure{
+                EWorldSourceCodecError::LIMIT_EXCEEDED,
+                "too many Data Layers"});
         root.data_layers.reserve(count);
         for (std::uint32_t i = 0u; i < count; ++i)
         {
             lux::authoring::DataLayerId layer;
             if (!readLayer(reader, limits, layer))
-                return lux::cxx::unexpected(std::string{"malformed Data Layer"});
+                return lux::cxx::unexpected(WorldSourceCodecFailure{
+                    EWorldSourceCodecError::INVALID_DATA,
+                    "malformed Data Layer"});
             root.data_layers.push_back(std::move(layer));
         }
         if (!readCount(reader, limits.maximum_requirements, count))
-            return lux::cxx::unexpected(std::string{"too many Extension requirements"});
+            return lux::cxx::unexpected(WorldSourceCodecFailure{
+                EWorldSourceCodecError::LIMIT_EXCEEDED,
+                "too many Extension requirements"});
         root.required_extensions.reserve(count);
         for (std::uint32_t i = 0u; i < count; ++i)
         {
             const auto hash = reader.readPod<std::uint64_t>();
             std::string name;
             if (!readString(reader, limits.maximum_string_bytes, name))
-                return lux::cxx::unexpected(std::string{"malformed Extension id"});
+                return lux::cxx::unexpected(WorldSourceCodecFailure{
+                    EWorldSourceCodecError::INVALID_DATA,
+                    "malformed Extension id"});
             lux::authoring::WorldRequiredExtension extension;
             extension.id = lux::authoring::WorldExtensionId{name};
             if (extension.id.hash() != hash)
             {
-                return lux::cxx::unexpected(
-                    std::string{"Extension id hash mismatch"});
+                return lux::cxx::unexpected(WorldSourceCodecFailure{
+                    EWorldSourceCodecError::INVALID_DATA,
+                    "Extension id hash mismatch"});
             }
             extension.required_major = reader.readPod<std::uint16_t>();
             extension.minimum_minor = reader.readPod<std::uint16_t>();
             root.required_extensions.push_back(std::move(extension));
         }
         if (!readCount(reader, limits.maximum_instance_sets, count))
-            return lux::cxx::unexpected(std::string{"too many Instance Sets"});
+            return lux::cxx::unexpected(WorldSourceCodecFailure{
+                EWorldSourceCodecError::LIMIT_EXCEEDED,
+                "too many Instance Sets"});
         root.instance_sets.reserve(count);
         for (std::uint32_t i = 0u; i < count; ++i)
         {
@@ -329,7 +301,9 @@
                 reader.readPod<std::uint64_t>()});
         }
         if (!readCount(reader, limits.maximum_descriptor_pages, count))
-            return lux::cxx::unexpected(std::string{"too many Descriptor Pages"});
+            return lux::cxx::unexpected(WorldSourceCodecFailure{
+                EWorldSourceCodecError::LIMIT_EXCEEDED,
+                "too many Descriptor Pages"});
         root.descriptor_pages.reserve(count);
         for (std::uint32_t i = 0u; i < count; ++i)
         {
@@ -339,7 +313,9 @@
             if (!readMacro(reader, reference.macro)
                 || !readString(
                     reader, limits.maximum_string_bytes, reference.document_path))
-                return lux::cxx::unexpected(std::string{"malformed Descriptor Page"});
+                return lux::cxx::unexpected(WorldSourceCodecFailure{
+                    EWorldSourceCodecError::INVALID_DATA,
+                    "malformed Descriptor Page"});
             reader.readBytes(
                 reference.content_digest.data(),
                 reference.content_digest.size());
@@ -348,11 +324,14 @@
             root.descriptor_pages.push_back(std::move(reference));
         }
         if (!reader.ok() || !reader.eof())
-            return lux::cxx::unexpected(
-                std::string{"World source is truncated or has trailing bytes"});
+            return lux::cxx::unexpected(WorldSourceCodecFailure{
+                EWorldSourceCodecError::INVALID_DATA,
+                "World source is truncated or has trailing bytes"});
         canonicalizeRoot(root);
         if (auto valid = validateRoot(root, limits); !valid)
-            return lux::cxx::unexpected(std::move(valid.error()));
+            return lux::cxx::unexpected(WorldSourceCodecFailure{
+                EWorldSourceCodecError::INVALID_DATA,
+                std::move(valid.error())});
         return root;
     }
 

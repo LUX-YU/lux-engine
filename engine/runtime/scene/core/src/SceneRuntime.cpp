@@ -1,7 +1,7 @@
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
 #include <lux/engine/runtime/scene/SceneAsyncContext.hpp>
 
-#include <lux/engine/runtime/assets/SceneAssetServices.hpp>
+#include <lux/engine/resource/asset/AssetServices.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncScope.hpp>
 #include <lux/engine/ecs/HierarchyIndex.hpp>
@@ -87,56 +87,6 @@ namespace lux::runtime
         std::span<const std::string> persistent_component_schemas) const
     {
         SceneRuntimePersistenceSnapshot result;
-        if (scene_contribution_host_)
-        {
-            const auto activations =
-                scene_contribution_host_->activationSnapshot();
-            std::vector<lux::scene::SceneFeatureId> provider_closure;
-            const auto addProviderClosure = [&](
-                auto&& self,
-                lux::scene::SceneFeatureIdView feature) -> void
-            {
-                if (!scene_contribution_catalog_ ||
-                    std::ranges::any_of(
-                        provider_closure,
-                        [feature](const auto& visited)
-                        {
-                            return lux::scene::sameSceneFeatureId(
-                                visited.view(), feature);
-                        }))
-                    return;
-                const auto* descriptor =
-                    scene_contribution_catalog_->find(feature);
-                if (!descriptor)
-                    return;
-                provider_closure.push_back(descriptor->id);
-                addRequiredExtension(
-                    result.required_extensions,
-                    descriptor->provider,
-                    extension_modules_);
-                for (const auto& dependency :
-                     descriptor->required_contributions)
-                    self(self, dependency.view());
-            };
-
-            for (const auto& activation : activations)
-            {
-                if (!activation.root || activation.persistence ==
-                        EActivationPersistence::TRANSIENT)
-                    continue;
-                result.features.push_back({
-                    lux::scene::SceneFeatureId{
-                        activation.feature.name()},
-                    activation.config.schema_version,
-                    std::vector<std::byte>{
-                        activation.config.bytes.view().begin(),
-                        activation.config.bytes.view().end()}});
-                addProviderClosure(
-                    addProviderClosure,
-                    activation.feature.view());
-            }
-        }
-
         for (const auto& schema_name : persistent_component_schemas)
         {
             const auto* component = components_.findBySchema(schema_name);
@@ -148,10 +98,6 @@ namespace lux::runtime
                 extension_modules_);
         }
 
-        std::ranges::sort(
-            result.features,
-            {},
-            [](const auto& value) { return value.id.name(); });
         std::ranges::sort(
             result.required_extensions,
             {},
@@ -168,7 +114,6 @@ namespace lux::runtime
         , async_(deps.async)
         , components_(deps.components)
         , entity_section_loading_(deps.entity_sections)
-        , scene_contribution_catalog_(deps.scene_contribution_catalog)
         , extension_modules_(deps.extension_modules)
         , integration_(std::move(integration))
         , async_scope_(std::make_unique<lux::exec::AsyncScope>(deps.async))
@@ -321,7 +266,7 @@ namespace lux::runtime
             return failBringUp();
         }
         if (!builder.services().emplace<
-                lux::asset_runtime::SceneAssetServices>(
+                lux::asset::AssetServices>(
                     assets_,
                     asset_client_))
         {
@@ -386,6 +331,7 @@ namespace lux::runtime
         SceneRuntimeAssemblyContext assembly_context{
             builder,
             assets_,
+            package,
             config.name};
         if (integration_ && !integration_->prepare(assembly_context))
         {
@@ -395,41 +341,12 @@ namespace lux::runtime
             return failBringUp();
         }
 
-        std::optional<SceneContributionBootstrap> contribution_bootstrap;
-        if (!package.features.empty())
+        if (config.install_systems && !config.install_systems(builder))
         {
-            if (!scene_contribution_catalog_)
-            {
-                lux::log::error(
-                    "scene",
-                    "SceneDescription features require a catalog");
-                return failBringUp();
-            }
-            std::vector<SceneContributionSelection> selected;
-            selected.reserve(package.features.size());
-            for (const auto& feature : package.features)
-            {
-                selected.push_back(SceneContributionSelection{
-                    lux::scene::SceneFeatureId{feature.id.name()},
-                    ContributionConfig{
-                        feature.config_schema_version,
-                        lux::cxx::SharedBytes<>::copyOf(
-                            feature.config)}});
-            }
-            auto assembled = scene_contribution_catalog_->stageBootstrap(
-                builder,
-                selected);
-            if (!assembled)
-            {
-                lux::log::error(
-                    "scene",
-                    "scene feature assembly failed for '{}' "
-                    "(status={})",
-                    assembled.error().feature.name(),
-                    static_cast<unsigned>(assembled.error().code));
-                return failBringUp();
-            }
-            contribution_bootstrap.emplace(std::move(*assembled));
+            lux::log::error(
+                "scene",
+                "product System assembly rejected the candidate World");
+            return failBringUp();
         }
 
         if (integration_ && !integration_->finalize(assembly_context))
@@ -493,26 +410,6 @@ namespace lux::runtime
             return failBringUp();
         }
 
-        std::unique_ptr<SceneContributionHost> candidate_contribution_host;
-        if (scene_contribution_catalog_)
-        {
-            candidate_contribution_host =
-                std::make_unique<SceneContributionHost>(
-                    *candidate_schedule,
-                    *candidate_services,
-                    *scene_contribution_catalog_,
-                    events_);
-            if (contribution_bootstrap &&
-                !candidate_contribution_host->adoptBootstrap(
-                    std::move(*contribution_bootstrap)))
-            {
-                lux::log::error(
-                    "scene",
-                    "scene contribution bootstrap ownership adoption failed");
-                return failBringUp();
-            }
-        }
-
         world_ = std::move(candidate_world);
         persistent_entities_ =
             std::move(candidate_persistent_entities);
@@ -523,7 +420,6 @@ namespace lux::runtime
         entity_section_loader_ = loader_owner;
         startup_sections_ = startup_owner;
         entity_scene_catalog_ = catalog;
-        scene_contribution_host_ = std::move(candidate_contribution_host);
 
         if (integration_)
         {
@@ -532,7 +428,6 @@ namespace lux::runtime
                 *schedule_,
                 *world_,
                 *services_,
-                scene_contribution_host_.get(),
                 events_,
                 extension_modules_,
                 [this]() noexcept
@@ -596,16 +491,6 @@ namespace lux::runtime
         }
         else if (state_ == ESceneRuntimeState::READY)
         {
-            if (scene_contribution_host_)
-            {
-                const auto started = std::chrono::steady_clock::now();
-                (void)scene_contribution_host_->processSafePoint();
-                latest_frame_trace_.contribution_safe_point_nanoseconds =
-                    static_cast<std::uint64_t>(
-                        std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            std::chrono::steady_clock::now() - started)
-                            .count());
-            }
             if (integration_)
             {
                 const auto started = std::chrono::steady_clock::now();

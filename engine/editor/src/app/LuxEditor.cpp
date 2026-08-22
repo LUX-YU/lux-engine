@@ -47,17 +47,15 @@
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
-#include <lux/engine/runtime/packs/spatial3d/Animation3DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial3d/Navigation3DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial3d/Physics3DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial3d/Presentation3DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Physics2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Presentation2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Simulation2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Tilemap2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Transform2DContribution.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/Spatial3DPartitionedContribution.hpp>
-#include <lux/engine/runtime/spatial3d/transform/Spatial3DTransformContribution.hpp>
+#include <lux/engine/ecs/animation/InstallAnimationSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallNavigation3DSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallPhysics3DSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallPresentation3DSystems.hpp>
+#include <lux/engine/ecs/integration/presentation2d/InstallPresentation2DSystems.hpp>
+#include <lux/engine/ecs/physics/InstallSimulationSystems.hpp>
+#include <lux/engine/runtime/scene/composition/InstallTilemapSystems.hpp>
+#include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
+#include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
 #include <lux/engine/runtime/logging/LogRouter.hpp>
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
@@ -79,7 +77,7 @@
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/ui/ImGuiLuxWidgets.hpp>
 #include <lux/engine/editor/panels/InspectorPanel.hpp>
-#include <lux/engine/editor/panels/SceneFeatureSettingPanel.hpp>
+#include <lux/engine/editor/panels/SceneSettingsPanel.hpp>
 #include <lux/engine/editor/panels/ExtensionMonitorPanel.hpp>
 #include <lux/engine/ui/Panel.hpp>
 #include <lux/engine/ui/SceneViewportPanel.hpp>
@@ -210,7 +208,6 @@ namespace lux::editor
         // legacy global instance; consumers receive it explicitly from here.
         lux::flowforge::NodeRegistry&                            flow_nodes_{
             lux::flowforge::NodeRegistry::global()};
-        lux::runtime::SceneContributionCatalog                  scene_contribution_catalog_;
         std::unique_ptr<lux::events::DomainEvents>              events_;
         lux::events::EventPump*                                 frame_pump_{nullptr};
         lux::events::EventPump*                                 ui_pump_{nullptr};
@@ -626,10 +623,46 @@ namespace lux::editor
         runtime_->render_infra_.feature_catalog = runtime_->render_thread_host_->featureCatalog();
         runtime_->render_infra_.feature_plan    = runtime_->render_thread_host_->featurePlan();
         runtime_->render_infra_.control         = &runtime_->render_thread_host_->controlSession();
-        runtime_->render_infra_.render_effect_catalog = &runtime_->render_thread_host_->renderEffectCatalog();
-        runtime_->render_infra_.render_effect_types = &runtime_->render_thread_host_->renderEffectTypes();
-        runtime_->render_infra_.scene_contribution_catalog = &runtime_->scene_contribution_catalog_;
         runtime_->render_infra_.extension_modules = &runtime_->extension_modules_;
+        runtime_->render_infra_.install_systems = [runtime = runtime_.get()](
+            lux::ecs::ScheduleBuilder& builder)
+        {
+            return lux::ecs::installSpatial3DTransformSystems(
+                       builder,
+                       runtime->component_types_) &&
+                lux::ecs::installAnimation3DSystems(
+                    builder,
+                    runtime->component_types_) &&
+                lux::runtime::installPhysics3DSystems(
+                    builder,
+                    runtime->component_types_,
+                    runtime->physics_preparation_->client()) &&
+                lux::runtime::installNavigation3DSystems(
+                    builder,
+                    runtime->component_types_,
+                    runtime->navigation_preparation_->client()) &&
+                lux::ecs::installSpatial2DTransformSystems(
+                    builder,
+                    runtime->component_types_) &&
+                lux::ecs::installSimulation2DSystems(
+                    builder,
+                    runtime->component_types_) &&
+                lux::runtime::installTilemap2DSystems(
+                    builder,
+                    runtime->component_types_,
+                    runtime->tilemap_preparation_->client()) &&
+                lux::runtime::installSpatial3DStreamingSystems(
+                    builder,
+                    runtime->component_types_) &&
+                lux::runtime::installPresentation3DSystems(
+                    builder,
+                    runtime->component_types_,
+                    runtime->geometry_preparation_->classicMeshClient(),
+                    runtime->geometry_preparation_->terrainClient()) &&
+                lux::ecs::installPresentation2DSystems(
+                    builder,
+                    runtime->component_types_);
+        };
 
         runtime_->session_ = std::make_unique<lux::ui::UIRenderFrameSession>(
             runtime_->render_thread_host_->channel(),
@@ -811,80 +844,12 @@ namespace lux::editor
                         [this, p]{ importExternalAsset(p); });
             };
 
-        auto animation3d = lux::runtime::makeAnimation3DContribution(
-            runtime_->component_types_);
-        auto presentation3d =
-            lux::runtime::makePresentation3DContribution(
-                runtime_->component_types_,
-                runtime_->geometry_preparation_->classicMeshClient(),
-                runtime_->geometry_preparation_->terrainClient());
-        auto physics3d = lux::runtime::makePhysics3DContribution(
-            runtime_->component_types_,
-            runtime_->physics_preparation_->client());
-        auto navigation3d = lux::runtime::makeNavigation3DContribution(
-            runtime_->component_types_,
-            runtime_->navigation_preparation_->client());
-        auto spatial3d_transform =
-            lux::runtime::makeSpatial3DTransformContribution(
-                runtime_->component_types_);
-        auto spatial2d_transform =
-            lux::runtime::makeSpatial2DTransformContribution(
-                runtime_->component_types_);
-        auto simulation2d = lux::runtime::makeSimulation2DContribution(
-            runtime_->component_types_);
-        auto presentation2d = lux::runtime::makePresentation2DContribution(
-            runtime_->component_types_);
-        auto tilemap2d = lux::runtime::makeTilemap2DContribution(
-            runtime_->component_types_,
-            runtime_->tilemap_preparation_->client());
-        auto spatial3d =
-            lux::runtime::makeSpatial3DPartitionedContribution(
-                runtime_->component_types_);
-        auto physics2d = lux::runtime::makePhysics2DContribution(
-            runtime_->component_types_);
-        if (!spatial3d_transform || !animation3d || !presentation3d ||
-            !physics3d || !navigation3d || !spatial2d_transform ||
-            !simulation2d || !presentation2d || !tilemap2d || !spatial3d ||
-            !physics2d)
-        {
-            std::fprintf(
-                stderr,
-                "[LuxEditor] built-in scene contribution schema validation "
-                "failed\n");
-            shutdown();
-            return false;
-        }
-        std::vector<lux::runtime::SceneContributionDescriptor> builtin_scene_contributions;
-        builtin_scene_contributions.push_back(std::move(*spatial3d_transform));
-        builtin_scene_contributions.push_back(std::move(*animation3d));
-        builtin_scene_contributions.push_back(std::move(*presentation3d));
-        builtin_scene_contributions.push_back(std::move(*physics3d));
-        builtin_scene_contributions.push_back(std::move(*navigation3d));
-        builtin_scene_contributions.push_back(std::move(*spatial2d_transform));
-        builtin_scene_contributions.push_back(std::move(*simulation2d));
-        builtin_scene_contributions.push_back(std::move(*presentation2d));
-        builtin_scene_contributions.push_back(std::move(*tilemap2d));
-        builtin_scene_contributions.push_back(std::move(*spatial3d));
-        builtin_scene_contributions.push_back(std::move(*physics2d));
-        if (!runtime_->scene_contribution_catalog_.addBatch(std::move(builtin_scene_contributions)))
-        {
-            std::fprintf(
-                stderr,
-                "[LuxEditor] built-in scene contribution registration "
-                "failed\n");
-            shutdown();
-            return false;
-        }
-
         runtime_->extensions_ = std::make_unique<
             lux::extensions::EngineExtensions>(
                 lux::extensions::EngineExtensionServices{
                     .modules = runtime_->extension_modules_,
                     .async = *runtime_->async_,
-                    .runtime_catalogs = {
-                        runtime_->component_types_,
-                        runtime_->scene_contribution_catalog_,
-                        *runtime_->render_infra_.render_effect_catalog},
+                    .components = runtime_->component_types_,
                     .events = runtime_->events_.get(),
                     .prepare_editor =
                         lux::extensions::makeEditorRegistrationAdapter(
@@ -895,9 +860,6 @@ namespace lux::editor
         {
             auto& tools = runtime_->shell_->toolHost();
             if (!tools.addService(*runtime_->extensions_) ||
-                !tools.addService(runtime_->scene_contribution_catalog_) ||
-                !tools.addService(
-                    *runtime_->render_infra_.render_effect_catalog) ||
                 !tools.addService(runtime_->shell_->panelCatalog()))
             {
                 std::fprintf(
@@ -919,10 +881,6 @@ namespace lux::editor
                 lux::cxx::typeToken<
                     lux::extensions::EngineExtensions>(),
                 lux::cxx::typeToken<
-                    lux::runtime::SceneContributionCatalog>(),
-                lux::cxx::typeToken<
-                    lux::runtime::RenderEffectCatalog>(),
-                lux::cxx::typeToken<
                     lux::editor::EditorPanelCatalog>()};
             descriptor.create = [](const auto& context)
                 -> lux::cxx::expected<
@@ -931,13 +889,9 @@ namespace lux::editor
             {
                 auto* extensions = context.template find<
                     lux::extensions::EngineExtensions>();
-                auto* world = context.template find<
-                    lux::runtime::SceneContributionCatalog>();
-                auto* render = context.template find<
-                    lux::runtime::RenderEffectCatalog>();
                 auto* panels = context.template find<
                     lux::editor::EditorPanelCatalog>();
-                if (!extensions || !world || !render || !panels)
+                if (!extensions || !panels)
                 {
                     return lux::cxx::unexpected(
                         lux::editor::EEditorPanelCreateError::
@@ -948,8 +902,6 @@ namespace lux::editor
                         lux::editor::ExtensionMonitorPanel>(
                             "Extension Monitor",
                             *extensions,
-                            *world,
-                            *render,
                             *panels)};
             };
             if (!runtime_->shell_->panelCatalog().add(
@@ -1327,10 +1279,8 @@ namespace lux::editor
             ImGui::TextDisabled("No scene open");
             return;
         }
-        const bool presents_2d = scene->hasContribution(
-            "org.lux.builtin.presentation2d");
-        const bool presents_3d = scene->hasContribution(
-            "org.lux.builtin.presentation3d");
+        const bool presents_2d = scene->isPlanar2D();
+        const bool presents_3d = !presents_2d;
 
         // 3D placement (v1): the camera's focal target — where the user is looking.
         std::optional<lux::math::Position3d> pos3d;
@@ -1341,8 +1291,9 @@ namespace lux::editor
 
         const auto drawItem = [&](const SpawnRecipe& r)
         {
-            const bool available = r.required_contribution.empty() ||
-                scene->hasContribution(r.required_contribution);
+            const bool available = r.domain == ESpawnDomain::ANY ||
+                (r.domain == ESpawnDomain::SPATIAL_2D && presents_2d) ||
+                (r.domain == ESpawnDomain::SPATIAL_3D && presents_3d);
             ImGui::BeginDisabled(!available);
             if (ImGui::MenuItem(r.label.c_str()) && r.spawn)
             {
@@ -1454,13 +1405,6 @@ namespace lux::editor
             spatial_2d
                 ? lux::authoring::EPartitionTopology::PLANAR_XY
                 : lux::authoring::EPartitionTopology::PLANAR_XZ);
-        source.contributions.push_back({
-            lux::authoring::WorldSceneFeatureId{
-                spatial_2d
-                    ? "org.lux.builtin.presentation2d"
-                    : "org.lux.builtin.presentation3d"},
-            0u,
-            {}});
         if (auto saved = lux::authoring::saveWorldSource(
                 luxscene_file,
                 source); !saved)

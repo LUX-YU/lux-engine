@@ -204,11 +204,6 @@ namespace lux::editor
         // compact LXWA root references that page and is committed last.
         auto source = lux::authoring::makeWorldSourceDocument(
             lux::authoring::EPartitionTopology::PLANAR_XZ);
-        source.contributions.push_back({
-            lux::authoring::WorldSceneFeatureId{
-                "org.lux.builtin.presentation3d"},
-            0u,
-            {}});
         lux::authoring::WorldDescriptorPageDocument descriptor_page;
         descriptor_page.world = source.world;
         descriptor_page.space = source.spaces.front().id;

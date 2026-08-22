@@ -11,7 +11,6 @@ add_component(
     OUTPUT_NAME lux_engine_runtime_scene_script
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneScriptRuntime.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptAssetRequestSystem.cpp
 )
 
 component_include_directories(
@@ -20,7 +19,6 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
-    PRIVATE pinclude
 )
 
 target_compile_definitions(
@@ -59,11 +57,6 @@ if(ENABLE_EXECUTION_TEST)
     add_executable(
         script_asset_request_system_test
         ${CMAKE_CURRENT_SOURCE_DIR}/test/script_asset_request_system_test.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptAssetRequestSystem.cpp
-    )
-    target_include_directories(
-        script_asset_request_system_test
-        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     )
     target_link_libraries(
         script_asset_request_system_test

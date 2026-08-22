@@ -2,7 +2,7 @@
 // ============================================================================
 //  ReflectedFieldTable.hpp — the 2-column (Field | Value) ImGui table scaffold
 //  shared by every reflection-driven inspector (the editor's InspectorPanel and
-//  SceneFeatureSettingPanel both draw a RefClass this way).
+//  SceneSettingsPanel both draw a RefClass this way).
 //
 //  Only the per-field renderer differs between callers, so it is a callback:
 //  the table setup / columns / header row / EndTable live here once.

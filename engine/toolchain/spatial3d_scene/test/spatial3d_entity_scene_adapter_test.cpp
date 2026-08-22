@@ -379,34 +379,9 @@ int main()
     }
     assert(first->package.id == source.scene);
     assert(first->package.startup_sections.size() == 1u);
-    assert(first->package.features.size() == 5u);
-    for (const auto name : {
-             "org.lux.builtin.animation3d",
-             "org.lux.builtin.presentation3d",
-             "org.lux.builtin.physics3d",
-             "org.lux.builtin.navigation3d"})
-    {
-        assert(std::ranges::find(
-                   first->package.features,
-                   name,
-                   [](const auto& feature)
-                   {
-                       return feature.id.name();
-                   }) != first->package.features.end());
-    }
-    const auto spatial3d = std::ranges::find(
-        first->package.features,
-        lux::spatial3d::kPartitionedFeatureName,
-        [](const auto& feature)
-        {
-            return feature.id.name();
-        });
-    assert(spatial3d != first->package.features.end());
-    assert(spatial3d->config_schema_version ==
-        lux::spatial3d::kSceneCatalogSchemaVersion);
     const auto catalog =
         lux::spatial3d::decodeSceneCatalog(
-            spatial3d->config);
+            first->package.spatial3d_catalog);
     assert(catalog);
     assert(catalog->bands.size() == 2u);
     assert(catalog->entries.size() == 4u);
@@ -682,18 +657,9 @@ int main()
     const auto portal_bundle = lux::toolchain::adaptSpatial3DEntityScene(
         portal_source, components, mesh_assets);
     assert(portal_bundle);
-    const auto portal_feature = std::ranges::find(
-        portal_bundle->package.features,
-        lux::spatial3d::kPartitionedFeatureName,
-        [](const auto& feature)
-        {
-            return feature.id.name();
-        });
-    assert(portal_feature !=
-           portal_bundle->package.features.end());
     const auto portal_catalog =
         lux::spatial3d::decodeSceneCatalog(
-            portal_feature->config);
+            portal_bundle->package.spatial3d_catalog);
     assert(portal_catalog);
     struct CookedNavigationRegion final
     {

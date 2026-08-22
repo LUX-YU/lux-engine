@@ -111,12 +111,11 @@ namespace lux::editor
             : nullptr;
     }
 
-    bool EditorScene::hasContribution(
-        std::string_view contribution) const noexcept
+    bool EditorScene::isPlanar2D() const noexcept
     {
-        if (!runtime_)
-            return false;
-        return runtime_->hasActiveContribution(contribution);
+        return world_source_ && !world_source_->spaces.empty() &&
+            world_source_->spaces.front().topology ==
+                lux::authoring::EPartitionTopology::PLANAR_XY;
     }
 
 #include "EditorScene.WorldEditing.inl"

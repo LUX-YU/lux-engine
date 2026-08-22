@@ -111,7 +111,7 @@ set(LUX_EDITOR_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/panels/HierarchyPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/panels/InspectorPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/panels/LuaConsole.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/panels/SceneFeatureSettingPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/panels/SceneSettingsPanel.cpp
     # scene/
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/DemoSceneTemplate.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/EditorScene.cpp
@@ -174,7 +174,7 @@ target_compile_definitions(
 component_add_transitive_commands(
     editor
     "find_package (lux-engine-function REQUIRED COMPONENTS ui ui_vulkan navigation)"
-    "find_package (lux-engine-ecs REQUIRED COMPONENTS core render_2d render_3d animation_2d animation_3d navigation3d)"
+    "find_package (lux-engine-ecs REQUIRED COMPONENTS core render_2d render_3d animation_2d animation_3d navigation3d physics presentation_2d transform)"
     "find_package (lux-engine-core REQUIRED COMPONENTS meta)"
     "find_package (lux-engine-function REQUIRED COMPONENTS script_lua)"
     "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
@@ -182,7 +182,7 @@ component_add_transitive_commands(
     "find_package (lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS project authoring_flowforge authoring_assets authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_spatial3d_scene_cook)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_logging runtime_frame runtime_assets runtime_scene_script runtime_extension_loader runtime_contribution_host runtime_render_scene runtime_render_backend_host runtime_spatial2d_tilemap runtime_pack_tilemap2d runtime_spatial3d_navigation_adapter runtime_spatial3d_physics)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_logging runtime_frame runtime_assets runtime_scene_script runtime_extension_loader runtime_extension_orchestration runtime_render_scene runtime_render_backend_host runtime_spatial2d_tilemap runtime_tilemap_systems runtime_spatial3d_navigation_adapter runtime_spatial3d_physics)"
     "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"
     "find_package (imgui REQUIRED COMPONENTS glfw3 vulkan)"
     "find_package (node_editor REQUIRED COMPONENTS node_editor)"
@@ -290,20 +290,18 @@ endif()
 # (gameplay_lua_registration.hpp); the registration symbols themselves are
 # dllexported from gameplay_meta.dll and resolve at the lux_editor exe link
 # (which links gameplay_meta explicitly further below).
-# 2D and orthogonal 3D contribution targets provide descriptor headers;
-# 符号在下面 lux_editor 链这两个目标时解析。
+# 2D and orthogonal 3D assembly targets provide direct installer headers;
+# 符号在下面 lux_editor 链这些目标时解析。
 target_include_directories(editor PRIVATE
-    $<TARGET_PROPERTY:runtime_pack_physics2d,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_pack_presentation2d,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_pack_simulation2d,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_pack_tilemap2d,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_pack_spatial2d_transform,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_pack_animation3d,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_pack_navigation3d,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_pack_physics3d,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_pack_presentation3d,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_pack_spatial3d_partitioned,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:runtime_pack_spatial3d_transform,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:presentation_2d,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:physics,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:transform,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:animation_3d,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_tilemap_systems,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_navigation3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_physics3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_presentation3d_systems,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:runtime_spatial3d_streaming_systems,INTERFACE_INCLUDE_DIRECTORIES>
     $<TARGET_PROPERTY:physics2d,INTERFACE_INCLUDE_DIRECTORIES>)
 
 # ecs::scripting — ScriptSystem / ScriptComponent / scriptRegistry, used by EditorScene

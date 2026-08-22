@@ -15,7 +15,7 @@
         {
             lux::log::error(
                 "editor",
-                "bringUp: '{}' is not an LXWA v4 Authoring scene",
+                "bringUp: '{}' is not an LXWA v5 Authoring scene",
                 cfg.from_scene_file.string());
             return false;
         }
@@ -37,23 +37,6 @@
             }
             incoming_source = std::make_unique<
                 lux::authoring::WorldSourceDocument>(std::move(*loaded));
-            if (ensurePresentationContribution(*incoming_source))
-            {
-                const std::string_view inferred =
-                    incoming_source->spaces.front().topology ==
-                            lux::authoring::EPartitionTopology::PLANAR_XY
-                        ? std::string_view{
-                              "org.lux.builtin.presentation2d"}
-                        : std::string_view{
-                              "org.lux.builtin.presentation3d"};
-                lux::log::warn(
-                    "editor",
-                    "Authoring scene '{}' has an empty contribution plan; "
-                    "inferred '{}' from its partition topology. Save the "
-                    "scene once to persist the LXWA v4 migration.",
-                    cfg.from_scene_file.string(),
-                    inferred);
-            }
             if (!cfg.play_cache_root.empty())
             {
                 const auto index_path =
@@ -71,18 +54,16 @@
 
         }
 
-        // A project without a current LXWA v4 default world still opens a real
-        // Authoring scene.  In particular, do not pass an empty manifest to
-        // SceneRuntime: it has no presentation contribution, so the editor
-        // camera has no Camera3DSystem and the viewport remains black.  The
-        // document stays unbound (scene_path_ is empty) until Save As.
+        // A project without a current LXWA v5 default world still opens a real
+        // Authoring scene. Product composition supplies the presentation
+        // systems independently of the document. The document stays unbound
+        // (scene_path_ is empty) until Save As.
         if (!incoming_source)
         {
             incoming_source = std::make_unique<
                 lux::authoring::WorldSourceDocument>(
                     lux::authoring::makeWorldSourceDocument(
                         lux::authoring::EPartitionTopology::PLANAR_XZ));
-            (void)ensurePresentationContribution(*incoming_source);
         }
 
         // ── HOST step 1: the offscreen SAMPLED render target the ImGui
@@ -163,8 +144,6 @@
             .feature_plan    = infra_.feature_plan,
             .residency       = *infra_.residency,
             .profile         = lux::runtime::standardDesktopProfile(),
-            .render_effect_catalog = infra_.render_effect_catalog,
-            .render_effect_types = infra_.render_effect_types,
         };
         const lux::runtime::SceneRuntime::Dependencies deps{
             .assets          = assets_,
@@ -172,9 +151,9 @@
             .async           = async_,
             .components      = components_,
             .entity_sections = infra_.entity_sections,
-            .scene_contribution_catalog = infra_.scene_contribution_catalog,
             .extension_modules = infra_.extension_modules,
         };
+        rcfg.install_systems = infra_.install_systems;
         runtime_ = lux::runtime::SceneRuntime::create(
             deps,
             rcfg,
@@ -197,8 +176,9 @@
         selection_.select(&runtime_->world().registry(), entt::null);
         scene_path_ = cfg.from_scene_file;
         play_cache_root_ = cfg.play_cache_root;
-        const bool is_2d = hasContribution(
-            "org.lux.builtin.presentation2d");
+        const bool is_2d = !incoming_source->spaces.empty() &&
+            incoming_source->spaces.front().topology ==
+                lux::authoring::EPartitionTopology::PLANAR_XY;
 
         const auto rollbackHostBringUp = [&]() -> bool
         {
@@ -775,8 +755,6 @@
             .feature_plan = infra_.feature_plan,
             .residency = *infra_.residency,
             .profile = lux::runtime::standardDesktopProfile(),
-            .render_effect_catalog = infra_.render_effect_catalog,
-            .render_effect_types = infra_.render_effect_types,
         };
         const lux::runtime::SceneRuntime::Dependencies deps{
             .assets = assets_,
@@ -784,7 +762,6 @@
             .async = async_,
             .components = components_,
             .entity_sections = infra_.entity_sections,
-            .scene_contribution_catalog = infra_.scene_contribution_catalog,
             .extension_modules = infra_.extension_modules,
         };
         lux::runtime::SceneRuntime::Config config;
@@ -793,6 +770,7 @@
         config.scene_origin = std::move(value.scene_origin);
         config.section_vfs = image->vfs;
         config.events = infra_.events;
+        config.install_systems = infra_.install_systems;
         auto candidate = lux::runtime::SceneRuntime::create(
             deps,
             config,

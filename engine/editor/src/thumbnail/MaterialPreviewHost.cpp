@@ -77,7 +77,6 @@ namespace lux::editor
     // preview worlds have no input.
     struct MaterialPreviewHost::Host
     {
-        lux::runtime::SceneContributionCatalog      contributions;
         lux::input::ActionMapper                    mapper;
         std::unique_ptr<lux::runtime::SceneRuntime> runtime;
         lux::render::RenderTargetLease              target{};
@@ -194,9 +193,6 @@ namespace lux::editor
 
         // ── HOST step 2: the preview SceneRuntime — same bring-up seam as the
         //    thumbnail world (manual preview pack + preview profile).
-        if (!host->contributions.add(makePreviewWorldContribution()))
-            return false;
-
         lux::runtime::SceneRuntime::Config rcfg;
         rcfg.name            = "MaterialPreview";
         rcfg.scene_asset_id = registerPreviewSceneAsset(
@@ -204,6 +200,7 @@ namespace lux::editor
         if (rcfg.scene_asset_id.is_nil())
             return false;
         rcfg.events          = infra_.events;      // 进程域同一个 bus(批B,可空)
+        rcfg.install_systems = installPreviewWorldSystems;
         // ★ 批 D2:守卫在这里,因为 `RenderInfra::residency` 按设计可空 —— 详见
         //   `EditorScene::bringUp` 同位置的说明。
         if (infra_.residency == nullptr || infra_.control == nullptr ||
@@ -221,8 +218,6 @@ namespace lux::editor
             .feature_plan    = infra_.feature_plan,
             .residency       = *infra_.residency,
             .profile         = lux::runtime::previewProfile(),
-            .render_effect_catalog = infra_.render_effect_catalog,
-            .render_effect_types = infra_.render_effect_types,
         };
         const lux::runtime::SceneRuntime::Dependencies deps{
             .assets          = assets_,
@@ -230,7 +225,6 @@ namespace lux::editor
             .async           = async_,
             .components      = *infra_.components,
             .entity_sections = infra_.entity_sections,
-            .scene_contribution_catalog = &host->contributions,
             .extension_modules = infra_.extension_modules,
         };
         host->runtime = lux::runtime::SceneRuntime::create(

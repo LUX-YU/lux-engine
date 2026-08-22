@@ -30,8 +30,6 @@
 
 #include <lux/engine/runtime/render/scene/StandardFeaturePlan.hpp>   // registerStandardRenderFeatures
 #include <lux/engine/runtime/render/scene/RenderDiagnostics.hpp>     // installRenderErrorLogging / reportUnroutedRenderReplies
-#include <lux/engine/runtime/render/scene/BuiltinRenderEffects.hpp>
-#include <lux/engine/runtime/extensions/RenderEffects.hpp>
 
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
@@ -251,26 +249,6 @@ namespace lux::runtime
             upload_session_ =
                 std::make_unique<lux::render::RenderUploadSession>(
                     endpoints_.upload, endpoints_.sync);
-            render_effect_types_ =
-                std::make_unique<RenderEffectTypeRegistry>(
-                    *control_session_);
-            if (!render_effect_catalog_.find(
-                    lux::render::renderEffectId(
-                        "org.lux.render.grid3d.effect")))
-            {
-                const auto added = addGrid3DRenderEffect(
-                    render_effect_catalog_);
-                if (!added)
-                {
-                    lux::log::error(
-                        "render",
-                        "RenderBackendHost: failed to register the built-in "
-                        "Grid3D render-effect contribution");
-                    (void)stop();
-                    return false;
-                }
-            }
-
             if constexpr (std::same_as<ServerT, lux::render::GeneralRenderServer>)
             {
                 session_ = std::make_unique<lux::render::RenderFrameSession>(endpoints_.frame, endpoints_.sync);
@@ -309,11 +287,6 @@ namespace lux::runtime
                 control_session_->pumpReplies();
             if (session_)
                 reportUnroutedRenderReplies(*session_);
-            if (render_effect_types_)
-            {
-                render_effect_types_->clear();
-                render_effect_types_.reset();
-            }
             if (endpoints_.frame)
             {
                 close_report_.pending_frame_requests =
@@ -381,17 +354,6 @@ namespace lux::runtime
             return feature_catalog_;
         }
         [[nodiscard]] const std::vector<lux::render::FeatureAttach>&   featurePlan()     const noexcept { return feature_plan_; }
-        [[nodiscard]] RenderEffectCatalog& renderEffectCatalog()
-            noexcept
-        {
-            return render_effect_catalog_;
-        }
-        [[nodiscard]] RenderEffectTypeRegistry& renderEffectTypes()
-            noexcept
-        {
-            return *render_effect_types_;
-        }
-
     private:
         RenderBackendEndpoints                              endpoints_{};
         std::thread                                          thread_;
@@ -404,8 +366,6 @@ namespace lux::runtime
         std::unique_ptr<lux::render::RenderUploadSession>    upload_session_;
         lux::render::FeatureCatalog                          feature_catalog_;
         std::vector<lux::render::FeatureAttach>              feature_plan_;
-        RenderEffectCatalog                                  render_effect_catalog_;
-        std::unique_ptr<RenderEffectTypeRegistry>             render_effect_types_;
     };
 
 } // namespace lux::runtime

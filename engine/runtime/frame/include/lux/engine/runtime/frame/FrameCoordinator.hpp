@@ -62,7 +62,6 @@ namespace lux::runtime
         MAIN_COMPLETION,
         EVENT_DRAIN,
         TEXTURE_STREAMING,
-        CONTRIBUTION_SAFE_POINT,
         INTEGRATION_SAFE_POINT,
         SCHEDULE_INPUT,
         SCHEDULE_PRE_TRANSFORM,

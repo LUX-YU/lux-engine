@@ -49,15 +49,15 @@ target_link_libraries(
         lux::engine::runtime::runtime_execution
         lux::engine::runtime::runtime_assets
         lux::engine::runtime::runtime_scene_script
-        lux::engine::runtime::runtime_pack_animation3d
-        lux::engine::runtime::runtime_pack_navigation3d
-        lux::engine::runtime::runtime_pack_physics3d
-        lux::engine::runtime::runtime_pack_presentation3d
-        lux::engine::runtime::runtime_pack_spatial3d_partitioned
-        lux::engine::runtime::runtime_pack_presentation2d
-        lux::engine::runtime::runtime_pack_simulation2d
-        lux::engine::runtime::runtime_pack_spatial2d_transform
-        lux::engine::runtime::runtime_pack_tilemap2d
+        lux::engine::ecs::animation_3d
+        lux::engine::ecs::physics
+        lux::engine::ecs::presentation_2d
+        lux::engine::ecs::transform
+        lux::engine::runtime::runtime_navigation3d_systems
+        lux::engine::runtime::runtime_physics3d_systems
+        lux::engine::runtime::runtime_presentation3d_systems
+        lux::engine::runtime::runtime_spatial3d_streaming_systems
+        lux::engine::runtime::runtime_tilemap_systems
         lux::engine::runtime::runtime_spatial2d_tilemap
         lux::engine::function::input
         lux::engine::function::navigation
@@ -76,7 +76,8 @@ target_link_libraries(
 component_add_transitive_commands(
     game_application
     "find_package(EnTT CONFIG REQUIRED)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_assets runtime_logging runtime_frame runtime_scene_script runtime_pack_presentation2d runtime_pack_simulation2d runtime_pack_spatial2d_transform runtime_pack_tilemap2d runtime_spatial2d_tilemap runtime_pack_animation3d runtime_pack_navigation3d runtime_pack_physics3d runtime_pack_presentation3d runtime_pack_spatial3d_partitioned runtime_render_scene runtime_render_backend_host)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS animation_3d physics presentation_2d transform)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_assets runtime_logging runtime_frame runtime_scene_script runtime_tilemap_systems runtime_spatial2d_tilemap runtime_navigation3d_systems runtime_physics3d_systems runtime_presentation3d_systems runtime_spatial3d_streaming_systems runtime_render_scene runtime_render_backend_host)"
     "find_package(lux-engine-function REQUIRED COMPONENTS input navigation render_client)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core render_core scripting_lua scripting_native)"

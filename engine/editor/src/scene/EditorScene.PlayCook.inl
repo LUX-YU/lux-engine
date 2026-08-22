@@ -12,8 +12,7 @@
             components_.all().end());
         job->asset_vfs = assets_.vfs();
 
-        const bool is_2d = hasContribution(
-            "org.lux.builtin.presentation2d");
+        const bool is_2d = isPlanar2D();
         auto source = world_source_
             ? *world_source_
             : lux::authoring::makeWorldSourceDocument(
@@ -466,16 +465,6 @@
             return {};
         }
         auto persistence = runtime_->persistenceSnapshot(*persisted_schemas);
-        source.contributions.clear();
-        source.contributions.reserve(persistence.features.size());
-        for (auto& feature : persistence.features)
-        {
-            source.contributions.push_back({
-                lux::authoring::WorldSceneFeatureId{
-                    std::string{feature.id.name()}},
-                feature.config_schema_version,
-                std::move(feature.config)});
-        }
         source.required_extensions.clear();
         source.required_extensions.reserve(
             persistence.required_extensions.size());

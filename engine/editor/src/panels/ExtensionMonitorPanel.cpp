@@ -2,8 +2,6 @@
 
 #include <lux/engine/editor/extensions/EditorTools.hpp>
 #include <lux/engine/runtime/extensions/EngineExtensions.hpp>
-#include <lux/engine/runtime/extensions/RenderEffects.hpp>
-#include <lux/engine/runtime/extensions/SceneContributions.hpp>
 
 #include <imgui.h>
 
@@ -29,13 +27,9 @@ namespace lux::editor
     ExtensionMonitorPanel::ExtensionMonitorPanel(
         std::string title,
         lux::extensions::EngineExtensions& extensions,
-        const lux::runtime::SceneContributionCatalog& scene_contributions,
-        const lux::runtime::RenderEffectCatalog& render_effects,
         const EditorPanelCatalog& editor_panels)
         : Panel(std::move(title), {620.f, 460.f})
         , extensions_(&extensions)
-        , scene_contributions_(&scene_contributions)
-        , render_effects_(&render_effects)
         , editor_panels_(&editor_panels)
     {}
 
@@ -106,22 +100,8 @@ namespace lux::editor
             }
         }
 
-        if (ImGui::CollapsingHeader("Contributions"))
+        if (ImGui::CollapsingHeader("Editor registrations"))
         {
-            ImGui::Text("Scene contributions: %zu", scene_contributions_->all().size());
-            for (const auto& descriptor : scene_contributions_->all())
-                ImGui::BulletText(
-                    "%.*s",
-                    static_cast<int>(descriptor.id.name().size()),
-                    descriptor.id.name().data());
-
-            ImGui::Text("Render effects: %zu", render_effects_->all().size());
-            for (const auto& descriptor : render_effects_->all())
-                ImGui::BulletText(
-                    "%.*s",
-                    static_cast<int>(descriptor.id.name().size()),
-                    descriptor.id.name().data());
-
             ImGui::Text("Editor panels: %zu", editor_panels_->all().size());
             for (const auto& descriptor : editor_panels_->all())
                 ImGui::BulletText(

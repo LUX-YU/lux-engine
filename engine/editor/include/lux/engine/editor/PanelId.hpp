@@ -7,8 +7,8 @@
 namespace lux::editor
 {
     /// Stable identity for one editor panel kind. Panel identity belongs to the
-    /// Editor domain; it is deliberately distinct from SceneFeatureId,
-    /// RenderEffectId and ExtensionId.
+    /// Editor domain; it is deliberately distinct from renderer feature and
+    /// Extension identities.
     struct PanelIdTag final {};
 
     using PanelIdView = lux::cxx::StableNameIdView<PanelIdTag>;

@@ -26,7 +26,6 @@ namespace lux::scene
         std::uint32_t maximum_sections{4u * 1024u * 1024u};
         std::uint32_t maximum_dependencies_per_section{4096u};
         std::uint32_t maximum_requirements{65536u};
-        std::uint32_t maximum_features{65536u};
         std::uint32_t maximum_generator_parameter_bytes{4u * 1024u * 1024u};
         std::uint32_t maximum_entities_per_section{4u * 1024u * 1024u};
     };

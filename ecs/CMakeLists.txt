@@ -92,13 +92,11 @@ else()
         render_core render_2d render_3d render_pixel_integration
         render_tilemap_integration
         animation_2d animation_3d
-        physics2d_pixel_integration physics2d_script_integration
+        physics2d_pixel_integration physics2d_script_integration presentation_2d
     )
 endif()
-# ★ 这里此前有 `add_subdirectory(scene)` —— 2D/3D 的装配配方。它搬去了
-#   `engine/runtime/packs/`（批 6-C）：一个 pack 跨 animation / physics / transform /
-#   render / pixel 五个域，没有任何单一 ECS 域能拥有它，它也不是 ECS 的功能部分，
-#   而是**产品层的预装配**。`ecs/` 下现在只剩真正的 ECS 功能域。
+# Product composition calls these ECS installers directly. No registry or
+# package-shaped Runtime identity sits between ScheduleBuilder and Systems.
 
 install_components(
     PROJECT_NAME    lux-engine-ecs

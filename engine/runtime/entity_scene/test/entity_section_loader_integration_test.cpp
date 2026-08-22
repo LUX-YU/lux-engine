@@ -546,10 +546,6 @@ int main()
     lux::scene::SceneDescription fixed_package;
     fixed_package.id = lux::asset::asset_id_t{
         uuid("70000000-0000-4000-8000-000000000001")};
-    fixed_package.features.push_back({
-        lux::scene::SceneFeatureId{"org.lux.test.headless"},
-        1u,
-        {}});
     fixed_package.startup_sections.push_back(fixed_leaf.record.id);
     fixed_package.sections.push_back(common.record);
     fixed_package.sections.push_back(fixed_leaf.record);
@@ -565,7 +561,6 @@ int main()
     assert(fixed_scene_owner->state() ==
         runtime::EEntitySceneState::LOADING);
     assert(fixed_scene_owner->revision() == 0u);
-    assert(fixed_scene_owner->features().size() == 1u);
     assert(fixed_schedule.addSystem(
         std::move(fixed_scene), lux::ecs::kPhaseSceneLoading));
     assert(fixed_schedule.compile().valid());

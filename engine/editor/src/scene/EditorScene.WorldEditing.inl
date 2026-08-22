@@ -204,15 +204,6 @@
         {
             lux::scene::SceneDescription package;
             package.id = source.world.value();
-            package.features.reserve(source.contributions.size());
-            for (const auto& contribution : source.contributions)
-            {
-                package.features.push_back({
-                    lux::scene::SceneFeatureId{
-                        std::string{contribution.id.name()}},
-                    contribution.config_schema_version,
-                    contribution.config});
-            }
             package.required_extensions.reserve(
                 source.required_extensions.size());
             for (const auto& requirement : source.required_extensions)
@@ -243,30 +234,6 @@
             return assets.hasAsset(id)
                 ? assets.replaceAsset(std::move(scene))
                 : assets.registerAsset(std::move(scene));
-        }
-
-        /// Early LXWA v4 editor/demo writers emitted roots with an empty
-        /// contribution plan. Such a scene has neither Camera2DSystem nor
-        /// Camera3DSystem and its editor viewport remains black. Repair that
-        /// precise legacy shape at the Authoring boundary so the next save
-        /// persists the inferred presentation contribution.
-        [[nodiscard]] bool ensurePresentationContribution(
-            lux::authoring::WorldSourceDocument& source)
-        {
-            if (!source.contributions.empty() || source.spaces.empty())
-                return false;
-
-            const bool is_2d =
-                source.spaces.front().topology ==
-                lux::authoring::EPartitionTopology::PLANAR_XY;
-            source.contributions.push_back({
-                lux::authoring::WorldSceneFeatureId{
-                    is_2d
-                        ? "org.lux.builtin.presentation2d"
-                        : "org.lux.builtin.presentation3d"},
-                0u,
-                {}});
-            return true;
         }
 
         struct PlaySceneAsset final

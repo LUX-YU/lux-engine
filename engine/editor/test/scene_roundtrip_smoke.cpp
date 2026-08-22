@@ -305,18 +305,12 @@ int main()
     lux::authoring::WorldSourceDocument root =
         lux::authoring::makeWorldSourceDocument(
             lux::authoring::EPartitionTopology::PLANAR_XZ);
-    root.contributions.push_back({
-        lux::authoring::WorldSceneFeatureId{
-            "org.lux.builtin.physics3d"},
-        0u,
-        {std::byte{0x10u}, std::byte{0x20u}}});
     auto encoded_root = lux::authoring::encodeWorldSource(root);
     auto decoded_root = encoded_root
         ? lux::authoring::decodeWorldSource(*encoded_root)
         : decltype(lux::authoring::decodeWorldSource({})){};
-    expect(decoded_root &&
-            decoded_root->contributions == root.contributions,
-        "LXWA v4 Root owns only the generic scene contribution plan");
+    expect(decoded_root && decoded_root->world == root.world,
+        "LXWA v5 Root round-trips without a behavior plan");
 
     const auto temp_root = fs::temp_directory_path() / "lux-world-roundtrip";
     std::error_code error;
@@ -328,12 +322,7 @@ int main()
     auto demo_source = lux::authoring::loadWorldSource(demo);
     expect(demo_source && !demo_source->spaces.empty() &&
             !demo_source->descriptor_pages.empty(),
-        "demo LXWA v4 Root indexes external Actor content");
-    expect(
-        demo_source && demo_source->contributions.size() == 1u &&
-            demo_source->contributions.front().id.name() ==
-                "org.lux.builtin.presentation3d",
-        "demo LXWA v4 Root installs its 3D presentation contribution");
+        "demo LXWA v5 Root indexes external Actor content");
     std::vector<lux::ecs::ComponentSchemaDescriptor> frozen_schemas{
         components.all().begin(), components.all().end()};
     lux::ecs::ComponentTypeCatalog worker_components;

@@ -3,7 +3,7 @@
 //  ShadowQualityParams.hpp — live-tunable shadow quality parameters.
 //
 //  A reflected (LUX_CLASS + LUX_MEMBER) struct so the editor's
-//  SceneFeatureSettingPanel enumerates it generically (the feature-driven
+//  SceneSettingsPanel enumerates it generically (the feature-driven
 //  quality seam, same machinery as TonemapParams / SpatialCullParams) — no
 //  per-feature UI code, and quality tiers can pin its fields. Trivially
 //  copyable, so the same struct doubles as the generic SetFeatureParams comm

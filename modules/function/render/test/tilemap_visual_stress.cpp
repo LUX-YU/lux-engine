@@ -38,10 +38,9 @@
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
 #include <lux/engine/ecs/render/components/2d/Image2DComponent.hpp>
-#include <lux/engine/scene/SceneFeatureId.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Presentation2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Simulation2DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Transform2DContribution.hpp>
+#include <lux/engine/ecs/integration/presentation2d/InstallPresentation2DSystems.hpp>
+#include <lux/engine/ecs/physics/InstallSimulationSystems.hpp>
+#include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
 #include <lux/engine/ecs/render/components/RenderViewBindingComponent.hpp>
 #include <lux/engine/ecs/render/components/PrimaryCameraTag.hpp>
 #include <lux/engine/ecs/components/Transform2DComponent.hpp>
@@ -296,27 +295,14 @@ int main(int argc, char** argv)
     if (!lux::ecs::registerGeneratedComponents(components))
         return 1;
 
-    lux::runtime::SceneContributionCatalog contributions;
-    auto transform2d =
-        lux::runtime::makeSpatial2DTransformContribution(components);
-    auto simulation2d =
-        lux::runtime::makeSimulation2DContribution(components);
-    auto presentation2d =
-        lux::runtime::makePresentation2DContribution(components);
-    if (!transform2d || !simulation2d || !presentation2d)
-        return 1;
-    std::vector<lux::runtime::SceneContributionDescriptor> descriptors;
-    descriptors.push_back(std::move(*transform2d));
-    descriptors.push_back(std::move(*simulation2d));
-    descriptors.push_back(std::move(*presentation2d));
-    if (!contributions.addBatch(std::move(descriptors)))
-        return 1;
-    constexpr std::array selected{
-        lux::scene::sceneFeatureId(
-            lux::runtime::kPresentation2DContributionName)};
-    if (!contributions.assembleDefaults(assembly, selected))
+    if (!lux::ecs::installSpatial2DTransformSystems(
+            assembly, components) ||
+        !lux::ecs::installSimulation2DSystems(
+            assembly, components) ||
+        !lux::ecs::installPresentation2DSystems(
+            assembly, components))
     {
-        std::printf("scene feature assembly failed\n");
+        std::printf("2D system assembly failed\n");
         return 1;
     }
     auto render_plan = std::move(render_builder).compile();

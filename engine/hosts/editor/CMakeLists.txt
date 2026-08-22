@@ -15,17 +15,16 @@ target_link_libraries(
     lux_editor
     PRIVATE
         editor
-        lux::engine::runtime::runtime_pack_physics2d
-        lux::engine::runtime::runtime_pack_presentation2d
-        lux::engine::runtime::runtime_pack_simulation2d
-        lux::engine::runtime::runtime_pack_spatial2d_transform
-        lux::engine::runtime::runtime_pack_tilemap2d
+        lux::engine::ecs::animation_3d
+        lux::engine::ecs::physics
+        lux::engine::ecs::presentation_2d
+        lux::engine::ecs::transform
+        lux::engine::runtime::runtime_tilemap_systems
         lux::engine::runtime::runtime_spatial2d_tilemap
-        lux::engine::runtime::runtime_pack_animation3d
-        lux::engine::runtime::runtime_pack_navigation3d
-        lux::engine::runtime::runtime_pack_physics3d
-        lux::engine::runtime::runtime_pack_presentation3d
-        lux::engine::runtime::runtime_pack_spatial3d_partitioned
+        lux::engine::runtime::runtime_navigation3d_systems
+        lux::engine::runtime::runtime_physics3d_systems
+        lux::engine::runtime::runtime_presentation3d_systems
+        lux::engine::runtime::runtime_spatial3d_streaming_systems
         lux::engine::ecs::scripting
         lux::engine::ecs::scripting_lua
         lux::engine::ecs::scripting_native

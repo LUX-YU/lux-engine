@@ -3,6 +3,7 @@
 #include <lux/engine/resource/asset/storage/VirtualPath.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <utility>
 #include <vector>
@@ -66,13 +67,6 @@ namespace lux::scene
         {
             return id.isValid() &&
                 lux::extensions::isCanonicalStableName(id.name()) &&
-                id.name().size() <= limits.maximum_string_bytes;
-        }
-
-        [[nodiscard]] bool validFeature(const SceneFeatureId& id, const SceneCodecLimits& limits) noexcept
-        {
-            return id.isValid() &&
-                isValidSceneFeatureIdName(id.name()) &&
                 id.name().size() <= limits.maximum_string_bytes;
         }
 
@@ -158,6 +152,80 @@ namespace lux::scene
                         "required component schemas are not canonical"
                     )
                 );
+            }
+            return {};
+        }
+
+        [[nodiscard]] bool validRenderFeatureName(
+            std::string_view name,
+            const SceneCodecLimits& limits) noexcept
+        {
+            if (name.empty() || name.size() > limits.maximum_string_bytes)
+                return false;
+            return std::ranges::all_of(
+                name,
+                [](unsigned char value)
+                {
+                    return std::isalnum(value) != 0 || value == '_' ||
+                        value == '-' || value == '.';
+                });
+        }
+
+        [[nodiscard]] SceneCodecResult<void> validateRenderFeatures(
+            const SceneDescription& package,
+            const SceneCodecLimits& limits)
+        {
+            if (package.required_render_features.size() >
+                    limits.maximum_requirements ||
+                package.optional_render_features.size() >
+                    limits.maximum_requirements)
+            {
+                return lux::cxx::unexpected(failure(
+                    ESceneCodecError::LIMIT_EXCEEDED,
+                    "render feature requirement count exceeds codec limit"));
+            }
+            for (const auto& feature : package.required_render_features)
+            {
+                if (!validRenderFeatureName(feature, limits))
+                    return lux::cxx::unexpected(failure(
+                        ESceneCodecError::INVALID_NAME,
+                        "invalid required render feature"));
+            }
+            for (const auto& feature : package.optional_render_features)
+            {
+                if (!validRenderFeatureName(feature, limits))
+                    return lux::cxx::unexpected(failure(
+                        ESceneCodecError::INVALID_NAME,
+                        "invalid optional render feature"));
+            }
+            const auto canonical = [](const auto& values)
+            {
+                return std::adjacent_find(
+                    values.begin(),
+                    values.end(),
+                    [](const auto& lhs, const auto& rhs)
+                    {
+                        return lhs >= rhs;
+                    }) == values.end();
+            };
+            if (!canonical(package.required_render_features) ||
+                !canonical(package.optional_render_features))
+            {
+                return lux::cxx::unexpected(failure(
+                    ESceneCodecError::INVALID_ARGUMENT,
+                    "render feature requirements are not canonical"));
+            }
+            for (const auto& required : package.required_render_features)
+            {
+                if (std::binary_search(
+                        package.optional_render_features.begin(),
+                        package.optional_render_features.end(),
+                        required))
+                {
+                    return lux::cxx::unexpected(failure(
+                        ESceneCodecError::DUPLICATE_ID,
+                        "render feature cannot be both required and optional"));
+                }
             }
             return {};
         }
@@ -312,42 +380,19 @@ namespace lux::scene
             }
             if (package.sections.size() > limits.maximum_sections ||
                 package.startup_sections.size() > limits.maximum_sections ||
-                package.features.size() > limits.maximum_features)
+                package.spatial3d_catalog.size() >
+                    limits.maximum_manifest_bytes)
             {
                 return lux::cxx::unexpected(failure(
                     ESceneCodecError::LIMIT_EXCEEDED,
                     "package collection exceeds codec limit"));
             }
 
-            if (hasDuplicateName(
-                    package.features,
-                    [](const auto& value) { return value.id.name(); }))
+            if (const auto render_features =
+                    validateRenderFeatures(package, limits);
+                !render_features)
             {
-                return lux::cxx::unexpected(failure(
-                    ESceneCodecError::DUPLICATE_ID,
-                    "duplicate scene feature"));
-            }
-            if (!strictlyOrdered(
-                    package.features,
-                    [](const auto& lhs, const auto& rhs)
-                    {
-                        return lhs.id.name() < rhs.id.name();
-                    }))
-            {
-                return lux::cxx::unexpected(failure(
-                    ESceneCodecError::INVALID_ARGUMENT,
-                    "scene features are not canonical"));
-            }
-            for (const auto& feature : package.features)
-            {
-                if (!validFeature(feature.id, limits) ||
-                    feature.config.size() >
-                        limits.maximum_generator_parameter_bytes)
-                {
-                    return lux::cxx::unexpected(failure(
-                        ESceneCodecError::INVALID_ARGUMENT,
-                        "invalid scene feature"));
-                }
+                return render_features;
             }
 
             if (hasDuplicateUuid(package.startup_sections))

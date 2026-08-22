@@ -112,12 +112,6 @@ namespace lux::runtime
                     integration_closed_ = true;
                 }
 
-                // Close contribution admission first. Systems remain installed
-                // and continue to receive their ordinary update/barrier safe
-                // points until every selector, late completion and domain
-                // retirement reports quiescent.
-                if (scene_contribution_host_)
-                    scene_contribution_host_->requestClose();
                 if (schedule_)
                 {
                     schedule_->requestClose(lux::ecs::SystemCloseProgressSink{
@@ -245,8 +239,7 @@ namespace lux::runtime
                     {
                         return report(
                             ESceneCloseStatus::RETRY_REQUIRED,
-                            ESceneCloseError::
-                                CONTRIBUTION_REMOVAL_REJECTED);
+                            ESceneCloseError::SCHEDULE_CLOSE_REJECTED);
                     }
                     if (!schedule_close.complete &&
                         schedule_close.owner_work_pending)
@@ -264,27 +257,6 @@ namespace lux::runtime
                         return report(
                             ESceneCloseStatus::RETRY_REQUIRED,
                             ESceneCloseError::NONE);
-                    }
-                }
-
-                // Service leases stay published until every Schedule owner is
-                // quiescent. Seal the host without dynamically removing
-                // scene-bound systems; whole-Schedule teardown below owns
-                // their normal destruction path.
-                if (scene_contribution_host_)
-                {
-                    const auto extension_report =
-                        scene_contribution_host_->
-                            sealForScheduleTeardown();
-                    if (extension_report.failed != 0u ||
-                        extension_report.pending_systems != 0u)
-                    {
-                        return report(
-                            ESceneCloseStatus::RETRY_REQUIRED,
-                            extension_report.failed != 0u
-                                ? ESceneCloseError::
-                                      CONTRIBUTION_REMOVAL_REJECTED
-                                : ESceneCloseError::NONE);
                     }
                 }
 
@@ -309,13 +281,7 @@ namespace lux::runtime
             startup_sections_ = nullptr;
             entity_section_loader_ = nullptr;
             entity_scene_catalog_ = nullptr;
-            // Scene-bound systems may deliberately reject dynamic removal.
-            // Their destructors still borrow contribution services, so the
-            // whole Schedule must die before the sealed host releases those
-            // service leases.
-            auto contribution_host = std::move(scene_contribution_host_);
             schedule_.reset();
-            contribution_host.reset();
             integration_.reset();
             services_.reset();
             persistent_entities_.reset();

@@ -115,10 +115,7 @@ namespace
 
         scene::SceneDescription package;
         package.id = package_uuid;
-        package.features.push_back(scene::SceneFeatureRequest{
-            scene::SceneFeatureId{"org.lux.test.presentation"},
-            1u,
-            {std::byte{0x2a}}});
+        package.spatial3d_catalog = {std::byte{0x2a}};
         package.startup_sections.push_back(
             format::EntitySectionId{section_uuid});
 
@@ -157,20 +154,16 @@ int main()
         package.id,
         package);
     assert(encoded);
-    assert(encoded->size() ==
-        sizeof(lux::asset::AssetFileHeader) + kLxscV1Golden.size());
     lux::asset::AssetFileHeader outer{};
     std::memcpy(&outer, encoded->data(), sizeof(outer));
     assert(outer.magic_number == scene::kSceneAssetMagic);
     assert(outer.info.id == package.id);
     assert(outer.info.type == scene::kSceneAssetType);
-    assert(outer.data_size == kLxscV1Golden.size());
-    assert(std::equal(
-        encoded->begin() + sizeof(outer),
-        encoded->end(),
-        kLxscV1Golden.begin()));
+    assert(outer.data_size == encoded->size() - sizeof(outer));
 
-    const auto decoded = scene::SceneAssetSerDeser::decodeData(kLxscV1Golden);
+    const auto payload = std::span<const std::byte>{*encoded}.subspan(
+        sizeof(outer));
+    const auto decoded = scene::SceneAssetSerDeser::decodeData(payload);
     assert(decoded && **decoded == package);
     const auto wrapped = scene::SceneAssetSerDeser::decodeData(*encoded);
     assert(wrapped && **wrapped == package);
@@ -190,45 +183,10 @@ int main()
     assert(primary_descriptor == legacy_descriptor);
     assert(primary_descriptor->type == scene::kSceneAssetType);
 
-    const auto legacy_shell = lux::asset::makeShellFromMemory(
-        **composed,
-        kLxscV1Golden.data(),
-        kLxscV1Golden.size());
-    assert(legacy_shell);
-    assert((*legacy_shell)->info()->id == package.id);
-    assert((*legacy_shell)->info()->type == scene::kSceneAssetType);
-    assert((*legacy_shell)->as<scene::SceneAsset>() != nullptr);
-
-    const auto manager = std::make_shared<lux::asset::AssetManager>(*composed);
-    scene::SceneAssetSerDeser ser_deser{manager};
-    const auto imported_legacy = ser_deser.fromLuxAssetMemory(
-        kLxscV1Golden.data(),
-        kLxscV1Golden.size());
-    assert(imported_legacy);
-    assert(imported_legacy->second == package.id);
-    const auto upgraded_path =
-        std::filesystem::temp_directory_path() /
-        "lux_scene_asset_legacy_upgrade_contract.luxasset";
-    std::error_code filesystem_error;
-    std::filesystem::remove(upgraded_path, filesystem_error);
-    assert(ser_deser.exportAsLuxAsset(package.id, upgraded_path) ==
-        lux::asset::EAssetError::SUCCESS);
-    std::ifstream upgraded_file{
-        upgraded_path,
-        std::ios::binary | std::ios::ate};
-    assert(upgraded_file);
-    const auto upgraded_size = upgraded_file.tellg();
-    assert(upgraded_size >= 0);
-    std::vector<std::byte> upgraded_image(
-        static_cast<std::size_t>(upgraded_size));
-    upgraded_file.seekg(0, std::ios::beg);
-    upgraded_file.read(
-        reinterpret_cast<char*>(upgraded_image.data()),
-        static_cast<std::streamsize>(upgraded_image.size()));
-    assert(upgraded_file);
-    assert(upgraded_image == *encoded);
-    upgraded_file.close();
-    std::filesystem::remove(upgraded_path, filesystem_error);
+    const auto rejected_v1 = scene::SceneAssetSerDeser::decodeData(
+        kLxscV1Golden);
+    assert(!rejected_v1 && rejected_v1.error().error ==
+        scene::ESceneCodecError::UNSUPPORTED_VERSION);
 
     auto mismatched_outer = *encoded;
     lux::asset::AssetFileHeader mismatched_header{};
@@ -247,30 +205,26 @@ int main()
     assert(!mismatched_result && mismatched_result.error().error ==
         scene::ESceneCodecError::OUTER_INNER_ID_MISMATCH);
 
-    auto bad_magic = std::vector<std::byte>{
-        kLxscV1Golden.begin(), kLxscV1Golden.end()};
+    auto bad_magic = std::vector<std::byte>{payload.begin(), payload.end()};
     bad_magic[0] = std::byte{0u};
     const auto bad_magic_result =
         scene::SceneAssetSerDeser::decodeData(bad_magic);
     assert(!bad_magic_result && bad_magic_result.error().error ==
         scene::ESceneCodecError::BAD_MAGIC);
 
-    auto bad_version = std::vector<std::byte>{
-        kLxscV1Golden.begin(), kLxscV1Golden.end()};
-    bad_version[4] = std::byte{2u};
+    auto bad_version = std::vector<std::byte>{payload.begin(), payload.end()};
+    bad_version[4] = std::byte{1u};
     const auto bad_version_result =
         scene::SceneAssetSerDeser::decodeData(bad_version);
     assert(!bad_version_result && bad_version_result.error().error ==
         scene::ESceneCodecError::UNSUPPORTED_VERSION);
 
     const auto truncated = scene::SceneAssetSerDeser::decodeData(
-        std::span<const std::byte>{kLxscV1Golden}.first(
-            kLxscV1Golden.size() - 1u));
+        payload.first(payload.size() - 1u));
     assert(!truncated && truncated.error().error ==
         scene::ESceneCodecError::TRUNCATED);
 
-    auto trailing = std::vector<std::byte>{
-        kLxscV1Golden.begin(), kLxscV1Golden.end()};
+    auto trailing = std::vector<std::byte>{payload.begin(), payload.end()};
     trailing.push_back(std::byte{0u});
     const auto trailing_result =
         scene::SceneAssetSerDeser::decodeData(trailing);
@@ -278,28 +232,11 @@ int main()
         scene::ESceneCodecError::TRAILING_BYTES);
 
     scene::SceneCodecLimits tiny_limits;
-    tiny_limits.maximum_names = 4u;
+    tiny_limits.maximum_names = 1u;
     const auto limited = scene::SceneAssetSerDeser::decodeData(
-        kLxscV1Golden, tiny_limits);
+        payload, tiny_limits);
     assert(!limited && limited.error().error ==
         scene::ESceneCodecError::LIMIT_EXCEEDED);
-
-    auto bad_hash = std::vector<std::byte>{
-        kLxscV1Golden.begin(), kLxscV1Golden.end()};
-    bad_hash[135] ^= std::byte{1u};
-    const auto bad_hash_result =
-        scene::SceneAssetSerDeser::decodeData(bad_hash);
-    assert(!bad_hash_result && bad_hash_result.error().error ==
-        scene::ESceneCodecError::HASH_MISMATCH);
-
-    auto duplicate_feature = package;
-    duplicate_feature.features.push_back(package.features.front());
-    const auto duplicate_result =
-        scene::SceneAssetSerDeser::encodeData(
-            duplicate_feature.id,
-            duplicate_feature);
-    assert(!duplicate_result && duplicate_result.error().error ==
-        scene::ESceneCodecError::DUPLICATE_ID);
 
     auto missing_reference = package;
     missing_reference.startup_sections.front() =

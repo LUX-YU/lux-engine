@@ -36,7 +36,10 @@
         auto bytes = readFile(path, limits.maximum_bytes);
         if (!bytes)
             return lux::cxx::unexpected(std::move(bytes.error()));
-        return decodeWorldSource(*bytes, limits);
+        auto decoded = decodeWorldSource(*bytes, limits);
+        if (!decoded)
+            return lux::cxx::unexpected(std::move(decoded.error().detail));
+        return std::move(*decoded);
     }
 
     lux::cxx::expected<WorldDescriptorPageDocument, std::string>

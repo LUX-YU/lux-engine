@@ -4,7 +4,9 @@
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <algorithm>
+#include <iterator>
 #include <map>
+#include <set>
 #include <string_view>
 #include <utility>
 
@@ -36,6 +38,36 @@ namespace lux::toolchain
             std::string,
             lux::scene::RequiredComponentSchema,
             std::less<>>;
+        using FeatureSet = std::set<std::string, std::less<>>;
+
+        void deriveRenderFeatures(
+            FeatureSet& destination,
+            std::string_view schema_name)
+        {
+            const auto addWhen = [&](std::string_view token,
+                                     std::string_view feature)
+            {
+                if (schema_name.find(token) != std::string_view::npos)
+                    destination.emplace(feature);
+            };
+            addWhen("Camera", "StandardViewCamera");
+            addWhen("Image2D", "Canvas2D");
+            addWhen("Tilemap", "Canvas2D");
+            addWhen("TileChunk2D", "Canvas2D");
+            addWhen("PixelField2D", "Canvas2D");
+            addWhen("Grid2D", "Grid2D");
+            addWhen("MeshComponent", "MeshStack");
+            addWhen("SkeletalMesh", "MeshStack");
+            addWhen("ClassicMeshBatch", "RenderCluster");
+            addWhen("Skybox", "Skybox");
+            addWhen("HeightFog", "Fog");
+            addWhen("WaterSurface", "Water");
+            addWhen("Grid3D", "Grid3D");
+            addWhen("DirectionalLight", "Light");
+            addWhen("PointLight", "Light");
+            addWhen("SpotLight", "Light");
+            addWhen("Terrain", "Terrain");
+        }
 
         [[nodiscard]] lux::cxx::expected<void, EntitySceneCookFailure>
         mergeExtension(
@@ -146,14 +178,6 @@ namespace lux::toolchain
                 return uuidLess(lhs.image.section, rhs.image.section);
             });
         std::sort(
-            input.features.begin(),
-            input.features.end(),
-            [](const lux::scene::SceneFeatureRequest& lhs,
-               const lux::scene::SceneFeatureRequest& rhs)
-            {
-                return lhs.id.name() < rhs.id.name();
-            });
-        std::sort(
             input.startup_sections.begin(),
             input.startup_sections.end(),
             uuidLess<EntitySectionId>);
@@ -176,10 +200,21 @@ namespace lux::toolchain
                 return lux::cxx::unexpected(merged.error());
             }
         }
+        FeatureSet required_render_features{
+            std::make_move_iterator(
+                input.project_required_render_features.begin()),
+            std::make_move_iterator(
+                input.project_required_render_features.end())};
+        FeatureSet optional_render_features{
+            std::make_move_iterator(
+                input.project_optional_render_features.begin()),
+            std::make_move_iterator(
+                input.project_optional_render_features.end())};
 
         CookedSceneDescriptionBundle bundle;
         bundle.package.id = input.id;
-        bundle.package.features = std::move(input.features);
+        bundle.package.spatial3d_catalog =
+            std::move(input.spatial3d_catalog);
         bundle.package.startup_sections = std::move(input.startup_sections);
         bundle.sections.reserve(input.sections.size());
         bundle.package.sections.reserve(input.sections.size());
@@ -257,6 +292,9 @@ namespace lux::toolchain
                 {
                     return lux::cxx::unexpected(merged.error());
                 }
+                deriveRenderFeatures(
+                    required_render_features,
+                    schema.id.name);
             }
 
             const auto valid_record = lux::scene::validateSectionRecord(record);
@@ -286,6 +324,14 @@ namespace lux::toolchain
             bundle.package.required_components.push_back(
                 std::move(requirement));
         }
+        for (const auto& required : required_render_features)
+            optional_render_features.erase(required);
+        bundle.package.required_render_features.assign(
+            required_render_features.begin(),
+            required_render_features.end());
+        bundle.package.optional_render_features.assign(
+            optional_render_features.begin(),
+            optional_render_features.end());
 
         const auto valid_package = lux::scene::validateSceneDescription(
             bundle.package);

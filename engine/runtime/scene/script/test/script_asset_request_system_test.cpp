@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/scene/script/ScriptAssetRequestSystem.hpp>
+#include <lux/engine/ecs/script/systems/ScriptAssetRequestSystem.hpp>
 
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/script/components/ScriptComponent.hpp>
@@ -67,7 +67,7 @@ int main()
     world.emplace<lux::ecs::ScriptComponent>(
         nil, lux::ecs::ScriptComponent{});
 
-    lux::runtime::ScriptAssetRequestSystem requester{
+    lux::ecs::ScriptAssetRequestSystem requester{
         manager, lux::asset_runtime::AssetClient{}};
     requester.update({world.registry(), 0.016f});
     auto& active_component = world.get<lux::ecs::ScriptComponent>(active);

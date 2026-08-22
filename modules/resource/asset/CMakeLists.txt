@@ -23,6 +23,7 @@ add_component(
     OUTPUT_NAME    lux_engine_asset
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetCodecCatalog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetLoadPort.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetSerDeser.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AssetSerDeserFactory.cpp
@@ -76,6 +77,7 @@ target_link_libraries(
         lux::cxx::compile_time
         lux::cxx::memory
         lux::engine::core::math
+        lux::engine::core::async_port
         lux::engine::resource::description
     PRIVATE
         lux::cxx::core
@@ -91,7 +93,7 @@ component_add_transitive_commands(
     asset
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time memory)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS math)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS async_port math)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 

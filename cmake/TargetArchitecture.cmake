@@ -405,61 +405,11 @@ function(lux_validate_ecs_dimension_closures)
         animation_2d pixel
     )
     _lux_arch_require_closure_excludes(
-        runtime_pack_spatial2d_transform
-        render_2d render_3d render_components_2d render_components_3d
-        animation_2d animation_3d pixel physics2d physics3d
-    )
-    _lux_arch_require_closure_excludes(
-        runtime_pack_simulation2d
-        render_2d render_3d render_components_2d render_components_3d
-        animation_2d animation_3d pixel physics2d physics3d
-    )
-    _lux_arch_require_closure_excludes(
-        runtime_pack_physics2d
-        render_2d render_3d render_components_2d render_components_3d
-        render_pixel_integration animation_2d animation_3d pixel physics3d
-        physics2d_pixel_integration
-    )
-    _lux_arch_require_closure_excludes(
-        runtime_pack_presentation2d
-        render_3d render_components_3d animation_3d physics2d physics3d
-    )
-    _lux_arch_require_closure_excludes(
         runtime_spatial2d_tilemap
         render_2d render_3d render_components_2d render_components_3d
         render_pixel_integration render_tilemap_integration animation_2d
         animation_3d pixel physics2d physics3d navigation3d
-        runtime_spatial2d_infinite runtime_pack_infinite2d
-    )
-    _lux_arch_require_closure_excludes(
-        runtime_pack_tilemap2d
-        render_2d render_3d render_components_2d render_components_3d
-        render_pixel_integration render_tilemap_integration animation_2d
-        animation_3d pixel physics2d physics3d navigation3d
-        runtime_spatial2d_infinite runtime_pack_infinite2d
-    )
-    _lux_arch_require_closure_excludes(
-        runtime_pack_animation3d
-        render_2d render_components_2d render_pixel_integration
-        animation_2d pixel physics2d physics3d physics2d_pixel_integration
-    )
-    _lux_arch_require_closure_excludes(
-        runtime_pack_physics3d
-        render_2d render_3d render_components_2d render_components_3d
-        render_pixel_integration animation_2d animation_3d pixel physics2d
-        physics2d_pixel_integration navigation3d
-    )
-    _lux_arch_require_closure_excludes(
-        runtime_pack_navigation3d
-        render_2d render_3d render_components_2d render_components_3d
-        render_pixel_integration animation_2d animation_3d pixel physics2d
-        physics3d physics2d_pixel_integration
-    )
-    _lux_arch_require_closure_excludes(
-        runtime_pack_presentation3d
-        render_2d render_components_2d render_pixel_integration
-        animation_2d pixel physics2d physics3d physics2d_pixel_integration
-        navigation3d
+        runtime_spatial2d_infinite
     )
 
     if(LUX_BUILD_COMPONENT_META)
@@ -640,11 +590,7 @@ function(lux_validate_source_boundaries)
     set(runtime_system_debt
         "engine/runtime/entity_scene/include/lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp"
         "engine/runtime/entity_scene/include/lux/engine/runtime/entity_scene/StartupSectionSystem.hpp"
-        "engine/runtime/extensions/contribution_host/include/lux/engine/runtime/extensions/SceneContributions.hpp"
-        "engine/runtime/packs/scene2d/pinclude/lux/engine/runtime/packs/scene2d/Flipbook2DResolver.hpp"
-        "engine/runtime/packs/scene3d/pinclude/lux/engine/runtime/packs/scene3d/SkeletalAnimationResolver.hpp"
         "engine/runtime/render/scene/pinclude/lux/engine/runtime/render/scene/detail/PrimaryViewPresentationSystem.hpp"
-        "engine/runtime/scene/script/pinclude/lux/engine/runtime/scene/script/ScriptAssetRequestSystem.hpp"
         "engine/runtime/spatial2d/infinite/include/lux/engine/runtime/spatial2d/infinite/Infinite2DPixelSystem.hpp"
         "engine/runtime/spatial2d/infinite/include/lux/engine/runtime/spatial2d/infinite/SpatialInterest2DSystem.hpp"
         "engine/runtime/spatial2d/tilemap/include/lux/engine/runtime/spatial2d/tilemap/TilemapChunkSystem.hpp"
@@ -686,22 +632,27 @@ function(lux_validate_source_boundaries)
         "${CMAKE_SOURCE_DIR}/extensions/*.cpp"
         "${CMAKE_SOURCE_DIR}/extensions/CMakeLists.txt"
     )
-    set(debt_names
-        SceneContribution
-        WorldSceneFeature
-        RenderEffect
-        runtime_pack_
-        contribution_host
-        luxGetExtensionModuleV4
-        luxRegisterRuntimeContributionsV4
+    # Construct retired identifiers from fragments so the architecture gate
+    # itself does not keep forbidden production vocabulary alive.
+    string(CONCAT retired_scene_contribution "Scene" "Contribution")
+    string(CONCAT retired_world_feature "World" "Scene" "Feature")
+    string(CONCAT retired_render_effect "Render" "Effect")
+    string(CONCAT retired_runtime_pack "runtime" "_pack_")
+    string(CONCAT retired_host_kind "contribution" "_host")
+    string(CONCAT retired_extension_v4 "luxGetExtensionModule" "V4")
+    string(CONCAT retired_registration_v4
+        "luxRegisterRuntimeContributions" "V4")
+    set(retired_semantic_names
+        ${retired_scene_contribution}
+        ${retired_world_feature}
+        ${retired_render_effect}
+        ${retired_runtime_pack}
+        ${retired_host_kind}
+        ${retired_extension_v4}
+        ${retired_registration_v4}
     )
-    set(debt_limits 627 15 349 156 38 8 3)
-    set(report "# semantic-debt|count|limit\n")
-    list(LENGTH debt_names debt_count)
-    math(EXPR debt_last "${debt_count} - 1")
-    foreach(index RANGE 0 ${debt_last})
-        list(GET debt_names ${index} debt_name)
-        list(GET debt_limits ${index} debt_limit)
+    set(report "# retired-semantic|count|required\n")
+    foreach(debt_name IN LISTS retired_semantic_names)
         set(actual 0)
         foreach(source IN LISTS semantic_sources)
             # Do not count the gate's own token table as architecture debt.
@@ -713,11 +664,11 @@ function(lux_validate_source_boundaries)
             list(LENGTH matches match_count)
             math(EXPR actual "${actual} + ${match_count}")
         endforeach()
-        string(APPEND report "${debt_name}|${actual}|${debt_limit}\n")
-        if(actual GREATER debt_limit)
+        string(APPEND report "${debt_name}|${actual}|0\n")
+        if(NOT actual EQUAL 0)
             message(FATAL_ERROR
-                "Architecture: semantic debt '${debt_name}' increased from "
-                "the allowed ${debt_limit} occurrences to ${actual}."
+                "Architecture: retired semantic '${debt_name}' reappeared "
+                "${actual} time(s)."
             )
         endif()
     endforeach()

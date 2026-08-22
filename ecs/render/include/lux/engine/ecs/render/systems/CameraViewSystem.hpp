@@ -1,6 +1,6 @@
 #pragma once
 // ============================================================================
-//  CameraViewSubsystem.hpp — view 归相机所有（lux::ecs）。
+//  CameraViewSystem.hpp — view 归相机所有（lux::ecs）。
 //
 //  这个系统是相机域**唯一的反应者**。挂 `ViewPresentComponent` 的实体得到一个
 //  render view;摘掉组件或销毁实体,view 被还回去。运行时(`lux::runtime::SceneRuntime`)
@@ -26,7 +26,9 @@
 
 #include <lux/engine/function/visibility.h>
 
-#include <lux/engine/ecs/render/RenderStage.hpp>
+#include <lux/engine/ecs/render/RenderExtractionResources.hpp>
+#include <lux/engine/ecs/render/SceneRenderBinding.hpp>
+#include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 
 #include <memory>
@@ -34,15 +36,17 @@
 namespace lux::ecs
 {
 
-    class LUX_FUNCTION_PUBLIC CameraViewSubsystem final
-        : public lux::ecs::RenderStage
+    class LUX_FUNCTION_PUBLIC CameraViewSystem final
+        : public lux::ecs::ISystem
     {
     public:
-        CameraViewSubsystem();
-        ~CameraViewSubsystem() override;
+        CameraViewSystem(
+            SceneRenderBinding& binding,
+            ActiveRenderView& active_view);
+        ~CameraViewSystem() override;
 
-        CameraViewSubsystem(const CameraViewSubsystem&) = delete;
-        CameraViewSubsystem& operator=(const CameraViewSubsystem&) = delete;
+        CameraViewSystem(const CameraViewSystem&) = delete;
+        CameraViewSystem& operator=(const CameraViewSystem&) = delete;
 
         /// 连信号 + **折入存量**,两件一起做 —— 「谁先谁后」不再是调用方要操心的事。
         /// 折入存量入的是命令,所以必须等到这里才做:`SystemSetupContext` 带着本节点
@@ -57,8 +61,7 @@ namespace lux::ecs
         ///
         /// **不再排空命令队列**:排空归 `Schedule::applyCommandBarrier()`,全项目
         /// 只有那一个 apply 点。
-        void prepare(RenderSubsystemContext& context) noexcept override;
-        void extract(RenderSubsystemContext& context) override;
+        void update(const SystemUpdateContext& context) override;
 
         /// 编辑器相机导航通过普通 `ISystem` 依赖声明与本子系统的
         /// 先后，不再经过可拼错的字符串名字。
@@ -73,11 +76,12 @@ namespace lux::ecs
         /// 前置一：帧开着（内部走 `awaitAllReady`，它自己做阻塞提交）。
         /// 前置二：调用方**已经排过一次** `Schedule::applyCommandBarrier()` ——
         ///         观察者/折入存量入的 addView 请求要先被应用才有东西可等。
-        void settle(RenderSubsystemContext& context) override;
-
         /// Close all live child view leases through the Control lane before
         /// RenderSceneLease closes. No lexical frame is required.
-        void close(RenderSubsystemContext& context) noexcept override;
+        void requestClose() noexcept override;
+        [[nodiscard]] bool closeComplete() const noexcept override;
+        [[nodiscard]] std::span<const Type> runsAfter() const noexcept
+            override;
 
     private:
         struct Impl;

@@ -72,6 +72,34 @@ component_add_transitive_commands(
     "find_package (EnTT CONFIG REQUIRED)"
 )
 
+add_executable(
+    schedule_close_frontier_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/schedule_close_frontier_test.cpp
+)
+target_link_libraries(
+    schedule_close_frontier_test
+    PRIVATE lux::engine::ecs::core
+)
+if(MSVC)
+    target_compile_options(schedule_close_frontier_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(schedule_close_frontier_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  schedule_close_frontier_test
+    LAYER   ECS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(
+    NAME phase9_schedule_reverse_close_frontier
+    COMMAND schedule_close_frontier_test
+)
+set_tests_properties(
+    phase9_schedule_reverse_close_frontier
+    PROPERTIES LABELS "phase9;cpu"
+)
+
 # ---------------------------------------------------------------------------
 # Reflection + Lua binding code generation — carries the ECS-kernel reflected
 # types (Name / DebugDraw). Shared components (Transform…) own separate

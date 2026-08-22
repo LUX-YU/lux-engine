@@ -279,7 +279,10 @@ namespace lux::authoring
             std::string name;
             if (!readString(reader, limits.maximum_string_bytes, name))
                 return false;
-            id = lux::authoring::DataLayerId{hash, std::move(name)};
+            lux::authoring::DataLayerId decoded{name};
+            if (decoded.hash() != hash)
+                return false;
+            id = std::move(decoded);
             return reader.ok();
         }
 
@@ -747,7 +750,8 @@ namespace lux::authoring
             std::unordered_set<std::string> layers;
             for (const auto& layer : root.data_layers)
             {
-                if (!layer.valid()
+                if (!layer.isValid()
+                    || !lux::authoring::isCanonicalWorldName(layer.name())
                     || layer.name().size() > limits.maximum_string_bytes
                     || !layers.insert(std::string{layer.name()}).second)
                 {
@@ -758,7 +762,9 @@ namespace lux::authoring
             std::unordered_set<std::string> extensions;
             for (const auto& extension : root.required_extensions)
             {
-                if (!extension.id.valid() ||
+                if (!extension.id.isValid() ||
+                    !lux::extensions::isCanonicalStableName(
+                        extension.id.name()) ||
                     extension.id.name().size() > limits.maximum_string_bytes ||
                     !extensions.insert(
                         std::string{extension.id.name()}).second)
@@ -856,7 +862,8 @@ namespace lux::authoring
                 std::unordered_set<std::string> memberships;
                 for (const auto& layer : actor.data_layers)
                 {
-                    if (!layer.valid() ||
+                    if (!layer.isValid() ||
+                        !lux::authoring::isCanonicalWorldName(layer.name()) ||
                         !known_layers.contains(std::string{layer.name()}) ||
                         !memberships.insert(std::string{layer.name()}).second)
                     {

@@ -64,6 +64,14 @@ foreach(source IN LISTS runtime_sources)
             "ISystem subclass. World behavior belongs under ecs/."
         )
     endif()
+    if(content MATCHES
+       "(class|struct)[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*[ \t\r\n]+(final[ \t\r\n]+)?:[^{;]*RenderStage")
+        message(FATAL_ERROR
+            "Architecture: Runtime production source '${source}' defines a "
+            "RenderStage subclass. ECS-to-render projection belongs under "
+            "ecs/render/."
+        )
+    endif()
     if(source MATCHES "\\.hpp$" AND content MATCHES
        "(class|struct)[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*Component([ \t\r\n:{]|$)")
         message(FATAL_ERROR
@@ -150,6 +158,16 @@ string(CONCAT retired_navigation3d_systems
     "runtime" "_navigation3d_" "systems")
 string(CONCAT retired_presentation3d_systems
     "runtime" "_presentation3d_" "systems")
+string(CONCAT retired_scene_integration
+    "ISceneRuntime" "Integration")
+string(CONCAT retired_stage_lifecycle
+    "RenderSystem" "Stages")
+string(CONCAT retired_stage_install
+    "install" "Stage")
+string(CONCAT retired_stage_remove
+    "remove" "Stage")
+string(CONCAT retired_generated_component_queue
+    "queueGenerated" "Component")
 
 set(retired_semantic_names
     ${retired_scene_contribution}
@@ -175,6 +193,11 @@ set(retired_semantic_names
     ${retired_physics3d_systems}
     ${retired_navigation3d_systems}
     ${retired_presentation3d_systems}
+    ${retired_scene_integration}
+    ${retired_stage_lifecycle}
+    ${retired_stage_install}
+    ${retired_stage_remove}
+    ${retired_generated_component_queue}
 )
 
 set(report "# retired-semantic|count|required\n")
@@ -194,6 +217,33 @@ foreach(debt_name IN LISTS retired_semantic_names)
         message(FATAL_ERROR
             "Architecture: retired semantic '${debt_name}' reappeared "
             "${actual} time(s)."
+        )
+    endif()
+endforeach()
+
+# Renderer requirements are build-closure facts, never SceneDescription
+# fields. Restrict this check to the Scene contract so the Toolchain's
+# ephemeral ProjectBuildUsage vocabulary remains legitimate.
+file(GLOB_RECURSE scene_contract_sources LIST_DIRECTORIES false
+    "${source_root}/engine/scene/*.hpp"
+    "${source_root}/engine/scene/*.cpp"
+)
+string(CONCAT retired_scene_required_features
+    "required" "_render_features")
+string(CONCAT retired_scene_optional_features
+    "optional" "_render_features")
+foreach(source IN LISTS scene_contract_sources)
+    file(TO_CMAKE_PATH "${source}" normalized_source)
+    if(normalized_source MATCHES "/test/")
+        continue()
+    endif()
+    file(READ "${source}" content)
+    if(content MATCHES
+       "${retired_scene_required_features}|${retired_scene_optional_features}")
+        message(FATAL_ERROR
+            "Architecture: Scene contract '${source}' contains renderer "
+            "requirements. Capability roots belong to cold product "
+            "composition."
         )
     endif()
 endforeach()

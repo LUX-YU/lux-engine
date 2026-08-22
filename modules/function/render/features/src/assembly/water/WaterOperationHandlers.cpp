@@ -75,17 +75,6 @@ namespace lux::render
             water->destroySurface(payload.handle);
     }
 
-    void handleWaterSetEnvironment(
-        GeneralRenderServer::Dispatcher::Ctx& context,
-        const WaterSetEnvironmentPayload& payload)
-    {
-        auto* scene = lookupScene(context.user_state, payload.scene_id);
-        if (!scene)
-            return;
-        if (auto* water = scene->getFeatureAs<WaterFeature>(payload.feature))
-            water->setEnvironment(payload);
-    }
-
     void handleWaterStats(
         GeneralRenderServer::Dispatcher::Ctx& context,
         const WaterStatsPayload& payload)

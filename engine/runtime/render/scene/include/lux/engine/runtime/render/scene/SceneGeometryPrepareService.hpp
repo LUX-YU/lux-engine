@@ -4,13 +4,8 @@
  * @brief Bounded typed CPU preparation for ECS geometry presentation leaves.
  */
 
-#include <lux/cxx/memory/SharedBytes.hpp>
-#include <lux/engine/function/render/client/features/render_cluster/RenderClusterOperation.hpp>
-#include <lux/engine/resource/asset/AssetId.hpp>
-#include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
-#include <lux/engine/ecs/scene_format/EntitySection.hpp>
+#include <lux/engine/ecs/render/SceneGeometryPreparation.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
-#include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/render/scene/visibility.h>
 
 #include <cstddef>
@@ -61,181 +56,11 @@ namespace lux::runtime
         }
     };
 
-    enum class ESceneGeometryPrepareError : std::uint8_t
-    {
-        INVALID_REQUEST,
-        CONTENT_MISMATCH,
-        DECODE_FAILED,
-        UNSUPPORTED_CONTENT,
-        SERVICE_CLOSED
-    };
-
-    struct SceneGeometryPrepareFailure final
-    {
-        ESceneGeometryPrepareError code{
-            ESceneGeometryPrepareError::INVALID_REQUEST};
-        std::string detail;
-    };
-
-    struct PreparedClassicMeshBatch final
-    {
-        PreparedClassicMeshBatch() noexcept = default;
-        PreparedClassicMeshBatch(PreparedClassicMeshBatch&&) noexcept =
-            default;
-        PreparedClassicMeshBatch& operator=(PreparedClassicMeshBatch&&)
-            noexcept = default;
-        PreparedClassicMeshBatch(const PreparedClassicMeshBatch&) = delete;
-        PreparedClassicMeshBatch& operator=(
-            const PreparedClassicMeshBatch&) = delete;
-
-        std::uint64_t request_generation{0u};
-        std::shared_ptr<lux::classic_mesh::ClassicMeshBatchBlobV1> decoded;
-        /// Allocated on the background worker.  The owner-thread leaf fills
-        /// handles and entity-relative transforms incrementally.
-        std::shared_ptr<std::vector<
-            lux::render::RenderClusterWireInstance>> wire;
-        std::vector<lux::asset::asset_id_t> mesh_assets;
-        std::vector<lux::asset::asset_id_t> material_assets;
-    };
-
-    struct PreparedTerrainTile final
-    {
-        PreparedTerrainTile() noexcept = default;
-        PreparedTerrainTile(PreparedTerrainTile&&) noexcept = default;
-        PreparedTerrainTile& operator=(PreparedTerrainTile&&) noexcept =
-            default;
-        PreparedTerrainTile(const PreparedTerrainTile&) = delete;
-        PreparedTerrainTile& operator=(const PreparedTerrainTile&) = delete;
-
-        std::uint64_t request_generation{0u};
-        float height_min{0.0f};
-        float height_max{1.0f};
-        float sample_spacing{1.0f};
-        std::uint8_t weight_layer_count{0u};
-        std::shared_ptr<std::vector<std::byte>> wire;
-    };
-
     namespace detail
     {
         struct SceneGeometryPrepareControl;
         struct SceneGeometryPrepareReservation;
     } // namespace detail
-
-    struct PrepareClassicMeshBatch final
-    {
-        using Value = PreparedClassicMeshBatch;
-        using Error = SceneGeometryPrepareFailure;
-
-        PrepareClassicMeshBatch() noexcept = default;
-        PrepareClassicMeshBatch(
-            lux::cxx::SharedBytes<> content_value,
-            lux::ecs::scene_format::ContentBlobRef reference_value,
-            std::uint64_t generation_value) noexcept
-            : content(std::move(content_value)),
-              reference(std::move(reference_value)),
-              request_generation(generation_value)
-        {}
-        PrepareClassicMeshBatch(PrepareClassicMeshBatch&&) noexcept = default;
-        PrepareClassicMeshBatch& operator=(PrepareClassicMeshBatch&&)
-            noexcept = default;
-        PrepareClassicMeshBatch(const PrepareClassicMeshBatch&) = delete;
-        PrepareClassicMeshBatch& operator=(const PrepareClassicMeshBatch&) =
-            delete;
-
-        lux::cxx::SharedBytes<> content;
-        lux::ecs::scene_format::ContentBlobRef reference;
-        std::uint64_t request_generation{0u};
-
-    private:
-        std::shared_ptr<detail::SceneGeometryPrepareReservation> admission_;
-
-        friend class ClassicMeshPrepareClient;
-        friend class SceneGeometryPrepareService;
-    };
-
-    struct PrepareTerrainTile final
-    {
-        using Value = PreparedTerrainTile;
-        using Error = SceneGeometryPrepareFailure;
-
-        PrepareTerrainTile() noexcept = default;
-        PrepareTerrainTile(
-            lux::cxx::SharedBytes<> content_value,
-            lux::ecs::scene_format::ContentBlobRef reference_value,
-            std::uint64_t generation_value) noexcept
-            : content(std::move(content_value)),
-              reference(std::move(reference_value)),
-              request_generation(generation_value)
-        {}
-        PrepareTerrainTile(PrepareTerrainTile&&) noexcept = default;
-        PrepareTerrainTile& operator=(PrepareTerrainTile&&) noexcept =
-            default;
-        PrepareTerrainTile(const PrepareTerrainTile&) = delete;
-        PrepareTerrainTile& operator=(const PrepareTerrainTile&) = delete;
-
-        lux::cxx::SharedBytes<> content;
-        lux::ecs::scene_format::ContentBlobRef reference;
-        std::uint64_t request_generation{0u};
-
-    private:
-        std::shared_ptr<detail::SceneGeometryPrepareReservation> admission_;
-
-        friend class TerrainPrepareClient;
-        friend class SceneGeometryPrepareService;
-    };
-
-    using ClassicMeshPrepareSender =
-        lux::exec::AsyncExecuteSender<PrepareClassicMeshBatch>;
-    using TerrainPrepareSender =
-        lux::exec::AsyncExecuteSender<PrepareTerrainTile>;
-
-    class LUX_RUNTIME_RENDER_SCENE_PUBLIC ClassicMeshPrepareClient final
-    {
-    public:
-        ClassicMeshPrepareClient() noexcept = default;
-
-        [[nodiscard]] lux::cxx::expected<
-            ClassicMeshPrepareSender,
-            lux::async::ESubmitError>
-        execute(PrepareClassicMeshBatch request) const noexcept;
-        [[nodiscard]] explicit operator bool() const noexcept;
-
-    private:
-        friend class SceneGeometryPrepareService;
-        ClassicMeshPrepareClient(
-            std::weak_ptr<detail::SceneGeometryPrepareControl> control,
-            std::uint64_t generation,
-            lux::async::OperationPort<PrepareClassicMeshBatch>
-                operation) noexcept;
-
-        std::weak_ptr<detail::SceneGeometryPrepareControl> control_;
-        std::uint64_t generation_{0u};
-        lux::async::OperationPort<PrepareClassicMeshBatch> operation_;
-    };
-
-    class LUX_RUNTIME_RENDER_SCENE_PUBLIC TerrainPrepareClient final
-    {
-    public:
-        TerrainPrepareClient() noexcept = default;
-
-        [[nodiscard]] lux::cxx::expected<
-            TerrainPrepareSender,
-            lux::async::ESubmitError>
-        execute(PrepareTerrainTile request) const noexcept;
-        [[nodiscard]] explicit operator bool() const noexcept;
-
-    private:
-        friend class SceneGeometryPrepareService;
-        TerrainPrepareClient(
-            std::weak_ptr<detail::SceneGeometryPrepareControl> control,
-            std::uint64_t generation,
-            lux::async::OperationPort<PrepareTerrainTile>
-                operation) noexcept;
-
-        std::weak_ptr<detail::SceneGeometryPrepareControl> control_;
-        std::uint64_t generation_{0u};
-        lux::async::OperationPort<PrepareTerrainTile> operation_;
-    };
 
     struct SceneGeometryPrepareDomainSnapshot final
     {
@@ -275,24 +100,25 @@ namespace lux::runtime
             SceneGeometryPrepareService&& other) noexcept;
         ~SceneGeometryPrepareService();
 
-        [[nodiscard]] ClassicMeshPrepareClient classicMeshClient()
+        [[nodiscard]] lux::ecs::ClassicMeshPreparePort classicMeshPort()
             const noexcept;
-        [[nodiscard]] TerrainPrepareClient terrainClient() const noexcept;
+        [[nodiscard]] lux::ecs::TerrainPreparePort terrainPort()
+            const noexcept;
         [[nodiscard]] SceneGeometryPrepareSnapshot snapshot() const noexcept;
         void close() noexcept;
 
     private:
         SceneGeometryPrepareService(
             std::shared_ptr<detail::SceneGeometryPrepareControl> control,
-            lux::async::OperationPort<PrepareClassicMeshBatch>
+            lux::async::OperationPort<lux::ecs::PrepareClassicMeshBatch>
                 classic_mesh,
-            lux::async::OperationPort<PrepareTerrainTile>
+            lux::async::OperationPort<lux::ecs::PrepareTerrainTile>
                 terrain) noexcept;
 
         std::shared_ptr<detail::SceneGeometryPrepareControl> control_;
-        lux::async::OperationPort<PrepareClassicMeshBatch>
+        lux::async::OperationPort<lux::ecs::PrepareClassicMeshBatch>
             classic_mesh_;
-        lux::async::OperationPort<PrepareTerrainTile> terrain_;
+        lux::async::OperationPort<lux::ecs::PrepareTerrainTile> terrain_;
         bool closed_{false};
     };
 } // namespace lux::runtime

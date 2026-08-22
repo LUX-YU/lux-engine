@@ -8,7 +8,6 @@
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
@@ -19,7 +18,6 @@
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/Spatial3DSectionSource.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
-#include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <exec/start_detached.hpp>
@@ -136,7 +134,7 @@ namespace
 
     struct CatalogFixture final
     {
-        lux::runtime::entity_scene::EntitySceneCatalog catalog;
+        lux::scene::SceneDescription description;
         lux::ecs::spatial3d::streaming::Spatial3DSectionCatalog spatial;
         std::size_t section_count{0u};
         std::uint64_t section_bytes{0u};
@@ -196,17 +194,15 @@ namespace
         const auto decoded = lux::scene::SceneAssetSerDeser::decodeData(
             *encoded);
         assert(decoded);
-        auto catalog =
-            lux::runtime::entity_scene::EntitySceneCatalog::create(
-                std::move(**decoded));
-        assert(catalog);
+        auto description = std::move(**decoded);
+        assert(lux::scene::validateSceneDescription(description));
         auto spatial = spatial3d::Spatial3DSectionCatalog::create(
             std::move(entries));
         assert(spatial);
-        assert(catalog->sections().size() == section_count);
+        assert(description.sections.size() == section_count);
         assert(spatial->entries().size() == section_count);
         return CatalogFixture{
-            std::move(*catalog),
+            std::move(description),
             std::move(*spatial),
             section_count,
             section_bytes};
@@ -290,10 +286,8 @@ namespace
         auto fixture = makeCatalog(*generator, scale);
         const auto generated_before =
             generator->generated.load(std::memory_order_relaxed);
-        residency::EntitySectionRecordStore store{
-            fixture.catalog.sections()};
         auto planner = residency::SectionResidencyPlanner::create(
-            std::move(store),
+            fixture.description.sections,
             residency::SectionResidencyBudget{
                 fixture.section_bytes * kResidentSections,
                 kResidentSections});

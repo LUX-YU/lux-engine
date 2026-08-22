@@ -44,7 +44,9 @@
         for (std::size_t index = 0u;
              index < document.data_layers.size(); ++index)
         {
-            if (!document.data_layers[index].valid() ||
+            if (!document.data_layers[index].isValid() ||
+                !lux::authoring::isCanonicalWorldName(
+                    document.data_layers[index].name()) ||
                 (index != 0u && document.data_layers[index - 1u] ==
                     document.data_layers[index]))
             {

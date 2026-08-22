@@ -23,7 +23,7 @@
         const lux::math::Extent2u extent{pending_resize_w_, pending_resize_h_};
         infra_.control->resizeTarget(main_target_.id(), extent);
 
-        // 出图槽位的尺寸也要跟上 —— 它是相机投影 aspect 的数据源(CameraViewSubsystem)。
+        // 出图槽位的尺寸也要跟上 —— 它是相机投影 aspect 的数据源(CameraViewSystem)。
         // ⚠️ 走 patch:直接 `get<T>().extent = x` **不发** on_update 信号(EnTT 契约),
         //   而 layer 重设正靠那个信号。少了 patch 的表现是「画面被拉伸且改不回来」。
         viewport_slot_.extent = extent;

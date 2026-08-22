@@ -4,7 +4,6 @@
 
 #include <lux/engine/ecs/SpatialTransformMath.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform2DComponent.hpp>
-#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/RenderViewUtil.hpp>
 #include <lux/engine/ecs/render/RenderSpatialTransform.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
@@ -41,7 +40,7 @@ namespace lux::ecs
 
     /// Sparse TilemapRuntime -> fixed-capacity Canvas2D tile-index atlas.
     /// Only resident chunks receive records, slots and canvas instances.
-    class Tilemap2DSubsystemImplementation final : public RenderStage
+    class Tilemap2DSystemImplementation final
     {
     public:
         static constexpr std::uint32_t kNoSlot = 0xFFFFFFFFu;
@@ -51,42 +50,35 @@ namespace lux::ecs
         static constexpr float kKeepMarginChunks = 2.0f;
         static constexpr int kRetryDrives = 120;
 
-        explicit Tilemap2DSubsystemImplementation(
+        explicit Tilemap2DSystemImplementation(
             TilemapRuntime* runtime)
             : runtime_(runtime),
               atlas_slots_(kAtlasSlotsX * kAtlasSlotsY)
         {}
 
-        ~Tilemap2DSubsystemImplementation() override { leave_.detach(); }
+        ~Tilemap2DSystemImplementation() { leave_.detach(); }
 
         [[nodiscard]] std::span<const std::string_view>
-        requiredFeatures() const noexcept override
+        requiredFeatures() const noexcept
         {
             static const std::string_view features[] = {"Canvas2D"};
             return features;
         }
 
-        void onAdded(const SystemSetupContext& setup) override
+        void onAdded(const SystemSetupContext& setup)
         {
             leave_.attach(
                 setup.registry(),
                 [this](lux::ecs::Entity entity) { retireLive(entity); });
         }
 
-        void onRemoved(const SystemRemovalContext&) override
+        void onRemoved(const SystemRemovalContext&)
         {
             leave_.detach();
         }
 
-        void close(RenderSubsystemContext& context) noexcept override
+        void update(Registry& registry, SceneRenderBinding& render)
         {
-            releaseOwned(context.render());
-        }
-
-        void extract(RenderSubsystemContext& context) override
-        {
-            auto& registry = context.registry();
-            auto& render = context.render();
             auto canvas = render.canvas2d();
             if (!canvas.valid() || runtime_ == nullptr)
                 return;
@@ -851,6 +843,7 @@ namespace lux::ecs
             }
         }
 
+    public:
         void releaseOwned(SceneRenderBinding& render)
         {
             atlas_requests_.drain(
@@ -894,6 +887,7 @@ namespace lux::ecs
             atlas_bindless_ = lux::render::kNoTexture;
         }
 
+    private:
         void retireSlot(std::uint32_t slot)
         {
             if (slot == kNoSlot)

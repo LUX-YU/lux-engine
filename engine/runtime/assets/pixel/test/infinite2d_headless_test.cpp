@@ -21,7 +21,6 @@
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/tilemap/TilemapChunkCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
@@ -36,7 +35,6 @@
 #include <lux/engine/ecs/spatial2d/streaming/SpatialInterest2DSystem.hpp>
 #include <lux/engine/ecs/tilemap/streaming/TilemapChunkSystem.hpp>
 #include <lux/engine/runtime/assets/tilemap/TilemapPrepareService.hpp>
-#include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include "Infinite2DTestHarness.hpp"
@@ -88,16 +86,14 @@ namespace
     constexpr lux::ecs::MaterialId kWaterMaterial = 4u;
     constexpr lux::ecs::MaterialId kPlayerMaterial = 5u;
 
-    lux::runtime::entity_scene::EntitySceneCatalog emptyCatalog()
+    lux::scene::SceneDescription emptyCatalog()
     {
         lux::scene::SceneDescription package;
         package.id = lux::asset::asset_id_t{
             uuids::uuid::from_string(
                 "85000000-0000-4000-8000-000000000001").value()};
-        auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(
-            std::move(package));
-        assert(result);
-        return std::move(*result);
+        assert(lux::scene::validateSceneDescription(package));
+        return package;
     }
 
     uuids::uuid ordinalUuid(std::uint64_t ordinal)
@@ -1167,10 +1163,8 @@ int lux::runtime::assets::pixel::testing::runInfinite2DScenario(
     auto sample_record = generated->record({0, 0});
     assert(sample_record);
     auto scene_catalog = emptyCatalog();
-    residency::EntitySectionRecordStore record_store{
-        scene_catalog.sections()};
     auto demand_planner = residency::SectionResidencyPlanner::create(
-        std::move(record_store),
+        scene_catalog.sections,
         residency::SectionResidencyBudget{
             sample_record->decoded_bytes *
                 streaming2d::kSpatial2DResidentSectionCount,

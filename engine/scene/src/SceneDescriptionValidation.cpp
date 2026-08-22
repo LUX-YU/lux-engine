@@ -3,7 +3,6 @@
 #include <lux/engine/resource/asset/storage/VirtualPath.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <string>
 #include <utility>
 #include <vector>
@@ -164,80 +163,6 @@ namespace lux::scene
             return {};
         }
 
-        [[nodiscard]] bool validRenderFeatureName(
-            std::string_view name,
-            const SceneCodecLimits& limits) noexcept
-        {
-            if (name.empty() || name.size() > limits.maximum_string_bytes)
-                return false;
-            return std::ranges::all_of(
-                name,
-                [](unsigned char value)
-                {
-                    return std::isalnum(value) != 0 || value == '_' ||
-                        value == '-' || value == '.';
-                });
-        }
-
-        [[nodiscard]] SceneCodecResult<void> validateRenderFeatures(
-            const SceneDescription& package,
-            const SceneCodecLimits& limits)
-        {
-            if (package.required_render_features.size() >
-                    limits.maximum_requirements ||
-                package.optional_render_features.size() >
-                    limits.maximum_requirements)
-            {
-                return lux::cxx::unexpected(failure(
-                    ESceneCodecError::LIMIT_EXCEEDED,
-                    "render feature requirement count exceeds codec limit"));
-            }
-            for (const auto& feature : package.required_render_features)
-            {
-                if (!validRenderFeatureName(feature, limits))
-                    return lux::cxx::unexpected(failure(
-                        ESceneCodecError::INVALID_NAME,
-                        "invalid required render feature"));
-            }
-            for (const auto& feature : package.optional_render_features)
-            {
-                if (!validRenderFeatureName(feature, limits))
-                    return lux::cxx::unexpected(failure(
-                        ESceneCodecError::INVALID_NAME,
-                        "invalid optional render feature"));
-            }
-            const auto canonical = [](const auto& values)
-            {
-                return std::adjacent_find(
-                    values.begin(),
-                    values.end(),
-                    [](const auto& lhs, const auto& rhs)
-                    {
-                        return lhs >= rhs;
-                    }) == values.end();
-            };
-            if (!canonical(package.required_render_features) ||
-                !canonical(package.optional_render_features))
-            {
-                return lux::cxx::unexpected(failure(
-                    ESceneCodecError::INVALID_ARGUMENT,
-                    "render feature requirements are not canonical"));
-            }
-            for (const auto& required : package.required_render_features)
-            {
-                if (std::binary_search(
-                        package.optional_render_features.begin(),
-                        package.optional_render_features.end(),
-                        required))
-                {
-                    return lux::cxx::unexpected(failure(
-                        ESceneCodecError::DUPLICATE_ID,
-                        "render feature cannot be both required and optional"));
-                }
-            }
-            return {};
-        }
-
         [[nodiscard]] SceneCodecResult<void> validateSectionRecordImpl(
             const SectionRecord& section,
             const SceneCodecLimits& limits)
@@ -391,13 +316,6 @@ namespace lux::scene
                 return lux::cxx::unexpected(failure(
                     ESceneCodecError::LIMIT_EXCEEDED,
                     "package collection exceeds codec limit"));
-            }
-
-            if (const auto render_features =
-                    validateRenderFeatures(package, limits);
-                !render_features)
-            {
-                return render_features;
             }
 
             if (hasDuplicateUuid(package.startup_sections))

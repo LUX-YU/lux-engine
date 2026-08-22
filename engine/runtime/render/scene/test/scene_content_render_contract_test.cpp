@@ -1,18 +1,38 @@
-#include <lux/engine/runtime/render/scene/detail/SceneContentRenderContracts.hpp>
+#include <lux/engine/ecs/render/detail/SceneContentRenderContracts.hpp>
 
 #include <lux/engine/ecs/render/components/3d/ClassicMeshBatchComponent.hpp>
+#include <lux/engine/ecs/render/systems/3d/ClassicMeshBatchRenderSystem.hpp>
+#include <lux/engine/ecs/render/systems/3d/TerrainTileRenderSystem.hpp>
+#include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/function/render/client/features/render_cluster/RenderClusterOperation.hpp>
+#include <lux/engine/function/render/client/genops/WaterOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/LinearDepthOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
+#include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 #include <lux/engine/ecs/scene_format/EntitySection.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <ranges>
 #include <string>
 
 namespace
 {
+    template <class T>
+    concept DeclaresRenderFeatures = requires
+    {
+        T::requiredRenderFeatures();
+    };
+
+    static_assert(!DeclaresRenderFeatures<lux::ecs::ISystem>);
+    static_assert(DeclaresRenderFeatures<
+        lux::ecs::ClassicMeshBatchRenderSystem>);
+    static_assert(DeclaresRenderFeatures<lux::ecs::TerrainTileRenderSystem>);
+
     [[nodiscard]] uuids::uuid makeUuid(std::uint8_t marker)
     {
         std::array<std::uint8_t, 16u> bytes{};
@@ -23,7 +43,39 @@ namespace
 
 int main()
 {
-    using namespace lux::runtime::detail;
+    using namespace lux::ecs::detail;
+
+    bool fog_is_optional = false;
+    for (const auto& dependency :
+         lux::render::kWaterFeatureFactory.descriptor.dependencies)
+    {
+        if (dependency.type == lux::render::featureId(
+                "lux.render.fog.v1"))
+        {
+            fog_is_optional = dependency.optional;
+        }
+    }
+    if (!fog_is_optional)
+        return 10;
+
+    lux::render::FeatureCatalog water_catalog;
+    water_catalog.add(
+        lux::render::kLinearDepthFeatureFactory, 1u, {});
+    water_catalog.add(
+        lux::render::kViewCameraFeatureFactory, 2u, {});
+    water_catalog.add(lux::render::kWaterFeatureFactory, 3u, {});
+    static constexpr std::string_view kWaterRoot[]{"Water"};
+    const auto water_without_fog =
+        water_catalog.resolveAttachOrder(kWaterRoot);
+    if (!water_without_fog.unknown.empty() ||
+        !water_without_fog.missing_deps.empty() ||
+        !water_without_fog.cycle.empty() ||
+        std::ranges::find(
+            water_without_fog.order,
+            std::string_view{"Fog"}) != water_without_fog.order.end())
+    {
+        return 11;
+    }
 
     ContentRenderRevisionSequence revisions;
     const auto first = revisions.next();

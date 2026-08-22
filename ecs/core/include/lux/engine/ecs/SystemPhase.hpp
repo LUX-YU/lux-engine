@@ -32,7 +32,7 @@ namespace lux::ecs
 
         /// 派生量的**上游**：要在变换/相机把矩阵算出来之前跑完的东西。
         /// 骨骼动画的资产解析器在这里（`AnimationSystem` 要读它写的指针），
-        /// 相机域的 `CameraViewSubsystem` 也在这里（绑定要先于派生量刷新落位）。
+        /// 相机域的 `CameraViewSystem` 也在这里（绑定要先于派生量刷新落位）。
         kPhasePreTransform   = 200,
 
         /// 主模拟：变换、相机、动画、物理、脚本。域包的系统默认落在这里。

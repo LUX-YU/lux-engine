@@ -8,12 +8,13 @@
 #include <lux/engine/ecs/physics/systems/Simulation2DSystem.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldSystem.hpp>
-#include <lux/engine/ecs/render/RenderSystemStages.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
+#include <lux/engine/ecs/render/SceneRenderBinding.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Camera2DUploadSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Grid2DSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Image2DSubsystem.hpp>
-#include <lux/engine/ecs/render/subsystems/2d/PixelField2DSubsystem.hpp>
-#include <lux/engine/ecs/render/subsystems/2d/Tilemap2DSubsystem.hpp>
+#include <lux/engine/ecs/render/systems/2d/PixelField2DSystem.hpp>
+#include <lux/engine/ecs/render/systems/2d/Tilemap2DSystem.hpp>
 #include <lux/engine/ecs/render/subsystems/ResidencySubsystem.hpp>
 #include <lux/engine/ecs/render/systems/2d/Camera2DSystem.hpp>
 #include <lux/engine/ecs/tilemap/components/TilemapComponent.hpp>
@@ -99,38 +100,81 @@ namespace lux::ecs
             probes->add(makePixelCollisionProbe(*pixels));
         }
 
-        auto* const render = builder.services().borrow<RenderSystemStages>();
-        if (!render)
-            return true;
-        auto* const residency = builder.services().borrow<ResidencySubsystem>();
-        const auto node = [render](auto system)
+        return true;
+    }
+
+    bool installPresentation2DRendering(
+        ScheduleBuilder& builder,
+        const ComponentTypeCatalog& components,
+        std::vector<std::unique_ptr<RenderStage>>& stages,
+        std::vector<std::string_view>& feature_roots,
+        ResidencySubsystem& residency)
+    {
+        constexpr std::string_view required_components[]{
+            "lux.ecs.camera2dcomponent",
+            "lux.ecs.pixelfield2dcomponent",
+            "lux.ecs.image2dcomponent",
+            "lux.ecs.tilemapcomponent",
+            "lux.ecs.grid2dcomponent"};
+        if (auto validated = validateComponentSchemas(
+                components, required_components); !validated)
         {
-            return render->add(std::move(system)).has_value();
-        };
-        if (!residency ||
-            !node(std::make_unique<Camera2DUploadSubsystem>()) ||
-            !node(std::make_unique<Grid2DSubsystem>()))
-        {
-            (void)builder.rollbackTo(checkpoint);
             return false;
         }
-        residency->resolveTextureOf<
+
+        auto* const render = builder.services().borrow<SceneRenderBinding>();
+        auto* const active_view = builder.services().borrow<ActiveRenderView>();
+        if (!render || !active_view)
+            return false;
+
+        stages.push_back(std::make_unique<Camera2DUploadSubsystem>());
+        stages.push_back(std::make_unique<Grid2DSubsystem>());
+        residency.resolveTextureOf<
             Image2DComponent,
             &Image2DComponent::texture>();
-        if (!node(std::make_unique<Image2DSubsystem>()) ||
-            (pixels && !node(std::make_unique<PixelField2DSubsystem>(pixels))))
+        const auto image_requirements =
+            Image2DSubsystem::requiredRenderFeatures();
+        feature_roots.insert(
+            feature_roots.end(),
+            image_requirements.begin(),
+            image_requirements.end());
+        if (!builder.add(
+                std::make_unique<Image2DSubsystem>(*render, *active_view),
+                kPhaseRender))
         {
-            (void)builder.rollbackTo(checkpoint);
             return false;
+        }
+        auto* const pixels = builder.services().borrow<PixelFieldRuntime>();
+        if (pixels)
+        {
+            const auto requirements =
+                PixelField2DSystem::requiredRenderFeatures();
+            feature_roots.insert(
+                feature_roots.end(),
+                requirements.begin(),
+                requirements.end());
+            if (!builder.add(
+                    std::make_unique<PixelField2DSystem>(*render, pixels),
+                    kPhaseRender))
+            {
+                return false;
+            }
         }
         if (auto* tilemaps = builder.services().borrow<TilemapRuntime>())
         {
-            residency->resolveTextureOf<
+            residency.resolveTextureOf<
                 TilemapComponent,
                 &TilemapComponent::tileset_texture>();
-            if (!node(std::make_unique<Tilemap2DSubsystem>(tilemaps)))
+            const auto requirements =
+                Tilemap2DSystem::requiredRenderFeatures();
+            feature_roots.insert(
+                feature_roots.end(),
+                requirements.begin(),
+                requirements.end());
+            if (!builder.add(
+                    std::make_unique<Tilemap2DSystem>(*render, tilemaps),
+                    kPhaseRender))
             {
-                (void)builder.rollbackTo(checkpoint);
                 return false;
             }
         }

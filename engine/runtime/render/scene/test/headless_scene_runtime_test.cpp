@@ -391,116 +391,12 @@ namespace
             lux::ecs::kPhaseSimulation).has_value();
     }
 
-    class NonTerminalRollbackIntegration final
-        : public lux::runtime::ISceneRuntimeIntegration
-    {
-    public:
-        [[nodiscard]] lux::cxx::TypeToken type() const noexcept override
-        {
-            return lux::cxx::typeToken<NonTerminalRollbackIntegration>();
-        }
-
-        [[nodiscard]] lux::cxx::expected<
-            void,
-            lux::runtime::ESceneIntegrationError>
-        prepare(lux::runtime::SceneRuntimeAssemblyContext&) noexcept override
-        {
-            return {};
-        }
-
-        [[nodiscard]] lux::cxx::expected<
-            void,
-            lux::runtime::ESceneIntegrationError>
-        finalize(lux::runtime::SceneRuntimeAssemblyContext&) noexcept override
-        {
-            return {};
-        }
-
-        [[nodiscard]] lux::cxx::expected<
-            void,
-            lux::runtime::ESceneIntegrationError>
-        onPublished(
-            lux::runtime::SceneRuntimePublishedContext&) noexcept override
-        {
-            return lux::cxx::unexpected(
-                lux::runtime::ESceneIntegrationError::PUBLICATION_FAILED);
-        }
-
-        void processSafePoint() noexcept override {}
-
-        [[nodiscard]] lux::runtime::ESceneIntegrationCloseStatus close()
-            noexcept override
-        {
-            return lux::runtime::ESceneIntegrationCloseStatus::RETRY_REQUIRED;
-        }
-
-    };
-
-    [[nodiscard]] int runNonTerminalBringUpRollbackChild()
-    {
-        lux::asset::AssetManager assets{
-            lux::asset::runtimeAssetCodecCatalog()};
-        lux::exec::AsyncRuntimeBuilder builder;
-        auto asset_service_result =
-            lux::asset_runtime::AssetLoadService::addTo(builder, assets);
-        auto section_service_result =
-            lux::runtime::entity_scene::EntitySectionService::addTo(builder);
-        if (!asset_service_result || !section_service_result)
-            return 0;
-        auto runtime_plan = std::move(builder).compile();
-        if (!runtime_plan)
-            return 0;
-
-        auto asset_service = std::move(*asset_service_result);
-        auto section_service = std::move(*section_service_result);
-        lux::exec::AsyncRuntime async{std::move(*runtime_plan)};
-        lux::ecs::ComponentTypeCatalog components;
-        lux::runtime::SceneRuntime::Dependencies dependencies{
-            assets,
-            asset_service.client(),
-            async,
-            components,
-            section_service.loadClient()};
-        lux::runtime::SceneRuntime::Config config;
-        config.name = "Non-terminal bring-up rollback";
-        lux::scene::SceneDescription description;
-        description.id =
-            uuid("10000000-0000-4000-8000-000000000003");
-        config.scene_asset_id = registerScene(
-            assets, std::move(description));
-
-        auto scene = lux::runtime::SceneRuntime::create(
-            dependencies,
-            config,
-            std::make_unique<NonTerminalRollbackIntegration>());
-
-        // The fixed implementation aborts before reaching this cleanup. It is
-        // deliberately complete so the pre-fix implementation exits zero and
-        // the parent process detects the missing fail-closed lifetime gate.
-        scene.reset();
-        section_service.close();
-        asset_service.close();
-        (void)lux::exec::testing::closeRuntime(async);
-        return 0;
-    }
 }
 
-int main(int argc, char** argv)
+int main()
 {
     namespace format = lux::ecs::scene_format;
     namespace scene = lux::scene;
-
-    constexpr std::string_view rollback_child_argument =
-        "--non-terminal-bring-up-rollback-child";
-    if (argc == 2 && std::string_view{argv[1]} == rollback_child_argument)
-        return runNonTerminalBringUpRollbackChild();
-
-    const std::string rollback_command = std::string{"\""} + argv[0] +
-        "\" " + std::string{rollback_child_argument};
-    const int rollback_result = std::system(rollback_command.c_str());
-    check(
-        rollback_result != -1 && rollback_result != 0,
-        "non-terminal bring-up rollback fails closed before owner release");
 
     format::EntitySectionImage section;
     section.section = format::EntitySectionId{
@@ -604,8 +500,11 @@ int main(int argc, char** argv)
         assets, std::move(**decoded_package));
     config.section_vfs = vfs;
     config.install_systems =
-        [&cross_phase_blob_close_probe](lux::ecs::ScheduleBuilder& builder)
+        [&cross_phase_blob_close_probe](
+            lux::ecs::ScheduleBuilder& builder,
+            const lux::scene::SceneDescription& description)
         {
+            (void)description;
             return installCrossPhaseBlobCloseSystem(
                 builder, cross_phase_blob_close_probe);
         };
@@ -737,8 +636,11 @@ int main(int argc, char** argv)
     ordered_close_config.scene_asset_id = registerScene(
         assets, std::move(ordered_close_description));
     ordered_close_config.install_systems =
-        [&async, &runtime_close_probe](lux::ecs::ScheduleBuilder& builder)
+        [&async, &runtime_close_probe](
+            lux::ecs::ScheduleBuilder& builder,
+            const lux::scene::SceneDescription& description)
         {
+            (void)description;
             return installRuntimeCloseSystems(
                 builder, async, runtime_close_probe);
         };

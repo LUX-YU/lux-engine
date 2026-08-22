@@ -8,7 +8,6 @@
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
@@ -19,7 +18,6 @@
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
-#include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <exec/start_detached.hpp>
@@ -44,16 +42,14 @@ namespace
         "org.lux.test.spatial3d.resident";
     constexpr std::uint32_t kParameterMagic = 0x3344534cu;
 
-    lux::runtime::entity_scene::EntitySceneCatalog emptyCatalog()
+    lux::scene::SceneDescription emptyCatalog()
     {
         lux::scene::SceneDescription package;
         package.id = lux::asset::asset_id_t{
             uuids::uuid::from_string(
                 "84000000-0000-4000-8000-000000000001").value()};
-        auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(
-            std::move(package));
-        assert(result);
-        return std::move(*result);
+        assert(lux::scene::validateSceneDescription(package));
+        return package;
     }
 
     struct GeneratorState final
@@ -330,9 +326,8 @@ int main()
     closeOwner(runtime, backpressure_scope.closeAsync());
 
     auto scene_catalog = emptyCatalog();
-    residency::EntitySectionRecordStore store{scene_catalog.sections()};
     auto planner = residency::SectionResidencyPlanner::create(
-        std::move(store),
+        scene_catalog.sections,
         residency::SectionResidencyBudget{
             sample.decoded_bytes * 125u,
             125u});

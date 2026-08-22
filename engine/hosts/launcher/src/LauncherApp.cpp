@@ -147,8 +147,7 @@ namespace lux::launcher
         //      before "New Demo Project" writes its World document. Without
         //      this, the demo .luxworld would be written with zero
         //      components (everything is silently skipped).
-        lux::meta::meta_module_init();
-        if (!lux::ecs::registerGeneratedComponents(
+        if (!lux::ecs::initializeGeneratedMetadata(
                 runtime->component_types))
             return false;
 

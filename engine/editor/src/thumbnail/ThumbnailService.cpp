@@ -41,7 +41,7 @@
 #include <lux/engine/log/Log.hpp>
 
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
-#include <lux/engine/runtime/render/scene/RenderSceneIntegration.hpp>
+#include <lux/engine/runtime/render/scene/RenderedSceneComposition.hpp>
 #include <lux/engine/runtime/render/scene/StandardFeaturePlan.hpp>   // previewProfile
 
 #include <lux/engine/ecs/World.hpp>
@@ -347,13 +347,13 @@ namespace lux::editor
             .entity_sections = infra_.entity_sections,
             .extension_modules = infra_.extension_modules,
         };
-        host->runtime = lux::runtime::SceneRuntime::create(
+        host->runtime = lux::runtime::createRenderedSceneRuntime(
             deps,
             rcfg,
-            std::make_unique<lux::runtime::RenderSceneIntegration>(
-                render_services,
-                lux::runtime::RenderSceneConfig{
-                    .target = host->target.id()}));
+            render_services,
+            lux::runtime::RenderSceneConfig{
+                .target = host->target.id(),
+                .install_rendering = installPreviewRendering});
         if (!host->runtime)
         {
             std::fprintf(stderr, "[Thumbnail] preview SceneRuntime bring-up failed — thumbnails stay off\n");
@@ -367,9 +367,6 @@ namespace lux::editor
         host->key_light = createPreviewKeyLight(world);
         host->camera    = createPreviewCamera(world, host->target.id(), extent,
                                                /*auto_aspect=*/false);
-        // 第一帧提交之前 view 必须在位,否则 target 上没有任何层。
-        lux::runtime::renderScene(*host->runtime)->settleViewCreation();
-
         host_      = std::move(host);
         providers_ = makeDefaultThumbnailSpecProviders();
         sizes_     = {{256, 256}, {128, 128}, {64, 64}};

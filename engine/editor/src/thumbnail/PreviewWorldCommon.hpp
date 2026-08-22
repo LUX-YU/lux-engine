@@ -20,9 +20,16 @@
 
 #include <Eigen/Core>
 
+#include <memory>
 #include <string_view>
+#include <vector>
 
-namespace lux::ecs { class World; }
+namespace lux::ecs
+{
+    class RenderStage;
+    class ResidencySubsystem;
+    class World;
+}
 namespace lux::asset { class AssetManager; }
 
 namespace lux::editor
@@ -33,7 +40,15 @@ namespace lux::editor
     /// 安装的 SkeletalAnimationResolver 声明了「先于 AnimationSystem」,不装的话
     /// 那条约束悬空,Schedule::compile 每次装配都会 warn 一行。
     [[nodiscard]] bool installPreviewWorldSystems(
-        lux::ecs::ScheduleBuilder& builder);
+        lux::ecs::ScheduleBuilder& builder,
+        const lux::scene::SceneDescription& description);
+
+    [[nodiscard]] bool installPreviewRendering(
+        lux::ecs::ScheduleBuilder& builder,
+        const lux::scene::SceneDescription& description,
+        std::vector<std::unique_ptr<lux::ecs::RenderStage>>& stages,
+        std::vector<std::string_view>& feature_roots,
+        lux::ecs::ResidencySubsystem& residency);
 
     /// Build the transient LXSC value for one private preview world.
     [[nodiscard]] lux::scene::SceneDescription
@@ -53,8 +68,7 @@ namespace lux::editor
     /// render-client canonical Y-down projection)+ ViewPresentComponent{target, 0, extent}。
     /// @p auto_aspect false = 钉 1:1(缩略图方图);true = 随 ViewPresent extent
     /// 派生(活预览面板改尺寸时 patch extent 即可)。
-    /// 调用方装配末尾要自己 `runtime->settleViewCreation()`(第一帧提交之前
-    /// view 必须在位,否则 target 上没有任何层)。
+    /// CameraView 投影由 rendered Scene 的 Schedule 在首帧统一推进。
     lux::ecs::Entity createPreviewCamera(lux::ecs::World&            world,
                                              lux::render::RenderTargetId target,
                                              lux::math::Extent2u         extent,

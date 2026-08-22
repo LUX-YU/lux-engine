@@ -6,7 +6,7 @@
 #include <lux/engine/ecs/components/ParentComponent.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
+#include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
@@ -530,11 +530,8 @@ int main()
     fixed_package.startup_sections.push_back(fixed_leaf.record.id);
     fixed_package.sections.push_back(common.record);
     fixed_package.sections.push_back(fixed_leaf.record);
-    auto fixed_catalog_result = runtime::EntitySceneCatalog::create(
-        std::move(fixed_package));
-    assert(fixed_catalog_result);
-    auto fixed_catalog = std::move(*fixed_catalog_result);
-    const auto& fixed_scene_package = fixed_catalog.package();
+    assert(lux::scene::validateSceneDescription(fixed_package));
+    const auto& fixed_scene_package = fixed_package;
     auto fixed_scene_result =
         lux::ecs::entity_scene::StartupSectionSystem::create(
             fixed_scene_package.id,
@@ -975,11 +972,8 @@ int main()
     rejected_package.sections.push_back(common.record);
     rejected_package.required_components.push_back({
         lux::ecs::componentSchemaId("org.lux.test.unknown"), 1u});
-    auto rejected_catalog_result = runtime::EntitySceneCatalog::create(
-        std::move(rejected_package));
-    assert(rejected_catalog_result);
-    auto rejected_catalog = std::move(*rejected_catalog_result);
-    const auto& rejected_scene_package = rejected_catalog.package();
+    assert(lux::scene::validateSceneDescription(rejected_package));
+    const auto& rejected_scene_package = rejected_package;
     auto rejected_scene_result =
         lux::ecs::entity_scene::StartupSectionSystem::create(
             rejected_scene_package.id,

@@ -1027,10 +1027,9 @@
 
         if (!options.authoring_only)
         {
-            lux::meta::meta_module_init();
             lux::ecs::ComponentTypeCatalog components;
             const auto registered =
-                lux::ecs::registerGeneratedComponents(components);
+                lux::ecs::initializeGeneratedMetadata(components);
             if (!registered || *registered == 0u)
             {
                 std::fprintf(

@@ -127,7 +127,7 @@ namespace
         if (require_unselected_extension)
         {
             source.required_extensions.push_back({
-                lux::authoring::WorldExtensionId{
+                lux::extensions::ExtensionId{
                     "org.lux.test.unselected"},
                 1u,
                 0u});

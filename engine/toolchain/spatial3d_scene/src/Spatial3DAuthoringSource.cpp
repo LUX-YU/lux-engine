@@ -75,7 +75,7 @@ namespace lux::toolchain
         toRequiredExtension(
             const lux::authoring::WorldRequiredExtension& requirement)
         {
-            if (!requirement.id.valid() ||
+            if (!requirement.id.isValid() ||
                 !lux::extensions::isCanonicalStableName(
                     requirement.id.name()))
             {

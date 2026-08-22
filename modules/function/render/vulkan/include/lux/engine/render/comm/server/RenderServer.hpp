@@ -560,7 +560,7 @@ namespace lux::render
             //   「后面的命令不再可信」并不成立,逐条校验会各自把关。此前这里
             //   return false:一条失败让同帧**剩余全部命令悄悄蒸发**,其中等回复的
             //   那些永远等不到(CommandFailedReply 只发给了失败的那条),批量
-            //   bring-up(settleFeatures / CameraViewSubsystem::settle)因此挂死 ——
+            //   bring-up(settleFeatures / CameraViewSystem::settle)因此挂死 ——
             //   失败被放大成不可诊断的卡死。失败命令的后继若依赖其效果,会拿着
             //   无效句柄被服务端各自的校验闸拒绝,退化是逐级可见的。
             bool all_ok = true;

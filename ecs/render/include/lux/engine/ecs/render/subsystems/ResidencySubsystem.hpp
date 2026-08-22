@@ -54,7 +54,7 @@
 #include <lux/engine/resource/asset/AssetRef.hpp>
 
 #include <lux/engine/ecs/render/ResidencyCallbacks.hpp>
-#include <lux/engine/ecs/render/RenderStage.hpp>
+#include <lux/engine/ecs/systems/ISystem.hpp>
 #include "lux/engine/ecs/render/RenderResourceEvents.hpp"   // 域/失败词汇 + 句柄位解包
 #include "lux/engine/ecs/render/RenderViewUtil.hpp"         // Change/Leave 观察者 + inComponentView
 #include "lux/engine/ecs/render/components/MeshGpuCacheComponent.hpp"
@@ -589,7 +589,7 @@ namespace lux::ecs
     ///   「排在消费者之前」从此是一条**类型化的边**:消费方声明
     ///   `runsAfter<ResidencySubsystem>()`(由消费者声明依赖,不由本类声明它的
     ///   消费者是谁),而不是「被插到 vector 的第 0 位」。
-    class ResidencySubsystem final : public RenderStage
+    class ResidencySubsystem final : public ISystem
     {
     public:
         explicit ResidencySubsystem(
@@ -646,14 +646,24 @@ namespace lux::ecs
 
         void onRemoved(const SystemRemovalContext&) override { detach(); }
 
-        void extract(RenderSubsystemContext& ctx) override
+        void update(const SystemUpdateContext& context) override
         {
-            drainResolvers(ctx.registry());
+            if (!closing_)
+                drainResolvers(context.registry());
         }
 
-        void close(RenderSubsystemContext&) noexcept override
+        void requestClose() noexcept override
         {
+            if (closing_)
+                return;
+            closing_ = true;
             releaseAll();
+            detach();
+        }
+
+        [[nodiscard]] bool closeComplete() const noexcept override
+        {
+            return closing_;
         }
 
         /// 还掉全部驻留兴趣票。宿主在场景拆解时显式调 —— 票据释放是 CPU 侧回调
@@ -703,6 +713,7 @@ namespace lux::ecs
         ResidencyCallbacks         cb_{};
         ResidencyCallbacks::Ticket watch_{};
         std::vector<std::unique_ptr<IResidencyResolver>> resolvers_;
+        bool closing_{false};
     };
 
 } // namespace lux::ecs

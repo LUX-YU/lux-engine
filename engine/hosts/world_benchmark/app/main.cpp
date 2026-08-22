@@ -34,7 +34,6 @@ namespace
         "main_completion",
         "event_drain",
         "texture_streaming",
-        "integration_safe_point",
         "schedule_input",
         "schedule_pre_transform",
         "schedule_simulation",
@@ -2428,7 +2427,6 @@ int main(int argc, char** argv)
            "trace_attributed_ns,control_reply_pump_ns,frame_reply_pump_ns,"
            "pending_submit_ns,frame_slot_wait_ns,frame_open_ns,"
            "main_completion_ns,event_drain_ns,texture_streaming_ns,"
-           "contribution_safe_point_ns,integration_safe_point_ns,"
            "schedule_input_ns,schedule_pre_transform_ns,"
            "schedule_simulation_ns,schedule_pre_render_ns,"
            "schedule_render_ns,schedule_post_render_ns,command_barrier_ns,"
@@ -2458,8 +2456,7 @@ int main(int argc, char** argv)
            "\"control_reply_pump\",\"frame_reply_pump\","
            "\"pending_submit\",\"frame_slot_wait\",\"frame_open\","
            "\"main_completion\",\"event_drain\",\"texture_streaming\","
-           "\"contribution_safe_point\","
-           "\"integration_safe_point\",\"schedule_input\","
+           "\"schedule_input\","
            "\"schedule_pre_transform\",\"schedule_simulation\","
            "\"schedule_pre_render\",\"schedule_render\","
            "\"schedule_post_render\",\"command_barrier\","

@@ -13,7 +13,7 @@
 #include <lux/engine/resource/asset/AssetLoadPort.hpp>
 #include <lux/engine/resource/asset/AssetRef.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
+#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/ecs/entity_scene/StartupSectionSystem.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
@@ -21,7 +21,6 @@
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/SceneServices.hpp>
-#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/runtime/extensions/ExtensionModuleManager.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 
@@ -57,68 +56,8 @@ namespace lux::runtime
     struct SceneRuntimeFrameTrace final
     {
         std::uint64_t frame_serial{0u};
-        std::uint64_t integration_safe_point_nanoseconds{0u};
         std::array<std::uint64_t, 6u> schedule_phase_nanoseconds{};
         std::uint64_t command_barrier_nanoseconds{0u};
-    };
-
-    enum class ESceneIntegrationError : std::uint8_t
-    {
-        PREPARE_FAILED,
-        FINALIZE_FAILED,
-        PUBLICATION_FAILED,
-    };
-
-    enum class ESceneIntegrationCloseStatus : std::uint8_t
-    {
-        CLOSED,
-        RETRY_REQUIRED,
-        FAILED,
-    };
-
-    struct SceneRuntimeAssemblyContext
-    {
-        lux::ecs::ScheduleBuilder& builder;
-        lux::asset::AssetManager&  assets;
-        const lux::scene::SceneDescription& description;
-        std::string_view            scene_name;
-    };
-
-    struct SceneRuntimePublishedContext
-    {
-        lux::ecs::ScheduleBuilder& builder;
-        lux::ecs::Schedule&        schedule;
-        lux::ecs::World&           world;
-        lux::ecs::SceneServices&   services;
-        lux::events::DomainEvents* events;
-        const lux::extensions::ExtensionModuleManager* extension_modules;
-        lux::cxx::move_only_function<void()> request_close_progress;
-    };
-
-    /// Cold-path integration seam for an optional scene domain. Implementors
-    /// mutate only the unpublished builder in prepare/finalize, then receive a
-    /// publication callback after core ownership has become stable. This is a
-    /// lifecycle participant, not a second scheduler and not a service locator.
-    class LUX_RUNTIME_SCENE_PUBLIC ISceneRuntimeIntegration
-    {
-    public:
-        virtual ~ISceneRuntimeIntegration() = default;
-
-        [[nodiscard]] virtual lux::cxx::TypeToken type() const noexcept = 0;
-        [[nodiscard]] virtual lux::cxx::expected<
-            void,
-            ESceneIntegrationError>
-        prepare(SceneRuntimeAssemblyContext& context) noexcept = 0;
-        [[nodiscard]] virtual lux::cxx::expected<
-            void,
-            ESceneIntegrationError>
-        finalize(SceneRuntimeAssemblyContext& context) noexcept = 0;
-        [[nodiscard]] virtual lux::cxx::expected<
-            void,
-            ESceneIntegrationError>
-        onPublished(SceneRuntimePublishedContext& context) noexcept = 0;
-        virtual void processSafePoint() noexcept = 0;
-        [[nodiscard]] virtual ESceneIntegrationCloseStatus close() noexcept = 0;
     };
 
     enum class ESceneCloseStatus : std::uint8_t
@@ -140,7 +79,6 @@ namespace lux::runtime
     enum class ESceneCloseError : std::uint8_t
     {
         NONE,
-        INTEGRATION_CLOSE_REJECTED,
         SCHEDULE_CLOSE_REJECTED,
     };
 
@@ -163,8 +101,6 @@ namespace lux::runtime
         {
         case ESceneCloseError::NONE:
             return "none";
-        case ESceneCloseError::INTEGRATION_CLOSE_REJECTED:
-            return "integration_close_rejected";
         case ESceneCloseError::SCHEDULE_CLOSE_REJECTED:
             return "schedule_close_rejected";
         }
@@ -175,7 +111,6 @@ namespace lux::runtime
     {
         ESceneCloseStatus status{ESceneCloseStatus::ALREADY_CLOSED};
         ESceneCloseError  error{ESceneCloseError::NONE};
-        bool              integration_closed{false};
 
         [[nodiscard]] bool terminal() const noexcept
         {
@@ -238,13 +173,14 @@ namespace lux::runtime
             /// Product-owned cold assembly function. It stages ordinary
             /// world systems into the only Schedule and is never retained
             /// as a runtime domain object.
-            std::function<bool(lux::ecs::ScheduleBuilder&)> install_systems;
+            std::function<bool(
+                lux::ecs::ScheduleBuilder&,
+                const lux::scene::SceneDescription&)> install_systems;
         };
 
         [[nodiscard]] static std::unique_ptr<SceneRuntime> create(
             const Dependencies& deps,
-            const Config& config,
-            std::unique_ptr<ISceneRuntimeIntegration> integration = {});
+            const Config& config);
 
         ~SceneRuntime();
         SceneRuntime(const SceneRuntime&) = delete;
@@ -297,10 +233,14 @@ namespace lux::runtime
         {
             return *services_;
         }
-        [[nodiscard]] const entity_scene::EntitySceneCatalog& entityScene()
+        [[nodiscard]] const lux::ecs::SceneServices& services() const noexcept
+        {
+            return *services_;
+        }
+        [[nodiscard]] const lux::scene::SceneDescription& description()
             const noexcept
         {
-            return *entity_scene_catalog_;
+            return description_;
         }
         /// Domain-neutral loading telemetry. Scene Features receive
         /// only EntitySectionClient/ContentBlobClient values and cannot mutate
@@ -320,28 +260,8 @@ namespace lux::runtime
             return *async_scope_;
         }
 
-        template <class Integration>
-        [[nodiscard]] Integration* integration() noexcept
-        {
-            if (!integration_ || integration_->type() !=
-                    lux::cxx::typeToken<Integration>())
-                return nullptr;
-            return static_cast<Integration*>(integration_.get());
-        }
-
-        template <class Integration>
-        [[nodiscard]] const Integration* integration() const noexcept
-        {
-            if (!integration_ || integration_->type() !=
-                    lux::cxx::typeToken<Integration>())
-                return nullptr;
-            return static_cast<const Integration*>(integration_.get());
-        }
-
     private:
-        explicit SceneRuntime(
-            const Dependencies& deps,
-            std::unique_ptr<ISceneRuntimeIntegration> integration) noexcept;
+        explicit SceneRuntime(const Dependencies& deps) noexcept;
 
         [[nodiscard]] bool bringUp(const Config& config);
         bool failBringUp() noexcept;
@@ -369,7 +289,6 @@ namespace lux::runtime
             extension_modules_{};
         lux::events::DomainEvents*                events_{};
 
-        std::unique_ptr<ISceneRuntimeIntegration> integration_;
         std::unique_ptr<lux::ecs::World>           world_;
         std::unique_ptr<lux::ecs::PersistentEntityIndex>
                                                    persistent_entities_;
@@ -382,17 +301,12 @@ namespace lux::runtime
         lux::ecs::entity_scene::EntitySectionLoaderSystem*
                                                 entity_section_loader_{};
         lux::ecs::entity_scene::StartupSectionSystem* startup_sections_{};
-        const entity_scene::EntitySceneCatalog*    entity_scene_catalog_{};
+        lux::scene::SceneDescription               description_{};
         lux::asset::AssetRef                       scene_asset_ref_{};
 
         bool live_{false};
         bool closing_{false};
         bool closed_{false};
-        bool integration_closed_{false};
-        bool startup_close_started_{false};
-        bool startup_closed_{false};
-        bool entity_loader_close_started_{false};
-        bool entity_loader_closed_{false};
         bool async_scope_close_started_{false};
         bool async_scope_closed_{false};
         bool close_advancing_{false};

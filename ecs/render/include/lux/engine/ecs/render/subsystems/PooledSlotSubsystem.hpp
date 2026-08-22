@@ -15,7 +15,7 @@
  * 成员测试，只为找出（通常是零个）离场的。现在由 `ComponentSetLeaveObserver` 在实体
  * 真正离开组件集时通知一次：**O(活实例 × 帧) → O(结构性变化)**。
  *
- * 形状是「观察者只记意图 + 安全点排空」，与批 3 的 `CameraViewSubsystem` 同款，理由也
+ * 形状是「观察者只记意图 + 安全点排空」，与批 3 的 `CameraViewSystem` 同款，理由也
  * 一样，只是这里多一条**渲染特有**的：destroy 是一条渲染命令，必须在帧构建器开着的
  * 时候发；而信号是在 `registry.destroy(e)` 那一刻派发的，那通常不在 `update()` 里。
  * 所以观察者只把句柄从 `live_` 挪进 `leaving_`，命令留到下一次 `update` 安全点发。
@@ -37,7 +37,9 @@
 #include <lux/engine/ecs/Registry.hpp>   // entity_id / EntityRegistry
 #include <lux/engine/ecs/render/VisualTransition.hpp>
 
-#include <lux/engine/ecs/render/RenderStage.hpp>
+#include <lux/engine/ecs/render/RenderExtractContext.hpp>
+#include <lux/engine/ecs/render/systems/RenderSystem.hpp>
+#include <lux/engine/ecs/systems/ISystem.hpp>
 #include "lux/engine/ecs/render/SceneRenderBinding.hpp"
 #include "lux/engine/ecs/render/RenderViewUtil.hpp"
 #include "lux/engine/ecs/render/TrackedRenderRequest.hpp"
@@ -59,7 +61,7 @@ namespace lux::ecs
     /// 承担;这里的 tracker 只表达「一个 ECS owner 等一个 RPC 回执」,
     /// 避免把 stdexec 的重模板头拉进 ECS 公开头。架构门禁按文件
     /// 白名单锁住这个边界,新业务节点无法再直接添加续体。
-    class PooledSlotSubsystem final : public RenderStage
+    class PooledSlotSubsystem final : public ISystem
     {
         using T = Traits;
         using C = typename Traits::Component;
@@ -102,31 +104,83 @@ namespace lux::ecs
         std::vector<Leaving> leaving_;
 
         ComponentSetLeaveObserver<C, typename T::Require, typename T::Exclude> leave_;
+        lux::ecs::Registry* registry_{nullptr};
+        SceneRenderBinding* render_{nullptr};
+        ActiveRenderView*   active_view_{nullptr};
+        bool                closing_{false};
 
     public:
-        PooledSlotSubsystem() = default;
+        PooledSlotSubsystem(
+            SceneRenderBinding& render,
+            ActiveRenderView& active_view) noexcept
+            : render_(&render), active_view_(&active_view)
+        {
+        }
 
         ~PooledSlotSubsystem() override { leave_.detach(); }
 
-        void onAdded(const SystemSetupContext& setup) override
-        {
-            leave_.attach(setup.registry(),
-                          [this](lux::ecs::Entity e) { onLeave(e); });
-        }
-
-        void onRemoved(const SystemRemovalContext&) override { leave_.detach(); }
-
         /// 本节点驱动的那个 feature（Light）—— 由 trait 声明,不在这里写死。
-        [[nodiscard]] std::span<const std::string_view>
-        requiredFeatures() const noexcept override
+        [[nodiscard]] static std::span<const std::string_view>
+        requiredRenderFeatures() noexcept
         {
             static const std::string_view kFeatures[] = { T::feature };
             return kFeatures;
         }
 
-        void extract(RenderSubsystemContext& uctx) override
+        void onAdded(const SystemSetupContext& setup) override
+        {
+            ensureAttached(setup.registry());
+        }
+
+        void onRemoved(const SystemRemovalContext&) override
+        {
+            leave_.detach();
+            registry_ = nullptr;
+        }
+
+        void update(const SystemUpdateContext& context) override
+        {
+            if (closing_)
+                return;
+            RenderExtractContext extraction{
+                context.registry(),
+                *render_,
+                *active_view_,
+                context.dt(),
+                context.tickIndex()};
+            extract(extraction);
+        }
+
+        void requestClose() noexcept override
+        {
+            if (closing_)
+                return;
+            closing_ = true;
+            create_requests_.clear();
+            leave_.detach();
+            registry_ = nullptr;
+            live_.clear();
+            leaving_.clear();
+            failed_.clear();
+        }
+
+        [[nodiscard]] bool closeComplete() const noexcept override
+        {
+            return closing_;
+        }
+
+        [[nodiscard]] std::span<const Type> runsAfter() const noexcept override
+        {
+            static const Type kAfter[]{systemType<RenderSystem>()};
+            return kAfter;
+        }
+
+        /// Test seam for renderer-protocol ownership probes. Production
+        /// scheduling enters through update().
+        void extract(RenderExtractContext& uctx)
         {
             auto& reg = uctx.registry();
+            ensureAttached(reg);
             auto& ctx = uctx.render();
             const auto ops = ctx.features().template ops<typename T::Ops>(T::feature);
 
@@ -370,6 +424,17 @@ namespace lux::ecs
         //   是多余的命令 —— `leaving_` 里那些也一样,所以析构直接丢掉是对的。
 
     private:
+        void ensureAttached(lux::ecs::Registry& registry)
+        {
+            if (registry_ == &registry)
+                return;
+            leave_.detach();
+            registry_ = &registry;
+            leave_.attach(
+                registry,
+                [this](lux::ecs::Entity entity) { onLeave(entity); });
+        }
+
         [[nodiscard]] static std::uint32_t transitionMilliseconds(
             const lux::ecs::Registry& registry,
             lux::ecs::Entity entity) noexcept

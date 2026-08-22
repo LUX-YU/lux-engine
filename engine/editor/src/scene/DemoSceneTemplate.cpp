@@ -3,7 +3,7 @@
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/editor/content/EditorBuiltins.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
-#include <lux/engine/editor/scene/WorldActorEcsAdapter.hpp>
+#include <lux/engine/editor/scene/WorldActorEcsConversion.hpp>
 
 #include <lux/engine/ecs/render/components/3d/Camera3DComponent.hpp>
 #include <lux/engine/ecs/render/components/PrimaryCameraTag.hpp>
@@ -214,11 +214,12 @@ namespace lux::editor
             source.world,
             descriptor_page.space,
             descriptor_page.macro);
-        WorldActorEcsAdapter actor_adapter{components, persistent_entities};
         std::unordered_set<std::string> stable_ids;
         for (const auto entity : reg.view<entt::entity>())
         {
-            auto actor_document = actor_adapter.capture(
+            auto actor_document = serializeWorldActor(
+                components,
+                persistent_entities,
                 reg,
                 entity,
                 source.world,

@@ -24,11 +24,11 @@
  *
  *     struct AddViewRequested
  *     {
- *         using Producer = CameraViewSubsystem;  // 谁能发它
+ *         using Producer = CameraViewSystem;  // 谁能发它
  *         entt::entity entity;                   // 纯值载荷
  *         std::size_t registryPublicationBytes() const noexcept;
  *         void prepareRegistryPublication(EntityRegistry&) const noexcept;
- *         void apply(lux::ecs::Registry&, CameraViewSubsystem&) const;
+ *         void apply(lux::ecs::Registry&, CameraViewSystem&) const;
  *     };
  *
  * `apply` 拿到的是**已经过代次校验**的生产者引用。类型身份在 `push` 时校验一次

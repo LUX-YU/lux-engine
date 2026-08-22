@@ -17,7 +17,7 @@
 #include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>          // session()/scene()/features()
-#include <lux/engine/ecs/render/subsystems/CameraViewSubsystem.hpp>
+#include <lux/engine/ecs/render/systems/CameraViewSystem.hpp>
 #include <lux/engine/ecs/render/components/RenderViewBindingComponent.hpp>       // camera → view wiring (data)
 #include <lux/engine/ecs/render/components/2d/Camera2DCacheComponent.hpp>     // Camera2DCacheComponent
 #include <lux/engine/ecs/render/RenderSpatialTransform.hpp>
@@ -44,7 +44,7 @@ namespace lux::ecs
         }
 
     public:
-        void extract(RenderSubsystemContext& uctx) override
+        void extract(RenderExtractContext& uctx) override
         {
             auto& registry = uctx.registry();
             auto& ctx = uctx.render();

@@ -154,13 +154,13 @@
             .extension_modules = infra_.extension_modules,
         };
         rcfg.install_systems = infra_.install_systems;
-        runtime_ = lux::runtime::SceneRuntime::create(
+        runtime_ = lux::runtime::createRenderedSceneRuntime(
             deps,
             rcfg,
-            std::make_unique<lux::runtime::RenderSceneIntegration>(
-                render_services,
-                lux::runtime::RenderSceneConfig{
-                    .target = main_target_.id()}));
+            render_services,
+            lux::runtime::RenderSceneConfig{
+                .target = main_target_.id(),
+                .install_rendering = infra_.install_rendering});
         if (!runtime_)
         {
             std::cerr << "[EditorScene] bringUp: SceneRuntime bring-up failed\n";
@@ -302,7 +302,7 @@
         //      runtime deliberately lacks (EditorTransientComponent is an
         //      editor concept owned by the Authoring transaction):
         //      we build the entity and give it a ViewPresentComponent; the
-        //      camera domain (CameraViewSubsystem) does the rest — build the view,
+        //      camera domain (CameraViewSystem) does the rest — build the view,
         //      compose it onto our target, keep aspect and matrices in sync.
         //      A game host does the same thing to its authored camera.
         auto& world = runtime_->world();
@@ -340,16 +340,13 @@
             world.registry().patch<lux::ecs::Transform3DComponent>(camera_entity_);   // 批 T2
         }
         // 编辑器相机**拥有**视口那一路图(批 3):挂上 ViewPresentComponent,
-        // CameraViewSubsystem 为它建 view 并合成到我们上面建的 offscreen target。
+        // CameraViewSystem 为它建 view 并合成到我们上面建的 offscreen target。
         // 此前是「运行时先建了一个没有主人的 MainView,再由 bindCamera 事后认领」
         // —— 那正好把「每个可见的 view 都有相机」这条不变量倒过来了。
         viewport_slot_ = lux::ecs::ViewPresentComponent{
             main_target_.id(), 0u,
             lux::math::Extent2u{cfg.initial_width, cfg.initial_height}};
         world.emplace<lux::ecs::ViewPresentComponent>(camera_entity_, viewport_slot_);
-        // 第一帧提交之前 view 必须在位,否则 target 上没有任何层 —— 黑屏几帧、不报错。
-        lux::runtime::renderScene(*runtime_)->settleViewCreation();
-
         // ── HOST step 4: editor-only scene systems, appended AFTER the
         //      runtime's content systems (anim resolver, streaming). In-phase
         //      order carries no cross-system dependency — the phase brackets
@@ -372,7 +369,7 @@
                 : lux::ecs::systemType<lux::ecs::Camera3DSystem>());
         // 相机导航必须先于变换/相机算矩阵 —— 相位 PreTransform 说的就是这个。
         //
-        // 而「必须**压过** `CameraViewSubsystem::syncAspect`」是另一回事:两者都写
+        // 而「必须**压过** `CameraViewSystem::syncAspect`」是另一回事:两者都写
         // `Camera*Component::aspect`,权威是编辑器面板的内容区尺寸,而 syncAspect
         // 写的 extent 只在显式 resize 时 patch(是「上次改动后的值」)。这条约束
         // 由 `CameraSceneSystem::runsAfter()` 说出来。
@@ -771,15 +768,15 @@
         config.section_vfs = image->vfs;
         config.events = infra_.events;
         config.install_systems = infra_.install_systems;
-        auto candidate = lux::runtime::SceneRuntime::create(
+        auto candidate = lux::runtime::createRenderedSceneRuntime(
             deps,
             config,
-            std::make_unique<lux::runtime::RenderSceneIntegration>(
-                render_services,
-                lux::runtime::RenderSceneConfig{
-                    .target = main_target_.id(),
-                    .extent = viewport_slot_.extent,
-                    .present_primary_camera = true}));
+            render_services,
+            lux::runtime::RenderSceneConfig{
+                .target = main_target_.id(),
+                .extent = viewport_slot_.extent,
+                .present_primary_camera = true,
+                .install_rendering = infra_.install_rendering});
         if (!candidate)
         {
             lux::log::error(
@@ -830,7 +827,6 @@
         {
             edit_registry.remove<lux::ecs::ViewPresentComponent>(
                 camera_entity_);
-            lux::runtime::renderScene(*runtime_)->settleViewCreation();
         }
 
         play_section_vfs_ = std::move(image->vfs);
@@ -875,7 +871,6 @@
                     lux::ecs::ViewPresentComponent>(
                         camera_entity_,
                         viewport_slot_);
-                lux::runtime::renderScene(*runtime_)->settleViewCreation();
             }
         }
         return true;

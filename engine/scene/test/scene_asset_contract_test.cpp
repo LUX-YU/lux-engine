@@ -188,6 +188,13 @@ int main()
     assert(!rejected_v1 && rejected_v1.error().error ==
         scene::ESceneCodecError::UNSUPPORTED_VERSION);
 
+    auto rejected_v2 = std::vector<std::byte>{payload.begin(), payload.end()};
+    rejected_v2[4] = std::byte{2u};
+    const auto rejected_v2_result =
+        scene::SceneAssetSerDeser::decodeData(rejected_v2);
+    assert(!rejected_v2_result && rejected_v2_result.error().error ==
+        scene::ESceneCodecError::UNSUPPORTED_VERSION);
+
     auto mismatched_outer = *encoded;
     lux::asset::AssetFileHeader mismatched_header{};
     std::memcpy(

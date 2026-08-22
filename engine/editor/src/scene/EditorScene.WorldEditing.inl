@@ -55,7 +55,7 @@
                     actor.references.capacity() *
                         sizeof(lux::authoring::WorldActorSourceReference);
                 for (const auto& layer : actor.data_layers)
-                    bytes += layer.name().capacity();
+                    bytes += layer.name().size();
             }
             for (const auto& content : page.pages)
                 bytes += content.document_path.capacity();
@@ -768,10 +768,9 @@
 
         lux::ecs::PersistentEntityIndex staging_persistent_entities{
             staging};
-        WorldActorEcsAdapter adapter{
+        auto actor_document = serializeWorldActor(
             components_,
-            staging_persistent_entities};
-        auto actor_document = adapter.capture(
+            staging_persistent_entities,
             staging,
             staging_entity,
             world_source_->world,
@@ -843,7 +842,17 @@
         }
 
         auto& registry = runtime_->world().registry();
-        auto entity = adapter.materialize(
+        auto* const persistent_entities =
+            scenePersistentEntities(runtime_.get());
+        if (!persistent_entities)
+        {
+            instance_edit_error_ =
+                "SceneRuntime persistent entity index is unavailable";
+            return lux::cxx::unexpected(instance_edit_error_);
+        }
+        auto entity = materializeWorldActor(
+            components_,
+            *persistent_entities,
             transaction->actor_document,
             registry,
             "converted Instance");
@@ -988,10 +997,9 @@
                 "SceneRuntime persistent entity index is unavailable";
             return lux::cxx::unexpected(instance_edit_error_);
         }
-        WorldActorEcsAdapter adapter{
+        auto document = serializeWorldActor(
             components_,
-            *persistent_entities};
-        auto document = adapter.capture(
+            *persistent_entities,
             registry,
             entity,
             world_source_->world,
@@ -1285,10 +1293,9 @@
                         "SceneRuntime persistent entity index");
                     return;
                 }
-                WorldActorEcsAdapter adapter{
+                auto materialized = materializeWorldActor(
                     owner->components_,
-                    *persistent_entities};
-                auto materialized = adapter.materialize(
+                    *persistent_entities,
                     *outcome->document,
                     registry,
                     outcome->descriptor.display_name);

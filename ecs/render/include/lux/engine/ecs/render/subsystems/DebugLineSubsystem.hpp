@@ -37,7 +37,7 @@ namespace lux::ecs
     ///   它是最适合打头阵的形状:transient(不留跨帧的远端对象、不钉资产引用、
     ///   没有在途 create),所以既不需要观察者、也不需要 releaseRefs —— 迁移只是
     ///   把 `tick(reg, ctx)` 改成 `update(SystemUpdateContext&)`,渲染绑定由构造
-    ///   注入(与 CameraViewSubsystem 同款),而不是每帧由调度循环递进来。
+    ///   注入(与 CameraViewSystem 同款),而不是每帧由调度循环递进来。
     class DebugLineSubsystem final : public RenderStage
     {
     public:
@@ -52,7 +52,7 @@ namespace lux::ecs
             return kFeatures;
         }
 
-        void extract(RenderSubsystemContext& uctx) override
+        void extract(RenderExtractContext& uctx) override
         {
             auto& ctx = uctx.render();
             const auto ops = ctx.features().ops<lux::render::LineListOperationIds>("LineListTransient");

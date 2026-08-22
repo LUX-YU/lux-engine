@@ -69,22 +69,6 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<WaterSurfaceDestroyPayload>);
 
-    struct LUX_OP(lane=frame, kind=stream, name=WaterSetEnvironment,
-                  method=setEnvironment)
-    WaterSetEnvironmentPayload final
-    {
-        RenderSceneId scene_id{};
-        FeatureHandle feature{};
-        float fog_color[3]{0.55f, 0.62f, 0.70f};
-        float fog_density{0.0002f};
-        float fog_start_distance{0.0f};
-        float fog_reference_height{0.0f};
-        float fog_height_falloff{0.01f};
-        float fog_maximum_opacity{0.98f};
-        std::uint32_t fog_enabled{0u};
-    };
-    static_assert(std::is_trivially_copyable_v<WaterSetEnvironmentPayload>);
-
     struct WaterStatsReply final
     {
         std::uint32_t resident_surfaces{0u};
@@ -108,7 +92,7 @@ namespace lux::render
         prefix=Water,
         id=lux.render.water.v1,
         display=Water,
-        requires="lux.render.fog.v1,lux.render.linear_depth.v1,lux.render.view_camera.v1",
+        requires="lux.render.fog.v1?,lux.render.linear_depth.v1,lux.render.view_camera.v1",
         feature=WaterFeature,
         feature_header=lux/engine/render/renderer/features/water/WaterFeature.hpp,
         multiplicity=single)

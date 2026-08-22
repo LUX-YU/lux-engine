@@ -404,7 +404,8 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
                 lux::ecs::defaultComponentSchemaName("{{ rec.fq_name }}"),
                 _serialization_{{ rec.hash }}
             );
-        lux::ecs::queueGeneratedComponent(std::move(_cte_{{ rec.hash }}));
+        lux::ecs::GeneratedComponentDraftCapture::append(
+            std::move(_cte_{{ rec.hash }}));
     }
     {%- endif %}
 }

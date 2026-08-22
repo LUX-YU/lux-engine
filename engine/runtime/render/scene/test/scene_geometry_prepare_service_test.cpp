@@ -7,6 +7,7 @@
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncScope.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
+#include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 
 #include <stdexec/execution.hpp>
@@ -117,6 +118,20 @@ namespace
     }
 
     template <class Operation>
+    struct DirectCompletion final
+    {
+        std::optional<lux::async::OperationOutcome<Operation>> outcome;
+
+        static void complete(
+            void* opaque,
+            lux::async::OperationOutcome<Operation>&& value) noexcept
+        {
+            static_cast<DirectCompletion*>(opaque)->outcome.emplace(
+                std::move(value));
+        }
+    };
+
+    template <class Operation>
     [[nodiscard]] lux::async::OperationOutcome<Operation> run(
         lux::exec::AsyncRuntime& runtime,
         lux::exec::AsyncScope& scope,
@@ -152,6 +167,7 @@ namespace
 int main()
 {
     using namespace lux::runtime;
+    using namespace lux::ecs;
 
     lux::runtime::entity_scene::SectionBlobStore blobs;
     auto classic = storeBlob(
@@ -180,12 +196,16 @@ int main()
                 .classic_mesh = {1u, encoded_bytes + 1u, 1u},
                 .terrain = {1u, 16u * 1024u * 1024u, 1u}});
         require(tiny.has_value());
-        auto rejected = tiny->classicMeshClient().execute(
+        DirectCompletion<PrepareClassicMeshBatch> completion;
+        auto rejected = tiny->classicMeshPort().submit(
             PrepareClassicMeshBatch{
-                classic.lease.bytes(), classic.reference, 1u});
+                classic.lease.bytes(), classic.reference, 1u},
+            &completion,
+            &DirectCompletion<PrepareClassicMeshBatch>::complete);
         require(!rejected);
         require(rejected.error() ==
             lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
+        require(completion.outcome.has_value());
         tiny->close();
     }
 
@@ -206,44 +226,56 @@ int main()
             .background_cpu_concurrency = 1u}};
     lux::exec::AsyncScope scope{runtime};
     const auto owner_thread = std::this_thread::get_id();
-    auto classic_client = service.classicMeshClient();
-    auto terrain_client = service.terrainClient();
+    auto classic_client = service.classicMeshPort();
+    auto terrain_client = service.terrainPort();
 
-    // A reservation lives in the not-yet-started sender. It therefore bounds
-    // the complete queued/running interval instead of only endpoint storage.
+    // Admission covers the complete queued/running interval.
+    DirectCompletion<PrepareClassicMeshBatch> held_completion;
+    auto held = classic_client.submit(
+        PrepareClassicMeshBatch{
+            classic.lease.bytes(), classic.reference, 2u},
+        &held_completion,
+        &DirectCompletion<PrepareClassicMeshBatch>::complete);
+    require(held.has_value());
+    DirectCompletion<PrepareClassicMeshBatch> saturated_completion;
+    auto saturated = classic_client.submit(
+        PrepareClassicMeshBatch{
+            classic.lease.bytes(), classic.reference, 3u},
+        &saturated_completion,
+        &DirectCompletion<PrepareClassicMeshBatch>::complete);
+    require(!saturated);
+    require(saturated.error() == lux::async::ESubmitError::QUEUE_FULL);
+    require(saturated_completion.outcome.has_value());
+    const auto saturated_snapshot = service.snapshot();
+    require(saturated_snapshot.classic_mesh.active_requests == 1u);
+    require(saturated_snapshot.classic_mesh.active_bytes >
+        classic.lease.bytes().size());
+    lux::exec::testing::CloseEpoch held_progress{runtime};
+    held_progress.drive([&held_completion]() noexcept
     {
-        auto held = classic_client.execute(PrepareClassicMeshBatch{
-            classic.lease.bytes(), classic.reference, 2u});
-        require(held.has_value());
-        auto saturated = classic_client.execute(PrepareClassicMeshBatch{
-            classic.lease.bytes(), classic.reference, 3u});
-        require(!saturated);
-        require(
-            saturated.error() == lux::async::ESubmitError::QUEUE_FULL);
-        const auto snapshot = service.snapshot();
-        require(snapshot.classic_mesh.active_requests == 1u);
-        require(snapshot.classic_mesh.active_bytes >
-            classic.lease.bytes().size());
-    }
+        return held_completion.outcome.has_value();
+    });
     require(service.snapshot().classic_mesh.active_requests == 0u);
 
     std::thread::id completion_thread;
-    auto classic_sender = classic_client.execute(PrepareClassicMeshBatch{
+    auto classic_sender = lux::exec::execute(
+        classic_client,
+        PrepareClassicMeshBatch{
         classic.lease.bytes(), classic.reference, 4u});
-    require(classic_sender.has_value());
     auto classic_outcome = run(
-        runtime, scope, std::move(*classic_sender), completion_thread);
+        runtime, scope, std::move(classic_sender), completion_thread);
     require(completion_thread == owner_thread);
     require(classic_outcome.has_value());
     require(classic_outcome->request_generation == 4u);
     require(classic_outcome->decoded->instances.size() == 2u);
     require(classic_outcome->wire->size() == 2u);
 
-    auto terrain_sender = terrain_client.execute(PrepareTerrainTile{
+    auto terrain_sender = lux::exec::execute(
+        terrain_client,
+        PrepareTerrainTile{
         terrain.lease.bytes(), terrain.reference, 5u});
-    require(terrain_sender.has_value());
     auto terrain_outcome = run(
-        runtime, scope, std::move(*terrain_sender), completion_thread);
+        runtime, scope, std::move(terrain_sender), completion_thread);
     require(completion_thread == owner_thread);
     require(terrain_outcome.has_value());
     require(terrain_outcome->request_generation == 5u);
@@ -254,11 +286,12 @@ int main()
     // bypasses SectionBlobStore's normal resolved-reference path.
     auto forged_reference = classic.reference;
     forged_reference.id.digest[0] ^= std::byte{0xffu};
-    auto forged_sender = classic_client.execute(PrepareClassicMeshBatch{
+    auto forged_sender = lux::exec::execute(
+        classic_client,
+        PrepareClassicMeshBatch{
         classic.lease.bytes(), std::move(forged_reference), 6u});
-    require(forged_sender.has_value());
     auto forged = run(
-        runtime, scope, std::move(*forged_sender), completion_thread);
+        runtime, scope, std::move(forged_sender), completion_thread);
     require(!forged);
     require(!forged.error().isRuntime());
     require(forged.error().domainError().code ==
@@ -274,15 +307,24 @@ int main()
     lux::exec::AsyncRuntimeBuilder displaced_builder;
     auto displaced = SceneGeometryPrepareService::addTo(displaced_builder);
     require(displaced.has_value());
-    auto displaced_client = displaced->classicMeshClient();
+    auto displaced_client = displaced->classicMeshPort();
     *displaced = std::move(service);
-    require(!displaced_client);
+    DirectCompletion<PrepareClassicMeshBatch> displaced_completion;
+    const auto displaced_submit = displaced_client.submit(
+        PrepareClassicMeshBatch{
+            classic.lease.bytes(), classic.reference, 7u},
+        &displaced_completion,
+        &DirectCompletion<PrepareClassicMeshBatch>::complete);
+    require(!displaced_submit);
     service = std::move(*displaced);
 
     service.close();
-    require(!classic_client);
-    auto after_close = classic_client.execute(PrepareClassicMeshBatch{
-        classic.lease.bytes(), classic.reference, 7u});
+    DirectCompletion<PrepareClassicMeshBatch> after_close_completion;
+    auto after_close = classic_client.submit(
+        PrepareClassicMeshBatch{
+            classic.lease.bytes(), classic.reference, 8u},
+        &after_close_completion,
+        &DirectCompletion<PrepareClassicMeshBatch>::complete);
     require(!after_close);
     require(after_close.error() ==
         lux::async::ESubmitError::FEATURE_CLOSING);

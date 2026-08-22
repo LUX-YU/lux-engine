@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <cstdint>
 
-namespace lux::runtime::detail
+namespace lux::ecs::detail
 {
     enum class EContentUploadReplyDisposition : std::uint8_t
     {
@@ -118,4 +118,4 @@ namespace lux::runtime::detail
                 exit_error_pixels) && exit_error_pixels > 0.0f;
     }
 
-} // namespace lux::runtime::detail
+} // namespace lux::ecs::detail

@@ -35,7 +35,7 @@ add_component(
     COMPONENT_NAME  runtime_render_scene
     NAMESPACE       lux::engine::runtime
     OUTPUT_NAME     lux_engine_runtime_render_scene
-    SOURCE_FILES    ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSceneIntegration.cpp
+    SOURCE_FILES    ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderedSceneComposition.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/AsyncRenderUploadService.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderResourceService.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderResourceOps.cpp
@@ -46,8 +46,6 @@ add_component(
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/StandardFeaturePlan.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderDiagnostics.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneGeometryPrepareService.cpp
-                    ${CMAKE_CURRENT_SOURCE_DIR}/src/ClassicMeshBatchRenderSubsystem.cpp
-                    ${CMAKE_CURRENT_SOURCE_DIR}/src/TerrainTileRenderSubsystem.cpp
 )
 
 component_include_directories(
@@ -79,8 +77,6 @@ if(MSVC)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderResourceOps.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/subservices/MaterialSubservices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneGeometryPrepareService.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ClassicMeshBatchRenderSubsystem.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/TerrainTileRenderSubsystem.cpp
         PROPERTIES COMPILE_OPTIONS "/permissive-;/Zc:__cplusplus;/Zc:preprocessor")
 endif()
 

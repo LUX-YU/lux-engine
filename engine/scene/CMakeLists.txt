@@ -86,6 +86,12 @@ foreach(test_target IN ITEMS
     )
 endforeach()
 
+add_test(NAME phase9_scene_v3_contract COMMAND scene_asset_contract_test)
+set_tests_properties(
+    phase9_scene_v3_contract
+    PROPERTIES LABELS "phase9;cpu"
+)
+
 install_components(
     PROJECT_NAME    lux-engine-scene
     VERSION         0.0.1

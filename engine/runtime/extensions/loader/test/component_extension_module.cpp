@@ -97,7 +97,7 @@ namespace
         lux::meta::qual_type_index_fix_list&)
     {
         using lux::cxx::algorithm::fnv1a;
-        lux::ecs::queueGeneratedComponent(
+        lux::ecs::GeneratedComponentDraftCapture::append(
             lux::ecs::ComponentSchemaDescriptor{
                 lux::cxx::typeToken<DynamicTestComponent>(),
                 {fnv1a("org.lux.test.component.dynamic_test_component"),

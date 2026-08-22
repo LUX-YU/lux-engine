@@ -980,9 +980,6 @@
                 "SceneRuntime persistent entity index");
             return;
         }
-        WorldActorEcsAdapter adapter{
-            components_,
-            *persistent_entities};
         for (const auto& key : candidates)
         {
             const auto found = std::ranges::find_if(
@@ -1012,7 +1009,9 @@
                 dirty_actor_ids_.insert(key);
                 continue;
             }
-            auto document = adapter.capture(
+            auto document = serializeWorldActor(
+                components_,
+                *persistent_entities,
                 registry,
                 entity,
                 world_source_->world,

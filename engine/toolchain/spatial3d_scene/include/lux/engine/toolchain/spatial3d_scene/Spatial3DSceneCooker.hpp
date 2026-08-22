@@ -1,7 +1,7 @@
 #pragma once
 /**
- * @file Spatial3DEntitySceneAdapter.hpp
- * @brief Toolchain-only LXWA v4 to SceneDescription/LXES bridge for 3D data.
+ * @file Spatial3DSceneCooker.hpp
+ * @brief Toolchain-only LXWA v5 to SceneDescription/LXES cooker for 3D data.
  *
  * The input is the owning, page-free Spatial3D Authoring model. The result
  * contains exclusively SceneDescription records and domain-owned content blobs;
@@ -30,7 +30,7 @@
 namespace lux::toolchain
 {
     /// Immutable Runtime Mesh images made available to the Spatial3D cook.
-    /// The adapter validates the embedded asset identity and decodes only the
+    /// The cooker validates the embedded asset identity and decodes only the
     /// meshes actually referenced by a visual-HLOD node.  Keeping this as an
     /// owning value makes the Toolchain boundary independent of AssetManager,
     /// VFS mounts and caller thread lifetime.
@@ -71,7 +71,7 @@ namespace lux::toolchain
 
     /// Publication policy for fixed startup facts and independently resident
     /// fine/visual-LOD spatial Sections.
-    struct Spatial3DEntitySceneAdapterConfig final
+    struct Spatial3DSceneCookerConfig final
     {
         /// Empty preserves the Authoring scene UUID in the cooked Scene.
         lux::asset::asset_id_t scene_id;
@@ -79,7 +79,7 @@ namespace lux::toolchain
         std::string section_content_prefix{"/Game/EntitySections"};
         lux::math::Position3d fallback_camera_position{
             512.0, 256.0, 512.0};
-        /// 3D selector policy belongs to this leaf adapter/configuration, not
+        /// 3D selector policy belongs to this leaf cooker configuration, not
         /// to the dimension-neutral LXWA root.
         double fine_active_distance{2048.0};
         double fine_resident_distance{2560.0};
@@ -107,7 +107,7 @@ namespace lux::toolchain
         lux::ecs::spatial3d::streaming::ResidencyCapacity residency;
     };
 
-    enum class ESpatial3DEntitySceneAdapterError : std::uint8_t
+    enum class ESpatial3DSceneCookError : std::uint8_t
     {
         INVALID_ARGUMENT,
         INVALID_POSITION,
@@ -124,10 +124,10 @@ namespace lux::toolchain
         AUTHORING_SOURCE_REJECTED
     };
 
-    struct Spatial3DEntitySceneAdapterFailure final
+    struct Spatial3DSceneCookFailure final
     {
-        ESpatial3DEntitySceneAdapterError code{
-            ESpatial3DEntitySceneAdapterError::INVALID_ARGUMENT};
+        ESpatial3DSceneCookError code{
+            ESpatial3DSceneCookError::INVALID_ARGUMENT};
         std::string detail;
         std::optional<EntitySceneCookFailure> entity_scene;
         std::optional<std::string> authoring_source;
@@ -141,24 +141,24 @@ namespace lux::toolchain
     [[nodiscard]] LUX_ENGINE_TOOLCHAIN_SPATIAL3D_SCENE_PUBLIC
     lux::cxx::expected<
         CookedSpatial3DEntitySceneBundle,
-        Spatial3DEntitySceneAdapterFailure>
-    adaptSpatial3DEntityScene(
+        Spatial3DSceneCookFailure>
+    cookSpatial3DEntityScene(
         const Spatial3DAuthoringSource& source,
         const lux::ecs::ComponentTypeCatalog& components,
         const Spatial3DMeshAssetCatalog& mesh_assets,
-        Spatial3DEntitySceneAdapterConfig config = {});
+        Spatial3DSceneCookerConfig config = {});
 
-    /// Blocking Toolchain convenience: read the LXWA v4 object graph into the
+    /// Blocking Toolchain convenience: read the LXWA v5 object graph into the
     /// owning 3D model, then immediately cross the one-way boundary above.
     /// Runtime composition must never call this overload.
     [[nodiscard]] LUX_ENGINE_TOOLCHAIN_SPATIAL3D_SCENE_PUBLIC
     lux::cxx::expected<
         CookedSpatial3DEntitySceneBundle,
-        Spatial3DEntitySceneAdapterFailure>
+        Spatial3DSceneCookFailure>
     cookSpatial3DEntitySceneSource(
         const std::filesystem::path& root_document,
         const lux::ecs::ComponentTypeCatalog& components,
         const Spatial3DMeshAssetCatalog& mesh_assets,
-        Spatial3DEntitySceneAdapterConfig config = {},
+        Spatial3DSceneCookerConfig config = {},
         const Spatial3DAuthoringLoadLimits& limits = {});
 } // namespace lux::toolchain

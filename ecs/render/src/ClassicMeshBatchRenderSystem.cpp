@@ -1,7 +1,7 @@
-#include <lux/engine/runtime/render/scene/ClassicMeshBatchRenderSubsystem.hpp>
-#include <lux/engine/runtime/render/scene/SceneGeometryPrepareService.hpp>
-#include <lux/engine/runtime/render/scene/detail/SceneContentRenderContracts.hpp>
-#include <lux/engine/runtime/scene/SceneAsyncContext.hpp>
+#include <lux/engine/ecs/render/systems/3d/ClassicMeshBatchRenderSystem.hpp>
+#include <lux/engine/ecs/render/systems/RenderSystem.hpp>
+#include <lux/engine/ecs/render/SceneGeometryPreparation.hpp>
+#include <lux/engine/ecs/render/detail/SceneContentRenderContracts.hpp>
 
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
@@ -17,10 +17,6 @@
 #include <lux/engine/function/render/client/genops/RenderClusterOperation.ops.hpp>
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
-#include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
-
-#include <stdexec/execution.hpp>
-
 #include <Eigen/Geometry>
 
 #include <algorithm>
@@ -35,8 +31,12 @@
 #include <utility>
 #include <vector>
 
-namespace lux::runtime
+namespace lux::ecs
 {
+    using lux::ecs::ESceneGeometryPrepareError;
+    using lux::ecs::PrepareClassicMeshBatch;
+    using lux::ecs::SceneGeometryPrepareFailure;
+
     namespace
     {
         constexpr std::size_t kRowsPerUpdate = 4096u;
@@ -101,7 +101,7 @@ namespace lux::runtime
 
     struct ClassicMeshBatchObservedCommand final
     {
-        using Producer = ClassicMeshBatchRenderSubsystem;
+        using Producer = ClassicMeshBatchRenderSystem;
 
         lux::ecs::Entity entity{entt::null};
         bool topology{false};
@@ -116,7 +116,7 @@ namespace lux::runtime
 
         void apply(
             lux::ecs::Registry&,
-            ClassicMeshBatchRenderSubsystem& owner) const noexcept
+            ClassicMeshBatchRenderSystem& owner) const noexcept
         {
             owner.applyObservedChange(entity, topology);
         }
@@ -124,7 +124,7 @@ namespace lux::runtime
     static_assert(std::is_trivially_copyable_v<
         ClassicMeshBatchObservedCommand>);
 
-    struct ClassicMeshBatchRenderSubsystem::Impl final
+    struct ClassicMeshBatchRenderSystem::Impl final
     {
         struct AssetNeed final
         {
@@ -187,7 +187,7 @@ namespace lux::runtime
 
         struct CallbackControl final
         {
-            ClassicMeshBatchRenderSubsystem* owner{nullptr};
+            ClassicMeshBatchRenderSystem* owner{nullptr};
             lux::render::RenderControlSession* control{nullptr};
             lux::render::RenderSceneId scene{};
             lux::render::RenderClusterOperationIds operations{};
@@ -205,13 +205,11 @@ namespace lux::runtime
             lux::ecs::entity_scene::ContentBlobClient blob_client,
             lux::ecs::ResidencyCallbacks callbacks,
             lux::asset::AssetManager& asset_manager,
-            ClassicMeshPrepareClient preparation_client,
-            SceneAsyncContext& async) noexcept
+            lux::ecs::ClassicMeshPreparePort preparation_value) noexcept
             : blobs(std::move(blob_client)),
               residency(std::move(callbacks)),
               assets(&asset_manager),
-              preparation_client(std::move(preparation_client)),
-              async_scope(&async.scope()),
+              preparation_client(std::move(preparation_value)),
               callbacks(std::make_shared<CallbackControl>())
         {}
 
@@ -306,11 +304,11 @@ namespace lux::runtime
             children_by_parent.clear();
         }
 
-        void prepare(lux::ecs::RenderSubsystemContext& context) noexcept
+        void prepare(lux::ecs::SceneRenderBinding& render) noexcept
         {
-            callbacks->control = &context.render().control();
-            callbacks->scene = context.render().scene();
-            callbacks->operations = context.render().features().ops<
+            callbacks->control = &render.control();
+            callbacks->scene = render.scene();
+            callbacks->operations = render.features().ops<
                 lux::render::RenderClusterOperationIds>("RenderCluster");
         }
 
@@ -373,7 +371,7 @@ namespace lux::runtime
             topology_dirty = topology_dirty || topology;
         }
 
-        #include <lux/engine/runtime/render/scene/detail/ClassicMeshBatchRenderPreparation.inl>
+        #include <lux/engine/ecs/render/detail/ClassicMeshBatchRenderPreparation.inl>
         void submit(
             lux::ecs::Entity entity,
             Entry& entry,
@@ -496,7 +494,7 @@ namespace lux::runtime
                 dirty.insert(entity);
         }
 
-        void drive(lux::ecs::RenderSubsystemContext& context)
+        void drive(lux::ecs::SceneRenderBinding& render)
         {
             uploads.drain(
                 [this](auto completion)
@@ -522,7 +520,7 @@ namespace lux::runtime
                         completion.reply,
                         completion.dispatch_failed);
                 });
-            scene_origin = context.render().sceneOriginTile3D();
+            scene_origin = render.sceneOriginTile3D();
             if (topology_dirty && registry)
             {
                 rebuildTopologyIndex();
@@ -586,7 +584,7 @@ namespace lux::runtime
                 if (entry.pending && entry.pending->next_row ==
                         entry.pending->decoded->instances.size())
                 {
-                    submit(entity, entry, context.render().upload());
+                    submit(entity, entry, render.upload());
                 }
             }
             uploads.drain(
@@ -649,8 +647,7 @@ namespace lux::runtime
         lux::ecs::entity_scene::ContentBlobClient blobs;
         lux::ecs::ResidencyCallbacks residency;
         lux::asset::AssetManager* assets{nullptr};
-        ClassicMeshPrepareClient preparation_client;
-        lux::exec::AsyncScope* async_scope{nullptr};
+        lux::ecs::ClassicMeshPreparePort preparation_client;
         std::shared_ptr<CallbackControl> callbacks;
         lux::ecs::Registry* registry{nullptr};
         lux::ecs::EcsCommandWriter commands;
@@ -690,67 +687,63 @@ namespace lux::runtime
         entt::scoped_connection transform_updated;
     };
 
-    ClassicMeshBatchRenderSubsystem::ClassicMeshBatchRenderSubsystem(
+    ClassicMeshBatchRenderSystem::ClassicMeshBatchRenderSystem(
+        lux::ecs::SceneRenderBinding& render,
         lux::ecs::entity_scene::ContentBlobClient blobs,
         lux::ecs::ResidencyCallbacks residency,
         lux::asset::AssetManager& assets,
-        ClassicMeshPrepareClient preparation,
-        SceneAsyncContext& async) noexcept
-        : impl_(std::make_unique<Impl>(
+        lux::ecs::ClassicMeshPreparePort preparation) noexcept
+        : render_(&render),
+          impl_(std::make_unique<Impl>(
               std::move(blobs),
               std::move(residency),
               assets,
-              std::move(preparation),
-              async))
+              std::move(preparation)))
     {
         impl_->callbacks->owner = this;
     }
 
-    ClassicMeshBatchRenderSubsystem::~ClassicMeshBatchRenderSubsystem()
+    ClassicMeshBatchRenderSystem::~ClassicMeshBatchRenderSystem()
     {
         impl_->callbacks->owner = nullptr;
         impl_->detach();
     }
 
-    void ClassicMeshBatchRenderSubsystem::onAdded(
+    void ClassicMeshBatchRenderSystem::onAdded(
         const lux::ecs::SystemSetupContext& setup)
     {
         impl_->attach(setup.registry(), setup.commands());
     }
 
-    void ClassicMeshBatchRenderSubsystem::onRemoved(
+    void ClassicMeshBatchRenderSystem::onRemoved(
         const lux::ecs::SystemRemovalContext&)
     {
         impl_->detach();
     }
 
     std::span<const std::string_view>
-    ClassicMeshBatchRenderSubsystem::requiredFeatures() const noexcept
+    ClassicMeshBatchRenderSystem::requiredRenderFeatures() noexcept
     {
         static constexpr std::array<std::string_view, 1u> features{
             "RenderCluster"};
         return features;
     }
 
-    void ClassicMeshBatchRenderSubsystem::prepare(
-        lux::ecs::RenderSubsystemContext& context) noexcept
-    {
-        impl_->prepare(context);
-    }
-
-    void ClassicMeshBatchRenderSubsystem::extract(
-        lux::ecs::RenderSubsystemContext& context)
+    void ClassicMeshBatchRenderSystem::update(
+        const lux::ecs::SystemUpdateContext&)
     {
         if (!impl_->closed)
-            impl_->drive(context);
+        {
+            impl_->prepare(*render_);
+            impl_->drive(*render_);
+        }
     }
 
-    void ClassicMeshBatchRenderSubsystem::close(
-        lux::ecs::RenderSubsystemContext& context) noexcept
+    void ClassicMeshBatchRenderSystem::requestClose() noexcept
     {
         if (impl_->closed)
             return;
-        impl_->prepare(context);
+        impl_->prepare(*render_);
         impl_->closed = true;
         impl_->detach();
         impl_->callbacks->owner = nullptr;
@@ -762,22 +755,30 @@ namespace lux::runtime
             impl_->retire(entity);
     }
 
-    SceneContentRenderEntrySnapshot ClassicMeshBatchRenderSubsystem::status(
+    std::span<const lux::ecs::ISystem::Type>
+    ClassicMeshBatchRenderSystem::runsAfter() const noexcept
+    {
+        static constexpr std::array<Type, 1u> dependencies{
+            lux::ecs::systemType<lux::ecs::RenderSystem>()};
+        return dependencies;
+    }
+
+    SceneContentRenderEntrySnapshot ClassicMeshBatchRenderSystem::status(
         lux::ecs::Entity entity) const noexcept
     {
         return impl_->status(entity);
     }
 
     SceneContentRenderSubsystemSnapshot
-    ClassicMeshBatchRenderSubsystem::snapshot() const noexcept
+    ClassicMeshBatchRenderSystem::snapshot() const noexcept
     {
         return impl_->snapshot();
     }
 
-    void ClassicMeshBatchRenderSubsystem::applyObservedChange(
+    void ClassicMeshBatchRenderSystem::applyObservedChange(
         lux::ecs::Entity entity,
         bool topology) noexcept
     {
         impl_->observed(entity, topology);
     }
-} // namespace lux::runtime
+} // namespace lux::ecs

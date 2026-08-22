@@ -44,7 +44,7 @@ namespace lux::ecs::entity_scene::residency
         /// participate in the same prospective transaction as `demands` and
         /// disappear when this source is replaced/removed. Two live sources
         /// may publish the same record only when every cooked field matches.
-        /// Stored package records remain in EntitySectionRecordStore and do
+        /// Stored package records remain in SceneDescription and do
         /// not need to be repeated here.
         std::vector<lux::ecs::scene_format::SectionRecord> records;
     };

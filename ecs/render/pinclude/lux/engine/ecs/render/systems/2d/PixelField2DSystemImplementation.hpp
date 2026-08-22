@@ -2,7 +2,7 @@
 
 #include <lux/engine/math/Position.hpp>
 // ============================================================================
-//  PixelField2DSubsystemImplementation.hpp — private retained bridge
+//  PixelField2DSystemImplementation.hpp — private retained bridge
 //  field instances over ONE scene ATLAS texture (lux::ecs, F2-08;
 //  per-chunk mirrors C2-00; atlas + camera-driven residency C2-01).
 //
@@ -37,7 +37,6 @@
 //  (hysteresis); a hot path would justify a new op, not sooner.
 // ============================================================================
 
-#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/RenderSpatialTransform.hpp>
 #include <lux/engine/ecs/render/RenderViewUtil.hpp>    // ComponentSetLeaveObserver
 #include <lux/engine/ecs/render/TrackedRenderRequest.hpp>
@@ -79,23 +78,17 @@ namespace lux::ecs
     ///
     ///   单 RPC 全部经 `TrackedRenderRequest` 管理代次与迟到回执；多步 engine
     ///   异步仍归 stdexec/AsyncScope。节点本身不安装裸 continuation。
-    class PixelField2DSubsystemImplementation final
-        : public lux::ecs::RenderStage
+    class PixelField2DSystemImplementation final
     {
     public:
-        ~PixelField2DSubsystemImplementation() override
+        ~PixelField2DSystemImplementation()
         {
             leave_.detach();
         }
 
-        void close(RenderSubsystemContext& context) noexcept override
-        {
-            releaseOwned(context.render());
-        }
-
         /// 像素场同样落在 Canvas2D 上。
         [[nodiscard]] std::span<const std::string_view>
-        requiredFeatures() const noexcept override
+        requiredFeatures() const noexcept
         {
             static const std::string_view kFeatures[] = { "Canvas2D" };
             return kFeatures;
@@ -229,17 +222,15 @@ namespace lux::ecs
         };
 
     public:
-        explicit PixelField2DSubsystemImplementation(
+        explicit PixelField2DSystemImplementation(
             PixelFieldRuntime* runtime)
             : runtime_(runtime),
               atlas_slots_(kAtlasSlotsX * kAtlasSlotsY)
         {}
 
 
-        void extract(RenderSubsystemContext& uctx) override
+        void update(Registry& registry, SceneRenderBinding& ctx)
         {
-            auto& registry = uctx.registry();
-            auto& ctx = uctx.render();
             auto canvas = ctx.canvas2d();
             if (!canvas.valid() || runtime_ == nullptr) return;
 
@@ -346,12 +337,12 @@ namespace lux::ecs
                 });
         }
 
-        void onAdded(const SystemSetupContext& setup) override
+        void onAdded(const SystemSetupContext& setup)
         {
             auto& registry = setup.registry();
             leave_.attach(registry, [this](lux::ecs::Entity e) { onLeave(e); });
         }
-        void onRemoved(const SystemRemovalContext&) override { leave_.detach(); }
+        void onRemoved(const SystemRemovalContext&) { leave_.detach(); }
 
         /// 本节点自建的全局贴图的归还路径。**只由析构调用** —— 不再需要
         /// 宿主在一个中央清扫点里叫它；全局 texture 的回收走 control

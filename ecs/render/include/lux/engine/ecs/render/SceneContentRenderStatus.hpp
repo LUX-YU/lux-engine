@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace lux::runtime
+namespace lux::ecs
 {
     enum class ESceneContentRenderState : std::uint8_t
     {
@@ -60,4 +60,4 @@ namespace lux::runtime
         std::uint64_t preparation_backpressure{0u};
         std::uint64_t stale_preparation_completions{0u};
     };
-} // namespace lux::runtime
+} // namespace lux::ecs

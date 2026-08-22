@@ -258,7 +258,9 @@
             || (page.material_base.size() != kPixels &&
                 !(page.material_base.empty() && page.generator))
             || (page.generator &&
-                (!page.generator->id.valid()
+                (!page.generator->id.isValid()
+                 || !lux::authoring::isCanonicalWorldName(
+                     page.generator->id.name())
                  || page.generator->schema_version == 0u
                  || page.generator->config_schema_version == 0u
                  || page.generator->config.size() >
@@ -338,8 +340,12 @@
             if (!readString(reader, limits.maximum_string_bytes, name))
                 return lux::cxx::unexpected(
                     std::string{"invalid LXPP generator id"});
-            generator.id = lux::authoring::ChunkGeneratorId{
-                hash, std::move(name)};
+            generator.id = lux::authoring::ChunkGeneratorId{name};
+            if (generator.id.hash() != hash)
+            {
+                return lux::cxx::unexpected(
+                    std::string{"LXPP generator id hash mismatch"});
+            }
             generator.schema_version = reader.readPod<std::uint32_t>();
             generator.config_schema_version =
                 reader.readPod<std::uint32_t>();

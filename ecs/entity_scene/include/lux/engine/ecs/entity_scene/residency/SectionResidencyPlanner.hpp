@@ -5,7 +5,7 @@
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
+#include <lux/engine/ecs/scene_format/SceneSectionManifest.hpp>
 #include <lux/engine/ecs/entity_scene/residency/SectionResidencyDemand.hpp>
 #include <lux/engine/ecs/entity_scene/visibility.h>
 
@@ -83,7 +83,7 @@ namespace lux::ecs::entity_scene::residency
     public:
         [[nodiscard]] static SectionResidencyExp<SectionResidencyPlanner>
         create(
-            EntitySectionRecordStore records,
+            std::span<const lux::ecs::scene_format::SectionRecord> records,
             SectionResidencyBudget budget);
 
         SectionResidencyPlanner(SectionResidencyPlanner&&) noexcept = default;
@@ -116,9 +116,9 @@ namespace lux::ecs::entity_scene::residency
 
     private:
         SectionResidencyPlanner(
-            EntitySectionRecordStore records,
+            std::span<const lux::ecs::scene_format::SectionRecord> records,
             SectionResidencyBudget budget) noexcept
-            : records_(std::move(records)), budget_(budget)
+            : records_(records), budget_(budget)
         {
             snapshot_.maximum_decoded_bytes = budget.maximum_decoded_bytes;
             snapshot_.maximum_entities = budget.maximum_entities;
@@ -127,7 +127,7 @@ namespace lux::ecs::entity_scene::residency
         [[nodiscard]] SectionResidencyExp<void>
         rebuild(SectionResidencyPlan& plan) const;
 
-        EntitySectionRecordStore records_;
+        std::span<const lux::ecs::scene_format::SectionRecord> records_;
         SectionResidencyBudget budget_;
         std::uint64_t revision_{0u};
         std::vector<SectionResidencyPlan::SourceState> sources_;

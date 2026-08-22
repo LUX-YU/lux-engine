@@ -1,5 +1,6 @@
 #include <lux/engine/render/renderer/features/water/WaterFeature.hpp>
 #include <lux/engine/render/renderer/features/BufferTransferSynchronization.hpp>
+#include <lux/engine/function/render/client/genops/FogOperation.ops.hpp>
 
 #include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
@@ -66,7 +67,8 @@ namespace lux::render
             SamplerDesc::nearestClamp());
         auto pipeline = makeFullscreenTemplate(
             "Water",
-            8u + static_cast<std::uint32_t>(sizeof(FogGpuParams)),
+            8u + static_cast<std::uint32_t>(
+                sizeof(FogFeature::RenderState)),
             false);
         // The domain merger owns runtime slots 0..2 (Global, Bindless and
         // Feature). Water's source set 1 is therefore relocated intact to
@@ -190,23 +192,19 @@ namespace lux::render
         slot.retiring = true;
     }
 
-    void WaterFeature::setEnvironment(
-        const WaterSetEnvironmentPayload& environment) noexcept
-    {
-        std::copy_n(environment.fog_color, 3u, &fog_.color_r);
-        fog_.density = std::max(environment.fog_density, 0.0f);
-        fog_.start_distance = std::max(
-            environment.fog_start_distance, 0.0f);
-        fog_.reference_height = environment.fog_reference_height;
-        fog_.height_falloff = std::max(
-            environment.fog_height_falloff, 0.0f);
-        fog_.maximum_opacity = std::clamp(
-            environment.fog_maximum_opacity, 0.0f, 1.0f);
-        fog_.enabled = environment.fog_enabled != 0u ? 1u : 0u;
-    }
-
     void WaterFeature::onFrameBegin(const FeatureFrameContext&)
     {
+        fog_ = {};
+        for (const auto* feature : renderScene().features())
+        {
+            if (feature != nullptr &&
+                feature->typeId() ==
+                    kFogFeatureFactory.descriptor.type)
+            {
+                fog_ = static_cast<const FogFeature*>(feature)->renderState();
+                break;
+            }
+        }
         rebuildGpuSnapshot(renderScene().sceneTime());
     }
 

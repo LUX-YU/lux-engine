@@ -390,8 +390,7 @@ namespace lux::editor
         // 1. Reflection registry — drains the self-registering chain so any
         //    LUX_CLASS-annotated component built into the editor process is
         //    available to InspectorPanel from the first frame.
-        lux::meta::meta_module_init();
-        if (auto registered = lux::ecs::registerGeneratedComponents(
+        if (auto registered = lux::ecs::initializeGeneratedMetadata(
                 runtime_->component_types_); !registered)
         {
             lux::log::error(
@@ -638,7 +637,8 @@ namespace lux::editor
         runtime_->render_infra_.control         = &runtime_->render_thread_host_->controlSession();
         runtime_->render_infra_.extension_modules = &runtime_->extension_modules_;
         runtime_->render_infra_.install_systems = [runtime = runtime_.get()](
-            lux::ecs::ScheduleBuilder& builder)
+            lux::ecs::ScheduleBuilder& builder,
+            const lux::scene::SceneDescription& description)
         {
             return lux::ecs::installSpatial3DTransformSystems(
                        builder,
@@ -666,15 +666,36 @@ namespace lux::editor
                     runtime->tilemap_preparation_->client()) &&
                 lux::runtime::installSpatial3DSystems(
                     builder,
-                    runtime->component_types_) &&
+                    runtime->component_types_,
+                    description) &&
                 lux::runtime::installPresentation3DSystems(
                     builder,
-                    runtime->component_types_,
-                    runtime->geometry_preparation_->classicMeshClient(),
-                    runtime->geometry_preparation_->terrainClient()) &&
+                    runtime->component_types_) &&
                 lux::ecs::installPresentation2DSystems(
                     builder,
                     runtime->component_types_);
+        };
+        runtime_->render_infra_.install_rendering = [runtime = runtime_.get()](
+            lux::ecs::ScheduleBuilder& builder,
+            const lux::scene::SceneDescription&,
+            std::vector<std::unique_ptr<lux::ecs::RenderStage>>& stages,
+            std::vector<std::string_view>& feature_roots,
+            lux::ecs::ResidencySubsystem& residency)
+        {
+            return lux::runtime::installPresentation3DRendering(
+                       builder,
+                       runtime->component_types_,
+                       runtime->geometry_preparation_->classicMeshPort(),
+                       runtime->geometry_preparation_->terrainPort(),
+                       stages,
+                       feature_roots,
+                       residency) &&
+                lux::ecs::installPresentation2DRendering(
+                    builder,
+                    runtime->component_types_,
+                    stages,
+                    feature_roots,
+                    residency);
         };
 
         runtime_->session_ = std::make_unique<lux::ui::UIRenderFrameSession>(

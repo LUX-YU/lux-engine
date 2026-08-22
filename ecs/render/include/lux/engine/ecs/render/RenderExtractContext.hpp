@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/ecs/render/RenderExtractionResources.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
 #include <lux/engine/ecs/Registry.hpp>
@@ -13,19 +12,17 @@ namespace lux::ecs
     /// Narrow, non-owning view exposed to RenderSystem-internal extraction
     /// stages. It has no frame admission or submission API: the lexical frame
     /// is opened and closed by FrameCoordinator outside the ECS schedule.
-    class RenderSubsystemContext final
+    class RenderExtractContext final
     {
     public:
-        RenderSubsystemContext(
+        RenderExtractContext(
             lux::ecs::Registry& registry,
-            EcsCommandWriter           commands,
             SceneRenderBinding&        render,
             ActiveRenderView&          active_view,
             float                      dt,
             std::uint64_t              tick_index
         ) noexcept
             : registry_(registry),
-              commands_(commands),
               render_(render),
               active_view_(active_view),
               dt_(dt),
@@ -36,11 +33,6 @@ namespace lux::ecs
         [[nodiscard]] lux::ecs::Registry& registry() const noexcept
         {
             return registry_.get();
-        }
-
-        [[nodiscard]] const EcsCommandWriter& commands() const noexcept
-        {
-            return commands_;
         }
 
         [[nodiscard]] SceneRenderBinding& render() const noexcept
@@ -61,7 +53,6 @@ namespace lux::ecs
 
     private:
         std::reference_wrapper<lux::ecs::Registry> registry_;
-        EcsCommandWriter                               commands_{};
         std::reference_wrapper<SceneRenderBinding>     render_;
         std::reference_wrapper<ActiveRenderView>       active_view_;
         float                                          dt_{0.0f};

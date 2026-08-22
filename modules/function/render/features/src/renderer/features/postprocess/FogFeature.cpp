@@ -38,7 +38,7 @@ namespace lux::render
             SamplerDesc::nearestClamp());
         auto pipeline = makeFullscreenTemplate(
             "Fog",
-            8u + static_cast<std::uint32_t>(sizeof(GpuParams)),
+            8u + static_cast<std::uint32_t>(sizeof(RenderState)),
             false);
         pipeline.vertex_shader = stages->module(0);
         pipeline.fragment_shader = stages->module(1);

@@ -53,9 +53,10 @@ namespace lux::ecs
             return kFeatures;
         }
 
-        void extract(RenderSubsystemContext& uctx) override
+        void extract(RenderExtractContext& uctx) override
         {
             auto& reg = uctx.registry();
+            ensureAttached(reg);
             auto& ctx = uctx.render();
             const auto feat = ctx.features().handle(T::feature);
             if (!feat.isValid()) return;   // feature absent in this scene → no-op (graceful)
@@ -82,12 +83,16 @@ namespace lux::ecs
             });
         }
 
-        void onAdded(const SystemSetupContext& setup) override
+    private:
+        void ensureAttached(lux::ecs::Registry& registry)
         {
-            leave_.attach(setup.registry(),
+            if (registry_ == &registry)
+                return;
+            leave_.detach();
+            registry_ = &registry;
+            leave_.attach(registry,
                           [this](lux::ecs::Entity e) { last_.erase(e); });
         }
-        void onRemoved(const SystemRemovalContext&) override { leave_.detach(); }
 
         // ★ 这里此前有 `releaseRefs`,它做两件事:调 `Traits::clear(ctx)` 与清
         //   脏比较缓存。两件都删了。
@@ -100,6 +105,7 @@ namespace lux::ecs
         //   往一个正在销毁的场景推参数,可证明无效果。
         //
         //   脏比较缓存随本对象析构 —— 那本来就是纯本地记账。
+        lux::ecs::Registry* registry_{nullptr};
     };
 
 } // namespace lux::ecs

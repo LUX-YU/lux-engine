@@ -1,7 +1,7 @@
-#include <lux/engine/runtime/render/scene/TerrainTileRenderSubsystem.hpp>
-#include <lux/engine/runtime/render/scene/SceneGeometryPrepareService.hpp>
-#include <lux/engine/runtime/render/scene/detail/SceneContentRenderContracts.hpp>
-#include <lux/engine/runtime/scene/SceneAsyncContext.hpp>
+#include <lux/engine/ecs/render/systems/3d/TerrainTileRenderSystem.hpp>
+#include <lux/engine/ecs/render/systems/RenderSystem.hpp>
+#include <lux/engine/ecs/render/SceneGeometryPreparation.hpp>
+#include <lux/engine/ecs/render/detail/SceneContentRenderContracts.hpp>
 
 #include <lux/engine/ecs/components/PersistentEntityIdComponent.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
@@ -13,10 +13,6 @@
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/genops/TerrainOperation.ops.hpp>
 #include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
-#include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
-
-#include <stdexec/execution.hpp>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -28,8 +24,12 @@
 #include <utility>
 #include <vector>
 
-namespace lux::runtime
+namespace lux::ecs
 {
+    using lux::ecs::ESceneGeometryPrepareError;
+    using lux::ecs::PrepareTerrainTile;
+    using lux::ecs::SceneGeometryPrepareFailure;
+
     namespace
     {
         [[nodiscard]] lux::render::TerrainWireId terrainUuidWireId(
@@ -66,7 +66,7 @@ namespace lux::runtime
 
     struct TerrainTileObservedCommand final
     {
-        using Producer = TerrainTileRenderSubsystem;
+        using Producer = TerrainTileRenderSystem;
 
         lux::ecs::Entity entity{entt::null};
         bool topology{false};
@@ -81,14 +81,14 @@ namespace lux::runtime
 
         void apply(
             lux::ecs::Registry&,
-            TerrainTileRenderSubsystem& owner) const noexcept
+            TerrainTileRenderSystem& owner) const noexcept
         {
             owner.applyObservedChange(entity, topology);
         }
     };
     static_assert(std::is_trivially_copyable_v<TerrainTileObservedCommand>);
 
-    struct TerrainTileRenderSubsystem::Impl final
+    struct TerrainTileRenderSystem::Impl final
     {
         struct Pending final
         {
@@ -132,7 +132,7 @@ namespace lux::runtime
 
         struct CallbackControl final
         {
-            TerrainTileRenderSubsystem* owner{nullptr};
+            TerrainTileRenderSystem* owner{nullptr};
             lux::render::RenderControlSession* control{nullptr};
             lux::render::RenderSceneId scene{};
             lux::render::TerrainOperationIds operations{};
@@ -148,11 +148,9 @@ namespace lux::runtime
 
         Impl(
             lux::ecs::entity_scene::ContentBlobClient client,
-            TerrainPrepareClient preparation_value,
-            SceneAsyncContext& async) noexcept
+            lux::ecs::TerrainPreparePort preparation_value) noexcept
             : blobs(std::move(client)),
               preparation_client(std::move(preparation_value)),
-              async_scope(&async.scope()),
               callbacks(std::make_shared<CallbackControl>())
         {}
 
@@ -246,12 +244,12 @@ namespace lux::runtime
             children_by_parent.clear();
         }
 
-        void prepare(lux::ecs::RenderSubsystemContext& context) noexcept
+        void prepare(lux::ecs::SceneRenderBinding& render) noexcept
         {
-            scene_origin = context.render().sceneOriginTile3D();
-            callbacks->control = &context.render().control();
-            callbacks->scene = context.render().scene();
-            callbacks->operations = context.render().features().ops<
+            scene_origin = render.sceneOriginTile3D();
+            callbacks->control = &render.control();
+            callbacks->scene = render.scene();
+            callbacks->operations = render.features().ops<
                 lux::render::TerrainOperationIds>("Terrain");
         }
 
@@ -465,7 +463,7 @@ namespace lux::runtime
         {
             if (!entry.preparation || entry.preparation->in_flight)
                 return;
-            if (!preparation_client || !async_scope)
+            if (!preparation_client)
             {
                 fail(entry, ESceneContentRenderFailure::FEATURE_UNAVAILABLE);
                 return;
@@ -473,88 +471,42 @@ namespace lux::runtime
             auto& preparing = *entry.preparation;
             const auto owner_generation = preparing.owner_generation;
             const auto desired_generation = preparing.desired_generation;
-            auto submitted = preparation_client.execute(PrepareTerrainTile{
-                preparing.blob.bytes(),
-                preparing.blob.reference(),
-                desired_generation});
-            if (!submitted)
-            {
-                if (submitted.error() ==
-                        lux::async::ESubmitError::QUEUE_FULL ||
-                    submitted.error() == lux::async::ESubmitError::
-                        BYTE_BUDGET_EXHAUSTED)
-                {
-                    ++metrics.preparation_backpressure;
-                    entry.state = ESceneContentRenderState::WAITING_CONTENT;
-                    return;
-                }
-                fail(entry, ESceneContentRenderFailure::FEATURE_UNAVAILABLE);
-                return;
-            }
-            auto pipeline = std::move(*submitted) |
-                stdexec::then(
-                    [weak = std::weak_ptr<CallbackControl>{callbacks},
-                     entity,
-                     owner_generation,
-                     desired_generation](
-                        lux::async::OperationOutcome<PrepareTerrainTile> outcome)
-                        mutable noexcept
-                    {
-                        const auto locked = weak.lock();
-                        if (locked && locked->owner)
-                        {
-                            locked->owner->impl_->acceptPreparation(
-                                entity,
-                                owner_generation,
-                                desired_generation,
-                                std::move(outcome));
-                        }
-                    }) |
-                stdexec::upon_stopped(
-                    [weak = std::weak_ptr<CallbackControl>{callbacks},
-                     entity,
-                     owner_generation,
-                     desired_generation]() noexcept
-                    {
-                        const auto locked = weak.lock();
-                        if (locked && locked->owner)
-                        {
-                            locked->owner->impl_->preparationStopped(
-                                entity,
-                                owner_generation,
-                                desired_generation);
-                        }
-                    });
             preparing.in_flight = true;
             entry.state = ESceneContentRenderState::WAITING_BACKGROUND;
-            if (!lux::exec::spawn(*async_scope, std::move(pipeline)))
+            struct Completion final
             {
-                preparing.in_flight = false;
-                entry.state = ESceneContentRenderState::WAITING_CONTENT;
-                ++metrics.preparation_backpressure;
-            }
-        }
-
-        void preparationStopped(
-            lux::ecs::Entity entity,
-            std::uint64_t owner_generation,
-            std::uint64_t desired_generation) noexcept
-        {
-            const auto found = entries.find(entity);
-            if (found == entries.end() ||
-                found->second.owner_generation != owner_generation ||
-                !found->second.preparation ||
-                found->second.preparation->desired_generation !=
-                    desired_generation)
-            {
-                ++metrics.stale_preparation_completions;
-                return;
-            }
-            if (closed)
-                return;
-            fail(
-                found->second,
-                ESceneContentRenderFailure::FEATURE_UNAVAILABLE);
+                std::weak_ptr<CallbackControl> callbacks;
+                lux::ecs::Entity entity{entt::null};
+                std::uint64_t owner_generation{0u};
+                std::uint64_t desired_generation{0u};
+            };
+            auto* completion = new Completion{
+                callbacks,
+                entity,
+                owner_generation,
+                desired_generation};
+            (void)preparation_client.submit(
+                PrepareTerrainTile{
+                    preparing.blob.bytes(),
+                    preparing.blob.reference(),
+                    desired_generation},
+                completion,
+                +[](void* opaque,
+                    lux::async::OperationOutcome<PrepareTerrainTile>&&
+                        outcome) noexcept
+                {
+                    std::unique_ptr<Completion> state{
+                        static_cast<Completion*>(opaque)};
+                    const auto locked = state->callbacks.lock();
+                    if (locked && locked->owner)
+                    {
+                        locked->owner->impl_->acceptPreparation(
+                            state->entity,
+                            state->owner_generation,
+                            state->desired_generation,
+                            std::move(outcome));
+                    }
+                });
         }
 
         void acceptPreparation(
@@ -787,9 +739,9 @@ namespace lux::runtime
                 dirty.insert(entity);
         }
 
-        void drive(lux::ecs::RenderSubsystemContext& context)
+        void drive(lux::ecs::SceneRenderBinding& render)
         {
-            scene_origin = context.render().sceneOriginTile3D();
+            scene_origin = render.sceneOriginTile3D();
             uploads.drain(
                 [this](auto completion)
                 {
@@ -864,7 +816,7 @@ namespace lux::runtime
                 if (entry.pending && !entry.pending->upload_submitted &&
                     entry.state == ESceneContentRenderState::WAITING_CONTENT)
                 {
-                    submit(entity, entry, context.render().upload());
+                    submit(entity, entry, render.upload());
                 }
             }
             uploads.drain(
@@ -925,8 +877,7 @@ namespace lux::runtime
         }
 
         lux::ecs::entity_scene::ContentBlobClient blobs;
-        TerrainPrepareClient preparation_client;
-        lux::exec::AsyncScope* async_scope{nullptr};
+        lux::ecs::TerrainPreparePort preparation_client;
         std::shared_ptr<CallbackControl> callbacks;
         lux::ecs::Registry* registry{nullptr};
         lux::ecs::EcsCommandWriter commands;
@@ -966,61 +917,58 @@ namespace lux::runtime
         entt::scoped_connection transform_updated;
     };
 
-    TerrainTileRenderSubsystem::TerrainTileRenderSubsystem(
+    TerrainTileRenderSystem::TerrainTileRenderSystem(
+        lux::ecs::SceneRenderBinding& render,
         lux::ecs::entity_scene::ContentBlobClient blobs,
-        TerrainPrepareClient preparation,
-        SceneAsyncContext& async) noexcept
-        : impl_(std::make_unique<Impl>(
-              std::move(blobs), std::move(preparation), async))
+        lux::ecs::TerrainPreparePort preparation) noexcept
+        : render_(&render),
+          impl_(std::make_unique<Impl>(
+              std::move(blobs), std::move(preparation)))
     {
         impl_->callbacks->owner = this;
     }
 
-    TerrainTileRenderSubsystem::~TerrainTileRenderSubsystem()
+    TerrainTileRenderSystem::~TerrainTileRenderSystem()
     {
         impl_->callbacks->owner = nullptr;
         impl_->detach();
     }
 
-    void TerrainTileRenderSubsystem::onAdded(
+    void TerrainTileRenderSystem::onAdded(
         const lux::ecs::SystemSetupContext& setup)
     {
         impl_->attach(setup.registry(), setup.commands());
     }
 
-    void TerrainTileRenderSubsystem::onRemoved(
+    void TerrainTileRenderSystem::onRemoved(
         const lux::ecs::SystemRemovalContext&)
     {
         impl_->detach();
     }
 
     std::span<const std::string_view>
-    TerrainTileRenderSubsystem::requiredFeatures() const noexcept
+    TerrainTileRenderSystem::requiredRenderFeatures() noexcept
     {
         static constexpr std::array<std::string_view, 1u> features{
             "Terrain"};
         return features;
     }
 
-    void TerrainTileRenderSubsystem::prepare(
-        lux::ecs::RenderSubsystemContext& context) noexcept
-    {
-        impl_->prepare(context);
-    }
-
-    void TerrainTileRenderSubsystem::extract(
-        lux::ecs::RenderSubsystemContext& context)
+    void TerrainTileRenderSystem::update(
+        const lux::ecs::SystemUpdateContext&)
     {
         if (!impl_->closed)
-            impl_->drive(context);
+        {
+            impl_->prepare(*render_);
+            impl_->drive(*render_);
+        }
     }
 
-    void TerrainTileRenderSubsystem::close(
-        lux::ecs::RenderSubsystemContext& context) noexcept
+    void TerrainTileRenderSystem::requestClose() noexcept
     {
         if (impl_->closed)
             return;
-        impl_->prepare(context);
+        impl_->prepare(*render_);
         impl_->closed = true;
         impl_->detach();
         impl_->callbacks->owner = nullptr;
@@ -1032,22 +980,30 @@ namespace lux::runtime
             impl_->retire(entity);
     }
 
-    SceneContentRenderEntrySnapshot TerrainTileRenderSubsystem::status(
+    std::span<const lux::ecs::ISystem::Type>
+    TerrainTileRenderSystem::runsAfter() const noexcept
+    {
+        static constexpr std::array<Type, 1u> dependencies{
+            lux::ecs::systemType<lux::ecs::RenderSystem>()};
+        return dependencies;
+    }
+
+    SceneContentRenderEntrySnapshot TerrainTileRenderSystem::status(
         lux::ecs::Entity entity) const noexcept
     {
         return impl_->status(entity);
     }
 
     SceneContentRenderSubsystemSnapshot
-    TerrainTileRenderSubsystem::snapshot() const noexcept
+    TerrainTileRenderSystem::snapshot() const noexcept
     {
         return impl_->snapshot();
     }
 
-    void TerrainTileRenderSubsystem::applyObservedChange(
+    void TerrainTileRenderSystem::applyObservedChange(
         lux::ecs::Entity entity,
         bool topology) noexcept
     {
         impl_->observed(entity, topology);
     }
-} // namespace lux::runtime
+} // namespace lux::ecs

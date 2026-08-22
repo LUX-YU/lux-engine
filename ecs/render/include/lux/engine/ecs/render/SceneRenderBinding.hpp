@@ -36,11 +36,33 @@ namespace lux::ecs
         SceneRenderBinding(
             lux::render::RenderFrameSession&        session,
             lux::render::RenderControlSession& control,
-            lux::render::RenderUploadClient    upload,
-            lux::render::RenderSceneId         scene_id
+            lux::render::RenderUploadClient    upload
         ) noexcept
             : session_(session), control_(control), upload_(std::move(upload)),
-              scene_(scene_id) {}
+              scene_{} {}
+
+        SceneRenderBinding(
+            lux::render::RenderFrameSession& session,
+            lux::render::RenderControlSession& control,
+            lux::render::RenderUploadClient upload,
+            lux::render::RenderSceneId scene_id
+        ) noexcept
+            : SceneRenderBinding(session, control, std::move(upload))
+        {
+            (void)bindScene(scene_id);
+        }
+
+        /// Complete the unpublished binding after local topology preflight
+        /// and remote scene creation. The scene identity is cold one-shot
+        /// state; published systems never replace it.
+        [[nodiscard]] bool bindScene(
+            lux::render::RenderSceneId scene_id) noexcept
+        {
+            if (!scene_.isNull() || scene_id.isNull())
+                return false;
+            scene_ = scene_id;
+            return true;
+        }
 
         [[nodiscard]] lux::render::RenderFrameSession& session() noexcept
         {
@@ -83,22 +105,19 @@ namespace lux::ecs
             return catalog_ ? &catalog_->get() : nullptr;
         }
 
-        void setCatalog(const lux::render::FeatureCatalog& catalog) noexcept
+        /// Publish the complete renderer capability view exactly once. The
+        /// binding remains mutable only for non-topology scene state such as
+        /// origin rebasing; FeatureCatalog and handles are immutable after
+        /// this cold assembly seal.
+        [[nodiscard]] bool seal(
+            const lux::render::FeatureCatalog& catalog,
+            lux::render::FeatureBindings bindings = {}) noexcept
         {
+            if (catalog_)
+                return false;
             catalog_ = std::cref(catalog);
-        }
-
-        void bindFeature(std::string_view name,
-                         lux::render::FeatureHandle handle)
-        {
-            bindings_.bind(name, handle);
-        }
-
-        void unbindFeature(
-            std::string_view name,
-            lux::render::FeatureHandle expected = {}) noexcept
-        {
-            bindings_.unbind(name, expected);
+            bindings_ = std::move(bindings);
+            return true;
         }
 
         [[nodiscard]] lux::render::MeshStackProxy meshStack() noexcept
@@ -140,7 +159,8 @@ namespace lux::ecs
             OK,
             CHANNEL_STOPPED,
             ATTACH_REJECTED,
-            DISPATCH_FAILED
+            DISPATCH_FAILED,
+            BINDING_ALREADY_SEALED
         };
 
         Status status{Status::OK};
@@ -151,6 +171,7 @@ namespace lux::ecs
 
     [[nodiscard]] LUX_FUNCTION_PUBLIC FeatureSettleReport settleRenderCapabilities(
         SceneRenderBinding&                     ctx,
+        const lux::render::FeatureCatalog&       catalog,
         std::span<const lux::render::FeatureAttach> plan,
         std::span<const std::string_view>           roots,
         std::string_view                            profile);

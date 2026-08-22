@@ -4,6 +4,7 @@
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/terrain/TerrainTileCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
+#include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 
 #include <stdexec/execution.hpp>
 
@@ -14,6 +15,7 @@
 #include <limits>
 #include <mutex>
 #include <span>
+#include <type_traits>
 #include <unordered_set>
 
 namespace lux::runtime::detail
@@ -179,6 +181,13 @@ namespace lux::runtime::detail
 
 namespace lux::runtime
 {
+    using lux::ecs::ESceneGeometryPrepareError;
+    using lux::ecs::PrepareClassicMeshBatch;
+    using lux::ecs::PrepareTerrainTile;
+    using lux::ecs::PreparedClassicMeshBatch;
+    using lux::ecs::PreparedTerrainTile;
+    using lux::ecs::SceneGeometryPrepareFailure;
+
     namespace ex = stdexec;
 
     namespace
@@ -466,8 +475,7 @@ namespace lux::runtime
 
             PendingPrepare(
                 lux::exec::AsyncOperationCompletion<Operation> value,
-                std::shared_ptr<detail::SceneGeometryPrepareReservation>
-                    admission_value) noexcept
+                std::shared_ptr<void> admission_value) noexcept
                 : completion(std::move(value)),
                   admission(std::move(admission_value))
             {}
@@ -498,100 +506,89 @@ namespace lux::runtime
 
             std::atomic<bool> settled{false};
             lux::exec::AsyncOperationCompletion<Operation> completion;
-            std::shared_ptr<detail::SceneGeometryPrepareReservation>
-                admission;
+            std::shared_ptr<void> admission;
+        };
+
+        template <class Operation>
+        class AdmittedGeometryEndpoint final
+            : public lux::async::OperationPort<Operation>::Endpoint
+        {
+        public:
+            using Outcome = lux::async::OperationOutcome<Operation>;
+
+            AdmittedGeometryEndpoint(
+                std::weak_ptr<detail::SceneGeometryPrepareControl> control,
+                std::uint64_t generation,
+                lux::async::OperationPort<Operation> operation,
+                detail::ESceneGeometryPrepareDomain domain) noexcept
+                : control_(std::move(control)),
+                  generation_(generation),
+                  operation_(std::move(operation)),
+                  domain_(domain)
+            {}
+
+            [[nodiscard]] lux::async::SubmitResult submit(
+                Operation operation,
+                void* completion_state,
+                void (*complete)(void*, Outcome&&) noexcept,
+                lux::async::SubmitOptions) noexcept override
+            {
+                const auto reject = [&](lux::async::ESubmitError error)
+                {
+                    complete(
+                        completion_state,
+                        lux::cxx::unexpected(
+                            lux::async::OperationFailure<
+                                typename Operation::Error>::runtime(error)));
+                    return lux::async::SubmitResult{
+                        lux::cxx::unexpected(error)};
+                };
+
+                const auto control = control_.lock();
+                if (!control || !operation_)
+                {
+                    return reject(lux::async::ESubmitError::UNKNOWN_OPERATION);
+                }
+                if (!control->accepts(generation_))
+                    return reject(lux::async::ESubmitError::FEATURE_CLOSING);
+
+                const auto estimated = [&]()
+                {
+                    if constexpr (std::is_same_v<
+                            Operation,
+                            PrepareClassicMeshBatch>)
+                    {
+                        return classicMeshWorksetBytes(
+                            operation.content.view());
+                    }
+                    else
+                    {
+                        return terrainWorksetBytes(operation.content.view());
+                    }
+                }();
+                if (!estimated)
+                    return reject(estimated.error());
+
+                const auto bytes = *estimated;
+                auto admission = control->reserve(
+                    generation_, domain_, bytes);
+                if (!admission)
+                    return reject(admission.error());
+                operation.admission_lifetime = std::move(*admission);
+                return operation_.submit(
+                    std::move(operation),
+                    completion_state,
+                    complete,
+                    lux::async::SubmitOptions{.accounted_bytes = bytes});
+            }
+
+        private:
+            std::weak_ptr<detail::SceneGeometryPrepareControl> control_;
+            std::uint64_t generation_{0u};
+            lux::async::OperationPort<Operation> operation_;
+            detail::ESceneGeometryPrepareDomain domain_;
         };
     } // namespace
-
-    ClassicMeshPrepareClient::ClassicMeshPrepareClient(
-        std::weak_ptr<detail::SceneGeometryPrepareControl> control,
-        std::uint64_t generation,
-        lux::async::OperationPort<PrepareClassicMeshBatch>
-            operation) noexcept
-        : control_(std::move(control)),
-          generation_(generation),
-          operation_(std::move(operation))
-    {}
-
-    ClassicMeshPrepareClient::operator bool() const noexcept
-    {
-        const auto control = control_.lock();
-        return control && control->accepts(generation_) &&
-            static_cast<bool>(operation_);
-    }
-
-    lux::cxx::expected<
-        ClassicMeshPrepareSender,
-        lux::async::ESubmitError>
-    ClassicMeshPrepareClient::execute(
-        PrepareClassicMeshBatch request) const noexcept
-    {
-        const auto control = control_.lock();
-        if (!control || !operation_)
-        {
-            return lux::cxx::unexpected(
-                lux::async::ESubmitError::UNKNOWN_OPERATION);
-        }
-        const auto estimated = classicMeshWorksetBytes(
-            request.content.view());
-        if (!estimated)
-            return lux::cxx::unexpected(estimated.error());
-        const auto bytes = *estimated;
-        auto admission = control->reserve(
-            generation_,
-            detail::ESceneGeometryPrepareDomain::CLASSIC_MESH,
-            bytes);
-        if (!admission)
-            return lux::cxx::unexpected(admission.error());
-        request.admission_ = std::move(*admission);
-        return lux::exec::execute(
-            operation_,
-            std::move(request),
-            lux::async::SubmitOptions{.accounted_bytes = bytes});
-    }
-
-    TerrainPrepareClient::TerrainPrepareClient(
-        std::weak_ptr<detail::SceneGeometryPrepareControl> control,
-        std::uint64_t generation,
-        lux::async::OperationPort<PrepareTerrainTile>
-            operation) noexcept
-        : control_(std::move(control)),
-          generation_(generation),
-          operation_(std::move(operation))
-    {}
-
-    TerrainPrepareClient::operator bool() const noexcept
-    {
-        const auto control = control_.lock();
-        return control && control->accepts(generation_) &&
-            static_cast<bool>(operation_);
-    }
-
-    lux::cxx::expected<TerrainPrepareSender, lux::async::ESubmitError>
-    TerrainPrepareClient::execute(PrepareTerrainTile request) const noexcept
-    {
-        const auto control = control_.lock();
-        if (!control || !operation_)
-        {
-            return lux::cxx::unexpected(
-                lux::async::ESubmitError::UNKNOWN_OPERATION);
-        }
-        const auto estimated = terrainWorksetBytes(request.content.view());
-        if (!estimated)
-            return lux::cxx::unexpected(estimated.error());
-        const auto bytes = *estimated;
-        auto admission = control->reserve(
-            generation_,
-            detail::ESceneGeometryPrepareDomain::TERRAIN,
-            bytes);
-        if (!admission)
-            return lux::cxx::unexpected(admission.error());
-        request.admission_ = std::move(*admission);
-        return lux::exec::execute(
-            operation_,
-            std::move(request),
-            lux::async::SubmitOptions{.accounted_bytes = bytes});
-    }
 
     lux::cxx::expected<
         SceneGeometryPrepareService,
@@ -619,7 +616,7 @@ namespace lux::runtime
                 auto pending = std::make_shared<
                     PendingPrepare<PrepareClassicMeshBatch>>(
                         std::move(completion),
-                        std::move(request.admission_));
+                        std::move(request.admission_lifetime));
                 if (!pending->admission)
                 {
                     pending->settle(lux::cxx::unexpected(failure(
@@ -672,7 +669,7 @@ namespace lux::runtime
                 auto pending = std::make_shared<
                     PendingPrepare<PrepareTerrainTile>>(
                         std::move(completion),
-                        std::move(request.admission_));
+                        std::move(request.admission_lifetime));
                 if (!pending->admission)
                 {
                     pending->settle(lux::cxx::unexpected(failure(
@@ -754,22 +751,30 @@ namespace lux::runtime
         close();
     }
 
-    ClassicMeshPrepareClient
-    SceneGeometryPrepareService::classicMeshClient() const noexcept
+    lux::ecs::ClassicMeshPreparePort
+    SceneGeometryPrepareService::classicMeshPort() const noexcept
     {
-        return !closed_ && control_
-            ? ClassicMeshPrepareClient{
-                  control_, control_->currentGeneration(), classic_mesh_}
-            : ClassicMeshPrepareClient{};
+        if (closed_ || !control_ || !classic_mesh_)
+            return {};
+        using Endpoint = AdmittedGeometryEndpoint<PrepareClassicMeshBatch>;
+        return lux::ecs::ClassicMeshPreparePort{std::make_shared<Endpoint>(
+            control_,
+            control_->currentGeneration(),
+            classic_mesh_,
+            detail::ESceneGeometryPrepareDomain::CLASSIC_MESH)};
     }
 
-    TerrainPrepareClient
-    SceneGeometryPrepareService::terrainClient() const noexcept
+    lux::ecs::TerrainPreparePort
+    SceneGeometryPrepareService::terrainPort() const noexcept
     {
-        return !closed_ && control_
-            ? TerrainPrepareClient{
-                  control_, control_->currentGeneration(), terrain_}
-            : TerrainPrepareClient{};
+        if (closed_ || !control_ || !terrain_)
+            return {};
+        using Endpoint = AdmittedGeometryEndpoint<PrepareTerrainTile>;
+        return lux::ecs::TerrainPreparePort{std::make_shared<Endpoint>(
+            control_,
+            control_->currentGeneration(),
+            terrain_,
+            detail::ESceneGeometryPrepareDomain::TERRAIN)};
     }
 
     SceneGeometryPrepareSnapshot

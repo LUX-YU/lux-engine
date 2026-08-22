@@ -6,7 +6,6 @@
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
@@ -220,7 +219,7 @@ namespace
             });
     }
 
-    lux::runtime::entity_scene::EntitySceneCatalog catalog(
+    lux::scene::SceneDescription catalog(
         std::vector<lux::ecs::scene_format::SectionRecord> records)
     {
         std::sort(
@@ -233,10 +232,8 @@ namespace
         package.id = lux::asset::asset_id_t{uuid(
             "82000000-0000-4000-8000-000000000001")};
         package.sections = std::move(records);
-        auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(
-            std::move(package));
-        assert(result);
-        return std::move(*result);
+        assert(lux::scene::validateSceneDescription(package));
+        return package;
     }
 }
 
@@ -250,10 +247,8 @@ int main()
     // when its loader is absent.
     {
         auto empty_catalog = catalog({});
-        residency::EntitySectionRecordStore empty_store{
-            empty_catalog.sections()};
         auto empty_planner = residency::SectionResidencyPlanner::create(
-            std::move(empty_store),
+            empty_catalog.sections,
             residency::SectionResidencyBudget{1u, 1u});
         assert(empty_planner);
         lux::ecs::World missing_world;
@@ -340,10 +335,8 @@ int main()
         auto* cross_loader_owner = cross_loader.get();
         assert(cross_schedule.addSystem(std::move(cross_loader)));
         auto cross_catalog = catalog({first_record});
-        residency::EntitySectionRecordStore cross_store{
-            cross_catalog.sections()};
         auto cross_planner = residency::SectionResidencyPlanner::create(
-            std::move(cross_store),
+            cross_catalog.sections,
             residency::SectionResidencyBudget{
                 first_record.decoded_bytes,
                 first_record.entity_count});
@@ -370,11 +363,10 @@ int main()
 
     auto scene_catalog = catalog(
         {first_record, second_record, dependency_record});
-    residency::EntitySectionRecordStore store{scene_catalog.sections()};
     const auto two_section_budget =
         first_record.decoded_bytes + second_record.decoded_bytes;
     auto planner = residency::SectionResidencyPlanner::create(
-        std::move(store),
+        scene_catalog.sections,
         residency::SectionResidencyBudget{two_section_budget, 2u});
     assert(planner);
     auto partition_system = std::make_unique<

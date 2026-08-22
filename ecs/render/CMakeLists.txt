@@ -6,6 +6,8 @@
 # A headless consumer can link the component target without pulling a render
 # session, while a 2D pack has no target or schema edge to the 3D domain.
 
+find_package(Eigen3 REQUIRED)
+
 set(LUX_ECS_RENDER_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 function(lux_configure_render_interface target)
@@ -98,9 +100,8 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderBinding.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderBridgeDiagnostics.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystemStages.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/CameraViewSubsystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/CameraViewSystem.cpp
 )
 lux_classify_target(
     TARGET  render_core
@@ -201,7 +202,7 @@ add_component(
     NAMESPACE      lux::engine::ecs
     OUTPUT_NAME    lux_engine_ecs_render_pixel_integration
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/PixelField2DSubsystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/PixelField2DSystem.cpp
 )
 lux_classify_target(
     TARGET  render_pixel_integration
@@ -238,7 +239,7 @@ add_component(
     NAMESPACE      lux::engine::ecs
     OUTPUT_NAME    lux_engine_ecs_render_tilemap_integration
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Tilemap2DSubsystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Tilemap2DSystem.cpp
 )
 lux_classify_target(
     TARGET  render_tilemap_integration
@@ -268,6 +269,66 @@ target_link_libraries(
 component_add_transitive_commands(
     render_tilemap_integration
     "find_package(lux-engine-ecs REQUIRED COMPONENTS render_2d tilemap)"
+)
+
+# Scene-streamed 3D content presentation. These ordinary ISystems own ECS
+# observation, renderer request and retirement lifecycles; Runtime only
+# supplies the typed background preparation ports they consume.
+add_component(
+    COMPONENT_NAME render_content_3d_integration
+    NAMESPACE      lux::engine::ecs
+    OUTPUT_NAME    lux_engine_ecs_render_content_3d_integration
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ClassicMeshBatchRenderSystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TerrainTileRenderSystem.cpp
+)
+lux_classify_target(
+    TARGET  render_content_3d_integration
+    LAYER   ECS
+    PRODUCT RUNTIME
+    ROLE    INTEGRATION
+)
+component_include_directories(
+    render_content_3d_integration
+    BUILD_TIME_EXPORT
+        ${LUX_ECS_RENDER_INCLUDE_DIR}
+        ${LUX_GENERATE_HEADER_DIR}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    INSTALL_TIME include
+)
+target_compile_definitions(
+    render_content_3d_integration
+    PRIVATE LUX_FUNCTION_LIBRARY
+)
+if(MSVC)
+    target_compile_options(
+        render_content_3d_integration
+        PRIVATE /permissive- /Zc:__cplusplus /Zc:preprocessor
+    )
+endif()
+target_link_libraries(
+    render_content_3d_integration
+    PUBLIC
+        lux::engine::ecs::render_3d
+        lux::engine::ecs::entity_scene
+        lux::engine::ecs::terrain_components
+        lux::engine::core::async_port
+        lux::engine::resource::asset
+        lux::engine::function::render_standard_content
+        Eigen3::Eigen
+    PRIVATE
+        lux::cxx::algorithm
+        lux::cxx::memory
+)
+component_add_transitive_commands(
+    render_content_3d_integration
+    "find_package(Eigen3 REQUIRED)"
+    "find_package(lux-cxx REQUIRED COMPONENTS algorithm memory)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS async_port)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS entity_scene render_3d terrain_components)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS render_standard_content)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
 )
 endif()
 

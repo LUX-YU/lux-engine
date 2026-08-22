@@ -33,6 +33,18 @@ add_dependencies(
     component_extension_module
     rollback_extension_module
 )
+add_test(
+    NAME phase9_extension_metadata_transaction
+    COMMAND engine_extensions_test
+        $<TARGET_FILE:minimal_extension_module>
+        $<TARGET_FILE:dependent_extension_module>
+        $<TARGET_FILE:component_extension_module>
+        $<TARGET_FILE:rollback_extension_module>
+)
+set_tests_properties(
+    phase9_extension_metadata_transaction
+    PROPERTIES LABELS "phase9;cpu"
+)
 
 add_executable(render_request_sender_test render_request_sender_test.cpp)
 target_link_libraries(
@@ -43,6 +55,28 @@ target_link_libraries(
         lux::engine::function::render_features
 )
 lux_scene_runtime_test_enable_stdexec(render_request_sender_test)
+
+add_executable(
+    rendered_scene_transaction_test
+    rendered_scene_transaction_test.cpp
+)
+target_link_libraries(
+    rendered_scene_transaction_test
+    PRIVATE
+        runtime_render_scene
+        runtime_render_scene_test_support
+        lux::engine::runtime::runtime_execution
+        lux::engine::resource::asset
+)
+lux_scene_runtime_test_enable_stdexec(rendered_scene_transaction_test)
+add_test(
+    NAME phase9_rendered_scene_transaction
+    COMMAND rendered_scene_transaction_test
+)
+set_tests_properties(
+    phase9_rendered_scene_transaction
+    PROPERTIES LABELS "phase9;cpu"
+)
 
 add_executable(render_resource_manager_test render_resource_manager_test.cpp)
 
@@ -69,6 +103,11 @@ target_link_libraries(
         lux::engine::resource::asset
 )
 lux_scene_runtime_test_enable_stdexec(headless_scene_runtime_test)
+add_test(NAME phase9_headless_scene_runtime COMMAND headless_scene_runtime_test)
+set_tests_properties(
+    phase9_headless_scene_runtime
+    PROPERTIES LABELS "phase9;cpu"
+)
 
 add_executable(
     scene_content_render_contract_test
@@ -77,8 +116,21 @@ add_executable(
 target_link_libraries(
     scene_content_render_contract_test
     PRIVATE
-        runtime_render_scene_test_support
+        lux::engine::ecs::render_content_3d_integration
+        lux::engine::function::render_features
         lux::engine::function::render_standard_content
+)
+add_test(
+    NAME phase9_scene_content_render_contract
+    COMMAND scene_content_render_contract_test
+)
+set_tests_properties(
+    phase9_scene_content_render_contract
+    PROPERTIES LABELS "phase9;cpu"
+)
+target_include_directories(
+    scene_content_render_contract_test
+    PRIVATE ${CMAKE_SOURCE_DIR}/ecs/render/pinclude
 )
 
 add_executable(
@@ -92,6 +144,14 @@ target_link_libraries(
         lux::engine::runtime::runtime_execution
 )
 lux_scene_runtime_test_enable_stdexec(scene_geometry_prepare_service_test)
+add_test(
+    NAME phase9_scene_geometry_prepare_port
+    COMMAND scene_geometry_prepare_service_test
+)
+set_tests_properties(
+    phase9_scene_geometry_prepare_port
+    PROPERTIES LABELS "phase9;cpu"
+)
 
 add_executable(
     render_backend_upload_close_test

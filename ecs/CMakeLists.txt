@@ -96,7 +96,7 @@ else()
         navigation3d navigation3d_streaming
         render_components render_components_2d render_components_3d
         render_core render_presentation render_2d render_3d render_pixel_integration
-        render_tilemap_integration
+        render_tilemap_integration render_content_3d_integration
         animation_2d animation_3d
         physics2d_pixel_integration physics2d_script_integration presentation_2d
     )

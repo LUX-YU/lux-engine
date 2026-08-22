@@ -23,6 +23,7 @@
 
 #include <lux/engine/ecs/Registry.hpp>   // EntityRegistry / entt::exclude
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderUploadSession.hpp>
 #include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
 
 // ComponentList / componentView / ExtractionChangeSet —— 批 T2 下沉到 ecs/core。

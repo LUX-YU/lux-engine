@@ -82,9 +82,8 @@ int main()
     const auto third_id = third.id;
     const auto dependency_id = dependency.id;
     auto section_records = catalog({first, second, third, dependency});
-    residency::EntitySectionRecordStore store{section_records};
     auto planner = residency::SectionResidencyPlanner::create(
-        std::move(store),
+        section_records,
         residency::SectionResidencyBudget{150u, 15u});
     assert(planner);
 

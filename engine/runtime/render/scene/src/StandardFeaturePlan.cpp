@@ -38,20 +38,17 @@ namespace lux::runtime
 {
     const RenderProfile& standardDesktopProfile() noexcept
     {
-        /// 「装了这个 profile 就有延迟管线」。此前这份清单是 3D 包的
-        /// runtime pack 的 ECS contribution 不再携带 render pass 根。
+        /// 「装了这个 profile 就有延迟管线」。只列与 World content 无关的
+        /// pipeline roots；Fog/Water/Terrain/RenderCluster 由安装它们的具体
+        /// Stage/System 声明，不在 profile 中重复。
         /// 顺序不在这里管:attach 先后由目录的 resolveAttachOrder 给出。
         static constexpr std::string_view kPassRoots[] = {
             "ShadowMap",          // 阴影图集
             "MeshShadow",         // 网格投影 pass
             "DeferredGBuffer",    // 延迟管线
             "DeferredLighting",
-            "Fog",
-            "Water",
             "Tonemap",
             "LinearDepth",        // sensors / SSAO / DoF 的公共输入
-            "RenderCluster",      // World static-instance Cluster Registry
-            "Terrain",            // paged Heightfield cache and patch renderer
             "Hzb"};               // 遮挡剔除层级 z
         static constexpr RenderProfile kProfile{ /*name=*/{}, kPassRoots };
         return kProfile;
@@ -61,7 +58,7 @@ namespace lux::runtime
     {
         /// 前向小场景:阴影双 pass + 前向网格,无延迟栈/后处理。相机/灯光/网格栈/
         /// 材质等 ECS 提取节点驱动的 feature 不在这里 ——
-        /// `RenderStage::requiredFeatures` 由 RenderSystemStages 取并集。
+        /// `RenderStage::requiredFeatures` 由冷装配局部 stage vector 取并集。
         /// name = "preview" 让 ShadowMap 的小图集配置行胜出。
         static constexpr std::string_view kPassRoots[] = {
             "ShadowMap",     // 预览小阴影图集(profile="preview" 的那行配置)
@@ -175,7 +172,7 @@ namespace lux::runtime
         //       moot — and lookups are BY NAME, so adding/reordering needs no
         //       index bookkeeping. Canvas2D costs zero draws while its instance
         //       pool is empty; the minimal per-kind feature profile is driven by
-        //       the explicit render profile and LXSC contributions.
+        //       the explicit render profile and cold composition recipe.
         // 这是一份**有序目录**，不是「装什么」的决定（阶段 3：kinds 位掩码删除，
         // 理由见 FeatureAttach.hpp）。谁被 attach 由子系统的声明并集 + 宿主自己
         // 声明的纯 pass 决定；这里只负责两件事：

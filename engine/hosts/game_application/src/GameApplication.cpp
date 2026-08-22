@@ -5,13 +5,15 @@
 #include <lux/engine/runtime/frame/MainCloseDriver.hpp>
 #include <lux/engine/runtime/scene/script/SceneScriptRuntime.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
-#include <lux/engine/runtime/render/scene/RenderSceneIntegration.hpp>
+#include <lux/engine/runtime/render/scene/RenderedSceneComposition.hpp>
 #include <lux/engine/runtime/render/scene/StandardFeaturePlan.hpp>
 #include <lux/engine/runtime/render/backend_host/RenderBackendHost.hpp>
 #include <lux/engine/runtime/render/scene/AsyncRenderUploadService.hpp>
 #include <lux/engine/runtime/render/scene/RenderDiagnostics.hpp>
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>
 #include <lux/engine/runtime/render/scene/SceneGeometryPrepareService.hpp>
+#include <lux/engine/ecs/render/SceneRenderBinding.hpp>
+#include <lux/engine/ecs/render/presentation/PrimaryViewPresentation.hpp>
 #include <lux/engine/runtime/extensions/EngineExtensions.hpp>
 #include <lux/engine/ecs/animation/InstallAnimationSystems.hpp>
 #include <lux/engine/runtime/scene/composition/InstallNavigation3DSystems.hpp>
@@ -100,6 +102,20 @@ namespace lux::game
 {
     namespace
     {
+        [[nodiscard]] lux::ecs::SceneRenderBinding* sceneRenderBinding(
+            lux::runtime::SceneRuntime& runtime) noexcept
+        {
+            return runtime.services().get<lux::ecs::SceneRenderBinding>();
+        }
+
+        [[nodiscard]] lux::ecs::render::presentation::PrimaryViewPresentation*
+        primaryViewPresentation(
+            lux::runtime::SceneRuntime& runtime) noexcept
+        {
+            return runtime.services().get<lux::ecs::render::presentation::
+                PrimaryViewPresentation>();
+        }
+
         struct BuiltinComponentSchemaSnapshot final
         {
             bool initialized{false};
@@ -124,14 +140,23 @@ namespace lux::game
             lux::ecs::ComponentCatalogFailure>
         registerBuiltinComponents(lux::ecs::ComponentTypeCatalog& catalog)
         {
-            if (!lux::meta::ReflectionRegistry::initialized())
-                lux::meta::meta_module_init();
-
             auto& snapshot = builtinComponentSchemaSnapshot();
             if (!snapshot.initialized)
             {
-                snapshot.descriptors =
-                    lux::ecs::takeGeneratedComponents();
+                if (lux::meta::ReflectionRegistry::initialized())
+                {
+                    return lux::cxx::unexpected(
+                        lux::ecs::ComponentCatalogFailure{
+                            lux::ecs::EComponentCatalogError::
+                                INVALID_DESCRIPTOR,
+                            "built-in metadata was drained outside the game "
+                            "composition transaction"});
+                }
+                {
+                    lux::ecs::GeneratedComponentDraftCapture capture{
+                        snapshot.descriptors};
+                    lux::meta::meta_module_init();
+                }
                 snapshot.initialized = true;
             }
             return catalog.registerSchemas(snapshot.descriptors);
@@ -617,7 +642,8 @@ namespace lux::game
         runtime_config.scene_origin = scene_origin;
         runtime_config.events = application.events.get();
         runtime_config.install_systems = [&application](
-            lux::ecs::ScheduleBuilder& builder)
+            lux::ecs::ScheduleBuilder& builder,
+            const lux::scene::SceneDescription& description)
         {
             // Ordinary code composition over the only Schedule. Ordering here
             // is construction ordering for typed service borrows; execution
@@ -648,12 +674,11 @@ namespace lux::game
                     application.tilemap_preparation->client()) &&
                 lux::runtime::installSpatial3DSystems(
                     builder,
-                    application.component_types) &&
+                    application.component_types,
+                    description) &&
                 lux::runtime::installPresentation3DSystems(
                     builder,
-                    application.component_types,
-                    application.geometry_preparation->classicMeshClient(),
-                    application.geometry_preparation->terrainClient()) &&
+                    application.component_types) &&
                 lux::ecs::installPresentation2DSystems(
                     builder,
                     application.component_types);
@@ -676,18 +701,39 @@ namespace lux::game
             .entity_sections = application.entity_sections->loadClient(),
             .extension_modules = &application.extension_modules
         };
-        application.runtime = lux::runtime::SceneRuntime::create(
+        application.runtime = lux::runtime::createRenderedSceneRuntime(
             dependencies,
             runtime_config,
-            std::make_unique<lux::runtime::RenderSceneIntegration>(
-                render_services,
-                lux::runtime::RenderSceneConfig{
-                    .target = application.surface_target.id(),
-                    .extent = extent,
-                    .present_primary_camera = true
+            render_services,
+            lux::runtime::RenderSceneConfig{
+                .target = application.surface_target.id(),
+                .extent = extent,
+                .present_primary_camera = true,
+                .install_rendering = [&application](
+                    lux::ecs::ScheduleBuilder& builder,
+                    const lux::scene::SceneDescription&,
+                    std::vector<std::unique_ptr<lux::ecs::RenderStage>>& stages,
+                    std::vector<std::string_view>& feature_roots,
+                    lux::ecs::ResidencySubsystem& residency)
+                {
+                    return lux::runtime::installPresentation3DRendering(
+                               builder,
+                               application.component_types,
+                               application.geometry_preparation->
+                                   classicMeshPort(),
+                               application.geometry_preparation->
+                                   terrainPort(),
+                               stages,
+                               feature_roots,
+                               residency) &&
+                        lux::ecs::installPresentation2DRendering(
+                            builder,
+                            application.component_types,
+                            stages,
+                            feature_roots,
+                            residency);
                 }
-            )
-        );
+            });
         if (!application.runtime)
         {
             lux::log::error(
@@ -808,10 +854,6 @@ namespace lux::game
                 );
                 impl_->observeVisualRevisions();
                 const auto& trace = impl_->runtime->latestFrameTrace();
-                frame.recordPhase(
-                    lux::runtime::EFrameTracePhase::
-                        INTEGRATION_SAFE_POINT,
-                    trace.integration_safe_point_nanoseconds);
                 constexpr std::array phases{
                     lux::runtime::EFrameTracePhase::SCHEDULE_INPUT,
                     lux::runtime::EFrameTracePhase::SCHEDULE_PRE_TRANSFORM,
@@ -905,11 +947,14 @@ namespace lux::game
         // their useful resource/barrier section appears after that table.  A 64 KiB
         // buffer silently truncated the diagnostic exactly before the information
         // needed to identify target-layout faults.
+        const auto* binding = sceneRenderBinding(*impl_->runtime);
+        if (binding == nullptr)
+            return std::nullopt;
         std::string buffer(2u * 1024u * 1024u, '\0');
         lux::render::RenderGraphDumpReply reply{};
         if (!impl_->settle(
                 impl_->control->dumpRenderGraph(
-                    lux::runtime::renderScene(*impl_->runtime)->sceneId(),
+                    binding->scene(),
                     buffer.data(),
                     buffer.size()
                 ),
@@ -928,11 +973,14 @@ namespace lux::game
         if (!impl_ || !impl_->live || !impl_->runtime)
             return std::nullopt;
 
+        const auto* binding = sceneRenderBinding(*impl_->runtime);
+        if (binding == nullptr)
+            return std::nullopt;
         std::string buffer(64u * 1024u, '\0');
         lux::render::GpuTimingReply reply{};
         if (!impl_->settle(
                 impl_->control->queryGpuTiming(
-                    lux::runtime::renderScene(*impl_->runtime)->sceneId(),
+                    binding->scene(),
                     buffer.data(),
                     buffer.size()
                 ),
@@ -947,7 +995,7 @@ namespace lux::game
             buffer.assign(reply.needed, '\0');
             if (!impl_->settle(
                     impl_->control->queryGpuTiming(
-                        lux::runtime::renderScene(*impl_->runtime)->sceneId(),
+                        binding->scene(),
                         buffer.data(),
                         buffer.size()
                     ),
@@ -1096,8 +1144,7 @@ namespace lux::game
         }
 
         telemetry.spatial3d_catalog_present =
-            !impl_->runtime->entityScene().package()
-                 .spatial3d_catalog.empty();
+            !impl_->runtime->description().spatial3d_catalog.empty();
         if (const auto* interest = impl_->runtime->services().get<
                 lux::ecs::spatial3d::streaming::SpatialInterest3DSystem>())
         {
@@ -1340,8 +1387,10 @@ namespace lux::game
                     static_cast<double>(maximum_scale));
         }
 
-        const auto scene = lux::runtime::renderScene(
-            *impl_->runtime)->sceneId();
+        const auto* binding = sceneRenderBinding(*impl_->runtime);
+        if (binding == nullptr)
+            return telemetry;
+        const auto scene = binding->scene();
         auto& catalog = impl_->render_host.featureCatalog();
 
         const auto cluster_ops = catalog.ops<
@@ -1608,17 +1657,20 @@ namespace lux::game
         }
 
         auto& capture_target = impl_->diagnostic_capture_target;
-        auto* render_scene = lux::runtime::renderScene(*impl_->runtime);
+        auto* const binding = sceneRenderBinding(*impl_->runtime);
+        auto* const presentation = primaryViewPresentation(*impl_->runtime);
+        if (binding == nullptr || presentation == nullptr)
+            return std::nullopt;
         const auto restore_surface = [&]() noexcept
         {
-            render_scene->reattachTarget(
+            presentation->setOutputIntent(
                 impl_->surface_target.id(),
                 impl_->surface_extent);
             // Apply the ViewPresent observer and submit one restored surface
             // frame before allowing the temporary target to retire.
             return tick(0.0f, impl_->surface_extent);
         };
-        render_scene->reattachTarget(
+        presentation->setOutputIntent(
             capture_target.id(),
             impl_->surface_extent);
         const auto frames = std::max(1u, settle_frames);
@@ -1638,7 +1690,7 @@ namespace lux::game
             lux::render::RenderGraphDumpReply graph_reply{};
             if (impl_->settle(
                     impl_->control->dumpRenderGraph(
-                        render_scene->sceneId(),
+                        binding->scene(),
                         result.render_graph_dump.data(),
                         result.render_graph_dump.size()),
                     graph_reply,

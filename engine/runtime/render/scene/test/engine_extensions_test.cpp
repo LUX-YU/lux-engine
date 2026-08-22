@@ -36,8 +36,6 @@ int main(int argc, char** argv)
     if (argc != 5)
         return 1;
 
-    lux::meta::meta_module_init();
-
     lux::exec::AsyncRuntimeBuilder builder;
     auto plan = std::move(builder).compile();
     if (!plan)
@@ -46,7 +44,7 @@ int main(int argc, char** argv)
     lux::extensions::ExtensionModuleManager modules;
     auto components = std::make_unique<lux::ecs::ComponentTypeCatalog>();
     check(
-        lux::ecs::registerGeneratedComponents(*components).has_value(),
+        lux::ecs::initializeGeneratedMetadata(*components).has_value(),
         "built-in generated schemas publish before dynamic module loading");
     lux::events::DomainEvents events;
     auto& pump = events.createPump("extensions-test");

@@ -3,11 +3,10 @@
  * @file ComponentTypeCatalog.hpp
  * @brief Main-thread catalogue of reflected ECS component schemas.
  *
- * Generated reflection code never mutates a live catalogue. It appends an
- * owning descriptor to a process pending list while meta_module_init/drain is
- * running; the composition root then publishes that batch explicitly through
- * registerGeneratedComponents(). Dynamic extension registration uses the same
- * ComponentSchemaRegistrar transaction surface.
+ * Generated reflection code never mutates a live catalogue. The composition
+ * root captures descriptors into the same module-local draft while the
+ * MetaModuleRegistrar callback chain runs, validates the complete batch, then
+ * publishes it explicitly. No process-global Component pending queue exists.
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -131,9 +130,46 @@ namespace lux::ecs
     class LUX_ECS_PUBLIC ComponentTypeCatalog final
     {
     public:
+        class LUX_ECS_PUBLIC PreparedRegistration final
+        {
+        public:
+            PreparedRegistration() noexcept = default;
+            PreparedRegistration(const PreparedRegistration&) = delete;
+            PreparedRegistration& operator=(
+                const PreparedRegistration&) = delete;
+            PreparedRegistration(PreparedRegistration&&) noexcept = default;
+            PreparedRegistration& operator=(PreparedRegistration&&) noexcept =
+                default;
+
+            /// Swap a fully allocated candidate into the live catalog. The
+            /// owner-thread publication critical section contains no lookup,
+            /// callback, allocation or recoverable failure point.
+            [[nodiscard]] std::size_t commit() noexcept;
+            [[nodiscard]] std::size_t size() const noexcept
+            {
+                return added_count_;
+            }
+
+        private:
+            friend class ComponentTypeCatalog;
+            PreparedRegistration(
+                ComponentTypeCatalog& target,
+                std::vector<ComponentSchemaDescriptor> entries,
+                std::unordered_map<std::uint64_t, std::size_t> schema_index,
+                std::unordered_map<std::uint64_t, std::size_t> type_index,
+                std::size_t added_count) noexcept;
+
+            ComponentTypeCatalog* target_{nullptr};
+            std::vector<ComponentSchemaDescriptor> entries_;
+            std::unordered_map<std::uint64_t, std::size_t> schema_index_;
+            std::unordered_map<std::uint64_t, std::size_t> type_index_;
+            std::size_t added_count_{0u};
+        };
+
         using RegisterSchemaResult = ComponentCatalogExp<const ComponentSchemaDescriptor*>;
         using RegisterSchemasResult = ComponentCatalogExp<std::size_t>;
         using ValidationResult = ComponentCatalogExp<void>;
+        using PrepareSchemasResult = ComponentCatalogExp<PreparedRegistration>;
 
         ComponentTypeCatalog() = default;
         ComponentTypeCatalog(const ComponentTypeCatalog&) = delete;
@@ -146,6 +182,9 @@ namespace lux::ecs
         [[nodiscard]] RegisterSchemaResult registerSchema(ComponentSchemaDescriptor descriptor);
 
         [[nodiscard]] ValidationResult validateSchemas(std::span<const ComponentSchemaDescriptor> descriptors) const;
+
+        [[nodiscard]] PrepareSchemasResult prepareSchemas(
+            std::span<const ComponentSchemaDescriptor> descriptors);
 
         [[nodiscard]] RegisterSchemasResult registerSchemas(std::span<const ComponentSchemaDescriptor> descriptors);
 
@@ -171,22 +210,35 @@ namespace lux::ecs
         std::unordered_map<std::uint64_t, std::size_t>  type_index_;
     };
 
-    /// Called only by generated reflection callbacks. This does not publish a
-    /// component to any consumer; it appends to the main-thread pending chain.
-    LUX_ECS_PUBLIC void queueGeneratedComponent(ComponentSchemaDescriptor descriptor) noexcept;
+    /// Module-local capture used while MetaModuleRegistrar callbacks populate
+    /// one reflection draft. It provides the Component projection of that
+    /// same callback chain without creating a second process-global queue.
+    class LUX_ECS_PUBLIC GeneratedComponentDraftCapture final
+    {
+    public:
+        explicit GeneratedComponentDraftCapture(
+            std::vector<ComponentSchemaDescriptor>& output) noexcept;
+        ~GeneratedComponentDraftCapture();
 
-    /// Publish every descriptor queued by the most recent meta_module_init or
-    /// meta_module_drain. On validation failure the pending chain is retained
-    /// and the destination catalogue remains unchanged.
+        GeneratedComponentDraftCapture(
+            const GeneratedComponentDraftCapture&) = delete;
+        GeneratedComponentDraftCapture& operator=(
+            const GeneratedComponentDraftCapture&) = delete;
+
+        /// Generated callbacks append only to the active module-local draft.
+        /// With no capture, the descriptor is deliberately discarded; there
+        /// is no process-global pending component queue.
+        static void append(ComponentSchemaDescriptor descriptor) noexcept;
+
+    private:
+        bool active_{false};
+    };
+
+    /// Initialize ReflectionRegistry and publish the Component projection of
+    /// that exact built-in callback drain into @p catalog. This is a startup
+    /// convenience, not a persistent registration service.
     [[nodiscard]] LUX_ECS_PUBLIC ComponentCatalogExp<std::size_t>
-    registerGeneratedComponents(ComponentTypeCatalog& catalog);
-
-    /// Move the descriptors produced by the latest meta-module drain into a
-    /// caller-owned registration transaction. Dynamic extension loading uses
-    /// this path so generated schemas are validated and published atomically
-    /// with the module's other contributions.
-    [[nodiscard]] LUX_ECS_PUBLIC
-    std::vector<ComponentSchemaDescriptor> takeGeneratedComponents() noexcept;
+    initializeGeneratedMetadata(ComponentTypeCatalog& catalog);
 
     /// Pack declaration drift check. Diagnostics stay at composition call
     /// sites; this helper has no terminal-I/O side effects.

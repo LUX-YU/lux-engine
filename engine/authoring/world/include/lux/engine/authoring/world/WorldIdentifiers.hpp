@@ -2,14 +2,13 @@
 
 #include <lux/engine/authoring/world/visibility.h>
 
-#include <lux/cxx/algorithm/hash.hpp>
+#include <lux/cxx/core/StableNameId.hpp>
+#include <lux/engine/extensions/ExtensionId.hpp>
 
 #include <uuid.h>
 
 #include <cstdint>
-#include <string>
 #include <string_view>
-#include <utility>
 
 namespace lux::authoring
 {
@@ -70,60 +69,13 @@ namespace lux::authoring
             const WorldInstanceId&) = default;
     };
 
-    template <class Tag>
-    class BasicStableNameId final
-    {
-    public:
-        BasicStableNameId() = default;
-
-        explicit BasicStableNameId(std::string name)
-            : hash_(lux::cxx::algorithm::fnv1a(name))
-            , name_(std::move(name))
-        {
-        }
-
-        BasicStableNameId(std::uint64_t hash, std::string name)
-            : hash_(hash)
-            , name_(std::move(name))
-        {
-        }
-
-        [[nodiscard]] std::uint64_t hash() const noexcept
-        {
-            return hash_;
-        }
-
-        [[nodiscard]] const std::string& name() const noexcept
-        {
-            return name_;
-        }
-
-        [[nodiscard]] bool valid() const noexcept;
-
-        friend bool operator==(
-            const BasicStableNameId&,
-            const BasicStableNameId&) = default;
-
-    private:
-        std::uint64_t hash_{0u};
-        std::string name_;
-    };
-
-    struct WorldExtensionIdTag final {};
     struct DataLayerIdTag final {};
     struct ChunkGeneratorIdTag final {};
 
-    using WorldExtensionId = BasicStableNameId<WorldExtensionIdTag>;
-    using DataLayerId = BasicStableNameId<DataLayerIdTag>;
-    using ChunkGeneratorId = BasicStableNameId<ChunkGeneratorIdTag>;
+    using DataLayerId = lux::cxx::StableNameId<DataLayerIdTag>;
+    using ChunkGeneratorId = lux::cxx::StableNameId<ChunkGeneratorIdTag>;
 
     [[nodiscard]] LUX_ENGINE_AUTHORING_WORLD_PUBLIC bool
     isCanonicalWorldName(std::string_view name) noexcept;
 
-    template <class Tag>
-    bool BasicStableNameId<Tag>::valid() const noexcept
-    {
-        return hash_ != 0u && isCanonicalWorldName(name_) &&
-            hash_ == lux::cxx::algorithm::fnv1a(name_);
-    }
 } // namespace lux::authoring

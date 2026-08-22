@@ -318,9 +318,11 @@ namespace lux::ecs
         [[nodiscard]] SystemBatchCloseState
         batchCloseState(const InstalledSystemBatch& batch) const noexcept;
 
-        /// Requests close in reverse execution order so consumers release
-        /// tickets before their providers. Systems stay installed and all
-        /// subsequent work still flows through tick()/the unique barrier.
+        /// Requests close through a reverse-topology frontier. A provider is
+        /// not asked to close until the current consumer has reported
+        /// closeComplete(); invocation order alone is not the lifetime
+        /// guarantee. Systems remain installed and owner progress still flows
+        /// through tick()/the unique barrier.
         void requestClose(SystemCloseProgressSink progress = {}) noexcept;
         [[nodiscard]] SystemBatchCloseState closeState() const noexcept;
 
@@ -575,6 +577,7 @@ namespace lux::ecs
             /// 变成悬垂指针 —— 装配顺序不同则症状不同,是最难查的那一类。
             /// (设计稿 §7.5:不把 vector 元素地址当身份。)
             std::unique_ptr<EcsCommandBuffer> commands;
+            bool close_requested{false};
         };
 
         [[nodiscard]] Slot* findSlot(
@@ -643,6 +646,11 @@ namespace lux::ecs
 
         [[nodiscard]] EcsCommandWriter makeWriter(Slot& slot);
 
+        /// Advance through synchronously-complete reverse-order nodes and
+        /// request the next bounded close frontier. Returns true once every
+        /// live System has completed close.
+        [[nodiscard]] bool advanceCloseFrontier() noexcept;
+
         void applyShard(EcsCommandBuffer& shard, Slot& slot);
 
         World&                        world_;
@@ -662,6 +670,9 @@ namespace lux::ecs
         std::uint64_t                 rejected_operations_{0};
         ScheduleFrameTrace            latest_frame_trace_{};
         bool                          compiled_{true};
+        SystemCloseProgressSink       close_progress_{};
+        std::size_t                   close_cursor_{0u};
+        bool                          close_requested_{false};
         EOperationState               operation_state_{EOperationState::Idle};
     };
 

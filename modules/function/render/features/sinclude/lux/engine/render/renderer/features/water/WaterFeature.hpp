@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/client/features/water/WaterOperation.hpp>
+#include <lux/engine/render/renderer/features/postprocess/FogFeature.hpp>
 #include <lux/engine/function/render/client/core/PipelineHandle.hpp>
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp>
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>
@@ -52,8 +53,6 @@ namespace lux::render
             RWaterSurfaceHandle handle,
             const WaterSurfaceDesc& surface) noexcept;
         void destroySurface(RWaterSurfaceHandle handle) noexcept;
-        void setEnvironment(
-            const WaterSetEnvironmentPayload& environment) noexcept;
         [[nodiscard]] WaterStatsReply stats() const noexcept;
 
     private:
@@ -89,20 +88,6 @@ namespace lux::render
         };
         static_assert(sizeof(GpuHeader) == 16u);
 
-        struct FogGpuParams final
-        {
-            float color_r{0.55f};
-            float color_g{0.62f};
-            float color_b{0.70f};
-            float density{0.0002f};
-            float start_distance{0.0f};
-            float reference_height{0.0f};
-            float height_falloff{0.01f};
-            float maximum_opacity{0.98f};
-            std::uint32_t enabled{0u};
-        };
-        static_assert(sizeof(FogGpuParams) == 36u);
-
         [[nodiscard]] bool valid(RWaterSurfaceHandle handle) const noexcept;
         [[nodiscard]] float coverageAt(
             const SurfaceSlot& slot,
@@ -113,7 +98,7 @@ namespace lux::render
         std::vector<SurfaceSlot> slots_;
         std::vector<std::uint32_t> free_slots_;
         std::vector<std::byte> gpu_upload_;
-        FogGpuParams fog_{};
+        FogFeature::RenderState fog_{};
         GraphicsPipelineHandle pipeline_{kInvalidPipelineHandle};
         VkDescriptorSetLayout input_layout_{VK_NULL_HANDLE};
         std::uint32_t input_slot_{1u};

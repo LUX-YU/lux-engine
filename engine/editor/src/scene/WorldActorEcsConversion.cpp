@@ -1,4 +1,4 @@
-#include <lux/engine/editor/scene/WorldActorEcsAdapter.hpp>
+#include <lux/engine/editor/scene/WorldActorEcsConversion.hpp>
 
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/core/serialization/Archive.hpp>
@@ -62,13 +62,15 @@ namespace lux::editor
     } // namespace
 
     lux::cxx::expected<lux::authoring::WorldActorDocument, std::string>
-    WorldActorEcsAdapter::capture(
+    serializeWorldActor(
+        const lux::ecs::ComponentTypeCatalog& components,
+        lux::ecs::PersistentEntityIndex& persistent_entities,
         lux::ecs::Registry& registry,
         entt::entity entity,
         lux::authoring::WorldId world,
         std::string_view origin)
     {
-        if (!persistent_entities_.boundTo(registry))
+        if (!persistent_entities.boundTo(registry))
         {
             return lux::cxx::unexpected(
                 std::string{"PersistentEntityIndex registry mismatch in '"}
@@ -120,7 +122,7 @@ namespace lux::editor
         if (!stable || stable->id().empty())
         {
             const auto assigned = lux::ecs::setPersistentEntityId(
-                persistent_entities_,
+                persistent_entities,
                 entity,
                 lux::ecs::PersistentEntityId{randomUuid()});
             if (!assigned)
@@ -144,7 +146,7 @@ namespace lux::editor
             if (!parent && registry.valid(hierarchy->parent()))
             {
                 const auto assigned = lux::ecs::setPersistentEntityId(
-                    persistent_entities_,
+                    persistent_entities,
                     hierarchy->parent(),
                     lux::ecs::PersistentEntityId{randomUuid()});
                 if (!assigned)
@@ -212,7 +214,7 @@ namespace lux::editor
                     std::string{origin} + "'");
             document.position = *source;
         }
-        for (const auto& schema : components_.all())
+        for (const auto& schema : components.all())
         {
             // Runtime-derived state is deliberately discoverable through the
             // component catalogue, but it is not Authoring content. Filter it
@@ -268,12 +270,14 @@ namespace lux::editor
     }
 
     lux::cxx::expected<entt::entity, std::string>
-    WorldActorEcsAdapter::materialize(
+    materializeWorldActor(
+        const lux::ecs::ComponentTypeCatalog& components,
+        lux::ecs::PersistentEntityIndex& persistent_entities,
         const lux::authoring::WorldActorDocument& document,
         lux::ecs::Registry& registry,
-        std::string_view origin) const
+        std::string_view origin)
     {
-        if (!persistent_entities_.boundTo(registry))
+        if (!persistent_entities.boundTo(registry))
         {
             return lux::cxx::unexpected(
                 std::string{"PersistentEntityIndex registry mismatch in '"}
@@ -282,8 +286,8 @@ namespace lux::editor
         std::unordered_map<
             std::string_view,
             const lux::ecs::ComponentSchemaDescriptor*> schemas;
-        schemas.reserve(components_.all().size());
-        for (const auto& schema : components_.all())
+        schemas.reserve(components.all().size());
+        for (const auto& schema : components.all())
             schemas.emplace(schema.fullName(), &schema);
 
         for (const auto& record : document.components)
@@ -340,7 +344,7 @@ namespace lux::editor
             }
         }
         const auto assigned = lux::ecs::setPersistentEntityId(
-            persistent_entities_, entity, toRuntimeId(document.actor));
+            persistent_entities, entity, toRuntimeId(document.actor));
         if (!assigned)
         {
             registry.destroy(entity);
@@ -405,7 +409,7 @@ namespace lux::editor
 
         if (document.transform_parent)
         {
-            const auto parent = persistent_entities_.find(
+            const auto parent = persistent_entities.find(
                 toRuntimeId(*document.transform_parent));
             if (parent != entt::null)
             {

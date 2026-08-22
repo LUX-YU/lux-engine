@@ -283,7 +283,7 @@ namespace lux::authoring
 
     struct WorldRequiredExtension final
     {
-        WorldExtensionId id;
+        lux::extensions::ExtensionId id;
         std::uint16_t required_major{0u};
         std::uint16_t minimum_minor{0u};
 

@@ -2,7 +2,7 @@
 #include <lux/engine/ecs/navigation/NavigationQueryService.hpp>
 #include "app/EditorAsyncService.hpp"
 #include "scene/WorldPersistenceSchemaClosure.hpp"
-#include <lux/engine/editor/scene/WorldActorEcsAdapter.hpp>
+#include <lux/engine/editor/scene/WorldActorEcsConversion.hpp>
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/authoring/world/WorldTerrainAuthoring.hpp>
 #include <lux/engine/runtime/frame/MainCloseDriver.hpp>

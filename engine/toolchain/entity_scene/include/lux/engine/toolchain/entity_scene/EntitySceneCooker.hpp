@@ -37,10 +37,6 @@ namespace lux::toolchain
         /// Extra derived schemas absent from Section images. Schemas present
         /// in an image are added automatically.
         std::vector<lux::ecs::scene_format::RequiredComponentSchema> required_components;
-        /// Build-configuration roots. These are consumed by Cook and become
-        /// derived LXSC requirements; no runtime usage-manifest object exists.
-        std::vector<std::string> project_required_render_features;
-        std::vector<std::string> project_optional_render_features;
     };
 
     struct CookedEntitySection final
@@ -66,7 +62,7 @@ namespace lux::toolchain
     /// Validates and encodes every canonical LXES image, derives Section record
     /// digests/counts/component requirements, canonicalizes package
     /// collections, and
-    /// finally encodes LXSC v2 through the Engine-owned SceneDescription codec.
+    /// finally encodes LXSC v3 through the Engine-owned SceneDescription codec.
     /// Compression is deliberately outside this generic target; all records
     /// emitted here use SectionCompression::NONE and exact encoded sizes.
     [[nodiscard]] LUX_ENGINE_TOOLCHAIN_ENTITY_SCENE_PUBLIC

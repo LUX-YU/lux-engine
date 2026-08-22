@@ -175,6 +175,7 @@ namespace lux::ecs
         slot.seq    = next_seq_++;
         slot.descriptor = std::move(descriptor);
         slot.system = std::move(system);
+        slot.close_requested = false;
 
         compiled_ = false;
         execution_order_.clear();
@@ -554,13 +555,17 @@ namespace lux::ecs
         }
         if (!compiled_)
             (void)compile();
-        for (auto order = execution_order_.rbegin();
-             order != execution_order_.rend(); ++order)
+        if (!close_requested_)
         {
-            auto& slot = slots_[*order];
-            if (slot.system)
-                slot.system->requestClose(progress);
+            close_requested_ = true;
+            close_cursor_ = execution_order_.size();
+            close_progress_ = progress;
         }
+        else if (progress)
+        {
+            close_progress_ = progress;
+        }
+        (void)advanceCloseFrontier();
     }
 
     SystemBatchCloseState Schedule::closeState() const noexcept
@@ -570,17 +575,51 @@ namespace lux::ecs
             return result;
         result.valid = true;
         result.complete = true;
+        if (!close_requested_)
+            return result;
         for (const auto& slot : slots_)
         {
-            if (!slot.system || slot.system->closeComplete())
+            if (!slot.system)
+                continue;
+            const bool complete = slot.close_requested &&
+                slot.system->closeComplete();
+            if (complete)
                 continue;
             result.complete = false;
             ++result.pending_systems;
-            result.owner_work_pending =
-                result.owner_work_pending ||
-                slot.system->closeNeedsOwnerTick();
+            if (!slot.close_requested)
+                result.owner_work_pending = true;
+            else
+                result.owner_work_pending =
+                    result.owner_work_pending ||
+                    slot.system->closeNeedsOwnerTick();
         }
         return result;
+    }
+
+    bool Schedule::advanceCloseFrontier() noexcept
+    {
+        if (!close_requested_)
+            return false;
+        while (close_cursor_ > 0u)
+        {
+            const auto slot_index = execution_order_[close_cursor_ - 1u];
+            auto& slot = slots_[slot_index];
+            if (!slot.system)
+            {
+                --close_cursor_;
+                continue;
+            }
+            if (!slot.close_requested)
+            {
+                slot.close_requested = true;
+                slot.system->requestClose(close_progress_);
+            }
+            if (!slot.system->closeComplete())
+                return false;
+            --close_cursor_;
+        }
+        return true;
     }
 
     Schedule::SortReport Schedule::analyzeTopologyMutation(
@@ -692,6 +731,7 @@ namespace lux::ecs
         slot.type  = {};
         slot.phase = kPhaseSimulation;
         slot.seq   = 0;
+        slot.close_requested = false;
         ++slot.generation;
         if (slot.generation == 0) ++slot.generation;
         compiled_ = false;
@@ -771,6 +811,30 @@ namespace lux::ecs
             return;
         }
         if (!compiled_) (void)compile();
+
+        if (close_requested_)
+        {
+            (void)advanceCloseFrontier();
+            const std::uint64_t tick_index = tick_index_++;
+            if (close_cursor_ > 0u)
+            {
+                const auto index = execution_order_[close_cursor_ - 1u];
+                auto& slot = slots_[index];
+                if (slot.system && slot.close_requested &&
+                    !slot.system->closeComplete() &&
+                    slot.system->closeNeedsOwnerTick())
+                {
+                    OperationGuard guard{*this, EOperationState::Ticking};
+                    slot.system->update(SystemUpdateContext{
+                        world_.registry(), makeWriter(slot), dt, tick_index});
+                }
+            }
+            if (!prepareCommandBarrier())
+                std::abort();
+            applyCommandBarrier();
+            (void)advanceCloseFrontier();
+            return;
+        }
 
         const std::uint64_t tick_index = tick_index_++;
         latest_frame_trace_ = {};

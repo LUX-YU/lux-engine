@@ -31,8 +31,8 @@
 #include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 
-#include <lux/engine/ecs/render/RenderSystemStages.hpp>
-#include <lux/engine/ecs/render/subsystems/CameraViewSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
+#include <lux/engine/ecs/render/systems/CameraViewSystem.hpp>
 #include <lux/engine/ecs/render/subsystems/ResidencySubsystem.hpp>
 #include <lux/engine/ecs/render/systems/RenderSystem.hpp>
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>
@@ -264,13 +264,8 @@ int main(int argc, char** argv)
     auto residency_glue = std::make_unique<lux::ecs::ResidencySubsystem>(assets);
     residency_glue->setCallbacks(residency.makeCallbacks());
     auto* const residency_owner = residency_glue.get();
-    lux::ecs::RenderSystemStages render_builder;
-    if (!render_builder.add(std::move(residency_glue)) ||
-        !render_builder.add(std::make_unique<lux::ecs::CameraViewSubsystem>()))
-    {
-        std::printf("Failed to stage base render subsystems.\n");
-        return 1;
-    }
+    std::vector<std::unique_ptr<lux::ecs::RenderStage>> render_stages;
+    std::vector<std::string_view> render_feature_roots;
 
     // Reverse destruction is intentional: builder → schedule systems → owned
     // services → residency observers → World registry. Longer-lived borrowed
@@ -280,9 +275,19 @@ int main(int argc, char** argv)
     lux::ecs::ScheduleBuilder assembly{schedule, services};
 
     auto& staged = assembly.services();
-    if (!staged.adopt(tilemap_runtime) ||
-        !staged.adopt(*residency_owner) ||
-        !staged.adopt(render_builder))
+    auto render_binding = staged.emplace<lux::ecs::SceneRenderBinding>(
+        fx.session(),
+        fx.control(),
+        async.uploadClient(),
+        sv.scene_id);
+    auto active_view = staged.emplace<lux::ecs::ActiveRenderView>();
+    if (!render_binding || !active_view)
+    {
+        std::printf("Failed to stage the scene render binding.\n");
+        return 1;
+    }
+    (void)(*render_binding)->seal(features);
+    if (!staged.adopt(tilemap_runtime))
     {
         std::printf("Failed to stage 2D scene services.\n");
         return 1;
@@ -290,36 +295,39 @@ int main(int argc, char** argv)
 
     // This executable is the host boundary for the linked component sidecars.
     // Drain their registrars before the pack inspects reflected component data.
-    lux::meta::meta_module_init();
     lux::ecs::ComponentTypeCatalog components;
-    if (!lux::ecs::registerGeneratedComponents(components))
+    if (!lux::ecs::initializeGeneratedMetadata(components))
         return 1;
 
     if (!lux::ecs::installSpatial2DTransformSystems(
             assembly, components) ||
+        !assembly.add(
+            std::move(residency_glue), lux::ecs::kPhasePreRender) ||
         !lux::ecs::installSimulation2DSystems(
             assembly, components) ||
         !lux::ecs::installPresentation2DSystems(
-            assembly, components))
+            assembly, components) ||
+        !lux::ecs::installPresentation2DRendering(
+            assembly,
+            components,
+            render_stages,
+            render_feature_roots,
+            *residency_owner))
     {
         std::printf("2D system assembly failed\n");
         return 1;
     }
-    auto render_plan = render_builder.freeze();
-    if (!render_plan)
-    {
-        std::printf("render subsystem graph failed\n");
-        return 1;
-    }
     auto render_system = std::make_unique<lux::ecs::RenderSystem>(
-        fx.session(),
-        fx.control(),
-        async.uploadClient(),
+        **render_binding,
+        **active_view,
         fx.control().adoptScene(sv.scene_id),
-        std::move(render_builder));
-    auto* const render_owner = render_system.get();
-    render_system->setFeatures(features);
-    if (!assembly.add(std::move(render_system), lux::ecs::kPhaseRender))
+        std::move(render_stages));
+    if (!assembly.add(std::move(render_system), lux::ecs::kPhaseRender) ||
+        !assembly.add(
+            std::make_unique<lux::ecs::CameraViewSystem>(
+                **render_binding,
+                **active_view),
+            lux::ecs::kPhaseRender))
     {
         std::printf("RenderSystem installation failed\n");
         return 1;
@@ -505,13 +513,13 @@ int main(int argc, char** argv)
             fps_mark   = now;
         }
     }
-    auto render_close = render_owner->close();
-    while (render_close == lux::render::ERenderLeaseCloseStatus::Stopping)
+    schedule.requestClose();
+    while (!schedule.closeState().complete)
     {
         if (!fx.control().waitAndPumpReplies())
             return 1;
         fx.pumpReplies();
-        render_close = render_owner->close();
+        schedule.tick(0.0f);
     }
     const auto residency_close =
         lux::runtime::testing::detail::closeResidency(

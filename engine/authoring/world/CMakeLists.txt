@@ -49,6 +49,7 @@ target_link_libraries(
         lux::engine::core::math
         lux::cxx::algorithm
         lux::engine::core::serialization
+        lux::engine::extensions::extension_identity
         stduuid
 )
 
@@ -58,6 +59,7 @@ component_add_transitive_commands(
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math serialization)"
+    "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_identity)"
 )
 
 add_executable(

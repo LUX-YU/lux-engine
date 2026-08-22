@@ -44,7 +44,7 @@
 #include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
 
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
-#include <lux/engine/runtime/render/scene/RenderSceneIntegration.hpp>
+#include <lux/engine/runtime/render/scene/RenderedSceneComposition.hpp>
 #include <lux/engine/runtime/render/scene/StandardFeaturePlan.hpp>   // previewProfile
 
 #include <lux/engine/ecs/World.hpp>
@@ -227,13 +227,13 @@ namespace lux::editor
             .entity_sections = infra_.entity_sections,
             .extension_modules = infra_.extension_modules,
         };
-        host->runtime = lux::runtime::SceneRuntime::create(
+        host->runtime = lux::runtime::createRenderedSceneRuntime(
             deps,
             rcfg,
-            std::make_unique<lux::runtime::RenderSceneIntegration>(
-                render_services,
-                lux::runtime::RenderSceneConfig{
-                    .target = host->target.id()}));
+            render_services,
+            lux::runtime::RenderSceneConfig{
+                .target = host->target.id(),
+                .install_rendering = installPreviewRendering});
         if (!host->runtime)
         {
             std::fprintf(stderr, "[MaterialPreview] preview SceneRuntime bring-up failed — live preview stays off\n");
@@ -255,7 +255,7 @@ namespace lux::editor
         auto& world = host->runtime->world();
         host->key_light = createPreviewKeyLight(world);
         // 相机 aspect 跟随 ViewPresent extent(auto_aspect):面板改尺寸时只要
-        // patch extent,CameraViewSubsystem::syncAspect 每帧对齐。
+        // patch extent,CameraViewSystem::syncAspect 每帧对齐。
         host->camera = createPreviewCamera(
             world, host->target.id(), extent, /*auto_aspect=*/true);
 
@@ -271,9 +271,6 @@ namespace lux::editor
         }
         host->current_id   = host->preview_grey_id;
         host->replacing_id = host->preview_grey_id;
-
-        // 第一帧提交之前 view 必须在位,否则 target 上没有任何层。
-        lux::runtime::renderScene(*host->runtime)->settleViewCreation();
 
         // 归零订阅(批E):临时材质被 resolver 松手归零时,把 CPU shell 收掉。
         // handler 只入队(pending_unref),removeAsset 在 tick 步骤3 的安全点做;
@@ -348,7 +345,7 @@ namespace lux::editor
         auto& reg   = world.registry();
 
         // 1. 尺寸 + 相机位姿先写(CPU 数据),本帧的世界 tick 就吃到:resize 的
-        //    ViewPresent patch 经观察者入队,CameraViewSubsystem 在 pre-world-tick
+        //    ViewPresent patch 经观察者入队,CameraViewSystem 在 pre-world-tick
         //    排空并重设 layer;aspect 由 syncAspect 随 extent 对齐。
         if (h.pending_resize)
         {

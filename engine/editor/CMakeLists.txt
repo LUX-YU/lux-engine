@@ -115,7 +115,7 @@ set(LUX_EDITOR_SRCS
     # scene/
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/DemoSceneTemplate.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/EditorScene.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/WorldActorEcsAdapter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/WorldActorEcsConversion.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/InstanceSpawnClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/systems/CameraSceneSystem.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scene/systems/SelectionSceneSystem.cpp

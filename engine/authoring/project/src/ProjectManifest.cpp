@@ -229,7 +229,7 @@ namespace lux::authoring
                         "' has unknown extension target '" + *target + "'");
                 }
 
-                ProjectExtensionId parsed_id{*id};
+                lux::extensions::ExtensionId parsed_id{*id};
                 for (const auto& existing : m.extensions)
                 {
                     if (existing.id.hash() != parsed_id.hash())

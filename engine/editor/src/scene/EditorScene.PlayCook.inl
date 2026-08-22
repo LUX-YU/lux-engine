@@ -74,9 +74,6 @@
                 "[EditorScene] SceneRuntime persistent entity index is unavailable\n");
             return {};
         }
-        WorldActorEcsAdapter actor_adapter{
-            components_,
-            *persistent_entities};
         auto& registry = runtime_->world().registry();
         std::unordered_set<std::string> actor_ids;
         std::vector<detail::WorldActorComponentSchemaSnapshot>
@@ -86,7 +83,9 @@
             if (skipEditorTransient(registry, entity))
                 continue;
 
-            auto actor_document = actor_adapter.capture(
+            auto actor_document = serializeWorldActor(
+                components_,
+                *persistent_entities,
                 registry,
                 entity,
                 source.world,
@@ -471,7 +470,7 @@
         for (const auto& requirement : persistence.required_extensions)
         {
             source.required_extensions.push_back({
-                lux::authoring::WorldExtensionId{
+                lux::extensions::ExtensionId{
                     std::string{requirement.id.name()}},
                 requirement.required_major,
                 requirement.minimum_minor});

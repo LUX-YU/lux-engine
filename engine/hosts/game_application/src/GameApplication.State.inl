@@ -613,10 +613,12 @@
             surface_extent = extent;
             if (runtime)
             {
-                lux::runtime::renderScene(*runtime)->reattachTarget(
-                    surface_target.id(),
-                    extent
-                );
+                if (auto* presentation = primaryViewPresentation(*runtime))
+                {
+                    presentation->setOutputIntent(
+                        surface_target.id(),
+                        extent);
+                }
             }
             return true;
         }

@@ -143,7 +143,7 @@
         {
             if (!entry.preparation || entry.preparation->in_flight)
                 return;
-            if (!preparation_client || !async_scope)
+            if (!preparation_client)
             {
                 fail(entry, ESceneContentRenderFailure::FEATURE_UNAVAILABLE);
                 return;
@@ -151,89 +151,42 @@
             auto& preparing = *entry.preparation;
             const auto owner_generation = preparing.owner_generation;
             const auto desired_generation = preparing.desired_generation;
-            auto submitted = preparation_client.execute(
+            preparing.in_flight = true;
+            entry.state = ESceneContentRenderState::WAITING_BACKGROUND;
+            struct Completion final
+            {
+                std::weak_ptr<CallbackControl> callbacks;
+                lux::ecs::Entity entity{entt::null};
+                std::uint64_t owner_generation{0u};
+                std::uint64_t desired_generation{0u};
+            };
+            auto* completion = new Completion{
+                callbacks,
+                entity,
+                owner_generation,
+                desired_generation};
+            (void)preparation_client.submit(
                 PrepareClassicMeshBatch{
                     preparing.blob.bytes(),
                     preparing.blob.reference(),
-                    desired_generation});
-            if (!submitted)
-            {
-                if (submitted.error() ==
-                        lux::async::ESubmitError::QUEUE_FULL ||
-                    submitted.error() == lux::async::ESubmitError::
-                        BYTE_BUDGET_EXHAUSTED)
+                    desired_generation},
+                completion,
+                +[](void* opaque,
+                    lux::async::OperationOutcome<PrepareClassicMeshBatch>&&
+                        outcome) noexcept
                 {
-                    ++metrics.preparation_backpressure;
-                    entry.state = ESceneContentRenderState::WAITING_CONTENT;
-                    return;
-                }
-                fail(entry, ESceneContentRenderFailure::FEATURE_UNAVAILABLE);
-                return;
-            }
-            auto pipeline = std::move(*submitted) |
-                stdexec::then(
-                    [weak = std::weak_ptr<CallbackControl>{callbacks},
-                     entity,
-                     owner_generation,
-                     desired_generation](
-                        lux::async::OperationOutcome<PrepareClassicMeshBatch>
-                            outcome) mutable noexcept
+                    std::unique_ptr<Completion> state{
+                        static_cast<Completion*>(opaque)};
+                    const auto locked = state->callbacks.lock();
+                    if (locked && locked->owner)
                     {
-                        const auto locked = weak.lock();
-                        if (locked && locked->owner)
-                        {
-                            locked->owner->impl_->acceptPreparation(
-                                entity,
-                                owner_generation,
-                                desired_generation,
-                                std::move(outcome));
-                        }
-                    }) |
-                stdexec::upon_stopped(
-                    [weak = std::weak_ptr<CallbackControl>{callbacks},
-                     entity,
-                     owner_generation,
-                     desired_generation]() noexcept
-                    {
-                        const auto locked = weak.lock();
-                        if (locked && locked->owner)
-                        {
-                            locked->owner->impl_->preparationStopped(
-                                entity,
-                                owner_generation,
-                                desired_generation);
-                        }
-                    });
-            preparing.in_flight = true;
-            entry.state = ESceneContentRenderState::WAITING_BACKGROUND;
-            if (!lux::exec::spawn(*async_scope, std::move(pipeline)))
-            {
-                preparing.in_flight = false;
-                entry.state = ESceneContentRenderState::WAITING_CONTENT;
-                ++metrics.preparation_backpressure;
-            }
-        }
-
-        void preparationStopped(
-            lux::ecs::Entity entity,
-            std::uint64_t owner_generation,
-            std::uint64_t desired_generation) noexcept
-        {
-            const auto found = entries.find(entity);
-            if (found == entries.end() ||
-                found->second.owner_generation != owner_generation ||
-                !found->second.preparation ||
-                found->second.preparation->desired_generation !=
-                    desired_generation)
-            {
-                ++metrics.stale_preparation_completions;
-                return;
-            }
-            if (closed)
-                return;
-            fail(
-                found->second,
-                ESceneContentRenderFailure::FEATURE_UNAVAILABLE);
+                        locked->owner->impl_->acceptPreparation(
+                            state->entity,
+                            state->owner_generation,
+                            state->desired_generation,
+                            std::move(outcome));
+                    }
+                });
         }
 
         void acceptPreparation(

@@ -245,8 +245,6 @@ int main()
             cooked->sections[0u].encoded_image));
     assert(cooked->sections[0u].record.required_components.size() == 2u);
     assert(cooked->package.required_components.size() == 2u);
-    assert((cooked->package.required_render_features ==
-        std::vector<std::string>{"StandardViewCamera"}));
     const auto decoded_package = SceneAssetSerDeser::decodeData(
         cooked->encoded_package);
     assert(decoded_package && **decoded_package == cooked->package);

@@ -29,8 +29,8 @@
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Camera2DUploadSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Image2DSubsystem.hpp>
-#include <lux/engine/ecs/render/subsystems/2d/PixelField2DSubsystem.hpp>
-#include <lux/engine/ecs/render/subsystems/2d/Tilemap2DSubsystem.hpp>
+#include <lux/engine/ecs/render/systems/2d/PixelField2DSystem.hpp>
+#include <lux/engine/ecs/render/systems/2d/Tilemap2DSystem.hpp>
 #include <lux/engine/ecs/render/subsystems/MeshInstanceSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/LightSubsystems.hpp>   // PointLightSubsystem
 #include <lux/engine/ecs/render/subsystems/3d/SkyboxSubsystem.hpp>   // SkyboxSubsystem
@@ -41,7 +41,7 @@
 #include <lux/engine/ecs/render/components/AssetStreamingStateComponent.hpp>
 #include <lux/engine/ecs/render/components/VisualTransitionComponent.hpp>
 #include <lux/engine/ecs/render/subsystems/ResidencySubsystem.hpp>  // ⑨:引用计数端到端(驻留胶水)
-#include <lux/engine/ecs/render/RenderSystemStages.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/systems/RenderSystem.hpp>
 #include <lux/engine/runtime/render/scene/ResidencyAssembly.hpp>           // 驻留三件套(T12 起探针走真装配)
 #include <lux/engine/runtime/render/scene/testing/AsyncTestServices.hpp>
@@ -56,6 +56,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <atomic>
+#include <concepts>
 #include <memory>
 #include <thread>
 #include <utility>
@@ -63,11 +64,30 @@
 
 namespace
 {
+    static_assert(std::derived_from<
+        lux::ecs::PointLightSubsystem,
+        lux::ecs::ISystem>);
+    static_assert(std::derived_from<
+        lux::ecs::MeshSubsystem,
+        lux::ecs::ISystem>);
+    static_assert(std::derived_from<
+        lux::ecs::Image2DSubsystem,
+        lux::ecs::ISystem>);
+    static_assert(!std::derived_from<
+        lux::ecs::PointLightSubsystem,
+        lux::ecs::RenderStage>);
+    static_assert(!std::derived_from<
+        lux::ecs::MeshSubsystem,
+        lux::ecs::RenderStage>);
+    static_assert(!std::derived_from<
+        lux::ecs::Image2DSubsystem,
+        lux::ecs::RenderStage>);
+
     struct PlanA final : lux::ecs::RenderStage
     {
         explicit PlanA(std::vector<int>* trace = nullptr) noexcept
             : trace(trace) {}
-        void extract(lux::ecs::RenderSubsystemContext&) override
+        void extract(lux::ecs::RenderExtractContext&) override
         {
             if (trace) trace->push_back(1);
         }
@@ -84,7 +104,7 @@ namespace
     {
         explicit PlanB(std::vector<int>* trace = nullptr) noexcept
             : trace(trace) {}
-        void extract(lux::ecs::RenderSubsystemContext&) override
+        void extract(lux::ecs::RenderExtractContext&) override
         {
             if (trace) trace->push_back(2);
         }
@@ -101,7 +121,7 @@ namespace
     {
         explicit PlanC(std::vector<int>* trace = nullptr) noexcept
             : trace(trace) {}
-        void extract(lux::ecs::RenderSubsystemContext&) override
+        void extract(lux::ecs::RenderExtractContext&) override
         {
             if (trace) trace->push_back(3);
         }
@@ -117,15 +137,13 @@ namespace
         float                              dt
     )
     {
-        lux::ecs::RenderSubsystemContext context{
+        lux::ecs::RenderExtractContext context{
             registry,
-            {},
             binding,
             active_view,
             dt,
             0,
         };
-        subsystem.prepare(context);
         subsystem.extract(context);
     }
 
@@ -135,6 +153,17 @@ namespace
     {
         std::fprintf(stderr, "[%s] %s\n", ok ? " ok " : "FAIL", what);
         if (!ok) ++g_failures;
+    }
+
+    void sealSkyboxBinding(
+        lux::ecs::SceneRenderBinding& binding,
+        const lux::render::FeatureCatalog& catalog)
+    {
+        lux::render::FeatureBindings features;
+        features.bind("Skybox", lux::render::FeatureHandle{0u, 1u});
+        check(
+            binding.seal(catalog, std::move(features)),
+            "SceneRenderBinding seals exactly once");
     }
 
     /// 批E:资产广播的探针装配 —— 三队列退役后,探针自建 bus+pump,把账本
@@ -398,14 +427,13 @@ namespace
         lux::ecs::SceneRenderBinding       render_ctx{
             fx.session(), fx.control(), {}, fx.scene()};
         /// 批 B3:池化槽位是普通节点,本探针手工驱动。
-        lux::ecs::PointLightSubsystem          lights{};
+        lux::ecs::PointLightSubsystem          lights{
+            render_ctx, active_view};
 
         Harness()
         {
             fx.registerLightOps();
-            render_ctx.setCatalog(fx.features());
-            render_ctx.bindFeature("Skybox", lux::render::FeatureHandle{ 0u, 1u });
-            lights.onAdded(lux::ecs::SystemSetupContext{reg, {}});
+            sealSkyboxBinding(render_ctx, fx.features());
             fx.beginFrame();
         }
 
@@ -428,55 +456,48 @@ namespace
 
 int main()
 {
-    // Render stages form one append-only sequence, not a second behavior graph.
+    // Render stages are a local cold-composition vector, not a second graph.
     {
-        lux::ecs::RenderSystemStages duplicates;
-        check(duplicates.add(std::make_unique<PlanA>()).has_value(),
-              "RenderStages/duplicate: first type is accepted");
-        const auto duplicate = duplicates.add(std::make_unique<PlanA>());
-        check(!duplicate && duplicate.error().code ==
-                  lux::ecs::ERenderStageAssemblyError::DuplicateType,
-              "RenderStages/duplicate: repeated type is rejected");
-
         std::vector<int> trace;
-        lux::ecs::RenderSystemStages stages;
-        (void)stages.add(std::make_unique<PlanB>(&trace));
-        (void)stages.add(std::make_unique<PlanC>(&trace));
-        (void)stages.add(std::make_unique<PlanA>(&trace));
-        const auto frozen = stages.freeze();
-        check(frozen.has_value(), "RenderStages/freeze: sequence freezes once");
-        if (frozen)
+        std::vector<std::unique_ptr<lux::ecs::RenderStage>> stages;
+        stages.push_back(std::make_unique<PlanB>(&trace));
+        stages.push_back(std::make_unique<PlanC>(&trace));
+        stages.push_back(std::make_unique<PlanA>(&trace));
+        std::vector<std::string_view> roots;
+        for (const auto& stage : stages)
         {
-            check(std::vector<std::string_view>(
-                      stages.requiredFeatures().begin(),
-                      stages.requiredFeatures().end()) ==
-                      std::vector<std::string_view>{
-                          "feature.a", "feature.m", "feature.z"},
-                  "RenderStages/features: feature roots are sorted and unique");
-
-            const auto frozen_add = stages.add(std::make_unique<PlanC>());
-            check(!frozen_add && frozen_add.error().code ==
-                      lux::ecs::ERenderStageAssemblyError::Frozen,
-                  "RenderStages/frozen: runtime mutation is rejected");
-
-            lux::bridgetest::HeadlessBridgeFixture fixture;
-            lux::ecs::World world;
-            lux::ecs::Schedule schedule{world};
-            auto render_system = std::make_unique<lux::ecs::RenderSystem>(
-                    fixture.session(), fixture.control(),
-                    lux::render::RenderUploadClient{},
-                    fixture.control().adoptScene(fixture.scene()),
-                    std::move(stages));
-            auto installed = schedule.addSystem(
-                std::move(render_system),
-                lux::ecs::kPhaseRender);
-            check(installed.has_value(),
-                  "RenderStages/install: one top-level RenderSystem is installed");
-            fixture.beginFrame();
-            schedule.tick(0.0f);
-            check(trace == std::vector<int>{2, 3, 1},
-                  "RenderStages/order: direct composition order is immutable");
+            const auto required = stage->requiredFeatures();
+            roots.insert(roots.end(), required.begin(), required.end());
         }
+        std::ranges::sort(roots);
+        roots.erase(std::unique(roots.begin(), roots.end()), roots.end());
+        check(roots == std::vector<std::string_view>{
+                  "feature.a", "feature.m", "feature.z"},
+              "RenderStages/features: local recipe roots are sorted and unique");
+
+        lux::bridgetest::HeadlessBridgeFixture fixture;
+        lux::ecs::SceneRenderBinding render_binding{
+            fixture.session(),
+            fixture.control(),
+            lux::render::RenderUploadClient{},
+            fixture.scene()};
+        lux::ecs::World world;
+        lux::ecs::Schedule schedule{world};
+        lux::ecs::ActiveRenderView active_view;
+        auto render_system = std::make_unique<lux::ecs::RenderSystem>(
+                render_binding,
+                active_view,
+                fixture.control().adoptScene(fixture.scene()),
+                std::move(stages));
+        auto installed = schedule.addSystem(
+            std::move(render_system),
+            lux::ecs::kPhaseRender);
+        check(installed.has_value(),
+              "RenderStages/install: one top-level RenderSystem is installed");
+        fixture.beginFrame();
+        schedule.tick(0.0f);
+        check(trace == std::vector<int>{2, 3, 1},
+              "RenderStages/order: direct composition order is immutable");
     }
 
     // ── ① 销毁实体 → 资源被还 ────────────────────────────────────────────
@@ -606,11 +627,9 @@ int main()
         lux::ecs::ActiveRenderView active_view_rs{fx.view()};
         lux::ecs::SceneRenderBinding render_ctx_rs{
             fx.session(), fx.control(), {}, fx.scene()};
-        render_ctx_rs.setCatalog(fx.features());
-        render_ctx_rs.bindFeature("Skybox", lux::render::FeatureHandle{ 0u, 1u });
+        sealSkyboxBinding(render_ctx_rs, fx.features());
         // 特性参数形状 —— 批 B3 起是普通节点;本探针手工驱动。
         lux::ecs::SkyboxSubsystem skybox{};
-        skybox.onAdded(lux::ecs::SystemSetupContext{reg, {}});
         fx.beginFrame();
 
         const auto e = reg.create();
@@ -661,11 +680,9 @@ int main()
         lux::ecs::ActiveRenderView active_view_rs{fx.view()};
         lux::ecs::SceneRenderBinding render_ctx_rs{
             fx.session(), fx.control(), {}, fx.scene()};
-        render_ctx_rs.setCatalog(fx.features());
-        render_ctx_rs.bindFeature("Skybox", lux::render::FeatureHandle{ 0u, 1u });
+        sealSkyboxBinding(render_ctx_rs, fx.features());
         // 批 B3:网格实例是普通节点,本探针手工驱动。
-        lux::ecs::MeshSubsystem meshes{};
-        meshes.onAdded(lux::ecs::SystemSetupContext{reg, {}});
+        lux::ecs::MeshSubsystem meshes{render_ctx_rs, active_view_rs};
         fx.beginFrame();
 
         const auto makeMesh = [&](float x) {
@@ -750,11 +767,9 @@ int main()
         lux::ecs::ActiveRenderView active_view_rs{fx.view()};
         lux::ecs::SceneRenderBinding render_ctx_rs{
             fx.session(), fx.control(), {}, fx.scene()};
-        render_ctx_rs.setCatalog(fx.features());
-        render_ctx_rs.bindFeature("Skybox", lux::render::FeatureHandle{ 0u, 1u });
+        sealSkyboxBinding(render_ctx_rs, fx.features());
         // 批 B3:网格实例是普通节点,本探针手工驱动。
-        lux::ecs::MeshSubsystem meshes{};
-        meshes.onAdded(lux::ecs::SystemSetupContext{reg, {}});
+        lux::ecs::MeshSubsystem meshes{render_ctx_rs, active_view_rs};
         fx.beginFrame();
 
         const auto e = reg.create();
@@ -909,7 +924,7 @@ int main()
             check(rep.unknown.empty() && rep.cycle.empty(), "⑧′-b：干净的声明没有诊断");
         }
         {   // **压过相位**：显式声明是作者写下的意图，相位只是默认值。
-            //   编辑器相机导航要压过 CameraViewSubsystem::syncAspect，靠的就是这一条。
+            //   编辑器相机导航要压过 CameraViewSystem::syncAspect，靠的就是这一条。
             lux::ecs::World w;
             lux::ecs::Schedule schedule{w};
             auto early = std::make_unique<OrderProbe<3>>(&order, 1);
@@ -1114,8 +1129,7 @@ int main()
         lux::ecs::ActiveRenderView active_view_rs{fx.view()};
         lux::ecs::SceneRenderBinding render_ctx_rs{
             fx.session(), fx.control(), rrig.async.uploadClient(), fx.scene()};
-        render_ctx_rs.setCatalog(fx.features());
-        render_ctx_rs.bindFeature("Skybox", lux::render::FeatureHandle{ 0u, 1u });
+        sealSkyboxBinding(render_ctx_rs, fx.features());
         // 驻留胶水是普通节点(批 B1)。本探针手工驱动 —— Schedule 走
         // onAdded/update 的那两件事在这里手动做。
             auto residency_glue = rrig.makeGlue(assets);
@@ -1238,8 +1252,7 @@ int main()
         std::vector<std::unique_ptr<lux::ecs::ResidencySubsystem>> glues;
         for (auto* rctx : {&render_ctx_rs_a, &render_ctx_rs_b})
         {
-            rctx->setCatalog(fx.features());
-            rctx->bindFeature("Skybox", lux::render::FeatureHandle{ 0u, 1u });
+            sealSkyboxBinding(*rctx, fx.features());
             auto glue = rrig.makeGlue(assets);
             glue->resolveMeshOf<lux::ecs::MeshComponent,
                                 &lux::ecs::MeshComponent::mesh_asset_id,
@@ -1344,8 +1357,7 @@ int main()
         lux::ecs::ActiveRenderView active_view_rs{fx.view()};
         lux::ecs::SceneRenderBinding render_ctx_rs{
             fx.session(), fx.control(), rrig.async.uploadClient(), fx.scene()};
-        render_ctx_rs.setCatalog(fx.features());
-        render_ctx_rs.bindFeature("Skybox", lux::render::FeatureHandle{ 0u, 1u });
+        sealSkyboxBinding(render_ctx_rs, fx.features());
         // 驻留胶水是普通节点(批 B1)。本探针手工驱动 —— Schedule 走
         // onAdded/update 的那两件事在这里手动做。
             auto residency_glue = rrig.makeGlue(assets);
@@ -1354,8 +1366,7 @@ int main()
                                 &lux::ecs::MeshComponent::material_asset_id>();
         residency_glue->attach(reg);
         // 批 B3:网格实例是普通节点,本探针手工驱动。
-        lux::ecs::MeshSubsystem meshes{};
-        meshes.onAdded(lux::ecs::SystemSetupContext{reg, {}});
+        lux::ecs::MeshSubsystem meshes{render_ctx_rs, active_view_rs};
         fx.beginFrame();
         const auto frame = [&]
         {

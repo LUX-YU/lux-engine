@@ -16,8 +16,14 @@ namespace lux::extensions
                 EModuleMetadataBatchError::INVALID_MODULE});
         }
 
-        auto reflection = lux::meta::meta_module_drain_draft();
-        auto component_descriptors = lux::ecs::takeGeneratedComponents();
+        std::vector<lux::ecs::ComponentSchemaDescriptor>
+            component_descriptors;
+        lux::meta::ReflectionRegistrationDraft reflection;
+        {
+            lux::ecs::GeneratedComponentDraftCapture capture{
+                component_descriptors};
+            reflection = lux::meta::meta_module_drain_draft();
+        }
         if (!reflection)
         {
             return lux::cxx::unexpected(ModuleMetadataBatchFailure{
@@ -29,37 +35,37 @@ namespace lux::extensions
             descriptor.provider = module->id().name();
             descriptor.lifetime = module;
         }
-        if (auto validated = components.validateSchemas(
-                component_descriptors);
-            !validated)
+        auto component_registration = components.prepareSchemas(
+            component_descriptors);
+        if (!component_registration)
         {
             return lux::cxx::unexpected(ModuleMetadataBatchFailure{
                 EModuleMetadataBatchError::COMPONENT_VALIDATION_FAILED,
-                static_cast<std::uint32_t>(validated.error().error)});
+                static_cast<std::uint32_t>(
+                    component_registration.error().error)});
         }
 
         ModuleMetadataBatch batch;
         batch.module_ = std::move(module);
         batch.reflection_ = std::move(reflection);
-        batch.components_ = std::move(component_descriptors);
-        batch.component_catalog_ = &components;
+        batch.component_count_ = component_descriptors.size();
+        batch.component_registration_.emplace(
+            std::move(*component_registration));
         batch.prepared_ = true;
         return batch;
     }
 
     void ModuleMetadataBatch::commit() noexcept
     {
-        if (!prepared_ || committed_ || !component_catalog_)
+        if (!prepared_ || committed_ || !component_registration_)
             std::terminate();
 
         auto reflection = reflection_.commit();
         if (!reflection)
             std::terminate();
-        auto components = component_catalog_->registerSchemas(components_);
-        if (!components)
-            std::terminate();
+        (void)component_registration_->commit();
 
         committed_ = true;
-        components_.clear();
+        component_registration_.reset();
     }
 }

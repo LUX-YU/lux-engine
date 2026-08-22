@@ -1,14 +1,13 @@
 #pragma once
 
-#include <lux/engine/ecs/render/RenderSystemStages.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/function/render/client/RenderLease.hpp>
 
 #include <memory>
-#include <span>
-#include <string_view>
+#include <vector>
 
 namespace lux::render
 {
@@ -20,17 +19,17 @@ namespace lux::render
 
 namespace lux::ecs
 {
-    /// The schedule's sole rendering node. FrameCoordinator owns the lexical
-    /// frame; this system only extracts ECS state into an already-open frame.
+    /// Render-scene provider and owner of lightweight extraction stages.
+    /// FrameCoordinator owns the lexical frame; ordinary render-facing
+    /// Systems may follow this node in the same Schedule.
     class LUX_FUNCTION_PUBLIC RenderSystem final : public ISystem
     {
     public:
         RenderSystem(
-            lux::render::RenderFrameSession&    session,
-            lux::render::RenderControlSession&  control,
-            lux::render::RenderUploadClient     upload,
+            SceneRenderBinding&                 binding,
+            ActiveRenderView&                   active_view,
             lux::render::RenderSceneLease       scene,
-            RenderSystemStages                  stages
+            std::vector<std::unique_ptr<RenderStage>> stages
         );
         ~RenderSystem() override;
 
@@ -40,25 +39,10 @@ namespace lux::ecs
         void onAdded(const SystemSetupContext& setup) override;
         void onRemoved(const SystemRemovalContext& removal) override;
         void update(const SystemUpdateContext& context) override;
-
-        [[nodiscard]] std::span<const std::string_view>
-        requiredFeatures() const noexcept;
-
-        void setFeatures(const lux::render::FeatureCatalog& catalog) noexcept;
-        void bindFeature(
-            std::string_view          name,
-            lux::render::FeatureHandle handle
-        );
-        void unbindFeature(
-            std::string_view name,
-            lux::render::FeatureHandle expected = {}) noexcept;
-
-        void settle();
-        [[nodiscard]] lux::render::ERenderLeaseCloseStatus close() noexcept;
-
-        [[nodiscard]] SceneRenderBinding& binding() noexcept;
-        [[nodiscard]] ActiveRenderView& activeView() noexcept;
-        [[nodiscard]] std::uint64_t droppedStaleCommands() const noexcept;
+        void requestClose() noexcept override;
+        void requestClose(SystemCloseProgressSink progress) noexcept override;
+        [[nodiscard]] bool closeComplete() const noexcept override;
+        [[nodiscard]] bool closeNeedsOwnerTick() const noexcept override;
 
     private:
         struct Impl;

@@ -15,7 +15,6 @@
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <algorithm>
-#include <chrono>
 #include <cstdlib>
 #include <ranges>
 #include <string>
@@ -106,9 +105,7 @@ namespace lux::runtime
         return result;
     }
 
-    SceneRuntime::SceneRuntime(
-        const Dependencies& deps,
-        std::unique_ptr<ISceneRuntimeIntegration> integration) noexcept
+    SceneRuntime::SceneRuntime(const Dependencies& deps) noexcept
         : owner_thread_(std::this_thread::get_id())
         , assets_(deps.assets)
         , asset_client_(deps.asset_client)
@@ -116,17 +113,14 @@ namespace lux::runtime
         , components_(deps.components)
         , entity_section_loading_(deps.entity_sections)
         , extension_modules_(deps.extension_modules)
-        , integration_(std::move(integration))
         , async_scope_(std::make_unique<lux::exec::AsyncScope>(deps.async))
     {}
 
     std::unique_ptr<SceneRuntime> SceneRuntime::create(
         const Dependencies& deps,
-        const Config& config,
-        std::unique_ptr<ISceneRuntimeIntegration> integration)
+        const Config& config)
     {
-        std::unique_ptr<SceneRuntime> runtime(
-            new SceneRuntime(deps, std::move(integration)));
+        std::unique_ptr<SceneRuntime> runtime(new SceneRuntime(deps));
         if (!runtime->bringUp(config))
             return nullptr;
         return runtime;
@@ -147,10 +141,9 @@ namespace lux::runtime
         lux::log::error(
             "scene",
             "SceneRuntime {} cannot release an owner while close callbacks "
-            "still borrow it (error={}, integration_closed={})",
+            "still borrow it (error={})",
             context,
-            toString(report.error),
-            report.integration_closed);
+            toString(report.error));
         std::abort();
     }
 
@@ -170,22 +163,8 @@ namespace lux::runtime
                 package_result.error());
             return failBringUp();
         }
-        auto catalog_result = entity_scene::EntitySceneCatalog::create(
-            std::move(*package_result));
-        if (!catalog_result)
-        {
-            lux::log::error(
-                "scene",
-                "bringUp: SceneDescription catalog rejected '{}': {}",
-                config.scene_origin,
-                catalog_result.error().detail);
-            return failBringUp();
-        }
-        auto catalog_owner = std::make_unique<
-            entity_scene::EntitySceneCatalog>(
-                std::move(*catalog_result));
-        auto* const catalog = catalog_owner.get();
-        const auto& package = catalog->package();
+        description_ = std::move(*package_result);
+        const auto& package = description_;
         scene_asset_ref_ = assets_.acquire(config.scene_asset_id);
         if (!scene_asset_ref_)
         {
@@ -248,14 +227,6 @@ namespace lux::runtime
             lux::log::error(
                 "scene",
                 "failed to publish scene asynchronous work context");
-            return failBringUp();
-        }
-
-        if (!builder.services().emplace(std::move(catalog_owner)))
-        {
-            lux::log::error(
-                "scene",
-                "failed to publish immutable SceneDescription catalog service");
             return failBringUp();
         }
 
@@ -331,32 +302,12 @@ namespace lux::runtime
             return failBringUp();
         }
 
-        SceneRuntimeAssemblyContext assembly_context{
-            builder,
-            assets_,
-            package,
-            config.name};
-        if (integration_ && !integration_->prepare(assembly_context))
-        {
-            lux::log::error(
-                "scene",
-                "scene integration rejected assembly preparation");
-            return failBringUp();
-        }
-
-        if (config.install_systems && !config.install_systems(builder))
+        if (config.install_systems &&
+            !config.install_systems(builder, description_))
         {
             lux::log::error(
                 "scene",
                 "product System assembly rejected the candidate World");
-            return failBringUp();
-        }
-
-        if (integration_ && !integration_->finalize(assembly_context))
-        {
-            lux::log::error(
-                "scene",
-                "scene integration rejected assembly finalization");
             return failBringUp();
         }
 
@@ -425,29 +376,6 @@ namespace lux::runtime
             std::move(candidate_extension_module_leases);
         entity_section_loader_ = loader_owner;
         startup_sections_ = startup_owner;
-        entity_scene_catalog_ = catalog;
-
-        if (integration_)
-        {
-            SceneRuntimePublishedContext published{
-                builder,
-                *schedule_,
-                *world_,
-                *services_,
-                events_,
-                extension_modules_,
-                [this]() noexcept
-                {
-                    requestCloseProgress();
-                }};
-            if (!integration_->onPublished(published))
-            {
-                lux::log::error(
-                    "scene",
-                    "scene integration rejected publication");
-                return failBringUp();
-            }
-        }
 
         state_ = ESceneRuntimeState::LOADING;
         live_ = true;
@@ -497,16 +425,6 @@ namespace lux::runtime
         }
         else if (state_ == ESceneRuntimeState::READY)
         {
-            if (integration_)
-            {
-                const auto started = std::chrono::steady_clock::now();
-                integration_->processSafePoint();
-                latest_frame_trace_.integration_safe_point_nanoseconds =
-                    static_cast<std::uint64_t>(
-                        std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            std::chrono::steady_clock::now() - started)
-                            .count());
-            }
             schedule_->tick(dt, lux::ecs::kPhaseLast, frame_serial);
         }
 

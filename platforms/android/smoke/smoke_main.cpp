@@ -130,10 +130,9 @@ namespace
     /// entity owns nothing.
     bool gateComponentRegistry()
     {
-        lux::meta::meta_module_init();
         lux::ecs::ComponentTypeCatalog components;
         const auto registered =
-            lux::ecs::registerGeneratedComponents(components);
+            lux::ecs::initializeGeneratedMetadata(components);
         const auto all = components.all();
         LOGI("[2] ComponentTypeCatalog: %zu entries", all.size());
         if (!registered || all.empty())

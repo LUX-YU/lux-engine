@@ -555,24 +555,6 @@ int main()
         fog.maximum_opacity = applied_fog.maximum_opacity;
         FogProxy{fixture.session(), fog_ops}.setParams(fog);
 
-        WaterSetEnvironmentPayload water_environment{};
-        water_environment.scene_id = scene.scene_id;
-        water_environment.feature = water_feature.feature;
-        water_environment.fog_color[0u] = applied_fog.color.x();
-        water_environment.fog_color[1u] = applied_fog.color.y();
-        water_environment.fog_color[2u] = applied_fog.color.z();
-        water_environment.fog_density = applied_fog.density;
-        water_environment.fog_start_distance = applied_fog.start_distance;
-        water_environment.fog_reference_height =
-            applied_fog.reference_height;
-        water_environment.fog_height_falloff =
-            applied_fog.height_falloff;
-        water_environment.fog_maximum_opacity =
-            applied_fog.maximum_opacity;
-        water_environment.fog_enabled = applied_fog.enabled ? 1u : 0u;
-        WaterProxy{fixture.session(), water_ops}.setEnvironment(
-            water_environment);
-
         WaterSurfaceDesc surface{};
         surface.transform.basis_local[0] = 1.0f;
         surface.transform.basis_local[5] = 1.0f;

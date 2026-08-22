@@ -9,7 +9,7 @@
 #include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
-#include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
+#include <lux/engine/toolchain/spatial3d_scene/Spatial3DSceneCooker.hpp>
 #include <lux/engine/editor/import/AssetImporter.hpp>
 #include <lux/engine/runtime/execution/AsyncFileService.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
@@ -740,7 +740,7 @@ namespace lux::editor
                                   return value;
                               }
                               auto cooked = lux::toolchain::
-                                  adaptSpatial3DEntityScene(
+                                  cookSpatial3DEntityScene(
                                       *prepared.source,
                                       components,
                                       prepared.mesh_assets);

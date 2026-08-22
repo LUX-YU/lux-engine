@@ -63,8 +63,11 @@ namespace lux::input { class ActionMapper; class InputContextStack; }
 namespace lux::ecs
 {
     class ComponentTypeCatalog;
+    class RenderStage;
+    class ResidencySubsystem;
     class ScheduleBuilder;
 }
+namespace lux::scene { struct SceneDescription; }
 
 namespace lux::ui
 {
@@ -146,7 +149,15 @@ namespace lux::editor
         const lux::extensions::ExtensionModuleManager*
                                                extension_modules{nullptr};
         const lux::ecs::ComponentTypeCatalog*   components{nullptr};
-        std::function<bool(lux::ecs::ScheduleBuilder&)> install_systems;
+        std::function<bool(
+            lux::ecs::ScheduleBuilder&,
+            const lux::scene::SceneDescription&)> install_systems;
+        std::function<bool(
+            lux::ecs::ScheduleBuilder&,
+            const lux::scene::SceneDescription&,
+            std::vector<std::unique_ptr<lux::ecs::RenderStage>>&,
+            std::vector<std::string_view>&,
+            lux::ecs::ResidencySubsystem&)> install_rendering;
 
         /// 进程域事件总线(统一事件系统批B)—— 同为**非拥有指针**(所有权在
         /// LuxEditor::Runtime::events_)。三个 SceneRuntime 宿主从这里取,填进各自

@@ -15,7 +15,7 @@ add_component(
     OUTPUT_NAME    lux_engine_toolchain_spatial3d_scene_cook
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Spatial3DAuthoringSource.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Spatial3DEntitySceneAdapter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Spatial3DSceneCooker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Spatial3DNavigationCook.cpp
 )
 
@@ -91,11 +91,11 @@ if(TARGET ecs_meta AND
    TARGET physics3d_meta AND
    TARGET navigation3d_meta)
     add_executable(
-        spatial3d_entity_scene_adapter_test
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/spatial3d_entity_scene_adapter_test.cpp
+        spatial3d_scene_cooker_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/spatial3d_scene_cooker_test.cpp
     )
     target_link_libraries(
-        spatial3d_entity_scene_adapter_test
+        spatial3d_scene_cooker_test
         PRIVATE
             lux::engine::toolchain::toolchain_spatial3d_scene_cook
             lux::engine::ecs::render_components_3d
@@ -117,13 +117,13 @@ if(TARGET ecs_meta AND
     )
     if(MSVC)
         target_compile_options(
-            spatial3d_entity_scene_adapter_test PRIVATE /UNDEBUG)
+            spatial3d_scene_cooker_test PRIVATE /UNDEBUG)
     else()
         target_compile_options(
-            spatial3d_entity_scene_adapter_test PRIVATE -UNDEBUG)
+            spatial3d_scene_cooker_test PRIVATE -UNDEBUG)
     endif()
     lux_classify_target(
-        TARGET  spatial3d_entity_scene_adapter_test
+        TARGET  spatial3d_scene_cooker_test
         LAYER   TOOLCHAIN
         PRODUCT TEST
         ROLE    DOMAIN

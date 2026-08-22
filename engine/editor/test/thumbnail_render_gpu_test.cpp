@@ -144,10 +144,9 @@ int main(int argc, char** argv)
 
     lux::window::LuxWindow window(64, 64, "thumbnail_render_gpu_test");
 
-    lux::meta::meta_module_init();
     lux::ecs::ComponentTypeCatalog components;
     check(
-        lux::ecs::registerGeneratedComponents(components).has_value(),
+        lux::ecs::initializeGeneratedMetadata(components).has_value(),
         "generated component schemas registered"
     );
 

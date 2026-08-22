@@ -29,13 +29,14 @@
 #include <lux/engine/ecs/pixel/components/PixelFieldBindingComponent.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Image2DSubsystem.hpp>
-#include <lux/engine/ecs/render/subsystems/2d/PixelField2DSubsystem.hpp>
-#include <lux/engine/ecs/render/subsystems/2d/Tilemap2DSubsystem.hpp>
+#include <lux/engine/ecs/render/systems/2d/PixelField2DSystem.hpp>
+#include <lux/engine/ecs/render/systems/2d/Tilemap2DSystem.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/MeshSubsystems.hpp>
 #include <lux/engine/ecs/Registry.hpp>
 #include <lux/engine/function/render/client/core/RenderErrorRegistry.hpp>
 
 #include <cstdio>
+#include <concepts>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -102,12 +103,19 @@ namespace
         lux::ecs::SceneRenderBinding& binding,
         lux::ecs::ActiveRenderView* supplied_view = nullptr)
     {
-        lux::ecs::ActiveRenderView fallback_view{fixture.view()};
-        auto& active_view = supplied_view ? *supplied_view : fallback_view;
-        lux::ecs::RenderSubsystemContext context{
-            registry, {}, binding, active_view, kDt, 0};
-        system.prepare(context);
-        system.extract(context);
+        if constexpr (std::derived_from<System, lux::ecs::ISystem>)
+        {
+            system.update(lux::ecs::SystemUpdateContext{
+                registry, {}, kDt, 0});
+        }
+        else
+        {
+            lux::ecs::ActiveRenderView fallback_view{fixture.view()};
+            auto& active_view = supplied_view ? *supplied_view : fallback_view;
+            lux::ecs::RenderExtractContext context{
+                registry, binding, active_view, kDt, 0};
+            system.extract(context);
+        }
     }
 
     template <class System>
@@ -131,7 +139,7 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
+        (void)binding.seal(fixture.features());
         frame(system, registry, fixture, binding);
     }
 
@@ -142,11 +150,17 @@ namespace
         lux::bridgetest::HeadlessBridgeFixture& fixture,
         lux::ecs::SceneRenderBinding& binding)
     {
-        lux::ecs::ActiveRenderView active_view{fixture.view()};
-        lux::ecs::RenderSubsystemContext context{
-            registry, {}, binding, active_view, kDt, 0};
-        system.prepare(context);
-        system.close(context);
+        if constexpr (std::derived_from<System, lux::ecs::ISystem>)
+        {
+            system.requestClose();
+        }
+        else
+        {
+            lux::ecs::ActiveRenderView active_view{fixture.view()};
+            lux::ecs::RenderExtractContext context{
+                registry, binding, active_view, kDt, 0};
+            system.close(context);
+        }
     }
 
     lux::ecs::Entity makeImage(lux::ecs::Registry& registry)
@@ -259,9 +273,9 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::Image2DSubsystem images{};
-        images.onAdded(lux::ecs::SystemSetupContext{registry, {}});
+        (void)binding.seal(fixture.features());
+        lux::ecs::ActiveRenderView active_view{fixture.view()};
+        lux::ecs::Image2DSubsystem images{binding, active_view};
         fixture.beginFrame();
 
         const auto entity = makeImage(registry);
@@ -298,9 +312,9 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::Image2DSubsystem images{};
-        images.onAdded(lux::ecs::SystemSetupContext{registry, {}});
+        (void)binding.seal(fixture.features());
+        lux::ecs::ActiveRenderView active_view{fixture.view()};
+        lux::ecs::Image2DSubsystem images{binding, active_view};
         fixture.beginFrame();
 
         const auto entity = makeImage(registry);
@@ -352,9 +366,9 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::Image2DSubsystem images{};
-        images.onAdded(lux::ecs::SystemSetupContext{registry, {}});
+        (void)binding.seal(fixture.features());
+        lux::ecs::ActiveRenderView active_view{fixture.view()};
+        lux::ecs::Image2DSubsystem images{binding, active_view};
         fixture.beginFrame();
         (void)makeImage(registry);
 
@@ -394,9 +408,8 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::MeshSubsystem meshes{};
-        meshes.onAdded(lux::ecs::SystemSetupContext{registry, {}});
+        (void)binding.seal(fixture.features());
+        lux::ecs::MeshSubsystem meshes{binding, active_view};
         fixture.beginFrame();
 
         const auto entity = makeMesh(registry);
@@ -444,9 +457,8 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::MeshSubsystem meshes{};
-        meshes.onAdded(lux::ecs::SystemSetupContext{registry, {}});
+        (void)binding.seal(fixture.features());
+        lux::ecs::MeshSubsystem meshes{binding, active_view};
         fixture.beginFrame();
         (void)makeMesh(registry);
 
@@ -490,8 +502,8 @@ namespace
             fixture.control(),
             fixture.uploadClientForTest(),
             fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::Tilemap2DSubsystem tilemaps{&runtime};
+        (void)binding.seal(fixture.features());
+        lux::ecs::Tilemap2DSystem tilemaps{binding, &runtime};
         tilemaps.onAdded(lux::ecs::SystemSetupContext{registry, {}});
         fixture.beginFrame();
 
@@ -585,11 +597,11 @@ namespace
             fixture.control(),
             fixture.uploadClientForTest(),
             fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::Image2DSubsystem images;
-        lux::ecs::Tilemap2DSubsystem tilemaps{&tile_runtime};
-        lux::ecs::PixelField2DSubsystem pixels{&pixel_runtime};
-        images.onAdded(lux::ecs::SystemSetupContext{registry, {}});
+        (void)binding.seal(fixture.features());
+        lux::ecs::ActiveRenderView active_view{fixture.view()};
+        lux::ecs::Image2DSubsystem images{binding, active_view};
+        lux::ecs::Tilemap2DSystem tilemaps{binding, &tile_runtime};
+        lux::ecs::PixelField2DSystem pixels{binding, &pixel_runtime};
         tilemaps.onAdded(lux::ecs::SystemSetupContext{registry, {}});
         pixels.onAdded(lux::ecs::SystemSetupContext{registry, {}});
         fixture.beginFrame();
@@ -651,8 +663,8 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::PixelField2DSubsystem pixels{&runtime};
+        (void)binding.seal(fixture.features());
+        lux::ecs::PixelField2DSystem pixels{binding, &runtime};
         pixels.onAdded(lux::ecs::SystemSetupContext{registry, {}});
         fixture.beginFrame();
 
@@ -724,8 +736,8 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::PixelField2DSubsystem pixels{&runtime};
+        (void)binding.seal(fixture.features());
+        lux::ecs::PixelField2DSystem pixels{binding, &runtime};
         pixels.onAdded(lux::ecs::SystemSetupContext{registry, {}});
         fixture.beginFrame();
 
@@ -791,8 +803,8 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::PixelField2DSubsystem pixels{&runtime};
+        (void)binding.seal(fixture.features());
+        lux::ecs::PixelField2DSystem pixels{binding, &runtime};
         pixels.onAdded(lux::ecs::SystemSetupContext{registry, {}});
         fixture.beginFrame();
 
@@ -872,10 +884,10 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
+        (void)binding.seal(fixture.features());
         fixture.beginFrame();
         {
-            lux::ecs::PixelField2DSubsystem pixels{&runtime};
+            lux::ecs::PixelField2DSystem pixels{binding, &runtime};
             pixels.onAdded(lux::ecs::SystemSetupContext{registry, {}});
             frame(pixels, registry, fixture);   // atlas + palette textures
             frame(pixels, registry, fixture);   // palette upload
@@ -929,8 +941,8 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::PixelField2DSubsystem pixels{&runtime};
+        (void)binding.seal(fixture.features());
+        lux::ecs::PixelField2DSystem pixels{binding, &runtime};
         pixels.onAdded(lux::ecs::SystemSetupContext{registry, {}});
         fixture.beginFrame();
 
@@ -968,8 +980,8 @@ namespace
         lux::ecs::SceneRenderBinding binding{
             fixture.session(), fixture.control(),
             fixture.uploadClientForTest(), fixture.scene()};
-        binding.setCatalog(fixture.features());
-        lux::ecs::PixelField2DSubsystem pixels{&runtime};
+        (void)binding.seal(fixture.features());
+        lux::ecs::PixelField2DSystem pixels{binding, &runtime};
         pixels.onAdded(lux::ecs::SystemSetupContext{registry, {}});
         fixture.beginFrame();
 

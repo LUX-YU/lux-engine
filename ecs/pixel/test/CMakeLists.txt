@@ -57,6 +57,14 @@ target_link_libraries(render_subsystem_probes
 #   诊断而不是断言)。所以这里用 ctest 的 FAIL_REGULAR_EXPRESSION 把
 #   「打印了」变成「测试红」。
 target_compile_definitions(render_subsystem_probes PRIVATE LUX_ECS_EXTRACTION_VERIFY=1)
+add_test(NAME phase9_render_stage_system_classification
+    COMMAND render_subsystem_probes)
+set_tests_properties(
+    phase9_render_stage_system_classification
+    PROPERTIES
+        LABELS "phase9;cpu"
+        FAIL_REGULAR_EXPRESSION "EXTRACTION VERIFY FAILED|PROBE FAILED"
+)
 if(MSVC)
     # The permanent probe intentionally instantiates every extraction path in
     # one TU.  /Od emits enough COMDAT sections to exceed classic COFF limits.
@@ -90,6 +98,12 @@ target_link_libraries(render_subsystem_lifecycle_probe
     lux::engine::ecs::render_tilemap_integration
     lux::engine::function::render_vulkan
     lux::engine::resource::asset
+)
+add_test(NAME phase9_render_system_lifecycle
+    COMMAND render_subsystem_lifecycle_probe)
+set_tests_properties(
+    phase9_render_system_lifecycle
+    PROPERTIES LABELS "phase9;cpu"
 )
 
 # Private composition contract shared by the Pixel and Tilemap render leaves.

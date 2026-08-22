@@ -230,9 +230,8 @@ int main()
     namespace spatial3d = lux::ecs::spatial3d::streaming;
     namespace catalog = lux::ecs::scene_format::spatial3d;
 
-    lux::meta::meta_module_init();
     lux::ecs::ComponentTypeCatalog components;
-    assert(lux::ecs::registerGeneratedComponents(components));
+    assert(lux::ecs::initializeGeneratedMetadata(components));
 
     constexpr auto channel =
         spatial3d::kVisualLodDemandChannelName;
@@ -393,12 +392,14 @@ int main()
     scene_config.scene_asset_id = package.id;
     scene_config.section_vfs = vfs;
     scene_config.install_systems =
-        [&components](lux::ecs::ScheduleBuilder& builder)
+        [&components](
+            lux::ecs::ScheduleBuilder& builder,
+            const lux::scene::SceneDescription& description)
         {
             return lux::ecs::installSpatial3DTransformSystems(
                        builder, components) &&
                 lux::runtime::installSpatial3DSystems(
-                       builder, components);
+                       builder, components, description);
         };
     auto scene = lux::runtime::SceneRuntime::create(
         dependencies, scene_config);

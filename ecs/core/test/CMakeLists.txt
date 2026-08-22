@@ -8,6 +8,14 @@ target_link_libraries(schedule_topology_test PRIVATE core)
 
 add_executable(component_type_catalog_test component_type_catalog_test.cpp)
 target_link_libraries(component_type_catalog_test PRIVATE core)
+add_test(
+    NAME phase9_component_type_catalog_atomicity
+    COMMAND component_type_catalog_test
+)
+set_tests_properties(
+    phase9_component_type_catalog_atomicity
+    PROPERTIES LABELS "phase9;cpu"
+)
 
 
 add_executable(persistent_entity_index_test persistent_entity_index_test.cpp)

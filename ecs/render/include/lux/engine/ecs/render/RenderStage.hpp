@@ -1,8 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/EcsCommandBuffer.hpp>
-#include <lux/engine/ecs/SystemUpdateContext.hpp>
-#include <lux/engine/ecs/render/RenderSubsystemContext.hpp>
+#include <lux/engine/ecs/render/RenderExtractContext.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <span>
@@ -15,9 +13,10 @@ namespace lux::ecs
     /// The stage sequence is assembled only while the World is unpublished.
     /// It has no dependency declarations and no runtime add/remove protocol;
     /// ordering belongs to the product's direct composition function. The
-    /// lifecycle hooks below are restricted to World observer/resource
-    /// ownership while those responsibilities are split into ordinary Systems.
-    class LUX_FUNCTION_PUBLIC RenderStage : public IEcsCommandProducer
+    /// Observer/cache implementation details are allowed only when their
+    /// lifetime is exactly this owning RenderSystem. A Stage has no lifecycle
+    /// graph, command producer identity, or dynamic topology API.
+    class LUX_FUNCTION_PUBLIC RenderStage
     {
     public:
         virtual ~RenderStage() = default;
@@ -31,16 +30,7 @@ namespace lux::ecs
             return {};
         }
 
-        virtual void onAdded(const SystemSetupContext&) {}
-        virtual void onRemoved(const SystemRemovalContext&) {}
-        virtual void prepare(RenderSubsystemContext&) noexcept {}
-        virtual void extract(RenderSubsystemContext& context) = 0;
-        virtual void settle(RenderSubsystemContext&) {}
-        virtual void close(RenderSubsystemContext&) noexcept {}
-        virtual void closeScene(RenderSubsystemContext& context) noexcept
-        {
-            close(context);
-        }
+        virtual void extract(RenderExtractContext& context) = 0;
 
     protected:
         RenderStage() = default;

@@ -11,7 +11,7 @@
 #include <lux/engine/runtime/extensions/orchestration_visibility.h>
 
 #include <cstdint>
-#include <vector>
+#include <optional>
 
 namespace lux::extensions
 {
@@ -55,14 +55,16 @@ namespace lux::extensions
 
         [[nodiscard]] std::size_t componentCount() const noexcept
         {
-            return components_.size();
+            return component_count_;
         }
 
     private:
         ModuleLease module_;
         lux::meta::ReflectionRegistrationDraft reflection_;
-        std::vector<lux::ecs::ComponentSchemaDescriptor> components_;
-        lux::ecs::ComponentTypeCatalog* component_catalog_{nullptr};
+        std::optional<
+            lux::ecs::ComponentTypeCatalog::PreparedRegistration>
+            component_registration_;
+        std::size_t component_count_{0u};
         bool prepared_{false};
         bool committed_{false};
     };

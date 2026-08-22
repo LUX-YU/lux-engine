@@ -8,8 +8,8 @@
 #include <lux/engine/runtime/frame/MainCloseDriver.hpp>
 #include <lux/engine/ecs/render/components/RenderViewBindingComponent.hpp>
 #include <lux/engine/ecs/render/components/ViewPresentComponent.hpp>
-#include <lux/engine/ecs/render/RenderSystemStages.hpp>
-#include <lux/engine/ecs/render/subsystems/CameraViewSubsystem.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
+#include <lux/engine/ecs/render/systems/CameraViewSystem.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Camera2DUploadSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/Camera3DUploadSubsystem.hpp>
 #include <lux/engine/ecs/render/components/2d/Camera2DCacheComponent.hpp>
@@ -41,33 +41,27 @@ namespace
         int value;
     };
 
-    class SceneCloseProbe final : public lux::ecs::RenderStage
+    template <int Phase>
+    class FramePhaseProbe final : public lux::ecs::ISystem
     {
     public:
-        SceneCloseProbe(
-            std::uint32_t& dynamic_closes,
-            std::uint32_t& scene_closes) noexcept
-            : dynamic_closes_(dynamic_closes),
-              scene_closes_(scene_closes)
-        {
-        }
+        FramePhaseProbe(
+            lux::render::RenderFrameSession& session,
+            std::vector<int>& order,
+            bool& recorded) noexcept
+            : session_(&session), order_(&order), recorded_(&recorded)
+        {}
 
-        void extract(lux::ecs::RenderSubsystemContext&) override {}
-
-        void close(lux::ecs::RenderSubsystemContext&) noexcept override
+        void update(const lux::ecs::SystemUpdateContext&) override
         {
-            ++dynamic_closes_;
-        }
-
-        void closeScene(
-            lux::ecs::RenderSubsystemContext&) noexcept override
-        {
-            ++scene_closes_;
+            *recorded_ = session_->isRecording();
+            order_->push_back(Phase);
         }
 
     private:
-        std::uint32_t& dynamic_closes_;
-        std::uint32_t& scene_closes_;
+        lux::render::RenderFrameSession* session_{nullptr};
+        std::vector<int>* order_{nullptr};
+        bool* recorded_{nullptr};
     };
 
     bool expect(bool condition, const char* message)
@@ -147,6 +141,74 @@ int main()
                         first_trace->attributedNanoseconds(),
                 "first trace uses the frame serial and bounded phase accounting"))
         return 1;
+
+    // Product hosts record the complete SceneRuntime tick in one lexical
+    // frame. Freeze the resulting Schedule contract: even the earliest input
+    // phase and latest post-render phase execute while Frame-lane recording is
+    // valid. RenderSystem is therefore one node inside the render phase, not
+    // the owner of a narrower private frame session.
+    {
+        auto phase_channel = lux::render::RenderFrameChannel<>::create();
+        auto phase_sync = std::make_shared<lux::render::RenderChannelSync>();
+        lux::render::RenderFrameSession phase_session{
+            phase_channel,
+            phase_sync};
+        lux::events::DomainEvents phase_events;
+        auto& phase_pump = phase_events.createPump("phase-frame-session");
+        lux::runtime::FrameCoordinator phase_frames{
+            phase_session,
+            phase_pump};
+        lux::ecs::World phase_world;
+        lux::ecs::Schedule phase_schedule{phase_world};
+        std::vector<int> phase_order;
+        bool input_recorded = false;
+        bool post_render_recorded = false;
+        if (!expect(
+                static_cast<bool>(phase_schedule.addSystem(
+                    std::make_unique<
+                        FramePhaseProbe<lux::ecs::kPhaseInput>>(
+                            phase_session,
+                            phase_order,
+                            input_recorded),
+                    lux::ecs::kPhaseInput)) &&
+                static_cast<bool>(phase_schedule.addSystem(
+                    std::make_unique<
+                        FramePhaseProbe<lux::ecs::kPhasePostRender>>(
+                            phase_session,
+                            phase_order,
+                            post_render_recorded),
+                    lux::ecs::kPhasePostRender)),
+                "input and post-render probes install into one Schedule"))
+        {
+            return 1;
+        }
+        auto phase_frame = phase_frames.begin();
+        if (!expect(static_cast<bool>(phase_frame),
+                    "phase characterization frame opens"))
+            return 1;
+        phase_frame.record([&phase_schedule]
+        {
+            phase_schedule.tick(0.0f);
+        });
+        if (!expect(
+                input_recorded && post_render_recorded &&
+                    phase_order == std::vector<int>{
+                        lux::ecs::kPhaseInput,
+                        lux::ecs::kPhasePostRender},
+                "SCHEDULE_INPUT through SCHEDULE_POST_RENDER stays inside "
+                "the lexical RenderFrame session"))
+        {
+            return 1;
+        }
+        if (!expect(
+                static_cast<bool>(
+                    phase_channel->requests.tryAcquireRead()),
+                "phase characterization retires its frame packet"))
+        {
+            return 1;
+        }
+        phase_sync->notifyRequestStateChanged();
+    }
 
     // A MainThreadMailbox completion that arrives only after the safe point has
     // entered frame-slot backpressure must run before the fake render server
@@ -602,7 +664,7 @@ int main()
     }
 
     // Regression: Scene LOADING may be cancelled before the Render phase has
-    // ever run. CameraViewSubsystem::prepare() is therefore not guaranteed to
+    // ever run. CameraViewSystem::prepare() is therefore not guaranteed to
     // precede close(), and queued observer backfill must not create a view
     // while the close barrier is draining.
     {
@@ -612,38 +674,42 @@ int main()
         lux::render::RenderFrameSession view_session{view_channel, view_sync};
         lux::render::RenderControlSession control_session{
             control_channel, view_sync};
+        const lux::render::RenderSceneId scene_id{29, 8};
+        lux::ecs::SceneRenderBinding render_binding{
+            view_session,
+            control_session,
+            lux::render::RenderUploadClient{},
+            scene_id};
         lux::ecs::World world;
         lux::ecs::Schedule schedule{world};
         auto& registry = world.registry();
-        const lux::render::RenderSceneId scene_id{29, 8};
         const auto camera = registry.create();
         registry.emplace<lux::ecs::ViewPresentComponent>(
             camera,
             lux::ecs::ViewPresentComponent{{30, 4}, 0, {320, 180}});
 
-        lux::ecs::RenderSystemStages render_builder;
-        if (!expect(static_cast<bool>(render_builder.add(
-                        std::make_unique<lux::ecs::CameraViewSubsystem>())),
-                    "CameraViewSubsystem joins the pre-update close plan"))
-            return 1;
-        auto render_plan = render_builder.freeze();
-        if (!expect(static_cast<bool>(render_plan),
-                    "pre-update close render plan compiles"))
-            return 1;
+        std::vector<std::unique_ptr<lux::ecs::RenderStage>> render_stages;
+        lux::ecs::ActiveRenderView active_view;
         auto render_owner = std::make_unique<lux::ecs::RenderSystem>(
-            view_session,
-            control_session,
-            lux::render::RenderUploadClient{},
+            render_binding,
+            active_view,
             control_session.adoptScene(scene_id),
-            std::move(render_builder));
+            std::move(render_stages));
         auto* const render = render_owner.get();
         if (!expect(static_cast<bool>(schedule.addSystem(
                         std::move(render_owner),
                         lux::ecs::kPhaseRender)),
                     "RenderSystem installs before its first update"))
             return 1;
+        if (!expect(static_cast<bool>(schedule.addSystem(
+                        std::make_unique<lux::ecs::CameraViewSystem>(
+                            render_binding,
+                            active_view),
+                        lux::ecs::kPhaseRender)),
+                    "CameraViewSystem installs before its first update"))
+            return 1;
 
-        (void)render->close();
+        schedule.requestClose();
         lux::render::OperationPacket<> packet;
         bool requested_view = false;
         while (control_channel->requests.tryPop(packet) ==
@@ -657,53 +723,6 @@ int main()
             return 1;
     }
 
-    // Whole-scene close runs after the final lexical frame. It must select the
-    // no-Frame-lane lifecycle hook even when no frame was ever opened; dynamic
-    // subsystem removal retains the separate close() path.
-    {
-        auto view_channel = lux::render::RenderFrameChannel<>::create();
-        auto control_channel = lux::render::RenderControlChannel<>::create();
-        auto view_sync = std::make_shared<lux::render::RenderChannelSync>();
-        lux::render::RenderFrameSession view_session{view_channel, view_sync};
-        lux::render::RenderControlSession control_session{
-            control_channel,
-            view_sync
-        };
-        std::uint32_t dynamic_closes = 0u;
-        std::uint32_t scene_closes = 0u;
-        lux::ecs::World world;
-        lux::ecs::Schedule schedule{world};
-        lux::ecs::RenderSystemStages render_builder;
-        if (!expect(static_cast<bool>(render_builder.add(
-                        std::make_unique<SceneCloseProbe>(
-                            dynamic_closes,
-                            scene_closes))),
-                    "scene-close probe joins the render plan"))
-            return 1;
-        auto render_plan = render_builder.freeze();
-        if (!expect(static_cast<bool>(render_plan),
-                    "scene-close probe plan compiles"))
-            return 1;
-        auto render_owner = std::make_unique<lux::ecs::RenderSystem>(
-            view_session,
-            control_session,
-            lux::render::RenderUploadClient{},
-            control_session.adoptScene(lux::render::RenderSceneId{30, 8}),
-            std::move(render_builder)
-        );
-        auto* const render = render_owner.get();
-        if (!expect(static_cast<bool>(schedule.addSystem(
-                        std::move(render_owner),
-                        lux::ecs::kPhaseRender)),
-                    "scene-close probe RenderSystem installs"))
-            return 1;
-
-        (void)render->close();
-        if (!expect(dynamic_closes == 0u && scene_closes == 1u,
-                    "scene close emits no frame-lane dynamic cleanup"))
-            return 1;
-    }
-
     // Regression: removing presentation intent while addView is in flight must
     // not erase the only path that can reclaim a successful late reply.
     {
@@ -713,7 +732,7 @@ int main()
         lux::render::RenderFrameSession view_session{view_channel, view_sync};
         lux::render::RenderControlSession control_session{
             control_channel, view_sync};
-        // 经真实的 World + Schedule 驱动:CameraViewSubsystem 的观察者连接与折入存量
+        // 经真实的 World + Schedule 驱动:CameraViewSystem 的观察者连接与折入存量
         // 都在 `onAdded` 里(它要在那里才拿得到命令分片的 writer),而命令的应用只有
         // `Schedule::applyCommandBarrier()` 一个出口。手工 new 一个系统再调 update
         // 已经跑不通这条路 —— 那正是本轮要立住的形状。
@@ -722,30 +741,35 @@ int main()
         auto&               registry = world.registry();
         const lux::render::RenderSceneId scene_id{31, 9};
         const lux::render::ViewHandle view_id{37, 10};
+        lux::ecs::SceneRenderBinding render_binding{
+            view_session,
+            control_session,
+            lux::render::RenderUploadClient{},
+            scene_id};
         if (!expect(view_session.beginFrame(), "camera request frame opens"))
             return 1;
         const auto camera = registry.create();
         registry.emplace<lux::ecs::ViewPresentComponent>(
             camera, lux::ecs::ViewPresentComponent{{41, 1}, 0, {320, 180}});
         // 系统**晚于**组件装入 —— 走的是折入存量那条路(信号只对连接之后的事说话)。
-        lux::ecs::RenderSystemStages render_builder;
-        if (!expect(static_cast<bool>(render_builder.add(
-                        std::make_unique<lux::ecs::CameraViewSubsystem>())),
-                    "CameraViewSubsystem joins the render plan"))
-            return 1;
-        auto render_plan = render_builder.freeze();
-        if (!expect(static_cast<bool>(render_plan),
-                    "camera-only render plan compiles"))
-            return 1;
+        std::vector<std::unique_ptr<lux::ecs::RenderStage>> render_stages;
+        lux::ecs::ActiveRenderView active_view;
         auto render_system = schedule.addSystem(
             std::make_unique<lux::ecs::RenderSystem>(
-                view_session, control_session,
-                lux::render::RenderUploadClient{},
+                render_binding,
+                active_view,
                 control_session.adoptScene(scene_id),
-                std::move(render_builder)),
+                std::move(render_stages)),
             lux::ecs::kPhaseRender);
         if (!expect(static_cast<bool>(render_system),
                     "RenderSystem installs into the schedule"))
+            return 1;
+        if (!expect(static_cast<bool>(schedule.addSystem(
+                        std::make_unique<lux::ecs::CameraViewSystem>(
+                            render_binding,
+                            active_view),
+                        lux::ecs::kPhaseRender)),
+                    "CameraViewSystem installs into the schedule"))
             return 1;
         schedule.tick(0.f);
         if (!expect(view_session.trySubmitFrame() &&
@@ -761,7 +785,7 @@ int main()
         if (!expect(add_packet.has_command &&
                         add_packet.command.type_id ==
                             lux::render::type_ids::AddView,
-                    "CameraViewSubsystem records addView"))
+                    "CameraViewSystem records addView"))
             return 1;
         const auto add_request_id = add_packet.command.request_id;
 
@@ -803,56 +827,6 @@ int main()
             return 1;
     }
 
-    // Bring-up settle runs before the first lexical frame. Camera extraction
-    // must remain inert here: only CameraViewSubsystem may use this safe point
-    // to reconcile its Control-lane addView replies. Calling update() from a
-    // camera upload settle hook used to abort in RenderClient::builder().
-    {
-        auto view_channel = lux::render::RenderFrameChannel<>::create();
-        auto control_channel = lux::render::RenderControlChannel<>::create();
-        auto view_sync = std::make_shared<lux::render::RenderChannelSync>();
-        lux::render::RenderFrameSession view_session{view_channel, view_sync};
-        lux::render::RenderControlSession control_session{
-            control_channel, view_sync};
-        lux::ecs::World world;
-        auto& registry = world.registry();
-        const lux::render::RenderSceneId scene_id{43, 2};
-        const lux::render::ViewHandle view_id{44, 3};
-
-        const lux::render::TypeId camera_op = 901;
-        lux::render::FeatureCatalog catalog;
-        catalog.injectForTest("StandardViewCamera", {&camera_op, 1});
-        lux::ecs::SceneRenderBinding render{
-            view_session,
-            control_session,
-            lux::render::RenderUploadClient{},
-            scene_id};
-        render.setCatalog(catalog);
-        lux::ecs::ActiveRenderView active_view{view_id};
-        lux::ecs::RenderSubsystemContext context{
-            registry, {}, render, active_view, 0.0f, 0};
-
-        const auto camera_2d = registry.create();
-        registry.emplace<lux::ecs::Camera2DCacheComponent>(camera_2d);
-        registry.emplace<lux::ecs::RenderViewBindingComponent>(
-            camera_2d,
-            control_session.adoptView(scene_id, view_id));
-        const auto camera_3d = registry.create();
-        registry.emplace<lux::ecs::Camera3DComponent>(camera_3d);
-        registry.emplace<lux::ecs::ResolvedTransform3DComponent>(camera_3d);
-        registry.emplace<lux::ecs::RenderViewBindingComponent>(
-            camera_3d,
-            control_session.adoptView(scene_id, view_id));
-
-        lux::ecs::Camera2DUploadSubsystem upload_2d;
-        lux::ecs::Camera3DUploadSubsystem upload_3d;
-        static_cast<lux::ecs::RenderStage&>(upload_2d).settle(context);
-        static_cast<lux::ecs::RenderStage&>(upload_3d).settle(context);
-        if (!expect(!view_session.isRecording(),
-                    "bring-up camera settle leaves the frame session closed"))
-            return 1;
-    }
-
     // 成功路径的正面证据。批 3 的失败模式是「编辑器正常启动、干净退出、零报错,
     // 主场景却一个 view 都没建」—— target all 全绿、ctest 全过都发现不了,只有把
     // stderr 逐行对拍才暴露。这一段把那条链钉成自动化断言:
@@ -870,29 +844,34 @@ int main()
         auto&               registry = world.registry();
         const lux::render::RenderSceneId scene_id{51, 3};
         const lux::render::ViewHandle    view_id{57, 4};
+        lux::ecs::SceneRenderBinding render_binding{
+            view_session,
+            control_session,
+            lux::render::RenderUploadClient{},
+            scene_id};
         if (!expect(view_session.beginFrame(), "present frame opens"))
             return 1;
         const auto camera = registry.create();
         registry.emplace<lux::ecs::ViewPresentComponent>(
             camera, lux::ecs::ViewPresentComponent{{61, 2}, 7, {640, 360}});
-        lux::ecs::RenderSystemStages render_builder;
-        if (!expect(static_cast<bool>(render_builder.add(
-                        std::make_unique<lux::ecs::CameraViewSubsystem>())),
-                    "CameraViewSubsystem joins the success-path plan"))
-            return 1;
-        auto render_plan = render_builder.freeze();
-        if (!expect(static_cast<bool>(render_plan),
-                    "success-path render plan compiles"))
-            return 1;
+        std::vector<std::unique_ptr<lux::ecs::RenderStage>> render_stages;
+        lux::ecs::ActiveRenderView active_view;
         auto render_system = schedule.addSystem(
             std::make_unique<lux::ecs::RenderSystem>(
-                view_session, control_session,
-                lux::render::RenderUploadClient{},
+                render_binding,
+                active_view,
                 control_session.adoptScene(scene_id),
-                std::move(render_builder)),
+                std::move(render_stages)),
             lux::ecs::kPhaseRender);
         if (!expect(static_cast<bool>(render_system),
                     "RenderSystem installs for the success path"))
+            return 1;
+        if (!expect(static_cast<bool>(schedule.addSystem(
+                        std::make_unique<lux::ecs::CameraViewSystem>(
+                            render_binding,
+                            active_view),
+                        lux::ecs::kPhaseRender)),
+                    "CameraViewSystem installs for the success path"))
             return 1;
         schedule.tick(0.f);
         if (!expect(view_session.trySubmitFrame() &&

@@ -28,7 +28,7 @@ namespace lux::ecs
             return features;
         }
 
-        void extract(RenderSubsystemContext& context) override
+        void extract(RenderExtractContext& context) override
         {
             auto& registry = context.registry();
             auto& render = context.render();
@@ -115,22 +115,6 @@ namespace lux::ecs
             lux::render::SkyboxProxy{render.session(), operations}
                 .setEquirect(payload);
             last_ = next;
-        }
-
-        void close(RenderSubsystemContext& context) noexcept override
-        {
-            const auto feature = context.render().features().handle("Skybox");
-            const auto operations = context.render().features().ops<
-                lux::render::SkyboxOperationIds>("Skybox");
-            if (feature.isValid() && operations.valid())
-                clear(context.render(), operations, feature);
-        }
-
-        void closeScene(RenderSubsystemContext&) noexcept override
-        {
-            // DestroyScene owns renderer-side skybox state and needs no final
-            // Frame-lane command after the lexical frame has closed.
-            last_.reset();
         }
 
     private:

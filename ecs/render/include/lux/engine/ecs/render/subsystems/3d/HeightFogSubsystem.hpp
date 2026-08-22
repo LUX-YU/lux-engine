@@ -4,7 +4,6 @@
 #include <lux/engine/ecs/render/RenderBridgeDiagnostics.hpp>
 #include <lux/engine/ecs/render/components/3d/HeightFogComponent.hpp>
 #include <lux/engine/function/render/client/genops/FogOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/WaterOperation.ops.hpp>
 
 #include <algorithm>
 #include <array>
@@ -16,9 +15,9 @@
 
 namespace lux::ecs
 {
-    /// Bridges an optional singleton HeightFogComponent to both the Fog pass
-    /// and Water's atmospheric inputs. The ECS component is authoritative;
-    /// renderer-side copies are only dirty-diff caches.
+    /// Bridges an optional singleton HeightFogComponent to FogFeature. The
+    /// ECS component is authoritative; WaterFeature may consume FogFeature's
+    /// renderer-local state without creating a second ECS-to-render operation.
     class HeightFogSubsystem final : public RenderStage
     {
     public:
@@ -29,7 +28,7 @@ namespace lux::ecs
             return features;
         }
 
-        void extract(RenderSubsystemContext& context) override
+        void extract(RenderExtractContext& context) override
         {
             auto& registry = context.registry();
             lux::ecs::Entity selected = lux::ecs::kNullEntity;
@@ -77,20 +76,6 @@ namespace lux::ecs
             }
             invalid_reported_ = false;
             apply(context.render(), *next);
-        }
-
-        void close(RenderSubsystemContext& context) noexcept override
-        {
-            clear(context.render());
-        }
-
-        void closeScene(RenderSubsystemContext&) noexcept override
-        {
-            // The scene lease owns the renderer-side feature state. Scene
-            // shutdown runs after the final frame, so only discard the local
-            // diff cache; dynamic removal above still emits an explicit clear.
-            last_fog_.reset();
-            last_water_.reset();
         }
 
     private:
@@ -159,39 +144,17 @@ namespace lux::ecs
                 last_fog_ = state;
             }
 
-            const auto water_feature = render.features().handle("Water");
-            const auto water_operations = render.features().ops<
-                lux::render::WaterOperationIds>("Water");
-            if (water_feature.isValid() && water_operations.valid() &&
-                (!last_water_ || *last_water_ != state))
-            {
-                lux::render::WaterSetEnvironmentPayload payload{};
-                payload.scene_id = render.scene();
-                payload.feature = water_feature;
-                std::ranges::copy(state.color, payload.fog_color);
-                payload.fog_density = state.density;
-                payload.fog_start_distance = state.start_distance;
-                payload.fog_reference_height = state.reference_height;
-                payload.fog_height_falloff = state.height_falloff;
-                payload.fog_maximum_opacity = state.maximum_opacity;
-                payload.fog_enabled = state.enabled ? 1u : 0u;
-                lux::render::WaterProxy{render.session(), water_operations}
-                    .setEnvironment(payload);
-                last_water_ = state;
-            }
         }
 
         void clear(SceneRenderBinding& render)
         {
-            if (!last_fog_ && !last_water_)
+            if (!last_fog_)
                 return;
             apply(render, State{});
             last_fog_.reset();
-            last_water_.reset();
         }
 
         std::optional<State> last_fog_;
-        std::optional<State> last_water_;
         bool duplicate_reported_{false};
         bool invalid_reported_{false};
     };

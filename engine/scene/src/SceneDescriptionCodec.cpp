@@ -177,61 +177,6 @@ namespace lux::scene
             return true;
         }
 
-        void writeFeatureNames(
-            ByteWriter& writer,
-            const WireNameTable& names,
-            std::span<const std::string> features)
-        {
-            writer.u32(static_cast<std::uint32_t>(features.size()));
-            for (const auto& feature : features)
-                writer.u32(names.index(feature));
-        }
-
-        [[nodiscard]] bool readFeatureNames(
-            ByteReader& reader,
-            const WireNameTable& names,
-            std::vector<std::string>& features,
-            const SceneCodecLimits& limits,
-            DecodeAllocationBudget& budget) noexcept
-        {
-            std::uint32_t count = 0u;
-            if (!readCount(
-                    reader,
-                    limits.maximum_requirements,
-                    count,
-                    "render feature requirement count exceeds codec limit") ||
-                !prepareVector(
-                    reader,
-                    budget,
-                    features,
-                    count,
-                    sizeof(std::uint32_t),
-                    "render feature requirements cannot fit remaining input",
-                    "render feature requirements exceed decode allocation budget"))
-            {
-                return false;
-            }
-            for (auto& feature : features)
-            {
-                std::uint32_t name_index = 0u;
-                if (!reader.u32(name_index))
-                    return false;
-                const auto name = names.at(name_index);
-                if (name.empty() || !budget.consume(
-                        reader,
-                        name.size(),
-                        sizeof(char),
-                        "render feature names exceed decode allocation budget"))
-                {
-                    if (name.empty())
-                        reader.fail("render feature references an invalid name");
-                    return false;
-                }
-                feature.assign(name);
-            }
-            return true;
-        }
-
         [[nodiscard]] WireNameTable packageNames(const SceneDescription& package)
         {
             WireNameTable names;
@@ -239,10 +184,6 @@ namespace lux::scene
                 names,
                 package.required_extensions,
                 package.required_components);
-            for (const auto& feature : package.required_render_features)
-                names.add(feature);
-            for (const auto& feature : package.optional_render_features)
-                names.add(feature);
             for (const auto& section : package.sections)
             {
                 if (const auto* stored =
@@ -466,15 +407,6 @@ namespace lux::scene
         names.write(writer);
         writeUuid(writer, package.id);
         writeBlob(writer, package.spatial3d_catalog);
-        writeFeatureNames(
-            writer,
-            names,
-            package.required_render_features);
-        writeFeatureNames(
-            writer,
-            names,
-            package.optional_render_features);
-
         writer.u32(static_cast<std::uint32_t>(
             package.startup_sections.size()));
         for (const auto& section : package.startup_sections)
@@ -550,21 +482,6 @@ namespace lux::scene
         {
             return lux::cxx::unexpected(failure(
                 readerError(error), error));
-        }
-        if (!readFeatureNames(
-                reader,
-                names,
-                package.required_render_features,
-                limits,
-                budget) ||
-            !readFeatureNames(
-                reader,
-                names,
-                package.optional_render_features,
-                limits,
-                budget))
-        {
-            return lux::cxx::unexpected(failure(readerError(error), error));
         }
         std::uint32_t count = 0u;
         if (!readCount(

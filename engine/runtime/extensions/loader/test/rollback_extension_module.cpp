@@ -110,7 +110,7 @@ namespace
         // RefClass above was never published to the live registry.
         constexpr std::string_view kDuplicateSchema =
             "org.lux.test.component.dynamic_test_component";
-        lux::ecs::queueGeneratedComponent(
+        lux::ecs::GeneratedComponentDraftCapture::append(
             lux::ecs::ComponentSchemaDescriptor{
                 lux::cxx::typeToken<RollbackOnlyType>(),
                 {

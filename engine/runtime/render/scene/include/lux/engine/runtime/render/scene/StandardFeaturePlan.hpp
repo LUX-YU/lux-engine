@@ -37,9 +37,9 @@ namespace lux::runtime
     /// 定档)是**两根轴,组合而非合并**:profile 决定产品想装什么,档位协商
     /// 决定这台设备装不装得上。
     ///
-    /// 「pass 根」由 render-scene 集成显式拥有 —— ECS contribution 不是
-    /// **域**的属性(同一个 3D 游戏在两个平台都要跑,pack 一个字不变),把它
-    /// 写在 pack 里等于让「加一个平台」去改域的定义。
+    /// 「pass 根」由 render-scene 产品组合显式拥有。这里只列选择该 pipeline
+    /// 就必须存在、且与 World content 无关的 roots；具体 System/Stage 的能力
+    /// 由其冷装配代码追加。
     struct RenderProfile
     {
         std::string_view                  name{};        ///< FeatureAttach::profile 匹配键

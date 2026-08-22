@@ -49,7 +49,7 @@ int main()
     expect(!m.engine_version.empty(),               "makeDefault.engine_version filled");
     expect(m.default_world.empty(),                 "makeDefault.default_world initially empty");
     m.extensions.push_back(lux::authoring::ProjectExtensionEntry{
-        lux::authoring::ProjectExtensionId{"org.lux.physics2d"},
+        lux::extensions::ExtensionId{"org.lux.physics2d"},
         "Plugins/physics2d",
         lux::authoring::EProjectExtensionTarget::RUNTIME,
         1u,

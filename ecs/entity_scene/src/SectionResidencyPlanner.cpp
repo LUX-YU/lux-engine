@@ -165,6 +165,24 @@ namespace lux::ecs::entity_scene::residency
             value += added;
             return true;
         }
+
+        [[nodiscard]] const lux::ecs::scene_format::SectionRecord*
+        findRecord(
+            std::span<const lux::ecs::scene_format::SectionRecord> records,
+            lux::ecs::scene_format::EntitySectionId id) noexcept
+        {
+            const auto found = std::lower_bound(
+                records.begin(),
+                records.end(),
+                id,
+                [](const auto& record, const auto& target)
+                {
+                    return uuidLess(record.id, target);
+                });
+            return found != records.end() && found->id == id
+                ? &*found
+                : nullptr;
+        }
     }
 
     bool isValidSectionResidencyRecord(
@@ -175,7 +193,7 @@ namespace lux::ecs::entity_scene::residency
 
     SectionResidencyExp<SectionResidencyPlanner>
     SectionResidencyPlanner::create(
-        EntitySectionRecordStore records,
+        std::span<const lux::ecs::scene_format::SectionRecord> records,
         SectionResidencyBudget budget)
     {
         if (!budget.valid())
@@ -183,7 +201,7 @@ namespace lux::ecs::entity_scene::residency
             return lux::cxx::unexpected(SectionResidencyFailure{
                 .code = ESectionResidencyError::INVALID_BUDGET});
         }
-        return SectionResidencyPlanner{std::move(records), budget};
+        return SectionResidencyPlanner{records, budget};
     }
 
     SectionResidencyExp<SectionResidencyPlan>
@@ -362,7 +380,9 @@ namespace lux::ecs::entity_scene::residency
         {
             for (const auto& record : source.records)
             {
-                if (const auto* manifest_record = records_.find(record.id))
+                if (const auto* manifest_record = findRecord(
+                        records_,
+                        record.id))
                 {
                     if (*manifest_record != record)
                     {
@@ -411,7 +431,7 @@ namespace lux::ecs::entity_scene::residency
                 {
                     return &*generated;
                 }
-                return records_.find(id);
+                return findRecord(records_, id);
             };
             std::map<uuids::uuid, std::uint32_t> source_closure;
             for (const auto& demand : source.demands)

@@ -397,7 +397,8 @@ namespace lux::authoring
             for (std::uint32_t layer = 0u; layer < layer_count; ++layer)
             {
                 lux::authoring::DataLayerId id{reader.readString()};
-                if (!id.valid())
+                if (!id.isValid() ||
+                    !lux::authoring::isCanonicalWorldName(id.name()))
                 {
                     return false;
                 }
@@ -536,8 +537,11 @@ namespace lux::authoring
                 const auto known = std::ranges::find(
                     source.data_layers,
                     layer);
-                if (!layer.valid() || known == source.data_layers.end() ||
-                    !memberships.insert(layer.name()).second)
+                if (!layer.isValid() ||
+                    !lux::authoring::isCanonicalWorldName(layer.name()) ||
+                    known == source.data_layers.end() ||
+                    !memberships.insert(
+                        std::string{layer.name()}).second)
                 {
                     return false;
                 }

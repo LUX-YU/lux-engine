@@ -12,7 +12,7 @@
 #include <lux/engine/ecs/render/components/2d/Camera2DCacheComponent.hpp>
 #include <lux/engine/ecs/render/components/2d/Camera2DComponent.hpp>
 #include <lux/engine/ecs/render/subsystems/2d/Camera2DUploadSubsystem.hpp>
-#include <lux/engine/ecs/render/subsystems/2d/PixelField2DSubsystem.hpp>
+#include <lux/engine/ecs/render/systems/2d/PixelField2DSystem.hpp>
 #include <lux/engine/ecs/pixel/components/PixelField2DComponent.hpp>
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/genops/Canvas2DOperation.ops.hpp>
@@ -255,7 +255,7 @@ namespace
                 fixture_->control(),
                 fixture_->uploadClientForTest(),
                 scene_.scene_id);
-            binding_->setCatalog(features_);
+            (void)binding_->seal(features_);
             active_view_ = std::make_unique<lux::ecs::ActiveRenderView>(
                 scene_.view);
 
@@ -288,9 +288,9 @@ namespace
 
             camera_upload_ =
                 std::make_unique<lux::ecs::Camera2DUploadSubsystem>();
-            pixels_ = std::make_unique<lux::ecs::PixelField2DSubsystem>(
+            pixels_ = std::make_unique<lux::ecs::PixelField2DSystem>(
+                *binding_,
                 &pixels);
-            camera_upload_->onAdded(lux::ecs::SystemSetupContext{registry, {}});
             pixels_->onAdded(lux::ecs::SystemSetupContext{registry, {}});
             return true;
         }
@@ -315,17 +315,18 @@ namespace
                         lux::ecs::ResolvedTransform2DComponent>(entity);
                 }
             }
-            lux::ecs::RenderSubsystemContext context{
+            lux::ecs::RenderExtractContext context{
                 registry,
-                {},
                 *binding_,
                 *active_view_,
                 0.0f,
                 frame_index_++};
-            camera_upload_->prepare(context);
             camera_upload_->extract(context);
-            pixels_->prepare(context);
-            pixels_->extract(context);
+            pixels_->update(lux::ecs::SystemUpdateContext{
+                registry,
+                {},
+                0.0f,
+                frame_index_});
             fixture_->flush();
         }
 
@@ -421,19 +422,14 @@ namespace
             if (skipped_ || !fixture_)
                 return;
             auto& registry = world.registry();
-            lux::ecs::RenderSubsystemContext context{
+            lux::ecs::RenderExtractContext context{
                 registry,
-                {},
                 *binding_,
                 *active_view_,
                 0.0f,
                 frame_index_++};
-            pixels_->prepare(context);
-            pixels_->close(context);
-            camera_upload_->close(context);
+            pixels_->requestClose();
             pixels_->onRemoved(lux::ecs::SystemRemovalContext{registry});
-            camera_upload_->onRemoved(
-                lux::ecs::SystemRemovalContext{registry});
             if (registry.valid(camera_entity_))
                 registry.destroy(camera_entity_);
             fixture_->flush(4);
@@ -458,7 +454,7 @@ namespace
         std::unique_ptr<lux::ecs::SceneRenderBinding> binding_;
         std::unique_ptr<lux::ecs::ActiveRenderView> active_view_;
         std::unique_ptr<lux::ecs::Camera2DUploadSubsystem> camera_upload_;
-        std::unique_ptr<lux::ecs::PixelField2DSubsystem> pixels_;
+        std::unique_ptr<lux::ecs::PixelField2DSystem> pixels_;
         entt::entity camera_entity_{entt::null};
         std::vector<std::uint8_t> origin_mask_;
         std::uint64_t frame_index_{0u};

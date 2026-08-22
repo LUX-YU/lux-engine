@@ -1,8 +1,10 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 
 #include <lux/cxx/algorithm/hash.hpp>
+#include <lux/engine/meta/Meta.hpp>
 
 #include <algorithm>
+#include <exception>
 #include <type_traits>
 #include <utility>
 
@@ -32,11 +34,8 @@ namespace lux::ecs
 
     namespace
     {
-        std::vector<ComponentSchemaDescriptor>& pendingComponents() noexcept
-        {
-            static std::vector<ComponentSchemaDescriptor> descriptors;
-            return descriptors;
-        }
+        thread_local std::vector<ComponentSchemaDescriptor>*
+            generated_component_draft{};
 
         [[nodiscard]] ComponentCatalogFailure failure(
             EComponentCatalogError error,
@@ -48,6 +47,29 @@ namespace lux::ecs
                 std::string{name},
                 std::string{conflicting}};
         }
+    }
+
+    GeneratedComponentDraftCapture::GeneratedComponentDraftCapture(
+        std::vector<ComponentSchemaDescriptor>& output) noexcept
+    {
+        if (generated_component_draft != nullptr)
+            std::terminate();
+        generated_component_draft = &output;
+        active_ = true;
+    }
+
+    GeneratedComponentDraftCapture::~GeneratedComponentDraftCapture()
+    {
+        if (!active_ || generated_component_draft == nullptr)
+            std::terminate();
+        generated_component_draft = nullptr;
+    }
+
+    void GeneratedComponentDraftCapture::append(
+        ComponentSchemaDescriptor descriptor) noexcept
+    {
+        if (generated_component_draft != nullptr)
+            generated_component_draft->push_back(std::move(descriptor));
     }
 
     lux::cxx::expected<void, ComponentCatalogFailure>
@@ -116,6 +138,36 @@ namespace lux::ecs
         return {};
     }
 
+    ComponentTypeCatalog::PreparedRegistration::PreparedRegistration(
+        ComponentTypeCatalog& target,
+        std::vector<ComponentSchemaDescriptor> entries,
+        std::unordered_map<std::uint64_t, std::size_t> schema_index,
+        std::unordered_map<std::uint64_t, std::size_t> type_index,
+        std::size_t added_count) noexcept
+        : target_(&target),
+          entries_(std::move(entries)),
+          schema_index_(std::move(schema_index)),
+          type_index_(std::move(type_index)),
+          added_count_(added_count)
+    {}
+
+    std::size_t
+    ComponentTypeCatalog::PreparedRegistration::commit() noexcept
+    {
+        if (target_ == nullptr)
+            std::terminate();
+        const auto added = added_count_;
+        if (added != 0u)
+        {
+            target_->entries_.swap(entries_);
+            target_->schema_index_.swap(schema_index_);
+            target_->type_index_.swap(type_index_);
+        }
+        target_ = nullptr;
+        added_count_ = 0u;
+        return added;
+    }
+
     ComponentTypeCatalog::RegisterSchemaResult
     ComponentTypeCatalog::registerSchema(ComponentSchemaDescriptor descriptor)
     {
@@ -126,8 +178,9 @@ namespace lux::ecs
         return &entries_.back();
     }
 
-    ComponentTypeCatalog::RegisterSchemasResult
-    ComponentTypeCatalog::registerSchemas(std::span<const ComponentSchemaDescriptor> descriptors)
+    ComponentTypeCatalog::PrepareSchemasResult
+    ComponentTypeCatalog::prepareSchemas(
+        std::span<const ComponentSchemaDescriptor> descriptors)
     {
         std::vector<ComponentSchemaDescriptor> prepared;
         prepared.reserve(descriptors.size());
@@ -146,7 +199,10 @@ namespace lux::ecs
         }
 
         if (prepared.empty())
-            return 0u;
+        {
+            return PreparedRegistration{
+                *this, {}, {}, {}, 0u};
+        }
 
         if (prepared.size() > entries_.max_size() - entries_.size())
         {
@@ -164,6 +220,11 @@ namespace lux::ecs
         // descriptor visible through all() but absent from one lookup index.
         // Any allocation failure while constructing these candidates leaves
         // the live entries and indexes untouched.
+        auto next_entries = entries_;
+        next_entries.reserve(final_size);
+        for (auto& descriptor : prepared)
+            next_entries.push_back(std::move(descriptor));
+
         auto next_schema_index = schema_index_;
         auto next_type_index = type_index_;
         next_schema_index.reserve(final_size);
@@ -172,7 +233,7 @@ namespace lux::ecs
         for (std::size_t offset = 0u; offset < prepared.size(); ++offset)
         {
             const auto index = first_index + offset;
-            const auto& descriptor = prepared[offset];
+            const auto& descriptor = next_entries[index];
             const auto [schema_position, schema_inserted] =
                 next_schema_index.emplace(descriptor.schema_id.hash, index);
             if (!schema_inserted)
@@ -180,7 +241,7 @@ namespace lux::ecs
                 const auto existing_index = schema_position->second;
                 const auto& existing = existing_index < first_index
                     ? entries_[existing_index]
-                    : prepared[existing_index - first_index];
+                    : next_entries[existing_index];
                 const auto error =
                     existing.schema_id.name == descriptor.schema_id.name
                     ? EComponentCatalogError::DUPLICATE_SCHEMA_NAME
@@ -198,7 +259,7 @@ namespace lux::ecs
                 const auto existing_index = type_position->second;
                 const auto& existing = existing_index < first_index
                     ? entries_[existing_index]
-                    : prepared[existing_index - first_index];
+                    : next_entries[existing_index];
                 const auto error =
                     existing.cpp_type.name() == descriptor.cpp_type.name()
                     ? EComponentCatalogError::DUPLICATE_CPP_TYPE
@@ -210,19 +271,22 @@ namespace lux::ecs
             }
         }
 
-        // From this point onward commit cannot fail: capacity is acquired
-        // before entries_ changes, descriptors are noexcept-movable, and the
-        // default-allocator map swaps are noexcept. Thus an exception from any
-        // candidate allocation above has the same strong guarantee as an
-        // ordinary validation failure without requiring catch/throw code.
-        static_assert(std::is_nothrow_move_constructible_v<
-            ComponentSchemaDescriptor>);
-        entries_.reserve(final_size);
-        for (auto& descriptor : prepared)
-            entries_.push_back(std::move(descriptor));
-        schema_index_.swap(next_schema_index);
-        type_index_.swap(next_type_index);
-        return descriptors.size();
+        return PreparedRegistration{
+            *this,
+            std::move(next_entries),
+            std::move(next_schema_index),
+            std::move(next_type_index),
+            descriptors.size()};
+    }
+
+    ComponentTypeCatalog::RegisterSchemasResult
+    ComponentTypeCatalog::registerSchemas(
+        std::span<const ComponentSchemaDescriptor> descriptors)
+    {
+        auto prepared = prepareSchemas(descriptors);
+        if (!prepared)
+            return lux::cxx::unexpected(std::move(prepared.error()));
+        return prepared->commit();
     }
 
     ComponentTypeCatalog::ValidationResult
@@ -285,28 +349,21 @@ namespace lux::ecs
         return entries_;
     }
 
-    void queueGeneratedComponent(ComponentSchemaDescriptor descriptor) noexcept
+    ComponentCatalogExp<std::size_t> initializeGeneratedMetadata(
+        ComponentTypeCatalog& catalog)
     {
-        pendingComponents().push_back(std::move(descriptor));
-    }
-
-    lux::cxx::expected<std::size_t, ComponentCatalogFailure>
-    registerGeneratedComponents(ComponentTypeCatalog& catalog)
-    {
-        auto& pending = pendingComponents();
-        auto result = catalog.registerSchemas(pending);
-        if (result)
-            pending.clear();
-        return result;
-    }
-
-    std::vector<ComponentSchemaDescriptor>
-    takeGeneratedComponents() noexcept
-    {
-        auto& pending = pendingComponents();
-        auto result = std::move(pending);
-        pending.clear();
-        return result;
+        if (lux::meta::ReflectionRegistry::initialized())
+        {
+            return lux::cxx::unexpected(failure(
+                EComponentCatalogError::INVALID_DESCRIPTOR,
+                "generated metadata already drained"));
+        }
+        std::vector<ComponentSchemaDescriptor> descriptors;
+        {
+            GeneratedComponentDraftCapture capture{descriptors};
+            lux::meta::meta_module_init();
+        }
+        return catalog.registerSchemas(descriptors);
     }
 
     ComponentCatalogValidationResult validateComponentSchemas(

@@ -1,4 +1,5 @@
-#include <lux/engine/ecs/render/subsystems/CameraViewSubsystem.hpp>
+#include <lux/engine/ecs/render/systems/CameraViewSystem.hpp>
+#include <lux/engine/ecs/render/systems/RenderSystem.hpp>
 
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/ecs/EcsCommandBuffer.hpp>
@@ -14,57 +15,57 @@ namespace lux::ecs
 {
     /// 本系统的全部延迟动作。**值命令**,不是闭包 —— 载荷至多一个实体 id,生产者
     /// 由槽位代次认。`apply` 的实现放在 `Impl` 定义之后(它们要碰 Impl 的状态)。
-    struct CameraViewSubsystem::Commands
+    struct CameraViewSystem::Commands
     {
         /// 有实体想出图了(on_construct,或连信号时折入的存量)。
         struct AddViewRequested
         {
-            using Producer = CameraViewSubsystem;
+            using Producer = CameraViewSystem;
             entt::entity entity{};
             [[nodiscard]] std::size_t registryPublicationBytes()
                 const noexcept { return 0u; }
             void prepareRegistryPublication(
                 lux::ecs::Registry&) const noexcept {}
-            void apply(lux::ecs::Registry&, CameraViewSubsystem&) const;
+            void apply(lux::ecs::Registry&, CameraViewSystem&) const;
         };
 
         /// 出图意图变了(target / order)。Android 的 surface 重建走这条。
         struct LayerRefreshRequested
         {
-            using Producer = CameraViewSubsystem;
+            using Producer = CameraViewSystem;
             entt::entity entity{};
             [[nodiscard]] std::size_t registryPublicationBytes()
                 const noexcept { return 0u; }
             void prepareRegistryPublication(
                 lux::ecs::Registry&) const noexcept {}
-            void apply(lux::ecs::Registry&, CameraViewSubsystem&) const;
+            void apply(lux::ecs::Registry&, CameraViewSystem&) const;
         };
 
         /// 摘掉了「要出图」→ 把绑定也摘掉;真正的 removeView 由绑定的 lease 析构发。
         struct ViewBindingDropRequested
         {
-            using Producer = CameraViewSubsystem;
+            using Producer = CameraViewSystem;
             entt::entity entity{};
             [[nodiscard]] std::size_t registryPublicationBytes()
                 const noexcept { return 0u; }
             void prepareRegistryPublication(
                 lux::ecs::Registry&) const noexcept {}
-            void apply(lux::ecs::Registry&, CameraViewSubsystem&) const;
+            void apply(lux::ecs::Registry&, CameraViewSystem&) const;
         };
 
         /// 绑定没了 —— 桥不再面向任何 view。
         struct ActiveViewCleared
         {
-            using Producer = CameraViewSubsystem;
+            using Producer = CameraViewSystem;
             [[nodiscard]] std::size_t registryPublicationBytes()
                 const noexcept { return 0u; }
             void prepareRegistryPublication(
                 lux::ecs::Registry&) const noexcept {}
-            void apply(lux::ecs::Registry&, CameraViewSubsystem&) const;
+            void apply(lux::ecs::Registry&, CameraViewSystem&) const;
         };
     };
 
-    struct CameraViewSubsystem::Impl final
+    struct CameraViewSystem::Impl final
     {
         lux::render::RenderControlSession*  control{nullptr};
         lux::render::RenderSceneId          scene_id{};
@@ -77,7 +78,7 @@ namespace lux::ecs
         EcsCommandWriter                    commands{};
 
         /// 只作主线程身份比较；World 按契约晚于系统析构。
-        lux::ecs::RegistryBase* attached{nullptr};
+        lux::ecs::Registry* attached{nullptr};
         entt::scoped_connection present_constructed_connection{};
         entt::scoped_connection present_updated_connection{};
         entt::scoped_connection present_destroyed_connection{};
@@ -110,7 +111,7 @@ namespace lux::ecs
             // 唯一可能:系统还没被 addSystem 收下(没有 writer)。响亮说出来 ——
             // 静默丢弃的后果是「这台相机永远没有 view」,症状是黑屏零报错。
             diagnoseRenderBridge(
-                "[CameraViewSubsystem] {} command dropped — the subsystem has no "
+                "[CameraViewSystem] {} command dropped — the subsystem has no "
                 "command writer (not installed into a Schedule?)", what);
         }
 
@@ -216,7 +217,7 @@ namespace lux::ecs
                     //   零层,症状是黑屏零报错。这里是唯一能说出「为什么」的时刻。
                     const auto reason = req.failed() ? req.error() : req.tryResult()->get().error;
                     diagnoseRenderBridge(
-                        "[CameraViewSubsystem] addView {} for camera entity {} — this "
+                        "[CameraViewSystem] addView {} for camera entity {} — this "
                         "camera will never present (no view, no layer): {}",
                         req.failed() ? "failed in dispatch" : "was rejected",
                         static_cast<unsigned>(entt::to_integral(e)),
@@ -230,7 +231,7 @@ namespace lux::ecs
                     {
                         if (ok.code != 0)
                             diagnoseRenderBridge(
-                                "[CameraViewSubsystem] view lease release(view {}) "
+                                "[CameraViewSystem] view lease release(view {}) "
                                 "was rejected: {}",
                                 static_cast<unsigned>(view.index),
                                 lux::render::formatRenderError(
@@ -266,7 +267,7 @@ namespace lux::ecs
 
         // ── 信号连接 ──────────────────────────────────────────────────────
 
-        void attach(lux::ecs::RegistryBase& r)
+        void attach(lux::ecs::Registry& r)
         {
             if (attached == &r) return;
             detach();
@@ -311,24 +312,24 @@ namespace lux::ecs
 
     // ── 命令的实现。放在 Impl 之后:它们要碰 Impl 的状态 ──────────────────────
 
-    void CameraViewSubsystem::Commands::AddViewRequested::apply(
-        lux::ecs::Registry& reg, CameraViewSubsystem& sys) const
+    void CameraViewSystem::Commands::AddViewRequested::apply(
+        lux::ecs::Registry& reg, CameraViewSystem& sys) const
     {
         if (sys.impl_->closing)
             return;
         sys.impl_->issueAddView(reg, entity);
     }
 
-    void CameraViewSubsystem::Commands::LayerRefreshRequested::apply(
-        lux::ecs::Registry& reg, CameraViewSubsystem& sys) const
+    void CameraViewSystem::Commands::LayerRefreshRequested::apply(
+        lux::ecs::Registry& reg, CameraViewSystem& sys) const
     {
         if (sys.impl_->closing)
             return;
         sys.impl_->relayer(reg, entity);
     }
 
-    void CameraViewSubsystem::Commands::ViewBindingDropRequested::apply(
-        lux::ecs::Registry& reg, CameraViewSubsystem& sys) const
+    void CameraViewSystem::Commands::ViewBindingDropRequested::apply(
+        lux::ecs::Registry& reg, CameraViewSystem& sys) const
     {
         if (sys.impl_->closing)
             return;
@@ -337,8 +338,8 @@ namespace lux::ecs
         sys.impl_->dropBinding(reg, entity);
     }
 
-    void CameraViewSubsystem::Commands::ActiveViewCleared::apply(
-        lux::ecs::Registry&, CameraViewSubsystem& sys) const
+    void CameraViewSystem::Commands::ActiveViewCleared::apply(
+        lux::ecs::Registry&, CameraViewSystem& sys) const
     {
         if (sys.impl_->closing)
             return;
@@ -348,14 +349,19 @@ namespace lux::ecs
     }
 
     // -------------------------------------------------------------------------
-    CameraViewSubsystem::CameraViewSubsystem()
+    CameraViewSystem::CameraViewSystem(
+        SceneRenderBinding& binding,
+        ActiveRenderView& active_view)
         : impl_(std::make_unique<Impl>())
     {
+        impl_->control = &binding.control();
+        impl_->scene_id = binding.scene();
+        impl_->active_view = &active_view;
     }
 
-    CameraViewSubsystem::~CameraViewSubsystem() = default;
+    CameraViewSystem::~CameraViewSystem() = default;
 
-    void CameraViewSubsystem::onAdded(
+    void CameraViewSystem::onAdded(
         const lux::ecs::SystemSetupContext& setup)
     {
         // 先收下 writer,再连信号 —— 折入存量要往分片里写,顺序反了就静默丢一批。
@@ -364,22 +370,13 @@ namespace lux::ecs
         impl_->attach(setup.registry());
     }
 
-    void CameraViewSubsystem::onRemoved(
+    void CameraViewSystem::onRemoved(
         const lux::ecs::SystemRemovalContext&)
     {
         impl_->detach();
     }
 
-    void CameraViewSubsystem::prepare(
-        RenderSubsystemContext& context) noexcept
-    {
-        auto& render = context.render();
-        impl_->control = &render.control();
-        impl_->scene_id = render.scene();
-        impl_->active_view = &context.activeView();
-    }
-
-    void CameraViewSubsystem::extract(RenderSubsystemContext& context)
+    void CameraViewSystem::update(const SystemUpdateContext& context)
     {
         auto& registry = context.registry();
 
@@ -394,60 +391,52 @@ namespace lux::ecs
 
     }
 
-    void CameraViewSubsystem::settle(RenderSubsystemContext& context)
+    void CameraViewSystem::requestClose() noexcept
     {
-        auto& registry = context.registry();
-        // attach 已在 onAdded 做过;把 addView 请求发出去的那次排空归调用方
-        // (`SceneRuntime::settleViewCreation` 先调 `Schedule::applyCommandBarrier()`)
-        // —— 本系统不再自己开第二个 apply 点。
-        if (impl_->pending.empty()) return;
-
-        // 裸指针而非 shared_ptr:这是一次**同线程的阻塞等待**,本系统在整个调用期间
-        // 必然活着(调用它的正是拥有它的那条装配路径)。
-        auto* const state = impl_.get();
-        const auto all_ready = [state] {
-            for (auto& [e, req] : state->pending)
-                if (!req.isReady()) return false;
-            return true;
-        };
-        if (!impl_->control->awaitAllReady(all_ready))
-            return;   // 通道已停：宿主正在退出，装不装 view 都不再重要
-
-        impl_->applyReady(registry);
-    }
-
-    void CameraViewSubsystem::close(
-        RenderSubsystemContext& context) noexcept
-    {
-        // A Scene may close while it is still in kPhaseSceneLoading. In that
-        // case the ordinary render update (and therefore prepare()) has never
-        // run, but close still owns a complete context. Bind the two borrowed
-        // resources here as well so observer commands emitted by component
-        // removal can be drained by the close barrier safely.
-        impl_->control = &context.render().control();
-        impl_->active_view = &context.activeView();
+        if (impl_->closing)
+            return;
         impl_->closing = true;
+        auto* const registry = impl_->attached;
         impl_->detach();
-        auto& registry = context.registry();
         for (const auto& [_, layer] : impl_->layers)
         {
             impl_->control->removeLayer(layer.target, layer.order);
         }
         impl_->layers.clear();
+        if (registry == nullptr)
+        {
+            impl_->pending.clear();
+            impl_->active_view->setView({});
+            return;
+        }
         std::vector<entt::entity> bound;
-        for (const auto e : registry.view<RenderViewBindingComponent>())
+        for (const auto e : registry->view<RenderViewBindingComponent>())
             bound.push_back(e);
 
         for (const auto e : bound)
         {
-            if (!registry.valid(e) || !registry.all_of<RenderViewBindingComponent>(e))
+            if (!registry->valid(e) ||
+                !registry->all_of<RenderViewBindingComponent>(e))
                 continue;
-            (void)registry.get<RenderViewBindingComponent>(e).close();
-            registry.remove<RenderViewBindingComponent>(e);
+            (void)registry->get<RenderViewBindingComponent>(e).close();
+            registry->remove<RenderViewBindingComponent>(e);
         }
 
         impl_->pending.clear();
         impl_->active_view->setView({});
+    }
+
+    bool CameraViewSystem::closeComplete() const noexcept
+    {
+        return impl_->closing;
+    }
+
+    std::span<const CameraViewSystem::Type>
+    CameraViewSystem::runsAfter() const noexcept
+    {
+        static constexpr Type dependencies[]{
+            lux::cxx::typeToken<RenderSystem>()};
+        return dependencies;
     }
 
 } // namespace lux::ecs

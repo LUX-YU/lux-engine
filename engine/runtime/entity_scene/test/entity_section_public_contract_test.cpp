@@ -1,7 +1,6 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/entity_scene/EntityBatchDecoder.hpp>
 #include <lux/engine/ecs/entity_scene/EntityBatchStager.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/ecs/entity_scene/PreparedEntityBatch.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 
@@ -16,7 +15,6 @@ namespace
     using lux::ecs::entity_scene::ContentBlobLease;
     using lux::ecs::entity_scene::DecodedEntityBatch;
     using lux::ecs::entity_scene::EntityBatchStager;
-    using lux::runtime::entity_scene::EntitySceneCatalog;
     using lux::ecs::entity_scene::PreparedEntityBatch;
 
     static_assert(std::same_as<
@@ -28,10 +26,6 @@ namespace
     static_assert(std::same_as<
         decltype(std::declval<const ContentBlobLease&>().reference()),
         const lux::ecs::scene_format::ContentBlobRef&>);
-    static_assert(std::same_as<
-        decltype(std::declval<const EntitySceneCatalog&>().package()),
-        const lux::scene::SceneDescription&>);
-
     static_assert(!std::default_initializable<EntityBatchStager>);
     static_assert(std::constructible_from<
         EntityBatchStager,

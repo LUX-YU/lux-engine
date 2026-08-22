@@ -1,4 +1,4 @@
-#include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
+#include <lux/engine/toolchain/spatial3d_scene/Spatial3DSceneCooker.hpp>
 
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
@@ -159,7 +159,7 @@ namespace
             actor.components,
             actor_names,
             "lux::ecs::Transform3DComponent");
-        // Deliberately sparse legacy payload.  The adapter must apply current
+        // Deliberately sparse legacy payload.  The cooker must apply current
         // defaults and emit the complete exact PointLight schema.
         appendComponent(
             actor.components,
@@ -298,16 +298,15 @@ namespace
 
 int main()
 {
-    lux::meta::meta_module_init();
     lux::ecs::ComponentTypeCatalog components;
-    const auto registered = lux::ecs::registerGeneratedComponents(components);
+    const auto registered = lux::ecs::initializeGeneratedMetadata(components);
     assert(registered && *registered != 0u);
 
     const auto source = sourceFixture();
     const auto mesh_assets = meshAssetFixture();
-    const auto first = lux::toolchain::adaptSpatial3DEntityScene(
+    const auto first = lux::toolchain::cookSpatial3DEntityScene(
         source, components, mesh_assets);
-    const auto second = lux::toolchain::adaptSpatial3DEntityScene(
+    const auto second = lux::toolchain::cookSpatial3DEntityScene(
         source, components, mesh_assets);
     assert(first && second);
     assert(first->encoded_package == second->encoded_package);
@@ -316,11 +315,11 @@ int main()
     unknown_component_source.actors.front().components.front().schema_name =
         "org.lux.test.unregistered_component";
     const auto unknown_component =
-        lux::toolchain::adaptSpatial3DEntityScene(
+        lux::toolchain::cookSpatial3DEntityScene(
             unknown_component_source, components, mesh_assets);
     assert(!unknown_component);
     assert(unknown_component.error().code ==
-        lux::toolchain::ESpatial3DEntitySceneAdapterError::
+        lux::toolchain::ESpatial3DSceneCookError::
             MISSING_COMPONENT_SCHEMA);
 
     assert(first->generated_meshes.size() == 1u);
@@ -342,7 +341,7 @@ int main()
         changed_mesh_assets.meshes.front().id, changed_source_mesh);
     assert(changed_source_image);
     changed_mesh_assets.meshes.front().encoded_image = *changed_source_image;
-    const auto changed = lux::toolchain::adaptSpatial3DEntityScene(
+    const auto changed = lux::toolchain::cookSpatial3DEntityScene(
         source, components, changed_mesh_assets);
     assert(changed && changed->generated_meshes.size() == 1u);
     assert(changed->generated_meshes.front().id !=
@@ -355,11 +354,11 @@ int main()
     assert(mismatched_source_image);
     mismatched_mesh_assets.meshes.front().encoded_image =
         *mismatched_source_image;
-    const auto mismatched = lux::toolchain::adaptSpatial3DEntityScene(
+    const auto mismatched = lux::toolchain::cookSpatial3DEntityScene(
         source, components, mismatched_mesh_assets);
     assert(!mismatched);
     assert(mismatched.error().code ==
-        lux::toolchain::ESpatial3DEntitySceneAdapterError::
+        lux::toolchain::ESpatial3DSceneCookError::
             CLASSIC_MESH_CONTENT_REJECTED);
 
     const auto generated_mesh = lux::asset::MeshSerDeser::decodeData(
@@ -602,9 +601,9 @@ int main()
         saw_generated_hlod_reference);
     assert(classic_attachment_count == 4u);
 
-    lux::toolchain::Spatial3DEntitySceneAdapterConfig custom_config;
+    lux::toolchain::Spatial3DSceneCookerConfig custom_config;
     custom_config.section_content_prefix = "/Game/TestEntitySections/";
-    const auto custom = lux::toolchain::adaptSpatial3DEntityScene(
+    const auto custom = lux::toolchain::cookSpatial3DEntityScene(
         source, components, mesh_assets, custom_config);
     assert(custom);
     for (const auto& section : custom->sections)
@@ -618,29 +617,29 @@ int main()
 
     custom_config.section_content_prefix = "Game/EntitySections";
     const auto invalid_prefix =
-        lux::toolchain::adaptSpatial3DEntityScene(
+        lux::toolchain::cookSpatial3DEntityScene(
             source, components, mesh_assets, custom_config);
     assert(!invalid_prefix);
     assert(invalid_prefix.error().code ==
-        lux::toolchain::ESpatial3DEntitySceneAdapterError::INVALID_ARGUMENT);
+        lux::toolchain::ESpatial3DSceneCookError::INVALID_ARGUMENT);
 
-    const auto missing_mesh = lux::toolchain::adaptSpatial3DEntityScene(
+    const auto missing_mesh = lux::toolchain::cookSpatial3DEntityScene(
         source,
         components,
         lux::toolchain::Spatial3DMeshAssetCatalog{});
     assert(!missing_mesh);
     assert(missing_mesh.error().code ==
-        lux::toolchain::ESpatial3DEntitySceneAdapterError::
+        lux::toolchain::ESpatial3DSceneCookError::
             CLASSIC_MESH_CONTENT_REJECTED);
 
-    lux::toolchain::Spatial3DEntitySceneAdapterConfig bounded_config;
+    lux::toolchain::Spatial3DSceneCookerConfig bounded_config;
     bounded_config.visual_lod_max_merged_vertices = 4u;
     bounded_config.visual_lod_max_merged_indices = 6u;
-    const auto over_budget = lux::toolchain::adaptSpatial3DEntityScene(
+    const auto over_budget = lux::toolchain::cookSpatial3DEntityScene(
         source, components, mesh_assets, bounded_config);
     assert(!over_budget);
     assert(over_budget.error().code ==
-        lux::toolchain::ESpatial3DEntitySceneAdapterError::
+        lux::toolchain::ESpatial3DSceneCookError::
             CLASSIC_MESH_CONTENT_REJECTED);
 
     // Adjacent authored Terrain Cells produce matching semantic portals in
@@ -654,7 +653,7 @@ int main()
     auto adjacent_terrain = portal_source.terrain_pages.front();
     adjacent_terrain.cell = {1, 0, 0};
     portal_source.terrain_pages.push_back(std::move(adjacent_terrain));
-    const auto portal_bundle = lux::toolchain::adaptSpatial3DEntityScene(
+    const auto portal_bundle = lux::toolchain::cookSpatial3DEntityScene(
         portal_source, components, mesh_assets);
     assert(portal_bundle);
     const auto portal_catalog =
@@ -756,11 +755,11 @@ int main()
 
     auto malformed = source;
     malformed.actors.front().name_table.pop_back();
-    const auto rejected = lux::toolchain::adaptSpatial3DEntityScene(
+    const auto rejected = lux::toolchain::cookSpatial3DEntityScene(
         malformed, components, mesh_assets);
     assert(!rejected);
     assert(rejected.error().code ==
-        lux::toolchain::ESpatial3DEntitySceneAdapterError::
+        lux::toolchain::ESpatial3DSceneCookError::
             INVALID_COMPONENT_PAYLOAD);
     return 0;
 }

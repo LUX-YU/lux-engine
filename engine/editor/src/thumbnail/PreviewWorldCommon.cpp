@@ -1,11 +1,12 @@
 #include "thumbnail/PreviewWorldCommon.hpp"
 
 #include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/SystemPhase.hpp>
 #include <lux/engine/ecs/transform/systems/Transform3DSystem.hpp>
 #include <lux/engine/ecs/render/systems/3d/Camera3DSystem.hpp>
 #include <lux/engine/ecs/animation/systems/AnimationSystem.hpp>
 #include <lux/engine/ecs/render/subsystems/ResidencySubsystem.hpp>
-#include <lux/engine/ecs/render/RenderSystemStages.hpp>
+#include <lux/engine/ecs/render/RenderStage.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/MeshSubsystems.hpp>          // MeshSubsystem
 #include <lux/engine/ecs/render/subsystems/3d/Camera3DUploadSubsystem.hpp>
 #include <lux/engine/ecs/render/subsystems/3d/LightSubsystems.hpp>         // DirectionalLightSubsystem
@@ -23,8 +24,11 @@
 
 namespace lux::editor
 {
-    bool installPreviewWorldSystems(lux::ecs::ScheduleBuilder& builder)
+    bool installPreviewWorldSystems(
+        lux::ecs::ScheduleBuilder& builder,
+        const lux::scene::SceneDescription& description)
     {
+        (void)description;
         const auto checkpoint = builder.checkpoint();
         if (!builder.add(
                 std::make_unique<lux::ecs::Transform3DSystem>()) ||
@@ -36,30 +40,54 @@ namespace lux::editor
             (void)builder.rollbackTo(checkpoint);
             return false;
         }
+        return true;
+    }
+
+    bool installPreviewRendering(
+        lux::ecs::ScheduleBuilder& builder,
+        const lux::scene::SceneDescription&,
+        std::vector<std::unique_ptr<lux::ecs::RenderStage>>& stages,
+        std::vector<std::string_view>& feature_roots,
+        lux::ecs::ResidencySubsystem& residency)
+    {
         auto* const render = builder.services().borrow<
-            lux::ecs::RenderSystemStages>();
-        auto* const residency = builder.services().borrow<
-            lux::ecs::ResidencySubsystem>();
-        if (!render || !residency)
-        {
-            (void)builder.rollbackTo(checkpoint);
+            lux::ecs::SceneRenderBinding>();
+        auto* const active_view = builder.services().borrow<
+            lux::ecs::ActiveRenderView>();
+        if (!render || !active_view)
             return false;
-        }
-        residency->resolveMeshOf<
+        residency.resolveMeshOf<
             lux::ecs::MeshComponent,
             &lux::ecs::MeshComponent::mesh_asset_id,
             &lux::ecs::MeshComponent::material_asset_id>();
-        const auto node = [render](auto system)
+        const auto mesh_requirements =
+            lux::ecs::MeshSubsystem::requiredRenderFeatures();
+        feature_roots.insert(
+            feature_roots.end(),
+            mesh_requirements.begin(),
+            mesh_requirements.end());
+        if (!builder.add(
+                std::make_unique<lux::ecs::MeshSubsystem>(
+                    *render, *active_view),
+                lux::ecs::kPhaseRender))
         {
-            return render->add(std::move(system)).has_value();
-        };
-        if (!node(std::make_unique<lux::ecs::MeshSubsystem>()) ||
-            !node(std::make_unique<lux::ecs::DirectionalLightSubsystem>()) ||
-            !node(std::make_unique<lux::ecs::Camera3DUploadSubsystem>()))
-        {
-            (void)builder.rollbackTo(checkpoint);
             return false;
         }
+        const auto light_requirements =
+            lux::ecs::DirectionalLightSubsystem::requiredRenderFeatures();
+        feature_roots.insert(
+            feature_roots.end(),
+            light_requirements.begin(),
+            light_requirements.end());
+        if (!builder.add(
+                std::make_unique<lux::ecs::DirectionalLightSubsystem>(
+                    *render, *active_view),
+                lux::ecs::kPhaseRender))
+        {
+            return false;
+        }
+        stages.push_back(
+            std::make_unique<lux::ecs::Camera3DUploadSubsystem>());
         return true;
     }
 
@@ -122,7 +150,7 @@ namespace lux::editor
             cc.aspect      = 1.f;
             cc.auto_aspect = auto_aspect;
         }
-        // 相机拥有 view:挂 ViewPresentComponent,CameraViewSubsystem 建 view 并合成
+        // 相机拥有 view:挂 ViewPresentComponent,CameraViewSystem 建 view 并合成
         // 到宿主的 target;摘掉/销毁则还回去(与编辑器视口相机同一条缝)。
         world.emplace<lux::ecs::ViewPresentComponent>(e,
             lux::ecs::ViewPresentComponent{target, 0u, extent});

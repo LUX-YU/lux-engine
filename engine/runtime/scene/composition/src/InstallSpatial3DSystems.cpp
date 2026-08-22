@@ -1,11 +1,9 @@
 #include <lux/engine/runtime/scene/composition/InstallSpatial3DSystems.hpp>
 
 #include <lux/engine/ecs/scene_format/spatial3d/SceneCatalog.hpp>
-#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/Spatial3DSectionSource.hpp>
 #include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
-#include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
 #include <lux/engine/ecs/entity_scene/residency/SectionResidencyPlanner.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
@@ -36,6 +34,24 @@ namespace lux::runtime
                 });
         }
 
+        [[nodiscard]] const lux::ecs::scene_format::SectionRecord*
+        findSection(
+            std::span<const lux::ecs::scene_format::SectionRecord> records,
+            lux::ecs::scene_format::EntitySectionId id) noexcept
+        {
+            const auto found = std::lower_bound(
+                records.begin(),
+                records.end(),
+                id,
+                [](const auto& record, const auto& target)
+                {
+                    return record.id.value() < target.value();
+                });
+            return found != records.end() && found->id == id
+                ? &*found
+                : nullptr;
+        }
+
         struct ValidatedCatalog final
         {
             lux::ecs::entity_scene::residency::SectionResidencyBudget budget;
@@ -44,7 +60,7 @@ namespace lux::runtime
 
         [[nodiscard]] std::optional<ValidatedCatalog>
         validateAndBuildCatalog(
-            const entity_scene::EntitySceneCatalog& scene,
+            const lux::scene::SceneDescription& scene,
             lux::ecs::scene_format::spatial3d::SceneCatalog config)
         {
             using lux::ecs::scene_format::spatial3d::SceneCatalogEntry;
@@ -81,7 +97,9 @@ namespace lux::runtime
             }
             for (const auto& entry : config.entries)
             {
-                const auto* const record = scene.findSection(entry.section);
+                const auto* const record = findSection(
+                    scene.sections,
+                    entry.section);
                 if (!record || entry.band >= config.bands.size() ||
                     !recordHasChannel(
                         *record,
@@ -96,7 +114,7 @@ namespace lux::runtime
                 }
             }
 
-            for (const auto& record : scene.sections())
+            for (const auto& record : scene.sections)
             {
                 std::optional<lux::ecs::scene_format::DemandChannelId>
                     record_catalog_channel;
@@ -193,13 +211,10 @@ namespace lux::runtime
 
     bool installSpatial3DSystems(
         lux::ecs::ScheduleBuilder& builder,
-        const lux::ecs::ComponentTypeCatalog& components)
+        const lux::ecs::ComponentTypeCatalog& components,
+        const lux::scene::SceneDescription& description)
     {
-        auto* const scene = builder.services().borrow<
-            entity_scene::EntitySceneCatalog>();
-        if (!scene)
-            return false;
-        if (scene->package().spatial3d_catalog.empty())
+        if (description.spatial3d_catalog.empty())
             return true;
 
         constexpr std::string_view required_components[]{
@@ -212,7 +227,7 @@ namespace lux::runtime
 
         const auto checkpoint = builder.checkpoint();
         auto decoded = lux::ecs::scene_format::spatial3d::decodeSceneCatalog(
-            scene->package().spatial3d_catalog);
+            description.spatial3d_catalog);
         auto* const sections = builder.services().borrow<
             lux::ecs::entity_scene::EntitySectionClient>();
         if (!decoded || !sections)
@@ -220,15 +235,16 @@ namespace lux::runtime
             (void)builder.rollbackTo(checkpoint);
             return false;
         }
-        auto validated = validateAndBuildCatalog(*scene, std::move(*decoded));
+        auto validated = validateAndBuildCatalog(
+            description,
+            std::move(*decoded));
         if (!validated)
         {
             (void)builder.rollbackTo(checkpoint);
             return false;
         }
         auto planner = lux::ecs::entity_scene::residency::SectionResidencyPlanner::create(
-            lux::ecs::entity_scene::residency::EntitySectionRecordStore{
-                scene->sections()},
+            description.sections,
             validated->budget);
         if (!planner)
         {

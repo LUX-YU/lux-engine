@@ -1,9 +1,9 @@
 #include <lux/engine/authoring/world/WorldSourceCodec.hpp>
 #include <lux/engine/editor/scene/DemoSceneTemplate.hpp>
-#include <lux/engine/editor/scene/WorldActorEcsAdapter.hpp>
+#include <lux/engine/editor/scene/WorldActorEcsConversion.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
-#include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
+#include <lux/engine/toolchain/spatial3d_scene/Spatial3DSceneCooker.hpp>
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
@@ -129,10 +129,9 @@ int main()
     namespace fs = std::filesystem;
     std::printf("=== LXAD -> LXSC/LXES round-trip ===\n");
 
-    lux::meta::meta_module_init();
     lux::ecs::ComponentTypeCatalog components;
     expect(
-        lux::ecs::registerGeneratedComponents(components).has_value(),
+        lux::ecs::initializeGeneratedMetadata(components).has_value(),
         "generated component schemas registered");
     expect(
         components.registerSchema(transientProbeDescriptor()).has_value(),
@@ -194,19 +193,23 @@ int main()
     expect(lux::ecs::setParent(source_registry, child, hello),
         "Authoring child linked to its transient ECS parent");
 
-    lux::editor::WorldActorEcsAdapter authoring{
-        components, source_persistent_entities};
-    auto hello_source = authoring.capture(
+    auto hello_source = lux::editor::serializeWorldActor(
+        components,
+        source_persistent_entities,
         source_registry,
         hello,
         world_id,
         "Hello");
-    auto peer_source = authoring.capture(
+    auto peer_source = lux::editor::serializeWorldActor(
+        components,
+        source_persistent_entities,
         source_registry,
         peer,
         world_id,
         "World");
-    auto child_source = authoring.capture(
+    auto child_source = lux::editor::serializeWorldActor(
+        components,
+        source_persistent_entities,
         source_registry,
         child,
         world_id,
@@ -271,10 +274,12 @@ int main()
             "org.lux.test.unregistered_component";
         lux::ecs::Registry rejected_registry;
         lux::ecs::PersistentEntityIndex rejected_ids{rejected_registry};
-        lux::editor::WorldActorEcsAdapter rejected_adapter{
-            components, rejected_ids};
-        const auto rejected = rejected_adapter.materialize(
-            unknown_component, rejected_registry, "unknown-schema fixture");
+        const auto rejected = lux::editor::materializeWorldActor(
+            components,
+            rejected_ids,
+            unknown_component,
+            rejected_registry,
+            "unknown-schema fixture");
         const auto rejected_entities =
             rejected_registry.view<entt::entity>();
         expect(

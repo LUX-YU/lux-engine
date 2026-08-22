@@ -68,7 +68,10 @@ lux_classify_target(
     ROLE    INTEGRATION
 )
 
-set(ENABLE_FRAME_RUNTIME_TEST OFF CACHE BOOL "Enable runtime frame tests")
-if(ENABLE_FRAME_RUNTIME_TEST)
+# Frame scope is an architectural contract: render-facing Systems run beside
+# RenderSystem, so a regression that narrows the lexical frame to one node is
+# a permanent Developer-profile test.  It must not enter Player/Android product
+# closures merely because BUILD_TESTING happens to be enabled globally.
+if(BUILD_TESTING AND LUX_BUILD_PROFILE STREQUAL "DEVELOPER")
     add_subdirectory(test)
 endif()

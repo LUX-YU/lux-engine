@@ -59,6 +59,7 @@ target_link_libraries(
     stduuid
     lux::cxx::compile_time
     lux::cxx::core
+    lux::engine::extensions::extension_identity
     PRIVATE
     tomlplusplus::tomlplusplus
 )
@@ -67,4 +68,5 @@ component_add_transitive_commands(
     project
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time core)"
+    "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_identity)"
 )

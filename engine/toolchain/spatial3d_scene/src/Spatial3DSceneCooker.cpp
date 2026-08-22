@@ -1,4 +1,4 @@
-#include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
+#include <lux/engine/toolchain/spatial3d_scene/Spatial3DSceneCooker.hpp>
 #include <lux/engine/toolchain/spatial3d_scene/detail/Spatial3DNavigationCook.hpp>
 
 #include <lux/engine/toolchain/entity_scene/EntitySectionImageBuilder.hpp>
@@ -55,24 +55,24 @@ namespace lux::toolchain
 {
     namespace
     {
-        using AdapterError = ESpatial3DEntitySceneAdapterError;
-        using AdapterFailure = Spatial3DEntitySceneAdapterFailure;
+        using CookError = ESpatial3DSceneCookError;
+        using CookFailure = Spatial3DSceneCookFailure;
         inline constexpr std::uint32_t kMaximumVisualLodChildren = 16u;
         inline constexpr std::uint32_t kMaximumVisualLodLevels = 3u;
 
-        [[nodiscard]] AdapterFailure failure(
-            AdapterError code,
+        [[nodiscard]] CookFailure failure(
+            CookError code,
             std::string detail)
         {
             return {code, std::move(detail), std::nullopt, std::nullopt};
         }
 
-        [[nodiscard]] AdapterFailure entityFailure(
+        [[nodiscard]] CookFailure entityFailure(
             EntitySceneCookFailure cause,
             std::string detail)
         {
-            AdapterFailure result{
-                AdapterError::ENTITY_SCENE_COOK_REJECTED,
+            CookFailure result{
+                CookError::ENTITY_SCENE_COOK_REJECTED,
                 std::move(detail)};
             result.entity_scene = std::move(cause);
             return result;
@@ -167,7 +167,7 @@ namespace lux::toolchain
             std::map<AttachmentKey, std::uint32_t> attachments;
         };
 
-        [[nodiscard]] lux::cxx::expected<std::uint32_t, AdapterFailure>
+        [[nodiscard]] lux::cxx::expected<std::uint32_t, CookFailure>
         internAttachment(
             EntitySectionAssembly& section,
             lux::ecs::scene_format::ContentTypeId type,
@@ -434,7 +434,7 @@ namespace lux::toolchain
 
         [[nodiscard]] lux::cxx::expected<
             TaggedPayloadSource,
-            AdapterFailure>
+            CookFailure>
         exactPayload(
             const lux::ecs::ComponentSchemaDescriptor& descriptor,
             const void* component)
@@ -442,7 +442,7 @@ namespace lux::toolchain
             if (!descriptor.ref_class || !component)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::COMPONENT_SCHEMA_MISMATCH,
+                    CookError::COMPONENT_SCHEMA_MISMATCH,
                     "component schema cannot produce an exact tagged payload: " +
                         descriptor.schema_id.name));
             }
@@ -455,7 +455,7 @@ namespace lux::toolchain
             if (!encoded)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::INVALID_COMPONENT_PAYLOAD,
+                    CookError::INVALID_COMPONENT_PAYLOAD,
                     "component archive encode failed for '" +
                         descriptor.schema_id.name + "': " +
                         encoded.error().detail));
@@ -469,13 +469,13 @@ namespace lux::toolchain
             const lux::ecs::ComponentTypeCatalog& components,
             std::string_view schema,
             std::uint32_t version,
-            AdapterFailure& error)
+            CookFailure& error)
         {
             const auto* descriptor = components.findBySchema(schema);
             if (!descriptor)
             {
                 error = failure(
-                    AdapterError::MISSING_COMPONENT_SCHEMA,
+                    CookError::MISSING_COMPONENT_SCHEMA,
                     "Toolchain component catalog is missing schema '" +
                         std::string{schema} + "'");
                 return nullptr;
@@ -488,7 +488,7 @@ namespace lux::toolchain
                 !descriptor->operations.get)
             {
                 error = failure(
-                    AdapterError::COMPONENT_SCHEMA_MISMATCH,
+                    CookError::COMPONENT_SCHEMA_MISMATCH,
                     "Toolchain component schema is not a cooked, materializable v" +
                         std::to_string(version) + " contract: " +
                         std::string{schema});
@@ -500,7 +500,7 @@ namespace lux::toolchain
         template <class Component>
         [[nodiscard]] lux::cxx::expected<
             EntityComponentCookInput,
-            AdapterFailure>
+            CookFailure>
         typedComponent(
             const Component& value,
             const lux::ecs::ComponentTypeCatalog& components)
@@ -510,12 +510,12 @@ namespace lux::toolchain
             if (!descriptor)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::MISSING_COMPONENT_SCHEMA,
+                    CookError::MISSING_COMPONENT_SCHEMA,
                     "Toolchain component catalog is missing reflected type '" +
                         std::string{lux::cxx::typeToken<Component>().name()} +
                         "'"));
             }
-            AdapterFailure ignored;
+            CookFailure ignored;
             descriptor = checkedSchema(
                 components,
                 descriptor->schema_id.name,
@@ -537,7 +537,7 @@ namespace lux::toolchain
         template <class Tag>
         [[nodiscard]] lux::cxx::expected<
             EntityComponentCookInput,
-            AdapterFailure>
+            CookFailure>
         typedTag(const lux::ecs::ComponentTypeCatalog& components)
         {
             const auto* descriptor = components.findByType(
@@ -547,7 +547,7 @@ namespace lux::toolchain
                     lux::ecs::EComponentSerializationPolicy::COOKED)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::MISSING_COMPONENT_SCHEMA,
+                    CookError::MISSING_COMPONENT_SCHEMA,
                     "Toolchain component catalog is missing cooked tag '" +
                         std::string{lux::cxx::typeToken<Tag>().name()} + "'"));
             }
@@ -624,7 +624,7 @@ namespace lux::toolchain
                 });
         }
 
-        [[nodiscard]] lux::cxx::expected<MaterializedActor, AdapterFailure>
+        [[nodiscard]] lux::cxx::expected<MaterializedActor, CookFailure>
         materializeActor(
             const Spatial3DActorSource& actor,
             const lux::ecs::ComponentTypeCatalog& components)
@@ -634,7 +634,7 @@ namespace lux::toolchain
             if (!names)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::INVALID_COMPONENT_PAYLOAD,
+                    CookError::INVALID_COMPONENT_PAYLOAD,
                     "Actor '" + uuidKey(actor.id.value()) +
                         "' has an invalid private tagged NameTable: " +
                         names.error().detail));
@@ -656,7 +656,7 @@ namespace lux::toolchain
                 if (!seen_schemas.insert(schema).second)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::INVALID_ACTOR,
+                        CookError::INVALID_ACTOR,
                         "Actor contains duplicate component schema '" +
                             schema + "'"));
                 }
@@ -666,7 +666,7 @@ namespace lux::toolchain
                     continue;
                 }
 
-                AdapterFailure schema_error;
+                CookFailure schema_error;
                 const auto* descriptor = checkedSchema(
                     components,
                     schema,
@@ -678,7 +678,7 @@ namespace lux::toolchain
                 if (!value)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::INVALID_COMPONENT_PAYLOAD,
+                        CookError::INVALID_COMPONENT_PAYLOAD,
                         "cannot materialize legacy Actor component '" +
                             schema + "'"));
                 }
@@ -688,7 +688,7 @@ namespace lux::toolchain
                     if (source_names.intern((*names)[index]) != index)
                     {
                         return lux::cxx::unexpected(failure(
-                            AdapterError::INVALID_COMPONENT_PAYLOAD,
+                            CookError::INVALID_COMPONENT_PAYLOAD,
                             "legacy Actor NameTable changed index while materializing"));
                     }
                 }
@@ -704,7 +704,7 @@ namespace lux::toolchain
                 if (!decoded || !reader.ok() || !reader.eof())
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::INVALID_COMPONENT_PAYLOAD,
+                        CookError::INVALID_COMPONENT_PAYLOAD,
                         "legacy Actor component payload is malformed: '" +
                             schema + "': " +
                             (decoded ? std::string{"trailing bytes"}
@@ -716,14 +716,14 @@ namespace lux::toolchain
             const auto ensure = [&]<class Component>()
                 -> lux::cxx::expected<
                     const lux::ecs::ComponentSchemaDescriptor*,
-                    AdapterFailure>
+                    CookFailure>
             {
                 const auto* descriptor = components.findByType(
                     lux::cxx::typeToken<Component>());
                 if (!descriptor)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::MISSING_COMPONENT_SCHEMA,
+                        CookError::MISSING_COMPONENT_SCHEMA,
                         "Toolchain component catalog is missing '" +
                             std::string{
                                 lux::cxx::typeToken<Component>().name()} +
@@ -731,7 +731,7 @@ namespace lux::toolchain
                 }
                 if (!staging.any_of<Component>(entity))
                 {
-                    AdapterFailure schema_error;
+                    CookFailure schema_error;
                     descriptor = checkedSchema(
                         components,
                         descriptor->schema_id.name,
@@ -745,7 +745,7 @@ namespace lux::toolchain
                     if (!descriptor->operations.emplace(staging, entity))
                     {
                         return lux::cxx::unexpected(failure(
-                            AdapterError::INVALID_COMPONENT_PAYLOAD,
+                            CookError::INVALID_COMPONENT_PAYLOAD,
                             "cannot install required Actor component '" +
                                 descriptor->schema_id.name + "'"));
                     }
@@ -766,7 +766,7 @@ namespace lux::toolchain
                 if (!lux::math::isFinite(actor.position))
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::INVALID_POSITION,
+                        CookError::INVALID_POSITION,
                         "3D Actor root has an invalid absolute position"));
                 }
                 staging.get<lux::ecs::Transform3DComponent>(entity).position =
@@ -820,7 +820,7 @@ namespace lux::toolchain
 
         [[nodiscard]] lux::cxx::expected<
             lux::terrain::TerrainTileBlobV1,
-            AdapterFailure>
+            CookFailure>
         terrainBlob(const Spatial3DTerrainPageSource& source)
         {
             using namespace lux::terrain;
@@ -839,7 +839,7 @@ namespace lux::toolchain
                 source.holes.size() != kTerrainTileHoleBytes)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::TERRAIN_CONTENT_REJECTED,
+                    CookError::TERRAIN_CONTENT_REJECTED,
                     "legacy Terrain Page does not match the v1 tile layout"));
             }
 
@@ -864,7 +864,7 @@ namespace lux::toolchain
                     value > source.height_max)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::TERRAIN_CONTENT_REJECTED,
+                        CookError::TERRAIN_CONTENT_REJECTED,
                         "legacy Terrain Page contains an invalid height"));
                 }
                 result.heights[index] = static_cast<std::uint16_t>(
@@ -968,7 +968,7 @@ namespace lux::toolchain
             if (!valid)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::TERRAIN_CONTENT_REJECTED,
+                    CookError::TERRAIN_CONTENT_REJECTED,
                     valid.error().detail));
             }
             return result;
@@ -1286,14 +1286,14 @@ namespace lux::toolchain
 
         [[nodiscard]] lux::cxx::expected<
             PreparedClassicMeshBatch,
-            AdapterFailure>
+            CookFailure>
         classicMeshBatch(
             const Spatial3DInstancePageSource& page)
         {
             if (page.instances.empty())
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     "legacy Instance Page is empty"));
             }
             std::vector<const Spatial3DInstanceSource*> instances;
@@ -1327,7 +1327,7 @@ namespace lux::toolchain
                 if (!lux::math::isFinite(instance->position))
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::INVALID_POSITION,
+                        CookError::INVALID_POSITION,
                         "Classic Mesh instance has an invalid 3D position"));
                 }
                 positions.push_back(instance->position);
@@ -1365,7 +1365,7 @@ namespace lux::toolchain
                 radius > (std::numeric_limits<float>::max)())
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     "Classic Mesh batch bounds exceed the finite contract"));
             }
 
@@ -1388,7 +1388,7 @@ namespace lux::toolchain
                             (std::numeric_limits<float>::max)())
                     {
                         return lux::cxx::unexpected(failure(
-                            AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                            CookError::CLASSIC_MESH_CONTENT_REJECTED,
                             "Classic Mesh batch-local translation exceeds float range"));
                     }
                     row.translation[axis] =
@@ -1408,7 +1408,7 @@ namespace lux::toolchain
             if (!valid)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     valid.error().detail));
             }
             result.component.local_bounds_center = Eigen::Vector3f::Zero();
@@ -1426,7 +1426,7 @@ namespace lux::toolchain
                 decoded;
         };
 
-        [[nodiscard]] lux::cxx::expected<DecodedMeshCatalog, AdapterFailure>
+        [[nodiscard]] lux::cxx::expected<DecodedMeshCatalog, CookFailure>
         indexMeshAssets(const Spatial3DMeshAssetCatalog& catalog)
         {
             DecodedMeshCatalog result;
@@ -1436,7 +1436,7 @@ namespace lux::toolchain
                     !result.sources.emplace(uuidKey(source.id), &source).second)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                        CookError::CLASSIC_MESH_CONTENT_REJECTED,
                         "Spatial3D Mesh asset catalog contains an invalid or duplicate identity"));
                 }
             }
@@ -1445,7 +1445,7 @@ namespace lux::toolchain
 
         [[nodiscard]] lux::cxx::expected<
             std::shared_ptr<const lux::rdesc::Mesh>,
-            AdapterFailure>
+            CookFailure>
         resolveMesh(
             DecodedMeshCatalog& catalog,
             const lux::asset::asset_id_t& id)
@@ -1460,7 +1460,7 @@ namespace lux::toolchain
             if (source == catalog.sources.end())
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     "visual HLOD is missing Runtime Mesh asset '" + key + "'"));
             }
             const auto& image = source->second->encoded_image;
@@ -1471,7 +1471,7 @@ namespace lux::toolchain
                 (*shell)->id() != id)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     "visual HLOD Mesh image has a mismatched header at '" +
                         key + "'"));
             }
@@ -1481,7 +1481,7 @@ namespace lux::toolchain
                 (*decoded)->indices.empty())
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     "visual HLOD cannot decode Runtime Mesh asset '" + key +
                         "'"));
             }
@@ -1522,13 +1522,13 @@ namespace lux::toolchain
                 : fallback;
         }
 
-        [[nodiscard]] lux::cxx::expected<PreparedVisualHlod, AdapterFailure>
+        [[nodiscard]] lux::cxx::expected<PreparedVisualHlod, CookFailure>
         cookVisualHlod(
             const lux::asset::asset_id_t& scene,
             const VisualHlodNodePlan& node,
             const Spatial3DInstancePageSource& aggregate,
             DecodedMeshCatalog& meshes,
-            const Spatial3DEntitySceneAdapterConfig& config)
+            const Spatial3DSceneCookerConfig& config)
         {
             auto bounds = classicMeshBatch(aggregate);
             if (!bounds)
@@ -1537,7 +1537,7 @@ namespace lux::toolchain
                 config.visual_lod_max_source_instances)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     "visual HLOD node exceeds the source-instance cook budget"));
             }
 
@@ -1551,7 +1551,7 @@ namespace lux::toolchain
                     config.visual_lod_max_generated_meshes)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                        CookError::CLASSIC_MESH_CONTENT_REJECTED,
                         "visual HLOD node exceeds the generated-Mesh cook budget"));
                 }
                 auto& group = found->second;
@@ -1603,7 +1603,7 @@ namespace lux::toolchain
                     if (source_record == meshes.sources.end())
                     {
                         return lux::cxx::unexpected(failure(
-                            AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                            CookError::CLASSIC_MESH_CONTENT_REJECTED,
                             "visual HLOD source Mesh disappeared during cook"));
                     }
                     content_identity += "/" + uuidKey(instance->id.value()) +
@@ -1633,7 +1633,7 @@ namespace lux::toolchain
                                 merged.vertices.size())
                     {
                         return lux::cxx::unexpected(failure(
-                            AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                            CookError::CLASSIC_MESH_CONTENT_REJECTED,
                             "visual HLOD source Mesh exceeds the merge-buffer cook budget"));
                     }
                     const std::vector<std::uint32_t>* selected_indices =
@@ -1652,7 +1652,7 @@ namespace lux::toolchain
                                 authored_lod.error < 0.0f)
                             {
                                 return lux::cxx::unexpected(failure(
-                                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                                     "visual HLOD source Mesh has an invalid authored LOD error"));
                             }
                             selected_indices = &authored_lod.indices;
@@ -1667,7 +1667,7 @@ namespace lux::toolchain
                                 merged.indices.size())
                     {
                         return lux::cxx::unexpected(failure(
-                            AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                            CookError::CLASSIC_MESH_CONTENT_REJECTED,
                             "visual HLOD source Mesh exceeds the merge-buffer cook budget"));
                     }
                     const auto vertex_base = static_cast<std::uint32_t>(
@@ -1687,7 +1687,7 @@ namespace lux::toolchain
                         !scale.allFinite() || rotation.squaredNorm() < 1.0e-12f)
                     {
                         return lux::cxx::unexpected(failure(
-                            AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                            CookError::CLASSIC_MESH_CONTENT_REJECTED,
                             "visual HLOD instance has an invalid transform"));
                     }
                     const auto linear = rotation.normalized().toRotationMatrix() *
@@ -1708,7 +1708,7 @@ namespace lux::toolchain
                     if (!translation.allFinite())
                     {
                         return lux::cxx::unexpected(failure(
-                            AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                            CookError::CLASSIC_MESH_CONTENT_REJECTED,
                             "visual HLOD local translation exceeds float range"));
                     }
                     merged.vertices.reserve(
@@ -1732,7 +1732,7 @@ namespace lux::toolchain
                             !output.uv.allFinite())
                         {
                             return lux::cxx::unexpected(failure(
-                                AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                                CookError::CLASSIC_MESH_CONTENT_REJECTED,
                                 "visual HLOD source Mesh has non-finite vertex data"));
                         }
                         merged.vertices.push_back(std::move(output));
@@ -1755,7 +1755,7 @@ namespace lux::toolchain
                                 }))
                         {
                             return lux::cxx::unexpected(failure(
-                                AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                                CookError::CLASSIC_MESH_CONTENT_REJECTED,
                                 "visual HLOD source Mesh contains an invalid index"));
                         }
                         if (determinant < 0.0f)
@@ -1872,7 +1872,7 @@ namespace lux::toolchain
                     fetched_vertex_count > fetched_vertices.size())
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                        CookError::CLASSIC_MESH_CONTENT_REJECTED,
                         "visual HLOD vertex compaction failed"));
                 }
                 fetched_vertices.resize(fetched_vertex_count);
@@ -1899,7 +1899,7 @@ namespace lux::toolchain
                 if (!provisional)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                        CookError::CLASSIC_MESH_CONTENT_REJECTED,
                         "cannot encode generated visual HLOD Mesh asset"));
                 }
                 const auto generated_id = generator(
@@ -1911,7 +1911,7 @@ namespace lux::toolchain
                 if (!encoded)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                        CookError::CLASSIC_MESH_CONTENT_REJECTED,
                         "cannot finalize generated visual HLOD Mesh asset"));
                 }
                 const auto generated_key = uuidKey(generated_id);
@@ -1940,13 +1940,13 @@ namespace lux::toolchain
             if (!valid)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     valid.error().detail));
             }
             if (!node_mesh_bounds.isValid())
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     "visual HLOD generated Mesh bounds are invalid"));
             }
             const auto bounds_center = node_mesh_bounds.center();
@@ -1954,7 +1954,7 @@ namespace lux::toolchain
             if (!bounds_center.allFinite() || !std::isfinite(bounds_radius))
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     "visual HLOD generated Mesh bounds exceed the finite contract"));
             }
             result.batch.component.local_bounds_center = bounds_center;
@@ -1970,12 +1970,12 @@ namespace lux::toolchain
 
     lux::cxx::expected<
         CookedSpatial3DEntitySceneBundle,
-        Spatial3DEntitySceneAdapterFailure>
-    adaptSpatial3DEntityScene(
+        Spatial3DSceneCookFailure>
+    cookSpatial3DEntityScene(
         const Spatial3DAuthoringSource& source,
         const lux::ecs::ComponentTypeCatalog& components,
         const Spatial3DMeshAssetCatalog& mesh_assets,
-        Spatial3DEntitySceneAdapterConfig config)
+        Spatial3DSceneCookerConfig config)
     {
         using lux::ecs::scene_format::EntityOrdinal;
         using lux::ecs::scene_format::EntitySectionId;
@@ -2010,8 +2010,8 @@ namespace lux::toolchain
             config.visual_lod_resident_scale < config.visual_lod_active_scale)
         {
             return lux::cxx::unexpected(failure(
-                AdapterError::INVALID_ARGUMENT,
-                "Spatial3D EntityScene adapter configuration is invalid"));
+                CookError::INVALID_ARGUMENT,
+                "Spatial3D Scene cooker configuration is invalid"));
         }
         auto decoded_meshes = indexMeshAssets(mesh_assets);
         if (!decoded_meshes)
@@ -2047,14 +2047,14 @@ namespace lux::toolchain
             &source](
             const uuids::uuid& space,
             const lux::math::GridCoord3i64& cell)
-            -> lux::cxx::expected<FineSection*, AdapterFailure>
+            -> lux::cxx::expected<FineSection*, CookFailure>
         {
             const auto coordinate = spatialCoordinate(cell);
             const auto edge = cellEdge(source, space);
             if (!edge)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::INVALID_POSITION,
+                    CookError::INVALID_POSITION,
                     "Spatial3D fine Section has no valid cell coordinate"));
             }
             const auto key = visualLodKey(space, cell);
@@ -2070,7 +2070,7 @@ namespace lux::toolchain
                  found->second.cell_world_size != *edge))
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::INVALID_ARGUMENT,
+                    CookError::INVALID_ARGUMENT,
                     "Spatial3D fine Section identity is inconsistent"));
             }
             return &found->second;
@@ -2097,7 +2097,7 @@ namespace lux::toolchain
                     uuidKey(actor.id.value()), index).second)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::INVALID_ACTOR,
+                    CookError::INVALID_ACTOR,
                     "Spatial3D Authoring source contains an invalid or duplicate Actor"));
             }
             if (declaresPrimaryCamera(actor))
@@ -2105,7 +2105,7 @@ namespace lux::toolchain
                 if (primary_camera_actor)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::INVALID_ACTOR,
+                        CookError::INVALID_ACTOR,
                         "more than one Actor declares PrimaryCameraTag"));
                 }
                 primary_camera_actor = index;
@@ -2131,7 +2131,7 @@ namespace lux::toolchain
                 if (!cell)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::INVALID_POSITION,
+                        CookError::INVALID_POSITION,
                         "spatial Actor cannot be assigned to a 3D fine cell"));
                 }
                 auto fine = ensureFineSection(actor.space, *cell);
@@ -2159,7 +2159,7 @@ namespace lux::toolchain
                         actor_placements[index].section)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::INVALID_ACTOR,
+                        CookError::INVALID_ACTOR,
                         "Actor transform parent crosses an EntitySection boundary"));
                 }
                 materialized->entity.parent =
@@ -2196,7 +2196,7 @@ namespace lux::toolchain
             if (*added != actor_placements[index].ordinal)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::INVALID_ACTOR,
+                    CookError::INVALID_ACTOR,
                     "Actor ordinal changed during section assembly"));
             }
         }
@@ -2258,14 +2258,14 @@ namespace lux::toolchain
             lux::ecs::PersistentEntityId persistent_id,
             std::uint8_t level,
             std::optional<lux::ecs::PersistentEntityId> parent)
-            -> lux::cxx::expected<void, AdapterFailure>
+            -> lux::cxx::expected<void, CookFailure>
         {
             auto encoded = lux::classic_mesh::encodeClassicMeshBatchBlob(
                 batch.blob);
             if (!encoded)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                    CookError::CLASSIC_MESH_CONTENT_REJECTED,
                     encoded.error().detail));
             }
             auto attachment = internAttachment(
@@ -2412,7 +2412,7 @@ namespace lux::toolchain
             if (!fine_edge)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::INVALID_POSITION,
+                    CookError::INVALID_POSITION,
                     "visual LOD node has no valid spatial cell"));
             }
             const auto factor = std::uint64_t{1u}
@@ -2443,7 +2443,7 @@ namespace lux::toolchain
             if (!inserted)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::INVALID_ARGUMENT,
+                    CookError::INVALID_ARGUMENT,
                     "visual LOD Section identity is duplicated"));
             }
             const auto added = appendClassicBatch(
@@ -2462,7 +2462,7 @@ namespace lux::toolchain
         if (navigation_profiles.size() > 256u)
         {
             return lux::cxx::unexpected(failure(
-                AdapterError::NAVIGATION_CONTENT_REJECTED,
+                CookError::NAVIGATION_CONTENT_REJECTED,
                 "too many Spatial3D navigation agent profiles"));
         }
         for (std::size_t index = 0u;
@@ -2471,7 +2471,7 @@ namespace lux::toolchain
             if (navigation_profiles[index].profile_index != index)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::NAVIGATION_CONTENT_REJECTED,
+                    CookError::NAVIGATION_CONTENT_REJECTED,
                     "navigation agent profile indices are not canonical"));
             }
         }
@@ -2508,7 +2508,7 @@ namespace lux::toolchain
             if (!coordinate)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::NAVIGATION_CONTENT_REJECTED,
+                    CookError::NAVIGATION_CONTENT_REJECTED,
                     "NavigationRegion3D requires a PLANAR_XZ terrain Cell"));
             }
             if (!navigation_pages_by_cell.emplace(
@@ -2517,7 +2517,7 @@ namespace lux::toolchain
                     index).second)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::NAVIGATION_CONTENT_REJECTED,
+                    CookError::NAVIGATION_CONTENT_REJECTED,
                     "more than one Terrain page occupies a navigation Cell"));
             }
             auto fine = ensureFineSection(page.space, page.cell);
@@ -2529,7 +2529,7 @@ namespace lux::toolchain
             if (!edge)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::NAVIGATION_CONTENT_REJECTED,
+                    CookError::NAVIGATION_CONTENT_REJECTED,
                     "NavigationRegion3D has no valid Spatial3D Cell edge"));
             }
             for (const auto& profile : navigation_profiles)
@@ -2543,7 +2543,7 @@ namespace lux::toolchain
                 if (!description)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::NAVIGATION_CONTENT_REJECTED,
+                        CookError::NAVIGATION_CONTENT_REJECTED,
                         std::move(description.error())));
                 }
                 descriptions.push_back({
@@ -2560,7 +2560,7 @@ namespace lux::toolchain
             std::int64_t neighbor_z,
             ENavigationPortalBoundary boundary,
             double seam)
-            -> lux::cxx::expected<void, AdapterFailure>
+            -> lux::cxx::expected<void, CookFailure>
         {
             const auto& first_page = source.terrain_pages[first_index];
             const auto found = navigation_pages_by_cell.find({
@@ -2581,7 +2581,7 @@ namespace lux::toolchain
                 if (second == second_descriptions.end())
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::NAVIGATION_CONTENT_REJECTED,
+                        CookError::NAVIGATION_CONTENT_REJECTED,
                         "adjacent navigation Cells disagree on agent profiles"));
                 }
                 auto portal = navigationPortal(
@@ -2652,7 +2652,7 @@ namespace lux::toolchain
             if (!coordinate || !edge)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::TERRAIN_CONTENT_REJECTED,
+                    CookError::TERRAIN_CONTENT_REJECTED,
                     "Terrain tile requires a valid PLANAR_XZ space"));
             }
             auto blob = terrainBlob(page);
@@ -2662,7 +2662,7 @@ namespace lux::toolchain
             if (!encoded)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::TERRAIN_CONTENT_REJECTED,
+                    CookError::TERRAIN_CONTENT_REJECTED,
                     encoded.error().detail));
             }
             lux::physics3d::StaticColliderBatch3DBlobV1 physics_blob;
@@ -2678,7 +2678,7 @@ namespace lux::toolchain
             if (!encoded_physics)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::PHYSICS_CONTENT_REJECTED,
+                    CookError::PHYSICS_CONTENT_REJECTED,
                     encoded_physics.error().detail));
             }
             auto fine = ensureFineSection(page.space, page.cell);
@@ -2751,7 +2751,7 @@ namespace lux::toolchain
                 if (!encoded)
                 {
                     return lux::cxx::unexpected(failure(
-                        AdapterError::NAVIGATION_CONTENT_REJECTED,
+                        CookError::NAVIGATION_CONTENT_REJECTED,
                         encoded.error().detail));
                 }
                 const auto bytes = encoded->payload.view();
@@ -2802,7 +2802,7 @@ namespace lux::toolchain
             &config](
             EntitySectionAssembly& section,
             std::optional<DemandChannelId> demand)
-            -> lux::cxx::expected<void, AdapterFailure>
+            -> lux::cxx::expected<void, CookFailure>
         {
             auto image = std::move(section.builder).build();
             if (!image)
@@ -2901,7 +2901,7 @@ namespace lux::toolchain
             if (!encoded)
             {
                 return lux::cxx::unexpected(failure(
-                    AdapterError::SPATIAL_CATALOG_REJECTED,
+                    CookError::SPATIAL_CATALOG_REJECTED,
                     encoded.error().detail));
             }
             cook.spatial3d_catalog = std::move(*encoded);
@@ -2929,7 +2929,7 @@ namespace lux::toolchain
                 }) != generated_meshes.end())
         {
             return lux::cxx::unexpected(failure(
-                AdapterError::CLASSIC_MESH_CONTENT_REJECTED,
+                CookError::CLASSIC_MESH_CONTENT_REJECTED,
                 "generated visual HLOD Mesh identity is duplicated"));
         }
         CookedSpatial3DEntitySceneBundle result;
@@ -2940,24 +2940,24 @@ namespace lux::toolchain
 
     lux::cxx::expected<
         CookedSpatial3DEntitySceneBundle,
-        Spatial3DEntitySceneAdapterFailure>
+        Spatial3DSceneCookFailure>
     cookSpatial3DEntitySceneSource(
         const std::filesystem::path& root_document,
         const lux::ecs::ComponentTypeCatalog& components,
         const Spatial3DMeshAssetCatalog& mesh_assets,
-        Spatial3DEntitySceneAdapterConfig config,
+        Spatial3DSceneCookerConfig config,
         const Spatial3DAuthoringLoadLimits& limits)
     {
         auto source = loadSpatial3DAuthoringSource(root_document, limits);
         if (!source)
         {
-            AdapterFailure result{
-                AdapterError::AUTHORING_SOURCE_REJECTED,
+            CookFailure result{
+                CookError::AUTHORING_SOURCE_REJECTED,
                 "LXWA/LXAD source loader rejected Spatial3D Authoring input"};
             result.authoring_source = source.error();
             return lux::cxx::unexpected(std::move(result));
         }
-        return adaptSpatial3DEntityScene(
+        return cookSpatial3DEntityScene(
             *source, components, mesh_assets, std::move(config));
     }
 } // namespace lux::toolchain

@@ -21,7 +21,7 @@
 #include <lux/engine/resource/asset/animation/SkeletonSerDeser.hpp>
 #include <lux/engine/resource/asset/texture/TextureSerDeser.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
-#include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
+#include <lux/engine/toolchain/spatial3d_scene/Spatial3DSceneCooker.hpp>
 
 #include <uuid.h>
 

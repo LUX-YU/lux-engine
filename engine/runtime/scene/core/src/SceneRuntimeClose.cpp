@@ -3,8 +3,6 @@
 
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
-#include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
-#include <lux/engine/ecs/entity_scene/StartupSectionSystem.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncScope.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
@@ -20,46 +18,6 @@
 
 namespace lux::runtime
 {
-    namespace
-    {
-        struct EntitySectionCloseState final
-        {
-            std::size_t waiting_sections{0u};
-            std::size_t staging_sections{0u};
-            std::size_t armed_sections{0u};
-            std::size_t active_sections{0u};
-            std::size_t allocated_slots{0u};
-            std::size_t free_slots{0u};
-            std::size_t section_mappings{0u};
-            std::size_t blob_bytes{0u};
-            std::size_t blob_allocations{0u};
-            std::size_t blob_lookups{0u};
-
-            friend bool operator==(
-                const EntitySectionCloseState&,
-                const EntitySectionCloseState&) = default;
-        };
-
-        [[nodiscard]] EntitySectionCloseState sectionCloseState(
-            const lux::ecs::entity_scene::EntitySectionLoaderSystem& loader)
-            noexcept
-        {
-            const auto snapshot = loader.snapshot();
-            return {
-                .waiting_sections = snapshot.waiting_sections,
-                .staging_sections = snapshot.staging_sections,
-                .armed_sections = snapshot.armed_sections,
-                .active_sections = snapshot.active_sections,
-                .allocated_slots = snapshot.allocated_slots,
-                .free_slots = snapshot.free_slots,
-                .section_mappings = snapshot.section_mappings,
-                .blob_bytes = snapshot.blobs.current_bytes,
-                .blob_allocations = snapshot.blobs.allocation_count,
-                .blob_lookups = snapshot.blobs.lookup_entries,
-            };
-        }
-    }
-
     SceneCloseReport SceneRuntime::advanceClose() noexcept
     {
         if (std::this_thread::get_id() != owner_thread_)
@@ -69,10 +27,7 @@ namespace lux::runtime
             ESceneCloseStatus status,
             ESceneCloseError error)
         {
-            return SceneCloseReport{
-                .status = status,
-                .error = error,
-                .integration_closed = integration_closed_};
+            return SceneCloseReport{.status = status, .error = error};
         };
 
         if (closed_)
@@ -94,24 +49,6 @@ namespace lux::runtime
             closing_ = true;
             live_ = false;
             state_ = ESceneRuntimeState::CLOSING;
-
-                if (integration_ && !integration_closed_)
-                {
-                    const auto status = integration_->close();
-                    if (status ==
-                            ESceneIntegrationCloseStatus::RETRY_REQUIRED ||
-                        status == ESceneIntegrationCloseStatus::FAILED)
-                    {
-                        return report(
-                            ESceneCloseStatus::RETRY_REQUIRED,
-                            ESceneCloseError::INTEGRATION_CLOSE_REJECTED);
-                    }
-                    integration_closed_ = true;
-                }
-                else if (!integration_)
-                {
-                    integration_closed_ = true;
-                }
 
                 if (schedule_)
                 {
@@ -141,92 +78,6 @@ namespace lux::runtime
                             async_scope_closed_ = true;
                             requestCloseProgress();
                         });
-                }
-
-                if (startup_sections_)
-                {
-                    if (!startup_close_started_)
-                    {
-                        startup_close_started_ = true;
-                        startup_sections_->requestClose();
-                    }
-                    startup_closed_ = startup_sections_->closeComplete();
-                }
-                else
-                {
-                    startup_closed_ = true;
-                }
-                if (schedule_ && !startup_closed_)
-                {
-                    const bool has_loader =
-                        entity_section_loader_ != nullptr;
-                    const auto before = has_loader
-                        ? sectionCloseState(*entity_section_loader_)
-                        : EntitySectionCloseState{};
-                    schedule_->tick(
-                        0.f,
-                        lux::ecs::kPhaseSceneLoading);
-                    startup_closed_ = startup_sections_->closeComplete();
-                    if (!startup_closed_ && has_loader &&
-                        startup_sections_->state() ==
-                            lux::ecs::entity_scene::EEntitySceneState::
-                                CLOSING &&
-                        before != sectionCloseState(
-                            *entity_section_loader_))
-                    {
-                        // The barrier made synchronous owner progress after
-                        // StartupSectionSystem had already run. One more
-                        // loading safe point is therefore actionable without
-                        // waiting for an external completion. A stable owner
-                        // snapshot never requeues itself, so this cannot spin.
-                        close_progress_pending_ = true;
-                    }
-                }
-                if (!startup_closed_)
-                {
-                    return report(
-                        ESceneCloseStatus::RETRY_REQUIRED,
-                        ESceneCloseError::NONE);
-                }
-
-                if (entity_section_loader_)
-                {
-                    if (!entity_loader_close_started_)
-                    {
-                        entity_loader_close_started_ = true;
-                        entity_section_loader_->requestClose();
-                    }
-                    entity_loader_closed_ =
-                        entity_section_loader_->closeComplete();
-                }
-                else
-                {
-                    entity_loader_closed_ = true;
-                }
-                if (schedule_ && !entity_loader_closed_)
-                {
-                    schedule_->tick(0.f);
-                    entity_loader_closed_ =
-                        entity_section_loader_->closeComplete();
-                    const auto owner_state = schedule_->closeState();
-                    if (!entity_loader_closed_ && owner_state.valid &&
-                        owner_state.owner_work_pending)
-                    {
-                        // Section deactivation can leave immutable blob
-                        // leases in consumers from later phases. Keep every
-                        // system installed and run the complete dt=0 owner
-                        // safe point so those consumers can retire them.
-                        // Every system reports whether another bounded owner
-                        // granule is executable; external-only waits wake via
-                        // their retained close-progress sink or scene scope.
-                        close_progress_pending_ = true;
-                    }
-                }
-                if (!entity_loader_closed_)
-                {
-                    return report(
-                        ESceneCloseStatus::RETRY_REQUIRED,
-                        ESceneCloseError::NONE);
                 }
 
                 if (schedule_)
@@ -277,9 +128,7 @@ namespace lux::runtime
 
             startup_sections_ = nullptr;
             entity_section_loader_ = nullptr;
-            entity_scene_catalog_ = nullptr;
             schedule_.reset();
-            integration_.reset();
             services_.reset();
             persistent_entities_.reset();
             world_.reset();

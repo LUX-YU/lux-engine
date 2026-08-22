@@ -41,7 +41,7 @@ namespace lux::ecs::spatial3d::streaming
         /// Rule-grid records travel beside the compact spatial entries and
         /// are moved into one prospective partition transaction. Catalog
         /// windows leave this empty because their records already live in the
-        /// immutable EntitySectionRecordStore.
+        /// immutable SceneDescription SectionRecord span.
         std::vector<lux::ecs::scene_format::SectionRecord> records;
         std::size_t active_sections{0u};
     };
@@ -89,7 +89,7 @@ namespace lux::ecs::spatial3d::streaming
         double cell_world_size) noexcept;
 
     /// A finite cooked grid. Records remain exclusively owned by the scene's
-    /// EntitySceneCatalog; this leaf stores only coordinate-to-Section keys.
+    /// SceneDescription; this leaf stores only coordinate-to-Section keys.
     class LUX_ECS_SPATIAL3D_STREAMING_PUBLIC
     Spatial3DSectionCatalog final
     {

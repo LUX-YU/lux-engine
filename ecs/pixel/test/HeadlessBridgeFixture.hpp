@@ -531,7 +531,7 @@ namespace lux::bridgetest
 
         // Register the Skybox feature's SetEquirect op (a PARAM feature) + inject
         // "Skybox" into the FeatureCatalog. 句柄是场景域状态 —— 需要它的测试在
-        // 自己的 RenderSystem 上 `rs.bindFeature("Skybox", {0,1})`(drive 与
+        // 自己的 SceneRenderBinding 冷 seal 时提供 Skybox handle(drive 与
         // teardown clear 都要求 features().handle("Skybox").valid())。
         void registerSkyboxOps()
         {

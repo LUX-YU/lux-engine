@@ -74,9 +74,9 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         v5 `luxInstallEditorPanelsV5(EditorPanelInstallContext&)` entrypoint;
         the Editor adapter binds every installed panel to its `ModuleLease`.
 - [x] Generate build-only project usage and direct game composition.
-  - [x] Aggregate canonical Component schemas, derived renderer requirements,
-        Spatial3D streaming use and selected Extensions from cooked Scenes into
-        `build/ProjectUsageManifest.toml`.
+  - [x] Aggregate canonical Component schemas and Spatial3D streaming use from
+        cooked Scenes, renderer roots from product composition, and selected
+        Extensions into `build/ProjectUsageManifest.toml`.
   - [x] Generate `build/GameComposition.cpp` with direct built-in System and
         standard Renderer assembly calls; it contains no Runtime registry and
         Physics2D remains a manifest-deployed Extension.
@@ -111,3 +111,39 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 The working tree modification under
 `modules/function/input/pinclude/lux/engine/input/detail/GlfwInputTranslation.hpp`
 predates this work and is not part of the refactor.
+# Phase 9 semantic de-duplication finalization (validation active)
+
+- [x] Replace `RenderSystemStages` with an immutable private Stage vector and
+      classify independently owned render behavior as ordinary `ISystem`.
+- [x] Keep renderer requirements on concrete render-facing implementations and
+      collect them in cold product recipes without changing `ISystem`.
+- [x] Make `SceneServices` own a sealed `SceneRenderBinding`; make
+      `RenderSystem` own and close the `RenderSceneLease`.
+- [x] Make Schedule close a reverse-topology completion frontier and remove
+      SceneRuntime's per-System/integration close state.
+- [x] Remove `ISceneRuntimeIntegration`, `EntitySceneCatalog` and
+      `EntitySectionRecordStore`; SceneRuntime directly owns immutable
+      `SceneDescription` storage before Systems borrow it.
+- [x] Remove Scene renderer-requirement fields in LXSC v3 and reject v2.
+- [x] Decouple HeightFog from Water without adding an Atmosphere capability.
+- [x] Collapse generated Reflection/Component registration into one module
+      pending draft and validate-before-publish batch.
+- [x] Preserve semantic ID ownership, retain distinct WorldActor/Entity IDs,
+      and replace long-lived authoring adapters with explicit conversions.
+- [x] Add zero-debt gates and permanent characterization/transaction tests.
+- [x] Complete the final full Windows/profile/Android build and CTest matrix
+      for the Phase 9 working tree.
+  - [x] Windows `DEVELOPER`, `PLAYER`, `EDITOR` and `TOOLCHAIN` full builds
+        pass, their required second builds report `ninja: no work to do`, and
+        CTest passes 16/16, 8/8, 8/8 and 3/3 respectively.
+  - [x] Android `PLAYER` completes the full 1069-step cross build, its second
+        build reports `ninja: no work to do`, and installation succeeds. The
+        host-generated metadata prefix contains only the single-draft capture
+        path (`queueGeneratedComponent` count 0).
+  - [x] The final architecture report records zero occurrences for every
+        retired semantic identity and the Developer Phase 9 suite passes
+        11/11.
+  - [x] Debug, RelWithDebInfo and Android installed public headers are
+        byte-synchronized for the changed contracts; all 39 retired installed
+        headers were removed, the retired-header scan is zero, and the Scene
+        Asset installed consumer configures, links and runs successfully.

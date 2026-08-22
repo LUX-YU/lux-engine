@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file SceneDescription.hpp
- * @brief Engine-owned cooked scene description model (LXSC v2 semantics).
+ * @brief Engine-owned cooked scene description model (LXSC v3 semantics).
  *
  * EntitySection image layout belongs to ecs::scene_format. This package adds
  * Engine concerns around those images: derived extension/component
@@ -20,7 +20,7 @@
 namespace lux::scene
 {
     inline constexpr std::uint32_t kSceneDescriptionMagic = 0x4353584cu;
-    inline constexpr std::uint32_t kSceneDescriptionVersion = 2u;
+    inline constexpr std::uint32_t kSceneDescriptionVersion = 3u;
 
     struct RequiredExtension final
     {
@@ -38,11 +38,6 @@ namespace lux::scene
         /// means that the Scene has no partitioned Spatial3D content. This is
         /// data consumed by streaming Systems, not a behavior selector.
         std::vector<std::byte>                  spatial3d_catalog;
-        /// Derived by Cook from serialized Components and project renderer
-        /// configuration. Required entries gate publication; optional entries
-        /// only select a path when FeatureCatalog provides it.
-        std::vector<std::string>                required_render_features;
-        std::vector<std::string>                optional_render_features;
         std::vector<lux::ecs::scene_format::EntitySectionId> startup_sections;
         std::vector<lux::ecs::scene_format::SectionRecord> sections;
         std::vector<RequiredExtension>          required_extensions;

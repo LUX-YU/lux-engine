@@ -173,11 +173,12 @@ target_link_libraries(
         lux::engine::ecs::transform
         lux::engine::ecs::core
         lux::engine::ecs::render_3d
+        lux::engine::ecs::render_content_3d_integration
         lux::engine::resource::asset
 )
 component_add_transitive_commands(
     runtime_scene_presentation3d_composition
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core render_3d)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core render_3d render_content_3d_integration)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_assets runtime_entity_scene runtime_render_scene runtime_scene_core)"
 )

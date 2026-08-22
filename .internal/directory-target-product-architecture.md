@@ -31,7 +31,8 @@ modules/ -> ecs/ -> engine/ -> hosts/products
 - `ISystem + Schedule`: only behavior graph.
 - `RenderFeature + FeatureCatalog`: only renderer capability graph.
 - Module + `ModuleLease`: code availability and lifetime.
-- `SceneDescription`: cooked entity/component data and derived requirements.
+- `SceneDescription`: cooked entity/component data and non-render loading
+  facts. Renderer requirements are not Scene fields.
 
 `SceneFeature`, `SceneContribution`, Runtime `RenderEffect`, Runtime Pack,
 System Registry and installer/catalog/host variants are forbidden.
@@ -83,6 +84,19 @@ System Registry and installer/catalog/host variants are forbidden.
   preparation and the process-wide request/byte admission policy.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
+- `SceneRuntime` is the sole published Scene owner. `SceneServices` owns the
+  sealed `SceneRenderBinding` shared by render-facing Systems; `RenderSystem`
+  borrows that binding, owns the `RenderSceneLease`, and closes it only after
+  reverse-topology consumer quiescence. Published System, Stage and Feature
+  topology is immutable; a newly loaded Extension affects only Scene reload or
+  a later Scene creation.
+- Pure extraction remains private immutable `RenderStage` state inside
+  `RenderSystem`. Render behavior with independent readiness, asynchronous
+  completion, resource retirement or close belongs to an ordinary `ISystem`
+  in `ecs/render`. The `render_content_3d_integration` target owns ClassicMesh
+  and Terrain render Systems; product cold recipes collect concrete static
+  feature declarations without adding a requirement registry or renderer API
+  to `ISystem`.
 - Renderer capabilities have one object identity: `RenderFeature`. A
   resource-only capability uses its default empty `addPasses`, while a pass
   producer overrides it. `RenderFeatureSet` is RenderScene's private ownership
@@ -101,11 +115,12 @@ System Registry and installer/catalog/host variants are forbidden.
   host, command queue or operation ticket.
 - Game Cook writes `build/ProjectUsageManifest.toml` and
   `build/GameComposition.cpp` as ephemeral Toolchain/build-graph inputs. The
-  manifest is derived from cooked Scene component/renderer requirements plus
-  project Extension selection; the source calls concrete System and Renderer
-  assembly functions directly. Neither artifact is installed, copied into a
-  Player deployment or read by Runtime. Optional Extensions remain DLL leaves
-  selected and deployed by `LaunchManifest`.
+  manifest combines cooked Scene Component usage, product renderer composition
+  and project Extension selection; renderer roots are never read from
+  `SceneDescription`. The source calls concrete System and Renderer assembly
+  functions directly. Neither artifact is installed, copied into a Player
+  deployment or read by Runtime. Optional Extensions remain DLL leaves selected
+  and deployed by `LaunchManifest`.
 - Directory moves happen after semantic ownership is established. Moves do not
   leave forwarding headers, namespace aliases or target aliases.
 

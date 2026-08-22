@@ -14,7 +14,7 @@
 //  ⚠️ 批 3 把语义从「指向别人拥有的 view 的指针」升级成「**持有**那个 view」；
 //  批 6 又把这条语义落实为 move-only `RenderViewLease`，不再靠 on_destroy
 //  回调读一个可复制句柄后手写 `removeView`。**摘掉组件 = 交还那个 view。**
-//  只有 `CameraViewSubsystem` 该 emplace 它 —— 宿主要的是挂 `ViewPresentComponent`
+//  只有 `CameraViewSystem` 该 emplace 它 —— 宿主要的是挂 `ViewPresentComponent`
 //  (「这台相机要出图」),句柄由系统在 addView 回复落地时装上。
 //
 //  RUNTIME-ONLY: never reflected, never persisted (ViewHandle is a

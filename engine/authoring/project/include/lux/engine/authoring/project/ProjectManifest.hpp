@@ -30,9 +30,9 @@
  */
 
 #include <lux/engine/authoring/project/visibility.h>
+#include <lux/engine/extensions/ExtensionId.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/cxx/core/StableNameId.hpp>
 
 #include <uuid.h>
 
@@ -43,10 +43,6 @@
 
 namespace lux::authoring
 {
-    struct ProjectExtensionIdTag final {};
-    using ProjectExtensionId =
-        lux::cxx::StableNameId<ProjectExtensionIdTag>;
-
     enum class EProjectExtensionTarget : std::uint8_t
     {
         RUNTIME = 0u,
@@ -55,7 +51,7 @@ namespace lux::authoring
 
     struct ProjectExtensionEntry final
     {
-        ProjectExtensionId id;
+        lux::extensions::ExtensionId id;
         std::filesystem::path path;
         EProjectExtensionTarget target{EProjectExtensionTarget::RUNTIME};
         std::uint16_t required_major{0u};

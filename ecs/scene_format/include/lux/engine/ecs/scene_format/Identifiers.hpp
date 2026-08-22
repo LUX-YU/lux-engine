@@ -4,7 +4,7 @@
  * @brief Stable identities used by the domain-neutral LXES scene format.
  */
 
-#include <lux/cxx/algorithm/Sha256.hpp>
+#include <lux/cxx/algorithm/sha256.hpp>
 #include <lux/engine/ecs/ComponentSchemaId.hpp>
 #include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/cxx/core/StableNameId.hpp>

@@ -16,7 +16,7 @@
 #include <lux/game/LaunchManifest.hpp>
 #include <lux/engine/toolchain/asset/cook/PakCook.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureImporter.hpp>
-#include <lux/engine/toolchain/spatial3d_scene/Spatial3DEntitySceneAdapter.hpp>
+#include <lux/engine/toolchain/spatial3d_scene/Spatial3DSceneCooker.hpp>
 
 #undef TOML_HEADER_ONLY
 #define TOML_HEADER_ONLY 1
@@ -117,9 +117,8 @@ namespace lux::toolchain
 
             BuiltinComponentCatalog()
             {
-                lux::meta::meta_module_init();
                 auto registered =
-                    lux::ecs::registerGeneratedComponents(components);
+                    lux::ecs::initializeGeneratedMetadata(components);
                 if (!registered)
                 {
                     error = "built-in component schema registration failed at '" +

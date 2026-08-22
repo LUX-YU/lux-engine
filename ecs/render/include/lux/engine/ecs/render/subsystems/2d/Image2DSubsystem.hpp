@@ -39,7 +39,11 @@
 //  releaseRefs drops scoped in-flight continuations and clears local bookkeeping.
 // ============================================================================
 
-#include <lux/engine/ecs/render/RenderStage.hpp>
+#include <lux/engine/ecs/render/RenderExtractContext.hpp>
+#include <lux/engine/ecs/render/systems/RenderSystem.hpp>
+#include <lux/engine/ecs/render/subsystems/ResidencySubsystem.hpp>
+#include <lux/engine/ecs/systems/ISystem.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/ecs/render/RenderSpatialTransform.hpp>
 #include <lux/engine/ecs/render/components/PrimaryCameraTag.hpp>
 #include <lux/engine/ecs/render/SceneRenderBinding.hpp>       // ctx.canvas2d() / scene()
@@ -71,16 +75,21 @@ namespace lux::ecs
     ///
     ///   它的 `RenderRequest::then` **不迁 sender**(批 C2)—— 裁决与三条理由
     ///   记在 `PooledSlotSubsystem.hpp` 的类头。
-    class Image2DSubsystem final : public lux::ecs::RenderStage
+    class Image2DSubsystem final : public lux::ecs::ISystem
     {
     public:
-        Image2DSubsystem() = default;
+        Image2DSubsystem(
+            SceneRenderBinding& render,
+            ActiveRenderView& active_view) noexcept
+            : render_(&render), active_view_(&active_view)
+        {
+        }
 
         ~Image2DSubsystem() override { leave_.detach(); detachStateSignal(); }
 
         /// Canvas2D 的实例竞技场就是它画的地方。
-        [[nodiscard]] std::span<const std::string_view>
-        requiredFeatures() const noexcept override
+        [[nodiscard]] static std::span<const std::string_view>
+        requiredRenderFeatures() noexcept
         {
             static const std::string_view kFeatures[] = { "Canvas2D" };
             return kFeatures;
@@ -129,9 +138,61 @@ namespace lux::ecs
         static constexpr int kTransientRetryDrives = 120;   // ~2s @ 60fps
 
     public:
-        void extract(RenderSubsystemContext& uctx) override
+        void onAdded(const SystemSetupContext& setup) override
+        {
+            ensureAttached(setup.registry());
+        }
+
+        void onRemoved(const SystemRemovalContext&) override
+        {
+            detach();
+        }
+
+        void update(const SystemUpdateContext& context) override
+        {
+            if (closing_)
+                return;
+            RenderExtractContext extraction{
+                context.registry(),
+                *render_,
+                *active_view_,
+                context.dt(),
+                context.tickIndex()};
+            extract(extraction);
+        }
+
+        void requestClose() noexcept override
+        {
+            if (closing_)
+                return;
+            closing_ = true;
+            create_requests_.clear();
+            detach();
+            failed_.clear();
+            leaving_.clear();
+            to_unbind_.clear();
+            batch_.clear();
+        }
+
+        [[nodiscard]] bool closeComplete() const noexcept override
+        {
+            return closing_;
+        }
+
+        [[nodiscard]] std::span<const Type> runsAfter() const noexcept override
+        {
+            static const Type kAfter[]{
+                systemType<RenderSystem>(),
+                systemType<ResidencySubsystem>()};
+            return kAfter;
+        }
+
+        /// Test seam for renderer-protocol ownership probes. Production
+        /// scheduling enters through update().
+        void extract(RenderExtractContext& uctx)
         {
             auto& registry = uctx.registry();
+            ensureAttached(registry);
             auto& ctx = uctx.render();
 
             // Capacity failures are rare, but they need an explicit wake-up:
@@ -395,29 +456,33 @@ namespace lux::ecs
             return did_work;
         }
 
-    public:
-        void onAdded(const SystemSetupContext& setup) override
+    private:
+        void detach() noexcept
         {
-            auto& registry = setup.registry();
+            leave_.detach();
+            changes_.detach();
+            detachStateSignal();
+        }
+
+        void ensureAttached(lux::ecs::Registry& registry)
+        {
+            if (reg_ == &registry)
+                return;
+            leave_.detach();
+            detachStateSignal();
+            changes_.detach();
             leave_.attach(registry, [this](lux::ecs::Entity e) { onLeave(e); });
             attachStateSignal(registry);
             attachChangeSources(registry);
         }
-        void onRemoved(const SystemRemovalContext&) override
-        {
-            leave_.detach();
-            detachStateSignal();
-            changes_.detach();
-        }
 
         // 本节点不需要一个「帧开着」的显式拆解点(而 ResidencySubsystem
-        // 与 CameraViewSubsystem 需要):判据是**要不要发渲染命令**。
+        // 与 CameraViewSystem 需要):判据是**要不要发渲染命令**。
         //     · 实例 scene-owned → destroyScene 整体回收,逐个 remove 是多余命令;
         //     · 贴图引用计数不在本节点 → 那本账在资源子系统,它自己收;
         //     · 在途续体由 `TrackedRenderRequest` 内部的词法请求所有者同步解绑。
         //   三条都不发命令，成员析构因此就是完整的本地收场。
 
-    private:
         using Require = ComponentList<ResolvedTransform2DComponent>;
         using Exclude = ComponentList<>;
 
@@ -620,6 +685,10 @@ namespace lux::ecs
                 s.template on_destroy  <Live>();
             });
         }
+
+        SceneRenderBinding* render_{nullptr};
+        ActiveRenderView*   active_view_{nullptr};
+        bool                closing_{false};
     };
 
 } // namespace lux::ecs

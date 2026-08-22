@@ -278,7 +278,7 @@
                     EWorldSourceCodecError::INVALID_DATA,
                     "malformed Extension id"});
             lux::authoring::WorldRequiredExtension extension;
-            extension.id = lux::authoring::WorldExtensionId{name};
+            extension.id = lux::extensions::ExtensionId{name};
             if (extension.id.hash() != hash)
             {
                 return lux::cxx::unexpected(WorldSourceCodecFailure{

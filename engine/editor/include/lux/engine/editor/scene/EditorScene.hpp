@@ -51,7 +51,8 @@
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
 #include <lux/engine/ecs/physics3d/streaming/StaticCollider3DSystem.hpp>
-#include <lux/engine/runtime/render/scene/RenderSceneIntegration.hpp>
+#include <lux/engine/runtime/render/scene/RenderedSceneComposition.hpp>
+#include <lux/engine/ecs/render/SceneRenderBinding.hpp>
 #include <lux/engine/runtime/scene/script/SceneScriptRuntime.hpp>
 #include <lux/engine/navigation/Navigation.hpp>
 #include <lux/engine/ecs/SystemPhase.hpp>          // 相位常量(宿主注册自己的系统时用)
@@ -412,10 +413,11 @@ namespace lux::editor
         {
             const auto* active = play_runtime_ ? play_runtime_.get()
                                                : runtime_.get();
-            const auto* render = active
-                ? lux::runtime::renderScene(*active)
+            const auto* binding = active
+                ? active->services().get<lux::ecs::SceneRenderBinding>()
                 : nullptr;
-            return render ? render->sceneId() : lux::render::RenderSceneId{};
+            return binding ? binding->scene()
+                           : lux::render::RenderSceneId{};
         }
         // mainView() 删除(批 3):零调用点,而且「主视图」不再是运行时的一个字段 ——
         // view 归相机所有,要查就查 `view<ViewPresentComponent, RenderViewBindingComponent>`。

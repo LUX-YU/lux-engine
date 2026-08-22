@@ -56,7 +56,10 @@
 #include <lux/engine/function/render/client/genops/HighlightOperation.ops.hpp>  // kInstanceFlagHighlight
 #include <lux/engine/function/render/client/features/streaming_feedback/StreamingFeedbackOperation.hpp>
 
-#include <lux/engine/ecs/render/RenderStage.hpp>
+#include <lux/engine/ecs/render/RenderExtractContext.hpp>
+#include <lux/engine/ecs/render/systems/RenderSystem.hpp>
+#include <lux/engine/ecs/systems/ISystem.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include "lux/engine/ecs/render/SceneRenderBinding.hpp"
 #include "lux/engine/ecs/render/RenderExtractionResources.hpp"
 #include "lux/engine/ecs/render/RenderViewUtil.hpp"
@@ -83,7 +86,7 @@ namespace lux::ecs
     ///   它的 `RenderRequest::then` 状态机**原地保留,不迁 sender** ——
     ///   批 C2 的裁决与三条理由记在 `PooledSlotSubsystem.hpp` 的类头,
     ///   那里是全仓 8 处 ecs 层 `.then` 的共同裁决点。
-    class MeshInstanceSubsystem final : public RenderStage
+    class MeshInstanceSubsystem final : public ISystem
     {
         using T          = Traits;
         using C          = typename Traits::Component;
@@ -398,7 +401,12 @@ namespace lux::ecs
         }
 
     public:
-        MeshInstanceSubsystem() = default;
+        MeshInstanceSubsystem(
+            SceneRenderBinding& render,
+            ActiveRenderView& active_view) noexcept
+            : render_(&render), active_view_(&active_view)
+        {
+        }
 
         ~MeshInstanceSubsystem() override { leave_.detach(); detachStateSignal(); }
 
@@ -407,8 +415,8 @@ namespace lux::ecs
         ///  · StandardMaterial  —— 材质上传/改/销毁;
         ///  · Highlight         —— 实例标志位里的高亮位由它画出轮廓;
         ///  · Skinning          —— 仅骨骼网格(trait 有 beginFrame 的那一支)。
-        [[nodiscard]] std::span<const std::string_view>
-        requiredFeatures() const noexcept override
+        [[nodiscard]] static std::span<const std::string_view>
+        requiredRenderFeatures() noexcept
         {
             if constexpr (requires { typename T::FrameState; })
             {
@@ -426,9 +434,60 @@ namespace lux::ecs
             }
         }
 
-        void extract(RenderSubsystemContext& uctx) override
+        void onAdded(const SystemSetupContext& setup) override
+        {
+            ensureAttached(setup.registry());
+        }
+
+        void onRemoved(const SystemRemovalContext&) override
+        {
+            detach();
+        }
+
+        void update(const SystemUpdateContext& context) override
+        {
+            if (closing_)
+                return;
+            RenderExtractContext extraction{
+                context.registry(),
+                *render_,
+                *active_view_,
+                context.dt(),
+                context.tickIndex()};
+            extract(extraction);
+        }
+
+        void requestClose() noexcept override
+        {
+            if (closing_)
+                return;
+            closing_ = true;
+            create_requests_.clear();
+            detach();
+            failed_.clear();
+            leaving_.clear();
+            to_unbind_.clear();
+        }
+
+        [[nodiscard]] bool closeComplete() const noexcept override
+        {
+            return closing_;
+        }
+
+        [[nodiscard]] std::span<const Type> runsAfter() const noexcept override
+        {
+            static const Type kAfter[]{
+                systemType<RenderSystem>(),
+                systemType<ResidencySubsystem>()};
+            return kAfter;
+        }
+
+        /// Test seam for renderer-protocol ownership probes. Production
+        /// scheduling enters through update().
+        void extract(RenderExtractContext& uctx)
         {
             auto& reg = uctx.registry();
+            ensureAttached(reg);
             auto& ctx = uctx.render();
             auto& active_view = uctx.activeView();
 
@@ -728,22 +787,25 @@ namespace lux::ecs
         }
 
 
-    public:
-        void onAdded(const SystemSetupContext& setup) override
+    private:
+        void detach() noexcept
         {
-            auto& reg = setup.registry();
+            leave_.detach();
+            changes_.detach();
+            detachStateSignal();
+        }
+
+        void ensureAttached(lux::ecs::Registry& reg)
+        {
+            if (reg_ == &reg)
+                return;
+            leave_.detach();
+            detachStateSignal();
+            changes_.detach();
             leave_.attach(reg, [this](lux::ecs::Entity e) { onLeave(e); });
             attachStateSignal(reg);
             attachChangeSources(reg);
         }
-        void onRemoved(const SystemRemovalContext&) override
-        {
-            leave_.detach();
-            detachStateSignal();
-            changes_.detach();
-        }
-
-    private:
         /// ★ 批 R2:声明「什么算这个实体需要重新处理」。
         ///
         /// 逐条显式列出,不藏在某个类型参数里 —— 漏一条的后果是
@@ -820,5 +882,10 @@ namespace lux::ecs
         // scene lease 整体回收；跨场景 mesh/material 兴趣票属于
         // ResidencySubsystem；在途 create 由 `TrackedRenderRequest` 的词法
         // owner 取消。因此成员析构就是完整的本地收场。
+
+    private:
+        SceneRenderBinding* render_{nullptr};
+        ActiveRenderView*   active_view_{nullptr};
+        bool                closing_{false};
     };
 } // namespace lux::ecs

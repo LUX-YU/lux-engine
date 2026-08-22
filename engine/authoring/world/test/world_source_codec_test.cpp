@@ -45,7 +45,7 @@ namespace
         root.data_layers.push_back(
             DataLayerId{"org.example.gameplay"});
         root.required_extensions.push_back({
-            lux::authoring::WorldExtensionId{"org.example.runtime"},
+            lux::extensions::ExtensionId{"org.example.runtime"},
             1u,
             2u});
         root.instance_sets.push_back({

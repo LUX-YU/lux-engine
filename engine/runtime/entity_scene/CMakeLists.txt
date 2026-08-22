@@ -18,7 +18,6 @@ add_component(
     OUTPUT_NAME    lux_engine_runtime_entity_scene
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SectionBlobStore.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/EntitySceneCatalog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EntitySectionGeneratorCatalog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EntitySectionService.cpp
 )
@@ -162,32 +161,9 @@ lux_classify_target(
     ROLE    INTEGRATION
 )
 
-add_executable(
-    entity_scene_catalog_identity_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/entity_scene_catalog_identity_test.cpp
-)
-target_link_libraries(
-    entity_scene_catalog_identity_test
-    PRIVATE
-        lux::engine::runtime::runtime_entity_scene
-        lux::engine::extensions::extension_api
-        lux::engine::scene::scene
-)
-if(MSVC)
-    target_compile_options(entity_scene_catalog_identity_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(entity_scene_catalog_identity_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  entity_scene_catalog_identity_test
-    LAYER   RUNTIME
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)
-
 # Public API closure and ownership probe. This target intentionally includes
-# only canonical Runtime EntitySection headers; any legacy Resource DTO leak
-# becomes a compile error here.
+# only canonical EntitySection headers; any retired catalog wrapper leak becomes
+# a compile error here.
 add_executable(
     entity_section_public_contract_test
     ${CMAKE_CURRENT_SOURCE_DIR}/test/entity_section_public_contract_test.cpp

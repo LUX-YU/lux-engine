@@ -228,8 +228,9 @@ namespace lux::render
         /// GeneralRenderServer + GPU device). A headless bridge test pairs this with
         /// a FrameDispatcher that registers recording handlers at these SAME TypeIds,
         /// so ops<IdsT>(name) resolves to ids the fake dispatcher actually handles.
-        /// (需要句柄的测试另在 RenderSystem 上 bindFeature —— 句柄是场景域状态,
-        ///  不在本目录里。) Never called on a production path.
+        /// Tests that need scene handles seal a SceneRenderBinding separately:
+        /// handles are scene-scoped state and never live in this Catalog.
+        /// Never called on a production path.
         void injectForTest(std::string_view name,
                            std::span<const TypeId> ops,
                            int param_set_op_index = -1)
@@ -310,9 +311,9 @@ namespace lux::render
         std::vector<std::byte> config;       ///< 精确 sizeof(CommConfig) 字节
     };
 
-    /// 每场景的 name → FeatureHandle 绑定表:attach 回复落地时逐条 bind。
-    /// 归 `lux::ecs::RenderSystem` 所有(一个场景一份)——它是场景域状态的
-    /// 唯一归宿,拆出来之后进程目录可以安全地被任意多个场景共享。
+    /// Cold-assembly name → FeatureHandle draft. SceneRenderBinding receives
+    /// it once in seal(); published Systems see only the resulting const
+    /// RenderCapabilities view, so topology has no live mutation surface.
     class FeatureBindings
     {
     public:
@@ -321,21 +322,6 @@ namespace lux::render
             for (auto& e : entries_)
                 if (e.first == name) { e.second = handle; return; }
             entries_.emplace_back(std::string(name), handle);
-        }
-
-        void unbind(
-            std::string_view name,
-            FeatureHandle expected = {}) noexcept
-        {
-            for (auto it = entries_.begin(); it != entries_.end(); ++it)
-            {
-                if (it->first != name)
-                    continue;
-                if (expected.isValid() && it->second != expected)
-                    return;
-                entries_.erase(it);
-                return;
-            }
         }
 
         /// 缺席 → 无效句柄(消费方优雅 no-op —— 与 feature 缺席同一契约)。

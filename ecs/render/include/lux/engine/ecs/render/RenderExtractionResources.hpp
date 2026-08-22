@@ -3,7 +3,7 @@
  * @file RenderExtractionResources.hpp
  * @brief 渲染抽取节点共用的**窄类型化资源**。
  *
- * 收口之后,子系统之间不能再靠「谁持有谁的指针」通气(`CameraViewSubsystem` 曾经握着
+ * 收口之后,子系统之间不能再靠「谁持有谁的指针」通气(`CameraViewSystem` 曾经握着
  * 一个 `RenderSystem*`,只为在 view 落地时通知它)。共享的那点状态改为**独立的、
  * 有名字的资源**:生产者和消费者都只认识资源,彼此不认识。
  *
@@ -23,7 +23,7 @@ namespace lux::ecs
 {
     /// 「本场景当前出图的那个 view」。
     ///
-    /// 写者:`CameraViewSubsystem`(某台相机的 addView 回执落地 / 绑定消失)。
+    /// 写者:`CameraViewSystem`(某台相机的 addView 回执落地 / 绑定消失)。
     /// 读者:各抽取节点(实例可见性、相机上传)。
     ///
     /// ⚠️ **代次不是装饰品。** 有些 per-view 状态是「置一次就不再看」的闩 ——

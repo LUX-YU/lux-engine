@@ -4,11 +4,8 @@
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <iterator>
 #include <map>
-#include <set>
-#include <string_view>
 #include <utility>
 
 namespace lux::toolchain
@@ -39,45 +36,6 @@ namespace lux::toolchain
             std::string,
             lux::ecs::scene_format::RequiredComponentSchema,
             std::less<>>;
-        using FeatureSet = std::set<std::string, std::less<>>;
-
-        void deriveRenderFeatures(
-            FeatureSet& destination,
-            std::string_view schema_name)
-        {
-            std::string canonical{schema_name};
-            std::ranges::transform(
-                canonical,
-                canonical.begin(),
-                [](unsigned char character)
-                {
-                    return static_cast<char>(std::tolower(character));
-                });
-            const auto addWhen = [&](std::string_view token,
-                                     std::string_view feature)
-            {
-                if (canonical.find(token) != std::string::npos)
-                    destination.emplace(feature);
-            };
-            addWhen("camera", "StandardViewCamera");
-            addWhen("image2d", "Canvas2D");
-            addWhen("tilemap", "Canvas2D");
-            addWhen("tilechunk2d", "Canvas2D");
-            addWhen("pixelfield2d", "Canvas2D");
-            addWhen("grid2d", "Grid2D");
-            addWhen("meshcomponent", "MeshStack");
-            addWhen("skeletalmesh", "MeshStack");
-            addWhen("classicmeshbatch", "RenderCluster");
-            addWhen("skybox", "Skybox");
-            addWhen("heightfog", "Fog");
-            addWhen("watersurface", "Water");
-            addWhen("grid3d", "Grid3D");
-            addWhen("directionallight", "Light");
-            addWhen("pointlight", "Light");
-            addWhen("spotlight", "Light");
-            addWhen("terrain", "Terrain");
-        }
-
         [[nodiscard]] lux::cxx::expected<void, EntitySceneCookFailure>
         mergeExtension(
             ExtensionMap& destination,
@@ -188,17 +146,6 @@ namespace lux::toolchain
                 return lux::cxx::unexpected(merged.error());
             }
         }
-        FeatureSet required_render_features{
-            std::make_move_iterator(
-                input.project_required_render_features.begin()),
-            std::make_move_iterator(
-                input.project_required_render_features.end())};
-        FeatureSet optional_render_features{
-            std::make_move_iterator(
-                input.project_optional_render_features.begin()),
-            std::make_move_iterator(
-                input.project_optional_render_features.end())};
-
         CookedSceneDescriptionBundle bundle;
         bundle.package.id = input.id;
         bundle.package.spatial3d_catalog =
@@ -266,9 +213,6 @@ namespace lux::toolchain
                 {
                     return lux::cxx::unexpected(merged.error());
                 }
-                deriveRenderFeatures(
-                    required_render_features,
-                    schema.id.name);
             }
 
             const auto valid_record = lux::scene::validateSectionRecord(record);
@@ -298,15 +242,6 @@ namespace lux::toolchain
             bundle.package.required_components.push_back(
                 std::move(requirement));
         }
-        for (const auto& required : required_render_features)
-            optional_render_features.erase(required);
-        bundle.package.required_render_features.assign(
-            required_render_features.begin(),
-            required_render_features.end());
-        bundle.package.optional_render_features.assign(
-            optional_render_features.begin(),
-            optional_render_features.end());
-
         const auto valid_package = lux::scene::validateSceneDescription(
             bundle.package);
         if (!valid_package)

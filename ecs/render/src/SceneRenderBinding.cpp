@@ -45,14 +45,12 @@ namespace lux::ecs
 
     FeatureSettleReport settleRenderCapabilities(
         SceneRenderBinding&                     ctx,
+        const lux::render::FeatureCatalog&       catalog,
         std::span<const lux::render::FeatureAttach> plan,
         std::span<const std::string_view>           input_roots,
         std::string_view                            profile)
     {
         FeatureSettleReport rep;
-        const auto* catalog = ctx.catalog();
-        if (!catalog)
-            return rep;   // setCatalog 没来过:无目录可解析,零 attach(空视图契约)
 
         // 根集合由调用方给(节点声明 ∪ 宿主管线选择);这里只去重 ——
         // 「谁需要哪个 feature」是节点的知识,不该由这段编排去搜集。
@@ -60,7 +58,7 @@ namespace lux::ecs
         std::sort(roots.begin(), roots.end());
         roots.erase(std::unique(roots.begin(), roots.end()), roots.end());
 
-        rep.resolve = catalog->resolveAttachOrder(roots);
+        rep.resolve = catalog.resolveAttachOrder(roots);
 
         // 同名条目里 profile 匹配的胜出;否则用标准条目(profile 空)。
         const auto pickEntry = [&](std::string_view n) -> const lux::render::FeatureAttach*
@@ -108,6 +106,7 @@ namespace lux::ecs
             return rep;   // 收场权归调用方:通道死**不回滚**(回收命令等不到回复)
         }
 
+        lux::render::FeatureBindings bindings;
         for (std::size_t i = 0; i < adds.size(); ++i)
         {
             if (adds[i].failed())
@@ -126,8 +125,11 @@ namespace lux::ecs
                 rep.error    = r.error;
                 return rep;   // 收场权归调用方:failBringUp 整体回收(原语义)
             }
-            ctx.bindFeature(names[i], r.feature);
+            bindings.bind(names[i], r.feature);
         }
+
+        if (!ctx.seal(catalog, std::move(bindings)))
+            rep.status = FeatureSettleReport::Status::BINDING_ALREADY_SEALED;
 
         return rep;
     }

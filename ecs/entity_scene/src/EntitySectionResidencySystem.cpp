@@ -1,13 +1,13 @@
-#include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <algorithm>
 #include <cstdlib>
 #include <utility>
 #include <vector>
 
-namespace lux::runtime::spatial_partition
+namespace lux::ecs::entity_scene::residency
 {
-    struct SpatialPartitionSystem::ResidentTicket final
+    struct EntitySectionResidencySystem::ResidentTicket final
     {
         lux::ecs::scene_format::EntitySectionId section;
         lux::ecs::entity_scene::EntitySectionTicket ticket;
@@ -23,52 +23,52 @@ namespace lux::runtime::spatial_partition
         }
     }
 
-    SpatialPartitionSystem::SpatialPartitionSystem(
+    EntitySectionResidencySystem::EntitySectionResidencySystem(
         lux::ecs::entity_scene::EntitySectionClient client,
-        SpatialDemandPlanner planner) noexcept
+        SectionResidencyPlanner planner) noexcept
         : client_(std::move(client)),
           planner_(std::move(planner)),
           owner_thread_(std::this_thread::get_id())
     {}
 
-    SpatialPartitionSystem::~SpatialPartitionSystem()
+    EntitySectionResidencySystem::~EntitySectionResidencySystem()
     {
         requireOwnerThread();
     }
 
-    void SpatialPartitionSystem::requireOwnerThread() const noexcept
+    void EntitySectionResidencySystem::requireOwnerThread() const noexcept
     {
         if (std::this_thread::get_id() != owner_thread_)
             std::abort();
     }
 
-    void SpatialPartitionSystem::recordFailure(
-        ESpatialPartitionError error) noexcept
+    void EntitySectionResidencySystem::recordFailure(
+        ESectionResidencyError error) noexcept
     {
         ++rejected_transactions_;
-        if (error == ESpatialPartitionError::
+        if (error == ESectionResidencyError::
                 DECODED_BYTE_BUDGET_EXCEEDED ||
-            error == ESpatialPartitionError::ENTITY_BUDGET_EXCEEDED ||
-            error == ESpatialPartitionError::BUDGET_OVERFLOW)
+            error == ESectionResidencyError::ENTITY_BUDGET_EXCEEDED ||
+            error == ESectionResidencyError::BUDGET_OVERFLOW)
         {
             ++budget_rejections_;
         }
-        if (error == ESpatialPartitionError::STALE_SOURCE_GENERATION)
+        if (error == ESectionResidencyError::STALE_SOURCE_GENERATION)
             ++stale_generation_rejections_;
     }
 
-    SpatialPartitionExp<void>
-    SpatialPartitionSystem::replaceDemandSource(
-        SpatialDemandSourceUpdate update)
+    SectionResidencyExp<void>
+    EntitySectionResidencySystem::replaceDemandSource(
+        SectionDemandSourceUpdate update)
     {
         requireOwnerThread();
         if (!added_)
         {
             const auto error = binding_mismatch_
-                ? ESpatialPartitionError::LOADER_REGISTRY_MISMATCH
-                : ESpatialPartitionError::OWNER_NOT_ADDED;
+                ? ESectionResidencyError::LOADER_REGISTRY_MISMATCH
+                : ESectionResidencyError::OWNER_NOT_ADDED;
             recordFailure(error);
-            return lux::cxx::unexpected(SpatialPartitionFailure{
+            return lux::cxx::unexpected(SectionResidencyFailure{
                 .code = error,
                 .source = std::move(update.source)});
         }
@@ -81,19 +81,19 @@ namespace lux::runtime::spatial_partition
         return apply(std::move(*plan), false);
     }
 
-    SpatialPartitionExp<void>
-    SpatialPartitionSystem::removeDemandSource(
-        const SpatialDemandSourceId& source,
+    SectionResidencyExp<void>
+    EntitySectionResidencySystem::removeDemandSource(
+        const SectionDemandSourceId& source,
         std::uint64_t generation)
     {
         requireOwnerThread();
         if (!added_)
         {
             const auto error = binding_mismatch_
-                ? ESpatialPartitionError::LOADER_REGISTRY_MISMATCH
-                : ESpatialPartitionError::OWNER_NOT_ADDED;
+                ? ESectionResidencyError::LOADER_REGISTRY_MISMATCH
+                : ESectionResidencyError::OWNER_NOT_ADDED;
             recordFailure(error);
-            return lux::cxx::unexpected(SpatialPartitionFailure{
+            return lux::cxx::unexpected(SectionResidencyFailure{
                 .code = error,
                 .source = source});
         }
@@ -106,15 +106,15 @@ namespace lux::runtime::spatial_partition
         return apply(std::move(*plan), true);
     }
 
-    SpatialPartitionExp<void>
-    SpatialPartitionSystem::apply(SpatialDemandPlan plan, bool removal)
+    SectionResidencyExp<void>
+    EntitySectionResidencySystem::apply(SectionResidencyPlan plan, bool removal)
     {
-        std::vector<SpatialResidentDemand> desired{
+        std::vector<SectionResidentDemand> desired{
             plan.residents().begin(), plan.residents().end()};
         std::sort(
             desired.begin(), desired.end(),
-            [](const SpatialResidentDemand& lhs,
-               const SpatialResidentDemand& rhs)
+            [](const SectionResidentDemand& lhs,
+               const SectionResidentDemand& rhs)
             {
                 return sectionLess(lhs.record.id, rhs.record.id);
             });
@@ -144,7 +144,7 @@ namespace lux::runtime::spatial_partition
         // Acquire a closure in dependency order. EntitySectionLoaderSystem
         // pins dependencies by their already-admitted slot, so ordering by
         // priority/UUID alone would make correctness depend on UUID layout.
-        std::vector<const SpatialResidentDemand*> roots;
+        std::vector<const SectionResidentDemand*> roots;
         roots.reserve(desired.size());
         for (const auto& resident : desired)
             roots.push_back(&resident);
@@ -158,10 +158,10 @@ namespace lux::runtime::spatial_partition
             });
 
         std::vector<std::uint8_t> visits(desired.size(), 0u);
-        std::vector<const SpatialResidentDemand*> missing;
+        std::vector<const SectionResidentDemand*> missing;
         missing.reserve(desired.size());
         auto appendWithDependencies = [&](auto&& self,
-                                          const SpatialResidentDemand& value)
+                                          const SectionResidentDemand& value)
             -> bool
         {
             const auto index = static_cast<std::size_t>(
@@ -175,7 +175,7 @@ namespace lux::runtime::spatial_partition
             {
                 const auto found = std::lower_bound(
                     desired.begin(), desired.end(), dependency,
-                    [](const SpatialResidentDemand& lhs, const auto& rhs)
+                    [](const SectionResidentDemand& lhs, const auto& rhs)
                     {
                         return sectionLess(lhs.record.id, rhs);
                     });
@@ -194,9 +194,9 @@ namespace lux::runtime::spatial_partition
         {
             if (!appendWithDependencies(appendWithDependencies, *root))
             {
-                recordFailure(ESpatialPartitionError::INVALID_DEPENDENCY);
-                return lux::cxx::unexpected(SpatialPartitionFailure{
-                    .code = ESpatialPartitionError::INVALID_DEPENDENCY,
+                recordFailure(ESectionResidencyError::INVALID_DEPENDENCY);
+                return lux::cxx::unexpected(SectionResidencyFailure{
+                    .code = ESectionResidencyError::INVALID_DEPENDENCY,
                     .section = root->record.id});
             }
         }
@@ -208,9 +208,9 @@ namespace lux::runtime::spatial_partition
         // demand source and will report owner work forever.
         if (!missing.empty() && !client_)
         {
-            recordFailure(ESpatialPartitionError::LOADER_UNAVAILABLE);
-            return lux::cxx::unexpected(SpatialPartitionFailure{
-                .code = ESpatialPartitionError::LOADER_UNAVAILABLE});
+            recordFailure(ESectionResidencyError::LOADER_UNAVAILABLE);
+            return lux::cxx::unexpected(SectionResidencyFailure{
+                .code = ESectionResidencyError::LOADER_UNAVAILABLE});
         }
         for (const auto* resident : missing)
         {
@@ -218,9 +218,9 @@ namespace lux::runtime::spatial_partition
             if (!ticket)
             {
                 recordFailure(
-                    ESpatialPartitionError::SECTION_ACQUIRE_FAILED);
-                return lux::cxx::unexpected(SpatialPartitionFailure{
-                    .code = ESpatialPartitionError::SECTION_ACQUIRE_FAILED,
+                    ESectionResidencyError::SECTION_ACQUIRE_FAILED);
+                return lux::cxx::unexpected(SectionResidencyFailure{
+                    .code = ESectionResidencyError::SECTION_ACQUIRE_FAILED,
                     .section = resident->record.id,
                     .loader_error = ticket.error()});
             }
@@ -284,10 +284,10 @@ namespace lux::runtime::spatial_partition
         return {};
     }
 
-    SpatialPartitionSnapshot SpatialPartitionSystem::snapshot() const noexcept
+    EntitySectionResidencySnapshot EntitySectionResidencySystem::snapshot() const noexcept
     {
         requireOwnerThread();
-        SpatialPartitionSnapshot result{
+        EntitySectionResidencySnapshot result{
             .demand = planner_.snapshot(),
             .loader_tickets = resident_tickets_.size(),
             .loader_binding_valid = added_,
@@ -324,7 +324,7 @@ namespace lux::runtime::spatial_partition
         return result;
     }
 
-    void SpatialPartitionSystem::onAdded(
+    void EntitySectionResidencySystem::onAdded(
         const lux::ecs::SystemSetupContext& setup)
     {
         requireOwnerThread();
@@ -332,14 +332,14 @@ namespace lux::runtime::spatial_partition
         binding_mismatch_ = !added_;
     }
 
-    void SpatialPartitionSystem::update(
+    void EntitySectionResidencySystem::update(
         const lux::ecs::SystemUpdateContext&)
     {
         requireOwnerThread();
     }
 
     std::span<const lux::ecs::ISystem::Type>
-    SpatialPartitionSystem::prerequisites() const noexcept
+    EntitySectionResidencySystem::prerequisites() const noexcept
     {
         static constexpr Type prerequisites[]{
             lux::ecs::systemType<
@@ -348,7 +348,7 @@ namespace lux::runtime::spatial_partition
     }
 
     std::span<const lux::ecs::ISystem::Type>
-    SpatialPartitionSystem::runsAfter() const noexcept
+    EntitySectionResidencySystem::runsAfter() const noexcept
     {
         return prerequisites();
     }

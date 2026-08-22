@@ -9,7 +9,7 @@
 #include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/Spatial2DSectionIndex.hpp>
 #include <lux/engine/runtime/spatial2d/infinite/visibility.h>
-#include <lux/engine/runtime/spatial_partition/SpatialDemand.hpp>
+#include <lux/engine/ecs/entity_scene/residency/SectionResidencyDemand.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -17,9 +17,9 @@
 #include <optional>
 #include <span>
 
-namespace lux::runtime::spatial_partition
+namespace lux::ecs::entity_scene::residency
 {
-    class SpatialPartitionSystem;
+    class EntitySectionResidencySystem;
 }
 
 namespace lux::runtime::spatial2d
@@ -51,7 +51,7 @@ namespace lux::runtime::spatial2d
         entt::entity entity{entt::null};
         std::optional<Spatial2DIndexFailure> index;
         std::optional<
-            lux::runtime::spatial_partition::SpatialPartitionFailure>
+            lux::ecs::entity_scene::residency::SectionResidencyFailure>
             partition;
     };
 
@@ -70,14 +70,14 @@ namespace lux::runtime::spatial2d
     };
 
     /// A small-source-count ECS system.  It scans only interest entities, not
-    /// scene content, and updates the generic SpatialPartitionSystem when a
+    /// scene content, and updates the generic EntitySectionResidencySystem when a
     /// source crosses a Section boundary or changes priority.
     class LUX_ENGINE_RUNTIME_SPATIAL2D_INFINITE_PUBLIC
     SpatialInterest2DSystem final : public lux::ecs::ISystem
     {
     public:
         SpatialInterest2DSystem(
-            lux::runtime::spatial_partition::SpatialPartitionSystem&
+            lux::ecs::entity_scene::residency::EntitySectionResidencySystem&
                 partition,
             Spatial2DSectionSource source,
             SpatialInterest2DConfig config = {});
@@ -92,7 +92,7 @@ namespace lux::runtime::spatial2d
         [[nodiscard]] bool closeNeedsOwnerTick() const noexcept override;
         [[nodiscard]] SpatialInterest2DSnapshot snapshot() const;
         /// Dimension-leaf consumers use this explicit activity view. Generic
-        /// SpatialDemand priority is never interpreted as a domain
+        /// SectionDemand priority is never interpreted as a domain
         /// visibility/simulation flag.
         [[nodiscard]] bool isActive(
             lux::math::GridCoord2i64 coordinate) const noexcept;

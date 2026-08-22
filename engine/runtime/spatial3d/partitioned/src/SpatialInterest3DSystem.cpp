@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
 #include <lux/engine/ecs/transform/systems/Transform3DSystem.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -32,7 +32,7 @@ namespace lux::runtime::spatial3d
         }
         const auto maximum_name =
             std::string{source_namespace.name()} + ".e4294967295";
-        return lux::runtime::spatial_partition::SpatialDemandSourceId{
+        return lux::ecs::entity_scene::residency::SectionDemandSourceId{
             maximum_name}.isValid();
     }
 
@@ -121,7 +121,7 @@ namespace lux::runtime::spatial3d
             };
 
             entt::entity entity{entt::null};
-            lux::runtime::spatial_partition::SpatialDemandSourceId source;
+            lux::ecs::entity_scene::residency::SectionDemandSourceId source;
             std::vector<Entry> entries;
             SelectionKey selection;
             std::uint64_t generation{0u};
@@ -143,7 +143,7 @@ namespace lux::runtime::spatial3d
         };
 
         Impl(
-            lux::runtime::spatial_partition::SpatialPartitionSystem&
+            lux::ecs::entity_scene::residency::EntitySectionResidencySystem&
                 partition_value,
             SpatialInterest3DConfig config_value)
             : partition(&partition_value),
@@ -201,8 +201,8 @@ namespace lux::runtime::spatial3d
             if (!removed)
             {
                 if (removed.error().code ==
-                    lux::runtime::spatial_partition::
-                        ESpatialPartitionError::SOURCE_NOT_FOUND)
+                    lux::ecs::entity_scene::residency::
+                        ESectionResidencyError::SOURCE_NOT_FOUND)
                 {
                     ++snapshot.committed_removals;
                     return true;
@@ -366,11 +366,11 @@ namespace lux::runtime::spatial3d
                 return;
             }
 
-            lux::runtime::spatial_partition::SpatialDemandSourceUpdate update;
+            lux::ecs::entity_scene::residency::SectionDemandSourceUpdate update;
             update.source = found != band.tracked.end() &&
                     found->entity == entity
                 ? found->source
-                : lux::runtime::spatial_partition::SpatialDemandSourceId{
+                : lux::ecs::entity_scene::residency::SectionDemandSourceId{
                       sourceName(band, entity)};
             update.generation = generation;
             update.channel = band.config.channel;
@@ -416,8 +416,8 @@ namespace lux::runtime::spatial3d
                     found,
                     TrackedSource{
                         entity,
-                        lux::runtime::spatial_partition::
-                            SpatialDemandSourceId{sourceName(band, entity)},
+                        lux::ecs::entity_scene::residency::
+                            SectionDemandSourceId{sourceName(band, entity)},
                         std::move(compact_entries),
                         selection,
                         generation,
@@ -474,7 +474,7 @@ namespace lux::runtime::spatial3d
             snapshot.closed = closing && snapshot.tracked_sources == 0u;
         }
 
-        lux::runtime::spatial_partition::SpatialPartitionSystem* partition;
+        lux::ecs::entity_scene::residency::EntitySectionResidencySystem* partition;
         std::size_t maximum_sources{0u};
         bool config_valid{false};
         std::vector<BandState> bands;
@@ -487,7 +487,7 @@ namespace lux::runtime::spatial3d
     };
 
     SpatialInterest3DSystem::SpatialInterest3DSystem(
-        lux::runtime::spatial_partition::SpatialPartitionSystem& partition,
+        lux::ecs::entity_scene::residency::EntitySectionResidencySystem& partition,
         SpatialInterest3DConfig config)
         : impl_(std::make_unique<Impl>(partition, std::move(config)))
     {
@@ -641,7 +641,7 @@ namespace lux::runtime::spatial3d
     {
         static constexpr Type result[]{
             lux::ecs::systemType<
-                lux::runtime::spatial_partition::SpatialPartitionSystem>()};
+                lux::ecs::entity_scene::residency::EntitySectionResidencySystem>()};
         return result;
     }
 
@@ -650,7 +650,7 @@ namespace lux::runtime::spatial3d
     {
         static constexpr Type result[]{
             lux::ecs::systemType<
-                lux::runtime::spatial_partition::SpatialPartitionSystem>(),
+                lux::ecs::entity_scene::residency::EntitySectionResidencySystem>(),
             lux::ecs::systemType<lux::ecs::Transform3DSystem>()};
         return result;
     }

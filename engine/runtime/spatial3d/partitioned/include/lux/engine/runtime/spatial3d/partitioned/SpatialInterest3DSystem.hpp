@@ -9,7 +9,7 @@
 #include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/visibility.h>
-#include <lux/engine/runtime/spatial_partition/SpatialDemand.hpp>
+#include <lux/engine/ecs/entity_scene/residency/SectionResidencyDemand.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -18,16 +18,16 @@
 #include <span>
 #include <vector>
 
-namespace lux::runtime::spatial_partition
+namespace lux::ecs::entity_scene::residency
 {
-    class SpatialPartitionSystem;
+    class EntitySectionResidencySystem;
 }
 
 namespace lux::runtime::spatial3d
 {
     struct SpatialInterest3DBand final
     {
-        lux::runtime::spatial_partition::SpatialDemandSourceId
+        lux::ecs::entity_scene::residency::SectionDemandSourceId
             source_namespace;
         Spatial3DSectionSource sections;
         double cell_world_size{64.0};
@@ -68,10 +68,10 @@ namespace lux::runtime::spatial3d
         ESpatialInterest3DError code{
             ESpatialInterest3DError::INVALID_CONFIG};
         entt::entity entity{entt::null};
-        lux::runtime::spatial_partition::SpatialDemandSourceId band;
+        lux::ecs::entity_scene::residency::SectionDemandSourceId band;
         std::optional<Spatial3DSourceFailure> source;
         std::optional<
-            lux::runtime::spatial_partition::SpatialPartitionFailure>
+            lux::ecs::entity_scene::residency::SectionResidencyFailure>
             partition;
     };
 
@@ -96,7 +96,7 @@ namespace lux::runtime::spatial3d
     {
     public:
         SpatialInterest3DSystem(
-            lux::runtime::spatial_partition::SpatialPartitionSystem&
+            lux::ecs::entity_scene::residency::EntitySectionResidencySystem&
                 partition,
             SpatialInterest3DConfig config);
         ~SpatialInterest3DSystem() override;

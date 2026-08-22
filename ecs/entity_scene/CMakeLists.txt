@@ -19,6 +19,8 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EntityBatchMaterializer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EntitySectionLoaderSystem.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/StartupSectionSystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SectionResidencyPlanner.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/EntitySectionResidencySystem.cpp
 )
 
 component_include_directories(
@@ -64,5 +66,25 @@ lux_classify_target(
     TARGET  entity_scene
     LAYER   ECS
     PRODUCT RUNTIME
+    ROLE    DOMAIN
+)
+
+add_executable(
+    section_residency_planner_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/section_residency_planner_test.cpp
+)
+target_link_libraries(
+    section_residency_planner_test
+    PRIVATE lux::engine::ecs::entity_scene
+)
+if(MSVC)
+    target_compile_options(section_residency_planner_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(section_residency_planner_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  section_residency_planner_test
+    LAYER   ECS
+    PRODUCT TEST
     ROLE    DOMAIN
 )

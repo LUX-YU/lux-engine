@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/components/ResolvedTransform2DComponent.hpp>
 #include <lux/engine/ecs/transform/systems/Transform2DSystem.hpp>
 #include <lux/engine/ecs/spatial2d/components/SpatialInterest2DComponent.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -28,7 +28,7 @@ namespace lux::runtime::spatial2d
         struct TrackedSource final
         {
             entt::entity entity{entt::null};
-            lux::runtime::spatial_partition::SpatialDemandSourceId source;
+            lux::ecs::entity_scene::residency::SectionDemandSourceId source;
             Spatial2DWindow window;
             std::uint32_t priority{0u};
             std::uint64_t generation{0u};
@@ -36,7 +36,7 @@ namespace lux::runtime::spatial2d
         };
 
         Impl(
-            lux::runtime::spatial_partition::SpatialPartitionSystem&
+            lux::ecs::entity_scene::residency::EntitySectionResidencySystem&
                 partition_value,
             Spatial2DSectionSource source_value,
             SpatialInterest2DConfig config_value)
@@ -79,8 +79,8 @@ namespace lux::runtime::spatial2d
                 // A caller may have explicitly removed the same source.  Its
                 // absence is already the desired idempotent terminal state.
                 if (removed.error().code ==
-                    lux::runtime::spatial_partition::
-                        ESpatialPartitionError::SOURCE_NOT_FOUND)
+                    lux::ecs::entity_scene::residency::
+                        ESectionResidencyError::SOURCE_NOT_FOUND)
                 {
                     ++snapshot.committed_removals;
                     return true;
@@ -169,10 +169,10 @@ namespace lux::runtime::spatial2d
                 return;
             }
 
-            lux::runtime::spatial_partition::SpatialDemandSourceUpdate update;
+            lux::ecs::entity_scene::residency::SectionDemandSourceUpdate update;
             update.source = found != tracked.end() && found->entity == entity
                 ? found->source
-                : lux::runtime::spatial_partition::SpatialDemandSourceId{
+                : lux::ecs::entity_scene::residency::SectionDemandSourceId{
                     sourceName(entity)};
             update.generation = generation;
             update.channel = config.channel;
@@ -209,8 +209,8 @@ namespace lux::runtime::spatial2d
                     found,
                     TrackedSource{
                         entity,
-                        lux::runtime::spatial_partition::
-                            SpatialDemandSourceId{sourceName(entity)},
+                        lux::ecs::entity_scene::residency::
+                            SectionDemandSourceId{sourceName(entity)},
                         std::move(*window),
                         interest.priority,
                         generation,
@@ -258,7 +258,7 @@ namespace lux::runtime::spatial2d
             snapshot.closed = closing && tracked.empty();
         }
 
-        lux::runtime::spatial_partition::SpatialPartitionSystem* partition;
+        lux::ecs::entity_scene::residency::EntitySectionResidencySystem* partition;
         Spatial2DSectionSource source;
         SpatialInterest2DConfig config;
         std::vector<TrackedSource> tracked;
@@ -270,7 +270,7 @@ namespace lux::runtime::spatial2d
     };
 
     SpatialInterest2DSystem::SpatialInterest2DSystem(
-        lux::runtime::spatial_partition::SpatialPartitionSystem& partition,
+        lux::ecs::entity_scene::residency::EntitySectionResidencySystem& partition,
         Spatial2DSectionSource source,
         SpatialInterest2DConfig config)
         : impl_(std::make_unique<Impl>(
@@ -390,7 +390,7 @@ namespace lux::runtime::spatial2d
     {
         static constexpr Type result[]{
             lux::ecs::systemType<
-                lux::runtime::spatial_partition::SpatialPartitionSystem>()};
+                lux::ecs::entity_scene::residency::EntitySectionResidencySystem>()};
         return result;
     }
 
@@ -399,7 +399,7 @@ namespace lux::runtime::spatial2d
     {
         static constexpr Type result[]{
             lux::ecs::systemType<
-                lux::runtime::spatial_partition::SpatialPartitionSystem>(),
+                lux::ecs::entity_scene::residency::EntitySectionResidencySystem>(),
             lux::ecs::systemType<lux::ecs::Transform2DSystem>()};
         return result;
     }

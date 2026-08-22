@@ -20,7 +20,7 @@
 #include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
 #include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -226,7 +226,7 @@ namespace
 
 int main()
 {
-    namespace partition = lux::runtime::spatial_partition;
+    namespace residency = lux::ecs::entity_scene::residency;
     namespace spatial3d = lux::runtime::spatial3d;
     namespace catalog = lux::spatial3d;
 
@@ -408,7 +408,7 @@ int main()
     scene->tick(0.0f, 0.0f, 0.0f, input);
     assert(scene->isReady());
     auto* const partition_owner = scene->services().get<
-        partition::SpatialPartitionSystem>();
+        residency::EntitySectionResidencySystem>();
     auto* const interest_owner = scene->services().get<
         spatial3d::SpatialInterest3DSystem>();
     auto* const persistent = scene->services().get<

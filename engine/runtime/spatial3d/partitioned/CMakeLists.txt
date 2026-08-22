@@ -34,18 +34,17 @@ target_link_libraries(
         lux::engine::ecs::scene_format
         lux::engine::ecs::spatial3d_components
         lux::engine::ecs::transform
+        lux::engine::ecs::entity_scene
         lux::engine::scene::scene
         lux::engine::core::math
-        lux::engine::runtime::runtime_spatial_partition
         lux::cxx::compile_time
 )
 
 component_add_transitive_commands(
     runtime_spatial3d_partitioned
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core scene_format spatial3d_components transform)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core entity_scene scene_format spatial3d_components transform)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_spatial_partition)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
 
@@ -84,6 +83,7 @@ target_link_libraries(
     spatial3d_partition_headless_test
     PRIVATE
         lux::engine::runtime::runtime_spatial3d_partitioned
+        lux::engine::runtime::runtime_entity_scene
         lux::engine::runtime::runtime_execution
         lux::engine::core::serialization
 )
@@ -107,6 +107,7 @@ target_link_libraries(
     spatial3d_scale_invariance_test
     PRIVATE
         lux::engine::runtime::runtime_spatial3d_partitioned
+        lux::engine::runtime::runtime_entity_scene
         lux::engine::runtime::runtime_execution
 )
 if(MSVC)
@@ -158,8 +159,8 @@ target_link_libraries(
     runtime_spatial3d_streaming_systems
     PUBLIC
         lux::engine::runtime::runtime_spatial3d_partitioned
-        lux::engine::runtime::runtime_spatial_partition
         lux::engine::runtime::runtime_entity_scene
+        lux::engine::ecs::entity_scene
         lux::engine::ecs::transform
         lux::engine::spatial3d::scene_catalog
         lux::engine::ecs::core
@@ -167,9 +168,9 @@ target_link_libraries(
 
 component_add_transitive_commands(
     runtime_spatial3d_streaming_systems
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core transform)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core entity_scene transform)"
     "find_package(lux-engine-spatial3d REQUIRED COMPONENTS scene_catalog)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_spatial_partition runtime_spatial3d_partitioned)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_spatial3d_partitioned)"
 )
 
 lux_classify_target(

@@ -19,8 +19,8 @@
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
-#include <lux/engine/runtime/spatial_partition/EntitySectionRecordStore.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <exec/start_detached.hpp>
 #include <stdexec/execution.hpp>
@@ -217,7 +217,7 @@ namespace
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule,
         const lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
-        const lux::runtime::spatial_partition::SpatialPartitionSystem&
+        const lux::ecs::entity_scene::residency::EntitySectionResidencySystem&
             partition,
         const lux::runtime::spatial3d::SpatialInterest3DSystem& interest,
         Predicate&& done)
@@ -271,7 +271,7 @@ namespace
         std::size_t catalog_sections{0u};
         std::uint64_t generated_sections{0u};
         lux::runtime::spatial3d::SpatialInterest3DSnapshot interest;
-        lux::runtime::spatial_partition::SpatialPartitionSnapshot partition;
+        lux::ecs::entity_scene::residency::EntitySectionResidencySnapshot partition;
         lux::ecs::entity_scene::EntitySectionLoaderSnapshot loader;
     };
 
@@ -283,16 +283,17 @@ namespace
         const std::shared_ptr<const GeneratorState>& generator)
     {
         namespace entity_runtime = lux::runtime::entity_scene;
-        namespace partition = lux::runtime::spatial_partition;
+        namespace residency = lux::ecs::entity_scene::residency;
         namespace spatial3d = lux::runtime::spatial3d;
 
         auto fixture = makeCatalog(*generator, scale);
         const auto generated_before =
             generator->generated.load(std::memory_order_relaxed);
-        partition::EntitySectionRecordStore store{fixture.catalog};
-        auto planner = partition::SpatialDemandPlanner::create(
+        residency::EntitySectionRecordStore store{
+            fixture.catalog.sections()};
+        auto planner = residency::SectionResidencyPlanner::create(
             std::move(store),
-            partition::SpatialPartitionBudget{
+            residency::SectionResidencyBudget{
                 fixture.section_bytes * kResidentSections,
                 kResidentSections});
         assert(planner);
@@ -314,7 +315,7 @@ namespace
         auto* loader_owner = loader.get();
         assert(schedule.addSystem(std::move(loader)));
         auto partition_system =
-            std::make_unique<partition::SpatialPartitionSystem>(
+            std::make_unique<residency::EntitySectionResidencySystem>(
                 loader_owner->client(), std::move(*planner));
         auto* partition_owner = partition_system.get();
         assert(schedule.addSystem(std::move(partition_system)));
@@ -322,7 +323,7 @@ namespace
         spatial3d::SpatialInterest3DConfig interest_config;
         interest_config.maximum_sources = 1u;
         interest_config.bands.push_back(spatial3d::SpatialInterest3DBand{
-            .source_namespace = partition::SpatialDemandSourceId{
+            .source_namespace = residency::SectionDemandSourceId{
                 "org.lux.test.spatial3d.scale.band"},
             .sections = spatial3d::Spatial3DSectionSource::catalog(
                 std::move(fixture.spatial)),

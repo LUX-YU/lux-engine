@@ -43,9 +43,14 @@ System Registry and installer/catalog/host variants are forbidden.
 - Runtime execution owns queue/thread/scheduler implementations. ECS consumes
   only narrow modules-level ports.
 - `ecs/entity_scene` owns Section decode/stage/materialization and the
-  residency/publication Systems. `engine/runtime/entity_scene` implements the
-  typed load endpoint, generator execution and concrete content-blob storage;
-  it defines no `ISystem`.
+  publication Systems. Its `residency/` namespace owns the dimension-neutral
+  demand union, budget planner and `EntitySectionResidencySystem`; these
+  borrow canonical `SectionRecord` spans and do not depend on Engine catalogs.
+  `engine/runtime/entity_scene` implements the typed load endpoint, generator
+  execution and concrete content-blob storage; it defines no `ISystem`.
+- `engine/runtime/spatial_partition` and the `runtime_spatial_partition`
+  target do not exist. Dimension-specific interest producers belong under
+  their ECS `streaming/` domains, not in a new Runtime partition layer.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
 - Shared cooked contracts may remain in `engine/scene` or `ecs/scene_format`;

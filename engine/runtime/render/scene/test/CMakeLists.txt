@@ -202,7 +202,7 @@ target_compile_definitions(
 
 # The GPU probe compiles the exact same scenario body as the headless gate.
 # Its extension only installs the presentation leaf and observes checkpoints;
-# EntityScene generation, SpatialPartition selection, ECS publication,
+# EntityScene generation, Section residency selection, ECS publication,
 # persistence and close therefore cannot drift into a hand-built visual path.
 set(
     INFINITE2D_TEST_DIR

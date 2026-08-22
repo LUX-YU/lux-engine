@@ -5,9 +5,9 @@
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
-#include <lux/engine/runtime/spatial_partition/EntitySectionRecordStore.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialDemandPlanner.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
+#include <lux/engine/ecs/entity_scene/residency/SectionResidencyPlanner.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <algorithm>
 #include <map>
@@ -21,7 +21,7 @@
 
 namespace lux::runtime
 {
-    lux::runtime::spatial_partition::SpatialDemandSourceId
+    lux::ecs::entity_scene::residency::SectionDemandSourceId
     spatial3DDemandSourceNamespace(
         const lux::spatial3d::SceneCatalogBand& band)
     {
@@ -35,7 +35,7 @@ namespace lux::runtime
         name += "." + std::to_string(channel.size()) + ".";
         name.append(channel);
         name += ".l" + std::to_string(band.level);
-        return lux::runtime::spatial_partition::SpatialDemandSourceId{
+        return lux::ecs::entity_scene::residency::SectionDemandSourceId{
             std::move(name)};
     }
 
@@ -56,7 +56,7 @@ namespace lux::runtime
 
         struct ValidatedCatalog final
         {
-            spatial_partition::SpatialPartitionBudget budget;
+            lux::ecs::entity_scene::residency::SectionResidencyBudget budget;
             spatial3d::SpatialInterest3DConfig interest;
         };
 
@@ -187,7 +187,7 @@ namespace lux::runtime
                 return std::nullopt;
 
             return ValidatedCatalog{
-                spatial_partition::SpatialPartitionBudget{
+                lux::ecs::entity_scene::residency::SectionResidencyBudget{
                     config.residency.maximum_decoded_bytes,
                     config.residency.maximum_entities},
                 std::move(interest)};
@@ -229,8 +229,9 @@ namespace lux::runtime
             (void)builder.rollbackTo(checkpoint);
             return false;
         }
-        auto planner = spatial_partition::SpatialDemandPlanner::create(
-            spatial_partition::EntitySectionRecordStore{*scene},
+        auto planner = lux::ecs::entity_scene::residency::SectionResidencyPlanner::create(
+            lux::ecs::entity_scene::residency::EntitySectionRecordStore{
+                scene->sections()},
             validated->budget);
         if (!planner)
         {
@@ -238,7 +239,7 @@ namespace lux::runtime
             return false;
         }
         auto partition = std::make_unique<
-            spatial_partition::SpatialPartitionSystem>(
+            lux::ecs::entity_scene::residency::EntitySectionResidencySystem>(
                 *sections,
                 std::move(*planner));
         auto* const partition_owner = partition.get();

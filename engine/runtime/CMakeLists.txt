@@ -7,7 +7,6 @@ add_subdirectory(assets)
 add_subdirectory(extensions)
 add_subdirectory(logging)
 add_subdirectory(entity_scene)
-add_subdirectory(spatial_partition)
 add_subdirectory(spatial2d/tilemap)
 add_subdirectory(spatial2d/infinite)
 add_subdirectory(spatial3d/partitioned)
@@ -34,7 +33,6 @@ install_components(
                     runtime_extension_orchestration
                     runtime_logging
                     runtime_entity_scene
-                    runtime_spatial_partition
                     runtime_spatial2d_tilemap
                     runtime_spatial2d_infinite
                     runtime_infinite2d_systems

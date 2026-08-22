@@ -65,7 +65,7 @@ namespace lux::runtime::spatial2d
     /// (which emits owning records) and the generic background generator
     /// catalog (which emits LXES). This keeps record digest/size and generated
     /// bytes on one implementation without putting Pixel switches in either
-    /// EntityScene or SpatialPartition.
+    /// EntityScene or EntitySectionResidency.
     class LUX_ENGINE_RUNTIME_INFINITE2D_PIXEL_PUBLIC
     Infinite2DPixelSectionSource final
     {

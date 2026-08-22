@@ -21,7 +21,7 @@ namespace lux::runtime::spatial2d::testing
     /// Test-only leaf seam. The scenario remains the sole owner of loading,
     /// generation, publication, simulation, persistence and close. A device
     /// probe may add presentation behavior and observe exact checkpoints, but
-    /// cannot replace the EntityScene -> SpatialPartition -> ECS path.
+    /// cannot replace the EntityScene -> EntitySectionResidency -> ECS path.
     class Infinite2DTestExtension
     {
     public:

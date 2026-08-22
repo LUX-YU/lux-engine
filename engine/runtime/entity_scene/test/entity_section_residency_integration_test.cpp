@@ -6,11 +6,12 @@
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <exec/start_detached.hpp>
 #include <stdexec/execution.hpp>
@@ -161,14 +162,14 @@ namespace
         std::vector<SectionFixture> sections_;
     };
 
-    lux::runtime::spatial_partition::SpatialDemandSourceUpdate demand(
+    lux::ecs::entity_scene::residency::SectionDemandSourceUpdate demand(
         std::string source,
         std::uint64_t generation,
         std::initializer_list<lux::ecs::scene_format::EntitySectionId> sections)
     {
-        lux::runtime::spatial_partition::SpatialDemandSourceUpdate result;
+        lux::ecs::entity_scene::residency::SectionDemandSourceUpdate result;
         result.source =
-            lux::runtime::spatial_partition::SpatialDemandSourceId{
+            lux::ecs::entity_scene::residency::SectionDemandSourceId{
                 std::move(source)};
         result.generation = generation;
         result.channel = lux::ecs::scene_format::DemandChannelId{
@@ -242,21 +243,22 @@ namespace
 int main()
 {
     namespace entity_runtime = lux::runtime::entity_scene;
-    namespace partition = lux::runtime::spatial_partition;
+    namespace residency = lux::ecs::entity_scene::residency;
 
     // Ordering is a hard Schedule prerequisite, not a registration-order
     // convention. Single-node mutation rejects the partition before adoption
     // when its loader is absent.
     {
         auto empty_catalog = catalog({});
-        partition::EntitySectionRecordStore empty_store{empty_catalog};
-        auto empty_planner = partition::SpatialDemandPlanner::create(
+        residency::EntitySectionRecordStore empty_store{
+            empty_catalog.sections()};
+        auto empty_planner = residency::SectionResidencyPlanner::create(
             std::move(empty_store),
-            partition::SpatialPartitionBudget{1u, 1u});
+            residency::SectionResidencyBudget{1u, 1u});
         assert(empty_planner);
         lux::ecs::World missing_world;
         lux::ecs::Schedule missing_schedule{missing_world};
-        auto owner = std::make_unique<partition::SpatialPartitionSystem>(
+        auto owner = std::make_unique<residency::EntitySectionResidencySystem>(
             lux::ecs::entity_scene::EntitySectionClient{},
             std::move(*empty_planner));
         auto rejected = missing_schedule.addSystem(std::move(owner));
@@ -338,15 +340,16 @@ int main()
         auto* cross_loader_owner = cross_loader.get();
         assert(cross_schedule.addSystem(std::move(cross_loader)));
         auto cross_catalog = catalog({first_record});
-        partition::EntitySectionRecordStore cross_store{cross_catalog};
-        auto cross_planner = partition::SpatialDemandPlanner::create(
+        residency::EntitySectionRecordStore cross_store{
+            cross_catalog.sections()};
+        auto cross_planner = residency::SectionResidencyPlanner::create(
             std::move(cross_store),
-            partition::SpatialPartitionBudget{
+            residency::SectionResidencyBudget{
                 first_record.decoded_bytes,
                 first_record.entity_count});
         assert(cross_planner);
         auto cross_partition = std::make_unique<
-            partition::SpatialPartitionSystem>(
+            residency::EntitySectionResidencySystem>(
                 loader_owner->client(), std::move(*cross_planner));
         auto* cross_partition_owner = cross_partition.get();
         assert(cross_schedule.addSystem(std::move(cross_partition)));
@@ -359,7 +362,7 @@ int main()
                 {first_record.id}));
         assert(!cross_demand);
         assert(cross_demand.error().code ==
-            partition::ESpatialPartitionError::
+            residency::ESectionResidencyError::
                 LOADER_REGISTRY_MISMATCH);
         assert(cross_loader_owner->snapshot().outstanding_tickets == 0u);
         closeLoader(*cross_loader_owner, runtime, cross_schedule);
@@ -367,15 +370,15 @@ int main()
 
     auto scene_catalog = catalog(
         {first_record, second_record, dependency_record});
-    partition::EntitySectionRecordStore store{scene_catalog};
+    residency::EntitySectionRecordStore store{scene_catalog.sections()};
     const auto two_section_budget =
         first_record.decoded_bytes + second_record.decoded_bytes;
-    auto planner = partition::SpatialDemandPlanner::create(
+    auto planner = residency::SectionResidencyPlanner::create(
         std::move(store),
-        partition::SpatialPartitionBudget{two_section_budget, 2u});
+        residency::SectionResidencyBudget{two_section_budget, 2u});
     assert(planner);
     auto partition_system = std::make_unique<
-        partition::SpatialPartitionSystem>(
+        residency::EntitySectionResidencySystem>(
             loader_owner->client(), std::move(*planner));
     auto* partition_owner = partition_system.get();
     assert(schedule.addSystem(std::move(partition_system)));
@@ -394,7 +397,7 @@ int main()
         return partition_owner->snapshot().active_sections == 1u;
     });
 
-    partition::SpatialDemandSourceId source_a{
+    residency::SectionDemandSourceId source_a{
         "org.lux.test.camera_a"};
     assert(partition_owner->removeDemandSource(source_a, 1u));
     assert(partition_owner->snapshot().loader_tickets == 1u);
@@ -408,7 +411,7 @@ int main()
         {first_id, second_id, dependency_record.id}));
     assert(!rejected);
     assert(rejected.error().code ==
-        partition::ESpatialPartitionError::
+        residency::ESectionResidencyError::
             DECODED_BYTE_BUDGET_EXCEEDED);
     assert(partition_owner->snapshot().loader_tickets == 1u);
     assert(partition_owner->snapshot().active_sections == 1u);
@@ -428,7 +431,7 @@ int main()
             loader_owner->snapshot().active_sections == 2u;
     });
 
-    partition::SpatialDemandSourceId dependent_source{
+    residency::SectionDemandSourceId dependent_source{
         "org.lux.test.dependent"};
     assert(partition_owner->removeDemandSource(dependent_source, 1u));
     assert(partition_owner->snapshot().loader_tickets == 1u);
@@ -449,7 +452,7 @@ int main()
             loader_owner->snapshot().active_sections == 1u;
     });
 
-    partition::SpatialDemandSourceId source_b{
+    residency::SectionDemandSourceId source_b{
         "org.lux.test.camera_b"};
     // Loader close seals new admission before dependants release their
     // retained tickets.  A release-only partition transaction must remain
@@ -463,7 +466,7 @@ int main()
         "org.lux.test.camera_b", 3u, {first_id, second_id}));
     assert(!acquire_after_seal);
     assert(acquire_after_seal.error().code ==
-        partition::ESpatialPartitionError::LOADER_UNAVAILABLE);
+        residency::ESectionResidencyError::LOADER_UNAVAILABLE);
     assert(partition_owner->snapshot().loader_tickets == 1u);
     auto released_after_seal =
         partition_owner->removeDemandSource(source_b, 2u);

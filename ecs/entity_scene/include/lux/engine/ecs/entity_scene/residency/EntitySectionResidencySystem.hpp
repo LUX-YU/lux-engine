@@ -1,14 +1,14 @@
 #pragma once
 /**
- * @file SpatialPartitionSystem.hpp
+ * @file EntitySectionResidencySystem.hpp
  * @brief Schedule owner for dimension-neutral EntitySection demand.
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/systems/ISystem.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialDemandPlanner.hpp>
-#include <lux/engine/runtime/spatial_partition/visibility.h>
+#include <lux/engine/ecs/entity_scene/residency/SectionResidencyPlanner.hpp>
+#include <lux/engine/ecs/entity_scene/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -16,11 +16,11 @@
 #include <thread>
 #include <vector>
 
-namespace lux::runtime::spatial_partition
+namespace lux::ecs::entity_scene::residency
 {
-    struct SpatialPartitionSnapshot final
+    struct EntitySectionResidencySnapshot final
     {
-        SpatialDemandPlannerSnapshot demand;
+        SectionResidencyPlannerSnapshot demand;
         std::size_t loader_tickets{0u};
         std::size_t waiting_sections{0u};
         std::size_t staging_sections{0u};
@@ -34,28 +34,29 @@ namespace lux::runtime::spatial_partition
         std::uint64_t stale_generation_rejections{0u};
     };
 
-    class LUX_ENGINE_RUNTIME_SPATIAL_PARTITION_PUBLIC
-    SpatialPartitionSystem final : public lux::ecs::ISystem
+    class LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC
+    EntitySectionResidencySystem final : public lux::ecs::ISystem
     {
     public:
-        SpatialPartitionSystem(
+        EntitySectionResidencySystem(
             lux::ecs::entity_scene::EntitySectionClient client,
-            SpatialDemandPlanner planner) noexcept;
-        ~SpatialPartitionSystem() override;
+            SectionResidencyPlanner planner) noexcept;
+        ~EntitySectionResidencySystem() override;
 
-        SpatialPartitionSystem(const SpatialPartitionSystem&) = delete;
-        SpatialPartitionSystem& operator=(const SpatialPartitionSystem&) =
-            delete;
+        EntitySectionResidencySystem(
+            const EntitySectionResidencySystem&) = delete;
+        EntitySectionResidencySystem& operator=(
+            const EntitySectionResidencySystem&) = delete;
 
-        [[nodiscard]] SpatialPartitionExp<void>
-        replaceDemandSource(SpatialDemandSourceUpdate update);
+        [[nodiscard]] SectionResidencyExp<void>
+        replaceDemandSource(SectionDemandSourceUpdate update);
 
-        [[nodiscard]] SpatialPartitionExp<void>
+        [[nodiscard]] SectionResidencyExp<void>
         removeDemandSource(
-            const SpatialDemandSourceId& source,
+            const SectionDemandSourceId& source,
             std::uint64_t generation);
 
-        [[nodiscard]] SpatialPartitionSnapshot snapshot() const noexcept;
+        [[nodiscard]] EntitySectionResidencySnapshot snapshot() const noexcept;
 
         void onAdded(const lux::ecs::SystemSetupContext& setup) override;
         [[nodiscard]] bool supportsDynamicRemoval() const noexcept override
@@ -71,13 +72,13 @@ namespace lux::runtime::spatial_partition
     private:
         struct ResidentTicket;
 
-        [[nodiscard]] SpatialPartitionExp<void>
-        apply(SpatialDemandPlan plan, bool removal);
-        void recordFailure(ESpatialPartitionError error) noexcept;
+        [[nodiscard]] SectionResidencyExp<void>
+        apply(SectionResidencyPlan plan, bool removal);
+        void recordFailure(ESectionResidencyError error) noexcept;
         void requireOwnerThread() const noexcept;
 
         lux::ecs::entity_scene::EntitySectionClient client_;
-        SpatialDemandPlanner planner_;
+        SectionResidencyPlanner planner_;
         std::vector<ResidentTicket> resident_tickets_;
         std::thread::id owner_thread_;
         bool added_{false};

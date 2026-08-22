@@ -8,6 +8,7 @@
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
@@ -18,8 +19,8 @@
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
-#include <lux/engine/runtime/spatial_partition/EntitySectionRecordStore.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <exec/start_detached.hpp>
 #include <stdexec/execution.hpp>
@@ -193,7 +194,7 @@ namespace
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule,
         const lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
-        const lux::runtime::spatial_partition::SpatialPartitionSystem&
+        const lux::ecs::entity_scene::residency::EntitySectionResidencySystem&
             partition,
         const lux::runtime::spatial3d::SpatialInterest3DSystem& interest,
         Predicate&& done)
@@ -263,7 +264,7 @@ namespace
 int main()
 {
     namespace entity_runtime = lux::runtime::entity_scene;
-    namespace partition = lux::runtime::spatial_partition;
+    namespace residency = lux::ecs::entity_scene::residency;
     namespace spatial3d = lux::runtime::spatial3d;
 
     auto generator_state = std::make_shared<GeneratorState>();
@@ -328,10 +329,10 @@ int main()
     closeOwner(runtime, backpressure_scope.closeAsync());
 
     auto scene_catalog = emptyCatalog();
-    partition::EntitySectionRecordStore store{scene_catalog};
-    auto planner = partition::SpatialDemandPlanner::create(
+    residency::EntitySectionRecordStore store{scene_catalog.sections()};
+    auto planner = residency::SectionResidencyPlanner::create(
         std::move(store),
-        partition::SpatialPartitionBudget{
+        residency::SectionResidencyBudget{
             sample.decoded_bytes * 125u,
             125u});
     assert(planner);
@@ -359,14 +360,14 @@ int main()
     auto* loader_owner = loader.get();
     assert(schedule.addSystem(std::move(loader)));
     auto partition_system = std::make_unique<
-        partition::SpatialPartitionSystem>(
+        residency::EntitySectionResidencySystem>(
             loader_owner->client(), std::move(*planner));
     auto* partition_owner = partition_system.get();
     assert(schedule.addSystem(std::move(partition_system)));
     spatial3d::SpatialInterest3DConfig interest_config;
     interest_config.maximum_sources = 2u;
     interest_config.bands.push_back(spatial3d::SpatialInterest3DBand{
-        .source_namespace = partition::SpatialDemandSourceId{
+        .source_namespace = residency::SectionDemandSourceId{
             "org.lux.test.spatial3d.band0"},
         .sections = std::move(*source),
         .cell_world_size = 64.0,
@@ -480,7 +481,7 @@ int main()
         spatial3d::ESpatialInterest3DError::PARTITION_REJECTED);
     assert(prediction_reject.last_failure->partition);
     assert(prediction_reject.last_failure->partition->code ==
-        partition::ESpatialPartitionError::
+        residency::ESectionResidencyError::
             DECODED_BYTE_BUDGET_EXCEEDED);
     assert(partition_owner->snapshot().demand.revision ==
         before_prediction_reject.demand.revision);
@@ -517,13 +518,13 @@ int main()
 
     // The generic partition remains the sole generation authority. A stale
     // leaf-source removal is rejected and cannot change its resident plan.
-    partition::SpatialDemandSourceId source_id{
+    residency::SectionDemandSourceId source_id{
         "org.lux.test.spatial3d.band0.e" +
         std::to_string(entt::to_integral(interest_entity))};
     const auto stale = partition_owner->removeDemandSource(source_id, 1u);
     assert(!stale);
     assert(stale.error().code ==
-        partition::ESpatialPartitionError::STALE_SOURCE_GENERATION);
+        residency::ESectionResidencyError::STALE_SOURCE_GENERATION);
     assert(partition_owner->snapshot().demand.resident_sections == 125u);
 
     interest_owner->requestClose();

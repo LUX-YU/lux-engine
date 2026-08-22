@@ -115,6 +115,32 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
+add_executable(
+    entity_section_residency_integration_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/entity_section_residency_integration_test.cpp
+)
+target_link_libraries(
+    entity_section_residency_integration_test
+    PRIVATE
+        lux::engine::runtime::runtime_entity_scene
+        lux::engine::runtime::runtime_execution
+)
+if(MSVC)
+    target_compile_options(
+        entity_section_residency_integration_test PRIVATE /UNDEBUG
+    )
+else()
+    target_compile_options(
+        entity_section_residency_integration_test PRIVATE -UNDEBUG
+    )
+endif()
+lux_classify_target(
+    TARGET  entity_section_residency_integration_test
+    LAYER   RUNTIME
+    PRODUCT TEST
+    ROLE    INTEGRATION
+)
+
 # Frozen wire contract for ECS-owned LXES v1 and Persistence Journal v1.
 add_executable(
     entity_section_wire_compatibility_test

@@ -21,6 +21,7 @@
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/ecs/tilemap/TilemapChunkCodec.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
+#include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
@@ -35,8 +36,8 @@
 #include <lux/engine/runtime/spatial2d/infinite/SpatialInterest2DSystem.hpp>
 #include <lux/engine/runtime/spatial2d/tilemap/TilemapChunkSystem.hpp>
 #include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
-#include <lux/engine/runtime/spatial_partition/EntitySectionRecordStore.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include "Infinite2DTestHarness.hpp"
 
@@ -847,7 +848,7 @@ namespace
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule,
         const lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
-        const lux::runtime::spatial_partition::SpatialPartitionSystem&
+        const lux::ecs::entity_scene::residency::EntitySectionResidencySystem&
             partition,
         const lux::runtime::spatial2d::SpatialInterest2DSystem& interest,
         const lux::ecs::PixelFieldSystem& fields,
@@ -1010,7 +1011,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     Infinite2DTestExtension* extension)
 {
     namespace entity_runtime = lux::runtime::entity_scene;
-    namespace partition = lux::runtime::spatial_partition;
+    namespace residency = lux::ecs::entity_scene::residency;
     namespace spatial2d = lux::runtime::spatial2d;
 
     Reflections reflections;
@@ -1156,10 +1157,11 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     auto sample_record = generated->record({0, 0});
     assert(sample_record);
     auto scene_catalog = emptyCatalog();
-    partition::EntitySectionRecordStore record_store{scene_catalog};
-    auto demand_planner = partition::SpatialDemandPlanner::create(
+    residency::EntitySectionRecordStore record_store{
+        scene_catalog.sections()};
+    auto demand_planner = residency::SectionResidencyPlanner::create(
         std::move(record_store),
-        partition::SpatialPartitionBudget{
+        residency::SectionResidencyBudget{
             sample_record->decoded_bytes *
                 spatial2d::kSpatial2DResidentSectionCount,
             spatial2d::kSpatial2DResidentSectionCount});
@@ -1182,7 +1184,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     auto* loader_owner = loader.get();
     assert(schedule.addSystem(std::move(loader)));
     auto partition_system = std::make_unique<
-        partition::SpatialPartitionSystem>(
+        residency::EntitySectionResidencySystem>(
             loader_owner->client(), std::move(*demand_planner));
     auto* partition_owner = partition_system.get();
     assert(schedule.addSystem(std::move(partition_system)));
@@ -1431,7 +1433,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
 
     // Open/closed proof: a second 2D domain contributes a generated LXES
     // provider and its real ECS owner consumes the production LXTC blob.
-    // Neither EntityScene nor SpatialPartition switches on Tilemap content.
+    // Neither EntityScene nor EntitySectionResidency switches on Tilemap content.
     auto tile_ticket_result = loader_owner->client().acquire(
         tileProofRecord(*tile_proof_state, kTileProofCoordinate));
     assert(tile_ticket_result);

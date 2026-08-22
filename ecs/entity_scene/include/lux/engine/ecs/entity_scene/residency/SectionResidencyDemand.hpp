@@ -1,17 +1,16 @@
 #pragma once
 /**
- * @file SpatialDemand.hpp
+ * @file SectionResidencyDemand.hpp
  * @brief Dimension-neutral EntitySection residency demand values.
  */
 
 #include <lux/cxx/core/StableNameId.hpp>
-#include <lux/engine/ecs/scene_format/Identifiers.hpp>
-#include <lux/engine/scene/SceneDescription.hpp>
+#include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/ecs/scene_format/SceneSectionManifest.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <vector>
 
 namespace lux::ecs::entity_scene
@@ -19,27 +18,27 @@ namespace lux::ecs::entity_scene
     enum class EEntitySectionRequestError : std::uint8_t;
 }
 
-namespace lux::runtime::spatial_partition
+namespace lux::ecs::entity_scene::residency
 {
-    struct SpatialDemandSourceIdTag final {};
-    using SpatialDemandSourceId = lux::cxx::StableNameId<SpatialDemandSourceIdTag>;
+    struct SectionDemandSourceIdTag final {};
+    using SectionDemandSourceId = lux::cxx::StableNameId<SectionDemandSourceIdTag>;
 
-    struct SpatialDemandEntry final
+    struct SectionDemandEntry final
     {
         lux::ecs::scene_format::EntitySectionId section;
         std::uint32_t priority{0u};
 
         friend bool operator==(
-            const SpatialDemandEntry&,
-            const SpatialDemandEntry&) = default;
+            const SectionDemandEntry&,
+            const SectionDemandEntry&) = default;
     };
 
-    struct SpatialDemandSourceUpdate final
+    struct SectionDemandSourceUpdate final
     {
-        SpatialDemandSourceId source;
+        SectionDemandSourceId source;
         std::uint64_t generation{0u};
         lux::ecs::scene_format::DemandChannelId channel;
-        std::vector<SpatialDemandEntry> demands;
+        std::vector<SectionDemandEntry> demands;
         /// Source-owned records for procedurally addressable Sections. They
         /// participate in the same prospective transaction as `demands` and
         /// disappear when this source is replaced/removed. Two live sources
@@ -49,7 +48,7 @@ namespace lux::runtime::spatial_partition
         std::vector<lux::ecs::scene_format::SectionRecord> records;
     };
 
-    struct SpatialPartitionBudget final
+    struct SectionResidencyBudget final
     {
         std::uint64_t maximum_decoded_bytes{0u};
         std::uint64_t maximum_entities{0u};
@@ -60,7 +59,7 @@ namespace lux::runtime::spatial_partition
         }
     };
 
-    enum class ESpatialPartitionError : std::uint8_t
+    enum class ESectionResidencyError : std::uint8_t
     {
         INVALID_BUDGET,
         INVALID_SOURCE,
@@ -86,10 +85,10 @@ namespace lux::runtime::spatial_partition
         SECTION_ACQUIRE_FAILED
     };
 
-    struct SpatialPartitionFailure final
+    struct SectionResidencyFailure final
     {
-        ESpatialPartitionError code{ESpatialPartitionError::INVALID_SOURCE};
-        SpatialDemandSourceId source;
+        ESectionResidencyError code{ESectionResidencyError::INVALID_SOURCE};
+        SectionDemandSourceId source;
         lux::ecs::scene_format::EntitySectionId section;
         std::uint64_t requested{0u};
         std::uint64_t available{0u};
@@ -98,5 +97,5 @@ namespace lux::runtime::spatial_partition
     };
 
     template <typename T>
-    using SpatialPartitionExp = lux::cxx::expected<T, SpatialPartitionFailure>;
+    using SectionResidencyExp = lux::cxx::expected<T, SectionResidencyFailure>;
 }

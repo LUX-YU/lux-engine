@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/spatial_partition/SpatialDemandPlanner.hpp>
+#include <lux/engine/ecs/entity_scene/residency/SectionResidencyPlanner.hpp>
 
 #include <algorithm>
 #include <array>
@@ -34,22 +34,22 @@ namespace
         return value;
     }
 
-    lux::runtime::spatial_partition::SpatialDemandSourceUpdate update(
+    lux::ecs::entity_scene::residency::SectionDemandSourceUpdate update(
         std::string source,
         std::uint64_t generation,
         std::initializer_list<
-            lux::runtime::spatial_partition::SpatialDemandEntry> demands,
+            lux::ecs::entity_scene::residency::SectionDemandEntry> demands,
         std::string channel = "org.lux.test.visible")
     {
         return {
-            lux::runtime::spatial_partition::SpatialDemandSourceId{
+            lux::ecs::entity_scene::residency::SectionDemandSourceId{
                 std::move(source)},
             generation,
             lux::ecs::scene_format::DemandChannelId{std::move(channel)},
             {demands}};
     }
 
-    lux::runtime::entity_scene::EntitySceneCatalog catalog(
+    std::vector<lux::ecs::scene_format::SectionRecord> catalog(
         std::vector<lux::ecs::scene_format::SectionRecord> records)
     {
         std::sort(
@@ -58,20 +58,13 @@ namespace
             {
                 return lhs.id.value() < rhs.id.value();
             });
-        lux::scene::SceneDescription package;
-        package.id = lux::asset::asset_id_t{uuid(
-            "80000000-0000-4000-8000-000000000001")};
-        package.sections = std::move(records);
-        auto result = lux::runtime::entity_scene::EntitySceneCatalog::create(
-            std::move(package));
-        assert(result);
-        return std::move(*result);
+        return records;
     }
 }
 
 int main()
 {
-    namespace partition = lux::runtime::spatial_partition;
+    namespace residency = lux::ecs::entity_scene::residency;
     using lux::ecs::scene_format::EntitySectionId;
 
     auto first = record(
@@ -88,11 +81,11 @@ int main()
     const auto second_id = second.id;
     const auto third_id = third.id;
     const auto dependency_id = dependency.id;
-    auto scene_catalog = catalog({first, second, third, dependency});
-    partition::EntitySectionRecordStore store{scene_catalog};
-    auto planner = partition::SpatialDemandPlanner::create(
+    auto section_records = catalog({first, second, third, dependency});
+    residency::EntitySectionRecordStore store{section_records};
+    auto planner = residency::SectionResidencyPlanner::create(
         std::move(store),
-        partition::SpatialPartitionBudget{150u, 15u});
+        residency::SectionResidencyBudget{150u, 15u});
     assert(planner);
 
     auto first_plan = planner->prepareReplace(update(
@@ -123,7 +116,7 @@ int main()
         {{first_id, 1u}, {third_id, 1u}}));
     assert(!over_budget);
     assert(over_budget.error().code ==
-        partition::ESpatialPartitionError::
+        residency::ESectionResidencyError::
             DECODED_BYTE_BUDGET_EXCEEDED);
     assert(planner->snapshot().revision == stable.revision);
     assert(planner->snapshot().decoded_bytes == stable.decoded_bytes);
@@ -135,7 +128,7 @@ int main()
         "org.lux.test.other"));
     assert(!mismatch);
     assert(mismatch.error().code ==
-        partition::ESpatialPartitionError::CHANNEL_MISMATCH);
+        residency::ESectionResidencyError::CHANNEL_MISMATCH);
     assert(planner->snapshot().revision == stable.revision);
 
     // The planner expands a hard dependency closure and accounts one source
@@ -164,7 +157,7 @@ int main()
         "org.lux.test.source_b", 1u, {{first_id, 1u}}));
     assert(!stale_generation);
     assert(stale_generation.error().code ==
-        partition::ESpatialPartitionError::STALE_SOURCE_GENERATION);
+        residency::ESectionResidencyError::STALE_SOURCE_GENERATION);
 
     // Prepared plans are revision-bound. A second prospective plan cannot
     // overwrite a mutation committed after it was prepared.
@@ -177,11 +170,11 @@ int main()
     auto stale_plan = planner->commit(std::move(*source_b_v2));
     assert(!stale_plan);
     assert(stale_plan.error().code ==
-        partition::ESpatialPartitionError::PLAN_STALE);
+        residency::ESectionResidencyError::PLAN_STALE);
     assert(planner->snapshot().resident_sections == 1u);
     assert(planner->snapshot().source_references == 2u);
 
-    partition::SpatialDemandSourceId source_a{
+    residency::SectionDemandSourceId source_a{
         "org.lux.test.source_a"};
     auto remove_a = planner->prepareRemove(source_a, 2u);
     assert(remove_a);
@@ -209,7 +202,18 @@ int main()
     auto unused = planner->prepareReplace(std::move(unused_update));
     assert(!unused);
     assert(unused.error().code ==
-        partition::ESpatialPartitionError::INVALID_DYNAMIC_RECORD);
+        residency::ESectionResidencyError::INVALID_DYNAMIC_RECORD);
+
+    auto malformed = generated;
+    malformed.content_digest = {};
+    auto malformed_update = update(
+        "org.lux.test.generated_malformed", 1u, {{generated_id, 7u}});
+    malformed_update.records.push_back(std::move(malformed));
+    auto malformed_plan = planner->prepareReplace(
+        std::move(malformed_update));
+    assert(!malformed_plan);
+    assert(malformed_plan.error().code ==
+        residency::ESectionResidencyError::INVALID_DYNAMIC_RECORD);
 
     auto generated_update = update(
         "org.lux.test.generated", 1u, {{generated_id, 7u}});
@@ -228,7 +232,7 @@ int main()
     auto borrowed = planner->prepareReplace(std::move(borrowed_update));
     assert(!borrowed);
     assert(borrowed.error().code ==
-        partition::ESpatialPartitionError::SECTION_NOT_FOUND);
+        residency::ESectionResidencyError::SECTION_NOT_FOUND);
     assert(planner->snapshot().revision == before_borrow.revision);
 
     // Overlap is explicit: each source supplies the same canonical record,
@@ -251,17 +255,17 @@ int main()
     auto conflict = planner->prepareReplace(std::move(conflict_update));
     assert(!conflict);
     assert(conflict.error().code ==
-        partition::ESpatialPartitionError::DYNAMIC_RECORD_CONFLICT);
+        residency::ESectionResidencyError::DYNAMIC_RECORD_CONFLICT);
     assert(planner->snapshot().revision == before_conflict.revision);
 
-    partition::SpatialDemandSourceId generated_source{
+    residency::SectionDemandSourceId generated_source{
         "org.lux.test.generated"};
     auto remove_generated = planner->prepareRemove(generated_source, 1u);
     assert(remove_generated);
     assert(remove_generated->snapshot().dynamic_records == 1u);
     assert(planner->commit(std::move(*remove_generated)));
 
-    partition::SpatialDemandSourceId generated_overlap_source{
+    residency::SectionDemandSourceId generated_overlap_source{
         "org.lux.test.generated_overlap"};
     auto remove_generated_overlap = planner->prepareRemove(
         generated_overlap_source, 1u);
@@ -269,12 +273,12 @@ int main()
     assert(remove_generated_overlap->snapshot().dynamic_records == 0u);
     assert(planner->commit(std::move(*remove_generated_overlap)));
 
-    partition::SpatialDemandSourceId source_b{
+    residency::SectionDemandSourceId source_b{
         "org.lux.test.source_b"};
     auto stale_remove = planner->prepareRemove(source_b, 2u);
     assert(!stale_remove);
     assert(stale_remove.error().code ==
-        partition::ESpatialPartitionError::STALE_SOURCE_GENERATION);
+        residency::ESectionResidencyError::STALE_SOURCE_GENERATION);
     auto remove_b = planner->prepareRemove(source_b, 1u);
     assert(remove_b);
     assert(planner->commit(std::move(*remove_b)));

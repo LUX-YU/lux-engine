@@ -23,7 +23,7 @@
 #include <lux/engine/runtime/scene/composition/InstallTilemapSystems.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
-#include <lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp>
+#include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
@@ -1104,7 +1104,7 @@ namespace lux::game
                 snapshot.resident_sections;
         }
         if (const auto* partition = impl_->runtime->services().get<
-                lux::runtime::spatial_partition::SpatialPartitionSystem>())
+                lux::ecs::entity_scene::residency::EntitySectionResidencySystem>())
         {
             const auto snapshot = partition->snapshot();
             telemetry.spatial3d_waiting_sections =

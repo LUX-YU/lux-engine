@@ -595,7 +595,6 @@ function(lux_validate_source_boundaries)
         "engine/runtime/spatial3d/navigation/include/lux/engine/runtime/spatial3d/navigation/Spatial3DNavigationAdapterSystem.hpp"
         "engine/runtime/spatial3d/partitioned/include/lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp"
         "engine/runtime/spatial3d/physics/include/lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp"
-        "engine/runtime/spatial_partition/include/lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp"
     )
     file(GLOB_RECURSE runtime_headers LIST_DIRECTORIES false
         "${CMAKE_SOURCE_DIR}/engine/runtime/*.hpp"

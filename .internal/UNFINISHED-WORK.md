@@ -15,6 +15,11 @@ This ledger tracks implementation state only. Decisions live in ADRs.
   - [x] Move EntitySection decode/stage/materialization, loader and startup
         publication into `ecs/entity_scene`; Runtime retains only the typed
         endpoint, generator execution and concrete blob storage.
+  - [x] Move the dimension-neutral EntitySection residency union and its
+        Schedule owner into `ecs/entity_scene/residency`; the planner now
+        borrows a canonical `SectionRecord` span instead of depending on a
+        Runtime catalog. Remove `runtime_spatial_partition` and its Runtime
+        `ISystem` allowlist entry.
   - [ ] Move spatial, tilemap, pixel, physics, navigation and presentation
         Systems from Runtime into their ECS domains.
 - [ ] Split `engine/spatial3d/SceneCatalog` by field ownership.

@@ -103,9 +103,10 @@ namespace lux::render
                 );
         }
 
-        transfer_thread_ = std::jthread(
-            [this](std::stop_token stop_token)
-            { workerLoop(stop_token); });
+        stop_requested_.store(false, std::memory_order_release);
+        transfer_thread_ = std::thread(
+            [this]
+            { workerLoop(TransferStopToken{&stop_requested_}); });
         return {};
     }
 
@@ -150,7 +151,7 @@ namespace lux::render
             return;
 
         accepting_.store(false, std::memory_order_release);
-        transfer_thread_.request_stop();
+        stop_requested_.store(true, std::memory_order_release);
         job_epoch_.fetch_add(1, std::memory_order_release);
         job_epoch_.notify_one();
         result_space_epoch_.fetch_add(1, std::memory_order_release);
@@ -592,7 +593,7 @@ namespace lux::render
         while (results_.tryPush(std::move(result)) !=
                lux::cxx::EQueuePushResult::ACCEPTED)
         {
-            if (transfer_thread_.get_stop_token().stop_requested())
+            if (stop_requested_.load(std::memory_order_acquire))
             {
                 if (auto* batch = std::get_if<RecordedBatch>(&result))
                 {
@@ -718,7 +719,7 @@ namespace lux::render
         (void)publishResult(std::move(batch.completion));
     }
 
-    void GpuTransferPipeline::workerLoop(std::stop_token stop_token)
+    void GpuTransferPipeline::workerLoop(TransferStopToken stop_token)
     {
         worker_running_.store(true, std::memory_order_release);
         for (;;)
@@ -741,7 +742,7 @@ namespace lux::render
                 continue;
             }
 
-            if (stop_token.stop_requested() ||
+            if (stop_token.stopRequested() ||
                 !accepting_.load(std::memory_order_acquire))
                 break;
 
@@ -877,7 +878,7 @@ namespace lux::render
 
     void GpuTransferPipeline::processMeshTransfer(
         MeshTransferTask task,
-        std::stop_token st)
+        TransferStopToken st)
     {
         if (can_record_transfer_)
         {
@@ -889,7 +890,7 @@ namespace lux::render
                 pushFailure(TransferCompletion::Kind::MeshBuffer,
                             task.request_id, task.mesh_index, task.resource_gen);
             };
-            if (st.stop_requested()) { fail(); return; }
+            if (st.stopRequested()) { fail(); return; }
 
             // 1. Staging alloc + memcpy
             const VkDeviceSize total = task.vbo_bytes + task.ibo_bytes;
@@ -979,7 +980,7 @@ namespace lux::render
                         pushFailure(TransferCompletion::Kind::MeshBuffer,
                                     task.request_id, task.mesh_index, task.resource_gen);
                     };
-                    if (st.stop_requested()) { fail(); return; }
+                    if (st.stopRequested()) { fail(); return; }
 
                     const VkDeviceSize total = task.vbo_bytes + task.ibo_bytes;
                     auto stg = allocStagingBuffer(total);
@@ -1025,7 +1026,7 @@ namespace lux::render
 
     void GpuTransferPipeline::processTextureTransfer(
         TextureTransferTask task,
-        std::stop_token st)
+        TransferStopToken st)
     {
         const auto completion_kind = task.replacement
             ? TransferCompletion::Kind::Texture2DReplacement
@@ -1042,7 +1043,7 @@ namespace lux::render
                 task.logical_base_mip);
         };
 
-        if (st.stop_requested()) { fail(); return; }
+        if (st.stopRequested()) { fail(); return; }
 
         // ── Consume the server's validated Texture2DUploadPlan ──
         // The create handler already ran validateTexture2DUpload() and threaded the
@@ -1434,7 +1435,7 @@ namespace lux::render
 
     void GpuTransferPipeline::processCubeTransfer(
         CubeTransferTask task,
-        std::stop_token st)
+        TransferStopToken st)
     {
         constexpr uint32_t kFaceCount = 6;
 
@@ -1445,7 +1446,7 @@ namespace lux::render
                         task.request_id, task.slot_index, task.resource_gen);
         };
 
-        if (st.stop_requested()) { fail(); return; }
+        if (st.stopRequested()) { fail(); return; }
 
         // ── Consume the server's validated CubeUploadPlan ───────
         // The create handler ran validateCubeUpload() and threaded the authoritative

@@ -91,7 +91,7 @@ else()
         spatial3d_scene_format
         core component_archive entity_scene transform spatial2d_components spatial2d_streaming spatial3d_components spatial3d_streaming_policy spatial3d_streaming
         tilemap tilemap_streaming pixel pixel_streaming terrain_components
-        scripting scripting_lua scripting_native
+        scripting scripting_native
         physics physics2d physics3d physics3d_streaming
         navigation3d navigation3d_streaming
         render_components render_components_2d render_components_3d
@@ -100,6 +100,9 @@ else()
         animation_2d animation_3d
         physics2d_pixel_integration physics2d_script_integration presentation_2d
     )
+    if(TARGET scripting_lua)
+        list(APPEND LUX_ECS_COMPONENTS scripting_lua)
+    endif()
 endif()
 # Product composition calls these ECS installers directly. No registry or
 # package-shaped Runtime identity sits between ScheduleBuilder and Systems.

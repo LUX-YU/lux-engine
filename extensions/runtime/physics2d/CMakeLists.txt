@@ -146,6 +146,8 @@ if(BUILD_TESTING)
         PRIVATE
             lux::engine::runtime::runtime_extension_loader
             lux::engine::ecs::core
+            lux::engine::ecs::physics
+            lux::engine::ecs::physics2d
     )
     add_dependencies(physics2d_extension_v5_test physics2d_extension)
     add_test(

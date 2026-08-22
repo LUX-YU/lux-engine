@@ -54,7 +54,6 @@ target_link_libraries(
         concurrentqueue::concurrentqueue
         asio::asio
         TBB::tbb
-    PRIVATE
         STDEXEC::stdexec
 )
 
@@ -79,6 +78,20 @@ if(MSVC)
     target_compile_options(
         runtime_execution
         PRIVATE /permissive- /Zc:__cplusplus /Zc:preprocessor
+    )
+endif()
+
+if(ANDROID AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND
+   CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19 AND
+   CMAKE_CXX_COMPILER_VERSION VERSION_LESS 20)
+    # stdexec 0.10 assumes Clang 19 implements CWG 2428 for attributes on
+    # concepts. NDK r28's Clang 19 rejects that placement. Force-include the
+    # narrow compatibility header before any public stdexec include; this only
+    # removes deprecation annotations and does not alter sender semantics.
+    target_compile_options(
+        runtime_execution
+        PUBLIC
+            "SHELL:-include lux/engine/runtime/execution/detail/StdexecClang19Compat.hpp"
     )
 endif()
 

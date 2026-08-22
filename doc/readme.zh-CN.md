@@ -85,7 +85,14 @@ ECS extraction 与 `FrameCoordinator` 只依赖 `render_client`；headless
 
 目标平台由 CMake toolchain 决定。例如 Android 使用
 `LUX_BUILD_PROFILE=PLAYER`、Android triplet 和显式的
-`LUX_HOST_TOOLS_PREFIX`；平台名不再作为产品 Profile。
+`LUX_HOST_TOOLS_PREFIX`；平台名不再作为产品 Profile。Windows 宿主工具前缀的
+`bin/` 必须包含 `lux_meta_generator` 的完整运行时闭包：`libclang.dll`、
+`zlib1.dll` 和 `zstd.dll`。Android 还要求设置 `VULKAN_SDK`：编译使用其中当前的
+平台中立 Vulkan 头，目标端仍链接 NDK 的 Vulkan loader。
+
+`LUX_SCRIPT_HAS_LUA` 只控制可选 LuaJIT backend。桌面默认开启；Android 在 triplet
+提供目标端 LuaJIT 包之前默认关闭。关闭后，backend-neutral ScriptSystem 与 native
+script backend 仍然存在。
 
 ```powershell
 cmake -S . -B ../build/RelWithDebInfo/lux-engine -G Ninja `

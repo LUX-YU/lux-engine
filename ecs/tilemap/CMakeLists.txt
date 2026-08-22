@@ -85,31 +85,36 @@ if(LUX_BUILD_COMPONENT_META)
     target_compile_definitions(tilemap_meta
         PRIVATE LUX_FUNCTION_LIBRARY)
 
-    add_library(tilemap_lua_meta SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/meta_sidecar_anchor.cpp)
-    lux_classify_target(
-        TARGET tilemap_lua_meta
-        LAYER ECS
-        PRODUCT RUNTIME
-        ROLE INTEGRATION
-    )
-    set_target_properties(tilemap_lua_meta PROPERTIES
-        OUTPUT_NAME lux_engine_ecs_tilemap_lua_meta)
-    target_link_libraries(tilemap_lua_meta
-        PRIVATE
-            tilemap
-            lux::engine::core::meta
-            lux::engine::function::script_lua)
-    target_compile_definitions(tilemap_lua_meta
-        PRIVATE LUX_FUNCTION_LIBRARY)
-
-    engine_enable_module_meta(
+    set(tilemap_meta_args
         TARGET tilemap
         SIDECAR_TARGET tilemap_meta
-        LUA_SIDECAR_TARGET tilemap_lua_meta
         TARGET_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/tilemap/components/TilemapComponent.hpp
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/tilemap/components/TileChunk2DComponent.hpp
-        LUA_BINDING
     )
+    if(LUX_BUILD_COMPONENT_LUA_META)
+        add_library(tilemap_lua_meta SHARED
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/meta_sidecar_anchor.cpp)
+        lux_classify_target(
+            TARGET tilemap_lua_meta
+            LAYER ECS
+            PRODUCT RUNTIME
+            ROLE INTEGRATION
+        )
+        set_target_properties(tilemap_lua_meta PROPERTIES
+            OUTPUT_NAME lux_engine_ecs_tilemap_lua_meta)
+        target_link_libraries(tilemap_lua_meta
+            PRIVATE
+                tilemap
+                lux::engine::core::meta
+                lux::engine::function::script_lua)
+        target_compile_definitions(tilemap_lua_meta
+            PRIVATE LUX_FUNCTION_LIBRARY)
+        list(APPEND tilemap_meta_args
+            LUA_SIDECAR_TARGET tilemap_lua_meta
+            LUA_BINDING
+        )
+    endif()
+
+    engine_enable_module_meta(${tilemap_meta_args})
 endif()

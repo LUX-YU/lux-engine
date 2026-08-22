@@ -90,7 +90,23 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         retire the misleading `runtime_*_systems` names without aliases.
   - [x] Run the zero-debt source gate both at configure time and through the
         fixed `lux_architecture_check` target in every `all` build.
-- [ ] Complete Windows profile, installed-prefix and Android validation.
+- [x] Complete Windows profile, installed-prefix and Android validation.
+  - [x] Windows `DEVELOPER`, `PLAYER`, `EDITOR` and `TOOLCHAIN` full builds
+        pass; each CMake tree is stable on its required second build
+        (`ninja: no work to do`). Their contract suites pass 5/5, 4/4, 4/4
+        and 1/1 respectively.
+  - [x] The Windows Player runtime closure contains no Physics2D Extension,
+        Authoring, Toolchain, Editor, Assimp, shaderc or MLIR/LLVM link-time
+        dependency.
+  - [x] Android `PLAYER` configures and completes a full `all -j4 -k0` build,
+        is stable on the second build and installs successfully with the
+        self-contained host meta-generator runtime, current Vulkan SDK host
+        tools and the native script backend. Lua remains an explicit optional
+        backend on Android.
+  - [x] Debug, RelWithDebInfo and Android installed public Engine headers are
+        free of all retired semantic identities; the production-source scan
+        has no retired identifier except the source gate's own forbidden-path
+        literal.
 
 The working tree modification under
 `modules/function/input/pinclude/lux/engine/input/detail/GlfwInputTranslation.hpp`

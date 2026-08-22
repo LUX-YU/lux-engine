@@ -89,34 +89,39 @@ if(LUX_BUILD_COMPONENT_META)
     target_compile_definitions(
         animation_2d_meta PRIVATE LUX_FUNCTION_LIBRARY)
 
-    add_library(animation_2d_lua_meta SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/meta_sidecar_anchor.cpp)
-    lux_classify_target(
-        TARGET  animation_2d_lua_meta
-        LAYER   ECS
-        PRODUCT RUNTIME
-        ROLE    INTEGRATION
-    )
-    set_target_properties(animation_2d_lua_meta PROPERTIES
-        OUTPUT_NAME lux_engine_ecs_animation_2d_lua_meta)
-    target_link_libraries(
-        animation_2d_lua_meta
-        PRIVATE
-            animation_2d
-            lux::engine::core::meta
-            lux::engine::function::script_lua
-    )
-    target_compile_definitions(
-        animation_2d_lua_meta PRIVATE LUX_FUNCTION_LIBRARY)
-
-    engine_enable_module_meta(
+    set(animation_2d_meta_args
         TARGET             animation_2d
         SIDECAR_TARGET     animation_2d_meta
-        LUA_SIDECAR_TARGET animation_2d_lua_meta
         TARGET_FILES
             ${LUX_ECS_ANIMATION_INCLUDE_DIR}/lux/engine/ecs/animation/components/FlipbookAnimationComponent.hpp
-        LUA_BINDING
     )
+    if(LUX_BUILD_COMPONENT_LUA_META)
+        add_library(animation_2d_lua_meta SHARED
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/meta_sidecar_anchor.cpp)
+        lux_classify_target(
+            TARGET  animation_2d_lua_meta
+            LAYER   ECS
+            PRODUCT RUNTIME
+            ROLE    INTEGRATION
+        )
+        set_target_properties(animation_2d_lua_meta PROPERTIES
+            OUTPUT_NAME lux_engine_ecs_animation_2d_lua_meta)
+        target_link_libraries(
+            animation_2d_lua_meta
+            PRIVATE
+                animation_2d
+                lux::engine::core::meta
+                lux::engine::function::script_lua
+        )
+        target_compile_definitions(
+            animation_2d_lua_meta PRIVATE LUX_FUNCTION_LIBRARY)
+        list(APPEND animation_2d_meta_args
+            LUA_SIDECAR_TARGET animation_2d_lua_meta
+            LUA_BINDING
+        )
+    endif()
+
+    engine_enable_module_meta(${animation_2d_meta_args})
 endif()
 
 if(ENABLE_EXECUTION_TEST)

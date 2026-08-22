@@ -65,6 +65,16 @@ apksigner),不需要 JDK、Gradle、AGP、Maven。`package.ps1` 干的就是这�
 `externalNativeBuild` 去驱动 CMake 会
 制造第二套真相源,而且要它复现上面那一整套配置是自找麻烦。
 
+Windows 宿主工具安装必须可独立运行：`LUX_HOST_TOOLS_PREFIX/bin` 除了
+`lux_meta_generator.exe`，还要包含 `libclang.dll`、`zlib1.dll`、`zstd.dll`。
+配置阶段会直接拒绝不完整前缀，避免所有 meta custom command 到构建期才以
+`0xc0000135` 静默失败。交叉编译还必须设置 `VULKAN_SDK`；引擎使用 SDK 的当前
+平台中立 Vulkan 头和宿主 `glslc`，但仍链接 NDK 的 arm64 `libvulkan.so`。
+
+Android 默认 `LUX_SCRIPT_HAS_LUA=OFF`，因为当前 overlay triplet 没有目标端
+LuaJIT；这只移除 Lua backend 与 Lua metadata sidecar，不会移除 ScriptSystem 或
+native backend。triplet 提供目标端 LuaJIT 后可显式开启该选项。
+
 ## harness 的形状:顺序 gate,不是 runtime player
 
 每一步打一条判决,前一步过了才走下一步。**故意不是 runtime player** —— player 会把所有

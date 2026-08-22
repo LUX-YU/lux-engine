@@ -109,15 +109,22 @@ if(LUX_BUILD_COMPONENT_META)
         PRIVATE
             physics2d
             lux::engine::core::meta
-            lux::engine::function::script_lua
     )
     target_compile_definitions(physics2d_meta PRIVATE LUX_FUNCTION_LIBRARY)
+
+    set(_physics2d_lua_meta_args "")
+    if(LUX_BUILD_COMPONENT_LUA_META)
+        target_link_libraries(
+            physics2d_meta PRIVATE lux::engine::function::script_lua
+        )
+        list(APPEND _physics2d_lua_meta_args LUA_BINDING)
+    endif()
 
     engine_enable_module_meta(
         TARGET         physics2d
         SIDECAR_TARGET physics2d_meta
         TARGET_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/physics2d/components/Physics2DComponents.hpp
-        LUA_BINDING
+        ${_physics2d_lua_meta_args}
     )
 endif()

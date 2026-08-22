@@ -27,10 +27,11 @@ target_link_libraries(
         lux::engine::ecs::render_pixel_integration
         lux::engine::ecs::render_tilemap_integration
         lux::engine::ecs::tilemap
+        lux::engine::ecs::transform
         lux::engine::resource::asset)
 component_add_transitive_commands(
     presentation_2d
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS animation_2d core physics physics2d_pixel_integration pixel render_2d render_pixel_integration render_tilemap_integration tilemap)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS animation_2d core physics physics2d_pixel_integration pixel render_2d render_pixel_integration render_tilemap_integration tilemap transform)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)")
 lux_classify_target(
     TARGET presentation_2d

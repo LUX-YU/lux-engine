@@ -62,9 +62,11 @@ else()
         input
         animation
         script_core
-        script_lua
         script_native
     )
+    if(TARGET script_lua)
+        list(APPEND LUX_FUNCTION_COMPONENTS script_lua)
+    endif()
     if(NOT ANDROID)
         list(APPEND LUX_FUNCTION_COMPONENTS ui ui_vulkan)
     endif()

@@ -50,9 +50,10 @@ target_compile_definitions(
 target_link_libraries(
     scripting
     PUBLIC
-    lux::engine::ecs::core             # World / ISystem / EntityRegistry / EntityHandle / ComponentTypeCatalog
-    lux::engine::core::meta            # RefClass/RefField/EBaseType (reflection get/set)
-    lux::engine::resource::asset       # ScriptComponent.script = asset_id_t + asset routing (rdesc::Script/ScriptAsset)
+    lux::engine::ecs::core                  # World / ISystem / EntityRegistry / EntityHandle / ComponentTypeCatalog
+    lux::engine::core::meta                 # RefClass/RefField/EBaseType (reflection get/set)
+    lux::engine::resource::asset            # ScriptComponent.script = asset_id_t + asset routing (rdesc::Script/ScriptAsset)
+    lux::engine::function::script_core      # public ScriptBehavior ABI types
     PRIVATE
     lux::engine::core::log
 )
@@ -62,55 +63,58 @@ component_add_transitive_commands(
     "find_package (lux-engine-ecs  REQUIRED COMPONENTS core)"
     "find_package (lux-engine-core REQUIRED COMPONENTS meta)"
     "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
+    "find_package (lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package (lux-engine-core REQUIRED COMPONENTS log)"
 )
 
 # Session backends are separate Runtime components. A Player that installs
 # only ScriptSystem and native C++ behaviours carries neither LuaJIT nor the
 # native dynamic-module backend.
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-find_package(sol2 CONFIG REQUIRED)
-find_package(LuaJIT REQUIRED)
+if(LUX_SCRIPT_HAS_LUA)
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+    find_package(sol2 CONFIG REQUIRED)
+    find_package(LuaJIT REQUIRED)
 
-add_component(
-    COMPONENT_NAME scripting_lua
-    NAMESPACE       lux::engine::ecs
-    OUTPUT_NAME     lux_engine_ecs_script_lua
-    SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/LuaScriptBackend.cpp
-)
-lux_classify_target(
-    TARGET scripting_lua
-    LAYER ECS
-    PRODUCT RUNTIME
-    ROLE INTEGRATION
-)
-component_include_directories(
-    scripting_lua
-    BUILD_TIME_EXPORT
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${LUX_GENERATE_HEADER_DIR}
-    INSTALL_TIME include
-)
-target_compile_definitions(scripting_lua PRIVATE LUX_FUNCTION_LIBRARY)
-target_link_libraries(
-    scripting_lua
-    PUBLIC lux::engine::ecs::scripting
-    PRIVATE
-        sol2::sol2
-        LuaJIT::LuaJIT
-        lux::engine::function::input
-        lux::engine::core::log
-)
-component_add_transitive_commands(
-    scripting_lua
-    [[list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")]]
-    "find_package(LuaJIT REQUIRED)"
-    "find_package(sol2 CONFIG REQUIRED)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS scripting)"
-    "find_package(lux-engine-function REQUIRED COMPONENTS input)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS log)"
-)
+    add_component(
+        COMPONENT_NAME scripting_lua
+        NAMESPACE       lux::engine::ecs
+        OUTPUT_NAME     lux_engine_ecs_script_lua
+        SOURCE_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/LuaScriptBackend.cpp
+    )
+    lux_classify_target(
+        TARGET scripting_lua
+        LAYER ECS
+        PRODUCT RUNTIME
+        ROLE INTEGRATION
+    )
+    component_include_directories(
+        scripting_lua
+        BUILD_TIME_EXPORT
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${LUX_GENERATE_HEADER_DIR}
+        INSTALL_TIME include
+    )
+    target_compile_definitions(scripting_lua PRIVATE LUX_FUNCTION_LIBRARY)
+    target_link_libraries(
+        scripting_lua
+        PUBLIC lux::engine::ecs::scripting
+        PRIVATE
+            sol2::sol2
+            LuaJIT::LuaJIT
+            lux::engine::function::input
+            lux::engine::core::log
+    )
+    component_add_transitive_commands(
+        scripting_lua
+        [[list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")]]
+        "find_package(LuaJIT REQUIRED)"
+        "find_package(sol2 CONFIG REQUIRED)"
+        "find_package(lux-engine-ecs REQUIRED COMPONENTS scripting)"
+        "find_package(lux-engine-function REQUIRED COMPONENTS input)"
+        "find_package(lux-engine-core REQUIRED COMPONENTS log)"
+    )
+endif()
 
 add_component(
     COMPONENT_NAME scripting_native
@@ -178,32 +182,39 @@ if(LUX_BUILD_COMPONENT_META)
     )
     target_compile_definitions(script_meta PRIVATE LUX_FUNCTION_LIBRARY)
 
-    add_library(script_lua_meta SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/meta_sidecar_anchor.cpp)
-    lux_classify_target(
-        TARGET script_lua_meta
-        LAYER ECS
-        PRODUCT RUNTIME
-        ROLE INTEGRATION
-    )
-    set_target_properties(script_lua_meta PROPERTIES
-        OUTPUT_NAME lux_engine_ecs_script_lua_meta)
-    target_link_libraries(script_lua_meta
-        PRIVATE
-            scripting
-            lux::engine::core::meta
-            lux::engine::function::script_lua
-    )
-    target_compile_definitions(script_lua_meta PRIVATE LUX_FUNCTION_LIBRARY)
-
-    engine_enable_module_meta(
+    set(script_meta_args
         TARGET         scripting
         SIDECAR_TARGET script_meta
-        LUA_SIDECAR_TARGET script_lua_meta
         TARGET_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/script/components/ScriptComponent.hpp
-        LUA_BINDING
     )
+    if(LUX_BUILD_COMPONENT_LUA_META)
+        add_library(script_lua_meta SHARED
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/meta_sidecar_anchor.cpp)
+        lux_classify_target(
+            TARGET script_lua_meta
+            LAYER ECS
+            PRODUCT RUNTIME
+            ROLE INTEGRATION
+        )
+        set_target_properties(script_lua_meta PROPERTIES
+            OUTPUT_NAME lux_engine_ecs_script_lua_meta)
+        target_link_libraries(script_lua_meta
+            PRIVATE
+                scripting
+                lux::engine::core::meta
+                lux::engine::function::script_lua
+        )
+        target_compile_definitions(
+            script_lua_meta PRIVATE LUX_FUNCTION_LIBRARY
+        )
+        list(APPEND script_meta_args
+            LUA_SIDECAR_TARGET script_lua_meta
+            LUA_BINDING
+        )
+    endif()
+
+    engine_enable_module_meta(${script_meta_args})
 endif()
 
 add_executable(

@@ -357,14 +357,28 @@ namespace lux::render
             SUBMITTED
         };
 
+        // Android libc++ intentionally disables its incomplete C++20 stop-token
+        // implementation.  This worker only needs a shared one-way stop bit, so
+        // keep that narrow contract local instead of depending on std::jthread.
+        struct TransferStopToken
+        {
+            const std::atomic<bool>* requested{nullptr};
+
+            [[nodiscard]] bool stopRequested() const noexcept
+            {
+                return requested != nullptr &&
+                    requested->load(std::memory_order_acquire);
+            }
+        };
+
         [[nodiscard]] BatchSlotLease acquireBatchSlot();
         void releaseBatchSlot(BatchSlotLease slot) noexcept;
         [[nodiscard]] bool retireOneSubmittedSlot();
         [[nodiscard]] bool retireGraphicsFinalize();
-        void workerLoop(std::stop_token stop_token);
-        void processMeshTransfer(MeshTransferTask task, std::stop_token stop_token);
-        void processTextureTransfer(TextureTransferTask task, std::stop_token stop_token);
-        void processCubeTransfer(CubeTransferTask task, std::stop_token stop_token);
+        void workerLoop(TransferStopToken stop_token);
+        void processMeshTransfer(MeshTransferTask task, TransferStopToken stop_token);
+        void processTextureTransfer(TextureTransferTask task, TransferStopToken stop_token);
+        void processCubeTransfer(CubeTransferTask task, TransferStopToken stop_token);
         [[nodiscard]] bool publishResult(GpuTransferResult result);
         void publishRecorded(RecordedBatch batch);
 
@@ -410,7 +424,8 @@ namespace lux::render
 
         lux::cxx::SpscLockFreeRingQueue<UploadJob> jobs_;
         lux::cxx::SpscLockFreeRingQueue<GpuTransferResult> results_;
-        std::jthread transfer_thread_;
+        std::thread transfer_thread_;
+        std::atomic<bool> stop_requested_{false};
         std::atomic<bool> accepting_{true};
         std::atomic<bool> worker_running_{false};
         std::atomic<std::uint64_t> job_epoch_{0};

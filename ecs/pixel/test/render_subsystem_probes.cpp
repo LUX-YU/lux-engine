@@ -57,7 +57,6 @@
 #include <cstdlib>
 #include <atomic>
 #include <memory>
-#include <stop_token>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -240,22 +239,17 @@ namespace
             // Production has a dedicated render consumer. This deterministic
             // fixture dispatches inline, so its blocking close needs a temporary
             // SPSC consumer or trySubmitFrame() would wait for itself forever.
-            std::jthread render_consumer{
-                [this](std::stop_token stop)
+            const auto sync = fixture.sync();
+            std::atomic<bool> stop_requested{false};
+            std::thread render_consumer{
+                [this, sync, &stop_requested]
                 {
-                    const auto sync = fixture.sync();
-                    std::stop_callback wake{
-                        stop,
-                        [sync]() noexcept
-                        {
-                            sync->notifyRequestStateChanged();
-                        }};
-                    while (!stop.stop_requested())
+                    while (!stop_requested.load(std::memory_order_acquire))
                     {
                         const auto observed = sync->work_epoch.load(
                             std::memory_order_acquire);
                         fixture.dispatch();
-                        if (!stop.stop_requested() &&
+                        if (!stop_requested.load(std::memory_order_acquire) &&
                             sync->work_epoch.load(
                                 std::memory_order_acquire) == observed)
                         {
@@ -270,7 +264,8 @@ namespace
                 lux::runtime::testing::detail::closeResidency(
                     residency,
                     async.runtime());
-            render_consumer.request_stop();
+            stop_requested.store(true, std::memory_order_release);
+            sync->notifyRequestStateChanged();
             render_consumer.join();
             return report;
         }

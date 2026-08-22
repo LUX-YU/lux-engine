@@ -37,7 +37,9 @@ component_include_directories(
 
 target_compile_definitions(
     game_application
-    PRIVATE LUX_GAME_APPLICATION_LIBRARY
+    PRIVATE
+        LUX_GAME_APPLICATION_LIBRARY
+        LUX_SCRIPT_HAS_LUA=$<BOOL:${LUX_SCRIPT_HAS_LUA}>
 )
 
 target_link_libraries(
@@ -71,9 +73,13 @@ target_link_libraries(
         EnTT::EnTT
     PRIVATE
         lux::engine::runtime::runtime_logging
-        lux::engine::ecs::scripting_lua
         lux::engine::ecs::scripting_native
 )
+if(LUX_SCRIPT_HAS_LUA)
+    target_link_libraries(
+        game_application PRIVATE lux::engine::ecs::scripting_lua
+    )
+endif()
 
 component_add_transitive_commands(
     game_application
@@ -82,6 +88,12 @@ component_add_transitive_commands(
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_assets runtime_logging runtime_frame runtime_scene_script runtime_tilemap_prepare runtime_scene_tilemap_composition runtime_navigation3d_prepare runtime_scene_navigation3d_composition runtime_physics3d_prepare runtime_scene_physics3d_composition runtime_scene_presentation3d_composition runtime_scene_spatial3d_composition runtime_render_scene runtime_render_backend_host)"
     "find_package(lux-engine-function REQUIRED COMPONENTS input navigation render_client)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core render_core scripting_lua scripting_native)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core render_core scripting_native)"
     "find_package(lux-engine-core REQUIRED COMPONENTS log events)"
 )
+if(LUX_SCRIPT_HAS_LUA)
+    component_add_transitive_commands(
+        game_application
+        "find_package(lux-engine-ecs REQUIRED COMPONENTS scripting_lua)"
+    )
+endif()

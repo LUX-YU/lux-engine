@@ -45,7 +45,9 @@
 #include <lux/engine/ecs/components/ParentComponent.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
+#if LUX_SCRIPT_HAS_LUA
 #include <lux/engine/ecs/script/backends/LuaScriptBackend.hpp>
+#endif
 #include <lux/engine/ecs/script/backends/NativeModuleScriptBackend.hpp>
 
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
@@ -703,12 +705,15 @@ namespace lux::game
                 *application.assets,
                 application.asset_load->client()
             );
-        const bool script_backends_ready =
-            application.simulation->addBackend(
+        bool script_backends_ready = true;
+#if LUX_SCRIPT_HAS_LUA
+        script_backends_ready = application.simulation->addBackend(
                 std::make_unique<lux::ecs::LuaScriptBackend>(
                     application.component_types
                 )
-            )
+            );
+#endif
+        script_backends_ready = script_backends_ready
             && application.simulation->addBackend(
                 std::make_unique<lux::ecs::NativeModuleScriptBackend>()
             );

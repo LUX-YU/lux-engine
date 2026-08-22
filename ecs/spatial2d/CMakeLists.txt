@@ -55,34 +55,39 @@ if(LUX_BUILD_COMPONENT_META)
     target_compile_definitions(
         spatial2d_components_meta PRIVATE LUX_FUNCTION_LIBRARY)
 
-    add_library(spatial2d_components_lua_meta SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/meta_sidecar_anchor.cpp)
-    lux_classify_target(
-        TARGET  spatial2d_components_lua_meta
-        LAYER   ECS
-        PRODUCT RUNTIME
-        ROLE    INTEGRATION
-    )
-    set_target_properties(
-        spatial2d_components_lua_meta
-        PROPERTIES OUTPUT_NAME lux_engine_ecs_spatial2d_components_lua_meta
-    )
-    target_link_libraries(
-        spatial2d_components_lua_meta
-        PRIVATE
-            spatial2d_components
-            lux::engine::core::meta
-            lux::engine::function::script_lua
-    )
-    target_compile_definitions(
-        spatial2d_components_lua_meta PRIVATE LUX_FUNCTION_LIBRARY)
-
-    engine_enable_module_meta(
+    set(spatial2d_meta_args
         TARGET             spatial2d_components
         SIDECAR_TARGET     spatial2d_components_meta
-        LUA_SIDECAR_TARGET spatial2d_components_lua_meta
         TARGET_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/spatial2d/components/SpatialInterest2DComponent.hpp
-        LUA_BINDING
     )
+    if(LUX_BUILD_COMPONENT_LUA_META)
+        add_library(spatial2d_components_lua_meta SHARED
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/meta_sidecar_anchor.cpp)
+        lux_classify_target(
+            TARGET  spatial2d_components_lua_meta
+            LAYER   ECS
+            PRODUCT RUNTIME
+            ROLE    INTEGRATION
+        )
+        set_target_properties(
+            spatial2d_components_lua_meta
+            PROPERTIES OUTPUT_NAME lux_engine_ecs_spatial2d_components_lua_meta
+        )
+        target_link_libraries(
+            spatial2d_components_lua_meta
+            PRIVATE
+                spatial2d_components
+                lux::engine::core::meta
+                lux::engine::function::script_lua
+        )
+        target_compile_definitions(
+            spatial2d_components_lua_meta PRIVATE LUX_FUNCTION_LIBRARY)
+        list(APPEND spatial2d_meta_args
+            LUA_SIDECAR_TARGET spatial2d_components_lua_meta
+            LUA_BINDING
+        )
+    endif()
+
+    engine_enable_module_meta(${spatial2d_meta_args})
 endif()

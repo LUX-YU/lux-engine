@@ -4,7 +4,14 @@ find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 find_package(meshoptimizer CONFIG REQUIRED)
 find_path(meshoptimizer_INCLUDE_DIRS NAMES meshoptimizer.h REQUIRED)
 
-if(NOT Vulkan_GLSLC_EXECUTABLE)
+if(CMAKE_CROSSCOMPILING AND
+   DEFINED ENV{VULKAN_SDK} AND
+   EXISTS "$ENV{VULKAN_SDK}/Bin/glslc.exe")
+    # find_package(Vulkan) reports the target triplet's glslc in a cross
+    # configure. Shader compilation is a host build action, so that executable
+    # is never runnable here.
+    set(Vulkan_GLSLC_EXECUTABLE "$ENV{VULKAN_SDK}/Bin/glslc.exe")
+elseif(NOT Vulkan_GLSLC_EXECUTABLE)
     lux_find_host_program(
         Vulkan_GLSLC_EXECUTABLE
         REQUIRED

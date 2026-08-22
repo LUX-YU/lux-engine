@@ -99,7 +99,16 @@ supported.
 
 The target platform comes from the CMake toolchain. For example, Android uses
 `LUX_BUILD_PROFILE=PLAYER` plus the Android triplet and an explicit
-`LUX_HOST_TOOLS_PREFIX`; platform names are not product profiles.
+`LUX_HOST_TOOLS_PREFIX`; platform names are not product profiles. On Windows the
+host-tools prefix must contain the complete `lux_meta_generator` runtime closure
+(`libclang.dll`, `zlib1.dll`, and `zstd.dll`) in `bin/`. Android also requires
+`VULKAN_SDK`: its current platform-neutral headers are used at compile time while
+the target still links the NDK Vulkan loader.
+
+`LUX_SCRIPT_HAS_LUA` selects the optional LuaJIT backend. It defaults to `ON` for
+desktop products and `OFF` for Android until the Android triplet supplies a
+target-built LuaJIT package. The backend-neutral ScriptSystem and native script
+backend remain available when it is off.
 
 Example with Ninja and vcpkg:
 

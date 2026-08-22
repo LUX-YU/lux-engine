@@ -37,6 +37,7 @@ target_link_libraries(
         lux::cxx::algorithm
         lux::cxx::compile_time
         lux::cxx::core
+        lux::engine::core::serialization
         lux::engine::resource::asset
         lux::engine::ecs::identity
         lux::engine::ecs::scene_format
@@ -46,6 +47,7 @@ target_link_libraries(
 component_add_transitive_commands(
     scene
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm compile_time core)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS identity scene_format)"
     "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"

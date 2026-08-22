@@ -981,16 +981,31 @@ function(engine_enable_module_meta)
     # 只在非交叉时导出:交叉树里的产物没有资格当共享源,它自己就是消费者。
     if(NOT CMAKE_CROSSCOMPILING)
         _lux_meta_fingerprint(_fp "${ARGS_TARGET_FILES}")
-        set(_stamp_file "${CMAKE_CURRENT_BINARY_DIR}/meta_gen/inputs.sha256")
+        set(_stamp_file
+            "${CMAKE_CURRENT_BINARY_DIR}/meta_gen/${_slug}.inputs.sha256"
+        )
         file(WRITE "${_stamp_file}" "${_fp}")
 
+        set(_shared_generated_files "")
+        foreach(_header IN LISTS ARGS_TARGET_FILES)
+            get_filename_component(_stem "${_header}" NAME_WE)
+            list(APPEND _shared_generated_files
+                "${CMAKE_CURRENT_BINARY_DIR}/meta_gen/${_stem}.meta.cpp"
+            )
+            if(ARGS_LUA_BINDING)
+                list(APPEND _shared_generated_files
+                    "${CMAKE_CURRENT_BINARY_DIR}/meta_gen/${_stem}.lua.cpp"
+                )
+            endif()
+        endforeach()
         install(
-            DIRECTORY   "${CMAKE_CURRENT_BINARY_DIR}/meta_gen/"
+            FILES       ${_shared_generated_files}
             DESTINATION "${LUX_META_SHARED_RELDIR}/${_slug}"
-            FILES_MATCHING
-                PATTERN "*.meta.cpp"
-                PATTERN "*.lua.cpp"
-                PATTERN "inputs.sha256"
+        )
+        install(
+            FILES       "${_stamp_file}"
+            DESTINATION "${LUX_META_SHARED_RELDIR}/${_slug}"
+            RENAME      inputs.sha256
         )
     endif()
 

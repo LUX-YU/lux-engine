@@ -177,12 +177,43 @@ elseif(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     set(LUX_PROFILE_HAS_TOOLCHAIN ON)
 endif()
 
+# Android's NDK deliberately ships an older Vulkan header snapshot than the
+# renderer's required API surface (dynamic-rendering local read in particular).
+# Headers are platform-neutral; the target Vulkan loader library still comes
+# from the NDK.  Pin every Vulkan consumer to the same SDK header set before the
+# first find_package(Vulkan) creates Vulkan::Headers/Vulkan::Vulkan.
+if(CMAKE_CROSSCOMPILING AND ANDROID)
+    set(_lux_host_vulkan_include "$ENV{VULKAN_SDK}/Include")
+    if(NOT EXISTS "${_lux_host_vulkan_include}/vulkan/vulkan.h")
+        message(FATAL_ERROR
+            "Android Player requires current platform-neutral Vulkan headers. "
+            "Set VULKAN_SDK to a Vulkan SDK containing Include/vulkan/vulkan.h."
+        )
+    endif()
+    set(Vulkan_INCLUDE_DIR
+        "${_lux_host_vulkan_include}"
+        CACHE PATH "Platform-neutral Vulkan headers used by Android" FORCE
+    )
+endif()
+
+# LuaJIT is a selectable Runtime backend, not part of the ScriptSystem
+# contract.  The supported desktop products enable it by default.  Android's
+# overlay triplet deliberately starts without LuaJIT until a target-built port
+# is supplied; native script modules and the backend-neutral ScriptSystem stay
+# available in that configuration.
+if(LUX_TARGET_OS STREQUAL "ANDROID")
+    option(LUX_SCRIPT_HAS_LUA "Build the LuaJIT script backend" OFF)
+else()
+    option(LUX_SCRIPT_HAS_LUA "Build the LuaJIT script backend" ON)
+endif()
+
 # Toolchain cooks publish generated component columns and therefore need the
 # ordinary ECS reflection sidecars. Lua bindings are a Runtime/Editor product;
 # keeping this switch off for the pure Toolchain profile prevents schema cooks
 # from acquiring the Lua runtime merely because both sidecars share generators.
-if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
-    set(LUX_BUILD_COMPONENT_LUA_META OFF)
+if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN" OR NOT LUX_SCRIPT_HAS_LUA)
+    set(LUX_BUILD_COMPONENT_LUA_META OFF CACHE BOOL
+        "Build Lua component reflection sidecars" FORCE)
 else()
     option(LUX_BUILD_COMPONENT_LUA_META
         "Build Lua component reflection sidecars" ON)

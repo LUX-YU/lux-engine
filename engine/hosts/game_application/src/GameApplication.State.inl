@@ -35,7 +35,8 @@
         std::unique_ptr<
             lux::runtime::spatial3d::StaticCollider3DPrepareService>
             physics_preparation;
-        std::unique_ptr<lux::runtime::spatial2d::TilemapPrepareService>
+        std::unique_ptr<
+            lux::runtime::assets::tilemap::TilemapPrepareService>
             tilemap_preparation;
         std::unique_ptr<lux::extensions::EngineExtensions> extensions;
         std::unique_ptr<lux::runtime::FrameCoordinator> frame_coordinator;

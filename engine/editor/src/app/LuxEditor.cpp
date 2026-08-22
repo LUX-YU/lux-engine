@@ -61,7 +61,7 @@
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/spatial3d/navigation/Navigation3DPrepareService.hpp>
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
-#include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
+#include <lux/engine/runtime/assets/tilemap/TilemapPrepareService.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/authoring/assets/FlowGraphSerDeser.hpp>
@@ -230,7 +230,9 @@ namespace lux::editor
         std::unique_ptr<lux::runtime::SceneGeometryPrepareService> geometry_preparation_;
         std::unique_ptr<lux::runtime::spatial3d::Navigation3DPrepareService> navigation_preparation_;
         std::unique_ptr<lux::runtime::spatial3d::StaticCollider3DPrepareService> physics_preparation_;
-        std::unique_ptr<lux::runtime::spatial2d::TilemapPrepareService>     tilemap_preparation_;
+        std::unique_ptr<
+            lux::runtime::assets::tilemap::TilemapPrepareService>
+            tilemap_preparation_;
         std::unique_ptr<EditorAsyncService>                     editor_async_;
         // Panels borrow this coordinator. Declaring it before every UI owner
         // guarantees those borrowers disappear first during reverse teardown.
@@ -573,7 +575,8 @@ namespace lux::editor
             shutdown();
             return false;
         }
-        auto tilemap_preparation = lux::runtime::spatial2d::TilemapPrepareService::addTo(async_builder);
+        auto tilemap_preparation = lux::runtime::assets::tilemap::
+            TilemapPrepareService::addTo(async_builder);
         if (!tilemap_preparation)
         {
             std::fprintf(
@@ -610,7 +613,9 @@ namespace lux::editor
         runtime_->geometry_preparation_         = std::make_unique<lux::runtime::SceneGeometryPrepareService>(std::move(*geometry_preparation));
         runtime_->navigation_preparation_       = std::make_unique<lux::runtime::spatial3d::Navigation3DPrepareService>(std::move(*navigation_preparation));
         runtime_->physics_preparation_          = std::make_unique<lux::runtime::spatial3d::StaticCollider3DPrepareService>(std::move(*physics_preparation));
-        runtime_->tilemap_preparation_          = std::make_unique<lux::runtime::spatial2d::TilemapPrepareService>(std::move(*tilemap_preparation));
+        runtime_->tilemap_preparation_ = std::make_unique<
+            lux::runtime::assets::tilemap::TilemapPrepareService>(
+            std::move(*tilemap_preparation));
         runtime_->render_infra_.entity_sections =
             runtime_->entity_sections_->loadClient();
         runtime_->editor_async_                 = std::make_unique<EditorAsyncService>(std::move(*editor_async));

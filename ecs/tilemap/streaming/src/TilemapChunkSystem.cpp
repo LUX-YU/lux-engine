@@ -1,24 +1,19 @@
-#include <lux/engine/runtime/spatial2d/tilemap/TilemapChunkSystem.hpp>
+#include <lux/engine/ecs/tilemap/streaming/TilemapChunkSystem.hpp>
 
+#include <lux/engine/core/async/OperationInbox.hpp>
 #include <lux/engine/ecs/tilemap/components/TileChunk2DComponent.hpp>
 #include <lux/engine/ecs/tilemap/systems/TilemapRuntime.hpp>
 #include <lux/engine/ecs/tilemap/systems/TilemapSystem.hpp>
 #include <lux/engine/ecs/tilemap/TilemapChunkCodec.hpp>
-#include <lux/engine/runtime/execution/AsyncRuntime.hpp>
-#include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
-#include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
-#include <lux/engine/runtime/spatial2d/tilemap/TilemapChunkBindingComponent.hpp>
-
-#include <stdexec/execution.hpp>
+#include "TilemapChunkBindingComponent.hpp"
 
 #include <algorithm>
-#include <atomic>
 #include <cstdlib>
 #include <optional>
 #include <utility>
 #include <vector>
 
-namespace lux::runtime::spatial2d
+namespace lux::ecs::tilemap::streaming
 {
     namespace
     {
@@ -51,9 +46,10 @@ namespace lux::runtime::spatial2d
             bool retire_requested{false};
         };
 
-        struct CompletionControl final
+        struct PrepareCompletionKey final
         {
-            std::atomic<TilemapChunkSystem*> owner{nullptr};
+            std::uint32_t slot{~std::uint32_t{0u}};
+            std::uint32_t generation{0u};
         };
 
         [[nodiscard]] bool sameFact(
@@ -69,27 +65,20 @@ namespace lux::runtime::spatial2d
     struct TilemapChunkSystem::Impl final
     {
         Impl(
-            TilemapChunkSystem& owner,
-            lux::exec::AsyncRuntime& async_runtime_value,
-            lux::exec::AsyncScope& scene_scope_value,
             TilemapPrepareClient preparation_value,
             lux::ecs::TilemapRuntime& runtime_value,
             lux::ecs::TilemapSystem& tilemaps_value,
             lux::ecs::entity_scene::ContentBlobClient content_value,
             const TilemapChunkActivity2D* activity_value,
             TilemapChunkSystemConfig config_value) noexcept
-            : async_runtime(&async_runtime_value),
-              scene_scope(&scene_scope_value),
-              preparation(std::move(preparation_value)),
+            : preparation(std::move(preparation_value)),
               runtime(&runtime_value),
               tilemaps(&tilemaps_value),
               content(std::move(content_value)),
               activity(activity_value),
               config(config_value),
-              completion(std::make_shared<CompletionControl>())
-        {
-            completion->owner.store(&owner, std::memory_order_release);
-        }
+              completions(config_value.maximum_tracked_chunks)
+        {}
 
         [[nodiscard]] OwnedChunk* find(entt::entity entity) noexcept
         {
@@ -307,54 +296,35 @@ namespace lux::runtime::spatial2d
                 chunk.state = EOwnedState::READY_TO_PUBLISH;
                 return;
             }
-            auto pipeline = lux::exec::execute(
-                    preparation.operation(),
-                    PrepareTilemapChunk{
-                        chunk.content.bytes(),
-                        chunk.coordinate,
-                        chunk.content_reference.id.digest,
-                        generation},
-                    lux::async::SubmitOptions{
-                        .accounted_bytes = chunk.content.bytes().size() +
-                            lux::ecs::TilemapRuntime::kChunkTileCount *
-                                sizeof(std::uint16_t)})
-                | stdexec::continues_on(
-                      lux::exec::mainThreadScheduler(*async_runtime))
-                | stdexec::then(
-                      [weak = std::weak_ptr{completion}, slot, generation](
-                          lux::async::OperationOutcome<PrepareTilemapChunk>
-                              outcome) mutable noexcept
-                      {
-                          const auto locked = weak.lock();
-                          if (!locked)
-                              return;
-                          if (auto* owner = locked->owner.load(
-                                  std::memory_order_acquire))
-                          {
-                              owner->acceptPreparation(
-                                  slot, generation, std::move(outcome));
-                          }
-                      })
-                | stdexec::upon_stopped(
-                      [weak = std::weak_ptr{completion}, slot, generation]()
-                          noexcept
-                      {
-                          const auto locked = weak.lock();
-                          if (!locked)
-                              return;
-                          if (auto* owner = locked->owner.load(
-                                  std::memory_order_acquire))
-                          {
-                              owner->acceptPreparationStopped(
-                                  slot, generation);
-                          }
-                      });
             chunk.state = EOwnedState::WAITING_BACKGROUND;
             ++metrics.preparation_attempts;
-            if (!lux::exec::spawn(*scene_scope, std::move(pipeline)))
+            auto submitted = completions.submit(
+                preparation.operation(),
+                PrepareTilemapChunk{
+                    chunk.content.bytes(),
+                    chunk.coordinate,
+                    chunk.content_reference.id.digest,
+                    generation},
+                PrepareCompletionKey{slot, generation},
+                lux::async::SubmitOptions{
+                    .accounted_bytes = chunk.content.bytes().size() +
+                        lux::ecs::TilemapRuntime::kChunkTileCount *
+                            sizeof(std::uint16_t)});
+            if (!submitted)
             {
-                chunk.state = EOwnedState::WAITING_ADMISSION;
-                ++metrics.queue_backpressure;
+                if (submitted.error() == lux::async::ESubmitError::QUEUE_FULL ||
+                    submitted.error() ==
+                        lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED)
+                {
+                    chunk.state = EOwnedState::WAITING_ADMISSION;
+                    ++metrics.queue_backpressure;
+                }
+                else
+                {
+                    chunk.prepare_error =
+                        ETilemapChunkDomainError::CONTENT_UNAVAILABLE;
+                    chunk.state = EOwnedState::READY_TO_PUBLISH;
+                }
             }
         }
 
@@ -457,20 +427,20 @@ namespace lux::runtime::spatial2d
             }
             metrics.closed = closing && close_fence_applied &&
                 metrics.tracked_chunks == 0u &&
+                completions.terminal() &&
                 metrics.commands_enqueued == metrics.commands_applied &&
                 registry.storage<TilemapChunkBindingComponent>().empty() &&
                 registry.storage<TilemapChunkDomainStateComponent>().empty();
         }
 
-        lux::exec::AsyncRuntime* async_runtime{nullptr};
-        lux::exec::AsyncScope* scene_scope{nullptr};
         TilemapPrepareClient preparation;
         lux::ecs::TilemapRuntime* runtime{nullptr};
         lux::ecs::TilemapSystem* tilemaps{nullptr};
         lux::ecs::entity_scene::ContentBlobClient content;
         const TilemapChunkActivity2D* activity{nullptr};
         TilemapChunkSystemConfig config;
-        std::shared_ptr<CompletionControl> completion;
+        lux::async::OperationInbox<PrepareTilemapChunk, PrepareCompletionKey>
+            completions;
         lux::ecs::Registry* attached{nullptr};
         lux::ecs::EcsCommandWriter commands;
         entt::scoped_connection constructed;
@@ -486,8 +456,6 @@ namespace lux::runtime::spatial2d
     };
 
     TilemapChunkSystem::TilemapChunkSystem(
-        lux::exec::AsyncRuntime& async_runtime,
-        lux::exec::AsyncScope& scene_scope,
         TilemapPrepareClient preparation,
         lux::ecs::TilemapRuntime& runtime,
         lux::ecs::TilemapSystem& tilemaps,
@@ -495,9 +463,6 @@ namespace lux::runtime::spatial2d
         const TilemapChunkActivity2D* activity,
         TilemapChunkSystemConfig config)
         : impl_(std::make_unique<Impl>(
-              *this,
-              async_runtime,
-              scene_scope,
               std::move(preparation),
               runtime,
               tilemaps,
@@ -508,7 +473,7 @@ namespace lux::runtime::spatial2d
 
     TilemapChunkSystem::~TilemapChunkSystem()
     {
-        impl_->completion->owner.store(nullptr, std::memory_order_release);
+        impl_->completions.close();
         if (impl_->attached)
             impl_->detach();
     }
@@ -534,6 +499,14 @@ namespace lux::runtime::spatial2d
         if (impl_->attached != &context.registry())
             std::abort();
         auto& registry = context.registry();
+        impl_->completions.drain(
+            [this](auto completion) noexcept
+            {
+                acceptPreparation(
+                    completion.key.slot,
+                    completion.key.generation,
+                    std::move(completion.outcome));
+            });
         impl_->retireBounded();
 
         for (auto& chunk : impl_->chunks)
@@ -866,33 +839,6 @@ namespace lux::runtime::spatial2d
             impl_->close_progress.notify();
     }
 
-    void TilemapChunkSystem::acceptPreparationStopped(
-        std::uint32_t slot,
-        std::uint32_t generation) noexcept
-    {
-        auto* owned = impl_->find(slot, generation);
-        if (!owned || owned->state != EOwnedState::WAITING_BACKGROUND)
-        {
-            ++impl_->metrics.stale_completions;
-            return;
-        }
-        if (owned->retire_requested || impl_->closing)
-            owned->state = EOwnedState::RETIRING;
-        else
-        {
-            owned->prepare_error =
-                ETilemapChunkDomainError::CONTENT_UNAVAILABLE;
-            owned->state = EOwnedState::READY_TO_PUBLISH;
-            static_cast<void>(impl_->enqueue(TilemapChunkIntentCommand{
-                ETilemapChunkIntentAction::PUBLISH,
-                owned->entity,
-                slot,
-                generation}));
-        }
-        if (impl_->close_progress)
-            impl_->close_progress.notify();
-    }
-
     void TilemapChunkSystem::requestClose() noexcept
     {
         requestClose({});
@@ -907,6 +853,7 @@ namespace lux::runtime::spatial2d
             return;
         impl_->closing = true;
         impl_->metrics.closing = true;
+        impl_->completions.close();
         for (auto& chunk : impl_->chunks)
             if (chunk.state != EOwnedState::FREE)
                 impl_->requestRetire(chunk);
@@ -927,6 +874,7 @@ namespace lux::runtime::spatial2d
                    }) &&
             impl_->metrics.commands_enqueued ==
                 impl_->metrics.commands_applied &&
+            impl_->completions.terminal() &&
             impl_->attached->storage<TilemapChunkBindingComponent>().empty() &&
             impl_->attached->storage<
                 TilemapChunkDomainStateComponent>().empty();
@@ -937,6 +885,8 @@ namespace lux::runtime::spatial2d
         if (!impl_->closing || closeComplete())
             return false;
         if (!impl_->close_fence_applied)
+            return true;
+        if (!impl_->completions.terminal())
             return true;
         if (impl_->metrics.commands_enqueued !=
             impl_->metrics.commands_applied)
@@ -1003,4 +953,4 @@ namespace lux::runtime::spatial2d
         }
         ++system.impl_->metrics.commands_applied;
     }
-} // namespace lux::runtime::spatial2d
+} // namespace lux::ecs::tilemap::streaming

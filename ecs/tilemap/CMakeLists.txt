@@ -63,6 +63,8 @@ component_add_transitive_commands(
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset description)"
 )
 
+add_subdirectory(streaming)
+
 add_subdirectory(test)
 
 if(LUX_BUILD_COMPONENT_META)

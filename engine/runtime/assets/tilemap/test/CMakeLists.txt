@@ -5,12 +5,15 @@ add_executable(
 target_link_libraries(
     tilemap_prepare_service_test
     PRIVATE
-        lux::engine::runtime::runtime_spatial2d_tilemap
+        lux::engine::runtime::runtime_tilemap_prepare
         lux::engine::runtime::runtime_execution
         lux::engine::resource::asset
 )
 if(MSVC)
-    target_compile_options(tilemap_prepare_service_test PRIVATE /UNDEBUG)
+    target_compile_options(
+        tilemap_prepare_service_test
+        PRIVATE /UNDEBUG /permissive- /Zc:__cplusplus /Zc:preprocessor
+    )
 else()
     target_compile_options(tilemap_prepare_service_test PRIVATE -UNDEBUG)
 endif()

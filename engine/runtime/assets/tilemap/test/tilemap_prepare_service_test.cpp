@@ -5,7 +5,7 @@
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
-#include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
+#include <lux/engine/runtime/assets/tilemap/TilemapPrepareService.hpp>
 
 #include <stdexec/execution.hpp>
 #include <exec/start_detached.hpp>
@@ -30,10 +30,11 @@ namespace
 
 int main()
 {
-    namespace spatial2d = lux::runtime::spatial2d;
+    namespace tilemap_prepare = lux::runtime::assets::tilemap;
+    namespace tilemap_streaming = lux::ecs::tilemap::streaming;
 
     lux::exec::AsyncRuntimeBuilder builder;
-    auto service = spatial2d::TilemapPrepareService::addTo(builder);
+    auto service = tilemap_prepare::TilemapPrepareService::addTo(builder);
     assert(service);
     auto plan = std::move(builder).compile();
     assert(plan);
@@ -56,11 +57,11 @@ int main()
         *encoded).digest;
 
     std::optional<lux::async::OperationOutcome<
-        spatial2d::PrepareTilemapChunk>> prepared;
+        tilemap_streaming::PrepareTilemapChunk>> prepared;
     std::atomic<bool> done{false};
     auto pipeline = lux::exec::execute(
             service->client().operation(),
-            spatial2d::PrepareTilemapChunk{
+            tilemap_streaming::PrepareTilemapChunk{
                 lux::cxx::SharedBytes<>::copyOf(*encoded),
                 {-17, 23},
                 digest,
@@ -90,14 +91,14 @@ int main()
     assert((*prepared)->load.tiles == source.tiles);
 
     std::optional<lux::async::OperationOutcome<
-        spatial2d::PrepareTilemapChunk>> rejected;
+        tilemap_streaming::PrepareTilemapChunk>> rejected;
     done.store(false, std::memory_order_release);
     auto backpressure = lux::exec::execute(
             service->client().operation(),
-            spatial2d::PrepareTilemapChunk{},
+            tilemap_streaming::PrepareTilemapChunk{},
             lux::async::SubmitOptions{
                 .accounted_bytes =
-                    spatial2d::kTilemapPrepareByteBudget + 1u})
+                    tilemap_prepare::kTilemapPrepareByteBudget + 1u})
         | stdexec::continues_on(
               lux::exec::mainThreadScheduler(runtime))
         | stdexec::then(

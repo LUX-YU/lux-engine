@@ -5,10 +5,10 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
+#include <lux/engine/ecs/entity_scene/ContentBlobStorage.hpp>
+#include <lux/engine/ecs/tilemap/streaming/TilemapPreparePort.hpp>
 #include <lux/engine/ecs/tilemap/TilemapTypes.hpp>
-#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
-#include <lux/engine/runtime/spatial2d/tilemap/visibility.h>
+#include <lux/engine/ecs/tilemap/streaming/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -16,24 +16,18 @@
 #include <span>
 #include <type_traits>
 
-namespace lux::exec
-{
-    class AsyncRuntime;
-    class AsyncScope;
-}
-
 namespace lux::ecs
 {
     class TilemapRuntime;
     class TilemapSystem;
 }
 
-namespace lux::runtime::spatial2d
+namespace lux::ecs::tilemap::streaming
 {
     /// Optional policy seam. Fixed/manual scenes omit it and keep every
     /// resident chunk active; Infinite2D adapts its own interest system here
     /// without introducing a reverse dependency into this Tilemap leaf.
-    class LUX_ENGINE_RUNTIME_SPATIAL2D_TILEMAP_PUBLIC
+    class LUX_ENGINE_ECS_TILEMAP_STREAMING_PUBLIC
         TilemapChunkActivity2D
     {
     public:
@@ -102,13 +96,11 @@ namespace lux::runtime::spatial2d
         bool closed{false};
     };
 
-    class LUX_ENGINE_RUNTIME_SPATIAL2D_TILEMAP_PUBLIC
+    class LUX_ENGINE_ECS_TILEMAP_STREAMING_PUBLIC
         TilemapChunkSystem final : public lux::ecs::ISystem
     {
     public:
         TilemapChunkSystem(
-            lux::exec::AsyncRuntime& async_runtime,
-            lux::exec::AsyncScope& scene_scope,
             TilemapPrepareClient preparation,
             lux::ecs::TilemapRuntime& runtime,
             lux::ecs::TilemapSystem& tilemaps,
@@ -159,10 +151,6 @@ namespace lux::runtime::spatial2d
             std::uint32_t slot,
             std::uint32_t generation,
             lux::async::OperationOutcome<PrepareTilemapChunk> outcome) noexcept;
-        void acceptPreparationStopped(
-            std::uint32_t slot,
-            std::uint32_t generation) noexcept;
-
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
@@ -199,4 +187,4 @@ namespace lux::runtime::spatial2d
 
     static_assert(std::is_trivially_copyable_v<
         TilemapChunkIntentCommand>);
-} // namespace lux::runtime::spatial2d
+} // namespace lux::ecs::tilemap::streaming

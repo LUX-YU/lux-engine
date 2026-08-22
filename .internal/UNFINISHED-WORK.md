@@ -29,8 +29,12 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         `runtime_spatial3d_partitioned` and its Runtime `ISystem` allowlist
         entry. The Engine cooked-catalog adapter remains pending the field
         ownership split below.
-  - [ ] Move tilemap, pixel, physics, navigation and presentation Systems
-        from Runtime into their ECS domains.
+  - [x] Move `TilemapChunkSystem`, its transient domain state and typed
+        preparation port into `ecs/tilemap/streaming`. Runtime assets retains
+        only the queued decode endpoint; remove the Runtime Tilemap System
+        target, directory and `ISystem` allowlist entry.
+  - [ ] Move pixel, physics, navigation and presentation Systems from Runtime
+        into their ECS domains.
 - [ ] Split `engine/spatial3d/SceneCatalog` by field ownership.
 - [ ] Collapse Editor panel contribution state into UISystem registration.
 - [ ] Generate build-only project usage and direct game composition.

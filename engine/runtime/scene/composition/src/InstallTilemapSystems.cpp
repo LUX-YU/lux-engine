@@ -2,11 +2,10 @@
 
 #include <lux/engine/ecs/PersistentEntityIndex.hpp>
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
+#include <lux/engine/ecs/entity_scene/ContentBlobStorage.hpp>
 #include <lux/engine/ecs/tilemap/systems/TilemapRuntime.hpp>
 #include <lux/engine/ecs/tilemap/systems/TilemapSystem.hpp>
-#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/runtime/scene/SceneAsyncContext.hpp>
-#include <lux/engine/runtime/spatial2d/tilemap/TilemapChunkSystem.hpp>
+#include <lux/engine/ecs/tilemap/streaming/TilemapChunkSystem.hpp>
 
 #include <memory>
 #include <string_view>
@@ -16,7 +15,7 @@ namespace lux::runtime
     bool installTilemap2DSystems(
         lux::ecs::ScheduleBuilder& builder,
         const lux::ecs::ComponentTypeCatalog& components,
-        spatial2d::TilemapPrepareClient preparation)
+        lux::ecs::tilemap::streaming::TilemapPrepareClient preparation)
     {
         using namespace lux::ecs;
         constexpr std::string_view required_components[]{
@@ -29,12 +28,11 @@ namespace lux::runtime
         }
 
         const auto checkpoint = builder.checkpoint();
-        auto* const async = builder.services().borrow<SceneAsyncContext>();
         auto* const blobs = builder.services().borrow<
             lux::ecs::entity_scene::ContentBlobClient>();
         auto* const persistent = builder.services().borrow<
             PersistentEntityIndex>();
-        if (!async || !blobs || !persistent || !preparation)
+        if (!blobs || !persistent || !preparation)
         {
             (void)builder.rollbackTo(checkpoint);
             return false;
@@ -52,13 +50,12 @@ namespace lux::runtime
             *persistent);
         auto* const tilemap_owner = tilemaps.get();
         const auto* activity = builder.services().get<
-            spatial2d::TilemapChunkActivity2D>();
+            lux::ecs::tilemap::streaming::TilemapChunkActivity2D>();
         if (!builder.add(std::move(tilemaps)) ||
             !builder.services().adopt(*tilemap_owner) ||
             !builder.add(
-                std::make_unique<spatial2d::TilemapChunkSystem>(
-                    async->runtime(),
-                    async->scope(),
+                std::make_unique<
+                    lux::ecs::tilemap::streaming::TilemapChunkSystem>(
                     preparation,
                     *runtime_owner,
                     *tilemap_owner,

@@ -74,7 +74,7 @@
 #include <lux/engine/runtime/spatial3d/navigation/Navigation3DPrepareService.hpp>
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
 #include <lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp>
-#include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
+#include <lux/engine/runtime/assets/tilemap/TilemapPrepareService.hpp>
 
 #include <lux/engine/input/Input.hpp>
 
@@ -344,7 +344,7 @@ namespace lux::game
                 "static collider preparation assembly failed");
             return false;
         }
-        auto tilemap_preparation = lux::runtime::spatial2d::
+        auto tilemap_preparation = lux::runtime::assets::tilemap::
             TilemapPrepareService::addTo(async_builder);
         if (!tilemap_preparation)
         {
@@ -412,7 +412,7 @@ namespace lux::game
             lux::runtime::spatial3d::StaticCollider3DPrepareService>(
                 std::move(*physics_preparation));
         application.tilemap_preparation = std::make_unique<
-            lux::runtime::spatial2d::TilemapPrepareService>(
+            lux::runtime::assets::tilemap::TilemapPrepareService>(
                 std::move(*tilemap_preparation));
 
         application.extensions =

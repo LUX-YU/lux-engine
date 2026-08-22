@@ -23,13 +23,13 @@ target_link_libraries(
     runtime_tilemap_systems
     PUBLIC
         lux::engine::runtime::runtime_scene_core
-        lux::engine::runtime::runtime_spatial2d_tilemap
         lux::engine::ecs::core
-        lux::engine::ecs::tilemap)
+        lux::engine::ecs::tilemap
+        lux::engine::ecs::tilemap_streaming)
 component_add_transitive_commands(
     runtime_tilemap_systems
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core tilemap)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_scene_core runtime_spatial2d_tilemap)")
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core tilemap tilemap_streaming)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_scene_core)")
 lux_classify_target(
     TARGET runtime_tilemap_systems
     LAYER RUNTIME

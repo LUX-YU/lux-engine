@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
+#include <lux/engine/runtime/assets/tilemap/TilemapPrepareService.hpp>
 
 #include <lux/engine/ecs/tilemap/TilemapChunkCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
@@ -9,9 +9,10 @@
 #include <atomic>
 #include <utility>
 
-namespace lux::runtime::spatial2d
+namespace lux::runtime::assets::tilemap
 {
     namespace ex = stdexec;
+    using namespace lux::ecs::tilemap::streaming;
 
     namespace
     {
@@ -51,29 +52,15 @@ namespace lux::runtime::spatial2d
         };
     } // namespace
 
-    TilemapPrepareClient::TilemapPrepareClient(
-        std::weak_ptr<detail::TilemapPrepareControl> control,
-        lux::async::OperationPort<PrepareTilemapChunk> operation)
-        noexcept
-        : control_(std::move(control)), operation_(std::move(operation))
-    {}
-
-    TilemapPrepareClient::operator bool() const noexcept
-    {
-        const auto control = control_.lock();
-        return control &&
-            !control->closing.load(std::memory_order_acquire) &&
-            static_cast<bool>(operation_);
-    }
-
     lux::cxx::expected<
         TilemapPrepareService,
         lux::exec::AsyncAssemblyFailure>
     TilemapPrepareService::addTo(lux::exec::AsyncRuntimeBuilder& builder)
     {
-        auto control = std::make_shared<detail::TilemapPrepareControl>();
+        auto state = std::make_shared<
+            lux::ecs::tilemap::streaming::detail::TilemapPrepareState>();
         auto operation = builder.addOperation<PrepareTilemapChunk>(
-            [control](
+            [state](
                 PrepareTilemapChunk&& request,
                 lux::exec::AsyncOperationContext& context,
                 lux::exec::AsyncOperationCompletion<PrepareTilemapChunk>&&
@@ -81,7 +68,7 @@ namespace lux::runtime::spatial2d
             {
                 auto pending = std::make_shared<PendingPrepare>(
                     std::move(completion));
-                if (control->closing.load(std::memory_order_acquire))
+                if (state->closing.load(std::memory_order_acquire))
                 {
                     pending->settle(lux::cxx::unexpected(
                         ETilemapPrepareError::SERVICE_CLOSED));
@@ -141,14 +128,15 @@ namespace lux::runtime::spatial2d
         if (!operation)
             return lux::cxx::unexpected(operation.error());
         return TilemapPrepareService{
-            std::move(control), std::move(*operation)};
+            std::move(state), std::move(*operation)};
     }
 
     TilemapPrepareService::TilemapPrepareService(
-        std::shared_ptr<detail::TilemapPrepareControl> control,
+        std::shared_ptr<
+            lux::ecs::tilemap::streaming::detail::TilemapPrepareState> state,
         lux::async::OperationPort<PrepareTilemapChunk> operation)
         noexcept
-        : control_(std::move(control)), operation_(std::move(operation))
+        : state_(std::move(state)), operation_(std::move(operation))
     {}
 
     TilemapPrepareService::~TilemapPrepareService()
@@ -156,11 +144,13 @@ namespace lux::runtime::spatial2d
         close();
     }
 
-    TilemapPrepareClient TilemapPrepareService::client() const noexcept
+    lux::ecs::tilemap::streaming::TilemapPrepareClient
+    TilemapPrepareService::client() const noexcept
     {
-        return !closed_ && control_
-            ? TilemapPrepareClient{control_, operation_}
-            : TilemapPrepareClient{};
+        return !closed_ && state_
+            ? lux::ecs::tilemap::streaming::TilemapPrepareClient{
+                  state_, operation_}
+            : lux::ecs::tilemap::streaming::TilemapPrepareClient{};
     }
 
     void TilemapPrepareService::close() noexcept
@@ -168,8 +158,8 @@ namespace lux::runtime::spatial2d
         if (closed_)
             return;
         closed_ = true;
-        if (control_)
-            control_->closing.store(true, std::memory_order_release);
+        if (state_)
+            state_->closing.store(true, std::memory_order_release);
         operation_ = {};
     }
-} // namespace lux::runtime::spatial2d
+} // namespace lux::runtime::assets::tilemap

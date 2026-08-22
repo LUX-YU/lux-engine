@@ -225,7 +225,8 @@ target_link_libraries(
         runtime_render_scene_test_support
         lux::engine::runtime::runtime_infinite2d_systems
         lux::engine::runtime::runtime_execution
-        lux::engine::runtime::runtime_spatial2d_tilemap
+        lux::engine::runtime::runtime_tilemap_prepare
+        lux::engine::ecs::tilemap_streaming
         lux::engine::ecs::tilemap
         lux::engine::ecs::render_2d
         lux::engine::ecs::render_pixel_integration

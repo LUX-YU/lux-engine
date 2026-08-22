@@ -34,8 +34,8 @@
 #include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelSystem.hpp>
 #include <lux/engine/ecs/spatial2d/components/SpatialInterest2DComponent.hpp>
 #include <lux/engine/ecs/spatial2d/streaming/SpatialInterest2DSystem.hpp>
-#include <lux/engine/runtime/spatial2d/tilemap/TilemapChunkSystem.hpp>
-#include <lux/engine/runtime/spatial2d/tilemap/TilemapPrepareService.hpp>
+#include <lux/engine/ecs/tilemap/streaming/TilemapChunkSystem.hpp>
+#include <lux/engine/runtime/assets/tilemap/TilemapPrepareService.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
@@ -66,7 +66,7 @@ namespace
 {
     lux::runtime::spatial2d::testing::Infinite2DTestExtension*
         g_test_extension{nullptr};
-    lux::runtime::spatial2d::TilemapChunkSystem*
+    lux::ecs::tilemap::streaming::TilemapChunkSystem*
         g_tilemap_chunk_system{nullptr};
 
     void tickSchedule(lux::ecs::Schedule& schedule, float dt) noexcept
@@ -793,7 +793,7 @@ namespace
     }
 
     class TilemapInterestAdapter final
-        : public lux::runtime::spatial2d::TilemapChunkActivity2D
+        : public lux::ecs::tilemap::streaming::TilemapChunkActivity2D
     {
     public:
         explicit TilemapInterestAdapter(
@@ -872,10 +872,10 @@ namespace
                 const auto pixel = pixels.snapshot();
                 const auto tilemap = g_tilemap_chunk_system
                     ? g_tilemap_chunk_system->snapshot()
-                    : lux::runtime::spatial2d::
+                    : lux::ecs::tilemap::streaming::
                           TilemapChunkSystemSnapshot{};
                 std::array<std::size_t, 4u> tilemap_domain_states{};
-                registry.view<const lux::runtime::spatial2d::
+                registry.view<const lux::ecs::tilemap::streaming::
                     TilemapChunkDomainStateComponent>().each(
                     [&tilemap_domain_states](const auto& state) noexcept
                     {
@@ -884,16 +884,16 @@ namespace
                     });
                 const bool tilemap_snapshot_stale =
                     tilemap.waiting_chunks != tilemap_domain_states[
-                        static_cast<std::size_t>(lux::runtime::spatial2d::
+                        static_cast<std::size_t>(lux::ecs::tilemap::streaming::
                             ETilemapChunkDomainState::WAITING_TILEMAP)] ||
                     tilemap.staging_chunks != tilemap_domain_states[
-                        static_cast<std::size_t>(lux::runtime::spatial2d::
+                        static_cast<std::size_t>(lux::ecs::tilemap::streaming::
                             ETilemapChunkDomainState::STAGING)] ||
                     tilemap.ready_chunks != tilemap_domain_states[
-                        static_cast<std::size_t>(lux::runtime::spatial2d::
+                        static_cast<std::size_t>(lux::ecs::tilemap::streaming::
                             ETilemapChunkDomainState::READY)] ||
                     tilemap.failed_chunks != tilemap_domain_states[
-                        static_cast<std::size_t>(lux::runtime::spatial2d::
+                        static_cast<std::size_t>(lux::ecs::tilemap::streaming::
                             ETilemapChunkDomainState::FAILED)];
                 const auto chunks = chunkCount(registry);
                 assert(load.failed_sections == 0u);
@@ -1018,6 +1018,8 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     namespace residency = lux::ecs::entity_scene::residency;
     namespace spatial2d = lux::runtime::spatial2d;
     namespace streaming2d = lux::ecs::spatial2d::streaming;
+    namespace tilemap_prepare = lux::runtime::assets::tilemap;
+    namespace tilemap_streaming = lux::ecs::tilemap::streaming;
 
     Reflections reflections;
     lux::ecs::ComponentTypeCatalog components;
@@ -1077,7 +1079,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         spatial2d::Infinite2DPixelPrepareService::addTo(runtime_builder);
     assert(pixel_prepare_service);
     auto tilemap_prepare_service =
-        spatial2d::TilemapPrepareService::addTo(runtime_builder);
+        tilemap_prepare::TilemapPrepareService::addTo(runtime_builder);
     assert(tilemap_prepare_service);
     auto runtime_plan = std::move(runtime_builder).compile();
     assert(runtime_plan);
@@ -1129,15 +1131,15 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     lux::exec::AsyncScope tilemap_backpressure_scope{runtime};
     {
         std::optional<lux::async::OperationOutcome<
-            spatial2d::PrepareTilemapChunk>> outcome;
+            tilemap_streaming::PrepareTilemapChunk>> outcome;
         std::atomic<bool> done{false};
         lux::exec::testing::CloseEpoch progress{runtime};
         auto rejected = lux::exec::execute(
                 tilemap_prepare_service->client().operation(),
-                spatial2d::PrepareTilemapChunk{},
+                tilemap_streaming::PrepareTilemapChunk{},
                 lux::async::SubmitOptions{
                     .accounted_bytes =
-                        spatial2d::kTilemapPrepareByteBudget + 1u})
+                        tilemap_prepare::kTilemapPrepareByteBudget + 1u})
             | stdexec::continues_on(
                   lux::exec::mainThreadScheduler(runtime))
             | stdexec::then(
@@ -1245,22 +1247,19 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     auto* pixel_owner = pixel_system.get();
     assert(schedule.addSystem(std::move(pixel_system)));
     lux::ecs::TilemapRuntime tilemap_runtime;
-    lux::exec::AsyncScope tilemap_scope{runtime};
     auto tilemap_system = std::make_unique<lux::ecs::TilemapSystem>(
         tilemap_runtime, persistent_entities);
     auto* tilemap_owner_system = tilemap_system.get();
     assert(schedule.addSystem(std::move(tilemap_system)));
     TilemapInterestAdapter tilemap_activity{*interest_owner};
     auto tilemap_chunks = std::make_unique<
-        spatial2d::TilemapChunkSystem>(
-            runtime,
-            tilemap_scope,
+        tilemap_streaming::TilemapChunkSystem>(
             tilemap_prepare_service->client(),
             tilemap_runtime,
             *tilemap_owner_system,
             loader_owner->contentBlobs(),
             &tilemap_activity,
-            spatial2d::TilemapChunkSystemConfig{
+            tilemap_streaming::TilemapChunkSystemConfig{
                 .maximum_tracked_chunks = 64u,
                 .maximum_retirements_per_update = 1u});
     auto* tilemap_chunk_owner = tilemap_chunks.get();
@@ -1593,7 +1592,6 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     tickSchedule(schedule, 0.0f);
     assert(tilemap_chunk_owner->closeComplete());
     assert(tilemap_chunk_owner->snapshot().owned_blob_leases == 0u);
-    closeOwner(runtime, tilemap_scope.closeAsync());
 
     // A leaf-domain failure cannot roll back the generic Section. Restore
     // the authored reference afterwards and prove retry rebuilds only Pixel.

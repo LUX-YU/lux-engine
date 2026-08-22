@@ -58,6 +58,10 @@ System Registry and installer/catalog/host variants are forbidden.
   interest-to-demand behavior. The remaining Runtime spatial3d installer is
   only a product adapter from the current Engine cooked catalog; it must move
   or disappear when `engine/spatial3d/SceneCatalog` is split by field owner.
+- `ecs/tilemap/streaming` owns Tilemap chunk observation, preparation intent,
+  publication, activity and retirement. `engine/runtime/assets/tilemap`
+  implements only the typed background decode endpoint and queue policy; the
+  ECS System consumes its `OperationPort` through an owner-thread inbox.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
 - Shared cooked contracts may remain in `engine/scene` or `ecs/scene_format`;

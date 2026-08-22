@@ -70,7 +70,8 @@ target_link_libraries(
     PRIVATE
         lux::engine::runtime::runtime_infinite2d_systems
         lux::engine::runtime::runtime_execution
-        lux::engine::runtime::runtime_spatial2d_tilemap
+        lux::engine::runtime::runtime_tilemap_prepare
+        lux::engine::ecs::tilemap_streaming
         lux::engine::core::serialization
         lux::engine::ecs::component_archive
         lux::engine::ecs::tilemap

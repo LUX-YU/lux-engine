@@ -62,6 +62,11 @@ System Registry and installer/catalog/host variants are forbidden.
   publication, activity and retirement. `engine/runtime/assets/tilemap`
   implements only the typed background decode endpoint and queue policy; the
   ECS System consumes its `OperationPort` through an owner-thread inbox.
+- `ecs/pixel/streaming` owns Pixel chunk observation, preparation intent,
+  persistence-aware publication, activity and retirement.
+  `engine/runtime/assets/pixel` implements the background endpoint and the
+  adapter from the generic generated-Section catalog to Pixel content; it
+  owns no World behavior.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
 - Shared cooked contracts may remain in `engine/scene` or `ecs/scene_format`;

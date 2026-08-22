@@ -77,6 +77,7 @@ component_add_transitive_commands(
     "find_package (TBB CONFIG REQUIRED)"
 )
 add_subdirectory(test)
+add_subdirectory(streaming)
 
 # ---------------------------------------------------------------------------
 # PixelFieldRuntime 的那个组件 的反射 sidecar（批 6-G：反射跟着拥有它的目标走，不再挂在 pack 上 ——

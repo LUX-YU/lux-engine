@@ -1,8 +1,8 @@
-#include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelPrepareService.hpp>
+#include <lux/engine/runtime/assets/pixel/Infinite2DPixelPrepareService.hpp>
 
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelContent.hpp>
+#include <lux/engine/runtime/assets/pixel/Infinite2DPixelContent.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelChunkPersistence.hpp>
 
 #include <stdexec/execution.hpp>
@@ -10,9 +10,10 @@
 #include <atomic>
 #include <utility>
 
-namespace lux::runtime::spatial2d
+namespace lux::runtime::assets::pixel
 {
     namespace ex = stdexec;
+    using namespace lux::ecs::pixel::streaming;
 
     namespace
     {
@@ -55,31 +56,16 @@ namespace lux::runtime::spatial2d
         };
     }
 
-    Infinite2DPixelPrepareClient::Infinite2DPixelPrepareClient(
-        std::weak_ptr<detail::Infinite2DPixelPrepareControl> control,
-        lux::async::OperationPort<PrepareInfinite2DPixelChunk>
-            operation) noexcept
-        : control_(std::move(control)), operation_(std::move(operation))
-    {}
-
-    Infinite2DPixelPrepareClient::operator bool() const noexcept
-    {
-        const auto control = control_.lock();
-        return control &&
-            !control->closing.load(std::memory_order_acquire) &&
-            static_cast<bool>(operation_);
-    }
-
     lux::cxx::expected<
         Infinite2DPixelPrepareService,
         lux::exec::AsyncAssemblyFailure>
     Infinite2DPixelPrepareService::addTo(
         lux::exec::AsyncRuntimeBuilder& builder)
     {
-        auto control =
-            std::make_shared<detail::Infinite2DPixelPrepareControl>();
+        auto state = std::make_shared<lux::ecs::pixel::streaming::detail::
+            Infinite2DPixelPrepareState>();
         auto operation = builder.addOperation<PrepareInfinite2DPixelChunk>(
-            [control](
+            [state](
                 PrepareInfinite2DPixelChunk&& request,
                 lux::exec::AsyncOperationContext& context,
                 lux::exec::AsyncOperationCompletion<
@@ -87,7 +73,7 @@ namespace lux::runtime::spatial2d
             {
                 auto pending = std::make_shared<PendingPrepare>(
                     std::move(completion));
-                if (control->closing.load(std::memory_order_acquire))
+                if (state->closing.load(std::memory_order_acquire))
                 {
                     pending->settle(lux::cxx::unexpected(
                         EInfinite2DPixelPrepareError::SERVICE_CLOSED));
@@ -164,14 +150,15 @@ namespace lux::runtime::spatial2d
         if (!operation)
             return lux::cxx::unexpected(operation.error());
         return Infinite2DPixelPrepareService{
-            std::move(control), std::move(*operation)};
+            std::move(state), std::move(*operation)};
     }
 
     Infinite2DPixelPrepareService::Infinite2DPixelPrepareService(
-        std::shared_ptr<detail::Infinite2DPixelPrepareControl> control,
+        std::shared_ptr<lux::ecs::pixel::streaming::detail::
+            Infinite2DPixelPrepareState> state,
         lux::async::OperationPort<PrepareInfinite2DPixelChunk>
             operation) noexcept
-        : control_(std::move(control)), operation_(std::move(operation))
+        : state_(std::move(state)), operation_(std::move(operation))
     {}
 
     Infinite2DPixelPrepareService::~Infinite2DPixelPrepareService()
@@ -179,12 +166,13 @@ namespace lux::runtime::spatial2d
         close();
     }
 
-    Infinite2DPixelPrepareClient
+    lux::ecs::pixel::streaming::Infinite2DPixelPrepareClient
     Infinite2DPixelPrepareService::client() const noexcept
     {
-        return !closed_ && control_
-            ? Infinite2DPixelPrepareClient{control_, operation_}
-            : Infinite2DPixelPrepareClient{};
+        return !closed_ && state_
+            ? lux::ecs::pixel::streaming::Infinite2DPixelPrepareClient{
+                  state_, operation_}
+            : lux::ecs::pixel::streaming::Infinite2DPixelPrepareClient{};
     }
 
     void Infinite2DPixelPrepareService::close() noexcept
@@ -192,8 +180,8 @@ namespace lux::runtime::spatial2d
         if (closed_)
             return;
         closed_ = true;
-        if (control_)
-            control_->closing.store(true, std::memory_order_release);
+        if (state_)
+            state_->closing.store(true, std::memory_order_release);
         operation_ = {};
     }
-}
+} // namespace lux::runtime::assets::pixel

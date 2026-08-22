@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelContent.hpp>
+#include <lux/engine/runtime/assets/pixel/Infinite2DPixelContent.hpp>
 
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/core/serialization/Archive.hpp>
@@ -13,7 +13,7 @@
 #include <string>
 #include <utility>
 
-namespace lux::runtime::spatial2d
+namespace lux::runtime::assets::pixel
 {
     namespace
     {
@@ -475,4 +475,4 @@ namespace lux::runtime::spatial2d
         result.simulation_active = false;
         return result;
     }
-}
+} // namespace lux::runtime::assets::pixel

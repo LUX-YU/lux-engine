@@ -33,8 +33,13 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         preparation port into `ecs/tilemap/streaming`. Runtime assets retains
         only the queued decode endpoint; remove the Runtime Tilemap System
         target, directory and `ISystem` allowlist entry.
-  - [ ] Move pixel, physics, navigation and presentation Systems from Runtime
-        into their ECS domains.
+  - [x] Move `Infinite2DPixelSystem`, its transient domain state and typed
+        preparation port into `ecs/pixel/streaming`. Runtime assets retains
+        the queued preparation endpoint and procedural Section provider;
+        remove the Runtime Pixel System target, spatial2d directory and
+        `ISystem` allowlist entry.
+  - [ ] Move physics, navigation and presentation Systems from Runtime into
+        their ECS domains.
 - [ ] Split `engine/spatial3d/SceneCatalog` by field ownership.
 - [ ] Collapse Editor panel contribution state into UISystem registration.
 - [ ] Generate build-only project usage and direct game composition.

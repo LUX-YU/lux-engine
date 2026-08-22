@@ -29,9 +29,9 @@
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelContent.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelPrepareService.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelSystem.hpp>
+#include <lux/engine/runtime/assets/pixel/Infinite2DPixelContent.hpp>
+#include <lux/engine/runtime/assets/pixel/Infinite2DPixelPrepareService.hpp>
+#include <lux/engine/ecs/pixel/streaming/Infinite2DPixelSystem.hpp>
 #include <lux/engine/ecs/spatial2d/components/SpatialInterest2DComponent.hpp>
 #include <lux/engine/ecs/spatial2d/streaming/SpatialInterest2DSystem.hpp>
 #include <lux/engine/ecs/tilemap/streaming/TilemapChunkSystem.hpp>
@@ -64,7 +64,7 @@
 
 namespace
 {
-    lux::runtime::spatial2d::testing::Infinite2DTestExtension*
+    lux::runtime::assets::pixel::testing::Infinite2DTestExtension*
         g_test_extension{nullptr};
     lux::ecs::tilemap::streaming::TilemapChunkSystem*
         g_tilemap_chunk_system{nullptr};
@@ -855,7 +855,7 @@ namespace
         const lux::ecs::spatial2d::streaming::SpatialInterest2DSystem&
             interest,
         const lux::ecs::PixelFieldSystem& fields,
-        const lux::runtime::spatial2d::Infinite2DPixelSystem& pixels,
+        const lux::ecs::pixel::streaming::Infinite2DPixelSystem& pixels,
         lux::ecs::Registry& registry,
         Predicate&& done)
     {
@@ -980,7 +980,8 @@ namespace
                 const auto content = blobs.resolve(chunk.content);
                 assert(content);
                 const auto decoded =
-                    lux::runtime::spatial2d::decodeInfinite2DPixelChunk(
+                    lux::runtime::assets::pixel::
+                        decodeInfinite2DPixelChunk(
                         *content);
                 assert(decoded);
                 assert(decoded->coordinate == chunk.coordinate);
@@ -1011,12 +1012,13 @@ namespace
     }
 }
 
-int lux::runtime::spatial2d::testing::runInfinite2DScenario(
+int lux::runtime::assets::pixel::testing::runInfinite2DScenario(
     Infinite2DTestExtension* extension)
 {
     namespace entity_runtime = lux::runtime::entity_scene;
     namespace residency = lux::ecs::entity_scene::residency;
-    namespace spatial2d = lux::runtime::spatial2d;
+    namespace pixel_assets = lux::runtime::assets::pixel;
+    namespace pixel_streaming = lux::ecs::pixel::streaming;
     namespace streaming2d = lux::ecs::spatial2d::streaming;
     namespace tilemap_prepare = lux::runtime::assets::tilemap;
     namespace tilemap_streaming = lux::ecs::tilemap::streaming;
@@ -1049,7 +1051,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     assert(vfs->mount({"/Game", provider, 0}) !=
         lux::asset::kInvalidMountId);
 
-    auto generated = spatial2d::Infinite2DPixelSectionSource::create({
+    auto generated = pixel_assets::Infinite2DPixelSectionSource::create({
         .field = field_id,
         .generator = lux::ecs::scene_format::SectionGeneratorId{
             "lux.pixel.infinite2d.chunk"},
@@ -1076,7 +1078,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         runtime_builder, *generator_catalog);
     assert(section_service);
     auto pixel_prepare_service =
-        spatial2d::Infinite2DPixelPrepareService::addTo(runtime_builder);
+        pixel_assets::Infinite2DPixelPrepareService::addTo(runtime_builder);
     assert(pixel_prepare_service);
     auto tilemap_prepare_service =
         tilemap_prepare::TilemapPrepareService::addTo(runtime_builder);
@@ -1094,15 +1096,16 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     lux::exec::AsyncScope backpressure_scope{runtime};
     {
         std::optional<lux::async::OperationOutcome<
-            spatial2d::PrepareInfinite2DPixelChunk>> backpressure_outcome;
+            pixel_streaming::PrepareInfinite2DPixelChunk>>
+            backpressure_outcome;
         std::atomic<bool> backpressure_done{false};
         lux::exec::testing::CloseEpoch backpressure_progress{runtime};
         auto backpressure = lux::exec::execute(
                 pixel_prepare_service->client().operation(),
-                spatial2d::PrepareInfinite2DPixelChunk{},
+                pixel_streaming::PrepareInfinite2DPixelChunk{},
                 lux::async::SubmitOptions{
                     .accounted_bytes =
-                        spatial2d::kInfinite2DPixelPrepareByteBudget + 1u})
+                        pixel_assets::kInfinite2DPixelPrepareByteBudget + 1u})
             | stdexec::continues_on(lux::exec::mainThreadScheduler(runtime))
             | stdexec::then(
                   [&](auto outcome) noexcept
@@ -1236,8 +1239,8 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         pixel_runtime, persistent_entities);
     auto* field_owner = field_system.get();
     assert(schedule.addSystem(std::move(field_system)));
-    auto pixel_system = std::make_unique<spatial2d::Infinite2DPixelSystem>(
-        runtime,
+    auto pixel_system = std::make_unique<
+        pixel_streaming::Infinite2DPixelSystem>(
         pixel_prepare_service->client(),
         pixel_runtime,
         *field_owner,
@@ -1804,14 +1807,12 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     tilemap_owner_system->requestClose();
     assert(tilemap_owner_system->closeComplete());
 
-    pixel_owner->requestClose();
-    assert(!pixel_owner->closeComplete());
-    tickSchedule(schedule, 0.0f);
-    closeOwner(runtime, pixel_owner->closeAsync());
+    closeSystem(runtime, schedule, *pixel_owner);
     assert(pixel_owner->closeComplete());
-    assert(pixel_owner->snapshot().scope_closed);
+    assert(pixel_owner->snapshot().operations_drained);
     assert(pixel_owner->snapshot().closed);
-    assert(registry.storage<spatial2d::PixelChunkDomainStateComponent>()
+    assert(registry.storage<
+        pixel_streaming::PixelChunkDomainStateComponent>()
         .size() == 0u);
     assert(pixel_runtime.stats().capturing_chunk_unloads == 0u);
     assert(pixel_owner->snapshot().retirement_granules != 0u);

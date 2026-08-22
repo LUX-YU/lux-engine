@@ -1,25 +1,19 @@
-#include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelSystem.hpp>
+#include <lux/engine/ecs/pixel/streaming/Infinite2DPixelSystem.hpp>
 
+#include <lux/engine/core/async/OperationInbox.hpp>
 #include <lux/engine/ecs/pixel/components/PixelChunk2DComponent.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldSystem.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelChunkPersistence.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelContent.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/PixelChunkBindingComponent.hpp>
+#include "PixelChunkBindingComponent.hpp"
 #include <lux/engine/ecs/spatial2d/streaming/SpatialInterest2DSystem.hpp>
-#include <lux/engine/runtime/execution/AsyncRuntime.hpp>
-#include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
-#include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
-
-#include <stdexec/execution.hpp>
 
 #include <algorithm>
-#include <atomic>
 #include <cstdlib>
 #include <utility>
 #include <vector>
 
-namespace lux::runtime::spatial2d
+namespace lux::ecs::pixel::streaming
 {
     namespace
     {
@@ -50,17 +44,18 @@ namespace lux::runtime::spatial2d
                 EPixelChunkDomainError::NONE};
         };
 
-        struct CompletionControl final
+        struct PrepareCompletionKey final
         {
-            std::atomic<Infinite2DPixelSystem*> owner{nullptr};
+            std::uint32_t slot{~std::uint32_t{0u}};
+            std::uint32_t generation{0u};
         };
+
+        inline constexpr std::size_t kCompletionCapacity = 32u;
     }
 
     struct Infinite2DPixelSystem::Impl final
     {
         Impl(
-            Infinite2DPixelSystem& owner_value,
-            lux::exec::AsyncRuntime& async_runtime_value,
             Infinite2DPixelPrepareClient preparation_value,
             lux::ecs::PixelFieldRuntime& runtime_value,
             lux::ecs::PixelFieldSystem& fields_value,
@@ -68,18 +63,14 @@ namespace lux::runtime::spatial2d
             lux::ecs::entity_scene::ContentBlobClient content_value,
             const lux::ecs::spatial2d::streaming::SpatialInterest2DSystem&
                 activity_value) noexcept
-            : async_runtime(&async_runtime_value),
-              preparation(std::move(preparation_value)),
-              scope(async_runtime_value),
-              completion(std::make_shared<CompletionControl>()),
+            : preparation(std::move(preparation_value)),
+              completions(kCompletionCapacity),
               runtime(&runtime_value),
               fields(&fields_value),
               persistence(&persistence_value),
               content(std::move(content_value)),
               activity(&activity_value)
-        {
-            completion->owner.store(&owner_value, std::memory_order_release);
-        }
+        {}
 
         [[nodiscard]] OwnedChunk* find(entt::entity entity) noexcept
         {
@@ -174,67 +165,48 @@ namespace lux::runtime::spatial2d
             const auto persistence_bytes = persistence_record
                 ? persistence_record->record_bytes.size()
                 : 0u;
-            auto pipeline = lux::exec::execute(
-                    preparation.operation(),
-                    PrepareInfinite2DPixelChunk{
-                        chunk.content.bytes(),
-                        chunk.content_reference,
-                        chunk.coordinate,
-                        std::move(*preparation_context),
-                        std::move(persistence_record),
-                        generation},
-                    lux::async::SubmitOptions{
-                        .accounted_bytes =
-                            (sizeof(lux::ecs::MaterialId) +
-                             sizeof(std::uint8_t)) *
-                            lux::ecs::PixelFieldRuntime::kChunkCellCount +
-                            persistence_bytes})
-                | stdexec::continues_on(
-                      lux::exec::mainThreadScheduler(*async_runtime))
-                | stdexec::then(
-                      [weak = std::weak_ptr{completion}, slot, generation](
-                          lux::async::OperationOutcome<
-                              PrepareInfinite2DPixelChunk> outcome)
-                          mutable noexcept
-                      {
-                          const auto locked = weak.lock();
-                          if (!locked)
-                              return;
-                          auto* target = locked->owner.load(
-                              std::memory_order_acquire);
-                          if (target)
-                          {
-                              target->acceptPreparation(
-                                  slot,
-                                  generation,
-                                  std::move(outcome));
-                          }
-                      })
-                | stdexec::upon_stopped(
-                      [weak = std::weak_ptr{completion}, slot, generation]()
-                          noexcept
-                      {
-                          const auto locked = weak.lock();
-                          if (!locked)
-                              return;
-                          auto* target = locked->owner.load(
-                              std::memory_order_acquire);
-                          if (target)
-                          {
-                              target->acceptPreparationStopped(
-                                  slot, generation);
-                          }
-                      });
             chunk.state = EOwnedChunkState::WAITING_BACKGROUND;
             if (snapshot.admission_chunks != 0u)
                 --snapshot.admission_chunks;
             ++snapshot.background_chunks;
-            if (!lux::exec::spawn(scope, std::move(pipeline)))
+            auto submitted = completions.submit(
+                preparation.operation(),
+                PrepareInfinite2DPixelChunk{
+                    chunk.content.bytes(),
+                    chunk.content_reference,
+                    chunk.coordinate,
+                    std::move(*preparation_context),
+                    std::move(persistence_record),
+                    generation},
+                PrepareCompletionKey{slot, generation},
+                lux::async::SubmitOptions{
+                    .accounted_bytes =
+                        (sizeof(lux::ecs::MaterialId) +
+                         sizeof(std::uint8_t)) *
+                        lux::ecs::PixelFieldRuntime::kChunkCellCount +
+                        persistence_bytes});
+            if (!submitted)
             {
-                chunk.state = EOwnedChunkState::WAITING_ADMISSION;
                 --snapshot.background_chunks;
-                ++snapshot.admission_chunks;
-                ++snapshot.queue_backpressure;
+                if (submitted.error() == lux::async::ESubmitError::QUEUE_FULL ||
+                    submitted.error() ==
+                        lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED)
+                {
+                    chunk.state = EOwnedChunkState::WAITING_ADMISSION;
+                    ++snapshot.admission_chunks;
+                    ++snapshot.queue_backpressure;
+                }
+                else
+                {
+                    chunk.prepare_error =
+                        EPixelChunkDomainError::CONTENT_UNAVAILABLE;
+                    chunk.state = EOwnedChunkState::STAGING;
+                    static_cast<void>(enqueue(Infinite2DPixelCommand{
+                        EInfinite2DPixelCommandAction::PUBLISH,
+                        chunk.entity,
+                        slot,
+                        generation}));
+                }
             }
         }
 
@@ -454,8 +426,8 @@ namespace lux::runtime::spatial2d
                     break;
                 }
             }
-            snapshot.scope_closed = scope_closed;
-            snapshot.closed = closing && scope_closed &&
+            snapshot.operations_drained = completions.terminal();
+            snapshot.closed = closing && completions.terminal() &&
                 close_fence_applied &&
                 std::all_of(
                     chunks.begin(),
@@ -466,10 +438,10 @@ namespace lux::runtime::spatial2d
                     });
         }
 
-        lux::exec::AsyncRuntime* async_runtime{nullptr};
         Infinite2DPixelPrepareClient preparation;
-        lux::exec::AsyncScope scope;
-        std::shared_ptr<CompletionControl> completion;
+        lux::async::OperationInbox<
+            PrepareInfinite2DPixelChunk,
+            PrepareCompletionKey> completions;
         lux::ecs::PixelFieldRuntime* runtime{nullptr};
         lux::ecs::PixelFieldSystem* fields{nullptr};
         lux::ecs::PixelChunkPersistenceStore* persistence{nullptr};
@@ -485,15 +457,12 @@ namespace lux::runtime::spatial2d
         std::vector<OwnedChunk> chunks;
         Infinite2DPixelSnapshot snapshot;
         bool closing{false};
-        bool scope_close_started{false};
-        bool scope_closed{false};
         bool close_fence_queued{false};
         bool close_fence_applied{false};
         lux::ecs::SystemCloseProgressSink close_progress;
     };
 
     Infinite2DPixelSystem::Infinite2DPixelSystem(
-        lux::exec::AsyncRuntime& async_runtime,
         Infinite2DPixelPrepareClient preparation,
         lux::ecs::PixelFieldRuntime& runtime,
         lux::ecs::PixelFieldSystem& fields,
@@ -502,8 +471,6 @@ namespace lux::runtime::spatial2d
         const lux::ecs::spatial2d::streaming::SpatialInterest2DSystem&
             activity)
         : impl_(std::make_unique<Impl>(
-              *this,
-              async_runtime,
               std::move(preparation),
               runtime,
               fields,
@@ -514,7 +481,7 @@ namespace lux::runtime::spatial2d
 
     Infinite2DPixelSystem::~Infinite2DPixelSystem()
     {
-        impl_->completion->owner.store(nullptr, std::memory_order_release);
+        impl_->completions.close();
     }
 
     Infinite2DPixelSnapshot Infinite2DPixelSystem::snapshot() const noexcept
@@ -536,32 +503,16 @@ namespace lux::runtime::spatial2d
         {
             impl_->closing = true;
             impl_->snapshot.closing = true;
+            impl_->completions.close();
             for (auto& chunk : impl_->chunks)
                 impl_->requestRetire(chunk);
             impl_->enqueueCloseFence();
-        }
-        if (!impl_->scope_close_started)
-        {
-            impl_->scope_close_started = true;
-            lux::exec::detail::subscribeScopeClose(
-                impl_->scope,
-                [weak = std::weak_ptr{impl_->completion}]() noexcept
-                {
-                    const auto locked = weak.lock();
-                    if (!locked)
-                        return;
-                    if (auto* owner = locked->owner.load(
-                            std::memory_order_acquire))
-                    {
-                        owner->acceptScopeClosed();
-                    }
-                });
         }
     }
 
     bool Infinite2DPixelSystem::closeComplete() const noexcept
     {
-        return impl_->closing && impl_->scope_closed &&
+        return impl_->closing && impl_->completions.terminal() &&
             impl_->close_fence_applied &&
             std::all_of(
                 impl_->chunks.begin(),
@@ -578,25 +529,16 @@ namespace lux::runtime::spatial2d
             return false;
         if (!impl_->close_fence_applied)
             return true;
-        // A background preparation is external progress. Its scene-local
-        // scope terminal callback wakes close after every completion has been
-        // adopted; re-ticking the owner before then cannot change the chunk.
+        if (!impl_->completions.terminal())
+            return true;
         return std::any_of(
             impl_->chunks.begin(),
             impl_->chunks.end(),
             [](const OwnedChunk& chunk)
             {
                 return chunk.state != EOwnedChunkState::FREE &&
-                    chunk.state !=
-                        EOwnedChunkState::WAITING_BACKGROUND;
+                    chunk.state != EOwnedChunkState::WAITING_BACKGROUND;
             });
-    }
-
-    lux::exec::AsyncScopeCloseSender
-    Infinite2DPixelSystem::closeAsync() noexcept
-    {
-        requestClose();
-        return impl_->scope.closeAsync();
     }
 
     void Infinite2DPixelSystem::onAdded(
@@ -611,6 +553,14 @@ namespace lux::runtime::spatial2d
         if (impl_->attached != &context.registry())
             std::abort();
         auto& registry = context.registry();
+        impl_->completions.drain(
+            [this](auto completion) noexcept
+            {
+                acceptPreparation(
+                    completion.key.slot,
+                    completion.key.generation,
+                    std::move(completion.outcome));
+            });
         impl_->enqueueCloseFence();
         impl_->snapshot.retirement_granules_last_update = 0u;
         for (auto& chunk : impl_->chunks)
@@ -894,36 +844,6 @@ namespace lux::runtime::spatial2d
         }
     }
 
-    void Infinite2DPixelSystem::acceptPreparationStopped(
-        std::uint32_t slot,
-        std::uint32_t generation) noexcept
-    {
-        auto* prepared = impl_->find(slot, generation);
-        if (!prepared ||
-            prepared->state != EOwnedChunkState::WAITING_BACKGROUND)
-        {
-            ++impl_->snapshot.stale_completions;
-            return;
-        }
-        prepared->prepare_error =
-            EPixelChunkDomainError::CONTENT_UNAVAILABLE;
-        prepared->state = EOwnedChunkState::STAGING;
-        static_cast<void>(impl_->enqueue(Infinite2DPixelCommand{
-            EInfinite2DPixelCommandAction::PUBLISH,
-            prepared->entity,
-            slot,
-            generation}));
-    }
-
-    void Infinite2DPixelSystem::acceptScopeClosed() noexcept
-    {
-        impl_->scope_closed = true;
-        impl_->snapshot.scope_closed = true;
-        impl_->snapshot.closed = closeComplete();
-        if (impl_->close_progress)
-            impl_->close_progress.notify();
-    }
-
     void Infinite2DPixelSystem::applyCloseFence() noexcept
     {
         impl_->close_fence_queued = false;
@@ -1035,4 +955,4 @@ namespace lux::runtime::spatial2d
             break;
         }
     }
-}
+} // namespace lux::ecs::pixel::streaming

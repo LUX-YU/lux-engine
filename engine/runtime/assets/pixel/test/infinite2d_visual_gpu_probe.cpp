@@ -198,7 +198,8 @@ namespace
     }
 
     class Infinite2DVisualExtension final
-        : public lux::runtime::spatial2d::testing::Infinite2DTestExtension
+        : public lux::runtime::assets::pixel::testing::
+              Infinite2DTestExtension
     {
     public:
         bool install(
@@ -329,7 +330,8 @@ namespace
         }
 
         bool checkpoint(
-            lux::runtime::spatial2d::testing::EInfinite2DCheckpoint checkpoint,
+            lux::runtime::assets::pixel::testing::EInfinite2DCheckpoint
+                checkpoint,
             lux::ecs::World& world,
             lux::ecs::PixelFieldRuntime&,
             lux::ecs::PixelFieldHandle,
@@ -383,10 +385,11 @@ namespace
                 std::filesystem::create_directories(
                     directory,
                     directory_error);
-                const char* name = checkpoint == lux::runtime::spatial2d::
+                const char* name = checkpoint ==
+                        lux::runtime::assets::pixel::
                         testing::EInfinite2DCheckpoint::ORIGIN_READY
                     ? "infinite2d_origin.bmp"
-                    : checkpoint == lux::runtime::spatial2d::testing::
+                    : checkpoint == lux::runtime::assets::pixel::testing::
                         EInfinite2DCheckpoint::FAR_READY
                         ? "infinite2d_far.bmp"
                         : "infinite2d_origin_recovered.bmp";
@@ -395,16 +398,16 @@ namespace
 
             switch (checkpoint)
             {
-            case lux::runtime::spatial2d::testing::
+            case lux::runtime::assets::pixel::testing::
                     EInfinite2DCheckpoint::ORIGIN_READY:
                 origin_mask_ = std::move(mask);
                 break;
-            case lux::runtime::spatial2d::testing::
+            case lux::runtime::assets::pixel::testing::
                     EInfinite2DCheckpoint::FAR_READY:
                 if (!regionEquivalent(origin_mask_, mask))
                     return false;
                 break;
-            case lux::runtime::spatial2d::testing::
+            case lux::runtime::assets::pixel::testing::
                     EInfinite2DCheckpoint::ORIGIN_RECOVERED:
                 if (!regionEquivalent(origin_mask_, mask))
                     return false;
@@ -468,6 +471,7 @@ int main()
 {
     Infinite2DVisualExtension extension;
     const auto result =
-        lux::runtime::spatial2d::testing::runInfinite2DScenario(&extension);
+        lux::runtime::assets::pixel::testing::runInfinite2DScenario(
+            &extension);
     return result == 0 && extension.clean() ? 0 : 1;
 }

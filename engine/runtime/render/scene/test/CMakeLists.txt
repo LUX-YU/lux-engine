@@ -206,7 +206,7 @@ target_compile_definitions(
 # persistence and close therefore cannot drift into a hand-built visual path.
 set(
     INFINITE2D_TEST_DIR
-    ${CMAKE_SOURCE_DIR}/engine/runtime/spatial2d/infinite/test
+    ${CMAKE_SOURCE_DIR}/engine/runtime/assets/pixel/test
 )
 add_executable(
     infinite2d_visual_gpu_probe
@@ -223,7 +223,8 @@ target_link_libraries(
     infinite2d_visual_gpu_probe
     PRIVATE
         runtime_render_scene_test_support
-        lux::engine::runtime::runtime_infinite2d_systems
+        lux::engine::runtime::runtime_pixel_assets
+        lux::engine::ecs::pixel_streaming
         lux::engine::runtime::runtime_execution
         lux::engine::runtime::runtime_tilemap_prepare
         lux::engine::ecs::tilemap_streaming

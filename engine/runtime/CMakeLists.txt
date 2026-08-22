@@ -7,7 +7,7 @@ add_subdirectory(assets)
 add_subdirectory(extensions)
 add_subdirectory(logging)
 add_subdirectory(entity_scene)
-add_subdirectory(spatial2d/infinite)
+add_subdirectory(assets/pixel)
 add_subdirectory(spatial3d/partitioned)
 add_subdirectory(spatial3d/physics)
 add_subdirectory(spatial3d/navigation)
@@ -33,7 +33,7 @@ install_components(
                     runtime_logging
                     runtime_entity_scene
                     runtime_tilemap_prepare
-                    runtime_infinite2d_systems
+                    runtime_pixel_assets
                     runtime_spatial3d_streaming_systems
                     runtime_spatial3d_physics
                     runtime_spatial3d_navigation_adapter

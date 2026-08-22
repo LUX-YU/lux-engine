@@ -9,7 +9,7 @@ namespace lux::ecs
     class World;
 }
 
-namespace lux::runtime::spatial2d::testing
+namespace lux::runtime::assets::pixel::testing
 {
     enum class EInfinite2DCheckpoint : unsigned char
     {
@@ -46,4 +46,4 @@ namespace lux::runtime::spatial2d::testing
     };
 
     int runInfinite2DScenario(Infinite2DTestExtension* extension = nullptr);
-}
+} // namespace lux::runtime::assets::pixel::testing

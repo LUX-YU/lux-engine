@@ -5,11 +5,10 @@
  */
 
 #include <lux/engine/ecs/pixel/PixelFieldTypes.hpp>
+#include <lux/engine/ecs/entity_scene/ContentBlobStorage.hpp>
+#include <lux/engine/ecs/pixel/streaming/Infinite2DPixelPreparePort.hpp>
+#include <lux/engine/ecs/pixel/streaming/visibility.h>
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/Infinite2DPixelPrepareService.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/pixel_visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -29,7 +28,7 @@ namespace lux::ecs::spatial2d::streaming
     class SpatialInterest2DSystem;
 }
 
-namespace lux::runtime::spatial2d
+namespace lux::ecs::pixel::streaming
 {
     enum class EPixelChunkDomainState : std::uint8_t
     {
@@ -84,16 +83,15 @@ namespace lux::runtime::spatial2d
         std::uint64_t persistence_recoveries{0u};
         std::uint64_t persistence_failures{0u};
         bool closing{false};
-        bool scope_closed{false};
+        bool operations_drained{false};
         bool closed{false};
     };
 
-    class LUX_ENGINE_RUNTIME_INFINITE2D_PIXEL_PUBLIC
+    class LUX_ENGINE_ECS_PIXEL_STREAMING_PUBLIC
     Infinite2DPixelSystem final : public lux::ecs::ISystem
     {
     public:
         Infinite2DPixelSystem(
-            lux::exec::AsyncRuntime& async_runtime,
             Infinite2DPixelPrepareClient preparation,
             lux::ecs::PixelFieldRuntime& runtime,
             lux::ecs::PixelFieldSystem& fields,
@@ -113,7 +111,6 @@ namespace lux::runtime::spatial2d
             noexcept override;
         [[nodiscard]] bool closeComplete() const noexcept override;
         [[nodiscard]] bool closeNeedsOwnerTick() const noexcept override;
-        [[nodiscard]] lux::exec::AsyncScopeCloseSender closeAsync() noexcept;
 
         void onAdded(const lux::ecs::SystemSetupContext& setup) override;
         void update(const lux::ecs::SystemUpdateContext& context) override;
@@ -142,10 +139,6 @@ namespace lux::runtime::spatial2d
             std::uint32_t generation,
             lux::async::OperationOutcome<PrepareInfinite2DPixelChunk> outcome)
             noexcept;
-        void acceptPreparationStopped(
-            std::uint32_t slot,
-            std::uint32_t generation) noexcept;
-        void acceptScopeClosed() noexcept;
         void applyCloseFence() noexcept;
         void retireOne() noexcept;
 
@@ -184,4 +177,4 @@ namespace lux::runtime::spatial2d
     };
 
     static_assert(std::is_trivially_copyable_v<Infinite2DPixelCommand>);
-}
+} // namespace lux::ecs::pixel::streaming

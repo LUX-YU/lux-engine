@@ -6,21 +6,20 @@
 
 #include <lux/engine/ecs/PersistentEntityId.hpp>
 #include <lux/engine/ecs/ComponentSchemaId.hpp>
+#include <lux/engine/ecs/entity_scene/ContentBlobStorage.hpp>
 #include <lux/engine/ecs/pixel/systems/PixelFieldRuntime.hpp>
-#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
 #include <lux/engine/math/Grid.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionGeneratorCatalog.hpp>
-#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/ecs/spatial2d/streaming/Spatial2DSectionIndex.hpp>
-#include <lux/engine/runtime/spatial2d/infinite/pixel_visibility.h>
+#include <lux/engine/runtime/assets/pixel/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <cstdint>
 #include <memory>
 
-namespace lux::runtime::spatial2d
+namespace lux::runtime::assets::pixel
 {
     inline constexpr std::uint32_t kInfinite2DPixelChunkContentVersion = 2u;
 
@@ -66,7 +65,7 @@ namespace lux::runtime::spatial2d
     /// catalog (which emits LXES). This keeps record digest/size and generated
     /// bytes on one implementation without putting Pixel switches in either
     /// EntityScene or EntitySectionResidency.
-    class LUX_ENGINE_RUNTIME_INFINITE2D_PIXEL_PUBLIC
+    class LUX_ENGINE_RUNTIME_PIXEL_ASSETS_PUBLIC
     Infinite2DPixelSectionSource final
     {
     public:
@@ -104,18 +103,18 @@ namespace lux::runtime::spatial2d
     /// owning 256x256 adoption value. The returned chunk is always inactive;
     /// SpatialInterest2DSystem is the sole authority which later publishes
     /// presentation and simulation activity.
-    [[nodiscard]] LUX_ENGINE_RUNTIME_INFINITE2D_PIXEL_PUBLIC
+    [[nodiscard]] LUX_ENGINE_RUNTIME_PIXEL_ASSETS_PUBLIC
     lux::cxx::expected<
         lux::ecs::PixelChunkLoad,
         Infinite2DPixelContentFailure>
     decodeInfinite2DPixelChunk(
         const lux::ecs::entity_scene::ContentBlobLease& content);
 
-    [[nodiscard]] LUX_ENGINE_RUNTIME_INFINITE2D_PIXEL_PUBLIC
+    [[nodiscard]] LUX_ENGINE_RUNTIME_PIXEL_ASSETS_PUBLIC
     lux::cxx::expected<
         lux::ecs::PixelChunkLoad,
         Infinite2DPixelContentFailure>
     decodeInfinite2DPixelChunk(
         lux::cxx::SharedBytes<> bytes,
         lux::ecs::scene_format::ContentBlobRef reference);
-}
+} // namespace lux::runtime::assets::pixel

@@ -6,6 +6,7 @@
 
 #include <lux/cxx/core/StableNameId.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/ecs/entity_scene/visibility.h>
 #include <lux/engine/ecs/scene_format/SceneSectionManifest.hpp>
 
 #include <cstddef>
@@ -98,4 +99,12 @@ namespace lux::ecs::entity_scene::residency
 
     template <typename T>
     using SectionResidencyExp = lux::cxx::expected<T, SectionResidencyFailure>;
+
+    /// Validate a source-owned Section record before it enters a prospective
+    /// residency transaction. Stored Scene records are validated by the Scene
+    /// codec before publication; procedural producers use this same narrow
+    /// admission rule instead of depending on Engine Scene validation.
+    [[nodiscard]] LUX_ENGINE_ECS_ENTITY_SCENE_PUBLIC
+    bool isValidSectionResidencyRecord(
+        const lux::ecs::scene_format::SectionRecord& record) noexcept;
 }

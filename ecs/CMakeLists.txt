@@ -86,7 +86,7 @@ else()
     set(LUX_ECS_COMPONENTS
         identity
         scene_format
-        core component_archive entity_scene transform spatial2d_components spatial2d_streaming spatial3d_components
+        core component_archive entity_scene transform spatial2d_components spatial2d_streaming spatial3d_components spatial3d_streaming
         tilemap pixel terrain_components
         scripting scripting_lua scripting_native
         physics physics2d physics3d

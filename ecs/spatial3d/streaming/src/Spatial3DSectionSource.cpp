@@ -1,7 +1,6 @@
-#include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/Spatial3DSectionSource.hpp>
 
-#include <lux/engine/scene/SceneAssetSerDeser.hpp>
-#include <lux/engine/ecs/scene_format/EntitySectionCodec.hpp>
+#include <lux/engine/ecs/entity_scene/residency/SectionResidencyDemand.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -9,7 +8,7 @@
 #include <limits>
 #include <utility>
 
-namespace lux::runtime::spatial3d
+namespace lux::ecs::spatial3d::streaming
 {
     namespace
     {
@@ -402,7 +401,8 @@ namespace lux::runtime::spatial3d
                     failure.coordinate = coordinate;
                     return lux::cxx::unexpected(std::move(failure));
                 }
-                if (!lux::scene::validateSectionRecord(*record))
+                if (!lux::ecs::entity_scene::residency::
+                        isValidSectionResidencyRecord(*record))
                 {
                     return lux::cxx::unexpected(Spatial3DSourceFailure{
                         .code = ESpatial3DSourceError::INVALID_RECORD,

@@ -22,7 +22,7 @@
 #include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
 #include <lux/engine/runtime/scene/composition/InstallTilemapSystems.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
 #include <lux/engine/ecs/World.hpp>
@@ -1094,7 +1094,7 @@ namespace lux::game
             !impl_->runtime->entityScene().package()
                  .spatial3d_catalog.empty();
         if (const auto* interest = impl_->runtime->services().get<
-                lux::runtime::spatial3d::SpatialInterest3DSystem>())
+                lux::ecs::spatial3d::streaming::SpatialInterest3DSystem>())
         {
             const auto snapshot = interest->snapshot();
             telemetry.spatial3d_interest_available = true;

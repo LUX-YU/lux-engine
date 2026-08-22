@@ -24,8 +24,13 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         `ecs/spatial2d/streaming`; remove `runtime_spatial2d_infinite` and its
         Runtime `ISystem` allowlist entry. Runtime Pixel code is now only a
         consumer of the ECS streaming target.
-  - [ ] Move spatial, tilemap, pixel, physics, navigation and presentation
-        Systems from Runtime into their ECS domains.
+  - [x] Move the 3D Section catalog/rule source and
+        `SpatialInterest3DSystem` into `ecs/spatial3d/streaming`; remove
+        `runtime_spatial3d_partitioned` and its Runtime `ISystem` allowlist
+        entry. The Engine cooked-catalog adapter remains pending the field
+        ownership split below.
+  - [ ] Move tilemap, pixel, physics, navigation and presentation Systems
+        from Runtime into their ECS domains.
 - [ ] Split `engine/spatial3d/SceneCatalog` by field ownership.
 - [ ] Collapse Editor panel contribution state into UISystem registration.
 - [ ] Generate build-only project usage and direct game composition.

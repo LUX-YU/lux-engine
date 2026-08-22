@@ -18,7 +18,7 @@
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
@@ -196,7 +196,8 @@ namespace
         const lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
         const lux::ecs::entity_scene::residency::EntitySectionResidencySystem&
             partition,
-        const lux::runtime::spatial3d::SpatialInterest3DSystem& interest,
+        const lux::ecs::spatial3d::streaming::SpatialInterest3DSystem&
+            interest,
         Predicate&& done)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
@@ -265,7 +266,7 @@ int main()
 {
     namespace entity_runtime = lux::runtime::entity_scene;
     namespace residency = lux::ecs::entity_scene::residency;
-    namespace spatial3d = lux::runtime::spatial3d;
+    namespace spatial3d = lux::ecs::spatial3d::streaming;
 
     auto generator_state = std::make_shared<GeneratorState>();
     auto generators = entity_runtime::EntitySectionGeneratorCatalog::create(

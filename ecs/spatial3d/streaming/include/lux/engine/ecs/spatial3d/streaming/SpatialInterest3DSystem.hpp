@@ -5,10 +5,9 @@
  */
 
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/math/Grid.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/visibility.h>
+#include <lux/engine/ecs/spatial3d/streaming/Spatial3DSectionSource.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/visibility.h>
 #include <lux/engine/ecs/entity_scene/residency/SectionResidencyDemand.hpp>
 
 #include <cstddef>
@@ -23,7 +22,7 @@ namespace lux::ecs::entity_scene::residency
     class EntitySectionResidencySystem;
 }
 
-namespace lux::runtime::spatial3d
+namespace lux::ecs::spatial3d::streaming
 {
     struct SpatialInterest3DBand final
     {
@@ -37,7 +36,7 @@ namespace lux::runtime::spatial3d
         double resident_distance_scale{1.0};
         std::size_t maximum_sections_per_source{4096u};
 
-        [[nodiscard]] LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_PUBLIC bool
+        [[nodiscard]] LUX_ECS_SPATIAL3D_STREAMING_PUBLIC bool
         valid() const noexcept;
     };
 
@@ -49,7 +48,7 @@ namespace lux::runtime::spatial3d
         std::vector<SpatialInterest3DBand> bands;
         std::size_t maximum_sources{8u};
 
-        [[nodiscard]] LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_PUBLIC bool
+        [[nodiscard]] LUX_ECS_SPATIAL3D_STREAMING_PUBLIC bool
         valid() const noexcept;
     };
 
@@ -91,7 +90,7 @@ namespace lux::runtime::spatial3d
         std::optional<SpatialInterest3DFailure> last_failure;
     };
 
-    class LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_PUBLIC
+    class LUX_ECS_SPATIAL3D_STREAMING_PUBLIC
     SpatialInterest3DSystem final : public lux::ecs::ISystem
     {
     public:

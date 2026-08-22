@@ -18,7 +18,7 @@
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
 #include <lux/engine/runtime/spatial3d/partitioned/InstallSpatial3DStreamingSystems.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
 #include <lux/engine/ecs/transform/InstallTransformSystems.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
@@ -227,7 +227,7 @@ namespace
 int main()
 {
     namespace residency = lux::ecs::entity_scene::residency;
-    namespace spatial3d = lux::runtime::spatial3d;
+    namespace spatial3d = lux::ecs::spatial3d::streaming;
     namespace catalog = lux::spatial3d;
 
     lux::meta::meta_module_init();

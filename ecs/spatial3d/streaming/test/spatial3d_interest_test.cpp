@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/Spatial3DSectionSource.hpp>
 
 #include <algorithm>
 #include <array>
@@ -65,7 +65,7 @@ namespace
 
 int main()
 {
-    namespace spatial3d = lux::runtime::spatial3d;
+    namespace spatial3d = lux::ecs::spatial3d::streaming;
 
     const auto negative = spatial3d::spatial3DSectionCoordinate(
         {-0.001, -64.001, 63.999}, 64.0);

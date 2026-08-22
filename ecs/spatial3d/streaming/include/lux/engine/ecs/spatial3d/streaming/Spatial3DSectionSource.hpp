@@ -6,11 +6,10 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/ecs/scene_format/Identifiers.hpp>
-#include <lux/engine/scene/SceneDescription.hpp>
+#include <lux/engine/ecs/scene_format/SceneSectionManifest.hpp>
 #include <lux/engine/math/Position.hpp>
 #include <lux/engine/math/Grid.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/visibility.h>
+#include <lux/engine/ecs/spatial3d/streaming/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -19,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-namespace lux::runtime::spatial3d
+namespace lux::ecs::spatial3d::streaming
 {
     struct Spatial3DSectionCatalogEntry final
     {
@@ -81,7 +80,7 @@ namespace lux::runtime::spatial3d
         std::size_t maximum_sections{0u};
     };
 
-    [[nodiscard]] LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_PUBLIC
+    [[nodiscard]] LUX_ECS_SPATIAL3D_STREAMING_PUBLIC
     lux::cxx::expected<
         lux::math::GridCoord3i64,
         Spatial3DSourceFailure>
@@ -91,7 +90,7 @@ namespace lux::runtime::spatial3d
 
     /// A finite cooked grid. Records remain exclusively owned by the scene's
     /// EntitySceneCatalog; this leaf stores only coordinate-to-Section keys.
-    class LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_PUBLIC
+    class LUX_ECS_SPATIAL3D_STREAMING_PUBLIC
     Spatial3DSectionCatalog final
     {
     public:
@@ -124,7 +123,7 @@ namespace lux::runtime::spatial3d
 
     /// A leaf source is either a finite cooked catalog or an unbounded rule
     /// grid. Both expose the same window and feed dimension-neutral demands.
-    class LUX_ENGINE_RUNTIME_SPATIAL3D_PARTITIONED_PUBLIC
+    class LUX_ECS_SPATIAL3D_STREAMING_PUBLIC
     Spatial3DSectionSource final
     {
     public:

@@ -48,7 +48,7 @@ namespace lux::ecs::entity_scene::residency
                 });
         }
 
-        [[nodiscard]] bool validDynamicRecord(
+        [[nodiscard]] bool validSectionResidencyRecordImpl(
             const lux::ecs::scene_format::SectionRecord& record) noexcept
         {
             using namespace lux::ecs::scene_format;
@@ -167,6 +167,12 @@ namespace lux::ecs::entity_scene::residency
         }
     }
 
+    bool isValidSectionResidencyRecord(
+        const lux::ecs::scene_format::SectionRecord& record) noexcept
+    {
+        return validSectionResidencyRecordImpl(record);
+    }
+
     SectionResidencyExp<SectionResidencyPlanner>
     SectionResidencyPlanner::create(
         EntitySectionRecordStore records,
@@ -227,7 +233,7 @@ namespace lux::ecs::entity_scene::residency
             });
         for (const auto& record : update.records)
         {
-            if (!validDynamicRecord(record))
+            if (!isValidSectionResidencyRecord(record))
             {
                 return lux::cxx::unexpected(SectionResidencyFailure{
                     .code = ESectionResidencyError::INVALID_DYNAMIC_RECORD,

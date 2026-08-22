@@ -3,8 +3,8 @@
 #include <lux/engine/spatial3d/SceneCatalog.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySceneCatalog.hpp>
 #include <lux/engine/ecs/entity_scene/EntitySectionLoaderSystem.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/Spatial3DSectionSource.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
 #include <lux/engine/ecs/entity_scene/residency/SectionResidencyPlanner.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
@@ -57,7 +57,7 @@ namespace lux::runtime
         struct ValidatedCatalog final
         {
             lux::ecs::entity_scene::residency::SectionResidencyBudget budget;
-            spatial3d::SpatialInterest3DConfig interest;
+            lux::ecs::spatial3d::streaming::SpatialInterest3DConfig interest;
         };
 
         [[nodiscard]] std::optional<ValidatedCatalog>
@@ -142,10 +142,12 @@ namespace lux::runtime
                 }
             }
 
-            spatial3d::SpatialInterest3DConfig interest;
+            lux::ecs::spatial3d::streaming::SpatialInterest3DConfig interest;
             interest.maximum_sources =
                 config.residency.maximum_interest_sources;
             interest.bands.reserve(config.bands.size());
+            const auto maximum_sections_per_source =
+                config.residency.maximum_sections_per_interest;
             std::set<std::string> source_names;
             for (std::uint32_t band_index = 0u;
                  band_index < config.bands.size(); ++band_index)
@@ -156,7 +158,8 @@ namespace lux::runtime
                 if (!source_names.insert(
                         std::string{source_namespace.name()}).second)
                     return std::nullopt;
-                std::vector<spatial3d::Spatial3DSectionCatalogEntry> entries;
+                std::vector<lux::ecs::spatial3d::streaming::
+                    Spatial3DSectionCatalogEntry> entries;
                 for (const SceneCatalogEntry& entry : config.entries)
                 {
                     if (entry.band == band_index)
@@ -164,24 +167,27 @@ namespace lux::runtime
                         entries.push_back({entry.coordinate, entry.section});
                     }
                 }
-                auto catalog = spatial3d::Spatial3DSectionCatalog::create(
-                    std::move(entries));
+                auto catalog = lux::ecs::spatial3d::streaming::
+                    Spatial3DSectionCatalog::create(
+                        std::move(entries));
                 if (!catalog)
                     return std::nullopt;
 
-                interest.bands.push_back(spatial3d::SpatialInterest3DBand{
-                    .source_namespace =
-                        std::move(source_namespace),
-                    .sections = spatial3d::Spatial3DSectionSource::catalog(
-                        std::move(*catalog)),
-                    .cell_world_size = cooked_band.cell_world_size,
-                    .channel = cooked_band.demand_channel,
-                    .active_distance_scale =
-                        cooked_band.active_distance_scale,
-                    .resident_distance_scale =
-                        cooked_band.resident_distance_scale,
-                    .maximum_sections_per_source =
-                        config.residency.maximum_sections_per_interest});
+                interest.bands.push_back(
+                    lux::ecs::spatial3d::streaming::SpatialInterest3DBand{
+                        .source_namespace =
+                            std::move(source_namespace),
+                        .sections = lux::ecs::spatial3d::streaming::
+                            Spatial3DSectionSource::catalog(
+                                std::move(*catalog)),
+                        .cell_world_size = cooked_band.cell_world_size,
+                        .channel = cooked_band.demand_channel,
+                        .active_distance_scale =
+                            cooked_band.active_distance_scale,
+                        .resident_distance_scale =
+                            cooked_band.resident_distance_scale,
+                        .maximum_sections_per_source =
+                            maximum_sections_per_source});
             }
             if (!interest.valid())
                 return std::nullopt;
@@ -243,7 +249,8 @@ namespace lux::runtime
                 *sections,
                 std::move(*planner));
         auto* const partition_owner = partition.get();
-        auto interest = std::make_unique<spatial3d::SpatialInterest3DSystem>(
+        auto interest = std::make_unique<
+            lux::ecs::spatial3d::streaming::SpatialInterest3DSystem>(
             *partition_owner,
             std::move(validated->interest));
         auto* const interest_owner = interest.get();

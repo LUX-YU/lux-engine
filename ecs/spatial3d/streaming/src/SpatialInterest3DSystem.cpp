@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
 
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/ecs/spatial3d/components/SpatialInterest3DComponent.hpp>
@@ -13,12 +13,12 @@
 #include <utility>
 #include <vector>
 
-namespace lux::runtime::spatial3d
+namespace lux::ecs::spatial3d::streaming
 {
     bool SpatialInterest3DBand::valid() const noexcept
     {
         if (!source_namespace.isValid() ||
-            !lux::extensions::isCanonicalStableName(
+            !lux::ecs::scene_format::isCanonicalStableName(
                 source_namespace.name()) ||
             !lux::ecs::scene_format::isValidDemandChannelId(channel) ||
             !std::isfinite(cell_world_size) || cell_world_size <= 0.0 ||
@@ -55,9 +55,8 @@ namespace lux::runtime::spatial3d
             for (std::size_t other = index + 1u;
                  other < bands.size(); ++other)
             {
-                if (lux::extensions::sameStableId(
-                        bands[index].source_namespace.view(),
-                        bands[other].source_namespace.view()))
+                if (bands[index].source_namespace.view() ==
+                    bands[other].source_namespace.view())
                 {
                     return false;
                 }

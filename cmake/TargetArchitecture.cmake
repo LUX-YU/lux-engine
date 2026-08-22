@@ -592,7 +592,6 @@ function(lux_validate_source_boundaries)
         "engine/runtime/spatial2d/infinite/include/lux/engine/runtime/spatial2d/infinite/Infinite2DPixelSystem.hpp"
         "engine/runtime/spatial2d/tilemap/include/lux/engine/runtime/spatial2d/tilemap/TilemapChunkSystem.hpp"
         "engine/runtime/spatial3d/navigation/include/lux/engine/runtime/spatial3d/navigation/Spatial3DNavigationAdapterSystem.hpp"
-        "engine/runtime/spatial3d/partitioned/include/lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp"
         "engine/runtime/spatial3d/physics/include/lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp"
     )
     file(GLOB_RECURSE runtime_headers LIST_DIRECTORIES false

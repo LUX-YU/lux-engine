@@ -54,6 +54,10 @@ System Registry and installer/catalog/host variants are forbidden.
 - `ecs/spatial2d/streaming` owns 2D Section addressing and interest-to-demand
   behavior. Runtime Pixel consumers may query its activity but do not own or
   redefine that System.
+- `ecs/spatial3d/streaming` owns 3D Section catalog/rule sources and
+  interest-to-demand behavior. The remaining Runtime spatial3d installer is
+  only a product adapter from the current Engine cooked catalog; it must move
+  or disappear when `engine/spatial3d/SceneCatalog` is split by field owner.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
 - Shared cooked contracts may remain in `engine/scene` or `ecs/scene_format`;

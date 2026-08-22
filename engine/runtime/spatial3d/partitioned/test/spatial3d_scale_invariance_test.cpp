@@ -17,8 +17,8 @@
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
 #include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/Spatial3DSectionSource.hpp>
-#include <lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/Spatial3DSectionSource.hpp>
+#include <lux/engine/ecs/spatial3d/streaming/SpatialInterest3DSystem.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionRecordStore.hpp>
 #include <lux/engine/ecs/entity_scene/residency/EntitySectionResidencySystem.hpp>
 
@@ -137,7 +137,7 @@ namespace
     struct CatalogFixture final
     {
         lux::runtime::entity_scene::EntitySceneCatalog catalog;
-        lux::runtime::spatial3d::Spatial3DSectionCatalog spatial;
+        lux::ecs::spatial3d::streaming::Spatial3DSectionCatalog spatial;
         std::size_t section_count{0u};
         std::uint64_t section_bytes{0u};
     };
@@ -146,7 +146,7 @@ namespace
         const GeneratorState& generator,
         std::uint32_t scale)
     {
-        namespace spatial3d = lux::runtime::spatial3d;
+        namespace spatial3d = lux::ecs::spatial3d::streaming;
 
         const auto section_count = kBaseCatalogSections * scale;
         lux::scene::SceneDescription package;
@@ -219,7 +219,8 @@ namespace
         const lux::ecs::entity_scene::EntitySectionLoaderSystem& loader,
         const lux::ecs::entity_scene::residency::EntitySectionResidencySystem&
             partition,
-        const lux::runtime::spatial3d::SpatialInterest3DSystem& interest,
+        const lux::ecs::spatial3d::streaming::SpatialInterest3DSystem&
+            interest,
         Predicate&& done)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
@@ -270,7 +271,7 @@ namespace
         std::uint32_t scale{0u};
         std::size_t catalog_sections{0u};
         std::uint64_t generated_sections{0u};
-        lux::runtime::spatial3d::SpatialInterest3DSnapshot interest;
+        lux::ecs::spatial3d::streaming::SpatialInterest3DSnapshot interest;
         lux::ecs::entity_scene::residency::EntitySectionResidencySnapshot partition;
         lux::ecs::entity_scene::EntitySectionLoaderSnapshot loader;
     };
@@ -284,7 +285,7 @@ namespace
     {
         namespace entity_runtime = lux::runtime::entity_scene;
         namespace residency = lux::ecs::entity_scene::residency;
-        namespace spatial3d = lux::runtime::spatial3d;
+        namespace spatial3d = lux::ecs::spatial3d::streaming;
 
         auto fixture = makeCatalog(*generator, scale);
         const auto generated_before =

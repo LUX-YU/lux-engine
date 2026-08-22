@@ -35,7 +35,6 @@ install_components(
                     runtime_entity_scene
                     runtime_spatial2d_tilemap
                     runtime_infinite2d_systems
-                    runtime_spatial3d_partitioned
                     runtime_spatial3d_streaming_systems
                     runtime_spatial3d_physics
                     runtime_spatial3d_navigation_adapter

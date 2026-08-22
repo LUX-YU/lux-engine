@@ -439,7 +439,7 @@ namespace lux::runtime
         }
 
         [[nodiscard]] ESceneContentRenderFailure preparationFailure(
-            const lux::exec::AsyncFailure<SceneGeometryPrepareFailure>&
+            const lux::async::OperationFailure<SceneGeometryPrepareFailure>&
                 value) const noexcept
         {
             if (value.isRuntime())
@@ -480,8 +480,8 @@ namespace lux::runtime
             if (!submitted)
             {
                 if (submitted.error() ==
-                        lux::exec::EAsyncSubmitError::QUEUE_FULL ||
-                    submitted.error() == lux::exec::EAsyncSubmitError::
+                        lux::async::ESubmitError::QUEUE_FULL ||
+                    submitted.error() == lux::async::ESubmitError::
                         BYTE_BUDGET_EXHAUSTED)
                 {
                     ++metrics.preparation_backpressure;
@@ -497,7 +497,7 @@ namespace lux::runtime
                      entity,
                      owner_generation,
                      desired_generation](
-                        lux::exec::AsyncOutcome<PrepareTerrainTile> outcome)
+                        lux::async::OperationOutcome<PrepareTerrainTile> outcome)
                         mutable noexcept
                     {
                         const auto locked = weak.lock();
@@ -561,7 +561,7 @@ namespace lux::runtime
             lux::ecs::Entity entity,
             std::uint64_t owner_generation,
             std::uint64_t desired_generation,
-            lux::exec::AsyncOutcome<PrepareTerrainTile> outcome) noexcept
+            lux::async::OperationOutcome<PrepareTerrainTile> outcome) noexcept
         {
             const auto found = entries.find(entity);
             const bool owner_matches = found != entries.end() &&
@@ -593,9 +593,9 @@ namespace lux::runtime
             {
                 if (outcome.error().isRuntime() &&
                     (outcome.error().runtimeError() ==
-                         lux::exec::EAsyncSubmitError::QUEUE_FULL ||
+                         lux::async::ESubmitError::QUEUE_FULL ||
                      outcome.error().runtimeError() ==
-                         lux::exec::EAsyncSubmitError::
+                         lux::async::ESubmitError::
                              BYTE_BUDGET_EXHAUSTED))
                 {
                     entry.preparation->in_flight = false;

@@ -141,8 +141,7 @@ namespace lux::ecs
         EComponentSerializationPolicy serialization)
     {
         ComponentSchemaDescriptor descriptor;
-        descriptor.cpp_type.hash = typeToken<C>().hash;
-        descriptor.cpp_type.name = typeToken<C>().name;
+        descriptor.cpp_type = lux::cxx::typeToken<C>();
         descriptor.schema_id.name = schema_name;
         descriptor.schema_version = 1u;
         descriptor.ref_class = &ref_class;

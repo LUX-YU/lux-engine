@@ -87,7 +87,8 @@ namespace lux::ecs
                      (!std::same_as<Subsystem, IRenderSubsystem>)
         [[nodiscard]] lux::cxx::expected<void, RenderAssemblyFailure> add(
             std::unique_ptr<Subsystem> subsystem,
-            std::string_view diagnostic_name = typeToken<Subsystem>().name)
+            std::string_view diagnostic_name =
+                lux::cxx::typeToken<Subsystem>().name())
         {
             return addErased(
                 std::move(subsystem),
@@ -187,7 +188,8 @@ namespace lux::ecs
                      (!std::same_as<Subsystem, IRenderSubsystem>)
         [[nodiscard]] lux::cxx::expected<void, RenderAssemblyFailure> add(
             std::unique_ptr<Subsystem> subsystem,
-            std::string_view diagnostic_name = typeToken<Subsystem>().name)
+            std::string_view diagnostic_name =
+                lux::cxx::typeToken<Subsystem>().name())
         {
             return addErased(
                 std::move(subsystem),

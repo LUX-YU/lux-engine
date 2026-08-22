@@ -27,8 +27,8 @@ add_library(
     physics2d_extension MODULE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Physics2D.cpp
     # The generated component schema belongs to the deployable runtime module.
-    # Loading the DLL queues it into the same registrar transaction as the
-    # WorldSystemContribution; Player no longer preloads a physics sidecar.
+    # Loading the DLL queues its generated reflection and Component projection
+    # as one metadata batch; Player no longer preloads a physics sidecar.
     ${_physics2d_component_meta_source}
 )
 add_library(lux::engine::extensions::physics2d ALIAS physics2d_extension)
@@ -95,7 +95,8 @@ target_compile_definitions(
 target_link_libraries(
     physics2d_extension
     PUBLIC
-        lux::engine::runtime::runtime_contribution_host
+        lux::engine::extensions::extension_api
+        lux::engine::ecs::core
         lux::engine::ecs::physics2d
         lux::engine::ecs::physics
         lux::engine::core::meta
@@ -124,6 +125,34 @@ install(
     COMPONENT lux_sdk
     FILES_MATCHING PATTERN "*.hpp"
 )
+
+if(BUILD_TESTING)
+    add_executable(
+        physics2d_extension_v5_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/physics2d_extension_v5_test.cpp
+    )
+    lux_classify_target(
+        TARGET  physics2d_extension_v5_test
+        LAYER   RUNTIME
+        PRODUCT TEST
+        ROLE    COMPOSITION
+    )
+    target_include_directories(
+        physics2d_extension_v5_test
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_link_libraries(
+        physics2d_extension_v5_test
+        PRIVATE
+            lux::engine::runtime::runtime_extension_loader
+            lux::engine::ecs::core
+    )
+    add_dependencies(physics2d_extension_v5_test physics2d_extension)
+    add_test(
+        NAME physics2d_extension_v5_test
+        COMMAND physics2d_extension_v5_test $<TARGET_FILE:physics2d_extension>
+    )
+endif()
 
 if(TARGET toolchain_game_export AND TARGET lux_player AND TARGET render_features)
     add_executable(

@@ -7,6 +7,7 @@ generate_visibility_header(
 )
 
 add_subdirectory(math)
+add_subdirectory(async_port)
 add_subdirectory(meta)
 add_subdirectory(serialization)
 add_subdirectory(log)
@@ -17,6 +18,7 @@ install_components(
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::core
 	COMPONENTS		math
+					async_port
 					meta
                     serialization
                     log

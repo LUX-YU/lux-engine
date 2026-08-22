@@ -91,9 +91,9 @@ namespace
     [[nodiscard]] lux::ecs::ComponentSchemaDescriptor
     transientProbeDescriptor()
     {
-        const auto token = lux::ecs::typeToken<TransientProbe>();
+        const auto token = lux::cxx::typeToken<TransientProbe>();
         return {
-            {token.hash, std::string{token.name}},
+            token,
             {lux::cxx::algorithm::fnv1a(kTransientProbeSchema),
              std::string{kTransientProbeSchema}},
             1u,
@@ -138,7 +138,7 @@ int main()
         components.registerSchema(transientProbeDescriptor()).has_value(),
         "transient component schema registered");
     const auto* transform_schema = components.findByType(
-        lux::ecs::typeToken<lux::ecs::Transform3DComponent>());
+        lux::cxx::typeToken<lux::ecs::Transform3DComponent>());
     const lux::meta::RefField* position_field = nullptr;
     if (transform_schema && transform_schema->ref_class)
     {

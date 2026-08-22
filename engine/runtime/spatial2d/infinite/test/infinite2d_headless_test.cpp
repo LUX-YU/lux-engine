@@ -344,10 +344,10 @@ namespace
         std::string_view schema,
         const lux::meta::RefClass& reflection)
     {
-        const auto type = lux::ecs::typeToken<Component>();
+        const auto type = lux::cxx::typeToken<Component>();
         const auto registered = catalog.registerSchema(
             lux::ecs::ComponentSchemaDescriptor{
-                {type.hash, std::string{type.name}},
+                type,
                 {lux::cxx::algorithm::fnv1a(schema), std::string{schema}},
                 1u,
                 &reflection,
@@ -1067,14 +1067,14 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     // deterministic byte-budget rejection, independent of worker timing.
     lux::exec::AsyncScope backpressure_scope{runtime};
     {
-        std::optional<lux::exec::AsyncOutcome<
+        std::optional<lux::async::OperationOutcome<
             spatial2d::PrepareInfinite2DPixelChunk>> backpressure_outcome;
         std::atomic<bool> backpressure_done{false};
         lux::exec::testing::CloseEpoch backpressure_progress{runtime};
         auto backpressure = lux::exec::execute(
                 pixel_prepare_service->client().operation(),
                 spatial2d::PrepareInfinite2DPixelChunk{},
-                lux::exec::AsyncSubmitOptions{
+                lux::async::SubmitOptions{
                     .accounted_bytes =
                         spatial2d::kInfinite2DPixelPrepareByteBudget + 1u})
             | stdexec::continues_on(lux::exec::mainThreadScheduler(runtime))
@@ -1095,7 +1095,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         assert(backpressure_outcome && !*backpressure_outcome);
         assert(backpressure_outcome->error().isRuntime());
         assert(backpressure_outcome->error().runtimeError() ==
-            lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+            lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
     }
     closeOwner(runtime, backpressure_scope.closeAsync());
 
@@ -1104,14 +1104,14 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
     // state.
     lux::exec::AsyncScope tilemap_backpressure_scope{runtime};
     {
-        std::optional<lux::exec::AsyncOutcome<
+        std::optional<lux::async::OperationOutcome<
             spatial2d::PrepareTilemapChunk>> outcome;
         std::atomic<bool> done{false};
         lux::exec::testing::CloseEpoch progress{runtime};
         auto rejected = lux::exec::execute(
                 tilemap_prepare_service->client().operation(),
                 spatial2d::PrepareTilemapChunk{},
-                lux::exec::AsyncSubmitOptions{
+                lux::async::SubmitOptions{
                     .accounted_bytes =
                         spatial2d::kTilemapPrepareByteBudget + 1u})
             | stdexec::continues_on(
@@ -1131,7 +1131,7 @@ int lux::runtime::spatial2d::testing::runInfinite2DScenario(
         });
         assert(outcome && !*outcome && outcome->error().isRuntime());
         assert(outcome->error().runtimeError() ==
-            lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+            lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
     }
     closeOwner(runtime, tilemap_backpressure_scope.closeAsync());
 

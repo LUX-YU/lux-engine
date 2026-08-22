@@ -21,8 +21,8 @@ namespace lux::runtime
             std::string{kSimulation2DContributionName}};
         descriptor.display_name = "2D fixed-step simulation";
         descriptor.provided_services = {
-            typeToken<Simulation2DSystem>(),
-            typeToken<CollisionProbes2D>()};
+            lux::cxx::typeToken<Simulation2DSystem>(),
+            lux::cxx::typeToken<CollisionProbes2D>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [](

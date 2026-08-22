@@ -406,7 +406,7 @@ namespace lux::runtime::render_resource
                               lux::exec::mainThreadScheduler(owner->runtime))
                         | ex::then(
                               [complete = std::move(completer)](
-                                  lux::exec::AsyncOutcome<
+                                  lux::async::OperationOutcome<
                                       lux::asset_runtime::LoadAsset> outcome)
                                   mutable noexcept
                               {

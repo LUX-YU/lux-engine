@@ -457,19 +457,19 @@
                 lux::log::warn("editor",
                     "system ordering: '{}' is referenced by a runsAfter/runsBefore "
                     "declaration but that system type is not installed — that "
-                    "constraint is NOT in effect", type.name);
+                    "constraint is NOT in effect", type.name());
             for (const auto type : rep.cycle)
                 lux::log::error("editor",
-                    "system ordering: '{}' is part of an ordering CYCLE", type.name);
+                    "system ordering: '{}' is part of an ordering CYCLE", type.name());
             for (const auto type : rep.duplicate)
                 lux::log::error("editor",
                     "system registry: duplicate system type '{}' REJECTED by "
-                    "addSystem — the second instance is not installed", type.name);
+                    "addSystem — the second instance is not installed", type.name());
             for (const auto& [who, req] : rep.missing_prereq)
                 lux::log::error("editor",
                     "system registry: '{}' declares prerequisite '{}' which is "
                     "NOT installed — its components will have no behaviour",
-                    who.name, req.name);
+                    who.name(), req.name());
             if (!rep.valid())
                 return rollbackHostBringUp();
         }
@@ -693,7 +693,7 @@
         if (!editor_async_.cookEntityScene(
                 CookEntitySceneOperation{job},
                 [weak, generation](
-                    lux::exec::AsyncOutcome<CookEntitySceneOperation> outcome)
+                    lux::async::OperationOutcome<CookEntitySceneOperation> outcome)
                     mutable noexcept
                 {
                     const auto control = weak.lock();
@@ -915,13 +915,13 @@
     //  commit half below touches World/Selection, at AsyncRuntime's main safe
     //  point after every CPU and GPU dependency reached READY.
     // -------------------------------------------------------------------------
-    lux::exec::AsyncSubmitResult EditorScene::spawnModel(
+    lux::async::SubmitResult EditorScene::spawnModel(
         lux::asset::asset_id_t model_id,
         InstanceSpawnClient::Completion completion)
     {
         if (!live_ || !instance_spawn_)
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::STOPPING);
+                lux::async::ESubmitError::STOPPING);
         return instance_spawn_->spawnModel(
             model_id,
             std::move(completion));

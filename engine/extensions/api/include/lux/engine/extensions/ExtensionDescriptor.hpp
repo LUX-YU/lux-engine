@@ -1,5 +1,5 @@
 #pragma once
-/** @file ExtensionDescriptor.hpp @brief Frozen Extension ABI v4 descriptor. */
+/** @file ExtensionDescriptor.hpp @brief Same-toolchain Extension ABI v5 descriptor. */
 
 #include <lux/engine/extensions/ExtensionVersion.hpp>
 
@@ -12,7 +12,7 @@
 
 namespace lux::extensions
 {
-    inline constexpr std::uint32_t kExtensionAbiV4 = 4u;
+    inline constexpr std::uint32_t kExtensionAbiV5 = 5u;
     inline constexpr auto kEngineExtensionAbiFingerprint =
         lux::cxx::AbiBuildInfo::fingerprint();
 
@@ -29,10 +29,10 @@ namespace lux::extensions
         std::uint16_t minimum_minor{0u};
     };
 
-    struct ExtensionModuleDescriptorV4 final
+    struct ExtensionModuleDescriptorV5 final
     {
-        std::uint32_t struct_size{sizeof(ExtensionModuleDescriptorV4)};
-        std::uint32_t extension_abi{kExtensionAbiV4};
+        std::uint32_t struct_size{sizeof(ExtensionModuleDescriptorV5)};
+        std::uint32_t extension_abi{kExtensionAbiV5};
         lux::cxx::AbiFingerprint engine_abi_fingerprint{
             kEngineExtensionAbiFingerprint};
         lux::cxx::AbiStringView id;
@@ -43,5 +43,5 @@ namespace lux::extensions
     };
 
     static_assert(std::is_standard_layout_v<ExtensionDependencyView>);
-    static_assert(std::is_standard_layout_v<ExtensionModuleDescriptorV4>);
+    static_assert(std::is_standard_layout_v<ExtensionModuleDescriptorV5>);
 }

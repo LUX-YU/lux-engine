@@ -68,7 +68,7 @@ namespace lux::runtime::spatial2d
     public:
         Infinite2DPixelPrepareClient() noexcept = default;
 
-        [[nodiscard]] const lux::exec::AsyncOperationClient<
+        [[nodiscard]] const lux::async::OperationPort<
             PrepareInfinite2DPixelChunk>& operation() const noexcept
         {
             return operation_;
@@ -80,11 +80,11 @@ namespace lux::runtime::spatial2d
         friend class Infinite2DPixelPrepareService;
         Infinite2DPixelPrepareClient(
             std::weak_ptr<detail::Infinite2DPixelPrepareControl> control,
-            lux::exec::AsyncOperationClient<PrepareInfinite2DPixelChunk>
+            lux::async::OperationPort<PrepareInfinite2DPixelChunk>
                 operation) noexcept;
 
         std::weak_ptr<detail::Infinite2DPixelPrepareControl> control_;
-        lux::exec::AsyncOperationClient<PrepareInfinite2DPixelChunk>
+        lux::async::OperationPort<PrepareInfinite2DPixelChunk>
             operation_;
     };
 
@@ -113,11 +113,11 @@ namespace lux::runtime::spatial2d
     private:
         Infinite2DPixelPrepareService(
             std::shared_ptr<detail::Infinite2DPixelPrepareControl> control,
-            lux::exec::AsyncOperationClient<PrepareInfinite2DPixelChunk>
+            lux::async::OperationPort<PrepareInfinite2DPixelChunk>
                 operation) noexcept;
 
         std::shared_ptr<detail::Infinite2DPixelPrepareControl> control_;
-        lux::exec::AsyncOperationClient<PrepareInfinite2DPixelChunk>
+        lux::async::OperationPort<PrepareInfinite2DPixelChunk>
             operation_;
         bool closed_{false};
     };

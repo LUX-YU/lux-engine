@@ -36,7 +36,7 @@ namespace lux::runtime::spatial2d
                     return;
                 }
                 completion.complete(lux::cxx::unexpected(
-                    lux::exec::AsyncFailure<
+                    lux::async::OperationFailure<
                         EInfinite2DPixelPrepareError>::domain(
                             result.error())));
             }
@@ -46,7 +46,7 @@ namespace lux::runtime::spatial2d
                 if (settled.exchange(true, std::memory_order_acq_rel))
                     return;
                 completion.failRuntime(
-                    lux::exec::EAsyncSubmitError::STOPPING);
+                    lux::async::ESubmitError::STOPPING);
             }
 
             std::atomic<bool> settled{false};
@@ -57,7 +57,7 @@ namespace lux::runtime::spatial2d
 
     Infinite2DPixelPrepareClient::Infinite2DPixelPrepareClient(
         std::weak_ptr<detail::Infinite2DPixelPrepareControl> control,
-        lux::exec::AsyncOperationClient<PrepareInfinite2DPixelChunk>
+        lux::async::OperationPort<PrepareInfinite2DPixelChunk>
             operation) noexcept
         : control_(std::move(control)), operation_(std::move(operation))
     {}
@@ -169,7 +169,7 @@ namespace lux::runtime::spatial2d
 
     Infinite2DPixelPrepareService::Infinite2DPixelPrepareService(
         std::shared_ptr<detail::Infinite2DPixelPrepareControl> control,
-        lux::exec::AsyncOperationClient<PrepareInfinite2DPixelChunk>
+        lux::async::OperationPort<PrepareInfinite2DPixelChunk>
             operation) noexcept
         : control_(std::move(control)), operation_(std::move(operation))
     {}

@@ -682,7 +682,7 @@
         if (!editor_async_.collectWorldSourceGarbage(
                 CollectWorldSourceGarbageOperation{
                     .world_file = scene_path_},
-                [](lux::exec::AsyncOutcome<
+                [](lux::async::OperationOutcome<
                        CollectWorldSourceGarbageOperation> outcome) noexcept
                 {
                     if (outcome && outcome->error.empty())

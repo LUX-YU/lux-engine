@@ -48,7 +48,7 @@ namespace lux::runtime
         {
             return {
                 ESceneContributionBuildError::INVALID_CONFIG,
-                lux::ecs::typeToken<
+                lux::cxx::typeToken<
                     lux::spatial3d::SceneCatalog>()};
         }
 
@@ -229,12 +229,12 @@ namespace lux::runtime
         descriptor.required_contributions.emplace_back(
             std::string{kSpatial3DTransformContributionName});
         descriptor.required_services = {
-            lux::ecs::typeToken<entity_scene::EntitySceneCatalog>(),
-            lux::ecs::typeToken<entity_scene::EntitySectionClient>()};
+            lux::cxx::typeToken<entity_scene::EntitySceneCatalog>(),
+            lux::cxx::typeToken<entity_scene::EntitySectionClient>()};
         descriptor.provided_services = {
-            lux::ecs::typeToken<
+            lux::cxx::typeToken<
                 spatial_partition::SpatialPartitionSystem>(),
-            lux::ecs::typeToken<spatial3d::SpatialInterest3DSystem>()};
+            lux::cxx::typeToken<spatial3d::SpatialInterest3DSystem>()};
         descriptor.config_schema_version =
             lux::spatial3d::kSceneCatalogSchemaVersion;
         descriptor.provider = lux::extensions::ExtensionId{
@@ -259,9 +259,9 @@ namespace lux::runtime
                     SceneContributionBuildFailure{
                         ESceneContributionBuildError::MISSING_SERVICE,
                         !scene
-                            ? lux::ecs::typeToken<
+                            ? lux::cxx::typeToken<
                                   entity_scene::EntitySceneCatalog>()
-                            : lux::ecs::typeToken<
+                            : lux::cxx::typeToken<
                                   entity_scene::EntitySectionClient>()});
             }
 

@@ -35,10 +35,10 @@ namespace lux::runtime
             std::string{kNavigation3DContributionName}};
         descriptor.display_name = "3D navigation";
         descriptor.required_services = {
-            typeToken<SceneAsyncContext>(),
-            typeToken<entity_scene::ContentBlobClient>()};
+            lux::cxx::typeToken<SceneAsyncContext>(),
+            lux::cxx::typeToken<entity_scene::ContentBlobClient>()};
         descriptor.provided_services = {
-            typeToken<NavigationQueryService>()};
+            lux::cxx::typeToken<NavigationQueryService>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [preparation](
@@ -62,10 +62,10 @@ namespace lux::runtime
                             ? ESceneContributionBuildError::MISSING_SERVICE
                             : ESceneContributionBuildError::BUILD_REJECTED,
                         !blobs
-                            ? typeToken<entity_scene::ContentBlobClient>()
+                            ? lux::cxx::typeToken<entity_scene::ContentBlobClient>()
                             : (!async
-                                  ? typeToken<SceneAsyncContext>()
-                                  : TypeToken{})});
+                                  ? lux::cxx::typeToken<SceneAsyncContext>()
+                                  : lux::cxx::TypeToken{})});
             }
 
             auto navigation_owner =

@@ -200,7 +200,7 @@ namespace
             uuid("13000000-0000-4000-8000-000000000002")};
         spatial_actor.position = {-16.0, 8.0, 32.0};
         const auto primary_schema = lux::ecs::defaultComponentSchemaName(
-            lux::ecs::typeToken<lux::ecs::PrimaryCameraTag>().name);
+            lux::cxx::typeToken<lux::ecs::PrimaryCameraTag>().name());
         std::erase_if(
             spatial_actor.components,
             [&primary_schema](const auto& component)
@@ -267,7 +267,7 @@ namespace
     [[nodiscard]] std::string schemaName()
     {
         return lux::ecs::defaultComponentSchemaName(
-            lux::ecs::typeToken<Component>().name);
+            lux::cxx::typeToken<Component>().name());
     }
 
     void stage(

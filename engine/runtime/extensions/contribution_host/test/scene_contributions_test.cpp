@@ -213,7 +213,7 @@ namespace
         descriptor.id = lux::scene::SceneFeatureId{"org.test.scene.root"};
         descriptor.display_name = "Root";
         descriptor.provided_services = {
-            lux::ecs::typeToken<RootSystem>()};
+            lux::cxx::typeToken<RootSystem>()};
         descriptor.config_schema_version = 0u;
         descriptor.provider = lux::extensions::ExtensionId{"org.test.root"};
         descriptor.build = [&trace](
@@ -239,7 +239,7 @@ namespace
         descriptor.required_contributions.push_back(
             lux::scene::SceneFeatureId{"org.test.scene.root"});
         descriptor.required_services = {
-            lux::ecs::typeToken<RootSystem>()};
+            lux::cxx::typeToken<RootSystem>()};
         descriptor.config_schema_version = 0u;
         descriptor.provider = lux::extensions::ExtensionId{"org.test.leaf"};
         descriptor.build = [&trace](
@@ -257,7 +257,7 @@ namespace
                     lux::runtime::SceneContributionBuildFailure{
                         lux::runtime::ESceneContributionBuildError::
                             MISSING_SERVICE,
-                        lux::ecs::typeToken<RootSystem>()});
+                        lux::cxx::typeToken<RootSystem>()});
             }
             return builder.add(std::make_unique<LeafSystem>(trace));
         };
@@ -273,7 +273,7 @@ namespace
         descriptor.required_contributions.push_back(
             lux::scene::SceneFeatureId{"org.test.scene.root"});
         descriptor.required_services = {
-            lux::ecs::typeToken<RootSystem>()};
+            lux::cxx::typeToken<RootSystem>()};
         descriptor.config_schema_version = 0u;
         descriptor.provider = lux::extensions::ExtensionId{
             "org.test.broken_leaf"};
@@ -291,7 +291,7 @@ namespace
                     lux::runtime::SceneContributionBuildFailure{
                         lux::runtime::ESceneContributionBuildError::
                             MISSING_SERVICE,
-                        lux::ecs::typeToken<RootSystem>()});
+                        lux::cxx::typeToken<RootSystem>()});
             }
             return builder.add(std::make_unique<BrokenSystem>());
         };
@@ -307,7 +307,7 @@ namespace
         descriptor.required_contributions.push_back(
             lux::scene::SceneFeatureId{"org.test.scene.root"});
         descriptor.required_services = {
-            lux::ecs::typeToken<RootSystem>()};
+            lux::cxx::typeToken<RootSystem>()};
         descriptor.config_schema_version = 0u;
         descriptor.provider = lux::extensions::ExtensionId{
             "org.test.failing_after_stage"};
@@ -327,7 +327,7 @@ namespace
                 lux::runtime::SceneContributionBuildFailure{
                     lux::runtime::ESceneContributionBuildError::
                         BUILD_REJECTED,
-                    lux::ecs::typeToken<BrokenSystem>()});
+                    lux::cxx::typeToken<BrokenSystem>()});
         };
         return descriptor;
     }

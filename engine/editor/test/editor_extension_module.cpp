@@ -24,13 +24,13 @@ namespace
 }
 
 extern "C" LUX_TEST_EDITOR_EXTENSION_EXPORT
-const lux::extensions::ExtensionModuleDescriptorV4*
-luxGetExtensionModuleV4() noexcept
+const lux::extensions::ExtensionModuleDescriptorV5*
+luxGetExtensionModuleV5() noexcept
 {
     using namespace lux::extensions;
-    static constexpr ExtensionModuleDescriptorV4 descriptor{
-        sizeof(ExtensionModuleDescriptorV4),
-        kExtensionAbiV4,
+    static constexpr ExtensionModuleDescriptorV5 descriptor{
+        sizeof(ExtensionModuleDescriptorV5),
+        kExtensionAbiV5,
         kEngineExtensionAbiFingerprint,
         lux::cxx::AbiStringView{"org.lux.test.editor-module"},
         ExtensionVersion{1u, 0u, 0u},
@@ -42,7 +42,7 @@ luxGetExtensionModuleV4() noexcept
 
 extern "C" LUX_TEST_EDITOR_EXTENSION_EXPORT
 lux::extensions::ExtensionRegistrationResult
-luxRegisterEditorContributionsV4(
+luxRegisterEditorContributionsV5(
     lux::extensions::EditorContributionRegistrar& registrar) noexcept
 {
     lux::editor::EditorPanelContributionDescriptor panel;

@@ -88,7 +88,7 @@ namespace lux::runtime::entity_scene
             lux::scene::SectionRecord record,
             std::uint64_t request_generation) const noexcept;
 
-        [[nodiscard]] const lux::exec::AsyncOperationClient<
+        [[nodiscard]] const lux::async::OperationPort<
             LoadEntitySection>& operation() const noexcept
         {
             return operation_;
@@ -109,11 +109,11 @@ namespace lux::runtime::entity_scene
 
         EntitySectionLoadClient(
             std::weak_ptr<detail::EntitySectionOperationControl> control,
-            lux::exec::AsyncOperationClient<LoadEntitySection> operation)
+            lux::async::OperationPort<LoadEntitySection> operation)
             noexcept;
 
         std::weak_ptr<detail::EntitySectionOperationControl> control_;
-        lux::exec::AsyncOperationClient<LoadEntitySection> operation_;
+        lux::async::OperationPort<LoadEntitySection> operation_;
     };
 
     /// Process-level operation registration. Scene residency and ECS
@@ -141,11 +141,11 @@ namespace lux::runtime::entity_scene
     private:
         EntitySectionService(
             std::shared_ptr<detail::EntitySectionOperationControl> control,
-            lux::exec::AsyncOperationClient<LoadEntitySection> operation)
+            lux::async::OperationPort<LoadEntitySection> operation)
             noexcept;
 
         std::shared_ptr<detail::EntitySectionOperationControl> control_;
-        lux::exec::AsyncOperationClient<LoadEntitySection> operation_;
+        lux::async::OperationPort<LoadEntitySection> operation_;
         bool closed_{false};
     };
 }

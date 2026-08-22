@@ -2,7 +2,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/ecs/TypeToken.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/editor/visibility.h>
 #include <lux/engine/editor/PanelId.hpp>
 #include <lux/engine/runtime/extensions/ModuleLifetime.hpp>
@@ -41,7 +41,7 @@ namespace lux::editor
         add(T& service)
         {
             return addErased(Entry{
-                lux::ecs::typeToken<T>(),
+                lux::cxx::typeToken<T>(),
                 std::addressof(service),
                 {}});
         }
@@ -59,7 +59,7 @@ namespace lux::editor
             }
             auto* value = service.get();
             return addErased(Entry{
-                lux::ecs::typeToken<T>(),
+                lux::cxx::typeToken<T>(),
                 value,
                 std::move(service)});
         }
@@ -67,9 +67,9 @@ namespace lux::editor
         template <class T>
         [[nodiscard]] T* find() const noexcept
         {
-            constexpr auto type = lux::ecs::typeToken<T>();
+            constexpr auto type = lux::cxx::typeToken<T>();
             for (const auto& entry : entries_)
-                if (lux::ecs::sameTypeToken(entry.type, type))
+                if (entry.type == type)
                     return static_cast<T*>(entry.value);
             return nullptr;
         }
@@ -77,10 +77,10 @@ namespace lux::editor
         template <class T>
         [[nodiscard]] std::shared_ptr<T> findShared() const noexcept
         {
-            constexpr auto type = lux::ecs::typeToken<T>();
+            constexpr auto type = lux::cxx::typeToken<T>();
             for (const auto& entry : entries_)
             {
-                if (lux::ecs::sameTypeToken(entry.type, type) && entry.owner)
+                if (entry.type == type && entry.owner)
                     return std::shared_ptr<T>{
                         entry.owner,
                         static_cast<T*>(entry.value)};
@@ -88,13 +88,13 @@ namespace lux::editor
             return {};
         }
 
-        [[nodiscard]] bool contains(lux::ecs::TypeToken type) const noexcept;
+        [[nodiscard]] bool contains(lux::cxx::TypeToken type) const noexcept;
 
     private:
         friend class EditorToolHost;
         struct Entry final
         {
-            lux::ecs::TypeToken type{};
+            lux::cxx::TypeToken type{};
             void* value{nullptr};
             std::shared_ptr<void> owner;
         };
@@ -130,7 +130,7 @@ namespace lux::editor
         /// controllers. They may be hidden but cannot be destroyed before the
         /// editor composition closes those borrowers.
         bool supports_deactivation{true};
-        std::vector<lux::ecs::TypeToken> required_editor_services;
+        std::vector<lux::cxx::TypeToken> required_editor_services;
         lux::cxx::move_only_function<
             lux::cxx::expected<
                 std::unique_ptr<lux::ui::Panel>,
@@ -273,7 +273,7 @@ namespace lux::editor
         addService(T& service)
         {
             return addServiceErased(
-                lux::ecs::typeToken<T>(),
+                lux::cxx::typeToken<T>(),
                 std::addressof(service));
         }
         [[nodiscard]] std::size_t processSafePoint(
@@ -288,7 +288,7 @@ namespace lux::editor
             void,
             EEditorServiceRegistrationError>
         addServiceErased(
-            lux::ecs::TypeToken type,
+            lux::cxx::TypeToken type,
             void* service);
         struct Impl;
         std::unique_ptr<Impl> impl_;

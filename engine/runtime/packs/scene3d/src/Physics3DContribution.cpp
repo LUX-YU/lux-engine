@@ -42,10 +42,10 @@ namespace lux::runtime
         descriptor.required_contributions.emplace_back(
             std::string{kSpatial3DTransformContributionName});
         descriptor.required_services = {
-            typeToken<SceneAsyncContext>(),
-            typeToken<entity_scene::ContentBlobClient>()};
+            lux::cxx::typeToken<SceneAsyncContext>(),
+            lux::cxx::typeToken<entity_scene::ContentBlobClient>()};
         descriptor.provided_services = {
-            typeToken<spatial3d::Physics3DSceneService>()};
+            lux::cxx::typeToken<spatial3d::Physics3DSceneService>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [preparation](
@@ -65,8 +65,8 @@ namespace lux::runtime
                     SceneContributionBuildFailure{
                         ESceneContributionBuildError::MISSING_SERVICE,
                         !blobs
-                            ? typeToken<entity_scene::ContentBlobClient>()
-                            : typeToken<SceneAsyncContext>()});
+                            ? lux::cxx::typeToken<entity_scene::ContentBlobClient>()
+                            : lux::cxx::typeToken<SceneAsyncContext>()});
             }
             if (!preparation)
             {

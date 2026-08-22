@@ -262,7 +262,7 @@ namespace lux::editor
         /// material GPU residency without waiting for a render frame, then
         /// create the ECS tree at a main-thread safe point. The completion is
         /// exactly once and carries a structured failure.
-        [[nodiscard]] lux::exec::AsyncSubmitResult spawnModel(
+        [[nodiscard]] lux::async::SubmitResult spawnModel(
             lux::asset::asset_id_t model_id,
             InstanceSpawnClient::Completion completion = {});
 

@@ -49,7 +49,9 @@ int main(int argc, char** argv)
     auto entrypoints = modules.entrypoints(
         lux::extensions::extensionId("org.lux.test.editor-module"));
     expect(
-        entrypoints.editor != nullptr && entrypoints.runtime == nullptr,
+        entrypoints.editor != nullptr &&
+            entrypoints.world_systems == nullptr &&
+            entrypoints.render_features == nullptr,
         "the module exposes only the editor registrar entrypoint");
 
     lux::editor::EditorPanelCatalog catalog;

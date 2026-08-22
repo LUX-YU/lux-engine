@@ -831,7 +831,7 @@ namespace
             constexpr auto target_type =
                 lux::ecs::systemType<TopologyProbe<7>>();
             constexpr lux::ecs::SystemType collision{
-                target_type.hash,
+                target_type.hash(),
                 "collision.guard.not.the.real.type",
             };
 
@@ -1203,7 +1203,7 @@ namespace
             !committed && committed.error().error ==
                 lux::ecs::EScheduleCommitError::ServiceConflict &&
                 committed.error().detail ==
-                    lux::ecs::sceneServiceType<StagedService>().name &&
+                    lux::ecs::sceneServiceType<StagedService>().name() &&
                 schedule.systemCount() == 0 && added == 0 &&
                 !builder.handle(*pending).valid() &&
                 services.get<StagedService>() == *live &&

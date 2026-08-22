@@ -1041,9 +1041,9 @@
         document->references = source_descriptor->second.references;
         std::vector<std::string_view> allowed;
         for (const auto type : {
-                 lux::ecs::typeToken<lux::ecs::NameComponent>(),
-                 lux::ecs::typeToken<lux::ecs::Transform3DComponent>(),
-                 lux::ecs::typeToken<lux::ecs::MeshComponent>()})
+                 lux::cxx::typeToken<lux::ecs::NameComponent>(),
+                 lux::cxx::typeToken<lux::ecs::Transform3DComponent>(),
+                 lux::cxx::typeToken<lux::ecs::MeshComponent>()})
         {
             if (const auto* schema = components_.findByType(type))
                 allowed.push_back(schema->fullName());

@@ -23,7 +23,7 @@
 #include <lux/engine/scene/SceneAssetSerDeser.hpp>
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/SceneServices.hpp>
-#include <lux/engine/ecs/TypeToken.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/runtime/extensions/ExtensionModuleManager.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 
@@ -106,7 +106,7 @@ namespace lux::runtime
     public:
         virtual ~ISceneRuntimeIntegration() = default;
 
-        [[nodiscard]] virtual lux::ecs::TypeToken type() const noexcept = 0;
+        [[nodiscard]] virtual lux::cxx::TypeToken type() const noexcept = 0;
         [[nodiscard]] virtual lux::cxx::expected<
             void,
             ESceneIntegrationError>
@@ -347,9 +347,8 @@ namespace lux::runtime
         template <class Integration>
         [[nodiscard]] Integration* integration() noexcept
         {
-            if (!integration_ || !lux::ecs::sameTypeToken(
-                    integration_->type(),
-                    lux::ecs::typeToken<Integration>()))
+            if (!integration_ || integration_->type() !=
+                    lux::cxx::typeToken<Integration>())
                 return nullptr;
             return static_cast<Integration*>(integration_.get());
         }
@@ -357,9 +356,8 @@ namespace lux::runtime
         template <class Integration>
         [[nodiscard]] const Integration* integration() const noexcept
         {
-            if (!integration_ || !lux::ecs::sameTypeToken(
-                    integration_->type(),
-                    lux::ecs::typeToken<Integration>()))
+            if (!integration_ || integration_->type() !=
+                    lux::cxx::typeToken<Integration>())
                 return nullptr;
             return static_cast<const Integration*>(integration_.get());
         }
@@ -402,6 +400,10 @@ namespace lux::runtime
                                                    persistent_entities_;
         std::unique_ptr<lux::ecs::SceneServices>  services_;
         std::unique_ptr<lux::ecs::Schedule>        schedule_;
+        // A direct ABI v5 installer may place systems whose code and vtables
+        // live in an extension DLL into the Schedule.  Keep the module alive
+        // until those systems and their services have been destroyed.
+        std::vector<lux::extensions::ModuleLease> extension_module_leases_;
         std::unique_ptr<SceneContributionHost>     scene_contribution_host_;
         entity_scene::EntitySectionLoaderSystem*   entity_section_loader_{};
         entity_scene::StartupSectionSystem*        startup_sections_{};

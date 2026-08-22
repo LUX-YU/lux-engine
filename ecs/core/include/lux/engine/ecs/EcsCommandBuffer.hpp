@@ -43,7 +43,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ecs/RegistryStorageCapacity.hpp>
-#include <lux/engine/ecs/TypeToken.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/ecs/visibility.h>
 #include <lux/engine/ecs/Registry.hpp>   // lux::ecs::Registry
 
@@ -549,10 +549,9 @@ namespace lux::ecs
             if (!buffer_)
                 return lux::cxx::unexpected<ECommandEnqueueError>(
                     ECommandEnqueueError::NoProducer);
-            // sameTypeToken 而不是 ISystem.hpp 的 sameSystemType 别名:那个头会
-            // 反过来 include 本头(经 SystemUpdateContext),别绕成环。
-            if (!sameTypeToken(producer_type_,
-                               typeToken<typename Cmd::Producer>()))
+            // 直接使用基础层 TypeToken，避免通过 ISystem.hpp 形成 include 环。
+            if (producer_type_ !=
+                lux::cxx::typeToken<typename Cmd::Producer>())
                 return lux::cxx::unexpected<ECommandEnqueueError>(
                     ECommandEnqueueError::ProducerTypeMismatch);
 
@@ -568,7 +567,7 @@ namespace lux::ecs
 
         EcsCommandWriter(
             EcsCommandBuffer& buffer,
-            TypeToken producer_type,
+            lux::cxx::TypeToken producer_type,
             std::uint32_t generation,
             lux::ecs::Registry& registry) noexcept
             : buffer_(&buffer), producer_type_(producer_type),
@@ -577,7 +576,7 @@ namespace lux::ecs
         }
 
         EcsCommandBuffer* buffer_{nullptr};
-        TypeToken         producer_type_{};
+        lux::cxx::TypeToken producer_type_{};
         std::uint32_t     generation_{0};
         lux::ecs::Registry* registry_{nullptr};
     };
@@ -590,7 +589,7 @@ namespace lux::ecs
     class EcsCommandOwner final
     {
     public:
-        explicit EcsCommandOwner(TypeToken producer_type)
+        explicit EcsCommandOwner(lux::cxx::TypeToken producer_type)
             : buffer_(std::make_unique<EcsCommandBuffer>()),
               producer_type_(producer_type)
         {
@@ -639,7 +638,7 @@ namespace lux::ecs
 
     private:
         std::unique_ptr<EcsCommandBuffer> buffer_;
-        TypeToken                         producer_type_{};
+        lux::cxx::TypeToken               producer_type_{};
         std::uint32_t                     generation_{1};
     };
 

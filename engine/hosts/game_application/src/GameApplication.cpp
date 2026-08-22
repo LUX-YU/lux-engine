@@ -19,7 +19,6 @@
 #include <lux/engine/runtime/packs/spatial3d/Navigation3DContribution.hpp>
 #include <lux/engine/runtime/packs/spatial3d/Physics3DContribution.hpp>
 #include <lux/engine/runtime/packs/spatial3d/Presentation3DContribution.hpp>
-#include <lux/engine/runtime/packs/spatial2d/Physics2DContribution.hpp>
 #include <lux/engine/runtime/packs/spatial2d/Presentation2DContribution.hpp>
 #include <lux/engine/runtime/packs/spatial2d/Simulation2DContribution.hpp>
 #include <lux/engine/runtime/packs/spatial2d/Transform2DContribution.hpp>
@@ -450,12 +449,9 @@ namespace lux::game
         auto spatial3d =
             lux::runtime::makeSpatial3DPartitionedContribution(
                 application.component_types);
-        auto physics2d = lux::runtime::makePhysics2DContribution(
-            application.component_types);
         if (!spatial3d_transform || !animation3d || !presentation3d ||
             !physics3d || !navigation3d || !spatial2d_transform ||
             !simulation2d || !presentation2d || !tilemap2d || !spatial3d ||
-            !physics2d ||
             !application.scene_contribution_catalog.add(
                 std::move(*spatial3d_transform)) ||
             !application.scene_contribution_catalog.add(
@@ -475,9 +471,7 @@ namespace lux::game
             !application.scene_contribution_catalog.add(
                 std::move(*tilemap2d)) ||
             !application.scene_contribution_catalog.add(
-                std::move(*spatial3d)) ||
-            !application.scene_contribution_catalog.add(
-                std::move(*physics2d)))
+                std::move(*spatial3d)))
         {
             lux::log::error(
                 "game_application",

@@ -18,7 +18,7 @@
 // ============================================================================
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/ecs/TypeToken.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/ecs/visibility.h>
 
 #include <cstddef>
@@ -41,18 +41,18 @@ namespace lux::ecs
 
     /// Stable, RTTI-free identity used by scene-plan compilation. The type
     /// name is retained as a collision guard for the 64-bit hash.
-    using SceneServiceType = TypeToken;
+    using SceneServiceType = lux::cxx::TypeToken;
 
     template <class T>
     [[nodiscard]] constexpr SceneServiceType sceneServiceType() noexcept
     {
-        return typeToken<T>();
+        return lux::cxx::typeToken<T>();
     }
 
     [[nodiscard]] constexpr bool sameSceneServiceType(
         SceneServiceType lhs, SceneServiceType rhs) noexcept
     {
-        return sameTypeToken(lhs, rhs);
+        return lhs == rhs;
     }
 
     enum class ESceneServiceRegistrationError : std::uint8_t

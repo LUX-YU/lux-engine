@@ -92,7 +92,6 @@ foreach(_sidecar
         tilemap_meta
         pixel_meta
         animation_2d_meta
-        physics2d_meta
         physics3d_meta
         navigation3d_meta
         script_meta)

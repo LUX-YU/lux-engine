@@ -62,3 +62,41 @@ add_dependencies(
     minimal_extension_module
     dependent_extension_module
 )
+
+if(WIN32)
+    string(CONCAT _legacy_descriptor_symbol
+        "luxGetExtensionModule" "V" "4")
+    set(_legacy_exports
+        "${CMAKE_CURRENT_BINARY_DIR}/legacy_extension_module.def")
+    file(GENERATE
+        OUTPUT "${_legacy_exports}"
+        CONTENT
+            "EXPORTS\n${_legacy_descriptor_symbol}=legacyGetDescriptor\n"
+    )
+    add_library(
+        legacy_extension_module MODULE
+        legacy_extension_module.cpp
+        "${_legacy_exports}"
+    )
+    set_target_properties(
+        legacy_extension_module
+        PROPERTIES PREFIX "" OUTPUT_NAME "lux_legacy_extension"
+    )
+    lux_classify_target(
+        TARGET  legacy_extension_module
+        LAYER   RUNTIME
+        PRODUCT TEST
+        ROLE    EXTENSION
+    )
+    add_dependencies(
+        extension_module_manager_test
+        legacy_extension_module
+    )
+    add_test(
+        NAME extension_module_manager_test
+        COMMAND extension_module_manager_test
+            $<TARGET_FILE:minimal_extension_module>
+            $<TARGET_FILE:dependent_extension_module>
+            $<TARGET_FILE:legacy_extension_module>
+    )
+endif()

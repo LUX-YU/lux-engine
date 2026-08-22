@@ -46,32 +46,11 @@ namespace lux::extensions
             return std::move(async_operations);
         }
 
-        std::vector<lux::ecs::ComponentSchemaDescriptor> components;
         std::vector<lux::runtime::SceneContributionDescriptor>
             scene_contributions;
         std::vector<lux::runtime::RenderEffectDescriptor>
             render_effects;
         lux::exec::AsyncOperationBundle async_operations;
-    };
-
-    class LUX_RUNTIME_CONTRIBUTION_PUBLIC ComponentSchemaRegistrar final
-    {
-    public:
-        [[nodiscard]] lux::cxx::expected<void, EContributionDraftError> add(
-            lux::ecs::ComponentSchemaDescriptor descriptor);
-
-    private:
-        friend class RuntimeContributionRegistrar;
-        ComponentSchemaRegistrar(
-            RuntimeRegistrationDraft& draft,
-            ModuleLease module,
-            const bool& finished) noexcept
-            : draft_(&draft), module_(std::move(module)), finished_(&finished)
-        {}
-
-        RuntimeRegistrationDraft* draft_{nullptr};
-        ModuleLease module_;
-        const bool* finished_{nullptr};
     };
 
     class LUX_RUNTIME_CONTRIBUTION_PUBLIC SceneContributionRegistrar final
@@ -151,10 +130,6 @@ namespace lux::extensions
         RuntimeContributionRegistrar& operator=(
             const RuntimeContributionRegistrar&) = delete;
 
-        [[nodiscard]] ComponentSchemaRegistrar& components() noexcept
-        {
-            return components_;
-        }
         [[nodiscard]] SceneContributionRegistrar& sceneContributions() noexcept
         {
             return scene_contributions_;
@@ -175,7 +150,6 @@ namespace lux::extensions
         bool finished_{false};
         RuntimeRegistrationDraft draft_;
         lux::exec::AsyncRuntimeBuilder async_builder_;
-        ComponentSchemaRegistrar components_;
         SceneContributionRegistrar scene_contributions_;
         RenderEffectRegistrar render_effects_;
         AsyncOperationRegistrar async_operations_;
@@ -190,7 +164,6 @@ namespace lux::extensions
 
     enum class ERuntimeCatalogCommitError : std::uint8_t
     {
-        COMPONENTS,
         SCENE_CONTRIBUTIONS,
         RENDER_EFFECTS
     };
@@ -198,7 +171,7 @@ namespace lux::extensions
     struct RuntimeCatalogCommitFailure final
     {
         ERuntimeCatalogCommitError code{
-            ERuntimeCatalogCommitError::COMPONENTS};
+            ERuntimeCatalogCommitError::SCENE_CONTRIBUTIONS};
         std::uint32_t detail{0u};
     };
 

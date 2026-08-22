@@ -545,7 +545,7 @@ int main()
                     std::memory_order_acquire) &&
                 closing_result.error.load(std::memory_order_relaxed) ==
                     static_cast<int>(
-                        lux::exec::EAsyncSubmitError::STOPPING),
+                        lux::async::ESubmitError::STOPPING),
             "close settles a parked retry exactly once with STOPPING");
         closing_service.close();
     }

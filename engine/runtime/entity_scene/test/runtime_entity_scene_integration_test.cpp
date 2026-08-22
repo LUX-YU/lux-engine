@@ -16,6 +16,7 @@
 #include <entt/entt.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -162,10 +163,10 @@ namespace
         lux::meta::RefClass& reflection)
     {
         constexpr std::string_view schema_name = "org.lux.test.link";
-        const auto type = lux::ecs::typeToken<TestLinkComponent>();
+        const auto type = lux::cxx::typeToken<TestLinkComponent>();
         auto registered = catalog.registerSchema(
             lux::ecs::ComponentSchemaDescriptor{
-                {type.hash, std::string{type.name}},
+                type,
                 {lux::cxx::algorithm::fnv1a(schema_name),
                  std::string{schema_name}},
                 1u,
@@ -304,15 +305,25 @@ namespace
 
     void growCatalog(lux::ecs::ComponentTypeCatalog& catalog)
     {
+        static const auto cpp_names = []
+        {
+            std::array<std::string, 128u> result;
+            for (std::uint32_t index = 0u; index < result.size(); ++index)
+            {
+                result[index] =
+                    "org.lux.test.synthetic.cpp." + std::to_string(index);
+            }
+            return result;
+        }();
         for (std::uint32_t index = 0u; index < 128u; ++index)
         {
-            const auto cpp_name =
-                "org.lux.test.synthetic.cpp." + std::to_string(index);
+            const auto& cpp_name = cpp_names[index];
             const auto schema_name =
                 "org.lux.test.synthetic.schema." + std::to_string(index);
             const auto registered = catalog.registerSchema(
                 lux::ecs::ComponentSchemaDescriptor{
-                    {lux::cxx::algorithm::fnv1a(cpp_name), cpp_name},
+                    lux::cxx::TypeToken{
+                        lux::cxx::algorithm::fnv1a(cpp_name), cpp_name},
                     {lux::cxx::algorithm::fnv1a(schema_name), schema_name},
                     1u,
                     nullptr,

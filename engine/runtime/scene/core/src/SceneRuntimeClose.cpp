@@ -320,6 +320,7 @@ namespace lux::runtime
             services_.reset();
             persistent_entities_.reset();
             world_.reset();
+            extension_module_leases_.clear();
             state_ = ESceneRuntimeState::CLOSED;
             closed_ = true;
             return report(

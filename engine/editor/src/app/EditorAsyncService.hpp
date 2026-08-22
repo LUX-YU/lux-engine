@@ -279,7 +279,7 @@ namespace lux::editor
     public:
         template <class Operation>
         using Completion = lux::cxx::move_only_function<void(
-            lux::exec::AsyncOutcome<Operation>)>;
+            lux::async::OperationOutcome<Operation>)>;
 
         [[nodiscard]] static lux::cxx::expected<
             EditorAsyncService,

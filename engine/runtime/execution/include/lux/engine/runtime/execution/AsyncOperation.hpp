@@ -9,10 +9,9 @@
  * cross-thread view, or callback task graph is involved.
  */
 
-#include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/core/async/OperationPort.hpp>
 #include <lux/engine/runtime/execution/AsyncStatistics.hpp>
-#include <lux/cxx/compile_time/type_info.hpp>
 
 #include <moodycamel/concurrentqueue.h>
 
@@ -34,23 +33,6 @@ namespace lux::exec
     class AsyncScope;
     class MainThreadDispatcher;
 
-    enum class EAsyncSubmitError : std::uint8_t
-    {
-        UNKNOWN_OPERATION,
-        QUEUE_FULL,
-        BYTE_BUDGET_EXHAUSTED,
-        PAYLOAD_INVALID,
-        FEATURE_CLOSING,
-        STOPPING
-    };
-
-    struct AsyncSubmitOptions final
-    {
-        std::size_t accounted_bytes{0};
-    };
-
-    using AsyncSubmitResult = lux::cxx::expected<void, EAsyncSubmitError>;
-
     struct AsyncOperationQueueConfig final
     {
         std::size_t capacity{256};
@@ -64,79 +46,11 @@ namespace lux::exec
         }
     };
 
-    struct AsyncTypeToken final
-    {
-        std::uint64_t hash{0};
-        std::string_view name;
-
-        [[nodiscard]] constexpr bool operator==(
-            const AsyncTypeToken&) const noexcept = default;
-    };
-
     template <class T>
-    inline constexpr AsyncTypeToken kAsyncTypeToken{
-        lux::cxx::type_hash<T>(),
-        lux::cxx::type_name<T>()};
-
-    template <class Operation>
-    concept AsyncOperation = requires
-    {
-        typename Operation::Value;
-        typename Operation::Error;
-    } && std::is_nothrow_move_constructible_v<Operation>;
+    concept AsyncOperation = lux::async::Operation<T>;
 
     template <AsyncOperation Operation>
     class AsyncExecuteSender;
-
-    template <class DomainError>
-    class AsyncFailure final
-    {
-    public:
-        [[nodiscard]] static AsyncFailure runtime(
-            EAsyncSubmitError error) noexcept
-        {
-            return AsyncFailure(error);
-        }
-
-        [[nodiscard]] static AsyncFailure domain(DomainError error) noexcept
-        {
-            return AsyncFailure(std::move(error));
-        }
-
-        [[nodiscard]] bool isRuntime() const noexcept
-        {
-            return value_.index() == 0u;
-        }
-
-        [[nodiscard]] EAsyncSubmitError runtimeError() const noexcept
-        {
-            return std::get<0>(value_);
-        }
-
-        [[nodiscard]] const DomainError& domainError() const noexcept
-        {
-            return std::get<1>(value_);
-        }
-
-        [[nodiscard]] DomainError& domainError() noexcept
-        {
-            return std::get<1>(value_);
-        }
-
-    private:
-        explicit AsyncFailure(EAsyncSubmitError error) noexcept
-            : value_(error)
-        {}
-
-        explicit AsyncFailure(DomainError error) noexcept
-            : value_(std::in_place_index<1>, std::move(error))
-        {}
-
-        std::variant<EAsyncSubmitError, DomainError> value_;
-    };
-
-    template <AsyncOperation Operation>
-    using AsyncOutcome = lux::cxx::expected<typename Operation::Value, AsyncFailure<typename Operation::Error>>;
 
     class AsyncOperationContext final
     {
@@ -252,7 +166,7 @@ namespace lux::exec
         class AsyncCompletion final
         {
         public:
-            using Outcome = AsyncOutcome<Operation>;
+            using Outcome = lux::async::OperationOutcome<Operation>;
 
             AsyncCompletion() noexcept = default;
             explicit AsyncCompletion(
@@ -272,7 +186,7 @@ namespace lux::exec
             ~AsyncCompletion()
             {
                 if (complete_)
-                    failRuntime(EAsyncSubmitError::PAYLOAD_INVALID);
+                    failRuntime(lux::async::ESubmitError::PAYLOAD_INVALID);
             }
 
             AsyncCompletion(const AsyncCompletion&) = delete;
@@ -288,7 +202,7 @@ namespace lux::exec
                 if (this == &other)
                     return *this;
                 if (complete_)
-                    failRuntime(EAsyncSubmitError::PAYLOAD_INVALID);
+                    failRuntime(lux::async::ESubmitError::PAYLOAD_INVALID);
                 complete_ = std::move(other.complete_);
                 module_lease_ = std::move(other.module_lease_);
                 tracker_ = std::move(other.tracker_);
@@ -309,8 +223,8 @@ namespace lux::exec
                     else if (outcome.error().isRuntime())
                     {
                         const auto error = outcome.error().runtimeError();
-                        if (error == EAsyncSubmitError::STOPPING ||
-                            error == EAsyncSubmitError::FEATURE_CLOSING)
+                        if (error == lux::async::ESubmitError::STOPPING ||
+                            error == lux::async::ESubmitError::FEATURE_CLOSING)
                         {
                             tracker->stopped.fetch_add(
                                 1u,
@@ -331,10 +245,10 @@ namespace lux::exec
                     tracker->active.fetch_sub(1u, std::memory_order_release);
             }
 
-            void failRuntime(EAsyncSubmitError error) noexcept
+            void failRuntime(lux::async::ESubmitError error) noexcept
             {
                 complete(lux::cxx::unexpected(
-                    AsyncFailure<typename Operation::Error>::runtime(error)));
+                    lux::async::OperationFailure<typename Operation::Error>::runtime(error)));
             }
 
             [[nodiscard]] explicit operator bool() const noexcept
@@ -425,7 +339,7 @@ namespace lux::exec
             };
 
             AsyncEndpointBase(
-                AsyncTypeToken type,
+                lux::cxx::TypeToken type,
                 AsyncOperationQueueConfig config) noexcept
                 : type_(type), config_(config)
             {}
@@ -434,7 +348,7 @@ namespace lux::exec
             AsyncEndpointBase& operator=(const AsyncEndpointBase&) = delete;
             virtual ~AsyncEndpointBase() = default;
 
-            [[nodiscard]] AsyncTypeToken type() const noexcept { return type_; }
+            [[nodiscard]] lux::cxx::TypeToken type() const noexcept { return type_; }
             [[nodiscard]] std::size_t drainBatch() const noexcept
             {
                 return config_.drain_batch;
@@ -570,20 +484,20 @@ namespace lux::exec
             }
 
         protected:
-            [[nodiscard]] EAsyncSubmitError admissionError() const noexcept
+            [[nodiscard]] lux::async::ESubmitError admissionError() const noexcept
             {
                 switch (state())
                 {
                 case EAsyncEndpointState::OPEN:
-                    return EAsyncSubmitError::PAYLOAD_INVALID;
+                    return lux::async::ESubmitError::PAYLOAD_INVALID;
                 case EAsyncEndpointState::CLOSING:
-                    return EAsyncSubmitError::FEATURE_CLOSING;
+                    return lux::async::ESubmitError::FEATURE_CLOSING;
                 case EAsyncEndpointState::STOPPING:
-                    return EAsyncSubmitError::STOPPING;
+                    return lux::async::ESubmitError::STOPPING;
                 case EAsyncEndpointState::INACTIVE:
-                    return EAsyncSubmitError::UNKNOWN_OPERATION;
+                    return lux::async::ESubmitError::UNKNOWN_OPERATION;
                 }
-                return EAsyncSubmitError::STOPPING;
+                return lux::async::ESubmitError::STOPPING;
             }
 
             enum class EReservationResult : std::uint8_t
@@ -710,7 +624,7 @@ namespace lux::exec
                 {}
             }
 
-            AsyncTypeToken type_{};
+            lux::cxx::TypeToken type_{};
             AsyncOperationQueueConfig config_{};
             std::atomic<std::uint64_t> admission_gate_{
                 encode(EAsyncEndpointState::INACTIVE, 0u)};
@@ -726,13 +640,16 @@ namespace lux::exec
         };
 
         template <AsyncOperation Operation>
-        class OperationEndpoint final : public AsyncEndpointBase
+        class OperationEndpoint final
+            : public lux::async::detail::OperationEndpoint<Operation>
+            , public AsyncEndpointBase
         {
         public:
-            using Outcome = AsyncOutcome<Operation>;
+            using Outcome = lux::async::OperationOutcome<Operation>;
 
             explicit OperationEndpoint(AsyncOperationQueueConfig config)
-                : AsyncEndpointBase(kAsyncTypeToken<Operation>, config)
+                : AsyncEndpointBase(
+                    lux::async::operationType<Operation>(), config)
                 , queue_(config.capacity)
             {}
 
@@ -766,7 +683,7 @@ namespace lux::exec
                 ~Queued()
                 {
                     if (complete)
-                        reject(EAsyncSubmitError::STOPPING);
+                        reject(lux::async::ESubmitError::STOPPING);
                 }
 
                 Queued(const Queued&) = delete;
@@ -787,7 +704,7 @@ namespace lux::exec
                     if (this == &other)
                         return *this;
                     if (complete)
-                        reject(EAsyncSubmitError::STOPPING);
+                        reject(lux::async::ESubmitError::STOPPING);
                     operation = std::move(other.operation);
                     completion_state = std::exchange(other.completion_state, nullptr);
                     complete = std::exchange(other.complete, nullptr);
@@ -814,7 +731,7 @@ namespace lux::exec
                         std::move(tracker)};
                 }
 
-                void reject(EAsyncSubmitError error) noexcept
+                void reject(lux::async::ESubmitError error) noexcept
                 {
                     auto completion = takeCompletion();
                     completion.failRuntime(error);
@@ -833,11 +750,11 @@ namespace lux::exec
                 std::shared_ptr<AsyncOperationTracker> tracker;
             };
 
-            [[nodiscard]] AsyncSubmitResult submit(
+            [[nodiscard]] lux::async::SubmitResult submit(
                 Operation operation,
                 void* completion_state,
                 void (*complete)(void*, Outcome&&) noexcept,
-                AsyncSubmitOptions options) noexcept
+                lux::async::SubmitOptions options) noexcept override
             {
                 auto admission = tryAcquireAdmission();
                 if (!admission)
@@ -846,7 +763,7 @@ namespace lux::exec
                     complete(
                         completion_state,
                         lux::cxx::unexpected(
-                            AsyncFailure<typename Operation::Error>::runtime(error)));
+                            lux::async::OperationFailure<typename Operation::Error>::runtime(error)));
                     return lux::cxx::unexpected(error);
                 }
                 const auto reservation = reserve(options.accounted_bytes);
@@ -854,12 +771,12 @@ namespace lux::exec
                 {
                     const auto error =
                         reservation == EReservationResult::QUEUE_FULL
-                            ? EAsyncSubmitError::QUEUE_FULL
-                            : EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED;
+                            ? lux::async::ESubmitError::QUEUE_FULL
+                            : lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED;
                     complete(
                         completion_state,
                         lux::cxx::unexpected(
-                            AsyncFailure<typename Operation::Error>::runtime(error)));
+                            lux::async::OperationFailure<typename Operation::Error>::runtime(error)));
                     return lux::cxx::unexpected(error);
                 }
 
@@ -874,8 +791,8 @@ namespace lux::exec
                 if (!queue_.try_enqueue(std::move(value)))
                 {
                     release(options.accounted_bytes);
-                    value.reject(EAsyncSubmitError::QUEUE_FULL);
-                    return lux::cxx::unexpected(EAsyncSubmitError::QUEUE_FULL);
+                    value.reject(lux::async::ESubmitError::QUEUE_FULL);
+                    return lux::cxx::unexpected(lux::async::ESubmitError::QUEUE_FULL);
                 }
                 auto self = weak_from_this().lock();
                 if (self)
@@ -891,7 +808,7 @@ namespace lux::exec
                 return true;
             }
 
-            void rejectAll(EAsyncSubmitError error) noexcept
+            void rejectAll(lux::async::ESubmitError error) noexcept
             {
                 Queued value;
                 while (tryTake(value))
@@ -908,66 +825,4 @@ namespace lux::exec
 
     template <AsyncOperation Operation>
     using AsyncOperationCompletion = detail::AsyncCompletion<Operation>;
-
-    template <AsyncOperation Operation>
-    class AsyncOperationClient final
-    {
-    public:
-        using Endpoint = detail::OperationEndpoint<Operation>;
-        using Outcome = AsyncOutcome<Operation>;
-
-        AsyncOperationClient() noexcept = default;
-
-        /// Fire-and-forget is only meaningful for notification-shaped
-        /// operations. Work with a value must use execute() so its terminal
-        /// result cannot be silently discarded.
-        [[nodiscard]] AsyncSubmitResult tryNotify(
-            Operation operation,
-            AsyncSubmitOptions options = {}) const noexcept
-            requires std::is_void_v<typename Operation::Value>
-        {
-            static std::byte completion_anchor;
-            return submit(
-                std::move(operation),
-                &completion_anchor,
-                +[](void*, Outcome&&) noexcept {},
-                options);
-        }
-
-        [[nodiscard]] explicit operator bool() const noexcept
-        {
-            return static_cast<bool>(endpoint_);
-        }
-
-    private:
-        template <AsyncOperation OtherOperation>
-        friend class AsyncExecuteSender;
-        friend class AsyncRuntimeBuilder;
-
-        explicit AsyncOperationClient(std::shared_ptr<Endpoint> endpoint) noexcept
-            : endpoint_(std::move(endpoint))
-        {}
-
-        [[nodiscard]] AsyncSubmitResult submit(
-            Operation operation,
-            void* completion_state,
-            void (*complete)(void*, Outcome&&) noexcept,
-            AsyncSubmitOptions options) const noexcept
-        {
-            if (!endpoint_)
-            {
-                complete(
-                    completion_state,
-                    lux::cxx::unexpected(
-                        AsyncFailure<typename Operation::Error>::runtime(
-                            EAsyncSubmitError::UNKNOWN_OPERATION)));
-                return lux::cxx::unexpected(
-                    EAsyncSubmitError::UNKNOWN_OPERATION);
-            }
-            return endpoint_->submit(
-                std::move(operation), completion_state, complete, options);
-        }
-
-        std::shared_ptr<Endpoint> endpoint_;
-    };
 }

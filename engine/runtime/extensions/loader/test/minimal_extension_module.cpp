@@ -7,13 +7,13 @@
 #endif
 
 extern "C" LUX_TEST_EXTENSION_EXPORT
-const lux::extensions::ExtensionModuleDescriptorV4*
-luxGetExtensionModuleV4() noexcept
+const lux::extensions::ExtensionModuleDescriptorV5*
+luxGetExtensionModuleV5() noexcept
 {
     using namespace lux::extensions;
-    static constexpr ExtensionModuleDescriptorV4 descriptor{
-        sizeof(ExtensionModuleDescriptorV4),
-        kExtensionAbiV4,
+    static constexpr ExtensionModuleDescriptorV5 descriptor{
+        sizeof(ExtensionModuleDescriptorV5),
+        kExtensionAbiV5,
         kEngineExtensionAbiFingerprint,
         lux::cxx::AbiStringView{"org.lux.test.minimal"},
         ExtensionVersion{1u, 2u, 3u},

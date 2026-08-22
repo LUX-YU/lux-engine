@@ -55,7 +55,7 @@ namespace lux::ecs
         const ComponentSchemaDescriptor& descriptor,
         std::span<const ComponentSchemaDescriptor> pending) const
     {
-        if (!descriptor.cpp_type ||
+        if (!descriptor.cpp_type.isValid() ||
             !isValidComponentSchemaId(descriptor.schema_id) ||
             descriptor.schema_version == 0u ||
             !descriptor.operations.has || !descriptor.operations.get ||
@@ -75,17 +75,17 @@ namespace lux::ecs
         const auto check = [&](const ComponentSchemaDescriptor& existing)
             -> lux::cxx::expected<void, ComponentCatalogFailure>
         {
-            if (existing.cpp_type.hash == descriptor.cpp_type.hash)
+            if (existing.cpp_type.hash() == descriptor.cpp_type.hash())
             {
-                if (existing.cpp_type.name != descriptor.cpp_type.name)
+                if (existing.cpp_type.name() != descriptor.cpp_type.name())
                     return lux::cxx::unexpected(failure(
                         EComponentCatalogError::CPP_TYPE_HASH_COLLISION,
-                        descriptor.cpp_type.name,
-                        existing.cpp_type.name));
+                        descriptor.cpp_type.name(),
+                        existing.cpp_type.name()));
                 return lux::cxx::unexpected(failure(
                     EComponentCatalogError::DUPLICATE_CPP_TYPE,
-                    descriptor.cpp_type.name,
-                    existing.cpp_type.name));
+                    descriptor.cpp_type.name(),
+                    existing.cpp_type.name()));
             }
             if (existing.schema_id.hash == descriptor.schema_id.hash)
             {
@@ -192,7 +192,7 @@ namespace lux::ecs
             }
 
             const auto [type_position, type_inserted] =
-                next_type_index.emplace(descriptor.cpp_type.hash, index);
+                next_type_index.emplace(descriptor.cpp_type.hash(), index);
             if (!type_inserted)
             {
                 const auto existing_index = type_position->second;
@@ -200,13 +200,13 @@ namespace lux::ecs
                     ? entries_[existing_index]
                     : prepared[existing_index - first_index];
                 const auto error =
-                    existing.cpp_type.name == descriptor.cpp_type.name
+                    existing.cpp_type.name() == descriptor.cpp_type.name()
                     ? EComponentCatalogError::DUPLICATE_CPP_TYPE
                     : EComponentCatalogError::CPP_TYPE_HASH_COLLISION;
                 return lux::cxx::unexpected(failure(
                     error,
-                    descriptor.cpp_type.name,
-                    existing.cpp_type.name));
+                    descriptor.cpp_type.name(),
+                    existing.cpp_type.name()));
             }
         }
 
@@ -265,21 +265,19 @@ namespace lux::ecs
             entries_.end(),
             [name](const ComponentSchemaDescriptor& descriptor)
             {
-                return descriptor.cpp_type.name == name;
+                return descriptor.cpp_type.name() == name;
             });
         return found == entries_.end() ? nullptr : &*found;
     }
 
     const ComponentSchemaDescriptor* ComponentTypeCatalog::findByType(
-        TypeToken type) const noexcept
+        lux::cxx::TypeToken type) const noexcept
     {
-        const auto found = type_index_.find(type.hash);
+        const auto found = type_index_.find(type.hash());
         if (found == type_index_.end())
             return nullptr;
         const auto& descriptor = entries_[found->second];
-        return sameTypeToken(descriptor.cpp_type.view(), type)
-            ? &descriptor
-            : nullptr;
+        return descriptor.cpp_type == type ? &descriptor : nullptr;
     }
 
     std::span<const ComponentSchemaDescriptor> ComponentTypeCatalog::all() const noexcept

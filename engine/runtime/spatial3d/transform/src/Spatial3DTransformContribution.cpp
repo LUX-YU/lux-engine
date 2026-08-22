@@ -28,7 +28,7 @@ namespace lux::runtime
             std::string{kSpatial3DTransformContributionName}};
         descriptor.display_name = "3D transform resolution";
         descriptor.provided_services = {
-            lux::ecs::typeToken<lux::ecs::Transform3DSystem>()};
+            lux::cxx::typeToken<lux::ecs::Transform3DSystem>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [](

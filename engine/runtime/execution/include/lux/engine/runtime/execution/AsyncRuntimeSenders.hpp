@@ -366,15 +366,15 @@ namespace lux::exec
     {
     public:
         using sender_concept = stdexec::sender_t;
-        using Outcome = AsyncOutcome<Operation>;
+        using Outcome = lux::async::OperationOutcome<Operation>;
         using completion_signatures = stdexec::completion_signatures<
             stdexec::set_value_t(Outcome),
             stdexec::set_stopped_t()>;
 
         AsyncExecuteSender(
-            AsyncOperationClient<Operation> client,
+            lux::async::OperationPort<Operation> client,
             Operation operation,
-            AsyncSubmitOptions options) noexcept
+            lux::async::SubmitOptions options) noexcept
             : client_(std::move(client))
             , operation_(std::move(operation))
             , options_(options)
@@ -384,9 +384,9 @@ namespace lux::exec
         struct State final
         {
             using operation_state_concept = stdexec::operation_state_t;
-            AsyncOperationClient<Operation> client;
+            lux::async::OperationPort<Operation> client;
             Operation operation;
-            AsyncSubmitOptions options;
+            lux::async::SubmitOptions options;
             Receiver receiver;
 
             static void complete(void* opaque, Outcome&& outcome) noexcept
@@ -412,16 +412,16 @@ namespace lux::exec
         }
 
     private:
-        AsyncOperationClient<Operation> client_;
+        lux::async::OperationPort<Operation> client_;
         Operation operation_;
-        AsyncSubmitOptions options_{};
+        lux::async::SubmitOptions options_{};
     };
 
     template <AsyncOperation Operation>
     [[nodiscard]] auto execute(
-        AsyncOperationClient<Operation> client,
+        lux::async::OperationPort<Operation> client,
         Operation operation,
-        AsyncSubmitOptions options = {}) noexcept
+        lux::async::SubmitOptions options = {}) noexcept
     {
         return AsyncExecuteSender<Operation>{
             std::move(client), std::move(operation), options};

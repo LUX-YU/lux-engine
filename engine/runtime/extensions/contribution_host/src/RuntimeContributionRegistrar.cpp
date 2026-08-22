@@ -15,26 +15,6 @@ namespace lux::extensions
     }
 
     lux::cxx::expected<void, EContributionDraftError>
-    ComponentSchemaRegistrar::add(
-        lux::ecs::ComponentSchemaDescriptor descriptor)
-    {
-        if (unavailable(finished_, module_))
-        {
-            return lux::cxx::unexpected(
-                EContributionDraftError::REGISTRAR_FINISHED);
-        }
-        if (!descriptor.cpp_type || !descriptor.schema_id)
-        {
-            return lux::cxx::unexpected(
-                EContributionDraftError::INVALID_DESCRIPTOR);
-        }
-        descriptor.provider = module_->id().name();
-        descriptor.lifetime = module_;
-        draft_->components.push_back(std::move(descriptor));
-        return {};
-    }
-
-    lux::cxx::expected<void, EContributionDraftError>
     SceneContributionRegistrar::add(
         lux::runtime::SceneContributionDescriptor descriptor)
     {
@@ -77,7 +57,6 @@ namespace lux::extensions
     RuntimeContributionRegistrar::RuntimeContributionRegistrar(
         ModuleLease module) noexcept
         : module_(std::move(module))
-        , components_(draft_, module_, finished_)
         , scene_contributions_(draft_, module_, finished_)
         , render_effects_(draft_, module_, finished_)
         , async_operations_(async_builder_, module_)
@@ -96,14 +75,6 @@ namespace lux::extensions
         const RuntimeRegistrationDraft& draft,
         RuntimeCatalogSet catalogs)
     {
-        if (auto checked = catalogs.components.validateSchemas(
-                draft.components);
-            !checked)
-        {
-            return lux::cxx::unexpected(RuntimeCatalogCommitFailure{
-                ERuntimeCatalogCommitError::COMPONENTS,
-                static_cast<std::uint32_t>(checked.error().error)});
-        }
         if (auto checked = catalogs.scene_contributions.validateBatch(
                 draft.scene_contributions);
             !checked)
@@ -134,14 +105,6 @@ namespace lux::extensions
         // All three catalogues are main-thread confined. No other mutation can
         // interleave between validation and these moves, so these calls are
         // infallible unless a catalogue invariant has been broken internally.
-        if (auto committed = catalogs.components.registerSchemas(
-                draft.components);
-            !committed)
-        {
-            return lux::cxx::unexpected(RuntimeCatalogCommitFailure{
-                ERuntimeCatalogCommitError::COMPONENTS,
-                static_cast<std::uint32_t>(committed.error().error)});
-        }
         if (auto committed = catalogs.scene_contributions.addBatch(
                 std::move(draft.scene_contributions));
             !committed)

@@ -1,4 +1,4 @@
-## engine::extensions::extension_api — Engine-owned Extension ABI v4 boundary.
+## engine::extensions::extension_api — Engine-owned same-toolchain ABI v5 boundary.
 
 find_package(lux-cxx REQUIRED COMPONENTS core abi)
 

@@ -59,7 +59,7 @@ namespace lux::runtime::spatial2d
     public:
         TilemapPrepareClient() noexcept = default;
 
-        [[nodiscard]] const lux::exec::AsyncOperationClient<
+        [[nodiscard]] const lux::async::OperationPort<
             PrepareTilemapChunk>& operation() const noexcept
         {
             return operation_;
@@ -70,11 +70,11 @@ namespace lux::runtime::spatial2d
         friend class TilemapPrepareService;
         TilemapPrepareClient(
             std::weak_ptr<detail::TilemapPrepareControl> control,
-            lux::exec::AsyncOperationClient<PrepareTilemapChunk> operation)
+            lux::async::OperationPort<PrepareTilemapChunk> operation)
             noexcept;
 
         std::weak_ptr<detail::TilemapPrepareControl> control_;
-        lux::exec::AsyncOperationClient<PrepareTilemapChunk> operation_;
+        lux::async::OperationPort<PrepareTilemapChunk> operation_;
     };
 
     class LUX_ENGINE_RUNTIME_SPATIAL2D_TILEMAP_PUBLIC
@@ -100,11 +100,11 @@ namespace lux::runtime::spatial2d
     private:
         TilemapPrepareService(
             std::shared_ptr<detail::TilemapPrepareControl> control,
-            lux::exec::AsyncOperationClient<PrepareTilemapChunk> operation)
+            lux::async::OperationPort<PrepareTilemapChunk> operation)
             noexcept;
 
         std::shared_ptr<detail::TilemapPrepareControl> control_;
-        lux::exec::AsyncOperationClient<PrepareTilemapChunk> operation_;
+        lux::async::OperationPort<PrepareTilemapChunk> operation_;
         bool closed_{false};
     };
 } // namespace lux::runtime::spatial2d

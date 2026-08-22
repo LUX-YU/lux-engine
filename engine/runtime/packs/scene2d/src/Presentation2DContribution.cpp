@@ -63,10 +63,10 @@ namespace lux::runtime
             lux::scene::SceneFeatureId{
                 std::string{kSpatial2DTransformContributionName}}};
         descriptor.required_services = {
-            typeToken<Simulation2DSystem>(),
-            typeToken<Transform2DSystem>(),
-            typeToken<lux::asset_runtime::SceneAssetServices>()};
-        descriptor.provided_services = {typeToken<Camera2DSystem>()};
+            lux::cxx::typeToken<Simulation2DSystem>(),
+            lux::cxx::typeToken<Transform2DSystem>(),
+            lux::cxx::typeToken<lux::asset_runtime::SceneAssetServices>()};
+        descriptor.provided_services = {lux::cxx::typeToken<Camera2DSystem>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [](
@@ -83,7 +83,7 @@ namespace lux::runtime
                 return lux::cxx::unexpected(
                     SceneContributionBuildFailure{
                         ESceneContributionBuildError::MISSING_SERVICE,
-                        typeToken<lux::asset_runtime::
+                        lux::cxx::typeToken<lux::asset_runtime::
                             SceneAssetServices>()});
             }
             if (auto added = builder.add(
@@ -166,7 +166,7 @@ namespace lux::runtime
                 return lux::cxx::unexpected(
                     SceneContributionBuildFailure{
                         ESceneContributionBuildError::MISSING_SERVICE,
-                        typeToken<ResidencySubsystem>()});
+                        lux::cxx::typeToken<ResidencySubsystem>()});
             }
             residency->resolveTextureOf<
                 Image2DComponent,

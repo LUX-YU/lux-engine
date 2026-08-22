@@ -112,9 +112,7 @@ namespace
             "org.lux.test.component.dynamic_test_component";
         lux::ecs::queueGeneratedComponent(
             lux::ecs::ComponentSchemaDescriptor{
-                {
-                    lux::cxx::type_hash<RollbackOnlyType>(),
-                    std::string{lux::cxx::type_name<RollbackOnlyType>()}},
+                lux::cxx::typeToken<RollbackOnlyType>(),
                 {
                     lux::cxx::algorithm::fnv1a(kDuplicateSchema),
                     std::string{kDuplicateSchema}},
@@ -139,13 +137,13 @@ namespace
 }
 
 extern "C" LUX_TEST_EXTENSION_EXPORT
-const lux::extensions::ExtensionModuleDescriptorV4*
-luxGetExtensionModuleV4() noexcept
+const lux::extensions::ExtensionModuleDescriptorV5*
+luxGetExtensionModuleV5() noexcept
 {
     using namespace lux::extensions;
-    static constexpr ExtensionModuleDescriptorV4 descriptor{
-        sizeof(ExtensionModuleDescriptorV4),
-        kExtensionAbiV4,
+    static constexpr ExtensionModuleDescriptorV5 descriptor{
+        sizeof(ExtensionModuleDescriptorV5),
+        kExtensionAbiV5,
         kEngineExtensionAbiFingerprint,
         lux::cxx::AbiStringView{"org.lux.test.rollback"},
         ExtensionVersion{1u, 0u, 0u},

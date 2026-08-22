@@ -317,7 +317,7 @@ namespace lux::ecs
             changes_.attach(
                 registry,
                 static_cast<entt::id_type>(
-                    systemType<HierarchicalTransformSystem<Policy>>().hash),
+                    systemType<HierarchicalTransformSystem<Policy>>().hash()),
                 [](auto& storage)
             {
                 storage.template on_construct<Local>();

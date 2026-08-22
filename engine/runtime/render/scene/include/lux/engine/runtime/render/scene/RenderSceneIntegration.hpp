@@ -64,9 +64,9 @@ namespace lux::runtime
         RenderSceneIntegration& operator=(const RenderSceneIntegration&) =
             delete;
 
-        [[nodiscard]] lux::ecs::TypeToken type() const noexcept override
+        [[nodiscard]] lux::cxx::TypeToken type() const noexcept override
         {
-            return lux::ecs::typeToken<RenderSceneIntegration>();
+            return lux::cxx::typeToken<RenderSceneIntegration>();
         }
         [[nodiscard]] lux::cxx::expected<void, ESceneIntegrationError>
         prepare(SceneRuntimeAssemblyContext& context) noexcept override;

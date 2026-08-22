@@ -99,7 +99,7 @@ namespace lux::ecs
                 return lux::cxx::unexpected<ScheduleCommitFailure>(
                     ScheduleCommitFailure{
                         EScheduleCommitError::DuplicateType,
-                        node.type.name, {}});
+                        node.type.name(), {}});
 
         // 对 live ∪ pending 做一次纯快照分析。这里不采用预检算出的 order：
         // 正式 compile 还要把局部顺序映射回稳定槽位，并在后续合法增删后重建缓存。
@@ -147,8 +147,8 @@ namespace lux::ecs
             return lux::cxx::unexpected<ScheduleCommitFailure>(
                 ScheduleCommitFailure{
                     EScheduleCommitError::MissingPrerequisite,
-                    subject.name,
-                    required.name,
+                    subject.name(),
+                    required.name(),
                     std::move(analysis.report),
                 });
         }
@@ -158,7 +158,7 @@ namespace lux::ecs
             return lux::cxx::unexpected<ScheduleCommitFailure>(
                 ScheduleCommitFailure{
                     EScheduleCommitError::TopologyCycle,
-                    subject.name,
+                    subject.name(),
                     {},
                     std::move(analysis.report),
                 });
@@ -176,7 +176,7 @@ namespace lux::ecs
                 ScheduleCommitFailure{
                     EScheduleCommitError::ServiceConflict,
                     "<services>",
-                    published.error().name,
+                    published.error().name(),
                 });
 
         // ── 交付。先收下并冻结整批，再运行任何 onAdded ───────────────────

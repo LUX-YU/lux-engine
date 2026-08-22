@@ -42,7 +42,7 @@ namespace lux::editor
 
         [[nodiscard]] InstanceSpawnFailure loadFailure(
             const lux::asset::asset_id_t& id,
-            const lux::exec::AsyncFailure<lux::asset::EAssetError>& error)
+            const lux::async::OperationFailure<lux::asset::EAssetError>& error)
             noexcept
         {
             return InstanceSpawnFailure{
@@ -175,7 +175,7 @@ namespace lux::editor
 
         [[nodiscard]] PreparedLoad prepare(
             const lux::asset::asset_id_t& model_id,
-            lux::exec::AsyncOutcome<lux::asset_runtime::LoadAsset> outcome)
+            lux::async::OperationOutcome<lux::asset_runtime::LoadAsset> outcome)
             noexcept
         {
             PreparedLoad prepared;
@@ -251,7 +251,7 @@ namespace lux::editor
 
         [[nodiscard]] PreparedOutcome adoptDependencies(
             PreparedLoad prepared,
-            lux::exec::AsyncOutcome<
+            lux::async::OperationOutcome<
                 lux::asset_runtime::LoadAssetBatch> outcome) noexcept
         {
             if (prepared.failure)
@@ -479,21 +479,21 @@ namespace lux::editor
             state_->scope->requestStop();
     }
 
-    lux::exec::AsyncSubmitResult InstanceSpawnClient::spawnModel(
+    lux::async::SubmitResult InstanceSpawnClient::spawnModel(
         const lux::asset::asset_id_t& model,
         Completion completion)
     {
         if (!state_ || model.is_nil())
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::PAYLOAD_INVALID);
+                lux::async::ESubmitError::PAYLOAD_INVALID);
         }
         auto state = state_;
         if (!state->accepting.load(std::memory_order_acquire) ||
             !state->scope || !state->scope->isOpen())
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::STOPPING);
+                lux::async::ESubmitError::STOPPING);
         }
 
         auto terminal = std::make_shared<RequestTerminal>(
@@ -502,7 +502,7 @@ namespace lux::editor
             | ex::continues_on(lux::exec::mainThreadScheduler(*state->runtime))
             | ex::then(
                   [state, model](
-                      lux::exec::AsyncOutcome<
+                      lux::async::OperationOutcome<
                           lux::asset_runtime::LoadAsset> outcome) noexcept
                   {
                       return state->prepare(model, std::move(outcome));
@@ -520,7 +520,7 @@ namespace lux::editor
                           | ex::then(
                                 [state,
                                  retained = std::move(retained)](
-                                    lux::exec::AsyncOutcome<
+                                    lux::async::OperationOutcome<
                                         lux::asset_runtime::LoadAssetBatch>
                                         outcome) mutable noexcept
                                 {
@@ -565,7 +565,7 @@ namespace lux::editor
                     EInstanceSpawnError::STOPPING,
                     model}));
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::STOPPING);
+                lux::async::ESubmitError::STOPPING);
         }
         return {};
     }

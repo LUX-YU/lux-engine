@@ -1,14 +1,12 @@
 #include <lux/engine/extensions/physics2d/Physics2D.hpp>
 
+#include <lux/engine/ecs/ScheduleBuilder.hpp>
 #include <lux/engine/ecs/physics2d/systems/Physics2DSystem.hpp>
 #include <lux/engine/extensions/ExtensionAbi.hpp>
-#include <lux/engine/runtime/extensions/RuntimeContributionRegistrar.hpp>
-#include <lux/engine/runtime/extensions/SceneContributions.hpp>
 
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <cstring>
 #include <memory>
 
 namespace lux::extensions::physics2d
@@ -84,65 +82,39 @@ namespace lux::extensions::physics2d
         float accumulated_{0.0f};
     };
 
-    lux::runtime::SceneContributionDescriptor makeContribution()
+    ExtensionRegistrationResult installWorldSystems(
+        lux::ecs::ScheduleBuilder& builder) noexcept
     {
         Physics2DContributionConfig defaults;
-        const auto default_bytes = lux::cxx::SharedBytes<>::copyOf(
-            std::as_bytes(std::span{&defaults, 1u}));
-
-        lux::runtime::SceneContributionDescriptor descriptor;
-        descriptor.id = lux::scene::SceneFeatureId{
-            "org.lux.physics2d.world"};
-        descriptor.display_name = "Physics 2D";
-        descriptor.provided_services = {
-            lux::ecs::typeToken<PhysicsWorldApi>()};
-        descriptor.config_schema_version = 1u;
-        descriptor.default_config = lux::runtime::ContributionConfig{
-            1u, default_bytes};
-        descriptor.provider = lux::extensions::ExtensionId{
-            "org.lux.physics2d"};
-        descriptor.build = [](
-            lux::runtime::SceneContributionBatchBuilder& builder,
-            const lux::runtime::SceneContributionBuildContext&,
-            lux::runtime::ContributionConfig config)
-            -> lux::cxx::expected<
-                void, lux::runtime::SceneContributionBuildFailure>
+        auto system = std::make_unique<Physics2DContributionSystem>(defaults);
+        auto api = system->makeApi();
+        const auto checkpoint = builder.checkpoint();
+        if (!builder.services().emplace(std::move(api)))
         {
-            if (config.schema_version != 1u ||
-                config.bytes.size() != sizeof(Physics2DContributionConfig))
-            {
-                return lux::cxx::unexpected(
-                    lux::runtime::SceneContributionBuildFailure{
-                        lux::runtime::ESceneContributionBuildError::INVALID_CONFIG});
-            }
-            Physics2DContributionConfig decoded;
-            std::memcpy(
-                &decoded,
-                config.bytes.data(),
-                sizeof(decoded));
-            auto system = std::make_unique<Physics2DContributionSystem>(
-                decoded);
-            auto capability = builder.publishService(
-                system->makeApi());
-            if (!capability)
-                return lux::cxx::unexpected(capability.error());
-            return builder.add(
+            return ExtensionRegistrationResult{
+                EExtensionRegistrationError::DUPLICATE_CONTRIBUTION};
+        }
+        if (!builder.add(
                 std::move(system),
-                lux::ecs::kPhaseSimulation);
-        };
-        return descriptor;
+                lux::ecs::kPhaseSimulation))
+        {
+            (void)builder.rollbackTo(checkpoint);
+            return ExtensionRegistrationResult{
+                EExtensionRegistrationError::DUPLICATE_CONTRIBUTION};
+        }
+        return {};
     }
 
 } // namespace lux::extensions::physics2d
 
 extern "C" LUX_PHYSICS2D_EXTENSION_PUBLIC
-const lux::extensions::ExtensionModuleDescriptorV4*
-luxGetExtensionModuleV4() noexcept
+const lux::extensions::ExtensionModuleDescriptorV5*
+luxGetExtensionModuleV5() noexcept
 {
     using namespace lux::extensions;
-    static constexpr ExtensionModuleDescriptorV4 descriptor{
-        sizeof(ExtensionModuleDescriptorV4),
-        kExtensionAbiV4,
+    static constexpr ExtensionModuleDescriptorV5 descriptor{
+        sizeof(ExtensionModuleDescriptorV5),
+        kExtensionAbiV5,
         kEngineExtensionAbiFingerprint,
         lux::cxx::AbiStringView{"org.lux.physics2d"},
         ExtensionVersion{1u, 0u, 0u},
@@ -154,14 +126,8 @@ luxGetExtensionModuleV4() noexcept
 
 extern "C" LUX_PHYSICS2D_EXTENSION_PUBLIC
 lux::extensions::ExtensionRegistrationResult
-luxRegisterRuntimeContributionsV4(
-    lux::extensions::RuntimeContributionRegistrar& registrar) noexcept
+luxInstallWorldSystemsV5(
+    lux::ecs::ScheduleBuilder& builder) noexcept
 {
-    const auto added = registrar.sceneContributions().add(
-        lux::extensions::physics2d::makeContribution());
-    return added
-        ? lux::extensions::ExtensionRegistrationResult{}
-        : lux::extensions::ExtensionRegistrationResult{
-              lux::extensions::EExtensionRegistrationError::
-                  INVALID_DESCRIPTOR};
+    return lux::extensions::physics2d::installWorldSystems(builder);
 }

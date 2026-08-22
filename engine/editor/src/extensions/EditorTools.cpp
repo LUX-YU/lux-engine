@@ -56,17 +56,17 @@ namespace lux::editor
     lux::cxx::expected<void, EEditorServiceRegistrationError>
     EditorPanelCreateContext::addErased(Entry entry)
     {
-        if (!entry.type || entry.value == nullptr)
+        if (!entry.type.isValid() || entry.value == nullptr)
         {
             return lux::cxx::unexpected(
                 EEditorServiceRegistrationError::INVALID_SERVICE);
         }
         for (const auto& existing : entries_)
         {
-            if (existing.type.hash != entry.type.hash)
+            if (existing.type.hash() != entry.type.hash())
                 continue;
             return lux::cxx::unexpected(
-                existing.type.name == entry.type.name
+                existing.type.name() == entry.type.name()
                     ? EEditorServiceRegistrationError::DUPLICATE_TYPE
                     : EEditorServiceRegistrationError::TYPE_HASH_COLLISION);
         }
@@ -75,13 +75,13 @@ namespace lux::editor
     }
 
     bool EditorPanelCreateContext::contains(
-        lux::ecs::TypeToken type) const noexcept
+        lux::cxx::TypeToken type) const noexcept
     {
         return std::ranges::any_of(
             entries_,
             [type](const Entry& entry) noexcept
             {
-                return lux::ecs::sameTypeToken(entry.type, type);
+                return entry.type == type;
             });
     }
 
@@ -464,7 +464,7 @@ namespace lux::editor
 
     lux::cxx::expected<void, EEditorServiceRegistrationError>
     EditorToolHost::addServiceErased(
-        lux::ecs::TypeToken type,
+        lux::cxx::TypeToken type,
         void* service)
     {
         if (!impl_ || service == nullptr)

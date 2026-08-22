@@ -31,8 +31,8 @@ namespace lux::editor
             std::string{kPreviewWorldContributionName}};
         descriptor.display_name = "Editor preview 3D";
         descriptor.required_services = {
-            lux::ecs::typeToken<lux::ecs::ResidencySubsystem>(),
-            lux::ecs::typeToken<lux::ecs::RenderSystemBuilder>()};
+            lux::cxx::typeToken<lux::ecs::ResidencySubsystem>(),
+            lux::cxx::typeToken<lux::ecs::RenderSystemBuilder>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.editor"};
         descriptor.build = [](

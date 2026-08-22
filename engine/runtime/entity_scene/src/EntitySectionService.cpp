@@ -43,7 +43,7 @@ namespace lux::runtime::entity_scene
                     return;
                 }
                 completion.complete(lux::cxx::unexpected(
-                    lux::exec::AsyncFailure<EEntitySectionLoadError>::domain(
+                    lux::async::OperationFailure<EEntitySectionLoadError>::domain(
                         result.error())));
             }
 
@@ -51,7 +51,7 @@ namespace lux::runtime::entity_scene
             {
                 if (settled.exchange(true, std::memory_order_acq_rel))
                     return;
-                completion.failRuntime(lux::exec::EAsyncSubmitError::STOPPING);
+                completion.failRuntime(lux::async::ESubmitError::STOPPING);
             }
 
             std::atomic<bool> settled{false};
@@ -227,7 +227,7 @@ namespace lux::runtime::entity_scene
 
     EntitySectionLoadClient::EntitySectionLoadClient(
         std::weak_ptr<detail::EntitySectionOperationControl> control,
-        lux::exec::AsyncOperationClient<LoadEntitySection> operation) noexcept
+        lux::async::OperationPort<LoadEntitySection> operation) noexcept
         : control_(std::move(control)), operation_(std::move(operation))
     {}
 
@@ -392,7 +392,7 @@ namespace lux::runtime::entity_scene
     }
     EntitySectionService::EntitySectionService(
         std::shared_ptr<detail::EntitySectionOperationControl> control,
-        lux::exec::AsyncOperationClient<LoadEntitySection> operation) noexcept
+        lux::async::OperationPort<LoadEntitySection> operation) noexcept
         : control_(std::move(control)), operation_(std::move(operation))
     {}
 

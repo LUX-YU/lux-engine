@@ -521,7 +521,9 @@ namespace lux::ecs
             // ⑤ 逐实体处理。**驱动**在这里选:稳态下 `changes_` 是空的,
             //    于是这一整段一个实体都不碰(批 R2)。
             //    换出语义与 VERIFY 对拍都在 `drain` 里(批 R3 从本节点收上去的)。
-            changes_.drain(reg, renderSubsystemType<MeshInstanceSubsystem>().name,
+            changes_.drain(
+                reg,
+                renderSubsystemType<MeshInstanceSubsystem>().name(),
                 [&](lux::ecs::Entity e, C& c)
                 { return processEntity(reg, ctx, active_view, mesh, e, c); });
 
@@ -795,7 +797,8 @@ namespace lux::ecs
         void attachChangeSources(lux::ecs::Registry& reg)
         {
             changes_.attach(reg,
-                static_cast<entt::id_type>(renderSubsystemType<MeshInstanceSubsystem>().hash),
+                static_cast<entt::id_type>(
+                    renderSubsystemType<MeshInstanceSubsystem>().hash()),
                 [](auto& s)
                 { declareSources(s, typename T::Require{}, typename T::Exclude{}); });
         }

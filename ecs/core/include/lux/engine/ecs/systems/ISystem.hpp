@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/ecs/SystemUpdateContext.hpp>
-#include <lux/engine/ecs/TypeToken.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/ecs/Registry.hpp>
 
 #include <cstdint>
@@ -31,18 +31,18 @@ namespace lux::ecs
         }
     };
 
-    using SystemType = TypeToken;
+    using SystemType = lux::cxx::TypeToken;
 
     template <class System>
     [[nodiscard]] constexpr SystemType systemType() noexcept
     {
-        return typeToken<System>();
+        return lux::cxx::typeToken<System>();
     }
 
     [[nodiscard]] constexpr bool sameSystemType(
         SystemType lhs, SystemType rhs) noexcept
     {
-        return sameTypeToken(lhs, rhs);
+        return lhs == rhs;
     }
 
     /// Base class for all gameplay systems.
@@ -138,7 +138,7 @@ namespace lux::ecs
         }
 
         using Type         = SystemType;
-        using ResourceType = TypeToken;
+        using ResourceType = lux::cxx::TypeToken;
 
         enum class AccessMode : std::uint8_t
         {
@@ -167,13 +167,15 @@ namespace lux::ecs
         template <class Resource>
         [[nodiscard]] static constexpr ResourceAccess reads() noexcept
         {
-            return ResourceAccess{typeToken<Resource>(), AccessMode::Read};
+            return ResourceAccess{
+                lux::cxx::typeToken<Resource>(), AccessMode::Read};
         }
 
         template <class Resource>
         [[nodiscard]] static constexpr ResourceAccess writes() noexcept
         {
-            return ResourceAccess{typeToken<Resource>(), AccessMode::Write};
+            return ResourceAccess{
+                lux::cxx::typeToken<Resource>(), AccessMode::Write};
         }
 
         /// 本系统的前置依赖(按类型引用):这些系统必须**也在**同一 Schedule,

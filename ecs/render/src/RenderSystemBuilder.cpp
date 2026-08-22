@@ -68,10 +68,12 @@ namespace lux::ecs
             {
                 for (std::size_t previous = 0u; previous < index; ++previous)
                 {
-                    if (nodes[index].type.hash != nodes[previous].type.hash)
+                    if (nodes[index].type.hash() !=
+                        nodes[previous].type.hash())
                         continue;
                     return lux::cxx::unexpected(RenderAssemblyFailure{
-                        nodes[index].type.name == nodes[previous].type.name
+                        nodes[index].type.name() ==
+                                nodes[previous].type.name()
                             ? ERenderAssemblyError::DuplicateType
                             : ERenderAssemblyError::TypeCollision,
                         nodes[index].type,
@@ -83,7 +85,7 @@ namespace lux::ecs
                 -> std::size_t
             {
                 for (std::size_t index = 0u; index < count; ++index)
-                    if (sameTypeToken(nodes[index].type, type))
+                    if (nodes[index].type == type)
                         return index;
                 return count;
             };
@@ -411,10 +413,10 @@ namespace lux::ecs
         }
         for (const auto& existing : impl_->pending)
         {
-            if (existing.type.hash != type.hash)
+            if (existing.type.hash() != type.hash())
                 continue;
             return lux::cxx::unexpected(RenderAssemblyFailure{
-                existing.type.name == type.name
+                existing.type.name() == type.name()
                     ? ERenderAssemblyError::DuplicateType
                     : ERenderAssemblyError::TypeCollision,
                 type,
@@ -469,10 +471,10 @@ namespace lux::ecs
         }
         for (const auto& existing : impl_->pending)
         {
-            if (existing.type.hash != type.hash)
+            if (existing.type.hash() != type.hash())
                 continue;
             return lux::cxx::unexpected(RenderAssemblyFailure{
-                existing.type.name == type.name
+                existing.type.name() == type.name()
                     ? ERenderAssemblyError::DuplicateType
                     : ERenderAssemblyError::TypeCollision,
                 type,
@@ -765,7 +767,7 @@ namespace lux::ecs
             auto* slot = impl_->slots[handle.slot].get();
             if (!slot || !slot->subsystem ||
                 slot->generation != handle.generation ||
-                !sameTypeToken(slot->type, handle.type) ||
+                slot->type != handle.type ||
                 std::ranges::find(removed, slot) != removed.end())
             {
                 return lux::cxx::unexpected(RenderAssemblyFailure{

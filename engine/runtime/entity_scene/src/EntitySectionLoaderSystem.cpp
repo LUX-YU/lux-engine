@@ -263,7 +263,7 @@ namespace lux::runtime::entity_scene
         void acceptOutcome(
             std::uint32_t index,
             std::uint64_t generation,
-            lux::exec::AsyncOutcome<LoadEntitySection> outcome) noexcept
+            lux::async::OperationOutcome<LoadEntitySection> outcome) noexcept
         {
             if (std::this_thread::get_id() != owner_thread)
                 std::abort();
@@ -280,9 +280,9 @@ namespace lux::runtime::entity_scene
                 if (outcome.error().isRuntime())
                 {
                     const auto error = outcome.error().runtimeError();
-                    if (error == lux::exec::EAsyncSubmitError::QUEUE_FULL ||
-                        error == lux::exec::
-                            EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED)
+                    if (error == lux::async::ESubmitError::QUEUE_FULL ||
+                        error == lux::async::ESubmitError::
+                            BYTE_BUDGET_EXHAUSTED)
                     {
                         ++queue_backpressure;
                         slot.state =
@@ -348,13 +348,13 @@ namespace lux::runtime::entity_scene
             auto pipeline = lux::exec::execute(
                     loading.operation(),
                     loading.loadOperation(vfs, slot.record, generation),
-                    lux::exec::AsyncSubmitOptions{
+                    lux::async::SubmitOptions{
                         .accounted_bytes = *accounted})
                 | ex::continues_on(
                       lux::exec::mainThreadScheduler(*runtime_owner))
                 | ex::then(
                       [control = std::weak_ptr{control}, index, generation](
-                          lux::exec::AsyncOutcome<LoadEntitySection> outcome)
+                          lux::async::OperationOutcome<LoadEntitySection> outcome)
                           mutable noexcept
                       {
                           const auto locked = control.lock();

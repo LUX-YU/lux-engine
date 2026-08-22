@@ -36,12 +36,12 @@ namespace lux::runtime
             std::string{kTilemap2DContributionName}};
         descriptor.display_name = "2D tilemap content";
         descriptor.required_services = {
-            typeToken<SceneAsyncContext>(),
-            typeToken<entity_scene::ContentBlobClient>(),
-            typeToken<PersistentEntityIndex>()};
+            lux::cxx::typeToken<SceneAsyncContext>(),
+            lux::cxx::typeToken<entity_scene::ContentBlobClient>(),
+            lux::cxx::typeToken<PersistentEntityIndex>()};
         descriptor.provided_services = {
-            typeToken<TilemapRuntime>(),
-            typeToken<TilemapSystem>()};
+            lux::cxx::typeToken<TilemapRuntime>(),
+            lux::cxx::typeToken<TilemapSystem>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [preparation](
@@ -65,14 +65,14 @@ namespace lux::runtime
                             ? ESceneContributionBuildError::MISSING_SERVICE
                             : ESceneContributionBuildError::BUILD_REJECTED,
                         !async
-                            ? typeToken<SceneAsyncContext>()
+                            ? lux::cxx::typeToken<SceneAsyncContext>()
                             : !blobs
-                                  ? typeToken<
+                                  ? lux::cxx::typeToken<
                                         entity_scene::ContentBlobClient>()
                                   : !persistent
-                                        ? typeToken<
+                                        ? lux::cxx::typeToken<
                                               PersistentEntityIndex>()
-                                        : TypeToken{}});
+                                        : lux::cxx::TypeToken{}});
             }
 
             auto published_runtime = builder.publishServiceAndGet(

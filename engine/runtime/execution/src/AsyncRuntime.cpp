@@ -362,7 +362,7 @@ namespace lux::exec
                 registration->scope = std::make_shared<AsyncScope>(runtime);
                 endpoints->push_back(registration->descriptor.endpoint);
                 registry.emplace(
-                    registration->descriptor.type.hash,
+                    registration->descriptor.type.hash(),
                     std::move(registration));
             }
             std::atomic_store_explicit(
@@ -401,11 +401,11 @@ namespace lux::exec
                 });
         }
 
-        [[nodiscard]] bool hasExactOperation(AsyncTypeToken type) const noexcept
+        [[nodiscard]] bool hasExactOperation(lux::cxx::TypeToken type) const noexcept
         {
-            const auto found = registry.find(type.hash);
+            const auto found = registry.find(type.hash());
             return found != registry.end() &&
-                found->second->descriptor.type.name == type.name;
+                found->second->descriptor.type.name() == type.name();
         }
 
         void publishEndpoint(
@@ -429,9 +429,9 @@ namespace lux::exec
             if (!endpoint)
                 return;
             wakeups.fetch_add(1u, std::memory_order_relaxed);
-            const auto found = registry.find(endpoint->type().hash);
+            const auto found = registry.find(endpoint->type().hash());
             if (found == registry.end() ||
-                found->second->descriptor.type.name != endpoint->type().name)
+                found->second->descriptor.type.name() != endpoint->type().name())
             {
                 endpoint->clearScheduled();
                 return;
@@ -454,8 +454,8 @@ namespace lux::exec
                 registration.descriptor.rejectAll(
                     *endpoint,
                     endpoint_state == detail::EAsyncEndpointState::CLOSING
-                        ? EAsyncSubmitError::FEATURE_CLOSING
-                        : EAsyncSubmitError::STOPPING);
+                        ? lux::async::ESubmitError::FEATURE_CLOSING
+                        : lux::async::ESubmitError::STOPPING);
             }
             const auto after = endpoint->queued();
             dispatched.fetch_add(
@@ -673,11 +673,12 @@ namespace lux::exec
             }
             for (const auto& descriptor : descriptors)
             {
-                const auto live = registry.find(descriptor.type.hash);
+                const auto live = registry.find(descriptor.type.hash());
                 if (live != registry.end())
                 {
                     completion(lux::cxx::unexpected(
-                        live->second->descriptor.type.name == descriptor.type.name
+                        live->second->descriptor.type.name() ==
+                            descriptor.type.name()
                             ? EAsyncOperationBundleInstallError::DUPLICATE_OPERATION
                             : EAsyncOperationBundleInstallError::TYPE_COLLISION));
                     return;
@@ -710,7 +711,7 @@ namespace lux::exec
             bundle.operation_hashes.reserve(descriptors.size());
             for (auto& descriptor : descriptors)
             {
-                const auto hash = descriptor.type.hash;
+                const auto hash = descriptor.type.hash();
                 auto registration = std::make_unique<Registration>();
                 registration->descriptor = std::move(descriptor);
                 registration->scope = scope;

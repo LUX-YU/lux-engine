@@ -91,7 +91,7 @@ namespace lux::editor
                     return;
                 auto completion = std::move(*completion_);
                 completion_.reset();
-                completion.failRuntime(lux::exec::EAsyncSubmitError::STOPPING);
+                completion.failRuntime(lux::async::ESubmitError::STOPPING);
             }
 
         private:
@@ -290,27 +290,27 @@ namespace lux::editor
     {
         lux::exec::AsyncRuntime* runtime{nullptr};
         std::unique_ptr<lux::exec::AsyncScope> scope;
-        lux::exec::AsyncOperationClient<ImportAssetOperation> import;
-        lux::exec::AsyncOperationClient<CookContentOperation> cook;
-        lux::exec::AsyncOperationClient<CookEntitySceneOperation>
+        lux::async::OperationPort<ImportAssetOperation> import;
+        lux::async::OperationPort<CookContentOperation> cook;
+        lux::async::OperationPort<CookEntitySceneOperation>
             entity_scene_cook;
-        lux::exec::AsyncOperationClient<CollectWorldSourceGarbageOperation>
+        lux::async::OperationPort<CollectWorldSourceGarbageOperation>
             world_source_gc;
-        lux::exec::AsyncOperationClient<
+        lux::async::OperationPort<
             RebuildWorldDescriptorIndexOperation> descriptor_index;
-        lux::exec::AsyncOperationClient<LoadWorldActorProxyOperation>
+        lux::async::OperationPort<LoadWorldActorProxyOperation>
             actor_proxy;
-        lux::exec::AsyncOperationClient<LoadWorldDescriptorPageOperation>
+        lux::async::OperationPort<LoadWorldDescriptorPageOperation>
             descriptor_page;
-        lux::exec::AsyncOperationClient<LoadWorldInstancePageOperation>
+        lux::async::OperationPort<LoadWorldInstancePageOperation>
             instance_page;
-        lux::exec::AsyncOperationClient<LoadWorldTerrainRegionOperation>
+        lux::async::OperationPort<LoadWorldTerrainRegionOperation>
             terrain_region;
-        lux::exec::AsyncOperationClient<WorldTerrainHeightmapFileOperation>
+        lux::async::OperationPort<WorldTerrainHeightmapFileOperation>
             terrain_heightmap_file;
-        lux::exec::AsyncOperationClient<ReloadAssetOperation> reload;
-        lux::exec::AsyncOperationClient<CompileMaterialOperation> material;
-        lux::exec::AsyncOperationClient<CompileFlowGraph> flow_graph;
+        lux::async::OperationPort<ReloadAssetOperation> reload;
+        lux::async::OperationPort<CompileMaterialOperation> material;
+        lux::async::OperationPort<CompileFlowGraph> flow_graph;
         bool closing{false};
 
         template <lux::exec::AsyncOperation Operation>
@@ -367,7 +367,7 @@ namespace lux::editor
         {
             if (closing || runtime == nullptr || !scope)
                 return false;
-            lux::exec::AsyncSubmitOptions options{};
+            lux::async::SubmitOptions options{};
             if constexpr (std::is_same_v<
                               Operation,
                               WorldTerrainHeightmapFileOperation>)
@@ -399,7 +399,7 @@ namespace lux::editor
                          operation.job->component_schemas)
                     {
                         add(sizeof(schema));
-                        add(schema.cpp_type.name.size());
+                        add(schema.cpp_type.name().size());
                         add(schema.schema_id.name.size());
                         add(schema.provider.size());
                     }
@@ -412,7 +412,7 @@ namespace lux::editor
                 | ex::continues_on(lux::exec::mainThreadScheduler(*runtime))
                 | ex::then(
                       [completion = std::move(completion)](
-                          lux::exec::AsyncOutcome<Operation> outcome)
+                          lux::async::OperationOutcome<Operation> outcome)
                           mutable noexcept
                       {
                           completion(std::move(outcome));

@@ -196,8 +196,8 @@ namespace lux::runtime::spatial3d
             if (!submitted)
             {
                 if (submitted.error() ==
-                        lux::exec::EAsyncSubmitError::QUEUE_FULL ||
-                    submitted.error() == lux::exec::EAsyncSubmitError::
+                        lux::async::ESubmitError::QUEUE_FULL ||
+                    submitted.error() == lux::async::ESubmitError::
                                              BYTE_BUDGET_EXHAUSTED)
                 {
                     ++snapshot.queue_backpressure;
@@ -214,7 +214,7 @@ namespace lux::runtime::spatial3d
                     lux::exec::mainThreadScheduler(*async_runtime)) |
                 stdexec::then(
                     [weak = std::weak_ptr{completion}, slot, slot_generation](
-                        lux::exec::AsyncOutcome<BuildNavigationRegion3D>
+                        lux::async::OperationOutcome<BuildNavigationRegion3D>
                             outcome) mutable noexcept
                     {
                         const auto locked = weak.lock();
@@ -517,7 +517,7 @@ namespace lux::runtime::spatial3d
     void Spatial3DNavigationAdapterSystem::acceptPreparation(
         std::uint32_t slot,
         std::uint32_t slot_generation,
-        lux::exec::AsyncOutcome<BuildNavigationRegion3D> outcome) noexcept
+        lux::async::OperationOutcome<BuildNavigationRegion3D> outcome) noexcept
     {
         auto* request = impl_->find(slot, slot_generation);
         if (!request || request->state != EOwnedRequestState::IN_FLIGHT)
@@ -536,9 +536,9 @@ namespace lux::runtime::spatial3d
             if (outcome.error().isRuntime())
             {
                 const auto error = outcome.error().runtimeError();
-                if (error == lux::exec::EAsyncSubmitError::QUEUE_FULL ||
+                if (error == lux::async::ESubmitError::QUEUE_FULL ||
                     error ==
-                        lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED)
+                        lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED)
                 {
                     request->state = EOwnedRequestState::WAITING_ADMISSION;
                     ++impl_->snapshot.queue_backpressure;

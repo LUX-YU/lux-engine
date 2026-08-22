@@ -235,8 +235,8 @@ int main(int argc, char** argv)
             static_cast<int>(failure.feature.name().size()),
             failure.feature.name().data(),
             static_cast<unsigned>(failure.build.code),
-            static_cast<int>(failure.build.type.name.size()),
-            failure.build.type.name.data());
+            static_cast<int>(failure.build.type.name().size()),
+            failure.build.type.name().data());
         return 1;
     }
     auto render_plan = std::move(render_builder).compile();

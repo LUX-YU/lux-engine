@@ -117,18 +117,18 @@ namespace
     }
 
     template <class Operation>
-    [[nodiscard]] lux::exec::AsyncOutcome<Operation> run(
+    [[nodiscard]] lux::async::OperationOutcome<Operation> run(
         lux::exec::AsyncRuntime& runtime,
         lux::exec::AsyncScope& scope,
         lux::exec::AsyncExecuteSender<Operation> sender,
         std::thread::id& completion_thread)
     {
         lux::exec::testing::CloseEpoch progress{runtime};
-        std::optional<lux::exec::AsyncOutcome<Operation>> outcome;
+        std::optional<lux::async::OperationOutcome<Operation>> outcome;
         auto pipeline = std::move(sender) |
             stdexec::then(
                 [&outcome, &completion_thread, &progress](
-                    lux::exec::AsyncOutcome<Operation> value) mutable noexcept
+                    lux::async::OperationOutcome<Operation> value) mutable noexcept
                 {
                     completion_thread = std::this_thread::get_id();
                     outcome.emplace(std::move(value));
@@ -185,7 +185,7 @@ int main()
                 classic.lease.bytes(), classic.reference, 1u});
         require(!rejected);
         require(rejected.error() ==
-            lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+            lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
         tiny->close();
     }
 
@@ -219,7 +219,7 @@ int main()
             classic.lease.bytes(), classic.reference, 3u});
         require(!saturated);
         require(
-            saturated.error() == lux::exec::EAsyncSubmitError::QUEUE_FULL);
+            saturated.error() == lux::async::ESubmitError::QUEUE_FULL);
         const auto snapshot = service.snapshot();
         require(snapshot.classic_mesh.active_requests == 1u);
         require(snapshot.classic_mesh.active_bytes >
@@ -285,7 +285,7 @@ int main()
         classic.lease.bytes(), classic.reference, 7u});
     require(!after_close);
     require(after_close.error() ==
-        lux::exec::EAsyncSubmitError::FEATURE_CLOSING);
+        lux::async::ESubmitError::FEATURE_CLOSING);
     const auto closed = service.snapshot();
     require(closed.closing);
     require(closed.classic_mesh.active_requests == 0u);

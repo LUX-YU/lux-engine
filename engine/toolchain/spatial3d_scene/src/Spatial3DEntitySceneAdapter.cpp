@@ -8,7 +8,7 @@
 #include <lux/engine/core/serialization/Archive.hpp>
 #include <lux/engine/core/serialization/NameTable.hpp>
 #include <lux/engine/ecs/serialization/TaggedPropertyArchive.hpp>
-#include <lux/engine/ecs/TypeToken.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/ecs/components/Transform3DComponent.hpp>
 #include <lux/engine/ecs/render/components/PrimaryCameraTag.hpp>
 #include <lux/engine/ecs/render/components/3d/Camera3DComponent.hpp>
@@ -506,13 +506,13 @@ namespace lux::toolchain
             const lux::ecs::ComponentTypeCatalog& components)
         {
             const auto* descriptor = components.findByType(
-                lux::ecs::typeToken<Component>());
+                lux::cxx::typeToken<Component>());
             if (!descriptor)
             {
                 return lux::cxx::unexpected(failure(
                     AdapterError::MISSING_COMPONENT_SCHEMA,
                     "Toolchain component catalog is missing reflected type '" +
-                        std::string{lux::ecs::typeToken<Component>().name} +
+                        std::string{lux::cxx::typeToken<Component>().name()} +
                         "'"));
             }
             AdapterFailure ignored;
@@ -541,7 +541,7 @@ namespace lux::toolchain
         typedTag(const lux::ecs::ComponentTypeCatalog& components)
         {
             const auto* descriptor = components.findByType(
-                lux::ecs::typeToken<Tag>());
+                lux::cxx::typeToken<Tag>());
             if (!descriptor || descriptor->schema_version == 0u ||
                 descriptor->serialization !=
                     lux::ecs::EComponentSerializationPolicy::COOKED)
@@ -549,7 +549,7 @@ namespace lux::toolchain
                 return lux::cxx::unexpected(failure(
                     AdapterError::MISSING_COMPONENT_SCHEMA,
                     "Toolchain component catalog is missing cooked tag '" +
-                        std::string{lux::ecs::typeToken<Tag>().name} + "'"));
+                        std::string{lux::cxx::typeToken<Tag>().name()} + "'"));
             }
             EntityComponentCookInput result;
             result.schema = lux::ecs::componentSchemaId(
@@ -587,7 +587,7 @@ namespace lux::toolchain
             const Spatial3DActorSource& actor)
         {
             const auto primary_schema = lux::ecs::defaultComponentSchemaName(
-                lux::ecs::typeToken<lux::ecs::PrimaryCameraTag>().name);
+                lux::cxx::typeToken<lux::ecs::PrimaryCameraTag>().name());
             return std::ranges::any_of(
                 actor.components,
                 [&primary_schema](const auto& record)
@@ -602,14 +602,14 @@ namespace lux::toolchain
         {
             const std::array startup_schemas{
                 lux::ecs::defaultComponentSchemaName(
-                    lux::ecs::typeToken<lux::ecs::PrimaryCameraTag>().name),
+                    lux::cxx::typeToken<lux::ecs::PrimaryCameraTag>().name()),
                 lux::ecs::defaultComponentSchemaName(
-                    lux::ecs::typeToken<lux::ecs::SkyboxComponent>().name),
+                    lux::cxx::typeToken<lux::ecs::SkyboxComponent>().name()),
                 lux::ecs::defaultComponentSchemaName(
-                    lux::ecs::typeToken<
-                        lux::ecs::DirectionalLightComponent>().name),
+                    lux::cxx::typeToken<
+                        lux::ecs::DirectionalLightComponent>().name()),
                 lux::ecs::defaultComponentSchemaName(
-                    lux::ecs::typeToken<lux::ecs::HeightFogComponent>().name
+                    lux::cxx::typeToken<lux::ecs::HeightFogComponent>().name()
                 )
             };
             return std::ranges::any_of(
@@ -646,7 +646,7 @@ namespace lux::toolchain
                 descriptors;
             std::set<std::string, std::less<>> seen_schemas;
             const auto primary_schema = lux::ecs::defaultComponentSchemaName(
-                lux::ecs::typeToken<lux::ecs::PrimaryCameraTag>().name);
+                lux::cxx::typeToken<lux::ecs::PrimaryCameraTag>().name());
             bool primary_camera = false;
 
             for (const auto& record : actor.components)
@@ -719,14 +719,14 @@ namespace lux::toolchain
                     AdapterFailure>
             {
                 const auto* descriptor = components.findByType(
-                    lux::ecs::typeToken<Component>());
+                    lux::cxx::typeToken<Component>());
                 if (!descriptor)
                 {
                     return lux::cxx::unexpected(failure(
                         AdapterError::MISSING_COMPONENT_SCHEMA,
                         "Toolchain component catalog is missing '" +
                             std::string{
-                                lux::ecs::typeToken<Component>().name} +
+                                lux::cxx::typeToken<Component>().name()} +
                             "'"));
                 }
                 if (!staging.any_of<Component>(entity))

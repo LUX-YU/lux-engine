@@ -55,7 +55,7 @@ int main()
         lux::tilemap::kTilemapChunkSchemaVersion,
         *encoded).digest;
 
-    std::optional<lux::exec::AsyncOutcome<
+    std::optional<lux::async::OperationOutcome<
         spatial2d::PrepareTilemapChunk>> prepared;
     std::atomic<bool> done{false};
     auto pipeline = lux::exec::execute(
@@ -65,7 +65,7 @@ int main()
                 {-17, 23},
                 digest,
                 7u},
-            lux::exec::AsyncSubmitOptions{
+            lux::async::SubmitOptions{
                 .accounted_bytes = encoded->size() +
                     lux::tilemap::kTilemapChunkTileCount *
                         sizeof(std::uint16_t)})
@@ -89,13 +89,13 @@ int main()
     assert((*prepared)->load.base_digest == digest);
     assert((*prepared)->load.tiles == source.tiles);
 
-    std::optional<lux::exec::AsyncOutcome<
+    std::optional<lux::async::OperationOutcome<
         spatial2d::PrepareTilemapChunk>> rejected;
     done.store(false, std::memory_order_release);
     auto backpressure = lux::exec::execute(
             service->client().operation(),
             spatial2d::PrepareTilemapChunk{},
-            lux::exec::AsyncSubmitOptions{
+            lux::async::SubmitOptions{
                 .accounted_bytes =
                     spatial2d::kTilemapPrepareByteBudget + 1u})
         | stdexec::continues_on(
@@ -113,7 +113,7 @@ int main()
     });
     assert(rejected && !*rejected && rejected->error().isRuntime());
     assert(rejected->error().runtimeError() ==
-        lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+        lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
 
     lux::exec::testing::CloseEpoch close_progress{runtime};
     std::atomic<bool> scope_closed{false};

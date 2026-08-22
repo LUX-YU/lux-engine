@@ -314,7 +314,7 @@ namespace lux::runtime::spatial2d
                         chunk.coordinate,
                         chunk.content_reference.id.digest,
                         generation},
-                    lux::exec::AsyncSubmitOptions{
+                    lux::async::SubmitOptions{
                         .accounted_bytes = chunk.content.bytes().size() +
                             lux::ecs::TilemapRuntime::kChunkTileCount *
                                 sizeof(std::uint16_t)})
@@ -322,7 +322,7 @@ namespace lux::runtime::spatial2d
                       lux::exec::mainThreadScheduler(*async_runtime))
                 | stdexec::then(
                       [weak = std::weak_ptr{completion}, slot, generation](
-                          lux::exec::AsyncOutcome<PrepareTilemapChunk>
+                          lux::async::OperationOutcome<PrepareTilemapChunk>
                               outcome) mutable noexcept
                       {
                           const auto locked = weak.lock();
@@ -813,7 +813,7 @@ namespace lux::runtime::spatial2d
     void TilemapChunkSystem::acceptPreparation(
         std::uint32_t slot,
         std::uint32_t generation,
-        lux::exec::AsyncOutcome<PrepareTilemapChunk> outcome) noexcept
+        lux::async::OperationOutcome<PrepareTilemapChunk> outcome) noexcept
     {
         auto* owned = impl_->find(slot, generation);
         if (!owned || owned->state != EOwnedState::WAITING_BACKGROUND)
@@ -833,8 +833,8 @@ namespace lux::runtime::spatial2d
             if (outcome.error().isRuntime())
             {
                 const auto error = outcome.error().runtimeError();
-                if (error == lux::exec::EAsyncSubmitError::QUEUE_FULL ||
-                    error == lux::exec::EAsyncSubmitError::
+                if (error == lux::async::ESubmitError::QUEUE_FULL ||
+                    error == lux::async::ESubmitError::
                         BYTE_BUDGET_EXHAUSTED)
                 {
                     owned->state = EOwnedState::WAITING_ADMISSION;

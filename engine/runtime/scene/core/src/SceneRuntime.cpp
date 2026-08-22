@@ -279,6 +279,10 @@ namespace lux::runtime
             }
         }
 
+        // Declared before the candidate Schedule so rollback destroys every
+        // extension-owned system before releasing its DLL lease.
+        std::vector<lux::extensions::ModuleLease>
+            candidate_extension_module_leases;
         auto candidate_world = std::make_unique<lux::ecs::World>();
         auto candidate_persistent_entities =
             std::make_unique<lux::ecs::PersistentEntityIndex>(
@@ -325,6 +329,30 @@ namespace lux::runtime
                 "scene",
                 "failed to publish scene asset services");
             return failBringUp();
+        }
+
+        // ABI v5 is deliberately a cold, direct assembly hook.  It does not
+        // publish descriptors or create another behavior graph: each selected
+        // module stages ordinary ISystem instances into this one builder.
+        for (const auto& requirement : package.required_extensions)
+        {
+            auto entrypoints = extension_modules_->entrypoints(
+                requirement.id.view());
+            if (!entrypoints.world_systems)
+                continue;
+            const auto installed = entrypoints.world_systems(builder);
+            if (!installed)
+            {
+                lux::log::error(
+                    "scene",
+                    "World-system installation failed for extension '{}' "
+                    "(error={})",
+                    requirement.id.name(),
+                    static_cast<unsigned>(installed.error));
+                return failBringUp();
+            }
+            candidate_extension_module_leases.push_back(
+                std::move(entrypoints.module));
         }
 
         auto loader = std::make_unique<
@@ -455,7 +483,7 @@ namespace lux::runtime
             lux::log::warn(
                 "scene",
                 "optional system ordering target '{}' is absent",
-                type.name);
+                type.name());
         }
         if (!topology.valid())
         {
@@ -490,6 +518,8 @@ namespace lux::runtime
             std::move(candidate_persistent_entities);
         services_ = std::move(candidate_services);
         schedule_ = std::move(candidate_schedule);
+        extension_module_leases_ =
+            std::move(candidate_extension_module_leases);
         entity_section_loader_ = loader_owner;
         startup_sections_ = startup_owner;
         entity_scene_catalog_ = catalog;

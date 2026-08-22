@@ -9,8 +9,8 @@
 #endif
 
 extern "C" LUX_TEST_EXTENSION_EXPORT
-const lux::extensions::ExtensionModuleDescriptorV4*
-luxGetExtensionModuleV4() noexcept
+const lux::extensions::ExtensionModuleDescriptorV5*
+luxGetExtensionModuleV5() noexcept
 {
     using namespace lux::extensions;
     static constexpr std::array dependencies{
@@ -18,9 +18,9 @@ luxGetExtensionModuleV4() noexcept
             lux::cxx::AbiStringView{"org.lux.test.minimal"},
             1u,
             1u}};
-    static constexpr ExtensionModuleDescriptorV4 descriptor{
-        sizeof(ExtensionModuleDescriptorV4),
-        kExtensionAbiV4,
+    static constexpr ExtensionModuleDescriptorV5 descriptor{
+        sizeof(ExtensionModuleDescriptorV5),
+        kExtensionAbiV5,
         kEngineExtensionAbiFingerprint,
         lux::cxx::AbiStringView{"org.lux.test.dependent"},
         ExtensionVersion{1u, 0u, 0u},

@@ -245,7 +245,7 @@ namespace
     ) noexcept
     {
         for (const auto type : types)
-            if (lux::ecs::sameTypeToken(type, expected))
+            if (type == expected)
                 return true;
         return false;
     }

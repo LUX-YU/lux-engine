@@ -42,7 +42,7 @@ namespace lux::editor
     {
     public:
         using Completion = lux::cxx::move_only_function<void(
-            lux::exec::AsyncOutcome<CompileFlowGraph>)>;
+            lux::async::OperationOutcome<CompileFlowGraph>)>;
 
         FlowGraphCompileClient() noexcept = default;
 

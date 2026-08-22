@@ -11,9 +11,9 @@
  */
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/ecs/ComponentSchemaId.hpp>
 #include <lux/engine/ecs/Entity.hpp>
-#include <lux/engine/ecs/TypeToken.hpp>
 #include <lux/engine/ecs/visibility.h>
 #include <lux/engine/ecs/Registry.hpp>
 
@@ -37,22 +37,6 @@ namespace lux::ecs
     [[nodiscard]] LUX_ECS_PUBLIC std::string
     defaultComponentSchemaName(std::string_view cpp_name);
 
-
-    struct OwnedComponentTypeToken final
-    {
-        std::uint64_t hash{};
-        std::string name;
-
-        [[nodiscard]] explicit operator bool() const noexcept
-        {
-            return hash != 0u && !name.empty();
-        }
-
-        [[nodiscard]] TypeToken view() const noexcept
-        {
-            return TypeToken{hash, name};
-        }
-    };
 
     struct ComponentOperations final
     {
@@ -90,7 +74,9 @@ namespace lux::ecs
 
     struct ComponentSchemaDescriptor final
     {
-        OwnedComponentTypeToken cpp_type{};
+        // Non-persistent C++ identity. The name storage belongs either to the
+        // built-in image or to the ModuleLease retained by lifetime.
+        lux::cxx::TypeToken cpp_type{};
         ComponentSchemaId schema_id{};
         std::uint32_t schema_version{1u};
         const lux::meta::RefClass* ref_class{nullptr};
@@ -169,7 +155,8 @@ namespace lux::ecs
         /// findBySchema() and never persist this implementation identity.
         [[nodiscard]] const ComponentSchemaDescriptor* findByCppName(std::string_view name) const noexcept;
 
-        [[nodiscard]] const ComponentSchemaDescriptor* findByType(TypeToken type) const noexcept;
+        [[nodiscard]] const ComponentSchemaDescriptor* findByType(
+            lux::cxx::TypeToken type) const noexcept;
 
         [[nodiscard]] std::span<const ComponentSchemaDescriptor> all() const noexcept;
 

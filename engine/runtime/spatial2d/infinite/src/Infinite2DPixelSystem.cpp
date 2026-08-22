@@ -182,7 +182,7 @@ namespace lux::runtime::spatial2d
                         std::move(*preparation_context),
                         std::move(persistence_record),
                         generation},
-                    lux::exec::AsyncSubmitOptions{
+                    lux::async::SubmitOptions{
                         .accounted_bytes =
                             (sizeof(lux::ecs::MaterialId) +
                              sizeof(std::uint8_t)) *
@@ -192,7 +192,7 @@ namespace lux::runtime::spatial2d
                       lux::exec::mainThreadScheduler(*async_runtime))
                 | stdexec::then(
                       [weak = std::weak_ptr{completion}, slot, generation](
-                          lux::exec::AsyncOutcome<
+                          lux::async::OperationOutcome<
                               PrepareInfinite2DPixelChunk> outcome)
                           mutable noexcept
                       {
@@ -826,7 +826,7 @@ namespace lux::runtime::spatial2d
     void Infinite2DPixelSystem::acceptPreparation(
         std::uint32_t slot,
         std::uint32_t generation,
-        lux::exec::AsyncOutcome<PrepareInfinite2DPixelChunk> outcome)
+        lux::async::OperationOutcome<PrepareInfinite2DPixelChunk> outcome)
         noexcept
     {
         auto* prepared = impl_->find(slot, generation);
@@ -841,8 +841,8 @@ namespace lux::runtime::spatial2d
             if (outcome.error().isRuntime())
             {
                 const auto error = outcome.error().runtimeError();
-                if (error == lux::exec::EAsyncSubmitError::QUEUE_FULL ||
-                    error == lux::exec::EAsyncSubmitError::
+                if (error == lux::async::ESubmitError::QUEUE_FULL ||
+                    error == lux::async::ESubmitError::
                         BYTE_BUDGET_EXHAUSTED)
                 {
                     prepared->state =

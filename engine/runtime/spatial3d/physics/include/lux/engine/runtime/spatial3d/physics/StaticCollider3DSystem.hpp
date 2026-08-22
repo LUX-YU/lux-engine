@@ -161,7 +161,7 @@ namespace lux::runtime::spatial3d
         void acceptPreparation(
             entt::entity entity,
             std::uint64_t generation,
-            lux::exec::AsyncOutcome<BuildStaticCollider3D> outcome) noexcept;
+            lux::async::OperationOutcome<BuildStaticCollider3D> outcome) noexcept;
         void acceptPreparationStopped(
             entt::entity entity,
             std::uint64_t generation) noexcept;

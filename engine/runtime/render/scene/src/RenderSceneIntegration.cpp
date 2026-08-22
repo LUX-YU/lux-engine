@@ -175,8 +175,8 @@ namespace lux::runtime
                 "render subsystem graph rejected (status={}, subject='{}', "
                 "related='{}')",
                 static_cast<unsigned>(plan.error().code),
-                plan.error().subject.name,
-                plan.error().related.name);
+                plan.error().subject.name(),
+                plan.error().related.name());
             return lux::cxx::unexpected<ESceneIntegrationError>(
                 ESceneIntegrationError::FINALIZE_FAILED);
         }

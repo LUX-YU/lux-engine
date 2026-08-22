@@ -49,6 +49,7 @@ target_include_directories(
 target_link_libraries(
     runtime_execution
     PUBLIC
+        lux::engine::core::async_port
         lux::cxx::compile_time
         concurrentqueue::concurrentqueue
         asio::asio
@@ -93,6 +94,7 @@ component_add_transitive_commands(
     "find_package(asio CONFIG REQUIRED)"
     "find_package(TBB CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS async_port)"
 )
 
 set(ENABLE_EXECUTION_TEST OFF CACHE BOOL "Enable execution tests")

@@ -1,5 +1,6 @@
 #include <lux/engine/runtime/extensions/EngineExtensions.hpp>
 #include <lux/engine/runtime/extensions/EngineExtensionsCloseSender.hpp>
+#include <lux/engine/runtime/extensions/ModuleMetadataBatch.hpp>
 
 #include <lux/engine/events/DomainEvents.hpp>
 #include <lux/engine/meta/Meta.hpp>
@@ -301,6 +302,12 @@ namespace lux::extensions
 
         struct Active final
         {
+            struct PendingMetadata final
+            {
+                ExtensionId module;
+                ModuleMetadataBatch batch;
+            };
+
             explicit Active(ExtensionLoadCommand value)
                 : command(std::move(value))
             {}
@@ -309,11 +316,9 @@ namespace lux::extensions
             std::vector<PreparedExtensionModule> prepared_modules;
             std::vector<ExtensionModuleRequirement> pending_requirements;
             std::vector<ModuleLease> modules_to_register;
+            std::vector<PendingMetadata> pending_metadata;
             std::size_t registration_index{0u};
-            // Declared before contribution drafts so those descriptors (which
-            // point into reflected metadata) are destroyed first on rollback.
-            std::optional<lux::meta::ReflectionRegistrationDraft>
-                reflection_draft;
+            std::optional<ModuleMetadataBatch> metadata_batch;
             std::optional<RuntimeRegistrationDraft> runtime_draft;
             std::unique_ptr<EditorRegistrationTransaction> editor_draft;
         };
@@ -372,16 +377,10 @@ namespace lux::extensions
                 return;
             active->command.publisher.setPhase(
                 EExtensionLoadPhase::COMMITTING_CATALOGS);
-            if (!active->reflection_draft ||
-                !active->reflection_draft->commit())
-            {
-                // All recoverable reflection errors were found before async
-                // operation installation. A failure here means another writer
-                // violated main-thread registration confinement; continuing
-                // would leave installed operations without their metadata.
+            if (!active->metadata_batch)
                 std::terminate();
-            }
-            active->reflection_draft.reset();
+            active->metadata_batch->commit();
+            active->metadata_batch.reset();
             auto committed = commitRuntimeCatalogs(
                 std::move(*active->runtime_draft),
                 services.runtime_catalogs);
@@ -412,7 +411,7 @@ namespace lux::extensions
             }
 
             ++active->registration_index;
-            active->reflection_draft.reset();
+            active->metadata_batch.reset();
             active->runtime_draft.reset();
             active->editor_draft.reset();
             if (active->registration_index <
@@ -487,35 +486,22 @@ namespace lux::extensions
                 module->id().view());
 
             RuntimeContributionRegistrar registrar{module};
-            auto reflection = lux::meta::meta_module_drain_draft();
-            auto generated_components =
-                lux::ecs::takeGeneratedComponents();
-            if (!reflection)
+            const auto metadata = std::ranges::find_if(
+                active->pending_metadata,
+                [&module](const Active::PendingMetadata& pending) noexcept
+                {
+                    return sameStableId(
+                        pending.module.view(),
+                        module->id().view());
+                });
+            if (metadata == active->pending_metadata.end())
             {
                 (void)services.modules.markFailed(module->id().view());
                 finishFailure(EExtensionLoadError::REGISTRATION_FAILED);
                 return;
             }
-            for (auto& descriptor : generated_components)
-            {
-                if (!registrar.components().add(std::move(descriptor)))
-                {
-                    (void)services.modules.markFailed(module->id().view());
-                    finishFailure(EExtensionLoadError::REGISTRATION_FAILED);
-                    return;
-                }
-            }
-            active->reflection_draft.emplace(std::move(reflection));
-            if (entrypoints.runtime)
-            {
-                const auto registered = entrypoints.runtime(registrar);
-                if (!registered)
-                {
-                    (void)services.modules.markFailed(module->id().view());
-                    finishFailure(EExtensionLoadError::REGISTRATION_FAILED);
-                    return;
-                }
-            }
+            active->metadata_batch.emplace(std::move(metadata->batch));
+            active->pending_metadata.erase(metadata);
             active->runtime_draft.emplace(std::move(registrar).finish());
 
             if (entrypoints.editor)
@@ -572,7 +558,18 @@ namespace lux::extensions
             }
             active->command.publisher.setPhase(
                 EExtensionLoadPhase::VALIDATING_MODULE);
+            auto metadata = ModuleMetadataBatch::prepare(
+                prepared->lease(),
+                services.runtime_catalogs.components);
+            if (!metadata)
+            {
+                finishFailure(EExtensionLoadError::CATALOG_VALIDATION_FAILED);
+                return;
+            }
             const auto prepared_id = prepared->module().id().view();
+            active->pending_metadata.push_back(Active::PendingMetadata{
+                prepared->module().id(),
+                std::move(*metadata)});
             for (const auto& dependency : prepared->dependencies())
             {
                 const auto status = services.modules.requirementStatus(

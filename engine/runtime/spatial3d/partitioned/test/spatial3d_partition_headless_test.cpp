@@ -304,14 +304,14 @@ int main()
     // burst below without depending on coordinator/worker timing.
     lux::exec::AsyncScope backpressure_scope{runtime};
     {
-        std::optional<lux::exec::AsyncOutcome<
+        std::optional<lux::async::OperationOutcome<
             entity_runtime::LoadEntitySection>> outcome;
         std::atomic<bool> done{false};
         lux::exec::testing::CloseEpoch progress{runtime};
         auto operation = lux::exec::execute(
                 load_client.operation(),
                 load_client.loadOperation(vfs, sample, 1u),
-                lux::exec::AsyncSubmitOptions{
+                lux::async::SubmitOptions{
                     .accounted_bytes =
                         entity_runtime::kEntitySectionLoadByteBudget + 1u})
             | stdexec::continues_on(
@@ -332,7 +332,7 @@ int main()
         assert(outcome && !*outcome);
         assert(outcome->error().isRuntime());
         assert(outcome->error().runtimeError() ==
-            lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+            lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
     }
     closeOwner(runtime, backpressure_scope.closeAsync());
 

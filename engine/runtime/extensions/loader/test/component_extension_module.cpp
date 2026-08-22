@@ -97,12 +97,9 @@ namespace
         lux::meta::qual_type_index_fix_list&)
     {
         using lux::cxx::algorithm::fnv1a;
-        using lux::cxx::type_hash;
-        using lux::cxx::type_name;
         lux::ecs::queueGeneratedComponent(
             lux::ecs::ComponentSchemaDescriptor{
-                {type_hash<DynamicTestComponent>(),
-                 std::string{type_name<DynamicTestComponent>()}},
+                lux::cxx::typeToken<DynamicTestComponent>(),
                 {fnv1a("org.lux.test.component.dynamic_test_component"),
                  "org.lux.test.component.dynamic_test_component"},
                 1u,
@@ -126,13 +123,13 @@ namespace
 }
 
 extern "C" LUX_TEST_EXTENSION_EXPORT
-const lux::extensions::ExtensionModuleDescriptorV4*
-luxGetExtensionModuleV4() noexcept
+const lux::extensions::ExtensionModuleDescriptorV5*
+luxGetExtensionModuleV5() noexcept
 {
     using namespace lux::extensions;
-    static constexpr ExtensionModuleDescriptorV4 descriptor{
-        sizeof(ExtensionModuleDescriptorV4),
-        kExtensionAbiV4,
+    static constexpr ExtensionModuleDescriptorV5 descriptor{
+        sizeof(ExtensionModuleDescriptorV5),
+        kExtensionAbiV5,
         kEngineExtensionAbiFingerprint,
         lux::cxx::AbiStringView{"org.lux.test.component"},
         ExtensionVersion{1u, 0u, 0u},

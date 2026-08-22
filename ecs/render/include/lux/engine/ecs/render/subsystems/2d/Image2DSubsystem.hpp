@@ -203,7 +203,9 @@ namespace lux::ecs
             leaving_.clear();
 
             // ④ 逐实体处理:换出语义与 VERIFY 对拍都在 drain 里。
-            changes_.drain(registry, renderSubsystemType<Image2DSubsystem>().name,
+            changes_.drain(
+                registry,
+                renderSubsystemType<Image2DSubsystem>().name(),
                 [&](lux::ecs::Entity e, Image2DComponent& sp)
                 {
                     return processEntity(registry, ctx, canvas, camera_position, e, sp,
@@ -603,7 +605,8 @@ namespace lux::ecs
         void attachChangeSources(lux::ecs::Registry& reg)
         {
             changes_.attach(reg,
-                static_cast<entt::id_type>(renderSubsystemType<Image2DSubsystem>().hash),
+                static_cast<entt::id_type>(
+                    renderSubsystemType<Image2DSubsystem>().hash()),
                 [](auto& s)
             {
                 s.template on_construct<Image2DComponent>();

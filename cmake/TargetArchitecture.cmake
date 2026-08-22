@@ -609,3 +609,117 @@ function(lux_validate_all_production_targets)
         endif()
     endforeach()
 endfunction()
+
+# Source-level rules complement the target DAG.  The dependency graph cannot
+# detect a header that reaches across the layer boundary without a direct link
+# edge, nor can it prevent a new Runtime-owned ISystem from being added to an
+# already classified target.
+#
+# The semantic-debt limits are intentionally monotonic.  They freeze the
+# 2026-08-22 baseline so new uses fail configure immediately; each migration
+# wave lowers the limit until the final value is zero.
+function(lux_validate_source_boundaries)
+    file(GLOB_RECURSE ecs_sources LIST_DIRECTORIES false
+        "${CMAKE_SOURCE_DIR}/ecs/*.hpp"
+        "${CMAKE_SOURCE_DIR}/ecs/*.cpp"
+    )
+    foreach(source IN LISTS ecs_sources)
+        file(TO_CMAKE_PATH "${source}" normalized)
+        if(normalized MATCHES "/test/")
+            continue()
+        endif()
+        file(READ "${source}" content)
+        if(content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/runtime/")
+            message(FATAL_ERROR
+                "Architecture: ECS production source '${source}' includes "
+                "engine/runtime. Inject a modules-level port instead."
+            )
+        endif()
+    endforeach()
+
+    set(runtime_system_debt
+        "engine/runtime/entity_scene/include/lux/engine/runtime/entity_scene/EntitySectionLoaderSystem.hpp"
+        "engine/runtime/entity_scene/include/lux/engine/runtime/entity_scene/StartupSectionSystem.hpp"
+        "engine/runtime/extensions/contribution_host/include/lux/engine/runtime/extensions/SceneContributions.hpp"
+        "engine/runtime/packs/scene2d/pinclude/lux/engine/runtime/packs/scene2d/Flipbook2DResolver.hpp"
+        "engine/runtime/packs/scene3d/pinclude/lux/engine/runtime/packs/scene3d/SkeletalAnimationResolver.hpp"
+        "engine/runtime/render/scene/pinclude/lux/engine/runtime/render/scene/detail/PrimaryViewPresentationSystem.hpp"
+        "engine/runtime/scene/script/pinclude/lux/engine/runtime/scene/script/ScriptAssetRequestSystem.hpp"
+        "engine/runtime/spatial2d/infinite/include/lux/engine/runtime/spatial2d/infinite/Infinite2DPixelSystem.hpp"
+        "engine/runtime/spatial2d/infinite/include/lux/engine/runtime/spatial2d/infinite/SpatialInterest2DSystem.hpp"
+        "engine/runtime/spatial2d/tilemap/include/lux/engine/runtime/spatial2d/tilemap/TilemapChunkSystem.hpp"
+        "engine/runtime/spatial3d/navigation/include/lux/engine/runtime/spatial3d/navigation/Spatial3DNavigationAdapterSystem.hpp"
+        "engine/runtime/spatial3d/partitioned/include/lux/engine/runtime/spatial3d/partitioned/SpatialInterest3DSystem.hpp"
+        "engine/runtime/spatial3d/physics/include/lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp"
+        "engine/runtime/spatial_partition/include/lux/engine/runtime/spatial_partition/SpatialPartitionSystem.hpp"
+    )
+    file(GLOB_RECURSE runtime_headers LIST_DIRECTORIES false
+        "${CMAKE_SOURCE_DIR}/engine/runtime/*.hpp"
+    )
+    foreach(source IN LISTS runtime_headers)
+        file(READ "${source}" content)
+        if(NOT content MATCHES "ISystem")
+            continue()
+        endif()
+        file(RELATIVE_PATH relative "${CMAKE_SOURCE_DIR}" "${source}")
+        file(TO_CMAKE_PATH "${relative}" relative)
+        if(NOT relative IN_LIST runtime_system_debt)
+            message(FATAL_ERROR
+                "Architecture: Runtime header '${relative}' mentions ISystem. "
+                "World behavior belongs under ecs/."
+            )
+        endif()
+    endforeach()
+
+    file(GLOB_RECURSE semantic_sources LIST_DIRECTORIES false
+        "${CMAKE_SOURCE_DIR}/cmake/*.cmake"
+        "${CMAKE_SOURCE_DIR}/modules/*.hpp"
+        "${CMAKE_SOURCE_DIR}/modules/*.cpp"
+        "${CMAKE_SOURCE_DIR}/modules/CMakeLists.txt"
+        "${CMAKE_SOURCE_DIR}/ecs/*.hpp"
+        "${CMAKE_SOURCE_DIR}/ecs/*.cpp"
+        "${CMAKE_SOURCE_DIR}/ecs/CMakeLists.txt"
+        "${CMAKE_SOURCE_DIR}/engine/*.hpp"
+        "${CMAKE_SOURCE_DIR}/engine/*.cpp"
+        "${CMAKE_SOURCE_DIR}/engine/CMakeLists.txt"
+        "${CMAKE_SOURCE_DIR}/extensions/*.hpp"
+        "${CMAKE_SOURCE_DIR}/extensions/*.cpp"
+        "${CMAKE_SOURCE_DIR}/extensions/CMakeLists.txt"
+    )
+    set(debt_names
+        SceneContribution
+        WorldSceneFeature
+        RenderEffect
+        runtime_pack_
+        contribution_host
+        luxGetExtensionModuleV4
+        luxRegisterRuntimeContributionsV4
+    )
+    set(debt_limits 627 15 349 156 38 8 3)
+    set(report "# semantic-debt|count|limit\n")
+    list(LENGTH debt_names debt_count)
+    math(EXPR debt_last "${debt_count} - 1")
+    foreach(index RANGE 0 ${debt_last})
+        list(GET debt_names ${index} debt_name)
+        list(GET debt_limits ${index} debt_limit)
+        set(actual 0)
+        foreach(source IN LISTS semantic_sources)
+            # Do not count the gate's own token table as architecture debt.
+            if(source STREQUAL CMAKE_CURRENT_FUNCTION_LIST_FILE)
+                continue()
+            endif()
+            file(READ "${source}" content)
+            string(REGEX MATCHALL "${debt_name}" matches "${content}")
+            list(LENGTH matches match_count)
+            math(EXPR actual "${actual} + ${match_count}")
+        endforeach()
+        string(APPEND report "${debt_name}|${actual}|${debt_limit}\n")
+        if(actual GREATER debt_limit)
+            message(FATAL_ERROR
+                "Architecture: semantic debt '${debt_name}' increased from "
+                "the allowed ${debt_limit} occurrences to ${actual}."
+            )
+        endif()
+    endforeach()
+    file(WRITE "${CMAKE_BINARY_DIR}/semantic-architecture-debt.txt" "${report}")
+endfunction()

@@ -78,12 +78,12 @@ namespace lux::asset_runtime
         /// Main-thread convenience used by ECS resolver callbacks. It only
         /// submits an ensure intent; readiness remains authoritative in
         /// AssetManager and is observed at the next safe point.
-        [[nodiscard]] lux::exec::AsyncSubmitResult request(
+        [[nodiscard]] lux::async::SubmitResult request(
             const lux::asset::asset_id_t& id) const noexcept;
 
         /// Clear terminal/backoff memory after content replacement. The
         /// manager revision is captured on the main thread as the ABA guard.
-        [[nodiscard]] lux::exec::AsyncSubmitResult invalidate(
+        [[nodiscard]] lux::async::SubmitResult invalidate(
             const lux::asset::asset_id_t& id) const noexcept;
 
         [[nodiscard]] LoadAsset
@@ -95,13 +95,13 @@ namespace lux::asset_runtime
         [[nodiscard]] LoadAssetBatch loadBatchOperation(
             std::span<const lux::asset::asset_id_t> ids) const;
 
-        [[nodiscard]] const lux::exec::AsyncOperationClient<LoadAsset>&
+        [[nodiscard]] const lux::async::OperationPort<LoadAsset>&
         loadClient() const noexcept
         {
             return load_;
         }
 
-        [[nodiscard]] const lux::exec::AsyncOperationClient<LoadAssetBatch>&
+        [[nodiscard]] const lux::async::OperationPort<LoadAssetBatch>&
         loadBatchClient() const noexcept
         {
             return load_batch_;
@@ -117,10 +117,10 @@ namespace lux::asset_runtime
 
         AssetClient(
             lux::asset::AssetManager& manager,
-            lux::exec::AsyncOperationClient<EnsureAssetLoaded> ensure,
-            lux::exec::AsyncOperationClient<LoadAsset> load,
-            lux::exec::AsyncOperationClient<LoadAssetBatch> load_batch,
-            lux::exec::AsyncOperationClient<InvalidateAssetLoad> invalidate)
+            lux::async::OperationPort<EnsureAssetLoaded> ensure,
+            lux::async::OperationPort<LoadAsset> load,
+            lux::async::OperationPort<LoadAssetBatch> load_batch,
+            lux::async::OperationPort<InvalidateAssetLoad> invalidate)
             noexcept
             : manager_(&manager)
             , ensure_(std::move(ensure))
@@ -130,10 +130,10 @@ namespace lux::asset_runtime
         {}
 
         lux::asset::AssetManager* manager_{nullptr};
-        lux::exec::AsyncOperationClient<EnsureAssetLoaded> ensure_;
-        lux::exec::AsyncOperationClient<LoadAsset> load_;
-        lux::exec::AsyncOperationClient<LoadAssetBatch> load_batch_;
-        lux::exec::AsyncOperationClient<InvalidateAssetLoad> invalidate_;
+        lux::async::OperationPort<EnsureAssetLoaded> ensure_;
+        lux::async::OperationPort<LoadAsset> load_;
+        lux::async::OperationPort<LoadAssetBatch> load_batch_;
+        lux::async::OperationPort<InvalidateAssetLoad> invalidate_;
     };
 
     class AssetLoadService final
@@ -164,10 +164,10 @@ namespace lux::asset_runtime
         AssetLoadService(
             std::shared_ptr<State> state,
             lux::asset::AssetManager& manager,
-            lux::exec::AsyncOperationClient<EnsureAssetLoaded> ensure,
-            lux::exec::AsyncOperationClient<LoadAsset> load,
-            lux::exec::AsyncOperationClient<LoadAssetBatch> load_batch,
-            lux::exec::AsyncOperationClient<InvalidateAssetLoad> invalidate)
+            lux::async::OperationPort<EnsureAssetLoaded> ensure,
+            lux::async::OperationPort<LoadAsset> load,
+            lux::async::OperationPort<LoadAssetBatch> load_batch,
+            lux::async::OperationPort<InvalidateAssetLoad> invalidate)
             noexcept
             : state_(std::move(state))
             , manager_(&manager)
@@ -179,10 +179,10 @@ namespace lux::asset_runtime
 
         std::shared_ptr<State> state_;
         lux::asset::AssetManager* manager_{nullptr};
-        lux::exec::AsyncOperationClient<EnsureAssetLoaded> ensure_;
-        lux::exec::AsyncOperationClient<LoadAsset> load_;
-        lux::exec::AsyncOperationClient<LoadAssetBatch> load_batch_;
-        lux::exec::AsyncOperationClient<InvalidateAssetLoad> invalidate_;
+        lux::async::OperationPort<EnsureAssetLoaded> ensure_;
+        lux::async::OperationPort<LoadAsset> load_;
+        lux::async::OperationPort<LoadAssetBatch> load_batch_;
+        lux::async::OperationPort<InvalidateAssetLoad> invalidate_;
         bool closed_{false};
     };
 }

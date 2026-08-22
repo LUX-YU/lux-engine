@@ -43,7 +43,7 @@ namespace lux::runtime::detail
 
         [[nodiscard]] lux::cxx::expected<
             std::shared_ptr<SceneGeometryPrepareReservation>,
-            lux::exec::EAsyncSubmitError>
+            lux::async::ESubmitError>
         reserve(
             std::uint64_t client_generation,
             ESceneGeometryPrepareDomain domain,
@@ -140,7 +140,7 @@ namespace lux::runtime::detail
 
     lux::cxx::expected<
         std::shared_ptr<SceneGeometryPrepareReservation>,
-        lux::exec::EAsyncSubmitError>
+        lux::async::ESubmitError>
     SceneGeometryPrepareControl::reserve(
         std::uint64_t client_generation,
         ESceneGeometryPrepareDomain domain,
@@ -150,7 +150,7 @@ namespace lux::runtime::detail
         if (closing || generation != client_generation)
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::FEATURE_CLOSING);
+                lux::async::ESubmitError::FEATURE_CLOSING);
         }
         auto& state = domain == ESceneGeometryPrepareDomain::CLASSIC_MESH
             ? classic_mesh
@@ -158,13 +158,13 @@ namespace lux::runtime::detail
         if (state.active_requests >= state.config.capacity)
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::QUEUE_FULL);
+                lux::async::ESubmitError::QUEUE_FULL);
         }
         if (bytes == 0u || bytes > state.config.byte_budget ||
             state.active_bytes > state.config.byte_budget - bytes)
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+                lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
         }
         ++state.active_requests;
         state.active_bytes += bytes;
@@ -221,7 +221,7 @@ namespace lux::runtime
 
         [[nodiscard]] lux::cxx::expected<
             std::size_t,
-            lux::exec::EAsyncSubmitError>
+            lux::async::ESubmitError>
         classicMeshWorksetBytes(
             std::span<const std::byte> bytes) noexcept
         {
@@ -261,14 +261,14 @@ namespace lux::runtime
                 !checkedAdd(peak, kPrepareAllocationOverhead, peak))
             {
                 return lux::cxx::unexpected(
-                    lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+                    lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
             }
             return peak;
         }
 
         [[nodiscard]] lux::cxx::expected<
             std::size_t,
-            lux::exec::EAsyncSubmitError>
+            lux::async::ESubmitError>
         terrainWorksetBytes(std::span<const std::byte> bytes) noexcept
         {
             // LXTT v1 is fixed-layout.  During packing, encoded bytes, decoded
@@ -280,7 +280,7 @@ namespace lux::runtime
                 !checkedAdd(copies, kPrepareAllocationOverhead, peak))
             {
                 return lux::cxx::unexpected(
-                    lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+                    lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
             }
             return std::max(peak, std::size_t{1u});
         }
@@ -483,7 +483,7 @@ namespace lux::runtime
                     return;
                 }
                 completion.complete(lux::cxx::unexpected(
-                    lux::exec::AsyncFailure<typename Operation::Error>::
+                    lux::async::OperationFailure<typename Operation::Error>::
                         domain(std::move(result.error()))));
             }
 
@@ -493,7 +493,7 @@ namespace lux::runtime
                     return;
                 admission.reset();
                 completion.failRuntime(
-                    lux::exec::EAsyncSubmitError::STOPPING);
+                    lux::async::ESubmitError::STOPPING);
             }
 
             std::atomic<bool> settled{false};
@@ -506,7 +506,7 @@ namespace lux::runtime
     ClassicMeshPrepareClient::ClassicMeshPrepareClient(
         std::weak_ptr<detail::SceneGeometryPrepareControl> control,
         std::uint64_t generation,
-        lux::exec::AsyncOperationClient<PrepareClassicMeshBatch>
+        lux::async::OperationPort<PrepareClassicMeshBatch>
             operation) noexcept
         : control_(std::move(control)),
           generation_(generation),
@@ -522,7 +522,7 @@ namespace lux::runtime
 
     lux::cxx::expected<
         ClassicMeshPrepareSender,
-        lux::exec::EAsyncSubmitError>
+        lux::async::ESubmitError>
     ClassicMeshPrepareClient::execute(
         PrepareClassicMeshBatch request) const noexcept
     {
@@ -530,7 +530,7 @@ namespace lux::runtime
         if (!control || !operation_)
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::UNKNOWN_OPERATION);
+                lux::async::ESubmitError::UNKNOWN_OPERATION);
         }
         const auto estimated = classicMeshWorksetBytes(
             request.content.view());
@@ -547,13 +547,13 @@ namespace lux::runtime
         return lux::exec::execute(
             operation_,
             std::move(request),
-            lux::exec::AsyncSubmitOptions{.accounted_bytes = bytes});
+            lux::async::SubmitOptions{.accounted_bytes = bytes});
     }
 
     TerrainPrepareClient::TerrainPrepareClient(
         std::weak_ptr<detail::SceneGeometryPrepareControl> control,
         std::uint64_t generation,
-        lux::exec::AsyncOperationClient<PrepareTerrainTile>
+        lux::async::OperationPort<PrepareTerrainTile>
             operation) noexcept
         : control_(std::move(control)),
           generation_(generation),
@@ -567,14 +567,14 @@ namespace lux::runtime
             static_cast<bool>(operation_);
     }
 
-    lux::cxx::expected<TerrainPrepareSender, lux::exec::EAsyncSubmitError>
+    lux::cxx::expected<TerrainPrepareSender, lux::async::ESubmitError>
     TerrainPrepareClient::execute(PrepareTerrainTile request) const noexcept
     {
         const auto control = control_.lock();
         if (!control || !operation_)
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::UNKNOWN_OPERATION);
+                lux::async::ESubmitError::UNKNOWN_OPERATION);
         }
         const auto estimated = terrainWorksetBytes(request.content.view());
         if (!estimated)
@@ -590,7 +590,7 @@ namespace lux::runtime
         return lux::exec::execute(
             operation_,
             std::move(request),
-            lux::exec::AsyncSubmitOptions{.accounted_bytes = bytes});
+            lux::async::SubmitOptions{.accounted_bytes = bytes});
     }
 
     lux::cxx::expected<
@@ -604,7 +604,7 @@ namespace lux::runtime
         {
             return lux::cxx::unexpected(lux::exec::AsyncAssemblyFailure{
                 lux::exec::EAsyncAssemblyError::INVALID_QUEUE,
-                lux::exec::kAsyncTypeToken<PrepareClassicMeshBatch>,
+                lux::async::operationType<PrepareClassicMeshBatch>(),
                 {}});
         }
         auto control =
@@ -720,9 +720,9 @@ namespace lux::runtime
 
     SceneGeometryPrepareService::SceneGeometryPrepareService(
         std::shared_ptr<detail::SceneGeometryPrepareControl> control,
-        lux::exec::AsyncOperationClient<PrepareClassicMeshBatch>
+        lux::async::OperationPort<PrepareClassicMeshBatch>
             classic_mesh,
-        lux::exec::AsyncOperationClient<PrepareTerrainTile> terrain) noexcept
+        lux::async::OperationPort<PrepareTerrainTile> terrain) noexcept
         : control_(std::move(control)),
           classic_mesh_(std::move(classic_mesh)),
           terrain_(std::move(terrain))

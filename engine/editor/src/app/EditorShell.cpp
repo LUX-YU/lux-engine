@@ -219,7 +219,7 @@ namespace lux::editor
 
         descriptor = base(kHierarchy.name(), "Hierarchy");
         descriptor.required_editor_services.push_back(
-            lux::ecs::typeToken<lux::ecs::ComponentTypeCatalog>());
+            lux::cxx::typeToken<lux::ecs::ComponentTypeCatalog>());
         descriptor.create = [](const EditorPanelCreateContext& context)
         {
             const auto* components =
@@ -240,7 +240,7 @@ namespace lux::editor
 
         descriptor = base(kInspector.name(), "Inspector");
         descriptor.required_editor_services.push_back(
-            lux::ecs::typeToken<lux::ecs::ComponentTypeCatalog>());
+            lux::cxx::typeToken<lux::ecs::ComponentTypeCatalog>());
         descriptor.create = [](const EditorPanelCreateContext& context)
         {
             const auto* components =
@@ -274,7 +274,7 @@ namespace lux::editor
         descriptor = base(kAssetBrowser.name(), "Asset Browser");
         descriptor.supports_deactivation = false;
         descriptor.required_editor_services.push_back(
-            lux::ecs::typeToken<lux::asset::AssetManager>());
+            lux::cxx::typeToken<lux::asset::AssetManager>());
         descriptor.create = [](const EditorPanelCreateContext& context)
         {
             auto assets = context.findShared<lux::asset::AssetManager>();
@@ -325,7 +325,7 @@ namespace lux::editor
 
         descriptor = base(kScriptEditor.name(), "Script Editor");
         descriptor.required_editor_services.push_back(
-            lux::ecs::typeToken<lux::asset::AssetManager>());
+            lux::cxx::typeToken<lux::asset::AssetManager>());
         descriptor.create = [](const EditorPanelCreateContext& context)
         {
             auto assets = context.findShared<lux::asset::AssetManager>();

@@ -33,7 +33,7 @@ namespace lux::ecs::detail
 
             for (const auto& left : lhs.resources)
                 for (const auto& right : rhs.resources)
-                    if (sameTypeToken(left.resource, right.resource) &&
+                    if (left.resource == right.resource &&
                         (left.mode == ISystem::AccessMode::Write ||
                          right.mode == ISystem::AccessMode::Write))
                         return true;

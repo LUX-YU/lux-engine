@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
 project(lux-engine)
 
+# Tests are part of the configured validation surface.  Individual products
+# still decide which test subdirectories exist, but every add_test() below the
+# root now has a real CTest owner instead of producing an undiscoverable test
+# executable.
+include(CTest)
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "RELEASE")
 endif()
@@ -45,6 +51,7 @@ cmake_language(DEFER CALL lux_validate_foundation_targets)
 cmake_language(DEFER CALL lux_validate_target_dag)
 cmake_language(DEFER CALL lux_validate_all_production_targets)
 cmake_language(DEFER CALL lux_validate_ecs_dimension_closures)
+cmake_language(DEFER CALL lux_validate_source_boundaries)
 cmake_language(DEFER CALL lux_write_unclassified_target_report)
 
 set(CMAKE_TOOL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tools)
@@ -170,8 +177,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-# Test executables and their source directories remain available for local,
-# ad-hoc use, but are not part of the configured build validation suite.
+# Test executables remain available for local use and registered tests are
+# discoverable through CTest. Product profiles still control which test
+# subdirectories are configured.
 foreach(layer ${lux_engine_layers})
     add_subdirectory(modules/${layer})
     if(layer STREQUAL "resource" AND NOT CMAKE_CROSSCOMPILING)

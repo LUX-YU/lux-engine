@@ -28,7 +28,7 @@ namespace lux::runtime
         descriptor.id = lux::scene::SceneFeatureId{
             std::string{kSpatial2DTransformContributionName}};
         descriptor.display_name = "2D transform resolution";
-        descriptor.provided_services = {typeToken<Transform2DSystem>()};
+        descriptor.provided_services = {lux::cxx::typeToken<Transform2DSystem>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [](

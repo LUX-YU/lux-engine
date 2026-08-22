@@ -324,7 +324,7 @@ namespace
             "org.test.scene.runtime_close"};
         descriptor.display_name = "SceneRuntime close ownership probe";
         descriptor.provided_services = {
-            lux::ecs::typeToken<RuntimeCloseService>()};
+            lux::cxx::typeToken<RuntimeCloseService>()};
         descriptor.config_schema_version = 0u;
         descriptor.provider = lux::extensions::ExtensionId{
             "org.test.runtime_close"};
@@ -428,9 +428,9 @@ namespace
         : public lux::runtime::ISceneRuntimeIntegration
     {
     public:
-        [[nodiscard]] lux::ecs::TypeToken type() const noexcept override
+        [[nodiscard]] lux::cxx::TypeToken type() const noexcept override
         {
-            return lux::ecs::typeToken<NonTerminalRollbackIntegration>();
+            return lux::cxx::typeToken<NonTerminalRollbackIntegration>();
         }
 
         [[nodiscard]] lux::cxx::expected<

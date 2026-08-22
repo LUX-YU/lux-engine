@@ -130,6 +130,7 @@ add_component(
     NAMESPACE lux::engine::runtime
     OUTPUT_NAME lux_engine_runtime_contribution_host
     SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ModuleMetadataBatch.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RuntimeContributionRegistrar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EngineExtensions.cpp
 )

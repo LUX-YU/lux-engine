@@ -158,7 +158,7 @@ namespace lux::runtime::spatial2d
         void acceptPreparation(
             std::uint32_t slot,
             std::uint32_t generation,
-            lux::exec::AsyncOutcome<PrepareTilemapChunk> outcome) noexcept;
+            lux::async::OperationOutcome<PrepareTilemapChunk> outcome) noexcept;
         void acceptPreparationStopped(
             std::uint32_t slot,
             std::uint32_t generation) noexcept;

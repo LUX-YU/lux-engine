@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/ecs/SystemUpdateContext.hpp>
-#include <lux/engine/ecs/TypeToken.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/ecs/render/RenderSubsystemContext.hpp>
 #include <lux/engine/function/visibility.h>
 
@@ -11,12 +11,12 @@
 
 namespace lux::ecs
 {
-    using RenderSubsystemType = TypeToken;
+    using RenderSubsystemType = lux::cxx::TypeToken;
 
     template <class Subsystem>
     [[nodiscard]] constexpr RenderSubsystemType renderSubsystemType() noexcept
     {
-        return typeToken<Subsystem>();
+        return lux::cxx::typeToken<Subsystem>();
     }
 
     /// One ECS -> render extraction stage owned by RenderSystem. Runtime

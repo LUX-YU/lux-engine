@@ -916,13 +916,13 @@ namespace lux::editor
             descriptor.provider = lux::extensions::ExtensionId{
                 "org.lux.editor.core"};
             descriptor.required_editor_services = {
-                lux::ecs::typeToken<
+                lux::cxx::typeToken<
                     lux::extensions::EngineExtensions>(),
-                lux::ecs::typeToken<
+                lux::cxx::typeToken<
                     lux::runtime::SceneContributionCatalog>(),
-                lux::ecs::typeToken<
+                lux::cxx::typeToken<
                     lux::runtime::RenderEffectCatalog>(),
-                lux::ecs::typeToken<
+                lux::cxx::typeToken<
                     lux::editor::EditorPanelCatalog>()};
             descriptor.create = [](const auto& context)
                 -> lux::cxx::expected<
@@ -1745,12 +1745,12 @@ namespace lux::editor
     }
 
     // -------------------------------------------------------------------------
-    lux::exec::AsyncSubmitResult 
+    lux::async::SubmitResult
     LuxEditor::spawnModelEntity(lux::asset::asset_id_t model_id, InstanceSpawnClient::Completion completion)
     {
         auto* scene = currentScene();
         if (!scene)
-            return lux::cxx::unexpected(lux::exec::EAsyncSubmitError::STOPPING);
+            return lux::cxx::unexpected(lux::async::ESubmitError::STOPPING);
         return scene->spawnModel(model_id, std::move(completion));
     }
 

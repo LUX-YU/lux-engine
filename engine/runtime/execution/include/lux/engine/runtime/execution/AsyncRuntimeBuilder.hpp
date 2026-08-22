@@ -30,13 +30,13 @@ namespace lux::exec
     struct AsyncAssemblyFailure final
     {
         EAsyncAssemblyError code{EAsyncAssemblyError::INVALID_HANDLER};
-        AsyncTypeToken operation{};
-        AsyncTypeToken dependency{};
+        lux::cxx::TypeToken operation{};
+        lux::cxx::TypeToken dependency{};
     };
 
     struct AsyncOperationRegistrationOptions final
     {
-        std::vector<AsyncTypeToken> prerequisites;
+        std::vector<lux::cxx::TypeToken> prerequisites;
         std::shared_ptr<const void> module_lease;
     };
 
@@ -44,8 +44,8 @@ namespace lux::exec
     {
         struct AsyncRegistration final
         {
-            AsyncTypeToken type{};
-            std::vector<AsyncTypeToken> prerequisites;
+            lux::cxx::TypeToken type{};
+            std::vector<lux::cxx::TypeToken> prerequisites;
             std::shared_ptr<void> handler_state;
             std::shared_ptr<const void> module_lease;
             std::shared_ptr<AsyncEndpointBase> endpoint;
@@ -56,7 +56,7 @@ namespace lux::exec
                 std::size_t) noexcept{nullptr};
             void (*rejectAll)(
                 AsyncEndpointBase&,
-                EAsyncSubmitError) noexcept{nullptr};
+                lux::async::ESubmitError) noexcept{nullptr};
         };
     }
 
@@ -117,7 +117,7 @@ namespace lux::exec
 
         template <AsyncOperation Operation, class Handler>
         [[nodiscard]] lux::cxx::expected<
-            AsyncOperationClient<Operation>,
+            lux::async::OperationPort<Operation>,
             AsyncAssemblyFailure>
         addOperation(
             Handler handler,
@@ -135,7 +135,8 @@ namespace lux::exec
                 "Async operation handler must be noexcept and accept "
                 "(Operation&&, AsyncOperationContext&, AsyncCompletion&&)");
 
-            constexpr AsyncTypeToken token = kAsyncTypeToken<Operation>;
+            constexpr lux::cxx::TypeToken token =
+                lux::async::operationType<Operation>();
             if (!queue.valid())
             {
                 return lux::cxx::unexpected(AsyncAssemblyFailure{
@@ -145,10 +146,10 @@ namespace lux::exec
             }
             for (const auto& registration : registrations_)
             {
-                if (registration.type.hash != token.hash)
+                if (registration.type.hash() != token.hash())
                     continue;
                 return lux::cxx::unexpected(AsyncAssemblyFailure{
-                    registration.type.name == token.name
+                    registration.type.name() == token.name()
                         ? EAsyncAssemblyError::DUPLICATE_OPERATION
                         : EAsyncAssemblyError::TYPE_COLLISION,
                     token,
@@ -195,13 +196,13 @@ namespace lux::exec
             };
             registration.rejectAll = +[](
                 detail::AsyncEndpointBase& erased_endpoint,
-                EAsyncSubmitError error) noexcept
+                lux::async::ESubmitError error) noexcept
             {
                 static_cast<detail::OperationEndpoint<Operation>&>(
                     erased_endpoint).rejectAll(error);
             };
             registrations_.push_back(std::move(registration));
-            return AsyncOperationClient<Operation>{std::move(endpoint)};
+            return lux::async::OperationPort<Operation>{std::move(endpoint)};
         }
 
         [[nodiscard]] lux::cxx::expected<

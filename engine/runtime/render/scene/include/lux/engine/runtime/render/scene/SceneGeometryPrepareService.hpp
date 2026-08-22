@@ -196,7 +196,7 @@ namespace lux::runtime
 
         [[nodiscard]] lux::cxx::expected<
             ClassicMeshPrepareSender,
-            lux::exec::EAsyncSubmitError>
+            lux::async::ESubmitError>
         execute(PrepareClassicMeshBatch request) const noexcept;
         [[nodiscard]] explicit operator bool() const noexcept;
 
@@ -205,12 +205,12 @@ namespace lux::runtime
         ClassicMeshPrepareClient(
             std::weak_ptr<detail::SceneGeometryPrepareControl> control,
             std::uint64_t generation,
-            lux::exec::AsyncOperationClient<PrepareClassicMeshBatch>
+            lux::async::OperationPort<PrepareClassicMeshBatch>
                 operation) noexcept;
 
         std::weak_ptr<detail::SceneGeometryPrepareControl> control_;
         std::uint64_t generation_{0u};
-        lux::exec::AsyncOperationClient<PrepareClassicMeshBatch> operation_;
+        lux::async::OperationPort<PrepareClassicMeshBatch> operation_;
     };
 
     class LUX_RUNTIME_RENDER_SCENE_PUBLIC TerrainPrepareClient final
@@ -220,7 +220,7 @@ namespace lux::runtime
 
         [[nodiscard]] lux::cxx::expected<
             TerrainPrepareSender,
-            lux::exec::EAsyncSubmitError>
+            lux::async::ESubmitError>
         execute(PrepareTerrainTile request) const noexcept;
         [[nodiscard]] explicit operator bool() const noexcept;
 
@@ -229,12 +229,12 @@ namespace lux::runtime
         TerrainPrepareClient(
             std::weak_ptr<detail::SceneGeometryPrepareControl> control,
             std::uint64_t generation,
-            lux::exec::AsyncOperationClient<PrepareTerrainTile>
+            lux::async::OperationPort<PrepareTerrainTile>
                 operation) noexcept;
 
         std::weak_ptr<detail::SceneGeometryPrepareControl> control_;
         std::uint64_t generation_{0u};
-        lux::exec::AsyncOperationClient<PrepareTerrainTile> operation_;
+        lux::async::OperationPort<PrepareTerrainTile> operation_;
     };
 
     struct SceneGeometryPrepareDomainSnapshot final
@@ -284,15 +284,15 @@ namespace lux::runtime
     private:
         SceneGeometryPrepareService(
             std::shared_ptr<detail::SceneGeometryPrepareControl> control,
-            lux::exec::AsyncOperationClient<PrepareClassicMeshBatch>
+            lux::async::OperationPort<PrepareClassicMeshBatch>
                 classic_mesh,
-            lux::exec::AsyncOperationClient<PrepareTerrainTile>
+            lux::async::OperationPort<PrepareTerrainTile>
                 terrain) noexcept;
 
         std::shared_ptr<detail::SceneGeometryPrepareControl> control_;
-        lux::exec::AsyncOperationClient<PrepareClassicMeshBatch>
+        lux::async::OperationPort<PrepareClassicMeshBatch>
             classic_mesh_;
-        lux::exec::AsyncOperationClient<PrepareTerrainTile> terrain_;
+        lux::async::OperationPort<PrepareTerrainTile> terrain_;
         bool closed_{false};
     };
 } // namespace lux::runtime

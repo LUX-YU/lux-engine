@@ -125,7 +125,7 @@ int main()
                 .drain_batch = 64});
     check(added.has_value(), "register typed operation");
     auto double_client = added ? *added
-                               : lux::exec::AsyncOperationClient<DoubleValue>{};
+                               : lux::async::OperationPort<DoubleValue>{};
 
     auto duplicate = builder.addOperation<DoubleValue>(
         [](DoubleValue&&,
@@ -133,7 +133,7 @@ int main()
            auto&& completion) noexcept
         {
             completion.failRuntime(
-                lux::exec::EAsyncSubmitError::PAYLOAD_INVALID);
+                lux::async::ESubmitError::PAYLOAD_INVALID);
         });
     check(
         !duplicate && duplicate.error().code ==
@@ -154,7 +154,7 @@ int main()
     check(count_added.has_value(), "register MPMC count operation");
     auto count_client = count_added
         ? *count_added
-        : lux::exec::AsyncOperationClient<CountOperation>{};
+        : lux::async::OperationPort<CountOperation>{};
 
     auto non_default_added = builder.addOperation<NonDefaultOperation>(
         [](NonDefaultOperation&& operation,
@@ -168,7 +168,7 @@ int main()
         "typed queue does not require default-constructible payloads");
     auto non_default_client = non_default_added
         ? *non_default_added
-        : lux::exec::AsyncOperationClient<NonDefaultOperation>{};
+        : lux::async::OperationPort<NonDefaultOperation>{};
 
     auto plan = std::move(builder).compile();
     check(plan.has_value(), "compile operation registry");
@@ -282,13 +282,13 @@ int main()
         "non-default operation survives enqueue/dequeue ownership transfer");
 
     auto unknown = wait(lux::exec::execute(
-        lux::exec::AsyncOperationClient<MissingOperation>{},
+        lux::async::OperationPort<MissingOperation>{},
         MissingOperation{}));
     check(
         unknown && !std::get<0>(*unknown) &&
             std::get<0>(*unknown).error().isRuntime() &&
             std::get<0>(*unknown).error().runtimeError() ==
-                lux::exec::EAsyncSubmitError::UNKNOWN_OPERATION,
+                lux::async::ESubmitError::UNKNOWN_OPERATION,
         "unknown operation is a structured value failure");
 
     std::weak_ptr<int> dynamic_module;
@@ -322,7 +322,7 @@ int main()
         check(bundle_added.has_value(), "assemble dynamic operation bundle package");
         auto triple_client = bundle_added
             ? *bundle_added
-            : lux::exec::AsyncOperationClient<TripleValue>{};
+            : lux::async::OperationPort<TripleValue>{};
 
         auto installed_wait = wait(runtime.installOperations(
             std::move(bundle_builder).compileOperations()));
@@ -363,7 +363,7 @@ int main()
                 removed_result && !std::get<0>(*removed_result) &&
                     std::get<0>(*removed_result).error().isRuntime() &&
                     std::get<0>(*removed_result).error().runtimeError() ==
-                        lux::exec::EAsyncSubmitError::UNKNOWN_OPERATION,
+                        lux::async::ESubmitError::UNKNOWN_OPERATION,
                 "closed operation bundle rejects later operations structurally");
         }
     }
@@ -371,14 +371,14 @@ int main()
     lux::exec::AsyncRuntimeBuilder missing_bundle_builder;
     lux::exec::AsyncOperationRegistrationOptions bundle_dependency;
     bundle_dependency.prerequisites.push_back(
-        lux::exec::kAsyncTypeToken<MissingOperation>);
+        lux::async::operationType<MissingOperation>());
     (void)missing_bundle_builder.addOperation<TripleValue>(
         [](TripleValue&&,
            lux::exec::AsyncOperationContext&,
            auto&& completion) noexcept
         {
             completion.failRuntime(
-                lux::exec::EAsyncSubmitError::PAYLOAD_INVALID);
+                lux::async::ESubmitError::PAYLOAD_INVALID);
         },
         std::move(bundle_dependency));
     auto missing_bundle_wait = wait(runtime.installOperations(
@@ -416,7 +416,7 @@ int main()
         check(race_added.has_value(), "assemble endpoint close race operation bundle");
         auto race_client = race_added
             ? *race_added
-            : lux::exec::AsyncOperationClient<CloseRaceOperation>{};
+            : lux::async::OperationPort<CloseRaceOperation>{};
         auto installed_race = wait(runtime.installOperations(
             std::move(race_builder).compileOperations()));
         check(
@@ -443,7 +443,7 @@ int main()
                         {
                             (void)race_client.tryNotify(
                                 CloseRaceOperation{producer, sequence},
-                                lux::exec::AsyncSubmitOptions{
+                                lux::async::SubmitOptions{
                                     .accounted_bytes =
                                         sizeof(CloseRaceOperation)});
                         }
@@ -594,12 +594,12 @@ int main()
     auto over_budget = wait(lux::exec::execute(
         *constrained_added,
         MissingOperation{},
-        lux::exec::AsyncSubmitOptions{
+        lux::async::SubmitOptions{
             .accounted_bytes = 9}));
     check(
         over_budget && !std::get<0>(*over_budget) &&
             std::get<0>(*over_budget).error().runtimeError() ==
-                lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED,
+                lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED,
         "per-operation byte budget rejects without blocking producer");
     const auto constrained_close =
         lux::exec::testing::closeRuntime(constrained);
@@ -642,14 +642,14 @@ int main()
     lux::exec::AsyncRuntimeBuilder missing_builder;
     lux::exec::AsyncOperationRegistrationOptions missing_options;
     missing_options.prerequisites.push_back(
-        lux::exec::kAsyncTypeToken<MissingOperation>);
+        lux::async::operationType<MissingOperation>());
     (void)missing_builder.addOperation<DoubleValue>(
         [](DoubleValue&&,
            lux::exec::AsyncOperationContext&,
            auto&& completion) noexcept
         {
             completion.failRuntime(
-                lux::exec::EAsyncSubmitError::PAYLOAD_INVALID);
+                lux::async::ESubmitError::PAYLOAD_INVALID);
         },
         std::move(missing_options));
     auto missing_plan = std::move(missing_builder).compile();

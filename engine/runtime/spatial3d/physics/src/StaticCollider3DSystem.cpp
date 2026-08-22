@@ -836,8 +836,8 @@ namespace lux::runtime::spatial3d
                 if (!submitted)
                 {
                     if (submitted.error() ==
-                            lux::exec::EAsyncSubmitError::QUEUE_FULL ||
-                        submitted.error() == lux::exec::EAsyncSubmitError::
+                            lux::async::ESubmitError::QUEUE_FULL ||
+                        submitted.error() == lux::async::ESubmitError::
                                                  BYTE_BUDGET_EXHAUSTED)
                     {
                         ++metrics.queue_backpressure;
@@ -857,7 +857,7 @@ namespace lux::runtime::spatial3d
                         [weak = std::weak_ptr{completion},
                          entity,
                          generation](
-                            lux::exec::AsyncOutcome<BuildStaticCollider3D>
+                            lux::async::OperationOutcome<BuildStaticCollider3D>
                                 outcome) mutable noexcept
                         {
                             const auto locked = weak.lock();
@@ -1446,7 +1446,7 @@ namespace lux::runtime::spatial3d
     void StaticCollider3DSystem::acceptPreparation(
         entt::entity entity,
         std::uint64_t generation,
-        lux::exec::AsyncOutcome<BuildStaticCollider3D> outcome) noexcept
+        lux::async::OperationOutcome<BuildStaticCollider3D> outcome) noexcept
     {
         const auto found = impl_->entries.find(entityKey(entity));
         if (found == impl_->entries.end() ||
@@ -1478,8 +1478,8 @@ namespace lux::runtime::spatial3d
             if (outcome.error().isRuntime())
             {
                 const auto error = outcome.error().runtimeError();
-                if (error == lux::exec::EAsyncSubmitError::QUEUE_FULL ||
-                    error == lux::exec::EAsyncSubmitError::
+                if (error == lux::async::ESubmitError::QUEUE_FULL ||
+                    error == lux::async::ESubmitError::
                                  BYTE_BUDGET_EXHAUSTED)
                 {
                     if (!desired_matches)

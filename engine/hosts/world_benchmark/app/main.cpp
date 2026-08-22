@@ -1765,8 +1765,8 @@ namespace
                     frame,
                     static_cast<std::uint32_t>(route_frame % 1200u),
                     system.frame_serial,
-                    system.system.hash,
-                    system.system.name,
+                    system.system.hash(),
+                    system.system.name(),
                     system.phase,
                     system.wall_nanoseconds});
             }

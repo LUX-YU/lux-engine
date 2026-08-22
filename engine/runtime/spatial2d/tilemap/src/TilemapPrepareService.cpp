@@ -33,7 +33,7 @@ namespace lux::runtime::spatial2d
                     completion.complete(std::move(*result));
                 else
                     completion.complete(lux::cxx::unexpected(
-                        lux::exec::AsyncFailure<ETilemapPrepareError>::domain(
+                        lux::async::OperationFailure<ETilemapPrepareError>::domain(
                             result.error())));
             }
 
@@ -42,7 +42,7 @@ namespace lux::runtime::spatial2d
                 if (settled.exchange(true, std::memory_order_acq_rel))
                     return;
                 completion.failRuntime(
-                    lux::exec::EAsyncSubmitError::STOPPING);
+                    lux::async::ESubmitError::STOPPING);
             }
 
             std::atomic<bool> settled{false};
@@ -53,7 +53,7 @@ namespace lux::runtime::spatial2d
 
     TilemapPrepareClient::TilemapPrepareClient(
         std::weak_ptr<detail::TilemapPrepareControl> control,
-        lux::exec::AsyncOperationClient<PrepareTilemapChunk> operation)
+        lux::async::OperationPort<PrepareTilemapChunk> operation)
         noexcept
         : control_(std::move(control)), operation_(std::move(operation))
     {}
@@ -146,7 +146,7 @@ namespace lux::runtime::spatial2d
 
     TilemapPrepareService::TilemapPrepareService(
         std::shared_ptr<detail::TilemapPrepareControl> control,
-        lux::exec::AsyncOperationClient<PrepareTilemapChunk> operation)
+        lux::async::OperationPort<PrepareTilemapChunk> operation)
         noexcept
         : control_(std::move(control)), operation_(std::move(operation))
     {}

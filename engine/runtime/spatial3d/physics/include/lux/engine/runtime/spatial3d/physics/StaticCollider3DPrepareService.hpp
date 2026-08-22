@@ -51,7 +51,7 @@ namespace lux::runtime::spatial3d
     using StaticCollider3DPrepareExp = lux::cxx::expected<T, StaticCollider3DPrepareFailure>;
 
     template <typename T>
-    using StaticCollider3DSubmitExp = lux::cxx::expected<T, lux::exec::EAsyncSubmitError>;
+    using StaticCollider3DSubmitExp = lux::cxx::expected<T, lux::async::ESubmitError>;
 
     template <typename T>
     using StaticCollider3DAssemblyExp = lux::cxx::expected<T, lux::exec::AsyncAssemblyFailure>;
@@ -174,12 +174,12 @@ namespace lux::runtime::spatial3d
         StaticCollider3DPrepareClient(
             std::weak_ptr<detail::StaticCollider3DPrepareControl> control,
             std::uint64_t generation,
-            lux::exec::AsyncOperationClient<BuildStaticCollider3D>
+            lux::async::OperationPort<BuildStaticCollider3D>
                 operation) noexcept;
 
         std::weak_ptr<detail::StaticCollider3DPrepareControl> control_;
         std::uint64_t generation_{0u};
-        lux::exec::AsyncOperationClient<BuildStaticCollider3D> operation_;
+        lux::async::OperationPort<BuildStaticCollider3D> operation_;
     };
 
     class LUX_ENGINE_RUNTIME_SPATIAL3D_PHYSICS_PUBLIC
@@ -210,11 +210,11 @@ namespace lux::runtime::spatial3d
     private:
         StaticCollider3DPrepareService(
             std::shared_ptr<detail::StaticCollider3DPrepareControl> control,
-            lux::exec::AsyncOperationClient<BuildStaticCollider3D>
+            lux::async::OperationPort<BuildStaticCollider3D>
                 operation) noexcept;
 
         std::shared_ptr<detail::StaticCollider3DPrepareControl> control_;
-        lux::exec::AsyncOperationClient<BuildStaticCollider3D> operation_;
+        lux::async::OperationPort<BuildStaticCollider3D> operation_;
         bool closed_{false};
     };
 } // namespace lux::runtime::spatial3d

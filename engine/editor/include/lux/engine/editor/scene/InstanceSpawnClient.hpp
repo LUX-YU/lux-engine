@@ -100,7 +100,7 @@ namespace lux::editor
         /// Main-thread submission. A successful return means the request was
         /// admitted to this scene scope; runtime backpressure is still
         /// delivered through the exactly-once structured completion.
-        [[nodiscard]] lux::exec::AsyncSubmitResult spawnModel(
+        [[nodiscard]] lux::async::SubmitResult spawnModel(
             const lux::asset::asset_id_t& model,
             Completion completion);
 

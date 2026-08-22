@@ -99,7 +99,7 @@ namespace lux::editor
         /// systems and read from ViewPresentComponent::extent.
         [[nodiscard]] std::span<const lux::ecs::SystemType> runsBefore() const noexcept override
         {
-            if (!camera_system_)
+            if (!camera_system_.isValid())
                 return {};
             return {&camera_system_, 1u};
         }

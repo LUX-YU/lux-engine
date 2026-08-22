@@ -76,7 +76,7 @@ namespace lux::asset_runtime
 
             void settle(
                 std::size_t index,
-                lux::exec::AsyncOutcome<LoadAsset> outcome) noexcept
+                lux::async::OperationOutcome<LoadAsset> outcome) noexcept
             {
                 if (settled)
                     return;
@@ -88,7 +88,7 @@ namespace lux::asset_runtime
                     else
                     {
                         completion.complete(lux::cxx::unexpected(
-                            lux::exec::AsyncFailure<
+                            lux::async::OperationFailure<
                                 lux::asset::EAssetError>::domain(
                                     outcome.error().domainError())));
                     }
@@ -151,7 +151,7 @@ namespace lux::asset_runtime
             if (operation.id.is_nil() || !operation.vfs)
             {
                 completion.complete(lux::cxx::unexpected(
-                    lux::exec::AsyncFailure<lux::asset::EAssetError>::domain(
+                    lux::async::OperationFailure<lux::asset::EAssetError>::domain(
                         lux::asset::EAssetError::ASSET_NOT_EXIST)));
                 return;
             }
@@ -163,7 +163,7 @@ namespace lux::asset_runtime
             if (row.status == ERowStatus::TERMINAL)
             {
                 completion.complete(lux::cxx::unexpected(
-                    lux::exec::AsyncFailure<lux::asset::EAssetError>::domain(
+                    lux::async::OperationFailure<lux::asset::EAssetError>::domain(
                         row.terminal_error)));
                 return;
             }
@@ -181,7 +181,7 @@ namespace lux::asset_runtime
             if (!operation.assets)
             {
                 completion.complete(lux::cxx::unexpected(
-                    lux::exec::AsyncFailure<
+                    lux::async::OperationFailure<
                         lux::asset::EAssetError>::domain(
                             lux::asset::EAssetError::ASSET_NOT_EXIST)));
                 return;
@@ -201,7 +201,7 @@ namespace lux::asset_runtime
                     [join, index](void* opaque) noexcept
                     {
                         auto& outcome = *static_cast<
-                            lux::exec::AsyncOutcome<LoadAsset>*>(opaque);
+                            lux::async::OperationOutcome<LoadAsset>*>(opaque);
                         join->settle(index, std::move(outcome));
                     }};
                 observe(
@@ -422,7 +422,7 @@ namespace lux::asset_runtime
                 if (!lux::exec::spawn(
                         context.scope(), std::move(retry_sender)))
                 {
-                    failRuntime(row, lux::exec::EAsyncSubmitError::STOPPING);
+                    failRuntime(row, lux::async::ESubmitError::STOPPING);
                 }
                 return;
             }
@@ -454,14 +454,14 @@ namespace lux::asset_runtime
             for (auto& waiter : waiters)
             {
                 waiter.complete(lux::cxx::unexpected(
-                    lux::exec::AsyncFailure<lux::asset::EAssetError>::domain(
+                    lux::async::OperationFailure<lux::asset::EAssetError>::domain(
                         error)));
             }
         }
 
         static void failRuntime(
             Row& row,
-            lux::exec::EAsyncSubmitError error) noexcept
+            lux::async::ESubmitError error) noexcept
         {
             auto waiters = std::move(row.waiters);
             row.waiters.clear();
@@ -476,7 +476,7 @@ namespace lux::asset_runtime
                 return;
             failRuntime(
                 found->second,
-                lux::exec::EAsyncSubmitError::STOPPING);
+                lux::async::ESubmitError::STOPPING);
             rows.erase(found);
         }
 
@@ -507,7 +507,7 @@ namespace lux::asset_runtime
                     (!operation.already_ready && !operation.vfs))
                 {
                     completion.complete(lux::cxx::unexpected(
-                        lux::exec::AsyncFailure<
+                        lux::async::OperationFailure<
                             lux::asset::EAssetError>::domain(
                                 lux::asset::EAssetError::ASSET_NOT_EXIST)));
                     return;
@@ -638,13 +638,13 @@ namespace lux::asset_runtime
         closed_ = true;
     }
 
-    lux::exec::AsyncSubmitResult AssetClient::request(
+    lux::async::SubmitResult AssetClient::request(
         const lux::asset::asset_id_t& id) const noexcept
     {
         if (!manager_ || !ensure_ || id.is_nil())
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::PAYLOAD_INVALID);
+                lux::async::ESubmitError::PAYLOAD_INVALID);
         }
         const bool ready = manager_->hasData(id);
         return ensure_.tryNotify(
@@ -655,13 +655,13 @@ namespace lux::asset_runtime
                 ready ? nullptr : manager_->vfs()});
     }
 
-    lux::exec::AsyncSubmitResult AssetClient::invalidate(
+    lux::async::SubmitResult AssetClient::invalidate(
         const lux::asset::asset_id_t& id) const noexcept
     {
         if (!manager_ || !invalidate_ || id.is_nil())
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::PAYLOAD_INVALID);
+                lux::async::ESubmitError::PAYLOAD_INVALID);
         }
         return invalidate_.tryNotify(InvalidateAssetLoad{
             id,

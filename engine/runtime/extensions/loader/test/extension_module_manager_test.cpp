@@ -35,13 +35,13 @@ int main(int argc, char** argv)
 {
     using namespace lux::extensions;
 
-    static_assert(lux::extensions::kExtensionAbiV4 == 4u);
+    static_assert(lux::extensions::kExtensionAbiV5 == 5u);
     static_assert(sizeof(lux::cxx::AbiFingerprint) == 32u);
     static_assert(
         lux::extensions::kEngineExtensionAbiFingerprint ==
         lux::cxx::AbiBuildInfo::fingerprint());
     static_assert(std::is_standard_layout_v<ExtensionDependencyView>);
-    static_assert(std::is_standard_layout_v<ExtensionModuleDescriptorV4>);
+    static_assert(std::is_standard_layout_v<ExtensionModuleDescriptorV5>);
     static_assert(std::is_standard_layout_v<ExtensionRegistrationResult>);
     static_assert(
         static_cast<std::uint8_t>(EExtensionModuleTarget::RUNTIME) == 0u);
@@ -59,43 +59,43 @@ int main(int argc, char** argv)
     static_assert(
         offsetof(ExtensionDependencyView, minimum_minor) ==
         sizeof(lux::cxx::AbiStringView) + sizeof(std::uint16_t));
-    static_assert(offsetof(ExtensionModuleDescriptorV4, struct_size) == 0u);
+    static_assert(offsetof(ExtensionModuleDescriptorV5, struct_size) == 0u);
     static_assert(
-        offsetof(ExtensionModuleDescriptorV4, extension_abi) ==
+        offsetof(ExtensionModuleDescriptorV5, extension_abi) ==
         sizeof(std::uint32_t));
     static_assert(
-        offsetof(ExtensionModuleDescriptorV4, engine_abi_fingerprint) ==
+        offsetof(ExtensionModuleDescriptorV5, engine_abi_fingerprint) ==
         sizeof(std::uint32_t) * 2u);
     static_assert(
-        offsetof(ExtensionModuleDescriptorV4, id) ==
-        offsetof(ExtensionModuleDescriptorV4, engine_abi_fingerprint) +
+        offsetof(ExtensionModuleDescriptorV5, id) ==
+        offsetof(ExtensionModuleDescriptorV5, engine_abi_fingerprint) +
             sizeof(lux::cxx::AbiFingerprint));
     static_assert(
-        offsetof(ExtensionModuleDescriptorV4, version) ==
-        offsetof(ExtensionModuleDescriptorV4, id) +
+        offsetof(ExtensionModuleDescriptorV5, version) ==
+        offsetof(ExtensionModuleDescriptorV5, id) +
             sizeof(lux::cxx::AbiStringView));
     static_assert(
-        offsetof(ExtensionModuleDescriptorV4, target) >=
-        offsetof(ExtensionModuleDescriptorV4, version) +
+        offsetof(ExtensionModuleDescriptorV5, target) >=
+        offsetof(ExtensionModuleDescriptorV5, version) +
             sizeof(ExtensionVersion));
     static_assert(
-        offsetof(ExtensionModuleDescriptorV4, dependencies) >=
-        offsetof(ExtensionModuleDescriptorV4, target) +
+        offsetof(ExtensionModuleDescriptorV5, dependencies) >=
+        offsetof(ExtensionModuleDescriptorV5, target) +
             sizeof(EExtensionModuleTarget));
     static_assert(
-        offsetof(ExtensionModuleDescriptorV4, dependency_count) >=
-        offsetof(ExtensionModuleDescriptorV4, dependencies) +
+        offsetof(ExtensionModuleDescriptorV5, dependency_count) >=
+        offsetof(ExtensionModuleDescriptorV5, dependencies) +
             sizeof(const ExtensionDependencyView*));
 #if defined(_WIN64)
     static_assert(sizeof(ExtensionDependencyView) == 24u);
     static_assert(alignof(ExtensionDependencyView) == 8u);
-    static_assert(sizeof(ExtensionModuleDescriptorV4) == 80u);
-    static_assert(alignof(ExtensionModuleDescriptorV4) == 8u);
+    static_assert(sizeof(ExtensionModuleDescriptorV5) == 80u);
+    static_assert(alignof(ExtensionModuleDescriptorV5) == 8u);
     static_assert(sizeof(ExtensionRegistrationResult) == 1u);
     static_assert(alignof(ExtensionRegistrationResult) == 1u);
-    static_assert(offsetof(ExtensionModuleDescriptorV4, target) == 62u);
-    static_assert(offsetof(ExtensionModuleDescriptorV4, dependencies) == 64u);
-    static_assert(offsetof(ExtensionModuleDescriptorV4, dependency_count) == 72u);
+    static_assert(offsetof(ExtensionModuleDescriptorV5, target) == 62u);
+    static_assert(offsetof(ExtensionModuleDescriptorV5, dependencies) == 64u);
+    static_assert(offsetof(ExtensionModuleDescriptorV5, dependency_count) == 72u);
 #endif
 
     int failures = 0;
@@ -111,20 +111,36 @@ int main(int argc, char** argv)
     };
 
     check(
-        std::string_view{kGetExtensionModuleV4Symbol} ==
-            "luxGetExtensionModuleV4",
-        "v4 module symbol remains compatible");
+        std::string_view{kGetExtensionModuleV5Symbol} ==
+            "luxGetExtensionModuleV5",
+        "v5 module symbol remains compatible");
     check(
-        std::string_view{kRegisterRuntimeContributionsV4Symbol} ==
-            "luxRegisterRuntimeContributionsV4",
-        "v4 runtime registration symbol remains compatible");
+        std::string_view{kInstallWorldSystemsV5Symbol} ==
+            "luxInstallWorldSystemsV5",
+        "v5 World-system installation symbol remains compatible");
     check(
-        std::string_view{kRegisterEditorContributionsV4Symbol} ==
-            "luxRegisterEditorContributionsV4",
-        "v4 editor registration symbol remains compatible");
-    check(argc == 3, "test module paths supplied");
-    if (argc != 3)
+        std::string_view{kInstallRenderFeaturesV5Symbol} ==
+            "luxInstallRenderFeaturesV5",
+        "v5 render-feature installation symbol remains compatible");
+    check(
+        std::string_view{kRegisterEditorContributionsV5Symbol} ==
+            "luxRegisterEditorContributionsV5",
+        "v5 editor registration symbol remains compatible");
+    check(argc == 4, "test module paths supplied");
+    if (argc != 4)
         return 1;
+
+    const auto legacy = ExtensionModuleManager::prepare(
+        ExtensionModuleRequirement::fromPath(
+            ExtensionId{"org.lux.test.legacy"},
+            std::filesystem::path{argv[3]},
+            EExtensionModuleTarget::RUNTIME,
+            1u,
+            0u));
+    check(
+        !legacy && legacy.error().code ==
+            EExtensionModuleLoadError::DESCRIPTOR_SYMBOL_MISSING,
+        "the loader rejects a legacy ABI module without fallback");
 
     const ExtensionModuleRequirement requirement =
         ExtensionModuleRequirement::fromPath(
@@ -135,7 +151,7 @@ int main(int argc, char** argv)
         1u);
 
     auto prepared = ExtensionModuleManager::prepare(requirement);
-    check(prepared.has_value(), "load and validate ABI V4 extension DLL");
+    check(prepared.has_value(), "load and validate ABI V5 extension DLL");
     if (!prepared)
         return 1;
 
@@ -152,7 +168,7 @@ int main(int argc, char** argv)
     auto memory_prepared = ExtensionModuleManager::prepare(
         memory_requirement);
     check(memory_prepared.has_value(),
-          "load and validate ABI V4 extension from owning memory image");
+          "load and validate ABI V5 extension from owning memory image");
     if (memory_prepared)
     {
         ExtensionModuleManager memory_manager;

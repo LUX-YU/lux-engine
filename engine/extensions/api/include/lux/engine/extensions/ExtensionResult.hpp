@@ -1,5 +1,5 @@
 #pragma once
-/** @file ExtensionResult.hpp @brief Frozen Extension ABI v4 result types. */
+/** @file ExtensionResult.hpp @brief Same-toolchain Extension ABI v5 result types. */
 
 #include <cstdint>
 

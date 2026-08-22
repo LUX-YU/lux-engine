@@ -150,20 +150,20 @@ namespace lux::runtime::spatial3d::detail
         if (closing || generation != client_generation)
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::FEATURE_CLOSING);
+                lux::async::ESubmitError::FEATURE_CLOSING);
         }
         if (active_requests >= config.capacity)
         {
             ++rejected_capacity;
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::QUEUE_FULL);
+                lux::async::ESubmitError::QUEUE_FULL);
         }
         if (bytes > config.byte_budget ||
             active_bytes > config.byte_budget - bytes)
         {
             ++rejected_bytes;
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+                lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
         }
         ++active_requests;
         active_bytes += bytes;
@@ -334,7 +334,7 @@ namespace lux::runtime::spatial3d
                 }
                 admission.reset();
                 completion.complete(lux::cxx::unexpected(
-                    lux::exec::AsyncFailure<
+                    lux::async::OperationFailure<
                         StaticCollider3DPrepareFailure>::domain(
                             std::move(result.error()))));
             }
@@ -345,7 +345,7 @@ namespace lux::runtime::spatial3d
                     return;
                 admission.reset();
                 completion.failRuntime(
-                    lux::exec::EAsyncSubmitError::STOPPING);
+                    lux::async::ESubmitError::STOPPING);
             }
 
             std::atomic<bool> settled{false};
@@ -380,7 +380,7 @@ namespace lux::runtime::spatial3d
     StaticCollider3DPrepareClient::StaticCollider3DPrepareClient(
         std::weak_ptr<detail::StaticCollider3DPrepareControl> control,
         std::uint64_t generation,
-        lux::exec::AsyncOperationClient<BuildStaticCollider3D>
+        lux::async::OperationPort<BuildStaticCollider3D>
             operation) noexcept
         : control_(std::move(control)), generation_(generation),
           operation_(std::move(operation))
@@ -401,19 +401,19 @@ namespace lux::runtime::spatial3d
         if (!control || !operation_)
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::UNKNOWN_OPERATION);
+                lux::async::ESubmitError::UNKNOWN_OPERATION);
         }
         if (request.content.empty() || request.request_generation == 0u)
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::PAYLOAD_INVALID);
+                lux::async::ESubmitError::PAYLOAD_INVALID);
         }
         const auto accounted = conservativeOwnerBytes(
             request.content.size());
         if (!accounted)
         {
             return lux::cxx::unexpected(
-                lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+                lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
         }
         auto admission = control->reserve(generation_, *accounted);
         if (!admission)
@@ -423,7 +423,7 @@ namespace lux::runtime::spatial3d
         return lux::exec::execute(
             operation_,
             std::move(request),
-            lux::exec::AsyncSubmitOptions{.accounted_bytes = *accounted});
+            lux::async::SubmitOptions{.accounted_bytes = *accounted});
     }
 
     StaticCollider3DAssemblyExp<StaticCollider3DPrepareService>
@@ -493,7 +493,7 @@ namespace lux::runtime::spatial3d
 
     StaticCollider3DPrepareService::StaticCollider3DPrepareService(
         std::shared_ptr<detail::StaticCollider3DPrepareControl> control,
-        lux::exec::AsyncOperationClient<BuildStaticCollider3D>
+        lux::async::OperationPort<BuildStaticCollider3D>
             operation) noexcept
         : control_(std::move(control)), operation_(std::move(operation))
     {}

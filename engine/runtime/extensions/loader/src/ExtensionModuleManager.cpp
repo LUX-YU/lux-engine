@@ -66,8 +66,8 @@ namespace lux::extensions
         }
 
         auto* get_descriptor =
-            library.get_symbol<GetExtensionModuleV4Fn>(
-                kGetExtensionModuleV4Symbol);
+            library.get_symbol<GetExtensionModuleV5Fn>(
+                kGetExtensionModuleV5Symbol);
         if (!get_descriptor)
         {
             return lux::cxx::unexpected(loadFailure(
@@ -82,15 +82,15 @@ namespace lux::extensions
                 requirement));
         }
         constexpr std::size_t kRequiredSize =
-            offsetof(ExtensionModuleDescriptorV4, dependency_count) +
-            sizeof(decltype(ExtensionModuleDescriptorV4::dependency_count));
+            offsetof(ExtensionModuleDescriptorV5, dependency_count) +
+            sizeof(decltype(ExtensionModuleDescriptorV5::dependency_count));
         if (descriptor->struct_size < kRequiredSize)
         {
             return lux::cxx::unexpected(loadFailure(
                 EExtensionModuleLoadError::DESCRIPTOR_TOO_SMALL,
                 requirement));
         }
-        if (descriptor->extension_abi != kExtensionAbiV4)
+        if (descriptor->extension_abi != kExtensionAbiV5)
         {
             return lux::cxx::unexpected(loadFailure(
                 EExtensionModuleLoadError::EXTENSION_ABI_MISMATCH,
@@ -173,14 +173,18 @@ namespace lux::extensions
         result.module_ = std::move(module);
         result.target_ = descriptor->target;
         result.dependencies_ = std::move(dependencies);
-        result.runtime_entry_ =
+        result.world_systems_entry_ =
             result.module_->library().get_symbol<
-                RegisterRuntimeContributionsV4Fn>(
-                kRegisterRuntimeContributionsV4Symbol);
+                InstallWorldSystemsV5Fn>(
+                kInstallWorldSystemsV5Symbol);
+        result.render_features_entry_ =
+            result.module_->library().get_symbol<
+                InstallRenderFeaturesV5Fn>(
+                kInstallRenderFeaturesV5Symbol);
         result.editor_entry_ =
             result.module_->library().get_symbol<
-                RegisterEditorContributionsV4Fn>(
-                kRegisterEditorContributionsV4Symbol);
+                RegisterEditorContributionsV5Fn>(
+                kRegisterEditorContributionsV5Symbol);
         return result;
     }
 
@@ -331,7 +335,8 @@ namespace lux::extensions
                 prepared.target_,
                 EExtensionModuleState::LOADED,
                 std::move(prepared.dependencies_),
-                prepared.runtime_entry_,
+                prepared.world_systems_entry_,
+                prepared.render_features_entry_,
                 prepared.editor_entry_});
         }
         return committed;
@@ -399,7 +404,11 @@ namespace lux::extensions
         const auto* record = findRecord(id);
         if (!record)
             return {};
-        return {record->runtime_entry, record->editor_entry, record->module};
+        return {
+            record->world_systems_entry,
+            record->render_features_entry,
+            record->editor_entry,
+            record->module};
     }
 
     std::vector<ExtensionModuleSnapshot>

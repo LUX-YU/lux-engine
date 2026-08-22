@@ -150,7 +150,7 @@ namespace lux::ecs
         [[nodiscard]] bool valid() const noexcept
         {
             return owner_identity != 0u && slot != 0xFFFFFFFFu &&
-                generation != 0u && type.hash != 0u;
+                generation != 0u && type.isValid();
         }
 
         std::uint64_t owner_identity{0u};

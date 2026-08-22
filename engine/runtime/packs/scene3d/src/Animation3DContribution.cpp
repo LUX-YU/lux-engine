@@ -35,7 +35,7 @@ namespace lux::runtime
         descriptor.required_contributions.emplace_back(
             std::string{kSpatial3DTransformContributionName});
         descriptor.required_services = {
-            typeToken<lux::asset_runtime::SceneAssetServices>()};
+            lux::cxx::typeToken<lux::asset_runtime::SceneAssetServices>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [](
@@ -52,7 +52,7 @@ namespace lux::runtime
                 return lux::cxx::unexpected(
                     SceneContributionBuildFailure{
                         ESceneContributionBuildError::MISSING_SERVICE,
-                        typeToken<lux::asset_runtime::
+                        lux::cxx::typeToken<lux::asset_runtime::
                             SceneAssetServices>()});
             }
             if (auto added = builder.add(

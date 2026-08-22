@@ -148,10 +148,10 @@ namespace
     void registerMarker(lux::ecs::ComponentTypeCatalog& catalog)
     {
         constexpr std::string_view schema = "org.lux.test.marker";
-        const auto type = lux::ecs::typeToken<MarkerComponent>();
+        const auto type = lux::cxx::typeToken<MarkerComponent>();
         const auto added = catalog.registerSchema(
             lux::ecs::ComponentSchemaDescriptor{
-                {type.hash, std::string{type.name}},
+                type,
                 {lux::cxx::algorithm::fnv1a(schema), std::string{schema}},
                 1u,
                 nullptr,
@@ -521,7 +521,7 @@ int main()
     auto hold_coordinator =
         lux::exec::execute(*gate_operation, HoldCoordinator{gate_state})
         | stdexec::then(
-              [](lux::exec::AsyncOutcome<HoldCoordinator>) noexcept {});
+              [](lux::async::OperationOutcome<HoldCoordinator>) noexcept {});
     assert(lux::exec::spawn(
         gate_scope,
         std::move(hold_coordinator)));

@@ -55,7 +55,7 @@ namespace lux::runtime
     struct SceneContributionBuildFailure final
     {
         ESceneContributionBuildError code{ESceneContributionBuildError::BUILD_REJECTED};
-        lux::ecs::TypeToken type{};
+        lux::cxx::TypeToken type{};
     };
 
     struct SceneContributionBuildContext final
@@ -116,7 +116,7 @@ namespace lux::runtime
             std::unique_ptr<System> system,
             int phase = lux::ecs::kPhaseSimulation)
         {
-            constexpr auto type = lux::ecs::typeToken<System>();
+            constexpr auto type = lux::cxx::typeToken<System>();
             if (!system)
             {
                 return lux::cxx::unexpected(SceneContributionBuildFailure{
@@ -175,7 +175,7 @@ namespace lux::runtime
         [[nodiscard]] lux::cxx::expected<T*, SceneContributionBuildFailure>
         publishServiceAndGet(std::unique_ptr<T> value)
         {
-            constexpr auto type = lux::ecs::typeToken<T>();
+            constexpr auto type = lux::cxx::typeToken<T>();
             if (!value)
             {
                 return lux::cxx::unexpected(SceneContributionBuildFailure{
@@ -287,8 +287,8 @@ namespace lux::runtime
         lux::scene::SceneFeatureId id;
         std::string display_name;
         std::vector<lux::scene::SceneFeatureId> required_contributions;
-        std::vector<lux::ecs::TypeToken> required_services;
-        std::vector<lux::ecs::TypeToken> provided_services;
+        std::vector<lux::cxx::TypeToken> required_services;
+        std::vector<lux::cxx::TypeToken> provided_services;
         std::uint32_t config_schema_version{0u};
         ContributionConfig default_config;
         lux::cxx::move_only_function<

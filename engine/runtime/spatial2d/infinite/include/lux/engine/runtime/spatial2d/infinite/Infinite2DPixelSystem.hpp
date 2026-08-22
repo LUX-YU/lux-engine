@@ -136,7 +136,7 @@ namespace lux::runtime::spatial2d
         void acceptPreparation(
             std::uint32_t slot,
             std::uint32_t generation,
-            lux::exec::AsyncOutcome<PrepareInfinite2DPixelChunk> outcome)
+            lux::async::OperationOutcome<PrepareInfinite2DPixelChunk> outcome)
             noexcept;
         void acceptPreparationStopped(
             std::uint32_t slot,

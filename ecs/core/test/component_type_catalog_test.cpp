@@ -126,9 +126,9 @@ namespace
         decltype(lux::ecs::ComponentOperations::transfer) transfer,
         bool no_throw_transfer)
     {
-        const auto token = lux::ecs::typeToken<Component>();
+        const auto token = lux::cxx::typeToken<Component>();
         return lux::ecs::ComponentSchemaDescriptor{
-            {token.hash, std::string{token.name}},
+            token,
             {lux::cxx::algorithm::fnv1a(schema), std::move(schema)},
             1u,
             nullptr,
@@ -175,7 +175,7 @@ int main()
     assert(
         defaultComponentSchemaName("lux::ecs::Transform3DComponent") ==
         "lux.ecs.transform3dcomponent");
-    assert(catalog.findByCppName(typeToken<Transferable>().name) ==
+    assert(catalog.findByCppName(lux::cxx::typeToken<Transferable>().name()) ==
            *registered);
     assert(catalog.findByCppName("lux::ecs::MissingComponent") == nullptr);
 
@@ -251,7 +251,7 @@ int main()
     assert(catalog.all().data() == original_data);
     assert(catalog.findBySchema("org.lux.test.transferable") ==
            original_descriptor);
-    assert(catalog.findByType(typeToken<BatchFirst>()) == nullptr);
+    assert(catalog.findByType(lux::cxx::typeToken<BatchFirst>()) == nullptr);
 
     auto duplicate_type = descriptor<Transferable>(
         "org.lux.test.different_schema",
@@ -267,7 +267,7 @@ int main()
     assert(catalog.all().size() == original_size);
     assert(catalog.all().data() == original_data);
     assert(catalog.findBySchema("org.lux.test.different_schema") == nullptr);
-    assert(catalog.findByType(typeToken<Transferable>()) ==
+    assert(catalog.findByType(lux::cxx::typeToken<Transferable>()) ==
            original_descriptor);
 
     std::vector<ComponentSchemaDescriptor> rejected_batch;
@@ -297,8 +297,8 @@ int main()
     assert(catalog.findBySchema("org.lux.test.batch_second") == nullptr);
     assert(catalog.findBySchema(
                "org.lux.test.batch_third_conflicts_with_first") == nullptr);
-    assert(catalog.findByType(typeToken<BatchFirst>()) == nullptr);
-    assert(catalog.findByType(typeToken<BatchSecond>()) == nullptr);
+    assert(catalog.findByType(lux::cxx::typeToken<BatchFirst>()) == nullptr);
+    assert(catalog.findByType(lux::cxx::typeToken<BatchSecond>()) == nullptr);
     assert(catalog.findBySchema("org.lux.test.transferable") ==
            original_descriptor);
 

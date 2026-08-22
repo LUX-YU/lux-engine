@@ -15,8 +15,13 @@
 **Script Runtime 实施提交：** `c792c816`
 **Script 直接分派代码基线：** `db8ed375`
 **Script 直接分派实施提交：** `a478e173`
-**当前事实基线：** `a478e173`
-**文档日期：** 2026-08-21
+**当前事实基线：** `03d369f5a628a80916c463a51d2bb5ae2335bc58`
+**文档日期：** 2026-08-22
+
+> **2026-08-22 superseding decision:**
+> `ADR-20260822_唯一行为图与三层边界.md` replaces every Contribution/Pack,
+> Runtime-owned ECS domain and Extension ABI v4 prescription in this document
+> set. Conflicting passages below are retained only as historical evidence.
 
 本套文档替代此前 v1.x 文档。新版以以下哲学为中心：
 
@@ -44,6 +49,10 @@ products= 最终入口与可执行程序
 - GAPI 保持公共 Platform Vulkan SDK；Input 已收敛为一个 target 与一个完整领域对象，平台采集由配置期私有源选择。
 - Script Asset 的执行代码按播放会话驻留；语言多态只留在冷绑定路径，ECS 事件热路径直接调用最终 ABI 函数指针。
 - 先纯化公共 Modules 和 ECS 依赖方向，再实施 Game/Editor 重构。
+- `ISystem + Schedule` 是唯一 World 行为图；Renderer `FeatureCatalog` 是
+  唯一渲染能力图。
+- 所有知道 Entity/Component 的功能域与 System 都归 `ecs/`；Runtime 只做
+  生命周期、异步实现、加载和产品编排。
 
 ## 文档目录
 

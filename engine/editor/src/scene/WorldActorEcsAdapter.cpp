@@ -224,14 +224,10 @@ namespace lux::editor
             {
                 continue;
             }
-            if (lux::ecs::sameTypeToken(
-                    schema.cpp_type.view(),
-                    lux::ecs::typeToken<
-                        lux::ecs::PersistentEntityIdComponent>()) ||
-                lux::ecs::sameTypeToken(
-                    schema.cpp_type.view(),
-                    lux::ecs::typeToken<
-                        lux::ecs::ParentComponent>()))
+            if (schema.cpp_type == lux::cxx::typeToken<
+                    lux::ecs::PersistentEntityIdComponent>() ||
+                schema.cpp_type == lux::cxx::typeToken<
+                    lux::ecs::ParentComponent>())
             {
                 continue;
             }
@@ -295,13 +291,10 @@ namespace lux::editor
             const auto found = schemas.find(record.schema_name);
             if (found == schemas.end() || !found->second->ref_class
                 || !found->second->operations.emplace
-                || lux::ecs::sameTypeToken(
-                    found->second->cpp_type.view(),
-                    lux::ecs::typeToken<
-                        lux::ecs::PersistentEntityIdComponent>())
-                || lux::ecs::sameTypeToken(
-                    found->second->cpp_type.view(),
-                    lux::ecs::typeToken<lux::ecs::ParentComponent>())
+                || found->second->cpp_type == lux::cxx::typeToken<
+                    lux::ecs::PersistentEntityIdComponent>()
+                || found->second->cpp_type == lux::cxx::typeToken<
+                    lux::ecs::ParentComponent>()
                 || found->second->schema_version != record.schema_version)
             {
                 return lux::cxx::unexpected(

@@ -65,11 +65,11 @@ namespace lux::runtime
         descriptor.required_contributions.emplace_back(
             std::string{kSpatial3DTransformContributionName});
         descriptor.required_services = {
-            typeToken<lux::asset_runtime::SceneAssetServices>(),
-            typeToken<SceneAsyncContext>(),
-            typeToken<entity_scene::ContentBlobClient>(),
-            typeToken<RenderSystemBuilder>(),
-            typeToken<ResidencySubsystem>()};
+            lux::cxx::typeToken<lux::asset_runtime::SceneAssetServices>(),
+            lux::cxx::typeToken<SceneAsyncContext>(),
+            lux::cxx::typeToken<entity_scene::ContentBlobClient>(),
+            lux::cxx::typeToken<RenderSystemBuilder>(),
+            lux::cxx::typeToken<ResidencySubsystem>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [classic_mesh_preparation,

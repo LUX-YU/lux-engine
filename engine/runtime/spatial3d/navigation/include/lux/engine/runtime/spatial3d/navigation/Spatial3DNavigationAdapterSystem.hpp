@@ -91,7 +91,7 @@ namespace lux::runtime::spatial3d
         void acceptPreparation(
             std::uint32_t slot,
             std::uint32_t slot_generation,
-            lux::exec::AsyncOutcome<BuildNavigationRegion3D> outcome) noexcept;
+            lux::async::OperationOutcome<BuildNavigationRegion3D> outcome) noexcept;
         void acceptPreparationStopped(std::uint32_t slot,
                                       std::uint32_t slot_generation) noexcept;
 

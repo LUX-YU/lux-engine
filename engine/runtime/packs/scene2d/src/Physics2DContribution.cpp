@@ -17,7 +17,7 @@ namespace lux::runtime
     namespace
     {
         [[nodiscard]] SceneContributionBuildFailure missingService(
-            lux::ecs::TypeToken type = {}) noexcept
+            lux::cxx::TypeToken type = {}) noexcept
         {
             return {ESceneContributionBuildError::MISSING_SERVICE, type};
         }
@@ -48,8 +48,8 @@ namespace lux::runtime
                 std::string{kSimulation2DContributionName}},
             lux::scene::SceneFeatureId{
                 std::string{kSpatial2DTransformContributionName}}};
-        descriptor.required_services = {typeToken<Simulation2DSystem>()};
-        descriptor.provided_services = {typeToken<Physics2DSystem>()};
+        descriptor.required_services = {lux::cxx::typeToken<Simulation2DSystem>()};
+        descriptor.provided_services = {lux::cxx::typeToken<Physics2DSystem>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [](
@@ -71,7 +71,7 @@ namespace lux::runtime
             if (!simulation)
             {
                 return lux::cxx::unexpected(missingService(
-                    typeToken<Simulation2DSystem>()));
+                    lux::cxx::typeToken<Simulation2DSystem>()));
             }
             Physics2DSystem* const physics_owner = *physics;
             simulation->setPhase(
@@ -100,9 +100,9 @@ namespace lux::runtime
             lux::scene::SceneFeatureId{
                 std::string{kSpatial2DTransformContributionName}}};
         descriptor.required_services = {
-            typeToken<Simulation2DSystem>(),
-            typeToken<CollisionProbes2D>()};
-        descriptor.provided_services = {typeToken<Physics2DWorld>()};
+            lux::cxx::typeToken<Simulation2DSystem>(),
+            lux::cxx::typeToken<CollisionProbes2D>()};
+        descriptor.provided_services = {lux::cxx::typeToken<Physics2DWorld>()};
         descriptor.provider = lux::extensions::ExtensionId{
             "org.lux.builtin"};
         descriptor.build = [](

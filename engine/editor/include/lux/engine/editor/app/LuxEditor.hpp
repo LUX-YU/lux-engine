@@ -321,7 +321,7 @@ namespace lux::editor
         /// Typed asynchronous model intent: CPU dependencies load in parallel,
         /// GPU residency progresses on the upload coordinator, and only the
         /// final ECS commit returns to the game thread.
-        [[nodiscard]] lux::exec::AsyncSubmitResult spawnModelEntity(
+        [[nodiscard]] lux::async::SubmitResult spawnModelEntity(
             lux::asset::asset_id_t model_id,
             InstanceSpawnClient::Completion completion = {});
 

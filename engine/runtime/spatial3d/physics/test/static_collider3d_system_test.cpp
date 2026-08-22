@@ -181,7 +181,7 @@ int main()
             runtime::BuildStaticCollider3D{second.bytes, transform, 2u});
         assert(!saturated);
         assert(saturated.error() ==
-            lux::exec::EAsyncSubmitError::QUEUE_FULL);
+            lux::async::ESubmitError::QUEUE_FULL);
         const auto admitted = service.snapshot();
         assert(admitted.active_requests == 1u);
         assert(admitted.owned_bytes > 16u * 1024u * 1024u);
@@ -200,7 +200,7 @@ int main()
                 3u});
         assert(!oversized);
         assert(oversized.error() ==
-            lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+            lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
         assert(service.snapshot().rejected_bytes == 1u);
     }
 

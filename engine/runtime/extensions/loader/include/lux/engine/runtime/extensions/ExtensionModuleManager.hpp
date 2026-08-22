@@ -94,8 +94,9 @@ namespace lux::extensions
 
     struct ExtensionModuleEntrypoints final
     {
-        RegisterRuntimeContributionsV4Fn* runtime{nullptr};
-        RegisterEditorContributionsV4Fn* editor{nullptr};
+        InstallWorldSystemsV5Fn* world_systems{nullptr};
+        InstallRenderFeaturesV5Fn* render_features{nullptr};
+        RegisterEditorContributionsV5Fn* editor{nullptr};
         ModuleLease module;
     };
 
@@ -118,6 +119,10 @@ namespace lux::extensions
         {
             return *module_;
         }
+        [[nodiscard]] ModuleLease lease() const noexcept
+        {
+            return module_;
+        }
         [[nodiscard]] EExtensionModuleTarget target() const noexcept
         {
             return target_;
@@ -134,8 +139,9 @@ namespace lux::extensions
         ModuleLease module_;
         EExtensionModuleTarget target_{EExtensionModuleTarget::RUNTIME};
         std::vector<ExtensionDependency> dependencies_;
-        RegisterRuntimeContributionsV4Fn* runtime_entry_{nullptr};
-        RegisterEditorContributionsV4Fn* editor_entry_{nullptr};
+        InstallWorldSystemsV5Fn* world_systems_entry_{nullptr};
+        InstallRenderFeaturesV5Fn* render_features_entry_{nullptr};
+        RegisterEditorContributionsV5Fn* editor_entry_{nullptr};
     };
 
     enum class EExtensionModuleCommitError : std::uint8_t
@@ -234,8 +240,9 @@ namespace lux::extensions
             EExtensionModuleTarget target{EExtensionModuleTarget::RUNTIME};
             EExtensionModuleState state{EExtensionModuleState::LOADED};
             std::vector<ExtensionDependency> dependencies;
-            RegisterRuntimeContributionsV4Fn* runtime_entry{nullptr};
-            RegisterEditorContributionsV4Fn* editor_entry{nullptr};
+            InstallWorldSystemsV5Fn* world_systems_entry{nullptr};
+            InstallRenderFeaturesV5Fn* render_features_entry{nullptr};
+            RegisterEditorContributionsV5Fn* editor_entry{nullptr};
         };
 
         [[nodiscard]] Record* findRecord(ExtensionIdView id) noexcept;

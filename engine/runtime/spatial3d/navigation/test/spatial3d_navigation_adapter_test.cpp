@@ -265,7 +265,7 @@ int main()
                 makeRegion({92u, 902u}, 128.0, 0.0), 1u});
         assert(!count_saturated);
         assert(count_saturated.error() ==
-               lux::exec::EAsyncSubmitError::QUEUE_FULL);
+               lux::async::ESubmitError::QUEUE_FULL);
     }
     {
         std::vector<std::byte> oversized_storage(
@@ -278,7 +278,7 @@ int main()
             runtime::BuildNavigationRegion3D{std::move(oversized), 1u});
         assert(!byte_saturated);
         assert(byte_saturated.error() ==
-               lux::exec::EAsyncSubmitError::BYTE_BUDGET_EXHAUSTED);
+               lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
     }
     {
         auto retried = cached_service_client.execute(
@@ -512,7 +512,7 @@ int main()
             makeRegion({95u, 905u}, 384.0, 0.0), 1u});
     assert(!after_close);
     assert(after_close.error() ==
-           lux::exec::EAsyncSubmitError::FEATURE_CLOSING);
+           lux::async::ESubmitError::FEATURE_CLOSING);
     const auto close_report = lux::exec::testing::closeRuntime(async_runtime);
     assert(close_report.clean());
     return 0;

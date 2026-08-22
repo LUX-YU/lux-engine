@@ -50,7 +50,7 @@
 #include <lux/engine/ecs/render/components/ViewPresentComponent.hpp>                  // viewport_slot_（按值持有）
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/runtime/scene/SceneRuntime.hpp>
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp>
+#include <lux/engine/ecs/physics3d/streaming/StaticCollider3DSystem.hpp>
 #include <lux/engine/runtime/render/scene/RenderSceneIntegration.hpp>
 #include <lux/engine/runtime/scene/script/SceneScriptRuntime.hpp>
 #include <lux/engine/navigation/Navigation.hpp>
@@ -323,7 +323,7 @@ namespace lux::editor
             return world_source_.get();
         }
         [[nodiscard]] std::optional<
-            lux::runtime::spatial3d::Physics3DSceneSnapshot>
+            lux::ecs::physics3d::streaming::Physics3DSceneSnapshot>
             physics3DDebugSnapshot() noexcept;
         [[nodiscard]] std::optional<
             lux::navigation::NavigationPathResult>

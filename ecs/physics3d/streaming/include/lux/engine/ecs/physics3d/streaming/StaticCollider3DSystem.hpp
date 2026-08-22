@@ -5,11 +5,11 @@
  */
 
 #include <lux/engine/ecs/physics3d/systems/Physics3DScene.hpp>
+#include <lux/engine/ecs/entity_scene/ContentBlobStorage.hpp>
+#include <lux/engine/ecs/physics3d/streaming/StaticCollider3DPreparePort.hpp>
+#include <lux/engine/ecs/physics3d/streaming/StaticCollider3DBindingComponent.hpp>
+#include <lux/engine/ecs/physics3d/streaming/visibility.h>
 #include <lux/engine/ecs/systems/ISystem.hpp>
-#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DBindingComponent.hpp>
-#include <lux/engine/runtime/spatial3d/physics/visibility.h>
 
 #include <cstdint>
 #include <memory>
@@ -17,13 +17,7 @@
 #include <span>
 #include <type_traits>
 
-namespace lux::exec
-{
-    class AsyncRuntime;
-    class AsyncScope;
-}
-
-namespace lux::runtime::spatial3d
+namespace lux::ecs::physics3d::streaming
 {
     struct StaticCollider3DSystemConfig final
     {
@@ -81,7 +75,7 @@ namespace lux::runtime::spatial3d
     /// Narrow SceneServices value for diagnostics and gameplay queries.  The
     /// shared scene is the physics fact source; it does not route Section or
     /// partition semantics.
-    struct LUX_ENGINE_RUNTIME_SPATIAL3D_PHYSICS_PUBLIC
+    struct LUX_ENGINE_ECS_PHYSICS3D_STREAMING_PUBLIC
         Physics3DSceneService final
     {
         std::shared_ptr<lux::ecs::Physics3DScene> scene;
@@ -89,13 +83,11 @@ namespace lux::runtime::spatial3d
         [[nodiscard]] Physics3DSceneSnapshot snapshot() const noexcept;
     };
 
-    class LUX_ENGINE_RUNTIME_SPATIAL3D_PHYSICS_PUBLIC
+    class LUX_ENGINE_ECS_PHYSICS3D_STREAMING_PUBLIC
         StaticCollider3DSystem final : public lux::ecs::ISystem
     {
       public:
         StaticCollider3DSystem(
-            lux::exec::AsyncRuntime& async_runtime,
-            lux::exec::AsyncScope& scene_scope,
             StaticCollider3DPrepareClient preparation,
             std::shared_ptr<lux::ecs::Physics3DScene> scene,
             lux::ecs::entity_scene::ContentBlobClient content,
@@ -162,10 +154,6 @@ namespace lux::runtime::spatial3d
             entt::entity entity,
             std::uint64_t generation,
             lux::async::OperationOutcome<BuildStaticCollider3D> outcome) noexcept;
-        void acceptPreparationStopped(
-            entt::entity entity,
-            std::uint64_t generation) noexcept;
-
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
@@ -227,4 +215,4 @@ namespace lux::runtime::spatial3d
 
     static_assert(std::is_trivially_copyable_v<
         StaticCollider3DIntentCommand>);
-} // namespace lux::runtime::spatial3d
+} // namespace lux::ecs::physics3d::streaming

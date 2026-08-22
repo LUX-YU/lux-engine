@@ -589,7 +589,6 @@ function(lux_validate_source_boundaries)
 
     set(runtime_system_debt
         "engine/runtime/render/scene/pinclude/lux/engine/runtime/render/scene/detail/PrimaryViewPresentationSystem.hpp"
-        "engine/runtime/spatial3d/physics/include/lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp"
     )
     file(GLOB_RECURSE runtime_headers LIST_DIRECTORIES false
         "${CMAKE_SOURCE_DIR}/engine/runtime/*.hpp"

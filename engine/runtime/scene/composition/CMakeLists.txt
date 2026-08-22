@@ -77,14 +77,14 @@ target_link_libraries(
         lux::engine::runtime::runtime_scene_core
         lux::engine::runtime::runtime_entity_scene
         lux::engine::ecs::transform
-        lux::engine::runtime::runtime_spatial3d_physics
         lux::engine::ecs::core
         lux::engine::ecs::physics3d
+        lux::engine::ecs::physics3d_streaming
 )
 component_add_transitive_commands(
     runtime_physics3d_systems
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core physics3d)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_scene_core runtime_spatial3d_physics)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core physics3d physics3d_streaming)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_entity_scene runtime_scene_core)"
 )
 
 generate_visibility_header(

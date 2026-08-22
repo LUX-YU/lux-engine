@@ -1,10 +1,10 @@
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DBindingComponent.hpp>
+#include <lux/engine/ecs/physics3d/streaming/StaticCollider3DBindingComponent.hpp>
 
 #include <cstdlib>
 #include <limits>
 #include <utility>
 
-namespace lux::runtime::spatial3d
+namespace lux::ecs::physics3d::streaming
 {
     StaticCollider3DBinding::StaticCollider3DBinding(
         std::uint64_t generation,
@@ -114,4 +114,4 @@ namespace lux::runtime::spatial3d
     {
         return budget_.accountedBytes();
     }
-} // namespace lux::runtime::spatial3d
+} // namespace lux::ecs::physics3d::streaming

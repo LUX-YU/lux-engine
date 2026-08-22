@@ -360,14 +360,14 @@
             : 0u;
     }
 
-    std::optional<lux::runtime::spatial3d::Physics3DSceneSnapshot>
+    std::optional<lux::ecs::physics3d::streaming::Physics3DSceneSnapshot>
     EditorScene::physics3DDebugSnapshot() noexcept
     {
         auto* active = play_runtime_ ? play_runtime_.get() : runtime_.get();
         if (!active)
             return std::nullopt;
         const auto* service = active->services().get<
-            lux::runtime::spatial3d::Physics3DSceneService>();
+            lux::ecs::physics3d::streaming::Physics3DSceneService>();
         if (!service || !service->scene)
             return std::nullopt;
         return service->snapshot();

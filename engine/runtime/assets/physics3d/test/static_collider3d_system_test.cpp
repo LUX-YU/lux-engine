@@ -1,5 +1,7 @@
 #include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/World.hpp>
+#include <lux/engine/core/async/OperationInbox.hpp>
+#include <lux/engine/ecs/physics3d/streaming/StaticCollider3DSystem.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/ecs/physics3d/components/Physics3DComponents.hpp>
 #include <lux/engine/ecs/physics3d/systems/Physics3DSystem.hpp>
@@ -8,18 +10,12 @@
 #include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntime.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeBuilder.hpp>
-#include <lux/engine/runtime/execution/AsyncScope.hpp>
-#include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
 #include <lux/engine/runtime/execution/testing/AsyncCloseTestDriver.hpp>
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp>
+#include <lux/engine/runtime/assets/physics3d/StaticCollider3DPrepareService.hpp>
 
-#include <exec/start_detached.hpp>
-#include <stdexec/execution.hpp>
 #include <uuid.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -90,7 +86,7 @@ namespace
     void drive(
         lux::exec::AsyncRuntime& runtime,
         lux::ecs::Schedule& schedule,
-        const lux::runtime::spatial3d::StaticCollider3DSystem& statics,
+        const lux::ecs::physics3d::streaming::StaticCollider3DSystem& statics,
         Predicate&& done,
         StepCheck&& check)
     {
@@ -113,30 +109,12 @@ namespace
             });
     }
 
-    template <class Sender>
-    void closeOwner(lux::exec::AsyncRuntime& runtime, Sender sender)
-    {
-        lux::exec::testing::CloseEpoch progress{runtime};
-        std::atomic<bool> closed{false};
-        auto completion = std::move(sender) |
-            stdexec::then(
-                [&closed, &progress]() noexcept
-                {
-                    closed.store(true, std::memory_order_release);
-                    progress.notify();
-                });
-        ::experimental::execution::start_detached(std::move(completion));
-        progress.drive(
-            [&closed]() noexcept
-            {
-                return closed.load(std::memory_order_acquire);
-            });
-    }
 } // namespace
 
 int main()
 {
-    namespace runtime = lux::runtime::spatial3d;
+    namespace runtime = lux::runtime::assets::physics3d;
+    namespace streaming = lux::ecs::physics3d::streaming;
 
     lux::exec::AsyncRuntimeBuilder builder;
     auto service_result = runtime::StaticCollider3DPrepareService::addTo(
@@ -157,8 +135,6 @@ int main()
         lux::exec::AsyncRuntimeConfig{
             .blocking_io_threads = 1u,
             .background_cpu_concurrency = 1u}};
-    lux::exec::AsyncScope scene_scope{async_runtime};
-
     lux::runtime::entity_scene::SectionBlobStore blobs;
     auto first = storeBatch(
         blobs,
@@ -173,12 +149,38 @@ int main()
     const auto transform = lux::ecs::ResolvedTransform3DComponent{
         {100'000'000.0, 4.0, 75'000'000.0},
         Eigen::Matrix3f::Identity()};
+    lux::async::OperationInbox<
+        streaming::BuildStaticCollider3D,
+        std::uint32_t> probe_completions{4u};
+    const auto drain_probes = [&]() noexcept
     {
-        auto held = service.client().execute(runtime::BuildStaticCollider3D{
-            first.bytes, transform, 1u});
+        lux::exec::testing::CloseEpoch progress{async_runtime};
+        progress.driveWithStep(
+            [&]() noexcept
+            {
+                probe_completions.drain([](auto) noexcept {});
+            },
+            [&]() noexcept
+            {
+                return probe_completions.terminal();
+            },
+            [&]() noexcept
+            {
+                return !probe_completions.empty();
+            });
+    };
+    {
+        auto held = probe_completions.submit(
+            service.client().operation(),
+            streaming::BuildStaticCollider3D{
+                first.bytes, transform, 1u},
+            1u);
         assert(held);
-        auto saturated = service.client().execute(
-            runtime::BuildStaticCollider3D{second.bytes, transform, 2u});
+        auto saturated = probe_completions.submit(
+            service.client().operation(),
+            streaming::BuildStaticCollider3D{
+                second.bytes, transform, 2u},
+            2u);
         assert(!saturated);
         assert(saturated.error() ==
             lux::async::ESubmitError::QUEUE_FULL);
@@ -188,16 +190,19 @@ int main()
         assert(admitted.request_high_water == 1u);
         assert(admitted.rejected_capacity == 1u);
     }
+    drain_probes();
     assert(service.snapshot().active_requests == 0u);
     assert(service.snapshot().owned_bytes == 0u);
     {
         std::vector<std::byte> oversized_storage(
             4u * 1024u * 1024u + 1u, std::byte{0x5au});
-        auto oversized = service.client().execute(
-            runtime::BuildStaticCollider3D{
+        auto oversized = probe_completions.submit(
+            service.client().operation(),
+            streaming::BuildStaticCollider3D{
                 lux::cxx::SharedBytes<>::copyOf(oversized_storage),
                 transform,
-                3u});
+                3u},
+            3u);
         assert(!oversized);
         assert(oversized.error() ==
             lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
@@ -224,13 +229,11 @@ int main()
             lux::ecs::StaticColliderBatch3DComponent{first.reference});
 
         lux::ecs::Schedule schedule{world};
-        auto static_owner = std::make_unique<runtime::StaticCollider3DSystem>(
-            async_runtime,
-            scene_scope,
+        auto static_owner = std::make_unique<streaming::StaticCollider3DSystem>(
             service.client(),
             scene,
             blobs.client(),
-            runtime::StaticCollider3DSystemConfig{1u, 4u, 1u});
+            streaming::StaticCollider3DSystemConfig{1u, 4u, 1u});
         auto* statics = static_owner.get();
         assert(schedule.addSystem(
             std::make_unique<lux::ecs::Physics3DSystem>(scene)));
@@ -247,7 +250,7 @@ int main()
             {
                 const auto status = statics->status(entity);
                 return status &&
-                    status->state == runtime::EStaticCollider3DState::ACTIVE;
+                    status->state == streaming::EStaticCollider3DState::ACTIVE;
             },
             [&]() noexcept
             {
@@ -256,7 +259,7 @@ int main()
                 previous_bodies = current;
             });
         assert(registry.all_of<
-            runtime::StaticCollider3DBindingComponent>(entity));
+            streaming::StaticCollider3DBindingComponent>(entity));
         assert(scene->staticHeightfieldBodyCount() == 3u);
         assert(service.snapshot().active_requests == 0u);
         assert(service.snapshot().owned_bytes > 0u);
@@ -264,7 +267,7 @@ int main()
             service.snapshot().owned_bytes);
 
         auto original = registry.get<
-            runtime::StaticCollider3DBindingComponent>(entity).binding;
+            streaming::StaticCollider3DBindingComponent>(entity).binding;
         assert(original && original->active());
 
         // A bad desired revision reports FAILED but leaves the old active
@@ -277,9 +280,9 @@ int main()
                     std::string{"lux.physics3d.unsupported"}};
             });
         schedule.tick(0.0f);
-        assert(registry.get<runtime::StaticCollider3DStatusComponent>(entity)
-                   .state == runtime::EStaticCollider3DState::FAILED);
-        assert(registry.get<runtime::StaticCollider3DBindingComponent>(entity)
+        assert(registry.get<streaming::StaticCollider3DStatusComponent>(entity)
+                   .state == streaming::EStaticCollider3DState::FAILED);
+        assert(registry.get<streaming::StaticCollider3DBindingComponent>(entity)
                    .binding == original);
         assert(original->active());
         assert(scene->staticHeightfieldBodyCount() == 3u);
@@ -306,8 +309,8 @@ int main()
             {
                 const auto status = statics->status(entity);
                 return status &&
-                    status->state == runtime::EStaticCollider3DState::ACTIVE &&
-                    registry.get<runtime::StaticCollider3DBindingComponent>(
+                    status->state == streaming::EStaticCollider3DState::ACTIVE &&
+                    registry.get<streaming::StaticCollider3DBindingComponent>(
                         entity).binding != original;
             },
             [&]() noexcept
@@ -333,7 +336,7 @@ int main()
         // lease. Signals hide immediately and coalesce one bounded retirement
         // intent for the following owner tick.
         auto binding = registry.get<
-            runtime::StaticCollider3DBindingComponent>(entity).binding;
+            streaming::StaticCollider3DBindingComponent>(entity).binding;
         const auto before = statics->snapshot();
         const auto stale = entity;
         registry.destroy(entity);
@@ -377,7 +380,7 @@ int main()
         schedule.tick(0.0f);
         const auto pending_status = statics->status(stale_completion_entity);
         assert(pending_status && pending_status->state ==
-            runtime::EStaticCollider3DState::WAITING_BACKGROUND);
+            streaming::EStaticCollider3DState::WAITING_BACKGROUND);
         registry.destroy(stale_completion_entity);
         drive(
             async_runtime,
@@ -411,7 +414,7 @@ int main()
             {
                 const auto status = statics->status(close_entity);
                 return status && status->state ==
-                    runtime::EStaticCollider3DState::ACTIVE;
+                    streaming::EStaticCollider3DState::ACTIVE;
             },
             []() noexcept {});
         assert(scene->staticHeightfieldBodyCount() == 3u);
@@ -434,7 +437,7 @@ int main()
         assert(overflow_snapshot.capacity_rejections >= 17u);
         assert(overflow_snapshot.tracked_entities == 4u);
         assert(registry.view<
-                   const runtime::StaticCollider3DBindingComponent>()
+                   const streaming::StaticCollider3DBindingComponent>()
                    .size() <= 4u);
 
         // Domain-neutral close keeps all destruction on ordinary owner ticks
@@ -465,10 +468,10 @@ int main()
         assert(scene->staticHeightfieldBodyCount() == 0u);
         assert(!statics->closeNeedsOwnerTick());
         assert(registry.view<
-                   const runtime::StaticCollider3DBindingComponent>()
+                   const streaming::StaticCollider3DBindingComponent>()
                    .empty());
         assert(registry.view<
-                   const runtime::StaticCollider3DStatusComponent>()
+                   const streaming::StaticCollider3DStatusComponent>()
                    .empty());
         const auto closed_snapshot = statics->snapshot();
         assert(closed_snapshot.closing);
@@ -487,8 +490,6 @@ int main()
     blobs.pruneExpired();
     assert(blobs.snapshot().allocation_count == 0u);
 
-    scene_scope.requestStop();
-    closeOwner(async_runtime, scene_scope.closeAsync());
     service.close();
     assert(service.snapshot().closing);
     assert(service.snapshot().active_requests == 0u);

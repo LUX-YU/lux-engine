@@ -33,7 +33,7 @@
         std::unique_ptr<lux::runtime::assets::navigation::
             Navigation3DPrepareService> navigation_preparation;
         std::unique_ptr<
-            lux::runtime::spatial3d::StaticCollider3DPrepareService>
+            lux::runtime::assets::physics3d::StaticCollider3DPrepareService>
             physics_preparation;
         std::unique_ptr<
             lux::runtime::assets::tilemap::TilemapPrepareService>

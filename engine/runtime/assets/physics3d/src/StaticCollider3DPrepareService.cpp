@@ -1,4 +1,4 @@
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
+#include <lux/engine/runtime/assets/physics3d/StaticCollider3DPrepareService.hpp>
 
 #include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
 #include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
@@ -14,11 +14,36 @@
 #include <cstdlib>
 #include <limits>
 #include <mutex>
+#include <new>
 #include <optional>
 #include <utility>
 
-namespace lux::runtime::spatial3d::detail
+namespace lux::runtime::assets::physics3d::detail
 {
+    using Operation = lux::ecs::physics3d::streaming::BuildStaticCollider3D;
+    using Outcome = lux::async::OperationOutcome<Operation>;
+    template <typename T>
+    using SubmitExp = lux::cxx::expected<T, lux::async::ESubmitError>;
+    struct StaticCollider3DPrepareReservation;
+
+    constexpr std::size_t kPreparedOwnerFixedBytes = 16u * 1024u * 1024u;
+    constexpr std::size_t kPreparedOwnerExpansion = 8u;
+
+    [[nodiscard]] std::optional<std::size_t> conservativeOwnerBytes(
+        std::size_t encoded_bytes) noexcept
+    {
+        if (encoded_bytes == 0u ||
+            encoded_bytes >
+                ((std::numeric_limits<std::size_t>::max)() -
+                 kPreparedOwnerFixedBytes) /
+                    kPreparedOwnerExpansion)
+        {
+            return std::nullopt;
+        }
+        return kPreparedOwnerFixedBytes +
+            encoded_bytes * kPreparedOwnerExpansion;
+    }
+
     struct StaticCollider3DPrepareControl final
         : public std::enable_shared_from_this<
               StaticCollider3DPrepareControl>
@@ -28,24 +53,9 @@ namespace lux::runtime::spatial3d::detail
             : config(value)
         {}
 
-        [[nodiscard]] StaticCollider3DSubmitExp<
+        [[nodiscard]] SubmitExp<
             std::shared_ptr<StaticCollider3DPrepareReservation>>
-        reserve(
-            std::uint64_t client_generation,
-            std::size_t bytes) noexcept;
-
-        [[nodiscard]] bool accepts(
-            std::uint64_t client_generation) const noexcept
-        {
-            std::lock_guard lock{mutex};
-            return !closing && generation == client_generation;
-        }
-
-        [[nodiscard]] std::uint64_t currentGeneration() const noexcept
-        {
-            std::lock_guard lock{mutex};
-            return !closing ? generation : 0u;
-        }
+        reserve(std::size_t bytes) noexcept;
 
         [[nodiscard]] bool isClosing() const noexcept
         {
@@ -59,9 +69,6 @@ namespace lux::runtime::spatial3d::detail
             if (closing)
                 return;
             closing = true;
-            ++generation;
-            if (generation == 0u)
-                ++generation;
         }
 
         void releaseRequest() noexcept
@@ -104,7 +111,6 @@ namespace lux::runtime::spatial3d::detail
         mutable std::mutex mutex;
         StaticCollider3DPrepareQueueConfig config;
         bool closing{false};
-        std::uint64_t generation{1u};
         std::size_t active_requests{0u};
         std::size_t active_bytes{0u};
         std::size_t request_high_water{0u};
@@ -140,14 +146,13 @@ namespace lux::runtime::spatial3d::detail
         bool request_slot{true};
     };
 
-    StaticCollider3DSubmitExp<
+    SubmitExp<
         std::shared_ptr<StaticCollider3DPrepareReservation>>
     StaticCollider3DPrepareControl::reserve(
-        std::uint64_t client_generation,
         std::size_t bytes) noexcept
     {
         std::lock_guard lock{mutex};
-        if (closing || generation != client_generation)
+        if (closing)
         {
             return lux::cxx::unexpected(
                 lux::async::ESubmitError::FEATURE_CLOSING);
@@ -173,35 +178,125 @@ namespace lux::runtime::spatial3d::detail
         return std::make_shared<StaticCollider3DPrepareReservation>(
             shared_from_this(), bytes);
     }
-} // namespace lux::runtime::spatial3d::detail
 
-namespace lux::runtime::spatial3d
+    struct ForwardCompletion final
+    {
+        std::shared_ptr<StaticCollider3DPrepareReservation> admission;
+        void* state{nullptr};
+        void (*complete)(void*, Outcome&&) noexcept{nullptr};
+    };
+
+    class AdmissionEndpoint final
+        : public lux::async::detail::OperationEndpoint<Operation>
+    {
+    public:
+        AdmissionEndpoint(
+            std::shared_ptr<StaticCollider3DPrepareControl> control,
+            lux::async::OperationPort<Operation> operation) noexcept
+            : control_(std::move(control)), operation_(std::move(operation))
+        {}
+
+        [[nodiscard]] lux::async::SubmitResult submit(
+            Operation operation,
+            void* completion_state,
+            void (*complete)(void*, Outcome&&) noexcept,
+            lux::async::SubmitOptions) noexcept override
+        {
+            if (operation.content.empty() ||
+                operation.request_generation == 0u)
+            {
+                return reject(
+                    completion_state,
+                    complete,
+                    lux::async::ESubmitError::PAYLOAD_INVALID);
+            }
+            const auto accounted =
+                conservativeOwnerBytes(operation.content.size());
+            if (!accounted)
+            {
+                return reject(
+                    completion_state,
+                    complete,
+                    lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
+            }
+            auto admission = control_->reserve(*accounted);
+            if (!admission)
+            {
+                return reject(
+                    completion_state, complete, admission.error());
+            }
+            auto forward = std::unique_ptr<ForwardCompletion>{
+                new (std::nothrow) ForwardCompletion{
+                    std::move(*admission), completion_state, complete}};
+            if (!forward)
+            {
+                return reject(
+                    completion_state,
+                    complete,
+                    lux::async::ESubmitError::QUEUE_FULL);
+            }
+            auto* const callback_state = forward.release();
+            return operation_.submit(
+                std::move(operation),
+                callback_state,
+                +[](void* value, Outcome&& outcome) noexcept
+                {
+                    auto owner = std::unique_ptr<ForwardCompletion>{
+                        static_cast<ForwardCompletion*>(value)};
+                    if (outcome)
+                    {
+                        auto budget = lux::ecs::physics3d::streaming::
+                            StaticCollider3DPrepareBudgetLease{
+                                std::shared_ptr<void>{owner->admission},
+                                owner->admission->bytes,
+                                +[](void* reservation) noexcept
+                                {
+                                    static_cast<
+                                        StaticCollider3DPrepareReservation*>(
+                                            reservation)->markPrepared();
+                                }};
+                        budget.markPrepared();
+                        outcome->budget = std::move(budget);
+                        owner->admission.reset();
+                    }
+                    owner->complete(owner->state, std::move(outcome));
+                },
+                lux::async::SubmitOptions{
+                    .accounted_bytes = *accounted});
+        }
+
+    private:
+        [[nodiscard]] static lux::async::SubmitResult reject(
+            void* completion_state,
+            void (*complete)(void*, Outcome&&) noexcept,
+            lux::async::ESubmitError error) noexcept
+        {
+            complete(
+                completion_state,
+                lux::cxx::unexpected(
+                    lux::async::OperationFailure<Operation::Error>::runtime(
+                        error)));
+            return lux::cxx::unexpected(error);
+        }
+
+        std::shared_ptr<StaticCollider3DPrepareControl> control_;
+        lux::async::OperationPort<Operation> operation_;
+    };
+} // namespace lux::runtime::assets::physics3d::detail
+
+namespace lux::runtime::assets::physics3d
 {
     namespace ex = stdexec;
+    using lux::ecs::physics3d::streaming::BuildStaticCollider3D;
+    using lux::ecs::physics3d::streaming::EStaticCollider3DPrepareError;
+    using lux::ecs::physics3d::streaming::PreparedStaticCollider3D;
+    using lux::ecs::physics3d::streaming::StaticCollider3DPrepareBudgetLease;
+    using lux::ecs::physics3d::streaming::StaticCollider3DPrepareExp;
+    using lux::ecs::physics3d::streaming::StaticCollider3DPrepareFailure;
 
     namespace
     {
-        // Field records and backend shape objects dominate tiny-heightfield
-        // batches where encoded-byte expansion alone is not conservative.
-        constexpr std::size_t kPreparedOwnerFixedBytes = 16u * 1024u * 1024u;
-        constexpr std::size_t kPreparedOwnerExpansion = 8u;
-
         using PrepareResult = lux::cxx::expected<PreparedStaticCollider3D, StaticCollider3DPrepareFailure>;
-
-        [[nodiscard]] std::optional<std::size_t> conservativeOwnerBytes(
-            std::size_t encoded_bytes) noexcept
-        {
-            if (encoded_bytes == 0u ||
-                encoded_bytes >
-                    (std::numeric_limits<std::size_t>::max() -
-                     kPreparedOwnerFixedBytes) /
-                        kPreparedOwnerExpansion)
-            {
-                return std::nullopt;
-            }
-            return kPreparedOwnerFixedBytes +
-                encoded_bytes * kPreparedOwnerExpansion;
-        }
 
         [[nodiscard]] StaticCollider3DPrepareFailure failure(
             EStaticCollider3DPrepareError error,
@@ -312,13 +407,10 @@ namespace lux::runtime::spatial3d
 
         struct PendingPrepare final
         {
-            PendingPrepare(
+            explicit PendingPrepare(
                 lux::exec::AsyncOperationCompletion<BuildStaticCollider3D>
-                    value,
-                StaticCollider3DPrepareBudgetLease admission_value)
-                noexcept
-                : completion(std::move(value)),
-                  admission(std::move(admission_value))
+                    value) noexcept
+                : completion(std::move(value))
             {}
 
             void settle(PrepareResult result) noexcept
@@ -327,12 +419,9 @@ namespace lux::runtime::spatial3d
                     return;
                 if (result)
                 {
-                    admission.markPrepared();
-                    result->budget = std::move(admission);
                     completion.complete(std::move(*result));
                     return;
                 }
-                admission.reset();
                 completion.complete(lux::cxx::unexpected(
                     lux::async::OperationFailure<
                         StaticCollider3DPrepareFailure>::domain(
@@ -343,7 +432,6 @@ namespace lux::runtime::spatial3d
             {
                 if (settled.exchange(true, std::memory_order_acq_rel))
                     return;
-                admission.reset();
                 completion.failRuntime(
                     lux::async::ESubmitError::STOPPING);
             }
@@ -351,88 +439,20 @@ namespace lux::runtime::spatial3d
             std::atomic<bool> settled{false};
             lux::exec::AsyncOperationCompletion<BuildStaticCollider3D>
                 completion;
-            StaticCollider3DPrepareBudgetLease admission;
         };
     } // namespace
 
-    StaticCollider3DPrepareBudgetLease::operator bool() const noexcept
-    {
-        return static_cast<bool>(reservation_);
-    }
-
-    std::size_t
-    StaticCollider3DPrepareBudgetLease::accountedBytes() const noexcept
-    {
-        return reservation_ ? reservation_->bytes : 0u;
-    }
-
-    void StaticCollider3DPrepareBudgetLease::markPrepared() noexcept
-    {
-        if (reservation_)
-            reservation_->markPrepared();
-    }
-
-    void StaticCollider3DPrepareBudgetLease::reset() noexcept
-    {
-        reservation_.reset();
-    }
-
-    StaticCollider3DPrepareClient::StaticCollider3DPrepareClient(
-        std::weak_ptr<detail::StaticCollider3DPrepareControl> control,
-        std::uint64_t generation,
-        lux::async::OperationPort<BuildStaticCollider3D>
-            operation) noexcept
-        : control_(std::move(control)), generation_(generation),
-          operation_(std::move(operation))
-    {}
-
-    StaticCollider3DPrepareClient::operator bool() const noexcept
-    {
-        const auto control = control_.lock();
-        return control && control->accepts(generation_) &&
-            static_cast<bool>(operation_);
-    }
-
-    StaticCollider3DSubmitExp<StaticCollider3DPrepareSender>
-    StaticCollider3DPrepareClient::execute(
-        BuildStaticCollider3D request) const noexcept
-    {
-        const auto control = control_.lock();
-        if (!control || !operation_)
-        {
-            return lux::cxx::unexpected(
-                lux::async::ESubmitError::UNKNOWN_OPERATION);
-        }
-        if (request.content.empty() || request.request_generation == 0u)
-        {
-            return lux::cxx::unexpected(
-                lux::async::ESubmitError::PAYLOAD_INVALID);
-        }
-        const auto accounted = conservativeOwnerBytes(
-            request.content.size());
-        if (!accounted)
-        {
-            return lux::cxx::unexpected(
-                lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED);
-        }
-        auto admission = control->reserve(generation_, *accounted);
-        if (!admission)
-            return lux::cxx::unexpected(admission.error());
-        request.admission_ = StaticCollider3DPrepareBudgetLease{
-            std::move(*admission)};
-        return lux::exec::execute(
-            operation_,
-            std::move(request),
-            lux::async::SubmitOptions{.accounted_bytes = *accounted});
-    }
-
-    StaticCollider3DAssemblyExp<StaticCollider3DPrepareService>
+    lux::cxx::expected<
+        StaticCollider3DPrepareService,
+        lux::exec::AsyncAssemblyFailure>
     StaticCollider3DPrepareService::addTo(
         lux::exec::AsyncRuntimeBuilder& builder,
         StaticCollider3DPrepareQueueConfig config)
     {
         auto control =
             std::make_shared<detail::StaticCollider3DPrepareControl>(config);
+        auto state = std::make_shared<lux::ecs::physics3d::streaming::detail::
+            StaticCollider3DPrepareState>();
         auto operation = builder.addOperation<BuildStaticCollider3D>(
             [control](
                 BuildStaticCollider3D&& request,
@@ -441,15 +461,7 @@ namespace lux::runtime::spatial3d
                     completion) noexcept
             {
                 auto pending = std::make_shared<PendingPrepare>(
-                    std::move(completion),
-                    std::move(request.admission_));
-                if (!pending->admission)
-                {
-                    pending->settle(lux::cxx::unexpected(failure(
-                        EStaticCollider3DPrepareError::INVALID_REQUEST,
-                        "static collider preparation admission is missing")));
-                    return;
-                }
+                    std::move(completion));
                 if (control->isClosing())
                 {
                     pending->stop();
@@ -487,20 +499,30 @@ namespace lux::runtime::spatial3d
                 config.drain_batch});
         if (!operation)
             return lux::cxx::unexpected(operation.error());
+        auto admitted_operation = lux::async::OperationPort<
+            BuildStaticCollider3D>{
+                std::make_shared<detail::AdmissionEndpoint>(
+                    control, std::move(*operation))};
         return StaticCollider3DPrepareService{
-            std::move(control), std::move(*operation)};
+            std::move(control),
+            std::move(state),
+            std::move(admitted_operation)};
     }
 
     StaticCollider3DPrepareService::StaticCollider3DPrepareService(
         std::shared_ptr<detail::StaticCollider3DPrepareControl> control,
+        std::shared_ptr<lux::ecs::physics3d::streaming::detail::
+            StaticCollider3DPrepareState> state,
         lux::async::OperationPort<BuildStaticCollider3D>
             operation) noexcept
-        : control_(std::move(control)), operation_(std::move(operation))
+        : control_(std::move(control)), state_(std::move(state)),
+          operation_(std::move(operation))
     {}
 
     StaticCollider3DPrepareService::StaticCollider3DPrepareService(
         StaticCollider3DPrepareService&& other) noexcept
         : control_(std::move(other.control_)),
+          state_(std::move(other.state_)),
           operation_(std::move(other.operation_)),
           closed_(std::exchange(other.closed_, true))
     {}
@@ -513,6 +535,7 @@ namespace lux::runtime::spatial3d
             return *this;
         close();
         control_ = std::move(other.control_);
+        state_ = std::move(other.state_);
         operation_ = std::move(other.operation_);
         closed_ = std::exchange(other.closed_, true);
         return *this;
@@ -523,13 +546,14 @@ namespace lux::runtime::spatial3d
         close();
     }
 
-    StaticCollider3DPrepareClient
+    lux::ecs::physics3d::streaming::StaticCollider3DPrepareClient
     StaticCollider3DPrepareService::client() const noexcept
     {
-        return !closed_ && control_
-            ? StaticCollider3DPrepareClient{
-                  control_, control_->currentGeneration(), operation_}
-            : StaticCollider3DPrepareClient{};
+        return !closed_ && state_
+            ? lux::ecs::physics3d::streaming::
+                StaticCollider3DPrepareClient{state_, operation_}
+            : lux::ecs::physics3d::streaming::
+                StaticCollider3DPrepareClient{};
     }
 
     StaticCollider3DPrepareServiceSnapshot
@@ -544,8 +568,10 @@ namespace lux::runtime::spatial3d
         if (closed_)
             return;
         closed_ = true;
+        if (state_)
+            state_->closing.store(true, std::memory_order_release);
         if (control_)
             control_->closeAdmission();
         operation_ = {};
     }
-} // namespace lux::runtime::spatial3d
+} // namespace lux::runtime::assets::physics3d

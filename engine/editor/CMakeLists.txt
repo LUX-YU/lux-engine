@@ -182,7 +182,7 @@ component_add_transitive_commands(
     "find_package (lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-authoring REQUIRED COMPONENTS project authoring_flowforge authoring_assets authoring_world)"
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_spatial3d_scene_cook)"
-    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_logging runtime_frame runtime_assets runtime_scene_script runtime_extension_loader runtime_extension_orchestration runtime_render_scene runtime_render_backend_host runtime_tilemap_prepare runtime_tilemap_systems runtime_navigation3d_prepare runtime_spatial3d_physics)"
+    "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_logging runtime_frame runtime_assets runtime_scene_script runtime_extension_loader runtime_extension_orchestration runtime_render_scene runtime_render_backend_host runtime_tilemap_prepare runtime_tilemap_systems runtime_navigation3d_prepare runtime_physics3d_prepare)"
     "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"
     "find_package (imgui REQUIRED COMPONENTS glfw3 vulkan)"
     "find_package (node_editor REQUIRED COMPONENTS node_editor)"
@@ -225,7 +225,7 @@ target_link_libraries(
     lux::engine::runtime::runtime_assets
     lux::engine::runtime::runtime_tilemap_prepare
     lux::engine::runtime::runtime_navigation3d_prepare
-    lux::engine::runtime::runtime_spatial3d_physics
+    lux::engine::runtime::runtime_physics3d_prepare
     lux::engine::runtime::runtime_scene_script
     lux::engine::runtime::runtime_frame # shared frame lifecycle; no private pump protocol
     lux::engine::core::log                 # sink assembly + diagnostics (§7.1)

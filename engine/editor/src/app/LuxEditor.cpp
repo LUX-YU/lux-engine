@@ -60,7 +60,7 @@
 #include <lux/engine/runtime/assets/AssetLoadService.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/assets/navigation/Navigation3DPrepareService.hpp>
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
+#include <lux/engine/runtime/assets/physics3d/StaticCollider3DPrepareService.hpp>
 #include <lux/engine/runtime/assets/tilemap/TilemapPrepareService.hpp>
 
 #include <lux/engine/resource/asset/AssetManager.hpp>
@@ -230,7 +230,8 @@ namespace lux::editor
         std::unique_ptr<lux::runtime::SceneGeometryPrepareService> geometry_preparation_;
         std::unique_ptr<lux::runtime::assets::navigation::
             Navigation3DPrepareService> navigation_preparation_;
-        std::unique_ptr<lux::runtime::spatial3d::StaticCollider3DPrepareService> physics_preparation_;
+        std::unique_ptr<lux::runtime::assets::physics3d::
+            StaticCollider3DPrepareService> physics_preparation_;
         std::unique_ptr<
             lux::runtime::assets::tilemap::TilemapPrepareService>
             tilemap_preparation_;
@@ -568,7 +569,8 @@ namespace lux::editor
             shutdown();
             return false;
         }
-        auto physics_preparation = lux::runtime::spatial3d::StaticCollider3DPrepareService::addTo(async_builder);
+        auto physics_preparation = lux::runtime::assets::physics3d::
+            StaticCollider3DPrepareService::addTo(async_builder);
         if (!physics_preparation)
         {
             std::fprintf(
@@ -616,7 +618,9 @@ namespace lux::editor
         runtime_->navigation_preparation_ = std::make_unique<
             lux::runtime::assets::navigation::Navigation3DPrepareService>(
                 std::move(*navigation_preparation));
-        runtime_->physics_preparation_          = std::make_unique<lux::runtime::spatial3d::StaticCollider3DPrepareService>(std::move(*physics_preparation));
+        runtime_->physics_preparation_ = std::make_unique<
+            lux::runtime::assets::physics3d::StaticCollider3DPrepareService>(
+                std::move(*physics_preparation));
         runtime_->tilemap_preparation_ = std::make_unique<
             lux::runtime::assets::tilemap::TilemapPrepareService>(
             std::move(*tilemap_preparation));

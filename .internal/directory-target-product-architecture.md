@@ -72,6 +72,11 @@ System Registry and installer/catalog/host variants are forbidden.
   `engine/runtime/assets/navigation` implements only the Detour background
   endpoint and its process-wide queued-plus-running admission budget; it
   defines no `ISystem`.
+- `ecs/physics3d/streaming` owns static-collider observation, transient
+  binding/status state, Jolt adoption and bounded retirement. Its type-erased
+  budget lease preserves Runtime accounting without exposing a Runtime type.
+  `engine/runtime/assets/physics3d` implements only background decode/shape
+  preparation and the process-wide request/byte admission policy.
 - Runtime render owns backend/session/frame lifetime. Renderer mechanisms stay
   in `modules/function/render`; extraction stays in `ecs/render`.
 - Shared cooked contracts may remain in `engine/scene` or `ecs/scene_format`;

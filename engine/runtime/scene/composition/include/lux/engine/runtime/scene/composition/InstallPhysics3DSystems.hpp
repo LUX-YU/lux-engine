@@ -2,8 +2,8 @@
 
 #include <lux/engine/ecs/ComponentTypeCatalog.hpp>
 #include <lux/engine/ecs/ScheduleBuilder.hpp>
+#include <lux/engine/ecs/physics3d/streaming/StaticCollider3DPreparePort.hpp>
 #include <lux/engine/runtime/scene/composition/physics3d_visibility.h>
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
 
 namespace lux::runtime
 {
@@ -11,5 +11,6 @@ namespace lux::runtime
     bool installPhysics3DSystems(
         lux::ecs::ScheduleBuilder& builder,
         const lux::ecs::ComponentTypeCatalog& components,
-        spatial3d::StaticCollider3DPrepareClient preparation);
+        lux::ecs::physics3d::streaming::StaticCollider3DPrepareClient
+            preparation);
 }

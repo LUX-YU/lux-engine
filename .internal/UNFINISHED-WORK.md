@@ -43,8 +43,14 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         Runtime assets retains the Detour endpoint and service-wide
         queued-plus-running admission budget; remove the Runtime Navigation
         System target, spatial3d directory and `ISystem` allowlist entry.
-  - [ ] Move physics and presentation Systems from Runtime into their ECS
-        domains.
+  - [x] Move `StaticCollider3DSystem`, its transient binding/status state,
+        typed preparation port and Physics3D scene service into
+        `ecs/physics3d/streaming`. Runtime assets retains the queued Jolt
+        preparation endpoint and its process-wide budget accounting; remove
+        the Runtime Physics3D System target, spatial3d directory and `ISystem`
+        allowlist entry.
+  - [ ] Move the remaining presentation System from Runtime into its ECS
+        domain.
 - [ ] Split `engine/spatial3d/SceneCatalog` by field ownership.
 - [ ] Collapse Editor panel contribution state into UISystem registration.
 - [ ] Generate build-only project usage and direct game composition.

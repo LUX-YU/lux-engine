@@ -72,8 +72,8 @@
 #include <lux/engine/runtime/assets/AssetLoadSenders.hpp>
 #include <lux/engine/runtime/entity_scene/EntitySectionService.hpp>
 #include <lux/engine/runtime/assets/navigation/Navigation3DPrepareService.hpp>
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp>
+#include <lux/engine/runtime/assets/physics3d/StaticCollider3DPrepareService.hpp>
+#include <lux/engine/ecs/physics3d/streaming/StaticCollider3DSystem.hpp>
 #include <lux/engine/runtime/assets/tilemap/TilemapPrepareService.hpp>
 
 #include <lux/engine/input/Input.hpp>
@@ -335,7 +335,7 @@ namespace lux::game
                 "navigation preparation assembly failed");
             return false;
         }
-        auto physics_preparation = lux::runtime::spatial3d::
+        auto physics_preparation = lux::runtime::assets::physics3d::
             StaticCollider3DPrepareService::addTo(async_builder);
         if (!physics_preparation)
         {
@@ -409,7 +409,7 @@ namespace lux::game
             lux::runtime::assets::navigation::Navigation3DPrepareService>(
                 std::move(*navigation_preparation));
         application.physics_preparation = std::make_unique<
-            lux::runtime::spatial3d::StaticCollider3DPrepareService>(
+            lux::runtime::assets::physics3d::StaticCollider3DPrepareService>(
                 std::move(*physics_preparation));
         application.tilemap_preparation = std::make_unique<
             lux::runtime::assets::tilemap::TilemapPrepareService>(
@@ -1175,7 +1175,7 @@ namespace lux::game
             telemetry.upload_payload_high_water = channel->payloadHighWater();
         }
         if (const auto* physics = impl_->runtime->services().get<
-                lux::runtime::spatial3d::Physics3DSceneService>();
+                lux::ecs::physics3d::streaming::Physics3DSceneService>();
             physics && physics->scene)
         {
             const auto stats = physics->snapshot();

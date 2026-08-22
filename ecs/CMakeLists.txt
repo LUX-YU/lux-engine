@@ -89,7 +89,7 @@ else()
         core component_archive entity_scene transform spatial2d_components spatial2d_streaming spatial3d_components spatial3d_streaming
         tilemap tilemap_streaming pixel pixel_streaming terrain_components
         scripting scripting_lua scripting_native
-        physics physics2d physics3d
+        physics physics2d physics3d physics3d_streaming
         navigation3d navigation3d_streaming
         render_components render_components_2d render_components_3d
         render_core render_2d render_3d render_pixel_integration

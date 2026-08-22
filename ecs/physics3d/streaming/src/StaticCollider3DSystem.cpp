@@ -1,26 +1,20 @@
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DSystem.hpp>
+#include <lux/engine/ecs/physics3d/streaming/StaticCollider3DSystem.hpp>
 
+#include <lux/engine/core/async/OperationInbox.hpp>
 #include <lux/engine/ecs/components/ResolvedTransform3DComponent.hpp>
 #include <lux/engine/ecs/physics3d/components/Physics3DComponents.hpp>
 #include <lux/engine/ecs/physics3d/systems/Physics3DSystem.hpp>
 #include <lux/engine/ecs/physics3d/StaticColliderBatch3DCodec.hpp>
-#include <lux/engine/runtime/execution/AsyncRuntime.hpp>
-#include <lux/engine/runtime/execution/AsyncRuntimeSenders.hpp>
-#include <lux/engine/runtime/execution/AsyncScopeSenders.hpp>
-
-#include <stdexec/execution.hpp>
-
 #include <entt/entity/registry.hpp>
 
 #include <algorithm>
-#include <atomic>
 #include <cstdlib>
 #include <limits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-namespace lux::runtime::spatial3d
+namespace lux::ecs::physics3d::streaming
 {
     namespace
     {
@@ -64,9 +58,10 @@ namespace lux::runtime::spatial3d
             return EStaticCollider3DFailure::PREPARE_FAILED;
         }
 
-        struct CompletionControl final
+        struct PreparationCompletionKey final
         {
-            std::atomic<StaticCollider3DSystem*> owner{nullptr};
+            entt::entity entity{entt::null};
+            std::uint64_t generation{0u};
         };
     } // namespace
 
@@ -111,19 +106,14 @@ namespace lux::runtime::spatial3d
         };
 
         Impl(
-            StaticCollider3DSystem& owner_value,
-            lux::exec::AsyncRuntime& async_runtime_value,
-            lux::exec::AsyncScope& scene_scope_value,
             StaticCollider3DPrepareClient preparation_value,
             std::shared_ptr<lux::ecs::Physics3DScene> scene_value,
             lux::ecs::entity_scene::ContentBlobClient content_value,
             StaticCollider3DSystemConfig config_value)
-            : async_runtime(&async_runtime_value),
-              scope(&scene_scope_value),
-              preparation(std::move(preparation_value)),
+            : preparation(std::move(preparation_value)),
+              completions(config_value.maximum_tracked_batches),
               scene(std::move(scene_value)),
               content(std::move(content_value)),
-              completion(std::make_shared<CompletionControl>()),
               config(config_value)
         {
             if (!preparation || !scene || !content ||
@@ -135,7 +125,6 @@ namespace lux::runtime::spatial3d
             {
                 std::abort();
             }
-            completion->owner.store(&owner_value, std::memory_order_release);
             entries.reserve(config.maximum_tracked_batches);
             const auto event_capacity = static_cast<std::size_t>(
                 config.maximum_tracked_batches) * 4u;
@@ -829,10 +818,17 @@ namespace lux::runtime::spatial3d
                 {
                     continue;
                 }
-                auto submitted = preparation.execute(BuildStaticCollider3D{
-                    entry.candidate_content.bytes(),
-                    entry.transform,
-                    entry.generation});
+                auto submitted = completions.submit(
+                    preparation.operation(),
+                    BuildStaticCollider3D{
+                        entry.candidate_content.bytes(),
+                        entry.transform,
+                        entry.generation},
+                    PreparationCompletionKey{
+                        entry.entity, entry.generation},
+                    lux::async::SubmitOptions{
+                        .accounted_bytes =
+                            entry.candidate_content.bytes().size()});
                 if (!submitted)
                 {
                     if (submitted.error() ==
@@ -846,56 +842,7 @@ namespace lux::runtime::spatial3d
                     fail(entry, EStaticCollider3DFailure::PREPARE_FAILED);
                     continue;
                 }
-
-                const auto entity = entry.entity;
-                const auto generation = entry.generation;
-                auto pipeline =
-                    std::move(*submitted) |
-                    stdexec::continues_on(
-                        lux::exec::mainThreadScheduler(*async_runtime)) |
-                    stdexec::then(
-                        [weak = std::weak_ptr{completion},
-                         entity,
-                         generation](
-                            lux::async::OperationOutcome<BuildStaticCollider3D>
-                                outcome) mutable noexcept
-                        {
-                            const auto locked = weak.lock();
-                            if (!locked)
-                                return;
-                            auto* target = locked->owner.load(
-                                std::memory_order_acquire);
-                            if (target)
-                            {
-                                target->acceptPreparation(
-                                    entity,
-                                    generation,
-                                    std::move(outcome));
-                            }
-                        }) |
-                    stdexec::upon_stopped(
-                        [weak = std::weak_ptr{completion},
-                         entity,
-                         generation]() noexcept
-                        {
-                            const auto locked = weak.lock();
-                            if (!locked)
-                                return;
-                            auto* target = locked->owner.load(
-                                std::memory_order_acquire);
-                            if (target)
-                            {
-                                target->acceptPreparationStopped(
-                                    entity, generation);
-                            }
-                        });
                 transition(entry, EStaticCollider3DState::WAITING_BACKGROUND);
-                if (!lux::exec::spawn(*scope, std::move(pipeline)))
-                {
-                    transition(entry, EStaticCollider3DState::WAITING_CONTENT);
-                    ++metrics.queue_backpressure;
-                    continue;
-                }
                 ++metrics.preparation_attempts;
             }
         }
@@ -1076,12 +1023,12 @@ namespace lux::runtime::spatial3d
                  !attached->storage<StaticCollider3DStatusComponent>().empty());
         }
 
-        lux::exec::AsyncRuntime* async_runtime{nullptr};
-        lux::exec::AsyncScope* scope{nullptr};
         StaticCollider3DPrepareClient preparation;
+        lux::async::OperationInbox<
+            BuildStaticCollider3D,
+            PreparationCompletionKey> completions;
         std::shared_ptr<lux::ecs::Physics3DScene> scene;
         lux::ecs::entity_scene::ContentBlobClient content;
-        std::shared_ptr<CompletionControl> completion;
         StaticCollider3DSystemConfig config;
         lux::ecs::Registry* attached{nullptr};
         lux::ecs::EcsCommandWriter commands;
@@ -1107,16 +1054,11 @@ namespace lux::runtime::spatial3d
     };
 
     StaticCollider3DSystem::StaticCollider3DSystem(
-        lux::exec::AsyncRuntime& async_runtime,
-        lux::exec::AsyncScope& scene_scope,
         StaticCollider3DPrepareClient preparation,
         std::shared_ptr<lux::ecs::Physics3DScene> scene,
         lux::ecs::entity_scene::ContentBlobClient content,
         StaticCollider3DSystemConfig config)
         : impl_(std::make_unique<Impl>(
-              *this,
-              async_runtime,
-              scene_scope,
               std::move(preparation),
               std::move(scene),
               std::move(content),
@@ -1125,7 +1067,7 @@ namespace lux::runtime::spatial3d
 
     StaticCollider3DSystem::~StaticCollider3DSystem()
     {
-        impl_->completion->owner.store(nullptr, std::memory_order_release);
+        impl_->completions.close();
         if (impl_->attached)
             impl_->detach(*impl_->attached);
     }
@@ -1175,6 +1117,14 @@ namespace lux::runtime::spatial3d
     {
         if (impl_->attached != &context.registry())
             std::abort();
+        impl_->completions.drain(
+            [this](auto completion) noexcept
+            {
+                acceptPreparation(
+                    completion.key.entity,
+                    completion.key.generation,
+                    std::move(completion.outcome));
+            });
         impl_->enqueueSuperseded();
         impl_->discardStaleCandidates();
         impl_->drainRetirement();
@@ -1539,36 +1489,6 @@ namespace lux::runtime::spatial3d
         impl_->transition(entry, EStaticCollider3DState::STAGING);
     }
 
-    void StaticCollider3DSystem::acceptPreparationStopped(
-        entt::entity entity,
-        std::uint64_t generation) noexcept
-    {
-        const auto found = impl_->entries.find(entityKey(entity));
-        if (found == impl_->entries.end() ||
-            found->second.entity != entity ||
-            found->second.generation != generation ||
-            found->second.state !=
-                EStaticCollider3DState::WAITING_BACKGROUND)
-        {
-            ++impl_->metrics.stale_completions;
-            return;
-        }
-        if (impl_->closing)
-        {
-            impl_->cancelCandidate(found->second);
-            found->second.state = EStaticCollider3DState::FAILED;
-            found->second.failure =
-                EStaticCollider3DFailure::PREPARE_FAILED;
-            found->second.status_dirty = false;
-            return;
-        }
-        const bool desired_matches = impl_->desiredMatches(found->second);
-        impl_->fail(
-            found->second, EStaticCollider3DFailure::PREPARE_FAILED);
-        if (!desired_matches)
-            (void)impl_->mark(entity);
-    }
-
     StaticCollider3DSystemSnapshot
     StaticCollider3DSystem::snapshot() const noexcept
     {
@@ -1653,6 +1573,7 @@ namespace lux::runtime::spatial3d
         if (impl_->closing)
             return;
         impl_->closing = true;
+        impl_->completions.close();
         for (auto& [_, entry] : impl_->entries)
         {
             if (entry.state == EStaticCollider3DState::WAITING_BACKGROUND)
@@ -1676,7 +1597,8 @@ namespace lux::runtime::spatial3d
 
     bool StaticCollider3DSystem::closeComplete() const noexcept
     {
-        if (!impl_->closing || !impl_->retirement.empty() ||
+        if (!impl_->closing || !impl_->completions.terminal() ||
+            !impl_->retirement.empty() ||
             impl_->hasTransientComponents())
             return false;
         return std::ranges::none_of(
@@ -1696,6 +1618,8 @@ namespace lux::runtime::spatial3d
     {
         if (!impl_->closing || closeComplete())
             return false;
+        if (!impl_->completions.empty())
+            return true;
         if (!impl_->retirement.empty() || impl_->hasTransientComponents())
             return true;
         return std::ranges::any_of(
@@ -1710,4 +1634,4 @@ namespace lux::runtime::spatial3d
                      static_cast<bool>(entry.candidate_budget));
             });
     }
-} // namespace lux::runtime::spatial3d
+} // namespace lux::ecs::physics3d::streaming

@@ -9,8 +9,8 @@ add_subdirectory(logging)
 add_subdirectory(entity_scene)
 add_subdirectory(assets/pixel)
 add_subdirectory(assets/navigation)
+add_subdirectory(assets/physics3d)
 add_subdirectory(spatial3d/partitioned)
-add_subdirectory(spatial3d/physics)
 add_subdirectory(scene/core)
 add_subdirectory(scene/composition)
 add_subdirectory(render/scene)
@@ -35,8 +35,8 @@ install_components(
                     runtime_tilemap_prepare
                     runtime_pixel_assets
                     runtime_navigation3d_prepare
+                    runtime_physics3d_prepare
                     runtime_spatial3d_streaming_systems
-                    runtime_spatial3d_physics
                     runtime_scene_core
                     runtime_tilemap_systems
                     runtime_navigation3d_systems

@@ -5,22 +5,22 @@
  */
 
 #include <lux/engine/ecs/physics3d/systems/Physics3DScene.hpp>
-#include <lux/engine/runtime/entity_scene/SectionBlobStore.hpp>
-#include <lux/engine/runtime/spatial3d/physics/StaticCollider3DPrepareService.hpp>
-#include <lux/engine/runtime/spatial3d/physics/visibility.h>
+#include <lux/engine/ecs/entity_scene/ContentBlobStorage.hpp>
+#include <lux/engine/ecs/physics3d/streaming/StaticCollider3DPreparePort.hpp>
+#include <lux/engine/ecs/physics3d/streaming/visibility.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 
-namespace lux::runtime::spatial3d
+namespace lux::ecs::physics3d::streaming
 {
     class StaticCollider3DSystem;
 
     /// Shared only between the domain owner table and its transient ECS
     /// binding.  It pins both the cooked bytes and the private Jolt bodies.
     /// No runtime pointer is serialized into EntityScene content.
-    class LUX_ENGINE_RUNTIME_SPATIAL3D_PHYSICS_PUBLIC
+    class LUX_ENGINE_ECS_PHYSICS3D_STREAMING_PUBLIC
         StaticCollider3DBinding final
     {
       public:
@@ -106,4 +106,4 @@ namespace lux::runtime::spatial3d
         EStaticCollider3DFailure failure{EStaticCollider3DFailure::NONE};
         std::uint64_t generation{0u};
     };
-} // namespace lux::runtime::spatial3d
+} // namespace lux::ecs::physics3d::streaming

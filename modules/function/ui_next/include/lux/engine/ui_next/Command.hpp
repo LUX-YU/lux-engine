@@ -1,11 +1,25 @@
 #pragma once
 
+#include <cstdint>
+#include <limits>
 #include <string>
 
 #include <lux/engine/ui_next/UiIds.hpp>
 
 namespace lux::ui
 {
+    struct CommandIndex final
+    {
+        std::uint32_t value{(std::numeric_limits<std::uint32_t>::max)()};
+
+        [[nodiscard]] constexpr bool isValid() const noexcept
+        {
+            return value != (std::numeric_limits<std::uint32_t>::max)();
+        }
+        [[nodiscard]] constexpr bool
+        operator==(const CommandIndex&) const noexcept = default;
+    };
+
     struct Command final
     {
         UiCommandId id;
@@ -14,7 +28,7 @@ namespace lux::ui
 
     struct CommandPresentation final
     {
-        UiCommandId command;
+        CommandIndex command;
     };
 
     enum class ECommandDispatchResult
@@ -23,4 +37,4 @@ namespace lux::ui
         DISABLED,
         NOT_FOUND
     };
-}
+} // namespace lux::ui

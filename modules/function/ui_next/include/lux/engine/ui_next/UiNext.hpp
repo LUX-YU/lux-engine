@@ -8,6 +8,6 @@
 #include <lux/engine/ui_next/Pane.hpp>
 #include <lux/engine/ui_next/PaneFactory.hpp>
 #include <lux/engine/ui_next/UISession.hpp>
-#include <lux/engine/ui_next/UISystem.hpp>
 #include <lux/engine/ui_next/UiIds.hpp>
+#include <lux/engine/ui_next/UiInputEvent.hpp>
 #include <lux/engine/ui_next/ViewportElement.hpp>

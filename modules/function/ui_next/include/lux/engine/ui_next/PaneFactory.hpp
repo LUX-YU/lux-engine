@@ -11,15 +11,14 @@ namespace lux::ui
 {
     struct PaneCreateContext final
     {
-        lux::object::ObjectDispatcher& dispatcher;
+        lux::object::ObjectDispatcherRef dispatcher;
     };
 
     struct PaneFactory final
     {
         PaneTypeId type;
         std::string display_name;
-        lux::cxx::move_only_function<std::unique_ptr<Pane>(
-            PaneCreateContext,
-            PaneId)> create;
+        lux::cxx::move_only_function<std::unique_ptr<Pane>(PaneCreateContext, PaneId)>
+            create;
     };
-}
+} // namespace lux::ui

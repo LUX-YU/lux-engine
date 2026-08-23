@@ -1,13 +1,8 @@
-#include <lux/engine/ui_next_vulkan/UiVulkanIntegration.hpp>
+#include <lux/engine/ui_next_drawdata/DrawDataSnapshot.hpp>
 
-#include <lux/engine/function/render/client/RenderFrameSession.hpp>
-
-namespace lux::ui::vulkan
+namespace lux::ui::drawdata
 {
-    DrawDataSnapshot::~DrawDataSnapshot()
-    {
-        clear();
-    }
+    DrawDataSnapshot::~DrawDataSnapshot() { clear(); }
 
     void DrawDataSnapshot::capture(const ImDrawData& draw_data)
     {
@@ -27,7 +22,8 @@ namespace lux::ui::vulkan
 
     void DrawDataSnapshot::clear() noexcept
     {
-        for (auto* list : owned_lists_) IM_DELETE(list);
+        for (auto* list : owned_lists_)
+            IM_DELETE(list);
         owned_lists_.clear();
         command_lists_.clear();
         draw_data_.Clear();
@@ -41,4 +37,4 @@ namespace lux::ui::vulkan
             static_cast<std::uint32_t>(draw_data.TotalIdxCount)
         };
     }
-}
+} // namespace lux::ui::drawdata

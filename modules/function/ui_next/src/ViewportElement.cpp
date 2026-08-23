@@ -14,16 +14,23 @@ namespace lux::ui
             std::uint64_t hash;
             std::uint32_t name_size;
         };
-    }
+    } // namespace
 
     void setDragDropPayload(PayloadTypeIdView type, std::span<const std::byte> bytes)
     {
         std::vector<std::byte> encoded(
             sizeof(PayloadHeader) + type.name().size() + bytes.size()
         );
-        const PayloadHeader header{type.hash(), static_cast<std::uint32_t>(type.name().size())};
+        const PayloadHeader header{
+            type.hash(),
+            static_cast<std::uint32_t>(type.name().size())
+        };
         std::memcpy(encoded.data(), &header, sizeof(header));
-        std::memcpy(encoded.data() + sizeof(header), type.name().data(), type.name().size());
+        std::memcpy(
+            encoded.data() + sizeof(header),
+            type.name().data(),
+            type.name().size()
+        );
         std::memcpy(
             encoded.data() + sizeof(header) + type.name().size(),
             bytes.data(),
@@ -36,10 +43,23 @@ namespace lux::ui
     {
         ViewportResult result;
         result.size = ImGui::GetContentRegionAvail();
-        result.resized = result.size.x != previous_size_.x || result.size.y != previous_size_.y;
+        result.content_origin = ImGui::GetCursorScreenPos();
+        result.resized =
+            result.size.x != previous_size_.x || result.size.y != previous_size_.y;
         previous_size_ = result.size;
         ImGui::Image(texture, result.size, uv0, uv1);
         result.hovered = ImGui::IsItemHovered();
+        const auto pointer = ImGui::GetIO().MousePos;
+        result.local_pointer = {
+            pointer.x - result.content_origin.x,
+            pointer.y - result.content_origin.y
+        };
+        result.left_clicked =
+            result.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        result.middle_clicked =
+            result.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle);
+        result.right_clicked =
+            result.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right);
         result.focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
         if (ImGui::BeginDragDropTarget())
@@ -57,13 +77,18 @@ namespace lux::ui
                     if (header.name_size <= bytes.size() - sizeof(header))
                     {
                         const auto name = std::string_view{
-                            reinterpret_cast<const char*>(bytes.data() + sizeof(header)),
+                            reinterpret_cast<const char*>(
+                                bytes.data() + sizeof(header)
+                            ),
                             header.name_size
                         };
-                        if (auto id = PayloadTypeIdView::fromVerified(name, header.hash); id.isValid())
+                        if (auto id =
+                                PayloadTypeIdView::fromVerified(name, header.hash);
+                            id.isValid())
                         {
                             ViewportDrop drop{PayloadTypeId{name}, {}};
-                            const auto content = bytes.subspan(sizeof(header) + header.name_size);
+                            const auto content =
+                                bytes.subspan(sizeof(header) + header.name_size);
                             drop.bytes.assign(content.begin(), content.end());
                             result.drop = std::move(drop);
                         }
@@ -74,4 +99,4 @@ namespace lux::ui
         }
         return result;
     }
-}
+} // namespace lux::ui

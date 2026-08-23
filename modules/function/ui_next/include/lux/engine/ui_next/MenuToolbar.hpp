@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include <lux/engine/function/visibility.h>
 #include <lux/engine/ui_next/Command.hpp>
 
 namespace lux::ui
@@ -43,4 +44,10 @@ namespace lux::ui
     {
         std::vector<ToolbarItem> items;
     };
-}
+
+    class CommandRouter;
+
+    LUX_FUNCTION_PUBLIC void drawMenu(const MenuModel& model, CommandRouter& router);
+    LUX_FUNCTION_PUBLIC void
+    drawToolbar(const ToolbarModel& model, CommandRouter& router);
+} // namespace lux::ui

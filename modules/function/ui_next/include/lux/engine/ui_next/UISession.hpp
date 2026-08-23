@@ -7,12 +7,12 @@
 #include <imgui.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/ui_next/CommandRouter.hpp>
 #include <lux/engine/ui_next/Layout.hpp>
 #include <lux/engine/ui_next/PaneFactory.hpp>
+#include <lux/engine/ui_next/UiInputEvent.hpp>
 
 namespace lux::ui
 {
@@ -30,10 +30,10 @@ namespace lux::ui
 
     class LUX_FUNCTION_PUBLIC UISession final
     {
-      public:
-        class Registration
+    public:
+        class LUX_FUNCTION_PUBLIC Registration
         {
-          public:
+        public:
             Registration() noexcept = default;
             Registration(const Registration&) = delete;
             Registration& operator=(const Registration&) = delete;
@@ -47,9 +47,13 @@ namespace lux::ui
                 return token_ != 0;
             }
 
-          private:
+        private:
             friend class UISession;
-            enum class EKind { PANE, FACTORY };
+            enum class EKind
+            {
+                PANE,
+                FACTORY
+            };
             Registration(
                 std::weak_ptr<detail::SessionControl> control,
                 std::uint64_t token,
@@ -72,36 +76,28 @@ namespace lux::ui
         [[nodiscard]] lux::cxx::expected<Registration, EUiRegistrationError>
         registerFactory(PaneFactory factory);
 
-        [[nodiscard]] std::unique_ptr<Pane> createPane(
-            PaneTypeIdView type,
-            PaneId id
-        );
+        [[nodiscard]] std::unique_ptr<Pane> createPane(PaneTypeIdView type, PaneId id);
 
         [[nodiscard]] CommandRouter& commandRouter() noexcept;
         [[nodiscard]] const CommandRouter& commandRouter() const noexcept;
-        [[nodiscard]] lux::object::ObjectDispatcher& dispatcher() noexcept;
+        [[nodiscard]] lux::object::ObjectDispatcherRef dispatcherRef() const noexcept;
 
         [[nodiscard]] bool focusPane(PaneIdView pane);
         [[nodiscard]] Pane* focusedPane() const noexcept;
-        [[nodiscard]] std::span<const UiContextIdView> focusedContexts() const
-            noexcept;
+        [[nodiscard]] std::span<const UiContextIdView> focusedContexts() const noexcept;
 
         void beginFrame(ImVec2 display_size, float delta_seconds);
+        void feedInput(const UiInputEvent& event);
         void drawPanes();
         [[nodiscard]] ImDrawData* endFrame();
 
         [[nodiscard]] LayoutSnapshot captureLayout() const;
-        [[nodiscard]] lux::cxx::expected<void, ELayoutError> restoreLayout(
-            std::span<const std::byte> bytes
-        );
-
-        [[nodiscard]] lux::object::EPostStatus post(
-            lux::cxx::move_only_function<void()> message
-        );
+        [[nodiscard]] lux::cxx::expected<void, ELayoutError>
+        restoreLayout(std::span<const std::byte> bytes);
 
         [[nodiscard]] ImGuiContext* imguiContext() const noexcept;
 
-      private:
+    private:
         friend class Registration;
         void unregister(std::uint64_t token, Registration::EKind kind) noexcept;
 
@@ -109,4 +105,4 @@ namespace lux::ui
         std::unique_ptr<Impl> impl_;
         std::shared_ptr<detail::SessionControl> control_;
     };
-}
+} // namespace lux::ui

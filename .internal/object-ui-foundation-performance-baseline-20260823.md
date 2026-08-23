@@ -1,6 +1,6 @@
 # Object / UI Foundation 性能复审基线（2026-08-23）
 
-状态：F0 baseline；只用于同机、同配置的相对比较。
+状态：Final frozen baseline；只用于同机、同配置的相对比较。
 
 ## 当前 Object benchmark
 
@@ -72,3 +72,19 @@ function pointer 291300 ns。不同迭代规模只用于各自路径的稳定采
 - 100/500/2000 bindings 下，50/200 次 state query 均不随 binding 总量线性增长；
 - 32-byte drag payload 使用 inline wrapper storage，1024-byte payload 才进入 heap
   fallback；两条路径均通过 borrowed-view decode 测试。
+
+## U14 验收矩阵
+
+- `lux-cxx`：Debug 49/49、RelWithDebInfo 49/49；Debug、RelWithDebInfo 与 Android
+  安装前缀已同步。LibClang 保持 host-only parser 私有依赖，安装后的 compact-IR
+  runtime/generator consumer 不再要求 LibClang SDK。
+- `lux-engine`：RelWithDebInfo 27/27；Debug Foundation 与 contract probes 全绿，
+  完整 Debug 为 20/22，两个失败均为既有 Phase 9 EnTT duplicate-insertion fixture。
+- Hardened RelWithDebInfo：Object/UI 13/13。
+- Installed consumers：Object 与 UI 在 Debug、RelWithDebInfo 下均完成 configure、
+  codegen、link 与 run。
+- Profiles：DEVELOPER、PLAYER、EDITOR、TOOLCHAIN 与 Android PLAYER 全量构建通过，
+  CMake 变更后的第二轮均为 `ninja: no work to do`。
+- Clang：Android NDK Clang 19 完成全量 PLAYER 构建。当前没有可运行的 Android
+  目标设备，也没有已配置的 host Clang sanitizer 构建，因此未宣称 ASan/UBSan
+  运行时通过。

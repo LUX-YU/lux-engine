@@ -144,10 +144,14 @@ remains.
   可用的构造/析构 operation，但不依赖 `core/object`。
 - `modules/core/object` 拥有 `LuxObject`、generated-index static typed `Signal`、连接、
   weak lifetime、targeted event 与 typed dispatcher capability。它不依赖
-  `core/events`、ECS、Runtime 或任何 UI target。
+  `core/events`、ECS、Runtime 或任何 UI target。typed Signal owner 由
+  `Object<Derived, Base>` 编译期证明；`SignalIndex` 与 lineage size 只属于生成代码和
+  build-local 执行布局。
 - `modules/function/ui_next` 拥有 Pane/Context/Command/`CommandRouter`/
   PaneFactory/Menu/Toolbar/Layout 与 `UISession`，只依赖 ImGui CPU core、
-  `core/object` 和 lux-cxx primitives。
+  `core/object` 和 lux-cxx primitives。Command route 只在 focus/context/binding 事实
+  变化时重建；`UiInputEvent` 直接使用 ImGui key/button identity，drag/drop payload
+  是 frame-borrowed view。
 - `modules/function/ui_next_drawdata` 只拥有 ImGui draw-data snapshot/copy 与
   backend-neutral handoff；它不依赖 Renderer/Vulkan。真正的 renderer bridge 等
   consumer migration 重新审计后决定。legacy `modules/function/ui` 在此之前保持独立，

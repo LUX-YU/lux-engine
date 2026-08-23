@@ -108,19 +108,15 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         has no retired identifier except the source gate's own forbidden-path
         literal.
 
-The working tree modification under
-`modules/function/input/pinclude/lux/engine/input/detail/GlfwInputTranslation.hpp`
-predates this work and is not part of the refactor.
+# Completed: Object / UI foundation performance stabilization (2026-08-23)
 
-# Active: Object / UI foundation performance stabilization (2026-08-23)
-
-- [ ] Enforce callback, affinity, WeakRef, dispatcher and inherited-Signal contracts.
-- [ ] Remove typed Signal runtime owner lookup and steady maintenance RMW.
-- [ ] Make SignalIndex generated-only and deduplicate connection identity.
-- [ ] Benchmark listener layout against the locked relative-performance threshold.
-- [ ] Make Command routing change-driven and linear in bindings plus commands.
-- [ ] Remove redundant UI wrappers/key mirrors and eliminate common drag/drop copies.
-- [ ] Re-run the complete build/test/install matrix before restoring
+- [x] Enforce callback, affinity, WeakRef, dispatcher and inherited-Signal contracts.
+- [x] Remove typed Signal runtime owner lookup and steady maintenance RMW.
+- [x] Make SignalIndex generated-only and deduplicate connection identity.
+- [x] Benchmark listener layout against the locked relative-performance threshold.
+- [x] Make Command routing change-driven and linear in bindings plus commands.
+- [x] Remove redundant UI wrappers/key mirrors and eliminate common drag/drop copies.
+- [x] Re-run the complete build/test/install matrix before restoring
       `foundation API frozen`.
 
 ## Previous stabilization baseline

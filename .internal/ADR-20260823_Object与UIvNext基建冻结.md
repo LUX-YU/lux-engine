@@ -1,7 +1,7 @@
 # ADR：Object Model 与 UI vNext 基建稳定化
 
 日期：2026-08-23
-状态：Accepted（performance stabilizing；consumer migration 继续冻结）
+状态：Accepted（foundation API frozen；consumer migration 继续冻结）
 
 ## 决策
 
@@ -54,26 +54,28 @@ UIManager / WorkbenchManager / ContextManager / ToolHost
 ContributionGraph / keyboard shortcut subsystem
 ```
 
-## 当前稳定化边界
+## 最终冻结边界
 
-旧 `function/ui` 与 Editor 业务 wiring 本轮未迁移。Foundation API 曾于上轮冻结；
-2026-08-23 的性能/正确性复审重新打开了 Object/UI Foundation 自身，但没有
-打开任何上层 consumer。只有极限性能收口矩阵全部通过后，才恢复
-`foundation API frozen`；Engine/Editor consumer migration 仍需另行重新审计，
+旧 `function/ui` 与 Editor 业务 wiring 本轮未迁移。2026-08-23 的性能/正确性
+复审已经完成，Object/UI Foundation 恢复为 `foundation API frozen`。上层 consumer
+在整个施工期保持冻结；Engine/Editor consumer migration 仍需另行重新审计，
 不得自动恢复任何旧迁移方案。
 
 本轮额外锁定：typed Signal callback 是 `noexcept` notification；typed hot path
 由 `Object<Derived, Base>` 在编译期证明 Signal owner；`ObjectWeakRef` 的跨线程
 能力只有 liveness 与投递；UI route 只在 focus/context/binding 事实变化时重建。
 
-## 上一轮冻结验收记录（2026-08-23）
+## 最终冻结验收记录（2026-08-23）
 
 - `lux-cxx` RelWithDebInfo 与 Debug 均为 49/49；`lux-engine` RelWithDebInfo
-  为 27/27。Object/UI 的 Debug 测试全部通过。
-- Object 与 UI 安装后 consumer 分别通过独立 codegen、link 与 run；
+  为 27/27。Debug Foundation 与全部新增 contract probes 通过；完整 Debug
+  `lux-engine` 为 20/22，剩余两项是单独记账的既有 Phase 9 EnTT fixture assertion。
+- Object 与 UI 的 Debug/RelWithDebInfo 安装后 consumer 分别通过独立 codegen、
+  link 与 run；
   cross-DLL Base/Derived Signal prefix 布局已由真实 DLL 覆盖。
 - DEVELOPER、PLAYER、EDITOR、TOOLCHAIN 与 Android PLAYER 全量构建通过；
   各 CMake 树第二轮均为 `ninja: no work to do`。
+- RelWithDebInfo hardened contracts 的 Object/UI 定向矩阵为 13/13。
 - Android NDK Clang 19 完成全量 PLAYER 编译，产物包含纯 `ui_next` 和
   `ui_next_drawdata`，不包含 GLFW 或 ImGui Vulkan backend。当前无目标设备，
   因此未宣称已执行 Android ASan/UBSan 运行时测试。
@@ -82,7 +84,7 @@ ContributionGraph / keyboard shortcut subsystem
 - 两个既有 Phase 9 EnTT Debug probe 仍单独记账；它们不属于
   Object/UI Foundation，也不进入本轮施工。
 
-## 本轮重新冻结条件
+## 重新冻结结论
 
 - Object typed Direct 稳态路径没有 runtime owner lookup、Reflection、hash、
   Release thread-id 查询或 maintenance atomic RMW，并保持零分配。
@@ -90,5 +92,6 @@ ContributionGraph / keyboard shortcut subsystem
   dynamic Signal 与 generated-only SignalIndex 均有永久测试和硬门禁。
 - UI unchanged frame 的 Command route rebuild 为零；route change 收敛到
   `O(bindings + commands)`；输入不维护 ImGui enum 的残缺镜像。
-- MSVC/Clang、Debug/RelWithDebInfo、Android compile、cross-DLL、cross-affinity
-  与 installed consumers 全部通过后，才把状态恢复为 `foundation API frozen`。
+- MSVC Debug/RelWithDebInfo、Android NDK Clang compile、cross-DLL、cross-affinity、
+  hardened contracts 与 installed consumers 已通过，状态恢复为
+  `foundation API frozen`。

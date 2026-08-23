@@ -1,7 +1,9 @@
 #include <lux/engine/ui_next/ViewportElement.hpp>
 
-#include <cstring>
-#include <string>
+#include <array>
+#include <vector>
+
+#include <lux/engine/ui_next/detail/DragDropEncoding.hpp>
 
 namespace lux::ui
 {
@@ -9,32 +11,17 @@ namespace lux::ui
     {
         constexpr const char* kPayloadName = "LUX_UI_PAYLOAD";
 
-        struct PayloadHeader final
-        {
-            std::uint64_t hash;
-            std::uint32_t name_size;
-        };
     } // namespace
 
     void setDragDropPayload(PayloadTypeIdView type, std::span<const std::byte> bytes)
     {
-        std::vector<std::byte> encoded(
-            sizeof(PayloadHeader) + type.name().size() + bytes.size()
-        );
-        const PayloadHeader header{
-            type.hash(),
-            static_cast<std::uint32_t>(type.name().size())
-        };
-        std::memcpy(encoded.data(), &header, sizeof(header));
-        std::memcpy(
-            encoded.data() + sizeof(header),
-            type.name().data(),
-            type.name().size()
-        );
-        std::memcpy(
-            encoded.data() + sizeof(header) + type.name().size(),
-            bytes.data(),
-            bytes.size()
+        std::array<std::byte, detail::kInlineDragDropBytes> inline_storage{};
+        std::vector<std::byte> heap_storage;
+        const auto encoded = detail::encodeDragDropPayload(
+            type,
+            bytes,
+            inline_storage,
+            heap_storage
         );
         ImGui::SetDragDropPayload(kPayloadName, encoded.data(), encoded.size());
     }
@@ -60,7 +47,8 @@ namespace lux::ui
             result.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle);
         result.right_clicked =
             result.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right);
-        result.focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+        result.window_focused =
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -70,30 +58,7 @@ namespace lux::ui
                     static_cast<const std::byte*>(payload->Data),
                     static_cast<std::size_t>(payload->DataSize)
                 };
-                if (bytes.size() >= sizeof(PayloadHeader))
-                {
-                    PayloadHeader header{};
-                    std::memcpy(&header, bytes.data(), sizeof(header));
-                    if (header.name_size <= bytes.size() - sizeof(header))
-                    {
-                        const auto name = std::string_view{
-                            reinterpret_cast<const char*>(
-                                bytes.data() + sizeof(header)
-                            ),
-                            header.name_size
-                        };
-                        if (auto id =
-                                PayloadTypeIdView::fromVerified(name, header.hash);
-                            id.isValid())
-                        {
-                            ViewportDrop drop{PayloadTypeId{name}, {}};
-                            const auto content =
-                                bytes.subspan(sizeof(header) + header.name_size);
-                            drop.bytes.assign(content.begin(), content.end());
-                            result.drop = std::move(drop);
-                        }
-                    }
-                }
+                result.drop = detail::decodeDragDropPayload(bytes);
             }
             ImGui::EndDragDropTarget();
         }

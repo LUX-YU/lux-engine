@@ -4,9 +4,18 @@
 #include <cassert>
 
 #include <lux/engine/ui_next/UiNext.hpp>
+#include <lux/engine/ui_next/detail/DragDropEncoding.hpp>
 
 #include <array>
+#include <concepts>
 #include <memory>
+#include <type_traits>
+#include <vector>
+
+static_assert(std::same_as<
+              decltype(lux::ui::UiPointerButton::button),
+              ImGuiMouseButton>);
+static_assert(std::same_as<decltype(lux::ui::UiKey::key), ImGuiKey>);
 
 namespace
 {
@@ -64,6 +73,41 @@ namespace
 
 int main()
 {
+    std::array<std::byte, lux::ui::detail::kInlineDragDropBytes> inline_payload{};
+    std::vector<std::byte> heap_payload;
+    const std::array small_content{
+        std::byte{0x1},
+        std::byte{0x2},
+        std::byte{0x3}
+    };
+    const auto small_encoded = lux::ui::detail::encodeDragDropPayload(
+        lux::ui::PayloadTypeIdView{"test.payload"},
+        small_content,
+        inline_payload,
+        heap_payload
+    );
+    assert(heap_payload.empty());
+    const auto small_decoded =
+        lux::ui::detail::decodeDragDropPayload(small_encoded);
+    assert(small_decoded);
+    assert(
+        small_decoded->type == lux::ui::PayloadTypeIdView{"test.payload"}
+    );
+    assert(std::ranges::equal(small_decoded->bytes, small_content));
+
+    std::vector<std::byte> large_content(512, std::byte{0x7});
+    const auto large_encoded = lux::ui::detail::encodeDragDropPayload(
+        lux::ui::PayloadTypeIdView{"test.large_payload"},
+        large_content,
+        inline_payload,
+        heap_payload
+    );
+    assert(!heap_payload.empty());
+    const auto large_decoded =
+        lux::ui::detail::decodeDragDropPayload(large_encoded);
+    assert(large_decoded);
+    assert(large_decoded->bytes.size() == large_content.size());
+
     auto* external_context = ImGui::CreateContext();
     ImGui::SetCurrentContext(external_context);
     {
@@ -96,14 +140,27 @@ int main()
         auto second_registration = session.registerPane(second);
         assert(second_registration);
 
+        lux::ui::UISession foreign_session;
+        TestPane foreign{
+            foreign_session.dispatcherRef(),
+            lux::ui::PaneId{"foreign"},
+            "Foreign"
+        };
+        auto foreign_registration = session.registerPane(foreign);
+        assert(!foreign_registration);
+        assert(
+            foreign_registration.error() ==
+            lux::ui::EUiRegistrationError::FOREIGN_SESSION
+        );
+
         auto factory_registration = session.registerFactory(lux::ui::PaneFactory{
             lux::ui::PaneTypeId{"test.pane"},
             "Test Pane",
-            [](lux::ui::PaneCreateContext context,
+            [](lux::object::ObjectDispatcherRef dispatcher,
                lux::ui::PaneId id) -> std::unique_ptr<lux::ui::Pane>
             {
                 return std::make_unique<TestPane>(
-                    std::move(context.dispatcher),
+                    std::move(dispatcher),
                     std::move(id),
                     "Created"
                 );
@@ -113,7 +170,7 @@ int main()
         auto duplicate_factory = session.registerFactory(lux::ui::PaneFactory{
             lux::ui::PaneTypeId{"test.pane"},
             "Duplicate",
-            [](lux::ui::PaneCreateContext,
+            [](lux::object::ObjectDispatcherRef,
                lux::ui::PaneId) -> std::unique_ptr<lux::ui::Pane> { return {}; }
         });
         assert(!duplicate_factory);
@@ -178,12 +235,29 @@ int main()
             router.bindGlobal<&TestPane::globalDelete>(*delete_command, first);
         assert(global);
 
+        session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
+        session.drawPanes();
+        static_cast<void>(session.endFrame());
         assert(session.focusPane(first.id().view()));
+        assert(!first.focused());
+        session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
+        session.drawPanes();
+        static_cast<void>(session.endFrame());
+        if (!first.focused())
+        {
+            session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
+            session.drawPanes();
+            static_cast<void>(session.endFrame());
+        }
         assert(first.focused());
         assert(focus_changes == 1 && last_focus);
-        assert(session.focusedContexts().size() == 2);
+        assert(session.focusedContexts().size() == 4);
         assert(
-            session.focusedContexts()[0] == lux::ui::UiContextIdView{"test.selection"}
+            session.focusedContexts()[0] ==
+            lux::ui::UiContextIdView{"test.local.second"}
+        );
+        assert(
+            session.focusedContexts()[2] == lux::ui::UiContextIdView{"test.selection"}
         );
         assert(router.state(*delete_command).found);
         assert(!router.state(*delete_command).enabled);
@@ -199,6 +273,16 @@ int main()
         assert(first.global_count == 1);
 
         assert(session.focusPane(second.id().view()));
+        assert(first.focused());
+        session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
+        session.drawPanes();
+        static_cast<void>(session.endFrame());
+        if (first.focused())
+        {
+            session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
+            session.drawPanes();
+            static_cast<void>(session.endFrame());
+        }
         assert(!first.focused());
         assert(focus_changes == 2 && !last_focus);
         assert(
@@ -206,6 +290,40 @@ int main()
         );
         assert(second.contextual_count == 1);
         assert(first.global_count == 1);
+
+        Receiver fallback_global_receiver;
+        auto fallback_command = router.defineCommand(
+            {lux::ui::UiCommandId{"fallback"}, "Fallback"}
+        );
+        assert(fallback_command);
+        auto fallback_global = router.bindGlobal<&Receiver::invoke>(
+            *fallback_command,
+            fallback_global_receiver
+        );
+        assert(fallback_global);
+        lux::ui::CommandRegistration expired_contextual;
+        {
+            Receiver contextual_receiver;
+            auto contextual_receiver_binding = router.bind<&Receiver::invoke>(
+                *fallback_command,
+                lux::ui::UiContextId{"test.selection"},
+                second,
+                contextual_receiver
+            );
+            assert(contextual_receiver_binding);
+            expired_contextual = std::move(*contextual_receiver_binding);
+            assert(
+                router.invoke(*fallback_command) ==
+                lux::ui::ECommandDispatchResult::EXECUTED
+            );
+            assert(contextual_receiver.count == 1);
+            assert(fallback_global_receiver.count == 0);
+        }
+        assert(
+            router.invoke(*fallback_command) ==
+            lux::ui::ECommandDispatchResult::EXECUTED
+        );
+        assert(fallback_global_receiver.count == 1);
 
         lux::ui::CommandRegistration dead_binding;
         {
@@ -229,8 +347,9 @@ int main()
         assert(!layout.bytes.empty());
         assert(session.restoreLayout(layout.bytes));
         session.feedInput(lux::ui::UiPointerMove{20.0F, 30.0F});
+        session.feedInput(lux::ui::UiKey{ImGuiKey_Delete, true});
         session.feedInput(
-            lux::ui::UiPointerButton{lux::ui::EUiPointerButton::LEFT, true}
+            lux::ui::UiPointerButton{ImGuiMouseButton_Left, true}
         );
         session.beginFrame({800.0F, 600.0F}, 1.0F / 60.0F);
         session.drawPanes();
@@ -240,16 +359,15 @@ int main()
         lux::ui::MenuModel menu{{lux::ui::MenuItem{
             lux::ui::EMenuItemKind::COMMAND,
             "Delete",
-            lux::ui::CommandPresentation{*delete_command},
+            *delete_command,
             {}
         }}};
         lux::ui::ToolbarModel toolbar{{lux::ui::ToolbarItem{
             lux::ui::EToolbarItemKind::COMMAND,
-            lux::ui::CommandPresentation{*delete_command}
+            *delete_command
         }}};
         assert(
-            menu.items.front().presentation.command ==
-            toolbar.items.front().presentation.command
+            menu.items.front().command == toolbar.items.front().command
         );
 
         second_registration->reset();

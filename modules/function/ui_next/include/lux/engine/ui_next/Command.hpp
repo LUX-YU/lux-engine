@@ -26,11 +26,6 @@ namespace lux::ui
         std::string label;
     };
 
-    struct CommandPresentation final
-    {
-        CommandIndex command;
-    };
-
     enum class ECommandDispatchResult
     {
         EXECUTED,

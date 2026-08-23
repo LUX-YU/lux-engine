@@ -149,6 +149,13 @@ foreach(source IN LISTS ui_next_sources)
             "UISystem owner or generic post surface."
         )
     endif()
+    if(content MATCHES
+       "CommandPresentation|PaneCreateContext|EUiPointerButton|EUiKey|ViewportDrop|setActiveContexts|setActivationScope")
+        message(FATAL_ERROR
+            "Architecture: UI vNext source '${source}' restores a retired "
+            "presentation, factory, input, drag/drop or route wrapper."
+        )
+    endif()
 endforeach()
 
 file(GLOB_RECURSE ui_drawdata_sources LIST_DIRECTORIES false

@@ -51,11 +51,11 @@ int main()
     auto factory = session.registerFactory(lux::ui::PaneFactory{
         lux::ui::PaneTypeId{"demo.inspector"},
         "Demo Inspector",
-        [](lux::ui::PaneCreateContext context,
+        [](lux::object::ObjectDispatcherRef dispatcher,
            lux::ui::PaneId id) -> std::unique_ptr<lux::ui::Pane>
         {
             return std::make_unique<DemoPane>(
-                std::move(context.dispatcher),
+                std::move(dispatcher),
                 std::move(id)
             );
         }

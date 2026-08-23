@@ -1,53 +1,11 @@
 #pragma once
 
-#include <cstdint>
 #include <variant>
+
+#include <imgui.h>
 
 namespace lux::ui
 {
-    enum class EUiPointerButton : std::uint8_t
-    {
-        LEFT,
-        RIGHT,
-        MIDDLE,
-        EXTRA_1,
-        EXTRA_2
-    };
-
-    enum class EUiKey : std::uint16_t
-    {
-        NONE,
-        TAB,
-        LEFT_ARROW,
-        RIGHT_ARROW,
-        UP_ARROW,
-        DOWN_ARROW,
-        PAGE_UP,
-        PAGE_DOWN,
-        HOME,
-        END,
-        INSERT,
-        DELETE_KEY,
-        BACKSPACE,
-        SPACE,
-        ENTER,
-        ESCAPE,
-        A,
-        C,
-        V,
-        X,
-        Y,
-        Z,
-        LEFT_CTRL,
-        LEFT_SHIFT,
-        LEFT_ALT,
-        LEFT_SUPER,
-        RIGHT_CTRL,
-        RIGHT_SHIFT,
-        RIGHT_ALT,
-        RIGHT_SUPER
-    };
-
     struct UiPointerMove final
     {
         float x{0.0F};
@@ -56,7 +14,7 @@ namespace lux::ui
 
     struct UiPointerButton final
     {
-        EUiPointerButton button{EUiPointerButton::LEFT};
+        ImGuiMouseButton button{ImGuiMouseButton_Left};
         bool down{false};
     };
 
@@ -68,7 +26,7 @@ namespace lux::ui
 
     struct UiKey final
     {
-        EUiKey key{EUiKey::NONE};
+        ImGuiKey key{ImGuiKey_None};
         bool down{false};
     };
 

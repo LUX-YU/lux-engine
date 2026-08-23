@@ -19,7 +19,7 @@ namespace lux::ui
     {
         EMenuItemKind kind{EMenuItemKind::COMMAND};
         std::string label;
-        CommandPresentation presentation;
+        CommandIndex command;
         std::vector<MenuItem> children;
     };
 
@@ -37,7 +37,7 @@ namespace lux::ui
     struct ToolbarItem final
     {
         EToolbarItemKind kind{EToolbarItemKind::COMMAND};
-        CommandPresentation presentation;
+        CommandIndex command;
     };
 
     struct ToolbarModel final

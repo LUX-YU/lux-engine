@@ -25,8 +25,8 @@ namespace lux::ui
                 return;
             }
 
-            const auto state = router.state(item.presentation.command);
-            const auto* command = router.command(item.presentation.command);
+            const auto state = router.state(item.command);
+            const auto* command = router.command(item.command);
             const auto label = item.label.empty() && command ? command->label.c_str()
                                                              : item.label.c_str();
             if (ImGui::MenuItem(
@@ -36,7 +36,7 @@ namespace lux::ui
                     state.found && state.enabled
                 ))
             {
-                static_cast<void>(router.invoke(item.presentation.command));
+                static_cast<void>(router.invoke(item.command));
             }
         }
     } // namespace
@@ -60,13 +60,13 @@ namespace lux::ui
                 ImGui::TextUnformatted("|");
                 continue;
             }
-            const auto state = router.state(item.presentation.command);
-            const auto* command = router.command(item.presentation.command);
+            const auto state = router.state(item.command);
+            const auto* command = router.command(item.command);
             if (!command)
                 continue;
             ImGui::BeginDisabled(!state.enabled);
             if (ImGui::Button(command->label.c_str()))
-                static_cast<void>(router.invoke(item.presentation.command));
+                static_cast<void>(router.invoke(item.command));
             ImGui::EndDisabled();
         }
     }

@@ -3,6 +3,7 @@
 #include <lux/engine/ui_next/Command.hpp>
 #include <lux/engine/ui_next/CommandRouter.hpp>
 #include <lux/engine/ui_next/Context.hpp>
+#include <lux/engine/ui_next/DragDrop.hpp>
 #include <lux/engine/ui_next/Layout.hpp>
 #include <lux/engine/ui_next/MenuToolbar.hpp>
 #include <lux/engine/ui_next/Pane.hpp>

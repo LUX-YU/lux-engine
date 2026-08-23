@@ -1,6 +1,8 @@
 #include <lux/engine/ui_next/CommandRouter.hpp>
 
 #include <algorithm>
+#include <chrono>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -30,8 +32,8 @@ namespace lux::ui
 
             [[nodiscard]] bool endpointsAlive() const noexcept
             {
-                return !receiver.expired() &&
-                       (scope_identity == nullptr || !scope.expired());
+                return receiver.alive() &&
+                       (scope_identity == nullptr || scope.alive());
             }
         };
     } // namespace
@@ -42,52 +44,83 @@ namespace lux::ui
         std::vector<Binding> bindings;
         std::vector<Binding*> effective;
         std::vector<UiContextIdView> active_contexts{kGlobalContext};
+        std::vector<std::pair<UiContextIdView, std::size_t>> context_ranks{
+            {kGlobalContext, 0}
+        };
+        std::vector<std::size_t> selected_ranks;
         lux::object::LuxObject* active_scope{nullptr};
         std::uint64_t next_token{1};
+        std::uint64_t rebuild_count{0};
+        std::uint64_t rebuild_elapsed_ns{0};
+        bool dirty{true};
 
         [[nodiscard]] bool valid(CommandIndex index) const noexcept
         {
             return index.isValid() && index.value < commands.size();
         }
 
+        [[nodiscard]] std::size_t contextRank(UiContextIdView context) const noexcept
+        {
+            const auto found = std::ranges::find_if(
+                context_ranks,
+                [context](const auto& ranked) { return ranked.first == context; }
+            );
+            if (found == context_ranks.end())
+                return (std::numeric_limits<std::size_t>::max)();
+            return found->second;
+        }
+
         void rebuild()
         {
+            if (!dirty)
+                return;
+            const auto begin = std::chrono::steady_clock::now();
+            std::erase_if(
+                bindings,
+                [](const Binding& binding) { return !binding.endpointsAlive(); }
+            );
+
             effective.assign(commands.size(), nullptr);
-            for (std::size_t command = 0; command < commands.size(); ++command)
+            selected_ranks.assign(
+                commands.size(),
+                (std::numeric_limits<std::size_t>::max)()
+            );
+            for (auto& binding : bindings)
             {
-                for (const auto context : active_contexts)
+                if (binding.command.value >= commands.size())
+                    continue;
+                if (binding.scope_identity != nullptr &&
+                    binding.scope_identity != active_scope)
                 {
-                    const auto found = std::ranges::find_if(
-                        bindings,
-                        [this, command, context](const Binding& binding)
-                        {
-                            if (binding.command.value != command ||
-                                binding.context.view() != context ||
-                                !binding.endpointsAlive())
-                            {
-                                return false;
-                            }
-                            if (binding.scope_identity == nullptr)
-                                return context == kGlobalContext;
-                            return binding.scope_identity == active_scope;
-                        }
-                    );
-                    if (found != bindings.end())
-                    {
-                        effective[command] = std::addressof(*found);
-                        break;
-                    }
+                    continue;
                 }
+                const auto rank = contextRank(binding.context.view());
+                if (rank == (std::numeric_limits<std::size_t>::max)() ||
+                    rank >= selected_ranks[binding.command.value])
+                {
+                    continue;
+                }
+                selected_ranks[binding.command.value] = rank;
+                effective[binding.command.value] = std::addressof(binding);
             }
+            dirty = false;
+            ++rebuild_count;
+            rebuild_elapsed_ns += static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - begin
+                ).count()
+            );
         }
 
         [[nodiscard]] Binding* selected(CommandIndex index)
         {
             if (!valid(index))
                 return nullptr;
+            rebuild();
             auto* binding = effective[index.value];
             if (binding && !binding->endpointsAlive())
             {
+                dirty = true;
                 rebuild();
                 binding = effective[index.value];
             }
@@ -159,7 +192,7 @@ namespace lux::ui
         const auto index =
             CommandIndex{static_cast<std::uint32_t>(impl_->commands.size())};
         impl_->commands.push_back(std::move(command_value));
-        impl_->rebuild();
+        impl_->dirty = true;
         return index;
     }
 
@@ -240,7 +273,7 @@ namespace lux::ui
             enabled,
             checked
         });
-        impl_->rebuild();
+        impl_->dirty = true;
         return CommandRegistration{control_, token};
     }
 
@@ -273,9 +306,24 @@ namespace lux::ui
         return ECommandDispatchResult::EXECUTED;
     }
 
-    void CommandRouter::setActiveContexts(std::span<const UiContextIdView> contexts)
+    void CommandRouter::updateRoute(
+        lux::object::LuxObject* activation_scope,
+        std::span<const UiContextIdView> contexts
+    )
     {
-        impl_->active_contexts.assign(contexts.begin(), contexts.end());
+        const bool same_contexts = std::ranges::equal(impl_->active_contexts, contexts);
+        if (impl_->active_scope == activation_scope && same_contexts && !impl_->dirty)
+            return;
+        if (!same_contexts)
+        {
+            impl_->active_contexts.assign(contexts.begin(), contexts.end());
+            impl_->context_ranks.clear();
+            impl_->context_ranks.reserve(contexts.size());
+            for (std::size_t index = 0; index < contexts.size(); ++index)
+                impl_->context_ranks.emplace_back(contexts[index], index);
+        }
+        impl_->active_scope = activation_scope;
+        impl_->dirty = true;
         impl_->rebuild();
     }
 
@@ -284,18 +332,22 @@ namespace lux::ui
         return impl_->active_contexts;
     }
 
-    void CommandRouter::setActivationScope(lux::object::LuxObject* scope) noexcept
-    {
-        impl_->active_scope = scope;
-        impl_->rebuild();
-    }
-
     void CommandRouter::unbind(std::uint64_t token) noexcept
     {
         std::erase_if(
             impl_->bindings,
             [token](const Binding& binding) { return binding.token == token; }
         );
-        impl_->rebuild();
+        impl_->dirty = true;
+    }
+
+    std::uint64_t CommandRouter::rebuildCountForTest() const noexcept
+    {
+        return impl_->rebuild_count;
+    }
+
+    std::uint64_t CommandRouter::rebuildElapsedForTest() const noexcept
+    {
+        return impl_->rebuild_elapsed_ns;
     }
 } // namespace lux::ui

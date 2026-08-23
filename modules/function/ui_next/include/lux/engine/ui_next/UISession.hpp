@@ -25,55 +25,76 @@ namespace lux::ui
     {
         DUPLICATE_PANE_ID,
         DUPLICATE_FACTORY,
-        INVALID_ID
+        INVALID_ID,
+        FOREIGN_SESSION
+    };
+
+    class UISession;
+
+    class LUX_FUNCTION_PUBLIC PaneRegistration final
+    {
+    public:
+        PaneRegistration() noexcept = default;
+        PaneRegistration(const PaneRegistration&) = delete;
+        PaneRegistration& operator=(const PaneRegistration&) = delete;
+        PaneRegistration(PaneRegistration&& other) noexcept;
+        PaneRegistration& operator=(PaneRegistration&& other) noexcept;
+        ~PaneRegistration();
+
+        void reset() noexcept;
+        [[nodiscard]] explicit operator bool() const noexcept { return token_ != 0; }
+
+    private:
+        friend class UISession;
+        PaneRegistration(
+            std::weak_ptr<detail::SessionControl> control,
+            std::uint64_t token
+        ) noexcept;
+
+        std::weak_ptr<detail::SessionControl> control_;
+        std::uint64_t token_{0};
+    };
+
+    class LUX_FUNCTION_PUBLIC PaneFactoryRegistration final
+    {
+    public:
+        PaneFactoryRegistration() noexcept = default;
+        PaneFactoryRegistration(const PaneFactoryRegistration&) = delete;
+        PaneFactoryRegistration& operator=(const PaneFactoryRegistration&) = delete;
+        PaneFactoryRegistration(PaneFactoryRegistration&& other) noexcept;
+        PaneFactoryRegistration& operator=(PaneFactoryRegistration&& other) noexcept;
+        ~PaneFactoryRegistration();
+
+        void reset() noexcept;
+        [[nodiscard]] explicit operator bool() const noexcept { return token_ != 0; }
+
+    private:
+        friend class UISession;
+        PaneFactoryRegistration(
+            std::weak_ptr<detail::SessionControl> control,
+            std::uint64_t token
+        ) noexcept;
+
+        std::weak_ptr<detail::SessionControl> control_;
+        std::uint64_t token_{0};
     };
 
     class LUX_FUNCTION_PUBLIC UISession final
     {
     public:
-        class LUX_FUNCTION_PUBLIC Registration
-        {
-        public:
-            Registration() noexcept = default;
-            Registration(const Registration&) = delete;
-            Registration& operator=(const Registration&) = delete;
-            Registration(Registration&& other) noexcept;
-            Registration& operator=(Registration&& other) noexcept;
-            ~Registration();
-
-            void reset() noexcept;
-            [[nodiscard]] explicit operator bool() const noexcept
-            {
-                return token_ != 0;
-            }
-
-        private:
-            friend class UISession;
-            enum class EKind
-            {
-                PANE,
-                FACTORY
-            };
-            Registration(
-                std::weak_ptr<detail::SessionControl> control,
-                std::uint64_t token,
-                EKind kind
-            ) noexcept;
-
-            std::weak_ptr<detail::SessionControl> control_;
-            std::uint64_t token_{0};
-            EKind kind_{EKind::PANE};
-        };
-
         UISession();
         ~UISession();
         UISession(const UISession&) = delete;
         UISession& operator=(const UISession&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<Registration, EUiRegistrationError>
+        [[nodiscard]] lux::cxx::expected<
+            PaneRegistration,
+            EUiRegistrationError>
         registerPane(Pane& pane);
 
-        [[nodiscard]] lux::cxx::expected<Registration, EUiRegistrationError>
+        [[nodiscard]] lux::cxx::expected<
+            PaneFactoryRegistration,
+            EUiRegistrationError>
         registerFactory(PaneFactory factory);
 
         [[nodiscard]] std::unique_ptr<Pane> createPane(PaneTypeIdView type, PaneId id);
@@ -98,8 +119,10 @@ namespace lux::ui
         [[nodiscard]] ImGuiContext* imguiContext() const noexcept;
 
     private:
-        friend class Registration;
-        void unregister(std::uint64_t token, Registration::EKind kind) noexcept;
+        friend class PaneRegistration;
+        friend class PaneFactoryRegistration;
+        void unregisterPane(std::uint64_t token) noexcept;
+        void unregisterFactory(std::uint64_t token) noexcept;
 
         struct Impl;
         std::unique_ptr<Impl> impl_;

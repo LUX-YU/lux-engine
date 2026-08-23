@@ -21,6 +21,7 @@ namespace lux::ui
     namespace detail
     {
         struct CommandRouterControl;
+        struct CommandRouterDiagnosticsAccess;
     }
 
     enum class ECommandDefinitionError
@@ -179,7 +180,10 @@ namespace lux::ui
         [[nodiscard]] CommandState state(CommandIndex command) const;
         [[nodiscard]] ECommandDispatchResult invoke(CommandIndex command);
 
-        void setActiveContexts(std::span<const UiContextIdView> contexts);
+        void updateRoute(
+            lux::object::LuxObject* activation_scope,
+            std::span<const UiContextIdView> contexts
+        );
         [[nodiscard]] std::span<const UiContextIdView> activeContexts() const noexcept;
 
     private:
@@ -202,6 +206,7 @@ namespace lux::ui
 
         friend class CommandRegistration;
         friend class UISession;
+        friend struct detail::CommandRouterDiagnosticsAccess;
         [[nodiscard]] lux::cxx::expected<CommandRegistration, ECommandBindingError>
         bindErased(
             CommandIndex command,
@@ -213,7 +218,8 @@ namespace lux::ui
             StateThunk checked
         );
         void unbind(std::uint64_t token) noexcept;
-        void setActivationScope(lux::object::LuxObject* scope) noexcept;
+        [[nodiscard]] std::uint64_t rebuildCountForTest() const noexcept;
+        [[nodiscard]] std::uint64_t rebuildElapsedForTest() const noexcept;
 
         struct Impl;
         std::unique_ptr<Impl> impl_;

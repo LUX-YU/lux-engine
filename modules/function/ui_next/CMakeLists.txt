@@ -69,6 +69,9 @@ set(ENABLE_UI_NEXT_TEST ON CACHE BOOL "Enable UI vNext tests")
 if(ENABLE_UI_NEXT_TEST)
     add_executable(ui_next_test test/ui_next_test.cpp)
     target_link_libraries(ui_next_test PRIVATE ui_next)
+    target_include_directories(
+        ui_next_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    )
     add_test(NAME ui_next_test COMMAND ui_next_test)
 
     add_executable(ui_next_demo test/ui_next_demo.cpp)
@@ -82,6 +85,10 @@ if(ENABLE_UI_NEXT_TEST)
     target_link_libraries(
         ui_next_performance_contract_test
         PRIVATE ui_next
+    )
+    target_include_directories(
+        ui_next_performance_contract_test
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     )
     add_test(
         NAME ui_next_performance_contract_test

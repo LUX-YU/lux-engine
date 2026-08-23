@@ -59,73 +59,6 @@ namespace lux::ui
             PaneFactory factory;
         };
 
-        [[nodiscard]] ImGuiKey toImGuiKey(EUiKey key) noexcept
-        {
-            switch (key)
-            {
-            case EUiKey::TAB:
-                return ImGuiKey_Tab;
-            case EUiKey::LEFT_ARROW:
-                return ImGuiKey_LeftArrow;
-            case EUiKey::RIGHT_ARROW:
-                return ImGuiKey_RightArrow;
-            case EUiKey::UP_ARROW:
-                return ImGuiKey_UpArrow;
-            case EUiKey::DOWN_ARROW:
-                return ImGuiKey_DownArrow;
-            case EUiKey::PAGE_UP:
-                return ImGuiKey_PageUp;
-            case EUiKey::PAGE_DOWN:
-                return ImGuiKey_PageDown;
-            case EUiKey::HOME:
-                return ImGuiKey_Home;
-            case EUiKey::END:
-                return ImGuiKey_End;
-            case EUiKey::INSERT:
-                return ImGuiKey_Insert;
-            case EUiKey::DELETE_KEY:
-                return ImGuiKey_Delete;
-            case EUiKey::BACKSPACE:
-                return ImGuiKey_Backspace;
-            case EUiKey::SPACE:
-                return ImGuiKey_Space;
-            case EUiKey::ENTER:
-                return ImGuiKey_Enter;
-            case EUiKey::ESCAPE:
-                return ImGuiKey_Escape;
-            case EUiKey::A:
-                return ImGuiKey_A;
-            case EUiKey::C:
-                return ImGuiKey_C;
-            case EUiKey::V:
-                return ImGuiKey_V;
-            case EUiKey::X:
-                return ImGuiKey_X;
-            case EUiKey::Y:
-                return ImGuiKey_Y;
-            case EUiKey::Z:
-                return ImGuiKey_Z;
-            case EUiKey::LEFT_CTRL:
-                return ImGuiKey_LeftCtrl;
-            case EUiKey::LEFT_SHIFT:
-                return ImGuiKey_LeftShift;
-            case EUiKey::LEFT_ALT:
-                return ImGuiKey_LeftAlt;
-            case EUiKey::LEFT_SUPER:
-                return ImGuiKey_LeftSuper;
-            case EUiKey::RIGHT_CTRL:
-                return ImGuiKey_RightCtrl;
-            case EUiKey::RIGHT_SHIFT:
-                return ImGuiKey_RightShift;
-            case EUiKey::RIGHT_ALT:
-                return ImGuiKey_RightAlt;
-            case EUiKey::RIGHT_SUPER:
-                return ImGuiKey_RightSuper;
-            case EUiKey::NONE:
-                break;
-            }
-            return ImGuiKey_None;
-        }
     } // namespace
 
     struct UISession::Impl final
@@ -141,6 +74,7 @@ namespace lux::ui
         std::vector<UiContextIdView> frame_focused_contexts;
         Pane* focused_pane{nullptr};
         Pane* hovered_pane{nullptr};
+        Pane* pending_focus{nullptr};
         std::uint64_t next_token{1};
         bool frame_open{false};
 
@@ -170,21 +104,31 @@ namespace lux::ui
                     append_unique(context);
             }
             append_unique(kGlobalContext);
-            command_router.setActiveContexts(focused_contexts);
+            command_router.updateRoute(focused_pane, focused_contexts);
         }
 
         void commitFocus(Pane* pane, std::span<const UiContextIdView> local_contexts)
         {
-            if (focused_pane != pane)
+            const bool pane_changed = focused_pane != pane;
+            const bool contexts_changed =
+                !std::ranges::equal(focused_local_contexts, local_contexts);
+            if (!pane_changed && !contexts_changed)
+                return;
+            if (pane_changed)
             {
                 if (focused_pane)
                     detail::PaneStateAccess::setFocused(*focused_pane, false);
                 focused_pane = pane;
                 if (focused_pane)
                     detail::PaneStateAccess::setFocused(*focused_pane, true);
-                command_router.setActivationScope(focused_pane);
             }
-            focused_local_contexts.assign(local_contexts.begin(), local_contexts.end());
+            if (contexts_changed)
+            {
+                focused_local_contexts.assign(
+                    local_contexts.begin(),
+                    local_contexts.end()
+                );
+            }
             rebuildFocusedContexts();
         }
 
@@ -200,22 +144,20 @@ namespace lux::ui
         }
     };
 
-    UISession::Registration::Registration(
+    PaneRegistration::PaneRegistration(
         std::weak_ptr<detail::SessionControl> control,
-        std::uint64_t token,
-        EKind kind
+        std::uint64_t token
     ) noexcept
-        : control_(std::move(control)), token_(token), kind_(kind)
+        : control_(std::move(control)), token_(token)
     {
     }
 
-    UISession::Registration::Registration(Registration&& other) noexcept
-        : control_(std::move(other.control_)), token_(std::exchange(other.token_, 0)),
-          kind_(other.kind_)
+    PaneRegistration::PaneRegistration(PaneRegistration&& other) noexcept
+        : control_(std::move(other.control_)), token_(std::exchange(other.token_, 0))
     {
     }
 
-    UISession::Registration& UISession::Registration::operator=(Registration&& other
+    PaneRegistration& PaneRegistration::operator=(PaneRegistration&& other
     ) noexcept
     {
         if (this != std::addressof(other))
@@ -223,19 +165,58 @@ namespace lux::ui
             reset();
             control_ = std::move(other.control_);
             token_ = std::exchange(other.token_, 0);
-            kind_ = other.kind_;
         }
         return *this;
     }
 
-    UISession::Registration::~Registration() { reset(); }
+    PaneRegistration::~PaneRegistration() { reset(); }
 
-    void UISession::Registration::reset() noexcept
+    void PaneRegistration::reset() noexcept
     {
         if (token_ == 0)
             return;
         if (const auto control = control_.lock(); control && control->session)
-            control->session->unregister(token_, kind_);
+            control->session->unregisterPane(token_);
+        token_ = 0;
+        control_.reset();
+    }
+
+    PaneFactoryRegistration::PaneFactoryRegistration(
+        std::weak_ptr<detail::SessionControl> control,
+        std::uint64_t token
+    ) noexcept
+        : control_(std::move(control)), token_(token)
+    {
+    }
+
+    PaneFactoryRegistration::PaneFactoryRegistration(
+        PaneFactoryRegistration&& other
+    ) noexcept
+        : control_(std::move(other.control_)), token_(std::exchange(other.token_, 0))
+    {
+    }
+
+    PaneFactoryRegistration& PaneFactoryRegistration::operator=(
+        PaneFactoryRegistration&& other
+    ) noexcept
+    {
+        if (this != std::addressof(other))
+        {
+            reset();
+            control_ = std::move(other.control_);
+            token_ = std::exchange(other.token_, 0);
+        }
+        return *this;
+    }
+
+    PaneFactoryRegistration::~PaneFactoryRegistration() { reset(); }
+
+    void PaneFactoryRegistration::reset() noexcept
+    {
+        if (token_ == 0)
+            return;
+        if (const auto control = control_.lock(); control && control->session)
+            control->session->unregisterFactory(token_);
         token_ = 0;
         control_.reset();
     }
@@ -276,7 +257,7 @@ namespace lux::ui
         ImGui::SetCurrentContext(previous);
     }
 
-    lux::cxx::expected<UISession::Registration, EUiRegistrationError>
+    lux::cxx::expected<PaneRegistration, EUiRegistrationError>
     UISession::registerPane(Pane& pane)
     {
         if (!pane.id().isValid())
@@ -297,15 +278,15 @@ namespace lux::ui
         if (pane.dispatcherRef() != impl_->messages.dispatcherRef())
         {
             return lux::cxx::unexpected<EUiRegistrationError>{
-                EUiRegistrationError::INVALID_ID
+                EUiRegistrationError::FOREIGN_SESSION
             };
         }
         const auto token = impl_->next_token++;
         impl_->panes.push_back({token, std::addressof(pane)});
-        return Registration{control_, token, Registration::EKind::PANE};
+        return PaneRegistration{control_, token};
     }
 
-    lux::cxx::expected<UISession::Registration, EUiRegistrationError>
+    lux::cxx::expected<PaneFactoryRegistration, EUiRegistrationError>
     UISession::registerFactory(PaneFactory factory)
     {
         if (!factory.type.isValid() || !factory.create)
@@ -325,7 +306,7 @@ namespace lux::ui
         }
         const auto token = impl_->next_token++;
         impl_->factories.push_back({token, std::move(factory)});
-        return Registration{control_, token, Registration::EKind::FACTORY};
+        return PaneFactoryRegistration{control_, token};
     }
 
     std::unique_ptr<Pane> UISession::createPane(PaneTypeIdView type, PaneId id)
@@ -338,7 +319,7 @@ namespace lux::ui
         if (found == impl_->factories.end())
             return {};
         return found->factory.create(
-            PaneCreateContext{impl_->messages.dispatcherRef()},
+            impl_->messages.dispatcherRef(),
             std::move(id)
         );
     }
@@ -361,11 +342,9 @@ namespace lux::ui
             impl_->panes,
             [&](const PaneRecord& record) { return record.pane->id().view() == pane; }
         );
-        if (found == impl_->panes.end())
+        if (found == impl_->panes.end() || !found->pane->visible())
             return false;
-        impl_->commitFocus(found->pane, {});
-        ScopedImGuiContext context{impl_->context};
-        ImGui::SetWindowFocus(found->pane->imguiLabel().data());
+        impl_->pending_focus = found->pane;
         return true;
     }
 
@@ -390,26 +369,7 @@ namespace lux::ui
                 }
                 else if constexpr (std::same_as<Value, UiPointerButton>)
                 {
-                    int button = 0;
-                    switch (value.button)
-                    {
-                    case EUiPointerButton::LEFT:
-                        button = 0;
-                        break;
-                    case EUiPointerButton::RIGHT:
-                        button = 1;
-                        break;
-                    case EUiPointerButton::MIDDLE:
-                        button = 2;
-                        break;
-                    case EUiPointerButton::EXTRA_1:
-                        button = 3;
-                        break;
-                    case EUiPointerButton::EXTRA_2:
-                        button = 4;
-                        break;
-                    }
-                    io.AddMouseButtonEvent(button, value.down);
+                    io.AddMouseButtonEvent(value.button, value.down);
                 }
                 else if constexpr (std::same_as<Value, UiPointerWheel>)
                 {
@@ -417,9 +377,8 @@ namespace lux::ui
                 }
                 else if constexpr (std::same_as<Value, UiKey>)
                 {
-                    const auto key = toImGuiKey(value.key);
-                    if (key != ImGuiKey_None)
-                        io.AddKeyEvent(key, value.down);
+                    if (value.key != ImGuiKey_None)
+                        io.AddKeyEvent(value.key, value.down);
                 }
                 else if constexpr (std::same_as<Value, UiText>)
                 {
@@ -457,7 +416,16 @@ namespace lux::ui
         {
             auto& pane = *record.pane;
             if (!pane.visible())
+            {
+                if (impl_->pending_focus == std::addressof(pane))
+                    impl_->pending_focus = nullptr;
                 continue;
+            }
+            if (impl_->pending_focus == std::addressof(pane))
+            {
+                ImGui::SetNextWindowFocus();
+                impl_->pending_focus = nullptr;
+            }
             bool visible = true;
             impl_->frame_context_scratch.clear();
             PaneDrawContext draw_context{impl_->frame_context_scratch};
@@ -519,26 +487,25 @@ namespace lux::ui
 
     ImGuiContext* UISession::imguiContext() const noexcept { return impl_->context; }
 
-    void UISession::unregister(std::uint64_t token, Registration::EKind kind) noexcept
+    void UISession::unregisterPane(std::uint64_t token) noexcept
     {
-        if (kind == Registration::EKind::PANE)
-        {
-            const auto found =
-                std::ranges::find(impl_->panes, token, &PaneRecord::token);
-            if (found == impl_->panes.end())
-                return;
-            if (impl_->focused_pane == found->pane)
-                impl_->commitFocus(nullptr, {});
-            if (impl_->hovered_pane == found->pane)
-                impl_->commitHover(nullptr);
-            impl_->panes.erase(found);
-        }
-        else
-        {
-            std::erase_if(
-                impl_->factories,
-                [token](const FactoryRecord& record) { return record.token == token; }
-            );
-        }
+        const auto found = std::ranges::find(impl_->panes, token, &PaneRecord::token);
+        if (found == impl_->panes.end())
+            return;
+        if (impl_->pending_focus == found->pane)
+            impl_->pending_focus = nullptr;
+        if (impl_->focused_pane == found->pane)
+            impl_->commitFocus(nullptr, {});
+        if (impl_->hovered_pane == found->pane)
+            impl_->commitHover(nullptr);
+        impl_->panes.erase(found);
+    }
+
+    void UISession::unregisterFactory(std::uint64_t token) noexcept
+    {
+        std::erase_if(
+            impl_->factories,
+            [token](const FactoryRecord& record) { return record.token == token; }
+        );
     }
 } // namespace lux::ui

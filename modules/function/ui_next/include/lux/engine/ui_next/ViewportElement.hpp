@@ -3,33 +3,26 @@
 #include <cstddef>
 #include <optional>
 #include <span>
-#include <vector>
-
 #include <imgui.h>
 
+#include <lux/engine/ui_next/DragDrop.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/ui_next/UiIds.hpp>
 
 namespace lux::ui
 {
-    struct ViewportDrop final
-    {
-        PayloadTypeId type;
-        std::vector<std::byte> bytes;
-    };
-
     struct ViewportResult final
     {
         ImVec2 size{};
         ImVec2 content_origin{};
         ImVec2 local_pointer{};
         bool hovered{false};
-        bool focused{false};
+        bool window_focused{false};
         bool resized{false};
         bool left_clicked{false};
         bool middle_clicked{false};
         bool right_clicked{false};
-        std::optional<ViewportDrop> drop;
+        std::optional<DragDropPayloadView> drop;
     };
 
     class LUX_FUNCTION_PUBLIC ViewportElement final
@@ -41,7 +34,4 @@ namespace lux::ui
     private:
         ImVec2 previous_size_{};
     };
-
-    LUX_FUNCTION_PUBLIC void
-    setDragDropPayload(PayloadTypeIdView type, std::span<const std::byte> bytes);
 } // namespace lux::ui

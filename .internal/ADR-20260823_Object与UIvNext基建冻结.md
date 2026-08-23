@@ -1,21 +1,22 @@
-# ADR：Object Model 与 UI vNext 基建冻结
+# ADR：Object Model 与 UI vNext 基建稳定化
 
 日期：2026-08-23
-状态：Accepted（foundation API frozen，consumer migration 暂停）
+状态：Accepted（foundation stabilizing，consumer migration 暂停）
 
 ## 决策
 
-在继续 Engine/Editor 业务重构前，先冻结两层可独立安装的基础原语：
+在继续 Engine/Editor 业务重构前，先稳定两层可独立安装的基础原语：
 
 ```text
-core/meta -> core/object -> function/ui_next -> function/ui_next_vulkan
+core/meta -> core/object -> function/ui_next -> function/ui_next_drawdata
 ```
 
 - `core/meta` 只描述类型、静态/实例字段、方法与构造能力；反射不拥有对象。
 - `LuxObject` 只拥有对象 affinity、惰性连接状态、weak lifetime 和 targeted event。
-- `Signal` 的进程内 identity 是 class-scope static descriptor 的地址；owner、payload
-  `TypeToken` 与显式名字只负责类型约束、反射发现和诊断，不建立 Signal Registry。
-- `ObjectDispatcher` 是 owner-thread 的不透明消息队列，不是 Executor/EventBus。
+- `Signal` 的唯一 authored identity 是 declaring C++ static member；生成的
+  `SignalIndex` 只是 inheritance-lineage 内 build-local 的 dense execution coordinate。
+- `ObjectDispatcherRef` 是不可变的 affinity/message capability；它只接受
+  `ObjectMessage`，不是 Executor/EventBus，也不公开 arbitrary task surface。
 - `UISession` 是 ImGui Context、私有 dispatcher、Pane/Factory 注册、focused Context、
   `CommandRouter` 和 Layout 字节的唯一 owner；它不是 `LuxObject`。
 - `Pane` 实例由具体工具以 `unique_ptr` 拥有，`UISession` 只持非 owning 注册。
@@ -28,7 +29,22 @@ core/meta -> core/object -> function/ui_next -> function/ui_next_vulkan
 - 动态 Object 连接只在 connect-time 查询 `RefStaticField/RefMethod` 并严格接受
   `void(const P&)`；稳态通知不查询 Reflection。Direct/零订阅 notify 不分配。
 - `ui_next` 不依赖 legacy UI、Input、Resource、ECS、Runtime、Renderer 或 Editor；
-  Renderer/Vulkan 依赖只能出现在 `ui_next_vulkan`。
+  `ui_next_drawdata` 只复制 ImGui draw data，不拥有 Renderer/Vulkan integration。
+
+## 稳定化合同
+
+- `LuxObject` affinity 在构造时固定；connection topology 的物理变更只发生在
+  sender affinity。
+- receiver 析构立即阻止未来 callback；跨 affinity disconnect 先逻辑取消，再由
+  sender 侧完成物理清理。
+- Direct notify 栈上同步销毁 sender 不受支持；owner 必须在 safe point 延迟销毁。
+- typed Signal 使用 reference NTTP 与生成 thunk；Reflection 只参与 dynamic connect-time。
+- queued Signal、posted Event 与 connection control 共享 `ObjectMessage` transport，
+  但 Signal/Event 的 public semantics 保持不同。
+- `UISession` 是唯一 UI session owner；Context 只表示交互语境。
+- Command activation scope 与 handler receiver 是两个独立 weak lifetime。
+- Published tuning 不锁定 `SignalIndex` 宽度、container inline capacity、SBO 大小或
+  atomic 具体表示。
 
 ## 明确不引入
 
@@ -38,15 +54,16 @@ UIManager / WorkbenchManager / ContextManager / ToolHost
 ContributionGraph / keyboard shortcut subsystem
 ```
 
-## 冻结点
+## 稳定化边界
 
-旧 `function/ui` 与 Editor 业务 wiring 本阶段不迁移。只有 foundation 的公共 API、
-installed consumer、依赖门禁和测试矩阵全部稳定后，才重新审计 Engine/Editor，制定
-consumer migration。不得一边修改 primitive，一边让 Editor 继续长出临时适配框架。
+旧 `function/ui` 与 Editor 业务 wiring 本阶段不迁移。只有 Object、Reflection、UI、
+cross-affinity、cross-DLL、installed consumer 和构建矩阵全部稳定后，才重新把状态
+改为 `foundation API frozen`，并重新审计 Engine/Editor consumer migration。
 
-## 验收状态
+## 稳定化起点
 
-- `lux-cxx` RelWithDebInfo 49/49，`lux-engine` DEVELOPER 23/23。
+- 先前 PoC 基线为 `lux-cxx` RelWithDebInfo 49/49、`lux-engine` DEVELOPER 23/23；
+  它证明方向可行，但不再等同于 API frozen。
 - PLAYER 15/15、EDITOR 15/15、TOOLCHAIN 7/7；三个 profile 的第二次全量
   构建均为 `ninja: no work to do`。
 - Android PLAYER 与 Android lux-cxx 全目标构建、安装及架构门禁通过。

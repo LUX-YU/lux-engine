@@ -112,7 +112,21 @@ The working tree modification under
 `modules/function/input/pinclude/lux/engine/input/detail/GlfwInputTranslation.hpp`
 predates this work and is not part of the refactor.
 
-# Object / UI foundation freeze (2026-08-23)
+# Active: Object / UI foundation stabilization (2026-08-23)
+
+- [ ] Replace authored Signal names/address routing with generated SignalIndex and
+      reference-NTTP typed APIs.
+- [ ] Replace shared-slot Object lifetime with one intrusive ObjectState, sender-affine
+      connection mutation and receiver incoming invalidation.
+- [ ] Replace the generic dispatcher task queue with ObjectMessage-only capability
+      transport and immutable Object affinity.
+- [ ] Stabilize dynamic connect-time Reflection, cross-affinity and cross-DLL behavior.
+- [ ] Remove the UISystem/generic-post wrappers; stabilize Pane/Context/Command hot paths.
+- [ ] Rename `ui_next_vulkan` to backend-neutral `ui_next_drawdata` without aliases.
+- [ ] Complete installed-consumer, benchmark and build/test matrices before restoring
+      the `foundation API frozen` status.
+
+## Superseded PoC completion record
 
 - [x] Extend Reflection projection with static data members, owner/type data,
       method annotations and constructibility-aware object operations.

@@ -142,12 +142,13 @@ remains.
 
 - `modules/core/meta` 是对象无关的反射查询层；它公开静态/实例字段、方法注解和
   可用的构造/析构 operation，但不依赖 `core/object`。
-- `modules/core/object` 拥有 `LuxObject`、地址身份的 static typed `Signal`、连接、
-  weak lifetime、targeted event 与 owner-thread dispatcher。它不依赖
+- `modules/core/object` 拥有 `LuxObject`、generated-index static typed `Signal`、连接、
+  weak lifetime、targeted event 与 typed dispatcher capability。它不依赖
   `core/events`、ECS、Runtime 或任何 UI target。
 - `modules/function/ui_next` 拥有 Pane/Context/Command/`CommandRouter`/
   PaneFactory/Menu/Toolbar/Layout 与 `UISession`，只依赖 ImGui CPU core、
   `core/object` 和 lux-cxx primitives。
-- `modules/function/ui_next_vulkan` 是唯一允许把 UI vNext 接入 Renderer/Vulkan 的
-  sibling integration target。legacy `modules/function/ui` 在 consumer migration 前
-  保持独立，不能被 `ui_next` include 或 link。
+- `modules/function/ui_next_drawdata` 只拥有 ImGui draw-data snapshot/copy 与
+  backend-neutral handoff；它不依赖 Renderer/Vulkan。真正的 renderer bridge 等
+  consumer migration 重新审计后决定。legacy `modules/function/ui` 在此之前保持独立，
+  不能被 `ui_next` include 或 link。

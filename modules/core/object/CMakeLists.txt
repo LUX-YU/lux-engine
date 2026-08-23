@@ -71,6 +71,9 @@ if(ENABLE_OBJECT_TEST)
     target_include_directories(
         object_test_signals PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/test
     )
+    target_compile_definitions(
+        object_test_signals PRIVATE LUX_OBJECT_TEST_DIAGNOSTICS=1
+    )
     target_link_libraries(object_test_signals PUBLIC object)
     lux_classify_target(
         TARGET object_test_signals
@@ -94,6 +97,9 @@ if(ENABLE_OBJECT_TEST)
 
     add_executable(object_lifetime_test test/object_lifetime_test.cpp)
     target_link_libraries(object_lifetime_test PRIVATE object_test_signals)
+    target_compile_definitions(
+        object_lifetime_test PRIVATE LUX_OBJECT_TEST_DIAGNOSTICS=1
+    )
     add_test(NAME object_lifetime_test COMMAND object_lifetime_test)
 
     add_executable(
@@ -110,6 +116,53 @@ if(ENABLE_OBJECT_TEST)
             -DBUILD_DIR=${CMAKE_BINARY_DIR}
             -DTARGET=object_throwing_event_override_probe
             "-DEXPECTED_PATTERN=less restrictive exception specification"
+            -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+    )
+
+    add_executable(
+        object_manual_signal_index_probe EXCLUDE_FROM_ALL
+        test/object_manual_signal_index_probe.cpp
+    )
+    target_link_libraries(object_manual_signal_index_probe PRIVATE object)
+    add_test(
+        NAME object_manual_signal_index_probe
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DTARGET=object_manual_signal_index_probe
+            "-DEXPECTED_PATTERN=SignalIndex"
+            -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+    )
+
+    add_executable(
+        object_throwing_callback_probe EXCLUDE_FROM_ALL
+        test/object_throwing_callback_probe.cpp
+    )
+    target_link_libraries(
+        object_throwing_callback_probe PRIVATE object_test_signals
+    )
+    add_test(
+        NAME object_throwing_callback_probe
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DTARGET=object_throwing_callback_probe
+            "-DEXPECTED_PATTERN=Signal callbacks must be noexcept"
+            -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+    )
+
+    add_executable(
+        object_missing_codegen_probe EXCLUDE_FROM_ALL
+        test/object_missing_codegen_probe.cpp
+    )
+    target_link_libraries(object_missing_codegen_probe PRIVATE object)
+    add_test(
+        NAME object_missing_codegen_probe
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DTARGET=object_missing_codegen_probe
+            "-DEXPECTED_PATTERN=unresolved external symbol"
             -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
     )
 
@@ -170,26 +223,70 @@ if(ENABLE_OBJECT_TEST)
         endforeach()
     endif()
 
-    add_executable(
-        object_performance_contract_test
-        test/object_performance_contract_test.cpp
-    )
-    target_link_libraries(
-        object_performance_contract_test PRIVATE object_test_signals
+    add_library(
+        object_benchmark_baseline_support SHARED
+        test/performance/ObjectBenchmarkBaseline.cpp
     )
     target_include_directories(
-        object_performance_contract_test
+        object_benchmark_baseline_support
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/test/performance
+    )
+    target_compile_definitions(
+        object_benchmark_baseline_support
+        PRIVATE LUX_OBJECT_BENCHMARK_BASELINE_LIBRARY=1
+    )
+    set_property(
+        TARGET object_benchmark_baseline_support
+        PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE
+    )
+    if(MSVC)
+        target_compile_options(
+            object_benchmark_baseline_support PRIVATE /GL-
+        )
+    endif()
+    lux_classify_target(
+        TARGET object_benchmark_baseline_support
+        LAYER CORE
+        PRODUCT TEST
+        ROLE FOUNDATION
+    )
+
+    add_executable(
+        object_release_benchmark
+        test/object_release_benchmark.cpp
+    )
+    target_link_libraries(
+        object_release_benchmark
+        PRIVATE
+            object_test_signals
+            object_benchmark_baseline_support
+    )
+    target_include_directories(
+        object_release_benchmark
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
             ${CMAKE_CURRENT_SOURCE_DIR}/test
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/performance
     )
     target_compile_definitions(
-        object_performance_contract_test
-        PRIVATE LUX_OBJECT_TEST_DIAGNOSTICS=1
+        object_release_benchmark
+        PRIVATE
+            LUX_OBJECT_TEST_DIAGNOSTICS=1
+            NDEBUG
+    )
+    set_property(
+        TARGET object_release_benchmark
+        PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE
+    )
+    lux_classify_target(
+        TARGET object_release_benchmark
+        LAYER CORE
+        PRODUCT TEST
+        ROLE FOUNDATION
     )
     add_test(
-        NAME object_performance_contract_test
-        COMMAND object_performance_contract_test
+        NAME object_release_benchmark
+        COMMAND object_release_benchmark
     )
 
     engine_add_meta(
@@ -271,6 +368,13 @@ if(ENABLE_OBJECT_TEST)
     target_link_libraries(
         object_cross_dll_test
         PRIVATE object_cross_dll_derived_test_support
+    )
+    target_include_directories(
+        object_cross_dll_test
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+    )
+    target_compile_definitions(
+        object_cross_dll_test PRIVATE LUX_OBJECT_TEST_DIAGNOSTICS=1
     )
     add_test(NAME object_cross_dll_test COMMAND object_cross_dll_test)
 

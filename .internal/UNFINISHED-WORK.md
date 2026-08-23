@@ -108,7 +108,33 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         has no retired identifier except the source gate's own forbidden-path
         literal.
 
-# Active: Object / UI foundation correctness and evidence restabilization (2026-08-23)
+# Active: Object / UI final hardening and public API finalization (2026-08-23)
+
+- [x] H0: Update status, architecture gates and the explicit Engine migration stop line.
+- [x] H1: Harden Object queue close and concurrent lazy-state publication.
+- [x] H2: Replace numeric connection storage with intrusive owner positions and exact
+      pending removals.
+- [x] H3: Remove Signal execution/message transport details from the Object public API.
+- [x] H4: Delete legacy UI, publish the new Foundation as the only `function/ui`, and
+      merge draw-data ownership into that component.
+- [x] H5: Rebuild true-NDEBUG Object/UI release performance evidence.
+- [x] H6: Validate only the Debug/RelWithDebInfo/hardened/Android Object+UI module
+      matrix, installed consumers and second no-work builds.
+
+Stop line: deleting legacy `Panel`/`UISystem`/`ui_vulkan` intentionally leaves current
+Engine and Editor consumers unbuildable. Their migration is blocked for a later redesign;
+this phase must not add shims, aliases, a Foundation-only profile, or business-code edits.
+Completion records `Ontology Frozen / Public API Finalized / Implementation Hardened /
+Independent Audit Pending / Engine Migration Blocked`; it does not announce API freeze.
+
+Validation: RelWithDebInfo Object/UI is 11/11 + 6/6; Debug and hardened-contract
+Object/UI are each 14/14 + 6/6. Android PLAYER compiles only the final Object/UI
+module targets and is no-work on its second build. Debug and RelWithDebInfo installed
+Object/UI consumers pass codegen, compile, link and run. Tests-off production DLLs
+contain no test-diagnostics exports. Engine/Editor remain intentionally outside the
+build and are still blocked for later redesign.
+
+## Previous correctness and evidence restabilization record
 
 - [x] Enforce direct Event affinity and a uniform noexcept notification boundary.
 - [x] Make UISession Pane/Factory mutation reentrant-safe and make non-owning Pane

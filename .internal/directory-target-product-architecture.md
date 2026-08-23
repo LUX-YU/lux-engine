@@ -142,17 +142,16 @@ remains.
 
 - `modules/core/meta` 是对象无关的反射查询层；它公开静态/实例字段、方法注解和
   可用的构造/析构 operation，但不依赖 `core/object`。
-- `modules/core/object` 拥有 `LuxObject`、generated-index static typed `Signal`、连接、
+- `modules/core/object` 拥有 `LuxObject`、generated static typed `Signal`、连接、
   weak lifetime、targeted event 与 typed dispatcher capability。它不依赖
   `core/events`、ECS、Runtime 或任何 UI target。typed Signal owner 由
-  `Object<Derived, Base>` 编译期证明；`SignalIndex` 与 lineage size 只属于生成代码和
-  build-local 执行布局。
-- `modules/function/ui_next` 拥有 Pane/Context/Command/`CommandRouter`/
+  `Object<Derived, Base>` 编译期证明；dense coordinate、lineage 与 message
+  envelope 只属于不可访问的 build-local 执行布局。
+- 唯一 `modules/function/ui` 拥有 Pane/UiContextId/Command/`CommandRouter`/
   PaneFactory/Menu/Toolbar/Layout 与 `UISession`，只依赖 ImGui CPU core、
   `core/object` 和 lux-cxx primitives。Command route 只在 focus/context/binding 事实
-  变化时重建；`UiInputEvent` 直接使用 ImGui key/button identity，drag/drop payload
-  是 frame-borrowed view。
-- `modules/function/ui_next_drawdata` 只拥有 ImGui draw-data snapshot/copy 与
-  backend-neutral handoff；它不依赖 Renderer/Vulkan。真正的 renderer bridge 等
-  consumer migration 重新审计后决定。legacy `modules/function/ui` 在此之前保持独立，
-  不能被 `ui_next` include 或 link。
+  变化时重建；`UiInputEvent` 直接使用 ImGui key/button identity，drag/drop
+  payload 是 frame-borrowed view。`DrawDataSnapshot` 也属于这一组件，不依赖
+  Renderer/Vulkan。legacy/next/drawdata 兄弟 target 全部删除。
+- Engine/Editor 现有 Panel/UISystem/ui_vulkan consumer 因 legacy UI 删除而不可构建，
+  其迁移属于后续专项重设计，不得在 Foundation 层增加 shim/alias。

@@ -1,27 +1,29 @@
-# ADR：Object Model 与 UI vNext 基建稳定化
+# ADR：Object Model 与 UI Foundation 最终加固
 
 日期：2026-08-23
-状态：Accepted（ontology frozen；public API stabilizing；implementation stabilized
-pending independent audit；consumer migration frozen）
+状态：Accepted（ontology frozen；public API finalization active；
+implementation final stabilization；independent audit pending；
+Engine migration blocked for later redesign）
 
 ## 决策
 
 在继续 Engine/Editor 业务重构前，先稳定两层可独立安装的基础原语：
 
 ```text
-core/meta -> core/object -> function/ui_next -> function/ui_next_drawdata
+core/meta -> core/object -> function/ui
 ```
 
 - `core/meta` 只描述类型、静态/实例字段、方法与构造能力；反射不拥有对象。
 - `LuxObject` 只拥有对象 affinity、惰性连接状态、weak lifetime 和 targeted event。
 - `Signal` 的唯一 authored identity 是 declaring C++ static member；生成的
-  `SignalIndex` 只是 inheritance-lineage 内 build-local 的 dense execution coordinate。
-- `ObjectDispatcherRef` 是不可变的 affinity/message capability；它只接受
-  `ObjectMessage`，不是 Executor/EventBus，也不公开 arbitrary task surface。
+  dense coordinate 只是 detail execution data，不是公开 Object API。
+- `ObjectDispatcherRef` 是不可变的 affinity capability；message envelope 与
+  post surface 全部是 Object 内部实现，不是 Executor/EventBus。
 - `UISession` 是 ImGui Context、私有 dispatcher、Pane/Factory 注册、focused Context、
   `CommandRouter` 和 Layout 字节的唯一 owner；它不是 `LuxObject`。
 - `Pane` 实例由具体工具以 `unique_ptr` 拥有，`UISession` 只持非 owning 注册。
-- `Context` 只是交互语境 identity，禁止携带 Project/Scene/Asset/Renderer service。
+- `UiContextId` 只是交互语境 identity，禁止携带
+  Project/Scene/Asset/Renderer service；不再保留空 `Context` wrapper。
 - `Command` 只做 focused Context 下的语义 dispatch；物理输入仍属于
   `InputContext/ActionMap/ActionMapper`。
 - 同一 Pane type 的多个实例可以各自绑定相同 `Command + Context`；
@@ -29,8 +31,8 @@ core/meta -> core/object -> function/ui_next -> function/ui_next_drawdata
   实例因共享 Context identity 而抢占命令。
 - 动态 Object 连接只在 connect-time 查询 `RefStaticField/RefMethod` 并严格接受
   `void(const P&)`；稳态通知不查询 Reflection。Direct/零订阅 notify 不分配。
-- `ui_next` 不依赖 legacy UI、Input、Resource、ECS、Runtime、Renderer 或 Editor；
-  `ui_next_drawdata` 只复制 ImGui draw data，不拥有 Renderer/Vulkan integration。
+- 唯一 `function/ui` 不依赖 Input、Resource、ECS、Runtime、Renderer 或
+  Editor；`DrawDataSnapshot` 是该组件内的 backend-neutral value。
 
 ## 稳定化合同
 
@@ -40,8 +42,9 @@ core/meta -> core/object -> function/ui_next -> function/ui_next_drawdata
   sender 侧完成物理清理。
 - Direct notify 栈上同步销毁 sender 不受支持；owner 必须在 safe point 延迟销毁。
 - typed Signal 使用 reference NTTP 与生成 thunk；Reflection 只参与 dynamic connect-time。
-- queued Signal、posted Event 与 connection control 共享 `ObjectMessage` transport，
-  但 Signal/Event 的 public semantics 保持不同。
+- queued Signal、posted Event 与 connection control 共享内部
+  `detail::MessageEnvelope` transport；该 transport 不属于公共 Object API，
+  Signal/Event 的 public semantics 保持不同。
 - `UISession` 是唯一 UI session owner；Context 只表示交互语境。
 - Command activation scope 与 handler receiver 是两个独立 weak lifetime。
 - Published tuning 不锁定 `SignalIndex` 宽度、container inline capacity、SBO 大小或
@@ -55,12 +58,13 @@ UIManager / WorkbenchManager / ContextManager / ToolHost
 ContributionGraph / keyboard shortcut subsystem
 ```
 
-## 当前稳定化边界
+## 当前最终收口边界
 
-旧 `function/ui` 与 Editor 业务 wiring 本轮未迁移。Object/UI 的 ontology 已经
-足够稳定，但 public API 与 implementation 重新进入 correctness/performance
-stabilizing。上层 consumer 继续冻结；Engine/Editor consumer migration 仍需
-另行重新审计，不得自动恢复任何旧迁移方案。
+本轮删除 legacy UI，将新 Foundation 直接收口为唯一
+`modules/function/ui`。Object/UI ontology 保持冻结，public API 进入最终
+finalization，implementation 执行最后 correctness/performance hardening。
+Engine/Editor 业务 consumer 在旧 UI 删除后明确处于不可构建状态，必须
+留待后续专项重构；本 ADR 不提供兼容层或临时 target。
 
 本轮额外锁定：typed Signal callback 是 `noexcept` notification；typed hot path
 由 `Object<Derived, Base>` 在编译期证明 Signal owner；`ObjectWeakRef` 的跨线程
@@ -102,10 +106,52 @@ CommandRouter callback reentrancy 均尚需重新稳定。原性能报告也没�
   hardened contracts 与 installed consumers 当时已通过，但该结果不足以冻结
   public API 与 implementation。
 
-## 本轮完成条件
+## 最终加固完成条件
 
-本轮完成后仅可将状态记为 `implementation stabilized pending independent audit`。
-必须再经过一次独立复审，才能另行决定是否恢复 `foundation API frozen`。
+本轮只验收 `core/object` 与唯一 `function/ui` 的 modules-only 矩阵。
+不构建、不宣称 Engine/Editor 通过。完成后状态固定为：
+
+```text
+Ontology Frozen
+Public API Finalized
+Implementation Hardened
+Independent Audit Pending
+Engine Migration Blocked
+```
+
+即使 modules-only 矩阵全绿，也不自动宣布 `Foundation Public API Frozen`。
+
+## 最终加固验收记录（2026-08-23）
+
+- H0–H6 已完成。Windows MSVC Debug、RelWithDebInfo 与 hardened-contract
+  配置均只构建 `object`、`ui`、meta sidecar 和对应测试；每个构建树的第二轮
+  都是 `ninja: no work to do`。
+- RelWithDebInfo 为 Object 11/11、UI 6/6；Debug 与 hardened-contract 均为
+  Object 14/14、UI 6/6。负向编译、wrong-affinity、cross-DLL、release benchmark
+  和 draw-data move fixup 均包含在这些计数中。
+- Android PLAYER 使用 NDK Clang 完成 `object` 与唯一 `ui` target 编译，第二轮
+  无增量工作。Debug/RelWithDebInfo 的 Object/UI installed consumer 分别完成
+  codegen、compile、link 和 run。
+- tests-off production DLL 不导出 `ForTest`、diagnostics access 或 message-storage
+  计数符号。三个安装前缀只保留最终 `object` 与 `ui` 公开头、库和组件 metadata；
+  被退役的安装产物已精确移入可恢复的 build quarantine。
+- Release 证据保留 5 次 warm-up、30 次正式样本、raw CSV、median、p95、真实 DLL
+  storage diagnostics 和 A/B fixture。Candidate B 的 4/16/64 几何平均提升约
+  7.4%，未达到 10%，且 churn 明显回退，因此 Candidate A 仍是唯一生产布局。
+- Source gate 固化唯一 `function/ui`、禁止 legacy/next target 与 public execution
+  detail 回流，并把 Engine/Editor consumer migration 明确留给后续重新设计。
+
+本轮最终状态为：
+
+```text
+Ontology Frozen
+Public API Finalized
+Implementation Hardened
+Independent Audit Pending
+Engine Migration Blocked
+```
+
+该状态仍不等于 `Foundation Public API Frozen`。
 
 ## 再稳定化验收记录（2026-08-23）
 

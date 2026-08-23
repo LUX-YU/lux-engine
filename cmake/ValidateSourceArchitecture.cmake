@@ -20,6 +20,8 @@ set(retired_directories
     "engine/runtime/extensions/contribution_host"
     "engine/runtime/launch"
     "engine/runtime/world"
+    "modules/function/ui_next"
+    "modules/function/ui_next_drawdata"
     "modules/function/ui_next_vulkan"
 )
 foreach(relative IN LISTS retired_directories)
@@ -70,7 +72,7 @@ foreach(source IN LISTS module_production_sources)
         continue()
     endif()
     file(READ "${source}" content)
-    if(content MATCHES "GeneratedSignalAccess|SignalIndex[ \t\r\n]*\\{")
+    if(content MATCHES "GeneratedSignalAccess")
         message(FATAL_ERROR
             "Architecture: production source '${source}' authors a generated "
             "Signal coordinate. Declare a LUX_OBJECT static signal and run codegen."
@@ -114,7 +116,7 @@ foreach(source IN LISTS object_sources)
         )
     endif()
     if(content MATCHES
-       "LUX_OBJECT_SIGNAL|setDispatcher[ \t\r\n]*\\(|[ \t]emit[ \t\r\n]*\\(")
+       "LUX_OBJECT_SIGNAL|setDispatcher[ \t\r\n]*\\(|[ \t]emit[ \t\r\n]*\\(|ObjectModel.hpp|makeObjectMessage|class[ \t\r\n]+ObjectMessage[ \t\r\n{;:]")
         message(FATAL_ERROR
             "Architecture: retired Object declaration, mutable affinity or "
             "emit surface reappeared in '${source}'."
@@ -122,65 +124,51 @@ foreach(source IN LISTS object_sources)
     endif()
 endforeach()
 
-# ui_next is the pure interaction primitive target. Renderer integration has
-# its own sibling target and legacy UI remains a separate migration source.
-file(GLOB_RECURSE ui_next_sources LIST_DIRECTORIES false
-    "${source_root}/modules/function/ui_next/*.hpp"
-    "${source_root}/modules/function/ui_next/*.cpp"
-    "${source_root}/modules/function/ui_next/CMakeLists.txt"
+# function/ui is the only UI Foundation component. It owns backend-neutral draw
+# snapshots but no Renderer/Vulkan integration or platform input adapter.
+file(GLOB_RECURSE ui_sources LIST_DIRECTORIES false
+    "${source_root}/modules/function/ui/*.hpp"
+    "${source_root}/modules/function/ui/*.cpp"
+    "${source_root}/modules/function/ui/CMakeLists.txt"
 )
-foreach(source IN LISTS ui_next_sources)
+foreach(source IN LISTS ui_sources)
     file(TO_CMAKE_PATH "${source}" normalized)
     if(normalized MATCHES "/test/")
         continue()
     endif()
     file(READ "${source}" content)
     if(content MATCHES
-       "lux/engine/(ui/|input/|resource/|ecs/|runtime/|extensions/|editor/|function/render/)")
+       "lux/engine/(input/|resource/|ecs/|runtime/|extensions/|editor/|function/render/)")
         message(FATAL_ERROR
-            "Architecture: UI vNext core source '${source}' crosses into "
-            "legacy UI, Input, Resource, ECS, Runtime, Render or Editor."
+            "Architecture: UI Foundation source '${source}' crosses into "
+            "Input, Resource, ECS, Runtime, Render or Editor."
         )
     endif()
     if(content MATCHES
        "class[ \t\r\n]+UISystem|UISession::post[ \t\r\n]*\\(")
         message(FATAL_ERROR
-            "Architecture: UI vNext source '${source}' restores the retired "
+            "Architecture: UI Foundation source '${source}' restores the retired "
             "UISystem owner or generic post surface."
         )
     endif()
     if(content MATCHES
-       "CommandPresentation|PaneCreateContext|EUiPointerButton|EUiKey|ViewportDrop|setActiveContexts|setActivationScope")
+       "CommandPresentation|CommandIndex|PaneCreateContext|class[ \t\r\n]+Context|EUiPointerButton|EUiKey|ViewportDrop|setActiveContexts|setActivationScope|focusPane|imguiContext|[ \t]imguiLabel[ \t\r\n]*\\(|DrawDataSummary|summarize[ \t\r\n]*\\(")
         message(FATAL_ERROR
-            "Architecture: UI vNext source '${source}' restores a retired "
+            "Architecture: UI Foundation source '${source}' restores a retired "
             "presentation, factory, input, drag/drop or route wrapper."
         )
     endif()
-endforeach()
-
-file(GLOB_RECURSE ui_drawdata_sources LIST_DIRECTORIES false
-    "${source_root}/modules/function/ui_next_drawdata/*.hpp"
-    "${source_root}/modules/function/ui_next_drawdata/*.cpp"
-    "${source_root}/modules/function/ui_next_drawdata/CMakeLists.txt"
-)
-foreach(source IN LISTS ui_drawdata_sources)
-    file(TO_CMAKE_PATH "${source}" normalized)
-    if(normalized MATCHES "/test/")
-        continue()
-    endif()
-    file(READ "${source}" content)
     if(content MATCHES
        "lux/engine/function/render/|render_(client|graph|vulkan|features)|Vulkan")
         message(FATAL_ERROR
-            "Architecture: draw-data source '${source}' depends on Render or "
-            "Vulkan. ui_next_drawdata owns snapshots only."
+            "Architecture: UI Foundation source '${source}' depends on Render "
+            "or Vulkan. DrawDataSnapshot is backend-neutral."
         )
     endif()
 endforeach()
 
-# Foundation stabilization is deliberately isolated from Engine/ECS/plugin
-# migration. Keep this gate after freezing until an explicit consumer re-audit
-# approves and implements the first upper-layer dependency.
+# Engine migration is blocked. Existing legacy Panel/UISystem includes are debt,
+# but no upper layer may adopt Object or the final UI Foundation primitives.
 file(GLOB_RECURSE frozen_consumer_sources LIST_DIRECTORIES false
     "${source_root}/ecs/*.hpp"
     "${source_root}/ecs/*.cpp"
@@ -194,10 +182,11 @@ file(GLOB_RECURSE frozen_consumer_sources LIST_DIRECTORIES false
 )
 foreach(source IN LISTS frozen_consumer_sources)
     file(READ "${source}" content)
-    if(content MATCHES "ui_next")
+    if(content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/object/" OR
+       content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/ui/(UI|UISession|Pane|PaneFactory|Command|CommandRouter|Layout|DragDrop|UiIds|UiInputEvent|ViewportElement|DrawDataSnapshot|MenuToolbar)\\.hpp")
         message(FATAL_ERROR
             "Architecture: frozen Engine/ECS/Extension consumer '${source}' "
-            "uses UI vNext before the post-freeze consumer re-audit."
+            "uses Object/final UI before the dedicated migration redesign."
         )
     endif()
 endforeach()

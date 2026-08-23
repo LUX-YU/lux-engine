@@ -7,16 +7,36 @@
 #include <cstdint>
 
 #include <lux/engine/object/LuxObject.hpp>
+#include <lux/engine/object/Signal.hpp>
+#include <lux/engine/object/detail/MessageEnvelope.hpp>
 
-namespace lux::object::detail
-{
-    struct ObjectDiagnosticsAccess final
-    {
-        [[nodiscard]] static std::uint64_t storageGrowthCount(
-            const LuxObject& object
-        ) noexcept
-        {
-            return object.storageGrowthCountForTest();
-        }
-    };
+namespace lux::object::detail {
+struct ObjectDiagnosticsAccess final {
+  [[nodiscard]] static std::uint64_t
+  storageGrowthCount(const LuxObject &object) noexcept {
+    return object.storageGrowthCountForTest();
+  }
+
+  template <class SignalType>
+  [[nodiscard]] static std::size_t
+  denseIndex(const SignalType &signal) noexcept {
+    return signal.descriptor_.dense_index_;
+  }
+
+  template <class SignalType>
+  [[nodiscard]] static std::size_t
+  lineageSize(const SignalType &signal) noexcept {
+    return signal.descriptor_.lineage_size_;
+  }
+
+  static void resetMessageStorage() noexcept { resetMessageStorageForTest(); }
+
+  [[nodiscard]] static std::size_t inlineMessageStorageCount() noexcept {
+    return inlineMessageStorageCountForTest();
+  }
+
+  [[nodiscard]] static std::size_t heapMessageStorageCount() noexcept {
+    return heapMessageStorageCountForTest();
+  }
+};
 } // namespace lux::object::detail

@@ -1,50 +1,17 @@
-## function::ui — backend-neutral ImGui UI state and frame-client support.
-##
-## function::ui_vulkan is the explicit ImGui <-> Vulkan integration.  Keeping
-## UIRenderServer out of ui means graph/editor widgets do not acquire a Vulkan
-## backend merely by using Panel or UISystem.
-##
-## The engine-coupled editor panels (node editor, lua console, asset browser)
-## live in engine/editor and link this component.
-
-find_package(imgui   REQUIRED COMPONENTS glfw3 vulkan)
-find_package(lux-cxx REQUIRED COMPONENTS core container reflection_runtime)
-
-generate_visibility_header(
-    ENABLE_MACRO_NAME       LUX_FUNCTION_UI_LIBRARY
-    PUBLIC_MACRO_NAME       LUX_FUNCTION_UI_PUBLIC
-    DISABLE_DLL_MACRO_NAME  LUX_FUNCTION_UI_DLL_DISABLE
-    GENERATE_FILE_PATH      lux/engine/function/visibility_ui.h
-)
-
-set(LUX_UI_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Panel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/UISystem.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/WidgetDispatch.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneViewportPanel.cpp
-)
-
-set(LUX_UI_VULKAN_SRCS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ImGuiDrawDataSnapshot.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ImGuiFeature.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ImGuiOperationHandlers.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/UIOffscreenImagePool.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/UIRenderFrameSession.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/UIRenderServer.cpp
-)
+find_package(imgui REQUIRED COMPONENTS core)
+find_package(lux-cxx REQUIRED COMPONENTS core compile_time)
 
 add_component(
     COMPONENT_NAME ui
-    STATIC
-    NAMESPACE      lux::engine::function
-    SOURCE_FILES   ${LUX_UI_SRCS}
-)
-
-add_component(
-    COMPONENT_NAME ui_vulkan
-    STATIC
-    NAMESPACE      lux::engine::function
-    SOURCE_FILES   ${LUX_UI_VULKAN_SRCS}
+    NAMESPACE lux::engine::function
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/CommandRouter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/DragDrop.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/DrawDataSnapshot.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/MenuToolbar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Pane.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/UISession.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ViewportElement.cpp
 )
 
 component_include_directories(
@@ -52,99 +19,126 @@ component_include_directories(
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
-    BUILD_TIME_SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
-    INSTALL_TIME
-        include
+    INSTALL_TIME include
+    PRIVATE pinclude
 )
 
-component_include_directories(
-    ui_vulkan
-    BUILD_TIME_EXPORT
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${LUX_GENERATE_HEADER_DIR}
-    BUILD_TIME_SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
-    INSTALL_TIME
-        include
-)
-
-target_compile_definitions(
-    ui
-    PRIVATE
-    LUX_FUNCTION_UI_LIBRARY
-    PUBLIC
-    LUX_FUNCTION_UI_DLL_DISABLE
-)
-
-target_compile_definitions(
-    ui_vulkan
-    PRIVATE
-        LUX_FUNCTION_UI_LIBRARY
-    PUBLIC
-        LUX_FUNCTION_UI_DLL_DISABLE
-)
-
-# UI frame submission is a render-client concern.  Vulkan server/factory code
-# is isolated in the integration target and declares both backend dependencies.
-component_add_internal_dependencies(ui render_client)
-component_add_internal_dependencies(
-    ui_vulkan
-    ui
-    render_vulkan
-    render_features
-)
-
-component_add_transitive_commands(
-    ui
-    "find_package (imgui REQUIRED COMPONENTS glfw3 vulkan)"
-    "find_package (lux-cxx REQUIRED COMPONENTS core container reflection_runtime)"
-    "find_package (lux-engine-platform REQUIRED COMPONENTS window)"
-)
-
-component_add_transitive_commands(
-    ui_vulkan
-    "find_package (imgui REQUIRED COMPONENTS glfw3 vulkan)"
-    "find_package (lux-engine-function REQUIRED COMPONENTS ui render_vulkan render_features)"
-    "find_package (lux-engine-platform REQUIRED COMPONENTS window)"
-)
+target_compile_definitions(ui PRIVATE LUX_FUNCTION_LIBRARY)
 
 target_link_libraries(
     ui
     PUBLIC
-    imgui::glfw3
-    imgui::vulkan
-    lux::cxx::container
-    lux::cxx::reflection_runtime
-    PRIVATE
-    lux::cxx::core
-    lux::engine::platform::window
+        imgui::core
+        lux::cxx::core
+        lux::cxx::compile_time
+        lux::engine::core::object
 )
 
-target_link_libraries(
-    ui_vulkan
-    PUBLIC
-        imgui::glfw3
-        imgui::vulkan
-    PRIVATE
-        lux::engine::platform::window
+add_custom_command(
+    TARGET ui POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:imgui::core>
+        $<TARGET_FILE_DIR:ui>
 )
 
-lux_classify_target(
-    TARGET  ui
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
+component_add_transitive_commands(
+    ui
+    "find_package(imgui REQUIRED COMPONENTS core)"
+    "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS object)"
 )
 
 lux_classify_target(
-    TARGET  ui_vulkan
-    LAYER   FUNCTION
+    TARGET ui
+    LAYER FUNCTION
     PRODUCT RUNTIME
-    ROLE    INTEGRATION
+    ROLE DOMAIN
 )
 
-set(ENABLE_UI_TEST OFF CACHE BOOL "Enable UI Test")
+include_component_cmake_scripts(meta)
+engine_add_meta(
+    NAME ui_pane_meta
+    TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ui/Pane.hpp
+    REGISTER_FUNC_NAME lux_ui_pane
+)
+engine_target_add_meta(
+    TARGET ui
+    METAS ui_pane_meta
+    OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen
+)
+
+set(ENABLE_UI_TEST ON CACHE BOOL "Enable final UI Foundation tests")
 if(ENABLE_UI_TEST)
-    add_subdirectory(test)
+    target_compile_definitions(ui PRIVATE LUX_UI_TEST_DIAGNOSTICS=1)
+    add_executable(ui_test test/ui_test.cpp)
+    target_link_libraries(ui_test PRIVATE ui)
+    target_include_directories(
+        ui_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    )
+    target_compile_definitions(ui_test PRIVATE LUX_UI_TEST_DIAGNOSTICS=1)
+    add_test(NAME ui_test COMMAND ui_test)
+
+    add_executable(
+        ui_reentrancy_test
+        test/ui_reentrancy_test.cpp
+    )
+    target_link_libraries(ui_reentrancy_test PRIVATE ui)
+    add_test(NAME ui_reentrancy_test COMMAND ui_reentrancy_test)
+
+    add_executable(ui_demo test/ui_demo.cpp)
+    target_link_libraries(ui_demo PRIVATE ui)
+    add_test(NAME ui_demo COMMAND ui_demo)
+
+    add_executable(
+        ui_throwing_command_probe EXCLUDE_FROM_ALL
+        test/ui_throwing_command_probe.cpp
+    )
+    target_link_libraries(ui_throwing_command_probe PRIVATE ui)
+    add_test(
+        NAME ui_throwing_command_probe
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DTARGET=ui_throwing_command_probe
+            "-DEXPECTED_PATTERN=Command handlers must be noexcept"
+            -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+    )
+
+    add_executable(
+        ui_release_benchmark
+        test/ui_release_benchmark.cpp
+    )
+    target_link_libraries(
+        ui_release_benchmark
+        PRIVATE ui
+    )
+    target_compile_definitions(
+        ui_release_benchmark
+        PRIVATE
+            LUX_UI_TEST_DIAGNOSTICS=1
+            NDEBUG
+    )
+    target_include_directories(
+        ui_release_benchmark
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    )
+    set_property(
+        TARGET ui_release_benchmark
+        PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE
+    )
+    lux_classify_target(
+        TARGET ui_release_benchmark
+        LAYER FUNCTION
+        PRODUCT TEST
+        ROLE FOUNDATION
+    )
+    add_test(
+        NAME ui_release_benchmark
+        COMMAND ui_release_benchmark
+    )
+
+    add_executable(ui_drawdata_test test/ui_drawdata_test.cpp)
+    target_link_libraries(ui_drawdata_test PRIVATE ui)
+    add_test(NAME ui_drawdata_test COMMAND ui_drawdata_test)
+
 endif()

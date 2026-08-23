@@ -8,14 +8,6 @@
 //  BY NAME (== FeatureFactory.name == RenderFeature::name())。A plugin just
 //  add()s its own factory — the editor discovers + addresses it with ZERO
 //  compile-time coupling。**声明序即 attach 并列决胜序**(见 resolver)。
-//
-//  ⚠️ 目录里**没有**每场景句柄(装配归属 ADR 裁决二):Entry 的字段全是
-//  进程域的。句柄是唯一的场景域状态,住在 FeatureBindings(RenderSystem
-//  每场景一份),子系统经 RenderCapabilities 视图同时看到两半。
-//
-//  本头**不再 include RenderServer.hpp**(曾经如此,四十来个线协议载荷跟着
-//  进来):add() 收调用方自己拿到的 addFeatureFactory 回执(type_id + ops),
-//  注册动作留在拥有服务端引用的那一层。
 // ============================================================================
 
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>   // FeatureFactory / FeatureDescriptor / TypeId

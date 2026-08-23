@@ -126,7 +126,7 @@ int main()
         int focus_changes = 0;
         bool last_focus = false;
         auto focus_connection = first.observeScoped<lux::ui::Pane::focusChanged>(
-            [&](const lux::ui::PaneFocusChanged& change)
+            [&](const lux::ui::PaneFocusChanged& change) noexcept
             {
                 ++focus_changes;
                 last_focus = change.focused;
@@ -137,7 +137,8 @@ int main()
         int visibility_changes = 0;
         auto visibility_connection =
             first.observeScoped<lux::ui::Pane::visibilityChanged>(
-                [&](const lux::ui::PaneVisibilityChanged&) { ++visibility_changes; }
+                [&](const lux::ui::PaneVisibilityChanged&) noexcept
+                { ++visibility_changes; }
             );
         assert(visibility_connection);
         first.setVisible(false);

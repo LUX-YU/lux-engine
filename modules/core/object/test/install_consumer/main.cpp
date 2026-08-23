@@ -5,8 +5,9 @@ int main()
     InstalledObject object;
     int observed = 0;
     auto connection =
-        object.observeScoped<InstalledObject::changed>([&observed](const int& value)
-                                                       { observed = value; });
+        object.observeScoped<InstalledObject::changed>(
+            [&observed](const int& value) noexcept { observed = value; }
+        );
     object.publish(17);
     return connection && observed == 17 ? 0 : 1;
 }

@@ -23,6 +23,15 @@ component_include_directories(
 
 target_compile_definitions(object PRIVATE LUX_CORE_LIBRARY)
 
+option(
+    LUX_OBJECT_CONTRACT_CHECKS
+    "Enable Object affinity/lifetime contract checks outside Debug builds"
+    OFF
+)
+if(LUX_OBJECT_CONTRACT_CHECKS)
+    target_compile_definitions(object PUBLIC LUX_OBJECT_CONTRACT_CHECKS=1)
+endif()
+
 target_link_libraries(
     object
     PUBLIC
@@ -49,23 +58,50 @@ set(ENABLE_OBJECT_TEST ON CACHE BOOL "Enable core object tests")
 if(ENABLE_OBJECT_TEST)
     include_component_cmake_scripts(meta)
 
+    engine_add_meta(
+        NAME object_test_signals_meta
+        TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/ObjectTestSignals.hpp
+        REGISTER_FUNC_NAME lux_object_test_signals
+    )
+    add_library(
+        object_test_signals STATIC
+        test/ObjectTestSignals.cpp
+    )
+    target_include_directories(
+        object_test_signals PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/test
+    )
+    target_link_libraries(object_test_signals PUBLIC object)
+    lux_classify_target(
+        TARGET object_test_signals
+        LAYER CORE
+        PRODUCT TEST
+        ROLE FOUNDATION
+    )
+    engine_target_add_meta(
+        TARGET object_test_signals
+        METAS object_test_signals_meta
+        OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/object_test_signals_meta
+    )
+
     add_executable(object_signal_test test/object_signal_test.cpp)
-    target_link_libraries(object_signal_test PRIVATE object)
+    target_link_libraries(object_signal_test PRIVATE object_test_signals)
     add_test(NAME object_signal_test COMMAND object_signal_test)
 
     add_executable(object_dispatcher_test test/object_dispatcher_test.cpp)
-    target_link_libraries(object_dispatcher_test PRIVATE object)
+    target_link_libraries(object_dispatcher_test PRIVATE object_test_signals)
     add_test(NAME object_dispatcher_test COMMAND object_dispatcher_test)
 
     add_executable(object_lifetime_test test/object_lifetime_test.cpp)
-    target_link_libraries(object_lifetime_test PRIVATE object)
+    target_link_libraries(object_lifetime_test PRIVATE object_test_signals)
     add_test(NAME object_lifetime_test COMMAND object_lifetime_test)
 
     add_executable(
         object_sender_self_destroy_probe
         test/object_sender_self_destroy_probe.cpp
     )
-    target_link_libraries(object_sender_self_destroy_probe PRIVATE object)
+    target_link_libraries(
+        object_sender_self_destroy_probe PRIVATE object_test_signals
+    )
     add_test(
         NAME object_sender_self_destroy_probe
         COMMAND
@@ -75,10 +111,45 @@ if(ENABLE_OBJECT_TEST)
     )
 
     add_executable(
+        object_wrong_affinity_destroy_probe
+        test/object_wrong_affinity_destroy_probe.cpp
+    )
+    target_link_libraries(
+        object_wrong_affinity_destroy_probe PRIVATE object_test_signals
+    )
+
+    add_executable(
+        object_weak_ref_wrong_affinity_probe
+        test/object_weak_ref_wrong_affinity_probe.cpp
+    )
+    target_link_libraries(
+        object_weak_ref_wrong_affinity_probe PRIVATE object_test_signals
+    )
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR LUX_OBJECT_CONTRACT_CHECKS)
+        foreach(
+            probe
+            IN ITEMS
+                object_wrong_affinity_destroy_probe
+                object_weak_ref_wrong_affinity_probe
+        )
+            add_test(
+                NAME ${probe}
+                COMMAND
+                    ${CMAKE_COMMAND}
+                    -DPROBE=$<TARGET_FILE:${probe}>
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/test/expect_process_failure.cmake
+            )
+        endforeach()
+    endif()
+
+    add_executable(
         object_performance_contract_test
         test/object_performance_contract_test.cpp
     )
-    target_link_libraries(object_performance_contract_test PRIVATE object)
+    target_link_libraries(
+        object_performance_contract_test PRIVATE object_test_signals
+    )
     add_test(
         NAME object_performance_contract_test
         COMMAND object_performance_contract_test

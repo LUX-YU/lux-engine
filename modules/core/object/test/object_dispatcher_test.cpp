@@ -5,20 +5,14 @@
 
 #include <condition_variable>
 #include <lux/engine/object/ObjectModel.hpp>
+#include "ObjectTestSignals.hpp"
 #include <memory>
 #include <mutex>
 #include <thread>
 
 namespace
 {
-    class Sender final : public lux::object::Object<Sender>
-    {
-    public:
-        static const signal_type<int> changed;
-        void publish(int value) { notify<changed>(value); }
-    };
-
-    const Sender::signal_type<int> Sender::changed{lux::object::SignalIndex{0}};
+    using lux::object::test::fixture::IntSender;
 
     class Receiver final : public lux::object::Object<Receiver>
     {
@@ -28,7 +22,7 @@ namespace
         {
         }
 
-        void receive(const int& value) { observed = value; }
+        void receive(const int& value) noexcept { observed = value; }
         int observed{0};
     };
 
@@ -60,7 +54,7 @@ namespace
 
     void runQueuedScenario(bool disconnect, bool destroy_receiver)
     {
-        Sender sender;
+        IntSender sender;
         std::mutex mutex;
         std::condition_variable condition;
         Receiver* receiver_pointer = nullptr;
@@ -96,7 +90,7 @@ namespace
             condition.wait(lock, [&] { return ready; });
         }
         auto connection = sender.observe<
-            Sender::changed,
+            IntSender::changed,
             &Receiver::receive,
             lux::object::EDelivery::AUTO>(*receiver_pointer);
         assert(connection);

@@ -47,13 +47,6 @@ namespace lux::object::detail
     {
         lux::cxx::intrusive_ptr<ObjectState> sender;
         lux::cxx::intrusive_ptr<ConnectionControl> control;
-        std::uint64_t connection_id{0};
-    };
-
-    struct InstalledConnection final
-    {
-        lux::cxx::intrusive_ptr<ConnectionControl> control;
-        std::uint64_t id{0};
     };
 
     struct ObjectState final
@@ -82,7 +75,7 @@ namespace lux::object::detail
         std::mutex incoming_mutex;
         std::vector<IncomingLink> incoming;
 
-        [[nodiscard]] InstalledConnection install(
+        [[nodiscard]] lux::cxx::intrusive_ptr<ConnectionControl> install(
             const SignalRuntime& signal,
             lux::cxx::intrusive_ptr<ObjectState> receiver,
             ObjectDispatcherRef receiver_dispatcher,
@@ -93,23 +86,26 @@ namespace lux::object::detail
         );
 
         void notify(const SignalRuntime& signal, const void* payload);
-        void requestDisconnect(std::uint64_t id, ConnectionControl* control) noexcept;
-        void removeConnection(std::uint64_t id) noexcept;
+        void requestDisconnect(ConnectionControl* control) noexcept;
+        void removeConnection(ConnectionControl* control) noexcept;
         void maintain() noexcept;
+        void finishNotify() noexcept;
         void closeOwner() noexcept;
 
         void addIncoming(
             lux::cxx::intrusive_ptr<ObjectState> sender,
-            lux::cxx::intrusive_ptr<ConnectionControl> control,
-            std::uint64_t id
+            lux::cxx::intrusive_ptr<ConnectionControl> control
         );
 
-        void removeIncoming(const ObjectState* sender, std::uint64_t id) noexcept;
+        void removeIncoming(
+            const ObjectState* sender,
+            const ConnectionControl* control
+        ) noexcept;
 
     private:
         void
         append(SignalBucket& bucket, ConnectionControl& control, EDelivery delivery);
+        void ensureSignalCapacity(std::size_t required_count);
         void removePhysical(ConnectionControl& control) noexcept;
-        void compactBucket(SignalBucket& bucket) noexcept;
     };
 } // namespace lux::object::detail

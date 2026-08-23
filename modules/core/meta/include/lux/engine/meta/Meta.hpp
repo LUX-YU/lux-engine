@@ -225,6 +225,7 @@ namespace lux::meta
     {
         std::string_view name;
         RefType          type;
+        std::string_view template_primary;
         EVisibility      visibility{ EVisibility::Public };
         RefClass*        owner_class{ nullptr };
         const void*      address{ nullptr };
@@ -489,6 +490,9 @@ namespace lux::meta
 
         // -- lookup --------------------------------------------------------------
         [[nodiscard]] const RefClass* findClass(std::string_view full) noexcept;
+        [[nodiscard]] const RefClass* findClassByHash(
+            std::uint64_t hash
+        ) const noexcept;
         [[nodiscard]] const RefEnum* findEnum(std::string_view full) noexcept;
         [[nodiscard]] const RefFunction* findFunction(std::string_view full, std::span<const std::uint64_t> ids = {}) noexcept;
         
@@ -517,9 +521,6 @@ namespace lux::meta
             std::string_view name = {},
             std::string_view conflicting_name = {});
         [[nodiscard]] bool publishDraft(ReflectionRegistry&& draft) noexcept;
-        [[nodiscard]] const RefClass* findClassByHash(
-            std::uint64_t hash) const noexcept;
-
         // pool storage
         MetaPool<RefClass>    class_pool_;
         MetaPool<RefEnum>     enum_pool_;

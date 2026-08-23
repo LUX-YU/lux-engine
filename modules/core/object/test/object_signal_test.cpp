@@ -4,34 +4,17 @@
 #include <cassert>
 
 #include <lux/engine/object/ObjectModel.hpp>
+#include "ObjectTestSignals.hpp"
+#include <type_traits>
 #include <vector>
+
+static_assert(!std::is_constructible_v<lux::object::SignalIndex, std::size_t>);
 
 namespace
 {
-    class Sender final : public lux::object::Object<Sender>
-    {
-    public:
-        static const signal_type<int> changed;
-
-        void publish(int value) { notify<changed>(value); }
-    };
-
-    const Sender::signal_type<int> Sender::changed{lux::object::SignalIndex{0}};
-
-    class BaseSender : public lux::object::Object<BaseSender>
-    {
-    public:
-        static const signal_type<int> base_changed;
-        void publishBase(int value) { notify<base_changed>(value); }
-    };
-
-    const BaseSender::signal_type<int> BaseSender::base_changed{
-        lux::object::SignalIndex{0}
-    };
-
-    class DerivedSender final : public lux::object::Object<DerivedSender, BaseSender>
-    {
-    };
+    using lux::object::test::fixture::BaseSender;
+    using lux::object::test::fixture::DerivedSender;
+    using lux::object::test::fixture::IntSender;
 
     struct Ping final
     {
@@ -57,13 +40,13 @@ namespace
 
 int main()
 {
-    Sender sender;
-    assert(sender.objectType() == lux::cxx::typeToken<Sender>());
+    IntSender sender;
+    assert(sender.objectType() == lux::cxx::typeToken<IntSender>());
 
     std::vector<int> order;
     lux::object::Connection second;
-    auto first = sender.observeScoped<Sender::changed>(
-        [&](const int& value)
+    auto first = sender.observeScoped<IntSender::changed>(
+        [&](const int& value) noexcept
         {
             order.push_back(value * 10 + 1);
             second.disconnect();
@@ -71,22 +54,23 @@ int main()
     );
     assert(first);
     auto second_result =
-        sender.observeScoped<Sender::changed>([&](const int& value)
-                                              { order.push_back(value * 10 + 2); });
+        sender.observeScoped<IntSender::changed>([&](const int& value) noexcept
+                                                 { order.push_back(value * 10 + 2); });
     assert(second_result);
     second = second_result->connection();
 
     bool installed_late = false;
     lux::object::ScopedConnection late;
-    auto installer = sender.observeScoped<Sender::changed>(
-        [&](const int& value)
+    auto installer = sender.observeScoped<IntSender::changed>(
+        [&](const int& value) noexcept
         {
             order.push_back(value * 10 + 3);
             if (!installed_late)
             {
                 installed_late = true;
-                auto result = sender.observeScoped<Sender::changed>(
-                    [&](const int& nested) { order.push_back(nested * 10 + 4); }
+                auto result = sender.observeScoped<IntSender::changed>(
+                    [&](const int& nested) noexcept
+                    { order.push_back(nested * 10 + 4); }
                 );
                 assert(result);
                 late = std::move(*result);
@@ -104,11 +88,11 @@ int main()
     class BaseReceiver final : public lux::object::Object<BaseReceiver>
     {
     public:
-        void receive(const int& value) { observed = value; }
+        void receive(const int& value) noexcept { observed = value; }
         int observed{0};
     } base_receiver;
     auto base_connection = derived.observe<
-        BaseSender::base_changed,
+        BaseSender::baseChanged,
         &BaseReceiver::receive,
         lux::object::EDelivery::DIRECT>(base_receiver);
     assert(base_connection);
@@ -116,7 +100,7 @@ int main()
     assert(base_receiver.observed == 19);
 
     auto weak = sender.weakRef();
-    assert(weak.get() == &sender);
+    assert(weak.getOnCurrent() == &sender);
 
     EventReceiver receiver;
     Ping ping{42};

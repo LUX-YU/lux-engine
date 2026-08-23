@@ -23,7 +23,7 @@ namespace lux::object::cross_dll
         void publishDerived(int value) { notify<derivedChanged>(value); }
 
         LUX_METHOD(connectable = true)
-        void receive(const int& value) { last_value = value; }
+        void receive(const int& value) noexcept { last_value = value; }
 
         int last_value{0};
     };

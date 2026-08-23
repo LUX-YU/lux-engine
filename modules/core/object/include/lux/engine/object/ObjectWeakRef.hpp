@@ -16,13 +16,16 @@ namespace lux::object
     public:
         ObjectWeakRef() noexcept = default;
 
-        [[nodiscard]] LuxObject* get() const noexcept;
-        [[nodiscard]] bool expired() const noexcept { return get() == nullptr; }
+        [[nodiscard]] bool alive() const noexcept;
+        [[nodiscard]] bool expired() const noexcept { return !alive(); }
+        [[nodiscard]] LuxObject* getOnCurrent() const noexcept;
         [[nodiscard]] ObjectDispatcherRef dispatcherRef() const noexcept;
 
-        template <class Type> [[nodiscard]] Type* getAs() const noexcept
+        template <class Type> [[nodiscard]] Type* getAsOnCurrent() const noexcept
         {
-            return static_cast<Type*>(getAsErased(lux::cxx::typeToken<Type>()));
+            return static_cast<Type*>(
+                getAsOnCurrentErased(lux::cxx::typeToken<Type>())
+            );
         }
 
     private:
@@ -33,7 +36,8 @@ namespace lux::object
         {
         }
 
-        [[nodiscard]] LuxObject* getAsErased(lux::cxx::TypeToken type) const noexcept;
+        [[nodiscard]] LuxObject*
+        getAsOnCurrentErased(lux::cxx::TypeToken type) const noexcept;
 
         lux::cxx::intrusive_ptr<detail::ObjectState> state_;
     };

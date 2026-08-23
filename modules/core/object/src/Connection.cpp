@@ -22,6 +22,6 @@ namespace lux::object
     {
         if (!sender_ || !control_)
             return;
-        sender_->requestDisconnect(id_, control_.get());
+        sender_->requestDisconnect(control_.get());
     }
 } // namespace lux::object

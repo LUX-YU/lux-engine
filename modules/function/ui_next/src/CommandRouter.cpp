@@ -249,7 +249,7 @@ namespace lux::ui
         auto* binding = const_cast<Impl*>(impl_.get())->selected(command_index);
         if (!binding)
             return {};
-        auto* receiver = binding->receiver.get();
+        auto* receiver = binding->receiver.getOnCurrent();
         if (!receiver)
             return {};
         return {
@@ -264,7 +264,7 @@ namespace lux::ui
         auto* binding = impl_->selected(command_index);
         if (!binding)
             return ECommandDispatchResult::NOT_FOUND;
-        auto* receiver = binding->receiver.get();
+        auto* receiver = binding->receiver.getOnCurrent();
         if (!receiver)
             return ECommandDispatchResult::NOT_FOUND;
         if (binding->enabled && !binding->enabled(receiver))

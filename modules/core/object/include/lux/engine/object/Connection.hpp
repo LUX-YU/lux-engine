@@ -24,16 +24,14 @@ namespace lux::object
         friend class LuxObject;
         Connection(
             lux::cxx::intrusive_ptr<detail::ObjectState> sender,
-            lux::cxx::intrusive_ptr<detail::ConnectionControl> control,
-            std::uint64_t id
+            lux::cxx::intrusive_ptr<detail::ConnectionControl> control
         ) noexcept
-            : sender_(std::move(sender)), control_(std::move(control)), id_(id)
+            : sender_(std::move(sender)), control_(std::move(control))
         {
         }
 
         lux::cxx::intrusive_ptr<detail::ObjectState> sender_;
         lux::cxx::intrusive_ptr<detail::ConnectionControl> control_;
-        std::uint64_t id_{0};
     };
 
     class ScopedConnection final

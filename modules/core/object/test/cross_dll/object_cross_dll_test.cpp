@@ -14,8 +14,8 @@ int main()
     static_assert(!std::is_same_v<
                   decltype(BaseObject::baseChanged),
                   decltype(DerivedObject::derivedChanged)>);
-    assert(BaseObject::baseChanged.index() == lux::object::SignalIndex{0});
-    assert(DerivedObject::derivedChanged.index() == lux::object::SignalIndex{1});
+    assert(BaseObject::baseChanged.index().value() == 0u);
+    assert(DerivedObject::derivedChanged.index().value() == 1u);
 
     DerivedObject sender;
     DerivedObject receiver;
@@ -35,9 +35,18 @@ int main()
     assert(base_class);
     assert(derived_class);
     assert(registry.findClass("lux::object::cross_dll::InternalObject"));
-    const auto dynamic_signal =
-        lux::object::reflection::findSignal(*derived_class, "derivedChanged");
+    const auto dynamic_signal = lux::object::reflection::findSignal(
+        registry,
+        *derived_class,
+        "derivedChanged"
+    );
     assert(dynamic_signal);
+    const auto inherited_signal = lux::object::reflection::findSignal(
+        registry,
+        *derived_class,
+        "baseChanged"
+    );
+    assert(inherited_signal);
 
     const lux::meta::RefMethod* receive = nullptr;
     for (const auto& method : derived_class->methods)

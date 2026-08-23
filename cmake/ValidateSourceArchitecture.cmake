@@ -54,6 +54,30 @@ foreach(source IN LISTS ecs_sources)
     endif()
 endforeach()
 
+# Signal coordinates are generated build-local data.  The only source-level
+# bridge is the private helper declared by Signal.hpp and consumed by the
+# generated meta template; production modules may not author either identity.
+file(GLOB_RECURSE module_production_sources LIST_DIRECTORIES false
+    "${source_root}/modules/*/include/*.hpp"
+    "${source_root}/modules/*/sinclude/*.hpp"
+    "${source_root}/modules/*/pinclude/*.hpp"
+    "${source_root}/modules/*/src/*.cpp"
+)
+foreach(source IN LISTS module_production_sources)
+    file(TO_CMAKE_PATH "${source}" normalized)
+    if(normalized MATCHES "/test/" OR
+       normalized MATCHES "/core/object/include/lux/engine/object/Signal.hpp$")
+        continue()
+    endif()
+    file(READ "${source}" content)
+    if(content MATCHES "GeneratedSignalAccess|SignalIndex[ \t\r\n]*\\{")
+        message(FATAL_ERROR
+            "Architecture: production source '${source}' authors a generated "
+            "Signal coordinate. Declare a LUX_OBJECT static signal and run codegen."
+        )
+    endif()
+endforeach()
+
 # Core reflection is a lower query primitive. Object may consume reflection,
 # but reflection must never acquire Object lifetime or signal semantics.
 file(GLOB_RECURSE meta_sources LIST_DIRECTORIES false

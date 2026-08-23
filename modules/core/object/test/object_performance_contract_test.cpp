@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include <lux/engine/object/ObjectModel.hpp>
+#include "ObjectTestSignals.hpp"
 
 #include <array>
 #include <atomic>
@@ -17,14 +18,7 @@ namespace
 {
     std::atomic_size_t allocations{0};
 
-    class Sender final : public lux::object::Object<Sender>
-    {
-    public:
-        static const signal_type<int> changed;
-        void publish(int value) { notify<changed>(value); }
-    };
-
-    const Sender::signal_type<int> Sender::changed{lux::object::SignalIndex{0}};
+    using lux::object::test::fixture::IntSender;
 
     class Receiver final : public lux::object::Object<Receiver>
     {
@@ -34,7 +28,7 @@ namespace
         {
         }
 
-        void receive(const int& value) { observed += value; }
+        void receive(const int& value) noexcept { observed += value; }
 
         std::uint64_t observed{0};
     };
@@ -43,15 +37,16 @@ namespace
 
     void benchmarkDirect(std::size_t listener_count)
     {
-        Sender sender;
+        IntSender sender;
         std::uint64_t observed = 0;
         std::vector<lux::object::ScopedConnection> connections;
         connections.reserve(listener_count);
         for (std::size_t index = 0; index < listener_count; ++index)
         {
             auto connection =
-                sender.observeScoped<Sender::changed>([&observed](const int& value)
-                                                      { observed += value; });
+                sender.observeScoped<IntSender::changed>(
+                    [&observed](const int& value) noexcept { observed += value; }
+                );
             assert(connection);
             connections.push_back(std::move(*connection));
         }
@@ -77,14 +72,14 @@ namespace
     void benchmarkQueued(std::size_t listener_count)
     {
         lux::object::ObjectMessageQueue queue;
-        Sender sender;
+        IntSender sender;
         Receiver receiver{queue.dispatcherRef()};
         std::vector<lux::object::Connection> connections;
         connections.reserve(listener_count);
         for (std::size_t index = 0; index < listener_count; ++index)
         {
             auto connection = sender.observe<
-                Sender::changed,
+                IntSender::changed,
                 &Receiver::receive,
                 lux::object::EDelivery::QUEUED>(receiver);
             assert(connection);
@@ -107,12 +102,14 @@ namespace
 
     void benchmarkChurn()
     {
-        Sender sender;
+        IntSender sender;
         constexpr std::size_t iterations = 5'000;
         const auto start = Clock::now();
         for (std::size_t index = 0; index < iterations; ++index)
         {
-            auto connection = sender.observeScoped<Sender::changed>([](const int&) {});
+            auto connection = sender.observeScoped<IntSender::changed>(
+                [](const int&) noexcept {}
+            );
             assert(connection);
         }
         const auto elapsed = Clock::now() - start;
@@ -138,7 +135,7 @@ void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
 int main()
 {
     const auto before_construction = allocations.load(std::memory_order_relaxed);
-    Sender sender;
+    IntSender sender;
     assert(allocations.load(std::memory_order_relaxed) == before_construction);
     sender.publish(1);
     assert(allocations.load(std::memory_order_relaxed) == before_construction);

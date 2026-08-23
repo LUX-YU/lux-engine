@@ -155,6 +155,30 @@ function(engine_add_meta)
         message(FATAL_ERROR "[add_meta] REGISTER_FUNC_NAME parameter is required")
     endif()
 
+    foreach(_lux_meta_input IN LISTS ARGS_TARGET_FILES)
+        get_filename_component(_lux_meta_input_abs "${_lux_meta_input}" ABSOLUTE)
+        file(TO_CMAKE_PATH "${_lux_meta_input_abs}" _lux_meta_input_normalized)
+        set_property(
+            GLOBAL APPEND PROPERTY
+            LUX_ENGINE_META_TARGET_FILES "${_lux_meta_input_normalized}"
+        )
+    endforeach()
+
+    get_property(
+        _lux_object_validation_scheduled GLOBAL
+        PROPERTY LUX_OBJECT_SIGNAL_VALIDATION_SCHEDULED
+    )
+    if(NOT _lux_object_validation_scheduled AND
+       EXISTS "${CMAKE_SOURCE_DIR}/modules/core/object")
+        set_property(
+            GLOBAL PROPERTY LUX_OBJECT_SIGNAL_VALIDATION_SCHEDULED TRUE
+        )
+        cmake_language(
+            DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+            CALL _lux_validate_object_signal_codegen
+        )
+    endif()
+
     # Set default values
     if(NOT ARGS_SOURCE_FILE)
         set(ARGS_SOURCE_FILE "")  # If empty, please supply compile options via EXTRA_COMPILE_OPTIONS.
@@ -192,6 +216,37 @@ function(engine_add_meta)
     set_target_properties(${ARGS_NAME} PROPERTIES
         REGISTER_FUNC_NAME      "${ARGS_REGISTER_FUNC_NAME}"
     )
+endfunction()
+
+function(_lux_validate_object_signal_codegen)
+    get_property(
+        _lux_meta_inputs GLOBAL PROPERTY LUX_ENGINE_META_TARGET_FILES
+    )
+    list(REMOVE_DUPLICATES _lux_meta_inputs)
+    file(GLOB_RECURSE _lux_public_headers LIST_DIRECTORIES false
+        "${CMAKE_SOURCE_DIR}/modules/*/include/*.hpp"
+    )
+    foreach(_lux_header IN LISTS _lux_public_headers)
+        file(READ "${_lux_header}" _lux_header_content)
+        if(NOT _lux_header_content MATCHES
+           "static[ \t\r\n]+const[ \t\r\n]+signal_type[ \t\r\n]*<")
+            continue()
+        endif()
+        file(TO_CMAKE_PATH "${_lux_header}" _lux_header_normalized)
+        list(FIND _lux_meta_inputs "${_lux_header_normalized}" _lux_meta_index)
+        if(_lux_meta_index EQUAL -1)
+            message(FATAL_ERROR
+                "Object: Signal header '${_lux_header_normalized}' is not "
+                "registered in engine_add_meta(TARGET_FILES ...)."
+            )
+        endif()
+        if(NOT _lux_header_content MATCHES "LUX_OBJECT[ \t\r\n]*\\(")
+            message(FATAL_ERROR
+                "Object: Signal header '${_lux_header_normalized}' has no "
+                "LUX_OBJECT() declaration."
+            )
+        endif()
+    endforeach()
 endfunction()
 
 function(engine_target_add_meta)

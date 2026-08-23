@@ -4,25 +4,20 @@
 #include <cassert>
 
 #include <lux/engine/object/ObjectModel.hpp>
+#include "ObjectTestSignals.hpp"
 #include <memory>
 
 namespace
 {
-    class Sender final : public lux::object::Object<Sender>
-    {
-    public:
-        static const signal_type<> closing;
-        void publish() { notify<closing>(); }
-    };
-
-    const Sender::signal_type<> Sender::closing{lux::object::SignalIndex{0}};
+    using lux::object::test::fixture::VoidSender;
 } // namespace
 
 int main()
 {
-    auto sender = std::make_unique<Sender>();
+    auto sender = std::make_unique<VoidSender>();
     auto connection =
-        sender->observeScoped<Sender::closing>([&sender] { sender.reset(); });
+        sender->observeScoped<VoidSender::closing>([&sender]() noexcept
+                                                   { sender.reset(); });
     assert(connection);
     sender->publish();
     return 0;

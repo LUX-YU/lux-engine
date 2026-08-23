@@ -38,14 +38,22 @@
 {%- for var_id in signal_record.static_var_decls -%}{%- set signal_var = decl_from_id(var_id) -%}
 {%- if type_is_specialization(signal_var.type_id, "lux::object::Signal") %}
 decltype({{ signal_var.fq_name }}) {{ signal_var.fq_name }}{
-    lux::object::SignalIndex{
+    lux::object::detail::GeneratedSignalAccess::make<
+        decltype({{ signal_var.fq_name }})>(
         {{ template_lineage_static_index(
             signal_record.id,
             signal_var.id,
             "lux::object::Object",
+            1,
+            "lux::object::Signal"
+        ) }}u,
+        {{ template_lineage_static_count(
+            signal_record.id,
+            "lux::object::Object",
+            1,
             "lux::object::Signal"
         ) }}u
-    }
+    )
 };
 {%- endif -%}{%- endfor -%}{%- endfor %}
 
@@ -262,17 +270,32 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         {%- endif -%}
     {%- endfor %}
     
-    {# Parent metadata contains only real, marked reflection bases. There is
-       no synthetic EntityObject root and no inheritance-based opt-in. #}
-    {%- for parent_idx in marked_record_decls -%}
-        {%- set parent_rec = decl_from_index(parent_idx) -%}
-        {%- if parent_rec.id != rec.id %}
+    {# Object lineage can cross module/DLL generation units. Other reflected
+       records keep the established marked-record membership rule. #}
+    {%- set reflected_is_object = annotation_has(rec, "object") -%}
+    {%- if reflected_is_object -%}
+        {%- set object_lineage = template_lineage_record_hashes(
+            rec.id,
+            "lux::object::Object",
+            1
+        ) -%}
+        {%- for parent in object_lineage -%}
+            {%- set parent_rec = decl_from_id(parent.id) -%}
+            {%- if annotation_has(parent_rec, "object") %}
+        cls.parent_chain.push_back({{ parent.hash }}ull);
+            {%- endif -%}
+        {%- endfor -%}
+    {%- else -%}
+        {%- for parent_idx in marked_record_decls -%}
+            {%- set parent_rec = decl_from_index(parent_idx) -%}
+            {%- if parent_rec.id != rec.id %}
     if constexpr (std::is_base_of_v<
                       {{ parent_rec.fq_name }},
                       {{ rec.fq_name }}>)
         cls.parent_chain.push_back({{ parent_rec.hash }}ull);
-        {%- endif -%}
-    {%- endfor %}
+            {%- endif -%}
+        {%- endfor -%}
+    {%- endif %}
 
     /* The fix list stores RefType addresses until every class in the module
        has been registered.  Reserve before taking any field address so later
@@ -330,6 +353,12 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
     {%- set is_signal = type_is_specialization(var.type_id, "lux::object::Signal") -%}
     {%- set is_reflected_var = annotation_has(var, "luxref::property::member") -%}
     {%- set skip_var = annotation_has(var, "luxref::property::skip") -%}
+    {%- if is_signal and not is_object %}
+    static_assert(
+        !std::is_same_v<decltype({{ var.fq_name }}), decltype({{ var.fq_name }})>,
+        "lux::object::Signal static members require LUX_OBJECT()"
+    );
+    {%- endif %}
     {%- if var.visibility == 1 and not skip_var and (not is_object or is_signal or is_reflected_var) %}
     {
         cls.static_fields.push_back({});
@@ -339,6 +368,10 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         f.visibility  = lux::meta::EVisibility::Public;
         using field_type_{{ loop.index }} = decltype({{ var.fq_name }});
         f.type        = lux::meta::ref_type_of_v<field_type_{{ loop.index }}>;
+        {%- set static_template_primary = type_template_name(var.type_id) -%}
+        {%- if static_template_primary %}
+        f.template_primary = "{{ static_template_primary }}";
+        {%- endif %}
         f.address     = std::addressof({{ var.fq_name }});
         f.is_const    = std::is_const_v<field_type_{{ loop.index }}>;
         f.is_volatile = std::is_volatile_v<field_type_{{ loop.index }}>;

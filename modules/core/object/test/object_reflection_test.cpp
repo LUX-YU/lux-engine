@@ -22,17 +22,25 @@ int main()
     assert(reflected->static_fields.size() == 2);
     assert(reflected->methods.size() >= 4);
 
-    const auto signal = lux::object::reflection::findSignal(*reflected, "changed");
+    const auto signal = lux::object::reflection::findSignal(
+        registry,
+        *reflected,
+        "changed"
+    );
     assert(signal);
     assert(
         signal.signal->owner ==
         lux::cxx::typeToken<lux::object::test::ReflectedObject>()
     );
-    assert(signal.signal->index == lux::object::SignalIndex{0});
-    const auto saved_signal = lux::object::reflection::findSignal(*reflected, "saved");
+    assert(signal.signal->index.value() == 0u);
+    const auto saved_signal = lux::object::reflection::findSignal(
+        registry,
+        *reflected,
+        "saved"
+    );
     assert(saved_signal);
-    assert(!saved_signal.signal->has_payload);
-    assert(saved_signal.signal->index == lux::object::SignalIndex{1});
+    assert(!saved_signal.signal->hasPayload());
+    assert(saved_signal.signal->index.value() == 1u);
 
     const lux::meta::RefMethod* on_changed = nullptr;
     const lux::meta::RefMethod* wrong_payload = nullptr;
@@ -160,14 +168,27 @@ int main()
         registry.findClass("lux::object::test::ReflectedDerived");
     assert(reflected_base);
     assert(reflected_derived);
-    const auto base_signal =
-        lux::object::reflection::findSignal(*reflected_base, "baseChanged");
-    const auto derived_signal =
-        lux::object::reflection::findSignal(*reflected_derived, "derivedChanged");
+    const auto base_signal = lux::object::reflection::findSignal(
+        registry,
+        *reflected_base,
+        "baseChanged"
+    );
+    const auto derived_signal = lux::object::reflection::findSignal(
+        registry,
+        *reflected_derived,
+        "derivedChanged"
+    );
     assert(base_signal);
     assert(derived_signal);
-    assert(base_signal.signal->index == lux::object::SignalIndex{0});
-    assert(derived_signal.signal->index == lux::object::SignalIndex{1});
+    assert(base_signal.signal->index.value() == 0u);
+    assert(derived_signal.signal->index.value() == 1u);
+    const auto inherited_signal = lux::object::reflection::findSignal(
+        registry,
+        *reflected_derived,
+        "baseChanged"
+    );
+    assert(inherited_signal);
+    assert(inherited_signal.signal->index.value() == 0u);
 
     lux::meta::ReflectionRegistry::destroyRegistry();
 }

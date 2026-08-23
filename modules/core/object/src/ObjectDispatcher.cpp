@@ -82,18 +82,11 @@ namespace lux::object
     {
         if (!state_)
             return EPostStatus::CLOSED;
-        try
-        {
-            std::scoped_lock lock{state_->mutex};
-            if (state_->closed)
-                return EPostStatus::CLOSED;
-            state_->messages.push_back(std::move(message));
-            return EPostStatus::POSTED;
-        }
-        catch (...)
-        {
+        std::scoped_lock lock{state_->mutex};
+        if (state_->closed)
             return EPostStatus::CLOSED;
-        }
+        state_->messages.push_back(std::move(message));
+        return EPostStatus::POSTED;
     }
 
     ObjectMessageQueue::ObjectMessageQueue()

@@ -4,40 +4,20 @@
 #include <cassert>
 
 #include <lux/engine/object/ObjectModel.hpp>
+#include "ObjectTestSignals.hpp"
 #include <memory>
 #include <vector>
 
 namespace
 {
-    struct MoveOnly final
-    {
-        explicit MoveOnly(int input) : value(input) {}
-        MoveOnly(const MoveOnly&) = delete;
-        MoveOnly& operator=(const MoveOnly&) = delete;
-        MoveOnly(MoveOnly&&) noexcept = default;
-        MoveOnly& operator=(MoveOnly&&) noexcept = default;
-
-        int value{0};
-    };
-
-    class Sender final : public lux::object::Object<Sender>
-    {
-    public:
-        static const signal_type<int> changed;
-        static const signal_type<MoveOnly> moveOnly;
-
-        void publish(int value) { notify<changed>(value); }
-        void publish(MoveOnly& value) { notify<moveOnly>(value); }
-    };
-
-    const Sender::signal_type<int> Sender::changed{lux::object::SignalIndex{0}};
-    const Sender::signal_type<MoveOnly> Sender::moveOnly{lux::object::SignalIndex{1}};
+    using lux::object::test::fixture::MoveOnly;
+    using lux::object::test::fixture::MultiSender;
 
     class Receiver final : public lux::object::Object<Receiver>
     {
     public:
-        void receive(const int& input) { value = input; }
-        void receiveMoveOnly(const MoveOnly& input) { value = input.value; }
+        void receive(const int& input) noexcept { value = input; }
+        void receiveMoveOnly(const MoveOnly& input) noexcept { value = input.value; }
 
         int value{0};
     };
@@ -56,7 +36,7 @@ namespace
         {
         }
 
-        void receive(const int&) { owner_->reset(); }
+        void receive(const int&) noexcept { owner_->reset(); }
 
     private:
         std::unique_ptr<SelfDestroyingReceiver>* owner_{nullptr};
@@ -65,16 +45,16 @@ namespace
 
 int main()
 {
-    Sender sender;
+    MultiSender sender;
     auto sender_weak = sender.weakRef();
-    assert(sender_weak.getAs<Sender>() == &sender);
-    assert(sender_weak.getAs<OtherObject>() == nullptr);
+    assert(sender_weak.getAsOnCurrent<MultiSender>() == &sender);
+    assert(sender_weak.getAsOnCurrent<OtherObject>() == nullptr);
 
     lux::object::Connection receiver_connection;
     {
         Receiver receiver;
         auto observed = sender.observe<
-            Sender::changed,
+            MultiSender::changed,
             &Receiver::receive,
             lux::object::EDelivery::DIRECT>(receiver);
         assert(observed);
@@ -89,10 +69,10 @@ int main()
     Receiver surviving_receiver;
     lux::object::ObjectWeakRef expired_sender;
     {
-        auto owned_sender = std::make_unique<Sender>();
+        auto owned_sender = std::make_unique<MultiSender>();
         expired_sender = owned_sender->weakRef();
         auto observed = owned_sender->observe<
-            Sender::changed,
+            MultiSender::changed,
             &Receiver::receive,
             lux::object::EDelivery::DIRECT>(surviving_receiver);
         assert(observed);
@@ -103,7 +83,7 @@ int main()
 
     Receiver move_receiver;
     auto move_connection = sender.observe<
-        Sender::moveOnly,
+        MultiSender::moveOnly,
         &Receiver::receiveMoveOnly,
         lux::object::EDelivery::DIRECT>(move_receiver);
     assert(move_connection);
@@ -115,7 +95,7 @@ int main()
     self_destroying =
         std::make_unique<SelfDestroyingReceiver>(std::addressof(self_destroying));
     auto self_connection = sender.observe<
-        Sender::changed,
+        MultiSender::changed,
         &SelfDestroyingReceiver::receive,
         lux::object::EDelivery::DIRECT>(*self_destroying);
     assert(self_connection);
@@ -124,8 +104,8 @@ int main()
     assert(!self_connection->connected());
 
     std::vector<int> nested;
-    auto nested_connection = sender.observeScoped<Sender::changed>(
-        [&](const int& value)
+    auto nested_connection = sender.observeScoped<MultiSender::changed>(
+        [&](const int& value) noexcept
         {
             nested.push_back(value);
             if (value == 1)

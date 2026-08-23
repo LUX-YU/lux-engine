@@ -70,7 +70,7 @@ namespace lux::object
         auto message = detail::makeObjectMessage(
             [target = std::move(target), event = std::move(event)]() mutable
             {
-                if (auto* object = target.get())
+                if (auto* object = target.getOnCurrent())
                     static_cast<void>(sendEvent(*object, event));
             }
         );

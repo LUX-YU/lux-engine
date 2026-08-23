@@ -1,10 +1,53 @@
 #include <lux/engine/object/ObjectReflection.hpp>
 
 #include <array>
+#include <exception>
+#include <memory>
 #include <utility>
 
 namespace lux::object::reflection
 {
+    SignalView findDeclaredSignal(
+        const lux::meta::RefClass& object_class,
+        std::string_view name
+    ) noexcept
+    {
+        for (const auto& field : object_class.static_fields)
+        {
+            if (field.name != name || !field.annotations().has("signal") ||
+                field.template_primary != "lux::object::Signal" ||
+                !field.address || field.type.size != sizeof(SignalRuntime))
+            {
+                continue;
+            }
+            return {
+                reinterpret_cast<const SignalRuntime*>(field.address),
+                std::addressof(field)
+            };
+        }
+        return {};
+    }
+
+    SignalView findSignal(
+        const lux::meta::ReflectionRegistry& registry,
+        const lux::meta::RefClass& object_class,
+        std::string_view name
+    ) noexcept
+    {
+        if (auto declared = findDeclaredSignal(object_class, name))
+            return declared;
+        for (const auto parent_hash : object_class.parent_chain)
+        {
+            const auto* parent = registry.findClassByHash(parent_hash);
+            if (parent)
+            {
+                if (auto inherited = findDeclaredSignal(*parent, name))
+                    return inherited;
+            }
+        }
+        return {};
+    }
+
     lux::cxx::expected<Connection, EDynamicObserveError> observe(
         lux::object::LuxObject& sender,
         SignalView signal,
@@ -39,11 +82,11 @@ namespace lux::object::reflection
             return lux::cxx::unexpected(EDynamicObserveError::RETURN_TYPE_MISMATCH);
         }
         const auto expected_parameter_count =
-            signal.signal->has_payload ? std::size_t{1} : std::size_t{0};
+            signal.signal->hasPayload() ? std::size_t{1} : std::size_t{0};
         if (invokable.parameters.size() != expected_parameter_count)
             return lux::cxx::unexpected(EDynamicObserveError::PARAMETER_COUNT_MISMATCH);
 
-        if (signal.signal->has_payload)
+        if (signal.signal->hasPayload())
         {
             const auto& parameter = invokable.parameters.front();
             if (static_cast<ETypeQual>(parameter.type.qtype.qual) !=
@@ -63,23 +106,30 @@ namespace lux::object::reflection
             bool has_payload{false};
         };
         auto context = std::make_shared<DynamicInvoke>(
-            DynamicInvoke{invokable.invoker, signal.signal->has_payload}
+            DynamicInvoke{invokable.invoker, signal.signal->hasPayload()}
         );
         auto connected = detail::observeDynamicErased(
             sender,
             *signal.signal,
             receiver,
-            [](LuxObject* object, const void* payload, void* raw_context)
+            [](LuxObject* object, const void* payload, void* raw_context) noexcept
             {
                 auto& invoke = *static_cast<DynamicInvoke*>(raw_context);
-                if (invoke.has_payload)
+                try
                 {
-                    std::array<void*, 1> arguments{const_cast<void*>(payload)};
-                    invoke.invoker(object, arguments.data(), nullptr);
+                    if (invoke.has_payload)
+                    {
+                        std::array<void*, 1> arguments{const_cast<void*>(payload)};
+                        invoke.invoker(object, arguments.data(), nullptr);
+                    }
+                    else
+                    {
+                        invoke.invoker(object, nullptr, nullptr);
+                    }
                 }
-                else
+                catch (...)
                 {
-                    invoke.invoker(object, nullptr, nullptr);
+                    std::terminate();
                 }
             },
             std::move(context),

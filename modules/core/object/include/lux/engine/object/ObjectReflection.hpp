@@ -22,20 +22,16 @@ namespace lux::object::reflection
         }
     };
 
-    [[nodiscard]] inline SignalView
-    findSignal(const lux::meta::RefClass& object_class, std::string_view name) noexcept
-    {
-        for (const auto& field : object_class.static_fields)
-        {
-            if (field.name != name || !field.annotations().has("signal"))
-            {
-                continue;
-            }
-            const auto* signal = reinterpret_cast<const SignalRuntime*>(field.address);
-            return signal ? SignalView{signal, &field} : SignalView{};
-        }
-        return {};
-    }
+    [[nodiscard]] LUX_CORE_PUBLIC SignalView findDeclaredSignal(
+        const lux::meta::RefClass& object_class,
+        std::string_view name
+    ) noexcept;
+
+    [[nodiscard]] LUX_CORE_PUBLIC SignalView findSignal(
+        const lux::meta::ReflectionRegistry& registry,
+        const lux::meta::RefClass& object_class,
+        std::string_view name
+    ) noexcept;
 
     enum class EDynamicObserveError
     {

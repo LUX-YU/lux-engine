@@ -112,7 +112,18 @@ The working tree modification under
 `modules/function/input/pinclude/lux/engine/input/detail/GlfwInputTranslation.hpp`
 predates this work and is not part of the refactor.
 
-# Completed: Object / UI foundation stabilization (2026-08-23)
+# Active: Object / UI foundation performance stabilization (2026-08-23)
+
+- [ ] Enforce callback, affinity, WeakRef, dispatcher and inherited-Signal contracts.
+- [ ] Remove typed Signal runtime owner lookup and steady maintenance RMW.
+- [ ] Make SignalIndex generated-only and deduplicate connection identity.
+- [ ] Benchmark listener layout against the locked relative-performance threshold.
+- [ ] Make Command routing change-driven and linear in bindings plus commands.
+- [ ] Remove redundant UI wrappers/key mirrors and eliminate common drag/drop copies.
+- [ ] Re-run the complete build/test/install matrix before restoring
+      `foundation API frozen`.
+
+## Previous stabilization baseline
 
 - [x] Replace authored Signal names/address routing with generated SignalIndex and
       reference-NTTP typed APIs.

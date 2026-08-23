@@ -6,13 +6,22 @@ namespace lux::object
 {
     bool Connection::connected() const noexcept
     {
-        const auto slot = slot_.lock();
-        return slot && slot->connected.load(std::memory_order_acquire);
+        if (!control_ || !control_->connected.load(std::memory_order_acquire))
+        {
+            return false;
+        }
+        if (control_->receiver &&
+            !control_->receiver->object.load(std::memory_order_acquire))
+        {
+            return false;
+        }
+        return sender_ && sender_->object.load(std::memory_order_acquire) != nullptr;
     }
 
     void Connection::disconnect() noexcept
     {
-        if (const auto slot = slot_.lock())
-            slot->connected.store(false, std::memory_order_release);
+        if (!sender_ || !control_)
+            return;
+        sender_->requestDisconnect(id_, control_.get());
     }
-}
+} // namespace lux::object

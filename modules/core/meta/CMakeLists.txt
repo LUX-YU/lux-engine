@@ -42,6 +42,11 @@ component_add_cmake_scripts(
 	${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_add_meta.cmake
 )
 
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/template/
+    DESTINATION share/lux-engine-core/meta/template
+)
+
 target_link_libraries(
     meta
     PUBLIC

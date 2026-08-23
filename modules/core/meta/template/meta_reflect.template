@@ -31,6 +31,24 @@
 #include <{{ custom_include }}>
 {% endif %}
 
+{# Static Signal declarations are authored only by their C++ member name. The
+   generated sidecar owns the out-of-line symbol and assigns the build-local
+   prefix-layout index without any Object-specific parser knowledge. #}
+{% for record_idx in marked_record_decls -%}{%- set signal_record = decl_from_index(record_idx) -%}
+{%- for var_id in signal_record.static_var_decls -%}{%- set signal_var = decl_from_id(var_id) -%}
+{%- if type_is_specialization(signal_var.type_id, "lux::object::Signal") %}
+decltype({{ signal_var.fq_name }}) {{ signal_var.fq_name }}{
+    lux::object::SignalIndex{
+        {{ template_lineage_static_index(
+            signal_record.id,
+            signal_var.id,
+            "lux::object::Object",
+            "lux::object::Signal"
+        ) }}u
+    }
+};
+{%- endif -%}{%- endfor -%}{%- endfor %}
+
 namespace
 {
     template <class T>
@@ -266,8 +284,10 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
 
     /* fields --------------------------------------------------------------- */
     {% for field_id in rec.field_decls -%}{%- set field = decl_from_id(field_id) -%}
+    {%- set is_object = annotation_has(rec, "object") -%}
+    {%- set is_reflected_field = annotation_has(field, "luxref::property::member") -%}
     {%- set skip_field = annotation_has(field, "luxref::property::skip") -%}
-    {%- if field.visibility == 1 and not skip_field %}
+    {%- if field.visibility == 1 and not skip_field and (not is_object or is_reflected_field) %}
     {
         cls.fields.push_back({});
         lux::meta::RefField& f = cls.fields.back();
@@ -306,8 +326,11 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
 
     /* static data members -------------------------------------------------- */
     {% for var_id in rec.static_var_decls -%}{%- set var = decl_from_id(var_id) -%}
+    {%- set is_object = annotation_has(rec, "object") -%}
+    {%- set is_signal = type_is_specialization(var.type_id, "lux::object::Signal") -%}
+    {%- set is_reflected_var = annotation_has(var, "luxref::property::member") -%}
     {%- set skip_var = annotation_has(var, "luxref::property::skip") -%}
-    {%- if var.visibility == 1 and not skip_var %}
+    {%- if var.visibility == 1 and not skip_var and (not is_object or is_signal or is_reflected_var) %}
     {
         cls.static_fields.push_back({});
         lux::meta::RefStaticField& f = cls.static_fields.back();
@@ -318,11 +341,13 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         f.type        = lux::meta::ref_type_of_v<field_type_{{ loop.index }}>;
         f.address     = std::addressof({{ var.fq_name }});
         f.is_const    = std::is_const_v<field_type_{{ loop.index }}>;
-        f.is_volatile = std::is_volatile_v<field_type_{{ loop.index }}>;{% for attr in var.attributes %}{% if annotation_has(attr, "luxref::property::member") %}
+        f.is_volatile = std::is_volatile_v<field_type_{{ loop.index }}>;
+        {%- if is_signal %}
+        { static constexpr char kStaticAnnot_{{ rec.hash }}_{{ var.name }}[] = "luxref::property::member,signal=true"; f.annotation_str = kStaticAnnot_{{ rec.hash }}_{{ var.name }}; }
+        {%- else %}{% for attr in var.attributes %}{% if annotation_has(attr, "luxref::property::member") %}
         { static constexpr char kStaticAnnot_{{ rec.hash }}_{{ var.name }}[] = R"__LUX_ANNOT({{ attr }})__LUX_ANNOT"; f.annotation_str = kStaticAnnot_{{ rec.hash }}_{{ var.name }}; }{% endif %}{% endfor %}
-        {%- if annotation_has(var, "signal") %}
-        static_assert({{ var.fq_name }}.name() == "{{ var.name }}",
-            "Reflected signal explicit name must match its C++ static field name");
+        {%- endif %}
+        {%- if is_signal %}
         static_assert(std::is_standard_layout_v<field_type_{{ loop.index }}>,
             "Reflected signal descriptors must remain standard-layout");
         {%- endif %}
@@ -330,7 +355,10 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
     {%- endif %}{%- endfor %}
 
     /* methods -------------------------------------------------------------- */
-    {% for method_id in rec.method_decls -%}{%- set method_index = loop.index -%}{%- set method = decl_from_id(method_id) -%}{% if method.visibility == 1 %}
+    {% for method_id in rec.method_decls -%}{%- set method_index = loop.index -%}{%- set method = decl_from_id(method_id) -%}
+    {%- set is_object = annotation_has(rec, "object") -%}
+    {%- set is_reflected_method = annotation_has(method, "luxref::property::method") -%}
+    {%- if method.visibility == 1 and (not is_object or is_reflected_method) %}
     {
         cls.methods.push_back({});
         lux::meta::RefMethod& m = cls.methods.back();

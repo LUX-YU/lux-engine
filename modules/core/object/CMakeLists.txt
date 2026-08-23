@@ -1,4 +1,4 @@
-find_package(lux-cxx CONFIG REQUIRED COMPONENTS core compile_time)
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS core compile_time memory)
 
 add_component(
     COMPONENT_NAME object
@@ -29,11 +29,12 @@ target_link_libraries(
         meta
         lux::cxx::core
         lux::cxx::compile_time
+        lux::cxx::memory
 )
 
 component_add_transitive_commands(
     object
-    "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
+    "find_package(lux-cxx REQUIRED COMPONENTS core compile_time memory)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
 )
 
@@ -55,6 +56,23 @@ if(ENABLE_OBJECT_TEST)
     add_executable(object_dispatcher_test test/object_dispatcher_test.cpp)
     target_link_libraries(object_dispatcher_test PRIVATE object)
     add_test(NAME object_dispatcher_test COMMAND object_dispatcher_test)
+
+    add_executable(object_lifetime_test test/object_lifetime_test.cpp)
+    target_link_libraries(object_lifetime_test PRIVATE object)
+    add_test(NAME object_lifetime_test COMMAND object_lifetime_test)
+
+    add_executable(
+        object_sender_self_destroy_probe
+        test/object_sender_self_destroy_probe.cpp
+    )
+    target_link_libraries(object_sender_self_destroy_probe PRIVATE object)
+    add_test(
+        NAME object_sender_self_destroy_probe
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DPROBE=$<TARGET_FILE:object_sender_self_destroy_probe>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/test/expect_process_failure.cmake
+    )
 
     add_executable(
         object_performance_contract_test
@@ -86,4 +104,66 @@ if(ENABLE_OBJECT_TEST)
         OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen
     )
     add_test(NAME object_reflection_test COMMAND object_reflection_test)
+
+    engine_add_meta(
+        NAME object_cross_dll_base_meta
+        TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/cross_dll/BaseObject.hpp
+        REGISTER_FUNC_NAME lux_object_cross_dll_base
+    )
+    add_library(
+        object_cross_dll_base_test_support SHARED
+        test/cross_dll/BaseObject.cpp
+    )
+    target_compile_definitions(
+        object_cross_dll_base_test_support
+        PRIVATE LUX_OBJECT_CROSS_DLL_BASE_LIBRARY
+    )
+    target_include_directories(
+        object_cross_dll_base_test_support
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/test/cross_dll
+    )
+    target_link_libraries(object_cross_dll_base_test_support PUBLIC object)
+    engine_target_add_meta(
+        TARGET object_cross_dll_base_test_support
+        METAS object_cross_dll_base_meta
+        OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/cross_dll_base_meta
+    )
+
+    engine_add_meta(
+        NAME object_cross_dll_derived_meta
+        TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/cross_dll/DerivedObject.hpp
+        REGISTER_FUNC_NAME lux_object_cross_dll_derived
+    )
+    add_library(
+        object_cross_dll_derived_test_support SHARED
+        test/cross_dll/DerivedObject.cpp
+    )
+    target_compile_definitions(
+        object_cross_dll_derived_test_support
+        PRIVATE LUX_OBJECT_CROSS_DLL_DERIVED_LIBRARY
+    )
+    target_include_directories(
+        object_cross_dll_derived_test_support
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/test/cross_dll
+    )
+    target_link_libraries(
+        object_cross_dll_derived_test_support
+        PUBLIC object_cross_dll_base_test_support
+    )
+    engine_target_add_meta(
+        TARGET object_cross_dll_derived_test_support
+        METAS object_cross_dll_derived_meta
+        OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/cross_dll_derived_meta
+    )
+
+    add_executable(
+        object_cross_dll_test
+        test/cross_dll/object_cross_dll_test.cpp
+    )
+    target_link_libraries(
+        object_cross_dll_test
+        PRIVATE object_cross_dll_derived_test_support
+    )
+    add_test(NAME object_cross_dll_test COMMAND object_cross_dll_test)
+
 endif()

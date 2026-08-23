@@ -1,15 +1,16 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <utility>
 
+#include <lux/cxx/memory/intrusive_ptr.hpp>
 #include <lux/engine/core/visibility.h>
+#include <lux/engine/object/ObjectFwd.hpp>
 
 namespace lux::object
 {
-    namespace detail
-    {
-        struct ObjectSlot;
-    }
+    class LuxObject;
 
     class LUX_CORE_PUBLIC Connection final
     {
@@ -21,12 +22,18 @@ namespace lux::object
 
     private:
         friend class LuxObject;
-        explicit Connection(std::weak_ptr<detail::ObjectSlot> slot) noexcept
-            : slot_(std::move(slot))
+        Connection(
+            lux::cxx::intrusive_ptr<detail::ObjectState> sender,
+            lux::cxx::intrusive_ptr<detail::ConnectionControl> control,
+            std::uint64_t id
+        ) noexcept
+            : sender_(std::move(sender)), control_(std::move(control)), id_(id)
         {
         }
 
-        std::weak_ptr<detail::ObjectSlot> slot_;
+        lux::cxx::intrusive_ptr<detail::ObjectState> sender_;
+        lux::cxx::intrusive_ptr<detail::ConnectionControl> control_;
+        std::uint64_t id_{0};
     };
 
     class ScopedConnection final
@@ -38,12 +45,12 @@ namespace lux::object
         {
         }
 
-        ScopedConnection(const ScopedConnection &) = delete;
-        ScopedConnection &operator=(const ScopedConnection &) = delete;
-        ScopedConnection(ScopedConnection &&) noexcept = default;
-        ScopedConnection &operator=(ScopedConnection &&other) noexcept
+        ScopedConnection(const ScopedConnection&) = delete;
+        ScopedConnection& operator=(const ScopedConnection&) = delete;
+        ScopedConnection(ScopedConnection&&) noexcept = default;
+        ScopedConnection& operator=(ScopedConnection&& other) noexcept
         {
-            if (this != &other)
+            if (this != std::addressof(other))
             {
                 connection_.disconnect();
                 connection_ = std::move(other.connection_);
@@ -51,15 +58,15 @@ namespace lux::object
             return *this;
         }
 
-        ~ScopedConnection()
-        {
-            connection_.disconnect();
-        }
+        ~ScopedConnection() { connection_.disconnect(); }
 
-        [[nodiscard]] Connection &connection() noexcept { return connection_; }
-        [[nodiscard]] const Connection &connection() const noexcept { return connection_; }
+        [[nodiscard]] Connection& connection() noexcept { return connection_; }
+        [[nodiscard]] const Connection& connection() const noexcept
+        {
+            return connection_;
+        }
 
     private:
         Connection connection_;
     };
-}
+} // namespace lux::object

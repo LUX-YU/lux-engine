@@ -5,61 +5,131 @@
 #include <mutex>
 #include <utility>
 
-namespace lux::object
+namespace lux::object::detail
 {
-    struct ObjectDispatcher::Impl final
+    struct ObjectMessageQueueState final
     {
         std::mutex mutex;
-        std::deque<lux::cxx::move_only_function<void()>> messages;
+        std::deque<ObjectMessage> messages;
         std::thread::id owner{std::this_thread::get_id()};
         bool closed{false};
     };
+} // namespace lux::object::detail
 
-    ObjectDispatcher::ObjectDispatcher()
-        : impl_(std::make_unique<Impl>())
+namespace lux::object
+{
+    ObjectMessage::ObjectMessage(ObjectMessage&& other) noexcept
     {
+        moveFrom(std::move(other));
     }
 
-    ObjectDispatcher::~ObjectDispatcher()
+    ObjectMessage& ObjectMessage::operator=(ObjectMessage&& other) noexcept
     {
-        close();
-    }
-
-    EPostStatus ObjectDispatcher::post(lux::cxx::move_only_function<void()> message)
-    {
-        std::scoped_lock lock{impl_->mutex};
-        if (impl_->closed) return EPostStatus::CLOSED;
-        impl_->messages.push_back(std::move(message));
-        return EPostStatus::POSTED;
-    }
-
-    std::size_t ObjectDispatcher::dispatchPending()
-    {
-        if (!isOwnerThread()) std::abort();
-        std::deque<lux::cxx::move_only_function<void()>> local;
+        if (this != std::addressof(other))
         {
-            std::scoped_lock lock{impl_->mutex};
-            local.swap(impl_->messages);
+            reset();
+            moveFrom(std::move(other));
+        }
+        return *this;
+    }
+
+    ObjectMessage::~ObjectMessage() { reset(); }
+
+    void ObjectMessage::invoke() noexcept
+    {
+        if (ops_)
+            ops_->invoke(data_);
+    }
+
+    void ObjectMessage::reset() noexcept
+    {
+        if (ops_)
+            ops_->destroy(data_);
+        data_ = nullptr;
+        ops_ = nullptr;
+        inline_ = false;
+    }
+
+    void ObjectMessage::moveFrom(ObjectMessage&& other) noexcept
+    {
+        if (!other.ops_)
+            return;
+        ops_ = other.ops_;
+        inline_ = other.inline_;
+        if (inline_)
+        {
+            data_ = storage_;
+            ops_->move_inline(other.data_, data_);
+        }
+        else
+        {
+            data_ = other.data_;
+        }
+        other.data_ = nullptr;
+        other.ops_ = nullptr;
+        other.inline_ = false;
+    }
+
+    bool ObjectDispatcherRef::isCurrent() const noexcept
+    {
+        if (!state_)
+            return false;
+        std::scoped_lock lock{state_->mutex};
+        return !state_->closed && state_->owner == std::this_thread::get_id();
+    }
+
+    EPostStatus ObjectDispatcherRef::post(ObjectMessage&& message) const noexcept
+    {
+        if (!state_)
+            return EPostStatus::CLOSED;
+        try
+        {
+            std::scoped_lock lock{state_->mutex};
+            if (state_->closed)
+                return EPostStatus::CLOSED;
+            state_->messages.push_back(std::move(message));
+            return EPostStatus::POSTED;
+        }
+        catch (...)
+        {
+            return EPostStatus::CLOSED;
+        }
+    }
+
+    ObjectMessageQueue::ObjectMessageQueue()
+        : state_(std::make_shared<detail::ObjectMessageQueueState>())
+    {
+    }
+
+    ObjectMessageQueue::~ObjectMessageQueue() { close(); }
+
+    ObjectDispatcherRef ObjectMessageQueue::dispatcherRef() const noexcept
+    {
+        return ObjectDispatcherRef{state_};
+    }
+
+    std::size_t ObjectMessageQueue::dispatchPending()
+    {
+        if (!state_ || state_->owner != std::this_thread::get_id())
+            std::abort();
+
+        std::deque<ObjectMessage> local;
+        {
+            std::scoped_lock lock{state_->mutex};
+            local.swap(state_->messages);
         }
         const auto count = local.size();
-        for (auto& message : local) message();
+        for (auto& message : local)
+            message.invoke();
         return count;
     }
 
-    void ObjectDispatcher::close() noexcept
+    void ObjectMessageQueue::close() noexcept
     {
-        std::scoped_lock lock{impl_->mutex};
-        impl_->closed = true;
-        impl_->messages.clear();
+        if (!state_)
+            return;
+        std::scoped_lock lock{state_->mutex};
+        state_->closed = true;
+        state_->messages.clear();
     }
-
-    std::thread::id ObjectDispatcher::ownerThread() const noexcept
-    {
-        return impl_->owner;
-    }
-
-    bool ObjectDispatcher::isOwnerThread() const noexcept
-    {
-        return ownerThread() == std::this_thread::get_id();
-    }
-}
+} // namespace lux::object

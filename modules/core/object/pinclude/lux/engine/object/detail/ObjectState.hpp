@@ -1,40 +1,115 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
-#include <lux/cxx/core/move_only_function.hpp>
+#include <lux/cxx/memory/intrusive_ptr.hpp>
 #include <lux/engine/object/LuxObject.hpp>
 
 namespace lux::object::detail
 {
-    struct ObjectControl final
+    enum class EListenerLane : std::uint8_t
     {
-        std::atomic<LuxObject*> object{nullptr};
+        DIRECT,
+        QUEUED,
+        PENDING
     };
 
-    struct ObjectSlot final
+    struct ConnectionControl final
     {
+        std::atomic_size_t refs{0};
         std::atomic_bool connected{true};
-        lux::cxx::move_only_function<void(const void*)> callback;
-        std::weak_ptr<ObjectControl> receiver;
-        bool has_receiver{false};
-        ObjectDispatcher* dispatcher{nullptr};
+        std::uint64_t id{0};
+        std::size_t signal_index{0};
+        std::size_t position{0};
+        EListenerLane lane{EListenerLane::DIRECT};
         EDelivery delivery{EDelivery::DIRECT};
+        lux::cxx::intrusive_ptr<ObjectState> receiver;
+        ObjectDispatcherRef receiver_dispatcher;
+        ObjectInvokeThunk invoke{nullptr};
+        QueuedMessageFactory queue_factory{nullptr};
+        std::shared_ptr<void> context;
     };
 
     struct SignalBucket final
     {
-        std::vector<std::shared_ptr<ObjectSlot>> active;
-        std::vector<std::shared_ptr<ObjectSlot>> pending;
-        std::size_t notify_depth{0};
+        std::vector<ConnectionControl*> direct;
+        std::vector<ConnectionControl*> queued;
+        std::vector<ConnectionControl*> pending;
+    };
+
+    struct IncomingLink final
+    {
+        lux::cxx::intrusive_ptr<ObjectState> sender;
+        lux::cxx::intrusive_ptr<ConnectionControl> control;
+        std::uint64_t connection_id{0};
+    };
+
+    struct InstalledConnection final
+    {
+        lux::cxx::intrusive_ptr<ConnectionControl> control;
+        std::uint64_t id{0};
     };
 
     struct ObjectState final
     {
-        std::shared_ptr<ObjectControl> control;
-        std::unordered_map<const SignalHeader*, SignalBucket> signals;
+        ObjectState(
+            LuxObject* value,
+            ObjectDispatcherRef dispatcher_value,
+            std::thread::id affinity_value
+        ) noexcept;
+        ~ObjectState();
+
+        std::atomic_size_t refs{0};
+        std::atomic<LuxObject*> object{nullptr};
+        ObjectDispatcherRef dispatcher;
+        std::thread::id affinity;
+
+        std::vector<SignalBucket> buckets;
+
+        using ConnectionMap = std::
+            unordered_map<std::uint64_t, lux::cxx::intrusive_ptr<ConnectionControl>>;
+
+        ConnectionMap connections;
+        std::uint64_t next_connection_id{1};
+        std::size_t active_notify_depth{0};
+        std::atomic_bool maintenance_requested{false};
+        std::mutex incoming_mutex;
+        std::vector<IncomingLink> incoming;
+
+        [[nodiscard]] InstalledConnection install(
+            const SignalRuntime& signal,
+            lux::cxx::intrusive_ptr<ObjectState> receiver,
+            ObjectDispatcherRef receiver_dispatcher,
+            ObjectInvokeThunk invoke,
+            EDelivery delivery,
+            QueuedMessageFactory queue_factory,
+            std::shared_ptr<void> context
+        );
+
+        void notify(const SignalRuntime& signal, const void* payload);
+        void requestDisconnect(std::uint64_t id, ConnectionControl* control) noexcept;
+        void removeConnection(std::uint64_t id) noexcept;
+        void maintain() noexcept;
+        void closeOwner() noexcept;
+
+        void addIncoming(
+            lux::cxx::intrusive_ptr<ObjectState> sender,
+            lux::cxx::intrusive_ptr<ConnectionControl> control,
+            std::uint64_t id
+        );
+
+        void removeIncoming(const ObjectState* sender, std::uint64_t id) noexcept;
+
+    private:
+        void
+        append(SignalBucket& bucket, ConnectionControl& control, EDelivery delivery);
+        void removePhysical(ConnectionControl& control) noexcept;
+        void compactBucket(SignalBucket& bucket) noexcept;
     };
-}
+} // namespace lux::object::detail

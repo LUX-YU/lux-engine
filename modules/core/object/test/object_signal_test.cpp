@@ -1,38 +1,49 @@
-#include <lux/engine/object/ObjectModel.hpp>
-
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
+
+#include <lux/engine/object/ObjectModel.hpp>
 #include <vector>
 
 namespace
 {
     class Sender final : public lux::object::Object<Sender>
     {
-      public:
-        inline static constexpr signal_type<int> changed{"changed"};
+    public:
+        static const signal_type<int> changed;
 
-        void publish(int value) { emit(changed, value); }
+        void publish(int value) { notify<changed>(value); }
     };
+
+    const Sender::signal_type<int> Sender::changed{lux::object::SignalIndex{0}};
 
     class BaseSender : public lux::object::Object<BaseSender>
     {
-      public:
-        inline static constexpr signal_type<int> base_changed{"base_changed"};
-        void publishBase(int value) { emit(base_changed, value); }
+    public:
+        static const signal_type<int> base_changed;
+        void publishBase(int value) { notify<base_changed>(value); }
     };
 
-    class DerivedSender final
-        : public lux::object::Object<DerivedSender, BaseSender>
+    const BaseSender::signal_type<int> BaseSender::base_changed{
+        lux::object::SignalIndex{0}
+    };
+
+    class DerivedSender final : public lux::object::Object<DerivedSender, BaseSender>
     {
     };
 
-    struct Ping final { int value; };
+    struct Ping final
+    {
+        int value;
+    };
 
     class EventReceiver final : public lux::object::Object<EventReceiver>
     {
-      public:
+    public:
         int value{0};
 
-      protected:
+    protected:
         void event(lux::object::EventView& view) override
         {
             if (auto* ping = view.getIf<Ping>())
@@ -42,7 +53,7 @@ namespace
             }
         }
     };
-}
+} // namespace
 
 int main()
 {
@@ -51,35 +62,37 @@ int main()
 
     std::vector<int> order;
     lux::object::Connection second;
-    auto first = sender.observe(Sender::changed, [&](const int& value)
-    {
-        order.push_back(value * 10 + 1);
-        second.disconnect();
-    });
+    auto first = sender.observeScoped<Sender::changed>(
+        [&](const int& value)
+        {
+            order.push_back(value * 10 + 1);
+            second.disconnect();
+        }
+    );
     assert(first);
-    auto second_result = sender.observe(Sender::changed, [&](const int& value)
-    {
-        order.push_back(value * 10 + 2);
-    });
+    auto second_result =
+        sender.observeScoped<Sender::changed>([&](const int& value)
+                                              { order.push_back(value * 10 + 2); });
     assert(second_result);
-    second = *second_result;
+    second = second_result->connection();
 
     bool installed_late = false;
-    lux::object::Connection late;
-    auto installer = sender.observe(Sender::changed, [&](const int& value)
-    {
-        order.push_back(value * 10 + 3);
-        if (!installed_late)
+    lux::object::ScopedConnection late;
+    auto installer = sender.observeScoped<Sender::changed>(
+        [&](const int& value)
         {
-            installed_late = true;
-            auto result = sender.observe(Sender::changed, [&](const int& nested)
+            order.push_back(value * 10 + 3);
+            if (!installed_late)
             {
-                order.push_back(nested * 10 + 4);
-            });
-            assert(result);
-            late = *result;
+                installed_late = true;
+                auto result = sender.observeScoped<Sender::changed>(
+                    [&](const int& nested) { order.push_back(nested * 10 + 4); }
+                );
+                assert(result);
+                late = std::move(*result);
+            }
         }
-    });
+    );
     assert(installer);
 
     sender.publish(1);
@@ -88,20 +101,25 @@ int main()
     assert((order == std::vector<int>{11, 13, 21, 23, 24}));
 
     DerivedSender derived;
-    int base_value = 0;
-    auto base_connection = derived.observe(
+    class BaseReceiver final : public lux::object::Object<BaseReceiver>
+    {
+    public:
+        void receive(const int& value) { observed = value; }
+        int observed{0};
+    } base_receiver;
+    auto base_connection = derived.observe<
         BaseSender::base_changed,
-        [&](const int& value) { base_value = value; }
-    );
+        &BaseReceiver::receive,
+        lux::object::EDelivery::DIRECT>(base_receiver);
     assert(base_connection);
     derived.publishBase(19);
-    assert(base_value == 19);
+    assert(base_receiver.observed == 19);
 
     auto weak = sender.weakRef();
     assert(weak.get() == &sender);
 
     EventReceiver receiver;
     Ping ping{42};
-    assert(receiver.sendEvent(ping));
+    assert(lux::object::sendEvent(receiver, ping));
     assert(receiver.value == 42);
 }

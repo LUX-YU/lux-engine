@@ -13,8 +13,8 @@ namespace lux::object::reflection
 {
     struct SignalView final
     {
-        const SignalHeader *signal{nullptr};
-        const lux::meta::RefStaticField *field{nullptr};
+        const SignalRuntime* signal{nullptr};
+        const lux::meta::RefStaticField* field{nullptr};
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
@@ -23,18 +23,16 @@ namespace lux::object::reflection
     };
 
     [[nodiscard]] inline SignalView
-    findSignal(const lux::meta::RefClass &object_class, std::string_view name) noexcept
+    findSignal(const lux::meta::RefClass& object_class, std::string_view name) noexcept
     {
-        for (const auto &field : object_class.static_fields)
+        for (const auto& field : object_class.static_fields)
         {
-            if (field.name != name || !field.annotations().has("signal")){
+            if (field.name != name || !field.annotations().has("signal"))
+            {
                 continue;
             }
-
-            const auto *signal = static_cast<const SignalHeader *>(field.address);
-            if (!signal || signal->key.name != field.name)
-                return {};
-            return {signal, &field};
+            const auto* signal = reinterpret_cast<const SignalRuntime*>(field.address);
+            return signal ? SignalView{signal, &field} : SignalView{};
         }
         return {};
     }
@@ -48,6 +46,7 @@ namespace lux::object::reflection
         RETURN_TYPE_MISMATCH,
         PARAMETER_COUNT_MISMATCH,
         PARAMETER_TYPE_MISMATCH,
+        PAYLOAD_NOT_QUEUEABLE,
         CONNECTION_REJECTED
     };
 
@@ -59,4 +58,4 @@ namespace lux::object::reflection
         const lux::meta::RefMethod& method,
         lux::object::EDelivery      delivery = lux::object::EDelivery::AUTO
     );
-}
+} // namespace lux::object::reflection

@@ -33,6 +33,8 @@ else()
     # ui is the imgui-over-GLFW overlay stack and remains desktop-only.
     if(NOT ANDROID)
         add_subdirectory(ui)
+        add_subdirectory(ui_next)
+        add_subdirectory(ui_next_vulkan)
     endif()
 endif()
 
@@ -68,7 +70,7 @@ else()
         list(APPEND LUX_FUNCTION_COMPONENTS script_lua)
     endif()
     if(NOT ANDROID)
-        list(APPEND LUX_FUNCTION_COMPONENTS ui ui_vulkan)
+        list(APPEND LUX_FUNCTION_COMPONENTS ui ui_vulkan ui_next ui_next_vulkan)
     endif()
 endif()
 

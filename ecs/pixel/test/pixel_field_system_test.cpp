@@ -152,7 +152,7 @@ int main()
     PixelFieldDesc leaf_description;
     leaf_description.extent = EPixelFieldExtent::INFINITE_FIELD;
     const auto leaf_handle = runtime.create(leaf_description);
-    assert(leaf_handle.valid());
+    assert(leaf_handle.isValid());
     const auto leaf = registry.create();
     registry.emplace<PixelField2DComponent>(leaf);
     registry.emplace<PixelFieldBindingComponent>(

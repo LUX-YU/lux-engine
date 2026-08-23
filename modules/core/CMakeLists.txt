@@ -9,6 +9,7 @@ generate_visibility_header(
 add_subdirectory(math)
 add_subdirectory(async_port)
 add_subdirectory(meta)
+add_subdirectory(object)
 add_subdirectory(serialization)
 add_subdirectory(log)
 add_subdirectory(events)
@@ -20,6 +21,7 @@ install_components(
 	COMPONENTS		math
 					async_port
 					meta
+					object
                     serialization
                     log
                     events

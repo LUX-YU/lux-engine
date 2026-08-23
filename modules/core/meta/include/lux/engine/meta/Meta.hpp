@@ -221,11 +221,30 @@ namespace lux::meta
         [[nodiscard]] AnnotationView annotations() const noexcept { return AnnotationView(annotation_str); }
     };
 
+    struct RefStaticField
+    {
+        std::string_view name;
+        RefType          type;
+        EVisibility      visibility{ EVisibility::Public };
+        RefClass*        owner_class{ nullptr };
+        const void*      address{ nullptr };
+        bool             is_const{ false };
+        bool             is_volatile{ false };
+        const char*      annotation_str{ nullptr };
+
+        [[nodiscard]] AnnotationView annotations() const noexcept
+        {
+            return AnnotationView(annotation_str);
+        }
+    };
+
     struct RefParam
     {
         // This is the name of the parameter in the function signature, not the name of type.
         std::string_view name; 
         RefType          type;
+        std::string_view value_type_name;
+        std::uint64_t    value_type_hash{ 0 };
         bool             is_out{ false };
     };
 
@@ -257,6 +276,12 @@ namespace lux::meta
         bool          is_static{ false };
         bool          is_virtual{ false };
         bool          is_const{ false };
+        const char*   annotation_str{ nullptr };
+
+        [[nodiscard]] AnnotationView annotations() const noexcept
+        {
+            return AnnotationView(annotation_str);
+        }
     };
 
     //--------------------------------------------------------------------------------------------------
@@ -284,6 +309,7 @@ namespace lux::meta
         bool                        is_abstract{ false };
 
         std::vector<RefField>       fields;
+        std::vector<RefStaticField> static_fields;
         std::vector<RefMethod>      methods;
 
         std::size_t                 container_index{ 0 };
@@ -342,7 +368,7 @@ namespace lux::meta
             obj.move_construct = 
             [](void* mem, void* other)
             {
-                auto other_raw = static_cast<const T*>(other);
+                auto other_raw = static_cast<T*>(other);
                 new (mem) T(std::move(*other_raw));
             };
         }

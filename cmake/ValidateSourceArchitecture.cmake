@@ -45,6 +45,71 @@ foreach(source IN LISTS ecs_sources)
             "engine/runtime. Inject a modules-level port instead."
         )
     endif()
+    if(content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/object/")
+        message(FATAL_ERROR
+            "Architecture: ECS production source '${source}' includes "
+            "core/object. Object/UI interaction state is not World state."
+        )
+    endif()
+endforeach()
+
+# Core reflection is a lower query primitive. Object may consume reflection,
+# but reflection must never acquire Object lifetime or signal semantics.
+file(GLOB_RECURSE meta_sources LIST_DIRECTORIES false
+    "${source_root}/modules/core/meta/*.hpp"
+    "${source_root}/modules/core/meta/*.cpp"
+    "${source_root}/modules/core/meta/CMakeLists.txt"
+)
+foreach(source IN LISTS meta_sources)
+    file(READ "${source}" content)
+    if(content MATCHES "lux/engine/object/|core::object|[ \t]object[ \t\r\n]*\\)")
+        message(FATAL_ERROR
+            "Architecture: core/meta source '${source}' depends on core/object. "
+            "The dependency direction is meta -> object consumers only."
+        )
+    endif()
+endforeach()
+
+file(GLOB_RECURSE object_sources LIST_DIRECTORIES false
+    "${source_root}/modules/core/object/*.hpp"
+    "${source_root}/modules/core/object/*.cpp"
+    "${source_root}/modules/core/object/CMakeLists.txt"
+)
+foreach(source IN LISTS object_sources)
+    file(TO_CMAKE_PATH "${source}" normalized)
+    if(normalized MATCHES "/test/")
+        continue()
+    endif()
+    file(READ "${source}" content)
+    if(content MATCHES
+       "lux/cxx/event/|lux/engine/(events|ui|ecs|runtime)/")
+        message(FATAL_ERROR
+            "Architecture: core/object source '${source}' depends on an event, "
+            "UI, ECS or Runtime framework. Object is a lower foundation."
+        )
+    endif()
+endforeach()
+
+# ui_next is the pure interaction primitive target. Renderer integration has
+# its own sibling target and legacy UI remains a separate migration source.
+file(GLOB_RECURSE ui_next_sources LIST_DIRECTORIES false
+    "${source_root}/modules/function/ui_next/*.hpp"
+    "${source_root}/modules/function/ui_next/*.cpp"
+    "${source_root}/modules/function/ui_next/CMakeLists.txt"
+)
+foreach(source IN LISTS ui_next_sources)
+    file(TO_CMAKE_PATH "${source}" normalized)
+    if(normalized MATCHES "/test/")
+        continue()
+    endif()
+    file(READ "${source}" content)
+    if(content MATCHES
+       "lux/engine/(ui/|input/|resource/|ecs/|runtime/|extensions/|editor/|function/render/)")
+        message(FATAL_ERROR
+            "Architecture: UI vNext core source '${source}' crosses into "
+            "legacy UI, Input, Resource, ECS, Runtime, Render or Editor."
+        )
+    endif()
 endforeach()
 
 file(GLOB_RECURSE runtime_sources LIST_DIRECTORIES false

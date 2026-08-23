@@ -12,7 +12,7 @@ int main()
     const auto handle = runtime.create({
         TilemapId{uuids::uuid::from_string(
             "71000000-0000-4000-8000-000000000001").value()}});
-    assert(handle.valid());
+    assert(handle.isValid());
 
     TileChunkLoad near_chunk;
     near_chunk.coordinate = {-1, 0};
@@ -90,7 +90,7 @@ int main()
     const auto recycled = runtime.create({
         TilemapId{uuids::uuid::from_string(
             "71000000-0000-4000-8000-000000000002").value()}});
-    assert(recycled.valid());
+    assert(recycled.isValid());
     assert(recycled != handle);
     assert(!runtime.setChunkActive(handle, {0, 0}, true));
     TileChunkLoad discarded;

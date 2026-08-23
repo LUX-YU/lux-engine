@@ -66,7 +66,7 @@ int main()
 
     const auto borrowed_handle = runtime.create({TilemapId{
         uuid("72000000-0000-4000-8000-000000000004")}});
-    assert(borrowed_handle.valid());
+    assert(borrowed_handle.isValid());
     const auto borrowed = registry.create();
     auto& borrowed_fact = registry.emplace<TilemapComponent>(borrowed);
     borrowed_fact.id = runtime.desc(borrowed_handle).id;

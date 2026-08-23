@@ -111,6 +111,36 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 The working tree modification under
 `modules/function/input/pinclude/lux/engine/input/detail/GlfwInputTranslation.hpp`
 predates this work and is not part of the refactor.
+
+# Object / UI foundation freeze (2026-08-23)
+
+- [x] Extend Reflection projection with static data members, owner/type data,
+      method annotations and constructibility-aware object operations.
+- [x] Add `modules/core/object` with lazy object state, stable typed Signals,
+      Connection/WeakRef, owner-thread Dispatcher and targeted Events.
+- [x] Add independent `ui_next` and `ui_next_vulkan` targets without changing
+      legacy UI or Editor business wiring.
+- [x] Add dependency-direction gates and focused Object/UI foundation tests.
+- [x] Add dynamic reflected Signal-to-method connection, address identity and
+      allocation contracts for zero-subscriber/direct notification.
+- [x] Split contextual semantic dispatch into `CommandRouter`; complete Pane
+      focus/visibility/local Context, Menu/Toolbar, Factory and Layout models.
+- [x] Make compact Reflection IR v2 the public parser result and generator
+      transport; reject the retired binary v1 representation.
+- [ ] Remove the parser's remaining private legacy AST construction and the
+      generator's private legacy template view after all templates and external
+      consumers have moved to direct compact-IR queries. Neither is a public
+      canonical model anymore.
+- [x] Validate isolated Object/UI installed consumers plus DEVELOPER, PLAYER,
+      EDITOR, TOOLCHAIN and Android PLAYER builds. RelWithDebInfo suites pass
+      23/23 for lux-engine and 49/49 for lux-cxx; all Windows profile second
+      builds report `ninja: no work to do`.
+- [ ] Repair the two pre-existing Phase 9 probe fixtures that assert in Debug
+      on duplicate EnTT component insertion (`render_subsystem_probes` and
+      `render_subsystem_lifecycle_probe`). The new Object/UI focused Debug tests
+      pass; this does not block the frozen foundation API, but remains a full
+      Debug-suite baseline defect.
+
 # Phase 9 semantic de-duplication finalization (validation active)
 
 - [x] Replace `RenderSystemStages` with an immutable private Stage vector and

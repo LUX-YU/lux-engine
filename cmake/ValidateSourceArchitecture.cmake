@@ -20,6 +20,7 @@ set(retired_directories
     "engine/runtime/extensions/contribution_host"
     "engine/runtime/launch"
     "engine/runtime/world"
+    "modules/function/ui_next_vulkan"
 )
 foreach(relative IN LISTS retired_directories)
     if(EXISTS "${source_root}/${relative}")
@@ -88,6 +89,13 @@ foreach(source IN LISTS object_sources)
             "UI, ECS or Runtime framework. Object is a lower foundation."
         )
     endif()
+    if(content MATCHES
+       "LUX_OBJECT_SIGNAL|setDispatcher[ \t\r\n]*\\(|[ \t]emit[ \t\r\n]*\\(")
+        message(FATAL_ERROR
+            "Architecture: retired Object declaration, mutable affinity or "
+            "emit surface reappeared in '${source}'."
+        )
+    endif()
 endforeach()
 
 # ui_next is the pure interaction primitive target. Renderer integration has
@@ -108,6 +116,57 @@ foreach(source IN LISTS ui_next_sources)
         message(FATAL_ERROR
             "Architecture: UI vNext core source '${source}' crosses into "
             "legacy UI, Input, Resource, ECS, Runtime, Render or Editor."
+        )
+    endif()
+    if(content MATCHES
+       "class[ \t\r\n]+UISystem|UISession::post[ \t\r\n]*\\(")
+        message(FATAL_ERROR
+            "Architecture: UI vNext source '${source}' restores the retired "
+            "UISystem owner or generic post surface."
+        )
+    endif()
+endforeach()
+
+file(GLOB_RECURSE ui_drawdata_sources LIST_DIRECTORIES false
+    "${source_root}/modules/function/ui_next_drawdata/*.hpp"
+    "${source_root}/modules/function/ui_next_drawdata/*.cpp"
+    "${source_root}/modules/function/ui_next_drawdata/CMakeLists.txt"
+)
+foreach(source IN LISTS ui_drawdata_sources)
+    file(TO_CMAKE_PATH "${source}" normalized)
+    if(normalized MATCHES "/test/")
+        continue()
+    endif()
+    file(READ "${source}" content)
+    if(content MATCHES
+       "lux/engine/function/render/|render_(client|graph|vulkan|features)|Vulkan")
+        message(FATAL_ERROR
+            "Architecture: draw-data source '${source}' depends on Render or "
+            "Vulkan. ui_next_drawdata owns snapshots only."
+        )
+    endif()
+endforeach()
+
+# Foundation stabilization is deliberately isolated from Engine/ECS/plugin
+# migration. Keep this gate after freezing until an explicit consumer re-audit
+# approves and implements the first upper-layer dependency.
+file(GLOB_RECURSE frozen_consumer_sources LIST_DIRECTORIES false
+    "${source_root}/ecs/*.hpp"
+    "${source_root}/ecs/*.cpp"
+    "${source_root}/ecs/CMakeLists.txt"
+    "${source_root}/engine/*.hpp"
+    "${source_root}/engine/*.cpp"
+    "${source_root}/engine/CMakeLists.txt"
+    "${source_root}/extensions/*.hpp"
+    "${source_root}/extensions/*.cpp"
+    "${source_root}/extensions/CMakeLists.txt"
+)
+foreach(source IN LISTS frozen_consumer_sources)
+    file(READ "${source}" content)
+    if(content MATCHES "ui_next")
+        message(FATAL_ERROR
+            "Architecture: frozen Engine/ECS/Extension consumer '${source}' "
+            "uses UI vNext before the post-freeze consumer re-audit."
         )
     endif()
 endforeach()

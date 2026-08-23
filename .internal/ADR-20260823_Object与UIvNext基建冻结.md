@@ -1,7 +1,7 @@
 # ADR：Object Model 与 UI vNext 基建稳定化
 
 日期：2026-08-23
-状态：Accepted（foundation stabilizing，consumer migration 暂停）
+状态：Accepted（foundation API frozen，consumer migration 仍需重新审计）
 
 ## 决策
 
@@ -54,19 +54,24 @@ UIManager / WorkbenchManager / ContextManager / ToolHost
 ContributionGraph / keyboard shortcut subsystem
 ```
 
-## 稳定化边界
+## 冻结边界
 
-旧 `function/ui` 与 Editor 业务 wiring 本阶段不迁移。只有 Object、Reflection、UI、
-cross-affinity、cross-DLL、installed consumer 和构建矩阵全部稳定后，才重新把状态
-改为 `foundation API frozen`，并重新审计 Engine/Editor consumer migration。
+旧 `function/ui` 与 Editor 业务 wiring 本轮未迁移。Foundation API 现已冻结；
+后续仅允许在重新审计 Engine/Editor consumer migration 后开始上层接入，不得
+自动恢复任何旧迁移方案。
 
-## 稳定化起点
+## 冻结验收（2026-08-23）
 
-- 先前 PoC 基线为 `lux-cxx` RelWithDebInfo 49/49、`lux-engine` DEVELOPER 23/23；
-  它证明方向可行，但不再等同于 API frozen。
-- PLAYER 15/15、EDITOR 15/15、TOOLCHAIN 7/7；三个 profile 的第二次全量
-  构建均为 `ninja: no work to do`。
-- Android PLAYER 与 Android lux-cxx 全目标构建、安装及架构门禁通过。
-- Debug 下新增 Object/UI 测试通过；全量 Debug 仍有两个既有 Phase 9
-  EnTT 探针在重复插入组件时触发断言，该历史基线问题记录在 unfinished-work，
-  不改变本 ADR 的 foundation API 冻结结论。
+- `lux-cxx` RelWithDebInfo 与 Debug 均为 49/49；`lux-engine` RelWithDebInfo
+  为 27/27。Object/UI 的 Debug 测试全部通过。
+- Object 与 UI 安装后 consumer 分别通过独立 codegen、link 与 run；
+  cross-DLL Base/Derived Signal prefix 布局已由真实 DLL 覆盖。
+- DEVELOPER、PLAYER、EDITOR、TOOLCHAIN 与 Android PLAYER 全量构建通过；
+  各 CMake 树第二轮均为 `ninja: no work to do`。
+- Android NDK Clang 19 完成全量 PLAYER 编译，产物包含纯 `ui_next` 和
+  `ui_next_drawdata`，不包含 GLFW 或 ImGui Vulkan backend。当前无目标设备，
+  因此未宣称已执行 Android ASan/UBSan 运行时测试。
+- Direct/Queued、churn、reentrancy、Pane/Command/Context 性能基线已记录，
+  Direct notify 的 consumer-path 分配计数为零。
+- 两个既有 Phase 9 EnTT Debug probe 仍单独记账；它们不属于
+  Object/UI Foundation，不改变本 ADR 的冻结结论。

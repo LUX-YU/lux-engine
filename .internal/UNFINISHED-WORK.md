@@ -112,18 +112,18 @@ The working tree modification under
 `modules/function/input/pinclude/lux/engine/input/detail/GlfwInputTranslation.hpp`
 predates this work and is not part of the refactor.
 
-# Active: Object / UI foundation stabilization (2026-08-23)
+# Completed: Object / UI foundation stabilization (2026-08-23)
 
-- [ ] Replace authored Signal names/address routing with generated SignalIndex and
+- [x] Replace authored Signal names/address routing with generated SignalIndex and
       reference-NTTP typed APIs.
-- [ ] Replace shared-slot Object lifetime with one intrusive ObjectState, sender-affine
+- [x] Replace shared-slot Object lifetime with one intrusive ObjectState, sender-affine
       connection mutation and receiver incoming invalidation.
-- [ ] Replace the generic dispatcher task queue with ObjectMessage-only capability
+- [x] Replace the generic dispatcher task queue with ObjectMessage-only capability
       transport and immutable Object affinity.
-- [ ] Stabilize dynamic connect-time Reflection, cross-affinity and cross-DLL behavior.
-- [ ] Remove the UISystem/generic-post wrappers; stabilize Pane/Context/Command hot paths.
-- [ ] Rename `ui_next_vulkan` to backend-neutral `ui_next_drawdata` without aliases.
-- [ ] Complete installed-consumer, benchmark and build/test matrices before restoring
+- [x] Stabilize dynamic connect-time Reflection, cross-affinity and cross-DLL behavior.
+- [x] Remove the UISystem/generic-post wrappers; stabilize Pane/Context/Command hot paths.
+- [x] Replace the PoC draw-data target with backend-neutral `ui_next_drawdata` without aliases.
+- [x] Complete installed-consumer, benchmark and build/test matrices before restoring
       the `foundation API frozen` status.
 
 ## Superseded PoC completion record
@@ -132,8 +132,9 @@ predates this work and is not part of the refactor.
       method annotations and constructibility-aware object operations.
 - [x] Add `modules/core/object` with lazy object state, stable typed Signals,
       Connection/WeakRef, owner-thread Dispatcher and targeted Events.
-- [x] Add independent `ui_next` and `ui_next_vulkan` targets without changing
-      legacy UI or Editor business wiring.
+- [x] The superseded PoC added independent UI core and draw-data targets without
+      changing legacy UI or Editor business wiring; the draw-data target has since
+      been replaced by `ui_next_drawdata` without an alias.
 - [x] Add dependency-direction gates and focused Object/UI foundation tests.
 - [x] Add dynamic reflected Signal-to-method connection, address identity and
       allocation contracts for zero-subscriber/direct notification.
@@ -147,8 +148,9 @@ predates this work and is not part of the refactor.
       canonical model anymore.
 - [x] Validate isolated Object/UI installed consumers plus DEVELOPER, PLAYER,
       EDITOR, TOOLCHAIN and Android PLAYER builds. RelWithDebInfo suites pass
-      23/23 for lux-engine and 49/49 for lux-cxx; all Windows profile second
-      builds report `ninja: no work to do`.
+      27/27 for lux-engine and 49/49 for lux-cxx; lux-cxx Debug passes 49/49;
+      all Windows profiles and Android PLAYER report `ninja: no work to do`
+      on their second build.
 - [ ] Repair the two pre-existing Phase 9 probe fixtures that assert in Debug
       on duplicate EnTT component insertion (`render_subsystem_probes` and
       `render_subsystem_lifecycle_probe`). The new Object/UI focused Debug tests

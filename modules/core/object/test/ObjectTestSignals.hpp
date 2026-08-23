@@ -23,6 +23,15 @@ namespace lux::object::test::fixture
         void publish(int value) { notify<changed>(value); }
     };
 
+    class LUX_OBJECT() IntReceiver final : public Object<IntReceiver>
+    {
+    public:
+        LUX_METHOD(connectable = true)
+        void receive(const int& value) noexcept { observed += value; }
+
+        std::uint64_t observed{0};
+    };
+
     class LUX_OBJECT() BaseSender : public Object<BaseSender>
     {
     public:

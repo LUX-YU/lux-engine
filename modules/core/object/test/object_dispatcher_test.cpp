@@ -3,6 +3,8 @@
 #endif
 #include <cassert>
 
+#include <array>
+#include <atomic>
 #include <condition_variable>
 #include <lux/engine/object/ObjectModel.hpp>
 #include "ObjectTestSignals.hpp"
@@ -29,6 +31,35 @@ namespace
     struct Ping final
     {
         int value{0};
+    };
+
+    struct SmallMessageProbe final
+    {
+        static inline std::atomic_size_t allocations{0};
+        bool* invoked{nullptr};
+
+        static void* operator new(std::size_t size)
+        {
+            allocations.fetch_add(1, std::memory_order_relaxed);
+            return ::operator new(size);
+        }
+        static void operator delete(void* value) noexcept { ::operator delete(value); }
+        void operator()() noexcept { *invoked = true; }
+    };
+
+    struct LargeMessageProbe final
+    {
+        static inline std::atomic_size_t allocations{0};
+        std::array<std::byte, 128> padding{};
+        bool* invoked{nullptr};
+
+        static void* operator new(std::size_t size)
+        {
+            allocations.fetch_add(1, std::memory_order_relaxed);
+            return ::operator new(size);
+        }
+        static void operator delete(void* value) noexcept { ::operator delete(value); }
+        void operator()() noexcept { *invoked = true; }
     };
 
     class EventReceiver final : public lux::object::Object<EventReceiver>
@@ -124,6 +155,33 @@ namespace
 
 int main()
 {
+    bool small_invoked = false;
+    auto small_message = lux::object::detail::makeObjectMessage(
+        SmallMessageProbe{&small_invoked}
+    );
+    assert(SmallMessageProbe::allocations.load(std::memory_order_relaxed) == 0);
+    lux::object::ObjectMessageQueue inline_queue;
+    assert(
+        inline_queue.dispatcherRef().post(std::move(small_message)) ==
+        lux::object::EPostStatus::POSTED
+    );
+    assert(inline_queue.dispatchPending() == 1);
+    assert(small_invoked);
+
+    bool large_invoked = false;
+    LargeMessageProbe large_probe;
+    large_probe.invoked = &large_invoked;
+    auto large_message = lux::object::detail::makeObjectMessage(
+        std::move(large_probe)
+    );
+    assert(LargeMessageProbe::allocations.load(std::memory_order_relaxed) == 1);
+    assert(
+        inline_queue.dispatcherRef().post(std::move(large_message)) ==
+        lux::object::EPostStatus::POSTED
+    );
+    assert(inline_queue.dispatchPending() == 1);
+    assert(large_invoked);
+
     runQueuedScenario(false, false);
     runQueuedScenario(true, false);
     runQueuedScenario(false, true);

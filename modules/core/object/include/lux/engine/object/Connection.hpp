@@ -13,13 +13,13 @@ namespace lux::object
 
     class LUX_CORE_PUBLIC Connection final
     {
-      public:
+    public:
         Connection() noexcept = default;
 
         [[nodiscard]] bool connected() const noexcept;
         void disconnect() noexcept;
 
-      private:
+    private:
         friend class LuxObject;
         explicit Connection(std::weak_ptr<detail::ObjectSlot> slot) noexcept
             : slot_(std::move(slot))
@@ -31,17 +31,17 @@ namespace lux::object
 
     class ScopedConnection final
     {
-      public:
+    public:
         ScopedConnection() noexcept = default;
         explicit ScopedConnection(Connection connection) noexcept
             : connection_(std::move(connection))
         {
         }
 
-        ScopedConnection(const ScopedConnection&) = delete;
-        ScopedConnection& operator=(const ScopedConnection&) = delete;
-        ScopedConnection(ScopedConnection&&) noexcept = default;
-        ScopedConnection& operator=(ScopedConnection&& other) noexcept
+        ScopedConnection(const ScopedConnection &) = delete;
+        ScopedConnection &operator=(const ScopedConnection &) = delete;
+        ScopedConnection(ScopedConnection &&) noexcept = default;
+        ScopedConnection &operator=(ScopedConnection &&other) noexcept
         {
             if (this != &other)
             {
@@ -56,10 +56,10 @@ namespace lux::object
             connection_.disconnect();
         }
 
-        [[nodiscard]] Connection& connection() noexcept { return connection_; }
-        [[nodiscard]] const Connection& connection() const noexcept { return connection_; }
+        [[nodiscard]] Connection &connection() noexcept { return connection_; }
+        [[nodiscard]] const Connection &connection() const noexcept { return connection_; }
 
-      private:
+    private:
         Connection connection_;
     };
 }

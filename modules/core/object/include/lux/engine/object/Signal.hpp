@@ -16,8 +16,8 @@ namespace lux::object
     {
         lux::cxx::TypeToken owner;
         lux::cxx::TypeToken payload;
-        std::uint64_t name_hash{0};
-        std::string_view name;
+        std::uint64_t       name_hash{0};
+        std::string_view    name;
 
         [[nodiscard]] constexpr bool operator==(const SignalKey&) const noexcept = default;
     };

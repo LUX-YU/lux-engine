@@ -96,8 +96,7 @@ namespace lux::input::detail
                 continue;
             }
 
-            if (const auto* mouse =
-                    std::get_if<lux::window::WindowMouseButtonEvent>(&raw))
+            if (const auto* mouse = std::get_if<lux::window::WindowMouseButtonEvent>(&raw))
             {
                 const EMouseButton translated_button =
                     glfwMouseButton(mouse->button);
@@ -130,8 +129,7 @@ namespace lux::input::detail
                 continue;
             }
 
-            if (const auto* scroll =
-                    std::get_if<lux::window::WindowScrollEvent>(&raw))
+            if (const auto* scroll = std::get_if<lux::window::WindowScrollEvent>(&raw))
             {
                 snapshot.scroll_dx += scroll->x;
                 snapshot.scroll_dy += scroll->y;

@@ -46,9 +46,7 @@ namespace lux::editor
 
         FlowGraphCompileClient() noexcept = default;
 
-        [[nodiscard]] bool submit(
-            CompileFlowGraph operation,
-            Completion completion) const;
+        [[nodiscard]] bool submit(CompileFlowGraph operation, Completion completion) const;
 
         [[nodiscard]] bool valid() const noexcept
         {
@@ -58,10 +56,7 @@ namespace lux::editor
     private:
         using SubmitFn = bool(*)(void*, CompileFlowGraph, Completion);
 
-        FlowGraphCompileClient(
-            std::shared_ptr<void> owner,
-            void* context,
-            SubmitFn submit) noexcept
+        FlowGraphCompileClient(std::shared_ptr<void> owner, void* context, SubmitFn submit) noexcept
             : owner_(std::move(owner)),
               context_(context),
               submit_(submit)
@@ -72,14 +67,13 @@ namespace lux::editor
 
         // Pins EditorAsyncService::State while a compiler still owns the
         // client. Admission itself is rejected once that state begins close.
-        std::shared_ptr<void> owner_;
-        void* context_{nullptr};
-        SubmitFn submit_{nullptr};
+        std::shared_ptr<void>   owner_;
+        void*                   context_{nullptr};
+        SubmitFn                submit_{nullptr};
     };
 
     /// Pure worker entry point. The job owns its graph and cache-directory
     /// snapshot; this function never touches AssetManager, ECS, UI or mutable
     /// main-thread state.
-    [[nodiscard]] FlowGraphCompileResult compileFlowGraphJob(
-        const FlowGraphCompileJob& job) noexcept;
+    [[nodiscard]] FlowGraphCompileResult compileFlowGraphJob(const FlowGraphCompileJob& job) noexcept;
 }

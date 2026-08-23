@@ -41,157 +41,142 @@ namespace lux::object
 
     class LUX_CORE_PUBLIC LuxObject
     {
-      public:
+    public:
         LuxObject() noexcept;
         virtual ~LuxObject();
 
-        LuxObject(const LuxObject&) = delete;
-        LuxObject& operator=(const LuxObject&) = delete;
-        LuxObject(LuxObject&&) = delete;
-        LuxObject& operator=(LuxObject&&) = delete;
+        LuxObject(const LuxObject &) = delete;
+        LuxObject &operator=(const LuxObject &) = delete;
+        LuxObject(LuxObject &&) = delete;
+        LuxObject &operator=(LuxObject &&) = delete;
 
         [[nodiscard]] virtual lux::cxx::TypeToken objectType() const noexcept;
         [[nodiscard]] virtual bool isObjectType(
-            lux::cxx::TypeToken type
-        ) const noexcept;
+            lux::cxx::TypeToken type) const noexcept;
         [[nodiscard]] ObjectWeakRef weakRef() const;
         [[nodiscard]] std::thread::id affinity() const noexcept { return affinity_; }
 
-        void setDispatcher(ObjectDispatcher* dispatcher);
-        [[nodiscard]] ObjectDispatcher* dispatcher() const noexcept { return dispatcher_; }
+        void setDispatcher(ObjectDispatcher *dispatcher);
+        [[nodiscard]] ObjectDispatcher *dispatcher() const noexcept { return dispatcher_; }
 
-        template<typename Owner, typename Payload, typename Callable>
+        template <typename Owner, typename Payload, typename Callable>
         [[nodiscard]] lux::cxx::expected<Connection, EObserveError> observe(
-            const Signal<Owner, Payload>& signal,
-            Callable&& callable
-        )
+            const Signal<Owner, Payload> &signal,
+            Callable &&callable)
         {
-            static_assert(std::is_invocable_r_v<void, Callable&, const Payload&>);
+            static_assert(std::is_invocable_r_v<void, Callable &, const Payload &>);
             return observeErased(
                 signal.header(),
-                lux::cxx::move_only_function<void(const void*)>{
-                    [fn = std::forward<Callable>(callable)](const void* payload) mutable
+                lux::cxx::move_only_function<void(const void *)>{
+                    [fn = std::forward<Callable>(callable)](const void *payload) mutable
                     {
-                        fn(*static_cast<const Payload*>(payload));
-                    }
-                },
+                        fn(*static_cast<const Payload *>(payload));
+                    }},
                 nullptr,
-                EDelivery::DIRECT
-            );
+                EDelivery::DIRECT);
         }
 
-        template<typename Owner, typename Payload, typename Receiver>
+        template <typename Owner, typename Payload, typename Receiver>
         [[nodiscard]] lux::cxx::expected<Connection, EObserveError> observe(
-            const Signal<Owner, Payload>& signal,
-            Receiver& receiver,
-            void (Receiver::*method)(const Payload&),
-            EDelivery delivery = EDelivery::AUTO
-        )
-        requires std::derived_from<Receiver, LuxObject>
+            const Signal<Owner, Payload> &signal,
+            Receiver &receiver,
+            void (Receiver::*method)(const Payload &),
+            EDelivery delivery = EDelivery::AUTO)
+            requires std::derived_from<Receiver, LuxObject>
         {
             return observeErased(
                 signal.header(),
-                lux::cxx::move_only_function<void(const void*)>{
-                    [&receiver, method](const void* payload)
+                lux::cxx::move_only_function<void(const void *)>{
+                    [&receiver, method](const void *payload)
                     {
-                        (receiver.*method)(*static_cast<const Payload*>(payload));
-                    }
-                },
+                        (receiver.*method)(*static_cast<const Payload *>(payload));
+                    }},
                 &receiver,
-                delivery
-            );
+                delivery);
         }
 
-        template<typename Owner, typename Payload>
-        void emit(const Signal<Owner, Payload>& signal, const Payload& payload)
+        template <typename Owner, typename Payload>
+        void emit(const Signal<Owner, Payload> &signal, const Payload &payload)
         {
             static_assert(
                 std::is_copy_constructible_v<Payload>,
-                "Queued-capable object signals require copyable payloads"
-            );
+                "Queued-capable object signals require copyable payloads");
             notifyErased(
                 signal.header(),
                 std::addressof(payload),
-                [](const void* value) -> std::shared_ptr<const void>
+                [](const void *value) -> std::shared_ptr<const void>
                 {
                     return std::make_shared<Payload>(
-                        *static_cast<const Payload*>(value)
-                    );
-                }
-            );
+                        *static_cast<const Payload *>(value));
+                });
         }
 
-        template<typename Owner>
-        void emit(const Signal<Owner, NoSignalPayload>& signal)
+        template <typename Owner>
+        void emit(const Signal<Owner, NoSignalPayload> &signal)
         {
             static constexpr NoSignalPayload payload{};
             notifyErased(
                 signal.header(),
                 std::addressof(payload),
-                [](const void* value) -> std::shared_ptr<const void>
+                [](const void *value) -> std::shared_ptr<const void>
                 {
                     return std::make_shared<NoSignalPayload>(
-                        *static_cast<const NoSignalPayload*>(value)
-                    );
-                }
-            );
+                        *static_cast<const NoSignalPayload *>(value));
+                });
         }
 
         [[nodiscard]] lux::cxx::expected<Connection, EObserveError>
         observeDynamic(
-            const SignalHeader& signal,
-            lux::cxx::move_only_function<void(const void*)> callback,
-            LuxObject& receiver,
-            EDelivery delivery = EDelivery::AUTO
-        );
+            const SignalHeader &signal,
+            lux::cxx::move_only_function<void(const void *)> callback,
+            LuxObject &receiver,
+            EDelivery delivery = EDelivery::AUTO);
 
-        template<typename Event>
-        bool sendEvent(Event& event_value)
+        template <typename Event>
+        bool sendEvent(Event &event_value)
         {
             EventView view{event_value};
             event(view);
             return view.accepted();
         }
 
-        template<typename Event>
+        template <typename Event>
         [[nodiscard]] EEventPostStatus postEvent(Event event_value)
         {
-            auto* target_dispatcher = dispatcher_;
-            if (!target_dispatcher) return EEventPostStatus::NO_DISPATCHER;
+            auto *target_dispatcher = dispatcher_;
+            if (!target_dispatcher)
+                return EEventPostStatus::NO_DISPATCHER;
             auto target = weakRef();
             auto shared_event = std::make_shared<Event>(std::move(event_value));
             const auto status = target_dispatcher->post(
                 [target, shared_event = std::move(shared_event)]() mutable
                 {
-                    if (auto* object = target.get())
+                    if (auto *object = target.get())
                         static_cast<void>(object->sendEvent(*shared_event));
-                }
-            );
+                });
             return status == EPostStatus::POSTED
-                ? EEventPostStatus::POSTED
-                : EEventPostStatus::CLOSED;
+                       ? EEventPostStatus::POSTED
+                       : EEventPostStatus::CLOSED;
         }
 
-      protected:
-        virtual void event(EventView&) {}
+    protected:
+        virtual void event(EventView &) {}
 
-      private:
+    private:
         [[nodiscard]] lux::cxx::expected<Connection, EObserveError> observeErased(
-            const SignalHeader& signal,
-            lux::cxx::move_only_function<void(const void*)> callback,
-            LuxObject* receiver,
-            EDelivery delivery
-        );
-        using PayloadClone = std::shared_ptr<const void> (*)(const void*);
+            const SignalHeader &signal,
+            lux::cxx::move_only_function<void(const void *)> callback,
+            LuxObject *receiver,
+            EDelivery delivery);
+        using PayloadClone = std::shared_ptr<const void> (*)(const void *);
         void notifyErased(
-            const SignalHeader& signal,
-            const void* payload,
-            PayloadClone clone_payload
-        );
+            const SignalHeader &signal,
+            const void *payload,
+            PayloadClone clone_payload);
         [[nodiscard]] std::shared_ptr<detail::ObjectState> ensureState() const;
 
         mutable std::shared_ptr<detail::ObjectState> state_;
         std::thread::id affinity_;
-        ObjectDispatcher* dispatcher_{nullptr};
+        ObjectDispatcher *dispatcher_{nullptr};
     };
 }

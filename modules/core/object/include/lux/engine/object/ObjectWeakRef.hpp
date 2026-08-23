@@ -15,19 +15,19 @@ namespace lux::object
 
     class LUX_CORE_PUBLIC ObjectWeakRef final
     {
-      public:
+    public:
         ObjectWeakRef() noexcept = default;
 
-        [[nodiscard]] LuxObject* get() const noexcept;
+        [[nodiscard]] LuxObject *get() const noexcept;
         [[nodiscard]] bool expired() const noexcept { return get() == nullptr; }
 
-        template<typename Type>
-        [[nodiscard]] Type* getAs() const noexcept
+        template <typename Type>
+        [[nodiscard]] Type *getAs() const noexcept
         {
-            return static_cast<Type*>(get());
+            return static_cast<Type *>(get());
         }
 
-      private:
+    private:
         friend class LuxObject;
         explicit ObjectWeakRef(std::weak_ptr<detail::ObjectControl> control) noexcept
             : control_(std::move(control))

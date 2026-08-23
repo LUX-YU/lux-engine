@@ -1756,8 +1756,7 @@ namespace lux::editor
         // terminal；把这些步骤移到 render stop 之后会静默丢 destroy 命令。
         if (runtime_->residency_)
         {
-            const auto report = runtime_->close_driver_->close(
-                *runtime_->residency_);
+            const auto report = runtime_->close_driver_->close(*runtime_->residency_);
             if (!report)
             {
                 lux::log::error(

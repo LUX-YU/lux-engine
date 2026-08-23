@@ -13,8 +13,8 @@ namespace lux::object::reflection
 {
     struct SignalView final
     {
-        const SignalHeader* signal{nullptr};
-        const lux::meta::RefStaticField* field{nullptr};
+        const SignalHeader *signal{nullptr};
+        const lux::meta::RefStaticField *field{nullptr};
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
@@ -22,16 +22,18 @@ namespace lux::object::reflection
         }
     };
 
-    [[nodiscard]] inline SignalView findSignal(
-        const lux::meta::RefClass& object_class,
-        std::string_view name
-    ) noexcept
+    [[nodiscard]] inline SignalView
+    findSignal(const lux::meta::RefClass &object_class, std::string_view name) noexcept
     {
-        for (const auto& field : object_class.static_fields)
+        for (const auto &field : object_class.static_fields)
         {
-            if (field.name != name || !field.annotations().has("signal")) continue;
-            const auto* signal = static_cast<const SignalHeader*>(field.address);
-            if (!signal || signal->key.name != field.name) return {};
+            if (field.name != name || !field.annotations().has("signal")){
+                continue;
+            }
+
+            const auto *signal = static_cast<const SignalHeader *>(field.address);
+            if (!signal || signal->key.name != field.name)
+                return {};
             return {signal, &field};
         }
         return {};
@@ -49,14 +51,12 @@ namespace lux::object::reflection
         CONNECTION_REJECTED
     };
 
-    [[nodiscard]] LUX_CORE_PUBLIC lux::cxx::expected<
-        Connection,
-        EDynamicObserveError>
+    [[nodiscard]] LUX_CORE_PUBLIC lux::cxx::expected<Connection, EDynamicObserveError>
     observe(
-        lux::object::LuxObject& sender,
-        SignalView signal,
-        lux::object::LuxObject& receiver,
+        lux::object::LuxObject&     sender,
+        SignalView                  signal,
+        lux::object::LuxObject&     receiver,
         const lux::meta::RefMethod& method,
-        lux::object::EDelivery delivery = lux::object::EDelivery::AUTO
+        lux::object::EDelivery      delivery = lux::object::EDelivery::AUTO
     );
 }

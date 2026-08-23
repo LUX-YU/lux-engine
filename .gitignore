@@ -4,6 +4,7 @@
 .internal/*
 !.internal/directory-target-product-architecture.md
 !.internal/UNFINISHED-WORK.md
+!.internal/foundation-benchmark-raw-20260823.csv
 !.internal/lux-engine-refactor-execution-v2/
 .internal/lux-engine-refactor-execution-v2/*
 !.internal/lux-engine-refactor-execution-v2/ADR-20260822_唯一行为图与三层边界.md

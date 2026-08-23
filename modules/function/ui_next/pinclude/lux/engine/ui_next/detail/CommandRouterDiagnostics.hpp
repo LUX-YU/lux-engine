@@ -1,5 +1,9 @@
 #pragma once
 
+#if !defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+#error CommandRouter diagnostics are available only to the benchmark test build
+#endif
+
 #include <cstdint>
 
 #include <lux/engine/ui_next/CommandRouter.hpp>
@@ -20,6 +24,13 @@ namespace lux::ui::detail
         ) noexcept
         {
             return router.rebuildElapsedForTest();
+        }
+
+        [[nodiscard]] static std::uint64_t storageGrowthCount(
+            const CommandRouter& router
+        ) noexcept
+        {
+            return router.storageGrowthCountForTest();
         }
     };
 } // namespace lux::ui::detail

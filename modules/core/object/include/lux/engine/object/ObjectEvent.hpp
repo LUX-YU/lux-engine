@@ -48,10 +48,11 @@ namespace lux::object
     namespace detail
     {
         [[nodiscard]] LUX_CORE_PUBLIC bool
-        sendEventErased(LuxObject& target, EventView& event);
+        sendEventErased(LuxObject& target, EventView& event) noexcept;
     }
 
-    template <class Event> [[nodiscard]] bool sendEvent(LuxObject& target, Event& event)
+    template <class Event>
+    [[nodiscard]] bool sendEvent(LuxObject& target, Event& event) noexcept
     {
         EventView view{event};
         return detail::sendEventErased(target, view);

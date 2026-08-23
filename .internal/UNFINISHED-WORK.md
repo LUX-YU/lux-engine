@@ -108,7 +108,25 @@ This ledger tracks implementation state only. Decisions live in ADRs.
         has no retired identifier except the source gate's own forbidden-path
         literal.
 
-# Completed: Object / UI foundation performance stabilization (2026-08-23)
+# Active: Object / UI foundation correctness and evidence restabilization (2026-08-23)
+
+- [x] Enforce direct Event affinity and a uniform noexcept notification boundary.
+- [x] Make UISession Pane/Factory mutation reentrant-safe and make non-owning Pane
+      lifetime observable through ObjectWeakRef.
+- [x] Snapshot Command dispatch before user callbacks and own route Context storage.
+- [x] Replace the invalidated single-sample performance report with reproducible
+      5-warm-up/30-sample fixtures and retained private A/B evidence.
+- [x] Re-run the complete build/test/install matrix; leave API freeze pending an
+      independent audit.
+
+Validation: RelWithDebInfo is 30/30 with a second no-work build; Debug Foundation
+is 17/17 and hardened Foundation is 17/17. Full Debug remains 24/26 only because
+the two separately tracked Phase 9 EnTT probes still fail. DEVELOPER, PLAYER,
+EDITOR, TOOLCHAIN and Android PLAYER build matrices pass; the standard Android
+tree completes 702/702 and is no-work on its second build. The resulting status
+is `implementation stabilized pending independent audit`, not API frozen.
+
+## Previous performance stabilization record (freeze conclusion withdrawn)
 
 - [x] Enforce callback, affinity, WeakRef, dispatcher and inherited-Signal contracts.
 - [x] Remove typed Signal runtime owner lookup and steady maintenance RMW.

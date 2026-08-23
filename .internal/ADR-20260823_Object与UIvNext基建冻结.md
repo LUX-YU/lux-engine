@@ -1,7 +1,8 @@
 # ADR：Object Model 与 UI vNext 基建稳定化
 
 日期：2026-08-23
-状态：Accepted（foundation API frozen；consumer migration 继续冻结）
+状态：Accepted（ontology frozen；public API stabilizing；implementation stabilized
+pending independent audit；consumer migration frozen）
 
 ## 决策
 
@@ -54,18 +55,23 @@ UIManager / WorkbenchManager / ContextManager / ToolHost
 ContributionGraph / keyboard shortcut subsystem
 ```
 
-## 最终冻结边界
+## 当前稳定化边界
 
-旧 `function/ui` 与 Editor 业务 wiring 本轮未迁移。2026-08-23 的性能/正确性
-复审已经完成，Object/UI Foundation 恢复为 `foundation API frozen`。上层 consumer
-在整个施工期保持冻结；Engine/Editor consumer migration 仍需另行重新审计，
-不得自动恢复任何旧迁移方案。
+旧 `function/ui` 与 Editor 业务 wiring 本轮未迁移。Object/UI 的 ontology 已经
+足够稳定，但 public API 与 implementation 重新进入 correctness/performance
+stabilizing。上层 consumer 继续冻结；Engine/Editor consumer migration 仍需
+另行重新审计，不得自动恢复任何旧迁移方案。
 
 本轮额外锁定：typed Signal callback 是 `noexcept` notification；typed hot path
 由 `Object<Derived, Base>` 在编译期证明 Signal owner；`ObjectWeakRef` 的跨线程
 能力只有 liveness 与投递；UI route 只在 focus/context/binding 事实变化时重建。
 
-## 最终冻结验收记录（2026-08-23）
+## 已失效的冻结验收记录（2026-08-23）
+
+以下记录保留为历史事实，但不再支持 `foundation API frozen` 结论。
+Direct Event affinity、UISession 结构重入、Pane non-owning lifetime 和
+CommandRouter callback reentrancy 均尚需重新稳定。原性能报告也没有在
+仓库内保留声称的 5 轮 warm-up / 30 轮采样与可复算 A/B fixture。
 
 - `lux-cxx` RelWithDebInfo 与 Debug 均为 49/49；`lux-engine` RelWithDebInfo
   为 27/27。Debug Foundation 与全部新增 contract probes 通过；完整 Debug
@@ -84,7 +90,7 @@ ContributionGraph / keyboard shortcut subsystem
 - 两个既有 Phase 9 EnTT Debug probe 仍单独记账；它们不属于
   Object/UI Foundation，也不进入本轮施工。
 
-## 重新冻结结论
+## 历史结论（已撤回）
 
 - Object typed Direct 稳态路径没有 runtime owner lookup、Reflection、hash、
   Release thread-id 查询或 maintenance atomic RMW，并保持零分配。
@@ -93,5 +99,31 @@ ContributionGraph / keyboard shortcut subsystem
 - UI unchanged frame 的 Command route rebuild 为零；route change 收敛到
   `O(bindings + commands)`；输入不维护 ImGui enum 的残缺镜像。
 - MSVC Debug/RelWithDebInfo、Android NDK Clang compile、cross-DLL、cross-affinity、
-  hardened contracts 与 installed consumers 已通过，状态恢复为
-  `foundation API frozen`。
+  hardened contracts 与 installed consumers 当时已通过，但该结果不足以冻结
+  public API 与 implementation。
+
+## 本轮完成条件
+
+本轮完成后仅可将状态记为 `implementation stabilized pending independent audit`。
+必须再经过一次独立复审，才能另行决定是否恢复 `foundation API frozen`。
+
+## 再稳定化验收记录（2026-08-23）
+
+- Windows RelWithDebInfo 全量 `all -j4 -k0` 与 30/30 CTest 通过，
+  CMake 变更后第二轮为 `ninja: no work to do`。
+- Debug Object/UI 矩阵为 17/17；完整 Debug 为 24/26，仅余两个已单独
+  记账的 Phase 9 EnTT probe，不属于本轮 Object/UI 范围。
+- RelWithDebInfo hardened-contract Object/UI 矩阵为 17/17。Debug 与
+  RelWithDebInfo 的 Object/UI installed consumer 各自完成 codegen、link 与 run。
+- 额外使用 `ENABLE_OBJECT_TEST=OFF` 与 `ENABLE_UI_NEXT_TEST=OFF` 编译
+  production Object/UI targets；产物中不存在 test diagnostics 访问符号。
+- DEVELOPER、PLAYER、EDITOR、TOOLCHAIN 配置通过；Android PLAYER 全量
+  702/702 通过，第二轮无增量工作。
+- Direct Event affinity/noexcept、Pane/Factory tombstone + WeakRef、Command dispatch
+  snapshot/context ownership 均有永久测试。源码门禁确认没有 generic UI
+  pending executor、旧 Object/UI API 或 Engine/Editor `ui_next` consumer 回流。
+- 可复算的 5 轮 warm-up / 30 轮样本与私有 A/B fixture 已入库。
+  Candidate B 未满足收益/回退阈值，因此生产布局继续使用 Candidate A。
+
+这些结果只支持当前 `implementation stabilized pending independent audit`；
+本 ADR 不宣布 public API frozen。

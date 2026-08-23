@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <thread>
 
@@ -37,10 +38,11 @@ namespace lux::object
 
     namespace detail
     {
+        struct ObjectDiagnosticsAccess;
         using ObjectInvokeThunk = void (*)(LuxObject*, const void*, void*) noexcept;
 
         [[nodiscard]] LUX_CORE_PUBLIC bool
-        sendEventErased(LuxObject& target, EventView& event);
+        sendEventErased(LuxObject& target, EventView& event) noexcept;
 
         [[nodiscard]] LUX_CORE_PUBLIC lux::cxx::expected<Connection, EObserveError>
         observeDynamicErased(
@@ -76,7 +78,7 @@ namespace lux::object
         }
 
     protected:
-        virtual void event(EventView&) {}
+        virtual void event(EventView&) noexcept {}
 
         void assertAffinity() const noexcept;
         void notifyIndexed(const SignalRuntime& signal, const void* payload) noexcept;
@@ -103,7 +105,11 @@ namespace lux::object
 
     private:
         friend class ObjectWeakRef;
-        friend bool detail::sendEventErased(LuxObject&, EventView&);
+#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
+        friend struct detail::ObjectDiagnosticsAccess;
+        [[nodiscard]] std::uint64_t storageGrowthCountForTest() const noexcept;
+#endif
+        friend bool detail::sendEventErased(LuxObject&, EventView&) noexcept;
         friend lux::cxx::expected<Connection, EObserveError>
         detail::observeDynamicErased(
             LuxObject&,

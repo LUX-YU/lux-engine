@@ -56,6 +56,7 @@ lux_classify_target(
 
 set(ENABLE_OBJECT_TEST ON CACHE BOOL "Enable core object tests")
 if(ENABLE_OBJECT_TEST)
+    target_compile_definitions(object PRIVATE LUX_OBJECT_TEST_DIAGNOSTICS=1)
     include_component_cmake_scripts(meta)
 
     engine_add_meta(
@@ -96,6 +97,23 @@ if(ENABLE_OBJECT_TEST)
     add_test(NAME object_lifetime_test COMMAND object_lifetime_test)
 
     add_executable(
+        object_throwing_event_override_probe EXCLUDE_FROM_ALL
+        test/object_throwing_event_override_probe.cpp
+    )
+    target_link_libraries(
+        object_throwing_event_override_probe PRIVATE object
+    )
+    add_test(
+        NAME object_throwing_event_override_probe
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DTARGET=object_throwing_event_override_probe
+            "-DEXPECTED_PATTERN=less restrictive exception specification"
+            -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+    )
+
+    add_executable(
         object_sender_self_destroy_probe
         test/object_sender_self_destroy_probe.cpp
     )
@@ -126,12 +144,21 @@ if(ENABLE_OBJECT_TEST)
         object_weak_ref_wrong_affinity_probe PRIVATE object_test_signals
     )
 
+    add_executable(
+        object_event_wrong_affinity_probe
+        test/object_event_wrong_affinity_probe.cpp
+    )
+    target_link_libraries(
+        object_event_wrong_affinity_probe PRIVATE object
+    )
+
     if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR LUX_OBJECT_CONTRACT_CHECKS)
         foreach(
             probe
             IN ITEMS
                 object_wrong_affinity_destroy_probe
                 object_weak_ref_wrong_affinity_probe
+                object_event_wrong_affinity_probe
         )
             add_test(
                 NAME ${probe}
@@ -149,6 +176,16 @@ if(ENABLE_OBJECT_TEST)
     )
     target_link_libraries(
         object_performance_contract_test PRIVATE object_test_signals
+    )
+    target_include_directories(
+        object_performance_contract_test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+            ${CMAKE_CURRENT_SOURCE_DIR}/test
+    )
+    target_compile_definitions(
+        object_performance_contract_test
+        PRIVATE LUX_OBJECT_TEST_DIAGNOSTICS=1
     )
     add_test(
         NAME object_performance_contract_test

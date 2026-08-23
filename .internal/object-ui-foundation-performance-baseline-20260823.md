@@ -1,90 +1,95 @@
-# Object / UI Foundation 性能复审基线（2026-08-23）
+# Object / UI Foundation 性能证据（2026-08-23）
 
-状态：Final frozen baseline；只用于同机、同配置的相对比较。
+状态：Restabilization evidence；等待独立复审，不构成 Foundation API frozen 结论。
 
-## 当前 Object benchmark
+上一版标为 `Final frozen baseline` 的单次计时已经失效。它没有保存可复算的
+5 轮 warm-up、30 轮正式采样，也没有让 allocation instrumentation 覆盖实际
+Object/UI DLL 实现，因此不得再用于冻结判断。
 
-RelWithDebInfo 的现有测试输出（迭代次数分别由现有 fixture 固定）：
+## 1. Controlled run 环境
 
-| 路径 | listeners | elapsed |
-|---|---:|---:|
-| typed Direct | 0 | 350000 ns / 20000 |
-| typed Direct | 1 | 590500 ns / 20000 |
-| typed Direct | 4 | 730700 ns / 20000 |
-| typed Direct | 16 | 1210000 ns / 20000 |
-| typed Direct | 64 | 3213000 ns / 20000 |
-| Queued | 1 | 253700 ns / 2000 |
-| Queued | 4 | 935700 ns / 2000 |
-| churn | — | 810400 ns / 5000 |
+| 项目 | 值 |
+|---|---|
+| CPU | 13th Gen Intel(R) Core(TM) i7-13700KF |
+| 编译器 | MSVC 19.44.35228 x64 |
+| 配置 | Windows RelWithDebInfo，MSVC dynamic CRT |
+| 仓库基线 | `50b0b01631636015359b252fdb7ed9810308d176` + 本轮 R0–R4 working tree |
+| warm-up / samples | 5 / 30 |
 
-F0 时的 fixture 尚未提供 noinline direct、virtual、function pointer、dynamic
-Signal、median/p95、cycles/op 和 bytes/connection，因此该表只保留为历史基线。
+每个 case 的 30 个 elapsed/allocation 原始样本保存在
+`foundation-benchmark-raw-20260823.csv`。报告中的 median 是排序后第 15、16
+个样本的平均值，p95 是第 29 个样本；机器相关绝对时间不进入 CTest 阈值。
 
-## 当前 UI benchmark
+测试 EXE 的全局 `new` 计数仍作为辅助观察值，但不再被当作跨 DLL 的唯一证明。
+实际 Object/UI DLL 在测试构建中启用私有 `LUX_*_TEST_DIAGNOSTICS`：
 
-| Pane 数 | elapsed |
-|---:|---:|
-| 10 | 93600 ns / 10 frames |
-| 50 | 422300 ns / 10 frames |
-| 200 | 1663500 ns / 10 frames |
+- Object 直接统计真实 `ObjectState` buckets、listener lanes、connection map 与
+  incoming links 的容量增长；steady Direct、scoped、dynamic 与 reentrant case
+  在 warm-up 后必须保持计数不变。
+- UI 直接统计真实 CommandRouter route storage 与 UISession wrapper storage
+  的容量增长；steady frame、state 与 invoke 在 warm-up 后必须保持计数不变。
+- diagnostics 只通过 `test/pinclude` 使用；关闭对应测试选项的 production 编译
+  不包含计数、计时或访问入口。
 
-现有 Command 测试主要测 O(1) query，没有记录 route rebuild count、rebuild elapsed
-或 wrapper allocation；本轮以 unchanged frame `rebuild_count == 0` 作为硬语义目标。
+## 2. Listener layout A/B 裁决
 
-机器相关绝对时间不进入 CI 阈值。Listener Candidate B 只按 ADR/实施计划中的
-相对收益、回退和空间阈值裁决。
+Candidate A 是当前生产布局 `vector<ConnectionControl*>`；Candidate B 在 direct
+lane 复制 `{receiver_state, invoke, control}`。B 每个 listener 比 A 多 16 bytes，
+但收益条件和 churn 回退条件均未满足：
 
-## O13 listener layout 裁决
-
-同一 RelWithDebInfo 进程使用 5 轮 warm-up、30 轮采样。Candidate B 每个 direct
-listener 比 Candidate A 多 24 bytes，空间条件满足，但热路径没有达到收益条件：
-
-| listeners | A median | B median | B 相对 A |
+| Direct listeners | A median | B median | B 相对 A |
 |---:|---:|---:|---:|
-| 1 | 286400 ns | 285500 ns | +0.3% |
-| 4 | 712400 ns | 795900 ns | -11.7% |
-| 16 | 2516200 ns | 2881600 ns | -14.5% |
-| 64 | 9725200 ns | 11505600 ns | -18.3% |
+| 0 | 3,800 ns | 3,800 ns | 0.0% |
+| 1 | 28,050 ns | 22,300 ns | +20.5% |
+| 4 | 113,350 ns | 112,950 ns | +0.4% |
+| 16 | 458,050 ns | 475,400 ns | -3.8% |
+| 64 | 1,650,450 ns | 1,644,550 ns | +0.4% |
+| churn / 5,000 | 2,800 ns | 4,700 ns | -67.9% |
 
-结论：**拒绝 Candidate B**。生产实现继续使用
-`vector<ConnectionControl*>`；实验源码、开关和临时 target 均未保留。
+4/16/64 的几何平均不是至少 10% 的提升，而是约 1.0% 的回退；churn 又超过
+5% 回退上限。结论：**拒绝 Candidate B，生产实现继续使用 Candidate A。**
+Candidate fixture 只存在于不安装的 `test/pinclude`，没有 production 开关或公共 API。
 
-## O15 最终 Object 快照
+## 3. Object 快照
 
-当前 fixture 覆盖 noinline member、virtual、function pointer、typed member、
-scoped Signal、dynamic reflected Signal、queued、churn 和 0/1/4/16/64 listener。
-本次同机快照的 20,000 次单 listener 路径为：
+实际 `ConnectionControl` 为 104 bytes，公共 `Connection` handle 为 16 bytes。
+下表均为 30 次样本的 median；notify 期间实际 Object storage growth 为零。
 
-| 路径 | elapsed | notify allocations |
-|---|---:|---:|
-| typed member Signal | 353200 ns | 0 |
-| scoped Signal | 302000 ns | 0 |
-| dynamic reflected Signal（connect 后） | 343100 ns | 0 |
+| 路径 | listeners | median | p95 |
+|---|---:|---:|---:|
+| typed member | 1 | 237,650 ns | 261,100 ns |
+| scoped | 1 | 227,700 ns | 266,000 ns |
+| dynamic reflected（connect 后） | 1 | 275,900 ns | 289,600 ns |
+| typed member | 4 | 440,600 ns | 460,800 ns |
+| typed member | 16 | 1,013,500 ns | 1,295,900 ns |
+| typed member | 64 | 3,516,850 ns | 4,194,200 ns |
+| queued | 1 | 188,700 ns | 200,700 ns |
+| queued | 4 | 739,000 ns | 762,000 ns |
+| reentrant | 1 | 207,750 ns | 233,800 ns |
 
-直接基线使用 200,000 次调用：noinline member 299500 ns、virtual 294500 ns、
-function pointer 291300 ns。不同迭代规模只用于各自路径的稳定采样，不将绝对值
-设为 CI 阈值。`Connection` handle 保持 16 bytes。
+调用基线使用 200,000 次调用：noinline member 296,850 ns、virtual 296,350 ns、
+function pointer 290,850 ns。Signal case 使用 20,000 次 notify，queued 使用
+2,000 次 publish + dispatch，因此不同迭代规模之间不作绝对值横向比较。
 
-## U13 最终 UI 快照
+## 4. UI 快照
 
-- steady 10/50/200 Pane 的 10 帧路径分别约 0.15/0.70/2.76 ms，且 route
-  rebuild count 保持不变、wrapper allocation 计数为零；
-- 100/500/2000 bindings 下，50/200 次 state query 均不随 binding 总量线性增长；
-- 32-byte drag payload 使用 inline wrapper storage，1024-byte payload 才进入 heap
-  fallback；两条路径均通过 borrowed-view decode 测试。
+UI benchmark 建立真实 contextual bindings。steady frame 的 route rebuild 增量和
+UISession wrapper storage growth 都为零；state/invoke 的 CommandRouter storage
+growth 也为零。
 
-## U14 验收矩阵
+| case | size / contexts | median | p95 |
+|---|---:|---:|---:|
+| steady frame | 10 Pane | 10,900 ns | 11,100 ns |
+| steady frame | 50 Pane | 49,000 ns | 51,300 ns |
+| steady frame | 200 Pane | 192,800 ns | 212,100 ns |
+| route rebuild | 100 / 1 | 1,200 ns | 1,200 ns |
+| route rebuild | 500 / 3 | 4,950 ns | 5,800 ns |
+| route rebuild | 2,000 / 8 | 22,300 ns | 26,200 ns |
+| state | 2,000 / 8 | 5,700 ns | 5,800 ns |
+| invoke | 2,000 / 8 | 5,100 ns | 9,300 ns |
+| binding churn | 500 | 23,500 ns | 41,300 ns |
+| drag payload | 32 bytes | 13,800 ns | 13,900 ns |
+| drag payload | 1,024 bytes | 14,600 ns | 17,100 ns |
 
-- `lux-cxx`：Debug 49/49、RelWithDebInfo 49/49；Debug、RelWithDebInfo 与 Android
-  安装前缀已同步。LibClang 保持 host-only parser 私有依赖，安装后的 compact-IR
-  runtime/generator consumer 不再要求 LibClang SDK。
-- `lux-engine`：RelWithDebInfo 27/27；Debug Foundation 与 contract probes 全绿，
-  完整 Debug 为 20/22，两个失败均为既有 Phase 9 EnTT duplicate-insertion fixture。
-- Hardened RelWithDebInfo：Object/UI 13/13。
-- Installed consumers：Object 与 UI 在 Debug、RelWithDebInfo 下均完成 configure、
-  codegen、link 与 run。
-- Profiles：DEVELOPER、PLAYER、EDITOR、TOOLCHAIN 与 Android PLAYER 全量构建通过，
-  CMake 变更后的第二轮均为 `ninja: no work to do`。
-- Clang：Android NDK Clang 19 完成全量 PLAYER 构建。当前没有可运行的 Android
-  目标设备，也没有已配置的 host Clang sanitizer 构建，因此未宣称 ASan/UBSan
-  运行时通过。
+这些数据只证明本次实现的可重复证据形状和复杂度趋势，不宣布 API frozen。
+最终状态仍是 `ontology frozen / implementation stabilized pending independent audit`。

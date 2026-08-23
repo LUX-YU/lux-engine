@@ -21,7 +21,9 @@ namespace lux::ui
     namespace detail
     {
         struct CommandRouterControl;
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
         struct CommandRouterDiagnosticsAccess;
+#endif
     }
 
     enum class ECommandDefinitionError
@@ -100,15 +102,23 @@ namespace lux::ui
                 std::is_member_function_pointer_v<decltype(Invoke)>,
                 "Command handlers must be receiver member functions"
             );
-            static_assert(std::is_invocable_r_v<void, decltype(Invoke), Receiver&>);
+            static_assert(
+                std::is_nothrow_invocable_r_v<void, decltype(Invoke), Receiver&>,
+                "Command handlers must be noexcept"
+            );
             if constexpr (!std::is_same_v<decltype(Enabled), std::nullptr_t>)
             {
                 static_assert(
                     std::is_member_function_pointer_v<decltype(Enabled)>,
                     "Command state handlers must be receiver member functions"
                 );
-                static_assert(std::
-                                  is_invocable_r_v<bool, decltype(Enabled), Receiver&>);
+                static_assert(
+                    std::is_nothrow_invocable_r_v<
+                        bool,
+                        decltype(Enabled),
+                        Receiver&>,
+                    "Command enabled handlers must be noexcept"
+                );
             }
             if constexpr (!std::is_same_v<decltype(Checked), std::nullptr_t>)
             {
@@ -116,8 +126,13 @@ namespace lux::ui
                     std::is_member_function_pointer_v<decltype(Checked)>,
                     "Command state handlers must be receiver member functions"
                 );
-                static_assert(std::
-                                  is_invocable_r_v<bool, decltype(Checked), Receiver&>);
+                static_assert(
+                    std::is_nothrow_invocable_r_v<
+                        bool,
+                        decltype(Checked),
+                        Receiver&>,
+                    "Command checked handlers must be noexcept"
+                );
             }
 
             return bindErased(
@@ -125,7 +140,7 @@ namespace lux::ui
                 std::move(context),
                 std::addressof(activation_scope),
                 receiver,
-                [](lux::object::LuxObject* object)
+                [](lux::object::LuxObject* object) noexcept
                 { std::invoke(Invoke, *static_cast<Receiver*>(object)); },
                 makeStateThunk<Receiver, Enabled>(),
                 makeStateThunk<Receiver, Checked>()
@@ -145,15 +160,23 @@ namespace lux::ui
                 std::is_member_function_pointer_v<decltype(Invoke)>,
                 "Command handlers must be receiver member functions"
             );
-            static_assert(std::is_invocable_r_v<void, decltype(Invoke), Receiver&>);
+            static_assert(
+                std::is_nothrow_invocable_r_v<void, decltype(Invoke), Receiver&>,
+                "Command handlers must be noexcept"
+            );
             if constexpr (!std::is_same_v<decltype(Enabled), std::nullptr_t>)
             {
                 static_assert(
                     std::is_member_function_pointer_v<decltype(Enabled)>,
                     "Command state handlers must be receiver member functions"
                 );
-                static_assert(std::
-                                  is_invocable_r_v<bool, decltype(Enabled), Receiver&>);
+                static_assert(
+                    std::is_nothrow_invocable_r_v<
+                        bool,
+                        decltype(Enabled),
+                        Receiver&>,
+                    "Command enabled handlers must be noexcept"
+                );
             }
             if constexpr (!std::is_same_v<decltype(Checked), std::nullptr_t>)
             {
@@ -161,8 +184,13 @@ namespace lux::ui
                     std::is_member_function_pointer_v<decltype(Checked)>,
                     "Command state handlers must be receiver member functions"
                 );
-                static_assert(std::
-                                  is_invocable_r_v<bool, decltype(Checked), Receiver&>);
+                static_assert(
+                    std::is_nothrow_invocable_r_v<
+                        bool,
+                        decltype(Checked),
+                        Receiver&>,
+                    "Command checked handlers must be noexcept"
+                );
             }
 
             return bindErased(
@@ -170,7 +198,7 @@ namespace lux::ui
                 UiContextId{kGlobalContext.name()},
                 nullptr,
                 receiver,
-                [](lux::object::LuxObject* object)
+                [](lux::object::LuxObject* object) noexcept
                 { std::invoke(Invoke, *static_cast<Receiver*>(object)); },
                 makeStateThunk<Receiver, Enabled>(),
                 makeStateThunk<Receiver, Checked>()
@@ -187,8 +215,8 @@ namespace lux::ui
         [[nodiscard]] std::span<const UiContextIdView> activeContexts() const noexcept;
 
     private:
-        using InvokeThunk = void (*)(lux::object::LuxObject*);
-        using StateThunk = bool (*)(lux::object::LuxObject*);
+        using InvokeThunk = void (*)(lux::object::LuxObject*) noexcept;
+        using StateThunk = bool (*)(lux::object::LuxObject*) noexcept;
 
         template <class Receiver, auto Method>
         [[nodiscard]] static consteval StateThunk makeStateThunk()
@@ -199,14 +227,16 @@ namespace lux::ui
             }
             else
             {
-                return [](lux::object::LuxObject* object)
+                return [](lux::object::LuxObject* object) noexcept
                 { return std::invoke(Method, *static_cast<Receiver*>(object)); };
             }
         }
 
         friend class CommandRegistration;
         friend class UISession;
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
         friend struct detail::CommandRouterDiagnosticsAccess;
+#endif
         [[nodiscard]] lux::cxx::expected<CommandRegistration, ECommandBindingError>
         bindErased(
             CommandIndex command,
@@ -218,8 +248,11 @@ namespace lux::ui
             StateThunk checked
         );
         void unbind(std::uint64_t token) noexcept;
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
         [[nodiscard]] std::uint64_t rebuildCountForTest() const noexcept;
         [[nodiscard]] std::uint64_t rebuildElapsedForTest() const noexcept;
+        [[nodiscard]] std::uint64_t storageGrowthCountForTest() const noexcept;
+#endif
 
         struct Impl;
         std::unique_ptr<Impl> impl_;

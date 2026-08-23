@@ -67,6 +67,7 @@ engine_target_add_meta(
 
 set(ENABLE_UI_NEXT_TEST ON CACHE BOOL "Enable UI vNext tests")
 if(ENABLE_UI_NEXT_TEST)
+    target_compile_definitions(ui_next PRIVATE LUX_UI_NEXT_TEST_DIAGNOSTICS=1)
     add_executable(ui_next_test test/ui_next_test.cpp)
     target_link_libraries(ui_next_test PRIVATE ui_next)
     target_include_directories(
@@ -74,9 +75,31 @@ if(ENABLE_UI_NEXT_TEST)
     )
     add_test(NAME ui_next_test COMMAND ui_next_test)
 
+    add_executable(
+        ui_next_reentrancy_test
+        test/ui_next_reentrancy_test.cpp
+    )
+    target_link_libraries(ui_next_reentrancy_test PRIVATE ui_next)
+    add_test(NAME ui_next_reentrancy_test COMMAND ui_next_reentrancy_test)
+
     add_executable(ui_next_demo test/ui_next_demo.cpp)
     target_link_libraries(ui_next_demo PRIVATE ui_next)
     add_test(NAME ui_next_demo COMMAND ui_next_demo)
+
+    add_executable(
+        ui_next_throwing_command_probe EXCLUDE_FROM_ALL
+        test/ui_next_throwing_command_probe.cpp
+    )
+    target_link_libraries(ui_next_throwing_command_probe PRIVATE ui_next)
+    add_test(
+        NAME ui_next_throwing_command_probe
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            -DTARGET=ui_next_throwing_command_probe
+            "-DEXPECTED_PATTERN=Command handlers must be noexcept"
+            -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+    )
 
     add_executable(
         ui_next_performance_contract_test
@@ -85,6 +108,10 @@ if(ENABLE_UI_NEXT_TEST)
     target_link_libraries(
         ui_next_performance_contract_test
         PRIVATE ui_next
+    )
+    target_compile_definitions(
+        ui_next_performance_contract_test
+        PRIVATE LUX_UI_NEXT_TEST_DIAGNOSTICS=1
     )
     target_include_directories(
         ui_next_performance_contract_test

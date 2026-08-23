@@ -6,7 +6,9 @@
 #include <lux/engine/ui_next/UiNext.hpp>
 #include <lux/engine/ui_next/detail/CommandRouterDiagnostics.hpp>
 #include <lux/engine/ui_next/detail/DragDropEncoding.hpp>
+#include <lux/engine/ui_next/detail/UISessionDiagnostics.hpp>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -14,18 +16,90 @@
 #include <iostream>
 #include <memory>
 #include <new>
+#include <numeric>
 #include <string>
+#include <string_view>
 #include <vector>
+
+#if defined(_MSC_VER)
+#include <malloc.h>
+#endif
 
 namespace
 {
     using Clock = std::chrono::steady_clock;
+    constexpr std::size_t kWarmupCount = 5;
+    constexpr std::size_t kSampleCount = 30;
     std::atomic_size_t allocations{0};
 
-    class BenchmarkPane final : public lux::object::Object<BenchmarkPane, lux::ui::Pane>
+    struct Sample final
+    {
+        std::uint64_t elapsed_ns{0};
+        std::size_t allocations{0};
+    };
+
+    template <class Callable>
+    void benchmark(
+        std::string_view name,
+        std::size_t count,
+        std::size_t contexts,
+        Callable&& callable
+    )
+    {
+        for (std::size_t index = 0; index < kWarmupCount; ++index)
+            callable();
+
+        std::vector<Sample> samples;
+        samples.reserve(kSampleCount);
+        for (std::size_t index = 0; index < kSampleCount; ++index)
+        {
+            const auto allocations_before =
+                allocations.load(std::memory_order_relaxed);
+            const auto begin = Clock::now();
+            callable();
+            const auto elapsed = static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    Clock::now() - begin
+                ).count()
+            );
+            const auto allocation_delta =
+                allocations.load(std::memory_order_relaxed) - allocations_before;
+            samples.push_back({elapsed, allocation_delta});
+            std::cout << "raw," << name << ',' << count << ',' << contexts << ','
+                      << index << ',' << elapsed << ',' << allocation_delta << '\n';
+        }
+
+        std::ranges::sort(
+            samples,
+            {},
+            [](const Sample& value) { return value.elapsed_ns; }
+        );
+        const auto median =
+            (samples[kSampleCount / 2 - 1].elapsed_ns +
+             samples[kSampleCount / 2].elapsed_ns) /
+            2;
+        constexpr std::size_t p95_index =
+            (kSampleCount * 95 + 99) / 100 - 1;
+        const auto allocation_total = std::accumulate(
+            samples.begin(),
+            samples.end(),
+            std::size_t{0},
+            [](std::size_t total, const Sample& value)
+            { return total + value.allocations; }
+        );
+        std::cout << "summary," << name << ',' << count << ',' << contexts << ','
+                  << median << ',' << samples[p95_index].elapsed_ns << ','
+                  << allocation_total << '\n';
+    }
+
+    class BenchmarkPane final
+        : public lux::object::Object<BenchmarkPane, lux::ui::Pane>
     {
     public:
-        BenchmarkPane(lux::object::ObjectDispatcherRef dispatcher, std::size_t index)
+        BenchmarkPane(
+            lux::object::ObjectDispatcherRef dispatcher,
+            std::size_t index
+        )
             : Object(
                   std::move(dispatcher),
                   lux::ui::PaneId{"pane." + std::to_string(index)},
@@ -57,10 +131,18 @@ namespace
     class CommandReceiver final : public lux::object::Object<CommandReceiver>
     {
     public:
-        void invoke() { ++invocations; }
-        [[nodiscard]] bool enabled() const { return true; }
+        void invoke() noexcept { ++invocations; }
+        [[nodiscard]] bool enabled() const noexcept { return true; }
+        [[nodiscard]] bool checked() const noexcept { return false; }
         std::size_t invocations{0};
     };
+
+    void drawFrame(lux::ui::UISession& session)
+    {
+        session.beginFrame({1280.0F, 720.0F}, 1.0F / 60.0F);
+        session.drawPanes();
+        static_cast<void>(session.endFrame());
+    }
 
     void benchmarkPanes(std::size_t pane_count)
     {
@@ -79,37 +161,100 @@ namespace
         }
 
         for (int frame = 0; frame < 3; ++frame)
-        {
-            session.beginFrame({1280.0F, 720.0F}, 1.0F / 60.0F);
-            session.drawPanes();
-            static_cast<void>(session.endFrame());
-        }
+            drawFrame(session);
         const auto steady_rebuilds =
             lux::ui::detail::CommandRouterDiagnosticsAccess::rebuildCount(
                 session.commandRouter()
             );
-        const auto start = Clock::now();
-        const auto allocations_before = allocations.load(std::memory_order_relaxed);
-        for (int frame = 0; frame < 10; ++frame)
-        {
-            session.beginFrame({1280.0F, 720.0F}, 1.0F / 60.0F);
-            session.drawPanes();
-            static_cast<void>(session.endFrame());
-        }
+        const auto steady_growth =
+            lux::ui::detail::UISessionDiagnosticsAccess::wrapperGrowthCount(
+                session
+            );
+        benchmark("ui_steady_frame", pane_count, 0, [&] { drawFrame(session); });
         assert(
             lux::ui::detail::CommandRouterDiagnosticsAccess::rebuildCount(
                 session.commandRouter()
             ) == steady_rebuilds
         );
-        const auto elapsed = Clock::now() - start;
         assert(
-            allocations.load(std::memory_order_relaxed) == allocations_before
+            lux::ui::detail::UISessionDiagnosticsAccess::wrapperGrowthCount(
+                session
+            ) == steady_growth
         );
-        std::cout
-            << "ui_panes," << pane_count << ','
-            << std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count()
-            << '\n';
+
+        if (pane_count >= 2)
+        {
+            std::size_t focused = 0;
+            benchmark("ui_focus_transition", pane_count, 1, [&]
+                      {
+                          focused = 1 - focused;
+                          assert(session.focusPane(panes[focused]->id().view()));
+                          drawFrame(session);
+                      });
+        }
     }
+
+    struct CommandFixture final
+    {
+        lux::ui::CommandRouter router;
+        CommandReceiver scope;
+        CommandReceiver alternate_scope;
+        CommandReceiver receiver;
+        std::vector<lux::ui::CommandIndex> commands;
+        std::vector<lux::ui::CommandRegistration> registrations;
+        std::vector<lux::ui::UiContextId> context_ids;
+        std::vector<lux::ui::UiContextIdView> active_contexts;
+        std::vector<lux::ui::UiContextIdView> alternate_contexts;
+
+        CommandFixture(std::size_t binding_count, std::size_t context_count)
+        {
+            context_ids.reserve(context_count > 0 ? context_count - 1 : 0);
+            for (std::size_t index = 0; index + 1 < context_count; ++index)
+                context_ids.emplace_back("context." + std::to_string(index));
+            for (const auto& context : context_ids)
+                active_contexts.push_back(context.view());
+            active_contexts.push_back(lux::ui::kGlobalContext);
+            alternate_contexts = active_contexts;
+            if (alternate_contexts.size() > 2)
+                std::swap(alternate_contexts[0], alternate_contexts[1]);
+
+            const auto command_count =
+                context_count == 1 ? binding_count : binding_count / 2;
+            commands.reserve(command_count);
+            registrations.reserve(binding_count);
+            for (std::size_t index = 0; index < command_count; ++index)
+            {
+                auto command = router.defineCommand(
+                    {lux::ui::UiCommandId{"command." + std::to_string(index)},
+                     "Command"}
+                );
+                assert(command);
+                commands.push_back(*command);
+                auto global = router.bindGlobal<
+                    &CommandReceiver::invoke,
+                    &CommandReceiver::enabled,
+                    &CommandReceiver::checked>(*command, receiver);
+                assert(global);
+                registrations.push_back(std::move(*global));
+                if (context_count > 1)
+                {
+                    const auto& context = context_ids[index % context_ids.size()];
+                    auto contextual = router.bind<
+                        &CommandReceiver::invoke,
+                        &CommandReceiver::enabled,
+                        &CommandReceiver::checked>(
+                        *command,
+                        lux::ui::UiContextId{context.name()},
+                        scope,
+                        receiver
+                    );
+                    assert(contextual);
+                    registrations.push_back(std::move(*contextual));
+                }
+            }
+            router.updateRoute(&scope, active_contexts);
+        }
+    };
 
     void benchmarkCommands(
         std::size_t binding_count,
@@ -117,69 +262,99 @@ namespace
         std::size_t query_count
     )
     {
+        CommandFixture fixture{binding_count, context_count};
+        const auto rebuilds_before =
+            lux::ui::detail::CommandRouterDiagnosticsAccess::rebuildCount(
+                fixture.router
+            );
+        fixture.router.updateRoute(&fixture.scope, fixture.active_contexts);
+        assert(
+            lux::ui::detail::CommandRouterDiagnosticsAccess::rebuildCount(
+                fixture.router
+            ) == rebuilds_before
+        );
+
+        const auto query_growth =
+            lux::ui::detail::CommandRouterDiagnosticsAccess::storageGrowthCount(
+                fixture.router
+            );
+        benchmark("ui_command_state", binding_count, context_count, [&]
+                  {
+                      for (std::size_t index = 0; index < query_count; ++index)
+                      {
+                          const auto command =
+                              fixture.commands[index % fixture.commands.size()];
+                          assert(fixture.router.state(command).enabled);
+                      }
+                  });
+        assert(
+            lux::ui::detail::CommandRouterDiagnosticsAccess::storageGrowthCount(
+                fixture.router
+            ) == query_growth
+        );
+        benchmark("ui_command_invoke", binding_count, context_count, [&]
+                  {
+                      for (std::size_t index = 0; index < query_count; ++index)
+                      {
+                          const auto command =
+                              fixture.commands[index % fixture.commands.size()];
+                          assert(
+                              fixture.router.invoke(command) ==
+                              lux::ui::ECommandDispatchResult::EXECUTED
+                          );
+                      }
+                  });
+        assert(
+            lux::ui::detail::CommandRouterDiagnosticsAccess::storageGrowthCount(
+                fixture.router
+            ) == query_growth
+        );
+
+        bool alternate = false;
+        benchmark("ui_route_rebuild", binding_count, context_count, [&]
+                  {
+                      alternate = !alternate;
+                      fixture.router.updateRoute(
+                          alternate ? static_cast<lux::object::LuxObject*>(
+                                          &fixture.alternate_scope
+                                      )
+                                    : static_cast<lux::object::LuxObject*>(
+                                          &fixture.scope
+                                      ),
+                          alternate ? std::span<const lux::ui::UiContextIdView>{
+                                          fixture.alternate_contexts}
+                                    : std::span<const lux::ui::UiContextIdView>{
+                                          fixture.active_contexts}
+                      );
+                  });
+    }
+
+    void benchmarkBindingChurn(std::size_t command_count)
+    {
         lux::ui::CommandRouter router;
         CommandReceiver receiver;
-        std::vector<lux::ui::CommandRegistration> registrations;
-        registrations.reserve(binding_count);
-        for (std::size_t index = 0; index < binding_count; ++index)
+        std::vector<lux::ui::CommandIndex> commands;
+        commands.reserve(command_count);
+        for (std::size_t index = 0; index < command_count; ++index)
         {
             auto command = router.defineCommand(
-                {lux::ui::UiCommandId{"command." + std::to_string(index)}, "Command"}
+                {lux::ui::UiCommandId{"churn." + std::to_string(index)}, "Churn"}
             );
             assert(command);
-            auto registration =
-                router.bindGlobal<&CommandReceiver::invoke, &CommandReceiver::enabled>(
-                    *command,
-                    receiver
-                );
-            assert(registration);
-            registrations.push_back(std::move(*registration));
+            commands.push_back(*command);
         }
-
-        constexpr std::array specific_contexts{
-            lux::ui::UiContextIdView{"context.0"},
-            lux::ui::UiContextIdView{"context.1"},
-            lux::ui::UiContextIdView{"context.2"},
-            lux::ui::UiContextIdView{"context.3"},
-            lux::ui::UiContextIdView{"context.4"},
-            lux::ui::UiContextIdView{"context.5"},
-            lux::ui::UiContextIdView{"context.6"}
-        };
-        std::array<lux::ui::UiContextIdView, 8> active_contexts{};
-        for (std::size_t index = 0; index + 1 < context_count; ++index)
-            active_contexts[index] = specific_contexts[index];
-        active_contexts[context_count - 1] = lux::ui::kGlobalContext;
-        router.updateRoute(
-            nullptr,
-            std::span{active_contexts}.first(context_count)
-        );
-        const auto rebuilds_before =
-            lux::ui::detail::CommandRouterDiagnosticsAccess::rebuildCount(router);
-        router.updateRoute(
-            nullptr,
-            std::span{active_contexts}.first(context_count)
-        );
-        assert(
-            lux::ui::detail::CommandRouterDiagnosticsAccess::rebuildCount(router) ==
-            rebuilds_before
-        );
-
-        const auto query_allocations = allocations.load(std::memory_order_relaxed);
-        const auto start = Clock::now();
-        for (std::size_t index = 0; index < query_count; ++index)
-        {
-            const auto command =
-                lux::ui::CommandIndex{static_cast<std::uint32_t>(index % binding_count)
-                };
-            assert(router.state(command).enabled);
-        }
-        const auto elapsed = Clock::now() - start;
-        assert(allocations.load(std::memory_order_relaxed) == query_allocations);
-        std::cout
-            << "ui_commands," << binding_count << ',' << context_count << ','
-            << query_count << ','
-            << std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count()
-            << '\n';
+        benchmark("ui_binding_churn", command_count, 1, [&]
+                  {
+                      for (const auto command : commands)
+                      {
+                          auto registration =
+                              router.bindGlobal<&CommandReceiver::invoke>(
+                                  command,
+                                  receiver
+                              );
+                          assert(registration);
+                      }
+                  });
     }
 
     void benchmarkDragPayload(std::size_t payload_size)
@@ -188,24 +363,22 @@ namespace
         std::vector<std::byte> heap_storage;
         std::vector<std::byte> payload(payload_size, std::byte{0x5});
         constexpr std::size_t iterations = 1'000;
-        const auto start = Clock::now();
-        for (std::size_t index = 0; index < iterations; ++index)
-        {
-            const auto encoded = lux::ui::detail::encodeDragDropPayload(
-                lux::ui::PayloadTypeIdView{"benchmark.payload"},
-                payload,
-                inline_storage,
-                heap_storage
-            );
-            assert(lux::ui::detail::decodeDragDropPayload(encoded));
-        }
-        const auto elapsed = Clock::now() - start;
+        benchmark("ui_drag_payload", payload_size, 0, [&]
+                  {
+                      for (std::size_t index = 0; index < iterations; ++index)
+                      {
+                          const auto encoded =
+                              lux::ui::detail::encodeDragDropPayload(
+                                  lux::ui::PayloadTypeIdView{"benchmark.payload"},
+                                  payload,
+                                  inline_storage,
+                                  heap_storage
+                              );
+                          assert(lux::ui::detail::decodeDragDropPayload(encoded));
+                      }
+                  });
         if (payload_size + 64 < inline_storage.size())
             assert(heap_storage.empty());
-        std::cout << "ui_drag_payload," << payload_size << ",0,0,"
-                  << std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed)
-                         .count()
-                  << '\n';
     }
 } // namespace
 
@@ -217,23 +390,69 @@ void* operator new(std::size_t size)
     throw std::bad_alloc{};
 }
 
+void* operator new[](std::size_t size) { return ::operator new(size); }
+void* operator new(std::size_t size, std::align_val_t alignment)
+{
+    allocations.fetch_add(1, std::memory_order_relaxed);
+#if defined(_MSC_VER)
+    if (void* memory = _aligned_malloc(size, static_cast<std::size_t>(alignment)))
+        return memory;
+#else
+    const auto value = static_cast<std::size_t>(alignment);
+    const auto rounded = (size + value - 1) / value * value;
+    if (void* memory = std::aligned_alloc(value, rounded))
+        return memory;
+#endif
+    throw std::bad_alloc{};
+}
+void* operator new[](std::size_t size, std::align_val_t alignment)
+{
+    return ::operator new(size, alignment);
+}
 void operator delete(void* memory) noexcept { std::free(memory); }
-
 void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
+void operator delete[](void* memory) noexcept { std::free(memory); }
+void operator delete[](void* memory, std::size_t) noexcept { std::free(memory); }
+void operator delete(void* memory, std::align_val_t) noexcept
+{
+#if defined(_MSC_VER)
+    _aligned_free(memory);
+#else
+    std::free(memory);
+#endif
+}
+void operator delete(void* memory, std::size_t, std::align_val_t alignment) noexcept
+{
+    ::operator delete(memory, alignment);
+}
+void operator delete[](void* memory, std::align_val_t alignment) noexcept
+{
+    ::operator delete(memory, alignment);
+}
+void operator delete[](
+    void* memory,
+    std::size_t,
+    std::align_val_t alignment
+) noexcept
+{
+    ::operator delete(memory, alignment);
+}
 
 int main()
 {
-    std::cout << "case,count,contexts_or_elapsed,queries_or_empty,elapsed_ns\n";
+    std::cout << "meta,warmups," << kWarmupCount << '\n';
+    std::cout << "meta,samples," << kSampleCount << '\n';
+    std::cout << "record,case,count,contexts,sample_or_median,elapsed_or_p95,"
+                 "process_allocations\n";
     for (const auto pane_count : {10U, 50U, 200U})
         benchmarkPanes(pane_count);
     for (const auto binding_count : {100U, 500U, 2000U})
     {
         for (const auto context_count : {1U, 3U, 8U})
-        {
-            benchmarkCommands(binding_count, context_count, 50);
             benchmarkCommands(binding_count, context_count, 200);
-        }
     }
+    benchmarkBindingChurn(100);
+    benchmarkBindingChurn(500);
     benchmarkDragPayload(32);
     benchmarkDragPayload(1024);
 }

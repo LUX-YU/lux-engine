@@ -27,7 +27,7 @@ namespace
         int value{0};
 
     protected:
-        void event(lux::object::EventView& view) override
+        void event(lux::object::EventView& view) noexcept override
         {
             if (auto* ping = view.getIf<Ping>())
             {
@@ -40,6 +40,10 @@ namespace
 
 int main()
 {
+    static_assert(noexcept(lux::object::sendEvent(
+        std::declval<lux::object::LuxObject&>(),
+        std::declval<Ping&>()
+    )));
     IntSender sender;
     assert(sender.objectType() == lux::cxx::typeToken<IntSender>());
 

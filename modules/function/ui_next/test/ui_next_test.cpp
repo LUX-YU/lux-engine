@@ -42,9 +42,9 @@ namespace
             return contexts_;
         }
 
-        void contextualDelete() { ++contextual_count; }
-        void globalDelete() { ++global_count; }
-        [[nodiscard]] bool contextualEnabled() const { return false; }
+        void contextualDelete() noexcept { ++contextual_count; }
+        void globalDelete() noexcept { ++global_count; }
+        [[nodiscard]] bool contextualEnabled() const noexcept { return false; }
 
         int contextual_count{0};
         int global_count{0};
@@ -66,7 +66,7 @@ namespace
     class Receiver final : public lux::object::Object<Receiver>
     {
     public:
-        void invoke() { ++count; }
+        void invoke() noexcept { ++count; }
         int count{0};
     };
 } // namespace

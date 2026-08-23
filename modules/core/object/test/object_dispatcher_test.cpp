@@ -73,7 +73,7 @@ namespace
         int observed{0};
 
     protected:
-        void event(lux::object::EventView& view) override
+        void event(lux::object::EventView& view) noexcept override
         {
             if (auto* ping = view.getIf<Ping>())
             {
@@ -185,6 +185,64 @@ int main()
     runQueuedScenario(false, false);
     runQueuedScenario(true, false);
     runQueuedScenario(false, true);
+
+    {
+        lux::object::ObjectMessageQueue queue;
+        lux::object::ObjectWeakRef expired_target;
+        {
+            EventReceiver receiver{queue.dispatcherRef()};
+            expired_target = receiver.weakRef();
+            assert(
+                lux::object::postEvent(expired_target, Ping{23}) ==
+                lux::object::EEventPostStatus::POSTED
+            );
+        }
+        assert(expired_target.expired());
+        assert(queue.dispatchPending() == 1);
+    }
+
+    {
+        std::mutex mutex;
+        std::condition_variable condition;
+        lux::object::ObjectWeakRef target;
+        bool ready = false;
+        bool drain = false;
+        int observed = 0;
+        std::thread receiver_thread(
+            [&]
+            {
+                lux::object::ObjectMessageQueue queue;
+                EventReceiver receiver{queue.dispatcherRef()};
+                {
+                    std::scoped_lock lock{mutex};
+                    target = receiver.weakRef();
+                    ready = true;
+                }
+                condition.notify_all();
+                {
+                    std::unique_lock lock{mutex};
+                    condition.wait(lock, [&] { return drain; });
+                }
+                assert(queue.dispatchPending() == 1);
+                observed = receiver.observed;
+            }
+        );
+        {
+            std::unique_lock lock{mutex};
+            condition.wait(lock, [&] { return ready; });
+        }
+        assert(
+            lux::object::postEvent(target, Ping{47}) ==
+            lux::object::EEventPostStatus::POSTED
+        );
+        {
+            std::scoped_lock lock{mutex};
+            drain = true;
+        }
+        condition.notify_all();
+        receiver_thread.join();
+        assert(observed == 47);
+    }
 
     lux::object::ObjectDispatcherRef closed_dispatcher;
     {

@@ -24,7 +24,7 @@ namespace
             return contexts_;
         }
 
-        void save() { ++save_count_; }
+        void save() noexcept { ++save_count_; }
 
     protected:
         void draw(lux::ui::PaneDrawContext& context) override

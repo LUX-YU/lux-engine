@@ -19,6 +19,9 @@ namespace lux::ui
     namespace detail
     {
         struct SessionControl;
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+        struct UISessionDiagnosticsAccess;
+#endif
     }
 
     enum class EUiRegistrationError
@@ -121,8 +124,14 @@ namespace lux::ui
     private:
         friend class PaneRegistration;
         friend class PaneFactoryRegistration;
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+        friend struct detail::UISessionDiagnosticsAccess;
+#endif
         void unregisterPane(std::uint64_t token) noexcept;
         void unregisterFactory(std::uint64_t token) noexcept;
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+        [[nodiscard]] std::uint64_t wrapperGrowthCountForTest() const noexcept;
+#endif
 
         struct Impl;
         std::unique_ptr<Impl> impl_;

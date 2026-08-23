@@ -26,9 +26,9 @@ namespace lux::ui
             lux::object::LuxObject* scope_identity{nullptr};
             lux::object::ObjectWeakRef scope;
             lux::object::ObjectWeakRef receiver;
-            void (*invoke)(lux::object::LuxObject*){nullptr};
-            bool (*enabled)(lux::object::LuxObject*){nullptr};
-            bool (*checked)(lux::object::LuxObject*){nullptr};
+            void (*invoke)(lux::object::LuxObject*) noexcept{nullptr};
+            bool (*enabled)(lux::object::LuxObject*) noexcept{nullptr};
+            bool (*checked)(lux::object::LuxObject*) noexcept{nullptr};
 
             [[nodiscard]] bool endpointsAlive() const noexcept
             {
@@ -43,16 +43,74 @@ namespace lux::ui
         std::vector<Command> commands;
         std::vector<Binding> bindings;
         std::vector<Binding*> effective;
-        std::vector<UiContextIdView> active_contexts{kGlobalContext};
-        std::vector<std::pair<UiContextIdView, std::size_t>> context_ranks{
-            {kGlobalContext, 0}
+        std::vector<UiContextId> active_context_ids{
+            UiContextId{kGlobalContext.name()}
         };
+        std::vector<UiContextIdView> active_contexts;
+        std::vector<std::pair<UiContextIdView, std::size_t>> context_ranks;
         std::vector<std::size_t> selected_ranks;
-        lux::object::LuxObject* active_scope{nullptr};
+        lux::object::LuxObject* active_scope_identity{nullptr};
+        lux::object::ObjectWeakRef active_scope;
         std::uint64_t next_token{1};
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
         std::uint64_t rebuild_count{0};
         std::uint64_t rebuild_elapsed_ns{0};
+        std::uint64_t storage_growth_count{0};
+#endif
         bool dirty{true};
+
+        Impl() { rebuildContextViews(); }
+
+        void rebuildContextViews()
+        {
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+            const auto view_capacity = active_contexts.capacity();
+            const auto rank_capacity = context_ranks.capacity();
+#endif
+            active_contexts.clear();
+            context_ranks.clear();
+            active_contexts.reserve(active_context_ids.size());
+            context_ranks.reserve(active_context_ids.size());
+            for (std::size_t index = 0; index < active_context_ids.size(); ++index)
+            {
+                const auto view = active_context_ids[index].view();
+                active_contexts.push_back(view);
+                context_ranks.emplace_back(view, index);
+            }
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+            storage_growth_count += active_contexts.capacity() != view_capacity;
+            storage_growth_count += context_ranks.capacity() != rank_capacity;
+#endif
+        }
+
+        [[nodiscard]] bool sameContexts(
+            std::span<const UiContextIdView> contexts
+        ) const noexcept
+        {
+            if (active_context_ids.size() != contexts.size())
+                return false;
+            for (std::size_t index = 0; index < contexts.size(); ++index)
+            {
+                if (active_context_ids[index].view() != contexts[index])
+                    return false;
+            }
+            return true;
+        }
+
+        void setContexts(std::span<const UiContextIdView> contexts)
+        {
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+            const auto id_capacity = active_context_ids.capacity();
+#endif
+            active_context_ids.clear();
+            active_context_ids.reserve(contexts.size());
+            for (const auto context : contexts)
+                active_context_ids.emplace_back(context.name());
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+            storage_growth_count += active_context_ids.capacity() != id_capacity;
+#endif
+            rebuildContextViews();
+        }
 
         [[nodiscard]] bool valid(CommandIndex index) const noexcept
         {
@@ -74,23 +132,33 @@ namespace lux::ui
         {
             if (!dirty)
                 return;
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
             const auto begin = std::chrono::steady_clock::now();
+#endif
             std::erase_if(
                 bindings,
                 [](const Binding& binding) { return !binding.endpointsAlive(); }
             );
 
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+            const auto effective_capacity = effective.capacity();
+            const auto rank_capacity = selected_ranks.capacity();
+#endif
             effective.assign(commands.size(), nullptr);
             selected_ranks.assign(
                 commands.size(),
                 (std::numeric_limits<std::size_t>::max)()
             );
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+            storage_growth_count += effective.capacity() != effective_capacity;
+            storage_growth_count += selected_ranks.capacity() != rank_capacity;
+#endif
             for (auto& binding : bindings)
             {
                 if (binding.command.value >= commands.size())
                     continue;
                 if (binding.scope_identity != nullptr &&
-                    binding.scope_identity != active_scope)
+                    binding.scope_identity != active_scope_identity)
                 {
                     continue;
                 }
@@ -104,18 +172,26 @@ namespace lux::ui
                 effective[binding.command.value] = std::addressof(binding);
             }
             dirty = false;
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
             ++rebuild_count;
             rebuild_elapsed_ns += static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(
                     std::chrono::steady_clock::now() - begin
                 ).count()
             );
+#endif
         }
 
         [[nodiscard]] Binding* selected(CommandIndex index)
         {
             if (!valid(index))
                 return nullptr;
+            if (active_scope_identity != nullptr && active_scope.expired())
+            {
+                active_scope_identity = nullptr;
+                active_scope = {};
+                dirty = true;
+            }
             rebuild();
             auto* binding = effective[index.value];
             if (binding && !binding->endpointsAlive())
@@ -191,7 +267,13 @@ namespace lux::ui
         }
         const auto index =
             CommandIndex{static_cast<std::uint32_t>(impl_->commands.size())};
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+        const auto capacity = impl_->commands.capacity();
+#endif
         impl_->commands.push_back(std::move(command_value));
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+        impl_->storage_growth_count += impl_->commands.capacity() != capacity;
+#endif
         impl_->dirty = true;
         return index;
     }
@@ -261,6 +343,9 @@ namespace lux::ui
         }
 
         const auto token = impl_->next_token++;
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+        const auto capacity = impl_->bindings.capacity();
+#endif
         impl_->bindings.push_back(Binding{
             token,
             command_index,
@@ -273,23 +358,42 @@ namespace lux::ui
             enabled,
             checked
         });
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
+        impl_->storage_growth_count += impl_->bindings.capacity() != capacity;
+#endif
         impl_->dirty = true;
         return CommandRegistration{control_, token};
     }
 
     CommandState CommandRouter::state(CommandIndex command_index) const
     {
-        auto* binding = const_cast<Impl*>(impl_.get())->selected(command_index);
+        auto* mutable_impl = const_cast<Impl*>(impl_.get());
+        auto* binding = mutable_impl->selected(command_index);
         if (!binding)
             return {};
-        auto* receiver = binding->receiver.getOnCurrent();
+
+        const auto receiver_ref = binding->receiver;
+        const auto enabled = binding->enabled;
+        const auto checked = binding->checked;
+        auto* receiver = receiver_ref.getOnCurrent();
         if (!receiver)
             return {};
-        return {
-            true,
-            !binding->enabled || binding->enabled(receiver),
-            binding->checked && binding->checked(receiver)
-        };
+
+        const bool enabled_value = !enabled || enabled(receiver);
+        receiver = receiver_ref.getOnCurrent();
+        if (!receiver)
+        {
+            mutable_impl->dirty = true;
+            return {};
+        }
+
+        const bool checked_value = checked && checked(receiver);
+        if (!receiver_ref.getOnCurrent())
+        {
+            mutable_impl->dirty = true;
+            return {};
+        }
+        return {true, enabled_value, checked_value};
     }
 
     ECommandDispatchResult CommandRouter::invoke(CommandIndex command_index)
@@ -297,12 +401,23 @@ namespace lux::ui
         auto* binding = impl_->selected(command_index);
         if (!binding)
             return ECommandDispatchResult::NOT_FOUND;
-        auto* receiver = binding->receiver.getOnCurrent();
+
+        const auto receiver_ref = binding->receiver;
+        const auto invoke = binding->invoke;
+        const auto enabled = binding->enabled;
+        auto* receiver = receiver_ref.getOnCurrent();
         if (!receiver)
             return ECommandDispatchResult::NOT_FOUND;
-        if (binding->enabled && !binding->enabled(receiver))
+        const bool enabled_value = !enabled || enabled(receiver);
+        receiver = receiver_ref.getOnCurrent();
+        if (!receiver)
+        {
+            impl_->dirty = true;
+            return ECommandDispatchResult::NOT_FOUND;
+        }
+        if (!enabled_value)
             return ECommandDispatchResult::DISABLED;
-        binding->invoke(receiver);
+        invoke(receiver);
         return ECommandDispatchResult::EXECUTED;
     }
 
@@ -311,18 +426,17 @@ namespace lux::ui
         std::span<const UiContextIdView> contexts
     )
     {
-        const bool same_contexts = std::ranges::equal(impl_->active_contexts, contexts);
-        if (impl_->active_scope == activation_scope && same_contexts && !impl_->dirty)
+        const bool same_contexts = impl_->sameContexts(contexts);
+        const bool same_scope =
+            impl_->active_scope_identity == activation_scope &&
+            (activation_scope == nullptr || impl_->active_scope.alive());
+        if (same_scope && same_contexts && !impl_->dirty)
             return;
         if (!same_contexts)
-        {
-            impl_->active_contexts.assign(contexts.begin(), contexts.end());
-            impl_->context_ranks.clear();
-            impl_->context_ranks.reserve(contexts.size());
-            for (std::size_t index = 0; index < contexts.size(); ++index)
-                impl_->context_ranks.emplace_back(contexts[index], index);
-        }
-        impl_->active_scope = activation_scope;
+            impl_->setContexts(contexts);
+        impl_->active_scope_identity = activation_scope;
+        impl_->active_scope = activation_scope ? activation_scope->weakRef()
+                                                : lux::object::ObjectWeakRef{};
         impl_->dirty = true;
         impl_->rebuild();
     }
@@ -341,6 +455,7 @@ namespace lux::ui
         impl_->dirty = true;
     }
 
+#if defined(LUX_UI_NEXT_TEST_DIAGNOSTICS)
     std::uint64_t CommandRouter::rebuildCountForTest() const noexcept
     {
         return impl_->rebuild_count;
@@ -350,4 +465,10 @@ namespace lux::ui
     {
         return impl_->rebuild_elapsed_ns;
     }
+
+    std::uint64_t CommandRouter::storageGrowthCountForTest() const noexcept
+    {
+        return impl_->storage_growth_count;
+    }
+#endif
 } // namespace lux::ui

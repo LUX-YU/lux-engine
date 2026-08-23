@@ -7,16 +7,21 @@
 
 namespace lux::object::reflection
 {
-    SignalView findDeclaredSignal(
-        const lux::meta::RefClass& object_class,
-        std::string_view name
-    ) noexcept
+    SignalView findDeclaredSignal(const lux::meta::RefClass& object_class, std::string_view name) noexcept
     {
         for (const auto& field : object_class.static_fields)
         {
-            if (field.name != name || !field.annotations().has("signal") ||
-                field.template_primary != "lux::object::Signal" ||
-                !field.address || field.type.size != sizeof(SignalRuntime))
+            const bool has_matching_name     =  field.name == name;
+            const bool has_signal_annotation =  field.annotations().has("signal");
+            const bool has_signal_type       =  field.template_primary == "lux::object::Signal";
+            const bool has_address           =  field.address;
+            const bool has_expected_size     =  field.type.size == sizeof(SignalRuntime);
+            const bool is_declared_signal    =  has_matching_name && 
+                                                has_signal_annotation && 
+                                                has_signal_type &&
+                                                has_address && 
+                                                has_expected_size;
+            if (!is_declared_signal)
             {
                 continue;
             }
@@ -59,33 +64,40 @@ namespace lux::object::reflection
         using lux::meta::EBaseType;
         using lux::meta::ETypeQual;
 
-        if (!signal || !signal.signal || !signal.field)
+        if (!signal || !signal.signal || !signal.field){
             return lux::cxx::unexpected(EDynamicObserveError::INVALID_SIGNAL);
-        if (!method.annotations().has("connectable"))
+        }
+        if (!method.annotations().has("connectable")){
             return lux::cxx::unexpected(EDynamicObserveError::METHOD_NOT_CONNECTABLE);
-        if (method.is_static || !method.invokable.invoker)
+        }
+            
+        if (method.is_static || !method.invokable.invoker){
             return lux::cxx::unexpected(EDynamicObserveError::METHOD_MUST_BE_INSTANCE);
-        if (!method.owner_class || !receiver.isObjectType(lux::cxx::TypeToken{
-                                       method.owner_class->type.hash,
-                                       method.owner_class->full_name
-                                   }))
+        }
+            
+        const bool has_owner_class = method.owner_class != nullptr;
+        const bool has_matching_receiver_type = has_owner_class && 
+            receiver.isObjectType(lux::cxx::TypeToken{
+                method.owner_class->type.hash,
+                method.owner_class->full_name
+            }
+        );
+        if (!has_owner_class || !has_matching_receiver_type)
         {
             return lux::cxx::unexpected(EDynamicObserveError::RECEIVER_TYPE_MISMATCH);
         }
 
         const auto& invokable = method.invokable;
-        if (static_cast<EBaseType>(invokable.return_type.qtype.base) !=
-                EBaseType::Void ||
-            static_cast<ETypeQual>(invokable.return_type.qtype.qual) !=
-                ETypeQual::Value)
+        if (static_cast<EBaseType>(invokable.return_type.qtype.base) != EBaseType::Void ||
+            static_cast<ETypeQual>(invokable.return_type.qtype.qual) != ETypeQual::Value)
         {
             return lux::cxx::unexpected(EDynamicObserveError::RETURN_TYPE_MISMATCH);
         }
-        const auto expected_parameter_count =
-            signal.signal->hasPayload() ? std::size_t{1} : std::size_t{0};
-        if (invokable.parameters.size() != expected_parameter_count)
+        const auto expected_parameter_count = signal.signal->hasPayload() ? std::size_t{1} : std::size_t{0};
+        if (invokable.parameters.size() != expected_parameter_count){
             return lux::cxx::unexpected(EDynamicObserveError::PARAMETER_COUNT_MISMATCH);
-
+        }
+            
         if (signal.signal->hasPayload())
         {
             const auto& parameter = invokable.parameters.front();

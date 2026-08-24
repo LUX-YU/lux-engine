@@ -22,7 +22,9 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 
 target_compile_definitions(
@@ -54,6 +56,10 @@ lux_classify_target(
 )
 
 add_executable(ecs_transform_test test/transform_test.cpp)
+target_include_directories(
+    ecs_transform_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+)
 target_link_libraries(
     ecs_transform_test
     PRIVATE

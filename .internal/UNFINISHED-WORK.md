@@ -13,7 +13,7 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 - [x] V2-4/V2-5: Restabilize Snapshot, LXWS and live-World safe-point contracts.
 - [x] V2-6: Replace Hierarchy with a generation-aware incremental index and
       bounded change stream.
-- [ ] V2-7: Replace Transform with an incremental change-driven implementation.
+- [x] V2-7: Replace Transform with an incremental change-driven implementation.
 - [ ] V2-8: Re-run representative performance, installed-consumer, hardened,
       Windows and Android gates; publish only a Freeze Candidate.
 

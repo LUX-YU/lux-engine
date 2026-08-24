@@ -211,6 +211,7 @@ namespace lux::ecs
                     {
                         return lux::cxx::unexpected(EComponentCodecError::INVALID_DATA);
                     }
+                    value.rotation.normalize();
                 }
                 else if (property.name == "scale")
                 {

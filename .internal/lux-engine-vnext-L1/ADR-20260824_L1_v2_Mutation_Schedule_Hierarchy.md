@@ -44,6 +44,13 @@ Hierarchy v2 不再公开 `rebuild/preorder/subtree/setEdge`，也不在 mutatio
 adjacency。children range 无分配，hierarchy change stream 固定 65,536 records；
 首次同步或上游 cursor resync 时先在 temporary state 完整校验，再原子 swap。
 
+Transform v2 只消费各自 Local component journal 与 HierarchyIndex change stream。
+无变化帧在 query 前退出；变化帧以 dense generation stamps 合并 dirty roots，并只用
+可复用 vector traversal stack 访问受影响 subtree。已有 WorldTransform 通过
+SystemFrame 的 declared write capability 原地更新，缺失或应删除的 derived
+component 通过 phase-end commands 完成。3D persistent decode 拒绝零四元数，并在
+写入 canonical Transform3D 前规范化所有有效四元数。
+
 Schedule v2 的 lifetime edge API 命名为 `ScheduleEdit::require(consumer,
 provider)`；设计文档中的伪代码 `requires(...)` 在 C++ 中是保留关键字，不能作为
 成员函数标识符。该命名差异不改变“只有 hard requirement 才进入 lifetime DAG”的

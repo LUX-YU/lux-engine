@@ -160,6 +160,19 @@ if(EXISTS "${system_frame_header}")
     endif()
 endif()
 
+set(transform_system_source
+    "${source_root}/engine/ecs/transform/src/TransformSystem.cpp"
+)
+if(EXISTS "${transform_system_source}")
+    file(READ "${transform_system_source}" transform_system_contract)
+    if(transform_system_contract MATCHES
+       "unordered_(map|set)|ChangeCursor[ \t]*<[ \t]*Parent|query[ \t]*<[ \t]*Read[ \t]*<[ \t]*Parent")
+        message(FATAL_ERROR
+            "Architecture: Transform restores a full-scan/associative dirty-state path instead of consuming HierarchyIndex changes."
+        )
+    endif()
+endif()
+
 file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/CMakeLists.txt"
     "${source_root}/modules/CMakeLists.txt"
@@ -223,5 +236,6 @@ file(WRITE "${LUX_REPORT_PATH}"
     "retired ECS vocabulary in L1: 0\n"
     "L1 terminal I/O: 0\n"
     "retired L0 asset runtime vocabulary: 0\n"
+    "transform full-scan/associative dirty paths: 0\n"
     "legacy entries in compile_commands: 0\n"
 )

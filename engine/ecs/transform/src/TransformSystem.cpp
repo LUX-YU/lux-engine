@@ -1,13 +1,12 @@
 #include <lux/engine/ecs/TransformSystem.hpp>
 
-#include <lux/engine/ecs/Parent.hpp>
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 
+#include <entt/entity/entity.hpp>
+
 #include <algorithm>
 #include <span>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace lux::ecs
@@ -22,8 +21,11 @@ namespace lux::ecs
             void apply(WorldEdit& edit) noexcept
             {
                 const World& world = detail::WorldEditAccess::world(edit);
-                if (world.valid(entity) && world.find<Derived>(entity) != nullptr)
+                if (world.valid(entity) &&
+                    world.find<Derived>(entity) != nullptr)
+                {
                     edit.erase<Derived>(entity);
+                }
             }
         };
 
@@ -42,15 +44,25 @@ namespace lux::ecs
                     edit.emplace<Derived>(entity, value);
                 else
                 {
-                    edit.update<Derived>(entity, [this](Derived& target) noexcept
-                    {
-                        target = value;
-                    });
+                    edit.update<Derived>(
+                        entity,
+                        [this](Derived& target) noexcept
+                        {
+                            target = value;
+                        }
+                    );
                 }
             }
         };
 
-        [[nodiscard]] Eigen::Affine2f localMatrix(const Transform2D& value) noexcept
+        [[nodiscard]] std::size_t entityIndex(Entity entity) noexcept
+        {
+            return static_cast<std::size_t>(entt::to_entity(entity));
+        }
+
+        [[nodiscard]] Eigen::Affine2f localMatrix(
+            const Transform2D& value
+        ) noexcept
         {
             Eigen::Affine2f result = Eigen::Affine2f::Identity();
             result.translate(value.translation);
@@ -59,7 +71,9 @@ namespace lux::ecs
             return result;
         }
 
-        [[nodiscard]] Eigen::Affine3f localMatrix(const Transform3D& value) noexcept
+        [[nodiscard]] Eigen::Affine3f localMatrix(
+            const Transform3D& value
+        ) noexcept
         {
             Eigen::Affine3f result = Eigen::Affine3f::Identity();
             result.translate(value.translation);
@@ -68,196 +82,331 @@ namespace lux::ecs
             return result;
         }
 
+        template <class Matrix>
+        struct TraversalEntry final
+        {
+            Entity entity{NullEntity};
+            Matrix parent_world{Matrix::Identity()};
+            bool parent_contributes{};
+        };
+
         template <class Local, class Derived, class Matrix>
         struct TransformState
         {
             explicit TransformState(HierarchyIndex& value) noexcept
                 : hierarchy(std::addressof(value))
-            {}
-
-            void mark(Entity entity) noexcept
             {
-                if (dirty_all)
+            }
+
+            void beginStamp()
+            {
+                ++stamp;
+                if (stamp != 0)
                     return;
-                try
+                std::fill(dirty_stamps.begin(), dirty_stamps.end(), 0U);
+                std::fill(root_stamps.begin(), root_stamps.end(), 0U);
+                std::fill(visited_stamps.begin(), visited_stamps.end(), 0U);
+                stamp = 1U;
+            }
+
+            void ensureStamps(Entity entity)
+            {
+                const std::size_t required = entityIndex(entity) + 1U;
+                if (dirty_stamps.size() >= required)
+                    return;
+                dirty_stamps.resize(required);
+                root_stamps.resize(required);
+                visited_stamps.resize(required);
+                dirty_identities.resize(required, NullEntity);
+                root_identities.resize(required, NullEntity);
+                visited_identities.resize(required, NullEntity);
+            }
+
+            void mark(Entity entity)
+            {
+                ensureStamps(entity);
+                const std::size_t index = entityIndex(entity);
+                if (dirty_stamps[index] == stamp &&
+                    dirty_identities[index] == entity)
+                    return;
+                dirty_stamps[index] = stamp;
+                dirty_identities[index] = entity;
+                dirty_candidates.push_back(entity);
+            }
+
+            [[nodiscard]] bool marked(Entity entity) const noexcept
+            {
+                if (entity == NullEntity)
+                    return false;
+                const std::size_t index = entityIndex(entity);
+                return index < dirty_stamps.size() &&
+                    dirty_stamps[index] == stamp &&
+                    dirty_identities[index] == entity;
+            }
+
+            [[nodiscard]] bool visit(Entity entity)
+            {
+                ensureStamps(entity);
+                const std::size_t index = entityIndex(entity);
+                if (visited_stamps[index] == stamp &&
+                    visited_identities[index] == entity)
+                    return false;
+                visited_stamps[index] = stamp;
+                visited_identities[index] = entity;
+                ++visited_nodes;
+                return true;
+            }
+
+            void queueRemove(SystemFrame& frame, Entity entity) noexcept
+            {
+                if (frame.find<Derived>(entity) == nullptr)
+                    return;
+                if (frame.commands().push(RemoveDerived<Derived>{entity}) !=
+                    ECommandResult::ACCEPTED)
                 {
-                    dirty.push_back(entity);
-                }
-                catch (...)
-                {
-                    dirty_all = true;
-                    dirty.clear();
+                    force_resync = true;
+                    ++discarded_commands;
                 }
             }
 
-            [[nodiscard]] Matrix resolve(
+            void publish(
                 SystemFrame& frame,
-                Entity entity
+                Entity entity,
+                const Matrix& value
+            ) noexcept
+            {
+                if (frame.find<Derived>(entity) != nullptr)
+                {
+                    frame.update<Derived>(
+                        entity,
+                        [&value](Derived& target) noexcept
+                        {
+                            target.value = value;
+                        }
+                    );
+                    return;
+                }
+                if (frame.commands().push(
+                        SetDerived<Derived>{entity, Derived{value}}
+                    ) != ECommandResult::ACCEPTED)
+                {
+                    force_resync = true;
+                    ++discarded_commands;
+                }
+            }
+
+            [[nodiscard]] TraversalEntry<Matrix> rootEntry(
+                SystemFrame& frame,
+                Entity root
             )
             {
-                if (const auto found = computed.find(entity); found != computed.end())
-                    return found->second;
-                if (!visiting.insert(entity).second)
-                    return Matrix::Identity();
-
-                const Local* local = frame.find<Local>(entity);
-                Matrix result = local != nullptr ? localMatrix(*local) : Matrix::Identity();
-                const Entity parent = hierarchy->parent(entity);
-                if (parent != NullEntity && frame.valid(parent) &&
-                    frame.find<Local>(parent) != nullptr)
+                TraversalEntry<Matrix> result;
+                result.entity = root;
+                Entity current = hierarchy->parent(root);
+                if (current == NullEntity || !frame.valid(current) ||
+                    frame.find<Local>(current) == nullptr)
                 {
-                    Matrix parent_world;
-                    if (targets.contains(parent) ||
-                        frame.find<Derived>(parent) == nullptr)
-                    {
-                        parent_world = resolve(frame, parent);
-                    }
-                    else
-                        parent_world = frame.get<Derived>(parent).value;
-                    result = parent_world * result;
+                    return result;
                 }
 
-                visiting.erase(entity);
-                computed.insert_or_assign(entity, result);
+                ancestors.clear();
+                while (current != NullEntity && frame.valid(current) &&
+                       frame.find<Local>(current) != nullptr)
+                {
+                    if (const Derived* derived = frame.find<Derived>(current);
+                        derived != nullptr)
+                    {
+                        result.parent_world = derived->value;
+                        result.parent_contributes = true;
+                        break;
+                    }
+                    ancestors.push_back(current);
+                    const Entity parent = hierarchy->parent(current);
+                    if (parent == NullEntity || !frame.valid(parent) ||
+                        frame.find<Local>(parent) == nullptr)
+                    {
+                        current = NullEntity;
+                        break;
+                    }
+                    current = parent;
+                }
+
+                for (auto iterator = ancestors.rbegin();
+                     iterator != ancestors.rend(); ++iterator)
+                {
+                    const Local* local = frame.find<Local>(*iterator);
+                    detail::require(local != nullptr);
+                    const Matrix value = result.parent_contributes
+                        ? result.parent_world * localMatrix(*local)
+                        : localMatrix(*local);
+                    publish(frame, *iterator, value);
+                    result.parent_world = value;
+                    result.parent_contributes = true;
+                    ++visited_nodes;
+                }
                 return result;
+            }
+
+            void traverse(SystemFrame& frame, Entity root)
+            {
+                traversal.clear();
+                traversal.push_back(rootEntry(frame, root));
+                while (!traversal.empty())
+                {
+                    const TraversalEntry<Matrix> entry = traversal.back();
+                    traversal.pop_back();
+                    if (!frame.valid(entry.entity) || !visit(entry.entity))
+                        continue;
+
+                    Matrix child_world = Matrix::Identity();
+                    bool child_contributes{};
+                    if (const Local* local = frame.find<Local>(entry.entity);
+                        local != nullptr)
+                    {
+                        child_world = entry.parent_contributes
+                            ? entry.parent_world * localMatrix(*local)
+                            : localMatrix(*local);
+                        child_contributes = true;
+                        publish(frame, entry.entity, child_world);
+                    }
+                    else
+                        queueRemove(frame, entry.entity);
+
+                    for (const Entity child :
+                         hierarchy->children(entry.entity))
+                    {
+                        traversal.push_back(TraversalEntry<Matrix>{
+                            child,
+                            child_world,
+                            child_contributes});
+                    }
+                }
+            }
+
+            void collectRoots()
+            {
+                roots.clear();
+                for (const Entity candidate : dirty_candidates)
+                {
+                    Entity root = candidate;
+                    Entity parent = hierarchy->parent(root);
+                    while (marked(parent))
+                    {
+                        root = parent;
+                        parent = hierarchy->parent(root);
+                    }
+                    ensureStamps(root);
+                    const std::size_t index = entityIndex(root);
+                    if (root_stamps[index] == stamp &&
+                        root_identities[index] == root)
+                        continue;
+                    root_stamps[index] = stamp;
+                    root_identities[index] = root;
+                    roots.push_back(root);
+                }
             }
 
             void update(SystemFrame& frame) noexcept
             {
-                const auto parent_changes = frame.changes(parent_cursor);
-                if (parent_changes.status() == EChangeReadStatus::RESYNC_REQUIRED)
-                    dirty_all = true;
-                else
-                {
-                    for (const auto& change : parent_changes)
-                        mark(change.entity);
-                }
-
-                const auto local_changes = frame.changes(local_cursor);
-                if (local_changes.status() == EChangeReadStatus::RESYNC_REQUIRED)
-                    dirty_all = true;
-                else
-                {
-                    for (const auto& change : local_changes)
-                    {
-                        mark(change.entity);
-                        if (change.kind == EComponentChangeKind::REMOVED &&
-                            frame.commands().push(
-                                RemoveDerived<Derived>{change.entity}
-                            ) != ECommandResult::ACCEPTED)
-                        {
-                            ++discarded_commands;
-                        }
-                    }
-                }
-
+                visited_nodes = 0U;
+                auto local_changes = frame.changes(local_cursor);
+                auto hierarchy_changes = hierarchy->changes(hierarchy_cursor);
                 if (!hierarchy->synchronized())
                 {
+                    force_resync = true;
                     ++invalid_hierarchy;
-                    dirty_all = true;
+                    return;
+                }
+
+                const bool rebuild = force_resync ||
+                    local_changes.status() ==
+                        EChangeReadStatus::RESYNC_REQUIRED ||
+                    hierarchy_changes.status() ==
+                        EChangeReadStatus::RESYNC_REQUIRED;
+                if (!rebuild && local_changes.empty() &&
+                    hierarchy_changes.empty())
+                {
                     return;
                 }
 
                 try
                 {
-                    targets.clear();
-                    computed.clear();
-                    visiting.clear();
-                    if (dirty_all)
+                    force_resync = false;
+                    beginStamp();
+                    dirty_candidates.clear();
+                    roots.clear();
+                    if (rebuild)
                     {
-                        for (auto [entity, local] : frame.query<Read<Local>>())
+                        for (auto [entity, local] :
+                             frame.query<Read<Local>>())
                         {
                             (void)local;
-                            targets.insert(entity);
+                            mark(entity);
+                        }
+                        for (auto [entity, derived] :
+                             frame.query<Read<Derived>>())
+                        {
+                            (void)derived;
+                            if (frame.find<Local>(entity) == nullptr)
+                                queueRemove(frame, entity);
                         }
                     }
                     else
                     {
-                        for (const Entity entity : dirty)
+                        for (const ComponentChange change : local_changes)
                         {
-                            if (!frame.valid(entity))
-                                continue;
-                            targets.insert(entity);
-                            traversal.clear();
-                            for (const Entity child : hierarchy->children(entity))
-                                traversal.push_back(child);
-                            while (!traversal.empty())
-                            {
-                                const Entity child = traversal.back();
-                                traversal.pop_back();
-                                if (!targets.insert(child).second)
-                                    continue;
-                                for (const Entity descendant :
-                                     hierarchy->children(child))
-                                {
-                                    traversal.push_back(descendant);
-                                }
-                            }
+                            if (frame.valid(change.entity))
+                                mark(change.entity);
+                        }
+                        for (const HierarchyChange change : hierarchy_changes)
+                        {
+                            if (frame.valid(change.entity))
+                                mark(change.entity);
                         }
                     }
 
-                    for (const Entity entity : targets)
+                    collectRoots();
+                    for (const Entity root : roots)
                     {
-                        if (!frame.valid(entity))
-                            continue;
-                        const Local* local = frame.find<Local>(entity);
-                        if (local == nullptr)
-                            continue;
-                        const Matrix value = resolve(frame, entity);
-                        if (frame.find<Derived>(entity) != nullptr)
-                        {
-                            frame.update<Derived>(entity, [&value](Derived& target) noexcept
-                            {
-                                target.value = value;
-                            });
-                        }
-                        else if (frame.commands().push(
-                            SetDerived<Derived>{entity, Derived{value}}
-                        ) != ECommandResult::ACCEPTED)
-                        {
-                            ++discarded_commands;
-                        }
+                        if (frame.valid(root))
+                            traverse(frame, root);
                     }
-                    dirty.clear();
-                    dirty_all = false;
                 }
                 catch (...)
                 {
-                    dirty_all = true;
+                    force_resync = true;
                     ++allocation_failures;
                 }
             }
 
             HierarchyIndex* hierarchy{};
-            ChangeCursor<Parent> parent_cursor;
             ChangeCursor<Local> local_cursor;
-            std::vector<Entity> dirty;
-            std::vector<Entity> traversal;
-            std::unordered_set<Entity> targets;
-            std::unordered_set<Entity> visiting;
-            std::unordered_map<Entity, Matrix> computed;
-            bool dirty_all{true};
+            HierarchyChangeCursor hierarchy_cursor;
+            std::vector<std::uint32_t> dirty_stamps;
+            std::vector<std::uint32_t> root_stamps;
+            std::vector<std::uint32_t> visited_stamps;
+            std::vector<Entity> dirty_identities;
+            std::vector<Entity> root_identities;
+            std::vector<Entity> visited_identities;
+            std::vector<Entity> dirty_candidates;
+            std::vector<Entity> roots;
+            std::vector<Entity> ancestors;
+            std::vector<TraversalEntry<Matrix>> traversal;
+            std::uint32_t stamp{};
+            std::size_t visited_nodes{};
             std::size_t discarded_commands{};
             std::size_t allocation_failures{};
             std::size_t invalid_hierarchy{};
+            bool force_resync{true};
         };
 
         template <class Local, class Derived>
         [[nodiscard]] SystemAccess transformAccess() noexcept
         {
-            static const ComponentAccess components[]{
-                {lux::cxx::typeToken<Parent>(), EAccessMode::READ},
-                {lux::cxx::typeToken<Local>(), EAccessMode::READ},
-                {lux::cxx::typeToken<Derived>(), EAccessMode::WRITE},
-            };
-            static const ExternalAccess external[]{
-                {lux::cxx::typeToken<HierarchyIndex>(), EAccessMode::READ},
-            };
-            return SystemAccess{
-                std::span<const ComponentAccess>{components},
-                std::span<const ExternalAccess>{external},
-                true,
-            };
+            return lux::ecs::access(
+                query<Read<Local>, Write<Derived>>(),
+                ExternalRead<HierarchyIndex>{}
+            );
         }
     } // namespace
 
@@ -275,7 +424,8 @@ namespace lux::ecs
 
     Transform2DSystem::Transform2DSystem(HierarchyIndex& hierarchy)
         : impl_(std::make_unique<Impl>(hierarchy))
-    {}
+    {
+    }
 
     Transform2DSystem::~Transform2DSystem() = default;
 
@@ -289,9 +439,15 @@ namespace lux::ecs
         return transformAccess<Transform2D, WorldTransform2D>();
     }
 
+    std::size_t Transform2DSystem::visitedNodesLastUpdate() const noexcept
+    {
+        return impl_->visited_nodes;
+    }
+
     Transform3DSystem::Transform3DSystem(HierarchyIndex& hierarchy)
         : impl_(std::make_unique<Impl>(hierarchy))
-    {}
+    {
+    }
 
     Transform3DSystem::~Transform3DSystem() = default;
 
@@ -305,4 +461,8 @@ namespace lux::ecs
         return transformAccess<Transform3D, WorldTransform3D>();
     }
 
+    std::size_t Transform3DSystem::visitedNodesLastUpdate() const noexcept
+    {
+        return impl_->visited_nodes;
+    }
 } // namespace lux::ecs

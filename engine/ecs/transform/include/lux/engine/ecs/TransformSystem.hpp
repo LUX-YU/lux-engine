@@ -4,10 +4,16 @@
 #include <lux/engine/ecs/System.hpp>
 #include <lux/engine/ecs/transform/visibility.h>
 
+#include <cstddef>
 #include <memory>
 
 namespace lux::ecs
 {
+    namespace detail
+    {
+        struct TransformSystemTestAccess;
+    }
+
     class LUX_ENGINE_ECS_TRANSFORM_PUBLIC Transform2DSystem final
         : public System
     {
@@ -20,8 +26,12 @@ namespace lux::ecs
         [[nodiscard]] SystemAccess access() const noexcept override;
 
       private:
+        [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
+
         struct Impl;
         std::unique_ptr<Impl> impl_;
+
+        friend struct detail::TransformSystemTestAccess;
     };
 
     class LUX_ENGINE_ECS_TRANSFORM_PUBLIC Transform3DSystem final
@@ -36,7 +46,11 @@ namespace lux::ecs
         [[nodiscard]] SystemAccess access() const noexcept override;
 
       private:
+        [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
+
         struct Impl;
         std::unique_ptr<Impl> impl_;
+
+        friend struct detail::TransformSystemTestAccess;
     };
 } // namespace lux::ecs

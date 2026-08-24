@@ -16,7 +16,7 @@
 | `EntitySectionImage` | `WorldSectionImage` | REWRITE | name/schema/archetype/column/ordinal layout | LXWS deterministic/corruption tests |
 | Parent/Transform snapshot special cases | 无 | RETIRE | 无 | generic snapshot + rebuild pilot |
 | old hierarchy preorder/interval | 无 | RETIRE | Parent remains canonical; generation-aware intrusive adjacency replaces interval authority | hierarchy/transform tests |
-| old transform dirty propagation | Transform Systems | REUSE algorithm | dirty subtree propagation | transform pilot test |
+| old transform dirty propagation | Transform Systems | REUSE algorithm | dirty subtree root reduction only; dense stamps/change cursors replace unordered/full scans | no-change zero-visit, leaf/root dirty and codec tests |
 | asset runtime owner/cache/load ports | future L2 | RETIRE FROM L0 / DEFER | cooked byte codecs only | source/install/compile-command gate |
 | old `.luxasset` v1/v2 and pak | L0 codec/VFS | REUSE WIRE | magic/version/layout/defensive limits | cooked/pak golden tests |
 | shader/asset build tools in Runtime graph | future Content/Toolchain | DEFER | 无 | compile-only builtin-content seam |

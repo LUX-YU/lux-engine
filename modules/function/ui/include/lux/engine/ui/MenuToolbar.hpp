@@ -1,6 +1,9 @@
 #pragma once
 
+#include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include <lux/engine/function/visibility.h>
@@ -8,45 +11,103 @@
 
 namespace lux::ui
 {
-	enum class EMenuItemKind
-	{
-		COMMAND,
-		SUBMENU,
-		SEPARATOR
-	};
+    enum class EMenuItemKind
+    {
+        COMMAND,
+        SUBMENU,
+        SEPARATOR
+    };
 
-	struct MenuItem final
-	{
-		EMenuItemKind kind{EMenuItemKind::COMMAND};
-		std::string label;
-		CommandHandle command;
-		std::vector<MenuItem> children;
-	};
+    class MenuItem final
+    {
+      public:
+        [[nodiscard]] static MenuItem command(CommandHandle command, std::string label = {})
+        {
+            return MenuItem{EMenuItemKind::COMMAND, std::move(label), command, {}};
+        }
 
-	struct MenuModel final
-	{
-		std::vector<MenuItem> items;
-	};
+        [[nodiscard]] static MenuItem submenu(std::string label, std::vector<MenuItem> children)
+        {
+            return MenuItem{EMenuItemKind::SUBMENU, std::move(label), {}, std::move(children)};
+        }
 
-	enum class EToolbarItemKind
-	{
-		COMMAND,
-		SEPARATOR
-	};
+        [[nodiscard]] static MenuItem separator()
+        {
+            return MenuItem{EMenuItemKind::SEPARATOR, {}, {}, {}};
+        }
 
-	struct ToolbarItem final
-	{
-		EToolbarItemKind kind{EToolbarItemKind::COMMAND};
-		CommandHandle command;
-	};
+        [[nodiscard]] EMenuItemKind kind() const noexcept
+        {
+            return kind_;
+        }
+        [[nodiscard]] std::string_view label() const noexcept
+        {
+            return label_;
+        }
+        [[nodiscard]] CommandHandle command() const noexcept
+        {
+            return command_;
+        }
+        [[nodiscard]] std::span<const MenuItem> children() const noexcept
+        {
+            return children_;
+        }
 
-	struct ToolbarModel final
-	{
-		std::vector<ToolbarItem> items;
-	};
+      private:
+        MenuItem(EMenuItemKind kind, std::string label, CommandHandle command,
+                 std::vector<MenuItem> children)
+            : kind_(kind), label_(std::move(label)), command_(command),
+              children_(std::move(children))
+        {
+        }
 
-	class CommandRouter;
+        EMenuItemKind kind_;
+        std::string label_;
+        CommandHandle command_;
+        std::vector<MenuItem> children_;
+    };
 
-	LUX_FUNCTION_PUBLIC void drawMenu(const MenuModel &model, CommandRouter &router);
-	LUX_FUNCTION_PUBLIC void drawToolbar(const ToolbarModel &model, CommandRouter &router);
+    enum class EToolbarItemKind
+    {
+        COMMAND,
+        SEPARATOR
+    };
+
+    class ToolbarItem final
+    {
+      public:
+        [[nodiscard]] static ToolbarItem command(CommandHandle command)
+        {
+            return ToolbarItem{EToolbarItemKind::COMMAND, command};
+        }
+
+        [[nodiscard]] static ToolbarItem separator()
+        {
+            return ToolbarItem{EToolbarItemKind::SEPARATOR, {}};
+        }
+
+        [[nodiscard]] EToolbarItemKind kind() const noexcept
+        {
+            return kind_;
+        }
+        [[nodiscard]] CommandHandle command() const noexcept
+        {
+            return command_;
+        }
+
+      private:
+        ToolbarItem(EToolbarItemKind kind, CommandHandle command) noexcept
+            : kind_(kind), command_(command)
+        {
+        }
+
+        EToolbarItemKind kind_;
+        CommandHandle command_;
+    };
+
+    class CommandRouter;
+
+    LUX_FUNCTION_PUBLIC void drawMenu(std::span<const MenuItem> items, CommandRouter &router);
+
+    LUX_FUNCTION_PUBLIC void drawToolbar(std::span<const ToolbarItem> items, CommandRouter &router);
 } // namespace lux::ui

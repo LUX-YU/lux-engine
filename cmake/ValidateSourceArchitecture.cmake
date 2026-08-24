@@ -32,6 +32,15 @@ foreach(relative IN LISTS retired_directories)
     endif()
 endforeach()
 
+set(retired_object_fwd
+    "modules/core/object/include/lux/engine/object/ObjectFwd.hpp")
+if(EXISTS "${source_root}/${retired_object_fwd}")
+    message(FATAL_ERROR
+        "Architecture: retired public ObjectFwd.hpp reappeared. "
+        "Object storage declarations belong under object/detail."
+    )
+endif()
+
 file(GLOB_RECURSE ecs_sources LIST_DIRECTORIES false
     "${source_root}/ecs/*.hpp"
     "${source_root}/ecs/*.cpp"
@@ -124,6 +133,33 @@ foreach(source IN LISTS object_sources)
     endif()
 endforeach()
 
+# Installed Object detail headers exist only so Object's own public templates
+# can name incomplete storage. No other source domain may consume them.
+file(GLOB_RECURSE object_detail_consumers LIST_DIRECTORIES false
+    "${source_root}/modules/*.hpp"
+    "${source_root}/modules/*.cpp"
+    "${source_root}/ecs/*.hpp"
+    "${source_root}/ecs/*.cpp"
+    "${source_root}/engine/*.hpp"
+    "${source_root}/engine/*.cpp"
+    "${source_root}/extensions/*.hpp"
+    "${source_root}/extensions/*.cpp"
+)
+foreach(source IN LISTS object_detail_consumers)
+    file(TO_CMAKE_PATH "${source}" normalized)
+    if(normalized MATCHES "/modules/core/object/")
+        continue()
+    endif()
+    file(READ "${source}" content)
+    if(content MATCHES
+       "#[ \t]*include[ \t]*[<\"]lux/engine/object/detail/")
+        message(FATAL_ERROR
+            "Architecture: source '${source}' includes unsupported Object "
+            "storage detail. Use the typed Object public API."
+        )
+    endif()
+endforeach()
+
 # function/ui is the only UI Foundation component. It owns backend-neutral draw
 # snapshots but no Renderer/Vulkan integration or platform input adapter.
 file(GLOB_RECURSE ui_sources LIST_DIRECTORIES false
@@ -166,6 +202,31 @@ foreach(source IN LISTS ui_sources)
         )
     endif()
 endforeach()
+
+file(GLOB_RECURSE ui_public_headers LIST_DIRECTORIES false
+    "${source_root}/modules/function/ui/include/*.hpp"
+)
+foreach(source IN LISTS ui_public_headers)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "(class|struct)[ \t\r\n]+(MenuModel|ToolbarModel)[ \t\r\n{;:]")
+        message(FATAL_ERROR
+            "Architecture: UI public header '${source}' restores a one-field "
+            "Menu/Toolbar model wrapper. Use span-based draw APIs."
+        )
+    endif()
+endforeach()
+
+file(READ
+    "${source_root}/modules/core/object/include/lux/engine/object/Connection.hpp"
+    connection_header)
+if(connection_header MATCHES
+   "Connection[ \t]*&[ \t]*connection[ \t\r\n]*[(]")
+    message(FATAL_ERROR
+        "Architecture: ScopedConnection exposes the retired raw connection() "
+        "getter. Use connected/reset/release semantics."
+    )
+endif()
 
 # Engine migration is blocked. Existing legacy Panel/UISystem includes are debt,
 # but no upper layer may adopt Object or the final UI Foundation primitives.

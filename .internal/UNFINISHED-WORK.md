@@ -110,6 +110,18 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 
 # Active: Object / UI final hardening and public API finalization (2026-08-23)
 
+- [x] F0: Make foreign-thread disconnect cleanup closed-safe and empty the
+      initiating Connection handle; finalize ScopedConnection RAII ergonomics.
+- [x] F1: Remove public affinity/storage leakage and publish exact dynamic
+      observe diagnostics with a one-pointer SignalView.
+- [x] F2: Enforce UI owner-thread and frame-state contracts without making UI
+      mutation concurrent; make UISession the sole contextual route owner.
+- [x] F3: Remove Menu/Toolbar wrappers, close item invalid states, and finalize
+      LayoutSnapshot, PaneFactory and input/Panes documentation.
+- [x] F4: Add retired-surface gates and negative probes, rerun the full
+      Object/UI/install/profile/Android/performance matrix, then request
+      independent re-audit.
+
 - [x] H0: Update status, architecture gates and the explicit Engine migration stop line.
 - [x] H1: Harden Object queue close and concurrent lazy-state publication.
 - [x] H2: Replace numeric connection storage with intrusive owner positions and exact
@@ -124,15 +136,26 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 Stop line: deleting legacy `Panel`/`UISystem`/`ui_vulkan` intentionally leaves current
 Engine and Editor consumers unbuildable. Their migration is blocked for a later redesign;
 this phase must not add shims, aliases, a Foundation-only profile, or business-code edits.
-Completion records `Ontology Frozen / Public API Finalized / Implementation Hardened /
-Independent Audit Pending / Engine Migration Blocked`; it does not announce API freeze.
+Completion records `Ontology Frozen / Public API Finalized — Freeze Candidate /
+Implementation Hardened / Independent Re-audit Required / Engine Migration Blocked`;
+it does not announce API freeze.
 
-Validation: RelWithDebInfo Object/UI is 11/11 + 6/6; Debug and hardened-contract
-Object/UI are each 14/14 + 6/6. Android PLAYER compiles only the final Object/UI
-module targets and is no-work on its second build. Debug and RelWithDebInfo installed
-Object/UI consumers pass codegen, compile, link and run. Tests-off production DLLs
-contain no test-diagnostics exports. Engine/Editor remain intentionally outside the
-build and are still blocked for later redesign.
+Validation: RelWithDebInfo Object/UI is 16/16 + 16/16; Debug and hardened-contract
+Object/UI are each 19/19 + 18/18. Every module build is stable on its immediate second
+Ninja invocation. Android compiles only the final Object/UI targets plus the architecture
+gate and is also no-work on its second build. Debug and RelWithDebInfo installed Object/UI
+consumers pass codegen, compile, link and run; all three installed header trees exactly
+match source and contain no retired `ObjectFwd.hpp`. Tests-off production DLLs contain no
+test-diagnostics or owner-contract helper exports. Engine/Editor consumers remain outside
+this task and are blocked for the later redesign.
+
+The controlled performance comparison uses the same compiler and interleaved baseline
+`8d60dba9`/candidate runs, with 5 warm-ups and 30 samples per case. Aggregate median/P95
+changes are within the locked 5% limit: Object Direct is +2.62/+2.06% and -1.74/+2.17%;
+UI steady frame is -0.01/-3.21% and +2.73/-8.36%; UI state is +2.14/+0.48% and
++3.47/+3.65%; UI invoke is +0.16/+0.24% and +2.85/+4.01%. Direct/scoped/dynamic Object
+and steady/state/invoke UI samples report zero process allocations. Raw CSV evidence is
+retained in the RelWithDebInfo Object/UI build tree.
 
 ## Previous correctness and evidence restabilization record
 

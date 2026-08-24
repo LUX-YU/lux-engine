@@ -10,8 +10,7 @@ namespace lux::object
         {
             return false;
         }
-        if (control_->receiver &&
-            !control_->receiver->object.load(std::memory_order_acquire))
+        if (control_->receiver && !control_->receiver->object.load(std::memory_order_acquire))
         {
             return false;
         }
@@ -20,8 +19,10 @@ namespace lux::object
 
     void Connection::disconnect() noexcept
     {
-        if (!sender_ || !control_)
+        auto sender = std::move(sender_);
+        auto control = std::move(control_);
+        if (!sender || !control)
             return;
-        sender_->requestDisconnect(control_.get());
+        sender->requestDisconnect(control.get());
     }
 } // namespace lux::object

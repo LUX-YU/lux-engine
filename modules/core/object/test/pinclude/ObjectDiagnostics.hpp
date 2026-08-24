@@ -10,33 +10,55 @@
 #include <lux/engine/object/Signal.hpp>
 #include <lux/engine/object/detail/MessageEnvelope.hpp>
 
-namespace lux::object::detail {
-struct ObjectDiagnosticsAccess final {
-  [[nodiscard]] static std::uint64_t
-  storageGrowthCount(const LuxObject &object) noexcept {
-    return object.storageGrowthCountForTest();
-  }
+namespace lux::object::detail
+{
+    struct ObjectDiagnosticsAccess final
+    {
+        [[nodiscard]] static std::uint64_t storageGrowthCount(const LuxObject &object) noexcept
+        {
+            return object.storageGrowthCountForTest();
+        }
 
-  template <class SignalType>
-  [[nodiscard]] static std::size_t
-  denseIndex(const SignalType &signal) noexcept {
-    return signal.descriptor_.dense_index_;
-  }
+        [[nodiscard]] static std::size_t ownedConnectionCount(const LuxObject &object) noexcept
+        {
+            return object.ownedConnectionCountForTest();
+        }
 
-  template <class SignalType>
-  [[nodiscard]] static std::size_t
-  lineageSize(const SignalType &signal) noexcept {
-    return signal.descriptor_.lineage_size_;
-  }
+        [[nodiscard]] static std::size_t incomingConnectionCount(const LuxObject &object) noexcept
+        {
+            return object.incomingConnectionCountForTest();
+        }
 
-  static void resetMessageStorage() noexcept { resetMessageStorageForTest(); }
+        template <class SignalType>
+        [[nodiscard]] static std::size_t denseIndex(const SignalType &signal) noexcept
+        {
+            return signal.descriptor_.dense_index_;
+        }
 
-  [[nodiscard]] static std::size_t inlineMessageStorageCount() noexcept {
-    return inlineMessageStorageCountForTest();
-  }
+        template <class SignalType>
+        [[nodiscard]] static std::size_t lineageSize(const SignalType &signal) noexcept
+        {
+            return signal.descriptor_.lineage_size_;
+        }
 
-  [[nodiscard]] static std::size_t heapMessageStorageCount() noexcept {
-    return heapMessageStorageCountForTest();
-  }
-};
+        static void resetMessageStorage() noexcept
+        {
+            resetMessageStorageForTest();
+        }
+
+        [[nodiscard]] static std::size_t inlineMessageStorageCount() noexcept
+        {
+            return inlineMessageStorageCountForTest();
+        }
+
+        [[nodiscard]] static std::size_t heapMessageStorageCount() noexcept
+        {
+            return heapMessageStorageCountForTest();
+        }
+
+        static void closeForTest(LuxObject &object)
+        {
+            object.closeForTest();
+        }
+    };
 } // namespace lux::object::detail

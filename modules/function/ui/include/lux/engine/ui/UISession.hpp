@@ -34,6 +34,8 @@ namespace lux::ui
 
 	class UISession;
 
+	/** Live registration; reset and destruction belong to the session owner thread.
+	 */
 	class LUX_FUNCTION_PUBLIC PaneRegistration final
 	{
 	public:
@@ -45,19 +47,22 @@ namespace lux::ui
 		~PaneRegistration();
 
 		void reset() noexcept;
-		[[nodiscard]] explicit operator bool() const noexcept { return token_ != 0; }
+		[[nodiscard]] explicit operator bool() const noexcept
+		{
+			return token_ != 0;
+		}
 
 	private:
 		friend class UISession;
-		PaneRegistration(
-			std::weak_ptr<detail::SessionControl> control,
-			std::uint64_t token
-		) noexcept;
+		PaneRegistration(std::weak_ptr<detail::SessionControl> control,
+						 std::uint64_t token) noexcept;
 
 		std::weak_ptr<detail::SessionControl> control_;
 		std::uint64_t token_{0};
 	};
 
+	/** Live registration; reset and destruction belong to the session owner thread.
+	 */
 	class LUX_FUNCTION_PUBLIC PaneFactoryRegistration final
 	{
 	public:
@@ -69,19 +74,25 @@ namespace lux::ui
 		~PaneFactoryRegistration();
 
 		void reset() noexcept;
-		[[nodiscard]] explicit operator bool() const noexcept { return token_ != 0; }
+		[[nodiscard]] explicit operator bool() const noexcept
+		{
+			return token_ != 0;
+		}
 
 	private:
 		friend class UISession;
-		PaneFactoryRegistration(
-			std::weak_ptr<detail::SessionControl> control,
-			std::uint64_t token
-		) noexcept;
+		PaneFactoryRegistration(std::weak_ptr<detail::SessionControl> control,
+								std::uint64_t token) noexcept;
 
 		std::weak_ptr<detail::SessionControl> control_;
 		std::uint64_t token_{0};
 	};
 
+	/**
+	 * Owns all live UI state and is confined to its construction thread.
+	 * Plain UI values such as IDs, input events and LayoutSnapshot remain
+	 * ordinary transferable values.
+	 */
 	class LUX_FUNCTION_PUBLIC UISession final
 	{
 	public:
@@ -90,8 +101,8 @@ namespace lux::ui
 		UISession(const UISession &) = delete;
 		UISession &operator=(const UISession &) = delete;
 
-		[[nodiscard]] lux::cxx::expected<PaneRegistration, EUiRegistrationError>
-		registerPane(Pane &pane);
+		[[nodiscard]] lux::cxx::expected<PaneRegistration, EUiRegistrationError> registerPane(
+			Pane &pane);
 
 		[[nodiscard]] lux::cxx::expected<PaneFactoryRegistration, EUiRegistrationError>
 		registerFactory(PaneFactory factory);
@@ -111,13 +122,12 @@ namespace lux::ui
 		/** Returns whether the focus request was accepted, not canonical focus. */
 		[[nodiscard]] bool requestFocus(PaneIdView pane);
 		[[nodiscard]] Pane *focusedPane() const noexcept;
-		[[nodiscard]] std::span<const UiContextIdView>
-		focusedContexts() const noexcept;
+		[[nodiscard]] std::span<const UiContextIdView> focusedContexts() const noexcept;
 
 		void beginFrame(ImVec2 display_size, float delta_seconds);
 		void feedInput(const UiInputEvent &event);
 		void drawPanes();
-		[[nodiscard]] ImDrawData *endFrame();
+		[[nodiscard]] ImDrawData* endFrame();
 
 		[[nodiscard]] LayoutSnapshot captureLayout() const;
 
@@ -130,6 +140,10 @@ namespace lux::ui
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
 		friend struct detail::UISessionDiagnosticsAccess;
 #endif
+		void updateCommandRoute(
+			lux::object::LuxObject *activation_scope,
+			std::span<const UiContextIdView> contexts
+		);
 		void unregisterPane(std::uint64_t token) noexcept;
 		void unregisterFactory(std::uint64_t token) noexcept;
 #if defined(LUX_UI_TEST_DIAGNOSTICS)

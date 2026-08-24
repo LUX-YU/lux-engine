@@ -1,8 +1,8 @@
 # ADR：Object Model 与 UI Foundation 最终加固
 
 日期：2026-08-23
-状态：Accepted（ontology frozen；public API finalization active；
-implementation final stabilization；independent audit pending；
+状态：Accepted（ontology frozen；public API finalized — freeze candidate；
+implementation hardened；independent re-audit required；
 Engine migration blocked for later redesign）
 
 ## 决策
@@ -40,12 +40,16 @@ core/meta -> core/object -> function/ui
   sender affinity。
 - receiver 析构立即阻止未来 callback；跨 affinity disconnect 先逻辑取消，再由
   sender 侧完成物理清理。
+- foreign-thread disconnect 必须由 sender dispatcher 接受物理清理；dispatcher
+  缺失或关闭属于 fail-fast lifetime contract violation，不能静默保留半连接。
 - Direct notify 栈上同步销毁 sender 不受支持；owner 必须在 safe point 延迟销毁。
 - typed Signal 使用 reference NTTP 与生成 thunk；Reflection 只参与 dynamic connect-time。
 - queued Signal、posted Event 与 connection control 共享内部
   `detail::MessageEnvelope` transport；该 transport 不属于公共 Object API，
   Signal/Event 的 public semantics 保持不同。
 - `UISession` 是唯一 UI session owner；Context 只表示交互语境。
+- `UISession`、`CommandRouter` 与 live Registration handle 均由构造线程独占；
+  跨线程 UI mutation 不通过 mutex/atomic 扩展为受支持语义。
 - Command activation scope 与 handler receiver 是两个独立 weak lifetime。
 - Published tuning 不锁定 `SignalIndex` 宽度、container inline capacity、SBO 大小或
   atomic 具体表示。
@@ -100,8 +104,9 @@ CommandRouter callback reentrancy 均尚需重新稳定。原性能报告也没�
   Release thread-id 查询或 maintenance atomic RMW，并保持零分配。
 - wrong-affinity destruction、WeakRef affinity、callback exception、inherited
   dynamic Signal 与 generated-only SignalIndex 均有永久测试和硬门禁。
-- UI unchanged frame 的 Command route rebuild 为零；route change 收敛到
-  `O(bindings + commands)`；输入不维护 ImGui enum 的残缺镜像。
+- UI unchanged frame 的 Command route rebuild 为零；route change 的真实复杂度为
+  `O(bindings × active-context-count + commands)`，active contexts 通常为 1～8，
+  因此不为形式上的 `O(B+C)` 引入 hash 索引；输入不维护 ImGui enum 的残缺镜像。
 - MSVC Debug/RelWithDebInfo、Android NDK Clang compile、cross-DLL、cross-affinity、
   hardened contracts 与 installed consumers 当时已通过，但该结果不足以冻结
   public API 与 implementation。
@@ -173,3 +178,49 @@ Engine Migration Blocked
 
 这些结果只支持当前 `implementation stabilized pending independent audit`；
 本 ADR 不宣布 public API frozen。
+
+## 独立审计整改后的冻结候选状态（2026-08-24）
+
+独立审计认可 ontology，不要求新的架构切割。本轮只处理冻结后难以回收的边界：
+
+- foreign-thread Connection cleanup 和立即清空 handle 的生命周期合同；
+- UI owner-thread contract 与 frame 状态机的全配置 fail-fast；
+- contextual route 只由 UISession 修改，Command 查询收窄为即时 label view；
+- 删除 Menu/Toolbar 单字段 wrapper，使用 invariant-safe item factory；
+- LayoutSnapshot 值语义、Object detail header、SignalView 和 dynamic error 收口；
+- Pane Signal callback 只能请求延迟销毁，不能同步销毁 sender。
+
+本轮不实施 Candidate C，不迁移 Engine/Editor consumer。验证完成后的状态固定为：
+
+```text
+Ontology Frozen
+Public API Finalized — Freeze Candidate
+Implementation Hardened
+Independent Re-audit Required
+Engine Migration Blocked
+```
+
+只有后续独立复审签字，才能改为 `Foundation Public API Frozen` 并解除迁移阻塞。
+
+## 冻结候选验收记录（2026-08-24）
+
+- RelWithDebInfo Object/UI 为 16/16 + 16/16；Debug 与 hardened-contract 均为
+  19/19 + 18/18。三套 Windows modules-only 构建的第二轮均为
+  `ninja: no work to do`。
+- Android NDK Clang 完成 `object`、`ui` 与 architecture gate，第二轮无增量工作。
+  Debug、RelWithDebInfo、Android 三个安装前缀的 Object/UI 公开头与源码哈希一致，
+  且均不存在退役的 `ObjectFwd.hpp`。
+- Debug 与 RelWithDebInfo installed consumer 均重新完成 Object meta codegen、编译、
+  链接和运行。tests-off production DLL 不导出 test diagnostics、`ForTest` 或
+  owner-contract helper 符号。
+- 性能使用相同 MSVC 配置对 `8d60dba9` 与候选实现进行交错采样，每个 case 为
+  5 次 warm-up + 30 次正式样本。两组对照中，Object Direct 聚合 median/P95 为
+  `+2.62/+2.06%`、`-1.74/+2.17%`；UI steady frame 为 `-0.01/-3.21%`、
+  `+2.73/-8.36%`；UI state 为 `+2.14/+0.48%`、`+3.47/+3.65%`；UI invoke 为
+  `+0.16/+0.24%`、`+2.85/+4.01%`。受约束热路径均在 5% 门限内，稳态分配为零；
+  原始 CSV 保留在 RelWithDebInfo Object/UI 构建树。
+- Engine/Editor consumer、产品 profile 和 `ui_vulkan` 不属于本次验收，也未被迁移。
+  它们继续服从 `Engine Migration Blocked`，等待后续独立重构方案。
+
+因此本轮只进入 `Freeze Candidate / Independent Re-audit Required`，不提前签署
+`Foundation Public API Frozen`。

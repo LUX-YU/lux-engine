@@ -25,6 +25,15 @@ component_include_directories(
 
 target_compile_definitions(ui PRIVATE LUX_FUNCTION_LIBRARY)
 
+option(
+    LUX_UI_CONTRACT_CHECKS
+    "Enable UI owner-thread contract checks outside Debug builds"
+    OFF
+)
+if(LUX_UI_CONTRACT_CHECKS)
+    target_compile_definitions(ui PRIVATE LUX_UI_CONTRACT_CHECKS=1)
+endif()
+
 target_link_libraries(
     ui
     PUBLIC
@@ -83,6 +92,12 @@ if(ENABLE_UI_TEST)
         test/ui_reentrancy_test.cpp
     )
     target_link_libraries(ui_reentrancy_test PRIVATE ui)
+    target_include_directories(
+        ui_reentrancy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    )
+    target_compile_definitions(
+        ui_reentrancy_test PRIVATE LUX_UI_TEST_DIAGNOSTICS=1
+    )
     add_test(NAME ui_reentrancy_test COMMAND ui_reentrancy_test)
 
     add_executable(ui_demo test/ui_demo.cpp)
@@ -103,6 +118,33 @@ if(ENABLE_UI_TEST)
             "-DEXPECTED_PATTERN=Command handlers must be noexcept"
             -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
     )
+
+    foreach(
+        probe_and_pattern
+        IN ITEMS
+            "ui_public_route_mutation_probe|updateRoute"
+            "ui_public_command_pointer_probe|command"
+            "ui_retired_menu_model_probe|MenuModel"
+            "ui_retired_toolbar_model_probe|ToolbarModel"
+            "ui_menu_aggregate_probe|private"
+            "ui_toolbar_aggregate_probe|private"
+            "ui_layout_default_probe|LayoutSnapshot"
+    )
+        string(REPLACE "|" ";" probe_fields "${probe_and_pattern}")
+        list(GET probe_fields 0 probe)
+        list(GET probe_fields 1 expected_pattern)
+        add_executable(${probe} EXCLUDE_FROM_ALL test/${probe}.cpp)
+        target_link_libraries(${probe} PRIVATE ui)
+        add_test(
+            NAME ${probe}
+            COMMAND
+                ${CMAKE_COMMAND}
+                -DBUILD_DIR=${CMAKE_BINARY_DIR}
+                -DTARGET=${probe}
+                "-DEXPECTED_PATTERN=${expected_pattern}"
+                -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+        )
+    endforeach()
 
     add_executable(
         ui_release_benchmark
@@ -140,5 +182,26 @@ if(ENABLE_UI_TEST)
     add_executable(ui_drawdata_test test/ui_drawdata_test.cpp)
     target_link_libraries(ui_drawdata_test PRIVATE ui)
     add_test(NAME ui_drawdata_test COMMAND ui_drawdata_test)
+
+    function(ui_add_contract_probe target)
+        add_executable(${target} test/${target}.cpp)
+        target_link_libraries(${target} PRIVATE ui)
+        add_test(
+            NAME ${target}
+            COMMAND
+                ${CMAKE_COMMAND}
+                -DPROBE=$<TARGET_FILE:${target}>
+                -P ${CMAKE_SOURCE_DIR}/modules/core/object/test/expect_process_failure.cmake
+        )
+    endfunction()
+
+    ui_add_contract_probe(ui_wrong_thread_pane_registration_probe)
+    ui_add_contract_probe(ui_wrong_thread_command_registration_probe)
+    ui_add_contract_probe(ui_invalid_frame_sequence_probe)
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR LUX_UI_CONTRACT_CHECKS)
+        ui_add_contract_probe(ui_wrong_thread_session_probe)
+        ui_add_contract_probe(ui_wrong_thread_router_probe)
+    endif()
 
 endif()

@@ -92,6 +92,12 @@ if(ENABLE_OBJECT_TEST)
     add_test(NAME object_signal_test COMMAND object_signal_test)
 
     add_executable(object_dispatcher_test test/object_dispatcher_test.cpp)
+    target_include_directories(
+        object_dispatcher_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test/pinclude
+    )
+    target_compile_definitions(
+        object_dispatcher_test PRIVATE LUX_OBJECT_TEST_DIAGNOSTICS=1
+    )
     target_link_libraries(object_dispatcher_test PRIVATE object_test_signals)
     add_test(NAME object_dispatcher_test COMMAND object_dispatcher_test)
 
@@ -166,6 +172,29 @@ if(ENABLE_OBJECT_TEST)
             -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
     )
 
+    foreach(
+        probe_and_pattern
+        IN ITEMS
+            "object_public_affinity_probe|affinity"
+            "object_retired_fwd_header_probe|ObjectFwd.hpp"
+            "object_scoped_connection_getter_probe|connection"
+    )
+        string(REPLACE "|" ";" probe_fields "${probe_and_pattern}")
+        list(GET probe_fields 0 probe)
+        list(GET probe_fields 1 expected_pattern)
+        add_executable(${probe} EXCLUDE_FROM_ALL test/${probe}.cpp)
+        target_link_libraries(${probe} PRIVATE object)
+        add_test(
+            NAME ${probe}
+            COMMAND
+                ${CMAKE_COMMAND}
+                -DBUILD_DIR=${CMAKE_BINARY_DIR}
+                -DTARGET=${probe}
+                "-DEXPECTED_PATTERN=${expected_pattern}"
+                -P ${CMAKE_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+        )
+    endforeach()
+
     add_executable(
         object_sender_self_destroy_probe
         test/object_sender_self_destroy_probe.cpp
@@ -180,6 +209,23 @@ if(ENABLE_OBJECT_TEST)
             -DPROBE=$<TARGET_FILE:object_sender_self_destroy_probe>
             -P ${CMAKE_CURRENT_SOURCE_DIR}/test/expect_process_failure.cmake
     )
+
+    foreach(
+        probe
+        IN ITEMS
+            object_foreign_disconnect_without_dispatcher_probe
+            object_foreign_disconnect_closed_dispatcher_probe
+    )
+        add_executable(${probe} test/${probe}.cpp)
+        target_link_libraries(${probe} PRIVATE object_test_signals)
+        add_test(
+            NAME ${probe}
+            COMMAND
+                ${CMAKE_COMMAND}
+                -DPROBE=$<TARGET_FILE:${probe}>
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/test/expect_process_failure.cmake
+        )
+    endforeach()
 
     add_executable(
         object_wrong_affinity_destroy_probe
@@ -300,7 +346,13 @@ if(ENABLE_OBJECT_TEST)
     )
     target_include_directories(
         object_reflection_test
-        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/test
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/pinclude
+            ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    )
+    target_compile_definitions(
+        object_reflection_test PRIVATE LUX_OBJECT_TEST_DIAGNOSTICS=1
     )
     target_link_libraries(object_reflection_test PRIVATE object)
     engine_target_add_meta(

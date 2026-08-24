@@ -1,0 +1,32 @@
+#include "ObjectTestSignals.hpp"
+
+#include <thread>
+
+namespace
+{
+    using lux::object::test::fixture::IntSender;
+
+    class Receiver final : public lux::object::Object<Receiver>
+    {
+      public:
+        void receive(const int &) noexcept
+        {
+        }
+    };
+} // namespace
+
+int main()
+{
+    IntSender sender;
+    Receiver receiver;
+    auto observed =
+        sender.observe<IntSender::changed, &Receiver::receive, lux::object::EDelivery::DIRECT>(
+            receiver);
+    if (!observed)
+        return 0;
+
+    auto connection = std::move(*observed);
+    std::thread foreign([&] { connection.disconnect(); });
+    foreign.join();
+    return 0;
+}

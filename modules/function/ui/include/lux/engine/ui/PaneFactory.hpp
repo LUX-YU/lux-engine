@@ -9,13 +9,13 @@
 
 namespace lux::ui
 {
-	struct PaneFactory final
-	{
-		using CreateFuncType = std::unique_ptr<Pane> (lux::object::ObjectDispatcherRef, PaneId);
-		using CreatePaneFunctionType = lux::cxx::move_only_function<CreateFuncType>;
+    struct PaneFactory final
+    {
+        using Create = lux::cxx::move_only_function<std::unique_ptr<Pane>(
+            lux::object::ObjectDispatcherRef, PaneId)>;
 
-		PaneTypeId 				type;
-		std::string 			display_name;
-		CreatePaneFunctionType 	create;
-	};
+        PaneTypeId type;
+        std::string display_name;
+        Create create;
+    };
 } // namespace lux::ui

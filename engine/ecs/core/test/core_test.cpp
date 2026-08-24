@@ -89,6 +89,16 @@ int main()
     );
     query_modified = {};
 
+    auto repeated_query = next_edit.query<lux::ecs::Write<Position>>();
+    auto repeated_iterator = repeated_query.begin();
+    assert(repeated_iterator != repeated_query.end());
+    (void)*repeated_iterator;
+    (void)*repeated_iterator;
+    auto repeated_modified = journal.read(position_cursor);
+    assert(repeated_modified.status() == lux::ecs::EChangeReadStatus::CURRENT);
+    assert(repeated_modified.size() == 1U);
+    repeated_modified = {};
+
     next_edit.erase<Position>(second);
     auto removed = journal.read(position_cursor);
     assert(removed.size() == 1);
@@ -162,6 +172,9 @@ int main()
         );
     }
     assert((*pinned.begin()).entity == small_entity);
+    const auto pinned_first = *pinned.begin();
+    small_journal.markHistoryLoss();
+    assert((*pinned.begin()).entity == pinned_first.entity);
     pinned = {};
     small_edit.update<Position>(
         small_entity,

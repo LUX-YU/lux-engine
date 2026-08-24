@@ -1,7 +1,8 @@
 # ADR：L1 v2 Mutation、Schedule 与 Hierarchy 重稳定
 
 - 日期：2026-08-24
-- 状态：Accepted for implementation；Freeze pending independent audit
+- 状态：Architecture accepted；Freeze candidate rejected by independent audit；
+  v2.1 targeted hardening required
 - 基线：`0a83e8be`
 
 ## 裁决
@@ -10,8 +11,10 @@
    SystemFrame 的显式 Write capability 是唯一非结构修改入口，WorldEdit 与
    WorldCommands 是唯一结构修改入口。
 2. Lux Change Journal 记录 component/entity storage change。它由 World 拥有，
-   使用 bounded memory、epoch/sequence cursor 和 overflow resync；它不是 undo
-   log、EventBus、Snapshot 或 persistent data。
+   retained record blocks 受 `ChangeJournalConfig::max_bytes` 约束，使用
+   epoch/sequence cursor 和 overflow resync；它不是 undo log、EventBus、
+   Snapshot 或 persistent data。运行期 history loss 只递增 epoch，不能清空
+   pinned history；cold `establishBaseline` 与 `markHistoryLoss` 是不同操作。
 3. `WorldConfig` 只配置 World runtime mechanism。Snapshot instantiate 与 LXWS
    materialize 由 caller 提供配置；restore 保留 destination policy。clone/load
    完成后建立 fresh journal baseline，不传播历史。

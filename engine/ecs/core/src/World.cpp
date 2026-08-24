@@ -41,7 +41,7 @@ namespace lux::ecs
             state_ == detail::EWorldState::IDLE ||
             state_ == detail::EWorldState::DESTROYING
         );
-        detail::require(schedule_ == nullptr && observer_relations_ == 0);
+        detail::require(schedule_ == nullptr);
         state_ = detail::EWorldState::DESTROYING;
     }
 
@@ -163,10 +163,15 @@ namespace lux::ecs
         WorldChangeAccess::journal(world).establishBaseline();
     }
 
+    void detail::markWorldChangeHistoryLoss(World& world) noexcept
+    {
+        WorldChangeAccess::journal(world).markHistoryLoss();
+    }
+
     detail::ChangeRangeData detail::readWorldComponentChanges(
         const World& world,
         std::uint64_t storage,
-        std::uint32_t& cursor_epoch,
+        std::uint64_t& cursor_epoch,
         std::uint64_t& cursor_sequence
     ) noexcept
     {
@@ -179,7 +184,7 @@ namespace lux::ecs
 
     detail::ChangeRangeData detail::readWorldEntityChanges(
         const World& world,
-        std::uint32_t& cursor_epoch,
+        std::uint64_t& cursor_epoch,
         std::uint64_t& cursor_sequence
     ) noexcept
     {

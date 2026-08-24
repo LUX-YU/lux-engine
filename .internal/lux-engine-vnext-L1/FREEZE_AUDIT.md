@@ -1,16 +1,17 @@
-# vNext L1 v2 Freeze Candidate Audit — 2026-08-24
+# vNext L1 v2.1 Independent Audit Rejection — 2026-08-24
 
 ## 结论
 
-本轮重稳定已达到以下状态：
+独立审阅发现 Change Journal、Hierarchy recovery 与 cold/resync 路径仍有
+correctness blocker。当前状态撤回为：
 
 - `Architecture Accepted`
-- `Correctness Hardened`
-- `Performance Passed`
-- `Public API Freeze Candidate`
-- `Independent audit Required`
+- `Freeze Candidate Rejected by Independent Audit`
+- `Targeted Hardening Required`
+- `Domain Migration Blocked`
 
-这不是 API 已冻结声明。独立审阅前，Render、Physics、Animation、Script、
+此前的 correctness/performance 数据只证明部分 hot path，不构成冻结结论。
+重新审阅前，Render、Physics、Animation、Script、
 Streaming 等 domain migration 以及建立在 L1 之上的 L2/L3 产品工作继续 STOP。
 
 ## 构建与测试矩阵

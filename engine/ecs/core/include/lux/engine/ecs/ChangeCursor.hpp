@@ -17,7 +17,7 @@ namespace lux::ecs
         ChangeCursor() noexcept = default;
 
       private:
-        std::uint32_t epoch_{};
+        std::uint64_t epoch_{};
         std::uint64_t sequence_{};
 
         friend class detail::ChangeJournal;
@@ -30,7 +30,7 @@ namespace lux::ecs
         EntityChangeCursor() noexcept = default;
 
       private:
-        std::uint32_t epoch_{};
+        std::uint64_t epoch_{};
         std::uint64_t sequence_{};
 
         friend class detail::ChangeJournal;
@@ -42,7 +42,7 @@ namespace lux::ecs
         struct ChangeCursorAccess final
         {
             template <class Component>
-            [[nodiscard]] static std::uint32_t& epoch(
+            [[nodiscard]] static std::uint64_t& epoch(
                 ChangeCursor<Component>& cursor
             ) noexcept
             {
@@ -57,7 +57,7 @@ namespace lux::ecs
                 return cursor.sequence_;
             }
 
-            [[nodiscard]] static std::uint32_t& epoch(
+            [[nodiscard]] static std::uint64_t& epoch(
                 EntityChangeCursor& cursor
             ) noexcept
             {

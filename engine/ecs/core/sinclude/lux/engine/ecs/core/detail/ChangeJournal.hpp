@@ -29,7 +29,7 @@ namespace lux::ecs::detail
 
     inline constexpr std::size_t kJournalBlockBytes = 4096U;
     inline constexpr std::size_t kJournalBlockHeaderBytes =
-        sizeof(std::size_t) + sizeof(std::uint64_t);
+        sizeof(std::size_t) + sizeof(std::uint64_t) + 3U * sizeof(void*);
     inline constexpr std::size_t kJournalRecordsPerBlock =
         (kJournalBlockBytes - kJournalBlockHeaderBytes) /
         sizeof(JournalRecord);
@@ -39,14 +39,17 @@ namespace lux::ecs::detail
     {
         std::size_t count{};
         std::uint64_t first_write{};
+        JournalBlock* stream_previous{};
+        JournalBlock* stream_next{};
+        JournalBlock* free_next{};
         std::array<JournalRecord, kJournalRecordsPerBlock> records{};
     };
     static_assert(sizeof(JournalBlock) <= kJournalBlockBytes);
 
     struct JournalStream final
     {
-        std::vector<JournalBlock*> blocks;
-        std::size_t block_start{};
+        JournalBlock* first{};
+        JournalBlock* last{};
         std::size_t block_count{};
         std::size_t count{};
         std::uint64_t oldest_sequence{1};
@@ -54,7 +57,12 @@ namespace lux::ecs::detail
         std::uint64_t minimum_available{1};
         std::uint64_t last_write{};
         mutable std::size_t pins{};
-        bool reset_pending{};
+    };
+
+    struct JournalPosition final
+    {
+        JournalBlock* block{};
+        std::size_t offset{};
     };
 
     class LUX_ENGINE_ECS_CORE_PUBLIC ChangeJournal final
@@ -80,31 +88,32 @@ namespace lux::ecs::detail
             ChangeCursor<Component>& cursor
         ) const noexcept
         {
-            const auto found = component_streams_.find(
-                entt::type_hash<Component>::value()
-            );
-            return readComponent(
-                found == component_streams_.end() ? nullptr : found->second.get(),
-                cursor
+            return ComponentChanges<Component>::fromDetail(
+                readComponentRaw(
+                    entt::type_hash<Component>::value(),
+                    cursor.epoch_,
+                    cursor.sequence_
+                )
             );
         }
 
         [[nodiscard]] ChangeRangeData readComponentRaw(
             std::uint64_t storage,
-            std::uint32_t& cursor_epoch,
+            std::uint64_t& cursor_epoch,
             std::uint64_t& cursor_sequence
         ) const noexcept;
 
         [[nodiscard]] EntityChanges read(EntityChangeCursor& cursor) const noexcept;
 
         [[nodiscard]] ChangeRangeData readEntityRaw(
-            std::uint32_t& cursor_epoch,
+            std::uint64_t& cursor_epoch,
             std::uint64_t& cursor_sequence
         ) const noexcept;
 
         void establishBaseline() noexcept;
+        void markHistoryLoss() noexcept;
 
-        [[nodiscard]] std::uint32_t epoch() const noexcept
+        [[nodiscard]] std::uint64_t epoch() const noexcept
         {
             return epoch_;
         }
@@ -112,74 +121,27 @@ namespace lux::ecs::detail
       private:
         [[nodiscard]] JournalStream* ensureStream(std::uint64_t storage) noexcept;
         void append(JournalStream& stream, Entity entity, std::uint8_t kind) noexcept;
-        [[nodiscard]] JournalBlock* acquireBlock(JournalStream& stream) noexcept;
-        [[nodiscard]] bool attachBlock(
-            JournalStream& stream,
-            JournalBlock& block
-        ) noexcept;
+        [[nodiscard]] JournalBlock* acquireBlock() noexcept;
+        void attachBlock(JournalStream& stream, JournalBlock& block) noexcept;
         [[nodiscard]] JournalBlock* detachFrontBlock(
             JournalStream& stream
         ) noexcept;
+        void releaseBlock(JournalBlock& block) noexcept;
         void discardStream(JournalStream& stream) noexcept;
         [[nodiscard]] JournalStream* oldestEvictableStream() noexcept;
-        [[nodiscard]] static JournalBlock* blockAt(
+        [[nodiscard]] static JournalPosition positionAt(
             const JournalStream& stream,
-            std::size_t offset
+            std::uint64_t sequence
         ) noexcept;
-
-        template <class Component>
-        [[nodiscard]] ComponentChanges<Component> readComponent(
-            JournalStream* stream,
-            ChangeCursor<Component>& cursor
-        ) const noexcept
-        {
-            const std::uint64_t next = stream == nullptr ? 1 : stream->next_sequence;
-            const std::uint64_t oldest = stream == nullptr
-                ? next
-                : std::max(stream->oldest_sequence, stream->minimum_available);
-
-            if (cursor.epoch_ != epoch_ || cursor.sequence_ == 0 ||
-                cursor.sequence_ < oldest || cursor.sequence_ > next)
-            {
-                cursor.epoch_ = epoch_;
-                cursor.sequence_ = next;
-                return ComponentChanges<Component>(
-                    nullptr,
-                    next,
-                    next,
-                    EChangeReadStatus::RESYNC_REQUIRED
-                );
-            }
-
-            const std::uint64_t begin = cursor.sequence_;
-            cursor.sequence_ = next;
-            if (stream == nullptr || begin == next)
-            {
-                return ComponentChanges<Component>(
-                    nullptr,
-                    next,
-                    next,
-                    EChangeReadStatus::CURRENT
-                );
-            }
-
-            ++stream->pins;
-            return ComponentChanges<Component>(
-                stream,
-                begin,
-                next,
-                EChangeReadStatus::CURRENT
-            );
-        }
 
         std::unordered_map<std::uint64_t, std::unique_ptr<JournalStream>>
             component_streams_;
         JournalStream entity_stream_;
         ChangeJournalConfigValue config_;
         std::vector<std::unique_ptr<JournalBlock>> owned_blocks_;
-        std::vector<JournalBlock*> free_blocks_;
+        JournalBlock* free_blocks_{};
         std::size_t max_blocks_{};
         std::uint64_t write_sequence_{};
-        std::uint32_t epoch_{1};
+        std::uint64_t epoch_{1};
     };
 } // namespace lux::ecs::detail

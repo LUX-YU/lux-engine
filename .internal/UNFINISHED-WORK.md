@@ -4,6 +4,17 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 
 ## Active: L1 v2 restabilization (2026-08-24)
 
+Independent audit rejected the v2 Freeze Candidate. L1 v2.1 targeted hardening
+is active; the previous correctness/performance conclusion is withdrawn until
+the Journal, Schedule, Hierarchy, cold-construction and representative evidence
+gates are rerun.
+
+- [ ] V2.1-1: Make Change Journal history loss explicit and pin-safe.
+- [ ] V2.1-2: Bound Schedule change scratch and harden lifecycle RAII.
+- [ ] V2.1-3: Make Hierarchy rebuild linear and orphan repair retryable.
+- [ ] V2.1-4: Suppress cold-construction journal emission.
+- [ ] V2.1-5: Re-run adversarial, performance, install and platform gates.
+
 - [x] V2-0: Withdraw the v1 Freeze conclusion and record the new stop line.
 - [x] V2-1: Remove mutable World escapes and establish bounded Change Journal
       semantics with explicit Read/Write capabilities.

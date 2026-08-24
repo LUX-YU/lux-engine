@@ -71,6 +71,12 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
+           "connectConstruct|connectUpdate|connectDestroy|observer_relations_|on_construct[ \t\r\n]*<|on_update[ \t\r\n]*<|on_destroy[ \t\r\n]*<")
+            message(FATAL_ERROR
+                "Architecture: L1 source '${normalized}' restores retired EnTT observer ownership."
+            )
+        endif()
+        if(content MATCHES
            "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices")
             message(FATAL_ERROR
                 "Architecture: L1 source '${normalized}' depends on deferred asset ownership API."

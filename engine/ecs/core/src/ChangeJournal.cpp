@@ -10,31 +10,22 @@ namespace lux::ecs::detail
     namespace
     {
         [[nodiscard]] const JournalRecord& recordAt(
-            const JournalStream& stream,
+            const JournalBlock& block,
+            std::size_t offset,
             std::uint64_t sequence
         ) noexcept
         {
-            require(
-                sequence >= stream.oldest_sequence &&
-                sequence < stream.next_sequence &&
-                stream.count != 0
-            );
-            const std::size_t offset = static_cast<std::size_t>(
-                sequence - stream.oldest_sequence
-            );
-            require(offset < stream.count);
-            const std::size_t block_offset =
-                offset / kJournalRecordsPerBlock;
-            const std::size_t record_offset =
-                offset % kJournalRecordsPerBlock;
-            require(block_offset < stream.block_count);
-            const std::size_t block_index =
-                (stream.block_start + block_offset) % stream.blocks.size();
-            const JournalBlock* block = stream.blocks[block_index];
-            require(block != nullptr && record_offset < block->count);
-            const JournalRecord& result = block->records[record_offset];
+            require(offset < block.count);
+            const JournalRecord& result = block.records[offset];
             require(result.sequence == sequence);
             return result;
+        }
+
+        void advanceEpoch(std::uint64_t& epoch) noexcept
+        {
+            ++epoch;
+            if (epoch == 0)
+                ++epoch;
         }
     } // namespace
 
@@ -50,17 +41,17 @@ namespace lux::ecs::detail
                 config_.initial_bytes / kJournalBlockBytes
             )
         );
+        owned_blocks_.reserve(max_blocks_);
         const std::size_t initial_blocks = std::min(
             max_blocks_,
             config_.initial_bytes / kJournalBlockBytes
         );
-        owned_blocks_.reserve(initial_blocks);
-        free_blocks_.reserve(initial_blocks);
         for (std::size_t index{}; index < initial_blocks; ++index)
         {
             auto block = std::make_unique<JournalBlock>();
-            free_blocks_.push_back(block.get());
+            JournalBlock* value = block.get();
             owned_blocks_.push_back(std::move(block));
+            releaseBlock(*value);
         }
     }
 
@@ -96,93 +87,118 @@ namespace lux::ecs::detail
         }
         catch (...)
         {
+            markHistoryLoss();
             return nullptr;
         }
     }
 
-    JournalBlock* ChangeJournal::blockAt(
+    JournalPosition ChangeJournal::positionAt(
         const JournalStream& stream,
-        std::size_t offset
+        std::uint64_t sequence
     ) noexcept
     {
-        require(offset < stream.block_count && !stream.blocks.empty());
-        return stream.blocks[
-            (stream.block_start + offset) % stream.blocks.size()
-        ];
+        require(
+            sequence >= stream.oldest_sequence &&
+            sequence < stream.next_sequence &&
+            stream.count != 0U
+        );
+        const std::size_t record_offset = static_cast<std::size_t>(
+            sequence - stream.oldest_sequence
+        );
+        require(record_offset < stream.count);
+        const std::size_t block_offset =
+            record_offset / kJournalRecordsPerBlock;
+        const std::size_t within_block =
+            record_offset % kJournalRecordsPerBlock;
+
+        JournalBlock* block{};
+        if (block_offset <= stream.block_count / 2U)
+        {
+            block = stream.first;
+            for (std::size_t index{}; index < block_offset; ++index)
+                block = block->stream_next;
+        }
+        else
+        {
+            block = stream.last;
+            for (std::size_t index = stream.block_count - 1U;
+                 index > block_offset; --index)
+            {
+                block = block->stream_previous;
+            }
+        }
+        require(block != nullptr && within_block < block->count);
+        return JournalPosition{block, within_block};
     }
 
-    bool ChangeJournal::attachBlock(
+    void ChangeJournal::attachBlock(
         JournalStream& stream,
         JournalBlock& block
     ) noexcept
     {
-        try
-        {
-            if (stream.block_count == stream.blocks.size())
-            {
-                const std::size_t old_capacity = stream.blocks.size();
-                const std::size_t new_capacity = std::min(
-                    max_blocks_,
-                    std::max<std::size_t>(1U, old_capacity * 2U)
-                );
-                if (new_capacity <= old_capacity)
-                    return false;
-                std::vector<JournalBlock*> replacement(new_capacity);
-                for (std::size_t index{}; index < stream.block_count; ++index)
-                    replacement[index] = blockAt(stream, index);
-                stream.blocks.swap(replacement);
-                stream.block_start = 0U;
-            }
-            const std::size_t index =
-                (stream.block_start + stream.block_count) %
-                stream.blocks.size();
-            block.count = 0U;
-            block.first_write = 0U;
-            stream.blocks[index] = std::addressof(block);
-            ++stream.block_count;
-            return true;
-        }
-        catch (...)
-        {
-            return false;
-        }
+        require(
+            block.stream_previous == nullptr &&
+            block.stream_next == nullptr &&
+            block.free_next == nullptr
+        );
+        block.count = 0U;
+        block.first_write = 0U;
+        block.stream_previous = stream.last;
+        if (stream.last != nullptr)
+            stream.last->stream_next = std::addressof(block);
+        else
+            stream.first = std::addressof(block);
+        stream.last = std::addressof(block);
+        ++stream.block_count;
     }
 
     JournalBlock* ChangeJournal::detachFrontBlock(
         JournalStream& stream
     ) noexcept
     {
-        require(stream.block_count != 0U);
-        JournalBlock* block = stream.blocks[stream.block_start];
-        require(block != nullptr && block->count != 0U);
-        stream.block_start =
-            (stream.block_start + 1U) % stream.blocks.size();
+        require(stream.first != nullptr && stream.block_count != 0U);
+        JournalBlock* block = stream.first;
+        require(block->count != 0U);
+        stream.first = block->stream_next;
+        if (stream.first != nullptr)
+            stream.first->stream_previous = nullptr;
+        else
+            stream.last = nullptr;
+        block->stream_previous = nullptr;
+        block->stream_next = nullptr;
         --stream.block_count;
         require(stream.count >= block->count);
         stream.count -= block->count;
-        stream.oldest_sequence = stream.block_count == 0U
+        stream.oldest_sequence = stream.first == nullptr
             ? stream.next_sequence
-            : blockAt(stream, 0U)->records[0].sequence;
+            : stream.first->records[0].sequence;
         stream.minimum_available = std::max(
             stream.minimum_available,
             stream.oldest_sequence
         );
-        block->count = 0U;
-        block->first_write = 0U;
-        if (stream.block_count == 0U)
-            stream.block_start = 0U;
         return block;
+    }
+
+    void ChangeJournal::releaseBlock(JournalBlock& block) noexcept
+    {
+        require(
+            block.stream_previous == nullptr &&
+            block.stream_next == nullptr
+        );
+        block.count = 0U;
+        block.first_write = 0U;
+        block.free_next = free_blocks_;
+        free_blocks_ = std::addressof(block);
     }
 
     void ChangeJournal::discardStream(JournalStream& stream) noexcept
     {
         require(stream.pins == 0U);
-        while (stream.block_count != 0U)
-            free_blocks_.push_back(detachFrontBlock(stream));
+        while (stream.first != nullptr)
+            releaseBlock(*detachFrontBlock(stream));
         stream.count = 0U;
         stream.oldest_sequence = stream.next_sequence;
         stream.minimum_available = stream.next_sequence;
-        stream.reset_pending = false;
     }
 
     JournalStream* ChangeJournal::oldestEvictableStream() noexcept
@@ -190,11 +206,10 @@ namespace lux::ecs::detail
         JournalStream* result{};
         const auto consider = [&result](JournalStream& candidate) noexcept
         {
-            if (candidate.pins != 0U || candidate.block_count == 0U)
+            if (candidate.pins != 0U || candidate.first == nullptr)
                 return;
             if (result == nullptr ||
-                blockAt(candidate, 0U)->first_write <
-                    blockAt(*result, 0U)->first_write)
+                candidate.first->first_write < result->first->first_write)
             {
                 result = std::addressof(candidate);
             }
@@ -205,43 +220,32 @@ namespace lux::ecs::detail
         return result;
     }
 
-    JournalBlock* ChangeJournal::acquireBlock(
-        JournalStream& stream
-    ) noexcept
+    JournalBlock* ChangeJournal::acquireBlock() noexcept
     {
-        JournalBlock* block{};
-        if (!free_blocks_.empty())
+        if (free_blocks_ != nullptr)
         {
-            block = free_blocks_.back();
-            free_blocks_.pop_back();
+            JournalBlock* result = free_blocks_;
+            free_blocks_ = result->free_next;
+            result->free_next = nullptr;
+            return result;
         }
-        else if (owned_blocks_.size() < max_blocks_)
+        if (owned_blocks_.size() < max_blocks_)
         {
             try
             {
                 auto owned = std::make_unique<JournalBlock>();
-                block = owned.get();
+                JournalBlock* result = owned.get();
                 owned_blocks_.push_back(std::move(owned));
+                return result;
             }
             catch (...)
             {
                 return nullptr;
             }
         }
-        else
-        {
-            JournalStream* victim = oldestEvictableStream();
-            if (victim == nullptr)
-                return nullptr;
-            block = detachFrontBlock(*victim);
-        }
 
-        if (!attachBlock(stream, *block))
-        {
-            free_blocks_.push_back(block);
-            return nullptr;
-        }
-        return block;
+        JournalStream* victim = oldestEvictableStream();
+        return victim == nullptr ? nullptr : detachFrontBlock(*victim);
     }
 
     void ChangeJournal::append(
@@ -250,31 +254,17 @@ namespace lux::ecs::detail
         std::uint8_t kind
     ) noexcept
     {
-        if (stream.reset_pending)
-        {
-            if (stream.pins != 0U)
-            {
-                ++stream.next_sequence;
-                stream.minimum_available = stream.next_sequence;
-                return;
-            }
-            discardStream(stream);
-        }
-
         const std::uint64_t sequence = stream.next_sequence;
-        JournalBlock* block = stream.block_count == 0U
-            ? nullptr
-            : blockAt(stream, stream.block_count - 1U);
+        JournalBlock* block = stream.last;
         if (block == nullptr || block->count == kJournalRecordsPerBlock)
         {
-            block = acquireBlock(stream);
+            block = acquireBlock();
             if (block == nullptr)
             {
-                ++stream.next_sequence;
-                stream.minimum_available = stream.next_sequence;
-                stream.reset_pending = true;
+                markHistoryLoss();
                 return;
             }
+            attachBlock(stream, *block);
         }
 
         ++stream.next_sequence;
@@ -308,41 +298,9 @@ namespace lux::ecs::detail
         append(entity_stream_, entity, static_cast<std::uint8_t>(kind));
     }
 
-    EntityChanges ChangeJournal::read(EntityChangeCursor& cursor) const noexcept
-    {
-        JournalStream* stream = const_cast<JournalStream*>(&entity_stream_);
-        const std::uint64_t next = stream->next_sequence;
-        const std::uint64_t oldest = std::max(
-            stream->oldest_sequence,
-            stream->minimum_available
-        );
-        if (cursor.epoch_ != epoch_ || cursor.sequence_ == 0 ||
-            cursor.sequence_ < oldest || cursor.sequence_ > next)
-        {
-            cursor.epoch_ = epoch_;
-            cursor.sequence_ = next;
-            return EntityChanges(
-                nullptr, next, next, EChangeReadStatus::RESYNC_REQUIRED
-            );
-        }
-
-        const std::uint64_t begin = cursor.sequence_;
-        cursor.sequence_ = next;
-        if (begin == next)
-        {
-            return EntityChanges(
-                nullptr, next, next, EChangeReadStatus::CURRENT
-            );
-        }
-        ++stream->pins;
-        return EntityChanges(
-            stream, begin, next, EChangeReadStatus::CURRENT
-        );
-    }
-
     ChangeRangeData ChangeJournal::readComponentRaw(
         std::uint64_t storage,
-        std::uint32_t& cursor_epoch,
+        std::uint64_t& cursor_epoch,
         std::uint64_t& cursor_sequence
     ) const noexcept
     {
@@ -360,19 +318,34 @@ namespace lux::ecs::detail
             cursor_epoch = epoch_;
             cursor_sequence = next;
             return ChangeRangeData{
-                nullptr, next, next, EChangeReadStatus::RESYNC_REQUIRED};
+                nullptr, nullptr, 0, next, next,
+                EChangeReadStatus::RESYNC_REQUIRED};
         }
 
         const std::uint64_t begin = cursor_sequence;
         cursor_sequence = next;
         if (stream == nullptr || begin == next)
-            return ChangeRangeData{nullptr, next, next, EChangeReadStatus::CURRENT};
+        {
+            return ChangeRangeData{
+                nullptr, nullptr, 0, next, next,
+                EChangeReadStatus::CURRENT};
+        }
+        const JournalPosition position = positionAt(*stream, begin);
         ++stream->pins;
-        return ChangeRangeData{stream, begin, next, EChangeReadStatus::CURRENT};
+        return ChangeRangeData{
+            stream, position.block, position.offset, begin, next,
+            EChangeReadStatus::CURRENT};
+    }
+
+    EntityChanges ChangeJournal::read(EntityChangeCursor& cursor) const noexcept
+    {
+        return EntityChanges::fromDetail(readEntityRaw(
+            cursor.epoch_, cursor.sequence_
+        ));
     }
 
     ChangeRangeData ChangeJournal::readEntityRaw(
-        std::uint32_t& cursor_epoch,
+        std::uint64_t& cursor_epoch,
         std::uint64_t& cursor_sequence
     ) const noexcept
     {
@@ -388,22 +361,28 @@ namespace lux::ecs::detail
             cursor_epoch = epoch_;
             cursor_sequence = next;
             return ChangeRangeData{
-                nullptr, next, next, EChangeReadStatus::RESYNC_REQUIRED};
+                nullptr, nullptr, 0, next, next,
+                EChangeReadStatus::RESYNC_REQUIRED};
         }
 
         const std::uint64_t begin = cursor_sequence;
         cursor_sequence = next;
         if (begin == next)
-            return ChangeRangeData{nullptr, next, next, EChangeReadStatus::CURRENT};
+        {
+            return ChangeRangeData{
+                nullptr, nullptr, 0, next, next,
+                EChangeReadStatus::CURRENT};
+        }
+        const JournalPosition position = positionAt(*stream, begin);
         ++stream->pins;
-        return ChangeRangeData{stream, begin, next, EChangeReadStatus::CURRENT};
+        return ChangeRangeData{
+            stream, position.block, position.offset, begin, next,
+            EChangeReadStatus::CURRENT};
     }
 
     void ChangeJournal::establishBaseline() noexcept
     {
-        ++epoch_;
-        if (epoch_ == 0)
-            ++epoch_;
+        advanceEpoch(epoch_);
         const auto reset = [this](JournalStream& stream) noexcept
         {
             require(stream.pins == 0U);
@@ -412,20 +391,28 @@ namespace lux::ecs::detail
             stream.next_sequence = 1;
             stream.minimum_available = 1;
             stream.last_write = 0U;
-            stream.reset_pending = false;
         };
         reset(entity_stream_);
         for (auto& [_, stream] : component_streams_)
             reset(*stream);
     }
 
+    void ChangeJournal::markHistoryLoss() noexcept
+    {
+        advanceEpoch(epoch_);
+    }
+
     ComponentChange componentChangeAt(
-        const void* stream,
+        const void* block,
+        std::size_t block_offset,
         std::uint64_t sequence
     ) noexcept
     {
+        require(block != nullptr);
         const JournalRecord& record = recordAt(
-            *static_cast<const JournalStream*>(stream), sequence
+            *static_cast<const JournalBlock*>(block),
+            block_offset,
+            sequence
         );
         return ComponentChange{
             record.entity,
@@ -433,16 +420,37 @@ namespace lux::ecs::detail
     }
 
     EntityChange entityChangeAt(
-        const void* stream,
+        const void* block,
+        std::size_t block_offset,
         std::uint64_t sequence
     ) noexcept
     {
+        require(block != nullptr);
         const JournalRecord& record = recordAt(
-            *static_cast<const JournalStream*>(stream), sequence
+            *static_cast<const JournalBlock*>(block),
+            block_offset,
+            sequence
         );
         return EntityChange{
             record.entity,
             static_cast<EEntityChangeKind>(record.kind)};
+    }
+
+    void advanceChangePosition(
+        const void*& block,
+        std::size_t& block_offset,
+        std::uint64_t& sequence
+    ) noexcept
+    {
+        require(block != nullptr);
+        const auto* current = static_cast<const JournalBlock*>(block);
+        ++sequence;
+        ++block_offset;
+        if (block_offset == current->count)
+        {
+            block = current->stream_next;
+            block_offset = 0U;
+        }
     }
 
     void releaseChangeStream(const void* stream) noexcept

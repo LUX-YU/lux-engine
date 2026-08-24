@@ -132,6 +132,7 @@ namespace lux::ecs
                 Iterator& operator++()
                 {
                     ++iterator_;
+                    recorded_current_ = false;
                     return *this;
                 }
 
@@ -151,7 +152,11 @@ namespace lux::ecs
                 {
                     auto result = *iterator_;
                     const Entity entity = std::get<0>(result);
-                    (recordWrite<Access>(entity), ...);
+                    if (!recorded_current_)
+                    {
+                        (recordWrite<Access>(entity), ...);
+                        recorded_current_ = true;
+                    }
                     return result;
                 }
 
@@ -180,6 +185,7 @@ namespace lux::ecs
 
                 BaseIterator iterator_{};
                 ChangeRecorder recorder_{};
+                mutable bool recorded_current_{};
 
                 friend class BasicQuery;
             };

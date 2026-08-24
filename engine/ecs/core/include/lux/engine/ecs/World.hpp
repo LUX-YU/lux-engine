@@ -183,34 +183,12 @@ namespace lux::ecs
       private:
         using Registry = entt::basic_registry<Entity>;
 
-        template <class Component, auto Candidate, class Instance>
-        [[nodiscard]] entt::connection connectConstruct(Instance& instance)
-        {
-            return registry_.template on_construct<Component>()
-                .template connect<Candidate>(instance);
-        }
-
-        template <class Component, auto Candidate, class Instance>
-        [[nodiscard]] entt::connection connectUpdate(Instance& instance)
-        {
-            return registry_.template on_update<Component>()
-                .template connect<Candidate>(instance);
-        }
-
-        template <class Component, auto Candidate, class Instance>
-        [[nodiscard]] entt::connection connectDestroy(Instance& instance)
-        {
-            return registry_.template on_destroy<Component>()
-                .template connect<Candidate>(instance);
-        }
-
         Registry registry_;
         WorldConfig config_;
         std::unique_ptr<detail::ChangeJournal> changes_;
         std::thread::id owner_thread_;
         detail::EWorldState state_{detail::EWorldState::IDLE};
         Schedule* schedule_{};
-        std::size_t observer_relations_{};
 
         friend class WorldEdit;
         friend class Schedule;
@@ -263,18 +241,22 @@ namespace lux::ecs
             World& world
         ) noexcept;
 
+        LUX_ENGINE_ECS_CORE_PUBLIC void markWorldChangeHistoryLoss(
+            World& world
+        ) noexcept;
+
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRangeData
         readWorldComponentChanges(
             const World& world,
             std::uint64_t storage,
-            std::uint32_t& cursor_epoch,
+            std::uint64_t& cursor_epoch,
             std::uint64_t& cursor_sequence
         ) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRangeData
         readWorldEntityChanges(
             const World& world,
-            std::uint32_t& cursor_epoch,
+            std::uint64_t& cursor_epoch,
             std::uint64_t& cursor_sequence
         ) noexcept;
     } // namespace detail

@@ -37,13 +37,25 @@ namespace lux::ecs
         struct ChangeRangeData final
         {
             const void* stream{};
+            const void* block{};
+            std::size_t block_offset{};
             std::uint64_t begin{};
             std::uint64_t end{};
             EChangeReadStatus status{EChangeReadStatus::CURRENT};
         };
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ComponentChange
-        componentChangeAt(const void* stream, std::uint64_t sequence) noexcept;
+        componentChangeAt(
+            const void* block,
+            std::size_t block_offset,
+            std::uint64_t sequence
+        ) noexcept;
+
+        LUX_ENGINE_ECS_CORE_PUBLIC void advanceChangePosition(
+            const void*& block,
+            std::size_t& block_offset,
+            std::uint64_t& sequence
+        ) noexcept;
 
         LUX_ENGINE_ECS_CORE_PUBLIC void releaseChangeStream(
             const void* stream
@@ -65,12 +77,16 @@ namespace lux::ecs
 
             [[nodiscard]] ComponentChange operator*() const noexcept
             {
-                return detail::componentChangeAt(stream_, sequence_);
+                return detail::componentChangeAt(
+                    block_, block_offset_, sequence_
+                );
             }
 
             Iterator& operator++() noexcept
             {
-                ++sequence_;
+                detail::advanceChangePosition(
+                    block_, block_offset_, sequence_
+                );
                 return *this;
             }
 
@@ -81,15 +97,25 @@ namespace lux::ecs
                 return copy;
             }
 
-            [[nodiscard]] bool operator==(const Iterator&) const noexcept = default;
+            [[nodiscard]] bool operator==(const Iterator& other) const noexcept
+            {
+                return sequence_ == other.sequence_;
+            }
 
           private:
-            Iterator(const void* stream, std::uint64_t sequence) noexcept
-                : stream_(stream), sequence_(sequence)
+            Iterator(
+                const void* block,
+                std::size_t block_offset,
+                std::uint64_t sequence
+            ) noexcept
+                : block_(block),
+                  block_offset_(block_offset),
+                  sequence_(sequence)
             {
             }
 
-            const void* stream_{};
+            const void* block_{};
+            std::size_t block_offset_{};
             std::uint64_t sequence_{};
 
             friend class ComponentChanges;
@@ -101,6 +127,10 @@ namespace lux::ecs
 
         ComponentChanges(ComponentChanges&& other) noexcept
             : stream_(std::exchange(other.stream_, nullptr)),
+              begin_block_(std::exchange(other.begin_block_, nullptr)),
+              begin_block_offset_(
+                  std::exchange(other.begin_block_offset_, 0)
+              ),
               begin_(std::exchange(other.begin_, 0)),
               end_(std::exchange(other.end_, 0)),
               status_(other.status_)
@@ -113,6 +143,10 @@ namespace lux::ecs
             {
                 reset();
                 stream_ = std::exchange(other.stream_, nullptr);
+                begin_block_ = std::exchange(other.begin_block_, nullptr);
+                begin_block_offset_ = std::exchange(
+                    other.begin_block_offset_, 0
+                );
                 begin_ = std::exchange(other.begin_, 0);
                 end_ = std::exchange(other.end_, 0);
                 status_ = other.status_;
@@ -142,12 +176,12 @@ namespace lux::ecs
 
         [[nodiscard]] Iterator begin() const noexcept
         {
-            return Iterator(stream_, begin_);
+            return Iterator(begin_block_, begin_block_offset_, begin_);
         }
 
         [[nodiscard]] Iterator end() const noexcept
         {
-            return Iterator(stream_, end_);
+            return Iterator(nullptr, 0, end_);
         }
 
         [[nodiscard]] static ComponentChanges fromDetail(
@@ -156,6 +190,8 @@ namespace lux::ecs
         {
             return ComponentChanges(
                 data.stream,
+                data.block,
+                data.block_offset,
                 data.begin,
                 data.end,
                 data.status
@@ -165,11 +201,18 @@ namespace lux::ecs
       private:
         ComponentChanges(
             const void* stream,
+            const void* block,
+            std::size_t block_offset,
             std::uint64_t begin,
             std::uint64_t end,
             EChangeReadStatus status
         ) noexcept
-            : stream_(stream), begin_(begin), end_(end), status_(status)
+            : stream_(stream),
+              begin_block_(block),
+              begin_block_offset_(block_offset),
+              begin_(begin),
+              end_(end),
+              status_(status)
         {
         }
 
@@ -178,11 +221,15 @@ namespace lux::ecs
             if (stream_ != nullptr)
                 detail::releaseChangeStream(stream_);
             stream_ = nullptr;
+            begin_block_ = nullptr;
+            begin_block_offset_ = 0;
             begin_ = 0;
             end_ = 0;
         }
 
         const void* stream_{};
+        const void* begin_block_{};
+        std::size_t begin_block_offset_{};
         std::uint64_t begin_{};
         std::uint64_t end_{};
         EChangeReadStatus status_{EChangeReadStatus::CURRENT};

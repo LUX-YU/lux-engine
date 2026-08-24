@@ -18,7 +18,6 @@
 namespace lux::ecs
 {
     class Schedule;
-    class SystemAttach;
     class SystemFrame;
     class SystemStart;
     class WorldSnapshot;
@@ -213,7 +212,6 @@ namespace lux::ecs
 
         friend class WorldEdit;
         friend class Schedule;
-        friend class SystemAttach;
         friend class SystemFrame;
         friend class SystemStart;
         friend class WorldSnapshot;
@@ -256,6 +254,10 @@ namespace lux::ecs
             World& world,
             Entity entity,
             EEntityChangeKind kind
+        ) noexcept;
+
+        LUX_ENGINE_ECS_CORE_PUBLIC void establishWorldChangeBaseline(
+            World& world
         ) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRangeData

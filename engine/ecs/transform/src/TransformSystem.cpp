@@ -103,7 +103,7 @@ namespace lux::ecs
             }
 
             [[nodiscard]] bool removeInvalidParents(
-                const SystemFrame& frame
+                SystemFrame& frame
             ) noexcept
             {
                 bool queued{};
@@ -123,7 +123,7 @@ namespace lux::ecs
             }
 
             [[nodiscard]] Matrix resolve(
-                const SystemFrame& frame,
+                SystemFrame& frame,
                 Entity entity
             )
             {
@@ -154,8 +154,35 @@ namespace lux::ecs
                 return result;
             }
 
-            void update(const SystemFrame& frame) noexcept
+            void update(SystemFrame& frame) noexcept
             {
+                const auto parent_changes = frame.changes(parent_cursor);
+                if (parent_changes.status() == EChangeReadStatus::RESYNC_REQUIRED)
+                    dirty_all = true;
+                else
+                {
+                    for (const auto& change : parent_changes)
+                        mark(change.entity);
+                }
+
+                const auto local_changes = frame.changes(local_cursor);
+                if (local_changes.status() == EChangeReadStatus::RESYNC_REQUIRED)
+                    dirty_all = true;
+                else
+                {
+                    for (const auto& change : local_changes)
+                    {
+                        mark(change.entity);
+                        if (change.kind == EComponentChangeKind::REMOVED &&
+                            frame.commands().push(
+                                RemoveDerived<Derived>{change.entity}
+                            ) != ECommandResult::ACCEPTED)
+                        {
+                            ++discarded_commands;
+                        }
+                    }
+                }
+
                 if (removeInvalidParents(frame))
                     return;
                 if (!hierarchy->rebuild())
@@ -223,7 +250,8 @@ namespace lux::ecs
             }
 
             HierarchyIndex* hierarchy{};
-            WorldCommands observer_commands;
+            ChangeCursor<Parent> parent_cursor;
+            ChangeCursor<Local> local_cursor;
             std::vector<Entity> dirty;
             std::unordered_set<Entity> targets;
             std::unordered_set<Entity> visiting;
@@ -246,16 +274,7 @@ namespace lux::ecs
                 std::span<const ComponentAccess>{components},
                 {},
                 true,
-                true,
             };
-        }
-
-        [[nodiscard]] std::span<const SystemSetId> transformSets() noexcept
-        {
-            static constexpr SystemSetId values[]{
-                systemSetId("lux.ecs.transform.resolve"),
-            };
-            return values;
         }
     } // namespace
 
@@ -277,29 +296,7 @@ namespace lux::ecs
 
     Transform2DSystem::~Transform2DSystem() = default;
 
-    void Transform2DSystem::onAttach(SystemAttach& attach) noexcept
-    {
-        detail::require(impl_->hierarchy->boundTo(attach.world()));
-        impl_->observer_commands = attach.commands();
-        attach.observeConstruct<Parent, &Transform2DSystem::onHierarchyChanged>(*this);
-        attach.observeUpdate<Parent, &Transform2DSystem::onHierarchyChanged>(*this);
-        attach.observeDestroy<Parent, &Transform2DSystem::onHierarchyChanged>(*this);
-        attach.observeConstruct<Transform2D, &Transform2DSystem::onLocalChanged>(*this);
-        attach.observeUpdate<Transform2D, &Transform2DSystem::onLocalChanged>(*this);
-        attach.observeDestroy<Transform2D, &Transform2DSystem::onLocalDestroyed>(*this);
-        impl_->dirty_all = true;
-    }
-
-    void Transform2DSystem::onDetach(SystemDetach&) noexcept
-    {
-        impl_->observer_commands = {};
-        impl_->dirty.clear();
-        impl_->targets.clear();
-        impl_->computed.clear();
-        impl_->visiting.clear();
-    }
-
-    void Transform2DSystem::update(const SystemFrame& frame) noexcept
+    void Transform2DSystem::update(SystemFrame& frame) noexcept
     {
         impl_->update(frame);
     }
@@ -309,61 +306,13 @@ namespace lux::ecs
         return transformAccess<Transform2D, WorldTransform2D>();
     }
 
-    std::span<const SystemSetId> Transform2DSystem::sets() const noexcept
-    {
-        return transformSets();
-    }
-
-    void Transform2DSystem::onHierarchyChanged(Entity entity) noexcept
-    {
-        impl_->mark(entity);
-    }
-
-    void Transform2DSystem::onLocalChanged(Entity entity) noexcept
-    {
-        impl_->mark(entity);
-    }
-
-    void Transform2DSystem::onLocalDestroyed(Entity entity) noexcept
-    {
-        impl_->mark(entity);
-        if (impl_->observer_commands.push(
-            RemoveDerived<WorldTransform2D>{entity}
-        ) != ECommandResult::ACCEPTED)
-        {
-            ++impl_->discarded_commands;
-        }
-    }
-
     Transform3DSystem::Transform3DSystem(HierarchyIndex& hierarchy)
         : impl_(std::make_unique<Impl>(hierarchy))
     {}
 
     Transform3DSystem::~Transform3DSystem() = default;
 
-    void Transform3DSystem::onAttach(SystemAttach& attach) noexcept
-    {
-        detail::require(impl_->hierarchy->boundTo(attach.world()));
-        impl_->observer_commands = attach.commands();
-        attach.observeConstruct<Parent, &Transform3DSystem::onHierarchyChanged>(*this);
-        attach.observeUpdate<Parent, &Transform3DSystem::onHierarchyChanged>(*this);
-        attach.observeDestroy<Parent, &Transform3DSystem::onHierarchyChanged>(*this);
-        attach.observeConstruct<Transform3D, &Transform3DSystem::onLocalChanged>(*this);
-        attach.observeUpdate<Transform3D, &Transform3DSystem::onLocalChanged>(*this);
-        attach.observeDestroy<Transform3D, &Transform3DSystem::onLocalDestroyed>(*this);
-        impl_->dirty_all = true;
-    }
-
-    void Transform3DSystem::onDetach(SystemDetach&) noexcept
-    {
-        impl_->observer_commands = {};
-        impl_->dirty.clear();
-        impl_->targets.clear();
-        impl_->computed.clear();
-        impl_->visiting.clear();
-    }
-
-    void Transform3DSystem::update(const SystemFrame& frame) noexcept
+    void Transform3DSystem::update(SystemFrame& frame) noexcept
     {
         impl_->update(frame);
     }
@@ -373,29 +322,4 @@ namespace lux::ecs
         return transformAccess<Transform3D, WorldTransform3D>();
     }
 
-    std::span<const SystemSetId> Transform3DSystem::sets() const noexcept
-    {
-        return transformSets();
-    }
-
-    void Transform3DSystem::onHierarchyChanged(Entity entity) noexcept
-    {
-        impl_->mark(entity);
-    }
-
-    void Transform3DSystem::onLocalChanged(Entity entity) noexcept
-    {
-        impl_->mark(entity);
-    }
-
-    void Transform3DSystem::onLocalDestroyed(Entity entity) noexcept
-    {
-        impl_->mark(entity);
-        if (impl_->observer_commands.push(
-            RemoveDerived<WorldTransform3D>{entity}
-        ) != ECommandResult::ACCEPTED)
-        {
-            ++impl_->discarded_commands;
-        }
-    }
 } // namespace lux::ecs

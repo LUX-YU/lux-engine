@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <memory>
 #include <new>
-#include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -47,9 +47,9 @@ namespace
         int value{};
     };
 
-    struct Folded final
+    struct Velocity final
     {
-        bool value{true};
+        int value{};
     };
 
     struct Noop final
@@ -60,319 +60,181 @@ namespace
     class Empty final : public lux::ecs::System
     {
       public:
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
+        void update(lux::ecs::SystemFrame&) noexcept override {}
     };
 
-    class MissingType final : public lux::ecs::System
+    class StartFailure final : public lux::ecs::System
     {
       public:
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
+        lux::cxx::expected<void, lux::ecs::SystemStartError>
+        start(lux::ecs::SystemStart&) noexcept override
+        {
+            return lux::cxx::unexpected(lux::ecs::SystemStartError{});
+        }
+
+        void update(lux::ecs::SystemFrame&) noexcept override {}
     };
 
-    class RemovableProvider final : public lux::ecs::System
+    class WrongAffinity final : public lux::ecs::System
     {
       public:
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-        [[nodiscard]] bool removable() const noexcept override { return true; }
+        using lux_thread_affine = std::true_type;
+
+        [[nodiscard]] bool isOnAffinityThread() const noexcept
+        {
+            return false;
+        }
+
+        void update(lux::ecs::SystemFrame&) noexcept override {}
     };
 
-    class HardConsumer final : public lux::ecs::System
+    class StopSystem final : public lux::ecs::System
     {
       public:
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-
-        std::span<const lux::cxx::TypeToken> requiredSystems() const noexcept override
+        explicit StopSystem(std::vector<int>& order, int marker) noexcept
+            : order_(&order), marker_(marker)
         {
-            static const lux::cxx::TypeToken required[]{
-                lux::cxx::typeToken<RemovableProvider>()};
-            return required;
-        }
-    };
-
-    class RequiresMissingType final : public lux::ecs::System
-    {
-      public:
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-
-        std::span<const lux::cxx::TypeToken> requiredSystems() const noexcept override
-        {
-            static const lux::cxx::TypeToken required[]{
-                lux::cxx::typeToken<MissingType>()};
-            return required;
-        }
-    };
-
-    class MissingSet final : public lux::ecs::System
-    {
-      public:
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-
-        std::span<const lux::ecs::SystemOrder> ordering() const noexcept override
-        {
-            static constexpr lux::ecs::SystemOrder order[]{
-                {lux::ecs::ESystemOrder::AFTER,
-                 lux::ecs::systemSetId("test.missing"), true}};
-            return order;
-        }
-    };
-
-    class CycleA final : public lux::ecs::System
-    {
-      public:
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-
-        std::span<const lux::ecs::SystemSetId> sets() const noexcept override
-        {
-            static constexpr lux::ecs::SystemSetId result[]{
-                lux::ecs::systemSetId("test.cycle.a")};
-            return result;
         }
 
-        std::span<const lux::ecs::SystemOrder> ordering() const noexcept override
+        void update(lux::ecs::SystemFrame&) noexcept override {}
+        void requestStop() noexcept override
         {
-            static constexpr lux::ecs::SystemOrder result[]{
-                {lux::ecs::ESystemOrder::AFTER,
-                 lux::ecs::systemSetId("test.cycle.b"), true}};
-            return result;
+            order_->push_back(marker_);
+            stopped_ = true;
         }
-    };
-
-    class CycleB final : public lux::ecs::System
-    {
-      public:
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-
-        std::span<const lux::ecs::SystemSetId> sets() const noexcept override
-        {
-            static constexpr lux::ecs::SystemSetId result[]{
-                lux::ecs::systemSetId("test.cycle.b")};
-            return result;
-        }
-
-        std::span<const lux::ecs::SystemOrder> ordering() const noexcept override
-        {
-            static constexpr lux::ecs::SystemOrder result[]{
-                {lux::ecs::ESystemOrder::AFTER,
-                 lux::ecs::systemSetId("test.cycle.a"), true}};
-            return result;
-        }
-    };
-
-    class UpdateSet final : public lux::ecs::System
-    {
-      public:
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-
-        std::span<const lux::ecs::SystemSetId> sets() const noexcept override
-        {
-            static constexpr lux::ecs::SystemSetId result[]{
-                lux::ecs::systemSetId("test.update")};
-            return result;
-        }
-    };
-
-    class ContradictoryPre final : public lux::ecs::System
-    {
-      public:
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-
-        std::span<const lux::ecs::SystemOrder> ordering() const noexcept override
-        {
-            static constexpr lux::ecs::SystemOrder result[]{
-                {lux::ecs::ESystemOrder::AFTER,
-                 lux::ecs::systemSetId("test.update"), true}};
-            return result;
-        }
-    };
-
-    struct AddFolded final
-    {
-        lux::ecs::Entity entity{lux::ecs::NullEntity};
-
-        void apply(lux::ecs::WorldEdit& edit) noexcept
-        {
-            edit.emplace<Folded>(entity);
-        }
-    };
-
-    class FoldingObserver final : public lux::ecs::System
-    {
-      public:
-        explicit FoldingObserver(bool& detached) noexcept : detached_(&detached) {}
-
-        void onAttach(lux::ecs::SystemAttach& attach) noexcept override
-        {
-            commands_ = attach.commands();
-            attach.observeConstruct<Position, &FoldingObserver::onPosition>(*this);
-        }
-
-        void onDetach(lux::ecs::SystemDetach&) noexcept override
-        {
-            *detached_ = true;
-        }
-
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-
-        [[nodiscard]] bool removable() const noexcept override
-        {
-            return true;
-        }
-
-        void onPosition(lux::ecs::Entity entity) noexcept
-        {
-            const auto result = commands_.push(AddFolded{entity});
-            if (result != lux::ecs::ECommandResult::ACCEPTED)
-                ++errors_;
-        }
-
-        [[nodiscard]] std::size_t errors() const noexcept
-        {
-            return errors_;
-        }
+        [[nodiscard]] bool stopped() const noexcept override { return stopped_; }
 
       private:
-        bool* detached_{};
-        lux::ecs::WorldCommands commands_;
-        std::size_t errors_{};
+        std::vector<int>* order_{};
+        int marker_{};
+        bool stopped_{};
+    };
+
+    class PositionReader final : public lux::ecs::System
+    {
+      public:
+        [[nodiscard]] lux::ecs::SystemAccess access() const noexcept override
+        {
+            return lux::ecs::access(
+                lux::ecs::query<lux::ecs::Read<Position>>()
+            );
+        }
+        void update(lux::ecs::SystemFrame&) noexcept override {}
+    };
+
+    class OtherPositionReader final : public lux::ecs::System
+    {
+      public:
+        [[nodiscard]] lux::ecs::SystemAccess access() const noexcept override
+        {
+            return lux::ecs::access(
+                lux::ecs::query<lux::ecs::Read<Position>>()
+            );
+        }
+        void update(lux::ecs::SystemFrame&) noexcept override {}
+    };
+
+    class PositionWriter final : public lux::ecs::System
+    {
+      public:
+        [[nodiscard]] lux::ecs::SystemAccess access() const noexcept override
+        {
+            return lux::ecs::access(
+                lux::ecs::query<lux::ecs::Write<Position>>()
+            );
+        }
+        void update(lux::ecs::SystemFrame&) noexcept override {}
+    };
+
+    class VelocityReader final : public lux::ecs::System
+    {
+      public:
+        [[nodiscard]] lux::ecs::SystemAccess access() const noexcept override
+        {
+            return lux::ecs::access(
+                lux::ecs::query<lux::ecs::Read<Velocity>>()
+            );
+        }
+        void update(lux::ecs::SystemFrame&) noexcept override {}
     };
 
     struct FinalCommand final
     {
         int* applied{};
-
-        void apply(lux::ecs::WorldEdit&) noexcept
-        {
-            ++*applied;
-        }
+        void apply(lux::ecs::WorldEdit&) noexcept { ++*applied; }
     };
 
     struct ChainCommand final
     {
-        lux::ecs::WorldCommands commands;
+        lux::ecs::WorldCommands writer;
         int* first{};
-        int* final{};
-        int* errors{};
+        int* stale{};
 
         void apply(lux::ecs::WorldEdit&) noexcept
         {
             ++*first;
-            if (commands.push(FinalCommand{final}) !=
-                lux::ecs::ECommandResult::ACCEPTED)
-            {
-                ++*errors;
-            }
+            if (writer.push(FinalCommand{first}) ==
+                lux::ecs::ECommandResult::STALE_WRITER)
+                ++*stale;
         }
-    };
-
-    struct Lifetime final
-    {
-        explicit Lifetime(int& destroyed) noexcept : destroyed_(&destroyed) {}
-        ~Lifetime() noexcept { ++*destroyed_; }
-        int* destroyed_{};
-    };
-
-    struct OwningCommand final
-    {
-        std::unique_ptr<Lifetime> value;
-        void apply(lux::ecs::WorldEdit&) noexcept {}
     };
 
     class CommandSystem final : public lux::ecs::System
     {
       public:
         CommandSystem(
+            lux::ecs::WorldCommands& escaped,
             int& first,
-            int& final,
-            int& errors,
-            int& destroyed
+            int& stale
         ) noexcept
-            : first_(&first), final_(&final), errors_(&errors), destroyed_(&destroyed)
+            : escaped_(&escaped), first_(&first), stale_(&stale)
         {
         }
 
-        void onAttach(lux::ecs::SystemAttach& attach) noexcept override
+        void update(lux::ecs::SystemFrame& frame) noexcept override
         {
-            stale_writer_ = attach.commands();
-        }
-
-        void update(const lux::ecs::SystemFrame& frame) noexcept override
-        {
-            if (!queued_)
-            {
-                queued_ = true;
-                if (frame.commands().push(ChainCommand{
-                        frame.commands(), first_, final_, errors_}) !=
-                    lux::ecs::ECommandResult::ACCEPTED)
-                {
-                    ++*errors_;
-                }
-                if (frame.commands().push(OwningCommand{
-                        std::make_unique<Lifetime>(*destroyed_)}) !=
-                    lux::ecs::ECommandResult::ACCEPTED)
-                {
-                    ++*errors_;
-                }
-            }
-        }
-
-        [[nodiscard]] bool removable() const noexcept override
-        {
-            return true;
-        }
-
-        [[nodiscard]] lux::ecs::WorldCommands staleWriter() const noexcept
-        {
-            return stale_writer_;
+            *escaped_ = frame.commands();
+            assert(frame.commands().push(
+                ChainCommand{frame.commands(), first_, stale_}
+            ) == lux::ecs::ECommandResult::ACCEPTED);
         }
 
       private:
+        lux::ecs::WorldCommands* escaped_{};
         int* first_{};
-        int* final_{};
-        int* errors_{};
-        int* destroyed_{};
-        lux::ecs::WorldCommands stale_writer_;
-        bool queued_{};
+        int* stale_{};
     };
 
     class AllocationSystem final : public lux::ecs::System
     {
       public:
-        void update(const lux::ecs::SystemFrame& frame) noexcept override
+        void update(lux::ecs::SystemFrame& frame) noexcept override
         {
-            if (frame.commands().push(Noop{}) != lux::ecs::ECommandResult::ACCEPTED)
+            if (frame.commands().push(Noop{}) !=
+                lux::ecs::ECommandResult::ACCEPTED)
                 ++errors;
         }
-
         std::size_t errors{};
     };
 
-    class CloseProvider final : public lux::ecs::System
+    class ReentrantSystem final : public lux::ecs::System
     {
       public:
-        explicit CloseProvider(std::vector<int>& order) noexcept : order_(&order) {}
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-        void requestClose() noexcept override { order_->push_back(1); }
-
-      private:
-        std::vector<int>* order_{};
-    };
-
-    class CloseConsumer final : public lux::ecs::System
-    {
-      public:
-        explicit CloseConsumer(std::vector<int>& order) noexcept : order_(&order) {}
-        void update(const lux::ecs::SystemFrame&) noexcept override {}
-        void requestClose() noexcept override { order_->push_back(2); }
-
-        std::span<const lux::cxx::TypeToken> requiredSystems() const noexcept override
+        ReentrantSystem(lux::ecs::Schedule& schedule, bool& rejected) noexcept
+            : schedule_(&schedule), rejected_(&rejected)
         {
-            static const lux::cxx::TypeToken required[]{
-                lux::cxx::typeToken<CloseProvider>()};
-            return required;
+        }
+
+        void update(lux::ecs::SystemFrame&) noexcept override
+        {
+            const auto edit = schedule_->edit();
+            *rejected_ = !edit &&
+                edit.error().code == lux::ecs::EScheduleError::EXECUTING;
         }
 
       private:
-        std::vector<int>* order_{};
+        lux::ecs::Schedule* schedule_{};
+        bool* rejected_{};
     };
 }
 
@@ -383,42 +245,43 @@ int main()
     World world;
     Schedule schedule(world);
 
+    SystemHandle<Empty> first_empty;
+    SystemHandle<Empty> second_empty;
     {
         auto transaction = schedule.edit();
         assert(transaction);
         auto edit = std::move(*transaction);
-        const auto first = edit.add(std::make_unique<Empty>());
-        const auto duplicate = edit.add(std::make_unique<Empty>());
-        assert(first && duplicate);
-        const auto result = edit.commit();
-        assert(!result && result.error().code == EScheduleError::DUPLICATE_SYSTEM);
-        assert(schedule.get(first) == nullptr);
-        assert(schedule.edit());
+        first_empty = edit.add(std::make_unique<Empty>());
+        second_empty = edit.add(std::make_unique<Empty>());
+        assert(first_empty && second_empty && edit.commit());
     }
 
     {
         auto transaction = schedule.edit();
         auto edit = std::move(*transaction);
-        const auto value = edit.add(std::make_unique<RequiresMissingType>());
+        const auto failed = edit.add(std::make_unique<StartFailure>());
         const auto result = edit.commit();
         assert(!result && result.error().code ==
-            EScheduleError::MISSING_REQUIRED_SYSTEM);
-        assert(schedule.get(value) == nullptr);
+            EScheduleError::SYSTEM_START_FAILED);
+        assert(!schedule.stopped(failed));
     }
 
     {
         auto transaction = schedule.edit();
         auto edit = std::move(*transaction);
-        (void)edit.add(std::make_unique<MissingSet>());
+        (void)edit.add(std::make_unique<WrongAffinity>());
         const auto result = edit.commit();
-        assert(!result && result.error().code == EScheduleError::MISSING_REQUIRED_SET);
+        assert(!result && result.error().code ==
+            EScheduleError::EXECUTION_AFFINITY_MISMATCH);
     }
 
     {
         auto transaction = schedule.edit();
         auto edit = std::move(*transaction);
-        (void)edit.add(std::make_unique<CycleA>());
-        (void)edit.add(std::make_unique<CycleB>());
+        const auto a = edit.add(std::make_unique<PositionReader>());
+        const auto b = edit.add(std::make_unique<OtherPositionReader>());
+        edit.before(a, b);
+        edit.before(b, a);
         const auto result = edit.commit();
         assert(!result && result.error().code == EScheduleError::DEPENDENCY_CYCLE);
     }
@@ -426,122 +289,134 @@ int main()
     {
         auto transaction = schedule.edit();
         auto edit = std::move(*transaction);
-        (void)edit.add(
-            std::make_unique<ContradictoryPre>(),
-            SystemPhase::PreUpdate
+        const auto pre = edit.add(
+            std::make_unique<PositionReader>(), SystemPhase::PreUpdate
         );
-        (void)edit.add(std::make_unique<UpdateSet>(), SystemPhase::Update);
+        const auto post = edit.add(
+            std::make_unique<OtherPositionReader>(), SystemPhase::PostUpdate
+        );
+        edit.after(pre, post);
         const auto result = edit.commit();
         assert(!result && result.error().code ==
             EScheduleError::PHASE_ORDER_CONTRADICTION);
     }
 
-    SystemHandle<RemovableProvider> provider_handle;
+    std::vector<int> stop_order;
+    SystemHandle<StopSystem> provider;
+    SystemHandle<StopSystem> consumer;
     {
         auto transaction = schedule.edit();
         auto edit = std::move(*transaction);
-        provider_handle = edit.add(std::make_unique<RemovableProvider>());
-        assert(edit.add(std::make_unique<HardConsumer>()));
+        provider = edit.add(std::make_unique<StopSystem>(stop_order, 1));
+        consumer = edit.add(std::make_unique<StopSystem>(stop_order, 2));
+        edit.require(consumer, provider);
         assert(edit.commit());
     }
+
+    std::vector<int> order_only_stop;
+    SystemHandle<StopSystem> ordered_first;
+    SystemHandle<StopSystem> ordered_second;
     {
         auto transaction = schedule.edit();
         auto edit = std::move(*transaction);
-        edit.remove(provider_handle);
+        ordered_first = edit.add(
+            std::make_unique<StopSystem>(order_only_stop, 3)
+        );
+        ordered_second = edit.add(
+            std::make_unique<StopSystem>(order_only_stop, 4)
+        );
+        edit.before(ordered_first, ordered_second);
+        assert(edit.commit());
+    }
+    assert(schedule.requestStop(ordered_second));
+    assert(schedule.requestStop(ordered_first));
+    {
+        auto transaction = schedule.edit();
+        auto edit = std::move(*transaction);
+        edit.remove(ordered_first);
+        edit.remove(ordered_second);
+        assert(edit.commit());
+    }
+    auto provider_stop = schedule.requestStop(provider);
+    assert(!provider_stop && provider_stop.error().code ==
+        EScheduleError::HARD_DEPENDENT_EXISTS);
+    assert(schedule.requestStop(consumer));
+    assert(schedule.requestStop(provider));
+    assert((stop_order == std::vector<int>{2, 1}));
+    {
+        auto transaction = schedule.edit();
+        auto edit = std::move(*transaction);
+        edit.remove(provider);
         const auto result = edit.commit();
         assert(!result && result.error().code ==
             EScheduleError::HARD_DEPENDENT_EXISTS);
-        assert(schedule.get(provider_handle) != nullptr);
     }
-
-    auto world_edit_result = world.edit();
-    auto world_edit = std::move(*world_edit_result);
-    const Entity entity = world_edit.create();
-    world_edit.emplace<Position>(entity, 3);
-    world_edit = {};
-
-    bool detached{};
-    SystemHandle<FoldingObserver> observer_handle;
     {
         auto transaction = schedule.edit();
         auto edit = std::move(*transaction);
-        observer_handle = edit.add(std::make_unique<FoldingObserver>(detached));
+        edit.remove(consumer);
+        edit.remove(provider);
         assert(edit.commit());
     }
-    assert(world.find<Folded>(entity) != nullptr);
-    assert(schedule.get(observer_handle)->errors() == 0);
 
+    {
+        auto transaction = schedule.edit();
+        auto edit = std::move(*transaction);
+        const auto r1 = edit.add(std::make_unique<PositionReader>());
+        const auto r2 = edit.add(std::make_unique<OtherPositionReader>());
+        const auto w = edit.add(std::make_unique<PositionWriter>());
+        const auto other = edit.add(std::make_unique<VelocityReader>());
+        assert(r1 && r2 && w && other && edit.commit());
+    }
+    const auto plan = detail::ScheduleTestAccess::snapshot(schedule);
+    bool shared_read_wave{};
+    for (const auto& wave : plan.batches)
+    {
+        if (wave.size() >= 3)
+            shared_read_wave = true;
+    }
+    assert(shared_read_wave);
+
+    WorldCommands escaped;
     int first{};
-    int final{};
-    int errors{};
-    int destroyed{};
-    SystemHandle<CommandSystem> command_handle;
+    int stale{};
     {
         auto transaction = schedule.edit();
         auto edit = std::move(*transaction);
-        command_handle = edit.add(std::make_unique<CommandSystem>(
-            first,
-            final,
-            errors,
-            destroyed
-        ));
+        assert(edit.add(std::make_unique<CommandSystem>(
+            escaped, first, stale
+        )));
         assert(edit.commit());
     }
-    const WorldCommands stale = schedule.get(command_handle)->staleWriter();
     schedule.run(1.0F / 60.0F, 1);
-    assert(first == 1 && final == 0 && destroyed == 1 && errors == 0);
+    assert(first == 1 && stale == 1);
+    assert(escaped.push(Noop{}) == ECommandResult::STALE_WRITER);
+
+    bool reentrant_rejected{};
+    {
+        auto transaction = schedule.edit();
+        auto edit = std::move(*transaction);
+        assert(edit.add(std::make_unique<ReentrantSystem>(
+            schedule, reentrant_rejected
+        )));
+        assert(edit.add(std::make_unique<AllocationSystem>()));
+        assert(edit.commit());
+    }
     schedule.run(1.0F / 60.0F, 2);
-    assert(first == 1 && final == 1 && destroyed == 1 && errors == 0);
-
-    {
-        auto transaction = schedule.edit();
-        auto edit = std::move(*transaction);
-        assert(stale.push(Noop{}) == ECommandResult::ACCEPTED);
-        edit.remove(command_handle);
-        assert(edit.commit());
-    }
-    assert(schedule.get(command_handle) == nullptr);
-    assert(stale.push(Noop{}) == ECommandResult::STALE_WRITER);
-    assert(detail::ScheduleTestAccess::discardedCommands(schedule) == 1);
-
-    {
-        auto transaction = schedule.edit();
-        auto edit = std::move(*transaction);
-        edit.remove(observer_handle);
-        assert(edit.commit());
-    }
-    assert(detached);
-
-    SystemHandle<AllocationSystem> allocation_handle;
-    {
-        auto transaction = schedule.edit();
-        auto edit = std::move(*transaction);
-        allocation_handle = edit.add(std::make_unique<AllocationSystem>());
-        assert(edit.commit());
-    }
-    schedule.run(1.0F / 60.0F, 3);
+    assert(reentrant_rejected);
     const auto command_allocations_before =
         detail::ScheduleTestAccess::commandAllocationEvents(schedule);
     allocations.store(0, std::memory_order_relaxed);
     count_allocations.store(true, std::memory_order_relaxed);
-    for (std::uint64_t tick = 4; tick != 104; ++tick)
+    for (std::uint64_t tick = 3; tick != 103; ++tick)
         schedule.run(1.0F / 60.0F, tick);
     count_allocations.store(false, std::memory_order_relaxed);
     assert(allocations.load(std::memory_order_relaxed) == 0);
     assert(detail::ScheduleTestAccess::commandAllocationEvents(schedule) ==
         command_allocations_before);
-    assert(schedule.get(allocation_handle)->errors == 0);
 
-    std::vector<int> close_order;
-    close_order.reserve(2);
-    World close_world;
-    {
-        Schedule close_schedule(close_world);
-        auto transaction = close_schedule.edit();
-        auto edit = std::move(*transaction);
-        assert(edit.add(std::make_unique<CloseConsumer>(close_order)));
-        assert(edit.add(std::make_unique<CloseProvider>(close_order)));
-        assert(edit.commit());
-    }
-    assert((close_order == std::vector<int>{2, 1}));
+    World other_world;
+    Schedule other(other_world);
+    const auto cross = other.requestStop(first_empty);
+    assert(!cross && cross.error().code == EScheduleError::INVALID_HANDLE);
 }

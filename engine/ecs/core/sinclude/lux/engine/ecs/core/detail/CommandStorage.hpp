@@ -60,7 +60,6 @@ namespace lux::ecs::detail
         CommandShard(const CommandShard&) = delete;
         CommandShard& operator=(const CommandShard&) = delete;
 
-        [[nodiscard]] WorldCommands writer() noexcept;
         void reserve(std::size_t count);
         void invalidate() noexcept;
 
@@ -76,18 +75,16 @@ namespace lux::ecs::detail
             void* source
         ) noexcept;
 
-        void beginApply() noexcept;
+        [[nodiscard]] WorldCommands beginExecution() noexcept;
+        void endExecution() noexcept;
         void applyPending(WorldEdit& edit) noexcept;
-        void endApply() noexcept;
 
         std::vector<CommandRecord> pending_;
-        std::vector<CommandRecord> next_;
         CommandArena pending_arena_;
-        CommandArena next_arena_;
         std::uint32_t generation_{1};
         std::size_t discarded_{};
         std::size_t record_allocation_events_{};
-        bool active_{true};
+        bool active_{};
         bool applying_{};
 
         friend class ::lux::ecs::WorldCommands;

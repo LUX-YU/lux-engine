@@ -4,11 +4,11 @@
 #include <lux/engine/ecs/System.hpp>
 #include <lux/engine/ecs/SystemHandle.hpp>
 #include <lux/engine/ecs/SystemPhase.hpp>
+#include <lux/engine/ecs/SystemSetId.hpp>
 #include <lux/engine/ecs/schedule/visibility.h>
 
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/object/LuxObject.hpp>
 
 #include <concepts>
 #include <cstdint>
@@ -18,19 +18,26 @@
 
 namespace lux::ecs
 {
+    enum class ESystemExecutionAffinity : std::uint8_t
+    {
+        WORKER_ELIGIBLE,
+        OWNER_THREAD,
+    };
+
     namespace detail
     {
         struct ScheduleTestAccess;
 
-        struct StagedSystemHandle final
+        template <class T>
+        concept ThreadAffineSystem = requires(const T& value)
         {
-            std::uint32_t slot{};
-            std::uint32_t generation{};
+            typename T::lux_thread_affine;
+            requires T::lux_thread_affine::value;
+            { value.isOnAffinityThread() } noexcept -> std::same_as<bool>;
         };
 
-        struct AnySystemHandle final
+        struct StagedSystemHandle final
         {
-            std::uint64_t owner{};
             std::uint32_t slot{};
             std::uint32_t generation{};
         };
@@ -54,36 +61,48 @@ namespace lux::ecs
             SystemPhase phase = SystemPhase::Update
         )
         {
-            static_assert(std::is_base_of_v<System, T>);
+            static_assert(std::derived_from<T, System>);
             if (schedule_ == nullptr || !system)
             {
                 recordFailure(EScheduleError::NULL_SYSTEM);
                 return {};
             }
 
+            constexpr bool kThreadAffine = detail::ThreadAffineSystem<T>;
+            bool (*validator)(const System&) noexcept{};
+            if constexpr (kThreadAffine)
+            {
+                validator = [](const System& value) noexcept
+                {
+                    return static_cast<const T&>(value).isOnAffinityThread();
+                };
+            }
+
             const auto handle = stageAdd(
                 lux::cxx::typeToken<T>(),
                 std::move(system),
                 phase,
-                std::derived_from<T, lux::object::LuxObject>
+                kThreadAffine
+                    ? ESystemExecutionAffinity::OWNER_THREAD
+                    : ESystemExecutionAffinity::WORKER_ELIGIBLE,
+                validator
             );
             if (!handle)
                 return {};
-            return SystemHandle<T>(
-                ownerId(),
-                handle->slot,
-                handle->generation
-            );
+            return SystemHandle<T>(AnySystemHandle{
+                ownerId(), handle->slot, handle->generation});
         }
 
-        template <class T>
-        void remove(SystemHandle<T> handle)
-        {
-            stageRemove(detail::AnySystemHandle{
-                handle.owner_,
-                handle.slot_,
-                handle.generation_});
-        }
+        void addToSet(AnySystemHandle system, SystemSetId set) noexcept;
+        void before(AnySystemHandle system, AnySystemHandle other) noexcept;
+        void before(AnySystemHandle system, SystemSetId set) noexcept;
+        void after(AnySystemHandle system, AnySystemHandle other) noexcept;
+        void after(AnySystemHandle system, SystemSetId set) noexcept;
+        void require(
+            AnySystemHandle consumer,
+            AnySystemHandle provider
+        ) noexcept;
+        void remove(AnySystemHandle handle) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, ScheduleFailure>
         commit() noexcept;
@@ -96,10 +115,10 @@ namespace lux::ecs
             lux::cxx::TypeToken type,
             std::unique_ptr<System> system,
             SystemPhase phase,
-            bool object_affine
+            ESystemExecutionAffinity affinity,
+            bool (*affinity_validator)(const System&) noexcept
         ) noexcept;
 
-        void stageRemove(detail::AnySystemHandle handle) noexcept;
         void recordFailure(EScheduleError error) noexcept;
         [[nodiscard]] std::uint64_t ownerId() const noexcept;
         void release() noexcept;
@@ -125,28 +144,16 @@ namespace lux::ecs
 
         void run(float delta_seconds, std::uint64_t tick_index) noexcept;
 
+        [[nodiscard]] lux::cxx::expected<void, ScheduleFailure>
+        requestStop(AnySystemHandle handle) noexcept;
+
+        [[nodiscard]] bool stopped(AnySystemHandle handle) const noexcept;
+
         void requestClose() noexcept;
-        void runCloseStep(float delta_seconds, std::uint64_t tick_index) noexcept;
+        void runCloseStep() noexcept;
         [[nodiscard]] bool closeComplete() const noexcept;
 
-        template <class T>
-        [[nodiscard]] T* get(SystemHandle<T> handle) noexcept
-        {
-            return static_cast<T*>(getRaw(
-                detail::AnySystemHandle{
-                    handle.owner_,
-                    handle.slot_,
-                    handle.generation_},
-                lux::cxx::typeToken<T>()
-            ));
-        }
-
       private:
-        void* getRaw(
-            detail::AnySystemHandle handle,
-            lux::cxx::TypeToken expected_type
-        ) noexcept;
-
         struct Impl;
         std::unique_ptr<Impl> impl_;
 

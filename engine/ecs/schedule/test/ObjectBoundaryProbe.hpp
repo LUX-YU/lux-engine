@@ -36,7 +36,7 @@ namespace lux::ecs::test
 
         static const signal_type<SectionDemandChanged> demandChanged;
 
-        void update(const SystemFrame& frame) noexcept override
+        void update(SystemFrame& frame) noexcept override
         {
             if (!demand_published_)
             {
@@ -65,11 +65,6 @@ namespace lux::ecs::test
                 }
             }
             inbox_.clear();
-        }
-
-        [[nodiscard]] bool removable() const noexcept override
-        {
-            return true;
         }
 
       protected:

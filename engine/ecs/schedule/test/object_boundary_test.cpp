@@ -97,6 +97,7 @@ int main()
         weak,
         SectionReady{entity, 9u}
     ) == lux::object::EEventPostStatus::POSTED);
+    assert(schedule.requestStop(handle));
     auto remove_result = schedule.edit();
     assert(remove_result);
     auto remove = std::move(*remove_result);

@@ -110,7 +110,7 @@ namespace
     {
       public:
         explicit NoopSystemBase(std::uint64_t& value) noexcept : value_(&value) {}
-        void update(const lux::ecs::SystemFrame&) noexcept override { ++*value_; }
+        void update(lux::ecs::SystemFrame&) noexcept override { ++*value_; }
 
       private:
         std::uint64_t* value_{};
@@ -129,7 +129,7 @@ namespace
     {
       public:
         explicit ObjectNoopSystem(std::uint64_t& value) noexcept : value_(&value) {}
-        void update(const lux::ecs::SystemFrame&) noexcept override { ++*value_; }
+        void update(lux::ecs::SystemFrame&) noexcept override { ++*value_; }
 
       private:
         std::uint64_t* value_{};
@@ -160,7 +160,7 @@ namespace
       public:
         explicit CommandProducer(std::size_t count) noexcept : count_(count) {}
 
-        void update(const lux::ecs::SystemFrame& frame) noexcept override
+        void update(lux::ecs::SystemFrame& frame) noexcept override
         {
             for (std::size_t index{}; index < count_; ++index)
             {
@@ -428,9 +428,9 @@ int main(int argc, char** argv)
         lux::ecs::Schedule schedule(command_world);
         auto edit_result = schedule.edit();
         auto edit = std::move(*edit_result);
-        const auto handle = edit.add(
-            std::make_unique<CommandProducer>(command_count)
-        );
+        auto producer = std::make_unique<CommandProducer>(command_count);
+        const auto* producer_probe = producer.get();
+        const auto handle = edit.add(std::move(producer));
         if (!handle || !edit.commit())
             return 4;
         std::uint64_t tick{};
@@ -439,7 +439,7 @@ int main(int argc, char** argv)
             for (int repeat{}; repeat < 100; ++repeat)
                 schedule.run(1.0F / 60.0F, ++tick);
         }));
-        if (schedule.get(handle)->errors() != 0)
+        if (producer_probe->errors() != 0)
             return 5;
     }
 

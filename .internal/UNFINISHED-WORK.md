@@ -7,7 +7,7 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 - [x] V2-0: Withdraw the v1 Freeze conclusion and record the new stop line.
 - [x] V2-1: Remove mutable World escapes and establish bounded Change Journal
       semantics with explicit Read/Write capabilities.
-- [ ] V2-2: Separate Schedule execution, access and lifetime relations; make
+- [x] V2-2: Separate Schedule execution, access and lifetime relations; make
       execution affinity Object-independent.
 - [ ] V2-3: Orthogonalize schema policy/codec and split reflection projection.
 - [ ] V2-4/V2-5: Restabilize Snapshot, LXWS and live-World safe-point contracts.

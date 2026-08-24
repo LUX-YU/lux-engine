@@ -59,10 +59,9 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
-           "#[ \t]*include[ \t]*[<\"]lux/engine/object/" AND
-           NOT normalized MATCHES "/engine/ecs/schedule/")
+           "#[ \t]*include[ \t]*[<\"]lux/engine/object/")
             message(FATAL_ERROR
-                "Architecture: only ecs::schedule may depend on core/object; '${normalized}' does."
+                "Architecture: L1 production source '${normalized}' depends on Object instead of the generic affinity protocol."
             )
         endif()
         if(content MATCHES

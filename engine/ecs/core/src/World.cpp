@@ -157,6 +157,11 @@ namespace lux::ecs
         WorldChangeAccess::journal(world).recordEntity(entity, kind);
     }
 
+    void detail::establishWorldChangeBaseline(World& world) noexcept
+    {
+        WorldChangeAccess::journal(world).establishBaseline();
+    }
+
     detail::ChangeRangeData detail::readWorldComponentChanges(
         const World& world,
         std::uint64_t storage,

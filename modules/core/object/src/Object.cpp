@@ -439,6 +439,11 @@ namespace lux::object
         return type == lux::cxx::typeToken<LuxObject>();
     }
 
+    bool LuxObject::isOnAffinityThread() const noexcept
+    {
+        return std::this_thread::get_id() == affinity_;
+    }
+
     void LuxObject::assertAffinity() const noexcept
     {
         if (std::this_thread::get_id() != affinity_)

@@ -1,5 +1,11 @@
 find_package(lux-cxx REQUIRED COMPONENTS core compile_time)
 
+option(
+    LUX_ECS_CONTRACT_CHECKS
+    "Enable ECS schedule contract checks in all build configurations"
+    OFF
+)
+
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_ECS_SCHEDULE_LIBRARY
     PUBLIC_MACRO_NAME       LUX_ENGINE_ECS_SCHEDULE_PUBLIC
@@ -27,11 +33,13 @@ component_include_directories(
 )
 
 target_compile_definitions(schedule PRIVATE LUX_ENGINE_ECS_SCHEDULE_LIBRARY)
+if(LUX_ECS_CONTRACT_CHECKS)
+    target_compile_definitions(schedule PUBLIC LUX_ECS_CONTRACT_CHECKS)
+endif()
 target_link_libraries(
     schedule
     PUBLIC
         lux::engine::ecs::core
-        lux::engine::core::object
         lux::cxx::core
         lux::cxx::compile_time
 )
@@ -40,7 +48,6 @@ component_add_transitive_commands(
     schedule
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS object)"
 )
 
 lux_classify_target(
@@ -129,6 +136,9 @@ set_tests_properties(
 foreach(probe IN ITEMS
     retired_isystem_negative
     retired_schedule_builder_negative
+    retired_system_attach_negative
+    retired_system_extrinsic_negative
+    schedule_mutable_get_negative
     systemframe_raw_world_negative
 )
     add_executable(
@@ -175,7 +185,9 @@ target_include_directories(
 )
 target_link_libraries(
     ecs_object_boundary_test
-    PRIVATE lux::engine::ecs::schedule
+    PRIVATE
+        lux::engine::ecs::schedule
+        lux::engine::core::object
 )
 if(MSVC)
     target_compile_options(ecs_object_boundary_test PRIVATE /UNDEBUG)

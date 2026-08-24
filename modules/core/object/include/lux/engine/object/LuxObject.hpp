@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <thread>
+#include <type_traits>
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/memory/intrusive_ptr.hpp>
@@ -53,6 +54,8 @@ namespace lux::object
     class LUX_CORE_PUBLIC LuxObject
     {
       public:
+        using lux_thread_affine = std::true_type;
+
         explicit LuxObject(ObjectDispatcherRef dispatcher = {}) noexcept;
         virtual ~LuxObject();
 
@@ -63,6 +66,7 @@ namespace lux::object
 
         [[nodiscard]] virtual lux::cxx::TypeToken objectType() const noexcept;
         [[nodiscard]] virtual bool isObjectType(lux::cxx::TypeToken type) const noexcept;
+        [[nodiscard]] bool isOnAffinityThread() const noexcept;
         [[nodiscard]] ObjectWeakRef weakRef() const;
         [[nodiscard]] const ObjectDispatcherRef &dispatcherRef() const noexcept
         {

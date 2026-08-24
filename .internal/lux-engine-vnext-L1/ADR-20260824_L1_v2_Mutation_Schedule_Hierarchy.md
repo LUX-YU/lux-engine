@@ -24,6 +24,11 @@
    subtree。
 7. Snapshot policy、persistent codec、reflection projection 是独立事实。
 
+Schedule v2 的 lifetime edge API 命名为 `ScheduleEdit::require(consumer,
+provider)`；设计文档中的伪代码 `requires(...)` 在 C++ 中是保留关键字，不能作为
+成员函数标识符。该命名差异不改变“只有 hard requirement 才进入 lifetime DAG”的
+语义。
+
 ## Stop line
 
 L1 v2 完成完整 correctness/performance/install/cross-platform 矩阵后只能成为

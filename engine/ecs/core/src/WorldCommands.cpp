@@ -144,26 +144,17 @@ namespace lux::ecs::detail
     {
     }
 
-    WorldCommands CommandShard::writer() noexcept
-    {
-        return WorldCommands(*this, generation_);
-    }
-
     void CommandShard::reserve(std::size_t count)
     {
         pending_.reserve(count);
-        next_.reserve(count);
         pending_arena_.reserve(count * 64U);
-        next_arena_.reserve(count * 64U);
     }
 
     void CommandShard::invalidate() noexcept
     {
-        discarded_ += pending_.size() + next_.size();
+        discarded_ += pending_.size();
         pending_.clear();
-        next_.clear();
         pending_arena_.reset();
-        next_arena_.reset();
         active_ = false;
         ++generation_;
         if (generation_ == 0)
@@ -188,8 +179,7 @@ namespace lux::ecs::detail
     std::size_t CommandShard::allocationEvents() const noexcept
     {
         return record_allocation_events_ +
-            pending_arena_.allocationEvents() +
-            next_arena_.allocationEvents();
+            pending_arena_.allocationEvents();
     }
 
     ECommandResult CommandShard::push(
@@ -199,28 +189,32 @@ namespace lux::ecs::detail
     ) noexcept
     {
         if (!accepts(writer_generation))
+        {
+            ++discarded_;
             return ECommandResult::STALE_WRITER;
+        }
 
         try
         {
-            auto& target = applying_ ? next_ : pending_;
-            auto& arena = applying_ ? next_arena_ : pending_arena_;
-            if (target.size() == target.capacity())
+            if (pending_.size() == pending_.capacity())
             {
-                target.reserve(std::max<std::size_t>(
+                pending_.reserve(std::max<std::size_t>(
                     8,
-                    target.capacity() * 2
+                    pending_.capacity() * 2
                 ));
                 ++record_allocation_events_;
             }
-            void* payload = arena.allocate(table.size, table.alignment);
+            void* payload = pending_arena_.allocate(
+                table.size,
+                table.alignment
+            );
             table.move_construct(payload, source);
 
             CommandRecord record;
             record.payload = payload;
             record.apply = table.apply;
             record.destroy = table.destroy;
-            target.push_back(std::move(record));
+            pending_.push_back(std::move(record));
         }
         catch (...)
         {
@@ -230,14 +224,29 @@ namespace lux::ecs::detail
         return ECommandResult::ACCEPTED;
     }
 
-    void CommandShard::beginApply() noexcept
+    WorldCommands CommandShard::beginExecution() noexcept
     {
-        detail::require(!applying_);
-        applying_ = true;
+        detail::require(!active_ && !applying_);
+        ++generation_;
+        if (generation_ == 0)
+            ++generation_;
+        active_ = true;
+        return WorldCommands(*this, generation_);
+    }
+
+    void CommandShard::endExecution() noexcept
+    {
+        detail::require(active_ && !applying_);
+        active_ = false;
+        ++generation_;
+        if (generation_ == 0)
+            ++generation_;
     }
 
     void CommandShard::applyPending(WorldEdit& edit) noexcept
     {
+        detail::require(!active_ && !applying_);
+        applying_ = true;
         for (CommandRecord& record : pending_)
         {
             record.apply(record.payload, edit);
@@ -245,18 +254,6 @@ namespace lux::ecs::detail
         }
         pending_.clear();
         pending_arena_.reset();
-    }
-
-    void CommandShard::endApply() noexcept
-    {
-        detail::require(applying_);
         applying_ = false;
-        if (!next_.empty())
-        {
-            detail::require(pending_.empty());
-            pending_.swap(next_);
-            pending_arena_.swap(next_arena_);
-        }
-        next_arena_.reset();
     }
 } // namespace lux::ecs::detail

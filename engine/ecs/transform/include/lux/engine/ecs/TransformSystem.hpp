@@ -15,18 +15,11 @@ namespace lux::ecs
         explicit Transform2DSystem(HierarchyIndex& hierarchy);
         ~Transform2DSystem() override;
 
-        void onAttach(SystemAttach& attach) noexcept override;
-        void onDetach(SystemDetach& detach) noexcept override;
-        void update(const SystemFrame& frame) noexcept override;
+        void update(SystemFrame& frame) noexcept override;
 
         [[nodiscard]] SystemAccess access() const noexcept override;
-        [[nodiscard]] std::span<const SystemSetId> sets() const noexcept override;
 
       private:
-        void onHierarchyChanged(Entity entity) noexcept;
-        void onLocalChanged(Entity entity) noexcept;
-        void onLocalDestroyed(Entity entity) noexcept;
-
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
@@ -38,18 +31,11 @@ namespace lux::ecs
         explicit Transform3DSystem(HierarchyIndex& hierarchy);
         ~Transform3DSystem() override;
 
-        void onAttach(SystemAttach& attach) noexcept override;
-        void onDetach(SystemDetach& detach) noexcept override;
-        void update(const SystemFrame& frame) noexcept override;
+        void update(SystemFrame& frame) noexcept override;
 
         [[nodiscard]] SystemAccess access() const noexcept override;
-        [[nodiscard]] std::span<const SystemSetId> sets() const noexcept override;
 
       private:
-        void onHierarchyChanged(Entity entity) noexcept;
-        void onLocalChanged(Entity entity) noexcept;
-        void onLocalDestroyed(Entity entity) noexcept;
-
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

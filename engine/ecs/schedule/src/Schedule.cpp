@@ -4,399 +4,714 @@
 #include <lux/engine/ecs/schedule/detail/ScheduleTestAccess.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
-#include <limits>
+#include <cstddef>
 #include <optional>
-#include <span>
 #include <string>
 #include <thread>
-#include <unordered_map>
-#include <unordered_set>
+#include <utility>
+#include <vector>
 
-namespace lux::ecs
+namespace lux::ecs::detail
 {
     namespace
     {
-        struct OwnedSet final
+        [[nodiscard]] std::uint64_t nextScheduleOwner() noexcept
         {
-            std::uint64_t hash{};
-            std::string name;
-        };
-
-        struct OwnedOrder final
-        {
-            ESystemOrder relation{ESystemOrder::AFTER};
-            OwnedSet target;
-            bool required{};
-        };
-
-        struct Slot final
-        {
-            std::unique_ptr<System> system;
-            lux::cxx::TypeToken type;
-            SystemPhase phase{SystemPhase::Update};
-            std::vector<OwnedSet> sets;
-            std::vector<OwnedOrder> orders;
-            std::vector<lux::cxx::TypeToken> required;
-            std::vector<ComponentAccess> component_access;
-            std::vector<ExternalAccess> external_access;
-            bool structural{};
-            bool access_complete{};
-            bool object_affine{};
-            std::unique_ptr<detail::CommandShard> commands;
-            std::vector<entt::scoped_connection> observers;
-            std::uint32_t generation{1};
-            std::uint64_t sequence{};
-            bool close_requested{};
-        };
-
-        struct Candidate final
-        {
-            std::uint32_t slot{};
-            Slot* descriptor{};
-            lux::cxx::TypeToken type;
-            SystemPhase phase{SystemPhase::Update};
-            std::uint64_t sequence{};
-        };
-
-        [[nodiscard]] bool sameType(
-            lux::cxx::TypeToken left,
-            lux::cxx::TypeToken right
-        ) noexcept
-        {
-            return left.hash() == right.hash() && left.name() == right.name();
+            static std::atomic_uint64_t next{1};
+            auto result = next.fetch_add(1, std::memory_order_relaxed);
+            if (result == 0)
+                result = next.fetch_add(1, std::memory_order_relaxed);
+            return result;
         }
 
-        [[nodiscard]] int phaseRank(SystemPhase phase) noexcept
-        {
-            return static_cast<int>(phase);
-        }
-
-        [[nodiscard]] bool accessCompatible(
-            const Slot& left,
-            const Slot& right
+        [[nodiscard]] constexpr std::size_t phaseIndex(
+            SystemPhase phase
         ) noexcept
         {
-            if (left.object_affine || right.object_affine ||
-                !left.access_complete || !right.access_complete)
-                return false;
-            if (left.structural || right.structural)
-                return false;
-
-            const auto conflicts = [](const auto& a, const auto& b)
-            {
-                for (const auto& lhs : a)
-                {
-                    for (const auto& rhs : b)
-                    {
-                        if (sameType(lhs.type, rhs.type) &&
-                            (lhs.mode == EAccessMode::WRITE ||
-                             rhs.mode == EAccessMode::WRITE))
-                        {
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            };
-
-            return !conflicts(left.component_access, right.component_access) &&
-                   !conflicts(left.external_access, right.external_access);
+            return static_cast<std::size_t>(phase);
         }
     } // namespace
 
-    struct Schedule::Impl final
+    struct HandleKey final
     {
-        explicit Impl(World& value) noexcept
-            : world(&value),
-              id(next_id.fetch_add(1, std::memory_order_relaxed)),
-              owner_thread(std::this_thread::get_id())
+        std::uint64_t owner{};
+        std::uint32_t slot{};
+        std::uint32_t generation{};
+
+        [[nodiscard]] bool operator==(const HandleKey&) const noexcept = default;
+    };
+
+    [[nodiscard]] HandleKey key(AnySystemHandle handle) noexcept
+    {
+        return HandleKey{
+            SystemHandleAccess::owner(handle),
+            SystemHandleAccess::slot(handle),
+            SystemHandleAccess::generation(handle)};
+    }
+
+    [[nodiscard]] AnySystemHandle handle(HandleKey value) noexcept
+    {
+        return SystemHandleAccess::make(
+            value.owner, value.slot, value.generation
+        );
+    }
+
+    struct OwnedSet final
+    {
+        std::uint64_t hash{};
+        std::string name;
+
+        [[nodiscard]] bool operator==(const OwnedSet& other) const noexcept
         {
-            if (id == 0)
-                id = next_id.fetch_add(1, std::memory_order_relaxed);
-        }
-
-        static std::atomic<std::uint64_t> next_id;
-
-        World* world{};
-        std::uint64_t id{};
-        std::thread::id owner_thread;
-        std::vector<std::unique_ptr<Slot>> slots;
-        std::vector<std::uint32_t> free_slots;
-        std::vector<std::uint32_t> compiled;
-        std::vector<std::vector<std::uint32_t>> batches;
-        std::vector<std::vector<std::uint32_t>> outgoing;
-        std::uint64_t next_sequence{1};
-        bool editing{};
-        bool executing{};
-        bool closing{};
-
-        void requireOwnerThread() const noexcept
-        {
-            detail::require(std::this_thread::get_id() == owner_thread);
-        }
-
-        void clearObservers(Slot& slot) noexcept
-        {
-            detail::require(world->observer_relations_ >= slot.observers.size());
-            world->observer_relations_ -= slot.observers.size();
-            slot.observers.clear();
-        }
-
-        void applyCommands(std::span<const std::uint32_t> command_order) noexcept
-        {
-            world->state_ = detail::EWorldState::APPLYING_COMMANDS;
-            WorldEdit edit(*world, false);
-
-            for (const std::uint32_t index : command_order)
-                slots[index]->commands->beginApply();
-            for (const std::uint32_t index : command_order)
-                slots[index]->commands->applyPending(edit);
-            for (const std::uint32_t index : command_order)
-                slots[index]->commands->endApply();
-
-            world->state_ = detail::EWorldState::IDLE;
-        }
-
-        void applyCommands() noexcept
-        {
-            applyCommands(compiled);
-        }
-
-        void detachAll() noexcept
-        {
-            SystemDetach detach(*world);
-            for (auto iterator = compiled.rbegin(); iterator != compiled.rend(); ++iterator)
-            {
-                Slot& slot = *slots[*iterator];
-                clearObservers(slot);
-                slot.system->onDetach(detach);
-                slot.commands->invalidate();
-                slot.system.reset();
-            }
-            compiled.clear();
-            batches.clear();
-            outgoing.clear();
+            return hash == other.hash && name == other.name;
         }
     };
 
-    std::atomic<std::uint64_t> Schedule::Impl::next_id{1};
+    [[nodiscard]] OwnedSet own(SystemSetId set)
+    {
+        return OwnedSet{set.id.hash(), std::string(set.id.name())};
+    }
+
+    struct SetMembership final
+    {
+        HandleKey system;
+        OwnedSet set;
+    };
+
+    enum class EOrderTarget : std::uint8_t
+    {
+        SYSTEM,
+        SET,
+    };
+
+    struct OrderRelation final
+    {
+        HandleKey source;
+        EOrderTarget target_kind{EOrderTarget::SYSTEM};
+        HandleKey target;
+        OwnedSet set;
+        bool before{};
+    };
+
+    struct Requirement final
+    {
+        HandleKey consumer;
+        HandleKey provider;
+    };
+
+    struct ShardRecord final
+    {
+        std::uint64_t storage{};
+        Entity entity{NullEntity};
+        EComponentChangeKind kind{EComponentChangeKind::MODIFIED};
+    };
+
+    struct ChangeShard final
+    {
+        std::vector<ShardRecord> records;
+        bool overflow{};
+
+        void reserve(std::size_t count)
+        {
+            records.reserve(count);
+        }
+
+        void begin() noexcept
+        {
+            records.clear();
+            overflow = false;
+        }
+
+        [[nodiscard]] ChangeRecorder recorder() noexcept
+        {
+            return ChangeRecorder{
+                this,
+                [](void* context, std::uint64_t storage, Entity entity,
+                   EComponentChangeKind kind) noexcept
+                {
+                    auto& shard = *static_cast<ChangeShard*>(context);
+                    if (shard.overflow)
+                        return;
+                    try
+                    {
+                        shard.records.push_back(
+                            ShardRecord{storage, entity, kind}
+                        );
+                    }
+                    catch (...)
+                    {
+                        shard.records.clear();
+                        shard.overflow = true;
+                    }
+                }};
+        }
+    };
+
+    struct ScheduleSlot final
+    {
+        std::unique_ptr<System> system;
+        lux::cxx::TypeToken type;
+        SystemPhase phase{SystemPhase::Update};
+        ESystemExecutionAffinity affinity{
+            ESystemExecutionAffinity::WORKER_ELIGIBLE};
+        bool (*affinity_validator)(const System&) noexcept{};
+        std::vector<ComponentAccess> component_access;
+        std::vector<ExternalAccess> external_access;
+        bool access_complete{};
+        std::unique_ptr<CommandShard> commands{std::make_unique<CommandShard>()};
+        ChangeShard changes;
+        std::uint64_t sequence{};
+        bool stop_requested{};
+    };
+
+    struct ExecutionPlan final
+    {
+        std::array<std::vector<std::vector<std::uint32_t>>, 3> waves;
+        std::array<std::vector<std::uint32_t>, 3> phase_order;
+    };
+
+    struct CandidateNode final
+    {
+        HandleKey key;
+        ScheduleSlot* slot{};
+        std::size_t candidate_index{};
+    };
+
+    [[nodiscard]] bool tokenCollision(
+        lux::cxx::TypeToken left,
+        lux::cxx::TypeToken right
+    ) noexcept
+    {
+        return left.hash() == right.hash() && left.name() != right.name();
+    }
+
+    [[nodiscard]] bool accessConflict(
+        const ScheduleSlot& left,
+        const ScheduleSlot& right
+    ) noexcept
+    {
+        if (!left.access_complete || !right.access_complete)
+            return true;
+        if (left.affinity == ESystemExecutionAffinity::OWNER_THREAD ||
+            right.affinity == ESystemExecutionAffinity::OWNER_THREAD)
+            return true;
+
+        for (const ComponentAccess& a : left.component_access)
+        {
+            for (const ComponentAccess& b : right.component_access)
+            {
+                if (a.type == b.type &&
+                    (a.mode == EAccessMode::WRITE || b.mode == EAccessMode::WRITE))
+                    return true;
+            }
+        }
+        for (const ExternalAccess& a : left.external_access)
+        {
+            for (const ExternalAccess& b : right.external_access)
+            {
+                if (a.type == b.type &&
+                    (a.mode == EAccessMode::WRITE || b.mode == EAccessMode::WRITE))
+                    return true;
+            }
+        }
+        return false;
+    }
+} // namespace lux::ecs::detail
+
+namespace lux::ecs
+{
+    struct Schedule::Impl final
+    {
+        explicit Impl(World& owner) noexcept
+            : world(&owner), owner_id(detail::nextScheduleOwner()),
+              owner_thread(std::this_thread::get_id())
+        {
+        }
+
+        World* world{};
+        std::uint64_t owner_id{};
+        std::thread::id owner_thread;
+        std::vector<std::unique_ptr<detail::ScheduleSlot>> slots;
+        std::vector<std::uint32_t> generations;
+        std::vector<bool> reserved;
+        std::vector<detail::SetMembership> memberships;
+        std::vector<detail::OrderRelation> orders;
+        std::vector<detail::Requirement> requirements;
+        detail::ExecutionPlan plan;
+        std::uint64_t next_sequence{1};
+        std::size_t retired_discarded{};
+        std::size_t retired_command_allocations{};
+        bool edit_open{};
+        bool executing{};
+        bool closing{};
+
+        [[nodiscard]] detail::ScheduleSlot* find(detail::HandleKey key) noexcept
+        {
+            if (key.owner != owner_id || key.slot >= slots.size() ||
+                key.slot >= generations.size() ||
+                generations[key.slot] != key.generation)
+                return nullptr;
+            return slots[key.slot].get();
+        }
+
+        [[nodiscard]] const detail::ScheduleSlot* find(
+            detail::HandleKey key
+        ) const noexcept
+        {
+            return const_cast<Impl*>(this)->find(key);
+        }
+
+        [[nodiscard]] bool dependentStopped(detail::HandleKey provider) const noexcept
+        {
+            for (const detail::Requirement& requirement : requirements)
+            {
+                if (requirement.provider != provider)
+                    continue;
+                const auto* consumer = find(requirement.consumer);
+                if (consumer != nullptr &&
+                    (!consumer->stop_requested || !consumer->system->stopped()))
+                    return false;
+            }
+            return true;
+        }
+    };
 
     struct ScheduleEdit::Impl final
     {
         struct Addition final
         {
-            lux::cxx::TypeToken type;
-            std::unique_ptr<System> system;
-            SystemPhase phase{SystemPhase::Update};
-            std::uint32_t slot{};
-            std::uint32_t generation{};
-            bool object_affine{};
+            detail::HandleKey key;
+            std::unique_ptr<detail::ScheduleSlot> slot;
         };
 
         std::vector<Addition> additions;
-        std::vector<detail::AnySystemHandle> removals;
+        std::vector<detail::HandleKey> removals;
+        std::vector<detail::SetMembership> memberships;
+        std::vector<detail::OrderRelation> orders;
+        std::vector<detail::Requirement> requirements;
         std::optional<ScheduleFailure> failure;
-        std::size_t free_slots_used{};
+        bool committed{};
     };
+
+    namespace
+    {
+        [[nodiscard]] bool contains(
+            std::span<const detail::HandleKey> values,
+            detail::HandleKey key
+        ) noexcept
+        {
+            return std::find(values.begin(), values.end(), key) != values.end();
+        }
+
+        template <class EditImpl>
+        [[nodiscard]] detail::ScheduleSlot* stagedSlot(
+            EditImpl& edit,
+            detail::HandleKey key
+        ) noexcept
+        {
+            for (auto& addition : edit.additions)
+            {
+                if (addition.key == key)
+                    return addition.slot.get();
+            }
+            return nullptr;
+        }
+
+        template <class ScheduleImpl, class EditImpl>
+        [[nodiscard]] bool candidateHandle(
+            ScheduleImpl& schedule,
+            EditImpl& edit,
+            detail::HandleKey key
+        ) noexcept
+        {
+            if (key.owner != schedule.owner_id ||
+                key.slot >= schedule.generations.size() ||
+                schedule.generations[key.slot] != key.generation ||
+                contains(edit.removals, key))
+                return false;
+            return schedule.find(key) != nullptr || stagedSlot(edit, key) != nullptr;
+        }
+
+        [[nodiscard]] bool nodeLess(
+            const detail::CandidateNode& left,
+            const detail::CandidateNode& right
+        ) noexcept
+        {
+            if (left.slot->sequence != right.slot->sequence)
+                return left.slot->sequence < right.slot->sequence;
+            return left.key.slot < right.key.slot;
+        }
+
+        [[nodiscard]] ScheduleFailure failure(
+            EScheduleError code,
+            lux::cxx::TypeToken subject = {},
+            lux::cxx::TypeToken related = {}
+        ) noexcept
+        {
+            return ScheduleFailure{code, subject, related};
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, ScheduleFailure>
+        captureAccess(detail::ScheduleSlot& slot) noexcept
+        {
+            try
+            {
+                const SystemAccess declared = slot.system->access();
+                slot.component_access.assign(
+                    declared.components.begin(), declared.components.end()
+                );
+                slot.external_access.assign(
+                    declared.external.begin(), declared.external.end()
+                );
+                slot.access_complete = declared.complete;
+                slot.commands->reserve(64);
+                slot.changes.reserve(256);
+
+                for (std::size_t left{};
+                     left < slot.component_access.size(); ++left)
+                {
+                    for (std::size_t right = left + 1;
+                         right < slot.component_access.size(); ++right)
+                    {
+                        const auto a = slot.component_access[left].type;
+                        const auto b = slot.component_access[right].type;
+                        if (detail::tokenCollision(a, b))
+                            return lux::cxx::unexpected(failure(
+                                EScheduleError::TYPE_TOKEN_COLLISION, a, b
+                            ));
+                        if (a == b)
+                            return lux::cxx::unexpected(failure(
+                                EScheduleError::INVALID_RELATION, a, b
+                            ));
+                    }
+                }
+                for (std::size_t left{};
+                     left < slot.external_access.size(); ++left)
+                {
+                    for (std::size_t right = left + 1;
+                         right < slot.external_access.size(); ++right)
+                    {
+                        const auto a = slot.external_access[left].type;
+                        const auto b = slot.external_access[right].type;
+                        if (detail::tokenCollision(a, b))
+                            return lux::cxx::unexpected(failure(
+                                EScheduleError::TYPE_TOKEN_COLLISION, a, b
+                            ));
+                        if (a == b)
+                            return lux::cxx::unexpected(failure(
+                                EScheduleError::INVALID_RELATION, a, b
+                            ));
+                    }
+                }
+            }
+            catch (...)
+            {
+                return lux::cxx::unexpected(failure(
+                    EScheduleError::ALLOCATION_FAILURE
+                ));
+            }
+            return {};
+        }
+
+        [[nodiscard]] bool setCollision(
+            std::span<const detail::SetMembership> memberships,
+            std::span<const detail::OrderRelation> orders
+        ) noexcept
+        {
+            const auto conflicts = [](const detail::OwnedSet& a,
+                                      const detail::OwnedSet& b) noexcept
+            {
+                return a.hash == b.hash && a.name != b.name;
+            };
+            for (std::size_t left{}; left < memberships.size(); ++left)
+            {
+                for (std::size_t right = left + 1;
+                     right < memberships.size(); ++right)
+                {
+                    if (conflicts(memberships[left].set, memberships[right].set))
+                        return true;
+                }
+                for (const auto& order : orders)
+                {
+                    if (order.target_kind == detail::EOrderTarget::SET &&
+                        conflicts(memberships[left].set, order.set))
+                        return true;
+                }
+            }
+            for (std::size_t left{}; left < orders.size(); ++left)
+            {
+                if (orders[left].target_kind != detail::EOrderTarget::SET)
+                    continue;
+                for (std::size_t right = left + 1;
+                     right < orders.size(); ++right)
+                {
+                    if (orders[right].target_kind == detail::EOrderTarget::SET &&
+                        conflicts(orders[left].set, orders[right].set))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        [[nodiscard]] std::optional<std::size_t> findNode(
+            std::span<const detail::CandidateNode> nodes,
+            detail::HandleKey key
+        ) noexcept
+        {
+            for (std::size_t index{}; index < nodes.size(); ++index)
+            {
+                if (nodes[index].key == key)
+                    return index;
+            }
+            return std::nullopt;
+        }
+
+        [[nodiscard]] lux::cxx::expected<void, ScheduleFailure> addEdge(
+            std::vector<std::vector<std::size_t>>& edges,
+            std::span<const detail::CandidateNode> nodes,
+            std::size_t from,
+            std::size_t to
+        ) noexcept
+        {
+            if (from == to)
+                return lux::cxx::unexpected(failure(
+                    EScheduleError::INVALID_RELATION,
+                    nodes[from].slot->type,
+                    nodes[to].slot->type
+                ));
+            const auto from_phase = detail::phaseIndex(nodes[from].slot->phase);
+            const auto to_phase = detail::phaseIndex(nodes[to].slot->phase);
+            if (from_phase > to_phase)
+            {
+                return lux::cxx::unexpected(failure(
+                    EScheduleError::PHASE_ORDER_CONTRADICTION,
+                    nodes[from].slot->type,
+                    nodes[to].slot->type
+                ));
+            }
+            if (from_phase < to_phase)
+                return {};
+            auto& outgoing = edges[from];
+            if (std::find(outgoing.begin(), outgoing.end(), to) == outgoing.end())
+                outgoing.push_back(to);
+            return {};
+        }
+
+        [[nodiscard]] lux::cxx::expected<detail::ExecutionPlan, ScheduleFailure>
+        compilePlan(
+            std::span<const detail::CandidateNode> nodes,
+            std::span<const detail::SetMembership> memberships,
+            std::span<const detail::OrderRelation> orders,
+            std::span<const detail::Requirement> requirements
+        ) noexcept
+        {
+            try
+            {
+                std::vector<std::vector<std::size_t>> edges(nodes.size());
+
+                for (const detail::OrderRelation& relation : orders)
+                {
+                    const auto source = findNode(nodes, relation.source);
+                    if (!source)
+                        continue;
+
+                    std::vector<std::size_t> targets;
+                    if (relation.target_kind == detail::EOrderTarget::SYSTEM)
+                    {
+                        if (const auto target = findNode(nodes, relation.target))
+                            targets.push_back(*target);
+                    }
+                    else
+                    {
+                        for (const detail::SetMembership& membership : memberships)
+                        {
+                            if (membership.set != relation.set)
+                                continue;
+                            if (const auto target = findNode(nodes, membership.system);
+                                target && *target != *source)
+                                targets.push_back(*target);
+                        }
+                    }
+
+                    for (const std::size_t target : targets)
+                    {
+                        const std::size_t from = relation.before ? *source : target;
+                        const std::size_t to = relation.before ? target : *source;
+                        if (auto result = addEdge(edges, nodes, from, to); !result)
+                            return lux::cxx::unexpected(result.error());
+                    }
+                }
+
+                for (const detail::Requirement& requirement : requirements)
+                {
+                    const auto consumer = findNode(nodes, requirement.consumer);
+                    const auto provider = findNode(nodes, requirement.provider);
+                    if (!consumer || !provider)
+                        return lux::cxx::unexpected(failure(
+                            EScheduleError::INVALID_HANDLE
+                        ));
+                    if (auto result = addEdge(
+                            edges, nodes, *provider, *consumer); !result)
+                        return lux::cxx::unexpected(result.error());
+                }
+
+                detail::ExecutionPlan result;
+                for (std::size_t phase{}; phase != 3; ++phase)
+                {
+                    std::vector<std::size_t> phase_nodes;
+                    std::vector<std::size_t> indegree(nodes.size());
+                    for (std::size_t index{}; index < nodes.size(); ++index)
+                    {
+                        if (detail::phaseIndex(nodes[index].slot->phase) == phase)
+                            phase_nodes.push_back(index);
+                        for (const std::size_t target : edges[index])
+                            ++indegree[target];
+                    }
+
+                    std::vector<std::size_t> ready;
+                    for (const std::size_t index : phase_nodes)
+                    {
+                        if (indegree[index] == 0)
+                            ready.push_back(index);
+                    }
+                    const auto stable = [&](std::size_t a, std::size_t b) noexcept
+                    {
+                        return nodeLess(nodes[a], nodes[b]);
+                    };
+                    std::sort(ready.begin(), ready.end(), stable);
+
+                    std::size_t emitted{};
+                    while (!ready.empty())
+                    {
+                        std::vector<std::size_t> selected;
+                        for (const std::size_t candidate : ready)
+                        {
+                            bool compatible = true;
+                            for (const std::size_t existing : selected)
+                            {
+                                if (detail::accessConflict(
+                                        *nodes[candidate].slot,
+                                        *nodes[existing].slot))
+                                {
+                                    compatible = false;
+                                    break;
+                                }
+                            }
+                            if (compatible)
+                                selected.push_back(candidate);
+                        }
+                        detail::require(!selected.empty());
+
+                        std::vector<std::uint32_t> wave;
+                        wave.reserve(selected.size());
+                        for (const std::size_t index : selected)
+                        {
+                            wave.push_back(nodes[index].key.slot);
+                            result.phase_order[phase].push_back(
+                                nodes[index].key.slot
+                            );
+                        }
+                        result.waves[phase].push_back(std::move(wave));
+                        emitted += selected.size();
+
+                        for (const std::size_t index : selected)
+                        {
+                            ready.erase(std::find(ready.begin(), ready.end(), index));
+                        }
+                        std::vector<std::size_t> newly_ready;
+                        for (const std::size_t index : selected)
+                        {
+                            for (const std::size_t target : edges[index])
+                            {
+                                detail::require(indegree[target] != 0);
+                                --indegree[target];
+                                if (indegree[target] == 0)
+                                    newly_ready.push_back(target);
+                            }
+                        }
+                        for (const std::size_t index : newly_ready)
+                        {
+                            if (detail::phaseIndex(nodes[index].slot->phase) == phase &&
+                                std::find(ready.begin(), ready.end(), index) == ready.end())
+                                ready.push_back(index);
+                        }
+                        std::sort(ready.begin(), ready.end(), stable);
+                    }
+
+                    if (emitted != phase_nodes.size())
+                    {
+                        return lux::cxx::unexpected(failure(
+                            EScheduleError::DEPENDENCY_CYCLE
+                        ));
+                    }
+                }
+                return result;
+            }
+            catch (...)
+            {
+                return lux::cxx::unexpected(failure(
+                    EScheduleError::ALLOCATION_FAILURE
+                ));
+            }
+        }
+    } // namespace
 
     Schedule::Schedule(World& world) noexcept
         : impl_(std::make_unique<Impl>(world))
     {
+        detail::require(std::this_thread::get_id() == world.owner_thread_);
+        detail::require(world.state_ == detail::EWorldState::IDLE);
         detail::require(world.schedule_ == nullptr);
         world.schedule_ = this;
     }
 
     Schedule::~Schedule() noexcept
     {
-        impl_->requireOwnerThread();
-        detail::require(!impl_->editing && !impl_->executing);
+        detail::require(std::this_thread::get_id() == impl_->owner_thread);
+        detail::require(!impl_->executing && !impl_->edit_open);
         requestClose();
-        for (std::size_t pass{}; pass <= impl_->compiled.size(); ++pass)
-            runCloseStep(0.0F, 0);
+        for (std::size_t step{}; step <= impl_->slots.size(); ++step)
+        {
+            if (closeComplete())
+                break;
+            runCloseStep();
+        }
         detail::require(closeComplete());
-        impl_->detachAll();
-        detail::require(impl_->world->observer_relations_ == 0);
+        for (auto& slot : impl_->slots)
+        {
+            if (!slot)
+                continue;
+            slot->commands->invalidate();
+            slot.reset();
+        }
+        detail::require(impl_->world->schedule_ == this);
         impl_->world->schedule_ = nullptr;
     }
 
     lux::cxx::expected<ScheduleEdit, ScheduleFailure> Schedule::edit() noexcept
     {
-        impl_->requireOwnerThread();
-        if (impl_->editing)
-        {
-            return lux::cxx::unexpected(
-                ScheduleFailure{EScheduleError::EDIT_IN_PROGRESS}
-            );
-        }
+        if (std::this_thread::get_id() != impl_->owner_thread)
+            return lux::cxx::unexpected(failure(EScheduleError::EXECUTING));
+        if (impl_->edit_open)
+            return lux::cxx::unexpected(failure(EScheduleError::EDIT_IN_PROGRESS));
         if (impl_->executing)
-        {
-            return lux::cxx::unexpected(
-                ScheduleFailure{EScheduleError::EXECUTING}
-            );
-        }
+            return lux::cxx::unexpected(failure(EScheduleError::EXECUTING));
         if (impl_->closing)
-        {
-            return lux::cxx::unexpected(
-                ScheduleFailure{EScheduleError::CLOSING}
-            );
-        }
-        if (impl_->world->state_ != detail::EWorldState::IDLE)
-        {
-            return lux::cxx::unexpected(
-                ScheduleFailure{EScheduleError::EXECUTING}
-            );
-        }
-
-        impl_->editing = true;
+            return lux::cxx::unexpected(failure(EScheduleError::CLOSING));
         try
         {
+            impl_->edit_open = true;
             return ScheduleEdit(*this);
         }
         catch (...)
         {
-            impl_->editing = false;
-            return lux::cxx::unexpected(
-                ScheduleFailure{EScheduleError::ALLOCATION_FAILURE}
-            );
+            impl_->edit_open = false;
+            return lux::cxx::unexpected(failure(
+                EScheduleError::ALLOCATION_FAILURE
+            ));
         }
-    }
-
-    void Schedule::run(float delta_seconds, std::uint64_t tick_index) noexcept
-    {
-        impl_->requireOwnerThread();
-        detail::require(
-            !impl_->editing && !impl_->executing && !impl_->closing &&
-            impl_->world->state_ == detail::EWorldState::IDLE
-        );
-
-        impl_->executing = true;
-        impl_->world->state_ = detail::EWorldState::EXECUTING;
-        for (const std::uint32_t index : impl_->compiled)
-        {
-            Slot& slot = *impl_->slots[index];
-            const SystemFrame frame(
-                *impl_->world,
-                slot.commands->writer(),
-                delta_seconds,
-                tick_index
-            );
-            slot.system->update(frame);
-        }
-        impl_->applyCommands();
-        impl_->executing = false;
-    }
-
-    void Schedule::requestClose() noexcept
-    {
-        impl_->requireOwnerThread();
-        impl_->closing = true;
-        runCloseStep(0.0F, 0);
-    }
-
-    void Schedule::runCloseStep(float, std::uint64_t) noexcept
-    {
-        impl_->requireOwnerThread();
-        if (!impl_->closing)
-            return;
-
-        for (auto iterator = impl_->compiled.rbegin(); iterator != impl_->compiled.rend(); ++iterator)
-        {
-            const std::uint32_t index = *iterator;
-            Slot& slot = *impl_->slots[index];
-            if (slot.close_requested)
-                continue;
-
-            bool dependents_complete = true;
-            for (const std::uint32_t dependent : impl_->outgoing[index])
-            {
-                const Slot& consumer = *impl_->slots[dependent];
-                if (!consumer.close_requested || !consumer.system->closeComplete())
-                {
-                    dependents_complete = false;
-                    break;
-                }
-            }
-
-            if (dependents_complete)
-            {
-                slot.system->requestClose();
-                slot.close_requested = true;
-            }
-        }
-    }
-
-    bool Schedule::closeComplete() const noexcept
-    {
-        impl_->requireOwnerThread();
-        if (!impl_->closing)
-            return false;
-        for (const std::uint32_t index : impl_->compiled)
-        {
-            const Slot& slot = *impl_->slots[index];
-            if (!slot.close_requested || !slot.system->closeComplete())
-                return false;
-        }
-        return true;
-    }
-
-    void* Schedule::getRaw(
-        detail::AnySystemHandle handle,
-        lux::cxx::TypeToken expected_type
-    ) noexcept
-    {
-        impl_->requireOwnerThread();
-        if (handle.owner != impl_->id || handle.slot >= impl_->slots.size())
-            return nullptr;
-        Slot* slot = impl_->slots[handle.slot].get();
-        if (slot == nullptr || !slot->system || slot->generation != handle.generation ||
-            !sameType(slot->type, expected_type))
-        {
-            return nullptr;
-        }
-        return slot->system.get();
-    }
-
-    detail::ExecutionPlanSnapshot detail::ScheduleTestAccess::snapshot(
-        const Schedule& schedule
-    )
-    {
-        ExecutionPlanSnapshot result;
-        result.order.reserve(schedule.impl_->compiled.size());
-        for (const std::uint32_t index : schedule.impl_->compiled)
-        {
-            const Slot& slot = *schedule.impl_->slots[index];
-            result.order.push_back(
-                ExecutionPlanEntry{
-                    slot.type,
-                    index,
-                    slot.object_affine}
-            );
-        }
-        result.batches = schedule.impl_->batches;
-        return result;
-    }
-
-    std::size_t detail::ScheduleTestAccess::discardedCommands(
-        const Schedule& schedule
-    ) noexcept
-    {
-        std::size_t result{};
-        for (const auto& slot : schedule.impl_->slots)
-            if (slot && slot->commands)
-                result += slot->commands->discarded();
-        return result;
-    }
-
-    std::size_t detail::ScheduleTestAccess::commandAllocationEvents(
-        const Schedule& schedule
-    ) noexcept
-    {
-        std::size_t result{};
-        for (const auto& slot : schedule.impl_->slots)
-            if (slot && slot->commands)
-                result += slot->commands->allocationEvents();
-        return result;
     }
 
     ScheduleEdit::ScheduleEdit(Schedule& schedule)
@@ -431,60 +746,182 @@ namespace lux::ecs
         lux::cxx::TypeToken type,
         std::unique_ptr<System> system,
         SystemPhase phase,
-        bool object_affine
+        ESystemExecutionAffinity affinity,
+        bool (*affinity_validator)(const System&) noexcept
     ) noexcept
     {
-        if (schedule_ != nullptr)
-            schedule_->impl_->requireOwnerThread();
         if (impl_->failure)
             return lux::cxx::unexpected(*impl_->failure);
-
         try
         {
-            std::uint32_t slot{};
-            std::uint32_t generation{1};
-            auto& schedule_impl = *schedule_->impl_;
-            if (impl_->free_slots_used < schedule_impl.free_slots.size())
-            {
-                slot = schedule_impl.free_slots[impl_->free_slots_used++];
-                generation = schedule_impl.slots[slot]->generation;
-            }
-            else
-            {
-                slot = static_cast<std::uint32_t>(
-                    schedule_impl.slots.size() +
-                    impl_->additions.size() - impl_->free_slots_used
-                );
-            }
+            auto& owner = *schedule_->impl_;
+            auto slot = std::make_unique<detail::ScheduleSlot>();
+            impl_->additions.reserve(impl_->additions.size() + 1);
 
-            impl_->additions.push_back(
-                Impl::Addition{
-                    type,
-                    std::move(system),
-                    phase,
-                    slot,
-                    generation,
-                    object_affine}
-            );
-            return detail::StagedSystemHandle{slot, generation};
+            std::uint32_t index{};
+            for (; index < owner.slots.size(); ++index)
+            {
+                if (!owner.slots[index] && !owner.reserved[index])
+                    break;
+            }
+            if (index == owner.slots.size())
+            {
+                const std::size_t required = owner.slots.size() + 1;
+                owner.slots.reserve(required);
+                owner.generations.reserve(required);
+                owner.reserved.reserve(required);
+                owner.slots.push_back(nullptr);
+                owner.generations.push_back(1);
+                owner.reserved.push_back(false);
+            }
+            owner.reserved[index] = true;
+
+            slot->system = std::move(system);
+            slot->type = type;
+            slot->phase = phase;
+            slot->affinity = affinity;
+            slot->affinity_validator = affinity_validator;
+            slot->sequence = owner.next_sequence++;
+
+            const auto generation = owner.generations[index];
+            impl_->additions.push_back(Impl::Addition{
+                detail::HandleKey{owner.owner_id, index, generation},
+                std::move(slot)});
+            return detail::StagedSystemHandle{index, generation};
         }
         catch (...)
         {
-            const ScheduleFailure failure{EScheduleError::ALLOCATION_FAILURE, type};
-            impl_->failure = failure;
-            return lux::cxx::unexpected(failure);
+            recordFailure(EScheduleError::ALLOCATION_FAILURE);
+            return lux::cxx::unexpected(*impl_->failure);
         }
     }
 
-    void ScheduleEdit::stageRemove(detail::AnySystemHandle handle) noexcept
+    void ScheduleEdit::addToSet(
+        AnySystemHandle system,
+        SystemSetId set
+    ) noexcept
     {
-        if (schedule_ != nullptr)
-            schedule_->impl_->requireOwnerThread();
-        if (schedule_ == nullptr || impl_->failure)
+        if (impl_->failure)
+            return;
+        if (!system || !set.valid())
+        {
+            recordFailure(EScheduleError::INVALID_RELATION);
+            return;
+        }
+        try
+        {
+            impl_->memberships.push_back(
+                detail::SetMembership{detail::key(system), detail::own(set)}
+            );
+        }
+        catch (...)
+        {
+            recordFailure(EScheduleError::ALLOCATION_FAILURE);
+        }
+    }
+
+    void ScheduleEdit::before(
+        AnySystemHandle system,
+        AnySystemHandle other
+    ) noexcept
+    {
+        if (impl_->failure)
             return;
         try
         {
-            impl_->removals.push_back(handle);
+            impl_->orders.push_back(detail::OrderRelation{
+                detail::key(system), detail::EOrderTarget::SYSTEM,
+                detail::key(other), {}, true});
+        }
+        catch (...)
+        {
+            recordFailure(EScheduleError::ALLOCATION_FAILURE);
+        }
+    }
+
+    void ScheduleEdit::before(
+        AnySystemHandle system,
+        SystemSetId set
+    ) noexcept
+    {
+        if (impl_->failure)
+            return;
+        try
+        {
+            impl_->orders.push_back(detail::OrderRelation{
+                detail::key(system), detail::EOrderTarget::SET,
+                {}, detail::own(set), true});
+        }
+        catch (...)
+        {
+            recordFailure(EScheduleError::ALLOCATION_FAILURE);
+        }
+    }
+
+    void ScheduleEdit::after(
+        AnySystemHandle system,
+        AnySystemHandle other
+    ) noexcept
+    {
+        if (impl_->failure)
+            return;
+        try
+        {
+            impl_->orders.push_back(detail::OrderRelation{
+                detail::key(system), detail::EOrderTarget::SYSTEM,
+                detail::key(other), {}, false});
+        }
+        catch (...)
+        {
+            recordFailure(EScheduleError::ALLOCATION_FAILURE);
+        }
+    }
+
+    void ScheduleEdit::after(
+        AnySystemHandle system,
+        SystemSetId set
+    ) noexcept
+    {
+        if (impl_->failure)
+            return;
+        try
+        {
+            impl_->orders.push_back(detail::OrderRelation{
+                detail::key(system), detail::EOrderTarget::SET,
+                {}, detail::own(set), false});
+        }
+        catch (...)
+        {
+            recordFailure(EScheduleError::ALLOCATION_FAILURE);
+        }
+    }
+
+    void ScheduleEdit::require(
+        AnySystemHandle consumer,
+        AnySystemHandle provider
+    ) noexcept
+    {
+        if (impl_->failure)
+            return;
+        try
+        {
+            impl_->requirements.push_back(
+                detail::Requirement{detail::key(consumer), detail::key(provider)}
+            );
+        }
+        catch (...)
+        {
+            recordFailure(EScheduleError::ALLOCATION_FAILURE);
+        }
+    }
+
+    void ScheduleEdit::remove(AnySystemHandle value) noexcept
+    {
+        if (impl_->failure)
+            return;
+        try
+        {
+            impl_->removals.push_back(detail::key(value));
         }
         catch (...)
         {
@@ -494,434 +931,515 @@ namespace lux::ecs
 
     void ScheduleEdit::recordFailure(EScheduleError error) noexcept
     {
-        if (impl_ && !impl_->failure)
-            impl_->failure = ScheduleFailure{error};
+        if (!impl_->failure)
+            impl_->failure = failure(error);
     }
 
     std::uint64_t ScheduleEdit::ownerId() const noexcept
     {
-        return schedule_ ? schedule_->impl_->id : 0;
+        return schedule_ == nullptr ? 0 : schedule_->impl_->owner_id;
     }
 
     lux::cxx::expected<void, ScheduleFailure> ScheduleEdit::commit() noexcept
     {
         if (schedule_ == nullptr)
-        {
-            return lux::cxx::unexpected(
-                ScheduleFailure{EScheduleError::INVALID_HANDLE}
-            );
-        }
+            return lux::cxx::unexpected(failure(EScheduleError::INVALID_HANDLE));
         if (impl_->failure)
             return lux::cxx::unexpected(*impl_->failure);
 
         auto& owner = *schedule_->impl_;
-        owner.requireOwnerThread();
-        bool commit_complete{};
-        const auto rollback = [&](void*) noexcept
-        {
-            if (!commit_complete && schedule_ != nullptr)
-            {
-                schedule_->impl_->editing = false;
-                schedule_ = nullptr;
-                impl_.reset();
-            }
-        };
-        const std::unique_ptr<void, decltype(rollback)> rollback_guard(
-            static_cast<void*>(this),
-            rollback
-        );
-        bool publication_started{};
         try
         {
-            std::unordered_set<std::uint32_t> removed_slots;
-            removed_slots.reserve(impl_->removals.size());
-            for (const detail::AnySystemHandle handle : impl_->removals)
+            for (const auto& removal : impl_->removals)
             {
-                if (handle.owner != owner.id || handle.slot >= owner.slots.size())
-                    return lux::cxx::unexpected(ScheduleFailure{EScheduleError::INVALID_HANDLE});
-                Slot* slot = owner.slots[handle.slot].get();
-                if (slot == nullptr || !slot->system || slot->generation != handle.generation)
-                    return lux::cxx::unexpected(ScheduleFailure{EScheduleError::INVALID_HANDLE});
-                if (!slot->system->removable())
-                    return lux::cxx::unexpected(ScheduleFailure{EScheduleError::SYSTEM_NOT_REMOVABLE, slot->type});
-                if (!slot->system->closeComplete())
-                    return lux::cxx::unexpected(ScheduleFailure{EScheduleError::SYSTEM_NOT_CLOSED, slot->type});
-                removed_slots.insert(handle.slot);
+                if (removal.owner != owner.owner_id ||
+                    removal.slot >= owner.generations.size() ||
+                    owner.generations[removal.slot] != removal.generation ||
+                    (owner.find(removal) == nullptr &&
+                     stagedSlot(*impl_, removal) == nullptr))
+                    return lux::cxx::unexpected(failure(
+                        EScheduleError::INVALID_HANDLE
+                    ));
+            }
+            for (const auto& membership : impl_->memberships)
+            {
+                if (!candidateHandle(owner, *impl_, membership.system))
+                    return lux::cxx::unexpected(failure(
+                        EScheduleError::INVALID_HANDLE
+                    ));
+            }
+            for (const auto& order : impl_->orders)
+            {
+                if (!candidateHandle(owner, *impl_, order.source) ||
+                    (order.target_kind == detail::EOrderTarget::SYSTEM &&
+                     !candidateHandle(owner, *impl_, order.target)))
+                    return lux::cxx::unexpected(failure(
+                        EScheduleError::INVALID_HANDLE
+                    ));
+            }
+            for (const auto& requirement : impl_->requirements)
+            {
+                if (!candidateHandle(owner, *impl_, requirement.consumer) ||
+                    !candidateHandle(owner, *impl_, requirement.provider) ||
+                    requirement.consumer == requirement.provider)
+                    return lux::cxx::unexpected(failure(
+                        EScheduleError::INVALID_RELATION
+                    ));
             }
 
-            std::vector<std::unique_ptr<Slot>> prepared_additions;
-            prepared_additions.reserve(impl_->additions.size());
-            for (std::size_t addition_index{};
-                 addition_index < impl_->additions.size();
-                 ++addition_index)
-            {
-                auto& addition = impl_->additions[addition_index];
-                auto slot = std::make_unique<Slot>();
-                slot->system = std::move(addition.system);
-                slot->type = addition.type;
-                slot->phase = addition.phase;
-                slot->generation = addition.generation;
-                slot->sequence = owner.next_sequence + addition_index;
-                slot->object_affine = addition.object_affine;
+            std::vector<detail::SetMembership> memberships = owner.memberships;
+            memberships.insert(
+                memberships.end(),
+                impl_->memberships.begin(), impl_->memberships.end()
+            );
+            std::vector<detail::OrderRelation> orders = owner.orders;
+            orders.insert(orders.end(), impl_->orders.begin(), impl_->orders.end());
+            std::vector<detail::Requirement> requirements = owner.requirements;
+            requirements.insert(
+                requirements.end(),
+                impl_->requirements.begin(), impl_->requirements.end()
+            );
 
-                for (const SystemSetId set : slot->system->sets())
-                    slot->sets.push_back(OwnedSet{set.id.hash(), std::string(set.id.name())});
-                for (const SystemOrder value : slot->system->ordering())
-                {
-                    slot->orders.push_back(OwnedOrder{
-                        value.relation,
-                        OwnedSet{value.target.id.hash(), std::string(value.target.id.name())},
-                        value.required});
-                }
-                slot->required.assign(
-                    slot->system->requiredSystems().begin(),
-                    slot->system->requiredSystems().end()
-                );
-                const SystemAccess access = slot->system->access();
-                slot->component_access.assign(
-                    access.components.begin(),
-                    access.components.end()
-                );
-                slot->external_access.assign(
-                    access.external.begin(),
-                    access.external.end()
-                );
-                slot->structural = access.structural;
-                slot->access_complete = access.complete;
-                slot->commands = std::make_unique<detail::CommandShard>(slot->generation);
-                slot->commands->reserve(64);
-                slot->observers.reserve(8);
-                prepared_additions.push_back(std::move(slot));
-            }
-
-            std::vector<Candidate> candidates;
-            candidates.reserve(owner.compiled.size() + prepared_additions.size());
-            for (const std::uint32_t index : owner.compiled)
+            const auto removed = [&](detail::HandleKey key) noexcept
             {
-                if (removed_slots.contains(index))
-                    continue;
-                Slot& slot = *owner.slots[index];
-                candidates.push_back(Candidate{
-                    index,
-                    &slot,
-                    slot.type,
-                    slot.phase,
-                    slot.sequence});
-            }
-            for (std::size_t index{}; index < prepared_additions.size(); ++index)
-            {
-                Slot& slot = *prepared_additions[index];
-                candidates.push_back(Candidate{
-                    impl_->additions[index].slot,
-                    &slot,
-                    slot.type,
-                    slot.phase,
-                    slot.sequence});
-            }
-
-            for (std::size_t left{}; left < candidates.size(); ++left)
-            {
-                for (std::size_t right = left + 1; right < candidates.size(); ++right)
-                {
-                    if (candidates[left].type.hash() == candidates[right].type.hash())
-                    {
-                        const auto error = candidates[left].type.name() == candidates[right].type.name()
-                            ? EScheduleError::DUPLICATE_SYSTEM
-                            : EScheduleError::TYPE_TOKEN_COLLISION;
-                        return lux::cxx::unexpected(ScheduleFailure{
-                            error,
-                            candidates[left].type,
-                            candidates[right].type});
-                    }
-                }
-            }
-
-            std::unordered_map<std::uint64_t, std::string> set_names;
-            for (const Candidate& candidate : candidates)
-            {
-                for (const OwnedSet& set : candidate.descriptor->sets)
-                {
-                    if (set.name.empty() ||
-                        set.hash != lux::cxx::Fnv1a64::hash(set.name))
-                    {
-                        return lux::cxx::unexpected(ScheduleFailure{
-                            EScheduleError::SET_ID_COLLISION,
-                            candidate.type});
-                    }
-                    const auto [iterator, inserted] = set_names.emplace(set.hash, set.name);
-                    if (!inserted && iterator->second != set.name)
-                        return lux::cxx::unexpected(ScheduleFailure{EScheduleError::SET_ID_COLLISION, candidate.type});
-                }
-                for (const OwnedOrder& order : candidate.descriptor->orders)
-                {
-                    if (order.target.name.empty() ||
-                        order.target.hash != lux::cxx::Fnv1a64::hash(order.target.name))
-                    {
-                        return lux::cxx::unexpected(ScheduleFailure{
-                            EScheduleError::SET_ID_COLLISION,
-                            candidate.type});
-                    }
-                    const auto [iterator, inserted] = set_names.emplace(
-                        order.target.hash,
-                        order.target.name
-                    );
-                    if (!inserted && iterator->second != order.target.name)
-                        return lux::cxx::unexpected(ScheduleFailure{EScheduleError::SET_ID_COLLISION, candidate.type});
-                }
-            }
-
-            std::vector<std::vector<std::size_t>> edges(candidates.size());
-            std::vector<std::size_t> indegree(candidates.size());
-            const auto addEdge = [&](std::size_t from, std::size_t to)
-            {
-                if (from == to)
-                    return;
-                auto& list = edges[from];
-                if (std::find(list.begin(), list.end(), to) == list.end())
-                {
-                    list.push_back(to);
-                    ++indegree[to];
-                }
+                return contains(impl_->removals, key);
             };
-
-            for (std::size_t left{}; left < candidates.size(); ++left)
+            for (const auto& requirement : requirements)
             {
-                for (std::size_t right{}; right < candidates.size(); ++right)
-                {
-                    if (phaseRank(candidates[left].phase) < phaseRank(candidates[right].phase))
-                        addEdge(left, right);
-                }
+                if (removed(requirement.provider) &&
+                    !removed(requirement.consumer))
+                    return lux::cxx::unexpected(failure(
+                        EScheduleError::HARD_DEPENDENT_EXISTS
+                    ));
+            }
+            std::erase_if(memberships, [&](const auto& value)
+            {
+                return removed(value.system);
+            });
+            std::erase_if(orders, [&](const auto& value)
+            {
+                return removed(value.source) ||
+                    (value.target_kind == detail::EOrderTarget::SYSTEM &&
+                     removed(value.target));
+            });
+            std::erase_if(requirements, [&](const auto& value)
+            {
+                return removed(value.consumer) || removed(value.provider);
+            });
+
+            if (setCollision(memberships, orders))
+                return lux::cxx::unexpected(failure(
+                    EScheduleError::SET_ID_COLLISION
+                ));
+
+            for (auto& addition : impl_->additions)
+            {
+                if (removed(addition.key))
+                    continue;
+                if (auto result = captureAccess(*addition.slot); !result)
+                    return result;
             }
 
-            for (std::size_t index{}; index < candidates.size(); ++index)
+            std::vector<detail::CandidateNode> nodes;
+            nodes.reserve(owner.slots.size() + impl_->additions.size());
+            for (std::uint32_t index{}; index < owner.slots.size(); ++index)
             {
-                const Candidate& candidate = candidates[index];
-                for (const lux::cxx::TypeToken required : candidate.descriptor->required)
+                if (!owner.slots[index])
+                    continue;
+                detail::HandleKey key{
+                    owner.owner_id, index, owner.generations[index]};
+                if (!removed(key))
+                    nodes.push_back({key, owner.slots[index].get(), nodes.size()});
+            }
+            for (auto& addition : impl_->additions)
+            {
+                if (!removed(addition.key))
+                    nodes.push_back({
+                        addition.key, addition.slot.get(), nodes.size()});
+            }
+            std::sort(nodes.begin(), nodes.end(), nodeLess);
+            for (std::size_t index{}; index < nodes.size(); ++index)
+                nodes[index].candidate_index = index;
+
+            for (std::size_t left{}; left < nodes.size(); ++left)
+            {
+                for (std::size_t right = left + 1; right < nodes.size(); ++right)
                 {
-                    auto iterator = std::find_if(
-                        candidates.begin(), candidates.end(),
-                        [&](const Candidate& other) { return sameType(other.type, required); }
-                    );
-                    if (iterator == candidates.end())
+                    if (detail::tokenCollision(
+                            nodes[left].slot->type,
+                            nodes[right].slot->type))
                     {
-                        const bool removed_dependency = std::any_of(
-                            removed_slots.begin(),
-                            removed_slots.end(),
-                            [&](std::uint32_t removed)
-                            {
-                                return sameType(owner.slots[removed]->type, required);
-                            }
-                        );
-                        return lux::cxx::unexpected(ScheduleFailure{
-                            removed_dependency
-                                ? EScheduleError::HARD_DEPENDENT_EXISTS
-                                : EScheduleError::MISSING_REQUIRED_SYSTEM,
-                            candidate.type,
-                            required
-                        });
+                        return lux::cxx::unexpected(failure(
+                            EScheduleError::TYPE_TOKEN_COLLISION,
+                            nodes[left].slot->type,
+                            nodes[right].slot->type
+                        ));
                     }
-                    addEdge(static_cast<std::size_t>(iterator - candidates.begin()), index);
-                }
-
-                for (const OwnedOrder& order : candidate.descriptor->orders)
-                {
-                    bool found{};
-                    for (std::size_t target{}; target < candidates.size(); ++target)
+                    for (const ComponentAccess& a :
+                         nodes[left].slot->component_access)
                     {
-                        const auto& target_sets = candidates[target].descriptor->sets;
-                        const bool member = std::any_of(
-                            target_sets.begin(),
-                            target_sets.end(),
-                            [&](const OwnedSet& set)
-                            {
-                                return set.hash == order.target.hash &&
-                                    set.name == order.target.name;
-                            }
-                        );
-                        if (!member || target == index)
-                            continue;
-                        found = true;
-
-                        const bool contradiction =
-                            (order.relation == ESystemOrder::BEFORE &&
-                             phaseRank(candidate.phase) > phaseRank(candidates[target].phase)) ||
-                            (order.relation == ESystemOrder::AFTER &&
-                             phaseRank(candidate.phase) < phaseRank(candidates[target].phase));
-                        if (contradiction)
-                            return lux::cxx::unexpected(ScheduleFailure{EScheduleError::PHASE_ORDER_CONTRADICTION, candidate.type, candidates[target].type});
-
-                        if (order.relation == ESystemOrder::BEFORE)
-                            addEdge(index, target);
-                        else
-                            addEdge(target, index);
-                    }
-                    if (!found && order.required)
-                        return lux::cxx::unexpected(ScheduleFailure{EScheduleError::MISSING_REQUIRED_SET, candidate.type});
-                }
-            }
-
-            std::vector<std::size_t> ready;
-            for (std::size_t index{}; index < candidates.size(); ++index)
-                if (indegree[index] == 0)
-                    ready.push_back(index);
-
-            std::vector<std::size_t> order;
-            order.reserve(candidates.size());
-            while (!ready.empty())
-            {
-                const auto iterator = std::min_element(
-                    ready.begin(), ready.end(),
-                    [&](std::size_t left, std::size_t right)
-                    {
-                        return candidates[left].sequence < candidates[right].sequence;
-                    }
-                );
-                const std::size_t current = *iterator;
-                ready.erase(iterator);
-                order.push_back(current);
-                for (const std::size_t target : edges[current])
-                    if (--indegree[target] == 0)
-                        ready.push_back(target);
-            }
-            if (order.size() != candidates.size())
-                return lux::cxx::unexpected(ScheduleFailure{EScheduleError::DEPENDENCY_CYCLE});
-
-            const std::size_t required_size = owner.slots.size() +
-                (impl_->additions.size() - impl_->free_slots_used);
-            std::vector<Slot*> descriptors(required_size, nullptr);
-            for (const Candidate& candidate : candidates)
-                descriptors[candidate.slot] = candidate.descriptor;
-
-            std::vector<std::uint32_t> next_compiled;
-            next_compiled.reserve(candidates.size());
-            for (const std::size_t candidate_index : order)
-                next_compiled.push_back(candidates[candidate_index].slot);
-
-            std::vector<std::vector<std::uint32_t>> next_outgoing(required_size);
-            for (std::size_t from{}; from < edges.size(); ++from)
-            {
-                auto& outgoing = next_outgoing[candidates[from].slot];
-                outgoing.reserve(edges[from].size());
-                for (const std::size_t to : edges[from])
-                    outgoing.push_back(candidates[to].slot);
-            }
-
-            std::vector<std::vector<std::uint32_t>> next_batches;
-            next_batches.reserve(next_compiled.size());
-            for (const std::uint32_t index : next_compiled)
-            {
-                bool added{};
-                for (auto& batch : next_batches)
-                {
-                    bool compatible = true;
-                    for (const std::uint32_t member : batch)
-                    {
-                        if (!accessCompatible(*descriptors[index], *descriptors[member]))
+                        for (const ComponentAccess& b :
+                             nodes[right].slot->component_access)
                         {
-                            compatible = false;
-                            break;
+                            if (detail::tokenCollision(a.type, b.type))
+                            {
+                                return lux::cxx::unexpected(failure(
+                                    EScheduleError::TYPE_TOKEN_COLLISION,
+                                    a.type,
+                                    b.type
+                                ));
+                            }
                         }
                     }
-                    if (compatible)
+                    for (const ExternalAccess& a :
+                         nodes[left].slot->external_access)
                     {
-                        batch.push_back(index);
-                        added = true;
-                        break;
+                        for (const ExternalAccess& b :
+                             nodes[right].slot->external_access)
+                        {
+                            if (detail::tokenCollision(a.type, b.type))
+                            {
+                                return lux::cxx::unexpected(failure(
+                                    EScheduleError::TYPE_TOKEN_COLLISION,
+                                    a.type,
+                                    b.type
+                                ));
+                            }
+                        }
                     }
                 }
-                if (!added)
-                    next_batches.push_back({index});
             }
 
-            std::vector<std::uint8_t> is_addition(required_size, std::uint8_t{});
-            for (const auto& addition : impl_->additions)
-                is_addition[addition.slot] = 1;
-            std::vector<std::uint32_t> attach_order;
-            attach_order.reserve(impl_->additions.size());
-            for (const std::uint32_t index : next_compiled)
-                if (is_addition[index] != 0)
-                    attach_order.push_back(index);
-
-            owner.slots.reserve(required_size);
-            owner.free_slots.reserve(owner.free_slots.size() + removed_slots.size());
-
-            publication_started = true;
-            for (const std::uint32_t index : removed_slots)
+            for (const auto& node : nodes)
             {
-                Slot& slot = *owner.slots[index];
-                SystemDetach detach(*owner.world);
-                owner.clearObservers(slot);
-                slot.system->onDetach(detach);
-                slot.commands->invalidate();
-                slot.system.reset();
-                ++slot.generation;
-                if (slot.generation == 0)
-                    ++slot.generation;
-                owner.free_slots.push_back(index);
-            }
-
-            for (std::size_t index{}; index < impl_->additions.size(); ++index)
-            {
-                const auto slot_index = impl_->additions[index].slot;
-                if (slot_index < owner.slots.size())
+                if (node.slot->affinity ==
+                        ESystemExecutionAffinity::OWNER_THREAD &&
+                    (node.slot->affinity_validator == nullptr ||
+                     !node.slot->affinity_validator(*node.slot->system)))
                 {
-                    owner.slots[slot_index] = std::move(prepared_additions[index]);
-                    const auto free_iterator = std::find(
-                        owner.free_slots.begin(),
-                        owner.free_slots.end(),
-                        slot_index
-                    );
-                    if (free_iterator != owner.free_slots.end())
-                        owner.free_slots.erase(free_iterator);
-                }
-                else
-                {
-                    detail::require(slot_index == owner.slots.size());
-                    owner.slots.push_back(std::move(prepared_additions[index]));
+                    return lux::cxx::unexpected(failure(
+                        EScheduleError::EXECUTION_AFFINITY_MISMATCH,
+                        node.slot->type
+                    ));
                 }
             }
-            owner.next_sequence += impl_->additions.size();
 
-            for (const std::uint32_t index : attach_order)
+            auto plan = compilePlan(nodes, memberships, orders, requirements);
+            if (!plan)
+                return lux::cxx::unexpected(plan.error());
+
+            for (const detail::HandleKey removal : impl_->removals)
             {
-                Slot& slot = *owner.slots[index];
-                SystemAttach attach(
-                    *owner.world,
-                    slot.commands->writer(),
-                    slot.observers
-                );
-                slot.system->onAttach(attach);
+                if (auto* slot = owner.find(removal))
+                {
+                    if (!slot->stop_requested || !slot->system->stopped())
+                        return lux::cxx::unexpected(failure(
+                            EScheduleError::SYSTEM_NOT_STOPPED,
+                            slot->type
+                        ));
+                }
             }
-            owner.applyCommands(attach_order);
 
-            owner.compiled = std::move(next_compiled);
-            owner.outgoing = std::move(next_outgoing);
-            owner.batches = std::move(next_batches);
+            SystemStart start{*owner.world};
+            for (std::size_t phase{}; phase != 3; ++phase)
+            {
+                for (const auto& wave : plan->waves[phase])
+                {
+                    for (const std::uint32_t slot_index : wave)
+                    {
+                        auto found = std::find_if(
+                            impl_->additions.begin(), impl_->additions.end(),
+                            [&](const auto& value)
+                            {
+                                return value.key.slot == slot_index &&
+                                    !removed(value.key);
+                            }
+                        );
+                        if (found == impl_->additions.end())
+                            continue;
+                        if (auto result = found->slot->system->start(start); !result)
+                        {
+                            return lux::cxx::unexpected(failure(
+                                EScheduleError::SYSTEM_START_FAILED,
+                                found->slot->type
+                            ));
+                        }
+                    }
+                }
+            }
+
+            for (const detail::HandleKey removal : impl_->removals)
+            {
+                if (auto* slot = owner.find(removal))
+                {
+                    owner.retired_discarded += slot->commands->discarded();
+                    owner.retired_command_allocations +=
+                        slot->commands->allocationEvents();
+                    slot->commands->invalidate();
+                    owner.slots[removal.slot].reset();
+                    ++owner.generations[removal.slot];
+                    if (owner.generations[removal.slot] == 0)
+                        ++owner.generations[removal.slot];
+                }
+            }
+            for (auto& addition : impl_->additions)
+            {
+                owner.reserved[addition.key.slot] = false;
+                if (removed(addition.key))
+                {
+                    ++owner.generations[addition.key.slot];
+                    if (owner.generations[addition.key.slot] == 0)
+                        ++owner.generations[addition.key.slot];
+                    continue;
+                }
+                owner.slots[addition.key.slot] = std::move(addition.slot);
+            }
+            owner.memberships = std::move(memberships);
+            owner.orders = std::move(orders);
+            owner.requirements = std::move(requirements);
+            owner.plan = std::move(*plan);
+            impl_->committed = true;
+            detail::require(owner.edit_open);
+            owner.edit_open = false;
+            schedule_ = nullptr;
+            return {};
         }
         catch (...)
         {
-            if (publication_started)
-                detail::contractFailure();
-            return lux::cxx::unexpected(
-                ScheduleFailure{EScheduleError::ALLOCATION_FAILURE}
-            );
+            return lux::cxx::unexpected(failure(
+                EScheduleError::ALLOCATION_FAILURE
+            ));
         }
-
-        commit_complete = true;
-        schedule_->impl_->editing = false;
-        schedule_ = nullptr;
-        impl_.reset();
-        return {};
     }
 
     void ScheduleEdit::release() noexcept
     {
-        if (schedule_ != nullptr)
+        if (schedule_ == nullptr)
+            return;
+        auto& owner = *schedule_->impl_;
+        if (impl_ && !impl_->committed)
         {
-            schedule_->impl_->requireOwnerThread();
-            schedule_->impl_->editing = false;
+            for (const auto& addition : impl_->additions)
+            {
+                if (addition.key.slot >= owner.reserved.size() ||
+                    !owner.reserved[addition.key.slot])
+                    continue;
+                owner.reserved[addition.key.slot] = false;
+                ++owner.generations[addition.key.slot];
+                if (owner.generations[addition.key.slot] == 0)
+                    ++owner.generations[addition.key.slot];
+            }
         }
+        detail::require(owner.edit_open);
+        owner.edit_open = false;
         schedule_ = nullptr;
         impl_.reset();
+    }
+
+    void Schedule::run(float delta_seconds, std::uint64_t tick_index) noexcept
+    {
+        detail::require(std::this_thread::get_id() == impl_->owner_thread);
+        detail::require(!impl_->executing && !impl_->edit_open && !impl_->closing);
+        detail::require(impl_->world->state_ == detail::EWorldState::IDLE);
+        impl_->executing = true;
+        impl_->world->state_ = detail::EWorldState::EXECUTING;
+
+        for (std::size_t phase{}; phase != 3; ++phase)
+        {
+            for (const auto& wave : impl_->plan.waves[phase])
+            {
+                for (const std::uint32_t index : wave)
+                {
+                    auto& slot = *impl_->slots[index];
+#if !defined(NDEBUG) || defined(LUX_ECS_CONTRACT_CHECKS)
+                    if (slot.affinity == ESystemExecutionAffinity::OWNER_THREAD)
+                    {
+                        detail::require(
+                            slot.affinity_validator != nullptr &&
+                            slot.affinity_validator(*slot.system)
+                        );
+                    }
+#endif
+                    slot.changes.begin();
+                    WorldCommands commands = slot.commands->beginExecution();
+                    SystemFrame frame(
+                        *impl_->world,
+                        commands,
+                        delta_seconds,
+                        tick_index,
+                        slot.component_access,
+                        slot.access_complete,
+                        slot.changes.recorder()
+                    );
+                    slot.system->update(frame);
+                    slot.commands->endExecution();
+                }
+
+                bool overflow{};
+                for (const std::uint32_t index : wave)
+                    overflow = overflow || impl_->slots[index]->changes.overflow;
+                if (overflow)
+                {
+                    detail::establishWorldChangeBaseline(*impl_->world);
+                }
+                else
+                {
+                    for (const std::uint32_t index : wave)
+                    {
+                        for (const detail::ShardRecord& record :
+                             impl_->slots[index]->changes.records)
+                        {
+                            detail::recordWorldComponentChange(
+                                *impl_->world,
+                                record.storage,
+                                record.entity,
+                                record.kind
+                            );
+                        }
+                    }
+                }
+            }
+
+            impl_->world->state_ = detail::EWorldState::APPLYING_COMMANDS;
+            {
+                WorldEdit edit(*impl_->world, false);
+                for (const std::uint32_t index : impl_->plan.phase_order[phase])
+                    impl_->slots[index]->commands->applyPending(edit);
+            }
+            impl_->world->state_ = phase == 2
+                ? detail::EWorldState::IDLE
+                : detail::EWorldState::EXECUTING;
+        }
+        impl_->executing = false;
+    }
+
+    lux::cxx::expected<void, ScheduleFailure> Schedule::requestStop(
+        AnySystemHandle value
+    ) noexcept
+    {
+        detail::require(std::this_thread::get_id() == impl_->owner_thread);
+        if (impl_->executing || impl_->edit_open)
+            return lux::cxx::unexpected(failure(EScheduleError::EXECUTING));
+        const auto key = detail::key(value);
+        auto* slot = impl_->find(key);
+        if (slot == nullptr)
+            return lux::cxx::unexpected(failure(EScheduleError::INVALID_HANDLE));
+        if (!impl_->dependentStopped(key))
+            return lux::cxx::unexpected(failure(
+                EScheduleError::HARD_DEPENDENT_EXISTS,
+                slot->type
+            ));
+        if (!slot->stop_requested)
+        {
+            slot->stop_requested = true;
+            slot->system->requestStop();
+        }
+        return {};
+    }
+
+    bool Schedule::stopped(AnySystemHandle value) const noexcept
+    {
+        const auto* slot = impl_->find(detail::key(value));
+        return slot != nullptr && slot->stop_requested && slot->system->stopped();
+    }
+
+    void Schedule::requestClose() noexcept
+    {
+        detail::require(std::this_thread::get_id() == impl_->owner_thread);
+        detail::require(!impl_->executing && !impl_->edit_open);
+        impl_->closing = true;
+        runCloseStep();
+    }
+
+    void Schedule::runCloseStep() noexcept
+    {
+        detail::require(std::this_thread::get_id() == impl_->owner_thread);
+        detail::require(impl_->closing && !impl_->executing && !impl_->edit_open);
+
+        std::vector<std::pair<std::uint64_t, std::uint32_t>> candidates;
+        try
+        {
+            candidates.reserve(impl_->slots.size());
+            for (std::uint32_t index{}; index < impl_->slots.size(); ++index)
+            {
+                if (impl_->slots[index] && !impl_->slots[index]->stop_requested)
+                    candidates.emplace_back(impl_->slots[index]->sequence, index);
+            }
+        }
+        catch (...)
+        {
+            detail::contractFailure();
+        }
+        std::sort(candidates.begin(), candidates.end(), std::greater<>());
+        for (const auto [_, index] : candidates)
+        {
+            detail::HandleKey key{
+                impl_->owner_id, index, impl_->generations[index]};
+            auto& slot = *impl_->slots[index];
+            if (impl_->dependentStopped(key))
+            {
+                slot.stop_requested = true;
+                slot.system->requestStop();
+            }
+        }
+    }
+
+    bool Schedule::closeComplete() const noexcept
+    {
+        for (const auto& slot : impl_->slots)
+        {
+            if (slot && (!slot->stop_requested || !slot->system->stopped()))
+                return false;
+        }
+        return true;
+    }
+
+    detail::ExecutionPlanSnapshot detail::ScheduleTestAccess::snapshot(
+        const Schedule& schedule
+    )
+    {
+        ExecutionPlanSnapshot result;
+        for (std::size_t phase{}; phase != 3; ++phase)
+        {
+            for (const auto& wave : schedule.impl_->plan.waves[phase])
+            {
+                result.batches.push_back(wave);
+                for (const std::uint32_t index : wave)
+                {
+                    const auto& slot = *schedule.impl_->slots[index];
+                    result.order.push_back(ExecutionPlanEntry{
+                        slot.type,
+                        index,
+                        slot.affinity == ESystemExecutionAffinity::OWNER_THREAD});
+                }
+            }
+        }
+        return result;
+    }
+
+    std::size_t detail::ScheduleTestAccess::discardedCommands(
+        const Schedule& schedule
+    ) noexcept
+    {
+        std::size_t result = schedule.impl_->retired_discarded;
+        for (const auto& slot : schedule.impl_->slots)
+        {
+            if (slot)
+                result += slot->commands->discarded();
+        }
+        return result;
+    }
+
+    std::size_t detail::ScheduleTestAccess::commandAllocationEvents(
+        const Schedule& schedule
+    ) noexcept
+    {
+        std::size_t result = schedule.impl_->retired_command_allocations;
+        for (const auto& slot : schedule.impl_->slots)
+        {
+            if (slot)
+                result += slot->commands->allocationEvents();
+        }
+        return result;
     }
 } // namespace lux::ecs

@@ -89,7 +89,6 @@ namespace lux::ecs
         std::uint32_t generation_{};
 
         friend class Schedule;
-        friend class SystemAttach;
         friend class detail::CommandShard;
     };
 } // namespace lux::ecs

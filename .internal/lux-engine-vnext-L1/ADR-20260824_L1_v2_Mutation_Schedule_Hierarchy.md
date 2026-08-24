@@ -20,6 +20,10 @@
    完成后建立 fresh journal baseline，不传播历史。
 4. Schedule 分别维护 execution DAG、access conflict 与 lifetime DAG。Phase 是
    execution band，before/after 只排序，requires 才建立 provider lifetime。
+   World retained history 与 Schedule transient scratch 使用不同 policy：
+   `WorldConfig` 只控制前者，`ScheduleConfig` 为整个 execution wave 提供共享的
+   bounded scratch budget。任一 shard overflow 时，该 wave 不发布 partial change
+   history，而是 pin-safe 地推进 World history epoch。
 5. Schedule 只消费通用 thread-affinity protocol。Object System 的 validator
    thunk 在 concrete `add<T>` TU 生成；pure schedule 没有 Object binary closure。
 6. Parent 是 hierarchy 唯一 canonical truth。HierarchyIndex 是增量 intrusive
@@ -58,6 +62,11 @@ Schedule v2 的 lifetime edge API 命名为 `ScheduleEdit::require(consumer,
 provider)`；设计文档中的伪代码 `requires(...)` 在 C++ 中是保留关键字，不能作为
 成员函数标识符。该命名差异不改变“只有 hard requirement 才进入 lifetime DAG”的
 语义。
+
+未 publish 的 `System::start()` 必须具有 transactional RAII semantics；后续
+staged start 失败时，Schedule 在返回前逆序销毁已经 start 的对象，析构必须足以
+回滚资源。`requestStop()` 只属于已 publish System。Schedule 的 close frontier 在
+commit 时编译，`runCloseStep()` 与析构不得为了关闭顺序再分配内存。
 
 ## 重稳定实施结果
 

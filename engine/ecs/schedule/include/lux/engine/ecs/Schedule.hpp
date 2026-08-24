@@ -11,6 +11,7 @@
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <type_traits>
@@ -18,6 +19,25 @@
 
 namespace lux::ecs
 {
+    struct ChangeScratchConfig final
+    {
+        std::size_t initial_bytes{256U * 1024U};
+        std::size_t max_bytes{8U * 1024U * 1024U};
+    };
+
+    struct ScheduleConfig final
+    {
+        ChangeScratchConfig changes{};
+    };
+
+    struct ScheduleChangeStats final
+    {
+        std::size_t capacity_bytes{};
+        std::size_t high_water_bytes{};
+        std::uint64_t overflow_count{};
+        std::uint64_t forced_resync_count{};
+    };
+
     enum class ESystemExecutionAffinity : std::uint8_t
     {
         WORKER_ELIGIBLE,
@@ -133,7 +153,10 @@ namespace lux::ecs
     class LUX_ENGINE_ECS_SCHEDULE_PUBLIC Schedule final
     {
       public:
-        explicit Schedule(World& world) noexcept;
+        explicit Schedule(
+            World& world,
+            ScheduleConfig config = {}
+        );
         ~Schedule() noexcept;
 
         Schedule(const Schedule&) = delete;
@@ -152,6 +175,8 @@ namespace lux::ecs
         void requestClose() noexcept;
         void runCloseStep() noexcept;
         [[nodiscard]] bool closeComplete() const noexcept;
+
+        [[nodiscard]] ScheduleChangeStats changeStats() const noexcept;
 
       private:
         struct Impl;

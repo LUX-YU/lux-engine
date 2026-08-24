@@ -75,6 +75,108 @@ namespace
         void update(lux::ecs::SystemFrame&) noexcept override {}
     };
 
+    class RaiiStart final : public lux::ecs::System
+    {
+      public:
+        explicit RaiiStart(int& resources) noexcept
+            : resources_(&resources)
+        {
+        }
+
+        ~RaiiStart() override
+        {
+            if (acquired_)
+                --*resources_;
+        }
+
+        lux::cxx::expected<void, lux::ecs::SystemStartError>
+        start(lux::ecs::SystemStart&) noexcept override
+        {
+            ++*resources_;
+            acquired_ = true;
+            return {};
+        }
+
+        void update(lux::ecs::SystemFrame&) noexcept override {}
+
+      private:
+        int* resources_{};
+        bool acquired_{};
+    };
+
+    class RetainedChanges final : public lux::ecs::System
+    {
+      public:
+        [[nodiscard]] lux::ecs::SystemAccess access() const noexcept override
+        {
+            return lux::ecs::access(
+                lux::ecs::query<lux::ecs::Read<Velocity>>()
+            );
+        }
+
+        void update(lux::ecs::SystemFrame& frame) noexcept override
+        {
+            retained = frame.changes(cursor);
+            status = retained.status();
+        }
+
+        lux::ecs::ChangeCursor<Velocity> cursor;
+        lux::ecs::ComponentChanges<Velocity> retained;
+        lux::ecs::EChangeReadStatus status{
+            lux::ecs::EChangeReadStatus::CURRENT};
+    };
+
+    class ScratchWriter final : public lux::ecs::System
+    {
+      public:
+        explicit ScratchWriter(bool& enabled) noexcept
+            : enabled_(&enabled)
+        {
+        }
+
+        [[nodiscard]] lux::ecs::SystemAccess access() const noexcept override
+        {
+            return lux::ecs::access(
+                lux::ecs::query<lux::ecs::Write<Position>>()
+            );
+        }
+
+        void update(lux::ecs::SystemFrame& frame) noexcept override
+        {
+            if (!*enabled_)
+                return;
+            for (auto [entity, value] :
+                 frame.query<lux::ecs::Write<Position>>())
+            {
+                (void)entity;
+                ++value.value;
+            }
+        }
+
+      private:
+        bool* enabled_{};
+    };
+
+    class ChangeStatusProbe final : public lux::ecs::System
+    {
+      public:
+        [[nodiscard]] lux::ecs::SystemAccess access() const noexcept override
+        {
+            return lux::ecs::access(
+                lux::ecs::query<lux::ecs::Read<Velocity>>()
+            );
+        }
+
+        void update(lux::ecs::SystemFrame& frame) noexcept override
+        {
+            status = frame.changes(cursor).status();
+        }
+
+        lux::ecs::ChangeCursor<Velocity> cursor;
+        lux::ecs::EChangeReadStatus status{
+            lux::ecs::EChangeReadStatus::CURRENT};
+    };
+
     class WrongAffinity final : public lux::ecs::System
     {
       public:
@@ -267,6 +369,23 @@ int main()
     }
 
     {
+        int acquired_resources{};
+        auto transaction = schedule.edit();
+        auto edit = std::move(*transaction);
+        const auto acquired = edit.add(
+            std::make_unique<RaiiStart>(acquired_resources)
+        );
+        const auto failed = edit.add(std::make_unique<StartFailure>());
+        edit.require(failed, acquired);
+        const auto result = edit.commit();
+        assert(!result && result.error().code ==
+            EScheduleError::SYSTEM_START_FAILED);
+        assert(acquired_resources == 0);
+        assert(!schedule.stopped(acquired));
+        assert(schedule.edit());
+    }
+
+    {
         auto transaction = schedule.edit();
         auto edit = std::move(*transaction);
         (void)edit.add(std::make_unique<WrongAffinity>());
@@ -414,6 +533,99 @@ int main()
     assert(allocations.load(std::memory_order_relaxed) == 0);
     assert(detail::ScheduleTestAccess::commandAllocationEvents(schedule) ==
         command_allocations_before);
+
+    {
+        World scratch_world;
+        auto world_transaction = scratch_world.edit();
+        auto scratch_edit = std::move(*world_transaction);
+        const Entity velocity_entity = scratch_edit.create();
+        scratch_edit.emplace<Velocity>(velocity_entity);
+        for (std::size_t index{}; index < 300U; ++index)
+        {
+            const Entity position_entity = scratch_edit.create();
+            scratch_edit.emplace<Position>(position_entity);
+        }
+        scratch_edit = {};
+
+        bool write_enabled{};
+        Schedule scratch_schedule(
+            scratch_world,
+            ScheduleConfig{ChangeScratchConfig{0U, 4096U}}
+        );
+        auto schedule_transaction = scratch_schedule.edit();
+        auto scratch_schedule_edit = std::move(*schedule_transaction);
+        auto retained_owner = std::make_unique<RetainedChanges>();
+        auto* retained = retained_owner.get();
+        const auto retained_handle = scratch_schedule_edit.add(
+            std::move(retained_owner)
+        );
+        const auto writer = scratch_schedule_edit.add(
+            std::make_unique<ScratchWriter>(write_enabled)
+        );
+        auto probe_owner = std::make_unique<ChangeStatusProbe>();
+        auto* probe = probe_owner.get();
+        const auto probe_handle = scratch_schedule_edit.add(
+            std::move(probe_owner)
+        );
+        scratch_schedule_edit.after(probe_handle, writer);
+        assert(retained_handle && writer && probe_handle);
+        assert(scratch_schedule_edit.commit());
+
+        scratch_schedule.run(1.0F / 60.0F, 1U);
+        assert(retained->status == EChangeReadStatus::RESYNC_REQUIRED);
+        assert(probe->status == EChangeReadStatus::RESYNC_REQUIRED);
+
+        auto velocity_transaction = scratch_world.edit();
+        auto velocity_edit = std::move(*velocity_transaction);
+        velocity_edit.update<Velocity>(
+            velocity_entity,
+            [](Velocity& value) noexcept
+            {
+                ++value.value;
+            }
+        );
+        velocity_edit = {};
+        write_enabled = true;
+        scratch_schedule.run(1.0F / 60.0F, 2U);
+
+        assert(retained->status == EChangeReadStatus::CURRENT);
+        assert(retained->retained.size() == 1U);
+        assert((*retained->retained.begin()).entity == velocity_entity);
+        assert(probe->status == EChangeReadStatus::RESYNC_REQUIRED);
+        std::size_t modified_positions{};
+        for (auto [entity, value] :
+             scratch_world.query<Read<Position>>())
+        {
+            (void)entity;
+            assert(value.value == 1);
+            ++modified_positions;
+        }
+        assert(modified_positions == 300U);
+        const ScheduleChangeStats stats = scratch_schedule.changeStats();
+        assert(stats.capacity_bytes == 4096U);
+        assert(stats.high_water_bytes == 4096U);
+        assert(stats.overflow_count == 1U);
+        assert(stats.forced_resync_count == 1U);
+        retained->retained = {};
+    }
+
+    {
+        World close_world;
+        Schedule close_schedule(close_world);
+        auto transaction = close_schedule.edit();
+        auto close_edit = std::move(*transaction);
+        for (std::size_t index{}; index < 128U; ++index)
+            assert(close_edit.add(std::make_unique<Empty>()));
+        assert(close_edit.commit());
+
+        allocations.store(0, std::memory_order_relaxed);
+        count_allocations.store(true, std::memory_order_relaxed);
+        close_schedule.requestClose();
+        while (!close_schedule.closeComplete())
+            close_schedule.runCloseStep();
+        count_allocations.store(false, std::memory_order_relaxed);
+        assert(allocations.load(std::memory_order_relaxed) == 0U);
+    }
 
     World other_world;
     Schedule other(other_world);

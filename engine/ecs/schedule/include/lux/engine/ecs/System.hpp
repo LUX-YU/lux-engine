@@ -32,6 +32,10 @@ namespace lux::ecs
             return {};
         }
 
+        // Before publication, start() has transactional RAII semantics. If a
+        // later staged System fails to start, destroying this object must
+        // completely roll back every resource acquired here. requestStop()
+        // applies only after successful Schedule publication.
         [[nodiscard]] virtual lux::cxx::expected<void, SystemStartError>
         start(SystemStart&) noexcept
         {

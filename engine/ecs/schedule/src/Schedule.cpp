@@ -108,20 +108,155 @@ namespace lux::ecs::detail
         EComponentChangeKind kind{EComponentChangeKind::MODIFIED};
     };
 
-    struct ChangeShard final
-    {
-        std::vector<ShardRecord> records;
-        bool overflow{};
+    inline constexpr std::size_t kChangeScratchBlockBytes = 4096U;
+    inline constexpr std::size_t kChangeScratchRecordsPerBlock =
+        (kChangeScratchBlockBytes - sizeof(void*) - sizeof(std::size_t)) /
+        sizeof(ShardRecord);
 
-        void reserve(std::size_t count)
+    struct ChangeScratchBlock final
+    {
+        ChangeScratchBlock* next{};
+        std::size_t count{};
+        std::array<ShardRecord, kChangeScratchRecordsPerBlock> records{};
+    };
+    static_assert(sizeof(ChangeScratchBlock) <= kChangeScratchBlockBytes);
+
+    class ChangeScratchArena final
+    {
+      public:
+        explicit ChangeScratchArena(ChangeScratchConfig config)
+            : max_blocks_(config.max_bytes / kChangeScratchBlockBytes)
         {
-            records.reserve(count);
+            detail::require(
+                config.initial_bytes <= config.max_bytes &&
+                max_blocks_ != 0U
+            );
+            owned_.reserve(max_blocks_);
+            const std::size_t initial_blocks = std::min(
+                max_blocks_,
+                config.initial_bytes / kChangeScratchBlockBytes
+            );
+            for (std::size_t index{}; index < initial_blocks; ++index)
+            {
+                auto block = std::make_unique<ChangeScratchBlock>();
+                ChangeScratchBlock* value = block.get();
+                owned_.push_back(std::move(block));
+                pushFree(*value);
+            }
         }
 
-        void begin() noexcept
+        [[nodiscard]] ChangeScratchBlock* acquire() noexcept
         {
-            records.clear();
+            ChangeScratchBlock* result{};
+            if (free_ != nullptr)
+            {
+                result = free_;
+                free_ = result->next;
+                result->next = nullptr;
+            }
+            else if (owned_.size() < max_blocks_)
+            {
+                try
+                {
+                    auto block = std::make_unique<ChangeScratchBlock>();
+                    result = block.get();
+                    owned_.push_back(std::move(block));
+                }
+                catch (...)
+                {
+                    return nullptr;
+                }
+            }
+            else
+                return nullptr;
+
+            result->count = 0U;
+            ++in_use_;
+            high_water_ = std::max(high_water_, in_use_);
+            return result;
+        }
+
+        void release(ChangeScratchBlock* block) noexcept
+        {
+            while (block != nullptr)
+            {
+                ChangeScratchBlock* next = block->next;
+                detail::require(in_use_ != 0U);
+                --in_use_;
+                pushFree(*block);
+                block = next;
+            }
+        }
+
+        [[nodiscard]] std::size_t capacityBytes() const noexcept
+        {
+            return max_blocks_ * kChangeScratchBlockBytes;
+        }
+
+        [[nodiscard]] std::size_t highWaterBytes() const noexcept
+        {
+            return high_water_ * kChangeScratchBlockBytes;
+        }
+
+      private:
+        void pushFree(ChangeScratchBlock& block) noexcept
+        {
+            block.count = 0U;
+            block.next = free_;
+            free_ = std::addressof(block);
+        }
+
+        std::vector<std::unique_ptr<ChangeScratchBlock>> owned_;
+        ChangeScratchBlock* free_{};
+        std::size_t max_blocks_{};
+        std::size_t in_use_{};
+        std::size_t high_water_{};
+    };
+
+    struct ChangeShard final
+    {
+        ChangeScratchArena* arena{};
+        ChangeScratchBlock* first{};
+        ChangeScratchBlock* last{};
+        bool overflow{};
+
+        void begin(ChangeScratchArena& value) noexcept
+        {
+            detail::require(first == nullptr && last == nullptr);
+            arena = std::addressof(value);
             overflow = false;
+        }
+
+        void release() noexcept
+        {
+            detail::require(arena != nullptr);
+            arena->release(first);
+            arena = nullptr;
+            first = nullptr;
+            last = nullptr;
+        }
+
+        void append(ShardRecord record) noexcept
+        {
+            if (overflow)
+                return;
+            if (last == nullptr ||
+                last->count == kChangeScratchRecordsPerBlock)
+            {
+                ChangeScratchBlock* block = arena->acquire();
+                if (block == nullptr)
+                {
+                    overflow = true;
+                    return;
+                }
+                if (last != nullptr)
+                    last->next = block;
+                else
+                    first = block;
+                last = block;
+            }
+            last->records[last->count] = record;
+            ++last->count;
         }
 
         [[nodiscard]] ChangeRecorder recorder() noexcept
@@ -132,19 +267,7 @@ namespace lux::ecs::detail
                    EComponentChangeKind kind) noexcept
                 {
                     auto& shard = *static_cast<ChangeShard*>(context);
-                    if (shard.overflow)
-                        return;
-                    try
-                    {
-                        shard.records.push_back(
-                            ShardRecord{storage, entity, kind}
-                        );
-                    }
-                    catch (...)
-                    {
-                        shard.records.clear();
-                        shard.overflow = true;
-                    }
+                    shard.append(ShardRecord{storage, entity, kind});
                 }};
         }
     };
@@ -170,6 +293,7 @@ namespace lux::ecs::detail
     {
         std::array<std::vector<std::vector<std::uint32_t>>, 3> waves;
         std::array<std::vector<std::uint32_t>, 3> phase_order;
+        std::vector<std::uint32_t> close_order;
     };
 
     struct CandidateNode final
@@ -224,9 +348,10 @@ namespace lux::ecs
 {
     struct Schedule::Impl final
     {
-        explicit Impl(World& owner) noexcept
+        explicit Impl(World& owner, ScheduleConfig config)
             : world(&owner), owner_id(detail::nextScheduleOwner()),
-              owner_thread(std::this_thread::get_id())
+              owner_thread(std::this_thread::get_id()),
+              change_scratch(config.changes)
         {
         }
 
@@ -240,9 +365,12 @@ namespace lux::ecs
         std::vector<detail::OrderRelation> orders;
         std::vector<detail::Requirement> requirements;
         detail::ExecutionPlan plan;
+        detail::ChangeScratchArena change_scratch;
         std::uint64_t next_sequence{1};
         std::size_t retired_discarded{};
         std::size_t retired_command_allocations{};
+        std::uint64_t change_overflows{};
+        std::uint64_t forced_change_resyncs{};
         bool edit_open{};
         bool executing{};
         bool closing{};
@@ -367,7 +495,6 @@ namespace lux::ecs
                 );
                 slot.access_complete = declared.complete;
                 slot.commands->reserve(64);
-                slot.changes.reserve(256);
 
                 for (std::size_t left{};
                      left < slot.component_access.size(); ++left)
@@ -647,6 +774,66 @@ namespace lux::ecs
                         ));
                     }
                 }
+
+                std::vector<std::vector<std::size_t>> close_edges(
+                    nodes.size()
+                );
+                std::vector<std::size_t> close_indegree(nodes.size());
+                for (const detail::Requirement& requirement : requirements)
+                {
+                    const auto consumer = findNode(nodes, requirement.consumer);
+                    const auto provider = findNode(nodes, requirement.provider);
+                    detail::require(consumer && provider);
+                    auto& outgoing = close_edges[*consumer];
+                    if (std::find(
+                            outgoing.begin(), outgoing.end(), *provider
+                        ) == outgoing.end())
+                    {
+                        outgoing.push_back(*provider);
+                        ++close_indegree[*provider];
+                    }
+                }
+
+                std::vector<std::size_t> close_ready;
+                for (std::size_t index{}; index < nodes.size(); ++index)
+                {
+                    if (close_indegree[index] == 0U)
+                        close_ready.push_back(index);
+                }
+                const auto close_stable = [&](std::size_t left,
+                                              std::size_t right) noexcept
+                {
+                    return nodeLess(nodes[right], nodes[left]);
+                };
+                std::sort(
+                    close_ready.begin(), close_ready.end(), close_stable
+                );
+                while (!close_ready.empty())
+                {
+                    const std::size_t index = close_ready.front();
+                    close_ready.erase(close_ready.begin());
+                    result.close_order.push_back(nodes[index].key.slot);
+                    for (const std::size_t target : close_edges[index])
+                    {
+                        detail::require(close_indegree[target] != 0U);
+                        --close_indegree[target];
+                        if (close_indegree[target] == 0U)
+                        {
+                            close_ready.push_back(target);
+                            std::sort(
+                                close_ready.begin(),
+                                close_ready.end(),
+                                close_stable
+                            );
+                        }
+                    }
+                }
+                if (result.close_order.size() != nodes.size())
+                {
+                    return lux::cxx::unexpected(failure(
+                        EScheduleError::DEPENDENCY_CYCLE
+                    ));
+                }
                 return result;
             }
             catch (...)
@@ -658,8 +845,8 @@ namespace lux::ecs
         }
     } // namespace
 
-    Schedule::Schedule(World& world) noexcept
-        : impl_(std::make_unique<Impl>(world))
+    Schedule::Schedule(World& world, ScheduleConfig config)
+        : impl_(std::make_unique<Impl>(world, config))
     {
         detail::require(std::this_thread::get_id() == world.owner_thread_);
         detail::require(world.state_ == detail::EWorldState::IDLE);
@@ -1140,6 +1327,8 @@ namespace lux::ecs
                 }
             }
 
+            std::vector<Impl::Addition*> started;
+            started.reserve(impl_->additions.size());
             SystemStart start{*owner.world};
             for (std::size_t phase{}; phase != 3; ++phase)
             {
@@ -1157,12 +1346,23 @@ namespace lux::ecs
                         );
                         if (found == impl_->additions.end())
                             continue;
-                        if (auto result = found->slot->system->start(start); !result)
+                        started.push_back(std::addressof(*found));
+                        if (auto result = found->slot->system->start(start);
+                            !result)
                         {
-                            return lux::cxx::unexpected(failure(
+                            const ScheduleFailure start_failure = failure(
                                 EScheduleError::SYSTEM_START_FAILED,
                                 found->slot->type
-                            ));
+                            );
+                            for (auto iterator = started.rbegin();
+                                 iterator != started.rend(); ++iterator)
+                            {
+                                (*iterator)->slot.reset();
+                            }
+                            for (auto& addition : impl_->additions)
+                                addition.slot.reset();
+                            release();
+                            return lux::cxx::unexpected(start_failure);
                         }
                     }
                 }
@@ -1260,7 +1460,7 @@ namespace lux::ecs
                         );
                     }
 #endif
-                    slot.changes.begin();
+                    slot.changes.begin(impl_->change_scratch);
                     WorldCommands commands = slot.commands->beginExecution();
                     SystemFrame frame(
                         *impl_->world,
@@ -1277,27 +1477,45 @@ namespace lux::ecs
 
                 bool overflow{};
                 for (const std::uint32_t index : wave)
-                    overflow = overflow || impl_->slots[index]->changes.overflow;
+                {
+                    if (impl_->slots[index]->changes.overflow)
+                    {
+                        overflow = true;
+                        ++impl_->change_overflows;
+                    }
+                }
                 if (overflow)
                 {
-                    detail::establishWorldChangeBaseline(*impl_->world);
+                    ++impl_->forced_change_resyncs;
+                    detail::markWorldChangeHistoryLoss(*impl_->world);
                 }
                 else
                 {
                     for (const std::uint32_t index : wave)
                     {
-                        for (const detail::ShardRecord& record :
-                             impl_->slots[index]->changes.records)
+                        const auto& shard = impl_->slots[index]->changes;
+                        for (const detail::ChangeScratchBlock* block =
+                                 shard.first;
+                             block != nullptr; block = block->next)
                         {
-                            detail::recordWorldComponentChange(
-                                *impl_->world,
-                                record.storage,
-                                record.entity,
-                                record.kind
-                            );
+                            for (std::size_t record_index{};
+                                 record_index < block->count;
+                                 ++record_index)
+                            {
+                                const auto& record =
+                                    block->records[record_index];
+                                detail::recordWorldComponentChange(
+                                    *impl_->world,
+                                    record.storage,
+                                    record.entity,
+                                    record.kind
+                                );
+                            }
                         }
                     }
                 }
+                for (const std::uint32_t index : wave)
+                    impl_->slots[index]->changes.release();
             }
 
             impl_->world->state_ = detail::EWorldState::APPLYING_COMMANDS;
@@ -1339,6 +1557,7 @@ namespace lux::ecs
 
     bool Schedule::stopped(AnySystemHandle value) const noexcept
     {
+        detail::require(std::this_thread::get_id() == impl_->owner_thread);
         const auto* slot = impl_->find(detail::key(value));
         return slot != nullptr && slot->stop_requested && slot->system->stopped();
     }
@@ -1356,23 +1575,11 @@ namespace lux::ecs
         detail::require(std::this_thread::get_id() == impl_->owner_thread);
         detail::require(impl_->closing && !impl_->executing && !impl_->edit_open);
 
-        std::vector<std::pair<std::uint64_t, std::uint32_t>> candidates;
-        try
+        for (const std::uint32_t index : impl_->plan.close_order)
         {
-            candidates.reserve(impl_->slots.size());
-            for (std::uint32_t index{}; index < impl_->slots.size(); ++index)
-            {
-                if (impl_->slots[index] && !impl_->slots[index]->stop_requested)
-                    candidates.emplace_back(impl_->slots[index]->sequence, index);
-            }
-        }
-        catch (...)
-        {
-            detail::contractFailure();
-        }
-        std::sort(candidates.begin(), candidates.end(), std::greater<>());
-        for (const auto [_, index] : candidates)
-        {
+            detail::require(index < impl_->slots.size());
+            if (!impl_->slots[index] || impl_->slots[index]->stop_requested)
+                continue;
             detail::HandleKey key{
                 impl_->owner_id, index, impl_->generations[index]};
             auto& slot = *impl_->slots[index];
@@ -1386,12 +1593,24 @@ namespace lux::ecs
 
     bool Schedule::closeComplete() const noexcept
     {
+        detail::require(std::this_thread::get_id() == impl_->owner_thread);
         for (const auto& slot : impl_->slots)
         {
             if (slot && (!slot->stop_requested || !slot->system->stopped()))
                 return false;
         }
         return true;
+    }
+
+    ScheduleChangeStats Schedule::changeStats() const noexcept
+    {
+        detail::require(std::this_thread::get_id() == impl_->owner_thread);
+        return ScheduleChangeStats{
+            impl_->change_scratch.capacityBytes(),
+            impl_->change_scratch.highWaterBytes(),
+            impl_->change_overflows,
+            impl_->forced_change_resyncs,
+        };
     }
 
     detail::ExecutionPlanSnapshot detail::ScheduleTestAccess::snapshot(

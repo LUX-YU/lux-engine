@@ -133,6 +133,32 @@ set_tests_properties(
         LABELS "vnext;l1;schedule;contract;negative"
 )
 
+add_executable(
+    ecs_schedule_status_wrong_thread_probe
+    test/schedule_status_wrong_thread_probe.cpp
+)
+target_link_libraries(
+    ecs_schedule_status_wrong_thread_probe
+    PRIVATE lux::engine::ecs::schedule
+)
+lux_classify_target(
+    TARGET  ecs_schedule_status_wrong_thread_probe
+    LAYER   ECS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(
+    NAME vnext_ecs_schedule_status_wrong_thread_rejected
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DPROGRAM=$<TARGET_FILE:ecs_schedule_status_wrong_thread_probe>
+        -P ${PROJECT_SOURCE_DIR}/cmake/ExpectProcessFailure.cmake
+)
+set_tests_properties(
+    vnext_ecs_schedule_status_wrong_thread_rejected
+    PROPERTIES LABELS "vnext;l1;schedule;contract;negative"
+)
+
 foreach(probe IN ITEMS
     retired_isystem_negative
     retired_schedule_builder_negative

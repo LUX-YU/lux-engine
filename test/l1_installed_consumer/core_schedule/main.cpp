@@ -24,18 +24,24 @@ namespace
 int main()
 {
     lux::ecs::World world;
-    lux::ecs::Schedule schedule{world};
+    lux::ecs::Schedule schedule{
+        world,
+        lux::ecs::ScheduleConfig{
+            lux::ecs::ChangeScratchConfig{4096U, 4096U}}
+    };
+    if (schedule.changeStats().capacity_bytes != 4096U)
+        return 1;
     std::uint32_t count{};
     auto edit_result = schedule.edit();
     if (!edit_result)
-        return 1;
+        return 2;
     auto edit = std::move(*edit_result);
     if (!edit.add(std::make_unique<CountSystem>(count)) ||
         !edit.add(std::make_unique<CountSystem>(count)) ||
         !edit.commit())
     {
-        return 2;
+        return 3;
     }
     schedule.run(1.0F / 60.0F, 1U);
-    return count == 2U ? 0 : 3;
+    return count == 2U ? 0 : 4;
 }

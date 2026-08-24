@@ -10,7 +10,7 @@ the Journal, Schedule, Hierarchy, cold-construction and representative evidence
 gates are rerun.
 
 - [ ] V2.1-1: Make Change Journal history loss explicit and pin-safe.
-- [ ] V2.1-2: Bound Schedule change scratch and harden lifecycle RAII.
+- [x] V2.1-2: Bound Schedule change scratch and harden lifecycle RAII.
 - [ ] V2.1-3: Make Hierarchy rebuild linear and orphan repair retryable.
 - [ ] V2.1-4: Suppress cold-construction journal emission.
 - [ ] V2.1-5: Re-run adversarial, performance, install and platform gates.

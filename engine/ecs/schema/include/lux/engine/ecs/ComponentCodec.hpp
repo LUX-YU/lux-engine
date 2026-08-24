@@ -99,6 +99,7 @@ namespace lux::ecs
     {
         EncodeComponentFn encode{};
         DecodeComponentFn decode{};
+        const void* context{};
 
         [[nodiscard]] bool present() const noexcept
         {
@@ -106,6 +107,4 @@ namespace lux::ecs
         }
     };
 
-    [[nodiscard]] LUX_ENGINE_ECS_SCHEMA_PUBLIC
-    ComponentCodec reflectedComponentCodec() noexcept;
 } // namespace lux::ecs

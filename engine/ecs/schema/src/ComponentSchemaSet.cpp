@@ -26,28 +26,17 @@ namespace lux::ecs
                     return lux::cxx::unexpected(SchemaFailure{ESchemaError::INVALID_VERSION, schema.id, schema.cpp_type});
 
                 const ComponentOperations& operations = schema.operations;
-                if (operations.has == nullptr || operations.get == nullptr ||
-                    operations.get_const == nullptr || operations.erase == nullptr ||
-                    operations.reserve == nullptr)
+                if (!operations.valid())
                 {
                     return lux::cxx::unexpected(SchemaFailure{ESchemaError::INVALID_OPERATIONS, schema.id, schema.cpp_type});
                 }
-                if (schema.snapshot == ComponentSnapshotMode::Copy &&
-                    operations.clone == nullptr)
+                if (schema.snapshot == EComponentSnapshotPolicy::COPY &&
+                    !operations.cloneable())
                 {
                     return lux::cxx::unexpected(SchemaFailure{ESchemaError::COPY_WITHOUT_CLONE, schema.id, schema.cpp_type});
                 }
                 if ((schema.codec.encode == nullptr) != (schema.codec.decode == nullptr))
                     return lux::cxx::unexpected(SchemaFailure{ESchemaError::INVALID_CODEC, schema.id, schema.cpp_type});
-                if (schema.snapshot == ComponentSnapshotMode::Rebuild &&
-                    schema.codec.present())
-                {
-                    return lux::cxx::unexpected(SchemaFailure{
-                        ESchemaError::INVALID_CODEC,
-                        schema.id,
-                        schema.cpp_type
-                    });
-                }
 
                 for (std::size_t other = index + 1; other < schemas.size(); ++other)
                 {

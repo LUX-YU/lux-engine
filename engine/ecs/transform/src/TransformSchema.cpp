@@ -231,24 +231,24 @@ namespace lux::ecs
             makeComponentSchema<Transform2D>(
                 componentSchemaId("lux.ecs.Transform2D"),
                 1,
-                ComponentSnapshotMode::Copy,
+                EComponentSnapshotPolicy::COPY,
                 ComponentCodec{&encodeTransform2D, &decodeTransform2D}
             ),
             makeComponentSchema<WorldTransform2D>(
                 componentSchemaId("lux.ecs.WorldTransform2D"),
                 1,
-                ComponentSnapshotMode::Rebuild
+                EComponentSnapshotPolicy::REBUILD
             ),
             makeComponentSchema<Transform3D>(
                 componentSchemaId("lux.ecs.Transform3D"),
                 1,
-                ComponentSnapshotMode::Copy,
+                EComponentSnapshotPolicy::COPY,
                 ComponentCodec{&encodeTransform3D, &decodeTransform3D}
             ),
             makeComponentSchema<WorldTransform3D>(
                 componentSchemaId("lux.ecs.WorldTransform3D"),
                 1,
-                ComponentSnapshotMode::Rebuild
+                EComponentSnapshotPolicy::REBUILD
             ),
         };
         return schemas;

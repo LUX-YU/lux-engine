@@ -23,6 +23,10 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
+target_include_directories(
+    snapshot
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../schema/pinclude
+)
 
 target_compile_definitions(snapshot PRIVATE LUX_ENGINE_ECS_SNAPSHOT_LIBRARY)
 target_link_libraries(

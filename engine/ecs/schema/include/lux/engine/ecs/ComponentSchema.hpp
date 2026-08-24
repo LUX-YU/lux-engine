@@ -10,17 +10,12 @@
 #include <memory>
 #include <utility>
 
-namespace lux::meta
-{
-    struct RefClass;
-}
-
 namespace lux::ecs
 {
-    enum class ComponentSnapshotMode : std::uint8_t
+    enum class EComponentSnapshotPolicy : std::uint8_t
     {
-        Copy,
-        Rebuild,
+        COPY,
+        REBUILD,
     };
 
     struct ComponentSchema final
@@ -28,10 +23,9 @@ namespace lux::ecs
         lux::cxx::TypeToken cpp_type;
         ComponentSchemaId id;
         std::uint32_t version{1};
-        const lux::meta::RefClass* reflection{};
         ComponentOperations operations;
         ComponentCodec codec;
-        ComponentSnapshotMode snapshot{ComponentSnapshotMode::Copy};
+        EComponentSnapshotPolicy snapshot{EComponentSnapshotPolicy::COPY};
         std::shared_ptr<const void> code_lifetime;
     };
 
@@ -39,16 +33,14 @@ namespace lux::ecs
     [[nodiscard]] ComponentSchema makeComponentSchema(
         ComponentSchemaId id,
         std::uint32_t version = 1,
-        ComponentSnapshotMode snapshot = ComponentSnapshotMode::Copy,
+        EComponentSnapshotPolicy snapshot = EComponentSnapshotPolicy::COPY,
         ComponentCodec codec = {},
-        const lux::meta::RefClass* reflection = nullptr,
         std::shared_ptr<const void> code_lifetime = {})
     {
         return ComponentSchema{
             lux::cxx::typeToken<Component>(),
             std::move(id),
             version,
-            reflection,
             componentOperations<Component>(),
             codec,
             snapshot,

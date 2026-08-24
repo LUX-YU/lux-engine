@@ -2,6 +2,7 @@ foreach(component IN ITEMS
     core
     schedule
     schema
+    schema_reflection
     snapshot
     persistence
     hierarchy
@@ -13,7 +14,16 @@ foreach(component IN ITEMS
 endforeach()
 
 set(_lux_ecs_components)
-foreach(component IN ITEMS core schedule schema snapshot persistence hierarchy transform)
+foreach(component IN ITEMS
+    core
+    schedule
+    schema
+    schema_reflection
+    snapshot
+    persistence
+    hierarchy
+    transform
+)
     if(TARGET ${component})
         list(APPEND _lux_ecs_components ${component})
     endif()

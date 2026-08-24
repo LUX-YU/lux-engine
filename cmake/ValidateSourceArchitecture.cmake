@@ -93,6 +93,19 @@ foreach(source IN LISTS production_sources)
     endif()
 endforeach()
 
+foreach(source IN LISTS production_sources)
+    file(TO_CMAKE_PATH "${source}" normalized)
+    if(normalized MATCHES "/engine/ecs/schema/")
+        file(READ "${source}" content)
+        if(content MATCHES
+           "lux/engine/meta/|lux/cxx/reflection/")
+            message(FATAL_ERROR
+                "Architecture: base schema source '${normalized}' depends on reflection."
+            )
+        endif()
+    endif()
+endforeach()
+
 if(DEFINED LUX_BINARY_DIR AND
    EXISTS "${LUX_BINARY_DIR}/compile_commands.json")
     file(READ "${LUX_BINARY_DIR}/compile_commands.json" compile_commands)

@@ -24,6 +24,13 @@
    subtree。
 7. Snapshot policy、persistent codec、reflection projection 是独立事实。
 
+Schema 的安装边界据此拆成 `lux::engine::ecs::schema` 与可选的
+`lux::engine::ecs::schema_reflection`。前者只定义 schema、operations、codec port
+与 snapshot policy，不 include/link meta 或 reflection runtime；后者拥有
+`RefClass` adapter、默认 reflected tagged codec 与 generator projection。
+`Copy/Rebuild × codec present/absent` 四种组合都合法，codegen 分别读取
+`snapshot` 与 `codec` annotation，不再通过一个宏隐含绑定两项 policy。
+
 Schedule v2 的 lifetime edge API 命名为 `ScheduleEdit::require(consumer,
 provider)`；设计文档中的伪代码 `requires(...)` 在 C++ 中是保留关键字，不能作为
 成员函数标识符。该命名差异不改变“只有 hard requirement 才进入 lifetime DAG”的

@@ -569,6 +569,18 @@ function(lux_validate_all_production_targets)
             )
         endif()
     endif()
+    if(TARGET schema)
+        get_target_property(schema_links schema LINK_LIBRARIES)
+        get_target_property(schema_interface_links schema INTERFACE_LINK_LIBRARIES)
+        string(CONCAT schema_closure
+            "${schema_links};${schema_interface_links}")
+        if(schema_closure MATCHES
+           "lux::engine::core::meta|lux::cxx::reflection_runtime")
+            message(FATAL_ERROR
+                "Architecture: base ecs::schema must remain independent of reflection."
+            )
+        endif()
+    endif()
 endfunction()
 
 # Source-level rules complement the target DAG.  The dependency graph cannot

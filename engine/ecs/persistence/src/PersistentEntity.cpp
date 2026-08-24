@@ -157,7 +157,7 @@ namespace lux::ecs
         return makeComponentSchema<PersistentId>(
             componentSchemaId("lux.ecs.PersistentId"),
             1,
-            ComponentSnapshotMode::Copy,
+            EComponentSnapshotPolicy::COPY,
             ComponentCodec{&encodePersistentId, &decodePersistentId}
         );
     }

@@ -92,7 +92,7 @@ int main()
     const auto link_schema = lux::ecs::makeComponentSchema<Link>(
         lux::ecs::componentSchemaId("test.link"),
         1,
-        lux::ecs::ComponentSnapshotMode::Copy,
+        lux::ecs::EComponentSnapshotPolicy::COPY,
         lux::ecs::ComponentCodec{&encodeLink, &decodeLink}
     );
     auto schemas = lux::ecs::ComponentSchemaSet::build(

@@ -53,7 +53,7 @@ namespace lux::ecs
             makeComponentSchema<Parent>(
                 componentSchemaId("lux.ecs.Parent"),
                 1,
-                ComponentSnapshotMode::Copy,
+                EComponentSnapshotPolicy::COPY,
                 ComponentCodec{&encodeParent, &decodeParent}
             )};
         return schemas;

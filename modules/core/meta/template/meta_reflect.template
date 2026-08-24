@@ -272,6 +272,7 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
     {%- set component_schema_name = annotation_get_or(rec, "schema_name", rec.fq_name) -%}
     {%- set component_schema_version = annotation_get_or(rec, "schema_version", "1") -%}
     {%- set component_snapshot = annotation_get_or(rec, "snapshot", "copy") -%}
+    {%- set component_codec = annotation_get_or(rec, "codec", "reflected") -%}
     {%- for attr in rec.attributes -%}
         {%- if annotation_has(attr, "luxref::class") %}
     { static constexpr char kClassAnnot_{{ rec.hash }}[] = R"__LUX_ANNOT({{ attr }})__LUX_ANNOT"; cls.annotation_str = kClassAnnot_{{ rec.hash }}; }
@@ -518,9 +519,14 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
                 "{{ component_schema_name }}",
                 {{ component_schema_version }}u,
                 {%- if component_snapshot == "rebuild" %}
-                lux::ecs::ComponentSnapshotMode::Rebuild
+                lux::ecs::EComponentSnapshotPolicy::REBUILD,
                 {%- else %}
-                lux::ecs::ComponentSnapshotMode::Copy
+                lux::ecs::EComponentSnapshotPolicy::COPY,
+                {%- endif %}
+                {%- if component_codec == "none" %}
+                lux::ecs::EGeneratedComponentCodec::NONE
+                {%- else %}
+                lux::ecs::EGeneratedComponentCodec::REFLECTED
                 {%- endif %}
             )
         );

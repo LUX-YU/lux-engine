@@ -1,4 +1,5 @@
 #include <lux/engine/ecs/WorldSnapshot.hpp>
+#include <lux/engine/ecs/schema/ComponentOperationsAccess.hpp>
 
 #include <entt/core/type_info.hpp>
 #include <entt/entity/entity.hpp>
@@ -47,7 +48,9 @@ namespace lux::ecs
                     schemas.all().begin(), schemas.all().end(),
                     [storage_id](const ComponentSchema& schema)
                     {
-                        return schema.operations.storage_id == storage_id;
+                        return detail::ComponentOperationsAccess::storageKey(
+                            schema.operations
+                        ) == storage_id;
                     }
                 );
                 if (iterator == schemas.all().end())
@@ -102,19 +105,24 @@ namespace lux::ecs
 
                 for (const ComponentSchema& schema : schemas.all())
                 {
-                    if (schema.snapshot == ComponentSnapshotMode::Rebuild)
+                    if (schema.snapshot == EComponentSnapshotPolicy::REBUILD)
                         continue;
-                    if (schema.operations.clone == nullptr)
+                    if (!schema.operations.cloneable())
                     {
                         return lux::cxx::unexpected(
                             SnapshotError{
                                 ESnapshotError::INVALID_COPY_SCHEMA,
-                                schema.operations.storage_id,
+                                detail::ComponentOperationsAccess::storageKey(
+                                    schema.operations
+                                ),
                                 schema.id}
                         );
                     }
 
-                    schema.operations.reserve(edit, entities->free_list());
+                    schema.operations.reserve(
+                        edit,
+                        schema.operations.size(source)
+                    );
                     for (auto [entity] : entities->each())
                     {
                         if (schema.operations.has(source, entity))

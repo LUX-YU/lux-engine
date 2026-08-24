@@ -32,7 +32,7 @@ int main()
     const auto cache_schema = lux::ecs::makeComponentSchema<DerivedCache>(
         lux::ecs::componentSchemaId("test.cache"),
         1,
-        lux::ecs::ComponentSnapshotMode::Rebuild
+        lux::ecs::EComponentSnapshotPolicy::REBUILD
     );
     auto schemas = lux::ecs::ComponentSchemaSet::build(
         {position_schema, cache_schema}

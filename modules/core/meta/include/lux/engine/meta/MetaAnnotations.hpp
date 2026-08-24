@@ -25,7 +25,8 @@
 /// fixed-position arguments with variadic ones, so users can't pass extra
 /// `key=value` pairs at the call site. Add per-component knobs as
 /// dedicated annotations or member-level `LUX_MEMBER` keys instead.
-#define LUX_COMPONENT()   LUX_META(luxref::class, component=true)
+#define LUX_COMPONENT() \
+    LUX_META(luxref::class, component=true, snapshot=copy, codec=reflected)
 
 /// Mark a portable Copy component with an explicit stable schema identity.
 #define LUX_COMPONENT_SCHEMA(name, version) \

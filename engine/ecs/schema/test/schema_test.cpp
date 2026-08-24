@@ -27,6 +27,40 @@ namespace
         int value{};
     };
 
+    struct NonCopy final
+    {
+        NonCopy() = default;
+        NonCopy(const NonCopy&) = delete;
+        NonCopy& operator=(const NonCopy&) = delete;
+    };
+
+    struct RebuildPersistent final
+    {
+        int value{};
+    };
+
+    lux::cxx::expected<void, lux::ecs::EComponentCodecError> encodeRebuild(
+        const lux::ecs::ComponentSchema&,
+        const lux::ecs::World&,
+        lux::ecs::Entity,
+        lux::ecs::ComponentEncodePort&
+    ) noexcept
+    {
+        return {};
+    }
+
+    lux::cxx::expected<void, lux::ecs::EComponentCodecError> decodeRebuild(
+        const lux::ecs::ComponentSchema&,
+        lux::ecs::WorldEdit& edit,
+        lux::ecs::Entity entity,
+        std::uint32_t,
+        lux::ecs::ComponentDecodePort&
+    ) noexcept
+    {
+        edit.emplace<RebuildPersistent>(entity);
+        return {};
+    }
+
     struct ReflectedValue final
     {
         std::int32_t count{};
@@ -144,13 +178,38 @@ int main()
 {
     lux::meta::meta_module_init();
     const auto generated = lux_ecs_schema_probe_component_schemas();
-    assert(generated.size() == 1u);
-    assert(generated[0].id ==
-        lux::ecs::componentSchemaId("test.generated-probe"));
-    assert(generated[0].version == 7u);
-    assert(generated[0].snapshot == lux::ecs::ComponentSnapshotMode::Copy);
-    assert(generated[0].codec.present());
-    assert(generated[0].reflection != nullptr);
+    assert(generated.size() == 4u);
+    const auto find_generated = [&](std::string_view name)
+        -> const lux::ecs::ComponentSchema*
+    {
+        const auto id = lux::ecs::componentSchemaId(name);
+        for (const auto& schema : generated)
+        {
+            if (schema.id == id)
+                return &schema;
+        }
+        return nullptr;
+    };
+    const auto* explicit_copy = find_generated("test.generated-probe");
+    assert(explicit_copy != nullptr && explicit_copy->version == 7u);
+    assert(explicit_copy->snapshot ==
+        lux::ecs::EComponentSnapshotPolicy::COPY);
+    assert(explicit_copy->codec.present());
+    assert(explicit_copy->codec.context != nullptr);
+    const auto* rebuild_reflected = find_generated(
+        "test.generated-rebuild-reflected"
+    );
+    assert(rebuild_reflected != nullptr);
+    assert(rebuild_reflected->snapshot ==
+        lux::ecs::EComponentSnapshotPolicy::REBUILD);
+    assert(rebuild_reflected->codec.present());
+    const auto* rebuild_none = find_generated(
+        "test.generated-rebuild-none"
+    );
+    assert(rebuild_none != nullptr);
+    assert(rebuild_none->snapshot ==
+        lux::ecs::EComponentSnapshotPolicy::REBUILD);
+    assert(!rebuild_none->codec.present());
     auto module_lifetime = std::make_shared<int>(9);
     std::weak_ptr<int> module_weak = module_lifetime;
     auto generated_set = lux::ecs::ComponentSchemaSet::build(
@@ -166,15 +225,14 @@ int main()
     auto position = lux::ecs::makeComponentSchema<Position>(
         lux::ecs::componentSchemaId("test.position"),
         1,
-        lux::ecs::ComponentSnapshotMode::Copy,
+        lux::ecs::EComponentSnapshotPolicy::COPY,
         {},
-        nullptr,
         lifetime
     );
     auto cache = lux::ecs::makeComponentSchema<DerivedCache>(
         lux::ecs::componentSchemaId("test.derived_cache"),
         1,
-        lux::ecs::ComponentSnapshotMode::Rebuild
+        lux::ecs::EComponentSnapshotPolicy::REBUILD
     );
 
     auto built = lux::ecs::ComponentSchemaSet::build({position});
@@ -193,8 +251,14 @@ int main()
     assert(!duplicate);
     assert(duplicate.error().code == lux::ecs::ESchemaError::DUPLICATE_SCHEMA_ID);
 
-    position.operations.clone = nullptr;
-    auto invalid_copy = lux::ecs::ComponentSchemaSet::build({position});
+    auto invalid_copy_schema = lux::ecs::makeComponentSchema<NonCopy>(
+        lux::ecs::componentSchemaId("test.non-copy"),
+        1,
+        lux::ecs::EComponentSnapshotPolicy::COPY
+    );
+    auto invalid_copy = lux::ecs::ComponentSchemaSet::build(
+        {invalid_copy_schema}
+    );
     assert(!invalid_copy);
     assert(invalid_copy.error().code == lux::ecs::ESchemaError::COPY_WITHOUT_CLONE);
 
@@ -225,9 +289,20 @@ int main()
         reflection,
         "test.reflected",
         1,
-        lux::ecs::ComponentSnapshotMode::Copy
+        lux::ecs::EComponentSnapshotPolicy::COPY,
+        lux::ecs::EGeneratedComponentCodec::REFLECTED
     );
     assert(reflected_schema.codec.present());
+    auto rebuild_with_codec = lux::ecs::makeComponentSchema<RebuildPersistent>(
+        lux::ecs::componentSchemaId("test.rebuild-persistent"),
+        1,
+        lux::ecs::EComponentSnapshotPolicy::REBUILD,
+        lux::ecs::ComponentCodec{&encodeRebuild, &decodeRebuild}
+    );
+    auto policy_matrix = lux::ecs::ComponentSchemaSet::build(
+        {position, cache, reflected_schema, rebuild_with_codec}
+    );
+    assert(policy_matrix);
 
     lux::ecs::World source;
     auto source_edit_result = source.edit();

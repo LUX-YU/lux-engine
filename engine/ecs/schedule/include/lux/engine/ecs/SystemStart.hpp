@@ -7,6 +7,11 @@ namespace lux::ecs
     class SystemStart final
     {
       public:
+        [[nodiscard]] bool boundTo(const World& world) const noexcept
+        {
+            return world_ == std::addressof(world);
+        }
+
         [[nodiscard]] bool valid(Entity entity) const noexcept
         {
             return world_->valid(entity);

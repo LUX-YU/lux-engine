@@ -38,6 +38,12 @@ PersistentEntityIndex build 都要求 construction-owner thread 上的 Idle Worl
 LXWS v1 和 TaggedProperty 的结构字段使用逐字节 LE primitives；Tagged writer
 直接写 destination 并回填 property count，不再保存第二份 Property payload。
 
+Hierarchy v2 不再公开 `rebuild/preorder/subtree/setEdge`，也不在 mutation helper
+中先改 derived cache。`reparent/detach/destroySubtree` 只验证并修改 Parent；
+`HierarchySystem` 从 Parent/Entity journal 增量维护 generation-aware intrusive
+adjacency。children range 无分配，hierarchy change stream 固定 65,536 records；
+首次同步或上游 cursor resync 时先在 temporary state 完整校验，再原子 swap。
+
 Schedule v2 的 lifetime edge API 命名为 `ScheduleEdit::require(consumer,
 provider)`；设计文档中的伪代码 `requires(...)` 在 C++ 中是保留关键字，不能作为
 成员函数标识符。该命名差异不改变“只有 hard requirement 才进入 lifetime DAG”的

@@ -1,4 +1,5 @@
 #include <lux/engine/ecs/HierarchySchema.hpp>
+#include <lux/engine/ecs/HierarchySystem.hpp>
 #include <lux/engine/ecs/PersistentEntity.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/Transform.hpp>
@@ -49,8 +50,19 @@ namespace
         auto edit_result = schedule.edit();
         assert(edit_result);
         auto edit = std::move(*edit_result);
-        assert(edit.add(std::make_unique<lux::ecs::Transform3DSystem>(hierarchy)));
-        assert(edit.add(std::make_unique<lux::ecs::Transform2DSystem>(hierarchy)));
+        const auto hierarchy_system = edit.add(
+            std::make_unique<lux::ecs::HierarchySystem>(hierarchy),
+            lux::ecs::SystemPhase::PreUpdate
+        );
+        const auto transform3d = edit.add(
+            std::make_unique<lux::ecs::Transform3DSystem>(hierarchy)
+        );
+        const auto transform2d = edit.add(
+            std::make_unique<lux::ecs::Transform2DSystem>(hierarchy)
+        );
+        assert(hierarchy_system && transform3d && transform2d);
+        edit.require(transform3d, hierarchy_system);
+        edit.require(transform2d, hierarchy_system);
         assert(edit.commit());
         schedule.run(1.0F / 60.0F, 1u);
     }
@@ -100,7 +112,7 @@ int main()
             Eigen::Vector2f::Ones(),
         }
     );
-    assert(lux::ecs::setParent(edit, hierarchy, child, root));
+    assert(lux::ecs::reparent(edit, child, root));
     edit = {};
 
     {
@@ -108,12 +120,19 @@ int main()
         auto schedule_edit_result = schedule.edit();
         assert(schedule_edit_result);
         auto schedule_edit = std::move(*schedule_edit_result);
-        assert(schedule_edit.add(
+        const auto hierarchy_system = schedule_edit.add(
+            std::make_unique<lux::ecs::HierarchySystem>(hierarchy),
+            lux::ecs::SystemPhase::PreUpdate
+        );
+        const auto transform3d = schedule_edit.add(
             std::make_unique<lux::ecs::Transform3DSystem>(hierarchy)
-        ));
-        assert(schedule_edit.add(
+        );
+        const auto transform2d = schedule_edit.add(
             std::make_unique<lux::ecs::Transform2DSystem>(hierarchy)
-        ));
+        );
+        assert(hierarchy_system && transform3d && transform2d);
+        schedule_edit.require(transform3d, hierarchy_system);
+        schedule_edit.require(transform2d, hierarchy_system);
         assert(schedule_edit.commit());
 
         schedule.run(1.0F / 60.0F, 1u);

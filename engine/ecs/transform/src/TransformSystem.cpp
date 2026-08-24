@@ -50,18 +50,6 @@ namespace lux::ecs
             }
         };
 
-        struct RemoveParent final
-        {
-            Entity entity{NullEntity};
-
-            void apply(WorldEdit& edit) noexcept
-            {
-                const World& world = detail::WorldEditAccess::world(edit);
-                if (world.valid(entity) && world.find<Parent>(entity) != nullptr)
-                    edit.erase<Parent>(entity);
-            }
-        };
-
         [[nodiscard]] Eigen::Affine2f localMatrix(const Transform2D& value) noexcept
         {
             Eigen::Affine2f result = Eigen::Affine2f::Identity();
@@ -100,26 +88,6 @@ namespace lux::ecs
                     dirty_all = true;
                     dirty.clear();
                 }
-            }
-
-            [[nodiscard]] bool removeInvalidParents(
-                SystemFrame& frame
-            ) noexcept
-            {
-                bool queued{};
-                for (auto [entity, parent] : frame.query<Read<Parent>>())
-                {
-                    if (parent.entity != entity && frame.valid(parent.entity))
-                        continue;
-                    if (frame.commands().push(RemoveParent{entity}) ==
-                        ECommandResult::ACCEPTED)
-                        queued = true;
-                    else
-                        ++discarded_commands;
-                }
-                if (queued)
-                    dirty_all = true;
-                return queued;
             }
 
             [[nodiscard]] Matrix resolve(
@@ -183,9 +151,7 @@ namespace lux::ecs
                     }
                 }
 
-                if (removeInvalidParents(frame))
-                    return;
-                if (!hierarchy->rebuild())
+                if (!hierarchy->synchronized())
                 {
                     ++invalid_hierarchy;
                     dirty_all = true;
@@ -212,8 +178,21 @@ namespace lux::ecs
                             if (!frame.valid(entity))
                                 continue;
                             targets.insert(entity);
-                            for (const Entity child : hierarchy->subtree(entity))
-                                targets.insert(child);
+                            traversal.clear();
+                            for (const Entity child : hierarchy->children(entity))
+                                traversal.push_back(child);
+                            while (!traversal.empty())
+                            {
+                                const Entity child = traversal.back();
+                                traversal.pop_back();
+                                if (!targets.insert(child).second)
+                                    continue;
+                                for (const Entity descendant :
+                                     hierarchy->children(child))
+                                {
+                                    traversal.push_back(descendant);
+                                }
+                            }
                         }
                     }
 
@@ -253,6 +232,7 @@ namespace lux::ecs
             ChangeCursor<Parent> parent_cursor;
             ChangeCursor<Local> local_cursor;
             std::vector<Entity> dirty;
+            std::vector<Entity> traversal;
             std::unordered_set<Entity> targets;
             std::unordered_set<Entity> visiting;
             std::unordered_map<Entity, Matrix> computed;
@@ -270,9 +250,12 @@ namespace lux::ecs
                 {lux::cxx::typeToken<Local>(), EAccessMode::READ},
                 {lux::cxx::typeToken<Derived>(), EAccessMode::WRITE},
             };
+            static const ExternalAccess external[]{
+                {lux::cxx::typeToken<HierarchyIndex>(), EAccessMode::READ},
+            };
             return SystemAccess{
                 std::span<const ComponentAccess>{components},
-                {},
+                std::span<const ExternalAccess>{external},
                 true,
             };
         }

@@ -56,6 +56,27 @@ provider)`；设计文档中的伪代码 `requires(...)` 在 C++ 中是保留关
 成员函数标识符。该命名差异不改变“只有 hard requirement 才进入 lifetime DAG”的
 语义。
 
+## 重稳定实施结果
+
+Change Journal 最终实现为一个 World-wide 4 KiB reusable block arena。每个
+component/entity stream 只保存 block 指针环；全局按 oldest unpinned block 回收，
+cursor 只保存 epoch/sequence。固定 cursor 导致暂时无法回收时，stream 在 unpin 后
+建立新 baseline，确保 bounded policy 不退化为隐藏的无界分配。
+
+ReadQuery 直接包装 EnTT const `view.each()` iterator，不在每个 entity 上重新执行
+registry lookup。100k/1m 的 30-sample median 都优于对应 raw EnTT fixture，满足约
+5% overhead gate。Snapshot 1m 从早期诊断版本的非线性 journal copying 修正为
+88.789/97.090/94.916 ms capture/instantiate/restore median。
+
+ECS component annotation vocabulary 最终由 `ecs::schema` 的独立安装头
+`ComponentAnnotations.hpp` 提供。它只在 meta parse-time 展开 annotation，不带
+meta/reflection runtime 类型或 binary closure。Android 的分离安装前缀验证了
+Parent/Transform 不再依靠 Windows 聚合 include prefix 偶然找到
+`MetaAnnotations.hpp`。
+
+本 ADR 的实现矩阵已完成，但公开 API 状态只提升为 Freeze Candidate；独立审阅
+仍是冻结的必要条件。
+
 ## Stop line
 
 L1 v2 完成完整 correctness/performance/install/cross-platform 矩阵后只能成为

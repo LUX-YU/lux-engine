@@ -1,7 +1,7 @@
 #pragma once
 
+#include <lux/engine/ecs/ComponentAnnotations.hpp>
 #include <lux/engine/ecs/Entity.hpp>
-#include <lux/engine/meta/MetaAnnotations.hpp>
 
 namespace lux::ecs
 {

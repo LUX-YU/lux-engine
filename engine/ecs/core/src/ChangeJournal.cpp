@@ -9,8 +9,6 @@ namespace lux::ecs::detail
 {
     namespace
     {
-        constexpr std::size_t kBlockBytes = 4096U;
-
         [[nodiscard]] const JournalRecord& recordAt(
             const JournalStream& stream,
             std::uint64_t sequence
@@ -19,28 +17,51 @@ namespace lux::ecs::detail
             require(
                 sequence >= stream.oldest_sequence &&
                 sequence < stream.next_sequence &&
-                sequence >= stream.minimum_available &&
                 stream.count != 0
             );
             const std::size_t offset = static_cast<std::size_t>(
                 sequence - stream.oldest_sequence
             );
             require(offset < stream.count);
-            const std::size_t index = (stream.start + offset) % stream.records.size();
-            const JournalRecord& result = stream.records[index];
+            const std::size_t block_offset =
+                offset / kJournalRecordsPerBlock;
+            const std::size_t record_offset =
+                offset % kJournalRecordsPerBlock;
+            require(block_offset < stream.block_count);
+            const std::size_t block_index =
+                (stream.block_start + block_offset) % stream.blocks.size();
+            const JournalBlock* block = stream.blocks[block_index];
+            require(block != nullptr && record_offset < block->count);
+            const JournalRecord& result = block->records[record_offset];
             require(result.sequence == sequence);
             return result;
         }
     } // namespace
 
     ChangeJournal::ChangeJournal(ChangeJournalConfigValue config)
-        : config_(config)
+        : config_(config),
+          max_blocks_(config.max_bytes / kJournalBlockBytes)
     {
         require(config_.initial_bytes <= config_.max_bytes);
-        require(config_.max_bytes >= kBlockBytes);
+        require(max_blocks_ != 0U);
         component_streams_.reserve(
-            std::max<std::size_t>(8, config_.initial_bytes / kBlockBytes)
+            std::max<std::size_t>(
+                8,
+                config_.initial_bytes / kJournalBlockBytes
+            )
         );
+        const std::size_t initial_blocks = std::min(
+            max_blocks_,
+            config_.initial_bytes / kJournalBlockBytes
+        );
+        owned_blocks_.reserve(initial_blocks);
+        free_blocks_.reserve(initial_blocks);
+        for (std::size_t index{}; index < initial_blocks; ++index)
+        {
+            auto block = std::make_unique<JournalBlock>();
+            free_blocks_.push_back(block.get());
+            owned_blocks_.push_back(std::move(block));
+        }
     }
 
     ChangeJournal::~ChangeJournal() noexcept = default;
@@ -79,33 +100,46 @@ namespace lux::ecs::detail
         }
     }
 
-    bool ChangeJournal::grow(JournalStream& stream) noexcept
+    JournalBlock* ChangeJournal::blockAt(
+        const JournalStream& stream,
+        std::size_t offset
+    ) noexcept
     {
-        const std::size_t records_per_block = std::max<std::size_t>(
-            1,
-            kBlockBytes / sizeof(JournalRecord)
-        );
-        const std::size_t old_capacity = stream.records.size();
-        const std::size_t requested = old_capacity + records_per_block;
-        const std::size_t added_bytes = records_per_block * sizeof(JournalRecord);
-        if (allocated_bytes_ > config_.max_bytes ||
-            added_bytes > config_.max_bytes - allocated_bytes_)
-        {
-            return false;
-        }
+        require(offset < stream.block_count && !stream.blocks.empty());
+        return stream.blocks[
+            (stream.block_start + offset) % stream.blocks.size()
+        ];
+    }
 
+    bool ChangeJournal::attachBlock(
+        JournalStream& stream,
+        JournalBlock& block
+    ) noexcept
+    {
         try
         {
-            std::vector<JournalRecord> replacement(requested);
-            for (std::size_t index{}; index < stream.count; ++index)
+            if (stream.block_count == stream.blocks.size())
             {
-                replacement[index] = stream.records.empty()
-                    ? JournalRecord{}
-                    : stream.records[(stream.start + index) % stream.records.size()];
+                const std::size_t old_capacity = stream.blocks.size();
+                const std::size_t new_capacity = std::min(
+                    max_blocks_,
+                    std::max<std::size_t>(1U, old_capacity * 2U)
+                );
+                if (new_capacity <= old_capacity)
+                    return false;
+                std::vector<JournalBlock*> replacement(new_capacity);
+                for (std::size_t index{}; index < stream.block_count; ++index)
+                    replacement[index] = blockAt(stream, index);
+                stream.blocks.swap(replacement);
+                stream.block_start = 0U;
             }
-            stream.records.swap(replacement);
-            stream.start = 0;
-            allocated_bytes_ += added_bytes;
+            const std::size_t index =
+                (stream.block_start + stream.block_count) %
+                stream.blocks.size();
+            block.count = 0U;
+            block.first_write = 0U;
+            stream.blocks[index] = std::addressof(block);
+            ++stream.block_count;
             return true;
         }
         catch (...)
@@ -114,37 +148,141 @@ namespace lux::ecs::detail
         }
     }
 
+    JournalBlock* ChangeJournal::detachFrontBlock(
+        JournalStream& stream
+    ) noexcept
+    {
+        require(stream.block_count != 0U);
+        JournalBlock* block = stream.blocks[stream.block_start];
+        require(block != nullptr && block->count != 0U);
+        stream.block_start =
+            (stream.block_start + 1U) % stream.blocks.size();
+        --stream.block_count;
+        require(stream.count >= block->count);
+        stream.count -= block->count;
+        stream.oldest_sequence = stream.block_count == 0U
+            ? stream.next_sequence
+            : blockAt(stream, 0U)->records[0].sequence;
+        stream.minimum_available = std::max(
+            stream.minimum_available,
+            stream.oldest_sequence
+        );
+        block->count = 0U;
+        block->first_write = 0U;
+        if (stream.block_count == 0U)
+            stream.block_start = 0U;
+        return block;
+    }
+
+    void ChangeJournal::discardStream(JournalStream& stream) noexcept
+    {
+        require(stream.pins == 0U);
+        while (stream.block_count != 0U)
+            free_blocks_.push_back(detachFrontBlock(stream));
+        stream.count = 0U;
+        stream.oldest_sequence = stream.next_sequence;
+        stream.minimum_available = stream.next_sequence;
+        stream.reset_pending = false;
+    }
+
+    JournalStream* ChangeJournal::oldestEvictableStream() noexcept
+    {
+        JournalStream* result{};
+        const auto consider = [&result](JournalStream& candidate) noexcept
+        {
+            if (candidate.pins != 0U || candidate.block_count == 0U)
+                return;
+            if (result == nullptr ||
+                blockAt(candidate, 0U)->first_write <
+                    blockAt(*result, 0U)->first_write)
+            {
+                result = std::addressof(candidate);
+            }
+        };
+        consider(entity_stream_);
+        for (auto& [_, stream] : component_streams_)
+            consider(*stream);
+        return result;
+    }
+
+    JournalBlock* ChangeJournal::acquireBlock(
+        JournalStream& stream
+    ) noexcept
+    {
+        JournalBlock* block{};
+        if (!free_blocks_.empty())
+        {
+            block = free_blocks_.back();
+            free_blocks_.pop_back();
+        }
+        else if (owned_blocks_.size() < max_blocks_)
+        {
+            try
+            {
+                auto owned = std::make_unique<JournalBlock>();
+                block = owned.get();
+                owned_blocks_.push_back(std::move(owned));
+            }
+            catch (...)
+            {
+                return nullptr;
+            }
+        }
+        else
+        {
+            JournalStream* victim = oldestEvictableStream();
+            if (victim == nullptr)
+                return nullptr;
+            block = detachFrontBlock(*victim);
+        }
+
+        if (!attachBlock(stream, *block))
+        {
+            free_blocks_.push_back(block);
+            return nullptr;
+        }
+        return block;
+    }
+
     void ChangeJournal::append(
         JournalStream& stream,
         Entity entity,
         std::uint8_t kind
     ) noexcept
     {
-        const std::uint64_t sequence = stream.next_sequence++;
-        stream.last_write = ++write_sequence_;
-
-        if (stream.records.empty() && !grow(stream))
+        if (stream.reset_pending)
         {
-            stream.minimum_available = stream.next_sequence;
-            return;
-        }
-        if (stream.count == stream.records.size())
-            (void)grow(stream);
-        if (stream.count == stream.records.size())
-        {
-            if (stream.pins != 0)
+            if (stream.pins != 0U)
             {
+                ++stream.next_sequence;
                 stream.minimum_available = stream.next_sequence;
                 return;
             }
-            stream.start = (stream.start + 1) % stream.records.size();
-            ++stream.oldest_sequence;
-            --stream.count;
+            discardStream(stream);
         }
 
-        const std::size_t index = (stream.start + stream.count) %
-            stream.records.size();
-        stream.records[index] = JournalRecord{sequence, entity, kind};
+        const std::uint64_t sequence = stream.next_sequence;
+        JournalBlock* block = stream.block_count == 0U
+            ? nullptr
+            : blockAt(stream, stream.block_count - 1U);
+        if (block == nullptr || block->count == kJournalRecordsPerBlock)
+        {
+            block = acquireBlock(stream);
+            if (block == nullptr)
+            {
+                ++stream.next_sequence;
+                stream.minimum_available = stream.next_sequence;
+                stream.reset_pending = true;
+                return;
+            }
+        }
+
+        ++stream.next_sequence;
+        stream.last_write = ++write_sequence_;
+        if (block->count == 0U)
+            block->first_write = stream.last_write;
+        block->records[block->count] = JournalRecord{sequence, entity, kind};
+        ++block->count;
         ++stream.count;
         stream.minimum_available = std::max(
             stream.minimum_available,
@@ -266,14 +404,15 @@ namespace lux::ecs::detail
         ++epoch_;
         if (epoch_ == 0)
             ++epoch_;
-        const auto reset = [](JournalStream& stream) noexcept
+        const auto reset = [this](JournalStream& stream) noexcept
         {
-            require(stream.pins == 0);
-            stream.start = 0;
-            stream.count = 0;
+            require(stream.pins == 0U);
+            discardStream(stream);
             stream.oldest_sequence = 1;
             stream.next_sequence = 1;
             stream.minimum_available = 1;
+            stream.last_write = 0U;
+            stream.reset_pending = false;
         };
         reset(entity_stream_);
         for (auto& [_, stream] : component_streams_)

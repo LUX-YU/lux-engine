@@ -23,6 +23,7 @@ component_include_directories(
     INSTALL_TIME include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 
 target_compile_definitions(hierarchy PRIVATE LUX_ENGINE_ECS_HIERARCHY_LIBRARY)

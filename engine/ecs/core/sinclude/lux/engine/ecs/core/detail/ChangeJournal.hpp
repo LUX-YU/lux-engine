@@ -5,6 +5,7 @@
 #include <lux/engine/ecs/Query.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -26,16 +27,34 @@ namespace lux::ecs::detail
         std::uint8_t kind{};
     };
 
+    inline constexpr std::size_t kJournalBlockBytes = 4096U;
+    inline constexpr std::size_t kJournalBlockHeaderBytes =
+        sizeof(std::size_t) + sizeof(std::uint64_t);
+    inline constexpr std::size_t kJournalRecordsPerBlock =
+        (kJournalBlockBytes - kJournalBlockHeaderBytes) /
+        sizeof(JournalRecord);
+    static_assert(kJournalRecordsPerBlock != 0U);
+
+    struct JournalBlock final
+    {
+        std::size_t count{};
+        std::uint64_t first_write{};
+        std::array<JournalRecord, kJournalRecordsPerBlock> records{};
+    };
+    static_assert(sizeof(JournalBlock) <= kJournalBlockBytes);
+
     struct JournalStream final
     {
-        std::vector<JournalRecord> records;
-        std::size_t start{};
+        std::vector<JournalBlock*> blocks;
+        std::size_t block_start{};
+        std::size_t block_count{};
         std::size_t count{};
         std::uint64_t oldest_sequence{1};
         std::uint64_t next_sequence{1};
         std::uint64_t minimum_available{1};
         std::uint64_t last_write{};
         mutable std::size_t pins{};
+        bool reset_pending{};
     };
 
     class LUX_ENGINE_ECS_CORE_PUBLIC ChangeJournal final
@@ -93,7 +112,20 @@ namespace lux::ecs::detail
       private:
         [[nodiscard]] JournalStream* ensureStream(std::uint64_t storage) noexcept;
         void append(JournalStream& stream, Entity entity, std::uint8_t kind) noexcept;
-        [[nodiscard]] bool grow(JournalStream& stream) noexcept;
+        [[nodiscard]] JournalBlock* acquireBlock(JournalStream& stream) noexcept;
+        [[nodiscard]] bool attachBlock(
+            JournalStream& stream,
+            JournalBlock& block
+        ) noexcept;
+        [[nodiscard]] JournalBlock* detachFrontBlock(
+            JournalStream& stream
+        ) noexcept;
+        void discardStream(JournalStream& stream) noexcept;
+        [[nodiscard]] JournalStream* oldestEvictableStream() noexcept;
+        [[nodiscard]] static JournalBlock* blockAt(
+            const JournalStream& stream,
+            std::size_t offset
+        ) noexcept;
 
         template <class Component>
         [[nodiscard]] ComponentChanges<Component> readComponent(
@@ -144,7 +176,9 @@ namespace lux::ecs::detail
             component_streams_;
         JournalStream entity_stream_;
         ChangeJournalConfigValue config_;
-        std::size_t allocated_bytes_{};
+        std::vector<std::unique_ptr<JournalBlock>> owned_blocks_;
+        std::vector<JournalBlock*> free_blocks_;
+        std::size_t max_blocks_{};
         std::uint64_t write_sequence_{};
         std::uint32_t epoch_{1};
     };

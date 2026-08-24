@@ -112,20 +112,16 @@ namespace lux::ecs
 
             template <class Value>
             using ViewComponent = std::conditional_t<
-                std::is_const_v<Registry>,
+                std::is_const_v<Registry> || !AccessTraits<Value>::kWrite,
                 const Component<Value>,
                 Component<Value>>;
 
             using View = decltype(
                 std::declval<Registry&>().template view<ViewComponent<Access>...>()
             );
-            using BaseIterator = decltype(std::declval<View&>().begin());
-
-            template <class Value>
-            using Reference = std::conditional_t<
-                AccessTraits<Value>::kWrite,
-                Component<Value>&,
-                const Component<Value>&>;
+            using BaseIterator = decltype(
+                std::declval<View&>().each().begin()
+            );
 
           public:
             class Iterator final
@@ -153,21 +149,18 @@ namespace lux::ecs
 
                 [[nodiscard]] auto operator*() const
                 {
-                    const Entity entity = *iterator_;
+                    auto result = *iterator_;
+                    const Entity entity = std::get<0>(result);
                     (recordWrite<Access>(entity), ...);
-                    return std::tuple<Entity, Reference<Access>...>{
-                        entity,
-                        reference<Access>(entity)...};
+                    return result;
                 }
 
               private:
                 Iterator(
-                    Registry& registry,
                     BaseIterator iterator,
                     ChangeRecorder recorder
                 ) noexcept
-                    : registry_(std::addressof(registry)),
-                      iterator_(iterator),
+                    : iterator_(iterator),
                       recorder_(recorder)
                 {
                 }
@@ -185,17 +178,6 @@ namespace lux::ecs
                     }
                 }
 
-                template <class Value>
-                [[nodiscard]] Reference<Value> reference(Entity entity) const
-                {
-                    auto& value = registry_->template get<ViewComponent<Value>>(entity);
-                    if constexpr (AccessTraits<Value>::kWrite)
-                        return value;
-                    else
-                        return std::as_const(value);
-                }
-
-                Registry* registry_{};
                 BaseIterator iterator_{};
                 ChangeRecorder recorder_{};
 
@@ -203,8 +185,7 @@ namespace lux::ecs
             };
 
             BasicQuery(Registry& registry, ChangeRecorder recorder = {})
-                : registry_(std::addressof(registry)),
-                  view_(registry.template view<ViewComponent<Access>...>()),
+                : view_(registry.template view<ViewComponent<Access>...>()),
                   recorder_(recorder)
             {
                 static_assert(sizeof...(Access) != 0);
@@ -215,16 +196,15 @@ namespace lux::ecs
 
             [[nodiscard]] Iterator begin()
             {
-                return Iterator(*registry_, view_.begin(), recorder_);
+                return Iterator(view_.each().begin(), recorder_);
             }
 
             [[nodiscard]] Iterator end()
             {
-                return Iterator(*registry_, view_.end(), recorder_);
+                return Iterator(view_.each().end(), recorder_);
             }
 
           private:
-            Registry* registry_{};
             View view_;
             ChangeRecorder recorder_{};
         };

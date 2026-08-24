@@ -140,4 +140,48 @@ int main()
         small_journal.read(overflow_cursor).status() ==
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
     );
+
+    small_edit.update<Position>(
+        small_entity,
+        [](Position& value) noexcept
+        {
+            ++value.value;
+        }
+    );
+    auto pinned = small_journal.read(overflow_cursor);
+    assert(pinned.status() == lux::ecs::EChangeReadStatus::CURRENT);
+    assert(pinned.size() == 1U);
+    for (int index{}; index < 512; ++index)
+    {
+        small_edit.update<Position>(
+            small_entity,
+            [](Position& value) noexcept
+            {
+                ++value.value;
+            }
+        );
+    }
+    assert((*pinned.begin()).entity == small_entity);
+    pinned = {};
+    small_edit.update<Position>(
+        small_entity,
+        [](Position& value) noexcept
+        {
+            ++value.value;
+        }
+    );
+    assert(
+        small_journal.read(overflow_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
+    small_edit.update<Position>(
+        small_entity,
+        [](Position& value) noexcept
+        {
+            ++value.value;
+        }
+    );
+    const auto recovered = small_journal.read(overflow_cursor);
+    assert(recovered.status() == lux::ecs::EChangeReadStatus::CURRENT);
+    assert(recovered.size() == 1U);
 }

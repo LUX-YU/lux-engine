@@ -16,29 +16,6 @@
 /// Mark a struct/class for reflection.
 #define LUX_CLASS(...)    LUX_META(luxref::class, ##__VA_ARGS__)
 
-/// Mark an internal ECS component. Generated metadata describes the component
-/// as Copy snapshot data with the default reflected codec. Composition collects
-/// generated descriptors into an immutable ComponentSchemaSet.
-///
-/// Intentionally non-variadic: libclang's parser tooling does not reliably
-/// honour the `, ##__VA_ARGS__` GCC extension when the macro mixes
-/// fixed-position arguments with variadic ones, so users can't pass extra
-/// `key=value` pairs at the call site. Add per-component knobs as
-/// dedicated annotations or member-level `LUX_MEMBER` keys instead.
-#define LUX_COMPONENT() \
-    LUX_META(luxref::class, component=true, snapshot=copy, codec=reflected)
-
-/// Mark a portable Copy component with an explicit stable schema identity.
-#define LUX_COMPONENT_SCHEMA(name, version) \
-    LUX_META(luxref::class, component=true, schema_name=name, \
-             schema_version=version, snapshot=copy, codec=reflected)
-
-/// Mark a derived component that is rebuilt after snapshot/restore and has no
-/// generic persistence codec.
-#define LUX_REBUILD_COMPONENT_SCHEMA(name, version) \
-    LUX_META(luxref::class, component=true, schema_name=name, \
-             schema_version=version, snapshot=rebuild, codec=none)
-
 /// Mark a free function for reflection.
 #define LUX_FUNC(...)     LUX_META(luxref::function, ##__VA_ARGS__)
 

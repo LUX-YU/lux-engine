@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/ecs/ComponentAnnotations.hpp>
 #include <lux/engine/meta/MetaAnnotations.hpp>
 
 #include <cstdint>

@@ -173,6 +173,33 @@ if(EXISTS "${transform_system_source}")
     endif()
 endif()
 
+foreach(component_header IN ITEMS
+    "${source_root}/engine/ecs/hierarchy/include/lux/engine/ecs/Parent.hpp"
+    "${source_root}/engine/ecs/transform/include/lux/engine/ecs/Transform.hpp"
+)
+    if(EXISTS "${component_header}")
+        file(READ "${component_header}" component_contract)
+        if(component_contract MATCHES "lux/engine/meta/MetaAnnotations.hpp")
+            message(FATAL_ERROR
+                "Architecture: canonical ECS component header '${component_header}' acquired the optional reflection adapter closure."
+            )
+        endif()
+    endif()
+endforeach()
+
+foreach(installed_consumer IN ITEMS
+    core_schedule
+    object_affinity
+    schema_reflection_persistence
+)
+    if(NOT EXISTS
+       "${source_root}/test/l1_installed_consumer/${installed_consumer}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "Architecture: missing independent L1 installed consumer '${installed_consumer}'."
+        )
+    endif()
+endforeach()
+
 file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/CMakeLists.txt"
     "${source_root}/modules/CMakeLists.txt"

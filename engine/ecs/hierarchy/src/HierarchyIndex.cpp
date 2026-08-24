@@ -282,6 +282,7 @@ namespace lux::ecs
                 std::size_t maximum_index{};
                 for (auto [child, link] : frame.query<Read<Parent>>())
                 {
+                    ++visited_nodes_last_update;
                     if (link.entity == NullEntity ||
                         !frame.valid(link.entity))
                     {
@@ -486,6 +487,7 @@ namespace lux::ecs
 
         void synchronize(SystemFrame& frame) noexcept
         {
+            visited_nodes_last_update = 0U;
             auto parent_changes = frame.changes(parent_cursor);
             auto entity_changes = frame.entityChanges(entity_cursor);
             if (parent_changes.status() == EChangeReadStatus::RESYNC_REQUIRED ||
@@ -501,6 +503,7 @@ namespace lux::ecs
             std::size_t maximum_index = nodes.empty() ? 0U : nodes.size() - 1U;
             for (const ComponentChange change : parent_changes)
             {
+                ++visited_nodes_last_update;
                 maximum_index = std::max(
                     maximum_index, entityIndex(change.entity)
                 );
@@ -527,6 +530,7 @@ namespace lux::ecs
             const WorldCommands commands = frame.commands();
             for (const EntityChange change : entity_changes)
             {
+                ++visited_nodes_last_update;
                 if (change.kind == EEntityChangeKind::DESTROYED)
                     removeEntity(change.entity, commands);
             }
@@ -554,6 +558,7 @@ namespace lux::ecs
         std::uint32_t epoch{1};
         ChangeCursor<Parent> parent_cursor;
         EntityChangeCursor entity_cursor;
+        std::size_t visited_nodes_last_update{};
         EHierarchyError last_error{EHierarchyError::NONE};
         bool synchronized{};
     };
@@ -632,6 +637,11 @@ namespace lux::ecs
     void HierarchyIndex::synchronize(SystemFrame& frame) noexcept
     {
         impl_->synchronize(frame);
+    }
+
+    std::size_t HierarchyIndex::visitedNodesLastUpdate() const noexcept
+    {
+        return impl_->visited_nodes_last_update;
     }
 
     Entity HierarchyIndex::firstChild(Entity parent) const noexcept

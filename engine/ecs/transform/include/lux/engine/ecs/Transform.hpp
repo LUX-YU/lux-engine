@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/meta/MetaAnnotations.hpp>
+#include <lux/engine/ecs/ComponentAnnotations.hpp>
 
 #include <Eigen/Geometry>
 

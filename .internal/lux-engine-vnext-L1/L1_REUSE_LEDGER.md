@@ -3,6 +3,7 @@
 | 旧路径/概念 | 新 owner | 裁决 | 只复用的内容 | 新验证 |
 |---|---|---|---|---|
 | `ecs/core/Registry.*` | `engine/ecs/core/World.*` | REWRITE | entity generation/high-water 行为 | `vnext_ecs_core`, snapshot allocator tests |
+| old unbounded/implicit change observation | World-owned Change Journal | REWRITE | cursor intent only | independent cursor, pinned overflow/resync, baseline/restore and high-water block reuse tests |
 | public Registry inheritance / `World::registry()` | 无 | RETIRE | 无 | negative compile probes |
 | `EcsCommandBuffer` / deferred commands | `WorldCommands` + private block arenas | REWRITE | reservation/preflight、producer order | schedule command contract test |
 | producer downcast commands | 无 | RETIRE | 无 | command concept 只暴露 `apply(WorldEdit&)` |

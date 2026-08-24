@@ -1,52 +1,76 @@
-# vNext L1 Freeze Audit — 2026-08-24
+# vNext L1 v2 Freeze Candidate Audit — 2026-08-24
 
 ## 结论
 
-Independent review rejected the L1 freeze candidate. The current implementation
-is retained as the v1 reference, but public contracts remain unfrozen until L1
-v2 restabilization completes.
+本轮重稳定已达到以下状态：
 
-当前状态为 `Architecture Direction Accepted / Freeze Rejected / L1 v2
-Restabilization Required`。下列历史验证数据仅描述 v1 candidate，不构成当前
-Freeze 结论；在 v2 完整矩阵和独立审阅完成前，Render、Physics、Script、
-Streaming 等 domain migration 保持 STOP。
+- `Architecture Accepted`
+- `Correctness Hardened`
+- `Performance Passed`
+- `Public API Freeze Candidate`
+- `Independent audit Required`
 
-## 构建与测试
+这不是 API 已冻结声明。独立审阅前，Render、Physics、Animation、Script、
+Streaming 等 domain migration 以及建立在 L1 之上的 L2/L3 产品工作继续 STOP。
+
+## 构建与测试矩阵
 
 | 矩阵 | 结果 |
 |---|---|
-| Windows RelWithDebInfo | `target all -j 4 -k 0` 通过；CTest 55/55；第二轮 `ninja: no work to do` |
-| Windows Debug | `target all -j 4 -k 0` 通过；CTest 42/42；第二轮 `ninja: no work to do` |
-| Android arm64 PLAYER | L0 + L1 `target all -j 4 -k 0` 通过；第二轮 `ninja: no work to do`；交叉构建不运行目标侧 CTest |
-| Fresh install | 空 staging prefix 安装 522 个文件，installed-architecture gate 通过 |
-| Installed consumer | 仅用 `find_package(lux-engine-resource/ecs COMPONENTS ...)` 和公开 alias 编译、链接、运行通过 |
+| Windows RelWithDebInfo | `target all -j 4 -k 0` 通过；CTest 66/66；第二轮 `ninja: no work to do` |
+| Windows Debug | `target all -j 4 -k 0` 通过；CTest 53/53；第二轮 `ninja: no work to do` |
+| Windows Hardened Contracts | 独立 RelWithDebInfo tree，`LUX_ECS_CONTRACT_CHECKS=ON`；CTest 66/66；第二轮 no-work |
+| Android arm64 PLAYER | L0 + L1 `target all -j 4 -k 0` 通过；第二轮 no-work；交叉构建不运行目标侧 CTest |
+| Fresh install | 空 staging lineage 安装 534 个文件；installed-architecture gate 通过 |
+| Installed consumers | `core+schedule`、`core+schedule+object`、`schema_reflection+persistence` 三个独立工程均配置、链接、运行通过 |
 
-三套 `compile_commands.json` 的 legacy path 与退休 API 命中数均为 0。安装树与 manifest 不含 legacy、`sinclude/pinclude`、旧 Registry/System/asset runtime 头。
+Android 的独立 engine/lux-cxx 前缀曾揭示 component annotation 的隐式 meta
+include。最终 `ComponentAnnotations.hpp` 由 `ecs::schema` 安装，Parent/Transform
+不再取得 optional reflection adapter closure；source gate 阻止该依赖回归。
 
-## 关键契约
+## v2 关键契约
 
-- 单 World/单 live Schedule、跨 Schedule handle、stale generation、required type/set、phase contradiction、cycle、stable tie-break、reverse close frontier均有测试。
-- `System` 与 `LuxObject` 正交；Object System 固定 owner-thread singleton lane；Event handler 只写 inbox，下一 tick 才通过 commands 修改 World。
-- Snapshot 验证 allocator/entity bits/generation/free-list/next allocation，Copy/Rebuild 分流，以及 live Schedule/observer 下 restore 拒绝。
-- LXWS v1 验证 deterministic bytes、unknown field/schema、version migration port、local/stable relocation、截断/损坏/aggregate limits 和 round trip。
-- hierarchy + transform pilot 验证 reparent/cycle、dirty subtree、destroy、任意安装顺序、snapshot rebuild 与 persistence round trip。
-- 旧 `.luxasset` v1 fixture 和 LUXPAK v2 size/SHA-256 golden 均通过新的 manager-less L0 reader。
-- 负向编译 probes 验证 `World::registry()`、Registry header、`SceneServices`、`ISystem` 与 `ScheduleBuilder` 均不可用。
+- `World` 公开面只读；`WorldEdit` 与 declared `SystemFrame` Write capability 是
+  canonical mutation 入口。bounded Change Journal 使用全 World 4 KiB block
+  arena、epoch/sequence cursors 和确定性的 overflow/resync。
+- Snapshot instantiate、LXWS materialize 建立 fresh baseline；restore 保留目标
+  `WorldConfig`、复用 journal blocks，并递增 epoch。
+- Schedule 的 execution DAG、access partition 与 lifetime DAG 分离；同 concrete
+  type 多实例、phase barriers、hard `require`、stale/cross handle、stop/remove
+  frontier 与 rollback 均有测试。
+- Schedule 不 include/link Object。Object affinity validator 在 consumer TU
+  type-erase；pure schedule installed consumer 不获得 Object/reflection closure。
+- Schema 的 snapshot policy、codec 与 reflection projection 正交；
+  `schema_reflection` 是独立 optional component。
+- Parent 是 hierarchy 唯一 truth；HierarchyIndex 与 WorldTransform 都从 change
+  streams 增量重建。no-change 与 leaf-dirty 的访问计数进入性能 gate。
+- LXWS v1 magic/version 保持不变；所有结构字段使用 explicit little-endian
+  primitives，真实多 archetype/component round trip、corruption 和 limits 通过。
+- 负向编译 probes 覆盖 mutable World get/query、`SystemFrame::world()`、旧
+  Registry/observer/attach/System extrinsic API、`SceneServices`、`ISystem` 和
+  `ScheduleBuilder`。
 
 ## 性能
 
-原始 CSV、方法和 median/p95 见 `../benchmarks/20260824-vnext-l1/`。
+原始 30-sample CSV、方法和 median/p95 见
+`../benchmarks/20260824-vnext-l1/l1-v2-benchmark.csv`。
 
-- 100k entity、20 次遍历：raw EnTT median 989.2 µs，`World::view` 988.0 µs，差值 -0.12%。
-- Schedule steady run 与 command arena warm common path 的 allocation-event 计数为 0。
-- Snapshot 与 LXWS 的 10k/100k/1m 数据呈线性扩展，实体 hot loop 中没有 reflection/string lookup。
+- 100k/1m ReadQuery median 相对 raw EnTT 分别为 -9.33%/-7.54%，没有超过约
+  5% steady-state overhead 上限。
+- Schedule 1/16/64/256/1024 systems 和 reserved commands steady path 的
+  allocation-event 计数为 0。
+- 1m hierarchy no-change 的 visited nodes 为 0；100k-entity World 的 Transform leaf
+  dirty visited nodes 为 1，而不是 World size。
+- Snapshot 1m capture/instantiate/restore median 为
+  88.789/97.090/94.916 ms；LXWS 的真实 mixed-data 1m encode/decode median 为
+  305.950/418.042 ms。
 
-## Quarantine 与 Git
+## Quarantine 与 STOP 条件
 
-- Git 索引将迁移表达为 1007 个历史 rename：旧 ECS 373、旧 Engine 553、退休 asset runtime 81；没有残留的删除+未跟踪对。
-- 既有三个安装前缀中的旧 ECS/asset public surface 已可恢复地移动到 `E:/SyncForder/CodeRepos/install-quarantine/20260824-*`，随后只同步当前公开头。
-- `legacy/` 不参与 configure、compile、install、link、codegen 或 package。
-
-## STOP 条件
-
-在另立 L1-8 domain migration 工作前保持 STOP。Physics、Render ECS、Animation、Audio、Input、Script、Navigation、Streaming 等不在本轮迁移；L2 TaskSystem/AssetStore/AssetClient/AssetLease/ExtensionLoader 也未创建。
+- `legacy/` 仍不参与 configure、compile、install、link、codegen 或 package，且
+  本轮没有物理删除。
+- Physics、Render ECS、Animation、Audio、Input、Script、Navigation、Streaming
+  等未迁移；L2 TaskSystem/AssetStore/AssetClient/AssetLease/ExtensionLoader 未创建。
+- 只有独立审阅接受本 Freeze Candidate，且后续首个新 L3 headless Scene 完成
+  construction、tick、snapshot/restore 与 persistence round trip 后，才可另立
+  domain migration 或 legacy 删除工作。

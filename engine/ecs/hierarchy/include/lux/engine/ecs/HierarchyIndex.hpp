@@ -14,6 +14,11 @@
 
 namespace lux::ecs
 {
+    namespace detail
+    {
+        struct HierarchyIndexTestAccess;
+    }
+
     enum class EHierarchyError : std::uint8_t
     {
         NONE,
@@ -234,6 +239,7 @@ namespace lux::ecs
       private:
         [[nodiscard]] bool canStart(const SystemStart& start) const noexcept;
         void synchronize(SystemFrame& frame) noexcept;
+        [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] Entity firstChild(Entity parent) const noexcept;
         [[nodiscard]] Entity nextSibling(Entity entity) const noexcept;
         [[nodiscard]] HierarchyChange changeAt(
@@ -247,6 +253,7 @@ namespace lux::ecs
         friend class HierarchyChildren::Iterator;
         friend class HierarchyChanges::Iterator;
         friend class HierarchySystem;
+        friend struct detail::HierarchyIndexTestAccess;
     };
 
     [[nodiscard]] LUX_ENGINE_ECS_HIERARCHY_PUBLIC

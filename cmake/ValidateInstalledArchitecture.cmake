@@ -46,4 +46,31 @@ if(DEFINED INSTALL_MANIFEST AND EXISTS "${INSTALL_MANIFEST}")
     endif()
 endif()
 
+foreach(required_component IN ITEMS
+    core
+    schedule
+    schema_reflection
+    persistence
+)
+    set(component_targets
+        "${prefix}/share/lux-engine-ecs/${required_component}/lux-engine-ecs-${required_component}-config-targets.cmake"
+    )
+    if(NOT EXISTS "${component_targets}")
+        message(FATAL_ERROR
+            "Installed ECS component is missing: ${required_component}"
+        )
+    endif()
+endforeach()
+
+set(schedule_targets
+    "${prefix}/share/lux-engine-ecs/schedule/lux-engine-ecs-schedule-config-targets.cmake"
+)
+file(READ "${schedule_targets}" schedule_contract)
+if(schedule_contract MATCHES
+   "lux::engine::core::object|reflection_runtime|schema_reflection")
+    message(FATAL_ERROR
+        "Installed core + schedule closure depends on Object/reflection"
+    )
+endif()
+
 message(STATUS "Installed architecture surface is clean: ${prefix}")

@@ -14,8 +14,18 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 - [x] V2-6: Replace Hierarchy with a generation-aware incremental index and
       bounded change stream.
 - [x] V2-7: Replace Transform with an incremental change-driven implementation.
-- [ ] V2-8: Re-run representative performance, installed-consumer, hardened,
+- [x] V2-8: Re-run representative performance, installed-consumer, hardened,
       Windows and Android gates; publish only a Freeze Candidate.
+
+Validation: RelWithDebInfo and hardened-contract trees pass 66/66, Debug passes
+53/53, and Android arm64 PLAYER completes the L0+L1 cross build. All four trees
+are no-work on the required second Ninja invocation. A fresh 534-file staging
+lineage passes the installed architecture gate; the three independent
+`core+schedule`, `core+schedule+object`, and `schema_reflection+persistence`
+consumers configure, link and run. The retained v2 benchmark has 5 warmups and
+30 samples per case. Final status is `Architecture Accepted / Correctness
+Hardened / Performance Passed / Public API Freeze Candidate / Independent audit
+Required`.
 
 Stop line: no Render/Physics/Animation/Script/Streaming domain migration, L2
 AssetStore, or L3 Scene composition may build on the v1 public contracts.

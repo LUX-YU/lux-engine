@@ -39,12 +39,20 @@ if(_lux_ecs_components)
 endif()
 
 add_executable(ecs_l1_benchmark test/l1_benchmark.cpp)
+target_include_directories(
+    ecs_l1_benchmark
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/hierarchy/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/transform/pinclude
+)
 target_link_libraries(
     ecs_l1_benchmark
     PRIVATE
         lux::engine::ecs::schedule
         lux::engine::ecs::snapshot
         lux::engine::ecs::persistence
+        lux::engine::ecs::hierarchy
+        lux::engine::ecs::transform
         lux::engine::core::object
 )
 lux_classify_target(

@@ -29,7 +29,7 @@ namespace lux::asset::detail
             PakPage page{};
             std::uint64_t offset{0u};
             lux::cxx::algorithm::Sha256Digest digest;
-            asset_id_t maximum_id{};
+            AssetId maximum_id{};
             std::string maximum_path;
         };
 
@@ -46,18 +46,18 @@ namespace lux::asset::detail
             return false;
         }
 
-        void writeUuid(ByteWriter& writer, const asset_id_t& id)
+        void writeUuid(ByteWriter& writer, const AssetId& id)
         {
-            const auto bytes = id.as_bytes();
+            const auto bytes = id.bytes();
             writer.bytes(bytes.data(), bytes.size());
         }
 
-        bool readUuid(ByteReader& reader, asset_id_t& id)
+        bool readUuid(ByteReader& reader, AssetId& id)
         {
             std::array<std::uint8_t, 16> bytes{};
             if (!reader.bytes(bytes.data(), bytes.size()))
                 return false;
-            id = asset_id_t{bytes};
+            id = AssetId{bytes};
             return true;
         }
 

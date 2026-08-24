@@ -4,7 +4,8 @@
 // complete .luxasset or another opaque record (for example a Scene Section).
 // Interpretation, residency and reference counting belong to the caller.
 
-#include <lux/engine/resource/asset/Asset.hpp>
+#include <lux/engine/resource/asset/AssetId.hpp>
+#include <lux/engine/resource/asset/AssetStorageError.hpp>
 #include <lux/engine/resource/asset/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -57,31 +58,31 @@ namespace lux::asset
 
     struct ProviderEntry
     {
-        asset_id_t id{};
+        AssetId id{};
         std::uint32_t magic_number{0u};
         std::string vpath;
         bool tombstone{false};
     };
 
-    /// UUID/relative-path to opaque bytes. Providers never create LuxAsset,
-    /// acquire AssetRef tickets or mutate AssetManager state.
+    /// UUID/relative-path to opaque bytes. Providers have no cache, residency,
+    /// reference-counting, decoding, or asynchronous orchestration behavior.
     class LUX_ASSET_PUBLIC IAssetProvider
     {
     public:
         virtual ~IAssetProvider() = default;
 
-        [[nodiscard]] virtual std::optional<asset_id_t>
+        [[nodiscard]] virtual std::optional<AssetId>
         resolve(std::string_view rel_vpath) const = 0;
 
-        [[nodiscard]] virtual bool contains(const asset_id_t& id) const = 0;
+        [[nodiscard]] virtual bool contains(const AssetId& id) const = 0;
 
-        [[nodiscard]] virtual lux::cxx::expected<AssetBlob, EAssetError>
-        open(const asset_id_t& id) const = 0;
+        [[nodiscard]] virtual lux::cxx::expected<AssetBlob, EAssetStorageError>
+        open(const AssetId& id) const = 0;
 
         virtual void enumerate(
             const std::function<void(const ProviderEntry&)>& fn) const = 0;
 
         [[nodiscard]] virtual std::optional<std::string>
-        pathOf(const asset_id_t& id) const = 0;
+        pathOf(const AssetId& id) const = 0;
     };
 } // namespace lux::asset

@@ -55,20 +55,20 @@ namespace lux::classic_mesh
 
         void writeUuid(
             ByteWriter& writer,
-            const lux::asset::asset_id_t& value)
+            const lux::asset::AssetId& value)
         {
-            const auto bytes = value.as_bytes();
+            const auto bytes = value.bytes();
             writer.bytes(bytes.data(), bytes.size());
         }
 
         [[nodiscard]] bool readUuid(
             ByteReader& reader,
-            lux::asset::asset_id_t& value) noexcept
+            lux::asset::AssetId& value) noexcept
         {
             std::array<std::uint8_t, 16u> bytes{};
             if (!reader.bytes(bytes.data(), bytes.size()))
                 return false;
-            value = lux::asset::asset_id_t{bytes};
+            value = lux::asset::AssetId{bytes};
             return true;
         }
     } // namespace
@@ -109,7 +109,7 @@ namespace lux::classic_mesh
         for (const auto& instance : blob.instances)
         {
             if (!finite(instance) || !unitQuaternion(instance.rotation) ||
-                instance.mesh_asset.is_nil() ||
+                instance.mesh_asset.isNull() ||
                 (instance.flags & ~kClassicMeshInstanceKnownFlags) != 0u)
             {
                 return lux::cxx::unexpected(failure(

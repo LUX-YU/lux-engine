@@ -8,7 +8,7 @@
  * Both are pure metadata — the pixels live in the referenced TEXTURE asset.
  * Like every rdesc type, these know nothing about the asset system: asset
  * references are carried as OPAQUE 16-byte uuid values (the asset layer
- * converts to/from lux::asset::asset_id_t); the description module keeps its
+ * converts to/from the asset layer's strong soft identity); the description module keeps its
  * "no asset headers" boundary (the ImportedMaterialDesc convention).
  *
  * The two types share one header deliberately: a clip is meaningless without
@@ -27,7 +27,7 @@ namespace lux::rdesc
     /// Opaque asset reference (the raw bytes of a uuid). All-zero = null.
     using OpaqueAssetId = std::array<std::uint8_t, 16>;
 
-    [[nodiscard]] inline bool isNullAssetRef(const OpaqueAssetId& id) noexcept
+    [[nodiscard]] inline bool isNullOpaqueAssetId(const OpaqueAssetId& id) noexcept
     {
         for (const auto b : id) if (b != 0) return false;
         return true;

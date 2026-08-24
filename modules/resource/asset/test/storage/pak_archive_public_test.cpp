@@ -58,7 +58,7 @@ namespace
         return false;
     }
 
-    [[nodiscard]] asset_id_t makeId(std::uint64_t ordinal)
+    [[nodiscard]] AssetId makeId(std::uint64_t ordinal)
     {
         std::array<std::uint8_t, 16> bytes{};
         bytes[0] = 0x42u;
@@ -70,7 +70,7 @@ namespace
                 ordinal >> (index * 8u)
             );
         }
-        return asset_id_t{bytes};
+        return AssetId{bytes};
     }
 
     [[nodiscard]] std::string bulkPath(std::size_t index)

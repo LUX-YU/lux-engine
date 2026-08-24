@@ -12,7 +12,7 @@
 //  It is a PBR-superset (the sole consumer, materialToGraph, already collapses
 //  LegacyLit -> PBR and drops the Phong/Oren-Nayar closures), so one flat struct
 //  covers every importer branch. Texture slots carry only a `texture_index`
-//  ordinal into the model's per-material texture-UUID list (asset_id_t is an
+//  ordinal into the model's per-material stable texture-UUID list (the
 //  asset-tier type; this is a description-tier POD with no asset dependency — the
 //  UUIDs live out-of-band on ModelAsset, keyed by this ordinal, exactly mirroring
 //  the old TextureBinding.texture_index == MaterialAsset::textureAssetIds()[i]).

@@ -14,12 +14,12 @@ namespace
 {
     using namespace lux::classic_mesh;
 
-    [[nodiscard]] lux::asset::asset_id_t assetId(std::uint8_t seed)
+    [[nodiscard]] lux::asset::AssetId assetId(std::uint8_t seed)
     {
         std::array<std::uint8_t, 16u> bytes{};
         for (std::size_t index = 0u; index < bytes.size(); ++index)
             bytes[index] = static_cast<std::uint8_t>(seed + index);
-        return lux::asset::asset_id_t{bytes};
+        return lux::asset::AssetId{bytes};
     }
 
     [[nodiscard]] ClassicMeshBatchBlobV1 makeBlob()

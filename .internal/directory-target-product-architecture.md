@@ -155,3 +155,10 @@ remains.
   Renderer/Vulkan。legacy/next/drawdata 兄弟 target 全部删除。
 - Engine/Editor 现有 Panel/UISystem/ui_vulkan consumer 因 legacy UI 删除而不可构建，
   其迁移属于后续专项重设计，不得在 Foundation 层增加 shim/alias。
+# vNext L1 supersession notice（2026-08-24）
+
+本文件下方的旧产品图是历史输入，其中 `ISystem`、`SceneServices`、顶层 `ecs/` 与
+runtime asset owner 的表述已被
+[`lux-engine-vnext-L1/ADR-20260824_L1_ECS_System_Object_Asset边界.md`](lux-engine-vnext-L1/ADR-20260824_L1_ECS_System_Object_Asset边界.md)
+替代。当前活跃构建的 SSOT 是 `modules/` + `engine/ecs/`；旧图只用于后续逐域审计，
+不得据此恢复旧 include、target、alias 或 service locator。

@@ -8,7 +8,7 @@
 
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <lux/cxx/algorithm/Sha256.hpp>
-#include <lux/engine/resource/asset/Asset.hpp>
+#include <lux/engine/resource/asset/AssetId.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/resource/asset/visibility.h>
 
@@ -95,7 +95,7 @@ namespace lux::asset::detail
 
     struct PakEntry final
     {
-        asset_id_t id{};
+        AssetId id{};
         std::uint64_t offset{0u};
         std::uint64_t size{0u};
         std::uint64_t uncompressed_size{0u};
@@ -113,7 +113,7 @@ namespace lux::asset::detail
 
     struct PakEntryChild final
     {
-        asset_id_t maximum_key{};
+        AssetId maximum_key{};
         std::uint64_t offset{0u};
         lux::cxx::algorithm::Sha256Digest digest;
     };
@@ -121,7 +121,7 @@ namespace lux::asset::detail
     struct PakPathRow final
     {
         std::string vpath;
-        asset_id_t id{};
+        AssetId id{};
     };
 
     struct PakPathChild final

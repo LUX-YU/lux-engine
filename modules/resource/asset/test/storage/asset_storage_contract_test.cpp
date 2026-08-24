@@ -1,5 +1,3 @@
-#include <lux/engine/resource/asset/AssetCodecCatalog.hpp>
-#include <lux/engine/resource/asset/AssetManager.hpp>
 #include <lux/engine/resource/asset/storage/AssetProvider.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 
@@ -19,14 +17,14 @@ namespace
 {
     using namespace lux::asset;
 
-    [[nodiscard]] asset_id_t id(std::uint8_t value)
+    [[nodiscard]] AssetId id(std::uint8_t value)
     {
         std::array<std::uint8_t, 16> bytes{};
         bytes[0] = 0x51u;
         bytes[6] = 0x40u;
         bytes[8] = 0x80u;
         bytes[15] = value;
-        return asset_id_t{bytes};
+        return AssetId{bytes};
     }
 
     class FakeProvider final : public IAssetProvider
@@ -39,7 +37,7 @@ namespace
         };
 
         void add(
-            asset_id_t record_id,
+            AssetId record_id,
             std::string path,
             std::uint32_t magic,
             std::initializer_list<std::byte> bytes,
@@ -58,7 +56,7 @@ namespace
             });
         }
 
-        [[nodiscard]] std::optional<asset_id_t> resolve(
+        [[nodiscard]] std::optional<AssetId> resolve(
             std::string_view path
         ) const override
         {
@@ -66,14 +64,14 @@ namespace
             {
                 if (record.entry.vpath == path)
                     return record.entry.tombstone
-                        ? std::optional<asset_id_t>{}
-                        : std::optional<asset_id_t>{record.entry.id};
+                        ? std::optional<AssetId>{}
+                        : std::optional<AssetId>{record.entry.id};
             }
             return std::nullopt;
         }
 
         [[nodiscard]] bool contains(
-            const asset_id_t& record_id
+            const AssetId& record_id
         ) const override
         {
             for (const auto& record : records_)
@@ -81,18 +79,18 @@ namespace
             return false;
         }
 
-        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetError> open(
-            const asset_id_t& record_id
+        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError> open(
+            const AssetId& record_id
         ) const override
         {
             for (const auto& record : records_)
             {
                 if (record.entry.id != record_id) continue;
                 if (record.entry.tombstone)
-                    return lux::cxx::unexpected(EAssetError::ASSET_NOT_EXIST);
+                    return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
                 return AssetBlob::fromShared(record.bytes);
             }
-            return lux::cxx::unexpected(EAssetError::ASSET_NOT_EXIST);
+            return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
         }
 
         void enumerate(
@@ -103,7 +101,7 @@ namespace
         }
 
         [[nodiscard]] std::optional<std::string> pathOf(
-            const asset_id_t& record_id
+            const AssetId& record_id
         ) const override
         {
             for (const auto& record : records_)
@@ -205,16 +203,10 @@ int main()
         "shadow-aware enumeration exposes one winning opaque record"
     );
 
-    AssetManager manager{runtimeAssetCodecCatalog()};
-    manager.setVfs(vfs);
+    const auto direct_open = vfs->open(patch_id);
     success &= check(
-        !manager.isReferenced(patch_id),
-        "opaque record begins outside the AssetRef ledger"
-    );
-    const auto manager_open = manager.vfs()->open(patch_id);
-    success &= check(
-        manager_open && !manager.isReferenced(patch_id),
-        "Provider/VFS read does not mutate the AssetManager reference ledger"
+        direct_open && direct_open->bytes.size() == 4u,
+        "VFS is a synchronous byte mechanism without runtime ownership state"
     );
 
     vfs->unmount(patch_mount);

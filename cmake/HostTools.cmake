@@ -7,8 +7,7 @@ function(lux_configure_host_tools)
     if(CMAKE_CROSSCOMPILING AND NOT LUX_HOST_TOOLS_PREFIX)
         message(FATAL_ERROR
             "Cross builds require LUX_HOST_TOOLS_PREFIX. It must name the "
-            "host-native install prefix containing lux_meta_generator, "
-            "lux_asset_packer and lux_shader_emitter."
+            "host-native install prefix containing lux_meta_generator."
         )
     endif()
 

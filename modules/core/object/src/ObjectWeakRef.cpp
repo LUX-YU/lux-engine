@@ -3,11 +3,27 @@
 #include <cstdlib>
 #include <thread>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 #include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/object/detail/ObjectState.hpp>
 
 namespace lux::object
 {
+    namespace
+    {
+        [[noreturn]] void failObjectContract() noexcept
+        {
+#if defined(_MSC_VER)
+            __fastfail(7u);
+#else
+            std::abort();
+#endif
+        }
+    } // namespace
+
     bool ObjectWeakRef::alive() const noexcept
     {
         return state_ && state_->object.load(std::memory_order_acquire) != nullptr;
@@ -19,7 +35,7 @@ namespace lux::object
             return nullptr;
 #if !defined(NDEBUG) || defined(LUX_OBJECT_CONTRACT_CHECKS)
         if (state_->affinity != std::this_thread::get_id())
-            std::abort();
+            failObjectContract();
 #endif
         return state_->object.load(std::memory_order_acquire);
     }

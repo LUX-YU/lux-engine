@@ -54,13 +54,13 @@ namespace lux::asset
 
         /// Absolute canonical vpath -> uuid. Nil uuid when the path is
         /// illegal, the root is unmounted, or no provider knows it.
-        [[nodiscard]] asset_id_t resolve(std::string_view vpath) const;
+        [[nodiscard]] AssetId resolve(std::string_view vpath) const;
 
         /// uuid -> full .luxasset image from the WINNING mount: first
         /// provider (in mount order) whose contains() is true. A tombstone
         /// wins the claim and then fails the open — that IS shadow-delete.
-        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetError>
-        open(const asset_id_t& id) const;
+        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError>
+        open(const AssetId& id) const;
 
         /// Shadow-aware enumeration: each id/path appears once, from its
         /// winning mount, with the ABSOLUTE vpath; tombstoned ids appear
@@ -69,7 +69,7 @@ namespace lux::asset
 
         /// Diagnostic reverse lookup: absolute vpath of the winning mount's
         /// entry for this id, if any.
-        [[nodiscard]] std::optional<std::string> pathOf(const asset_id_t& id) const;
+        [[nodiscard]] std::optional<std::string> pathOf(const AssetId& id) const;
 
         [[nodiscard]] std::size_t mountCount() const noexcept { return mounts_.size(); }
 

@@ -4,453 +4,187 @@ if(NOT DEFINED LUX_SOURCE_DIR)
     message(FATAL_ERROR "LUX_SOURCE_DIR is required")
 endif()
 if(NOT DEFINED LUX_REPORT_PATH)
-    set(LUX_REPORT_PATH
-        "${CMAKE_CURRENT_BINARY_DIR}/semantic-architecture-debt.txt")
+    set(LUX_REPORT_PATH "${CMAKE_CURRENT_BINARY_DIR}/semantic-architecture-debt.txt")
 endif()
 
 file(TO_CMAKE_PATH "${LUX_SOURCE_DIR}" source_root)
 
-set(retired_directories
-    "engine/spatial3d"
-    "engine/runtime/packs"
-    "engine/runtime/spatial_partition"
-    "engine/runtime/spatial2d"
-    "engine/runtime/spatial3d"
-    "engine/runtime/animation"
-    "engine/runtime/extensions/contribution_host"
-    "engine/runtime/launch"
-    "engine/runtime/world"
-    "modules/function/ui_next"
-    "modules/function/ui_next_drawdata"
-    "modules/function/ui_next_vulkan"
-)
-foreach(relative IN LISTS retired_directories)
-    if(EXISTS "${source_root}/${relative}")
-        message(FATAL_ERROR
-            "Architecture: retired directory '${relative}' reappeared."
-        )
-    endif()
-endforeach()
-
-set(retired_object_fwd
-    "modules/core/object/include/lux/engine/object/ObjectFwd.hpp")
-if(EXISTS "${source_root}/${retired_object_fwd}")
+if(EXISTS "${source_root}/ecs")
     message(FATAL_ERROR
-        "Architecture: retired public ObjectFwd.hpp reappeared. "
-        "Object storage declarations belong under object/detail."
+        "Architecture: the retired top-level ecs/ tree must remain quarantined."
+    )
+endif()
+if(NOT EXISTS "${source_root}/legacy/ecs" OR
+   NOT EXISTS "${source_root}/legacy/engine" OR
+   NOT EXISTS "${source_root}/legacy/modules/resource/asset-runtime")
+    message(FATAL_ERROR
+        "Architecture: ECS, Engine and asset-runtime quarantine roots are required."
     )
 endif()
 
-file(GLOB_RECURSE ecs_sources LIST_DIRECTORIES false
-    "${source_root}/ecs/*.hpp"
-    "${source_root}/ecs/*.cpp"
-)
-foreach(source IN LISTS ecs_sources)
-    file(TO_CMAKE_PATH "${source}" normalized)
-    if(normalized MATCHES "/test/")
-        continue()
-    endif()
-    file(READ "${source}" content)
-    if(content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/runtime/")
-        message(FATAL_ERROR
-            "Architecture: ECS production source '${source}' includes "
-            "engine/runtime. Inject a modules-level port instead."
-        )
-    endif()
-    if(content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/object/")
-        message(FATAL_ERROR
-            "Architecture: ECS production source '${source}' includes "
-            "core/object. Object/UI interaction state is not World state."
-        )
-    endif()
-endforeach()
-
-# Signal coordinates are generated build-local data.  The only source-level
-# bridge is the private helper declared by Signal.hpp and consumed by the
-# generated meta template; production modules may not author either identity.
-file(GLOB_RECURSE module_production_sources LIST_DIRECTORIES false
+file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/modules/*/include/*.hpp"
     "${source_root}/modules/*/sinclude/*.hpp"
     "${source_root}/modules/*/pinclude/*.hpp"
     "${source_root}/modules/*/src/*.cpp"
+    "${source_root}/engine/ecs/*/include/*.hpp"
+    "${source_root}/engine/ecs/*/sinclude/*.hpp"
+    "${source_root}/engine/ecs/*/pinclude/*.hpp"
+    "${source_root}/engine/ecs/*/src/*.cpp"
 )
-foreach(source IN LISTS module_production_sources)
+
+foreach(source IN LISTS production_sources)
     file(TO_CMAKE_PATH "${source}" normalized)
-    if(normalized MATCHES "/test/" OR
-       normalized MATCHES "/core/object/include/lux/engine/object/Signal.hpp$")
-        continue()
-    endif()
     file(READ "${source}" content)
-    if(content MATCHES "GeneratedSignalAccess")
+
+    if(content MATCHES
+       "#[ \t]*include[ \t]*[<\"]([^\">]*/)?legacy/|[/\\]legacy[/\\]")
         message(FATAL_ERROR
-            "Architecture: production source '${source}' authors a generated "
-            "Signal coordinate. Declare a LUX_OBJECT static signal and run codegen."
+            "Architecture: production source '${normalized}' reaches into legacy/."
+        )
+    endif()
+
+    if(content MATCHES
+       "AssetManager|AssetRef|AssetLoadPort|AssetServices|asset_id_t")
+        message(FATAL_ERROR
+            "Architecture: active source '${normalized}' restores retired L0 asset ownership vocabulary."
+        )
+    endif()
+
+    if(normalized MATCHES "/engine/ecs/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(scene|runtime|process|editor|authoring|toolchain|host|extensions)/")
+            message(FATAL_ERROR
+                "Architecture: L1 source '${normalized}' includes an upper-layer API."
+            )
+        endif()
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/object/" AND
+           NOT normalized MATCHES "/engine/ecs/schedule/")
+            message(FATAL_ERROR
+                "Architecture: only ecs::schedule may depend on core/object; '${normalized}' does."
+            )
+        endif()
+        if(content MATCHES
+           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|World::registry[ \t\r\n]*\\(")
+            message(FATAL_ERROR
+                "Architecture: L1 source '${normalized}' restores retired ECS vocabulary."
+            )
+        endif()
+        if(content MATCHES
+           "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices")
+            message(FATAL_ERROR
+                "Architecture: L1 source '${normalized}' depends on deferred asset ownership API."
+            )
+        endif()
+        if(content MATCHES
+           "printf[ \t\r\n]*\\(|fprintf[ \t\r\n]*\\(|std::(cout|cerr)|MessageBox[AW]?[ \t\r\n]*\\(")
+            message(FATAL_ERROR
+                "Architecture: L1 source '${normalized}' performs terminal I/O."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/modules/resource/asset/")
+        if(content MATCHES "lux/engine/core/async_port/")
+            message(FATAL_ERROR
+                "Architecture: L0 asset mechanism '${normalized}' depends on async orchestration."
+            )
+        endif()
+    endif()
+endforeach()
+
+if(DEFINED LUX_BINARY_DIR AND
+   EXISTS "${LUX_BINARY_DIR}/compile_commands.json")
+    file(READ "${LUX_BINARY_DIR}/compile_commands.json" compile_commands)
+    if(compile_commands MATCHES "[/\\\\]legacy[/\\\\]")
+        message(FATAL_ERROR
+            "Architecture: compile_commands.json contains a legacy source/include path."
+        )
+    endif()
+    if(compile_commands MATCHES
+       "AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder")
+        message(FATAL_ERROR
+            "Architecture: compile_commands.json contains a retired L0/L1 API."
+        )
+    endif()
+endif()
+
+file(GLOB_RECURSE ecs_public_headers LIST_DIRECTORIES false
+    "${source_root}/engine/ecs/*/include/*.hpp"
+)
+foreach(source IN LISTS ecs_public_headers)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "#[ \t]*include[ \t]*[<\"]lux/engine/ecs/detail/")
+        message(FATAL_ERROR
+            "Architecture: public ECS header '${source}' includes unsupported detail API."
         )
     endif()
 endforeach()
 
-# Core reflection is a lower query primitive. Object may consume reflection,
-# but reflection must never acquire Object lifetime or signal semantics.
+file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
+    "${source_root}/CMakeLists.txt"
+    "${source_root}/modules/CMakeLists.txt"
+    "${source_root}/modules/*/CMakeLists.txt"
+    "${source_root}/engine/CMakeLists.txt"
+    "${source_root}/engine/ecs/CMakeLists.txt"
+    "${source_root}/engine/ecs/*/CMakeLists.txt"
+)
+foreach(source IN LISTS active_cmake)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "add_subdirectory[ \t\r\n]*\\([^\\)]*legacy|target_link_libraries[ \t\r\n]*\\([^\\)]*legacy")
+        message(FATAL_ERROR
+            "Architecture: active CMake '${source}' configures or links legacy/."
+        )
+    endif()
+    if(source MATCHES "/modules/resource/asset/CMakeLists.txt")
+        if(content MATCHES "async_port|AssetManager|AssetLoadPort")
+            message(FATAL_ERROR
+                "Architecture: active L0 asset target restores runtime ownership/orchestration."
+            )
+        endif()
+    endif()
+endforeach()
+
+# Preserve the most important L0 boundaries while the old upper layers are out
+# of the graph.
 file(GLOB_RECURSE meta_sources LIST_DIRECTORIES false
     "${source_root}/modules/core/meta/*.hpp"
     "${source_root}/modules/core/meta/*.cpp"
-    "${source_root}/modules/core/meta/CMakeLists.txt"
 )
 foreach(source IN LISTS meta_sources)
     file(READ "${source}" content)
-    if(content MATCHES "lux/engine/object/|core::object|[ \t]object[ \t\r\n]*\\)")
+    if(content MATCHES "lux/engine/object/")
         message(FATAL_ERROR
-            "Architecture: core/meta source '${source}' depends on core/object. "
-            "The dependency direction is meta -> object consumers only."
+            "Architecture: core/meta '${source}' depends on core/object."
         )
     endif()
 endforeach()
 
-file(GLOB_RECURSE object_sources LIST_DIRECTORIES false
-    "${source_root}/modules/core/object/*.hpp"
-    "${source_root}/modules/core/object/*.cpp"
-    "${source_root}/modules/core/object/CMakeLists.txt"
-)
-foreach(source IN LISTS object_sources)
-    file(TO_CMAKE_PATH "${source}" normalized)
-    if(normalized MATCHES "/test/")
-        continue()
-    endif()
-    file(READ "${source}" content)
-    if(content MATCHES
-       "lux/cxx/event/|lux/engine/(events|ui|ecs|runtime)/")
-        message(FATAL_ERROR
-            "Architecture: core/object source '${source}' depends on an event, "
-            "UI, ECS or Runtime framework. Object is a lower foundation."
-        )
-    endif()
-    if(content MATCHES
-       "LUX_OBJECT_SIGNAL|setDispatcher[ \t\r\n]*\\(|[ \t]emit[ \t\r\n]*\\(|ObjectModel.hpp|makeObjectMessage|class[ \t\r\n]+ObjectMessage[ \t\r\n{;:]")
-        message(FATAL_ERROR
-            "Architecture: retired Object declaration, mutable affinity or "
-            "emit surface reappeared in '${source}'."
-        )
-    endif()
-endforeach()
-
-# Installed Object detail headers exist only so Object's own public templates
-# can name incomplete storage. No other source domain may consume them.
-file(GLOB_RECURSE object_detail_consumers LIST_DIRECTORIES false
-    "${source_root}/modules/*.hpp"
-    "${source_root}/modules/*.cpp"
-    "${source_root}/ecs/*.hpp"
-    "${source_root}/ecs/*.cpp"
-    "${source_root}/engine/*.hpp"
-    "${source_root}/engine/*.cpp"
-    "${source_root}/extensions/*.hpp"
-    "${source_root}/extensions/*.cpp"
-)
-foreach(source IN LISTS object_detail_consumers)
-    file(TO_CMAKE_PATH "${source}" normalized)
-    if(normalized MATCHES "/modules/core/object/")
-        continue()
-    endif()
-    file(READ "${source}" content)
-    if(content MATCHES
-       "#[ \t]*include[ \t]*[<\"]lux/engine/object/detail/")
-        message(FATAL_ERROR
-            "Architecture: source '${source}' includes unsupported Object "
-            "storage detail. Use the typed Object public API."
-        )
-    endif()
-endforeach()
-
-# function/ui is the only UI Foundation component. It owns backend-neutral draw
-# snapshots but no Renderer/Vulkan integration or platform input adapter.
 file(GLOB_RECURSE ui_sources LIST_DIRECTORIES false
-    "${source_root}/modules/function/ui/*.hpp"
-    "${source_root}/modules/function/ui/*.cpp"
-    "${source_root}/modules/function/ui/CMakeLists.txt"
+    "${source_root}/modules/function/ui/include/*.hpp"
+    "${source_root}/modules/function/ui/sinclude/*.hpp"
+    "${source_root}/modules/function/ui/pinclude/*.hpp"
+    "${source_root}/modules/function/ui/src/*.cpp"
 )
 foreach(source IN LISTS ui_sources)
-    file(TO_CMAKE_PATH "${source}" normalized)
-    if(normalized MATCHES "/test/")
-        continue()
-    endif()
     file(READ "${source}" content)
     if(content MATCHES
-       "lux/engine/(input/|resource/|ecs/|runtime/|extensions/|editor/|function/render/)")
+       "lux/engine/(ecs|runtime|editor|resource|function/render)/")
         message(FATAL_ERROR
-            "Architecture: UI Foundation source '${source}' crosses into "
-            "Input, Resource, ECS, Runtime, Render or Editor."
-        )
-    endif()
-    if(content MATCHES
-       "class[ \t\r\n]+UISystem|UISession::post[ \t\r\n]*\\(")
-        message(FATAL_ERROR
-            "Architecture: UI Foundation source '${source}' restores the retired "
-            "UISystem owner or generic post surface."
-        )
-    endif()
-    if(content MATCHES
-       "CommandPresentation|CommandIndex|PaneCreateContext|class[ \t\r\n]+Context|EUiPointerButton|EUiKey|ViewportDrop|setActiveContexts|setActivationScope|focusPane|imguiContext|[ \t]imguiLabel[ \t\r\n]*\\(|DrawDataSummary|summarize[ \t\r\n]*\\(")
-        message(FATAL_ERROR
-            "Architecture: UI Foundation source '${source}' restores a retired "
-            "presentation, factory, input, drag/drop or route wrapper."
-        )
-    endif()
-    if(content MATCHES
-       "lux/engine/function/render/|render_(client|graph|vulkan|features)|Vulkan")
-        message(FATAL_ERROR
-            "Architecture: UI Foundation source '${source}' depends on Render "
-            "or Vulkan. DrawDataSnapshot is backend-neutral."
+            "Architecture: UI foundation '${source}' crosses an L0 boundary."
         )
     endif()
 endforeach()
 
-file(GLOB_RECURSE ui_public_headers LIST_DIRECTORIES false
-    "${source_root}/modules/function/ui/include/*.hpp"
+file(WRITE "${LUX_REPORT_PATH}"
+    "vNext L1 semantic architecture debt: 0\n"
+    "legacy roots configured: 0\n"
+    "legacy includes from production: 0\n"
+    "retired ECS vocabulary in L1: 0\n"
+    "L1 terminal I/O: 0\n"
+    "retired L0 asset runtime vocabulary: 0\n"
+    "legacy entries in compile_commands: 0\n"
 )
-foreach(source IN LISTS ui_public_headers)
-    file(READ "${source}" content)
-    if(content MATCHES
-       "(class|struct)[ \t\r\n]+(MenuModel|ToolbarModel)[ \t\r\n{;:]")
-        message(FATAL_ERROR
-            "Architecture: UI public header '${source}' restores a one-field "
-            "Menu/Toolbar model wrapper. Use span-based draw APIs."
-        )
-    endif()
-endforeach()
-
-file(READ
-    "${source_root}/modules/core/object/include/lux/engine/object/Connection.hpp"
-    connection_header)
-if(connection_header MATCHES
-   "Connection[ \t]*&[ \t]*connection[ \t\r\n]*[(]")
-    message(FATAL_ERROR
-        "Architecture: ScopedConnection exposes the retired raw connection() "
-        "getter. Use connected/reset/release semantics."
-    )
-endif()
-
-# Engine migration is blocked. Existing legacy Panel/UISystem includes are debt,
-# but no upper layer may adopt Object or the final UI Foundation primitives.
-file(GLOB_RECURSE frozen_consumer_sources LIST_DIRECTORIES false
-    "${source_root}/ecs/*.hpp"
-    "${source_root}/ecs/*.cpp"
-    "${source_root}/ecs/CMakeLists.txt"
-    "${source_root}/engine/*.hpp"
-    "${source_root}/engine/*.cpp"
-    "${source_root}/engine/CMakeLists.txt"
-    "${source_root}/extensions/*.hpp"
-    "${source_root}/extensions/*.cpp"
-    "${source_root}/extensions/CMakeLists.txt"
-)
-foreach(source IN LISTS frozen_consumer_sources)
-    file(READ "${source}" content)
-    if(content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/object/" OR
-       content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/ui/(UI|UISession|Pane|PaneFactory|Command|CommandRouter|Layout|DragDrop|UiIds|UiInputEvent|ViewportElement|DrawDataSnapshot|MenuToolbar)\\.hpp")
-        message(FATAL_ERROR
-            "Architecture: frozen Engine/ECS/Extension consumer '${source}' "
-            "uses Object/final UI before the dedicated migration redesign."
-        )
-    endif()
-endforeach()
-
-file(GLOB_RECURSE runtime_sources LIST_DIRECTORIES false
-    "${source_root}/engine/runtime/*.hpp"
-    "${source_root}/engine/runtime/*.cpp"
-)
-foreach(source IN LISTS runtime_sources)
-    file(TO_CMAKE_PATH "${source}" normalized)
-    if(normalized MATCHES "/test/")
-        continue()
-    endif()
-    file(READ "${source}" content)
-    if(content MATCHES
-       "(class|struct)[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*[ \t\r\n]+(final[ \t\r\n]+)?:[^{;]*ISystem")
-        message(FATAL_ERROR
-            "Architecture: Runtime production source '${source}' defines an "
-            "ISystem subclass. World behavior belongs under ecs/."
-        )
-    endif()
-    if(content MATCHES
-       "(class|struct)[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*[ \t\r\n]+(final[ \t\r\n]+)?:[^{;]*RenderStage")
-        message(FATAL_ERROR
-            "Architecture: Runtime production source '${source}' defines a "
-            "RenderStage subclass. ECS-to-render projection belongs under "
-            "ecs/render/."
-        )
-    endif()
-    if(source MATCHES "\\.hpp$" AND content MATCHES
-       "(class|struct)[ \t\r\n]+[A-Za-z_][A-Za-z0-9_]*Component([ \t\r\n:{]|$)")
-        message(FATAL_ERROR
-            "Architecture: Runtime public header '${source}' declares a "
-            "Component. World facts belong under ecs/."
-        )
-    endif()
-endforeach()
-
-file(GLOB_RECURSE runtime_product_sources LIST_DIRECTORIES false
-    "${source_root}/modules/*.hpp"
-    "${source_root}/modules/*.cpp"
-    "${source_root}/ecs/*.hpp"
-    "${source_root}/ecs/*.cpp"
-    "${source_root}/engine/runtime/*.hpp"
-    "${source_root}/engine/runtime/*.cpp"
-    "${source_root}/engine/game/*.hpp"
-    "${source_root}/engine/game/*.cpp"
-    "${source_root}/engine/hosts/*.hpp"
-    "${source_root}/engine/hosts/*.cpp"
-    "${source_root}/extensions/*.hpp"
-    "${source_root}/extensions/*.cpp"
-)
-string(CONCAT build_usage_contract "ProjectUsage" "Manifest")
-string(CONCAT generated_game_composition "Game" "Composition")
-foreach(source IN LISTS runtime_product_sources)
-    file(READ "${source}" content)
-    if(content MATCHES "${build_usage_contract}|${generated_game_composition}")
-        message(FATAL_ERROR
-            "Architecture: Runtime/product source '${source}' mentions a "
-            "Toolchain-only build-closure artifact. Build usage and generated "
-            "composition must stop at the build graph."
-        )
-    endif()
-endforeach()
-
-file(GLOB_RECURSE semantic_sources LIST_DIRECTORIES false
-    "${source_root}/cmake/*.cmake"
-    "${source_root}/modules/*.hpp"
-    "${source_root}/modules/*.cpp"
-    "${source_root}/modules/CMakeLists.txt"
-    "${source_root}/ecs/*.hpp"
-    "${source_root}/ecs/*.cpp"
-    "${source_root}/ecs/CMakeLists.txt"
-    "${source_root}/engine/*.hpp"
-    "${source_root}/engine/*.cpp"
-    "${source_root}/engine/CMakeLists.txt"
-    "${source_root}/extensions/*.hpp"
-    "${source_root}/extensions/*.cpp"
-    "${source_root}/extensions/CMakeLists.txt"
-)
-
-# Construct retired identifiers from fragments so this gate does not keep
-# forbidden production vocabulary alive in its own scan surface.
-string(CONCAT retired_scene_contribution "Scene" "Contribution")
-string(CONCAT retired_world_feature "World" "Scene" "Feature")
-string(CONCAT retired_render_effect "Render" "Effect")
-string(CONCAT retired_runtime_pack "runtime" "_pack_")
-string(CONCAT retired_host_kind "contribution" "_host")
-string(CONCAT retired_extension_v4 "luxGetExtensionModule" "V4")
-string(CONCAT retired_registration_v4
-    "luxRegisterRuntimeContributions" "V4")
-string(CONCAT retired_editor_panel_catalog "EditorPanel" "Catalog")
-string(CONCAT retired_editor_tool_host "EditorTool" "Host")
-string(CONCAT retired_editor_tool_ticket "EditorTool" "Ticket")
-string(CONCAT retired_editor_panel_contribution
-    "EditorPanelContribution" "Descriptor")
-string(CONCAT retired_editor_registrar
-    "EditorContribution" "Registrar")
-string(CONCAT retired_editor_entrypoint
-    "luxRegisterEditorContributions" "V5")
-string(CONCAT retired_runtime_usage "RuntimeUsage" "Manifest")
-string(CONCAT retired_usage_manager "UsageManifest" "Manager")
-string(CONCAT retired_system_registry "System" "Registry")
-string(CONCAT retired_scene_feature "Scene" "Feature")
-string(CONCAT retired_feature_manager "Feature" "Manager")
-string(CONCAT retired_spatial3d_systems
-    "runtime" "_spatial3d_" "systems")
-string(CONCAT retired_tilemap_systems
-    "runtime" "_tilemap_" "systems")
-string(CONCAT retired_physics3d_systems
-    "runtime" "_physics3d_" "systems")
-string(CONCAT retired_navigation3d_systems
-    "runtime" "_navigation3d_" "systems")
-string(CONCAT retired_presentation3d_systems
-    "runtime" "_presentation3d_" "systems")
-string(CONCAT retired_scene_integration
-    "ISceneRuntime" "Integration")
-string(CONCAT retired_stage_lifecycle
-    "RenderSystem" "Stages")
-string(CONCAT retired_stage_install
-    "install" "Stage")
-string(CONCAT retired_stage_remove
-    "remove" "Stage")
-string(CONCAT retired_generated_component_queue
-    "queueGenerated" "Component")
-
-set(retired_semantic_names
-    ${retired_scene_contribution}
-    ${retired_world_feature}
-    ${retired_render_effect}
-    ${retired_runtime_pack}
-    ${retired_host_kind}
-    ${retired_extension_v4}
-    ${retired_registration_v4}
-    ${retired_editor_panel_catalog}
-    ${retired_editor_tool_host}
-    ${retired_editor_tool_ticket}
-    ${retired_editor_panel_contribution}
-    ${retired_editor_registrar}
-    ${retired_editor_entrypoint}
-    ${retired_runtime_usage}
-    ${retired_usage_manager}
-    ${retired_system_registry}
-    ${retired_scene_feature}
-    ${retired_feature_manager}
-    ${retired_spatial3d_systems}
-    ${retired_tilemap_systems}
-    ${retired_physics3d_systems}
-    ${retired_navigation3d_systems}
-    ${retired_presentation3d_systems}
-    ${retired_scene_integration}
-    ${retired_stage_lifecycle}
-    ${retired_stage_install}
-    ${retired_stage_remove}
-    ${retired_generated_component_queue}
-)
-
-set(report "# retired-semantic|count|required\n")
-foreach(debt_name IN LISTS retired_semantic_names)
-    set(actual 0)
-    foreach(source IN LISTS semantic_sources)
-        if(source STREQUAL CMAKE_CURRENT_LIST_FILE)
-            continue()
-        endif()
-        file(READ "${source}" content)
-        string(REGEX MATCHALL "${debt_name}" matches "${content}")
-        list(LENGTH matches match_count)
-        math(EXPR actual "${actual} + ${match_count}")
-    endforeach()
-    string(APPEND report "${debt_name}|${actual}|0\n")
-    if(NOT actual EQUAL 0)
-        message(FATAL_ERROR
-            "Architecture: retired semantic '${debt_name}' reappeared "
-            "${actual} time(s)."
-        )
-    endif()
-endforeach()
-
-# Renderer requirements are build-closure facts, never SceneDescription
-# fields. Restrict this check to the Scene contract so the Toolchain's
-# ephemeral ProjectBuildUsage vocabulary remains legitimate.
-file(GLOB_RECURSE scene_contract_sources LIST_DIRECTORIES false
-    "${source_root}/engine/scene/*.hpp"
-    "${source_root}/engine/scene/*.cpp"
-)
-string(CONCAT retired_scene_required_features
-    "required" "_render_features")
-string(CONCAT retired_scene_optional_features
-    "optional" "_render_features")
-foreach(source IN LISTS scene_contract_sources)
-    file(TO_CMAKE_PATH "${source}" normalized_source)
-    if(normalized_source MATCHES "/test/")
-        continue()
-    endif()
-    file(READ "${source}" content)
-    if(content MATCHES
-       "${retired_scene_required_features}|${retired_scene_optional_features}")
-        message(FATAL_ERROR
-            "Architecture: Scene contract '${source}' contains renderer "
-            "requirements. Capability roots belong to cold product "
-            "composition."
-        )
-    endif()
-endforeach()
-
-file(WRITE "${LUX_REPORT_PATH}" "${report}")

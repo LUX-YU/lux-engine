@@ -54,19 +54,19 @@ namespace lux::asset
         [[nodiscard]] PakProviderStats stats() const noexcept;
 
         // -- IAssetProvider --------------------------------------------------
-        [[nodiscard]] std::optional<asset_id_t>
+        [[nodiscard]] std::optional<AssetId>
         resolve(std::string_view rel_vpath) const override;
 
-        [[nodiscard]] bool contains(const asset_id_t& id) const override;
+        [[nodiscard]] bool contains(const AssetId& id) const override;
 
-        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetError>
-        open(const asset_id_t& id) const override;
+        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError>
+        open(const AssetId& id) const override;
 
         void enumerate(
             const std::function<void(const ProviderEntry&)>& fn) const override;
 
         [[nodiscard]] std::optional<std::string>
-        pathOf(const asset_id_t& id) const override;
+        pathOf(const AssetId& id) const override;
 
     private:
         PakAssetProvider();

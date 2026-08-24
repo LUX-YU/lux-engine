@@ -40,11 +40,11 @@ namespace lux::asset
         std::erase_if(mounts_, [id](const Mount& m) { return m.id == id; });
     }
 
-    asset_id_t AssetVfs::resolve(std::string_view vpath) const
+    AssetId AssetVfs::resolve(std::string_view vpath) const
     {
         const auto parsed = VirtualPath::parse(vpath);
         if (!parsed.has_value())
-            return asset_id_t{};
+            return AssetId{};
 
         const std::string_view rel = parsed.value().relPath();
         for (const Mount& m : mounts_)
@@ -55,27 +55,27 @@ namespace lux::asset
             if (const auto id = m.provider->resolve(rel))
                 return *id;
         }
-        return asset_id_t{};
+        return AssetId{};
     }
 
-    lux::cxx::expected<AssetBlob, EAssetError>
-    AssetVfs::open(const asset_id_t& id) const
+    lux::cxx::expected<AssetBlob, EAssetStorageError>
+    AssetVfs::open(const AssetId& id) const
     {
-        if (id.is_nil())
-            return lux::cxx::unexpected(EAssetError::ASSET_NOT_EXIST);
+        if (id.isNull())
+            return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
 
         for (const Mount& m : mounts_)
         {
             if (m.provider->contains(id))
                 return m.provider->open(id); // tombstone claims + fails here
         }
-        return lux::cxx::unexpected(EAssetError::ASSET_NOT_EXIST);
+        return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
     }
 
     void AssetVfs::enumerate(
         const std::function<void(const ProviderEntry&)>& fn) const
     {
-        std::unordered_set<asset_id_t>  claimed_ids;
+        std::unordered_set<AssetId>  claimed_ids;
         std::unordered_set<std::string> claimed_paths;
 
         for (const Mount& m : mounts_)
@@ -98,9 +98,9 @@ namespace lux::asset
         }
     }
 
-    std::optional<std::string> AssetVfs::pathOf(const asset_id_t& id) const
+    std::optional<std::string> AssetVfs::pathOf(const AssetId& id) const
     {
-        if (id.is_nil())
+        if (id.isNull())
             return std::nullopt;
 
         for (const Mount& m : mounts_)

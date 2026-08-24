@@ -1,5 +1,4 @@
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
-#include <lux/engine/resource/asset/AssetHeaderProbe.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakCodec.hpp>
 
 #include <algorithm>
@@ -102,7 +101,7 @@ namespace lux::asset
 
         [[nodiscard]] lux::cxx::expected<
             std::optional<detail::PakEntry>, std::string>
-        findEntry(const asset_id_t& id) const
+        findEntry(const AssetId& id) const
         {
             auto offset = header.entry_root_offset;
             auto digest = header.entry_root_digest;
@@ -169,7 +168,7 @@ namespace lux::asset
         }
 
         [[nodiscard]] lux::cxx::expected<
-            std::optional<asset_id_t>, std::string>
+            std::optional<AssetId>, std::string>
         findPath(std::string_view path) const
         {
             auto offset = header.path_root_offset;
@@ -203,8 +202,8 @@ namespace lux::asset
                             return row.vpath < key;
                         });
                     if (found == rows.end() || found->vpath != path)
-                        return std::optional<asset_id_t>{};
-                    return std::optional<asset_id_t>{found->id};
+                        return std::optional<AssetId>{};
+                    return std::optional<AssetId>{found->id};
                 }
                 if (page_header.kind != detail::EPakPageKind::PATH_INTERNAL)
                     return lux::cxx::unexpected(
@@ -228,7 +227,7 @@ namespace lux::asset
                         return row.maximum_key < key;
                     });
                 if (child == children.end())
-                    return std::optional<asset_id_t>{};
+                    return std::optional<AssetId>{};
                 offset = child->offset;
                 digest = child->digest;
             }
@@ -320,7 +319,7 @@ namespace lux::asset
         return d_->stats;
     }
 
-    std::optional<asset_id_t>
+    std::optional<AssetId>
     PakAssetProvider::resolve(std::string_view rel_vpath) const
     {
         const auto result = d_->findPath(rel_vpath);
@@ -329,49 +328,49 @@ namespace lux::asset
         return result.value();
     }
 
-    bool PakAssetProvider::contains(const asset_id_t& id) const
+    bool PakAssetProvider::contains(const AssetId& id) const
     {
         const auto result = d_->findEntry(id);
         return result && result.value().has_value();
     }
 
-    lux::cxx::expected<AssetBlob, EAssetError>
-    PakAssetProvider::open(const asset_id_t& id) const
+    lux::cxx::expected<AssetBlob, EAssetStorageError>
+    PakAssetProvider::open(const AssetId& id) const
     {
         const auto found = d_->findEntry(id);
         if (!found)
-            return lux::cxx::unexpected(EAssetError::READ_FILE_FAIL);
+            return lux::cxx::unexpected(EAssetStorageError::CORRUPT_IMAGE);
         if (!found.value() || found.value()->tombstone())
-            return lux::cxx::unexpected(EAssetError::ASSET_NOT_EXIST);
+            return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
         const auto& entry = *found.value();
         if (entry.compression != detail::kPakCompressionNone)
-            return lux::cxx::unexpected(EAssetError::UNSUPPORTED);
+            return lux::cxx::unexpected(EAssetStorageError::UNSUPPORTED);
         if (entry.size == 0u
             || entry.size > std::numeric_limits<std::size_t>::max()
             || entry.offset < 256u
             || entry.offset > d_->header.payload_end
             || entry.size > d_->header.payload_end - entry.offset)
         {
-            return lux::cxx::unexpected(EAssetError::ABNORMAL_FILE_SIZE);
+            return lux::cxx::unexpected(EAssetStorageError::CORRUPT_IMAGE);
         }
 
         auto bytes = std::shared_ptr<std::byte[]>(
             new std::byte[static_cast<std::size_t>(entry.size)]());
         std::ifstream stream(d_->pak_path, std::ios::binary);
         if (!stream)
-            return lux::cxx::unexpected(EAssetError::FILE_OPEN_FAIL);
+            return lux::cxx::unexpected(EAssetStorageError::IO_FAILURE);
         stream.seekg(static_cast<std::streamoff>(entry.offset), std::ios::beg);
         if (!stream.read(
                 reinterpret_cast<char*>(bytes.get()),
                 static_cast<std::streamsize>(entry.size)))
         {
-            return lux::cxx::unexpected(EAssetError::READ_FILE_FAIL);
+            return lux::cxx::unexpected(EAssetStorageError::IO_FAILURE);
         }
         if (lux::cxx::algorithm::Sha256::hash(std::span<const std::byte>{
                 bytes.get(), static_cast<std::size_t>(entry.size)})
             != entry.content_digest)
         {
-            return lux::cxx::unexpected(EAssetError::READ_FILE_FAIL);
+            return lux::cxx::unexpected(EAssetStorageError::CORRUPT_IMAGE);
         }
         return AssetBlob::fromSharedArray(
             std::move(bytes), static_cast<std::size_t>(entry.size));
@@ -411,7 +410,7 @@ namespace lux::asset
     }
 
     std::optional<std::string>
-    PakAssetProvider::pathOf(const asset_id_t& id) const
+    PakAssetProvider::pathOf(const AssetId& id) const
     {
         const auto found = d_->findEntry(id);
         if (!found || !found.value() || found.value()->tombstone()

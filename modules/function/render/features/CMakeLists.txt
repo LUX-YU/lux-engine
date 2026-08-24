@@ -1,3 +1,75 @@
+if(NOT LUX_BUILD_PACKED_RENDER_CONTENT)
+    find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+
+    generate_visibility_header(
+        ENABLE_MACRO_NAME       LUX_ENGINE_FUNCTION_RENDER_FEATURES_LIBRARY
+        PUBLIC_MACRO_NAME       LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC
+        DISABLE_DLL_MACRO_NAME  LUX_ENGINE_FUNCTION_RENDER_FEATURES_DLL_DISABLE
+        GENERATE_FILE_PATH      lux/engine/function/render/features/visibility.h
+    )
+
+    add_component(
+        COMPONENT_NAME render_features
+        NAMESPACE      lux::engine::function
+        SOURCE_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/BuiltinContentProvider.cpp
+    )
+    component_include_directories(
+        render_features
+        BUILD_TIME_EXPORT
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${LUX_GENERATE_HEADER_DIR}
+        INSTALL_TIME include
+    )
+    target_compile_definitions(
+        render_features
+        PRIVATE LUX_ENGINE_FUNCTION_RENDER_FEATURES_LIBRARY
+    )
+    target_link_libraries(
+        render_features
+        PUBLIC
+            lux::engine::function::render_client
+            lux::cxx::compile_time
+    )
+    component_add_internal_dependencies(render_features render_client)
+    component_add_transitive_commands(
+        render_features
+        "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+        "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
+    )
+    lux_classify_target(
+        TARGET  render_features
+        LAYER   FUNCTION
+        PRODUCT RUNTIME
+        ROLE    DOMAIN
+    )
+
+    add_executable(
+        render_builtin_content_seam_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/builtin_content_seam_test.cpp
+    )
+    target_link_libraries(
+        render_builtin_content_seam_test
+        PRIVATE lux::engine::function::render_features
+    )
+    if(MSVC)
+        target_compile_options(render_builtin_content_seam_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(render_builtin_content_seam_test PRIVATE -UNDEBUG)
+    endif()
+    lux_classify_target(
+        TARGET  render_builtin_content_seam_test
+        LAYER   FUNCTION
+        PRODUCT TEST
+        ROLE    DOMAIN
+    )
+    add_test(
+        NAME render_builtin_content_seam_test
+        COMMAND render_builtin_content_seam_test
+    )
+    return()
+endif()
+
 find_package(Vulkan REQUIRED)
 find_package(lux-cxx REQUIRED COMPONENTS core reflection_runtime)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)

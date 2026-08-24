@@ -35,13 +35,13 @@ namespace lux::asset
         if (entries.empty())
             return fail(error_out, "no Pak entries");
 
-        std::unordered_map<asset_id_t, std::size_t> by_id;
+        std::unordered_map<AssetId, std::size_t> by_id;
         std::unordered_map<std::string, std::size_t> by_path;
         std::unordered_map<std::string, std::string> by_folded_path;
         for (std::size_t index = 0u; index < entries.size(); ++index)
         {
             const auto& entry = entries[index];
-            if (entry.id.is_nil())
+            if (entry.id.isNull())
                 return fail(error_out, "Pak entry has nil UUID");
             if (!by_id.emplace(entry.id, index).second)
                 return fail(error_out, "duplicate Pak entry UUID");

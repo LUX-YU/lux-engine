@@ -50,9 +50,9 @@ namespace lux::classic_mesh
         std::array<float, 3u> translation{};
         std::array<float, 4u> rotation{0.0f, 0.0f, 0.0f, 1.0f};
         std::array<float, 3u> scale{1.0f, 1.0f, 1.0f};
-        lux::asset::asset_id_t mesh_asset{};
+        lux::asset::AssetId mesh_asset{};
         /// Nil selects the presentation leaf's explicit default material.
-        lux::asset::asset_id_t material_asset{};
+        lux::asset::AssetId material_asset{};
         std::uint64_t stable_pick_id{0u};
         std::uint32_t rgba8{0xffffffffu};
         std::uint32_t flags{

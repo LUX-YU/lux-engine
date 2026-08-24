@@ -53,7 +53,6 @@ else()
         render_standard_content
         render_graph
         render_vulkan
-        render_features
         navigation
         navigation_detour3d
         input
@@ -63,6 +62,9 @@ else()
     )
     if(TARGET script_lua)
         list(APPEND LUX_FUNCTION_COMPONENTS script_lua)
+    endif()
+    if(TARGET render_features)
+        list(APPEND LUX_FUNCTION_COMPONENTS render_features)
     endif()
     list(APPEND LUX_FUNCTION_COMPONENTS ui)
 endif()

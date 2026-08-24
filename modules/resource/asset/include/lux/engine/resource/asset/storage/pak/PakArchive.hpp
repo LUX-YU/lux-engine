@@ -19,7 +19,7 @@ namespace lux::asset
     /// source_bytes must identify a non-empty image.
     struct PakWriteEntry final
     {
-        asset_id_t id{};
+        AssetId id{};
         std::uint32_t asset_magic{0u};
         std::string vpath;
         std::filesystem::path source_file;
@@ -35,7 +35,7 @@ namespace lux::asset
 
     struct PakInspectEntry final
     {
-        asset_id_t id{};
+        AssetId id{};
         std::uint32_t magic_number{0u};
         std::string vpath;
         std::uint64_t offset{0u};

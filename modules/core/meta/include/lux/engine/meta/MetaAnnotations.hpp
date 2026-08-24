@@ -16,15 +16,9 @@
 /// Mark a struct/class for reflection.
 #define LUX_CLASS(...)    LUX_META(luxref::class, ##__VA_ARGS__)
 
-/// Mark a struct/class as an ECS COMPONENT — a strict superset of
-/// `LUX_CLASS()`. Expands to a `LUX_META` carrying the `luxref::class`
-/// marker plus a `component=true` key/value pair. The meta code generator
-/// notices this class-level flag and emits a registration block that pushes
-/// the type into the pending `lux::ecs::ComponentTypeCatalog` registration
-/// chain — the ECS-layer
-/// catalogue the Hierarchy + Inspector iterate to auto-discover available
-/// components. Non-component reflected types (e.g. struct payloads embedded
-/// in components) stay on the plain `LUX_CLASS()`.
+/// Mark an internal ECS component. Generated metadata describes the component
+/// as Copy snapshot data with the default reflected codec. Composition collects
+/// generated descriptors into an immutable ComponentSchemaSet.
 ///
 /// Intentionally non-variadic: libclang's parser tooling does not reliably
 /// honour the `, ##__VA_ARGS__` GCC extension when the macro mixes
@@ -33,17 +27,16 @@
 /// dedicated annotations or member-level `LUX_MEMBER` keys instead.
 #define LUX_COMPONENT()   LUX_META(luxref::class, component=true)
 
-/// Runtime-derived ECS component. It is discoverable through the component
-/// catalogue, but EntityScene and persistence codecs must never serialize it.
-/// Use this for bindings, readiness/failure state and backend handles.
-#define LUX_TRANSIENT_COMPONENT() \
-    LUX_META(luxref::class, component=true, serialization=transient)
+/// Mark a portable Copy component with an explicit stable schema identity.
+#define LUX_COMPONENT_SCHEMA(name, version) \
+    LUX_META(luxref::class, component=true, schema_name=name, \
+             schema_version=version, snapshot=copy, codec=reflected)
 
-/// ECS component whose schema participates in both cooked EntityScene data
-/// and runtime persistence snapshots. Persistence remains opt-in: ordinary
-/// LUX_COMPONENT types are cooked-only.
-#define LUX_PERSISTENT_COMPONENT() \
-    LUX_META(luxref::class, component=true, serialization=persistent)
+/// Mark a derived component that is rebuilt after snapshot/restore and has no
+/// generic persistence codec.
+#define LUX_REBUILD_COMPONENT_SCHEMA(name, version) \
+    LUX_META(luxref::class, component=true, schema_name=name, \
+             schema_version=version, snapshot=rebuild, codec=none)
 
 /// Mark a free function for reflection.
 #define LUX_FUNC(...)     LUX_META(luxref::function, ##__VA_ARGS__)
@@ -65,11 +58,6 @@
 ///   tooltip=<string>        Tooltip shown on hover.
 ///   color=true              Treat an Eigen::Vector3f/4f as a colour picker.
 ///   readonly=true           Show the field but prevent editing.
-///   cooked_relocation=<kind>
-///                           Keep the field reflected, but exclude it from
-///                           generic tagged-property serialization. EntityScene
-///                           writes it through the matching LXES relocation
-///                           table instead.
 ///   labels=<a>,<b>,…        Per-component axis labels for vector fields
 ///                           (e.g. labels=R,G,B overrides the default X/Y/Z).
 #define LUX_MEMBER(...)   LUX_META(luxref::property::member, ##__VA_ARGS__)

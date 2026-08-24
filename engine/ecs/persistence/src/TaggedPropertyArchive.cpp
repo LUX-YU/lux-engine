@@ -1,34 +1,16 @@
 #include <lux/engine/ecs/TaggedPropertyArchive.hpp>
+#include <lux/engine/ecs/persistence/detail/LittleEndian.hpp>
 
 #include <algorithm>
-#include <cstring>
 #include <limits>
 
 namespace lux::ecs
 {
     namespace
     {
-        template <class T>
-        void appendPod(std::vector<std::byte>& destination, const T& value)
-        {
-            const std::size_t offset = destination.size();
-            destination.resize(offset + sizeof(T));
-            std::memcpy(destination.data() + offset, &value, sizeof(T));
-        }
-
-        template <class T>
-        [[nodiscard]] bool readPod(
-            std::span<const std::byte> bytes,
-            std::size_t& offset,
-            T& value
-        ) noexcept
-        {
-            if (offset > bytes.size() || sizeof(T) > bytes.size() - offset)
-                return false;
-            std::memcpy(&value, bytes.data() + offset, sizeof(T));
-            offset += sizeof(T);
-            return true;
-        }
+        using persistence::detail::appendLittle;
+        using persistence::detail::patchU32;
+        using persistence::detail::readLittle;
     } // namespace
 
     TaggedPropertyWriter::TaggedPropertyWriter(
@@ -37,6 +19,16 @@ namespace lux::ecs
     ) noexcept
         : destination_(&destination), names_(&name_table)
     {
+        destination_->clear();
+        try
+        {
+            appendLittle(*destination_, std::uint32_t{});
+        }
+        catch (...)
+        {
+            destination_->clear();
+            allocation_failed_ = true;
+        }
     }
 
     lux::cxx::expected<void, EComponentCodecError> TaggedPropertyWriter::write(
@@ -45,69 +37,102 @@ namespace lux::ecs
         std::span<const std::byte> bytes
     ) noexcept
     {
-        if (finished_ || name.empty() || bytes.size() > std::numeric_limits<std::uint32_t>::max())
+        if (allocation_failed_)
+        {
+            return lux::cxx::unexpected(
+                EComponentCodecError::ALLOCATION_FAILURE
+            );
+        }
+        if (finished_ || name.empty() ||
+            bytes.size() > std::numeric_limits<std::uint32_t>::max())
+        {
             return lux::cxx::unexpected(EComponentCodecError::INVALID_DATA);
-        constexpr std::uint32_t header_size =
-            sizeof(std::uint32_t) + sizeof(std::uint8_t) + sizeof(std::uint32_t);
-        if (encoded_size_ > std::numeric_limits<std::uint32_t>::max() - header_size ||
+        }
+        if (property_count_ == std::numeric_limits<std::uint32_t>::max())
+            return lux::cxx::unexpected(EComponentCodecError::LIMIT_EXCEEDED);
+
+        constexpr std::size_t header_size =
+            sizeof(std::uint32_t) + sizeof(std::uint8_t) +
+            sizeof(std::uint32_t);
+        if (destination_->size() >
+                std::numeric_limits<std::uint32_t>::max() - header_size ||
             bytes.size() > std::numeric_limits<std::uint32_t>::max() -
-                encoded_size_ - header_size)
+                destination_->size() - header_size)
         {
             return lux::cxx::unexpected(EComponentCodecError::LIMIT_EXCEEDED);
         }
+
+        const std::size_t destination_size = destination_->size();
+        bool inserted_name{};
         try
         {
             auto iterator = std::find(names_->begin(), names_->end(), name);
             std::uint32_t name_index{};
             if (iterator == names_->end())
             {
+                if (names_->size() >=
+                    std::numeric_limits<std::uint32_t>::max())
+                {
+                    return lux::cxx::unexpected(
+                        EComponentCodecError::LIMIT_EXCEEDED
+                    );
+                }
                 name_index = static_cast<std::uint32_t>(names_->size());
                 names_->emplace_back(name);
+                inserted_name = true;
             }
             else
-                name_index = static_cast<std::uint32_t>(iterator - names_->begin());
+            {
+                name_index = static_cast<std::uint32_t>(
+                    iterator - names_->begin()
+                );
+            }
 
-            properties_.push_back(Property{
-                name_index,
-                type,
-                std::vector<std::byte>(bytes.begin(), bytes.end())});
-            last_payload_offset_ = encoded_size_ + header_size;
-            encoded_size_ = last_payload_offset_ +
-                static_cast<std::uint32_t>(bytes.size());
+            appendLittle(*destination_, name_index);
+            destination_->push_back(static_cast<std::byte>(type));
+            appendLittle(
+                *destination_, static_cast<std::uint32_t>(bytes.size())
+            );
+            last_payload_offset_ = static_cast<std::uint32_t>(
+                destination_->size()
+            );
+            destination_->insert(
+                destination_->end(), bytes.begin(), bytes.end()
+            );
+            ++property_count_;
             return {};
         }
         catch (...)
         {
-            return lux::cxx::unexpected(EComponentCodecError::LIMIT_EXCEEDED);
+            destination_->resize(destination_size);
+            if (inserted_name)
+                names_->pop_back();
+            return lux::cxx::unexpected(
+                EComponentCodecError::ALLOCATION_FAILURE
+            );
         }
     }
 
-    lux::cxx::expected<void, EComponentCodecError> TaggedPropertyWriter::finish() noexcept
+    lux::cxx::expected<void, EComponentCodecError>
+    TaggedPropertyWriter::finish() noexcept
     {
+        if (allocation_failed_)
+        {
+            return lux::cxx::unexpected(
+                EComponentCodecError::ALLOCATION_FAILURE
+            );
+        }
         if (finished_)
             return lux::cxx::unexpected(EComponentCodecError::INVALID_DATA);
-        try
+        if (destination_->size() < sizeof(std::uint32_t))
         {
-            destination_->clear();
-            appendPod(*destination_, static_cast<std::uint32_t>(properties_.size()));
-            for (const Property& property : properties_)
-            {
-                appendPod(*destination_, property.name);
-                appendPod(*destination_, static_cast<std::uint8_t>(property.type));
-                appendPod(*destination_, static_cast<std::uint32_t>(property.bytes.size()));
-                destination_->insert(
-                    destination_->end(),
-                    property.bytes.begin(),
-                    property.bytes.end()
-                );
-            }
-            finished_ = true;
-            return {};
+            return lux::cxx::unexpected(
+                EComponentCodecError::ALLOCATION_FAILURE
+            );
         }
-        catch (...)
-        {
-            return lux::cxx::unexpected(EComponentCodecError::LIMIT_EXCEEDED);
-        }
+        patchU32(*destination_, 0, property_count_);
+        finished_ = true;
+        return {};
     }
 
     TaggedPropertyReader::TaggedPropertyReader(
@@ -117,8 +142,11 @@ namespace lux::ecs
     ) noexcept
         : bytes_(bytes), names_(name_table), limits_(limits)
     {
-        if (!readPod(bytes_, offset_, remaining_) || remaining_ > limits_.max_properties)
+        if (!readLittle(bytes_, offset_, remaining_) ||
+            remaining_ > limits_.max_properties)
+        {
             valid_ = false;
+        }
     }
 
     bool TaggedPropertyReader::next(EncodedPropertyView& property) noexcept
@@ -129,11 +157,13 @@ namespace lux::ecs
         std::uint32_t name{};
         std::uint8_t type{};
         std::uint32_t size{};
-        if (!readPod(bytes_, offset_, name) ||
-            !readPod(bytes_, offset_, type) ||
-            !readPod(bytes_, offset_, size) ||
+        if (!readLittle(bytes_, offset_, name) ||
+            !readLittle(bytes_, offset_, type) ||
+            !readLittle(bytes_, offset_, size) ||
             name >= names_.size() ||
-            type > static_cast<std::uint8_t>(EComponentWireType::STABLE_REFERENCE) ||
+            type > static_cast<std::uint8_t>(
+                EComponentWireType::STABLE_REFERENCE
+            ) ||
             size > limits_.max_property_bytes ||
             offset_ > bytes_.size() || size > bytes_.size() - offset_)
         {

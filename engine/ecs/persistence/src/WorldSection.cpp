@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/WorldSection.hpp>
-
-#include <lux/engine/core/serialization/Archive.hpp>
+#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/persistence/detail/LittleEndian.hpp>
 
 #include <algorithm>
 #include <array>
@@ -79,10 +79,17 @@ namespace lux::ecs
                         return lux::cxx::unexpected(EComponentCodecError::UNKNOWN_REFERENCE);
                     ordinal = iterator->second;
                 }
+                std::array<std::byte, sizeof(ordinal)> encoded_ordinal{};
+                for (std::size_t index{}; index < encoded_ordinal.size(); ++index)
+                {
+                    encoded_ordinal[index] = static_cast<std::byte>(
+                        (ordinal >> (index * 8U)) & 0xffU
+                    );
+                }
                 auto written = writer_->write(
                     name,
                     EComponentWireType::LOCAL_ENTITY,
-                    std::as_bytes(std::span{&ordinal, 1})
+                    encoded_ordinal
                 );
                 if (!written)
                     return written;
@@ -166,7 +173,9 @@ namespace lux::ecs
                 if (encoded.size() != sizeof(std::uint32_t))
                     return lux::cxx::unexpected(EComponentCodecError::INVALID_DATA);
                 std::uint32_t ordinal{};
-                std::memcpy(&ordinal, encoded.data(), sizeof(ordinal));
+                std::size_t offset{};
+                if (!persistence::detail::readLittle(encoded, offset, ordinal))
+                    return lux::cxx::unexpected(EComponentCodecError::INVALID_DATA);
                 if (ordinal == kNullOrdinal)
                     return NullEntity;
                 if (ordinal >= entities_->size())
@@ -197,34 +206,61 @@ namespace lux::ecs
         };
 
         template <class T>
-        [[nodiscard]] bool checkedCount(
-            lux::serialize::ArchiveReader& reader,
+        [[nodiscard]] lux::cxx::expected<void, PersistenceFailure> checkedCount(
+            persistence::detail::Reader& reader,
             std::uint32_t limit,
             T& output
         ) noexcept
         {
-            output = reader.readPod<T>();
-            return reader.ok() && output <= static_cast<T>(limit);
+            output = reader.readUnsigned<T>();
+            if (!reader.ok())
+            {
+                return lux::cxx::unexpected(
+                    PersistenceFailure{EPersistenceError::TRUNCATED}
+                );
+            }
+            if (output > static_cast<T>(limit))
+            {
+                return lux::cxx::unexpected(
+                    PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED}
+                );
+            }
+            return {};
         }
 
-        [[nodiscard]] bool readBoundedString(
-            lux::serialize::ArchiveReader& reader,
+        [[nodiscard]] lux::cxx::expected<void, PersistenceFailure>
+        readBoundedString(
+            persistence::detail::Reader& reader,
             std::uint64_t& aggregate_remaining,
             std::string& output
         )
         {
-            const std::uint32_t size = reader.readPod<std::uint32_t>();
-            if (!reader.ok() || size > aggregate_remaining)
-                return false;
+            const std::uint32_t size = reader.readUnsigned<std::uint32_t>();
+            if (!reader.ok())
+            {
+                return lux::cxx::unexpected(
+                    PersistenceFailure{EPersistenceError::TRUNCATED}
+                );
+            }
+            if (size > aggregate_remaining)
+            {
+                return lux::cxx::unexpected(
+                    PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED}
+                );
+            }
             const auto bytes = reader.readSpan(size);
             if (!reader.ok())
-                return false;
+            {
+                return lux::cxx::unexpected(
+                    PersistenceFailure{EPersistenceError::TRUNCATED}
+                );
+            }
             output.assign(
                 reinterpret_cast<const char*>(bytes.data()),
                 bytes.size()
             );
             aggregate_remaining -= size;
-            return true;
+            return {};
         }
 
         template <class T>
@@ -234,10 +270,7 @@ namespace lux::ecs
             T& value
         ) noexcept
         {
-            if (offset > payload.size() || sizeof(T) > payload.size() - offset)
-                return false;
-            std::memcpy(&value, payload.data() + offset, sizeof(T));
-            return true;
+            return persistence::detail::readLittle(payload, offset, value);
         }
 
         struct PersistentRelocationKey final
@@ -596,6 +629,12 @@ namespace lux::ecs
         WorldSectionWriteSelection selection
     ) noexcept
     {
+        if (!detail::WorldColdAccess::ownerIdle(world))
+        {
+            return lux::cxx::unexpected(
+                PersistenceFailure{EPersistenceError::WORLD_BUSY}
+            );
+        }
         try
         {
             std::vector<SelectedEntity> entities;
@@ -708,13 +747,34 @@ namespace lux::ecs
                     );
                     if (!encoded)
                     {
-                        const auto error = encoded.error() == EComponentCodecError::UNKNOWN_REFERENCE
-                            ? EPersistenceError::ENTITY_REFERENCE_OUTSIDE_SECTION
-                            : EPersistenceError::COMPONENT_ENCODE_FAILED;
+                        EPersistenceError error =
+                            EPersistenceError::COMPONENT_ENCODE_FAILED;
+                        if (encoded.error() ==
+                            EComponentCodecError::UNKNOWN_REFERENCE)
+                        {
+                            error = EPersistenceError::ENTITY_REFERENCE_OUTSIDE_SECTION;
+                        }
+                        else if (encoded.error() ==
+                            EComponentCodecError::ALLOCATION_FAILURE)
+                        {
+                            error = EPersistenceError::ALLOCATION_FAILURE;
+                        }
+                        else if (encoded.error() ==
+                            EComponentCodecError::LIMIT_EXCEEDED)
+                        {
+                            error = EPersistenceError::LIMIT_EXCEEDED;
+                        }
                         return lux::cxx::unexpected(PersistenceFailure{error, ordinal, selected_schemas[schema_index]->id});
                     }
                     if (auto finished = property_writer.finish(); !finished)
-                        return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::COMPONENT_ENCODE_FAILED, ordinal, selected_schemas[schema_index]->id});
+                    {
+                        const auto error = finished.error() ==
+                            EComponentCodecError::ALLOCATION_FAILURE
+                            ? EPersistenceError::ALLOCATION_FAILURE
+                            : EPersistenceError::COMPONENT_ENCODE_FAILED;
+                        return lux::cxx::unexpected(PersistenceFailure{
+                            error, ordinal, selected_schemas[schema_index]->id});
+                    }
                 }
             }
             if (auto valid = validateImage(image, WorldSectionLimits{}); !valid)
@@ -730,7 +790,8 @@ namespace lux::ecs
     lux::cxx::expected<std::unique_ptr<World>, PersistenceFailure>
     WorldSectionReader::materialize(
         const WorldSectionImage& image,
-        const ComponentSchemaSet& schemas
+        const ComponentSchemaSet& schemas,
+        WorldConfig config
     ) noexcept
     {
         try
@@ -749,7 +810,7 @@ namespace lux::ecs
                 resolved.push_back(schema);
             }
 
-            auto world = std::make_unique<World>();
+            auto world = std::make_unique<World>(config);
             auto edit_result = world->edit();
             if (!edit_result)
                 return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::WORLD_BUSY});
@@ -781,9 +842,26 @@ namespace lux::ecs
                         port
                     );
                     if (!decoded || !port.valid())
-                        return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::COMPONENT_DECODE_FAILED, cell.entity_ordinal, schema.id});
+                    {
+                        EPersistenceError error =
+                            EPersistenceError::COMPONENT_DECODE_FAILED;
+                        if (!decoded && decoded.error() ==
+                            EComponentCodecError::ALLOCATION_FAILURE)
+                        {
+                            error = EPersistenceError::ALLOCATION_FAILURE;
+                        }
+                        else if (!decoded && decoded.error() ==
+                            EComponentCodecError::LIMIT_EXCEEDED)
+                        {
+                            error = EPersistenceError::LIMIT_EXCEEDED;
+                        }
+                        return lux::cxx::unexpected(PersistenceFailure{
+                            error, cell.entity_ordinal, schema.id});
+                    }
                 }
             }
+            edit = {};
+            detail::establishWorldChangeBaseline(*world);
             return world;
         }
         catch (...)
@@ -800,62 +878,62 @@ namespace lux::ecs
             if (auto valid = validateImage(image, WorldSectionLimits{}); !valid)
                 return lux::cxx::unexpected(valid.error());
             std::vector<std::byte> bytes;
-            lux::serialize::ArchiveWriter writer(bytes);
+            persistence::detail::Writer writer(bytes);
             writer.writeBytes(kMagic.data(), kMagic.size());
-            writer.writePod(kVersion);
-            writer.writePod(std::uint16_t{});
+            writer.writeUnsigned(kVersion);
+            writer.writeUnsigned(std::uint16_t{});
             writer.writeUuid(image.id.value);
 
-            writer.writePod(static_cast<std::uint32_t>(image.property_names.size()));
+            writer.writeUnsigned(static_cast<std::uint32_t>(image.property_names.size()));
             for (const std::string& name : image.property_names)
                 writer.writeString(name);
-            writer.writePod(static_cast<std::uint32_t>(image.schemas.size()));
+            writer.writeUnsigned(static_cast<std::uint32_t>(image.schemas.size()));
             for (const WorldSchemaEntry& schema : image.schemas)
             {
-                writer.writePod(schema.id.hash);
+                writer.writeUnsigned(schema.id.hash);
                 writer.writeString(schema.id.name);
-                writer.writePod(schema.version);
+                writer.writeUnsigned(schema.version);
             }
-            writer.writePod(static_cast<std::uint32_t>(image.archetypes.size()));
+            writer.writeUnsigned(static_cast<std::uint32_t>(image.archetypes.size()));
             for (const WorldArchetype& archetype : image.archetypes)
             {
-                writer.writePod(static_cast<std::uint32_t>(archetype.schema_indices.size()));
-                for (const auto value : archetype.schema_indices) writer.writePod(value);
-                writer.writePod(static_cast<std::uint32_t>(archetype.entity_ordinals.size()));
-                for (const auto value : archetype.entity_ordinals) writer.writePod(value);
+                writer.writeUnsigned(static_cast<std::uint32_t>(archetype.schema_indices.size()));
+                for (const auto value : archetype.schema_indices) writer.writeUnsigned(value);
+                writer.writeUnsigned(static_cast<std::uint32_t>(archetype.entity_ordinals.size()));
+                for (const auto value : archetype.entity_ordinals) writer.writeUnsigned(value);
             }
-            writer.writePod(static_cast<std::uint32_t>(image.entities.size()));
+            writer.writeUnsigned(static_cast<std::uint32_t>(image.entities.size()));
             for (const WorldEntityRecord& entity : image.entities)
             {
                 writer.writeUuid(entity.id.value);
-                writer.writePod(entity.archetype);
+                writer.writeUnsigned(entity.archetype);
             }
-            writer.writePod(static_cast<std::uint32_t>(image.columns.size()));
+            writer.writeUnsigned(static_cast<std::uint32_t>(image.columns.size()));
             for (const WorldComponentColumn& column : image.columns)
             {
-                writer.writePod(column.schema_index);
-                writer.writePod(static_cast<std::uint32_t>(column.cells.size()));
+                writer.writeUnsigned(column.schema_index);
+                writer.writeUnsigned(static_cast<std::uint32_t>(column.cells.size()));
                 for (const WorldComponentCell& cell : column.cells)
                 {
-                    writer.writePod(cell.entity_ordinal);
-                    writer.writePod(static_cast<std::uint32_t>(cell.payload.size()));
+                    writer.writeUnsigned(cell.entity_ordinal);
+                    writer.writeUnsigned(static_cast<std::uint32_t>(cell.payload.size()));
                     writer.writeBytes(cell.payload.data(), cell.payload.size());
                 }
             }
-            writer.writePod(static_cast<std::uint32_t>(image.entity_relocations.size()));
+            writer.writeUnsigned(static_cast<std::uint32_t>(image.entity_relocations.size()));
             for (const EntityReferenceRelocation& relocation : image.entity_relocations)
             {
-                writer.writePod(relocation.column);
-                writer.writePod(relocation.cell);
-                writer.writePod(relocation.payload_offset);
-                writer.writePod(relocation.target_ordinal);
+                writer.writeUnsigned(relocation.column);
+                writer.writeUnsigned(relocation.cell);
+                writer.writeUnsigned(relocation.payload_offset);
+                writer.writeUnsigned(relocation.target_ordinal);
             }
-            writer.writePod(static_cast<std::uint32_t>(image.persistent_relocations.size()));
+            writer.writeUnsigned(static_cast<std::uint32_t>(image.persistent_relocations.size()));
             for (const PersistentReferenceRelocation& relocation : image.persistent_relocations)
             {
-                writer.writePod(relocation.column);
-                writer.writePod(relocation.cell);
-                writer.writePod(relocation.payload_offset);
+                writer.writeUnsigned(relocation.column);
+                writer.writeUnsigned(relocation.cell);
+                writer.writeUnsigned(relocation.payload_offset);
                 writer.writeUuid(relocation.target.value);
             }
             return bytes;
@@ -876,83 +954,127 @@ namespace lux::ecs
         {
             if (bytes.size() > limits.max_image_bytes)
                 return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
-            lux::serialize::ArchiveReader reader(bytes.data(), bytes.size());
+            persistence::detail::Reader reader(bytes);
             std::array<char, 4> magic{};
             reader.readBytes(magic.data(), magic.size());
-            if (!reader.ok() || magic != kMagic)
+            if (!reader.ok())
+                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::TRUNCATED});
+            if (magic != kMagic)
                 return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::INVALID_MAGIC});
-            if (reader.readPod<std::uint16_t>() != kVersion)
+            const auto version = reader.readUnsigned<std::uint16_t>();
+            if (!reader.ok())
+                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::TRUNCATED});
+            if (version != kVersion)
                 return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::UNSUPPORTED_VERSION});
-            (void)reader.readPod<std::uint16_t>();
+            (void)reader.readUnsigned<std::uint16_t>();
+            if (!reader.ok())
+                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::TRUNCATED});
 
             WorldSectionImage image;
             image.id.value = reader.readUuid();
+            if (!reader.ok())
+                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::TRUNCATED});
             std::uint32_t count{};
             std::uint64_t remaining_name_bytes = limits.max_name_bytes;
-            if (!checkedCount(reader, limits.max_names, count))
-                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
+            if (auto checked = checkedCount(reader, limits.max_names, count);
+                !checked)
+            {
+                return lux::cxx::unexpected(checked.error());
+            }
             image.property_names.reserve(count);
             for (std::uint32_t index{}; index < count; ++index)
             {
                 std::string name;
-                if (!readBoundedString(reader, remaining_name_bytes, name))
-                    return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
+                if (auto read = readBoundedString(
+                        reader, remaining_name_bytes, name
+                    ); !read)
+                {
+                    return lux::cxx::unexpected(read.error());
+                }
                 image.property_names.push_back(std::move(name));
             }
 
-            if (!checkedCount(reader, limits.max_schemas, count))
-                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
+            if (auto checked = checkedCount(reader, limits.max_schemas, count);
+                !checked)
+            {
+                return lux::cxx::unexpected(checked.error());
+            }
             for (std::uint32_t index{}; index < count; ++index)
             {
                 WorldSchemaEntry entry;
-                entry.id.hash = reader.readPod<std::uint64_t>();
-                if (!readBoundedString(reader, remaining_name_bytes, entry.id.name))
-                    return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
-                entry.version = reader.readPod<std::uint32_t>();
+                entry.id.hash = reader.readUnsigned<std::uint64_t>();
+                if (auto read = readBoundedString(
+                        reader, remaining_name_bytes, entry.id.name
+                    ); !read)
+                {
+                    return lux::cxx::unexpected(read.error());
+                }
+                entry.version = reader.readUnsigned<std::uint32_t>();
                 if (!entry.id.valid())
                     return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::INVALID_HASH});
                 image.schemas.push_back(std::move(entry));
             }
 
-            if (!checkedCount(reader, limits.max_archetypes, count))
-                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
+            if (auto checked = checkedCount(
+                    reader, limits.max_archetypes, count
+                ); !checked)
+            {
+                return lux::cxx::unexpected(checked.error());
+            }
             for (std::uint32_t index{}; index < count; ++index)
             {
                 WorldArchetype archetype;
                 std::uint32_t inner{};
-                if (!checkedCount(reader, limits.max_schemas, inner))
-                    return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
-                while (inner--) archetype.schema_indices.push_back(reader.readPod<std::uint32_t>());
-                if (!checkedCount(reader, limits.max_entities, inner))
-                    return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
-                while (inner--) archetype.entity_ordinals.push_back(reader.readPod<std::uint32_t>());
+                if (auto checked = checkedCount(
+                        reader, limits.max_schemas, inner
+                    ); !checked)
+                {
+                    return lux::cxx::unexpected(checked.error());
+                }
+                while (inner--) archetype.schema_indices.push_back(reader.readUnsigned<std::uint32_t>());
+                if (auto checked = checkedCount(
+                        reader, limits.max_entities, inner
+                    ); !checked)
+                {
+                    return lux::cxx::unexpected(checked.error());
+                }
+                while (inner--) archetype.entity_ordinals.push_back(reader.readUnsigned<std::uint32_t>());
                 image.archetypes.push_back(std::move(archetype));
             }
 
-            if (!checkedCount(reader, limits.max_entities, count))
-                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
+            if (auto checked = checkedCount(reader, limits.max_entities, count);
+                !checked)
+            {
+                return lux::cxx::unexpected(checked.error());
+            }
             for (std::uint32_t index{}; index < count; ++index)
-                image.entities.push_back(WorldEntityRecord{PersistentEntityId{reader.readUuid()}, reader.readPod<std::uint32_t>()});
+                image.entities.push_back(WorldEntityRecord{PersistentEntityId{reader.readUuid()}, reader.readUnsigned<std::uint32_t>()});
 
-            if (!checkedCount(reader, limits.max_columns, count))
-                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
+            if (auto checked = checkedCount(reader, limits.max_columns, count);
+                !checked)
+            {
+                return lux::cxx::unexpected(checked.error());
+            }
             std::uint64_t payload_total{};
             std::uint64_t cell_total{};
             for (std::uint32_t index{}; index < count; ++index)
             {
                 WorldComponentColumn column;
-                column.schema_index = reader.readPod<std::uint32_t>();
+                column.schema_index = reader.readUnsigned<std::uint32_t>();
                 std::uint32_t cells{};
-                if (!checkedCount(reader, limits.max_cells, cells))
-                    return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
+                if (auto checked = checkedCount(reader, limits.max_cells, cells);
+                    !checked)
+                {
+                    return lux::cxx::unexpected(checked.error());
+                }
                 cell_total += cells;
                 if (cell_total > limits.max_cells)
                     return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
                 while (cells--)
                 {
                     WorldComponentCell cell;
-                    cell.entity_ordinal = reader.readPod<std::uint32_t>();
-                    const auto size = reader.readPod<std::uint32_t>();
+                    cell.entity_ordinal = reader.readUnsigned<std::uint32_t>();
+                    const auto size = reader.readUnsigned<std::uint32_t>();
                     payload_total += size;
                     if (payload_total > limits.max_payload_bytes)
                         return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
@@ -963,21 +1085,29 @@ namespace lux::ecs
                 image.columns.push_back(std::move(column));
             }
 
-            if (!checkedCount(reader, limits.max_relocations, count))
-                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
+            if (auto checked = checkedCount(
+                    reader, limits.max_relocations, count
+                ); !checked)
+            {
+                return lux::cxx::unexpected(checked.error());
+            }
             while (count--)
             {
                 image.entity_relocations.push_back(EntityReferenceRelocation{
-                    reader.readPod<std::uint32_t>(), reader.readPod<std::uint32_t>(),
-                    reader.readPod<std::uint32_t>(), reader.readPod<std::uint32_t>()});
+                    reader.readUnsigned<std::uint32_t>(), reader.readUnsigned<std::uint32_t>(),
+                    reader.readUnsigned<std::uint32_t>(), reader.readUnsigned<std::uint32_t>()});
             }
-            if (!checkedCount(reader, limits.max_relocations, count))
-                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::LIMIT_EXCEEDED});
+            if (auto checked = checkedCount(
+                    reader, limits.max_relocations, count
+                ); !checked)
+            {
+                return lux::cxx::unexpected(checked.error());
+            }
             while (count--)
             {
                 image.persistent_relocations.push_back(PersistentReferenceRelocation{
-                    reader.readPod<std::uint32_t>(), reader.readPod<std::uint32_t>(),
-                    reader.readPod<std::uint32_t>(), PersistentEntityId{reader.readUuid()}});
+                    reader.readUnsigned<std::uint32_t>(), reader.readUnsigned<std::uint32_t>(),
+                    reader.readUnsigned<std::uint32_t>(), PersistentEntityId{reader.readUuid()}});
             }
 
             if (!reader.ok() || !reader.eof())

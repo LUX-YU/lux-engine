@@ -1,9 +1,13 @@
 #include <lux/engine/ecs/WorldSection.hpp>
+#include <lux/engine/ecs/core/detail/ChangeJournal.hpp>
 
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cstring>
 #include <span>
+#include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -15,6 +19,37 @@ namespace
         lux::ecs::Entity target{lux::ecs::NullEntity};
         lux::ecs::PersistentEntityRef external;
     };
+
+    struct AllocationProbe final
+    {
+    };
+
+    lux::cxx::expected<void, lux::ecs::EComponentCodecError>
+    encodeAllocationFailure(
+        const lux::ecs::ComponentSchema&,
+        const lux::ecs::World&,
+        lux::ecs::Entity,
+        lux::ecs::ComponentEncodePort&
+    ) noexcept
+    {
+        return lux::cxx::unexpected(
+            lux::ecs::EComponentCodecError::ALLOCATION_FAILURE
+        );
+    }
+
+    lux::cxx::expected<void, lux::ecs::EComponentCodecError>
+    decodeAllocationFailure(
+        const lux::ecs::ComponentSchema&,
+        lux::ecs::WorldEdit&,
+        lux::ecs::Entity,
+        std::uint32_t,
+        lux::ecs::ComponentDecodePort&
+    ) noexcept
+    {
+        return lux::cxx::unexpected(
+            lux::ecs::EComponentCodecError::ALLOCATION_FAILURE
+        );
+    }
 
     lux::cxx::expected<void, lux::ecs::EComponentCodecError> encodeLink(
         const lux::ecs::ComponentSchema&,
@@ -79,24 +114,84 @@ namespace
     }
 
     template <class T>
-    void appendPod(std::vector<std::byte>& destination, const T& value)
+        requires std::is_integral_v<T> && std::is_unsigned_v<T>
+    void appendLittle(std::vector<std::byte>& destination, T value)
     {
         const std::size_t offset = destination.size();
         destination.resize(offset + sizeof(T));
-        std::memcpy(destination.data() + offset, &value, sizeof(T));
+        for (std::size_t index{}; index < sizeof(T); ++index)
+        {
+            destination[offset + index] = static_cast<std::byte>(
+                value & static_cast<T>(0xffU)
+            );
+            value >>= 8U;
+        }
     }
 }
 
 int main()
 {
+    std::vector<std::byte> tagged_bytes;
+    std::vector<std::string> tagged_names;
+    lux::ecs::TaggedPropertyWriter tagged_writer(tagged_bytes, tagged_names);
+    const std::array tagged_value{std::byte{0xaa}, std::byte{0xbb}};
+    assert(tagged_writer.write(
+        "value",
+        lux::ecs::EComponentWireType::UNSIGNED_INTEGER,
+        tagged_value
+    ));
+    assert(tagged_writer.finish());
+    const std::vector<std::byte> tagged_golden{
+        std::byte{0x01}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x01},
+        std::byte{0x02}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0xaa}, std::byte{0xbb}};
+    assert(tagged_bytes == tagged_golden);
+    lux::ecs::TaggedPropertyReader tagged_reader(tagged_bytes, tagged_names);
+    lux::ecs::EncodedPropertyView tagged_property;
+    assert(tagged_reader.next(tagged_property));
+    assert(tagged_property.name == "value");
+    assert(tagged_property.bytes.size() == 2);
+    assert(!tagged_reader.next(tagged_property));
+    assert(tagged_reader.valid());
+
+    lux::ecs::WorldSectionImage empty_image;
+    empty_image.id.value = uuid("10000000-0000-4000-8000-000000000001");
+    auto empty_bytes = lux::ecs::encodeWorldSection(empty_image);
+    assert(empty_bytes);
+    std::vector<std::byte> empty_golden{
+        std::byte{0x4c}, std::byte{0x58}, std::byte{0x57}, std::byte{0x53},
+        std::byte{0x01}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x10}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0x40}, std::byte{0x00},
+        std::byte{0x80}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0x00}, std::byte{0x01}};
+    for (int index{}; index < 7; ++index)
+        appendLittle(empty_golden, std::uint32_t{});
+    assert(*empty_bytes == empty_golden);
+    assert(lux::ecs::decodeWorldSection(empty_golden));
+
     const auto link_schema = lux::ecs::makeComponentSchema<Link>(
         lux::ecs::componentSchemaId("test.link"),
         1,
         lux::ecs::EComponentSnapshotPolicy::COPY,
         lux::ecs::ComponentCodec{&encodeLink, &decodeLink}
     );
+    const auto allocation_schema =
+        lux::ecs::makeComponentSchema<AllocationProbe>(
+            lux::ecs::componentSchemaId("test.allocation"),
+            1,
+            lux::ecs::EComponentSnapshotPolicy::COPY,
+            lux::ecs::ComponentCodec{
+                &encodeAllocationFailure,
+                &decodeAllocationFailure}
+        );
     auto schemas = lux::ecs::ComponentSchemaSet::build(
-        {lux::ecs::persistentIdComponentSchema(), link_schema}
+        {
+            lux::ecs::persistentIdComponentSchema(),
+            link_schema,
+            allocation_schema}
     );
     assert(schemas);
 
@@ -111,10 +206,60 @@ int main()
         uuid("20000000-0000-4000-8000-000000000001")};
     edit.emplace<Link>(first, 7, second, lux::ecs::PersistentEntityRef{external_id});
     edit.emplace<Link>(second, 9, first, lux::ecs::PersistentEntityRef{external_id});
+    edit.emplace<AllocationProbe>(first);
     edit = {};
 
     const std::array entities{first, second};
     const std::array selected{link_schema.id};
+    auto busy_edit_result = world.edit();
+    assert(busy_edit_result);
+    auto busy_image = lux::ecs::WorldSectionWriter::build(
+        world,
+        *schemas,
+        lux::ecs::WorldSectionId{
+            uuid("10000000-0000-4000-8000-000000000001")},
+        lux::ecs::WorldSectionWriteSelection{entities, selected}
+    );
+    assert(!busy_image);
+    assert(busy_image.error().code == lux::ecs::EPersistenceError::WORLD_BUSY);
+    auto busy_index = lux::ecs::PersistentEntityIndex::build(world);
+    assert(!busy_index);
+    assert(
+        busy_index.error() ==
+        lux::ecs::EPersistentEntityIndexError::WORLD_BUSY
+    );
+    auto busy_edit = std::move(*busy_edit_result);
+    busy_edit = {};
+
+    std::atomic_bool wrong_thread_build_rejected{};
+    std::atomic_bool wrong_thread_index_rejected{};
+    std::thread wrong_thread(
+        [&]
+        {
+            auto built = lux::ecs::WorldSectionWriter::build(
+                world,
+                *schemas,
+                lux::ecs::WorldSectionId{
+                    uuid("10000000-0000-4000-8000-000000000001")},
+                lux::ecs::WorldSectionWriteSelection{entities, selected}
+            );
+            wrong_thread_build_rejected.store(
+                !built &&
+                built.error().code == lux::ecs::EPersistenceError::WORLD_BUSY,
+                std::memory_order_relaxed
+            );
+            auto index = lux::ecs::PersistentEntityIndex::build(world);
+            wrong_thread_index_rejected.store(
+                !index && index.error() ==
+                    lux::ecs::EPersistentEntityIndexError::WORLD_BUSY,
+                std::memory_order_relaxed
+            );
+        }
+    );
+    wrong_thread.join();
+    assert(wrong_thread_build_rejected.load(std::memory_order_relaxed));
+    assert(wrong_thread_index_rejected.load(std::memory_order_relaxed));
+
     auto image = lux::ecs::WorldSectionWriter::build(
         world,
         *schemas,
@@ -128,6 +273,20 @@ int main()
     assert(image->persistent_relocations.size() == 2);
     assert(image->entity_relocations[0].payload_offset != 0);
     assert(image->persistent_relocations[0].payload_offset != 0);
+
+    const std::array allocation_selected{allocation_schema.id};
+    auto allocation_failure = lux::ecs::WorldSectionWriter::build(
+        world,
+        *schemas,
+        lux::ecs::WorldSectionId{
+            uuid("10000000-0000-4000-8000-000000000001")},
+        lux::ecs::WorldSectionWriteSelection{entities, allocation_selected}
+    );
+    assert(!allocation_failure);
+    assert(
+        allocation_failure.error().code ==
+        lux::ecs::EPersistenceError::ALLOCATION_FAILURE
+    );
 
     auto bytes = lux::ecs::encodeWorldSection(*image);
     assert(bytes);
@@ -154,18 +313,19 @@ int main()
         static_cast<std::uint32_t>(future_field.property_names.size());
     future_field.property_names.emplace_back("future_field");
     auto& future_payload = future_field.columns[0].cells[0].payload;
-    std::uint32_t property_count{};
-    std::memcpy(&property_count, future_payload.data(), sizeof(property_count));
-    ++property_count;
-    std::memcpy(future_payload.data(), &property_count, sizeof(property_count));
-    appendPod(future_payload, future_name);
-    appendPod(
+    future_payload[0] = static_cast<std::byte>(
+        std::to_integer<std::uint8_t>(future_payload[0]) + 1U
+    );
+    appendLittle(future_payload, future_name);
+    appendLittle(
         future_payload,
         static_cast<std::uint8_t>(lux::ecs::EComponentWireType::BYTES)
     );
     const std::array<std::byte, 3> future_bytes{
         std::byte{1}, std::byte{2}, std::byte{3}};
-    appendPod(future_payload, static_cast<std::uint32_t>(future_bytes.size()));
+    appendLittle(
+        future_payload, static_cast<std::uint32_t>(future_bytes.size())
+    );
     future_payload.insert(
         future_payload.end(),
         future_bytes.begin(),
@@ -202,8 +362,36 @@ int main()
     assert(unsupported.error().code ==
         lux::ecs::EPersistenceError::COMPONENT_DECODE_FAILED);
 
-    auto loaded = lux::ecs::WorldSectionReader::materialize(*decoded, *schemas);
+    auto allocation_link_schema = link_schema;
+    allocation_link_schema.codec.decode = &decodeAllocationFailure;
+    auto allocation_decode_schemas = lux::ecs::ComponentSchemaSet::build(
+        {
+            lux::ecs::persistentIdComponentSchema(),
+            allocation_link_schema}
+    );
+    assert(allocation_decode_schemas);
+    auto allocation_decode = lux::ecs::WorldSectionReader::materialize(
+        *decoded, *allocation_decode_schemas
+    );
+    assert(!allocation_decode);
+    assert(
+        allocation_decode.error().code ==
+        lux::ecs::EPersistenceError::ALLOCATION_FAILURE
+    );
+
+    const lux::ecs::WorldConfig bounded_config{
+        lux::ecs::ChangeJournalConfig{4096U, 4096U}};
+    auto loaded = lux::ecs::WorldSectionReader::materialize(
+        *decoded, *schemas, bounded_config
+    );
     assert(loaded);
+    lux::ecs::ChangeCursor<Link> loaded_cursor;
+    auto& loaded_journal =
+        lux::ecs::detail::WorldChangeAccess::journal(**loaded);
+    assert(
+        loaded_journal.read(loaded_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
     auto index = lux::ecs::PersistentEntityIndex::build(**loaded);
     assert(index && index->size() == 2);
     const auto loaded_first = index->find(lux::ecs::PersistentEntityId{uuid("00000000-0000-4000-8000-000000000002")});
@@ -212,9 +400,31 @@ int main()
     assert((**loaded).get<Link>(loaded_first).target == loaded_second);
     assert((**loaded).get<Link>(loaded_first).external.value == external_id);
 
+    auto loaded_edit_result = (*loaded)->edit();
+    auto loaded_edit = std::move(*loaded_edit_result);
+    for (int iteration{}; iteration < 512; ++iteration)
+    {
+        loaded_edit.update<Link>(
+            loaded_first,
+            [](Link& link) noexcept
+            {
+                ++link.value;
+            }
+        );
+    }
+    loaded_edit = {};
+    assert(
+        loaded_journal.read(loaded_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
+
     auto truncated = *bytes;
     truncated.pop_back();
-    assert(!lux::ecs::decodeWorldSection(truncated));
+    auto truncated_result = lux::ecs::decodeWorldSection(truncated);
+    assert(!truncated_result);
+    assert(
+        truncated_result.error().code == lux::ecs::EPersistenceError::TRUNCATED
+    );
 
     const std::array partial{first};
     auto bad_reference = lux::ecs::WorldSectionWriter::build(

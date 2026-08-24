@@ -34,6 +34,7 @@ namespace lux::ecs
 
     enum class EPersistentEntityIndexError : std::uint8_t
     {
+        WORLD_BUSY,
         DUPLICATE_ID,
         INVALID_ID,
         ALLOCATION_FAILURE,

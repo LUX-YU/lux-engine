@@ -60,6 +60,7 @@ namespace lux::ecs
         struct WorldSnapshotAccess;
         struct WorldEditAccess;
         struct WorldChangeAccess;
+        struct WorldColdAccess;
 
         enum class EWorldState : std::uint8_t
         {
@@ -204,6 +205,7 @@ namespace lux::ecs
         }
 
         Registry registry_;
+        WorldConfig config_;
         std::unique_ptr<detail::ChangeJournal> changes_;
         std::thread::id owner_thread_;
         detail::EWorldState state_{detail::EWorldState::IDLE};
@@ -218,6 +220,7 @@ namespace lux::ecs
         friend class persistence::WorldSectionReader;
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldChangeAccess;
+        friend struct detail::WorldColdAccess;
 
         template <class Component>
         friend ComponentOperations componentOperations() noexcept;

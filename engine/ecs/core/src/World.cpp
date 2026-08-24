@@ -22,7 +22,8 @@ namespace lux::ecs
     }
 
     World::World(WorldConfig config)
-        : changes_(std::make_unique<detail::ChangeJournal>(
+        : config_(config),
+          changes_(std::make_unique<detail::ChangeJournal>(
               detail::ChangeJournalConfigValue{
                   config.changes.initial_bytes,
                   config.changes.max_bytes})),

@@ -10,7 +10,7 @@ This ledger tracks implementation state only. Decisions live in ADRs.
 - [x] V2-2: Separate Schedule execution, access and lifetime relations; make
       execution affinity Object-independent.
 - [x] V2-3: Orthogonalize schema policy/codec and split reflection projection.
-- [ ] V2-4/V2-5: Restabilize Snapshot, LXWS and live-World safe-point contracts.
+- [x] V2-4/V2-5: Restabilize Snapshot, LXWS and live-World safe-point contracts.
 - [ ] V2-6/V2-7: Replace Hierarchy and Transform with incremental change-driven
       implementations.
 - [ ] V2-8: Re-run representative performance, installed-consumer, hardened,

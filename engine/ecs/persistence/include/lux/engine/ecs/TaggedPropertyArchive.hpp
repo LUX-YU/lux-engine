@@ -44,18 +44,12 @@ namespace lux::ecs
         }
 
       private:
-        struct Property final
-        {
-            std::uint32_t name{};
-            EComponentWireType type{EComponentWireType::BYTES};
-            std::vector<std::byte> bytes;
-        };
         std::vector<std::byte>* destination_{};
         std::vector<std::string>* names_{};
-        std::vector<Property> properties_;
-        std::uint32_t encoded_size_{sizeof(std::uint32_t)};
+        std::uint32_t property_count_{};
         std::uint32_t last_payload_offset_{};
         bool finished_{};
+        bool allocation_failed_{};
     };
 
     class LUX_ENGINE_ECS_PERSISTENCE_PUBLIC TaggedPropertyReader final

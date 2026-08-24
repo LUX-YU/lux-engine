@@ -25,6 +25,10 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
+target_include_directories(
+    persistence
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+)
 
 target_compile_definitions(persistence PRIVATE LUX_ENGINE_ECS_PERSISTENCE_LIBRARY)
 target_link_libraries(

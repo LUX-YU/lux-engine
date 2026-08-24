@@ -89,7 +89,8 @@ namespace lux::ecs
         [[nodiscard]] static lux::cxx::expected<std::unique_ptr<World>, PersistenceFailure>
         materialize(
             const WorldSectionImage& image,
-            const ComponentSchemaSet& schemas
+            const ComponentSchemaSet& schemas,
+            WorldConfig config = {}
         ) noexcept;
     };
 

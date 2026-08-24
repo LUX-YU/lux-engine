@@ -1,4 +1,5 @@
 #include <lux/engine/ecs/WorldSnapshot.hpp>
+#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 #include <lux/engine/ecs/schema/ComponentOperationsAccess.hpp>
 
 #include <entt/core/type_info.hpp>
@@ -161,7 +162,7 @@ namespace lux::ecs
         const ComponentSchemaSet& schemas
     ) noexcept
     {
-        if (world.state_ != detail::EWorldState::IDLE)
+        if (!detail::WorldColdAccess::ownerIdle(world))
         {
             return lux::cxx::unexpected(
                 SnapshotError{ESnapshotError::WORLD_BUSY}
@@ -177,6 +178,7 @@ namespace lux::ecs
             impl->shadow = std::make_unique<World>();
             if (auto cloned = cloneWorld(world, *impl->shadow, schemas); !cloned)
                 return lux::cxx::unexpected(cloned.error());
+            detail::establishWorldChangeBaseline(*impl->shadow);
             return WorldSnapshot(std::move(impl));
         }
         catch (...)
@@ -188,16 +190,17 @@ namespace lux::ecs
     }
 
     lux::cxx::expected<std::unique_ptr<World>, SnapshotError>
-    WorldSnapshot::instantiate() const noexcept
+    WorldSnapshot::instantiate(WorldConfig config) const noexcept
     {
         if (!impl_ || !impl_->shadow)
             return lux::cxx::unexpected(SnapshotError{ESnapshotError::INVALID_COPY_SCHEMA});
 
         try
         {
-            auto result = std::make_unique<World>();
+            auto result = std::make_unique<World>(config);
             if (auto cloned = cloneWorld(*impl_->shadow, *result, impl_->schemas); !cloned)
                 return lux::cxx::unexpected(cloned.error());
+            detail::establishWorldChangeBaseline(*result);
             return result;
         }
         catch (...)
@@ -210,16 +213,17 @@ namespace lux::ecs
         World& world
     ) const noexcept
     {
-        if (world.state_ != detail::EWorldState::IDLE ||
+        if (!detail::WorldColdAccess::ownerIdle(world) ||
             world.schedule_ != nullptr ||
             world.observer_relations_ != 0)
             return lux::cxx::unexpected(SnapshotError{ESnapshotError::WORLD_BUSY});
 
-        auto replacement = instantiate();
+        auto replacement = instantiate(world.config_);
         if (!replacement)
             return lux::cxx::unexpected(replacement.error());
 
         world.registry_.swap((*replacement)->registry_);
+        detail::establishWorldChangeBaseline(world);
         return {};
     }
 

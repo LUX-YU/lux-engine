@@ -31,6 +31,13 @@ Schema 的安装边界据此拆成 `lux::engine::ecs::schema` 与可选的
 `Copy/Rebuild × codec present/absent` 四种组合都合法，codegen 分别读取
 `snapshot` 与 `codec` annotation，不再通过一个宏隐含绑定两项 policy。
 
+Snapshot instantiate 与 LXWS materialize 显式接收 `WorldConfig`；cold restore
+保留 destination config 和已分配 journal blocks，只替换 canonical registry，随后
+递增 epoch 并建立 fresh baseline。Snapshot capture、WorldSection build 与
+PersistentEntityIndex build 都要求 construction-owner thread 上的 Idle World。
+LXWS v1 和 TaggedProperty 的结构字段使用逐字节 LE primitives；Tagged writer
+直接写 destination 并回填 property count，不再保存第二份 Property payload。
+
 Schedule v2 的 lifetime edge API 命名为 `ScheduleEdit::require(consumer,
 provider)`；设计文档中的伪代码 `requires(...)` 在 C++ 中是保留关键字，不能作为
 成员函数标识符。该命名差异不改变“只有 hard requirement 才进入 lifetime DAG”的

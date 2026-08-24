@@ -1,4 +1,5 @@
 #include <lux/engine/ecs/PersistentEntity.hpp>
+#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 
 #include <algorithm>
 #include <array>
@@ -104,6 +105,12 @@ namespace lux::ecs
     lux::cxx::expected<PersistentEntityIndex, EPersistentEntityIndexError>
     PersistentEntityIndex::build(const World& world) noexcept
     {
+        if (!detail::WorldColdAccess::ownerIdle(world))
+        {
+            return lux::cxx::unexpected(
+                EPersistentEntityIndexError::WORLD_BUSY
+            );
+        }
         try
         {
             PersistentEntityIndex result;

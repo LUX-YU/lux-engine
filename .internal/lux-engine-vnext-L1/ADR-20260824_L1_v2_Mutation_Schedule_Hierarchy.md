@@ -48,8 +48,15 @@ LXWS v1 和 TaggedProperty 的结构字段使用逐字节 LE primitives；Tagged
 Hierarchy v2 不再公开 `rebuild/preorder/subtree/setEdge`，也不在 mutation helper
 中先改 derived cache。`reparent/detach/destroySubtree` 只验证并修改 Parent；
 `HierarchySystem` 从 Parent/Entity journal 增量维护 generation-aware intrusive
-adjacency。children range 无分配，hierarchy change stream 固定 65,536 records；
-首次同步或上游 cursor resync 时先在 temporary state 完整校验，再原子 swap。
+adjacency。children range 无分配；其顺序只在 topology revision 不变期间稳定，
+不携带 gameplay、persistence 或 deterministic simulation 语义。incremental edge
+使用 first/last/previous/next sibling 做 O(1) append/detach。hierarchy change stream
+最多保留 65,536 records，并按需分配；overflow 或 allocation failure 递增 epoch，
+要求 consumer resync。首次同步或上游 cursor resync 以 direct-parent scan、单次
+color traversal、单次 adjacency construction 在线性 temporary state 中完整校验，
+成功后才原子 swap。parent destruction 导致的 stale-generation Parent 使用 Node
+内嵌 repair queue 重试 canonical erase；暂时的 command allocation failure 不会丢失
+repair intent，也不会把可恢复 dangling Parent 永久误报为 authored invalid data。
 
 Transform v2 只消费各自 Local component journal 与 HierarchyIndex change stream。
 无变化帧在 query 前退出；变化帧以 dense generation stamps 合并 dirty roots，并只用
@@ -71,7 +78,7 @@ commit 时编译，`runCloseStep()` 与析构不得为了关闭顺序再分配�
 ## 重稳定实施结果
 
 Change Journal 最终实现为一个 World-wide 4 KiB reusable block arena。每个
-component/entity stream 只保存 block 指针环；全局按 oldest unpinned block 回收，
+component/entity stream 只保存 intrusive block chain；全局按 oldest unpinned block 回收，
 cursor 只保存 epoch/sequence。固定 cursor 导致暂时无法回收时，stream 在 unpin 后
 建立新 baseline，确保 bounded policy 不退化为隐藏的无界分配。
 

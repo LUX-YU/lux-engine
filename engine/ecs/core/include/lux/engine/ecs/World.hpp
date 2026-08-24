@@ -61,6 +61,7 @@ namespace lux::ecs
         struct WorldEditAccess;
         struct WorldChangeAccess;
         struct WorldColdAccess;
+        struct WorldEntityAccess;
 
         enum class EWorldState : std::uint8_t
         {
@@ -199,6 +200,7 @@ namespace lux::ecs
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldChangeAccess;
         friend struct detail::WorldColdAccess;
+        friend struct detail::WorldEntityAccess;
 
         template <class Component>
         friend ComponentOperations componentOperations() noexcept;

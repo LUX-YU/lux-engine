@@ -7,7 +7,6 @@
 #include <entt/entity/entity.hpp>
 
 #include <algorithm>
-#include <array>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -95,8 +94,13 @@ namespace lux::ecs
             Entity identity{NullEntity};
             Entity parent{NullEntity};
             Entity first_child{NullEntity};
+            Entity last_child{NullEntity};
             Entity previous_sibling{NullEntity};
             Entity next_sibling{NullEntity};
+            Entity repair_parent{NullEntity};
+            Entity repair_previous{NullEntity};
+            Entity repair_next{NullEntity};
+            bool repair_command_queued{};
         };
 
         struct RecordedChange final
@@ -106,9 +110,7 @@ namespace lux::ecs
         };
 
         explicit Impl(World& owner)
-            : changes(std::make_unique<RecordedChange[]>(
-                  kHierarchyChangeCapacity)),
-              world(std::addressof(owner))
+            : world(std::addressof(owner))
         {
         }
 
@@ -162,7 +164,8 @@ namespace lux::ecs
         {
             Node* node = find(entity);
             if (node == nullptr || node->parent != NullEntity ||
-                node->first_child != NullEntity)
+                node->first_child != NullEntity ||
+                node->repair_parent != NullEntity)
             {
                 return;
             }
@@ -197,6 +200,13 @@ namespace lux::ecs
                 detail::require(next != nullptr);
                 next->previous_sibling = node->previous_sibling;
             }
+            else
+            {
+                detail::require(parent_node->last_child == child);
+                parent_node->last_child = node->previous_sibling;
+            }
+            if (parent_node->first_child == NullEntity)
+                parent_node->last_child = NullEntity;
             node->parent = NullEntity;
             node->previous_sibling = NullEntity;
             node->next_sibling = NullEntity;
@@ -212,45 +222,51 @@ namespace lux::ecs
                 child_node->parent == NullEntity
             );
 
-            Entity previous = NullEntity;
-            Entity current = parent_node->first_child;
-            while (current != NullEntity && lessEntity(current, child))
-            {
-                previous = current;
-                const Node* current_node = find(current);
-                detail::require(current_node != nullptr);
-                current = current_node->next_sibling;
-            }
-
+            const Entity previous = parent_node->last_child;
             child_node->parent = parent;
             child_node->previous_sibling = previous;
-            child_node->next_sibling = current;
+            child_node->next_sibling = NullEntity;
             if (previous == NullEntity)
                 parent_node->first_child = child;
             else
                 find(previous)->next_sibling = child;
-            if (current != NullEntity)
-                find(current)->previous_sibling = child;
+            parent_node->last_child = child;
         }
 
         void append(HierarchyChange value) noexcept
         {
-            std::size_t index{};
             if (change_count == kHierarchyChangeCapacity)
+                establishBaseline();
+
+            if (change_count == changes.size())
             {
-                change_start = (change_start + 1U) %
-                    kHierarchyChangeCapacity;
-                ++oldest_sequence;
-                index = (change_start + change_count - 1U) %
-                    kHierarchyChangeCapacity;
+                try
+                {
+                    const std::size_t next_capacity = std::min(
+                        kHierarchyChangeCapacity,
+                        std::max<std::size_t>(256U, changes.size() * 2U)
+                    );
+                    std::vector<RecordedChange> replacement(next_capacity);
+                    for (std::size_t offset{}; offset < change_count; ++offset)
+                    {
+                        replacement[offset] = changes[
+                            (change_start + offset) % changes.size()
+                        ];
+                    }
+                    changes.swap(replacement);
+                    change_start = 0U;
+                }
+                catch (...)
+                {
+                    establishBaseline();
+                    return;
+                }
             }
-            else
-            {
-                index = (change_start + change_count) %
-                    kHierarchyChangeCapacity;
-                ++change_count;
-            }
+
+            const std::size_t index = (change_start + change_count) %
+                changes.size();
             changes[index] = RecordedChange{next_sequence, value};
+            ++change_count;
             ++next_sequence;
         }
 
@@ -272,6 +288,96 @@ namespace lux::ecs
             establishBaseline();
         }
 
+        void unlinkRepair(Node& node) noexcept
+        {
+            detail::require(node.repair_parent != NullEntity);
+            if (node.repair_previous == NullEntity)
+                repair_head = node.repair_next;
+            else
+                find(node.repair_previous)->repair_next = node.repair_next;
+            if (node.repair_next == NullEntity)
+                repair_tail = node.repair_previous;
+            else
+                find(node.repair_next)->repair_previous =
+                    node.repair_previous;
+            node.repair_parent = NullEntity;
+            node.repair_previous = NullEntity;
+            node.repair_next = NullEntity;
+            node.repair_command_queued = false;
+        }
+
+        [[nodiscard]] bool queueRepair(
+            Entity child,
+            Entity expected_parent,
+            bool command_queued
+        ) noexcept
+        {
+            Node* node = prepare(child);
+            if (node == nullptr)
+                return false;
+            if (node->repair_parent != NullEntity)
+            {
+                node->repair_parent = expected_parent;
+                node->repair_command_queued = command_queued;
+                return true;
+            }
+            node->repair_parent = expected_parent;
+            node->repair_previous = repair_tail;
+            node->repair_next = NullEntity;
+            node->repair_command_queued = command_queued;
+            if (repair_tail == NullEntity)
+                repair_head = child;
+            else
+                find(repair_tail)->repair_next = child;
+            repair_tail = child;
+            return true;
+        }
+
+        void cancelRepair(Entity child) noexcept
+        {
+            Node* node = find(child);
+            if (node != nullptr && node->repair_parent != NullEntity)
+                unlinkRepair(*node);
+        }
+
+        [[nodiscard]] bool retryRepairs(WorldCommands commands) noexcept
+        {
+            Entity current = repair_head;
+            while (current != NullEntity)
+            {
+                Node* node = find(current);
+                detail::require(
+                    node != nullptr && node->repair_parent != NullEntity
+                );
+                const Entity next = node->repair_next;
+                const Entity expected_parent = node->repair_parent;
+                const Parent* canonical = world->find<Parent>(current);
+                if (!world->valid(current) || canonical == nullptr ||
+                    canonical->entity != expected_parent)
+                {
+                    unlinkRepair(*node);
+                    prune(current);
+                    current = next;
+                    continue;
+                }
+
+                // A command accepted during the previous update must have run
+                // at that phase's barrier. If canonical data still matches,
+                // retry rather than assuming publication succeeded.
+                node->repair_command_queued = false;
+                const ECommandResult result = commands.push(
+                    EraseOrphanedParent{current, expected_parent}
+                );
+                node->repair_command_queued =
+                    result == ECommandResult::ACCEPTED;
+                if (result != ECommandResult::ACCEPTED)
+                    last_error = EHierarchyError::ALLOCATION_FAILURE;
+                current = next;
+            }
+            synchronized = repair_head == NullEntity;
+            return synchronized;
+        }
+
         [[nodiscard]] lux::cxx::expected<void, EHierarchyError> rebuild(
             SystemFrame& frame
         ) noexcept
@@ -279,22 +385,41 @@ namespace lux::ecs
             try
             {
                 std::vector<std::pair<Entity, Entity>> edges;
+                std::vector<std::pair<Entity, Entity>> repairs;
                 std::size_t maximum_index{};
                 for (auto [child, link] : frame.query<Read<Parent>>())
                 {
                     ++visited_nodes_last_update;
-                    if (link.entity == NullEntity ||
-                        !frame.valid(link.entity))
+                    if (link.entity == NullEntity)
                     {
                         return lux::cxx::unexpected(
                             EHierarchyError::INVALID_PARENT
                         );
                     }
-                    if (auto valid = validateCanonicalParent(
-                            frame, child, link.entity
-                        ); !valid)
+                    if (child == link.entity)
                     {
-                        return valid;
+                        return lux::cxx::unexpected(
+                            EHierarchyError::SELF_PARENT
+                        );
+                    }
+
+                    const auto state =
+                        detail::WorldEntityAccess::referenceState(
+                            *world, link.entity
+                        );
+                    if (state == detail::EEntityReferenceState::UNKNOWN)
+                    {
+                        return lux::cxx::unexpected(
+                            EHierarchyError::INVALID_PARENT
+                        );
+                    }
+                    if (state == detail::EEntityReferenceState::STALE)
+                    {
+                        repairs.emplace_back(child, link.entity);
+                        maximum_index = std::max(
+                            maximum_index, entityIndex(child)
+                        );
+                        continue;
                     }
                     edges.emplace_back(child, link.entity);
                     maximum_index = std::max(
@@ -304,7 +429,7 @@ namespace lux::ecs
                 }
 
                 std::vector<Node> next_nodes;
-                if (!edges.empty())
+                if (!edges.empty() || !repairs.empty())
                     next_nodes.resize(maximum_index + 1U);
                 std::size_t next_count{};
                 const auto prepare_next = [&](Entity entity) -> Node&
@@ -323,7 +448,14 @@ namespace lux::ecs
                     prepare_next(child).parent = parent;
                     (void)prepare_next(parent);
                 }
+                for (const auto [child, parent] : repairs)
+                {
+                    Node& node = prepare_next(child);
+                    node.repair_parent = parent;
+                }
 
+                // Each relation node transitions white -> gray -> black once.
+                // Full rebuild therefore validates even a deep chain in O(N).
                 std::vector<std::uint8_t> colors(next_nodes.size());
                 for (const Node& node : next_nodes)
                 {
@@ -366,28 +498,41 @@ namespace lux::ecs
                     Node* child_node = find_next(child);
                     Node* parent_node = find_next(parent);
                     detail::require(child_node != nullptr && parent_node != nullptr);
-                    Entity previous = NullEntity;
-                    Entity current = parent_node->first_child;
-                    while (current != NullEntity && lessEntity(current, child))
-                    {
-                        previous = current;
-                        current = find_next(current)->next_sibling;
-                    }
+                    const Entity previous = parent_node->last_child;
                     child_node->previous_sibling = previous;
-                    child_node->next_sibling = current;
+                    child_node->next_sibling = NullEntity;
                     if (previous == NullEntity)
                         parent_node->first_child = child;
                     else
                         find_next(previous)->next_sibling = child;
-                    if (current != NullEntity)
-                        find_next(current)->previous_sibling = child;
+                    parent_node->last_child = child;
+                }
+
+                Entity next_repair_head = NullEntity;
+                Entity next_repair_tail = NullEntity;
+                for (const auto [child, parent] : repairs)
+                {
+                    Node* node = find_next(child);
+                    detail::require(
+                        node != nullptr && node->repair_parent == parent
+                    );
+                    node->repair_previous = next_repair_tail;
+                    if (next_repair_tail == NullEntity)
+                        next_repair_head = child;
+                    else
+                        find_next(next_repair_tail)->repair_next = child;
+                    next_repair_tail = child;
                 }
 
                 nodes.swap(next_nodes);
                 node_count = next_count;
-                synchronized = true;
+                repair_head = next_repair_head;
+                repair_tail = next_repair_tail;
+                synchronized = repair_head == NullEntity;
                 last_error = EHierarchyError::NONE;
                 establishBaseline();
+                if (!synchronized)
+                    (void)retryRepairs(frame.commands());
                 return {};
             }
             catch (...)
@@ -416,6 +561,8 @@ namespace lux::ecs
             if (node == nullptr)
                 return;
 
+            cancelRepair(entity);
+
             const Entity old_parent = detachEdge(entity);
             if (old_parent != NullEntity)
                 recordDetached(entity, old_parent);
@@ -427,13 +574,23 @@ namespace lux::ecs
                 const Entity detached_from = detachEdge(child);
                 detail::require(detached_from == entity);
                 recordDetached(child, entity);
-                if (commands.push(EraseOrphanedParent{child, entity}) !=
-                    ECommandResult::ACCEPTED)
+                const ECommandResult result = commands.push(
+                    EraseOrphanedParent{child, entity}
+                );
+                if (!queueRepair(
+                        child,
+                        entity,
+                        result == ECommandResult::ACCEPTED
+                    ))
                 {
                     last_error = EHierarchyError::ALLOCATION_FAILURE;
-                    synchronized = false;
+                    invalidate(EHierarchyError::ALLOCATION_FAILURE);
+                    return;
                 }
-                prune(child);
+                if (result != ECommandResult::ACCEPTED)
+                    last_error = EHierarchyError::ALLOCATION_FAILURE;
+                synchronized = false;
+                rebuild_required = true;
                 node = find(entity);
             }
 
@@ -488,15 +645,24 @@ namespace lux::ecs
         void synchronize(SystemFrame& frame) noexcept
         {
             visited_nodes_last_update = 0U;
+            if (repair_head != NullEntity)
+            {
+                if (!retryRepairs(frame.commands()))
+                    return;
+                rebuild_required = true;
+            }
+
             auto parent_changes = frame.changes(parent_cursor);
             auto entity_changes = frame.entityChanges(entity_cursor);
             if (parent_changes.status() == EChangeReadStatus::RESYNC_REQUIRED ||
                 entity_changes.status() == EChangeReadStatus::RESYNC_REQUIRED ||
-                !synchronized)
+                rebuild_required || !synchronized)
             {
                 auto rebuilt = rebuild(frame);
                 if (!rebuilt)
                     invalidate(rebuilt.error());
+                else
+                    rebuild_required = false;
                 return;
             }
 
@@ -510,6 +676,22 @@ namespace lux::ecs
                 const Parent* link = frame.find<Parent>(change.entity);
                 if (link == nullptr)
                     continue;
+                const auto reference_state =
+                    detail::WorldEntityAccess::referenceState(
+                        *world, link->entity
+                    );
+                if (reference_state ==
+                    detail::EEntityReferenceState::STALE)
+                {
+                    rebuild_required = true;
+                    continue;
+                }
+                if (reference_state ==
+                    detail::EEntityReferenceState::UNKNOWN)
+                {
+                    invalidate(EHierarchyError::INVALID_PARENT);
+                    return;
+                }
                 maximum_index = std::max(
                     maximum_index, entityIndex(link->entity)
                 );
@@ -520,6 +702,15 @@ namespace lux::ecs
                     invalidate(valid.error());
                     return;
                 }
+            }
+            if (rebuild_required)
+            {
+                auto rebuilt = rebuild(frame);
+                if (!rebuilt)
+                    invalidate(rebuilt.error());
+                else
+                    rebuild_required = false;
+                return;
             }
             if (!ensureCapacity(maximum_index))
             {
@@ -548,19 +739,22 @@ namespace lux::ecs
         }
 
         std::vector<Node> nodes;
-        std::unique_ptr<RecordedChange[]> changes;
+        std::vector<RecordedChange> changes;
         World* world{};
         std::size_t node_count{};
         std::size_t change_start{};
         std::size_t change_count{};
         std::uint64_t oldest_sequence{1};
         std::uint64_t next_sequence{1};
-        std::uint32_t epoch{1};
+        std::uint64_t epoch{1};
+        Entity repair_head{NullEntity};
+        Entity repair_tail{NullEntity};
         ChangeCursor<Parent> parent_cursor;
         EntityChangeCursor entity_cursor;
         std::size_t visited_nodes_last_update{};
         EHierarchyError last_error{EHierarchyError::NONE};
         bool synchronized{};
+        bool rebuild_required{};
     };
 
     HierarchyIndex::HierarchyIndex(World& world)
@@ -668,8 +862,9 @@ namespace lux::ecs
             sequence - impl_->oldest_sequence
         );
         detail::require(offset < impl_->change_count);
+        detail::require(!impl_->changes.empty());
         const std::size_t index = (impl_->change_start + offset) %
-            kHierarchyChangeCapacity;
+            impl_->changes.size();
         const Impl::RecordedChange& recorded = impl_->changes[index];
         detail::require(recorded.sequence == sequence);
         return recorded.value;
@@ -763,15 +958,59 @@ namespace lux::ecs
         try
         {
             std::vector<std::pair<Entity, Entity>> edges;
+            std::size_t maximum_index{};
             for (auto [child, parent] : edit.query<Read<Parent>>())
             {
-                if (auto valid = validateCanonicalParent(
-                        world, child, parent.entity
-                    ); !valid)
+                if (parent.entity == NullEntity ||
+                    !world.valid(parent.entity))
                 {
-                    return valid;
+                    return lux::cxx::unexpected(
+                        EHierarchyError::INVALID_PARENT
+                    );
                 }
+                if (child == parent.entity)
+                    return lux::cxx::unexpected(EHierarchyError::SELF_PARENT);
                 edges.emplace_back(parent.entity, child);
+                maximum_index = std::max(
+                    maximum_index,
+                    std::max(entityIndex(child), entityIndex(parent.entity))
+                );
+            }
+
+            std::vector<Entity> parents;
+            std::vector<std::uint8_t> colors;
+            if (!edges.empty())
+            {
+                parents.resize(maximum_index + 1U, NullEntity);
+                colors.resize(maximum_index + 1U);
+            }
+            for (const auto [parent, child] : edges)
+                parents[entityIndex(child)] = parent;
+            for (const auto [unused_parent, child] : edges)
+            {
+                (void)unused_parent;
+                if (colors[entityIndex(child)] == 2U)
+                    continue;
+                Entity current = child;
+                while (current != NullEntity)
+                {
+                    const std::size_t index = entityIndex(current);
+                    if (colors[index] == 1U)
+                        return lux::cxx::unexpected(EHierarchyError::CYCLE);
+                    if (colors[index] == 2U)
+                        break;
+                    colors[index] = 1U;
+                    current = parents[index];
+                }
+                current = child;
+                while (current != NullEntity)
+                {
+                    const std::size_t index = entityIndex(current);
+                    if (colors[index] != 1U)
+                        break;
+                    colors[index] = 2U;
+                    current = parents[index];
+                }
             }
             std::sort(
                 edges.begin(), edges.end(),

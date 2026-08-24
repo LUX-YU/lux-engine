@@ -194,6 +194,12 @@ namespace lux::ecs::detail
             return ECommandResult::STALE_WRITER;
         }
 
+        if (fail_next_push_for_test_)
+        {
+            fail_next_push_for_test_ = false;
+            return ECommandResult::ALLOCATION_FAILURE;
+        }
+
         try
         {
             if (pending_.size() == pending_.capacity())

@@ -54,7 +54,7 @@ namespace lux::ecs
         HierarchyChangeCursor() noexcept = default;
 
       private:
-        std::uint32_t epoch_{};
+        std::uint64_t epoch_{};
         std::uint64_t sequence_{};
 
         friend class HierarchyIndex;
@@ -229,6 +229,9 @@ namespace lux::ecs
         [[nodiscard]] bool synchronized() const noexcept;
         [[nodiscard]] EHierarchyError lastError() const noexcept;
         [[nodiscard]] Entity parent(Entity entity) const noexcept;
+        // Iteration is allocation-free and stable while the topology revision
+        // does not change. Sibling order is otherwise unspecified and carries
+        // no gameplay, persistence, or deterministic simulation semantics.
         [[nodiscard]] HierarchyChildren children(Entity parent) const noexcept;
         [[nodiscard]] std::size_t size() const noexcept;
 

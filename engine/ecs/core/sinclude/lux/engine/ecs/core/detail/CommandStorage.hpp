@@ -67,6 +67,10 @@ namespace lux::ecs::detail
         [[nodiscard]] std::uint32_t generation() const noexcept;
         [[nodiscard]] std::size_t discarded() const noexcept;
         [[nodiscard]] std::size_t allocationEvents() const noexcept;
+        void failNextPushForTest() noexcept
+        {
+            fail_next_push_for_test_ = true;
+        }
 
       private:
         [[nodiscard]] ECommandResult push(
@@ -86,6 +90,7 @@ namespace lux::ecs::detail
         std::size_t record_allocation_events_{};
         bool active_{};
         bool applying_{};
+        bool fail_next_push_for_test_{};
 
         friend class ::lux::ecs::WorldCommands;
         friend class ::lux::ecs::Schedule;

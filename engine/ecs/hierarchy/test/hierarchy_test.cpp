@@ -2,6 +2,8 @@
 #include <lux/engine/ecs/HierarchySchema.hpp>
 #include <lux/engine/ecs/HierarchySystem.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
+#include <lux/engine/ecs/hierarchy/detail/HierarchyIndexTestAccess.hpp>
+#include <lux/engine/ecs/schedule/detail/ScheduleTestAccess.hpp>
 
 #include <cassert>
 #include <memory>
@@ -101,9 +103,22 @@ int main()
     auto destroy_parent = std::move(*destroy_parent_result);
     destroy_parent.destroy(child);
     destroy_parent = {};
+    lux::ecs::detail::ScheduleTestAccess::failNextCommandPush(
+        schedule, hierarchy_handle
+    );
     schedule.run(1.0F / 60.0F, 3U);
     assert(!world.valid(child));
+    assert(world.find<lux::ecs::Parent>(grandchild) != nullptr);
+    assert(!hierarchy.synchronized());
+    assert(
+        hierarchy.lastError() ==
+        lux::ecs::EHierarchyError::ALLOCATION_FAILURE
+    );
+    schedule.run(1.0F / 60.0F, 4U);
     assert(world.find<lux::ecs::Parent>(grandchild) == nullptr);
+    assert(!hierarchy.synchronized());
+    schedule.run(1.0F / 60.0F, 5U);
+    assert(hierarchy.synchronized());
     assert(hierarchy.parent(grandchild) == lux::ecs::NullEntity);
 
     auto generation_result = world.edit();
@@ -112,10 +127,160 @@ int main()
     assert(replacement != child);
     assert(lux::ecs::reparent(generation_edit, replacement, root));
     generation_edit = {};
-    schedule.run(1.0F / 60.0F, 4U);
+    schedule.run(1.0F / 60.0F, 6U);
     assert(hierarchy.parent(child) == lux::ecs::NullEntity);
     assert(hierarchy.parent(replacement) == root);
     assert(hierarchy_handle);
+
+    {
+        // A Parent can become stale while no HierarchySystem is installed.
+        // The first cold rebuild must classify the old generation as a
+        // retryable repair instead of permanently rejecting canonical data.
+        lux::ecs::World stale_world;
+        auto stale_result = stale_world.edit();
+        auto stale_edit = std::move(*stale_result);
+        const auto stale_parent = stale_edit.create();
+        const auto stale_child = stale_edit.create();
+        stale_edit.emplace<lux::ecs::Parent>(stale_child, stale_parent);
+        stale_edit.destroy(stale_parent);
+        const auto reused_parent_slot = stale_edit.create();
+        assert(reused_parent_slot != stale_parent);
+        stale_edit = {};
+
+        lux::ecs::HierarchyIndex stale_hierarchy{stale_world};
+        lux::ecs::Schedule stale_schedule{stale_world};
+        (void)installHierarchy(stale_schedule, stale_hierarchy);
+        stale_schedule.run(1.0F / 60.0F, 1U);
+        assert(!stale_hierarchy.synchronized());
+        stale_schedule.run(1.0F / 60.0F, 2U);
+        assert(stale_hierarchy.synchronized());
+        assert(stale_world.find<lux::ecs::Parent>(stale_child) == nullptr);
+    }
+
+    {
+        // An authored replacement wins over a pending orphan repair.
+        lux::ecs::World repair_world;
+        auto setup_result = repair_world.edit();
+        auto setup = std::move(*setup_result);
+        const auto doomed_parent = setup.create();
+        const auto replacement_parent = setup.create();
+        const auto repair_child = setup.create();
+        setup.emplace<lux::ecs::Parent>(repair_child, doomed_parent);
+        setup = {};
+        lux::ecs::HierarchyIndex repair_hierarchy{repair_world};
+        lux::ecs::Schedule repair_schedule{repair_world};
+        const auto repair_handle = installHierarchy(
+            repair_schedule, repair_hierarchy
+        );
+        repair_schedule.run(1.0F / 60.0F, 1U);
+        auto destroy_result = repair_world.edit();
+        auto destroy = std::move(*destroy_result);
+        destroy.destroy(doomed_parent);
+        destroy = {};
+        lux::ecs::detail::ScheduleTestAccess::failNextCommandPush(
+            repair_schedule, repair_handle
+        );
+        repair_schedule.run(1.0F / 60.0F, 2U);
+        auto replace_result = repair_world.edit();
+        auto replace = std::move(*replace_result);
+        replace.update<lux::ecs::Parent>(
+            repair_child,
+            [replacement_parent](lux::ecs::Parent& parent) noexcept
+            {
+                parent.entity = replacement_parent;
+            }
+        );
+        replace = {};
+        repair_schedule.run(1.0F / 60.0F, 3U);
+        assert(repair_hierarchy.synchronized());
+        assert(repair_hierarchy.parent(repair_child) == replacement_parent);
+    }
+
+    {
+        // Destroying the child cancels its embedded repair without leaving a
+        // dangling intrusive queue entry.
+        lux::ecs::World cancel_world;
+        auto setup_result = cancel_world.edit();
+        auto setup = std::move(*setup_result);
+        const auto doomed_parent = setup.create();
+        const auto repair_child = setup.create();
+        setup.emplace<lux::ecs::Parent>(repair_child, doomed_parent);
+        setup = {};
+        lux::ecs::HierarchyIndex cancel_hierarchy{cancel_world};
+        lux::ecs::Schedule cancel_schedule{cancel_world};
+        const auto cancel_handle = installHierarchy(
+            cancel_schedule, cancel_hierarchy
+        );
+        cancel_schedule.run(1.0F / 60.0F, 1U);
+        auto destroy_result = cancel_world.edit();
+        auto destroy = std::move(*destroy_result);
+        destroy.destroy(doomed_parent);
+        destroy = {};
+        lux::ecs::detail::ScheduleTestAccess::failNextCommandPush(
+            cancel_schedule, cancel_handle
+        );
+        cancel_schedule.run(1.0F / 60.0F, 2U);
+        auto cancel_result = cancel_world.edit();
+        auto cancel = std::move(*cancel_result);
+        cancel.destroy(repair_child);
+        cancel = {};
+        cancel_schedule.run(1.0F / 60.0F, 3U);
+        assert(cancel_hierarchy.synchronized());
+    }
+
+    {
+        lux::ecs::World fabricated_world;
+        auto fabricated_result = fabricated_world.edit();
+        auto fabricated_edit = std::move(*fabricated_result);
+        const auto child_entity = fabricated_edit.create();
+        fabricated_edit.emplace<lux::ecs::Parent>(
+            child_entity,
+            static_cast<lux::ecs::Entity>(999999U)
+        );
+        fabricated_edit = {};
+        lux::ecs::HierarchyIndex fabricated_hierarchy{fabricated_world};
+        lux::ecs::Schedule fabricated_schedule{fabricated_world};
+        (void)installHierarchy(fabricated_schedule, fabricated_hierarchy);
+        fabricated_schedule.run(1.0F / 60.0F, 1U);
+        assert(!fabricated_hierarchy.synchronized());
+        assert(
+            fabricated_hierarchy.lastError() ==
+            lux::ecs::EHierarchyError::INVALID_PARENT
+        );
+    }
+
+    {
+        // Cold deep-chain construction validates each relation a fixed number
+        // of times; it must not invoke the incremental ancestor validator.
+        constexpr std::size_t kDepth = 10000U;
+        lux::ecs::World deep_world;
+        auto deep_result = deep_world.edit();
+        auto deep_edit = std::move(*deep_result);
+        auto previous = deep_edit.create();
+        for (std::size_t index{1U}; index < kDepth; ++index)
+        {
+            const auto entity = deep_edit.create();
+            deep_edit.emplace<lux::ecs::Parent>(entity, previous);
+            previous = entity;
+        }
+        deep_edit = {};
+        lux::ecs::HierarchyIndex deep_hierarchy{deep_world};
+        lux::ecs::Schedule deep_schedule{deep_world};
+        (void)installHierarchy(deep_schedule, deep_hierarchy);
+        deep_schedule.run(1.0F / 60.0F, 1U);
+        assert(deep_hierarchy.synchronized());
+        assert(
+            lux::ecs::detail::HierarchyIndexTestAccess::visitedNodes(
+                deep_hierarchy
+            ) == kDepth - 1U
+        );
+        deep_schedule.run(1.0F / 60.0F, 2U);
+        assert(
+            lux::ecs::detail::HierarchyIndexTestAccess::visitedNodes(
+                deep_hierarchy
+            ) == 0U
+        );
+    }
 
     {
         lux::ecs::World subtree_world;

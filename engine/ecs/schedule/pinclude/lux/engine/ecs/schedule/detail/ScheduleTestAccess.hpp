@@ -34,5 +34,10 @@ namespace lux::ecs::detail
         [[nodiscard]] static std::size_t commandAllocationEvents(
             const Schedule& schedule
         ) noexcept;
+
+        static void failNextCommandPush(
+            Schedule& schedule,
+            AnySystemHandle handle
+        ) noexcept;
     };
 } // namespace lux::ecs::detail

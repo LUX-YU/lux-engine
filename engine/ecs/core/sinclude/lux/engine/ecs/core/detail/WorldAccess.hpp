@@ -6,6 +6,13 @@
 
 namespace lux::ecs::detail
 {
+    enum class EEntityReferenceState : std::uint8_t
+    {
+        CURRENT,
+        STALE,
+        UNKNOWN,
+    };
+
     struct WorldEditAccess final
     {
         [[nodiscard]] static World& world(WorldEdit& edit) noexcept
@@ -21,6 +28,24 @@ namespace lux::ecs::detail
         {
             return world.state_ == EWorldState::IDLE &&
                 world.owner_thread_ == std::this_thread::get_id();
+        }
+    };
+
+    struct WorldEntityAccess final
+    {
+        [[nodiscard]] static EEntityReferenceState referenceState(
+            const World& world,
+            Entity entity
+        ) noexcept
+        {
+            if (world.registry_.valid(entity))
+                return EEntityReferenceState::CURRENT;
+            if (world.registry_.current(entity) !=
+                entt::entt_traits<Entity>::to_version(entt::tombstone))
+            {
+                return EEntityReferenceState::STALE;
+            }
+            return EEntityReferenceState::UNKNOWN;
         }
     };
 } // namespace lux::ecs::detail

@@ -1661,4 +1661,21 @@ namespace lux::ecs
         }
         return result;
     }
+
+    void detail::ScheduleTestAccess::failNextCommandPush(
+        Schedule& schedule,
+        AnySystemHandle value
+    ) noexcept
+    {
+        const HandleKey handle_key = key(value);
+        detail::require(
+            handle_key.owner == schedule.impl_->owner_id &&
+            handle_key.slot < schedule.impl_->slots.size() &&
+            schedule.impl_->generations[handle_key.slot] ==
+                handle_key.generation &&
+            schedule.impl_->slots[handle_key.slot] != nullptr
+        );
+        schedule.impl_->slots[handle_key.slot]
+            ->commands->failNextPushForTest();
+    }
 } // namespace lux::ecs

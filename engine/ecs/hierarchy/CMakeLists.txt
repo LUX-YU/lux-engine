@@ -49,6 +49,12 @@ lux_classify_target(
 
 add_executable(ecs_hierarchy_test test/hierarchy_test.cpp)
 target_link_libraries(ecs_hierarchy_test PRIVATE lux::engine::ecs::hierarchy)
+target_include_directories(
+    ecs_hierarchy_test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/../schedule/pinclude
+)
 if(MSVC)
     target_compile_options(ecs_hierarchy_test PRIVATE /UNDEBUG)
 else()

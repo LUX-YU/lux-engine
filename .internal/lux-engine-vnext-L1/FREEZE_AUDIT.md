@@ -1,35 +1,37 @@
-# vNext L1 v2.1 Independent Audit Rejection — 2026-08-24
+# vNext L1 v2.1 Independent Re-audit Candidate — 2026-08-24
 
 ## 结论
 
-独立审阅发现 Change Journal、Hierarchy recovery 与 cold/resync 路径仍有
-correctness blocker。当前状态撤回为：
+独立审阅发现的 Change Journal、Hierarchy recovery 与 cold/resync blockers 已完成
+定向加固；全部 correctness、代表性性能、平台和安装资格门已重跑。当前状态为：
 
 - `Architecture Accepted`
-- `Freeze Candidate Rejected by Independent Audit`
-- `Targeted Hardening Required`
-- `Domain Migration Blocked`
+- `Correctness Hardened`
+- `Performance Contract Passed`
+- `Public API Freeze Candidate`
+- `Independent Re-audit Required`
 
-此前的 correctness/performance 数据只证明部分 hot path，不构成冻结结论。
-重新审阅前，Render、Physics、Animation、Script、
+这不是 Frozen 声明。独立重新审阅接受前，Render、Physics、Animation、Script、
 Streaming 等 domain migration 以及建立在 L1 之上的 L2/L3 产品工作继续 STOP。
 
 v2.1 定向整改进度：Change Journal 的 history-loss 已改为 pin-safe epoch，Schedule
 scratch 已改为 wave-wide bounded arena；Hierarchy cold rebuild 已改为线性三阶段
 校验，incremental sibling mutation 为 O(1)，orphan cleanup 由内嵌 repair queue
 重试。Snapshot/LXWS cold construction 现已使用 internal suppressing edit，并由 journal
-lifetime counters 证明 construction record writes 与额外 block acquisitions 都为零；
-最终代表性性能、安装与平台证据仍未完成，因此本文件状态仍保持 rejected。
+lifetime counters 证明 construction record writes 与额外 block acquisitions 都为零。
+deterministic failure injection 覆盖首次 stream descriptor、block acquire/attach、
+Schedule scratch exhaustion 和 orphan command failure；历史丢失统一降级为 pin-safe
+resync，没有 partial history publication。
 
 ## 构建与测试矩阵
 
 | 矩阵 | 结果 |
 |---|---|
-| Windows RelWithDebInfo | `target all -j 4 -k 0` 通过；CTest 66/66；第二轮 `ninja: no work to do` |
-| Windows Debug | `target all -j 4 -k 0` 通过；CTest 53/53；第二轮 `ninja: no work to do` |
-| Windows Hardened Contracts | 独立 RelWithDebInfo tree，`LUX_ECS_CONTRACT_CHECKS=ON`；CTest 66/66；第二轮 no-work |
+| Windows RelWithDebInfo | `target all -j 4 -k 0` 通过；CTest 67/67；第二轮 `ninja: no work to do` |
+| Windows Debug | `target all -j 4 -k 0` 通过；CTest 54/54；第二轮 `ninja: no work to do` |
+| Windows Hardened Contracts | 独立 RelWithDebInfo tree，`LUX_ECS_CONTRACT_CHECKS=ON`；CTest 67/67；第二轮 no-work |
 | Android arm64 PLAYER | L0 + L1 `target all -j 4 -k 0` 通过；第二轮 no-work；交叉构建不运行目标侧 CTest |
-| Fresh install | 空 staging lineage 安装 534 个文件；installed-architecture gate 通过 |
+| Fresh install | 空 staging lineage 安装 583 个文件；installed-architecture gate 通过 |
 | Installed consumers | `core+schedule`、`core+schedule+object`、`schema_reflection+persistence` 三个独立工程均配置、链接、运行通过 |
 
 Android 的独立 engine/lux-cxx 前缀曾揭示 component annotation 的隐式 meta
@@ -61,17 +63,21 @@ include。最终 `ComponentAnnotations.hpp` 由 `ecs::schema` 安装，Parent/Tr
 ## 性能
 
 原始 30-sample CSV、方法和 median/p95 见
-`../benchmarks/20260824-vnext-l1/l1-v2-benchmark.csv`。
+`../benchmarks/20260824-vnext-l1/l1-v2.1-benchmark.csv`。
 
-- 100k/1m ReadQuery median 相对 raw EnTT 分别为 -9.33%/-7.54%，没有超过约
-  5% steady-state overhead 上限。
+- 100k/1m ReadQuery median 相对 raw EnTT 分别为 -13.90%/-9.51%，没有超过约
+  5% steady-state overhead 上限；1m WorldEdit/Schedule WriteQuery median 为
+  8.975/15.623 ms，warmup 后 allocation count 为 0。
 - Schedule 1/16/64/256/1024 systems 和 reserved commands steady path 的
   allocation-event 计数为 0。
-- 1m hierarchy no-change 的 visited nodes 为 0；100k-entity World 的 Transform leaf
-  dirty visited nodes 为 1，而不是 World size。
+- 1m real balanced Parent graph initial sync median 为 51.096 ms，no-change visited
+  nodes 为 0；100k deep/star initial sync 为 4.584/4.279 ms，100k star reparent
+  sibling walk 为 0，cursor overflow resync 为 4.434 ms。
+- Transform 100k star/deep propagation median 为 16.112/13.455 ms；1m peak/100k
+  active sparse high-water retained dense bytes 为 32,400,024，作为独立审阅输入保留。
 - Snapshot 1m capture/instantiate/restore median 为
-  88.789/97.090/94.916 ms；LXWS 的真实 mixed-data 1m encode/decode median 为
-  305.950/418.042 ms。
+  48.108/47.245/47.254 ms；LXWS 的真实 mixed-data 1m World build、encode、decode、
+  materialize median 为 1498.140/277.687/300.200/328.938 ms。
 
 ## Quarantine 与 STOP 条件
 

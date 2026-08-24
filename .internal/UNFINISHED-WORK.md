@@ -13,7 +13,7 @@ gates are rerun.
 - [x] V2.1-2: Bound Schedule change scratch and harden lifecycle RAII.
 - [x] V2.1-3: Make Hierarchy rebuild linear and orphan repair retryable.
 - [x] V2.1-4: Suppress cold-construction journal emission.
-- [ ] V2.1-5: Re-run adversarial, performance, install and platform gates.
+- [x] V2.1-5: Re-run adversarial, performance, install and platform gates.
 
 - [x] V2-0: Withdraw the v1 Freeze conclusion and record the new stop line.
 - [x] V2-1: Remove mutable World escapes and establish bounded Change Journal
@@ -28,18 +28,21 @@ gates are rerun.
 - [x] V2-8: Re-run representative performance, installed-consumer, hardened,
       Windows and Android gates; publish only a Freeze Candidate.
 
-Validation: RelWithDebInfo and hardened-contract trees pass 66/66, Debug passes
-53/53, and Android arm64 PLAYER completes the L0+L1 cross build. All four trees
-are no-work on the required second Ninja invocation. A fresh 534-file staging
+Validation: RelWithDebInfo and hardened-contract trees pass 67/67, Debug passes
+54/54, and Android arm64 PLAYER completes the L0+L1 cross build. All four trees
+are no-work on the required second Ninja invocation. A fresh 583-file staging
 lineage passes the installed architecture gate; the three independent
 `core+schedule`, `core+schedule+object`, and `schema_reflection+persistence`
-consumers configure, link and run. The retained v2 benchmark has 5 warmups and
-30 samples per case. Final status is `Architecture Accepted / Correctness
-Hardened / Performance Passed / Public API Freeze Candidate / Independent audit
+consumers configure, link and run. The retained v2.1 benchmark has 5 warmups and
+30 samples per case and covers bounded write scratch, real hierarchy cold/resync,
+transform churn, snapshot cold construction and both directions of LXWS
+materialization. Final status is `Architecture Accepted / Correctness Hardened /
+Performance Contract Passed / Public API Freeze Candidate / Independent Re-audit
 Required`.
 
 Stop line: no Render/Physics/Animation/Script/Streaming domain migration, L2
-AssetStore, or L3 Scene composition may build on the v1 public contracts.
+AssetStore, or L3 Scene composition may start before independent re-audit accepts
+the L1 public contract.
 
 ## Active: semantic deduplication (2026-08-22)
 

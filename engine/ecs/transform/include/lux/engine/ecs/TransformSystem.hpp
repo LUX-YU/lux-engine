@@ -27,6 +27,7 @@ namespace lux::ecs
 
       private:
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
+        [[nodiscard]] std::size_t retainedDenseBytes() const noexcept;
 
         struct Impl;
         std::unique_ptr<Impl> impl_;
@@ -47,6 +48,7 @@ namespace lux::ecs
 
       private:
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
+        [[nodiscard]] std::size_t retainedDenseBytes() const noexcept;
 
         struct Impl;
         std::unique_ptr<Impl> impl_;

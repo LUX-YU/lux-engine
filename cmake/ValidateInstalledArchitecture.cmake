@@ -33,7 +33,8 @@ file(GLOB_RECURSE installed_text LIST_DIRECTORIES false
 foreach(entry IN LISTS installed_text)
     file(READ "${entry}" content)
     if(content MATCHES "[/\\\\]legacy[/\\\\]" OR
-       content MATCHES "AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES")
+       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|cooked_relocation|LXES" OR
+       content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")
         message(FATAL_ERROR "Installed file contains a retired boundary: ${entry}")
     endif()
 endforeach()

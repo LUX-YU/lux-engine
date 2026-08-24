@@ -140,7 +140,8 @@ namespace
             destination[offset + index] = static_cast<std::byte>(
                 value & static_cast<T>(0xffU)
             );
-            value >>= 8U;
+            if constexpr (sizeof(T) > 1U)
+                value >>= 8U;
         }
     }
 }

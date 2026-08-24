@@ -1,9 +1,9 @@
 # ADR：L1 v2 Mutation、Schedule 与 Hierarchy 重稳定
 
 - 日期：2026-08-24
-- 状态：Architecture accepted；Freeze candidate rejected by independent audit；
-  v2.1 targeted hardening required
-- 基线：`0a83e8be`
+- 状态：Architecture accepted；Correctness hardened；Performance contract passed；
+  public API freeze candidate；independent re-audit required
+- v2.1 基线：`cfa48cfc`
 
 ## 裁决
 
@@ -90,8 +90,10 @@ cursor 只保存 epoch/sequence。固定 cursor 导致暂时无法回收时，st
 
 ReadQuery 直接包装 EnTT const `view.each()` iterator，不在每个 entity 上重新执行
 registry lookup。100k/1m 的 30-sample median 都优于对应 raw EnTT fixture，满足约
-5% overhead gate。Snapshot 1m 从早期诊断版本的非线性 journal copying 修正为
-88.789/97.090/94.916 ms capture/instantiate/restore median。
+5% overhead gate。v2.1 证据还覆盖 100k/1m WorldEdit/Schedule WriteQuery、真实
+1m Parent graph、100k deep/star/resync、large/deep/sparse Transform，以及完整
+World-to-LXWS-to-World 路径。Snapshot 1m 在 suppressing cold edit 下达到
+48.108/47.245/47.254 ms capture/instantiate/restore median。
 
 ECS component annotation vocabulary 最终由 `ecs::schema` 的独立安装头
 `ComponentAnnotations.hpp` 提供。它只在 meta parse-time 展开 annotation，不带
@@ -99,8 +101,8 @@ meta/reflection runtime 类型或 binary closure。Android 的分离安装前缀
 Parent/Transform 不再依靠 Windows 聚合 include prefix 偶然找到
 `MetaAnnotations.hpp`。
 
-本 ADR 的实现矩阵已完成，但公开 API 状态只提升为 Freeze Candidate；独立审阅
-仍是冻结的必要条件。
+本 ADR 的 v2.1 实现、失败注入、平台、安装消费与代表性性能矩阵已完成，但公开
+API 状态只提升为 Freeze Candidate；独立重新审阅仍是冻结的必要条件。
 
 ## Stop line
 

@@ -11,6 +11,11 @@ namespace
     {
         int value{};
     };
+
+    struct FirstStream final
+    {
+        int value{};
+    };
 }
 
 int main()
@@ -197,4 +202,53 @@ int main()
     const auto recovered = small_journal.read(overflow_cursor);
     assert(recovered.status() == lux::ecs::EChangeReadStatus::CURRENT);
     assert(recovered.size() == 1U);
+
+    lux::ecs::World failure_world;
+    auto& failure_journal =
+        lux::ecs::detail::WorldChangeAccess::journal(failure_world);
+    lux::ecs::ChangeCursor<FirstStream> first_stream_cursor;
+    assert(
+        failure_journal.read(first_stream_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
+    failure_journal.failNextStreamDescriptorForTest();
+    auto failure_edit_result = failure_world.edit();
+    auto failure_edit = std::move(*failure_edit_result);
+    const auto failure_entity = failure_edit.create();
+    failure_edit.emplace<FirstStream>(failure_entity, 17);
+    assert(failure_world.get<FirstStream>(failure_entity).value == 17);
+    assert(
+        failure_journal.read(first_stream_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
+
+    lux::ecs::EntityChangeCursor failed_entity_cursor;
+    assert(
+        failure_journal.read(failed_entity_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
+    failure_journal.establishBaseline();
+    assert(
+        failure_journal.read(failed_entity_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
+    failure_journal.failNextBlockAcquisitionForTest();
+    const auto block_failure_entity = failure_edit.create();
+    assert(failure_world.valid(block_failure_entity));
+    assert(
+        failure_journal.read(failed_entity_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
+    failure_journal.establishBaseline();
+    assert(
+        failure_journal.read(failed_entity_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
+    failure_journal.failNextBlockAttachForTest();
+    const auto attach_failure_entity = failure_edit.create();
+    assert(failure_world.valid(attach_failure_entity));
+    assert(
+        failure_journal.read(failed_entity_cursor).status() ==
+        lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
+    );
 }

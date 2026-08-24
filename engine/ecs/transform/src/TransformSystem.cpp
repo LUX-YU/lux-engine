@@ -379,6 +379,14 @@ namespace lux::ecs
                 }
             }
 
+            [[nodiscard]] std::size_t retainedDenseBytes() const noexcept
+            {
+                return (dirty_stamps.capacity() + root_stamps.capacity() +
+                        visited_stamps.capacity()) * sizeof(std::uint32_t) +
+                    (dirty_identities.capacity() + root_identities.capacity() +
+                     visited_identities.capacity()) * sizeof(Entity);
+            }
+
             HierarchyIndex* hierarchy{};
             ChangeCursor<Local> local_cursor;
             HierarchyChangeCursor hierarchy_cursor;
@@ -444,6 +452,11 @@ namespace lux::ecs
         return impl_->visited_nodes;
     }
 
+    std::size_t Transform2DSystem::retainedDenseBytes() const noexcept
+    {
+        return impl_->retainedDenseBytes();
+    }
+
     Transform3DSystem::Transform3DSystem(HierarchyIndex& hierarchy)
         : impl_(std::make_unique<Impl>(hierarchy))
     {
@@ -464,5 +477,10 @@ namespace lux::ecs
     std::size_t Transform3DSystem::visitedNodesLastUpdate() const noexcept
     {
         return impl_->visited_nodes;
+    }
+
+    std::size_t Transform3DSystem::retainedDenseBytes() const noexcept
+    {
+        return impl_->retainedDenseBytes();
     }
 } // namespace lux::ecs

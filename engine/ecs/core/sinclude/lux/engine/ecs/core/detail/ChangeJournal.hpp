@@ -128,6 +128,21 @@ namespace lux::ecs::detail
             return dynamic_block_acquisition_count_;
         }
 
+        void failNextStreamDescriptorForTest() noexcept
+        {
+            fail_next_stream_descriptor_for_test_ = true;
+        }
+
+        void failNextBlockAcquisitionForTest() noexcept
+        {
+            fail_next_block_acquisition_for_test_ = true;
+        }
+
+        void failNextBlockAttachForTest() noexcept
+        {
+            fail_next_block_attach_for_test_ = true;
+        }
+
       private:
         [[nodiscard]] JournalStream* ensureStream(std::uint64_t storage) noexcept;
         void append(JournalStream& stream, Entity entity, std::uint8_t kind) noexcept;
@@ -155,5 +170,8 @@ namespace lux::ecs::detail
         std::uint64_t epoch_{1};
         std::uint64_t record_write_count_{};
         std::size_t dynamic_block_acquisition_count_{};
+        bool fail_next_stream_descriptor_for_test_{};
+        bool fail_next_block_acquisition_for_test_{};
+        bool fail_next_block_attach_for_test_{};
     };
 } // namespace lux::ecs::detail

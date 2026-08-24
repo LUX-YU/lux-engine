@@ -78,6 +78,13 @@ namespace lux::ecs::detail
             return found->second.get();
         }
 
+        if (fail_next_stream_descriptor_for_test_)
+        {
+            fail_next_stream_descriptor_for_test_ = false;
+            markHistoryLoss();
+            return nullptr;
+        }
+
         try
         {
             auto stream = std::make_unique<JournalStream>();
@@ -222,6 +229,11 @@ namespace lux::ecs::detail
 
     JournalBlock* ChangeJournal::acquireBlock() noexcept
     {
+        if (fail_next_block_acquisition_for_test_)
+        {
+            fail_next_block_acquisition_for_test_ = false;
+            return nullptr;
+        }
         if (free_blocks_ != nullptr)
         {
             JournalBlock* result = free_blocks_;
@@ -262,6 +274,13 @@ namespace lux::ecs::detail
             block = acquireBlock();
             if (block == nullptr)
             {
+                markHistoryLoss();
+                return;
+            }
+            if (fail_next_block_attach_for_test_)
+            {
+                fail_next_block_attach_for_test_ = false;
+                releaseBlock(*block);
                 markHistoryLoss();
                 return;
             }

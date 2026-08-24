@@ -36,7 +36,7 @@ namespace
         void update(const lux::ecs::SystemFrame& frame) noexcept override
         {
             order_->push_back(1);
-            if (frame.world().find<Counter>(entity_) == nullptr)
+            if (frame.find<Counter>(entity_) == nullptr)
             {
                 const auto result = frame.commands().push(AddCounter{entity_});
                 assert(result == lux::ecs::ECommandResult::ACCEPTED);

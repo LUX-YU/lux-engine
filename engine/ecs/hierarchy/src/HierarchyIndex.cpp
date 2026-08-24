@@ -28,7 +28,7 @@ namespace lux::ecs
         {
             const World& world = *world_;
             std::vector<std::pair<Entity, Entity>> next;
-            for (auto [child, value] : world.view<const Parent>().each())
+            for (auto [child, value] : world.query<Read<Parent>>())
             {
                 if (value.entity == NullEntity)
                     continue;
@@ -273,7 +273,7 @@ namespace lux::ecs
             return indexed;
         if (world.find<Parent>(child) != nullptr)
         {
-            world.patch<Parent>(child, [parent_entity](Parent& value)
+            edit.update<Parent>(child, [parent_entity](Parent& value) noexcept
             {
                 value.entity = parent_entity;
             });
@@ -296,7 +296,7 @@ namespace lux::ecs
             return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
         hierarchy.eraseEdge(child);
         if (world.find<Parent>(child) != nullptr)
-            edit.remove<Parent>(child);
+            edit.erase<Parent>(child);
         return {};
     }
 } // namespace lux::ecs

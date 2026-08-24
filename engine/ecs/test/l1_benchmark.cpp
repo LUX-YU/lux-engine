@@ -301,7 +301,8 @@ int main(int argc, char** argv)
     {
         std::uint64_t value{};
         for (int repeat{}; repeat < 20; ++repeat)
-            for (const auto [entity, position] : world->view<const Position>().each())
+            for (const auto [entity, position] :
+                 world->query<lux::ecs::Read<Position>>())
                 value += position.value + lux::ecs::entityBits(entity);
         checksum = checksum + value;
     };
@@ -362,7 +363,8 @@ int main(int argc, char** argv)
     append(samples, std::move(raw_query_samples));
     append(samples, std::move(world_query_samples));
 
-    const auto first_entity = *world->view<Position>().begin();
+    auto first_query = world->query<lux::ecs::Read<Position>>();
+    const auto first_entity = std::get<0>(*first_query.begin());
     append(samples, sample("world_get", 1, [&]
     {
         std::uint64_t value{};
@@ -372,8 +374,12 @@ int main(int argc, char** argv)
     }));
     append(samples, sample("world_patch", 1, [&]
     {
+        auto edit_result = world->edit();
+        if (!edit_result)
+            std::abort();
+        auto edit = std::move(*edit_result);
         for (int repeat{}; repeat < 100'000; ++repeat)
-            world->patch<Position>(first_entity, [](Position& value) noexcept
+            edit.update<Position>(first_entity, [](Position& value) noexcept
             {
                 ++value.value;
             });

@@ -33,7 +33,7 @@ namespace lux::ecs
         };
         result.get = [](World& world, Entity entity) noexcept -> void*
         {
-            return world.find<Component>(entity);
+            return const_cast<Component*>(world.find<Component>(entity));
         };
         result.get_const = [](const World& world, Entity entity) noexcept -> const void*
         {
@@ -41,7 +41,7 @@ namespace lux::ecs
         };
         result.erase = [](WorldEdit& edit, Entity entity) noexcept
         {
-            edit.remove<Component>(entity);
+            edit.erase<Component>(entity);
         };
         result.reserve = [](WorldEdit& edit, std::size_t count)
         {

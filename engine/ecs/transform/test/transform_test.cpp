@@ -123,10 +123,14 @@ int main()
         assert(near(first_world.y(), 2.0F));
         assert(world.find<lux::ecs::WorldTransform2D>(child) != nullptr);
 
-        world.patch<lux::ecs::Transform3D>(root, [](auto& value) noexcept
+        auto update_result = world.edit();
+        assert(update_result);
+        auto update = std::move(*update_result);
+        update.update<lux::ecs::Transform3D>(root, [](auto& value) noexcept
         {
             value.translation.x() = 20.0F;
         });
+        update = {};
         schedule.run(1.0F / 60.0F, 2u);
         const auto moved = world.get<lux::ecs::WorldTransform3D>(child)
             .value.translation();

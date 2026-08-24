@@ -1,8 +1,9 @@
 #include <lux/engine/ecs/World.hpp>
 
-#include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/ecs/core/detail/ChangeJournal.hpp>
 
 #include <cstdlib>
+#include <thread>
 #include <utility>
 
 #if defined(_MSC_VER)
@@ -20,7 +21,18 @@ namespace lux::ecs
 #endif
     }
 
-    World::World() = default;
+    World::World(WorldConfig config)
+        : changes_(std::make_unique<detail::ChangeJournal>(
+              detail::ChangeJournalConfigValue{
+                  config.changes.initial_bytes,
+                  config.changes.max_bytes})),
+          owner_thread_(std::this_thread::get_id())
+    {
+        detail::require(
+            config.changes.initial_bytes <= config.changes.max_bytes &&
+            config.changes.max_bytes >= 4096U
+        );
+    }
 
     World::~World() noexcept
     {
@@ -34,18 +46,12 @@ namespace lux::ecs
 
     lux::cxx::expected<WorldEdit, WorldEditError> World::edit() noexcept
     {
+        if (std::this_thread::get_id() != owner_thread_)
+            return lux::cxx::unexpected(WorldEditError{EWorldEditError::WRONG_THREAD});
         if (state_ == detail::EWorldState::DESTROYING)
-        {
-            return lux::cxx::unexpected(
-                WorldEditError{EWorldEditError::DESTROYING}
-            );
-        }
+            return lux::cxx::unexpected(WorldEditError{EWorldEditError::DESTROYING});
         if (state_ != detail::EWorldState::IDLE)
-        {
-            return lux::cxx::unexpected(
-                WorldEditError{EWorldEditError::NOT_IDLE}
-            );
-        }
+            return lux::cxx::unexpected(WorldEditError{EWorldEditError::NOT_IDLE});
 
         state_ = detail::EWorldState::EDITING;
         return WorldEdit(*this, true);
@@ -81,19 +87,36 @@ namespace lux::ecs
     Entity WorldEdit::create()
     {
         detail::require(world_ != nullptr);
-        return world_->registry_.create();
+        const Entity entity = world_->registry_.create();
+        detail::recordWorldEntityChange(*world_, entity, EEntityChangeKind::ADDED);
+        return entity;
     }
 
     Entity WorldEdit::createAt(Entity entity)
     {
         detail::require(world_ != nullptr && entity != NullEntity);
-        return world_->registry_.create(entity);
+        const Entity created = world_->registry_.create(entity);
+        detail::recordWorldEntityChange(*world_, created, EEntityChangeKind::ADDED);
+        return created;
     }
 
     void WorldEdit::destroy(Entity entity)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
+        const auto entity_storage = entt::type_hash<Entity>::value();
+        for (auto&& [storage_id, storage] : world_->registry_.storage())
+        {
+            if (storage_id != entity_storage && storage.contains(entity))
+            {
+                detail::recordWorldComponentChange(
+                    *world_, storage_id, entity, EComponentChangeKind::REMOVED
+                );
+            }
+        }
         world_->registry_.destroy(entity);
+        detail::recordWorldEntityChange(
+            *world_, entity, EEntityChangeKind::DESTROYED
+        );
     }
 
     void WorldEdit::release() noexcept
@@ -108,5 +131,55 @@ namespace lux::ecs
         }
         world_ = nullptr;
         release_to_idle_ = false;
+    }
+
+    detail::ChangeRecorder detail::worldChangeRecorder(World& world) noexcept
+    {
+        return WorldChangeAccess::journal(world).recorder();
+    }
+
+    void detail::recordWorldComponentChange(
+        World& world,
+        std::uint64_t storage,
+        Entity entity,
+        EComponentChangeKind kind
+    ) noexcept
+    {
+        WorldChangeAccess::journal(world).recordComponent(storage, entity, kind);
+    }
+
+    void detail::recordWorldEntityChange(
+        World& world,
+        Entity entity,
+        EEntityChangeKind kind
+    ) noexcept
+    {
+        WorldChangeAccess::journal(world).recordEntity(entity, kind);
+    }
+
+    detail::ChangeRangeData detail::readWorldComponentChanges(
+        const World& world,
+        std::uint64_t storage,
+        std::uint32_t& cursor_epoch,
+        std::uint64_t& cursor_sequence
+    ) noexcept
+    {
+        return WorldChangeAccess::journal(world).readComponentRaw(
+            storage,
+            cursor_epoch,
+            cursor_sequence
+        );
+    }
+
+    detail::ChangeRangeData detail::readWorldEntityChanges(
+        const World& world,
+        std::uint32_t& cursor_epoch,
+        std::uint64_t& cursor_sequence
+    ) noexcept
+    {
+        return WorldChangeAccess::journal(world).readEntityRaw(
+            cursor_epoch,
+            cursor_sequence
+        );
     }
 } // namespace lux::ecs

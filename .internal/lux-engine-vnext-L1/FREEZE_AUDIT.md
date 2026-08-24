@@ -2,7 +2,14 @@
 
 ## 结论
 
-L1-0 至 L1-8 本轮范围（其中 L1-8 仅指安装、性能与 freeze gate，不含 domain migration）已闭环。`legacy/` 保留为 quarantine；由于首个新 L3 headless Scene 尚不属于本轮，未执行物理删除。
+Independent review rejected the L1 freeze candidate. The current implementation
+is retained as the v1 reference, but public contracts remain unfrozen until L1
+v2 restabilization completes.
+
+当前状态为 `Architecture Direction Accepted / Freeze Rejected / L1 v2
+Restabilization Required`。下列历史验证数据仅描述 v1 candidate，不构成当前
+Freeze 结论；在 v2 完整矩阵和独立审阅完成前，Render、Physics、Script、
+Streaming 等 domain migration 保持 STOP。
 
 ## 构建与测试
 

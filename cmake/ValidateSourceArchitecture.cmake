@@ -123,6 +123,31 @@ foreach(source IN LISTS ecs_public_headers)
     endif()
 endforeach()
 
+set(world_header
+    "${source_root}/engine/ecs/core/include/lux/engine/ecs/World.hpp"
+)
+if(EXISTS "${world_header}")
+    file(READ "${world_header}" world_contract)
+    if(world_contract MATCHES
+       "auto[ \t\r\n]+view[ \t\r\n]*\\(|void[ \t\r\n]+patch[ \t\r\n]*\\(")
+        message(FATAL_ERROR
+            "Architecture: World restores a retired mutable view/patch API."
+        )
+    endif()
+endif()
+
+set(system_frame_header
+    "${source_root}/engine/ecs/schedule/include/lux/engine/ecs/SystemFrame.hpp"
+)
+if(EXISTS "${system_frame_header}")
+    file(READ "${system_frame_header}" system_frame_contract)
+    if(system_frame_contract MATCHES "World&[ \t\r\n]+world[ \t\r\n]*\\(")
+        message(FATAL_ERROR
+            "Architecture: SystemFrame restores raw mutable World access."
+        )
+    endif()
+endif()
+
 file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/CMakeLists.txt"
     "${source_root}/modules/CMakeLists.txt"

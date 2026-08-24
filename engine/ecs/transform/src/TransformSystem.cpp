@@ -21,9 +21,9 @@ namespace lux::ecs
 
             void apply(WorldEdit& edit) noexcept
             {
-                World& world = detail::WorldEditAccess::world(edit);
+                const World& world = detail::WorldEditAccess::world(edit);
                 if (world.valid(entity) && world.find<Derived>(entity) != nullptr)
-                    edit.remove<Derived>(entity);
+                    edit.erase<Derived>(entity);
             }
         };
 
@@ -35,14 +35,14 @@ namespace lux::ecs
 
             void apply(WorldEdit& edit) noexcept
             {
-                World& world = detail::WorldEditAccess::world(edit);
+                const World& world = detail::WorldEditAccess::world(edit);
                 if (!world.valid(entity))
                     return;
                 if (world.find<Derived>(entity) == nullptr)
                     edit.emplace<Derived>(entity, value);
                 else
                 {
-                    world.patch<Derived>(entity, [this](Derived& target) noexcept
+                    edit.update<Derived>(entity, [this](Derived& target) noexcept
                     {
                         target = value;
                     });
@@ -56,9 +56,9 @@ namespace lux::ecs
 
             void apply(WorldEdit& edit) noexcept
             {
-                World& world = detail::WorldEditAccess::world(edit);
+                const World& world = detail::WorldEditAccess::world(edit);
                 if (world.valid(entity) && world.find<Parent>(entity) != nullptr)
-                    edit.remove<Parent>(entity);
+                    edit.erase<Parent>(entity);
             }
         };
 
@@ -103,16 +103,16 @@ namespace lux::ecs
             }
 
             [[nodiscard]] bool removeInvalidParents(
-                World& world,
-                WorldCommands commands
+                const SystemFrame& frame
             ) noexcept
             {
                 bool queued{};
-                for (auto [entity, parent] : world.view<const Parent>().each())
+                for (auto [entity, parent] : frame.query<Read<Parent>>())
                 {
-                    if (parent.entity != entity && world.valid(parent.entity))
+                    if (parent.entity != entity && frame.valid(parent.entity))
                         continue;
-                    if (commands.push(RemoveParent{entity}) == ECommandResult::ACCEPTED)
+                    if (frame.commands().push(RemoveParent{entity}) ==
+                        ECommandResult::ACCEPTED)
                         queued = true;
                     else
                         ++discarded_commands;
@@ -123,7 +123,7 @@ namespace lux::ecs
             }
 
             [[nodiscard]] Matrix resolve(
-                World& world,
+                const SystemFrame& frame,
                 Entity entity
             )
             {
@@ -132,20 +132,20 @@ namespace lux::ecs
                 if (!visiting.insert(entity).second)
                     return Matrix::Identity();
 
-                const Local* local = world.find<Local>(entity);
+                const Local* local = frame.find<Local>(entity);
                 Matrix result = local != nullptr ? localMatrix(*local) : Matrix::Identity();
                 const Entity parent = hierarchy->parent(entity);
-                if (parent != NullEntity && world.valid(parent) &&
-                    world.find<Local>(parent) != nullptr)
+                if (parent != NullEntity && frame.valid(parent) &&
+                    frame.find<Local>(parent) != nullptr)
                 {
                     Matrix parent_world;
                     if (targets.contains(parent) ||
-                        world.find<Derived>(parent) == nullptr)
+                        frame.find<Derived>(parent) == nullptr)
                     {
-                        parent_world = resolve(world, parent);
+                        parent_world = resolve(frame, parent);
                     }
                     else
-                        parent_world = world.get<Derived>(parent).value;
+                        parent_world = frame.get<Derived>(parent).value;
                     result = parent_world * result;
                 }
 
@@ -156,8 +156,7 @@ namespace lux::ecs
 
             void update(const SystemFrame& frame) noexcept
             {
-                World& world = frame.world();
-                if (removeInvalidParents(world, frame.commands()))
+                if (removeInvalidParents(frame))
                     return;
                 if (!hierarchy->rebuild())
                 {
@@ -173,14 +172,17 @@ namespace lux::ecs
                     visiting.clear();
                     if (dirty_all)
                     {
-                        for (const Entity entity : world.view<const Local>())
+                        for (auto [entity, local] : frame.query<Read<Local>>())
+                        {
+                            (void)local;
                             targets.insert(entity);
+                        }
                     }
                     else
                     {
                         for (const Entity entity : dirty)
                         {
-                            if (!world.valid(entity))
+                            if (!frame.valid(entity))
                                 continue;
                             targets.insert(entity);
                             for (const Entity child : hierarchy->subtree(entity))
@@ -190,15 +192,15 @@ namespace lux::ecs
 
                     for (const Entity entity : targets)
                     {
-                        if (!world.valid(entity))
+                        if (!frame.valid(entity))
                             continue;
-                        const Local* local = world.find<Local>(entity);
+                        const Local* local = frame.find<Local>(entity);
                         if (local == nullptr)
                             continue;
-                        const Matrix value = resolve(world, entity);
-                        if (world.find<Derived>(entity) != nullptr)
+                        const Matrix value = resolve(frame, entity);
+                        if (frame.find<Derived>(entity) != nullptr)
                         {
-                            world.patch<Derived>(entity, [&value](Derived& target) noexcept
+                            frame.update<Derived>(entity, [&value](Derived& target) noexcept
                             {
                                 target.value = value;
                             });

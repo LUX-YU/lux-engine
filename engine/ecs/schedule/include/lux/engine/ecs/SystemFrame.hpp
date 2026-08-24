@@ -3,16 +3,93 @@
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/WorldCommands.hpp>
 
+#include <entt/core/type_info.hpp>
+
 #include <cstdint>
+#include <type_traits>
+#include <utility>
 
 namespace lux::ecs
 {
     class SystemFrame final
     {
       public:
-        [[nodiscard]] World& world() const noexcept
+        [[nodiscard]] bool valid(Entity entity) const noexcept
         {
-            return *world_;
+            return world_->valid(entity);
+        }
+
+        template <class Component>
+        [[nodiscard]] const Component* find(Entity entity) const noexcept
+        {
+            return world_->template find<Component>(entity);
+        }
+
+        template <class Component>
+        [[nodiscard]] const Component& get(Entity entity) const noexcept
+        {
+            return world_->template get<Component>(entity);
+        }
+
+        template <class... Access>
+        [[nodiscard]] auto query() const
+        {
+            return detail::BasicQuery<World::Registry, Access...>(
+                world_->registry_,
+                detail::worldChangeRecorder(*world_)
+            );
+        }
+
+        template <class... Access>
+        [[nodiscard]] auto query(QuerySpec<Access...>) const
+        {
+            return query<Access...>();
+        }
+
+        template <class Component, class Fn>
+            requires std::is_nothrow_invocable_v<Fn, Component&>
+        void update(Entity entity, Fn&& fn) const noexcept
+        {
+            detail::require(
+                world_->valid(entity) &&
+                world_->registry_.template all_of<Component>(entity)
+            );
+            world_->registry_.template patch<Component>(
+                entity,
+                std::forward<Fn>(fn)
+            );
+            detail::recordWorldComponentChange(
+                *world_,
+                entt::type_hash<Component>::value(),
+                entity,
+                EComponentChangeKind::MODIFIED
+            );
+        }
+
+        template <class Component>
+        [[nodiscard]] ComponentChanges<Component> changes(
+            ChangeCursor<Component>& cursor
+        ) const noexcept
+        {
+            auto data = detail::readWorldComponentChanges(
+                *world_,
+                entt::type_hash<Component>::value(),
+                detail::ChangeCursorAccess::epoch(cursor),
+                detail::ChangeCursorAccess::sequence(cursor)
+            );
+            return ComponentChanges<Component>::fromDetail(data);
+        }
+
+        [[nodiscard]] EntityChanges entityChanges(
+            EntityChangeCursor& cursor
+        ) const noexcept
+        {
+            auto data = detail::readWorldEntityChanges(
+                *world_,
+                detail::ChangeCursorAccess::epoch(cursor),
+                detail::ChangeCursorAccess::sequence(cursor)
+            );
+            return EntityChanges::fromDetail(data);
         }
 
         [[nodiscard]] WorldCommands commands() const noexcept

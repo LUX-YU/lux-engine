@@ -107,7 +107,7 @@ namespace lux::ecs
         try
         {
             PersistentEntityIndex result;
-            for (auto [entity, id] : world.view<const PersistentId>().each())
+            for (auto [entity, id] : world.query<Read<PersistentId>>())
             {
                 if (id.value.value.is_nil())
                     return lux::cxx::unexpected(EPersistentEntityIndexError::INVALID_ID);

@@ -2,6 +2,23 @@
 
 This ledger tracks implementation state only. Decisions live in ADRs.
 
+## Active: L1 v2 restabilization (2026-08-24)
+
+- [x] V2-0: Withdraw the v1 Freeze conclusion and record the new stop line.
+- [x] V2-1: Remove mutable World escapes and establish bounded Change Journal
+      semantics with explicit Read/Write capabilities.
+- [ ] V2-2: Separate Schedule execution, access and lifetime relations; make
+      execution affinity Object-independent.
+- [ ] V2-3: Orthogonalize schema policy/codec and split reflection projection.
+- [ ] V2-4/V2-5: Restabilize Snapshot, LXWS and live-World safe-point contracts.
+- [ ] V2-6/V2-7: Replace Hierarchy and Transform with incremental change-driven
+      implementations.
+- [ ] V2-8: Re-run representative performance, installed-consumer, hardened,
+      Windows and Android gates; publish only a Freeze Candidate.
+
+Stop line: no Render/Physics/Animation/Script/Streaming domain migration, L2
+AssetStore, or L3 Scene composition may build on the v1 public contracts.
+
 ## Active: semantic deduplication (2026-08-22)
 
 - [x] Freeze the architecture boundary and legacy-vocabulary baseline.

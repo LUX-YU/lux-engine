@@ -13,6 +13,7 @@ add_component(
     NAMESPACE      lux::engine::ecs
     OUTPUT_NAME    lux_engine_ecs_core
     SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ChangeJournal.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/World.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldCommands.cpp
 )
@@ -64,6 +65,8 @@ set_tests_properties(vnext_ecs_core PROPERTIES LABELS "vnext;l1;core;cpu")
 
 foreach(probe IN ITEMS
     world_registry_negative
+    world_mutable_get_negative
+    world_mutable_query_negative
     retired_registry_header_negative
     retired_scene_services_negative
 )

@@ -38,8 +38,12 @@ namespace lux::ecs
                 world_->template connectConstruct<Component, Candidate>(instance)
             );
             ++world_->observer_relations_;
-            for (const Entity entity : world_->template view<Component>())
+            for (auto [entity, component] :
+                 world_->template query<Read<Component>>())
+            {
+                (void)component;
                 std::invoke(Candidate, instance, entity);
+            }
         }
 
         template <class Component, auto Candidate, class Instance>

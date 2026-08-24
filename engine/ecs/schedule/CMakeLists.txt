@@ -126,7 +126,11 @@ set_tests_properties(
         LABELS "vnext;l1;schedule;contract;negative"
 )
 
-foreach(probe IN ITEMS retired_isystem_negative retired_schedule_builder_negative)
+foreach(probe IN ITEMS
+    retired_isystem_negative
+    retired_schedule_builder_negative
+    systemframe_raw_world_negative
+)
     add_executable(
         ecs_${probe} EXCLUDE_FROM_ALL
         test/${probe}.cpp

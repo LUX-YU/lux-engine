@@ -29,6 +29,18 @@ namespace lux::ecs::detail
             return world.state_ == EWorldState::IDLE &&
                 world.owner_thread_ == std::this_thread::get_id();
         }
+
+        [[nodiscard]] static WorldEdit suppressingEdit(World& world) noexcept
+        {
+            require(ownerIdle(world));
+            require(world.schedule_ == nullptr);
+            world.state_ = EWorldState::EDITING;
+            return WorldEdit(
+                world,
+                true,
+                WorldEdit::EChangeEmission::SUPPRESS
+            );
+        }
     };
 
     struct WorldEntityAccess final

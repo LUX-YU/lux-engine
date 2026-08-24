@@ -13,8 +13,8 @@
 | `SceneServices` | 未来 L3 wiring | RETIRE FROM L1 | 无 | retired API/source gate |
 | component mutable catalog/global pending registrar | generated module span + `ComponentSchemaSet` | RETIRE/REWRITE | reflection descriptors | generated-schema/pin tests |
 | tagged property archive | schema codec port + persistence archive | REUSE algorithm | tagged field/unknown skip | reflected codec and persistence tests |
-| `RegistrySnapshot` | `WorldSnapshot` | REWRITE | backend clone idea | 10k IDs/generation/free-list behavior |
-| `EntitySectionImage` | `WorldSectionImage` | REWRITE | name/schema/archetype/column/ordinal layout | LXWS deterministic/corruption tests |
+| `RegistrySnapshot` | `WorldSnapshot` | REWRITE | backend clone idea | 10k IDs/generation/free-list plus zero-journal cold construction |
+| `EntitySectionImage` | `WorldSectionImage` | REWRITE | name/schema/archetype/column/ordinal layout | LXWS deterministic/corruption and zero-journal materialize tests |
 | Parent/Transform snapshot special cases | 无 | RETIRE | 无 | generic snapshot + rebuild pilot |
 | old hierarchy preorder/interval | 无 | RETIRE | Parent remains canonical; linear cold validation, O(1) mutation-order adjacency and embedded orphan repair replace interval authority | deep-chain/star sync, stale-generation repair and hierarchy/transform tests |
 | old transform dirty propagation | Transform Systems | REUSE algorithm | dirty subtree root reduction only; dense stamps/change cursors replace unordered/full scans | no-change zero-visit, leaf/root dirty and codec tests |

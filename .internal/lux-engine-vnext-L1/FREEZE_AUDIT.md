@@ -17,7 +17,9 @@ Streaming 等 domain migration 以及建立在 L1 之上的 L2/L3 产品工作�
 v2.1 定向整改进度：Change Journal 的 history-loss 已改为 pin-safe epoch，Schedule
 scratch 已改为 wave-wide bounded arena；Hierarchy cold rebuild 已改为线性三阶段
 校验，incremental sibling mutation 为 O(1)，orphan cleanup 由内嵌 repair queue
-重试。cold construction 与最终代表性证据尚未完成，因此本文件状态仍保持 rejected。
+重试。Snapshot/LXWS cold construction 现已使用 internal suppressing edit，并由 journal
+lifetime counters 证明 construction record writes 与额外 block acquisitions 都为零；
+最终代表性性能、安装与平台证据仍未完成，因此本文件状态仍保持 rejected。
 
 ## 构建与测试矩阵
 

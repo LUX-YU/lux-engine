@@ -69,6 +69,11 @@ int main()
     assert(snapshot);
     auto instance = snapshot->instantiate();
     assert(instance);
+    auto& instance_journal = lux::ecs::detail::WorldChangeAccess::journal(
+        **instance
+    );
+    assert(instance_journal.recordWriteCountForTest() == 0U);
+    assert(instance_journal.dynamicBlockAcquisitionsForTest() == 0U);
     assert((*instance)->valid(first));
     assert((*instance)->valid(third));
     assert(!(*instance)->valid(removed));
@@ -89,6 +94,8 @@ int main()
     auto& bounded_journal = lux::ecs::detail::WorldChangeAccess::journal(
         **bounded_instance
     );
+    assert(bounded_journal.recordWriteCountForTest() == 0U);
+    assert(bounded_journal.dynamicBlockAcquisitionsForTest() == 0U);
     assert(
         bounded_journal.read(bounded_cursor).status() ==
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED

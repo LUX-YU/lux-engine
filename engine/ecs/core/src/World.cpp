@@ -58,14 +58,22 @@ namespace lux::ecs
         return WorldEdit(*this, true);
     }
 
-    WorldEdit::WorldEdit(World& world, bool release_to_idle) noexcept
-        : world_(&world), release_to_idle_(release_to_idle)
+    WorldEdit::WorldEdit(
+        World& world,
+        bool release_to_idle,
+        EChangeEmission change_emission
+    ) noexcept
+        : world_(&world), release_to_idle_(release_to_idle),
+          change_emission_(change_emission)
     {
     }
 
     WorldEdit::WorldEdit(WorldEdit&& other) noexcept
         : world_(std::exchange(other.world_, nullptr)),
-          release_to_idle_(std::exchange(other.release_to_idle_, false))
+          release_to_idle_(std::exchange(other.release_to_idle_, false)),
+          change_emission_(std::exchange(
+              other.change_emission_, EChangeEmission::RECORD
+          ))
     {
     }
 
@@ -76,6 +84,9 @@ namespace lux::ecs
             release();
             world_ = std::exchange(other.world_, nullptr);
             release_to_idle_ = std::exchange(other.release_to_idle_, false);
+            change_emission_ = std::exchange(
+                other.change_emission_, EChangeEmission::RECORD
+            );
         }
         return *this;
     }
@@ -89,7 +100,12 @@ namespace lux::ecs
     {
         detail::require(world_ != nullptr);
         const Entity entity = world_->registry_.create();
-        detail::recordWorldEntityChange(*world_, entity, EEntityChangeKind::ADDED);
+        if (change_emission_ == EChangeEmission::RECORD)
+        {
+            detail::recordWorldEntityChange(
+                *world_, entity, EEntityChangeKind::ADDED
+            );
+        }
         return entity;
     }
 
@@ -97,27 +113,39 @@ namespace lux::ecs
     {
         detail::require(world_ != nullptr && entity != NullEntity);
         const Entity created = world_->registry_.create(entity);
-        detail::recordWorldEntityChange(*world_, created, EEntityChangeKind::ADDED);
+        if (change_emission_ == EChangeEmission::RECORD)
+        {
+            detail::recordWorldEntityChange(
+                *world_, created, EEntityChangeKind::ADDED
+            );
+        }
         return created;
     }
 
     void WorldEdit::destroy(Entity entity)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
-        const auto entity_storage = entt::type_hash<Entity>::value();
-        for (auto&& [storage_id, storage] : world_->registry_.storage())
+        if (change_emission_ == EChangeEmission::RECORD)
         {
-            if (storage_id != entity_storage && storage.contains(entity))
+            const auto entity_storage = entt::type_hash<Entity>::value();
+            for (auto&& [storage_id, storage] : world_->registry_.storage())
             {
-                detail::recordWorldComponentChange(
-                    *world_, storage_id, entity, EComponentChangeKind::REMOVED
-                );
+                if (storage_id != entity_storage && storage.contains(entity))
+                {
+                    detail::recordWorldComponentChange(
+                        *world_, storage_id, entity,
+                        EComponentChangeKind::REMOVED
+                    );
+                }
             }
         }
         world_->registry_.destroy(entity);
-        detail::recordWorldEntityChange(
-            *world_, entity, EEntityChangeKind::DESTROYED
-        );
+        if (change_emission_ == EChangeEmission::RECORD)
+        {
+            detail::recordWorldEntityChange(
+                *world_, entity, EEntityChangeKind::DESTROYED
+            );
+        }
     }
 
     void WorldEdit::release() noexcept
@@ -132,6 +160,7 @@ namespace lux::ecs
         }
         world_ = nullptr;
         release_to_idle_ = false;
+        change_emission_ = EChangeEmission::RECORD;
     }
 
     detail::ChangeRecorder detail::worldChangeRecorder(World& world) noexcept

@@ -96,11 +96,8 @@ namespace lux::ecs
         {
             try
             {
+                auto edit = detail::WorldColdAccess::suppressingEdit(target);
                 cloneEntities(source, target);
-
-                auto edit_result = target.edit();
-                detail::require(edit_result.has_value());
-                auto edit = std::move(*edit_result);
                 const auto* entities =
                     detail::WorldSnapshotAccess::registry(source).storage<Entity>();
 

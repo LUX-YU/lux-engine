@@ -47,6 +47,9 @@ namespace lux::ecs
       public:
         virtual ~ComponentEncodePort() = default;
 
+        // `bytes` is a codec-owned portable representation. `type` describes
+        // that representation; it does not endian-convert arbitrary host
+        // integer or floating-point object bytes for the codec.
         [[nodiscard]] virtual lux::cxx::expected<void, EComponentCodecError>
         write(
             std::string_view name,

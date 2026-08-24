@@ -40,10 +40,16 @@ Schema 的安装边界据此拆成 `lux::engine::ecs::schema` 与可选的
 
 Snapshot instantiate 与 LXWS materialize 显式接收 `WorldConfig`；cold restore
 保留 destination config 和已分配 journal blocks，只替换 canonical registry，随后
-递增 epoch 并建立 fresh baseline。Snapshot capture、WorldSection build 与
+递增 epoch 并建立 fresh baseline。Snapshot clone staging 与 LXWS materialize 使用
+仅对 `WorldSnapshot`/`WorldSectionReader` 可见的 suppressing edit：canonical registry
+正常构造，但不产生随后立即丢弃的 Entity/Component Added records；普通 WorldEdit、
+SystemFrame 与 command barrier 永远记录 change。Snapshot capture、WorldSection build 与
 PersistentEntityIndex build 都要求 construction-owner thread 上的 Idle World。
 LXWS v1 和 TaggedProperty 的结构字段使用逐字节 LE primitives；Tagged writer
 直接写 destination 并回填 property count，不再保存第二份 Property payload。
+`ComponentEncodePort::write(type, bytes)` 的 bytes 是 codec 自己生成的 portable
+representation；wire type 不会替 arbitrary host object bytes 做 endian conversion。
+golden fixture 因此同时约束 container LE primitives 与 codec-owned payload bytes。
 
 Hierarchy v2 不再公开 `rebuild/preorder/subtree/setEdge`，也不在 mutation helper
 中先改 derived cache。`reparent/detach/destroySubtree` 只验证并修改 Parent；

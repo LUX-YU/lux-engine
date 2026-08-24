@@ -59,10 +59,17 @@ namespace
     ) noexcept
     {
         const Link& link = world.get<Link>(entity);
+        std::array<std::byte, sizeof(int)> portable_value{};
+        auto raw_value = static_cast<std::make_unsigned_t<int>>(link.value);
+        for (std::size_t index{}; index < portable_value.size(); ++index)
+        {
+            portable_value[index] = static_cast<std::byte>(raw_value & 0xffU);
+            raw_value >>= 8U;
+        }
         if (auto value = port.write(
                 "value",
                 lux::ecs::EComponentWireType::SIGNED_INTEGER,
-                std::as_bytes(std::span{&link.value, 1})); !value)
+                portable_value); !value)
         {
             return value;
         }
@@ -87,7 +94,16 @@ namespace
         while (port.next(property))
         {
             if (property.name == "value" && property.bytes.size() == sizeof(int))
-                std::memcpy(&value.value, property.bytes.data(), sizeof(int));
+            {
+                std::make_unsigned_t<int> raw_value{};
+                for (std::size_t index{}; index < property.bytes.size(); ++index)
+                {
+                    raw_value |= static_cast<std::make_unsigned_t<int>>(
+                        std::to_integer<unsigned int>(property.bytes[index])
+                    ) << (index * 8U);
+                }
+                value.value = static_cast<int>(raw_value);
+            }
             else if (property.name == "target")
             {
                 auto target = port.resolveEntity(property.bytes);
@@ -388,6 +404,8 @@ int main()
     lux::ecs::ChangeCursor<Link> loaded_cursor;
     auto& loaded_journal =
         lux::ecs::detail::WorldChangeAccess::journal(**loaded);
+    assert(loaded_journal.recordWriteCountForTest() == 0U);
+    assert(loaded_journal.dynamicBlockAcquisitionsForTest() == 0U);
     assert(
         loaded_journal.read(loaded_cursor).status() ==
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED

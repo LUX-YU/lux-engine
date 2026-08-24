@@ -811,10 +811,7 @@ namespace lux::ecs
             }
 
             auto world = std::make_unique<World>(config);
-            auto edit_result = world->edit();
-            if (!edit_result)
-                return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::WORLD_BUSY});
-            auto edit = std::move(*edit_result);
+            auto edit = detail::WorldColdAccess::suppressingEdit(*world);
             std::vector<Entity> entities;
             entities.reserve(image.entities.size());
             for (const WorldEntityRecord& record : image.entities)

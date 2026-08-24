@@ -236,6 +236,7 @@ namespace lux::ecs::detail
                 auto owned = std::make_unique<JournalBlock>();
                 JournalBlock* result = owned.get();
                 owned_blocks_.push_back(std::move(owned));
+                ++dynamic_block_acquisition_count_;
                 return result;
             }
             catch (...)
@@ -274,6 +275,7 @@ namespace lux::ecs::detail
         block->records[block->count] = JournalRecord{sequence, entity, kind};
         ++block->count;
         ++stream.count;
+        ++record_write_count_;
         stream.minimum_available = std::max(
             stream.minimum_available,
             stream.oldest_sequence

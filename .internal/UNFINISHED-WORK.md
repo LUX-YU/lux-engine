@@ -12,7 +12,7 @@ gates are rerun.
 - [x] V2.1-1: Make Change Journal history loss explicit and pin-safe.
 - [x] V2.1-2: Bound Schedule change scratch and harden lifecycle RAII.
 - [x] V2.1-3: Make Hierarchy rebuild linear and orphan repair retryable.
-- [ ] V2.1-4: Suppress cold-construction journal emission.
+- [x] V2.1-4: Suppress cold-construction journal emission.
 - [ ] V2.1-5: Re-run adversarial, performance, install and platform gates.
 
 - [x] V2-0: Withdraw the v1 Freeze conclusion and record the new stop line.

@@ -118,6 +118,16 @@ namespace lux::ecs::detail
             return epoch_;
         }
 
+        [[nodiscard]] std::uint64_t recordWriteCountForTest() const noexcept
+        {
+            return record_write_count_;
+        }
+
+        [[nodiscard]] std::size_t dynamicBlockAcquisitionsForTest() const noexcept
+        {
+            return dynamic_block_acquisition_count_;
+        }
+
       private:
         [[nodiscard]] JournalStream* ensureStream(std::uint64_t storage) noexcept;
         void append(JournalStream& stream, Entity entity, std::uint8_t kind) noexcept;
@@ -143,5 +153,7 @@ namespace lux::ecs::detail
         std::size_t max_blocks_{};
         std::uint64_t write_sequence_{};
         std::uint64_t epoch_{1};
+        std::uint64_t record_write_count_{};
+        std::size_t dynamic_block_acquisition_count_{};
     };
 } // namespace lux::ecs::detail

@@ -121,12 +121,23 @@ namespace lux::ecs
         void reserve(std::size_t count);
 
       private:
-        explicit WorldEdit(World& world, bool release_to_idle) noexcept;
+        enum class EChangeEmission : std::uint8_t
+        {
+            RECORD,
+            SUPPRESS,
+        };
+
+        explicit WorldEdit(
+            World& world,
+            bool release_to_idle,
+            EChangeEmission change_emission = EChangeEmission::RECORD
+        ) noexcept;
         [[nodiscard]] Entity createAt(Entity entity);
         void release() noexcept;
 
         World* world_{};
         bool release_to_idle_{};
+        EChangeEmission change_emission_{EChangeEmission::RECORD};
 
         friend class World;
         friend class Schedule;
@@ -134,6 +145,7 @@ namespace lux::ecs
         friend class persistence::WorldSectionReader;
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldEditAccess;
+        friend struct detail::WorldColdAccess;
     };
 
     class LUX_ENGINE_ECS_CORE_PUBLIC World final
@@ -271,10 +283,13 @@ namespace lux::ecs
             entity,
             std::forward<Args>(args)...
         );
-        detail::recordWorldComponentChange(
-            *world_, entt::type_hash<Component>::value(), entity,
-            EComponentChangeKind::ADDED
-        );
+        if (change_emission_ == EChangeEmission::RECORD)
+        {
+            detail::recordWorldComponentChange(
+                *world_, entt::type_hash<Component>::value(), entity,
+                EComponentChangeKind::ADDED
+            );
+        }
         return result;
     }
 
@@ -282,7 +297,8 @@ namespace lux::ecs
     void WorldEdit::erase(Entity entity)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
-        if (world_->registry_.template remove<Component>(entity) != 0)
+        if (world_->registry_.template remove<Component>(entity) != 0 &&
+            change_emission_ == EChangeEmission::RECORD)
         {
             detail::recordWorldComponentChange(
                 *world_, entt::type_hash<Component>::value(), entity,
@@ -303,10 +319,13 @@ namespace lux::ecs
             entity,
             std::forward<Fn>(fn)
         );
-        detail::recordWorldComponentChange(
-            *world_, entt::type_hash<Component>::value(), entity,
-            EComponentChangeKind::MODIFIED
-        );
+        if (change_emission_ == EChangeEmission::RECORD)
+        {
+            detail::recordWorldComponentChange(
+                *world_, entt::type_hash<Component>::value(), entity,
+                EComponentChangeKind::MODIFIED
+            );
+        }
     }
 
     template <class... Access>
@@ -315,7 +334,9 @@ namespace lux::ecs
         detail::require(world_ != nullptr);
         return detail::BasicQuery<World::Registry, Access...>(
             world_->registry_,
-            detail::worldChangeRecorder(*world_)
+            change_emission_ == EChangeEmission::RECORD
+                ? detail::worldChangeRecorder(*world_)
+                : detail::ChangeRecorder{}
         );
     }
 

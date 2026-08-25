@@ -485,7 +485,6 @@ namespace lux::ecs
             std::vector<std::shared_ptr<const void>> pins;
             std::shared_ptr<detail::SectionResidency> residency;
             std::size_t component_rows{};
-            std::size_t max_sparse_rows{};
             bool activated{};
         };
 
@@ -495,7 +494,10 @@ namespace lux::ecs
         lux::serialization::SerializationLimits limits{};
         std::vector<LoadOperation> loads;
         std::vector<WorldSectionInstance*> unloads;
-        std::vector<Entity> sparse_entities;
+        detail::EntityAllocatorCheckpoint entity_checkpoint;
+        std::size_t total_entities{};
+        std::size_t total_columns{};
+        std::size_t total_component_rows{};
 
         void resetStaged() noexcept
         {
@@ -546,10 +548,6 @@ namespace lux::ecs
                         entity
                     );
                 }
-                detail::WorldSectionTransactionAccess::destroyBareEntities(
-                    edit,
-                    output.entities_
-                );
                 if (operation.residency && operation.activated)
                 {
                     detail::WorldSectionTransactionAccess::releaseResidency(
@@ -558,6 +556,13 @@ namespace lux::ecs
                     );
                     operation.activated = false;
                 }
+            }
+            if (entity_checkpoint.captured)
+            {
+                detail::WorldSectionTransactionAccess::restoreEntityAllocator(
+                    edit,
+                    entity_checkpoint
+                );
             }
         }
     };
@@ -653,6 +658,16 @@ namespace lux::ecs
                         binding->schema().id
                     ));
                 }
+                if (column.valueEncoding() !=
+                        EWorldSectionValueEncoding::TAG &&
+                    impl_->scratch.decode_bytes < binding->value_size_)
+                {
+                    return lux::cxx::unexpected(failure(
+                        EWorldSectionError::LIMIT_EXCEEDED,
+                        static_cast<std::uint32_t>(index),
+                        binding->schema().id
+                    ));
+                }
                 if (column.rowCount() >
                     std::numeric_limits<std::size_t>::max() -
                         operation.component_rows)
@@ -677,14 +692,6 @@ namespace lux::ecs
                     operation.pins,
                     binding->schema().code_lifetime
                 );
-                if (column.ordinalEncoding() ==
-                    EWorldSectionOrdinalEncoding::U32_LIST)
-                {
-                    operation.max_sparse_rows = std::max(
-                        operation.max_sparse_rows,
-                        static_cast<std::size_t>(column.rowCount())
-                    );
-                }
             }
 
             std::sort(
@@ -697,6 +704,21 @@ namespace lux::ecs
             );
             operation.residency->pins = operation.pins;
 
+            if (image.entityCount() >
+                    std::numeric_limits<std::size_t>::max() -
+                        impl_->total_entities ||
+                image.columns().size() >
+                    std::numeric_limits<std::size_t>::max() -
+                        impl_->total_columns ||
+                operation.component_rows >
+                    std::numeric_limits<std::size_t>::max() -
+                        impl_->total_component_rows)
+            {
+                return lux::cxx::unexpected(
+                    failure(EWorldSectionError::LIMIT_EXCEEDED)
+                );
+            }
+
             inactive_output.id_ = image.id();
             inactive_output.entities_.resize(image.entityCount(), NullEntity);
             inactive_output.world_identity_ =
@@ -707,6 +729,10 @@ namespace lux::ecs
                 );
             inactive_output.residency_ = operation.residency;
             impl_->loads.push_back(std::move(operation));
+            impl_->total_entities += image.entityCount();
+            impl_->total_columns += image.columns().size();
+            impl_->total_component_rows +=
+                impl_->loads.back().component_rows;
             inactive_output.state_ = WorldSectionInstance::EState::STAGED;
             return {};
         }
@@ -804,13 +830,12 @@ namespace lux::ecs
 
         try
         {
-            std::size_t max_sparse_rows{};
+            detail::WorldSectionTransactionAccess::captureEntityAllocator(
+                impl_->edit,
+                impl_->entity_checkpoint
+            );
             for (auto& operation : impl_->loads)
             {
-                max_sparse_rows = std::max(
-                    max_sparse_rows,
-                    operation.max_sparse_rows
-                );
                 detail::WorldSectionTransactionAccess::createEntities(
                     impl_->edit,
                     operation.output->entities_
@@ -830,7 +855,6 @@ namespace lux::ecs
                 );
                 operation.activated = true;
             }
-            impl_->sparse_entities.reserve(max_sparse_rows);
 
             for (auto& operation : impl_->loads)
             {
@@ -841,32 +865,8 @@ namespace lux::ecs
                     if (column.rowCount() == 0U)
                         continue;
 
-                    std::span<const Entity> row_entities;
-                    if (column.ordinalEncoding() ==
-                        EWorldSectionOrdinalEncoding::DENSE)
-                    {
-                        row_entities = operation.output->entities_;
-                    }
-                    else
-                    {
-                        impl_->sparse_entities.clear();
-                        for (std::size_t row{}; row < column.rowCount(); ++row)
-                        {
-                            const std::uint32_t ordinal =
-                                detail::readColumnU32(
-                                    column.ordinalBytes(),
-                                    row * sizeof(std::uint32_t)
-                                );
-                            impl_->sparse_entities.push_back(
-                                operation.output->entities_[ordinal]
-                            );
-                        }
-                        row_entities = impl_->sparse_entities;
-                    }
-
                     auto loaded = operation.plan[index]->load_(
                         impl_->edit,
-                        row_entities,
                         operation.output->entities_,
                         column,
                         impl_->scratch,

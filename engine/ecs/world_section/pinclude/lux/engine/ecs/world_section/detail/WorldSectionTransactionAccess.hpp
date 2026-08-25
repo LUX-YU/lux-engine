@@ -5,10 +5,23 @@
 
 #include <iterator>
 #include <span>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace lux::ecs::detail
 {
+    struct EntityAllocatorCheckpoint final
+    {
+        using Registry = entt::basic_registry<Entity>;
+        using Storage = std::remove_reference_t<decltype(
+            std::declval<Registry&>().template storage<Entity>()
+        )>;
+
+        Storage storage;
+        bool captured{};
+    };
+
     struct WorldSectionTransactionAccess final
     {
         [[nodiscard]] static std::uint64_t allocateLease(
@@ -123,6 +136,43 @@ namespace lux::ecs::detail
         {
             require(edit.world_ != nullptr);
             edit.world_->registry_.create(entities.begin(), entities.end());
+        }
+
+        static void captureEntityAllocator(
+            WorldEdit& edit,
+            EntityAllocatorCheckpoint& checkpoint
+        )
+        {
+            require(edit.world_ != nullptr && !checkpoint.captured);
+            const auto& source =
+                edit.world_->registry_.template storage<Entity>();
+            checkpoint.storage.reserve(source.size());
+            Entity placeholder = NullEntity;
+            for (auto iterator = source.rbegin();
+                 iterator != source.rend();
+                 ++iterator)
+            {
+                checkpoint.storage.generate(*iterator);
+                if (*iterator > placeholder)
+                    placeholder = *iterator;
+            }
+            checkpoint.storage.start_from(
+                entt::entt_traits<Entity>::next(placeholder)
+            );
+            checkpoint.storage.free_list(source.free_list());
+            checkpoint.captured = true;
+        }
+
+        static void restoreEntityAllocator(
+            WorldEdit& edit,
+            EntityAllocatorCheckpoint& checkpoint
+        ) noexcept
+        {
+            require(edit.world_ != nullptr && checkpoint.captured);
+            auto& target =
+                edit.world_->registry_.template storage<Entity>();
+            target.swap(checkpoint.storage);
+            checkpoint.captured = false;
         }
 
 #if defined(LUX_ECS_WORLD_SECTION_TESTING)

@@ -31,11 +31,70 @@ namespace lux::ecs
             lux::serialization::SerializationResult (*)(
                 WorldEdit&,
                 std::span<const Entity>,
-                std::span<const Entity>,
                 const WorldSectionColumnView&,
                 WorldSectionLoadScratchBudget,
                 lux::serialization::SerializationLimits
             ) noexcept;
+
+        class ColumnEntityIterator final
+        {
+          public:
+            using iterator_category = std::forward_iterator_tag;
+            using value_type = Entity;
+            using difference_type = std::ptrdiff_t;
+            using pointer = void;
+            using reference = Entity;
+
+            ColumnEntityIterator() noexcept = default;
+            ColumnEntityIterator(
+                std::span<const Entity> entities,
+                const WorldSectionColumnView& column,
+                std::size_t row
+            ) noexcept
+                : entities_(entities), column_(&column), row_(row)
+            {
+            }
+
+            [[nodiscard]] Entity operator*() const noexcept
+            {
+                const std::uint32_t ordinal =
+                    column_->ordinalEncoding() ==
+                        EWorldSectionOrdinalEncoding::DENSE
+                    ? static_cast<std::uint32_t>(row_)
+                    : readColumnU32(
+                        column_->ordinalBytes(),
+                        row_ * sizeof(std::uint32_t)
+                    );
+                return entities_[ordinal];
+            }
+
+            ColumnEntityIterator& operator++() noexcept
+            {
+                ++row_;
+                return *this;
+            }
+
+            ColumnEntityIterator operator++(int) noexcept
+            {
+                ColumnEntityIterator result = *this;
+                ++*this;
+                return result;
+            }
+
+            [[nodiscard]] friend bool operator==(
+                const ColumnEntityIterator& left,
+                const ColumnEntityIterator& right
+            ) noexcept
+            {
+                return left.column_ == right.column_ &&
+                    left.row_ == right.row_;
+            }
+
+          private:
+            std::span<const Entity> entities_;
+            const WorldSectionColumnView* column_{};
+            std::size_t row_{};
+        };
 
 #if defined(LUX_ECS_WORLD_SECTION_TESTING)
         struct ComponentLoadTestStats final
@@ -89,16 +148,12 @@ namespace lux::ecs
         [[nodiscard]] static lux::serialization::SerializationResult
         loadColumn(
             WorldEdit& edit,
-            std::span<const Entity> row_entities,
             std::span<const Entity> ordinal_entities,
             const WorldSectionColumnView& column,
             WorldSectionLoadScratchBudget scratch,
             lux::serialization::SerializationLimits limits
         ) noexcept
         {
-            if (row_entities.size() != column.rowCount())
-                return detail::invalidColumnValue(0U);
-
             try
             {
                 detail::require(edit.world_ != nullptr);
@@ -113,25 +168,46 @@ namespace lux::ecs
                     if (column.valueEncoding() !=
                         EWorldSectionValueEncoding::TAG)
                         return detail::invalidColumnValue(0U);
-                    storage.insert(row_entities.begin(), row_entities.end());
+                    const detail::ColumnEntityIterator first(
+                        ordinal_entities,
+                        column,
+                        0U
+                    );
+                    const detail::ColumnEntityIterator last(
+                        ordinal_entities,
+                        column,
+                        column.rowCount()
+                    );
+                    storage.insert(first, last);
                     return {};
                 }
 
-                const std::size_t batch_rows = std::max<std::size_t>(
-                    scratch.decode_bytes /
-                        std::max<std::size_t>(sizeof(Component), 1U),
-                    1U
-                );
-                storage.reserve(storage.size() + row_entities.size());
+                if (scratch.decode_bytes < sizeof(Component))
+                {
+                    return lux::cxx::unexpected<
+                        lux::serialization::SerializationFailure>(
+                        lux::serialization::SerializationFailure{
+                            lux::serialization::ESerializationError::LIMIT_EXCEEDED,
+                            0U
+                        }
+                    );
+                }
+                const std::size_t batch_rows =
+                    scratch.decode_bytes / sizeof(Component);
+                storage.reserve(storage.size() + column.rowCount());
                 std::vector<Component> values;
-                values.reserve(std::min(row_entities.size(), batch_rows));
+                values.reserve(std::min(
+                    static_cast<std::size_t>(column.rowCount()),
+                    batch_rows
+                ));
                 for (std::size_t batch_begin{};
-                     batch_begin < row_entities.size();
+                     batch_begin < column.rowCount();
                      batch_begin += batch_rows)
                 {
                     const std::size_t batch_size = std::min(
                         batch_rows,
-                        row_entities.size() - batch_begin
+                        static_cast<std::size_t>(column.rowCount()) -
+                            batch_begin
                     );
                     values.clear();
                     for (std::size_t local{}; local < batch_size; ++local)
@@ -185,9 +261,19 @@ namespace lux::ecs
                         if (reader.remaining() != 0U)
                             return detail::invalidColumnValue(reader.offset());
                     }
+                    const detail::ColumnEntityIterator first(
+                        ordinal_entities,
+                        column,
+                        batch_begin
+                    );
+                    const detail::ColumnEntityIterator last(
+                        ordinal_entities,
+                        column,
+                        batch_begin + batch_size
+                    );
                     storage.insert(
-                        row_entities.begin() + batch_begin,
-                        row_entities.begin() + batch_begin + batch_size,
+                        first,
+                        last,
                         std::make_move_iterator(values.begin())
                     );
                 }
@@ -214,12 +300,14 @@ namespace lux::ecs
             std::uint64_t storage,
             EWorldSectionValueEncoding value_encoding,
             std::uint32_t fixed_stride,
+            std::size_t value_size,
             detail::LoadComponentColumnFn load
         ) noexcept
             : schema_(&schema),
               storage_(storage),
               value_encoding_(value_encoding),
               fixed_stride_(fixed_stride),
+              value_size_(value_size),
               load_(load)
         {
         }
@@ -236,6 +324,7 @@ namespace lux::ecs
         std::uint64_t storage_{};
         EWorldSectionValueEncoding value_encoding_{};
         std::uint32_t fixed_stride_{};
+        std::size_t value_size_{};
         detail::LoadComponentColumnFn load_{};
         std::size_t code_owner_index_{};
     };
@@ -288,6 +377,7 @@ namespace lux::ecs
             entt::type_hash<Component>::value(),
             encoding,
             stride,
+            sizeof(Component),
             &ComponentLoadBinding::loadColumn<Component>
         };
     }

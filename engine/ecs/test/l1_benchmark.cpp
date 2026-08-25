@@ -493,8 +493,51 @@ namespace
     {
         NONE,
         CHAIN,
-        DIAMOND
+        DIAMOND,
+        FAN_IN,
+        FAN_OUT,
+        ASYMMETRIC
     };
+
+    template <class AddDependency>
+    void addGraphShapeEdges(
+        std::size_t count,
+        EGraphShape shape,
+        AddDependency&& add_dependency
+    )
+    {
+        if (shape == EGraphShape::CHAIN)
+        {
+            for (std::size_t index = 1U; index < count; ++index)
+                add_dependency(index - 1U, index);
+        }
+        else if (shape == EGraphShape::DIAMOND && count >= 4U)
+        {
+            for (std::size_t index = 1U; index + 1U < count; ++index)
+            {
+                add_dependency(0U, index);
+                add_dependency(index, count - 1U);
+            }
+        }
+        else if (shape == EGraphShape::FAN_IN && count >= 2U)
+        {
+            for (std::size_t index{}; index + 1U < count; ++index)
+                add_dependency(index, count - 1U);
+        }
+        else if (shape == EGraphShape::FAN_OUT && count >= 2U)
+        {
+            for (std::size_t index = 1U; index < count; ++index)
+                add_dependency(0U, index);
+        }
+        else if (shape == EGraphShape::ASYMMETRIC)
+        {
+            for (std::size_t base{}; base + 3U < count; base += 4U)
+            {
+                add_dependency(base, base + 2U);
+                add_dependency(base + 1U, base + 3U);
+            }
+        }
+    }
 
     [[nodiscard]] lux::task::TaskGraph makeTaskGraph(
         std::size_t count,
@@ -518,23 +561,12 @@ namespace
             ids.push_back(*task);
         }
 
-        if (shape == EGraphShape::CHAIN)
+        addGraphShapeEdges(ids.size(), shape, [&](std::size_t before,
+                                                  std::size_t after)
         {
-            for (std::size_t index = 1U; index < ids.size(); ++index)
-                if (!builder.addDependency(ids[index - 1U], ids[index]))
-                    std::abort();
-        }
-        else if (shape == EGraphShape::DIAMOND && ids.size() >= 4U)
-        {
-            for (std::size_t index = 1U; index + 1U < ids.size(); ++index)
-            {
-                if (!builder.addDependency(ids.front(), ids[index]) ||
-                    !builder.addDependency(ids[index], ids.back()))
-                {
-                    std::abort();
-                }
-            }
-        }
+            if (!builder.addDependency(ids[before], ids[after]))
+                std::abort();
+        });
 
         auto graph = std::move(builder).build();
         if (!graph)
@@ -548,7 +580,11 @@ namespace
         for (const auto [name, shape] : {
                  std::pair{std::string_view{"none"}, EGraphShape::NONE},
                  std::pair{std::string_view{"chain"}, EGraphShape::CHAIN},
-                 std::pair{std::string_view{"diamond"}, EGraphShape::DIAMOND}})
+                 std::pair{std::string_view{"diamond"}, EGraphShape::DIAMOND},
+                 std::pair{std::string_view{"fan_in"}, EGraphShape::FAN_IN},
+                 std::pair{std::string_view{"fan_out"}, EGraphShape::FAN_OUT},
+                 std::pair{std::string_view{"asymmetric"},
+                           EGraphShape::ASYMMETRIC}})
         {
             evidence.measure(
                 std::string{"task_graph_build_"} + std::string{name},
@@ -557,7 +593,8 @@ namespace
                 {
                     auto graph = makeTaskGraph(count, shape, counter);
                     return Observation{
-                        .dispatch_calls = graph.taskCount()
+                        .dispatch_calls = graph.taskCount(),
+                        .visited_nodes = graph.dependencyCount()
                     };
                 }
             );
@@ -570,7 +607,11 @@ namespace
         for (const auto [name, shape] : {
                  std::pair{std::string_view{"none"}, EGraphShape::NONE},
                  std::pair{std::string_view{"chain"}, EGraphShape::CHAIN},
-                 std::pair{std::string_view{"diamond"}, EGraphShape::DIAMOND}})
+                 std::pair{std::string_view{"diamond"}, EGraphShape::DIAMOND},
+                 std::pair{std::string_view{"fan_in"}, EGraphShape::FAN_IN},
+                 std::pair{std::string_view{"fan_out"}, EGraphShape::FAN_OUT},
+                 std::pair{std::string_view{"asymmetric"},
+                           EGraphShape::ASYMMETRIC}})
         {
             auto graph = makeTaskGraph(count, shape, counter);
             lux::task::TaskExecutionScratch scratch;
@@ -588,7 +629,8 @@ namespace
                         scratch
                     );
                     return Observation{
-                        .dispatch_calls = graph.taskCount()
+                        .dispatch_calls = graph.taskCount(),
+                        .visited_nodes = graph.dependencyCount()
                     };
                 }
             );
@@ -614,23 +656,12 @@ namespace
                     std::abort();
                 ids.push_back(*id);
             }
-            if (shape == EGraphShape::CHAIN)
+            addGraphShapeEdges(ids.size(), shape, [&](std::size_t before,
+                                                      std::size_t after)
             {
-                for (std::size_t index = 1U; index < ids.size(); ++index)
-                    if (!relations.before(ids[index - 1U], ids[index]))
-                        std::abort();
-            }
-            else if (shape == EGraphShape::DIAMOND && ids.size() >= 4U)
-            {
-                for (std::size_t index = 1U; index + 1U < ids.size(); ++index)
-                {
-                    if (!relations.before(ids.front(), ids[index]) ||
-                        !relations.before(ids[index], ids.back()))
-                    {
-                        std::abort();
-                    }
-                }
-            }
+                if (!relations.before(ids[before], ids[after]))
+                    std::abort();
+            });
         }
 
         std::uint64_t updates{};
@@ -651,6 +682,9 @@ namespace
                  Case{"none", EGraphShape::NONE, false},
                  Case{"chain", EGraphShape::CHAIN, false},
                  Case{"diamond", EGraphShape::DIAMOND, false},
+                 Case{"fan_in", EGraphShape::FAN_IN, false},
+                 Case{"fan_out", EGraphShape::FAN_OUT, false},
+                 Case{"asymmetric", EGraphShape::ASYMMETRIC, false},
                  Case{"all_conflict", EGraphShape::NONE, true}})
         {
             SystemCompileFixture fixture(count, value.shape, value.conflict);
@@ -666,7 +700,8 @@ namespace
                     if (!compilation)
                         std::abort();
                     return Observation{
-                        .dispatch_calls = compilation->taskCount()
+                        .dispatch_calls = compilation->taskCount(),
+                        .visited_nodes = compilation->dependencyCount()
                     };
                 }
             );
@@ -675,26 +710,84 @@ namespace
 
     void benchmarkSystemExecute(Evidence& evidence, std::size_t count)
     {
-        lux::ecs::World world;
-        lux::ecs::detail::SystemTestRig execution(world);
-        std::uint64_t updates{};
-        for (std::size_t index{}; index < count; ++index)
+        struct Case final
         {
-            if ((index & 3U) == 0U)
-                (void)execution.add<OwnerNoopSystem>(updates);
-            else
-                (void)execution.add<NoopSystem>(updates);
-        }
-        if (!execution.compile())
-            std::abort();
-        std::uint64_t tick{};
-        evidence.measure("system_execute_mixed_affinity", count, [&]
+            std::string_view name;
+            EGraphShape shape;
+            bool conflict;
+        };
+        for (const Case value : {
+                 Case{"none", EGraphShape::NONE, false},
+                 Case{"chain", EGraphShape::CHAIN, false},
+                 Case{"diamond", EGraphShape::DIAMOND, false},
+                 Case{"fan_in", EGraphShape::FAN_IN, false},
+                 Case{"fan_out", EGraphShape::FAN_OUT, false},
+                 Case{"asymmetric", EGraphShape::ASYMMETRIC, false},
+                 Case{"all_conflict", EGraphShape::NONE, true}})
         {
-            if (!execution.run(1.0F / 60.0F, ++tick))
+            SystemCompileFixture fixture(count, value.shape, value.conflict);
+            auto compilation = lux::ecs::compileSystemTaskGraph(
+                fixture.systems,
+                fixture.relations
+            );
+            if (!compilation)
                 std::abort();
-            return Observation{};
-        });
-        checksum = checksum + updates;
+            lux::ecs::SystemExecutionScratch scratch;
+            if (!scratch.prepare(*compilation))
+                std::abort();
+            lux::ecs::World world;
+            std::uint64_t tick{};
+            evidence.measure(
+                "system_execute_" + std::string{value.name},
+                count,
+                [&]
+                {
+                    lux::ecs::EcsExecutionContext context{
+                        world,
+                        fixture.systems,
+                        fixture.relations,
+                        scratch,
+                        1.0F / 60.0F,
+                        ++tick
+                    };
+                    if (!lux::ecs::executeSystemTaskGraph(
+                            lux::task::referenceTaskExecutionBackend(),
+                            *compilation,
+                            context
+                        ))
+                    {
+                        std::abort();
+                    }
+                    return Observation{
+                        .dispatch_calls = compilation->taskCount(),
+                        .visited_nodes = compilation->dependencyCount()
+                    };
+                }
+            );
+        }
+
+        {
+            lux::ecs::World world;
+            lux::ecs::detail::SystemTestRig execution(world);
+            std::uint64_t updates{};
+            for (std::size_t index{}; index < count; ++index)
+            {
+                if ((index & 3U) == 0U)
+                    (void)execution.add<OwnerNoopSystem>(updates);
+                else
+                    (void)execution.add<NoopSystem>(updates);
+            }
+            if (!execution.compile())
+                std::abort();
+            std::uint64_t tick{};
+            evidence.measure("system_execute_mixed_affinity", count, [&]
+            {
+                if (!execution.run(1.0F / 60.0F, ++tick))
+                    std::abort();
+                return Observation{};
+            });
+            checksum = checksum + updates;
+        }
     }
 
     template <std::size_t... Index>

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import glob
 import math
 from pathlib import Path
 import sys
@@ -14,8 +15,36 @@ import tomllib
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", required=True, type=Path)
-    parser.add_argument("--input", action="append", required=True, type=Path)
+    parser.add_argument(
+        "--input",
+        action="append",
+        nargs="+",
+        required=True,
+        metavar="CSV",
+        help=(
+            "one or more CSV files or glob patterns; the option may be "
+            "repeated"
+        ),
+    )
     return parser.parse_args()
+
+
+def resolve_inputs(groups: list[list[str]]) -> list[Path]:
+    result: list[Path] = []
+    seen: set[Path] = set()
+    for group in groups:
+        for argument in group:
+            matches = sorted(Path(path) for path in glob.glob(argument))
+            if not matches:
+                if glob.has_magic(argument):
+                    raise RuntimeError(f"input pattern matched no files: {argument}")
+                matches = [Path(argument)]
+            for path in matches:
+                resolved = path.resolve()
+                if resolved not in seen:
+                    seen.add(resolved)
+                    result.append(resolved)
+    return result
 
 
 def summaries(paths: list[Path]) -> dict[tuple[str, int], dict[str, float]]:
@@ -50,7 +79,7 @@ def main() -> int:
         policy = tomllib.load(stream)
     if policy.get("version") != 1:
         raise RuntimeError("unsupported qualification policy version")
-    values = summaries(args.input)
+    values = summaries(resolve_inputs(args.input))
     failures: list[str] = []
 
     for rule in policy.get("relative", []):

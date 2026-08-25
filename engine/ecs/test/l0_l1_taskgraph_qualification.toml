@@ -1,0 +1,150 @@
+version = 1
+
+# Thresholds are qualification policy, not L0/L1 implementation constants.
+
+[[relative]]
+name = "World ReadQuery versus raw EnTT"
+metric = "world_read_query"
+baseline = "raw_entt_read"
+size = 1000000
+max_ratio = 1.05
+
+[[scaling]]
+name = "TaskGraph none execution scaling"
+metric = "task_graph_execute_none"
+small_size = 16
+large_size = 1024
+max_exponent = 1.25
+
+[[scaling]]
+name = "TaskGraph chain execution scaling"
+metric = "task_graph_execute_chain"
+small_size = 16
+large_size = 1024
+max_exponent = 1.25
+
+[[scaling]]
+name = "TaskGraph diamond execution scaling"
+metric = "task_graph_execute_diamond"
+small_size = 16
+large_size = 1024
+max_exponent = 1.25
+
+[[scaling]]
+name = "System mixed-affinity execution scaling"
+metric = "system_execute_mixed_affinity"
+small_size = 16
+large_size = 1024
+max_exponent = 1.25
+
+[[scaling]]
+name = "WorldChangeLog one-lane write scaling"
+metric = "world_change_log_write_1"
+small_size = 100000
+large_size = 1000000
+max_exponent = 1.25
+
+[[scaling]]
+name = "WorldChangeLog four-lane write scaling"
+metric = "world_change_log_write_4"
+small_size = 100000
+large_size = 1000000
+max_exponent = 1.25
+
+[[scaling]]
+name = "WorldChangeLog sixteen-lane write scaling"
+metric = "world_change_log_write_16"
+small_size = 100000
+large_size = 1000000
+max_exponent = 1.25
+
+[[scaling]]
+name = "SystemContext one-lane write scaling"
+metric = "system_write_query_1"
+small_size = 100000
+large_size = 1000000
+max_exponent = 1.25
+
+[[scaling]]
+name = "SystemContext four-lane write scaling"
+metric = "system_write_query_4"
+small_size = 100000
+large_size = 1000000
+max_exponent = 1.25
+
+[[scaling]]
+name = "SystemContext sixteen-lane write scaling"
+metric = "system_write_query_16"
+small_size = 100000
+large_size = 1000000
+max_exponent = 1.25
+
+[[structural]]
+name = "TaskGraph execution is allocation free"
+metric = "task_graph_execute_diamond"
+size = 1024
+field = "allocations"
+equals = 0
+
+[[structural]]
+name = "TaskGraph dispatches each task exactly once"
+metric = "task_graph_execute_diamond"
+size = 1024
+field = "dispatch_calls"
+equals = 1024
+
+[[structural]]
+name = "System execution is allocation free"
+metric = "system_execute_mixed_affinity"
+size = 1024
+field = "allocations"
+equals = 0
+
+[[structural]]
+name = "WorldMutation binds each written component lane once"
+metric = "world_change_log_write_16"
+size = 1000000
+field = "dispatch_calls"
+equals = 16
+
+[[structural]]
+name = "WorldMutation performs no per-record lookup"
+metric = "world_change_log_write_16"
+size = 1000000
+field = "storage_lookups"
+equals = 0
+
+[[structural]]
+name = "WorldMutation retains complete history"
+metric = "world_change_log_write_16"
+size = 1000000
+field = "history_losses"
+equals = 0
+
+[[structural]]
+name = "SystemContext binds each written component lane once"
+metric = "system_write_query_16"
+size = 1000000
+field = "dispatch_calls"
+equals = 16
+
+[[structural]]
+name = "SystemContext performs no per-record lookup"
+metric = "system_write_query_16"
+size = 1000000
+field = "storage_lookups"
+equals = 0
+
+[[structural]]
+name = "SystemContext retains complete history"
+metric = "system_write_query_16"
+size = 1000000
+field = "history_losses"
+equals = 0
+
+[[structural]]
+name = "SystemContext write execution is allocation free"
+metric = "system_write_query_16"
+size = 1000000
+field = "allocations"
+equals = 0

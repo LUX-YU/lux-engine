@@ -903,7 +903,7 @@ namespace
             (void)schedule.add<PositionWriteSystem>();
             if (!schedule.compile(size)) std::abort();
             std::uint64_t tick{};
-            evidence.measure("schedule_write_query", size, [&]
+            evidence.measure("system_context_write_query", size, [&]
             {
                 if (!schedule.run(1.0F / 60.0F, ++tick)) std::abort();
                 if (schedule.perRecordLookupCount() != 0U) std::abort();
@@ -925,7 +925,7 @@ namespace
                 (void)schedule.add<NoopSystem>(updates);
             if (!schedule.compile()) std::abort();
             std::uint64_t tick{};
-            evidence.measure("schedule_run", count, [&]
+            evidence.measure("system_taskgraph_run", count, [&]
             {
                 for (std::size_t repeat{}; repeat < 1'000U; ++repeat)
                     if (!schedule.run(1.0F / 60.0F, ++tick)) std::abort();

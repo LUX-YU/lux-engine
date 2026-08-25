@@ -20,11 +20,12 @@ implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
       retire `persistence_contract` plus the remaining v1 codegen bindings.
 - [x] WDP-6: Clone WorldSnapshot by COPY component storage.
 - [x] WDP-7: Complete corruption, install and architecture gates.
-- [ ] WDP-8: Complete 1M diagnostic/qualification evidence against raw EnTT.
+- [x] WDP-8: Complete 1M diagnostic/qualification evidence against raw EnTT.
 
-Stop line: `Performance Contract Rejected / Public API Freeze Blocked / Domain
-Migration Blocked` until WDP-1 through WDP-8 pass. L2/L3/L4/L5 remain design
-boundaries only in this phase.
+Qualification status: `Foundation Qualified / L1 Architecture Accepted /
+Correctness Hardened / Performance Contract Passed / Public API Freeze
+Candidate / Independent Re-audit Required / Domain Migration Blocked`.
+L2/L3/L4/L5 remain design boundaries only in this phase.
 
 ## Retained foundation record (2026-08-24)
 

@@ -1,29 +1,30 @@
-# vNext L1 World Data Path — Qualification Pending
+# vNext L1 World Data Path — Re-audit Candidate
 
 ## Current conclusion
 
 The World/Journal/Schedule/Hierarchy correctness work remains accepted, as do
-the generator, TypeInfo and exact binary serialization foundations. The LXWC
-v1 persistence surface and its performance conclusion are withdrawn.
+the generator, TypeInfo and exact binary serialization foundations. LXWC v1
+is retired. Immutable LXWC v2 load/unload and storage-driven Snapshot now pass
+their correctness, installation and 1M performance contracts.
 
 Current status:
 
+- `Foundation Qualified`
 - `L1 Architecture Accepted`
-- `World Data Path Rework Required`
-- `Performance Contract Rejected`
-- `Public API Freeze Blocked`
+- `Correctness Hardened`
+- `Performance Contract Passed`
+- `Public API Freeze Candidate`
+- `Independent Re-audit Required`
 - `Domain Migration Blocked`
 
-The committed v1 `WorldSectionWriter::build()` performs a growing-vector
-duplicate scan. At one million selected entities it requires approximately
-500 billion comparisons per build, so the previous monolithic qualification
-benchmark cannot complete reasonably. This is an algorithmic failure, not a
-deadlock. The v1 Writer is not being optimized and frozen; it is retired by the
-LXWC v2 cooked-runtime data-path split.
+The former v1 Writer's quadratic path was not optimized or frozen; the entire
+Writer/image contract was deleted. A separate 1M deep Transform qualification
+found and removed an O(N^2) dirty-root reduction. The corrected path completes
+naturally and is covered by the recorded qualification matrix.
 
-## Qualification required
+## Qualification evidence
 
-Freeze-candidate status requires all of the following new evidence:
+The following gates pass:
 
 - immutable structurally validated LXWC v2 image;
 - bulk range load/unload into an existing World with transactional rollback;
@@ -35,10 +36,11 @@ Freeze-candidate status requires all of the following new evidence:
   builds;
 - raw CSV, allocation/high-water statistics and raw EnTT relative baselines.
 
-Previous v2.1 CSVs remain historical regression inputs only. They do not prove
-the new WorldSection contract.
+Raw CSV, medians, p95, allocation counts and structural counters are in
+`.internal/benchmarks/20260825-l1-world-data-path`. Previous v2.1 CSVs remain
+historical regression inputs only.
 
-After all gates pass, the maximum state is:
+The maximum state remains:
 
 ```text
 Foundation Qualified

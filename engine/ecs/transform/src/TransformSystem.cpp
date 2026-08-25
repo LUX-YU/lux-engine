@@ -288,21 +288,16 @@ namespace lux::ecs
                 roots.clear();
                 for (const Entity candidate : dirty_candidates)
                 {
-                    Entity root = candidate;
-                    Entity parent = hierarchy->parent(root);
-                    while (marked(parent))
-                    {
-                        root = parent;
-                        parent = hierarchy->parent(root);
-                    }
-                    ensureStamps(root);
-                    const std::size_t index = entityIndex(root);
+                    if (marked(hierarchy->parent(candidate)))
+                        continue;
+                    ensureStamps(candidate);
+                    const std::size_t index = entityIndex(candidate);
                     if (root_stamps[index] == stamp &&
-                        root_identities[index] == root)
+                        root_identities[index] == candidate)
                         continue;
                     root_stamps[index] = stamp;
-                    root_identities[index] = root;
-                    roots.push_back(root);
+                    root_identities[index] = candidate;
+                    roots.push_back(candidate);
                 }
             }
 

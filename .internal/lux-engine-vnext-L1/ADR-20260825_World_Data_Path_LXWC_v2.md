@@ -1,7 +1,7 @@
 # ADR: World data paths and LXWC v2 runtime loading
 
 - Date: 2026-08-25
-- Status: Accepted architecture; implementation and performance qualification required
+- Status: Accepted and qualified; independent re-audit required
 - Baseline: `a2fef415`
 - Supersedes: the LXWC v1 persistence portions of
   `ADR-20260824_Foundation_TypeInfo_Serialization_LXWC.md`
@@ -67,17 +67,18 @@ The committed LXWC v1 Writer has a confirmed `Theta(N^2)` duplicate scan and is
 not repaired as a long-term path. It is deleted during the v2 image cutover.
 The previous LXWC performance conclusion is withdrawn.
 
-Until the v2 loader, storage-driven Snapshot, 1M scaling evidence, installed
-consumers and platform matrix pass, status is:
+The v2 loader, storage-driven Snapshot, 1M scaling evidence and installed
+consumer gates now pass. Qualification evidence is recorded under
+`.internal/benchmarks/20260825-l1-world-data-path`. Current status is:
 
 ```text
+Foundation Qualified
 L1 Architecture Accepted
-World Data Path Rework Required
-Performance Contract Rejected
-Public API Freeze Blocked
+Correctness Hardened
+Performance Contract Passed
+Public API Freeze Candidate
+Independent Re-audit Required
 Domain Migration Blocked
 ```
 
-After qualification the maximum status is `Public API Freeze Candidate /
-Independent Re-audit Required`. Frozen requires a separate independent-review
-acceptance commit.
+Frozen still requires a separate independent-review acceptance commit.

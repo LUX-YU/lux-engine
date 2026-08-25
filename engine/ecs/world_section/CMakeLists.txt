@@ -157,7 +157,9 @@ add_executable(
 )
 target_include_directories(
     ecs_world_section_loader_test
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/test
+        ${CMAKE_CURRENT_SOURCE_DIR}/../system/pinclude
 )
 target_compile_definitions(
     ecs_world_section_loader_test
@@ -167,7 +169,7 @@ target_link_libraries(
     ecs_world_section_loader_test
     PRIVATE
         lux::engine::ecs::world_section
-        lux::engine::ecs::schedule
+        lux::engine::ecs::system
 )
 if(MSVC)
     target_compile_options(ecs_world_section_loader_test PRIVATE /UNDEBUG)

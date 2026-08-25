@@ -157,7 +157,7 @@ namespace lux::ecs
                 return true;
             }
 
-            void queueRemove(SystemFrame& frame, Entity entity) noexcept
+            void queueRemove(SystemContext& frame, Entity entity) noexcept
             {
                 if (frame.find<Derived>(entity) == nullptr)
                     return;
@@ -170,7 +170,7 @@ namespace lux::ecs
             }
 
             void publish(
-                SystemFrame& frame,
+                SystemContext& frame,
                 Entity entity,
                 const Matrix& value
             ) noexcept
@@ -196,7 +196,7 @@ namespace lux::ecs
             }
 
             [[nodiscard]] TraversalEntry<Matrix> rootEntry(
-                SystemFrame& frame,
+                SystemContext& frame,
                 Entity root
             )
             {
@@ -247,7 +247,7 @@ namespace lux::ecs
                 return result;
             }
 
-            void traverse(SystemFrame& frame, Entity root)
+            void traverse(SystemContext& frame, Entity root)
             {
                 traversal.clear();
                 traversal.push_back(rootEntry(frame, root));
@@ -301,7 +301,7 @@ namespace lux::ecs
                 }
             }
 
-            void update(SystemFrame& frame) noexcept
+            void update(SystemContext& frame) noexcept
             {
                 visited_nodes = 0U;
                 auto local_changes = frame.changes(local_cursor);
@@ -403,14 +403,6 @@ namespace lux::ecs
             bool force_resync{true};
         };
 
-        template <class Local, class Derived>
-        [[nodiscard]] SystemAccess transformAccess() noexcept
-        {
-            return lux::ecs::access(
-                query<Read<Local>, Write<Derived>>(),
-                ExternalRead<HierarchyIndex>{}
-            );
-        }
     } // namespace
 
     struct Transform2DSystem::Impl final
@@ -432,14 +424,9 @@ namespace lux::ecs
 
     Transform2DSystem::~Transform2DSystem() = default;
 
-    void Transform2DSystem::update(SystemFrame& frame) noexcept
+    void Transform2DSystem::update(SystemContext& frame) noexcept
     {
         impl_->update(frame);
-    }
-
-    SystemAccess Transform2DSystem::access() const noexcept
-    {
-        return transformAccess<Transform2D, WorldTransform2D>();
     }
 
     std::size_t Transform2DSystem::visitedNodesLastUpdate() const noexcept
@@ -459,14 +446,9 @@ namespace lux::ecs
 
     Transform3DSystem::~Transform3DSystem() = default;
 
-    void Transform3DSystem::update(SystemFrame& frame) noexcept
+    void Transform3DSystem::update(SystemContext& frame) noexcept
     {
         impl_->update(frame);
-    }
-
-    SystemAccess Transform3DSystem::access() const noexcept
-    {
-        return transformAccess<Transform3D, WorldTransform3D>();
     }
 
     std::size_t Transform3DSystem::visitedNodesLastUpdate() const noexcept

@@ -56,6 +56,10 @@ lux_classify_target(
 )
 
 add_executable(ecs_snapshot_test test/snapshot_test.cpp)
+target_include_directories(
+    ecs_snapshot_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
+)
 target_compile_definitions(
     ecs_snapshot_test
     PRIVATE LUX_ECS_SNAPSHOT_TESTING=1
@@ -64,7 +68,7 @@ target_link_libraries(
     ecs_snapshot_test
     PRIVATE
         lux::engine::ecs::snapshot
-        lux::engine::ecs::schedule
+        lux::engine::ecs::core
 )
 if(MSVC)
     target_compile_options(ecs_snapshot_test PRIVATE /UNDEBUG)

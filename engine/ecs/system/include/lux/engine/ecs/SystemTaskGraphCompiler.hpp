@@ -20,6 +20,7 @@ namespace lux::ecs
     {
         struct SystemCompilationState;
         struct SystemExecutionAccess;
+        struct SystemExecutionTestAccess;
     }
 
     struct SystemTaskGraphCompilation final
@@ -46,6 +47,7 @@ namespace lux::ecs
         friend class SystemTaskGraphCompiler;
         friend class SystemExecutionScratch;
         friend struct detail::SystemExecutionAccess;
+        friend struct detail::SystemExecutionTestAccess;
     };
 
     class LUX_ENGINE_ECS_SYSTEM_PUBLIC SystemTaskGraphCompiler final

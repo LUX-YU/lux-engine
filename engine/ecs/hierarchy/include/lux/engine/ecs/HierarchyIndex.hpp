@@ -14,6 +14,9 @@
 
 namespace lux::ecs
 {
+    class SystemContext;
+    class SystemStart;
+
     namespace detail
     {
         struct HierarchyIndexTestAccess;
@@ -241,7 +244,7 @@ namespace lux::ecs
 
       private:
         [[nodiscard]] bool canStart(const SystemStart& start) const noexcept;
-        void synchronize(SystemFrame& frame) noexcept;
+        void synchronize(SystemContext& context) noexcept;
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] Entity firstChild(Entity parent) const noexcept;
         [[nodiscard]] Entity nextSibling(Entity entity) const noexcept;

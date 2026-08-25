@@ -1,12 +1,12 @@
 #include <lux/engine/ecs/HierarchySchema.hpp>
 #include <lux/engine/ecs/HierarchySystem.hpp>
 #include <lux/engine/ecs/PersistentEntity.hpp>
-#include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ecs/TransformSchema.hpp>
 #include <lux/engine/ecs/TransformSystem.hpp>
 #include <lux/engine/ecs/WorldSnapshot.hpp>
 #include <lux/engine/ecs/transform/detail/TransformSystemTestAccess.hpp>
+#include <lux/engine/ecs/system/detail/SystemTestRig.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
 
 #include <array>
@@ -47,25 +47,17 @@ namespace
         lux::ecs::HierarchyIndex& hierarchy
     )
     {
-        lux::ecs::Schedule schedule{world};
-        auto edit_result = schedule.edit();
-        assert(edit_result);
-        auto edit = std::move(*edit_result);
-        const auto hierarchy_system = edit.add(
-            std::make_unique<lux::ecs::HierarchySystem>(hierarchy),
-            lux::ecs::SystemPhase::PreUpdate
-        );
-        const auto transform3d = edit.add(
-            std::make_unique<lux::ecs::Transform3DSystem>(hierarchy)
-        );
-        const auto transform2d = edit.add(
-            std::make_unique<lux::ecs::Transform2DSystem>(hierarchy)
-        );
-        assert(hierarchy_system && transform3d && transform2d);
-        edit.require(transform3d, hierarchy_system);
-        edit.require(transform2d, hierarchy_system);
-        assert(edit.commit());
-        schedule.run(1.0F / 60.0F, 1u);
+        lux::ecs::detail::SystemTestRig schedule{world};
+        const auto hierarchy_system =
+            schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+        const auto transform3d =
+            schedule.add<lux::ecs::Transform3DSystem>(hierarchy);
+        const auto transform2d =
+            schedule.add<lux::ecs::Transform2DSystem>(hierarchy);
+        schedule.before(hierarchy_system, transform3d);
+        schedule.before(hierarchy_system, transform2d);
+        assert(schedule.compile());
+        assert(schedule.run(1.0F / 60.0F, 1u));
     }
 
     void testQuaternionSerialization()
@@ -152,32 +144,24 @@ int main()
     edit = {};
 
     {
-        lux::ecs::Schedule schedule{world};
-        auto schedule_edit_result = schedule.edit();
-        assert(schedule_edit_result);
-        auto schedule_edit = std::move(*schedule_edit_result);
-        const auto hierarchy_system = schedule_edit.add(
-            std::make_unique<lux::ecs::HierarchySystem>(hierarchy),
-            lux::ecs::SystemPhase::PreUpdate
+        lux::ecs::detail::SystemTestRig schedule{world};
+        const auto hierarchy_system =
+            schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+        const auto transform3d =
+            schedule.add<lux::ecs::Transform3DSystem>(hierarchy);
+        const auto transform2d =
+            schedule.add<lux::ecs::Transform2DSystem>(hierarchy);
+        schedule.before(hierarchy_system, transform3d);
+        schedule.before(hierarchy_system, transform2d);
+        assert(schedule.compile());
+        auto* transform3d_system = std::addressof(
+            schedule.system<lux::ecs::Transform3DSystem>(transform3d)
         );
-        auto transform3d_owner =
-            std::make_unique<lux::ecs::Transform3DSystem>(hierarchy);
-        auto* transform3d_system = transform3d_owner.get();
-        const auto transform3d = schedule_edit.add(
-            std::move(transform3d_owner)
+        auto* transform2d_system = std::addressof(
+            schedule.system<lux::ecs::Transform2DSystem>(transform2d)
         );
-        auto transform2d_owner =
-            std::make_unique<lux::ecs::Transform2DSystem>(hierarchy);
-        auto* transform2d_system = transform2d_owner.get();
-        const auto transform2d = schedule_edit.add(
-            std::move(transform2d_owner)
-        );
-        assert(hierarchy_system && transform3d && transform2d);
-        schedule_edit.require(transform3d, hierarchy_system);
-        schedule_edit.require(transform2d, hierarchy_system);
-        assert(schedule_edit.commit());
 
-        schedule.run(1.0F / 60.0F, 1u);
+        assert(schedule.run(1.0F / 60.0F, 1u));
         const auto first_world = world.get<lux::ecs::WorldTransform3D>(child)
             .value.translation();
         assert(near(first_world.x(), 10.0F));
@@ -189,7 +173,7 @@ int main()
             ) == 1002U
         );
 
-        schedule.run(1.0F / 60.0F, 2u);
+        assert(schedule.run(1.0F / 60.0F, 2u));
         assert(
             lux::ecs::detail::TransformSystemTestAccess::visitedNodes(
                 *transform3d_system
@@ -209,7 +193,7 @@ int main()
             value.translation.x() = 20.0F;
         });
         update = {};
-        schedule.run(1.0F / 60.0F, 3u);
+        assert(schedule.run(1.0F / 60.0F, 3u));
         const auto moved = world.get<lux::ecs::WorldTransform3D>(child)
             .value.translation();
         assert(near(moved.x(), 20.0F));
@@ -231,7 +215,7 @@ int main()
             }
         );
         leaf_update = {};
-        schedule.run(1.0F / 60.0F, 4u);
+        assert(schedule.run(1.0F / 60.0F, 4u));
         assert(near(
             world.get<lux::ecs::WorldTransform3D>(child).value.translation().y(),
             5.0F
@@ -247,7 +231,7 @@ int main()
         auto remove_local = std::move(*remove_local_result);
         remove_local.erase<lux::ecs::Transform3D>(child);
         remove_local = {};
-        schedule.run(1.0F / 60.0F, 5u);
+        assert(schedule.run(1.0F / 60.0F, 5u));
         assert(world.find<lux::ecs::WorldTransform3D>(child) == nullptr);
 
         auto restore_local_result = world.mutate();
@@ -262,7 +246,7 @@ int main()
             }
         );
         restore_local = {};
-        schedule.run(1.0F / 60.0F, 6u);
+        assert(schedule.run(1.0F / 60.0F, 6u));
         assert(near(
             world.get<lux::ecs::WorldTransform3D>(child).value.translation().x(),
             20.0F
@@ -281,14 +265,14 @@ int main()
             }
         );
         reparent_edit = {};
-        schedule.run(1.0F / 60.0F, 7u);
+        assert(schedule.run(1.0F / 60.0F, 7u));
 
         auto move_branch_result = world.mutate();
         assert(move_branch_result);
         auto move_branch = std::move(*move_branch_result);
         assert(lux::ecs::reparent(move_branch, child, alternate_root));
         move_branch = {};
-        schedule.run(1.0F / 60.0F, 8u);
+        assert(schedule.run(1.0F / 60.0F, 8u));
         const auto moved_branch = world.get<lux::ecs::WorldTransform3D>(child)
             .value.translation();
         assert(near(moved_branch.x(), 30.0F));
@@ -304,7 +288,7 @@ int main()
         auto restore_branch = std::move(*restore_branch_result);
         assert(lux::ecs::reparent(restore_branch, child, root));
         restore_branch = {};
-        schedule.run(1.0F / 60.0F, 9u);
+        assert(schedule.run(1.0F / 60.0F, 9u));
         assert(near(
             world.get<lux::ecs::WorldTransform3D>(child).value.translation().x(),
             20.0F
@@ -340,8 +324,8 @@ int main()
         auto destroy = std::move(*destroy_result);
         destroy.destroy(root);
         destroy = {};
-        schedule.run(1.0F / 60.0F, 10u);
-        schedule.run(1.0F / 60.0F, 11u);
+        assert(schedule.run(1.0F / 60.0F, 10u));
+        assert(schedule.run(1.0F / 60.0F, 11u));
         assert(world.find<lux::ecs::Parent>(child) == nullptr);
         const auto orphan = world.get<lux::ecs::WorldTransform3D>(child)
             .value.translation();

@@ -9,6 +9,7 @@
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 #include <lux/engine/ecs/system/detail/SystemContextAccess.hpp>
 #include <lux/engine/ecs/system/detail/SystemExecutionAccess.hpp>
+#include <lux/engine/ecs/system/detail/SystemExecutionTestAccess.hpp>
 
 #include <memory>
 #include <utility>
@@ -295,6 +296,25 @@ namespace lux::ecs
             mutation = {};
             WorldExecutionAccess::release(*execution.world_);
             execution.executing_ = false;
+        }
+
+        void SystemExecutionTestAccess::failNextCommandPush(
+            const SystemTaskGraphCompilation& compilation,
+            SystemExecutionScratch& scratch,
+            SystemId id
+        ) noexcept
+        {
+            require(compilation.state_ && scratch.impl_);
+            for (const auto& target : compilation.state_->system_tasks)
+            {
+                if (target.id != id)
+                    continue;
+                require(target.scratch_index < scratch.impl_->systems.size());
+                scratch.impl_->systems[target.scratch_index]
+                    ->commands.failNextPushForTest();
+                return;
+            }
+            contractFailure();
         }
     }
 }

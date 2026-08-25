@@ -21,14 +21,6 @@ namespace lux::ecs
 
     HierarchySystem::~HierarchySystem() = default;
 
-    SystemAccess HierarchySystem::access() const noexcept
-    {
-        return lux::ecs::access(
-            query<Read<Parent>>(),
-            ExternalWrite<HierarchyIndex>{}
-        );
-    }
-
     lux::cxx::expected<void, SystemStartError> HierarchySystem::start(
         SystemStart& start
     ) noexcept
@@ -42,8 +34,8 @@ namespace lux::ecs
         return {};
     }
 
-    void HierarchySystem::update(SystemFrame& frame) noexcept
+    void HierarchySystem::update(SystemContext& context) noexcept
     {
-        impl_->hierarchy->synchronize(frame);
+        impl_->hierarchy->synchronize(context);
     }
 } // namespace lux::ecs

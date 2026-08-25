@@ -35,7 +35,7 @@ target_link_libraries(
     transform
     PUBLIC
         lux::engine::ecs::core
-        lux::engine::ecs::schedule
+        lux::engine::ecs::system
         lux::engine::ecs::schema
         lux::engine::ecs::hierarchy
         lux::engine::ecs::snapshot
@@ -43,13 +43,13 @@ target_link_libraries(
         lux::engine::core::math
 )
 component_add_internal_dependencies(
-    transform core schedule schema hierarchy snapshot world_section
+    transform core system schema hierarchy snapshot world_section
 )
 component_add_transitive_commands(
     transform
     "find_package(Eigen3 CONFIG REQUIRED)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema hierarchy snapshot world_section)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core system schema hierarchy snapshot world_section)"
 )
 
 include_component_cmake_scripts(meta)
@@ -73,7 +73,9 @@ lux_classify_target(
 add_executable(ecs_transform_test test/transform_test.cpp)
 target_include_directories(
     ecs_transform_test
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/../system/pinclude
 )
 target_link_libraries(
     ecs_transform_test

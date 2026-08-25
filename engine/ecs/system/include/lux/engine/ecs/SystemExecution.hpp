@@ -33,6 +33,7 @@ namespace lux::ecs
     namespace detail
     {
         struct SystemExecutionAccess;
+        struct SystemExecutionTestAccess;
     }
 
     [[nodiscard]] LUX_ENGINE_ECS_SYSTEM_PUBLIC
@@ -68,6 +69,7 @@ namespace lux::ecs
         std::unique_ptr<Impl> impl_;
 
         friend struct detail::SystemExecutionAccess;
+        friend struct detail::SystemExecutionTestAccess;
     };
 
     class LUX_ENGINE_ECS_SYSTEM_PUBLIC EcsExecutionContext final

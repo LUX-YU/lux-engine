@@ -11,6 +11,7 @@ namespace lux::ecs::detail
 {
     struct SystemTaskTarget final
     {
+        SystemId id{};
         std::shared_ptr<SystemRecord> system;
         std::size_t scratch_index{};
     };

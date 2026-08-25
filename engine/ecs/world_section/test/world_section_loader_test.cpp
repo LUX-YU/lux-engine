@@ -1,8 +1,9 @@
 #include "WorldSectionFixtureBuilder.hpp"
 
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
-#include <lux/engine/ecs/Schedule.hpp>
+#include <lux/engine/ecs/SystemContext.hpp>
 #include <lux/engine/ecs/WorldSectionLoader.hpp>
+#include <lux/engine/ecs/system/detail/SystemTestRig.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 
 #include <uuid.h>
@@ -332,15 +333,10 @@ namespace
         return count;
     }
 
-    class RetainingSystem final : public System
+    class RetainingSystem final : public StaticSystemAccess<Read<test::Fixed>>
     {
       public:
-        [[nodiscard]] SystemAccess access() const noexcept override
-        {
-            return lux::ecs::access(query<Read<test::Fixed>>());
-        }
-
-        void update(SystemFrame& frame) noexcept override
+        void update(SystemContext& frame) noexcept
         {
             auto current = frame.changes(cursor_);
             last_status_ = current.status();
@@ -407,7 +403,7 @@ namespace
         bool retain_next_{};
     };
 
-    class ExecutingLoadSystem final : public System
+    class ExecutingLoadSystem final : public StaticSystemAccess<>
     {
       public:
         ExecutingLoadSystem(
@@ -419,7 +415,7 @@ namespace
         {
         }
 
-        void update(SystemFrame&) noexcept override
+        void update(SystemContext&) noexcept
         {
             auto loaded = loadSection(*world_, *loads_, *image_);
             rejected_ = !loaded &&
@@ -558,7 +554,8 @@ int main()
         assert(world.valid(entity));
 
     {
-        Schedule schedule(world);
+        detail::SystemTestRig schedule(world);
+        assert(schedule.compile());
         auto scheduled_image = validImage(sectionId(1U));
         auto scheduled = loadSection(
             world,
@@ -650,15 +647,13 @@ int main()
             history_entity = edit->create();
             edit->emplace<test::Fixed>(history_entity, 1U, 2U);
         }
-        Schedule schedule(history_world);
-        auto system = std::make_unique<RetainingSystem>();
-        RetainingSystem* retaining = system.get();
-        auto schedule_edit = schedule.edit();
-        assert(schedule_edit);
-        const auto handle = schedule_edit->add(std::move(system));
-        assert(handle);
-        assert(schedule_edit->commit());
-        schedule.run(1.0F / 60.0F, 1U);
+        detail::SystemTestRig schedule(history_world);
+        const auto handle = schedule.add<RetainingSystem>();
+        assert(schedule.compile());
+        auto* retaining = std::addressof(
+            schedule.system<RetainingSystem>(handle)
+        );
+        assert(schedule.run(1.0F / 60.0F, 1U));
         assert(
             retaining->lastStatus() == EChangeReadStatus::RESYNC_REQUIRED
         );
@@ -674,7 +669,7 @@ int main()
             );
         }
         retaining->retainNext();
-        schedule.run(1.0F / 60.0F, 2U);
+        assert(schedule.run(1.0F / 60.0F, 2U));
         assert(retaining->lastStatus() == EChangeReadStatus::CURRENT);
         assert(retaining->retained().size() == 1U);
 
@@ -688,12 +683,12 @@ int main()
         assert(retaining->retained().size() == 1U);
         assert((*retaining->retained().begin()).entity == history_entity);
         retaining->release();
-        schedule.run(1.0F / 60.0F, 3U);
+        assert(schedule.run(1.0F / 60.0F, 3U));
         assert(retaining->lastStatus() == EChangeReadStatus::CURRENT);
         assert(retaining->lastSize() == 3U);
         assert(retaining->lastAdded() == 3U);
         assert(unloadSection(history_world, *history_section));
-        schedule.run(1.0F / 60.0F, 4U);
+        assert(schedule.run(1.0F / 60.0F, 4U));
         assert(retaining->lastStatus() == EChangeReadStatus::CURRENT);
         assert(retaining->lastSize() == 3U);
         assert(retaining->lastRemoved() == 3U);
@@ -702,18 +697,17 @@ int main()
     {
         World executing_world;
         auto executing_image = validImage(sectionId(1U));
-        Schedule schedule(executing_world);
-        auto system = std::make_unique<ExecutingLoadSystem>(
+        detail::SystemTestRig schedule(executing_world);
+        const auto handle = schedule.add<ExecutingLoadSystem>(
             executing_world,
             context.loads,
             executing_image
         );
-        ExecutingLoadSystem* executing = system.get();
-        auto schedule_edit = schedule.edit();
-        assert(schedule_edit);
-        assert(schedule_edit->add(std::move(system)));
-        assert(schedule_edit->commit());
-        schedule.run(1.0F / 60.0F, 1U);
+        assert(schedule.compile());
+        auto* executing = std::addressof(
+            schedule.system<ExecutingLoadSystem>(handle)
+        );
+        assert(schedule.run(1.0F / 60.0F, 1U));
         assert(executing->rejected());
     }
 

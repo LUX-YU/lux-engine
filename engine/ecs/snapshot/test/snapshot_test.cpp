@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/WorldSnapshot.hpp>
-#include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
+#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 
 #include <atomic>
 #include <array>
@@ -178,10 +178,11 @@ int main()
 
     lux::ecs::World busy;
     {
-        lux::ecs::Schedule live_schedule(busy);
+        assert(lux::ecs::detail::WorldExecutionAccess::acquire(busy));
         const auto busy_restore = snapshot->restore(busy);
         assert(!busy_restore);
         assert(busy_restore.error().code == lux::ecs::ESnapshotError::WORLD_BUSY);
+        lux::ecs::detail::WorldExecutionAccess::release(busy);
     }
     assert(snapshot->restore(busy));
 

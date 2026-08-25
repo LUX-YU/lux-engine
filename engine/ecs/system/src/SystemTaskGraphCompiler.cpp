@@ -273,6 +273,7 @@ namespace lux::ecs
             for (std::size_t index{}; index < count; ++index)
             {
                 state->system_tasks.push_back(detail::SystemTaskTarget{
+                    .id = systems[index].id,
                     .system = systems[index].record,
                     .scratch_index = index
                 });

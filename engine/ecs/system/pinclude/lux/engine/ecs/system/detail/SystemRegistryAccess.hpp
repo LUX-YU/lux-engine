@@ -1,13 +1,14 @@
 #pragma once
 
 #include <lux/engine/ecs/SystemRegistry.hpp>
+#include <lux/engine/ecs/system/visibility.h>
 
 #include <memory>
 #include <span>
 
 namespace lux::ecs::detail
 {
-    struct SystemRegistryAccess final
+    struct LUX_ENGINE_ECS_SYSTEM_PUBLIC SystemRegistryAccess final
     {
         [[nodiscard]] static std::shared_ptr<SystemRecord> record(
             const SystemRegistry& registry,

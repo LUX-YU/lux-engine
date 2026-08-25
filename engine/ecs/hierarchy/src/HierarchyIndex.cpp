@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 
-#include <lux/engine/ecs/SystemFrame.hpp>
+#include <lux/engine/ecs/SystemContext.hpp>
 #include <lux/engine/ecs/SystemStart.hpp>
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 
@@ -379,7 +379,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] lux::cxx::expected<void, EHierarchyError> rebuild(
-            SystemFrame& frame
+            SystemContext& frame
         ) noexcept
         {
             try
@@ -642,7 +642,7 @@ namespace lux::ecs
             prune(old_parent);
         }
 
-        void synchronize(SystemFrame& frame) noexcept
+        void synchronize(SystemContext& frame) noexcept
         {
             visited_nodes_last_update = 0U;
             if (repair_head != NullEntity)
@@ -828,7 +828,7 @@ namespace lux::ecs
         return start.boundTo(*impl_->world);
     }
 
-    void HierarchyIndex::synchronize(SystemFrame& frame) noexcept
+    void HierarchyIndex::synchronize(SystemContext& frame) noexcept
     {
         impl_->synchronize(frame);
     }

@@ -31,17 +31,17 @@ target_link_libraries(
     hierarchy
     PUBLIC
         lux::engine::ecs::core
-        lux::engine::ecs::schedule
+        lux::engine::ecs::system
         lux::engine::ecs::schema
         lux::engine::ecs::snapshot
         lux::engine::ecs::world_section
 )
 component_add_internal_dependencies(
-    hierarchy core schedule schema snapshot world_section
+    hierarchy core system schema snapshot world_section
 )
 component_add_transitive_commands(
     hierarchy
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema snapshot world_section)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core system schema snapshot world_section)"
 )
 
 include_component_cmake_scripts(meta)
@@ -68,7 +68,7 @@ target_include_directories(
     ecs_hierarchy_test
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../schedule/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/../system/pinclude
 )
 if(MSVC)
     target_compile_options(ecs_hierarchy_test PRIVATE /UNDEBUG)

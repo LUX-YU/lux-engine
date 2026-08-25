@@ -13,7 +13,8 @@ implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
 - [x] WDP-1: Add the installed `ecs::world_section` runtime boundary.
 - [x] WDP-2: Add immutable structurally validated LXWC v2 images and retire
       the LXWC v1 mutable image/Writer/Reader public path.
-- [ ] WDP-3: Add immutable component load bindings and code lifetime pins.
+- [x] WDP-3: Add immutable component load bindings, allocation-free lookup,
+      independent load annotations/codegen and code lifetime pins.
 - [ ] WDP-4: Bulk load/unload sections into an existing World transactionally.
 - [ ] WDP-5: Migrate PersistentId/Parent/Transform load contributions and
       retire `persistence_contract` plus the remaining v1 codegen bindings.

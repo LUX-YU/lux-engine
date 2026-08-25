@@ -13,19 +13,19 @@
 // Internal/non-protocol component: same-build Copy snapshot.
 #define LUX_COMPONENT() \
     LUX_ECS_SCHEMA_META( \
-        luxref::class, component=true, snapshot=copy \
+        luxref::class, component=true, snapshot=copy, world_section=omit \
     )
 
 // Portable Copy component with an explicit stable schema identity.
 #define LUX_COMPONENT_SCHEMA(name, version) \
     LUX_ECS_SCHEMA_META( \
         luxref::class, component=true, schema_name=name, \
-        schema_version=version, snapshot=copy \
+        schema_version=version, snapshot=copy, world_section=load \
     )
 
 // Derived component rebuilt after restore and omitted from persistence.
 #define LUX_REBUILD_COMPONENT_SCHEMA(name, version) \
     LUX_ECS_SCHEMA_META( \
         luxref::class, component=true, schema_name=name, \
-        schema_version=version, snapshot=rebuild \
+        schema_version=version, snapshot=rebuild, world_section=omit \
     )

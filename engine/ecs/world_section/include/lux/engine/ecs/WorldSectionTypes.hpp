@@ -39,6 +39,7 @@ namespace lux::ecs
         TRUNCATED,
         LIMIT_EXCEEDED,
         MISSING_BINDING,
+        DUPLICATE_BINDING,
         BINDING_MISMATCH,
         DECODE_FAILED,
         ALLOCATION_FAILURE,

@@ -38,17 +38,18 @@ target_link_libraries(
         lux::engine::ecs::schedule
         lux::engine::ecs::schema
         lux::engine::ecs::hierarchy
+        lux::engine::ecs::world_section
         lux::engine::ecs::persistence_contract
         lux::engine::core::math
 )
 component_add_internal_dependencies(
-    transform core schedule schema hierarchy persistence_contract
+    transform core schedule schema hierarchy world_section persistence_contract
 )
 component_add_transitive_commands(
     transform
     "find_package(Eigen3 CONFIG REQUIRED)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema hierarchy persistence_contract)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema hierarchy world_section persistence_contract)"
 )
 
 include_component_cmake_scripts(meta)

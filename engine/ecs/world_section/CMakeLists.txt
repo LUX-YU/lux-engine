@@ -12,6 +12,7 @@ add_component(
     NAMESPACE      lux::engine::ecs
     OUTPUT_NAME    lux_engine_ecs_world_section
     SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ComponentLoadSet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSectionImage.cpp
 )
@@ -110,4 +111,36 @@ add_test(
 set_tests_properties(
     vnext_ecs_world_section_image
     PROPERTIES LABELS "vnext;l1;world-section;cpu"
+)
+
+add_executable(
+    ecs_component_load_set_test
+    test/component_load_set_test.cpp
+)
+target_compile_definitions(
+    ecs_component_load_set_test
+    PRIVATE LUX_ECS_WORLD_SECTION_TESTING=1
+)
+target_link_libraries(
+    ecs_component_load_set_test
+    PRIVATE lux::engine::ecs::world_section
+)
+if(MSVC)
+    target_compile_options(ecs_component_load_set_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(ecs_component_load_set_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  ecs_component_load_set_test
+    LAYER   ECS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(
+    NAME vnext_ecs_component_load_set
+    COMMAND ecs_component_load_set_test
+)
+set_tests_properties(
+    vnext_ecs_component_load_set
+    PROPERTIES LABELS "vnext;l1;world-section;schema;cpu"
 )

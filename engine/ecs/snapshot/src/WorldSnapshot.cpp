@@ -1,6 +1,7 @@
 #include <lux/engine/ecs/WorldSnapshot.hpp>
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 #include <lux/engine/ecs/schema/ComponentOperationsAccess.hpp>
+#include <lux/engine/ecs/snapshot/detail/ComponentSnapshotSetAccess.hpp>
 
 #include <entt/core/type_info.hpp>
 #include <entt/entity/entity.hpp>
@@ -26,7 +27,7 @@ namespace lux::ecs
 
     struct WorldSnapshot::Impl final
     {
-        ComponentSchemaSet schemas;
+        ComponentSnapshotSet components;
         std::unique_ptr<World> shadow;
     };
 
@@ -35,11 +36,13 @@ namespace lux::ecs
         [[nodiscard]] lux::cxx::expected<void, SnapshotError>
         validateStorages(
             const World& source,
-            const ComponentSchemaSet& schemas
+            const ComponentSnapshotSet& components
         ) noexcept
         {
             const std::uint64_t entity_storage = entt::type_hash<Entity>::value();
             const auto& registry = detail::WorldSnapshotAccess::registry(source);
+            const auto& schemas =
+                detail::ComponentSnapshotSetAccess::schemas(components);
             for (auto&& [storage_id, storage] : registry.storage())
             {
                 if (storage_id == entity_storage || storage.empty())
@@ -60,6 +63,19 @@ namespace lux::ecs
                         SnapshotError{
                             ESnapshotError::UNKNOWN_COMPONENT_STORAGE,
                             storage_id}
+                    );
+                }
+                if (iterator->snapshot == EComponentSnapshotPolicy::COPY &&
+                    detail::ComponentSnapshotSetAccess::findStorage(
+                        components,
+                        storage_id
+                    ) == nullptr)
+                {
+                    return lux::cxx::unexpected(
+                        SnapshotError{
+                            ESnapshotError::INVALID_COPY_SCHEMA,
+                            storage_id,
+                            iterator->id}
                     );
                 }
             }
@@ -91,48 +107,33 @@ namespace lux::ecs
         cloneWorld(
             const World& source,
             World& target,
-            const ComponentSchemaSet& schemas
+            const ComponentSnapshotSet& components
         ) noexcept
         {
             try
             {
                 auto edit = detail::WorldColdAccess::suppressingEdit(target);
                 cloneEntities(source, target);
-                const auto* entities =
-                    detail::WorldSnapshotAccess::registry(source).storage<Entity>();
-
-                for (const ComponentSchema& schema : schemas.all())
+                const auto& registry =
+                    detail::WorldSnapshotAccess::registry(source);
+                const std::uint64_t entity_storage =
+                    entt::type_hash<Entity>::value();
+                for (auto&& [storage_id, storage] : registry.storage())
                 {
-                    if (schema.snapshot == EComponentSnapshotPolicy::REBUILD)
+                    if (storage_id == entity_storage || storage.empty())
                         continue;
-                    if (!schema.operations.cloneable())
-                    {
-                        return lux::cxx::unexpected(
-                            SnapshotError{
-                                ESnapshotError::INVALID_COPY_SCHEMA,
-                                detail::ComponentOperationsAccess::storageKey(
-                                    schema.operations
-                                ),
-                                schema.id}
+                    const ComponentSnapshotBinding* binding =
+                        detail::ComponentSnapshotSetAccess::findStorage(
+                            components,
+                            storage_id
                         );
-                    }
-
-                    schema.operations.reserve(
-                        edit,
-                        schema.operations.size(source)
+                    if (binding == nullptr)
+                        continue;
+                    detail::ComponentSnapshotSetAccess::clone(
+                        *binding,
+                        source,
+                        edit
                     );
-                    for (auto [entity] : entities->each())
-                    {
-                        if (schema.operations.has(source, entity))
-                        {
-                            schema.operations.clone(
-                                source,
-                                entity,
-                                edit,
-                                entity
-                            );
-                        }
-                    }
                 }
                 return {};
             }
@@ -156,7 +157,7 @@ namespace lux::ecs
 
     lux::cxx::expected<WorldSnapshot, SnapshotError> WorldSnapshot::capture(
         const World& world,
-        const ComponentSchemaSet& schemas
+        const ComponentSnapshotSet& components
     ) noexcept
     {
         if (!detail::WorldColdAccess::ownerIdle(world))
@@ -165,15 +166,19 @@ namespace lux::ecs
                 SnapshotError{ESnapshotError::WORLD_BUSY}
             );
         }
-        if (auto validation = validateStorages(world, schemas); !validation)
+        if (auto validation = validateStorages(world, components); !validation)
             return lux::cxx::unexpected(validation.error());
 
         try
         {
             auto impl = std::make_unique<Impl>();
-            impl->schemas = schemas;
+            impl->components = components;
             impl->shadow = std::make_unique<World>();
-            if (auto cloned = cloneWorld(world, *impl->shadow, schemas); !cloned)
+            if (auto cloned = cloneWorld(
+                    world,
+                    *impl->shadow,
+                    components
+                ); !cloned)
                 return lux::cxx::unexpected(cloned.error());
             detail::establishWorldChangeBaseline(*impl->shadow);
             return WorldSnapshot(std::move(impl));
@@ -195,7 +200,11 @@ namespace lux::ecs
         try
         {
             auto result = std::make_unique<World>(config);
-            if (auto cloned = cloneWorld(*impl_->shadow, *result, impl_->schemas); !cloned)
+            if (auto cloned = cloneWorld(
+                    *impl_->shadow,
+                    *result,
+                    impl_->components
+                ); !cloned)
                 return lux::cxx::unexpected(cloned.error());
             detail::establishWorldChangeBaseline(*result);
             return result;

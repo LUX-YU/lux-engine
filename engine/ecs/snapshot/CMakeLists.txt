@@ -13,6 +13,7 @@ add_component(
     NAMESPACE      lux::engine::ecs
     OUTPUT_NAME    lux_engine_ecs_snapshot
     SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ComponentSnapshotSet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSnapshot.cpp
 )
 
@@ -25,7 +26,9 @@ component_include_directories(
 )
 target_include_directories(
     snapshot
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../schema/pinclude
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../schema/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 
 target_compile_definitions(snapshot PRIVATE LUX_ENGINE_ECS_SNAPSHOT_LIBRARY)
@@ -53,6 +56,10 @@ lux_classify_target(
 )
 
 add_executable(ecs_snapshot_test test/snapshot_test.cpp)
+target_compile_definitions(
+    ecs_snapshot_test
+    PRIVATE LUX_ECS_SNAPSHOT_TESTING=1
+)
 target_link_libraries(
     ecs_snapshot_test
     PRIVATE

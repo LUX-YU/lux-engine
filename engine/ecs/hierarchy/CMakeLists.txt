@@ -33,14 +33,15 @@ target_link_libraries(
         lux::engine::ecs::core
         lux::engine::ecs::schedule
         lux::engine::ecs::schema
+        lux::engine::ecs::snapshot
         lux::engine::ecs::world_section
 )
 component_add_internal_dependencies(
-    hierarchy core schedule schema world_section
+    hierarchy core schedule schema snapshot world_section
 )
 component_add_transitive_commands(
     hierarchy
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema world_section)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema snapshot world_section)"
 )
 
 include_component_cmake_scripts(meta)

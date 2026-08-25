@@ -3,6 +3,7 @@
 #include <lux/engine/ecs/ComponentSchema.hpp>
 #include <lux/engine/ecs/ComponentAnnotations.hpp>
 #include <lux/engine/ecs/ComponentLoadBinding.hpp>
+#include <lux/engine/ecs/ComponentSnapshotBinding.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/persistence/visibility.h>
 #include <lux/engine/meta/MetaAnnotations.hpp>
@@ -64,6 +65,10 @@ namespace lux::ecs
 
     [[nodiscard]] LUX_ENGINE_ECS_PERSISTENCE_PUBLIC
     ComponentLoadContribution persistentEntityComponentLoadContribution() noexcept;
+
+    [[nodiscard]] LUX_ENGINE_ECS_PERSISTENCE_PUBLIC
+    ComponentSnapshotContribution
+    persistentEntityComponentSnapshotContribution() noexcept;
 } // namespace lux::ecs
 
 #if !defined(__LUX_PARSE_TIME__)

@@ -18,7 +18,7 @@ implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
 - [x] WDP-4: Bulk load/unload sections into an existing World transactionally.
 - [x] WDP-5: Migrate PersistentId/Parent/Transform load contributions and
       retire `persistence_contract` plus the remaining v1 codegen bindings.
-- [ ] WDP-6: Clone WorldSnapshot by COPY component storage.
+- [x] WDP-6: Clone WorldSnapshot by COPY component storage.
 - [ ] WDP-7: Complete corruption, install and architecture gates.
 - [ ] WDP-8: Complete 1M diagnostic/qualification evidence against raw EnTT.
 

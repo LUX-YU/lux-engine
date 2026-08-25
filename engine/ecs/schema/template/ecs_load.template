@@ -11,10 +11,10 @@ namespace lux::ecs::generated
     {{ projection_symbol }}ComponentLoadContribution() noexcept
     {
         const auto schemas = {{ projection_symbol }}ComponentSchemas();
-        static const std::array bindings{
+        static const auto bindings = detail::componentLoadBindings(
 {% set schema_index = 0 %}{% set emitted = false %}{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") %}{% if annotation_get_or(decl, "world_section", "omit") == "load" %}{% if emitted %},
 {% endif %}            bindComponentLoad<::{{ decl.fq_name }}>(schemas[{{ schema_index }}u]){% set emitted = true %}{% endif %}{% set schema_index = schema_index + 1 %}{% endif %}{% endfor %}
-        };
+        );
         return {{ "{" }}{}, bindings{{ "}" }};
     }
 } // namespace lux::ecs::generated

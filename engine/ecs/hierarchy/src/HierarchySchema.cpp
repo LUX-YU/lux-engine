@@ -3,6 +3,7 @@
 #include <lux/engine/ecs/Parent.hpp>
 #include <lux/engine/ecs/Parent.ecs_schema.hpp>
 #include <lux/engine/ecs/Parent.ecs_load.hpp>
+#include <lux/engine/ecs/Parent.ecs_snapshot.hpp>
 
 namespace lux::ecs
 {
@@ -14,5 +15,11 @@ namespace lux::ecs
     ComponentLoadContribution hierarchyComponentLoadContribution() noexcept
     {
         return generated::hierarchyComponentLoadContribution();
+    }
+
+    ComponentSnapshotContribution
+    hierarchyComponentSnapshotContribution() noexcept
+    {
+        return generated::hierarchyComponentSnapshotContribution();
     }
 } // namespace lux::ecs

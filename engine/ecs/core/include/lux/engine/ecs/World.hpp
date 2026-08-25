@@ -59,6 +59,7 @@ namespace lux::ecs
         struct WorldEntityAccess;
         struct PersistenceStorageAccess;
         struct WorldSectionStorageAccess;
+        struct ComponentSnapshotStorageAccess;
 
         enum class EWorldState : std::uint8_t
         {
@@ -143,6 +144,7 @@ namespace lux::ecs
         friend struct detail::WorldEditAccess;
         friend struct detail::WorldColdAccess;
         friend struct detail::WorldSectionStorageAccess;
+        friend struct detail::ComponentSnapshotStorageAccess;
     };
 
     class LUX_ENGINE_ECS_CORE_PUBLIC World final
@@ -211,6 +213,7 @@ namespace lux::ecs
         friend struct detail::WorldEntityAccess;
         friend struct detail::PersistenceStorageAccess;
         friend struct detail::WorldSectionStorageAccess;
+        friend struct detail::ComponentSnapshotStorageAccess;
 
         template <class Component>
         friend ComponentOperations componentOperations() noexcept;

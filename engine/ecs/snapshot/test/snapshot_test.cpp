@@ -3,7 +3,9 @@
 #include <lux/engine/ecs/core/detail/ChangeJournal.hpp>
 
 #include <atomic>
+#include <array>
 #include <cassert>
+#include <span>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -41,6 +43,18 @@ int main()
         {position_schema, cache_schema}
     );
     assert(schemas);
+    const std::array snapshot_bindings{
+        lux::ecs::bindComponentSnapshot<Position>(position_schema)
+    };
+    const lux::ecs::ComponentSnapshotContribution snapshot_contribution{
+        {},
+        snapshot_bindings
+    };
+    auto snapshot_components = lux::ecs::ComponentSnapshotSet::build(
+        *schemas,
+        std::span(&snapshot_contribution, 1U)
+    );
+    assert(snapshot_components);
 
     lux::ecs::World source;
     auto edit_result = source.edit();
@@ -65,8 +79,16 @@ int main()
         edit.destroy(bulk[index]);
     edit = {};
 
-    auto snapshot = lux::ecs::WorldSnapshot::capture(source, *schemas);
+    lux::ecs::detail::ComponentSnapshotTestStats::reset();
+    auto snapshot = lux::ecs::WorldSnapshot::capture(
+        source,
+        *snapshot_components
+    );
     assert(snapshot);
+    assert(lux::ecs::detail::ComponentSnapshotTestStats::clone_calls == 1U);
+    assert(
+        lux::ecs::detail::ComponentSnapshotTestStats::storage_lookups == 1U
+    );
     auto instance = snapshot->instantiate();
     assert(instance);
     auto& instance_journal = lux::ecs::detail::WorldChangeAccess::journal(
@@ -167,7 +189,10 @@ int main()
     std::thread wrong_thread(
         [&]
         {
-            auto captured = lux::ecs::WorldSnapshot::capture(source, *schemas);
+            auto captured = lux::ecs::WorldSnapshot::capture(
+                source,
+                *snapshot_components
+            );
             wrong_thread_rejected.store(
                 !captured &&
                 captured.error().code == lux::ecs::ESnapshotError::WORLD_BUSY,
@@ -186,7 +211,7 @@ int main()
     invalid_edit = {};
     const auto invalid_snapshot = lux::ecs::WorldSnapshot::capture(
         invalid,
-        *schemas
+        *snapshot_components
     );
     assert(!invalid_snapshot);
     assert(invalid_snapshot.error().code ==

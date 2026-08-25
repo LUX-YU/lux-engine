@@ -3,6 +3,7 @@
 #include <lux/engine/serialization/external_support/Uuid.hpp>
 #include <lux/engine/ecs/PersistentEntity.ecs_schema.hpp>
 #include <lux/engine/ecs/PersistentEntity.ecs_load.hpp>
+#include <lux/engine/ecs/PersistentEntity.ecs_snapshot.hpp>
 #include <algorithm>
 #include <array>
 
@@ -94,5 +95,11 @@ namespace lux::ecs
     ComponentLoadContribution persistentEntityComponentLoadContribution() noexcept
     {
         return generated::persistenceComponentLoadContribution();
+    }
+
+    ComponentSnapshotContribution
+    persistentEntityComponentSnapshotContribution() noexcept
+    {
+        return generated::persistenceComponentSnapshotContribution();
     }
 } // namespace lux::ecs

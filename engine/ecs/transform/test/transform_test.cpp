@@ -310,7 +310,20 @@ int main()
             20.0F
         ));
 
-        auto snapshot = lux::ecs::WorldSnapshot::capture(world, schema_set);
+        const std::array snapshot_contributions{
+            lux::ecs::persistentEntityComponentSnapshotContribution(),
+            lux::ecs::hierarchyComponentSnapshotContribution(),
+            lux::ecs::transformComponentSnapshotContribution(),
+        };
+        auto snapshot_components = lux::ecs::ComponentSnapshotSet::build(
+            schema_set,
+            snapshot_contributions
+        );
+        assert(snapshot_components);
+        auto snapshot = lux::ecs::WorldSnapshot::capture(
+            world,
+            *snapshot_components
+        );
         assert(snapshot);
         auto fork = snapshot->instantiate();
         assert(fork);

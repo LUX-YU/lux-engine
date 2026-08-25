@@ -34,6 +34,7 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::core
         lux::engine::ecs::schema
+        lux::engine::ecs::snapshot
         lux::engine::ecs::world_section
         lux::cxx::compile_time
         stduuid
@@ -42,13 +43,14 @@ component_add_internal_dependencies(
     persistence
     core
     schema
+    snapshot
     world_section
 )
 component_add_transitive_commands(
     persistence
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schema world_section)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schema snapshot world_section)"
 )
 
 include_component_cmake_scripts(meta)

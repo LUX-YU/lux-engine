@@ -33,6 +33,14 @@ function(engine_target_add_ecs_component_codegen)
     )
     lux_codegen_add_projection(
         JOB ${ARGS_NAME}
+        NAME ecs_snapshot
+        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/ecs/schema/template/ecs_snapshot.template
+        OUTPUT_ROOT ${LUX_GENERATE_HEADER_DIR}
+        OUTPUT_SUFFIX .ecs_snapshot.hpp
+        JSON_FIELD "{\"projection_symbol\":\"${ARGS_SYMBOL}\"}"
+    )
+    lux_codegen_add_projection(
+        JOB ${ARGS_NAME}
         NAME ecs_load
         TEMPLATE ${PROJECT_SOURCE_DIR}/engine/ecs/schema/template/ecs_load.template
         OUTPUT_ROOT ${LUX_GENERATE_HEADER_DIR}

@@ -915,6 +915,19 @@ int main(int argc, char** argv)
     );
     if (!snapshot_schemas)
         return 11;
+    const std::array snapshot_bindings{
+        lux::ecs::bindComponentSnapshot<Position>(position_schema)
+    };
+    const lux::ecs::ComponentSnapshotContribution snapshot_contribution{
+        {},
+        snapshot_bindings
+    };
+    const auto snapshot_components = lux::ecs::ComponentSnapshotSet::build(
+        *snapshot_schemas,
+        std::span(&snapshot_contribution, 1U)
+    );
+    if (!snapshot_components)
+        return 11;
     for (const std::size_t entity_count : {10'000u, 100'000u, 1'000'000u})
     {
         auto source = positionWorld(entity_count);
@@ -922,14 +935,14 @@ int main(int argc, char** argv)
         {
             auto snapshot = lux::ecs::WorldSnapshot::capture(
                 *source,
-                *snapshot_schemas
+                *snapshot_components
             );
             if (!snapshot)
                 std::abort();
         }));
         auto snapshot = lux::ecs::WorldSnapshot::capture(
             *source,
-            *snapshot_schemas
+            *snapshot_components
         );
         append(samples, sample("snapshot_instantiate", entity_count, [&]
         {

@@ -5,12 +5,13 @@
 #include <lux/engine/ecs/world_section/detail/ComponentLoadAccess.hpp>
 #include <lux/engine/serialization/Traits.hpp>
 
-#include <concepts>
 #include <algorithm>
+#include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <limits>
+#include <memory>
 #include <span>
 #include <type_traits>
 #include <utility>
@@ -19,6 +20,7 @@
 namespace lux::ecs
 {
     class ComponentLoadSet;
+    class ComponentLoadBinding;
     class WorldSectionLoader;
 
     namespace detail
@@ -235,6 +237,21 @@ namespace lux::ecs
         std::uint32_t fixed_stride_{};
         detail::LoadComponentColumnFn load_{};
     };
+
+    namespace detail
+    {
+        template <class... Binding>
+            requires (std::same_as<
+                std::remove_cvref_t<Binding>,
+                ComponentLoadBinding> && ...)
+        [[nodiscard]] constexpr auto componentLoadBindings(
+            Binding&&... binding
+        ) noexcept
+        {
+            return std::array<ComponentLoadBinding, sizeof...(Binding)>{
+                std::forward<Binding>(binding)...};
+        }
+    } // namespace detail
 
     struct ComponentLoadContribution final
     {

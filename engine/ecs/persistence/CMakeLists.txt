@@ -35,18 +35,25 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::core
         lux::engine::ecs::schema
+        lux::engine::ecs::world_section
         lux::engine::ecs::persistence_contract
         lux::engine::core::serialization
         lux::cxx::compile_time
         stduuid
 )
-component_add_internal_dependencies(persistence core schema persistence_contract)
+component_add_internal_dependencies(
+    persistence
+    core
+    schema
+    world_section
+    persistence_contract
+)
 component_add_transitive_commands(
     persistence
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schema persistence_contract)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schema world_section persistence_contract)"
 )
 
 include_component_cmake_scripts(meta)

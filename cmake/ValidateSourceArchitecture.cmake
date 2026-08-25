@@ -205,6 +205,7 @@ foreach(installed_consumer IN ITEMS
     core_schedule
     object_affinity
     column_persistence
+    world_section
 )
     if(NOT EXISTS
        "${source_root}/test/l1_installed_consumer/${installed_consumer}/CMakeLists.txt")

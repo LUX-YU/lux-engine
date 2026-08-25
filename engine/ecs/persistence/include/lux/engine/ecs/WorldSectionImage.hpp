@@ -2,8 +2,7 @@
 
 #include <lux/engine/ecs/ComponentSchemaId.hpp>
 #include <lux/engine/ecs/PersistentEntity.hpp>
-
-#include <uuid.h>
+#include <lux/engine/ecs/WorldSectionId.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -11,11 +10,6 @@
 
 namespace lux::ecs
 {
-    struct WorldSectionId final
-    {
-        uuids::uuid value;
-    };
-
     struct WorldSchemaEntry final
     {
         ComponentSchemaId id;

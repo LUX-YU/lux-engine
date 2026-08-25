@@ -50,6 +50,7 @@ endif()
 foreach(required_component IN ITEMS
     core
     schedule
+    world_section
     persistence_contract
     persistence
 )
@@ -77,6 +78,7 @@ endif()
 foreach(contract_file IN ITEMS
     "${prefix}/share/lux-engine-core/serialization/lux-engine-core-serialization-config-targets.cmake"
     "${prefix}/share/lux-engine-core/type_info/lux-engine-core-type_info-config-targets.cmake"
+    "${prefix}/share/lux-engine-ecs/world_section/lux-engine-ecs-world_section-config-targets.cmake"
     "${prefix}/share/lux-engine-ecs/persistence_contract/lux-engine-ecs-persistence_contract-config-targets.cmake"
     "${prefix}/share/lux-engine-ecs/persistence/lux-engine-ecs-persistence-config-targets.cmake"
 )

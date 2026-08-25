@@ -2,6 +2,7 @@ foreach(component IN ITEMS
     core
     schedule
     schema
+    world_section
     persistence_contract
     snapshot
     persistence
@@ -18,6 +19,7 @@ foreach(component IN ITEMS
     core
     schedule
     schema
+    world_section
     persistence_contract
     snapshot
     persistence

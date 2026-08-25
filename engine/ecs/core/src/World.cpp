@@ -1,7 +1,7 @@
 #include <lux/engine/ecs/World.hpp>
 
 #include <lux/engine/ecs/core/detail/ChangeJournal.hpp>
-#include <lux/engine/ecs/core/detail/SectionMembershipDirectory.hpp>
+#include <lux/engine/ecs/core/detail/SectionResidencyDirectory.hpp>
 
 #include <atomic>
 #include <cstdlib>
@@ -48,8 +48,8 @@ namespace lux::ecs
               detail::ChangeJournalConfigValue{
                   config.changes.initial_bytes,
                   config.changes.max_bytes})),
-          section_memberships_(
-              std::make_unique<detail::SectionMembershipDirectory>()
+          section_residencies_(
+              std::make_unique<detail::SectionResidencyDirectory>()
           ),
           owner_thread_(std::this_thread::get_id()),
           identity_(allocateWorldIdentity())
@@ -151,9 +151,9 @@ namespace lux::ecs
     void WorldEdit::destroy(Entity entity)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
-        if (world_->section_memberships_->tracked(entity))
+        if (world_->section_residencies_->tracked(entity))
         {
-            world_->section_memberships_->forEachStorage(
+            world_->section_residencies_->forEachActualStorage(
                 entity,
                 [&](std::uint64_t storage_id) noexcept
                 {
@@ -169,7 +169,7 @@ namespace lux::ecs
                     storage->remove(entity);
                 }
             );
-            world_->section_memberships_->deactivate(entity);
+            world_->section_residencies_->deactivate(entity);
             world_->registry_.template storage<Entity>().erase(entity);
             if (change_emission_ == EChangeEmission::RECORD)
             {
@@ -202,39 +202,36 @@ namespace lux::ecs
         }
     }
 
-    std::uint32_t detail::WorldMembershipAccess::prepareAdd(
-        World& world,
+    std::uint64_t World::prepareResidencyAdd(
         Entity entity,
         std::uint64_t storage
     )
     {
-        return world.section_memberships_->prepareAdd(entity, storage);
+        return section_residencies_->prepareAdd(entity, storage);
     }
 
-    void detail::WorldMembershipAccess::commitAdd(
-        World& world,
-        Entity entity,
-        std::uint32_t token
-    ) noexcept
-    {
-        world.section_memberships_->commitAdd(entity, token);
-    }
-
-    void detail::WorldMembershipAccess::cancelAdd(
-        World& world,
-        std::uint32_t token
-    ) noexcept
-    {
-        world.section_memberships_->cancelAdd(token);
-    }
-
-    void detail::WorldMembershipAccess::remove(
-        World& world,
+    std::uint64_t World::prepareResidencyRemove(
         Entity entity,
         std::uint64_t storage
+    )
+    {
+        return section_residencies_->prepareRemove(entity, storage);
+    }
+
+    void World::commitResidencyMutation(
+        Entity entity,
+        std::uint64_t token
     ) noexcept
     {
-        world.section_memberships_->remove(entity, storage);
+        section_residencies_->commitMutation(entity, token);
+    }
+
+    void World::cancelResidencyMutation(
+        Entity entity,
+        std::uint64_t token
+    ) noexcept
+    {
+        section_residencies_->cancelMutation(entity, token);
     }
 
     void WorldEdit::release() noexcept

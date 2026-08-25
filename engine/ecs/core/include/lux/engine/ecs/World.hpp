@@ -54,7 +54,7 @@ namespace lux::ecs
     namespace detail
     {
         class ChangeJournal;
-        class SectionMembershipDirectory;
+        class SectionResidencyDirectory;
         struct WorldSnapshotAccess;
         struct WorldEditAccess;
         struct WorldChangeAccess;
@@ -62,7 +62,6 @@ namespace lux::ecs
         struct WorldEntityAccess;
         struct PersistenceStorageAccess;
         struct WorldSectionTransactionAccess;
-        struct WorldMembershipAccess;
 
         enum class EWorldState : std::uint8_t
         {
@@ -202,8 +201,8 @@ namespace lux::ecs
         Registry registry_;
         WorldConfig config_;
         std::unique_ptr<detail::ChangeJournal> changes_;
-        std::unique_ptr<detail::SectionMembershipDirectory>
-            section_memberships_;
+        std::unique_ptr<detail::SectionResidencyDirectory>
+            section_residencies_;
         std::thread::id owner_thread_;
         detail::EWorldState state_{detail::EWorldState::IDLE};
         Schedule* schedule_{};
@@ -223,7 +222,23 @@ namespace lux::ecs
         friend class ComponentLoadBinding;
         friend class ComponentSnapshotBinding;
         friend struct detail::WorldSectionTransactionAccess;
-        friend struct detail::WorldMembershipAccess;
+
+        [[nodiscard]] std::uint64_t prepareResidencyAdd(
+            Entity entity,
+            std::uint64_t storage
+        );
+        [[nodiscard]] std::uint64_t prepareResidencyRemove(
+            Entity entity,
+            std::uint64_t storage
+        );
+        void commitResidencyMutation(
+            Entity entity,
+            std::uint64_t token
+        ) noexcept;
+        void cancelResidencyMutation(
+            Entity entity,
+            std::uint64_t token
+        ) noexcept;
 
         template <class Component>
         friend ComponentOperations componentOperations() noexcept;
@@ -231,33 +246,6 @@ namespace lux::ecs
 
     namespace detail
     {
-        struct WorldMembershipAccess final
-        {
-            [[nodiscard]] static LUX_ENGINE_ECS_CORE_PUBLIC std::uint32_t
-            prepareAdd(
-                World& world,
-                Entity entity,
-                std::uint64_t storage
-            );
-
-            static LUX_ENGINE_ECS_CORE_PUBLIC void commitAdd(
-                World& world,
-                Entity entity,
-                std::uint32_t token
-            ) noexcept;
-
-            static LUX_ENGINE_ECS_CORE_PUBLIC void cancelAdd(
-                World& world,
-                std::uint32_t token
-            ) noexcept;
-
-            static LUX_ENGINE_ECS_CORE_PUBLIC void remove(
-                World& world,
-                Entity entity,
-                std::uint64_t storage
-            ) noexcept;
-        };
-
         struct WorldChangeAccess final
         {
             [[nodiscard]] static ChangeJournal& journal(World& world) noexcept
@@ -321,22 +309,15 @@ namespace lux::ecs
     {
         detail::require(world_ != nullptr && world_->valid(entity));
         const auto storage = entt::type_hash<Component>::value();
-        const std::uint32_t membership = detail::WorldMembershipAccess::prepareAdd(
-            *world_,
-            entity,
-            storage
-        );
+        const std::uint64_t residency =
+            world_->prepareResidencyAdd(entity, storage);
         try
         {
             Component& result = world_->registry_.template emplace<Component>(
                 entity,
                 std::forward<Args>(args)...
             );
-            detail::WorldMembershipAccess::commitAdd(
-                *world_,
-                entity,
-                membership
-            );
+            world_->commitResidencyMutation(entity, residency);
             if (change_emission_ == EChangeEmission::RECORD)
             {
                 detail::recordWorldComponentChange(
@@ -348,7 +329,7 @@ namespace lux::ecs
         }
         catch (...)
         {
-            detail::WorldMembershipAccess::cancelAdd(*world_, membership);
+            world_->cancelResidencyMutation(entity, residency);
             throw;
         }
     }
@@ -358,13 +339,16 @@ namespace lux::ecs
     {
         detail::require(world_ != nullptr && world_->valid(entity));
         const auto storage = entt::type_hash<Component>::value();
-        if (world_->registry_.template remove<Component>(entity) != 0)
+        if (!world_->registry_.template all_of<Component>(entity))
+            return;
+        const std::uint64_t residency =
+            world_->prepareResidencyRemove(entity, storage);
+        try
         {
-            detail::WorldMembershipAccess::remove(
-                *world_,
-                entity,
-                storage
+            detail::require(
+                world_->registry_.template remove<Component>(entity) != 0
             );
+            world_->commitResidencyMutation(entity, residency);
             if (change_emission_ == EChangeEmission::RECORD)
             {
                 detail::recordWorldComponentChange(
@@ -372,6 +356,11 @@ namespace lux::ecs
                     EComponentChangeKind::REMOVED
                 );
             }
+        }
+        catch (...)
+        {
+            world_->cancelResidencyMutation(entity, residency);
+            throw;
         }
     }
 

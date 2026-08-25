@@ -787,12 +787,18 @@ int main()
 
     const auto stale_entity = second->entities().front();
     const auto gameplay_entity = second->entities()[1U];
+    const auto removed_base_entity = second->entities()[2U];
     {
         auto edit = world.edit();
         assert(edit);
+        edit->erase<test::Fixed>(removed_base_entity);
+        edit->erase<test::Fixed>(gameplay_entity);
+        edit->emplace<test::Fixed>(gameplay_entity, 77U, 88U);
         edit->emplace<test::GameplayAdded>(gameplay_entity, 42U);
         edit->destroy(stale_entity);
     }
+    assert(world.find<test::Fixed>(removed_base_entity) == nullptr);
+    assert(world.get<test::Fixed>(gameplay_entity).first == 77U);
     assert(world.find<test::GameplayAdded>(gameplay_entity) != nullptr);
     assert(unloadSection(world, *second));
     assert(!second->active());

@@ -26,11 +26,6 @@ namespace lux::ecs
     template <class Component>
     [[nodiscard]] ComponentOperations componentOperations() noexcept;
 
-    namespace persistence
-    {
-        class WorldSectionReader;
-    }
-
     struct ChangeJournalConfig final
     {
         std::size_t initial_bytes{256U * 1024U};
@@ -143,7 +138,6 @@ namespace lux::ecs
         friend class World;
         friend class Schedule;
         friend class WorldSnapshot;
-        friend class persistence::WorldSectionReader;
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldEditAccess;
         friend struct detail::WorldColdAccess;
@@ -209,7 +203,6 @@ namespace lux::ecs
         friend class SystemFrame;
         friend class SystemStart;
         friend class WorldSnapshot;
-        friend class persistence::WorldSectionReader;
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldChangeAccess;
         friend struct detail::WorldColdAccess;

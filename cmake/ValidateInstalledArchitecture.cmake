@@ -33,7 +33,7 @@ file(GLOB_RECURSE installed_text LIST_DIRECTORIES false
 foreach(entry IN LISTS installed_text)
     file(READ "${entry}" content)
     if(content MATCHES "[/\\\\]legacy[/\\\\]" OR
-       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
+       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
        content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")
         message(FATAL_ERROR "Installed file contains a retired boundary: ${entry}")
     endif()

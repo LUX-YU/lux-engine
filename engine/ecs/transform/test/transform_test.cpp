@@ -5,7 +5,6 @@
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ecs/TransformSchema.hpp>
 #include <lux/engine/ecs/TransformSystem.hpp>
-#include <lux/engine/ecs/WorldSection.hpp>
 #include <lux/engine/ecs/WorldSnapshot.hpp>
 #include <lux/engine/ecs/transform/detail/TransformSystemTestAccess.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
@@ -318,50 +317,6 @@ int main()
             .value.translation();
         assert(near(forked.x(), 20.0F));
         assert(near(forked.y(), 2.0F));
-
-        const std::array entities{root, child};
-        const std::array selected{
-            lux::ecs::componentSchemaId("lux.ecs.Parent"),
-            lux::ecs::componentSchemaId("lux.ecs.Transform2D"),
-            lux::ecs::componentSchemaId("lux.ecs.Transform3D"),
-        };
-        const std::array contributions{
-            lux::ecs::persistenceComponentContribution(),
-            lux::ecs::hierarchyPersistenceContribution(),
-            lux::ecs::transformPersistenceContribution(),
-        };
-        auto image = lux::ecs::WorldSectionWriter::build(
-            world,
-            schema_set,
-            contributions,
-            lux::ecs::WorldSectionId{
-                uuid("10000000-0000-4000-8000-000000000001")},
-            lux::ecs::WorldSectionWriteSelection{entities, selected}
-        );
-        assert(image);
-        auto bytes = lux::ecs::encodeWorldSection(*image);
-        assert(bytes);
-        auto decoded = lux::ecs::decodeWorldSection(*bytes);
-        assert(decoded);
-        auto loaded = lux::ecs::WorldSectionReader::materialize(
-            *decoded,
-            schema_set,
-            contributions
-        );
-        assert(loaded);
-        auto loaded_index = lux::ecs::PersistentEntityIndex::build(**loaded);
-        assert(loaded_index);
-        const auto loaded_child = loaded_index->find(
-            lux::ecs::PersistentEntityId{
-                uuid("00000000-0000-4000-8000-000000000002")}
-        );
-        lux::ecs::HierarchyIndex loaded_hierarchy{**loaded};
-        installAndResolve(**loaded, loaded_hierarchy);
-        const auto loaded_world = (*loaded)->get<lux::ecs::WorldTransform3D>(
-            loaded_child
-        ).value.translation();
-        assert(near(loaded_world.x(), 20.0F));
-        assert(near(loaded_world.y(), 2.0F));
 
         auto destroy_result = world.edit();
         assert(destroy_result);

@@ -72,7 +72,7 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
-           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|TaggedProperty|RefClass|RefField|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
+           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|TaggedProperty|RefClass|RefField|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
             message(FATAL_ERROR
                 "Architecture: L1 source '${normalized}' restores retired ECS vocabulary."
             )
@@ -204,7 +204,6 @@ endforeach()
 foreach(installed_consumer IN ITEMS
     core_schedule
     object_affinity
-    column_persistence
     world_section
 )
     if(NOT EXISTS

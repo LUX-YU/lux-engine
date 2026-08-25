@@ -14,7 +14,6 @@ add_component(
     OUTPUT_NAME    lux_engine_ecs_persistence
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/PersistentEntity.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSection.cpp
 )
 
 component_include_directories(
@@ -35,7 +34,6 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::core
         lux::engine::ecs::schema
-        lux::engine::ecs::world_section
         lux::engine::ecs::persistence_contract
         lux::engine::core::serialization
         lux::cxx::compile_time
@@ -45,7 +43,6 @@ component_add_internal_dependencies(
     persistence
     core
     schema
-    world_section
     persistence_contract
 )
 component_add_transitive_commands(
@@ -53,7 +50,7 @@ component_add_transitive_commands(
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schema world_section persistence_contract)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schema persistence_contract)"
 )
 
 include_component_cmake_scripts(meta)

@@ -11,7 +11,9 @@ add_component(
     COMPONENT_NAME world_section
     NAMESPACE      lux::engine::ecs
     OUTPUT_NAME    lux_engine_ecs_world_section
-    SOURCE_FILES   ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSection.cpp
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSection.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSectionImage.cpp
 )
 
 component_include_directories(
@@ -75,4 +77,37 @@ add_test(
 set_tests_properties(
     vnext_ecs_world_section_contract
     PROPERTIES LABELS "vnext;l1;world-section;contract;cpu"
+)
+
+add_executable(
+    ecs_world_section_image_test
+    test/WorldSectionFixtureBuilder.cpp
+    test/world_section_image_test.cpp
+)
+target_include_directories(
+    ecs_world_section_image_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+)
+target_link_libraries(
+    ecs_world_section_image_test
+    PRIVATE lux::engine::ecs::world_section
+)
+if(MSVC)
+    target_compile_options(ecs_world_section_image_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(ecs_world_section_image_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  ecs_world_section_image_test
+    LAYER   ECS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(
+    NAME vnext_ecs_world_section_image
+    COMMAND ecs_world_section_image_test
+)
+set_tests_properties(
+    vnext_ecs_world_section_image
+    PROPERTIES LABELS "vnext;l1;world-section;cpu"
 )

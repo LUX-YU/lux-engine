@@ -5,7 +5,6 @@
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ecs/TransformSchema.hpp>
 #include <lux/engine/ecs/TransformSystem.hpp>
-#include <lux/engine/ecs/WorldSection.hpp>
 #include <lux/engine/ecs/WorldSnapshot.hpp>
 #include <lux/engine/ecs/hierarchy/detail/HierarchyIndexTestAccess.hpp>
 #include <lux/engine/ecs/transform/detail/TransformSystemTestAccess.hpp>
@@ -946,108 +945,6 @@ int main(int argc, char** argv)
         }));
     }
 
-    const auto benchmark_dynamic_schema_id =
-        lux::ecs::componentSchemaId("benchmark.dynamic-payload");
-    const std::shared_ptr<const void> benchmark_code_lifetime =
-        std::make_shared<int>(0);
-    std::vector<lux::ecs::ComponentSchema> persistence_schema_values{
-        lux::ecs::persistentIdComponentSchema(),
-        lux::ecs::makeComponentSchema<BenchmarkDynamicPayload>(
-            benchmark_dynamic_schema_id,
-            1U,
-            lux::ecs::EComponentSnapshotPolicy::COPY,
-            benchmark_code_lifetime
-        ),
-    };
-    const auto transform_schemas = lux::ecs::transformComponentSchemas();
-    persistence_schema_values.insert(
-        persistence_schema_values.end(),
-        transform_schemas.begin(),
-        transform_schemas.end()
-    );
-    const auto persistence_schemas = lux::ecs::ComponentSchemaSet::build(
-        std::move(persistence_schema_values)
-    );
-    if (!persistence_schemas)
-        return 12;
-    const auto* benchmark_dynamic_schema = persistence_schemas->find(
-        benchmark_dynamic_schema_id
-    );
-    if (benchmark_dynamic_schema == nullptr)
-        return 13;
-    const std::array benchmark_bindings{
-        lux::ecs::bindComponentPersistence<BenchmarkDynamicPayload>(
-            *benchmark_dynamic_schema
-        ),
-    };
-    const std::array selected_components{
-        lux::ecs::componentSchemaId("lux.ecs.Transform2D"),
-        lux::ecs::componentSchemaId("lux.ecs.Transform3D"),
-        benchmark_dynamic_schema_id,
-    };
-    const std::array persistence_contributions{
-        lux::ecs::persistenceComponentContribution(),
-        lux::ecs::transformPersistenceContribution(),
-        lux::ecs::ComponentPersistenceContribution{
-            benchmark_code_lifetime,
-            benchmark_bindings
-        },
-    };
-    for (const std::size_t entity_count : {10'000u, 100'000u, 1'000'000u})
-    {
-        auto [source, entities] = persistentWorld(entity_count);
-        append(samples, sample("lxwc_world_build", entity_count, [&]
-        {
-            auto built = lux::ecs::WorldSectionWriter::build(
-                *source,
-                *persistence_schemas,
-                persistence_contributions,
-                lux::ecs::WorldSectionId{indexedUuid(0x1000u)},
-                lux::ecs::WorldSectionWriteSelection{
-                    entities,
-                    selected_components
-                }
-            );
-            if (!built)
-                std::abort();
-        }));
-        auto image = lux::ecs::WorldSectionWriter::build(
-            *source,
-            *persistence_schemas,
-            persistence_contributions,
-            lux::ecs::WorldSectionId{indexedUuid(0x1000u)},
-            lux::ecs::WorldSectionWriteSelection{
-                entities,
-                selected_components
-            }
-        );
-        if (!image)
-            return 14;
-        append(samples, sample("lxwc_encode", entity_count, [&]
-        {
-            auto bytes = lux::ecs::encodeWorldSection(*image);
-            if (!bytes)
-                std::abort();
-        }));
-        auto bytes = lux::ecs::encodeWorldSection(*image);
-        append(samples, sample("lxwc_decode", entity_count, [&]
-        {
-            auto decoded = lux::ecs::decodeWorldSection(*bytes);
-            if (!decoded)
-                std::abort();
-        }));
-        append(samples, sample("lxwc_materialize", entity_count, [&]
-        {
-            auto materialized = lux::ecs::WorldSectionReader::materialize(
-                *image,
-                *persistence_schemas,
-                persistence_contributions
-            );
-            if (!materialized)
-                std::abort();
-        }));
-    }
-
     writeCsv(output, samples);
-    return checksum == 0u ? 15 : 0;
+    return checksum == 0u ? 12 : 0;
 }

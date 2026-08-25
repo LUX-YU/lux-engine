@@ -10,12 +10,13 @@ confirmed quadratic selection path and a broader ownership review. L1 now
 implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
 
 - [x] WDP-0: Adopt the four-path split and withdraw LXWC v1 freeze evidence.
-- [ ] WDP-1: Add the installed `ecs::world_section` runtime boundary.
-- [ ] WDP-2: Add immutable structurally validated LXWC v2 images.
+- [x] WDP-1: Add the installed `ecs::world_section` runtime boundary.
+- [x] WDP-2: Add immutable structurally validated LXWC v2 images and retire
+      the LXWC v1 mutable image/Writer/Reader public path.
 - [ ] WDP-3: Add immutable component load bindings and code lifetime pins.
 - [ ] WDP-4: Bulk load/unload sections into an existing World transactionally.
 - [ ] WDP-5: Migrate PersistentId/Parent/Transform load contributions and
-      retire `persistence_contract`, v1 Writer/Image and v1 codegen.
+      retire `persistence_contract` plus the remaining v1 codegen bindings.
 - [ ] WDP-6: Clone WorldSnapshot by COPY component storage.
 - [ ] WDP-7: Complete corruption, install and architecture gates.
 - [ ] WDP-8: Complete 1M diagnostic/qualification evidence against raw EnTT.

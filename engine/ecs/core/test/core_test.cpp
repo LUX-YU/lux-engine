@@ -1,5 +1,5 @@
 #include <lux/engine/ecs/World.hpp>
-#include <lux/engine/ecs/core/detail/ChangeJournal.hpp>
+#include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 
 #include <cassert>
 #include <cstdint>
@@ -22,7 +22,7 @@ int main()
 {
     lux::ecs::World world;
 
-    auto edit_result = world.edit();
+    auto edit_result = world.mutate();
     assert(edit_result);
     auto edit = std::move(*edit_result);
 
@@ -31,14 +31,14 @@ int main()
     assert(world.valid(first));
     assert(world.get<Position>(first).value == 7);
 
-    auto rejected_edit = world.edit();
+    auto rejected_edit = world.mutate();
     assert(!rejected_edit);
 
     edit.destroy(first);
     assert(!world.valid(first));
     edit = {};
 
-    auto next_edit_result = world.edit();
+    auto next_edit_result = world.mutate();
     assert(next_edit_result);
     auto next_edit = std::move(*next_edit_result);
     const lux::ecs::Entity second = next_edit.create();
@@ -80,12 +80,16 @@ int main()
     }
     assert(count == 1);
 
+    const auto stream_binds_before = journal.streamBindCountForTest();
+    const auto record_lookups_before = journal.perRecordLookupCountForTest();
     for (auto [entity, position] :
          next_edit.query<lux::ecs::Write<Position>>())
     {
         assert(entity == second);
         position.value = 12;
     }
+    assert(journal.streamBindCountForTest() == stream_binds_before + 1U);
+    assert(journal.perRecordLookupCountForTest() == record_lookups_before);
     auto query_modified = journal.read(position_cursor);
     assert(query_modified.size() == 1);
     assert(
@@ -128,8 +132,8 @@ int main()
 
     lux::ecs::World small_world{
         lux::ecs::WorldConfig{
-            lux::ecs::ChangeJournalConfig{4096U, 4096U}}};
-    auto small_edit_result = small_world.edit();
+            lux::ecs::WorldChangeLogConfig{4096U, 4096U}}};
+    auto small_edit_result = small_world.mutate();
     assert(small_edit_result);
     auto small_edit = std::move(*small_edit_result);
     const auto small_entity = small_edit.create();
@@ -212,7 +216,7 @@ int main()
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
     );
     failure_journal.failNextStreamDescriptorForTest();
-    auto failure_edit_result = failure_world.edit();
+    auto failure_edit_result = failure_world.mutate();
     auto failure_edit = std::move(*failure_edit_result);
     const auto failure_entity = failure_edit.create();
     failure_edit.emplace<FirstStream>(failure_entity, 17);

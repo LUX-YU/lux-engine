@@ -18,9 +18,9 @@ namespace lux::ecs
         {
             Entity entity{NullEntity};
 
-            void apply(WorldEdit& edit) noexcept
+            void apply(WorldMutation& edit) noexcept
             {
-                const World& world = detail::WorldEditAccess::world(edit);
+                const World& world = detail::WorldMutationAccess::world(edit);
                 if (world.valid(entity) &&
                     world.find<Derived>(entity) != nullptr)
                 {
@@ -35,9 +35,9 @@ namespace lux::ecs
             Entity entity{NullEntity};
             Derived value;
 
-            void apply(WorldEdit& edit) noexcept
+            void apply(WorldMutation& edit) noexcept
             {
-                const World& world = detail::WorldEditAccess::world(edit);
+                const World& world = detail::WorldMutationAccess::world(edit);
                 if (!world.valid(entity))
                     return;
                 if (world.find<Derived>(entity) == nullptr)

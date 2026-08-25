@@ -12,7 +12,7 @@ namespace lux::ecs::detail
     struct LUX_ENGINE_ECS_CORE_PUBLIC CommandRecord final
     {
         void* payload{};
-        void (*apply)(void*, WorldEdit&) noexcept{};
+        void (*apply)(void*, WorldMutation&) noexcept{};
         void (*destroy)(void*) noexcept{};
 
         CommandRecord() noexcept = default;
@@ -81,7 +81,7 @@ namespace lux::ecs::detail
 
         [[nodiscard]] WorldCommands beginExecution() noexcept;
         void endExecution() noexcept;
-        void applyPending(WorldEdit& edit) noexcept;
+        void applyPending(WorldMutation& edit) noexcept;
 
         std::vector<CommandRecord> pending_;
         CommandArena pending_arena_;

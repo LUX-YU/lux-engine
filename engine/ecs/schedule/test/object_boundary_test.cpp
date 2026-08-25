@@ -37,7 +37,7 @@ int main()
     lux::object::ObjectMessageQueue queue;
     DemandObserver observer{queue.dispatcherRef()};
     World world;
-    auto world_edit_result = world.edit();
+    auto world_edit_result = world.mutate();
     assert(world_edit_result);
     auto world_edit = std::move(*world_edit_result);
     const Entity entity = world_edit.create();

@@ -13,7 +13,7 @@ add_component(
     NAMESPACE      lux::engine::ecs
     OUTPUT_NAME    lux_engine_ecs_core
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ChangeJournal.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldChangeLog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/World.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldCommands.cpp
 )
@@ -69,6 +69,10 @@ foreach(probe IN ITEMS
     world_mutable_query_negative
     retired_registry_header_negative
     retired_scene_services_negative
+    retired_world_edit_header_negative
+    retired_world_edit_type_negative
+    retired_world_edit_method_negative
+    retired_change_journal_negative
 )
     add_executable(
         ecs_${probe} EXCLUDE_FROM_ALL

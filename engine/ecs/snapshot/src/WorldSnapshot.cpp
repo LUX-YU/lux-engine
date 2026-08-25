@@ -222,7 +222,7 @@ namespace lux::ecs
     ) const noexcept
     {
         if (!detail::WorldColdAccess::ownerIdle(world) ||
-            world.schedule_ != nullptr ||
+            world.behavior_owner_attached_ ||
             detail::WorldColdAccess::activeSectionCount(world) != 0U)
             return lux::cxx::unexpected(SnapshotError{ESnapshotError::WORLD_BUSY});
 

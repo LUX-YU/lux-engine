@@ -52,7 +52,7 @@ namespace lux::ecs::test
                     Entity entity{NullEntity};
                     std::uint32_t section{};
 
-                    void apply(WorldEdit& edit) noexcept
+                    void apply(WorldMutation& edit) noexcept
                     {
                         edit.emplace<SectionResident>(entity, section);
                     }

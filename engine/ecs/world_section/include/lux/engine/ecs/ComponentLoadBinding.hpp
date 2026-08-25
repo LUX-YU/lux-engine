@@ -29,7 +29,7 @@ namespace lux::ecs
     {
         using LoadComponentColumnFn =
             lux::serialization::SerializationResult (*)(
-                WorldEdit&,
+                WorldMutation&,
                 std::span<const Entity>,
                 std::span<const Entity>,
                 const WorldSectionColumnView&,
@@ -88,7 +88,7 @@ namespace lux::ecs
         template <class Component>
         [[nodiscard]] static lux::serialization::SerializationResult
         loadColumn(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::span<const Entity> row_entities,
             std::span<const Entity> ordinal_entities,
             const WorldSectionColumnView& column,
@@ -235,7 +235,7 @@ namespace lux::ecs
         }
 
         LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC static void trackMembership(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::uint64_t storage,
             std::span<const Entity> entities
         ) noexcept;

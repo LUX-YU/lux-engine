@@ -14,9 +14,9 @@ namespace lux::ecs::detail
         UNKNOWN,
     };
 
-    struct WorldEditAccess final
+    struct WorldMutationAccess final
     {
-        [[nodiscard]] static World& world(WorldEdit& edit) noexcept
+        [[nodiscard]] static World& world(WorldMutation& edit) noexcept
         {
             require(edit.world_ != nullptr);
             return *edit.world_;
@@ -28,29 +28,30 @@ namespace lux::ecs::detail
         [[nodiscard]] static bool ownerIdle(const World& world) noexcept
         {
             return world.state_ == EWorldState::IDLE &&
+                !world.execution_lease_ &&
                 world.owner_thread_ == std::this_thread::get_id();
         }
 
-        [[nodiscard]] static WorldEdit suppressingEdit(World& world) noexcept
+        [[nodiscard]] static WorldMutation suppressingEdit(World& world) noexcept
         {
             require(ownerIdle(world));
-            require(world.schedule_ == nullptr);
+            require(!world.behavior_owner_attached_);
             world.state_ = EWorldState::EDITING;
-            return WorldEdit(
+            return WorldMutation(
                 world,
                 true,
-                WorldEdit::EChangeEmission::SUPPRESS
+                WorldMutation::EChangeEmission::SUPPRESS
             );
         }
 
-        [[nodiscard]] static WorldEdit sectionEdit(World& world) noexcept
+        [[nodiscard]] static WorldMutation sectionEdit(World& world) noexcept
         {
             require(ownerIdle(world));
             world.state_ = EWorldState::EDITING;
-            return WorldEdit(
+            return WorldMutation(
                 world,
                 true,
-                WorldEdit::EChangeEmission::SUPPRESS
+                WorldMutation::EChangeEmission::SUPPRESS
             );
         }
 
@@ -81,6 +82,47 @@ namespace lux::ecs::detail
         {
             require(world.active_section_count_ != 0U);
             --world.active_section_count_;
+        }
+    };
+
+    struct WorldExecutionAccess final
+    {
+        [[nodiscard]] static bool acquire(World& world) noexcept
+        {
+            if (world.owner_thread_ != std::this_thread::get_id() ||
+                world.state_ != EWorldState::IDLE ||
+                world.execution_lease_)
+            {
+                return false;
+            }
+            world.execution_lease_ = true;
+            world.state_ = EWorldState::EXECUTING;
+            return true;
+        }
+
+        static void beginApplyingCommands(World& world) noexcept
+        {
+            require(world.execution_lease_);
+            require(world.state_ == EWorldState::EXECUTING);
+            world.state_ = EWorldState::APPLYING_COMMANDS;
+        }
+
+        static void resume(World& world) noexcept
+        {
+            require(world.execution_lease_);
+            require(world.state_ == EWorldState::APPLYING_COMMANDS);
+            world.state_ = EWorldState::EXECUTING;
+        }
+
+        static void release(World& world) noexcept
+        {
+            require(world.execution_lease_);
+            require(
+                world.state_ == EWorldState::EXECUTING ||
+                world.state_ == EWorldState::APPLYING_COMMANDS
+            );
+            world.state_ = EWorldState::IDLE;
+            world.execution_lease_ = false;
         }
     };
 

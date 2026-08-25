@@ -261,20 +261,20 @@ namespace lux::ecs
 
     [[nodiscard]] LUX_ENGINE_ECS_HIERARCHY_PUBLIC
     lux::cxx::expected<void, EHierarchyError> reparent(
-        WorldEdit& edit,
+        WorldMutation& edit,
         Entity child,
         Entity parent
     ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_ECS_HIERARCHY_PUBLIC
     lux::cxx::expected<void, EHierarchyError> detach(
-        WorldEdit& edit,
+        WorldMutation& edit,
         Entity child
     ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_ECS_HIERARCHY_PUBLIC
     lux::cxx::expected<void, EHierarchyError> destroySubtree(
-        WorldEdit& edit,
+        WorldMutation& edit,
         Entity root
     ) noexcept;
 } // namespace lux::ecs

@@ -17,7 +17,7 @@ namespace
     {
         lux::ecs::Entity entity{lux::ecs::NullEntity};
 
-        void apply(lux::ecs::WorldEdit& edit) noexcept
+        void apply(lux::ecs::WorldMutation& edit) noexcept
         {
             edit.emplace<Counter>(entity, 1);
         }
@@ -86,7 +86,7 @@ int main()
     using namespace lux::ecs;
 
     World world;
-    auto world_edit_result = world.edit();
+    auto world_edit_result = world.mutate();
     assert(world_edit_result);
     auto world_edit = std::move(*world_edit_result);
     const Entity entity = world_edit.create();

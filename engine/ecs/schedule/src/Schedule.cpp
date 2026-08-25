@@ -1,6 +1,7 @@
 #include <lux/engine/ecs/Schedule.hpp>
 
 #include <lux/engine/ecs/core/detail/CommandStorage.hpp>
+#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 #include <lux/engine/ecs/schedule/detail/ScheduleTestAccess.hpp>
 
 #include <algorithm>
@@ -943,8 +944,8 @@ namespace lux::ecs
     {
         detail::require(std::this_thread::get_id() == world.owner_thread_);
         detail::require(world.state_ == detail::EWorldState::IDLE);
-        detail::require(world.schedule_ == nullptr);
-        world.schedule_ = this;
+        detail::require(!world.behavior_owner_attached_);
+        world.behavior_owner_attached_ = true;
     }
 
     Schedule::~Schedule() noexcept
@@ -966,8 +967,8 @@ namespace lux::ecs
             slot->commands->invalidate();
             slot.reset();
         }
-        detail::require(impl_->world->schedule_ == this);
-        impl_->world->schedule_ = nullptr;
+        detail::require(impl_->world->behavior_owner_attached_);
+        impl_->world->behavior_owner_attached_ = false;
     }
 
     lux::cxx::expected<ScheduleEdit, ScheduleFailure> Schedule::edit() noexcept
@@ -1533,9 +1534,8 @@ namespace lux::ecs
     {
         detail::require(std::this_thread::get_id() == impl_->owner_thread);
         detail::require(!impl_->executing && !impl_->edit_open && !impl_->closing);
-        detail::require(impl_->world->state_ == detail::EWorldState::IDLE);
+        detail::require(detail::WorldExecutionAccess::acquire(*impl_->world));
         impl_->executing = true;
-        impl_->world->state_ = detail::EWorldState::EXECUTING;
 
         for (std::size_t phase{}; phase != 3; ++phase)
         {
@@ -1613,15 +1613,16 @@ namespace lux::ecs
                     impl_->slots[index]->changes.release();
             }
 
-            impl_->world->state_ = detail::EWorldState::APPLYING_COMMANDS;
+            detail::WorldExecutionAccess::beginApplyingCommands(*impl_->world);
             {
-                WorldEdit edit(*impl_->world, false);
+                WorldMutation edit(*impl_->world, false);
                 for (const std::uint32_t index : impl_->plan.phase_order[phase])
                     impl_->slots[index]->commands->applyPending(edit);
             }
-            impl_->world->state_ = phase == 2
-                ? detail::EWorldState::IDLE
-                : detail::EWorldState::EXECUTING;
+            if (phase == 2)
+                detail::WorldExecutionAccess::release(*impl_->world);
+            else
+                detail::WorldExecutionAccess::resume(*impl_->world);
         }
         impl_->executing = false;
     }

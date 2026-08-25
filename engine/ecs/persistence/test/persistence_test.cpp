@@ -27,7 +27,7 @@ int main()
     );
 
     lux::ecs::World world;
-    auto edit_result = world.edit();
+    auto edit_result = world.mutate();
     assert(edit_result);
     auto edit = std::move(*edit_result);
     const auto first = edit.create();
@@ -51,7 +51,7 @@ int main()
         "00000000-0000-4000-8000-000000000003"
     )) == lux::ecs::NullEntity);
 
-    auto duplicate_edit_result = world.edit();
+    auto duplicate_edit_result = world.mutate();
     assert(duplicate_edit_result);
     auto duplicate_edit = std::move(*duplicate_edit_result);
     duplicate_edit.update<lux::ecs::PersistentId>(
@@ -69,7 +69,7 @@ int main()
         lux::ecs::EPersistentEntityIndexError::DUPLICATE_ID
     );
 
-    auto busy_edit_result = world.edit();
+    auto busy_edit_result = world.mutate();
     assert(busy_edit_result);
     auto busy = lux::ecs::PersistentEntityIndex::build(world);
     assert(!busy);

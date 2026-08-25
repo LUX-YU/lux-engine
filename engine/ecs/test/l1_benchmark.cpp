@@ -366,7 +366,7 @@ namespace
     std::unique_ptr<lux::ecs::World> positionWorld(std::size_t count)
     {
         auto world = std::make_unique<lux::ecs::World>();
-        auto result = world->edit();
+        auto result = world->mutate();
         auto edit = std::move(*result);
         edit.reserve<BenchmarkPosition>(count);
         for (std::size_t index{}; index < count; ++index)
@@ -447,7 +447,7 @@ namespace
             });
             evidence.measure("world_edit_write_query", size, [&]
             {
-                auto result = world->edit();
+                auto result = world->mutate();
                 auto edit = std::move(*result);
                 for (auto [entity, position] :
                      edit.query<lux::ecs::Write<BenchmarkPosition>>())
@@ -511,7 +511,7 @@ namespace
         auto world = std::make_unique<lux::ecs::World>(config);
         std::vector<lux::ecs::Entity> entities;
         entities.reserve(count);
-        auto result = world->edit();
+        auto result = world->mutate();
         auto edit = std::move(*result);
         edit.reserve<lux::ecs::Parent>(count == 0U ? 0U : count - 1U);
         for (std::size_t index{}; index < count; ++index)
@@ -619,7 +619,7 @@ namespace
         evidence.measure("hierarchy_star_reparent", stress, [&]
         {
             nested = !nested;
-            auto result = star_world->edit();
+            auto result = star_world->mutate();
             auto edit = std::move(*result);
             edit.update<lux::ecs::Parent>(
                 star_entities.back(),
@@ -642,7 +642,7 @@ namespace
         });
 
         const lux::ecs::WorldConfig tiny_history{
-            lux::ecs::ChangeJournalConfig{4096U, 4096U}};
+            lux::ecs::WorldChangeLogConfig{4096U, 4096U}};
         auto [resync_world, resync_entities] = hierarchyWorld(
             stress,
             EHierarchyShape::STAR,
@@ -655,7 +655,7 @@ namespace
         resync_schedule.run(1.0F / 60.0F, resync_tick);
         evidence.measure("hierarchy_cursor_overflow_resync", stress, [&]
         {
-            auto result = resync_world->edit();
+            auto result = resync_world->mutate();
             auto edit = std::move(*result);
             for (std::size_t index{}; index < 512U; ++index)
             {
@@ -682,7 +682,7 @@ namespace
         std::span<const lux::ecs::Entity> entities
     )
     {
-        auto result = world.edit();
+        auto result = world.mutate();
         auto edit = std::move(*result);
         edit.reserve<lux::ecs::Transform3D>(entities.size());
         for (const auto entity : entities)
@@ -716,7 +716,7 @@ namespace
             schedule.run(1.0F / 60.0F, tick);
             evidence.measure(metric, requested_size, [&]
             {
-                auto update_result = world->edit();
+                auto update_result = world->mutate();
                 auto update = std::move(*update_result);
                 update.update<lux::ecs::Transform3D>(
                     entities.front(),
@@ -747,7 +747,7 @@ namespace
         auto sparse_world = std::make_unique<lux::ecs::World>();
         std::vector<lux::ecs::Entity> sparse_entities;
         sparse_entities.reserve(requested_size);
-        auto setup_result = sparse_world->edit();
+        auto setup_result = sparse_world->mutate();
         auto setup = std::move(*setup_result);
         setup.reserve<lux::ecs::Transform3D>(requested_size);
         for (std::size_t index{}; index < requested_size; ++index)
@@ -779,7 +779,7 @@ namespace
         sparse_schedule.run(1.0F / 60.0F, sparse_tick);
         evidence.measure("transform_sparse_high_water", active, [&]
         {
-            auto result = sparse_world->edit();
+            auto result = sparse_world->mutate();
             auto edit = std::move(*result);
             edit.update<lux::ecs::Transform3D>(
                 sparse_entities.back(),
@@ -1189,7 +1189,7 @@ namespace
             evidence.measure(prefix + "_world_edit_insert", size, [&]
             {
                 lux::ecs::World world;
-                auto edit_result = world.edit();
+                auto edit_result = world.mutate();
                 if (!edit_result) std::abort();
                 auto edit = std::move(*edit_result);
                 edit.reserve<BenchmarkFixed32<0>>(size);

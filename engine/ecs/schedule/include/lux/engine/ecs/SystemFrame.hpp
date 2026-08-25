@@ -43,7 +43,7 @@ namespace lux::ecs
                     ? EAccessMode::WRITE
                     : EAccessMode::READ), ...);
             return detail::BasicQuery<World::Registry, Access...>(
-                world_->registry_, recorder_
+                world_->registry_, {}, recorder_
             );
         }
 

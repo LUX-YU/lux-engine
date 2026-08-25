@@ -203,6 +203,6 @@ namespace lux::ecs
         std::uint64_t end_{};
         EChangeReadStatus status_{EChangeReadStatus::CURRENT};
 
-        friend class detail::ChangeJournal;
+        friend class detail::WorldChangeLog;
     };
 } // namespace lux::ecs

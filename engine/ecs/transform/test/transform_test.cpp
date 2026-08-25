@@ -104,7 +104,7 @@ int main()
     const auto schema_set = schemas();
     lux::ecs::World world;
     lux::ecs::HierarchyIndex hierarchy{world};
-    auto edit_result = world.edit();
+    auto edit_result = world.mutate();
     assert(edit_result);
     auto edit = std::move(*edit_result);
     const auto root = edit.create();
@@ -201,7 +201,7 @@ int main()
             ) == 0U
         );
 
-        auto update_result = world.edit();
+        auto update_result = world.mutate();
         assert(update_result);
         auto update = std::move(*update_result);
         update.update<lux::ecs::Transform3D>(root, [](auto& value) noexcept
@@ -220,7 +220,7 @@ int main()
             ) == 2U
         );
 
-        auto leaf_update_result = world.edit();
+        auto leaf_update_result = world.mutate();
         assert(leaf_update_result);
         auto leaf_update = std::move(*leaf_update_result);
         leaf_update.update<lux::ecs::Transform3D>(
@@ -242,7 +242,7 @@ int main()
             ) == 1U
         );
 
-        auto remove_local_result = world.edit();
+        auto remove_local_result = world.mutate();
         assert(remove_local_result);
         auto remove_local = std::move(*remove_local_result);
         remove_local.erase<lux::ecs::Transform3D>(child);
@@ -250,7 +250,7 @@ int main()
         schedule.run(1.0F / 60.0F, 5u);
         assert(world.find<lux::ecs::WorldTransform3D>(child) == nullptr);
 
-        auto restore_local_result = world.edit();
+        auto restore_local_result = world.mutate();
         assert(restore_local_result);
         auto restore_local = std::move(*restore_local_result);
         restore_local.emplace<lux::ecs::Transform3D>(
@@ -268,7 +268,7 @@ int main()
             20.0F
         ));
 
-        auto reparent_result = world.edit();
+        auto reparent_result = world.mutate();
         assert(reparent_result);
         auto reparent_edit = std::move(*reparent_result);
         const auto alternate_root = reparent_edit.create();
@@ -283,7 +283,7 @@ int main()
         reparent_edit = {};
         schedule.run(1.0F / 60.0F, 7u);
 
-        auto move_branch_result = world.edit();
+        auto move_branch_result = world.mutate();
         assert(move_branch_result);
         auto move_branch = std::move(*move_branch_result);
         assert(lux::ecs::reparent(move_branch, child, alternate_root));
@@ -299,7 +299,7 @@ int main()
             ) == 1U
         );
 
-        auto restore_branch_result = world.edit();
+        auto restore_branch_result = world.mutate();
         assert(restore_branch_result);
         auto restore_branch = std::move(*restore_branch_result);
         assert(lux::ecs::reparent(restore_branch, child, root));
@@ -335,7 +335,7 @@ int main()
         assert(near(forked.x(), 20.0F));
         assert(near(forked.y(), 2.0F));
 
-        auto destroy_result = world.edit();
+        auto destroy_result = world.mutate();
         assert(destroy_result);
         auto destroy = std::move(*destroy_result);
         destroy.destroy(root);

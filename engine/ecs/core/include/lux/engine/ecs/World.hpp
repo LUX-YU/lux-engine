@@ -28,7 +28,7 @@ namespace lux::ecs
     template <class Component>
     [[nodiscard]] ComponentOperations componentOperations() noexcept;
 
-    struct ChangeJournalConfig final
+    struct WorldChangeLogConfig final
     {
         std::size_t initial_bytes{256U * 1024U};
         std::size_t max_bytes{32U * 1024U * 1024U};
@@ -36,30 +36,31 @@ namespace lux::ecs
 
     struct WorldConfig final
     {
-        ChangeJournalConfig changes{};
+        WorldChangeLogConfig changes{};
     };
 
-    enum class EWorldEditError : std::uint8_t
+    enum class EWorldMutationError : std::uint8_t
     {
         NOT_IDLE,
         WRONG_THREAD,
         DESTROYING,
     };
 
-    struct WorldEditError final
+    struct WorldMutationError final
     {
-        EWorldEditError code{EWorldEditError::NOT_IDLE};
+        EWorldMutationError code{EWorldMutationError::NOT_IDLE};
     };
 
     namespace detail
     {
-        class ChangeJournal;
+        class WorldChangeLog;
         class SectionMembershipDirectory;
         struct WorldSnapshotAccess;
-        struct WorldEditAccess;
+        struct WorldMutationAccess;
         struct WorldChangeAccess;
         struct WorldColdAccess;
         struct WorldEntityAccess;
+        struct WorldExecutionAccess;
         struct PersistenceStorageAccess;
         struct WorldSectionTransactionAccess;
         struct WorldMembershipAccess;
@@ -84,15 +85,15 @@ namespace lux::ecs
 
     class World;
 
-    class LUX_ENGINE_ECS_CORE_PUBLIC WorldEdit final
+    class LUX_ENGINE_ECS_CORE_PUBLIC WorldMutation final
     {
       public:
-        WorldEdit() noexcept = default;
-        WorldEdit(const WorldEdit&) = delete;
-        WorldEdit& operator=(const WorldEdit&) = delete;
-        WorldEdit(WorldEdit&& other) noexcept;
-        WorldEdit& operator=(WorldEdit&& other) noexcept;
-        ~WorldEdit() noexcept;
+        WorldMutation() noexcept = default;
+        WorldMutation(const WorldMutation&) = delete;
+        WorldMutation& operator=(const WorldMutation&) = delete;
+        WorldMutation(WorldMutation&& other) noexcept;
+        WorldMutation& operator=(WorldMutation&& other) noexcept;
+        ~WorldMutation() noexcept;
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
@@ -128,7 +129,7 @@ namespace lux::ecs
             SUPPRESS,
         };
 
-        explicit WorldEdit(
+        explicit WorldMutation(
             World& world,
             bool release_to_idle,
             EChangeEmission change_emission = EChangeEmission::RECORD
@@ -144,7 +145,7 @@ namespace lux::ecs
         friend class Schedule;
         friend class WorldSnapshot;
         friend struct detail::WorldSnapshotAccess;
-        friend struct detail::WorldEditAccess;
+        friend struct detail::WorldMutationAccess;
         friend struct detail::WorldColdAccess;
         friend class ComponentLoadBinding;
         friend class ComponentSnapshotBinding;
@@ -193,24 +194,25 @@ namespace lux::ecs
             return query<Access...>();
         }
 
-        [[nodiscard]] lux::cxx::expected<WorldEdit, WorldEditError>
-        edit() noexcept;
+        [[nodiscard]] lux::cxx::expected<WorldMutation, WorldMutationError>
+        mutate() noexcept;
 
       private:
         using Registry = entt::basic_registry<Entity>;
 
         Registry registry_;
         WorldConfig config_;
-        std::unique_ptr<detail::ChangeJournal> changes_;
+        std::unique_ptr<detail::WorldChangeLog> changes_;
         std::unique_ptr<detail::SectionMembershipDirectory>
             section_memberships_;
         std::thread::id owner_thread_;
         detail::EWorldState state_{detail::EWorldState::IDLE};
-        Schedule* schedule_{};
+        bool behavior_owner_attached_{};
+        bool execution_lease_{};
         std::uint64_t identity_{};
         std::size_t active_section_count_{};
 
-        friend class WorldEdit;
+        friend class WorldMutation;
         friend class Schedule;
         friend class SystemFrame;
         friend class SystemStart;
@@ -219,6 +221,7 @@ namespace lux::ecs
         friend struct detail::WorldChangeAccess;
         friend struct detail::WorldColdAccess;
         friend struct detail::WorldEntityAccess;
+        friend struct detail::WorldExecutionAccess;
         friend struct detail::PersistenceStorageAccess;
         friend class ComponentLoadBinding;
         friend class ComponentSnapshotBinding;
@@ -260,12 +263,12 @@ namespace lux::ecs
 
         struct WorldChangeAccess final
         {
-            [[nodiscard]] static ChangeJournal& journal(World& world) noexcept
+            [[nodiscard]] static WorldChangeLog& journal(World& world) noexcept
             {
                 return *world.changes_;
             }
 
-            [[nodiscard]] static const ChangeJournal& journal(
+            [[nodiscard]] static const WorldChangeLog& journal(
                 const World& world
             ) noexcept
             {
@@ -275,6 +278,9 @@ namespace lux::ecs
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRecorder
         worldChangeRecorder(World& world) noexcept;
+
+        [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeStreamBinder
+        worldChangeStreamBinder(World& world) noexcept;
 
         LUX_ENGINE_ECS_CORE_PUBLIC void recordWorldComponentChange(
             World& world,
@@ -317,7 +323,7 @@ namespace lux::ecs
     } // namespace detail
 
     template <class Component, class... Args>
-    Component& WorldEdit::emplace(Entity entity, Args&&... args)
+    Component& WorldMutation::emplace(Entity entity, Args&&... args)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
         const auto storage = entt::type_hash<Component>::value();
@@ -354,7 +360,7 @@ namespace lux::ecs
     }
 
     template <class Component>
-    void WorldEdit::erase(Entity entity)
+    void WorldMutation::erase(Entity entity)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
         const auto storage = entt::type_hash<Component>::value();
@@ -377,7 +383,7 @@ namespace lux::ecs
 
     template <class Component, class Fn>
         requires std::is_nothrow_invocable_v<Fn, Component&>
-    void WorldEdit::update(Entity entity, Fn&& fn) noexcept
+    void WorldMutation::update(Entity entity, Fn&& fn) noexcept
     {
         detail::require(
             world_ != nullptr && world_->valid(entity) &&
@@ -397,25 +403,25 @@ namespace lux::ecs
     }
 
     template <class... Access>
-    auto WorldEdit::query()
+    auto WorldMutation::query()
     {
         detail::require(world_ != nullptr);
         return detail::BasicQuery<World::Registry, Access...>(
             world_->registry_,
             change_emission_ == EChangeEmission::RECORD
-                ? detail::worldChangeRecorder(*world_)
-                : detail::ChangeRecorder{}
+                ? detail::worldChangeStreamBinder(*world_)
+                : detail::ChangeStreamBinder{}
         );
     }
 
     template <class... Access>
-    auto WorldEdit::query(QuerySpec<Access...>)
+    auto WorldMutation::query(QuerySpec<Access...>)
     {
         return query<Access...>();
     }
 
     template <class Component>
-    void WorldEdit::reserve(std::size_t count)
+    void WorldMutation::reserve(std::size_t count)
     {
         detail::require(world_ != nullptr);
         world_->registry_.template storage<Component>().reserve(count);

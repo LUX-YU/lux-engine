@@ -54,7 +54,7 @@ namespace
 
     struct Noop final
     {
-        void apply(lux::ecs::WorldEdit&) noexcept {}
+        void apply(lux::ecs::WorldMutation&) noexcept {}
     };
 
     class Empty final : public lux::ecs::System
@@ -277,7 +277,7 @@ namespace
     struct FinalCommand final
     {
         int* applied{};
-        void apply(lux::ecs::WorldEdit&) noexcept { ++*applied; }
+        void apply(lux::ecs::WorldMutation&) noexcept { ++*applied; }
     };
 
     struct ChainCommand final
@@ -286,7 +286,7 @@ namespace
         int* first{};
         int* stale{};
 
-        void apply(lux::ecs::WorldEdit&) noexcept
+        void apply(lux::ecs::WorldMutation&) noexcept
         {
             ++*first;
             if (writer.push(FinalCommand{first}) ==
@@ -550,7 +550,7 @@ int main()
 
     {
         World scratch_world;
-        auto world_transaction = scratch_world.edit();
+        auto world_transaction = scratch_world.mutate();
         auto scratch_edit = std::move(*world_transaction);
         const Entity velocity_entity = scratch_edit.create();
         scratch_edit.emplace<Velocity>(velocity_entity);
@@ -589,7 +589,7 @@ int main()
         assert(retained->status == EChangeReadStatus::RESYNC_REQUIRED);
         assert(probe->status == EChangeReadStatus::RESYNC_REQUIRED);
 
-        auto velocity_transaction = scratch_world.edit();
+        auto velocity_transaction = scratch_world.mutate();
         auto velocity_edit = std::move(*velocity_transaction);
         velocity_edit.update<Velocity>(
             velocity_entity,
@@ -625,7 +625,7 @@ int main()
 
     {
         World incomplete_world;
-        auto transaction = incomplete_world.edit();
+        auto transaction = incomplete_world.mutate();
         auto edit = std::move(*transaction);
         for (std::size_t index{}; index < 300U; ++index)
         {

@@ -55,7 +55,7 @@ int main()
         assert(wrong_handle);
         assert(!wrong_edit.commit());
     }
-    auto edit_result = world.edit();
+    auto edit_result = world.mutate();
     assert(edit_result);
     auto edit = std::move(*edit_result);
     const auto root = edit.create();
@@ -88,7 +88,7 @@ int main()
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
     );
 
-    auto reparent_result = world.edit();
+    auto reparent_result = world.mutate();
     auto reparent_edit = std::move(*reparent_result);
     assert(lux::ecs::reparent(reparent_edit, child, second_root));
     assert(!lux::ecs::reparent(reparent_edit, second_root, grandchild));
@@ -107,7 +107,7 @@ int main()
         lux::ecs::EHierarchyChangeKind::REPARENTED
     );
 
-    auto destroy_parent_result = world.edit();
+    auto destroy_parent_result = world.mutate();
     auto destroy_parent = std::move(*destroy_parent_result);
     destroy_parent.destroy(child);
     destroy_parent = {};
@@ -129,7 +129,7 @@ int main()
     assert(hierarchy.synchronized());
     assert(hierarchy.parent(grandchild) == lux::ecs::NullEntity);
 
-    auto generation_result = world.edit();
+    auto generation_result = world.mutate();
     auto generation_edit = std::move(*generation_result);
     const auto replacement = generation_edit.create();
     assert(replacement != child);
@@ -145,7 +145,7 @@ int main()
         // The first cold rebuild must classify the old generation as a
         // retryable repair instead of permanently rejecting canonical data.
         lux::ecs::World stale_world;
-        auto stale_result = stale_world.edit();
+        auto stale_result = stale_world.mutate();
         auto stale_edit = std::move(*stale_result);
         const auto stale_parent = stale_edit.create();
         const auto stale_child = stale_edit.create();
@@ -168,7 +168,7 @@ int main()
     {
         // An authored replacement wins over a pending orphan repair.
         lux::ecs::World repair_world;
-        auto setup_result = repair_world.edit();
+        auto setup_result = repair_world.mutate();
         auto setup = std::move(*setup_result);
         const auto doomed_parent = setup.create();
         const auto replacement_parent = setup.create();
@@ -181,7 +181,7 @@ int main()
             repair_schedule, repair_hierarchy
         );
         repair_schedule.run(1.0F / 60.0F, 1U);
-        auto destroy_result = repair_world.edit();
+        auto destroy_result = repair_world.mutate();
         auto destroy = std::move(*destroy_result);
         destroy.destroy(doomed_parent);
         destroy = {};
@@ -189,7 +189,7 @@ int main()
             repair_schedule, repair_handle
         );
         repair_schedule.run(1.0F / 60.0F, 2U);
-        auto replace_result = repair_world.edit();
+        auto replace_result = repair_world.mutate();
         auto replace = std::move(*replace_result);
         replace.update<lux::ecs::Parent>(
             repair_child,
@@ -208,7 +208,7 @@ int main()
         // Destroying the child cancels its embedded repair without leaving a
         // dangling intrusive queue entry.
         lux::ecs::World cancel_world;
-        auto setup_result = cancel_world.edit();
+        auto setup_result = cancel_world.mutate();
         auto setup = std::move(*setup_result);
         const auto doomed_parent = setup.create();
         const auto repair_child = setup.create();
@@ -220,7 +220,7 @@ int main()
             cancel_schedule, cancel_hierarchy
         );
         cancel_schedule.run(1.0F / 60.0F, 1U);
-        auto destroy_result = cancel_world.edit();
+        auto destroy_result = cancel_world.mutate();
         auto destroy = std::move(*destroy_result);
         destroy.destroy(doomed_parent);
         destroy = {};
@@ -228,7 +228,7 @@ int main()
             cancel_schedule, cancel_handle
         );
         cancel_schedule.run(1.0F / 60.0F, 2U);
-        auto cancel_result = cancel_world.edit();
+        auto cancel_result = cancel_world.mutate();
         auto cancel = std::move(*cancel_result);
         cancel.destroy(repair_child);
         cancel = {};
@@ -238,7 +238,7 @@ int main()
 
     {
         lux::ecs::World fabricated_world;
-        auto fabricated_result = fabricated_world.edit();
+        auto fabricated_result = fabricated_world.mutate();
         auto fabricated_edit = std::move(*fabricated_result);
         const auto child_entity = fabricated_edit.create();
         fabricated_edit.emplace<lux::ecs::Parent>(
@@ -262,7 +262,7 @@ int main()
         // of times; it must not invoke the incremental ancestor validator.
         constexpr std::size_t kDepth = 10000U;
         lux::ecs::World deep_world;
-        auto deep_result = deep_world.edit();
+        auto deep_result = deep_world.mutate();
         auto deep_edit = std::move(*deep_result);
         auto previous = deep_edit.create();
         for (std::size_t index{1U}; index < kDepth; ++index)
@@ -292,7 +292,7 @@ int main()
 
     {
         lux::ecs::World subtree_world;
-        auto subtree_result = subtree_world.edit();
+        auto subtree_result = subtree_world.mutate();
         auto subtree_edit = std::move(*subtree_result);
         const auto subtree_root = subtree_edit.create();
         const auto first_child = subtree_edit.create();
@@ -311,7 +311,7 @@ int main()
     {
         lux::ecs::World invalid_world;
         lux::ecs::HierarchyIndex invalid_hierarchy{invalid_world};
-        auto invalid_result = invalid_world.edit();
+        auto invalid_result = invalid_world.mutate();
         auto invalid_edit = std::move(*invalid_result);
         const auto first = invalid_edit.create();
         const auto second = invalid_edit.create();
@@ -332,7 +332,7 @@ int main()
     {
         lux::ecs::World overflow_world;
         lux::ecs::HierarchyIndex overflow_hierarchy{overflow_world};
-        auto root_result = overflow_world.edit();
+        auto root_result = overflow_world.mutate();
         auto root_edit = std::move(*root_result);
         const auto overflow_root = root_edit.create();
         root_edit = {};
@@ -345,7 +345,7 @@ int main()
             lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
         );
 
-        auto children_result = overflow_world.edit();
+        auto children_result = overflow_world.mutate();
         auto children_edit = std::move(*children_result);
         for (std::size_t index{}; index < 65537U; ++index)
         {

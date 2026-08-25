@@ -6,7 +6,7 @@ namespace lux::ecs
 {
     namespace detail
     {
-        class ChangeJournal;
+        class WorldChangeLog;
         struct ChangeCursorAccess;
     }
 
@@ -20,7 +20,7 @@ namespace lux::ecs
         std::uint64_t epoch_{};
         std::uint64_t sequence_{};
 
-        friend class detail::ChangeJournal;
+        friend class detail::WorldChangeLog;
         friend struct detail::ChangeCursorAccess;
     };
 
@@ -33,7 +33,7 @@ namespace lux::ecs
         std::uint64_t epoch_{};
         std::uint64_t sequence_{};
 
-        friend class detail::ChangeJournal;
+        friend class detail::WorldChangeLog;
         friend struct detail::ChangeCursorAccess;
     };
 

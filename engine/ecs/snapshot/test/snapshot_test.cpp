@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/WorldSnapshot.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
-#include <lux/engine/ecs/core/detail/ChangeJournal.hpp>
+#include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 
 #include <atomic>
 #include <array>
@@ -57,7 +57,7 @@ int main()
     assert(snapshot_components);
 
     lux::ecs::World source;
-    auto edit_result = source.edit();
+    auto edit_result = source.mutate();
     assert(edit_result);
     auto edit = std::move(*edit_result);
     const auto first = edit.create();
@@ -109,7 +109,7 @@ int main()
     }
 
     const lux::ecs::WorldConfig bounded_config{
-        lux::ecs::ChangeJournalConfig{4096U, 4096U}};
+        lux::ecs::WorldChangeLogConfig{4096U, 4096U}};
     auto bounded_instance = snapshot->instantiate(bounded_config);
     assert(bounded_instance);
     lux::ecs::ChangeCursor<Position> bounded_cursor;
@@ -122,7 +122,7 @@ int main()
         bounded_journal.read(bounded_cursor).status() ==
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
     );
-    auto bounded_edit_result = (*bounded_instance)->edit();
+    auto bounded_edit_result = (*bounded_instance)->mutate();
     auto bounded_edit = std::move(*bounded_edit_result);
     for (int index{}; index < 512; ++index)
     {
@@ -140,7 +140,7 @@ int main()
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
     );
 
-    auto source_edit_result = source.edit();
+    auto source_edit_result = source.mutate();
     auto source_edit = std::move(*source_edit_result);
     std::vector<lux::ecs::Entity> source_next;
     source_next.reserve(100);
@@ -148,7 +148,7 @@ int main()
         source_next.push_back(source_edit.create());
     source_edit = {};
 
-    auto instance_edit_result = (*instance)->edit();
+    auto instance_edit_result = (*instance)->mutate();
     auto instance_edit = std::move(*instance_edit_result);
     for (int index{}; index < 100; ++index)
         assert(source_next[index] == instance_edit.create());
@@ -162,7 +162,7 @@ int main()
         restore_journal.read(restore_cursor).status() ==
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
     );
-    auto restored_edit_result = restored.edit();
+    auto restored_edit_result = restored.mutate();
     auto restored_edit = std::move(*restored_edit_result);
     const auto unrelated = restored_edit.create();
     restored_edit.emplace<DerivedCache>(unrelated, 1);
@@ -204,7 +204,7 @@ int main()
     assert(wrong_thread_rejected.load(std::memory_order_relaxed));
 
     lux::ecs::World invalid;
-    auto invalid_edit_result = invalid.edit();
+    auto invalid_edit_result = invalid.mutate();
     auto invalid_edit = std::move(*invalid_edit_result);
     const auto unknown = invalid_edit.create();
     invalid_edit.emplace<UnknownStorage>(unknown, 3);

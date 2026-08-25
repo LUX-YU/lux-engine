@@ -49,13 +49,13 @@ namespace lux::ecs
             return size_(world);
         }
 
-        void erase(WorldEdit& edit, Entity entity) const noexcept
+        void erase(WorldMutation& edit, Entity entity) const noexcept
         {
             detail::require(erase_ != nullptr);
             erase_(edit, entity);
         }
 
-        void reserve(WorldEdit& edit, std::size_t count) const
+        void reserve(WorldMutation& edit, std::size_t count) const
         {
             detail::require(reserve_ != nullptr);
             reserve_(edit, count);
@@ -65,8 +65,8 @@ namespace lux::ecs
         using HasFn = bool (*)(const World&, Entity) noexcept;
         using GetFn = const void* (*)(const World&, Entity) noexcept;
         using SizeFn = std::size_t (*)(const World&) noexcept;
-        using EraseFn = void (*)(WorldEdit&, Entity) noexcept;
-        using ReserveFn = void (*)(WorldEdit&, std::size_t);
+        using EraseFn = void (*)(WorldMutation&, Entity) noexcept;
+        using ReserveFn = void (*)(WorldMutation&, std::size_t);
 
         std::uint64_t storage_key_{};
         HasFn has_{};
@@ -100,11 +100,11 @@ namespace lux::ecs
                 world.registry_.template storage<Component>();
             return storage == nullptr ? 0U : storage->size();
         };
-        result.erase_ = [](WorldEdit& edit, Entity entity) noexcept
+        result.erase_ = [](WorldMutation& edit, Entity entity) noexcept
         {
             edit.erase<Component>(entity);
         };
-        result.reserve_ = [](WorldEdit& edit, std::size_t count)
+        result.reserve_ = [](WorldMutation& edit, std::size_t count)
         {
             edit.reserve<Component>(count);
         };

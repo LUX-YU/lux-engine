@@ -74,9 +74,9 @@ namespace lux::ecs
             Entity child{NullEntity};
             Entity destroyed_parent{NullEntity};
 
-            void apply(WorldEdit& edit) noexcept
+            void apply(WorldMutation& edit) noexcept
             {
-                const World& world = detail::WorldEditAccess::world(edit);
+                const World& world = detail::WorldMutationAccess::world(edit);
                 const Parent* current = world.find<Parent>(child);
                 if (world.valid(child) && current != nullptr &&
                     current->entity == destroyed_parent)
@@ -900,12 +900,12 @@ namespace lux::ecs
     }
 
     lux::cxx::expected<void, EHierarchyError> reparent(
-        WorldEdit& edit,
+        WorldMutation& edit,
         Entity child,
         Entity parent
     ) noexcept
     {
-        World& world = detail::WorldEditAccess::world(edit);
+        World& world = detail::WorldMutationAccess::world(edit);
         if (auto valid = validateCanonicalParent(world, child, parent); !valid)
             return valid;
 
@@ -934,11 +934,11 @@ namespace lux::ecs
     }
 
     lux::cxx::expected<void, EHierarchyError> detach(
-        WorldEdit& edit,
+        WorldMutation& edit,
         Entity child
     ) noexcept
     {
-        World& world = detail::WorldEditAccess::world(edit);
+        World& world = detail::WorldMutationAccess::world(edit);
         if (!world.valid(child))
             return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
         if (world.find<Parent>(child) != nullptr)
@@ -947,11 +947,11 @@ namespace lux::ecs
     }
 
     lux::cxx::expected<void, EHierarchyError> destroySubtree(
-        WorldEdit& edit,
+        WorldMutation& edit,
         Entity root
     ) noexcept
     {
-        World& world = detail::WorldEditAccess::world(edit);
+        World& world = detail::WorldMutationAccess::world(edit);
         if (!world.valid(root))
             return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
 

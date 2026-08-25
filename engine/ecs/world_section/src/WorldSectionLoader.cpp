@@ -14,7 +14,7 @@
 namespace lux::ecs
 {
     void ComponentLoadBinding::trackMembership(
-        WorldEdit& edit,
+        WorldMutation& edit,
         std::uint64_t storage,
         std::span<const Entity> entities
     ) noexcept
@@ -135,7 +135,7 @@ namespace lux::ecs
         };
 
         World* world{};
-        WorldEdit edit;
+        WorldMutation edit;
         WorldSectionLoadScratchBudget scratch{};
         lux::serialization::SerializationLimits limits{};
         std::vector<LoadOperation> loads;

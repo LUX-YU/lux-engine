@@ -14,7 +14,7 @@
 
 namespace lux::ecs::detail
 {
-    struct ChangeJournalConfigValue final
+    struct WorldChangeLogConfigValue final
     {
         std::size_t initial_bytes{};
         std::size_t max_bytes{};
@@ -65,16 +65,19 @@ namespace lux::ecs::detail
         std::size_t offset{};
     };
 
-    class LUX_ENGINE_ECS_CORE_PUBLIC ChangeJournal final
+    class LUX_ENGINE_ECS_CORE_PUBLIC WorldChangeLog final
     {
       public:
-        explicit ChangeJournal(ChangeJournalConfigValue config);
-        ~ChangeJournal() noexcept;
+        explicit WorldChangeLog(WorldChangeLogConfigValue config);
+        ~WorldChangeLog() noexcept;
 
-        ChangeJournal(const ChangeJournal&) = delete;
-        ChangeJournal& operator=(const ChangeJournal&) = delete;
+        WorldChangeLog(const WorldChangeLog&) = delete;
+        WorldChangeLog& operator=(const WorldChangeLog&) = delete;
 
         [[nodiscard]] ChangeRecorder recorder() noexcept;
+        [[nodiscard]] BoundWorldChangeStream bindComponent(
+            std::uint64_t storage
+        ) noexcept;
 
         void recordComponent(
             std::uint64_t storage,
@@ -128,6 +131,16 @@ namespace lux::ecs::detail
             return dynamic_block_acquisition_count_;
         }
 
+        [[nodiscard]] std::uint64_t streamBindCountForTest() const noexcept
+        {
+            return stream_bind_count_;
+        }
+
+        [[nodiscard]] std::uint64_t perRecordLookupCountForTest() const noexcept
+        {
+            return per_record_lookup_count_;
+        }
+
         void failNextStreamDescriptorForTest() noexcept
         {
             fail_next_stream_descriptor_for_test_ = true;
@@ -162,13 +175,15 @@ namespace lux::ecs::detail
         std::unordered_map<std::uint64_t, std::unique_ptr<JournalStream>>
             component_streams_;
         JournalStream entity_stream_;
-        ChangeJournalConfigValue config_;
+        WorldChangeLogConfigValue config_;
         std::vector<std::unique_ptr<JournalBlock>> owned_blocks_;
         JournalBlock* free_blocks_{};
         std::size_t max_blocks_{};
         std::uint64_t write_sequence_{};
         std::uint64_t epoch_{1};
         std::uint64_t record_write_count_{};
+        std::uint64_t stream_bind_count_{};
+        std::uint64_t per_record_lookup_count_{};
         std::size_t dynamic_block_acquisition_count_{};
         bool fail_next_stream_descriptor_for_test_{};
         bool fail_next_block_acquisition_for_test_{};

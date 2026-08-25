@@ -570,7 +570,7 @@ int main()
     }
 
     {
-        auto edit = world.edit();
+        auto edit = world.mutate();
         assert(edit);
         auto busy_image = validImage(sectionId(1U));
         auto busy = loadSection(
@@ -645,7 +645,7 @@ int main()
         World history_world;
         Entity history_entity{NullEntity};
         {
-            auto edit = history_world.edit();
+            auto edit = history_world.mutate();
             assert(edit);
             history_entity = edit->create();
             edit->emplace<test::Fixed>(history_entity, 1U, 2U);
@@ -663,7 +663,7 @@ int main()
             retaining->lastStatus() == EChangeReadStatus::RESYNC_REQUIRED
         );
         {
-            auto edit = history_world.edit();
+            auto edit = history_world.mutate();
             assert(edit);
             edit->update<test::Fixed>(
                 history_entity,
@@ -720,7 +720,7 @@ int main()
     const auto stale_entity = second->entities().front();
     const auto gameplay_entity = second->entities()[1U];
     {
-        auto edit = world.edit();
+        auto edit = world.mutate();
         assert(edit);
         edit->emplace<test::GameplayAdded>(gameplay_entity, 42U);
         edit->destroy(stale_entity);

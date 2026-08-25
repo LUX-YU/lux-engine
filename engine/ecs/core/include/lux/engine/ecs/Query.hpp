@@ -6,6 +6,8 @@
 #include <entt/core/type_info.hpp>
 
 #include <concepts>
+#include <array>
+#include <cstdint>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -78,6 +80,47 @@ namespace lux::ecs
             {
                 if (record != nullptr)
                     record(context, storage, entity, kind);
+            }
+        };
+
+        struct BoundWorldChangeStream final
+        {
+            void* owner{};
+            void* stream{};
+            void (*append)(
+                void*,
+                void*,
+                Entity,
+                EComponentChangeKind
+            ) noexcept{};
+
+            void operator()(
+                Entity entity,
+                EComponentChangeKind kind
+            ) const noexcept
+            {
+                if (append != nullptr)
+                    append(owner, stream, entity, kind);
+            }
+
+            [[nodiscard]] explicit operator bool() const noexcept
+            {
+                return append != nullptr;
+            }
+        };
+
+        struct ChangeStreamBinder final
+        {
+            void* context{};
+            BoundWorldChangeStream (*bind)(void*, std::uint64_t) noexcept{};
+
+            [[nodiscard]] BoundWorldChangeStream operator()(
+                std::uint64_t storage
+            ) const noexcept
+            {
+                return bind == nullptr
+                    ? BoundWorldChangeStream{}
+                    : bind(context, storage);
             }
         };
 
@@ -154,7 +197,10 @@ namespace lux::ecs
                     const Entity entity = std::get<0>(result);
                     if (!recorded_current_)
                     {
-                        (recordWrite<Access>(entity), ...);
+                        recordWrites(
+                            entity,
+                            std::index_sequence_for<Access...>{}
+                        );
                         recorded_current_ = true;
                     }
                     return result;
@@ -163,35 +209,61 @@ namespace lux::ecs
               private:
                 Iterator(
                     BaseIterator iterator,
+                    const std::array<
+                        BoundWorldChangeStream,
+                        sizeof...(Access)
+                    >& streams,
                     ChangeRecorder recorder
                 ) noexcept
                     : iterator_(iterator),
+                      streams_(streams),
                       recorder_(recorder)
                 {
                 }
 
-                template <class Value>
+                template <std::size_t Index, class Value>
                 void recordWrite(Entity entity) const noexcept
                 {
                     if constexpr (AccessTraits<Value>::kWrite)
                     {
-                        recorder_(
-                            entt::type_hash<Component<Value>>::value(),
-                            entity,
-                            EComponentChangeKind::MODIFIED
-                        );
+                        const auto& stream = streams_[Index];
+                        if (stream)
+                            stream(entity, EComponentChangeKind::MODIFIED);
+                        else
+                        {
+                            recorder_(
+                                entt::type_hash<Component<Value>>::value(),
+                                entity,
+                                EComponentChangeKind::MODIFIED
+                            );
+                        }
                     }
                 }
 
+                template <std::size_t... Index>
+                void recordWrites(
+                    Entity entity,
+                    std::index_sequence<Index...>
+                ) const noexcept
+                {
+                    (recordWrite<Index, Access>(entity), ...);
+                }
+
                 BaseIterator iterator_{};
+                std::array<BoundWorldChangeStream, sizeof...(Access)> streams_{};
                 ChangeRecorder recorder_{};
                 mutable bool recorded_current_{};
 
                 friend class BasicQuery;
             };
 
-            BasicQuery(Registry& registry, ChangeRecorder recorder = {})
+            BasicQuery(
+                Registry& registry,
+                ChangeStreamBinder binder = {},
+                ChangeRecorder recorder = {}
+            )
                 : view_(registry.template view<ViewComponent<Access>...>()),
+                  streams_{bindStream<Access>(binder)...},
                   recorder_(recorder)
             {
                 static_assert(sizeof...(Access) != 0);
@@ -202,16 +274,32 @@ namespace lux::ecs
 
             [[nodiscard]] Iterator begin()
             {
-                return Iterator(view_.each().begin(), recorder_);
+                return Iterator(view_.each().begin(), streams_, recorder_);
             }
 
             [[nodiscard]] Iterator end()
             {
-                return Iterator(view_.each().end(), recorder_);
+                return Iterator(view_.each().end(), streams_, recorder_);
             }
 
           private:
+            template <class Value>
+            [[nodiscard]] static BoundWorldChangeStream bindStream(
+                ChangeStreamBinder binder
+            ) noexcept
+            {
+                if constexpr (AccessTraits<Value>::kWrite)
+                {
+                    return binder(
+                        entt::type_hash<Component<Value>>::value()
+                    );
+                }
+                else
+                    return {};
+            }
+
             View view_;
+            std::array<BoundWorldChangeStream, sizeof...(Access)> streams_{};
             ChangeRecorder recorder_{};
         };
     } // namespace detail

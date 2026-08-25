@@ -23,7 +23,7 @@ namespace lux::ecs
 
         using CloneComponentStorageFn = void (*)(
             const World&,
-            WorldEdit&
+            WorldMutation&
         );
 
 #if defined(LUX_ECS_SNAPSHOT_TESTING)
@@ -52,7 +52,7 @@ namespace lux::ecs
 
       private:
         template <class Component>
-        static void cloneStorage(const World& source, WorldEdit& target)
+        static void cloneStorage(const World& source, WorldMutation& target)
         {
 #if defined(LUX_ECS_SNAPSHOT_TESTING)
             ++detail::ComponentSnapshotTestStats::clone_calls;

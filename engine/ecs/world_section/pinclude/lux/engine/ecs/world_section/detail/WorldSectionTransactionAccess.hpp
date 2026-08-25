@@ -12,7 +12,7 @@ namespace lux::ecs::detail
     struct WorldSectionTransactionAccess final
     {
         [[nodiscard]] static std::uint64_t allocateLease(
-            WorldEdit& edit
+            WorldMutation& edit
         ) noexcept
         {
             require(edit.world_ != nullptr);
@@ -20,7 +20,7 @@ namespace lux::ecs::detail
         }
 
         static void reserveMembership(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::span<const Entity> entities,
             std::size_t additional_memberships
         )
@@ -33,7 +33,7 @@ namespace lux::ecs::detail
         }
 
         static void activateMembership(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::uint64_t lease,
             std::span<const Entity> entities
         ) noexcept
@@ -43,7 +43,7 @@ namespace lux::ecs::detail
         }
 
         static void addComponentMembership(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::uint64_t storage,
             std::span<const Entity> entities
         ) noexcept
@@ -59,7 +59,7 @@ namespace lux::ecs::detail
         }
 
         [[nodiscard]] static bool matches(
-            WorldEdit& edit,
+            WorldMutation& edit,
             Entity entity,
             std::uint64_t lease
         ) noexcept
@@ -71,7 +71,7 @@ namespace lux::ecs::detail
 
         template <class Fn>
         static void forEachStorage(
-            WorldEdit& edit,
+            WorldMutation& edit,
             Entity entity,
             Fn&& fn
         ) noexcept
@@ -84,7 +84,7 @@ namespace lux::ecs::detail
         }
 
         static void removeComponent(
-            WorldEdit& edit,
+            WorldMutation& edit,
             Entity entity,
             std::uint64_t storage
         ) noexcept
@@ -96,7 +96,7 @@ namespace lux::ecs::detail
         }
 
         static void destroyTrackedEntity(
-            WorldEdit& edit,
+            WorldMutation& edit,
             Entity entity
         ) noexcept
         {
@@ -106,7 +106,7 @@ namespace lux::ecs::detail
         }
 
         static void createEntities(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::span<Entity> entities
         )
         {
@@ -117,7 +117,7 @@ namespace lux::ecs::detail
 #if defined(LUX_ECS_WORLD_SECTION_TESTING)
         template <class Component>
         static void insertPredecodedForBenchmark(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::span<const Entity> entities,
             std::vector<Component>& values
         )
@@ -136,7 +136,7 @@ namespace lux::ecs::detail
 #endif
 
         static void destroyEntities(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::span<const Entity> entities
         )
         {
@@ -145,7 +145,7 @@ namespace lux::ecs::detail
         }
 
         static void destroyBareEntities(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::span<const Entity> entities
         ) noexcept
         {
@@ -160,7 +160,7 @@ namespace lux::ecs::detail
         }
 
         static void destroyValidEntities(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::span<const Entity> entities
         ) noexcept
         {
@@ -173,7 +173,7 @@ namespace lux::ecs::detail
         }
 
         static void rollbackEntities(
-            WorldEdit& edit,
+            WorldMutation& edit,
             std::uint64_t lease,
             std::span<const Entity> entities
         ) noexcept

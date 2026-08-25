@@ -6,8 +6,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
-#include <type_traits>
 
 namespace lux::ecs
 {
@@ -63,30 +61,12 @@ namespace lux::ecs
             reserve_(edit, count);
         }
 
-        [[nodiscard]] bool cloneable() const noexcept
-        {
-            return clone_ != nullptr;
-        }
-
-        void clone(
-            const World& source,
-            Entity source_entity,
-            WorldEdit& target,
-            Entity target_entity
-        ) const
-        {
-            detail::require(clone_ != nullptr);
-            clone_(source, source_entity, target, target_entity);
-        }
-
       private:
         using HasFn = bool (*)(const World&, Entity) noexcept;
         using GetFn = const void* (*)(const World&, Entity) noexcept;
         using SizeFn = std::size_t (*)(const World&) noexcept;
         using EraseFn = void (*)(WorldEdit&, Entity) noexcept;
         using ReserveFn = void (*)(WorldEdit&, std::size_t);
-        using CloneFn = void (*)(const World&, Entity, WorldEdit&, Entity);
-        using DefaultEmplaceFn = void* (*)(WorldEdit&, Entity);
 
         std::uint64_t storage_key_{};
         HasFn has_{};
@@ -94,8 +74,6 @@ namespace lux::ecs
         SizeFn size_{};
         EraseFn erase_{};
         ReserveFn reserve_{};
-        CloneFn clone_{};
-        DefaultEmplaceFn default_emplace_{};
 
         friend struct detail::ComponentOperationsAccess;
 
@@ -130,29 +108,6 @@ namespace lux::ecs
         {
             edit.reserve<Component>(count);
         };
-        if constexpr (std::is_copy_constructible_v<Component>)
-        {
-            result.clone_ = [](
-                const World& source,
-                Entity source_entity,
-                WorldEdit& target,
-                Entity target_entity)
-            {
-                const Component* value = source.find<Component>(source_entity);
-                if (value != nullptr)
-                    target.emplace<Component>(target_entity, *value);
-            };
-        }
-        if constexpr (std::is_default_constructible_v<Component>)
-        {
-            result.default_emplace_ = [](
-                WorldEdit& edit,
-                Entity entity
-            ) -> void*
-            {
-                return std::addressof(edit.emplace<Component>(entity));
-            };
-        }
         return result;
     }
 } // namespace lux::ecs

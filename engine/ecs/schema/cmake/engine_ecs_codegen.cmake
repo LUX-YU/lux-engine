@@ -1,3 +1,5 @@
+include(${CMAKE_CURRENT_LIST_DIR}/validate_ecs_component_annotations.cmake)
+
 function(engine_target_add_ecs_component_codegen)
     set(one_value_args NAME TARGET HEADER LOGICAL_PATH SYMBOL SOURCE_FILE)
     cmake_parse_arguments(ARGS "" "${one_value_args}" "" ${ARGN})
@@ -7,6 +9,8 @@ function(engine_target_add_ecs_component_codegen)
             "[engine_target_add_ecs_component_codegen] NAME, TARGET, HEADER, LOGICAL_PATH and SYMBOL are required"
         )
     endif()
+
+    engine_validate_ecs_component_annotations("${ARGS_HEADER}")
 
     lux_add_codegen_job(
         NAME ${ARGS_NAME}

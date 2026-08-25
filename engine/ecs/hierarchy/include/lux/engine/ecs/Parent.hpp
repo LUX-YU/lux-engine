@@ -7,7 +7,9 @@
 namespace lux::ecs
 {
     struct LUX_TYPE_INFO(static)
-        LUX_COMPONENT_SCHEMA("lux.ecs.Parent", 1) Parent final
+        LUX_COMPONENT_SCHEMA("lux.ecs.Parent", 1)
+        LUX_COMPONENT_SNAPSHOT(COPY)
+        LUX_COMPONENT_WORLD_SECTION(LOAD) Parent final
     {
         Entity entity{NullEntity};
     };

@@ -15,7 +15,7 @@ namespace lux::ecs::generated
 {% endif %}            makeComponentSchema<::{{ decl.fq_name }}>(
                 componentSchemaId("{{ annotation_get_or(decl, "schema_name", decl.fq_name) }}"),
                 {{ annotation_get_or(decl, "schema_version", "1") }}u,
-                {% if annotation_get_or(decl, "snapshot", "copy") == "rebuild" %}EComponentSnapshotPolicy::REBUILD{% else %}EComponentSnapshotPolicy::COPY{% endif %}
+                {% if annotation_get(decl, "snapshot") == "REBUILD" %}EComponentSnapshotPolicy::REBUILD{% else %}EComponentSnapshotPolicy::COPY{% endif %}
             ){% set emitted = true %}{% endif %}{% endfor %}
         };
         return schemas;

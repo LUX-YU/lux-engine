@@ -66,7 +66,5 @@ int main()
     auto invalid_copy = lux::ecs::ComponentSchemaSet::build(
         {invalid_copy_schema}
     );
-    assert(!invalid_copy);
-    assert(invalid_copy.error().code ==
-        lux::ecs::ESchemaError::COPY_WITHOUT_CLONE);
+    assert(invalid_copy);
 }

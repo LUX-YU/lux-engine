@@ -18,7 +18,6 @@ namespace lux::ecs
         INVALID_CPP_TYPE,
         INVALID_VERSION,
         INVALID_OPERATIONS,
-        COPY_WITHOUT_CLONE,
         DUPLICATE_SCHEMA_ID,
         SCHEMA_ID_COLLISION,
         DUPLICATE_CPP_TYPE,

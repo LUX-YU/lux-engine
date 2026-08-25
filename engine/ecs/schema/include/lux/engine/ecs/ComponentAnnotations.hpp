@@ -10,22 +10,21 @@
 #    define LUX_ECS_SCHEMA_META(...)
 #endif
 
-// Internal/non-protocol component: same-build Copy snapshot.
+// Component identity, snapshot behavior, and cooked-section capability are
+// separate declarations. Stable components must state both policies.
 #define LUX_COMPONENT() \
     LUX_ECS_SCHEMA_META( \
-        luxref::class, component=true, snapshot=copy, world_section=omit \
+        luxref::class, component=true \
     )
 
-// Portable Copy component with an explicit stable schema identity.
 #define LUX_COMPONENT_SCHEMA(name, version) \
     LUX_ECS_SCHEMA_META( \
         luxref::class, component=true, schema_name=name, \
-        schema_version=version, snapshot=copy, world_section=load \
+        schema_version=version \
     )
 
-// Derived component rebuilt after restore and omitted from persistence.
-#define LUX_REBUILD_COMPONENT_SCHEMA(name, version) \
-    LUX_ECS_SCHEMA_META( \
-        luxref::class, component=true, schema_name=name, \
-        schema_version=version, snapshot=rebuild, world_section=omit \
-    )
+#define LUX_COMPONENT_SNAPSHOT(policy) \
+    LUX_ECS_SCHEMA_META(snapshot=policy)
+
+#define LUX_COMPONENT_WORLD_SECTION(policy) \
+    LUX_ECS_SCHEMA_META(world_section=policy)

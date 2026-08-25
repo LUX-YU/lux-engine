@@ -65,9 +65,24 @@ lux_classify_target(
 add_test(NAME vnext_ecs_schema COMMAND ecs_schema_test)
 set_tests_properties(vnext_ecs_schema PROPERTIES LABELS "vnext;l1;schema;cpu")
 
+add_test(
+    NAME vnext_ecs_missing_component_policy_rejected
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DHEADER=${CMAKE_CURRENT_SOURCE_DIR}/test/missing_component_policy.hpp
+        -DVALIDATOR=${CMAKE_CURRENT_SOURCE_DIR}/cmake/validate_ecs_component_annotations.cmake
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/ExpectMissingPolicyFailure.cmake
+)
+set_tests_properties(
+    vnext_ecs_missing_component_policy_rejected
+    PROPERTIES
+        LABELS "vnext;l1;schema;negative;codegen"
+)
+
 foreach(probe IN ITEMS
     component_operations_mutable_get_negative
     component_operations_storage_key_negative
+    component_operations_clone_negative
 )
     add_executable(
         ecs_${probe} EXCLUDE_FROM_ALL

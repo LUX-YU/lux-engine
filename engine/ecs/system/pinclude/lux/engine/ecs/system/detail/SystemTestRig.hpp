@@ -101,6 +101,16 @@ namespace lux::ecs::detail
             return scratch_.perRecordLookupCount();
         }
 
+        [[nodiscard]] std::uint64_t journalStreamBindCount() const noexcept
+        {
+            return scratch_.journalStreamBindCount();
+        }
+
+        [[nodiscard]] std::uint64_t recordAppendCount() const noexcept
+        {
+            return scratch_.recordAppendCount();
+        }
+
     private:
         World* world_{};
         SystemRegistry systems_;

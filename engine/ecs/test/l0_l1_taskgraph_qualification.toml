@@ -108,10 +108,24 @@ field = "dispatch_calls"
 equals = 16
 
 [[structural]]
+name = "WorldMutation binds each WorldChangeLog stream once"
+metric = "world_change_log_write_16"
+size = 1000000
+field = "journal_stream_binds"
+equals = 16
+
+[[structural]]
+name = "WorldMutation appends every written entity"
+metric = "world_change_log_write_16"
+size = 1000000
+field = "record_appends"
+equals = 16000000
+
+[[structural]]
 name = "WorldMutation performs no per-record lookup"
 metric = "world_change_log_write_16"
 size = 1000000
-field = "storage_lookups"
+field = "per_record_lookups"
 equals = 0
 
 [[structural]]
@@ -129,10 +143,24 @@ field = "dispatch_calls"
 equals = 16
 
 [[structural]]
+name = "SystemContext binds each WorldChangeLog stream once"
+metric = "system_write_query_16"
+size = 1000000
+field = "journal_stream_binds"
+equals = 16
+
+[[structural]]
+name = "SystemContext appends every written entity"
+metric = "system_write_query_16"
+size = 1000000
+field = "record_appends"
+equals = 16000000
+
+[[structural]]
 name = "SystemContext performs no per-record lookup"
 metric = "system_write_query_16"
 size = 1000000
-field = "storage_lookups"
+field = "per_record_lookups"
 equals = 0
 
 [[structural]]

@@ -108,6 +108,37 @@ set_tests_properties(
 )
 
 foreach(probe IN ITEMS
+    registry_wrong_thread
+    registry_execution_mutation
+)
+    add_executable(
+        ecs_${probe}_probe
+        test/${probe}_probe.cpp
+    )
+    target_link_libraries(
+        ecs_${probe}_probe
+        PRIVATE lux::engine::ecs::system
+    )
+    lux_classify_target(
+        TARGET  ecs_${probe}_probe
+        LAYER   ECS
+        PRODUCT TEST
+        ROLE    FOUNDATION
+    )
+    add_test(
+        NAME vnext_ecs_${probe}_rejected
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DPROGRAM=$<TARGET_FILE:ecs_${probe}_probe>
+            -P ${PROJECT_SOURCE_DIR}/cmake/ExpectProcessFailure.cmake
+    )
+    set_tests_properties(
+        vnext_ecs_${probe}_rejected
+        PROPERTIES LABELS "vnext;l1;system;contract;negative"
+    )
+endforeach()
+
+foreach(probe IN ITEMS
     system_missing_access_negative
     system_throwing_update_negative
     system_duplicate_access_negative

@@ -197,6 +197,10 @@ namespace
         std::size_t storage_lookups{};
         std::size_t visited_nodes{};
         std::size_t history_losses{};
+        std::size_t lane_binds{};
+        std::size_t journal_stream_binds{};
+        std::size_t record_appends{};
+        std::size_t per_record_lookups{};
     };
 
     struct Sample final
@@ -290,7 +294,9 @@ namespace
                 throw std::runtime_error("cannot open output");
             output << "kind,metric,size,sample,nanoseconds,allocations,"
                       "retained_bytes,dispatch_calls,storage_lookups,"
-                      "visited_nodes,history_losses\n";
+                      "visited_nodes,history_losses,lane_binds,"
+                      "journal_stream_binds,record_appends,"
+                      "per_record_lookups\n";
             for (const auto& value : samples)
             {
                 output << "raw," << value.metric << ',' << value.size << ','
@@ -300,7 +306,11 @@ namespace
                        << value.observation.dispatch_calls << ','
                        << value.observation.storage_lookups << ','
                        << value.observation.visited_nodes << ','
-                       << value.observation.history_losses << '\n';
+                       << value.observation.history_losses << ','
+                       << value.observation.lane_binds << ','
+                       << value.observation.journal_stream_binds << ','
+                       << value.observation.record_appends << ','
+                       << value.observation.per_record_lookups << '\n';
             }
             std::size_t begin{};
             while (begin < samples.size())
@@ -335,7 +345,13 @@ namespace
                            << samples[end - 1U].observation.dispatch_calls << ','
                            << samples[end - 1U].observation.storage_lookups << ','
                            << samples[end - 1U].observation.visited_nodes << ','
-                           << samples[end - 1U].observation.history_losses << '\n';
+                           << samples[end - 1U].observation.history_losses << ','
+                           << samples[end - 1U].observation.lane_binds << ','
+                           << samples[end - 1U].observation.journal_stream_binds
+                           << ','
+                           << samples[end - 1U].observation.record_appends << ','
+                           << samples[end - 1U].observation.per_record_lookups
+                           << '\n';
                 }
                 begin = end;
             }
@@ -705,13 +721,17 @@ namespace
     )
     {
         lux::ecs::WorldConfig config;
-        constexpr std::size_t kRecordBudget = sizeof...(Index) * 16U;
-        if (count <= (std::numeric_limits<std::size_t>::max)() /
-                         (std::max)(kRecordBudget, std::size_t{1U}))
+        constexpr std::size_t kLaneCount = sizeof...(Index);
+        if (kLaneCount != 0U &&
+            count <= (std::numeric_limits<std::size_t>::max)() / kLaneCount)
         {
+            const std::size_t record_count = count * kLaneCount;
+            const std::size_t block_count =
+                (record_count + lux::ecs::detail::kJournalRecordsPerBlock - 1U) /
+                lux::ecs::detail::kJournalRecordsPerBlock;
             config.changes.max_bytes = (std::max)(
                 config.changes.max_bytes,
-                count * kRecordBudget
+                block_count * lux::ecs::detail::kJournalBlockBytes
             );
         }
         auto world = std::make_unique<lux::ecs::World>(config);
@@ -745,6 +765,7 @@ namespace
             [&]
             {
                 const auto bind_before = journal.streamBindCountForTest();
+                const auto append_before = journal.recordWriteCountForTest();
                 const auto lookup_before = journal.perRecordLookupCountForTest();
                 const auto epoch_before = journal.epoch();
                 auto result = world->mutate();
@@ -766,6 +787,18 @@ namespace
                     ),
                     .history_losses = static_cast<std::size_t>(
                         journal.epoch() - epoch_before
+                    ),
+                    .lane_binds = static_cast<std::size_t>(
+                        journal.streamBindCountForTest() - bind_before
+                    ),
+                    .journal_stream_binds = static_cast<std::size_t>(
+                        journal.streamBindCountForTest() - bind_before
+                    ),
+                    .record_appends = static_cast<std::size_t>(
+                        journal.recordWriteCountForTest() - append_before
+                    ),
+                    .per_record_lookups = static_cast<std::size_t>(
+                        journal.perRecordLookupCountForTest() - lookup_before
                     )
                 };
             }
@@ -791,7 +824,12 @@ namespace
             [&]
             {
                 const auto bind_before = execution.laneBindCount();
+                const auto journal_bind_before =
+                    execution.journalStreamBindCount();
+                const auto append_before = execution.recordAppendCount();
                 const auto lookup_before = execution.perRecordLookupCount();
+                const auto epoch_before =
+                    lux::ecs::detail::worldChangeEpoch(*world);
                 if (!execution.run(1.0F / 60.0F, ++tick))
                     std::abort();
                 return Observation{
@@ -799,6 +837,22 @@ namespace
                         execution.laneBindCount() - bind_before
                     ),
                     .storage_lookups = static_cast<std::size_t>(
+                        execution.perRecordLookupCount() - lookup_before
+                    ),
+                    .history_losses = static_cast<std::size_t>(
+                        lux::ecs::detail::worldChangeEpoch(*world) - epoch_before
+                    ),
+                    .lane_binds = static_cast<std::size_t>(
+                        execution.laneBindCount() - bind_before
+                    ),
+                    .journal_stream_binds = static_cast<std::size_t>(
+                        execution.journalStreamBindCount() -
+                        journal_bind_before
+                    ),
+                    .record_appends = static_cast<std::size_t>(
+                        execution.recordAppendCount() - append_before
+                    ),
+                    .per_record_lookups = static_cast<std::size_t>(
                         execution.perRecordLookupCount() - lookup_before
                     )
                 };

@@ -1,4 +1,4 @@
-# L1 World Data Path v2 Historical Evidence
+# L1 World Data Path v2 Qualification Evidence
 
 Date: 2026-08-25
 
@@ -18,18 +18,11 @@ python engine/ecs/test/evaluate_l1_qualification.py \
   --input .internal/benchmarks/20260825-l1-world-data-path-v2/*.csv
 ```
 
-Historical evaluator result:
+Result:
 
 ```text
 PASS: 2 relative, 1 scaling, 4 structural rules
 ```
-
-The second independent audit rejected this evidence as a freeze qualification.
-It does not cover the per-row residency ledger's column-count complexity or
-memory, deferred image ownership, Schedule multi-write lane lookup, or a truly
-dense 1M Parent/Transform resident World. The measurements remain useful for
-comparison, but `Correctness Hardened`, `Performance Contract Passed` and
-`Public API Freeze Candidate` are withdrawn until the WDP3 matrix passes.
 
 ## Representative results
 

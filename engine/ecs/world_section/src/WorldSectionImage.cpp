@@ -13,6 +13,14 @@
 
 namespace lux::ecs
 {
+    struct WorldSectionImage::Impl final
+    {
+        WorldSectionId id;
+        std::uint32_t entity_count{};
+        std::vector<std::byte> bytes;
+        std::vector<WorldSectionColumnView> columns;
+    };
+
     namespace
     {
         constexpr std::array kMagic{
@@ -155,10 +163,13 @@ namespace lux::ecs
         return payload_;
     }
 
-    WorldSectionImage::WorldSectionImage(WorldSectionImage&& other) noexcept = default;
-    WorldSectionImage& WorldSectionImage::operator=(
-        WorldSectionImage&& other
-    ) noexcept = default;
+    WorldSectionImage::WorldSectionImage(
+        std::shared_ptr<const Impl> impl
+    ) noexcept
+        : impl_(std::move(impl))
+    {
+    }
+
     WorldSectionImage::~WorldSectionImage() = default;
 
     lux::cxx::expected<WorldSectionImage, WorldSectionFailure>
@@ -261,17 +272,17 @@ namespace lux::ecs
                     source[16U + index]
                 );
             }
-            WorldSectionImage result;
-            result.id_.value = uuids::uuid(uuid_bytes);
-            if (result.id_.value.is_nil())
+            auto result = std::make_shared<Impl>();
+            result->id.value = uuids::uuid(uuid_bytes);
+            if (result->id.value.is_nil())
             {
                 return lux::cxx::unexpected(
                     failure(EWorldSectionError::INVALID_SECTION_ID, 16U)
                 );
             }
-            result.entity_count_ = entity_count;
-            result.bytes_ = std::move(bytes);
-            const auto owned = std::span<const std::byte>(result.bytes_);
+            result->entity_count = entity_count;
+            result->bytes = std::move(bytes);
+            const auto owned = std::span<const std::byte>(result->bytes);
 
             std::vector<Region> regions;
             regions.reserve(3U + static_cast<std::size_t>(column_count) * 3U);
@@ -284,7 +295,7 @@ namespace lux::ecs
                 );
             }
 
-            result.columns_.reserve(column_count);
+            result->columns.reserve(column_count);
             std::uint64_t total_component_rows{};
             std::uint64_t previous_hash{};
             std::string_view previous_name;
@@ -560,7 +571,7 @@ namespace lux::ecs
                     static_cast<std::size_t>(payload_offset),
                     static_cast<std::size_t>(payload_bytes)
                 );
-                result.columns_.push_back(view);
+                result->columns.push_back(view);
             }
 
             std::sort(
@@ -582,7 +593,7 @@ namespace lux::ecs
                     ));
                 }
             }
-            return result;
+            return WorldSectionImage(std::move(result));
         }
         catch (const std::bad_alloc&)
         {
@@ -594,22 +605,27 @@ namespace lux::ecs
 
     const WorldSectionId& WorldSectionImage::id() const noexcept
     {
-        return id_;
+        static const WorldSectionId empty;
+        return impl_ ? impl_->id : empty;
     }
 
     std::uint32_t WorldSectionImage::entityCount() const noexcept
     {
-        return entity_count_;
+        return impl_ ? impl_->entity_count : 0U;
     }
 
     std::span<const WorldSectionColumnView>
     WorldSectionImage::columns() const noexcept
     {
-        return columns_;
+        return impl_
+            ? std::span<const WorldSectionColumnView>(impl_->columns)
+            : std::span<const WorldSectionColumnView>{};
     }
 
     std::span<const std::byte> WorldSectionImage::bytes() const noexcept
     {
-        return bytes_;
+        return impl_
+            ? std::span<const std::byte>(impl_->bytes)
+            : std::span<const std::byte>{};
     }
 } // namespace lux::ecs

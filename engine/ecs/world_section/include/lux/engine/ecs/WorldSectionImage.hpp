@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -46,12 +47,12 @@ namespace lux::ecs
     class LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC WorldSectionImage final
     {
       public:
-        WorldSectionImage(WorldSectionImage&& other) noexcept;
-        WorldSectionImage& operator=(WorldSectionImage&& other) noexcept;
+        WorldSectionImage() noexcept = default;
+        WorldSectionImage(const WorldSectionImage&) noexcept = default;
+        WorldSectionImage& operator=(const WorldSectionImage&) noexcept = default;
+        WorldSectionImage(WorldSectionImage&& other) noexcept = default;
+        WorldSectionImage& operator=(WorldSectionImage&& other) noexcept = default;
         ~WorldSectionImage();
-
-        WorldSectionImage(const WorldSectionImage&) = delete;
-        WorldSectionImage& operator=(const WorldSectionImage&) = delete;
 
         [[nodiscard]] static lux::cxx::expected<
             WorldSectionImage,
@@ -67,11 +68,9 @@ namespace lux::ecs
         [[nodiscard]] std::span<const std::byte> bytes() const noexcept;
 
       private:
-        WorldSectionImage() = default;
+        struct Impl;
+        explicit WorldSectionImage(std::shared_ptr<const Impl> impl) noexcept;
 
-        WorldSectionId id_;
-        std::uint32_t entity_count_{};
-        std::vector<std::byte> bytes_;
-        std::vector<WorldSectionColumnView> columns_;
+        std::shared_ptr<const Impl> impl_;
     };
 } // namespace lux::ecs

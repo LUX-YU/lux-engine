@@ -28,6 +28,9 @@ namespace lux::ecs
             const ComponentSnapshotSet& components
         ) noexcept;
 
+        // Capture is a detached canonical clone. Section residency, leases,
+        // instances, and active-section accounting are intentionally omitted.
+
         [[nodiscard]] lux::cxx::expected<std::unique_ptr<World>, SnapshotError>
         instantiate(WorldConfig config = {}) const noexcept;
 

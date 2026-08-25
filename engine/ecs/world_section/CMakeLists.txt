@@ -168,6 +168,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::ecs::world_section
         lux::engine::ecs::schedule
+        lux::engine::ecs::snapshot
 )
 if(MSVC)
     target_compile_options(ecs_world_section_loader_test PRIVATE /UNDEBUG)

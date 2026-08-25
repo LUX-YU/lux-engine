@@ -3,20 +3,26 @@
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 #include <lux/engine/ecs/HierarchySystem.hpp>
-#include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ecs/TransformSchema.hpp>
 #include <lux/engine/ecs/TransformSystem.hpp>
 #include <lux/engine/ecs/WorldSectionLoader.hpp>
 #include <lux/engine/ecs/WorldSnapshot.hpp>
+#include <lux/engine/ecs/SystemExecution.hpp>
+#include <lux/engine/ecs/SystemRegistry.hpp>
+#include <lux/engine/ecs/SystemRelations.hpp>
+#include <lux/engine/ecs/SystemTaskGraphCompiler.hpp>
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 #include <lux/engine/ecs/hierarchy/detail/HierarchyIndexTestAccess.hpp>
+#include <lux/engine/ecs/system/detail/SystemTestRig.hpp>
 #include <lux/engine/ecs/transform/detail/TransformSystemTestAccess.hpp>
 #include <lux/engine/ecs/world_section/detail/ComponentLoadSerialization.hpp>
 #include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/serialization/Serialization.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
+#include <lux/engine/task/TaskGraph.hpp>
 
 #include <entt/entity/registry.hpp>
 
@@ -45,6 +51,12 @@
 #include <vector>
 
 struct BenchmarkPosition final { std::uint64_t value{}; };
+
+template <std::size_t Index>
+struct BenchmarkWrite final
+{
+    std::uint64_t value{};
+};
 
 template <std::size_t Index>
 struct BenchmarkFixed32 final
@@ -157,6 +169,12 @@ namespace
         TRANSFORM,
         SNAPSHOT,
         WORLD_SECTION,
+        TASK_GRAPH_BUILD,
+        TASK_GRAPH_EXECUTE,
+        SYSTEM_COMPILE,
+        SYSTEM_EXECUTE,
+        WORLD_CHANGE_LOG,
+        SYSTEM_WRITE_QUERY,
     };
 
     enum class EMode : std::uint8_t { DIAGNOSTIC, QUALIFICATION };
@@ -231,6 +249,18 @@ namespace
         else if (group == "transform") result.group = EGroup::TRANSFORM;
         else if (group == "snapshot") result.group = EGroup::SNAPSHOT;
         else if (group == "world-section") result.group = EGroup::WORLD_SECTION;
+        else if (group == "task-graph-build")
+            result.group = EGroup::TASK_GRAPH_BUILD;
+        else if (group == "task-graph-execute")
+            result.group = EGroup::TASK_GRAPH_EXECUTE;
+        else if (group == "system-compile")
+            result.group = EGroup::SYSTEM_COMPILE;
+        else if (group == "system-execute")
+            result.group = EGroup::SYSTEM_EXECUTE;
+        else if (group == "world-change-log")
+            result.group = EGroup::WORLD_CHANGE_LOG;
+        else if (group == "system-write-query")
+            result.group = EGroup::SYSTEM_WRITE_QUERY;
         else return std::nullopt;
         if (mode == "qualification")
         {
@@ -374,17 +404,13 @@ namespace
         return world;
     }
 
-    class PositionWriteSystem final : public lux::ecs::System
+    class PositionWriteSystem final
+        : public lux::ecs::StaticSystemAccess<
+            lux::ecs::Write<BenchmarkPosition>
+        >
     {
       public:
-        [[nodiscard]] lux::ecs::SystemAccess access() const noexcept override
-        {
-            return lux::ecs::access(
-                lux::ecs::query<lux::ecs::Write<BenchmarkPosition>>()
-            );
-        }
-
-        void update(lux::ecs::SystemFrame& frame) noexcept override
+        void update(lux::ecs::SystemContext& frame) noexcept
         {
             for (auto [entity, position] :
                  frame.query<lux::ecs::Write<BenchmarkPosition>>())
@@ -394,15 +420,431 @@ namespace
         }
     };
 
-    class NoopSystem final : public lux::ecs::System
+    class NoopSystem final : public lux::ecs::StaticSystemAccess<>
     {
       public:
         explicit NoopSystem(std::uint64_t& value) noexcept : value_(&value) {}
-        void update(lux::ecs::SystemFrame&) noexcept override { ++*value_; }
+        void update(lux::ecs::SystemContext&) noexcept { ++*value_; }
 
       private:
         std::uint64_t* value_{};
     };
+
+    class DeclaredWriterSystem final
+        : public lux::ecs::StaticSystemAccess<
+            lux::ecs::Write<BenchmarkPosition>
+        >
+    {
+    public:
+        void update(lux::ecs::SystemContext&) noexcept {}
+    };
+
+    class OwnerNoopSystem final : public lux::ecs::StaticSystemAccess<>
+    {
+    public:
+        using lux_thread_affine = std::true_type;
+
+        explicit OwnerNoopSystem(std::uint64_t& value) noexcept
+            : value_(&value)
+        {
+        }
+
+        [[nodiscard]] bool isOnAffinityThread() const noexcept
+        {
+            return true;
+        }
+
+        void update(lux::ecs::SystemContext&) noexcept
+        {
+            ++*value_;
+        }
+
+    private:
+        std::uint64_t* value_{};
+    };
+
+    struct TaskCounter final
+    {
+        std::uint64_t value{};
+    };
+
+    void countTask(void* target, void*) noexcept
+    {
+        ++static_cast<TaskCounter*>(target)->value;
+    }
+
+    enum class EGraphShape : std::uint8_t
+    {
+        NONE,
+        CHAIN,
+        DIAMOND
+    };
+
+    [[nodiscard]] lux::task::TaskGraph makeTaskGraph(
+        std::size_t count,
+        EGraphShape shape,
+        TaskCounter& counter
+    )
+    {
+        lux::task::TaskGraphBuilder builder;
+        std::vector<lux::task::TaskId> ids;
+        ids.reserve(count);
+        for (std::size_t index{}; index < count; ++index)
+        {
+            const auto task = builder.addTask(
+                {std::addressof(counter), &countTask},
+                (index & 3U) == 0U
+                    ? lux::task::ETaskAffinity::OWNER_THREAD
+                    : lux::task::ETaskAffinity::WORKER
+            );
+            if (!task)
+                std::abort();
+            ids.push_back(*task);
+        }
+
+        if (shape == EGraphShape::CHAIN)
+        {
+            for (std::size_t index = 1U; index < ids.size(); ++index)
+                if (!builder.addDependency(ids[index - 1U], ids[index]))
+                    std::abort();
+        }
+        else if (shape == EGraphShape::DIAMOND && ids.size() >= 4U)
+        {
+            for (std::size_t index = 1U; index + 1U < ids.size(); ++index)
+            {
+                if (!builder.addDependency(ids.front(), ids[index]) ||
+                    !builder.addDependency(ids[index], ids.back()))
+                {
+                    std::abort();
+                }
+            }
+        }
+
+        auto graph = std::move(builder).build();
+        if (!graph)
+            std::abort();
+        return std::move(*graph);
+    }
+
+    void benchmarkTaskGraphBuild(Evidence& evidence, std::size_t count)
+    {
+        TaskCounter counter;
+        for (const auto [name, shape] : {
+                 std::pair{std::string_view{"none"}, EGraphShape::NONE},
+                 std::pair{std::string_view{"chain"}, EGraphShape::CHAIN},
+                 std::pair{std::string_view{"diamond"}, EGraphShape::DIAMOND}})
+        {
+            evidence.measure(
+                std::string{"task_graph_build_"} + std::string{name},
+                count,
+                [&]
+                {
+                    auto graph = makeTaskGraph(count, shape, counter);
+                    return Observation{
+                        .dispatch_calls = graph.taskCount()
+                    };
+                }
+            );
+        }
+    }
+
+    void benchmarkTaskGraphExecute(Evidence& evidence, std::size_t count)
+    {
+        TaskCounter counter;
+        for (const auto [name, shape] : {
+                 std::pair{std::string_view{"none"}, EGraphShape::NONE},
+                 std::pair{std::string_view{"chain"}, EGraphShape::CHAIN},
+                 std::pair{std::string_view{"diamond"}, EGraphShape::DIAMOND}})
+        {
+            auto graph = makeTaskGraph(count, shape, counter);
+            lux::task::TaskExecutionScratch scratch;
+            if (!scratch.prepare(graph))
+                std::abort();
+            evidence.measure(
+                std::string{"task_graph_execute_"} + std::string{name},
+                count,
+                [&]
+                {
+                    lux::task::executeTaskGraph(
+                        lux::task::referenceTaskExecutionBackend(),
+                        graph,
+                        nullptr,
+                        scratch
+                    );
+                    return Observation{
+                        .dispatch_calls = graph.taskCount()
+                    };
+                }
+            );
+        }
+        checksum = checksum + counter.value;
+    }
+
+    struct SystemCompileFixture final
+    {
+        explicit SystemCompileFixture(
+            std::size_t count,
+            EGraphShape shape,
+            bool conflict
+        )
+            : relations(systems)
+        {
+            ids.reserve(count);
+            for (std::size_t index{}; index < count; ++index)
+            {
+                const auto id = conflict
+                    ? systems.emplace<DeclaredWriterSystem>()
+                    : systems.emplace<NoopSystem>(updates);
+                if (!id)
+                    std::abort();
+                ids.push_back(*id);
+            }
+            if (shape == EGraphShape::CHAIN)
+            {
+                for (std::size_t index = 1U; index < ids.size(); ++index)
+                    if (!relations.before(ids[index - 1U], ids[index]))
+                        std::abort();
+            }
+            else if (shape == EGraphShape::DIAMOND && ids.size() >= 4U)
+            {
+                for (std::size_t index = 1U; index + 1U < ids.size(); ++index)
+                {
+                    if (!relations.before(ids.front(), ids[index]) ||
+                        !relations.before(ids[index], ids.back()))
+                    {
+                        std::abort();
+                    }
+                }
+            }
+        }
+
+        std::uint64_t updates{};
+        lux::ecs::SystemRegistry systems;
+        lux::ecs::SystemRelations relations;
+        std::vector<lux::ecs::SystemId> ids;
+    };
+
+    void benchmarkSystemCompile(Evidence& evidence, std::size_t count)
+    {
+        struct Case final
+        {
+            std::string_view name;
+            EGraphShape shape;
+            bool conflict;
+        };
+        for (const Case value : {
+                 Case{"none", EGraphShape::NONE, false},
+                 Case{"chain", EGraphShape::CHAIN, false},
+                 Case{"diamond", EGraphShape::DIAMOND, false},
+                 Case{"all_conflict", EGraphShape::NONE, true}})
+        {
+            SystemCompileFixture fixture(count, value.shape, value.conflict);
+            lux::ecs::SystemTaskGraphCompiler compiler;
+            evidence.measure(
+                std::string{"system_compile_"} + std::string{value.name},
+                count,
+                [&]
+                {
+                    auto compilation = compiler.compile(
+                        fixture.systems,
+                        fixture.relations
+                    );
+                    if (!compilation)
+                        std::abort();
+                    return Observation{
+                        .dispatch_calls = compilation->graph.taskCount()
+                    };
+                }
+            );
+        }
+    }
+
+    void benchmarkSystemExecute(Evidence& evidence, std::size_t count)
+    {
+        lux::ecs::World world;
+        lux::ecs::detail::SystemTestRig execution(world);
+        std::uint64_t updates{};
+        for (std::size_t index{}; index < count; ++index)
+        {
+            if ((index & 3U) == 0U)
+                (void)execution.add<OwnerNoopSystem>(updates);
+            else
+                (void)execution.add<NoopSystem>(updates);
+        }
+        if (!execution.compile())
+            std::abort();
+        std::uint64_t tick{};
+        evidence.measure("system_execute_mixed_affinity", count, [&]
+        {
+            if (!execution.run(1.0F / 60.0F, ++tick))
+                std::abort();
+            return Observation{};
+        });
+        checksum = checksum + updates;
+    }
+
+    template <std::size_t... Index>
+    class MultiWriteSystem final
+        : public lux::ecs::StaticSystemAccess<
+            lux::ecs::Write<BenchmarkWrite<Index>>...
+        >
+    {
+    public:
+        void update(lux::ecs::SystemContext& context) noexcept
+        {
+            auto query = context.query<
+                lux::ecs::Write<BenchmarkWrite<Index>>...
+            >();
+            for (auto values : query)
+                ((++std::get<Index + 1U>(values).value), ...);
+        }
+    };
+
+    template <std::size_t... Index>
+    [[nodiscard]] std::unique_ptr<lux::ecs::World> multiWriteWorld(
+        std::size_t count,
+        std::index_sequence<Index...>
+    )
+    {
+        lux::ecs::WorldConfig config;
+        constexpr std::size_t kRecordBudget = sizeof...(Index) * 16U;
+        if (count <= (std::numeric_limits<std::size_t>::max)() /
+                         (std::max)(kRecordBudget, std::size_t{1U}))
+        {
+            config.changes.max_bytes = (std::max)(
+                config.changes.max_bytes,
+                count * kRecordBudget
+            );
+        }
+        auto world = std::make_unique<lux::ecs::World>(config);
+        auto result = world->mutate();
+        if (!result)
+            std::abort();
+        auto mutation = std::move(*result);
+        (mutation.reserve<BenchmarkWrite<Index>>(count), ...);
+        for (std::size_t row{}; row < count; ++row)
+        {
+            const auto entity = mutation.create();
+            (mutation.emplace<BenchmarkWrite<Index>>(entity, row), ...);
+        }
+        mutation = {};
+        lux::ecs::detail::establishWorldChangeBaseline(*world);
+        return world;
+    }
+
+    template <std::size_t... Index>
+    void benchmarkWorldMutationWrites(
+        Evidence& evidence,
+        std::size_t count,
+        std::index_sequence<Index...> sequence
+    )
+    {
+        auto world = multiWriteWorld(count, sequence);
+        auto& journal = lux::ecs::detail::WorldChangeAccess::journal(*world);
+        evidence.measure(
+            "world_change_log_write_" + std::to_string(sizeof...(Index)),
+            count,
+            [&]
+            {
+                const auto bind_before = journal.streamBindCountForTest();
+                const auto lookup_before = journal.perRecordLookupCountForTest();
+                const auto epoch_before = journal.epoch();
+                auto result = world->mutate();
+                if (!result)
+                    std::abort();
+                auto mutation = std::move(*result);
+                auto query = mutation.query<
+                    lux::ecs::Write<BenchmarkWrite<Index>>...
+                >();
+                for (auto values : query)
+                    ((++std::get<Index + 1U>(values).value), ...);
+                mutation = {};
+                return Observation{
+                    .dispatch_calls = static_cast<std::size_t>(
+                        journal.streamBindCountForTest() - bind_before
+                    ),
+                    .storage_lookups = static_cast<std::size_t>(
+                        journal.perRecordLookupCountForTest() - lookup_before
+                    ),
+                    .history_losses = static_cast<std::size_t>(
+                        journal.epoch() - epoch_before
+                    )
+                };
+            }
+        );
+    }
+
+    template <std::size_t... Index>
+    void benchmarkSystemWrites(
+        Evidence& evidence,
+        std::size_t count,
+        std::index_sequence<Index...> sequence
+    )
+    {
+        auto world = multiWriteWorld(count, sequence);
+        lux::ecs::detail::SystemTestRig execution(*world);
+        (void)execution.add<MultiWriteSystem<Index...>>();
+        if (!execution.compile(count))
+            std::abort();
+        std::uint64_t tick{};
+        evidence.measure(
+            "system_write_query_" + std::to_string(sizeof...(Index)),
+            count,
+            [&]
+            {
+                const auto bind_before = execution.laneBindCount();
+                const auto lookup_before = execution.perRecordLookupCount();
+                if (!execution.run(1.0F / 60.0F, ++tick))
+                    std::abort();
+                return Observation{
+                    .dispatch_calls = static_cast<std::size_t>(
+                        execution.laneBindCount() - bind_before
+                    ),
+                    .storage_lookups = static_cast<std::size_t>(
+                        execution.perRecordLookupCount() - lookup_before
+                    )
+                };
+            }
+        );
+    }
+
+    void benchmarkWorldChangeLog(Evidence& evidence, std::size_t count)
+    {
+        benchmarkWorldMutationWrites(
+            evidence,
+            count,
+            std::make_index_sequence<1U>{}
+        );
+        benchmarkWorldMutationWrites(
+            evidence,
+            count,
+            std::make_index_sequence<4U>{}
+        );
+        benchmarkWorldMutationWrites(
+            evidence,
+            count,
+            std::make_index_sequence<16U>{}
+        );
+    }
+
+    void benchmarkSystemWriteQuery(Evidence& evidence, std::size_t count)
+    {
+        benchmarkSystemWrites(
+            evidence,
+            count,
+            std::make_index_sequence<1U>{}
+        );
+        benchmarkSystemWrites(
+            evidence,
+            count,
+            std::make_index_sequence<4U>{}
+        );
+        benchmarkSystemWrites(
+            evidence,
+            count,
+            std::make_index_sequence<16U>{}
+        );
+    }
 
     void benchmarkQuery(Evidence& evidence, std::size_t requested_size)
     {
@@ -457,23 +899,19 @@ namespace
                 return Observation{};
             });
 
-            lux::ecs::Schedule schedule(*world);
-            auto result = schedule.edit();
-            auto edit = std::move(*result);
-            if (!edit.add(std::make_unique<PositionWriteSystem>()) ||
-                !edit.commit())
-            {
-                std::abort();
-            }
+            lux::ecs::detail::SystemTestRig schedule(*world);
+            (void)schedule.add<PositionWriteSystem>();
+            if (!schedule.compile(size)) std::abort();
             std::uint64_t tick{};
             evidence.measure("schedule_write_query", size, [&]
             {
-                schedule.run(1.0F / 60.0F, ++tick);
-                if (schedule.changeStats().overflow_count != 0U)
-                    std::abort();
+                if (!schedule.run(1.0F / 60.0F, ++tick)) std::abort();
+                if (schedule.perRecordLookupCount() != 0U) std::abort();
                 return Observation{
                     0U,
-                    schedule.changeStats().high_water_records
+                    schedule.systemCapacity(),
+                    0U,
+                    static_cast<std::size_t>(schedule.laneBindCount())
                 };
             });
         }
@@ -481,18 +919,16 @@ namespace
         for (const std::size_t count : {1U, 16U, 64U, 256U, 1024U})
         {
             lux::ecs::World world;
-            lux::ecs::Schedule schedule(world);
+            lux::ecs::detail::SystemTestRig schedule(world);
             std::uint64_t updates{};
-            auto result = schedule.edit();
-            auto edit = std::move(*result);
             for (std::size_t index{}; index < count; ++index)
-                (void)edit.add(std::make_unique<NoopSystem>(updates));
-            if (!edit.commit()) std::abort();
+                (void)schedule.add<NoopSystem>(updates);
+            if (!schedule.compile()) std::abort();
             std::uint64_t tick{};
             evidence.measure("schedule_run", count, [&]
             {
                 for (std::size_t repeat{}; repeat < 1'000U; ++repeat)
-                    schedule.run(1.0F / 60.0F, ++tick);
+                    if (!schedule.run(1.0F / 60.0F, ++tick)) std::abort();
                 return Observation{};
             });
             checksum = checksum + updates;
@@ -528,19 +964,12 @@ namespace
     }
 
     void installHierarchy(
-        lux::ecs::Schedule& schedule,
+        lux::ecs::detail::SystemTestRig& schedule,
         lux::ecs::HierarchyIndex& hierarchy
     )
     {
-        auto result = schedule.edit();
-        auto edit = std::move(*result);
-        if (!edit.add(
-                std::make_unique<lux::ecs::HierarchySystem>(hierarchy),
-                lux::ecs::SystemPhase::PreUpdate
-            ) || !edit.commit())
-        {
-            std::abort();
-        }
+        (void)schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+        if (!schedule.compile()) std::abort();
     }
 
     void benchmarkHierarchy(Evidence& evidence, std::size_t requested_size)
@@ -552,9 +981,9 @@ namespace
         evidence.measure("hierarchy_balanced_initial_sync", requested_size, [&]
         {
             lux::ecs::HierarchyIndex hierarchy(*world);
-            lux::ecs::Schedule schedule(*world);
+            lux::ecs::detail::SystemTestRig schedule(*world);
             installHierarchy(schedule, hierarchy);
-            schedule.run(1.0F / 60.0F, 1U);
+            if (!schedule.run(1.0F / 60.0F, 1U)) std::abort();
             if (!hierarchy.synchronized()) std::abort();
             return Observation{
                 0U, 0U, 0U, 0U,
@@ -564,13 +993,13 @@ namespace
             };
         });
         lux::ecs::HierarchyIndex hierarchy(*world);
-        lux::ecs::Schedule schedule(*world);
+        lux::ecs::detail::SystemTestRig schedule(*world);
         installHierarchy(schedule, hierarchy);
         std::uint64_t tick{1U};
-        schedule.run(1.0F / 60.0F, tick);
+        if (!schedule.run(1.0F / 60.0F, tick)) std::abort();
         evidence.measure("hierarchy_real_no_change", requested_size, [&]
         {
-            schedule.run(1.0F / 60.0F, ++tick);
+            if (!schedule.run(1.0F / 60.0F, ++tick)) std::abort();
             const auto visited =
                 lux::ecs::detail::HierarchyIndexTestAccess::visitedNodes(
                     hierarchy
@@ -593,9 +1022,9 @@ namespace
             evidence.measure(metric, stress, [&]
             {
                 lux::ecs::HierarchyIndex local(*stress_world);
-                lux::ecs::Schedule local_schedule(*stress_world);
+                lux::ecs::detail::SystemTestRig local_schedule(*stress_world);
                 installHierarchy(local_schedule, local);
-                local_schedule.run(1.0F / 60.0F, 1U);
+                if (!local_schedule.run(1.0F / 60.0F, 1U)) std::abort();
                 if (!local.synchronized()) std::abort();
                 return Observation{
                     0U, 0U, 0U, 0U,
@@ -611,10 +1040,10 @@ namespace
             EHierarchyShape::STAR
         );
         lux::ecs::HierarchyIndex star_index(*star_world);
-        lux::ecs::Schedule star_schedule(*star_world);
+        lux::ecs::detail::SystemTestRig star_schedule(*star_world);
         installHierarchy(star_schedule, star_index);
         std::uint64_t star_tick{1U};
-        star_schedule.run(1.0F / 60.0F, star_tick);
+        if (!star_schedule.run(1.0F / 60.0F, star_tick)) std::abort();
         bool nested{};
         evidence.measure("hierarchy_star_reparent", stress, [&]
         {
@@ -631,7 +1060,7 @@ namespace
                 }
             );
             edit = {};
-            star_schedule.run(1.0F / 60.0F, ++star_tick);
+            if (!star_schedule.run(1.0F / 60.0F, ++star_tick)) std::abort();
             if (!star_index.synchronized()) std::abort();
             return Observation{
                 0U, 0U, 0U, 0U,
@@ -649,10 +1078,10 @@ namespace
             tiny_history
         );
         lux::ecs::HierarchyIndex resync_index(*resync_world);
-        lux::ecs::Schedule resync_schedule(*resync_world);
+        lux::ecs::detail::SystemTestRig resync_schedule(*resync_world);
         installHierarchy(resync_schedule, resync_index);
         std::uint64_t resync_tick{1U};
-        resync_schedule.run(1.0F / 60.0F, resync_tick);
+        if (!resync_schedule.run(1.0F / 60.0F, resync_tick)) std::abort();
         evidence.measure("hierarchy_cursor_overflow_resync", stress, [&]
         {
             auto result = resync_world->mutate();
@@ -665,7 +1094,7 @@ namespace
                 );
             }
             edit = {};
-            resync_schedule.run(1.0F / 60.0F, ++resync_tick);
+            if (!resync_schedule.run(1.0F / 60.0F, ++resync_tick)) std::abort();
             if (!resync_index.synchronized()) std::abort();
             return Observation{
                 0U, 0U, 0U, 0U,
@@ -700,20 +1129,18 @@ namespace
             auto [world, entities] = hierarchyWorld(requested_size, shape);
             addTransforms(*world, entities);
             lux::ecs::HierarchyIndex hierarchy(*world);
-            lux::ecs::Schedule schedule(*world);
-            auto result = schedule.edit();
-            auto edit = std::move(*result);
-            const auto hierarchy_handle = edit.add(
-                std::make_unique<lux::ecs::HierarchySystem>(hierarchy),
-                lux::ecs::SystemPhase::PreUpdate
+            lux::ecs::detail::SystemTestRig schedule(*world);
+            const auto hierarchy_handle =
+                schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+            const auto transform_handle =
+                schedule.add<lux::ecs::Transform3DSystem>(hierarchy);
+            schedule.before(hierarchy_handle, transform_handle);
+            if (!schedule.compile()) std::abort();
+            auto* transform = std::addressof(
+                schedule.system<lux::ecs::Transform3DSystem>(transform_handle)
             );
-            auto owner = std::make_unique<lux::ecs::Transform3DSystem>(hierarchy);
-            auto* transform = owner.get();
-            const auto transform_handle = edit.add(std::move(owner));
-            edit.require(transform_handle, hierarchy_handle);
-            if (!edit.commit()) std::abort();
             std::uint64_t tick{1U};
-            schedule.run(1.0F / 60.0F, tick);
+            if (!schedule.run(1.0F / 60.0F, tick)) std::abort();
             evidence.measure(metric, requested_size, [&]
             {
                 auto update_result = world->mutate();
@@ -726,7 +1153,7 @@ namespace
                     }
                 );
                 update = {};
-                schedule.run(1.0F / 60.0F, ++tick);
+                if (!schedule.run(1.0F / 60.0F, ++tick)) std::abort();
                 return Observation{
                     0U,
                     lux::ecs::detail::TransformSystemTestAccess::
@@ -761,22 +1188,20 @@ namespace
         setup = {};
 
         lux::ecs::HierarchyIndex sparse_hierarchy(*sparse_world);
-        lux::ecs::Schedule sparse_schedule(*sparse_world);
-        auto schedule_result = sparse_schedule.edit();
-        auto schedule_edit = std::move(*schedule_result);
-        const auto hierarchy_handle = schedule_edit.add(
-            std::make_unique<lux::ecs::HierarchySystem>(sparse_hierarchy),
-            lux::ecs::SystemPhase::PreUpdate
+        lux::ecs::detail::SystemTestRig sparse_schedule(*sparse_world);
+        const auto hierarchy_handle =
+            sparse_schedule.add<lux::ecs::HierarchySystem>(sparse_hierarchy);
+        const auto transform_handle =
+            sparse_schedule.add<lux::ecs::Transform3DSystem>(sparse_hierarchy);
+        sparse_schedule.before(hierarchy_handle, transform_handle);
+        if (!sparse_schedule.compile()) std::abort();
+        auto* transform = std::addressof(
+            sparse_schedule.system<lux::ecs::Transform3DSystem>(
+                transform_handle
+            )
         );
-        auto owner = std::make_unique<lux::ecs::Transform3DSystem>(
-            sparse_hierarchy
-        );
-        auto* transform = owner.get();
-        const auto transform_handle = schedule_edit.add(std::move(owner));
-        schedule_edit.require(transform_handle, hierarchy_handle);
-        if (!schedule_edit.commit()) std::abort();
         std::uint64_t sparse_tick{1U};
-        sparse_schedule.run(1.0F / 60.0F, sparse_tick);
+        if (!sparse_schedule.run(1.0F / 60.0F, sparse_tick)) std::abort();
         evidence.measure("transform_sparse_high_water", active, [&]
         {
             auto result = sparse_world->mutate();
@@ -789,7 +1214,13 @@ namespace
                 }
             );
             edit = {};
-            sparse_schedule.run(1.0F / 60.0F, ++sparse_tick);
+            if (!sparse_schedule.run(
+                    1.0F / 60.0F,
+                    ++sparse_tick
+                ))
+            {
+                std::abort();
+            }
             return Observation{
                 0U,
                 lux::ecs::detail::TransformSystemTestAccess::retainedDenseBytes(
@@ -1376,23 +1807,18 @@ namespace
         }
 
         lux::ecs::HierarchyIndex hierarchy(world);
-        lux::ecs::Schedule schedule(world);
-        auto schedule_edit_result = schedule.edit();
-        auto schedule_edit = std::move(*schedule_edit_result);
-        const auto hierarchy_handle = schedule_edit.add(
-            std::make_unique<lux::ecs::HierarchySystem>(hierarchy),
-            lux::ecs::SystemPhase::PreUpdate
+        lux::ecs::detail::SystemTestRig schedule(world);
+        const auto hierarchy_handle =
+            schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+        const auto transform_handle =
+            schedule.add<lux::ecs::Transform3DSystem>(hierarchy);
+        schedule.before(hierarchy_handle, transform_handle);
+        if (!schedule.compile()) std::abort();
+        auto* transform = std::addressof(
+            schedule.system<lux::ecs::Transform3DSystem>(transform_handle)
         );
-        auto transform_owner =
-            std::make_unique<lux::ecs::Transform3DSystem>(hierarchy);
-        auto* transform = transform_owner.get();
-        const auto transform_handle = schedule_edit.add(
-            std::move(transform_owner)
-        );
-        schedule_edit.require(transform_handle, hierarchy_handle);
-        if (!schedule_edit.commit()) std::abort();
         std::uint64_t tick{1U};
-        schedule.run(1.0F / 60.0F, tick);
+        if (!schedule.run(1.0F / 60.0F, tick)) std::abort();
 
         evidence.measure(
             "world_section_live_resident_reconcile",
@@ -1407,7 +1833,7 @@ namespace
                     plan.image
                 );
                 if (!instance) std::abort();
-                schedule.run(1.0F / 60.0F, ++tick);
+                if (!schedule.run(1.0F / 60.0F, ++tick)) std::abort();
                 const auto end = Clock::now();
                 if (lux::ecs::detail::worldChangeEpoch(world) != epoch)
                     std::abort();
@@ -1422,10 +1848,10 @@ namespace
                     );
                 if (!unloadBenchmarkSection(world, *instance))
                     std::abort();
-                schedule.run(1.0F / 60.0F, ++tick);
+                if (!schedule.run(1.0F / 60.0F, ++tick)) std::abort();
                 if (lux::ecs::detail::worldChangeEpoch(world) != epoch)
                     std::abort();
-                schedule.run(1.0F / 60.0F, ++tick);
+                if (!schedule.run(1.0F / 60.0F, ++tick)) std::abort();
                 if (lux::ecs::detail::HierarchyIndexTestAccess::visitedNodes(
                         hierarchy
                     ) != 0U ||
@@ -1696,7 +2122,9 @@ int main(int argc, char** argv)
     {
         std::cerr <<
             "usage: ecs_l1_benchmark --group "
-            "query|hierarchy|transform|snapshot|world-section "
+            "query|hierarchy|transform|snapshot|world-section|"
+            "task-graph-build|task-graph-execute|system-compile|"
+            "system-execute|world-change-log|system-write-query "
             "--mode diagnostic|qualification --size N --output file.csv\n";
         return 2;
     }
@@ -1719,6 +2147,24 @@ int main(int argc, char** argv)
             break;
         case EGroup::WORLD_SECTION:
             benchmarkWorldSection(evidence, options->size);
+            break;
+        case EGroup::TASK_GRAPH_BUILD:
+            benchmarkTaskGraphBuild(evidence, options->size);
+            break;
+        case EGroup::TASK_GRAPH_EXECUTE:
+            benchmarkTaskGraphExecute(evidence, options->size);
+            break;
+        case EGroup::SYSTEM_COMPILE:
+            benchmarkSystemCompile(evidence, options->size);
+            break;
+        case EGroup::SYSTEM_EXECUTE:
+            benchmarkSystemExecute(evidence, options->size);
+            break;
+        case EGroup::WORLD_CHANGE_LOG:
+            benchmarkWorldChangeLog(evidence, options->size);
+            break;
+        case EGroup::SYSTEM_WRITE_QUERY:
+            benchmarkSystemWriteQuery(evidence, options->size);
             break;
         }
     }

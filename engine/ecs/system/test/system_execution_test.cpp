@@ -6,6 +6,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <span>
 
 namespace
 {
@@ -108,6 +109,29 @@ namespace
     public:
         void update(lux::ecs::SystemContext&) noexcept {}
     };
+
+    struct AffinityProbe final
+    {
+        std::size_t worker_tasks{};
+        std::size_t owner_tasks{};
+    };
+
+    void executeWave(
+        void* state,
+        std::span<const lux::task::TaskExecutionItem> items,
+        void* context
+    ) noexcept
+    {
+        auto& probe = *static_cast<AffinityProbe*>(state);
+        for (const auto& item : items)
+        {
+            if (item.affinity == lux::task::ETaskAffinity::OWNER_THREAD)
+                ++probe.owner_tasks;
+            else
+                ++probe.worker_tasks;
+            item.invocation.invoke(item.invocation.target, context);
+        }
+    }
 }
 
 int main()
@@ -140,6 +164,7 @@ int main()
     lux::ecs::SystemExecutionScratch scratch;
     assert(scratch.prepare(compilation, 4U));
 
+    AffinityProbe affinity;
     {
         lux::ecs::EcsExecutionContext context(
             world,
@@ -149,11 +174,13 @@ int main()
             1U
         );
         assert(lux::ecs::executeSystemTaskGraph(
-            lux::task::referenceTaskExecutionBackend(),
+            lux::task::TaskExecutionBackendRef{&affinity, &executeWave},
             compilation,
             context
         ));
     }
+    assert(affinity.worker_tasks == 2U);
+    assert(affinity.owner_tasks == 2U);
     assert(probe.started);
     assert(probe.resyncs == 1U);
     assert(world.get<Position>(entity).value == 1);
@@ -178,6 +205,24 @@ int main()
     assert(scratch.laneBindCount() == 2U);
     assert(scratch.perRecordLookupCount() == 0U);
 
+    assert(relations.after(*writer, *reader));
+    {
+        lux::ecs::EcsExecutionContext context(
+            world,
+            systems,
+            scratch,
+            0.0F,
+            3U
+        );
+        const auto stale = lux::ecs::executeSystemTaskGraph(
+            lux::task::referenceTaskExecutionBackend(),
+            compilation,
+            context
+        );
+        assert(!stale);
+        assert(stale.error().code == lux::ecs::ESystemError::STALE_COMPILATION);
+    }
+
     const auto added = systems.emplace<NoOpSystem>();
     assert(added);
     {
@@ -186,7 +231,7 @@ int main()
             systems,
             scratch,
             0.0F,
-            3U
+            4U
         );
         const auto stale = lux::ecs::executeSystemTaskGraph(
             lux::task::referenceTaskExecutionBackend(),

@@ -48,6 +48,19 @@ int main()
 {
     using namespace lux::task;
 
+    TaskGraphBuilder empty_builder;
+    auto empty_graph = std::move(empty_builder).build();
+    assert(empty_graph);
+    assert(empty_graph->taskCount() == 0U);
+    TaskExecutionScratch empty_scratch;
+    assert(empty_scratch.prepare(*empty_graph));
+    executeTaskGraph(
+        referenceTaskExecutionBackend(),
+        *empty_graph,
+        nullptr,
+        empty_scratch
+    );
+
     std::vector<int> order;
     Probe a{1, &order};
     Probe b{2, &order};
@@ -68,6 +81,7 @@ int main()
     assert(builder.addDependency(*c_id, *d_id));
 
     auto lifetime = std::make_shared<int>(42);
+    std::weak_ptr<const void> lifetime_probe = lifetime;
     assert(builder.pinCode(lifetime));
     auto graph_result = std::move(builder).build();
     assert(graph_result);
@@ -76,6 +90,8 @@ int main()
     assert(graph.dependencyCount() == 3U);
     assert(graph.codeLifetimeCount() == 1U);
     assert(graph.contains(*a_id));
+    lifetime.reset();
+    assert(!lifetime_probe.expired());
 
     TaskExecutionScratch scratch;
     assert(scratch.prepare(graph));
@@ -126,6 +142,14 @@ int main()
     const auto cycle_result = std::move(cycle).build();
     assert(!cycle_result);
     assert(cycle_result.error().code == ETaskGraphError::DEPENDENCY_CYCLE);
+
+    // An id from a completed graph is rejected by a different empty builder.
+    // TaskId is deliberately only a slot/generation key; builders never infer
+    // ownership from integer bits alone.
+    TaskGraphBuilder foreign;
+    const auto foreign_edge = foreign.addDependency(*a_id, *b_id);
+    assert(!foreign_edge);
+    assert(foreign_edge.error().code == ETaskGraphError::INVALID_TASK);
 
     return 0;
 }

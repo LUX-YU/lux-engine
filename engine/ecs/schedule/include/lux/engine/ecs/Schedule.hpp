@@ -14,26 +14,27 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
 namespace lux::ecs
 {
-    struct ChangeScratchConfig final
+    struct ChangeScratchPolicy final
     {
-        std::size_t initial_bytes{256U * 1024U};
-        std::size_t max_bytes{8U * 1024U * 1024U};
+        std::size_t reserve_records{};
+        std::optional<std::size_t> max_records;
     };
 
     struct ScheduleConfig final
     {
-        ChangeScratchConfig changes{};
+        ChangeScratchPolicy changes{};
     };
 
     struct ScheduleChangeStats final
     {
-        std::size_t capacity_bytes{};
-        std::size_t high_water_bytes{};
+        std::size_t capacity_records{};
+        std::size_t high_water_records{};
         std::uint64_t overflow_count{};
         std::uint64_t forced_resync_count{};
     };

@@ -157,6 +157,20 @@ namespace
         bool* enabled_{};
     };
 
+    class IncompleteScratchWriter final : public lux::ecs::System
+    {
+      public:
+        void update(lux::ecs::SystemFrame& frame) noexcept override
+        {
+            for (auto [entity, value] :
+                 frame.query<lux::ecs::Write<Position>>())
+            {
+                (void)entity;
+                ++value.value;
+            }
+        }
+    };
+
     class ChangeStatusProbe final : public lux::ecs::System
     {
       public:
@@ -550,7 +564,7 @@ int main()
         bool write_enabled{};
         Schedule scratch_schedule(
             scratch_world,
-            ScheduleConfig{ChangeScratchConfig{0U, 4096U}}
+            ScheduleConfig{ChangeScratchPolicy{0U, 128U}}
         );
         auto schedule_transaction = scratch_schedule.edit();
         auto scratch_schedule_edit = std::move(*schedule_transaction);
@@ -602,11 +616,36 @@ int main()
         }
         assert(modified_positions == 300U);
         const ScheduleChangeStats stats = scratch_schedule.changeStats();
-        assert(stats.capacity_bytes == 4096U);
-        assert(stats.high_water_bytes == 4096U);
+        assert(stats.capacity_records == 128U);
+        assert(stats.high_water_records == 128U);
         assert(stats.overflow_count == 1U);
         assert(stats.forced_resync_count == 1U);
         retained->retained = {};
+    }
+
+    {
+        World incomplete_world;
+        auto transaction = incomplete_world.edit();
+        auto edit = std::move(*transaction);
+        for (std::size_t index{}; index < 300U; ++index)
+        {
+            const Entity entity = edit.create();
+            edit.emplace<Position>(entity);
+        }
+        edit = {};
+
+        Schedule incomplete_schedule(incomplete_world);
+        auto schedule_transaction = incomplete_schedule.edit();
+        auto schedule_edit = std::move(*schedule_transaction);
+        assert(schedule_edit.add(
+            std::make_unique<IncompleteScratchWriter>()
+        ));
+        assert(schedule_edit.commit());
+        incomplete_schedule.run(1.0F / 60.0F, 1U);
+        const auto stats = incomplete_schedule.changeStats();
+        assert(stats.high_water_records == 300U);
+        assert(stats.overflow_count == 0U);
+        assert(stats.forced_resync_count == 0U);
     }
 
     {

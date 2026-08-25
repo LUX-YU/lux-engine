@@ -27,9 +27,9 @@ int main()
     lux::ecs::Schedule schedule{
         world,
         lux::ecs::ScheduleConfig{
-            lux::ecs::ChangeScratchConfig{4096U, 4096U}}
+            lux::ecs::ChangeScratchPolicy{64U, 64U}}
     };
-    if (schedule.changeStats().capacity_bytes != 4096U)
+    if (schedule.changeStats().capacity_records != 64U)
         return 1;
     std::uint32_t count{};
     auto edit_result = schedule.edit();

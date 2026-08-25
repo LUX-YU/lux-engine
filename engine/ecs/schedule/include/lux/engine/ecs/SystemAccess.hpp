@@ -21,6 +21,7 @@ namespace lux::ecs
     struct ComponentAccess final
     {
         lux::cxx::TypeToken type;
+        std::uint64_t storage{};
         EAccessMode mode{EAccessMode::READ};
     };
 
@@ -112,6 +113,8 @@ namespace lux::ecs
                 ComponentAccess{
                     lux::cxx::typeToken<
                         typename AccessTraits<Component>::ComponentType>(),
+                    entt::type_hash<
+                        typename AccessTraits<Component>::ComponentType>::value(),
                     AccessTraits<Component>::kWrite
                         ? EAccessMode::WRITE
                         : EAccessMode::READ}...};

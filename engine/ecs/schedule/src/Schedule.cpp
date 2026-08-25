@@ -101,41 +101,33 @@ namespace lux::ecs::detail
         HandleKey provider;
     };
 
-    struct ShardRecord final
-    {
-        std::uint64_t storage{};
-        Entity entity{NullEntity};
-        EComponentChangeKind kind{EComponentChangeKind::MODIFIED};
-    };
-
     inline constexpr std::size_t kChangeScratchBlockBytes = 4096U;
     inline constexpr std::size_t kChangeScratchRecordsPerBlock =
         (kChangeScratchBlockBytes - sizeof(void*) - sizeof(std::size_t)) /
-        sizeof(ShardRecord);
+        sizeof(Entity);
 
     struct ChangeScratchBlock final
     {
         ChangeScratchBlock* next{};
         std::size_t count{};
-        std::array<ShardRecord, kChangeScratchRecordsPerBlock> records{};
+        std::array<Entity, kChangeScratchRecordsPerBlock> records{};
     };
     static_assert(sizeof(ChangeScratchBlock) <= kChangeScratchBlockBytes);
 
     class ChangeScratchArena final
     {
       public:
-        explicit ChangeScratchArena(ChangeScratchConfig config)
-            : max_blocks_(config.max_bytes / kChangeScratchBlockBytes)
+        explicit ChangeScratchArena(ChangeScratchPolicy policy)
+            : max_records_(policy.max_records)
         {
             detail::require(
-                config.initial_bytes <= config.max_bytes &&
-                max_blocks_ != 0U
+                !max_records_ ||
+                policy.reserve_records <= *max_records_
             );
-            owned_.reserve(max_blocks_);
-            const std::size_t initial_blocks = std::min(
-                max_blocks_,
-                config.initial_bytes / kChangeScratchBlockBytes
+            const std::size_t initial_blocks = blockCountFor(
+                policy.reserve_records
             );
+            owned_.reserve(initial_blocks);
             for (std::size_t index{}; index < initial_blocks; ++index)
             {
                 auto block = std::make_unique<ChangeScratchBlock>();
@@ -143,6 +135,24 @@ namespace lux::ecs::detail
                 owned_.push_back(std::move(block));
                 pushFree(*value);
             }
+        }
+
+        [[nodiscard]] bool reserveRecord() noexcept
+        {
+            if (max_records_ && in_use_records_ >= *max_records_)
+                return false;
+            ++in_use_records_;
+            high_water_records_ = std::max(
+                high_water_records_,
+                in_use_records_
+            );
+            return true;
+        }
+
+        void cancelRecord() noexcept
+        {
+            detail::require(in_use_records_ != 0U);
+            --in_use_records_;
         }
 
         [[nodiscard]] ChangeScratchBlock* acquire() noexcept
@@ -154,7 +164,8 @@ namespace lux::ecs::detail
                 free_ = result->next;
                 result->next = nullptr;
             }
-            else if (owned_.size() < max_blocks_)
+            else if (!max_records_ ||
+                     owned_.size() < blockCountFor(*max_records_))
             {
                 try
                 {
@@ -171,8 +182,6 @@ namespace lux::ecs::detail
                 return nullptr;
 
             result->count = 0U;
-            ++in_use_;
-            high_water_ = std::max(high_water_, in_use_);
             return result;
         }
 
@@ -181,24 +190,37 @@ namespace lux::ecs::detail
             while (block != nullptr)
             {
                 ChangeScratchBlock* next = block->next;
-                detail::require(in_use_ != 0U);
-                --in_use_;
+                detail::require(in_use_records_ >= block->count);
+                in_use_records_ -= block->count;
                 pushFree(*block);
                 block = next;
             }
         }
 
-        [[nodiscard]] std::size_t capacityBytes() const noexcept
+        [[nodiscard]] std::size_t capacityRecords() const noexcept
         {
-            return max_blocks_ * kChangeScratchBlockBytes;
+            const std::size_t physical =
+                owned_.size() * kChangeScratchRecordsPerBlock;
+            return max_records_
+                ? std::min(physical, *max_records_)
+                : physical;
         }
 
-        [[nodiscard]] std::size_t highWaterBytes() const noexcept
+        [[nodiscard]] std::size_t highWaterRecords() const noexcept
         {
-            return high_water_ * kChangeScratchBlockBytes;
+            return high_water_records_;
         }
 
       private:
+        [[nodiscard]] static constexpr std::size_t blockCountFor(
+            std::size_t records
+        ) noexcept
+        {
+            return records == 0U
+                ? 0U
+                : 1U + (records - 1U) / kChangeScratchRecordsPerBlock;
+        }
+
         void pushFree(ChangeScratchBlock& block) noexcept
         {
             block.count = 0U;
@@ -208,21 +230,43 @@ namespace lux::ecs::detail
 
         std::vector<std::unique_ptr<ChangeScratchBlock>> owned_;
         ChangeScratchBlock* free_{};
-        std::size_t max_blocks_{};
-        std::size_t in_use_{};
-        std::size_t high_water_{};
+        std::optional<std::size_t> max_records_;
+        std::size_t in_use_records_{};
+        std::size_t high_water_records_{};
+    };
+
+    struct ChangeLane final
+    {
+        std::uint64_t storage{};
+        ChangeScratchBlock* first{};
+        ChangeScratchBlock* last{};
     };
 
     struct ChangeShard final
     {
         ChangeScratchArena* arena{};
-        ChangeScratchBlock* first{};
-        ChangeScratchBlock* last{};
+        std::vector<ChangeLane> lanes;
+        bool access_complete{};
         bool overflow{};
+
+        void configure(
+            std::span<const ComponentAccess> access,
+            bool complete
+        )
+        {
+            access_complete = complete;
+            lanes.clear();
+            for (const ComponentAccess& component : access)
+            {
+                if (component.mode == EAccessMode::WRITE)
+                    lanes.push_back(ChangeLane{component.storage});
+            }
+        }
 
         void begin(ChangeScratchArena& value) noexcept
         {
-            detail::require(first == nullptr && last == nullptr);
+            for (const ChangeLane& lane : lanes)
+                detail::require(lane.first == nullptr && lane.last == nullptr);
             arena = std::addressof(value);
             overflow = false;
         }
@@ -230,33 +274,78 @@ namespace lux::ecs::detail
         void release() noexcept
         {
             detail::require(arena != nullptr);
-            arena->release(first);
+            for (ChangeLane& lane : lanes)
+            {
+                arena->release(lane.first);
+                lane.first = nullptr;
+                lane.last = nullptr;
+            }
             arena = nullptr;
-            first = nullptr;
-            last = nullptr;
         }
 
-        void append(ShardRecord record) noexcept
+        void append(
+            std::uint64_t storage,
+            Entity entity,
+            EComponentChangeKind kind
+        ) noexcept
         {
             if (overflow)
                 return;
-            if (last == nullptr ||
-                last->count == kChangeScratchRecordsPerBlock)
+            detail::require(kind == EComponentChangeKind::MODIFIED);
+            auto found = std::find_if(
+                lanes.begin(),
+                lanes.end(),
+                [storage](const ChangeLane& lane) noexcept
+                {
+                    return lane.storage == storage;
+                }
+            );
+            if (found == lanes.end())
             {
-                ChangeScratchBlock* block = arena->acquire();
-                if (block == nullptr)
+                if (access_complete)
+                {
+#if !defined(NDEBUG) || defined(LUX_ECS_CONTRACT_CHECKS)
+                    detail::contractFailure();
+#else
+                    overflow = true;
+                    return;
+#endif
+                }
+                try
+                {
+                    lanes.push_back(ChangeLane{storage});
+                    found = std::prev(lanes.end());
+                }
+                catch (...)
                 {
                     overflow = true;
                     return;
                 }
-                if (last != nullptr)
-                    last->next = block;
-                else
-                    first = block;
-                last = block;
             }
-            last->records[last->count] = record;
-            ++last->count;
+
+            if (!arena->reserveRecord())
+            {
+                overflow = true;
+                return;
+            }
+            if (found->last == nullptr ||
+                found->last->count == kChangeScratchRecordsPerBlock)
+            {
+                ChangeScratchBlock* block = arena->acquire();
+                if (block == nullptr)
+                {
+                    arena->cancelRecord();
+                    overflow = true;
+                    return;
+                }
+                if (found->last != nullptr)
+                    found->last->next = block;
+                else
+                    found->first = block;
+                found->last = block;
+            }
+            found->last->records[found->last->count] = entity;
+            ++found->last->count;
         }
 
         [[nodiscard]] ChangeRecorder recorder() noexcept
@@ -267,7 +356,7 @@ namespace lux::ecs::detail
                    EComponentChangeKind kind) noexcept
                 {
                     auto& shard = *static_cast<ChangeShard*>(context);
-                    shard.append(ShardRecord{storage, entity, kind});
+                    shard.append(storage, entity, kind);
                 }};
         }
     };
@@ -494,6 +583,10 @@ namespace lux::ecs
                     declared.external.begin(), declared.external.end()
                 );
                 slot.access_complete = declared.complete;
+                slot.changes.configure(
+                    slot.component_access,
+                    slot.access_complete
+                );
                 slot.commands->reserve(64);
 
                 for (std::size_t left{};
@@ -1494,22 +1587,24 @@ namespace lux::ecs
                     for (const std::uint32_t index : wave)
                     {
                         const auto& shard = impl_->slots[index]->changes;
-                        for (const detail::ChangeScratchBlock* block =
-                                 shard.first;
-                             block != nullptr; block = block->next)
+                        for (const detail::ChangeLane& lane : shard.lanes)
                         {
-                            for (std::size_t record_index{};
-                                 record_index < block->count;
-                                 ++record_index)
+                            for (const detail::ChangeScratchBlock* block =
+                                     lane.first;
+                                 block != nullptr;
+                                 block = block->next)
                             {
-                                const auto& record =
-                                    block->records[record_index];
-                                detail::recordWorldComponentChange(
-                                    *impl_->world,
-                                    record.storage,
-                                    record.entity,
-                                    record.kind
-                                );
+                                for (std::size_t record_index{};
+                                     record_index < block->count;
+                                     ++record_index)
+                                {
+                                    detail::recordWorldComponentChange(
+                                        *impl_->world,
+                                        lane.storage,
+                                        block->records[record_index],
+                                        EComponentChangeKind::MODIFIED
+                                    );
+                                }
                             }
                         }
                     }
@@ -1606,8 +1701,8 @@ namespace lux::ecs
     {
         detail::require(std::this_thread::get_id() == impl_->owner_thread);
         return ScheduleChangeStats{
-            impl_->change_scratch.capacityBytes(),
-            impl_->change_scratch.highWaterBytes(),
+            impl_->change_scratch.capacityRecords(),
+            impl_->change_scratch.highWaterRecords(),
             impl_->change_overflows,
             impl_->forced_change_resyncs,
         };

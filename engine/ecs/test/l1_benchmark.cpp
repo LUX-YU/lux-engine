@@ -468,10 +468,7 @@ namespace
                 return Observation{};
             });
 
-            lux::ecs::ScheduleConfig config;
-            config.changes.initial_bytes = 32U * 1024U * 1024U;
-            config.changes.max_bytes = 32U * 1024U * 1024U;
-            lux::ecs::Schedule schedule(*world, config);
+            lux::ecs::Schedule schedule(*world);
             auto result = schedule.edit();
             auto edit = std::move(*result);
             if (!edit.add(std::make_unique<PositionWriteSystem>()) ||
@@ -485,7 +482,7 @@ namespace
                 schedule.run(1.0F / 60.0F, ++tick);
                 return Observation{
                     0U,
-                    schedule.changeStats().high_water_bytes
+                    schedule.changeStats().high_water_records
                 };
             });
         }

@@ -19,7 +19,7 @@ implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
 - [x] WDP-5: Migrate PersistentId/Parent/Transform load contributions and
       retire `persistence_contract` plus the remaining v1 codegen bindings.
 - [x] WDP-6: Clone WorldSnapshot by COPY component storage.
-- [ ] WDP-7: Complete corruption, install and architecture gates.
+- [x] WDP-7: Complete corruption, install and architecture gates.
 - [ ] WDP-8: Complete 1M diagnostic/qualification evidence against raw EnTT.
 
 Stop line: `Performance Contract Rejected / Public API Freeze Blocked / Domain

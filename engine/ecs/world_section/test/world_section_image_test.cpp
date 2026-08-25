@@ -124,6 +124,26 @@ int main()
         EWorldSectionError::UNSUPPORTED_FORMAT_VERSION
     );
 
+    auto bad_contract = buildFixture(sectionId(), 0U, {});
+    patchU32(bad_contract, 8U, 2U);
+    auto unsupported_contract = WorldSectionImage::open(
+        std::move(bad_contract)
+    );
+    assert(!unsupported_contract);
+    assert(
+        unsupported_contract.error().code ==
+        EWorldSectionError::UNSUPPORTED_LOADER_CONTRACT
+    );
+
+    WorldSectionLimits small_limits;
+    small_limits.max_entities = 2U;
+    auto over_limit = WorldSectionImage::open(
+        buildFixture(sectionId(), 3U, {dense_fixed}),
+        small_limits
+    );
+    assert(!over_limit);
+    assert(over_limit.error().code == EWorldSectionError::LIMIT_EXCEEDED);
+
     auto truncated = buildFixture(sectionId(), 0U, {});
     truncated.pop_back();
     auto truncated_result = WorldSectionImage::open(std::move(truncated));
@@ -174,5 +194,27 @@ int main()
     assert(!invalid_offsets);
     assert(
         invalid_offsets.error().code == EWorldSectionError::INVALID_OFFSETS
+    );
+
+    auto wrong_fixed_size = buildFixture(sectionId(), 3U, {dense_fixed});
+    const std::size_t fixed_descriptor =
+        WorldSectionHeaderBytes + dense_fixed.schema_name.size();
+    patchU64(
+        wrong_fixed_size,
+        fixed_descriptor + 72U,
+        dense_fixed.payload.size() - 1U
+    );
+    auto invalid_fixed = WorldSectionImage::open(
+        std::move(wrong_fixed_size)
+    );
+    assert(!invalid_fixed);
+    assert(invalid_fixed.error().code == EWorldSectionError::INVALID_PAYLOAD);
+
+    auto overlap = buildFixture(sectionId(), 3U, {dense_fixed});
+    patchU64(overlap, fixed_descriptor + 64U, 0U);
+    auto overlapping = WorldSectionImage::open(std::move(overlap));
+    assert(!overlapping);
+    assert(
+        overlapping.error().code == EWorldSectionError::OVERLAPPING_REGION
     );
 }

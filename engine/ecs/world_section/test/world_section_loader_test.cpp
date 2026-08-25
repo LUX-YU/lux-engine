@@ -36,6 +36,11 @@ namespace test
     {
         lux::ecs::Entity target{lux::ecs::NullEntity};
     };
+
+    struct AllocationFailure final
+    {
+        std::uint32_t value{};
+    };
 } // namespace test
 
 namespace lux::meta
@@ -74,7 +79,37 @@ namespace lux::meta
             typeStaticField<&test::Link::target>("target")
         );
     };
+
+    template <>
+    struct TypeStaticInfo<test::AllocationFailure>
+    {
+        static constexpr bool available = true;
+        static constexpr auto fields = std::make_tuple(
+            typeStaticField<&test::AllocationFailure::value>("value")
+        );
+    };
 } // namespace lux::meta
+
+namespace lux::serialization
+{
+    template <>
+    struct Serializer<test::AllocationFailure>
+    {
+        template <class Reader>
+        [[nodiscard]] static SerializationResult read(
+            Reader& reader,
+            test::AllocationFailure&
+        ) noexcept
+        {
+            return lux::cxx::unexpected<SerializationFailure>(
+                SerializationFailure{
+                    ESerializationError::ALLOCATION_FAILURE,
+                    reader.offset()
+                }
+            );
+        }
+    };
+} // namespace lux::serialization
 
 namespace
 {
@@ -158,10 +193,20 @@ namespace
         return result;
     }
 
+    [[nodiscard]] FixtureColumn allocationFailureColumn()
+    {
+        FixtureColumn result;
+        result.schema_name = "test.AllocationFailure";
+        result.value_encoding = EWorldSectionValueEncoding::FIXED;
+        result.fixed_stride = 4U;
+        result.payload.resize(3U * sizeof(std::uint32_t));
+        return result;
+    }
+
     struct FixtureContext final
     {
         ComponentSchemaSet schemas;
-        std::array<ComponentLoadBinding, 4U> bindings;
+        std::array<ComponentLoadBinding, 5U> bindings;
         ComponentLoadContribution contribution;
         ComponentLoadSet loads;
     };
@@ -173,6 +218,9 @@ namespace
             makeComponentSchema<test::Fixed>(componentSchemaId("test.Fixed")),
             makeComponentSchema<test::Variable>(componentSchemaId("test.Variable")),
             makeComponentSchema<test::Link>(componentSchemaId("test.Link")),
+            makeComponentSchema<test::AllocationFailure>(
+                componentSchemaId("test.AllocationFailure")
+            ),
         });
         assert(schemas);
         FixtureContext result{
@@ -189,6 +237,9 @@ namespace
                 ),
                 bindComponentLoad<test::Link>(
                     *schemas->find(componentSchemaId("test.Link"))
+                ),
+                bindComponentLoad<test::AllocationFailure>(
+                    *schemas->find(componentSchemaId("test.AllocationFailure"))
                 ),
             },
             {},
@@ -228,6 +279,84 @@ namespace
         }
         return count;
     }
+
+    class RetainingSystem final : public System
+    {
+      public:
+        [[nodiscard]] SystemAccess access() const noexcept override
+        {
+            return lux::ecs::access(query<Read<test::Fixed>>());
+        }
+
+        void update(SystemFrame& frame) noexcept override
+        {
+            auto current = frame.changes(cursor_);
+            last_status_ = current.status();
+            if (retain_next_)
+            {
+                retained_ = std::move(current);
+                retain_next_ = false;
+            }
+        }
+
+        void retainNext() noexcept
+        {
+            retain_next_ = true;
+        }
+
+        void release() noexcept
+        {
+            retained_ = {};
+        }
+
+        [[nodiscard]] const ComponentChanges<test::Fixed>& retained() const
+            noexcept
+        {
+            return retained_;
+        }
+
+        [[nodiscard]] EChangeReadStatus lastStatus() const noexcept
+        {
+            return last_status_;
+        }
+
+      private:
+        ChangeCursor<test::Fixed> cursor_;
+        ComponentChanges<test::Fixed> retained_;
+        EChangeReadStatus last_status_{EChangeReadStatus::CURRENT};
+        bool retain_next_{};
+    };
+
+    class ExecutingLoadSystem final : public System
+    {
+      public:
+        ExecutingLoadSystem(
+            World& world,
+            const ComponentLoadSet& loads,
+            const WorldSectionImage& image
+        ) noexcept
+            : world_(&world), loads_(&loads), image_(&image)
+        {
+        }
+
+        void update(SystemFrame&) noexcept override
+        {
+            auto loaded = WorldSectionLoader::load(*world_, *loads_, *image_);
+            rejected_ = !loaded &&
+                loaded.error().code == EWorldSectionError::WORLD_BUSY;
+        }
+
+        [[nodiscard]] bool rejected() const noexcept
+        {
+            return rejected_;
+        }
+
+      private:
+        World* world_{};
+        const ComponentLoadSet* loads_{};
+        const WorldSectionImage* image_{};
+        bool rejected_{};
+    };
 } // namespace
 
 int main()
@@ -303,6 +432,21 @@ int main()
     assert(bad.error().code == EWorldSectionError::DECODE_FAILED);
     assert(fixedCount(world) == before_failure);
 
+    auto allocation_image = WorldSectionImage::open(buildFixture(
+        sectionId(1U),
+        3U,
+        {fixedColumn(), allocationFailureColumn()}
+    ));
+    assert(allocation_image);
+    auto allocation = WorldSectionLoader::load(
+        world,
+        context.loads,
+        *allocation_image
+    );
+    assert(!allocation);
+    assert(allocation.error().code == EWorldSectionError::ALLOCATION_FAILURE);
+    assert(fixedCount(world) == before_failure);
+
     FixtureColumn missing_column = fixedColumn();
     missing_column.schema_name = "test.Missing";
     auto missing_image = WorldSectionImage::open(buildFixture(
@@ -336,6 +480,78 @@ int main()
     assert(!version);
     assert(version.error().code == EWorldSectionError::BINDING_MISMATCH);
     assert(fixedCount(world) == before_failure);
+
+    {
+        World history_world;
+        Entity history_entity{NullEntity};
+        {
+            auto edit = history_world.edit();
+            assert(edit);
+            history_entity = edit->create();
+            edit->emplace<test::Fixed>(history_entity, 1U, 2U);
+        }
+        Schedule schedule(history_world);
+        auto system = std::make_unique<RetainingSystem>();
+        RetainingSystem* retaining = system.get();
+        auto schedule_edit = schedule.edit();
+        assert(schedule_edit);
+        const auto handle = schedule_edit->add(std::move(system));
+        assert(handle);
+        assert(schedule_edit->commit());
+        schedule.run(1.0F / 60.0F, 1U);
+        assert(
+            retaining->lastStatus() == EChangeReadStatus::RESYNC_REQUIRED
+        );
+        {
+            auto edit = history_world.edit();
+            assert(edit);
+            edit->update<test::Fixed>(
+                history_entity,
+                [](test::Fixed& value) noexcept
+                {
+                    ++value.first;
+                }
+            );
+        }
+        retaining->retainNext();
+        schedule.run(1.0F / 60.0F, 2U);
+        assert(retaining->lastStatus() == EChangeReadStatus::CURRENT);
+        assert(retaining->retained().size() == 1U);
+
+        auto history_image = validImage(sectionId(1U));
+        auto history_section = WorldSectionLoader::load(
+            history_world,
+            context.loads,
+            history_image
+        );
+        assert(history_section);
+        assert(retaining->retained().size() == 1U);
+        assert((*retaining->retained().begin()).entity == history_entity);
+        retaining->release();
+        schedule.run(1.0F / 60.0F, 3U);
+        assert(
+            retaining->lastStatus() == EChangeReadStatus::RESYNC_REQUIRED
+        );
+        assert(WorldSectionLoader::unload(history_world, *history_section));
+    }
+
+    {
+        World executing_world;
+        auto executing_image = validImage(sectionId(1U));
+        Schedule schedule(executing_world);
+        auto system = std::make_unique<ExecutingLoadSystem>(
+            executing_world,
+            context.loads,
+            executing_image
+        );
+        ExecutingLoadSystem* executing = system.get();
+        auto schedule_edit = schedule.edit();
+        assert(schedule_edit);
+        assert(schedule_edit->add(std::move(system)));
+        assert(schedule_edit->commit());
+        schedule.run(1.0F / 60.0F, 1U);
+        assert(executing->rejected());
+    }
 
     const auto stale_entity = second->entities().front();
     {

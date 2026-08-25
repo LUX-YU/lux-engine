@@ -15,7 +15,7 @@ namespace lux::ecs
     class LUX_ENGINE_ECS_SNAPSHOT_PUBLIC WorldSnapshot final
     {
       public:
-        WorldSnapshot() noexcept = default;
+        WorldSnapshot() noexcept;
         WorldSnapshot(const WorldSnapshot&) = delete;
         WorldSnapshot& operator=(const WorldSnapshot&) = delete;
         WorldSnapshot(WorldSnapshot&&) noexcept;

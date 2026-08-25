@@ -31,6 +31,8 @@ namespace lux::ecs
         std::unique_ptr<World> shadow;
     };
 
+    WorldSnapshot::WorldSnapshot() noexcept = default;
+
     namespace
     {
         [[nodiscard]] lux::cxx::expected<void, SnapshotError>

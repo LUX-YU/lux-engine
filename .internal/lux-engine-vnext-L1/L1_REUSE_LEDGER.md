@@ -18,6 +18,10 @@
 | `EntitySectionImage` / LXWS / LXWC v1 | `world_section` / LXWC v2 | RETIRE/REWRITE | checked LE parsing and column/ordinal semantics only; archetype/entity DTOs retired | structural fuzz/corruption, transactional load/unload and 1m scaling tests |
 | `WorldSectionWriter::build(World, ...)` | future L4/L5 Cook | RETIRE FROM L1 | no production code; deterministic storage traversal intent only | L1 gate rejects World-to-bytes and Cook dependencies |
 | `ComponentPersistenceBinding` / `persistence_contract` | `ComponentLoadBinding` in `world_section` | RETIRE/REWRITE | automatic typed column thunk and code pin | immutable load-set, one-call-per-column and installed extension consumer tests |
+| byte-shaped fixed Schedule scratch | adaptive record-count lane arena | RETIRE/REWRITE | history-loss fallback only | 1M complete/incomplete-access write, zero-overflow and bounded-cap probes |
+| load/unload global history loss | lexical exact change publication | RETIRE/REWRITE | pin-safe loss epoch only for allocation failure | live 1M resident + 10K section reconciliation, zero normal history loss |
+| Entity × all World storages unload scan | section membership ledger | RETIRE/REWRITE | none | gameplay-added Component unload and linear complexity counters |
+| implicit Component snapshot/load policy | explicit generated COPY/REBUILD × LOAD/OMIT projections | RETIRE/REWRITE | stable schema identity only | codegen-stage missing-policy rejection and four-combination tests |
 | Parent/Transform snapshot special cases | 无 | RETIRE | 无 | generic snapshot + rebuild pilot |
 | old hierarchy preorder/interval | 无 | RETIRE | Parent remains canonical; linear cold validation, O(1) mutation-order adjacency and embedded orphan repair replace interval authority | 1m real graph、deep-chain/star/resync counters, injected orphan command failure and stale-generation repair tests |
 | old transform dirty propagation | Transform Systems | REUSE algorithm | dirty subtree root reduction only; dense stamps/change cursors replace unordered/full scans | no-change zero-visit, leaf/root dirty and codec tests |

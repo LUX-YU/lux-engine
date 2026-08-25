@@ -38,10 +38,28 @@ EnTT range insertion. Runtime complexity is `O(N + M + R + B)`.
 
 `WorldSectionLoader` loads into an existing owner-thread World at an idle safe
 point, including a World with a live Schedule. It suppresses per-row Change
-Journal records. A successful load or unload marks history loss once so every
-cursor resynchronizes without invalidating pinned ranges. A failed transaction
-rolls back all created entities and publishes neither canonical state nor
+Journal records. `WorldSectionLoadBatch` stages any number of load/unload
+operations under one lexical edit and commits them in the fixed observation
+order remove, destroy, create, add. A normal commit publishes exact changes and
+does not mark history loss. If journal publication cannot allocate, canonical
+commit remains successful and the batch marks one pin-safe history-loss epoch.
+A failed transaction rolls back all staged canonical mutations and publishes no
 change history.
+
+`WorldSectionInstance` is World-identified and has explicit
+`INACTIVE/STAGED/ACTIVE` lifetime. A staged instance cannot move, destruct or be
+staged again; an active instance must be explicitly unloaded. It pins only code
+owners used by its materialized columns. A section-local slot/generation
+membership ledger tracks both loaded and gameplay-added Components, making
+unload linear in section entities plus their current memberships without
+scanning every World storage for every Entity.
+
+LXWC representation widths and versions are format facts. Entity, column,
+component-row and image validation limits, decode scratch, and Schedule change
+scratch are caller-provided runtime policies. Schedule scratch is expressed in
+change records, grows adaptively when uncapped, and preserves history-loss
+fallback on allocation failure. This follows the repository rule: **Format
+defines widths; Product defines capacities.**
 
 `WorldSnapshot` is independently rewritten to traverse each COPY storage once.
 Snapshot, WorldSection, persistent state and Authoring never share a universal
@@ -69,7 +87,8 @@ The previous LXWC performance conclusion is withdrawn.
 
 The v2 loader, storage-driven Snapshot, 1M scaling evidence and installed
 consumer gates now pass. Qualification evidence is recorded under
-`.internal/benchmarks/20260825-l1-world-data-path`. Current status is:
+`.internal/benchmarks/20260825-l1-world-data-path-v2`; thresholds are external
+policy rather than L1 C++ constants. Current status is:
 
 ```text
 Foundation Qualified

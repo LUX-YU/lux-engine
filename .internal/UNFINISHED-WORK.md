@@ -23,23 +23,31 @@ implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
 - [x] WDP-8: Complete the first 1M diagnostic pass against raw EnTT. The
       resulting performance conclusion is rejected by the second independent
       audit and retained only as historical evidence.
-- [ ] WDP2-1: Establish World identity, three-state section instances and a
+- [x] WDP2-1: Establish World identity, three-state section instances and a
       non-installed privileged storage boundary.
-- [ ] WDP2-2: Separate LXWC representation constants from caller-provided
+- [x] WDP2-2: Separate LXWC representation constants from caller-provided
       validation/load budgets and make wire shape serializer-aware.
-- [ ] WDP2-3: Replace byte-shaped Schedule scratch defaults with adaptive
+- [x] WDP2-3: Replace byte-shaped Schedule scratch defaults with adaptive
       record-count policy and complete/incomplete-access storage lanes.
-- [ ] WDP2-4: Add lexical multi-section load batches, exact Change Journal
+- [x] WDP2-4: Add lexical multi-section load batches, exact Change Journal
       publication and a section-local membership ledger with linear unload.
-- [ ] WDP2-5: Orthogonalize generated Component policies and pin only code
+- [x] WDP2-5: Orthogonalize generated Component policies and pin only code
       owners actually materialized by an active section.
-- [ ] WDP2-6: Qualify adversarial failure, live-resident reconciliation,
+- [x] WDP2-6: Qualify adversarial failure, live-resident reconciliation,
       structural counters, scaling exponent and relative baselines.
 
-Qualification status: `L1 Architecture Accepted / Freeze Candidate Rejected
-by Independent Audit / Targeted Hardening Required / Performance Contract
-Rejected / Domain Migration Blocked`.
+Qualification status: `Foundation Qualified / L1 Architecture Accepted /
+Correctness Hardened / Performance Contract Passed / Public API Freeze
+Candidate / Independent Re-audit Required / Domain Migration Blocked`.
 L2/L3/L4/L5 remain design boundaries only in this phase.
+
+Evidence is retained in
+`.internal/benchmarks/20260825-l1-world-data-path-v2`; its external policy passes
+two relative, one scaling and four structural rules. Windows
+RelWithDebInfo/Hardened pass 79/79 CTest, Debug passes 66/66, Android arm64
+PLAYER compiles, and all configured trees report no work on the second Ninja
+invocation. A fresh configured prefix passes the installed architecture gate
+and all three independent consumers build and run.
 
 The hardening contract adopts **Format defines widths; Product defines
 capacities**. LXWC widths/version remain fixed representation facts. Entity,

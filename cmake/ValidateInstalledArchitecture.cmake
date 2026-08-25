@@ -31,11 +31,18 @@ file(GLOB_RECURSE installed_text LIST_DIRECTORIES false
     "${prefix}/*.cmake"
 )
 foreach(entry IN LISTS installed_text)
+    file(TO_CMAKE_PATH "${entry}" normalized)
     file(READ "${entry}" content)
     if(content MATCHES "[/\\\\]legacy[/\\\\]" OR
-       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|[.]ecs_persistence[.]hpp|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|LUX_REBUILD_COMPONENT_SCHEMA|CloneFn|default_emplace|COPY_WITHOUT_CLONE|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
+       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|[.]ecs_persistence[.]hpp|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|LUX_REBUILD_COMPONENT_SCHEMA|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
        content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")
         message(FATAL_ERROR "Installed file contains a retired boundary: ${entry}")
+    endif()
+    if(normalized MATCHES "[/]include[/]lux[/]engine[/]ecs[/]" AND
+       content MATCHES "CloneFn|default_emplace|COPY_WITHOUT_CLONE")
+        message(FATAL_ERROR
+            "Installed ECS file contains retired component operations: ${entry}"
+        )
     endif()
 endforeach()
 

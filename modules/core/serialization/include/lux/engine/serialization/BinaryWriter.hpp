@@ -67,7 +67,11 @@ namespace lux::serialization
             for (std::size_t index{}; index < sizeof(T); ++index)
             {
                 bytes[index] = static_cast<std::byte>(value & T{0xFFU});
-                value >>= 8U;
+                if constexpr (sizeof(T) > 1U)
+                {
+                    if (index + 1U < sizeof(T))
+                        value = static_cast<T>(value >> 8U);
+                }
             }
             return writeBytes(bytes);
         }

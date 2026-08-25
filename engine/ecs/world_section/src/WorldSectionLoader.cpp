@@ -126,7 +126,7 @@ namespace lux::ecs
         struct LoadOperation final
         {
             ComponentLoadSet loads;
-            WorldSectionImage image;
+            const WorldSectionImage* image{};
             WorldSectionInstance* output{};
             std::vector<const ComponentLoadBinding*> plan;
             std::vector<std::shared_ptr<const void>> pins;
@@ -231,7 +231,7 @@ namespace lux::ecs
         {
             Impl::LoadOperation operation;
             operation.loads = loads;
-            operation.image = image;
+            operation.image = &image;
             operation.output = &inactive_output;
             operation.plan.reserve(image.columns().size());
 
@@ -420,7 +420,7 @@ namespace lux::ecs
 
             for (auto& operation : impl_->loads)
             {
-                const auto columns = operation.image.columns();
+                const auto columns = operation.image->columns();
                 for (std::size_t index{}; index < columns.size(); ++index)
                 {
                     const auto& column = columns[index];
@@ -561,7 +561,7 @@ namespace lux::ecs
         }
         for (const auto& operation : impl_->loads)
         {
-            const auto columns = operation.image.columns();
+            const auto columns = operation.image->columns();
             for (std::size_t index{}; index < columns.size(); ++index)
             {
                 const auto& column = columns[index];

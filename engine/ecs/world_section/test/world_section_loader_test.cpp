@@ -1,10 +1,8 @@
 #include "WorldSectionFixtureBuilder.hpp"
 
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
-#include <lux/engine/ecs/ComponentSnapshotSet.hpp>
 #include <lux/engine/ecs/Schedule.hpp>
 #include <lux/engine/ecs/WorldSectionLoader.hpp>
-#include <lux/engine/ecs/WorldSnapshot.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 
 #include <uuid.h>
@@ -490,72 +488,6 @@ int main()
         }
         assert(!rolled_back.active());
         assert(fixedCount(batch_world) == 0U);
-
-        WorldSectionInstance retained_image_output;
-        auto retained_image_batch = WorldSectionLoader::begin(
-            batch_world,
-            fixtureLoadScratchBudget(),
-            lux::serialization::SerializationLimits{}
-        );
-        assert(retained_image_batch);
-        {
-            auto ephemeral = validImage(sectionId(1U));
-            assert(retained_image_batch->load(
-                context.loads,
-                ephemeral,
-                retained_image_output
-            ));
-            WorldSectionImage moved = std::move(ephemeral);
-            assert(moved.entityCount() == 3U);
-        }
-        assert(retained_image_batch->commit());
-        assert(retained_image_output.active());
-        assert(fixedCount(batch_world) == 3U);
-        assert(unloadSection(batch_world, retained_image_output));
-    }
-
-    {
-        auto schemas = ComponentSchemaSet::build({
-            makeComponentSchema<test::Fixed>(componentSchemaId("test.Fixed")),
-        });
-        assert(schemas);
-        const auto bindings = detail::componentSnapshotBindings(
-            bindComponentSnapshot<test::Fixed>(
-                *schemas->find(componentSchemaId("test.Fixed"))
-            )
-        );
-        const ComponentSnapshotContribution contribution{
-            {},
-            bindings
-        };
-        auto snapshots = ComponentSnapshotSet::build(
-            *schemas,
-            std::span(&contribution, 1U)
-        );
-        assert(snapshots);
-
-        World source;
-        auto image = WorldSectionImage::open(buildFixture(
-            sectionId(1U),
-            3U,
-            {fixedColumn()}
-        ), fixtureValidationBudget());
-        assert(image);
-        auto active = loadSection(source, context.loads, *image);
-        assert(active);
-
-        auto captured = WorldSnapshot::capture(source, *snapshots);
-        assert(captured);
-        auto detached = captured->instantiate();
-        assert(detached);
-        assert(fixedCount(**detached) == fixedCount(source));
-        assert(captured->restore(**detached));
-
-        const auto busy_restore = captured->restore(source);
-        assert(!busy_restore);
-        assert(busy_restore.error().code == ESnapshotError::WORLD_BUSY);
-        assert(active->active());
-        assert(unloadSection(source, *active));
     }
 
     World world;

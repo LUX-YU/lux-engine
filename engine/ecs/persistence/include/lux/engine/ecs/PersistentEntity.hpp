@@ -1,8 +1,10 @@
 #pragma once
 
 #include <lux/engine/ecs/ComponentSchema.hpp>
+#include <lux/engine/ecs/ComponentAnnotations.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/persistence/visibility.h>
+#include <lux/engine/meta/MetaAnnotations.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -13,7 +15,9 @@
 
 namespace lux::ecs
 {
-    struct PersistentEntityId final
+    struct ComponentPersistenceContribution;
+
+    struct LUX_TYPE_INFO(static) PersistentEntityId final
     {
         uuids::uuid value;
 
@@ -22,12 +26,13 @@ namespace lux::ecs
         ) const noexcept = default;
     };
 
-    struct PersistentEntityRef final
+    struct LUX_TYPE_INFO(static) PersistentEntityRef final
     {
         PersistentEntityId value;
     };
 
-    struct PersistentId final
+    struct LUX_TYPE_INFO(static)
+        LUX_COMPONENT_SCHEMA("lux.ecs.PersistentId", 1) PersistentId final
     {
         PersistentEntityId value;
     };
@@ -55,6 +60,13 @@ namespace lux::ecs
         std::vector<std::pair<PersistentEntityId, Entity>> entries_;
     };
 
-    [[nodiscard]] LUX_ENGINE_ECS_PERSISTENCE_PUBLIC ComponentSchema
-    persistentIdComponentSchema();
+    [[nodiscard]] LUX_ENGINE_ECS_PERSISTENCE_PUBLIC
+    const ComponentSchema& persistentIdComponentSchema() noexcept;
+
+    [[nodiscard]] LUX_ENGINE_ECS_PERSISTENCE_PUBLIC
+    ComponentPersistenceContribution persistenceComponentContribution() noexcept;
 } // namespace lux::ecs
+
+#if !defined(__LUX_PARSE_TIME__)
+#    include <lux/engine/ecs/PersistentEntity.type_static_info.hpp>
+#endif

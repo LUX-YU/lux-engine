@@ -47,6 +47,16 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
 )
 
+component_add_cmake_scripts(
+    script_lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_lua_codegen.cmake
+)
+
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/cmake/template/
+    DESTINATION share/lux-engine-function/script_lua/cmake_scripts/template
+)
+
 install(
     FILES ${CMAKE_SOURCE_DIR}/cmake/FindLuaJIT.cmake
     DESTINATION share/lux-engine-function/script_lua

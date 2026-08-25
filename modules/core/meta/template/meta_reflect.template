@@ -13,21 +13,6 @@
 #include <memory>
 #include <utility>
 #include <lux/engine/meta/Meta.hpp>
-{# Detect whether any reflected record in this TU is an ECS component
-   (LUX_COMPONENT() == LUX_META(luxref::class, component=true)). Uses the
-   generator's annotation API — annotation_has matches by key. -#}
-{%- set has_any_component = false -%}
-{%- for rec_idx in marked_record_decls -%}
-    {%- set _rec = decl_from_index(rec_idx) -%}
-    {%- if annotation_has(_rec, "component") -%}
-        {%- set has_any_component = true -%}
-    {%- endif -%}
-{%- endfor -%}
-{%- if has_any_component %}
-#include <lux/engine/ecs/reflection/ComponentReflectionAdapter.hpp>
-#include <span>
-#include <vector>
-{%- endif %}
 {% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
 {% if custom_include %}
 #include <{{ custom_include }}>
@@ -61,10 +46,6 @@ decltype({{ signal_var.fq_name }}) {{ signal_var.fq_name }}{
 
 namespace
 {
-    {%- if has_any_component %}
-    std::vector<lux::ecs::ComponentSchema> lux_generated_component_schemas;
-    {%- endif %}
-
     template <class T>
     inline constexpr bool lux_meta_generated_record_v = false
     {%- for rec_idx in marked_record_decls -%}
@@ -268,11 +249,6 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
     lux::meta::ref_class_func_gen(cls);
 
     /* class-level annotation -------------------------------------------- */
-    {%- set is_component = annotation_has(rec, "component") -%}
-    {%- set component_schema_name = annotation_get_or(rec, "schema_name", rec.fq_name) -%}
-    {%- set component_schema_version = annotation_get_or(rec, "schema_version", "1") -%}
-    {%- set component_snapshot = annotation_get_or(rec, "snapshot", "copy") -%}
-    {%- set component_codec = annotation_get_or(rec, "codec", "reflected") -%}
     {%- for attr in rec.attributes -%}
         {%- if annotation_has(attr, "luxref::class") %}
     { static constexpr char kClassAnnot_{{ rec.hash }}[] = R"__LUX_ANNOT({{ attr }})__LUX_ANNOT"; cls.annotation_str = kClassAnnot_{{ rec.hash }}; }
@@ -319,7 +295,8 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
     {%- set is_object = annotation_has(rec, "object") -%}
     {%- set is_reflected_field = annotation_has(field, "luxref::property::member") -%}
     {%- set skip_field = annotation_has(field, "luxref::property::skip") -%}
-    {%- if field.visibility == 1 and not skip_field and (not is_object or is_reflected_field) %}
+    {%- set skip_runtime = annotation_get_for_or(field, "luxtype::member", "skip_runtime", false) -%}
+    {%- if field.visibility == 1 and not skip_field and not skip_runtime and (not is_object or is_reflected_field) %}
     {
         cls.fields.push_back({});
         lux::meta::RefField& f = cls.fields.back();
@@ -506,32 +483,6 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
 
     registry.registerClass(std::move(ret));
 
-    /* Module-local immutable schema projection (LUX_COMPONENT only). ----- */
-    /* This is populated only while the module's explicit reflection entry  */
-    /* point runs. There is no process-global ECS registrar or pending      */
-    /* component catalogue. Consumers copy the returned span into an       */
-    /* immutable ComponentSchemaSet and attach the module lifetime pin.     */
-    {%- if is_component %}
-    {
-        lux_generated_component_schemas.push_back(
-            lux::ecs::makeGeneratedComponentSchema<{{ rec.fq_name }}>(
-                cls,
-                "{{ component_schema_name }}",
-                {{ component_schema_version }}u,
-                {%- if component_snapshot == "rebuild" %}
-                lux::ecs::EComponentSnapshotPolicy::REBUILD,
-                {%- else %}
-                lux::ecs::EComponentSnapshotPolicy::COPY,
-                {%- endif %}
-                {%- if component_codec == "none" %}
-                lux::ecs::EGeneratedComponentCodec::NONE
-                {%- else %}
-                lux::ecs::EGeneratedComponentCodec::REFLECTED
-                {%- endif %}
-            )
-        );
-    }
-    {%- endif %}
 }
 {% endfor %}
 
@@ -565,10 +516,6 @@ static void reflect_{{ e_decl.hash }}(lux::meta::ReflectionRegistry& registry)
 extern "C" {% if register_function_macro %}{{ register_function_macro }}{% endif %}
 void {{ register_function_name }}_meta(lux::meta::ReflectionRegistry& registry, lux::meta::qual_type_index_fix_list& fix_list)
 {
-    {%- if has_any_component %}
-    lux_generated_component_schemas.clear();
-    lux_generated_component_schemas.reserve({{ marked_record_decls|length }}u);
-    {%- endif %}
     {% for func_idx in marked_function_decls -%}
     reflect_func_{{ decl_from_index(func_idx).hash }}(registry, fix_list);
     {% endfor %}
@@ -579,15 +526,6 @@ void {{ register_function_name }}_meta(lux::meta::ReflectionRegistry& registry, 
     reflect_{{ decl_from_index(enum_idx).hash }}(registry);
     {% endfor %}
 }
-
-{%- if has_any_component %}
-{% if register_function_macro %}{{ register_function_macro }}{% endif %}
-std::span<const lux::ecs::ComponentSchema>
-{{ register_function_name }}_component_schemas() noexcept
-{
-    return lux_generated_component_schemas;
-}
-{%- endif %}
 
 // -----------------------------------------------------------------------------
 //  Auto-registration – chains this TU into the module init queue on DLL load.

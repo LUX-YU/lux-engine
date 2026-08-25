@@ -49,6 +49,22 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 
+add_executable(ecs_schema_test test/schema_test.cpp)
+target_link_libraries(ecs_schema_test PRIVATE lux::engine::ecs::schema)
+if(MSVC)
+    target_compile_options(ecs_schema_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(ecs_schema_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET ecs_schema_test
+    LAYER ECS
+    PRODUCT TEST
+    ROLE FOUNDATION
+)
+add_test(NAME vnext_ecs_schema COMMAND ecs_schema_test)
+set_tests_properties(vnext_ecs_schema PROPERTIES LABELS "vnext;l1;schema;cpu")
+
 foreach(probe IN ITEMS
     component_operations_mutable_get_negative
     component_operations_storage_key_negative

@@ -193,7 +193,7 @@ namespace lux::render
         // --- Tunable parameters (feature-driven quality system) -------------
         //
         // OPT-IN seam: a feature MAY expose a reflectable, live-tunable parameter
-        // struct (a LUX_CLASS with LUX_MEMBER fields) so the editor's rendering-
+        // struct (runtime TypeInfo with LUX_MEMBER fields) so the editor's rendering-
         // settings panel + the quality-tier system can enumerate and drive it
         // generically — no per-feature UI code. The empty defaults below keep
         // every existing feature compiling unchanged; a feature opts in by

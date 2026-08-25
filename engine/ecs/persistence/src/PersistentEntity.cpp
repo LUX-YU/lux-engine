@@ -1,9 +1,11 @@
 #include <lux/engine/ecs/PersistentEntity.hpp>
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
-
+#include <lux/engine/ecs/persistence/ComponentPersistenceBinding.hpp>
+#include <lux/engine/serialization/external_support/Uuid.hpp>
+#include <lux/engine/ecs/PersistentEntity.ecs_schema.hpp>
+#include <lux/engine/ecs/PersistentEntity.ecs_persistence.hpp>
 #include <algorithm>
 #include <array>
-#include <cstring>
 
 namespace lux::ecs
 {
@@ -26,80 +28,6 @@ namespace lux::ecs
             );
         }
 
-        class PersistentIdEncode final : public ComponentEncodePort
-        {
-          public:
-            explicit PersistentIdEncode(ComponentEncodePort& target) : target_(&target) {}
-
-            lux::cxx::expected<void, EComponentCodecError> write(
-                std::string_view name,
-                EComponentWireType type,
-                std::span<const std::byte> bytes
-            ) noexcept override
-            {
-                return target_->write(name, type, bytes);
-            }
-
-            lux::cxx::expected<void, EComponentCodecError> writeEntity(
-                std::string_view name,
-                Entity entity
-            ) noexcept override
-            {
-                return target_->writeEntity(name, entity);
-            }
-
-            lux::cxx::expected<void, EComponentCodecError> writeStableReference(
-                std::string_view name,
-                std::span<const std::byte> stable_id
-            ) noexcept override
-            {
-                return target_->writeStableReference(name, stable_id);
-            }
-
-          private:
-            ComponentEncodePort* target_{};
-        };
-
-        lux::cxx::expected<void, EComponentCodecError> encodePersistentId(
-            const ComponentSchema&,
-            const World& world,
-            Entity entity,
-            ComponentEncodePort& port
-        ) noexcept
-        {
-            const auto* value = world.find<PersistentId>(entity);
-            if (value == nullptr)
-                return lux::cxx::unexpected(EComponentCodecError::INVALID_DATA);
-            const auto bytes = value->value.value.as_bytes();
-            return port.write("value", EComponentWireType::STABLE_REFERENCE, bytes);
-        }
-
-        lux::cxx::expected<void, EComponentCodecError> decodePersistentId(
-            const ComponentSchema&,
-            WorldEdit& edit,
-            Entity entity,
-            std::uint32_t version,
-            ComponentDecodePort& port
-        ) noexcept
-        {
-            if (version != 1)
-                return lux::cxx::unexpected(EComponentCodecError::UNSUPPORTED_VERSION);
-            EncodedPropertyView property;
-            while (port.next(property))
-            {
-                if (property.name == "value" && property.bytes.size() == 16)
-                {
-                    std::array<std::uint8_t, 16> bytes{};
-                    std::memcpy(bytes.data(), property.bytes.data(), bytes.size());
-                    edit.emplace<PersistentId>(
-                        entity,
-                        PersistentEntityId{uuids::uuid(bytes)}
-                    );
-                    return {};
-                }
-            }
-            return lux::cxx::unexpected(EComponentCodecError::INVALID_DATA);
-        }
     } // namespace
 
     lux::cxx::expected<PersistentEntityIndex, EPersistentEntityIndexError>
@@ -159,13 +87,13 @@ namespace lux::ecs
         return entries_.size();
     }
 
-    ComponentSchema persistentIdComponentSchema()
+    const ComponentSchema& persistentIdComponentSchema() noexcept
     {
-        return makeComponentSchema<PersistentId>(
-            componentSchemaId("lux.ecs.PersistentId"),
-            1,
-            EComponentSnapshotPolicy::COPY,
-            ComponentCodec{&encodePersistentId, &decodePersistentId}
-        );
+        return generated::persistenceComponentSchemas().front();
+    }
+
+    ComponentPersistenceContribution persistenceComponentContribution() noexcept
+    {
+        return generated::persistencePersistenceContribution();
     }
 } // namespace lux::ecs

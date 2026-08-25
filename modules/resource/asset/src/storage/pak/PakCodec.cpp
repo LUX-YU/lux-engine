@@ -1,12 +1,14 @@
 #include <lux/engine/resource/asset/storage/pak/PakCodec.hpp>
 #include <lux/engine/resource/asset/storage/VirtualPath.hpp>
-#include <lux/engine/core/serialization/ByteIO.hpp>
+#include <lux/engine/serialization/CodecByteIO.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <new>
+#include <stdexcept>
 #include <system_error>
 #include <unordered_set>
 
@@ -14,8 +16,8 @@
 
 namespace lux::asset::detail
 {
-    using lux::core::serialization::ByteReader;
-    using lux::core::serialization::ByteWriter;
+    using lux::serialization::ByteReader;
+    using lux::serialization::ByteWriter;
 
     namespace
     {
@@ -129,7 +131,7 @@ namespace lux::asset::detail
             writePageHeader(writer, header);
             if (!payload.empty())
                 writer.bytes(payload.data(), payload.size());
-            auto bytes = std::move(writer).take();
+            auto bytes = std::move(writer).takeOrThrow();
             std::memcpy(page.data(), bytes.data(), bytes.size());
             return page;
         }
@@ -153,7 +155,7 @@ namespace lux::asset::detail
                 if (!row.vpath.empty())
                     writer.bytes(row.vpath.data(), row.vpath.size());
             }
-            return std::move(writer).take();
+            return std::move(writer).takeOrThrow();
         }
 
         std::vector<std::byte> encodeEntryChildren(
@@ -166,7 +168,7 @@ namespace lux::asset::detail
                 writer.u64(child.offset);
                 writeDigest(writer, child.digest);
             }
-            return std::move(writer).take();
+            return std::move(writer).takeOrThrow();
         }
 
         std::vector<std::byte> encodePathRows(
@@ -180,7 +182,7 @@ namespace lux::asset::detail
                     writer.bytes(row.vpath.data(), row.vpath.size());
                 writeUuid(writer, row.id);
             }
-            return std::move(writer).take();
+            return std::move(writer).takeOrThrow();
         }
 
         std::vector<std::byte> encodePathChildren(
@@ -200,7 +202,7 @@ namespace lux::asset::detail
                 writer.u64(child.offset);
                 writeDigest(writer, child.digest);
             }
-            return std::move(writer).take();
+            return std::move(writer).takeOrThrow();
         }
 
         void finishPage(PageNode& node)
@@ -419,7 +421,7 @@ namespace lux::asset::detail
             writeDigest(writer, header.entry_root_digest);
             writeDigest(writer, header.path_root_digest);
             writer.bytes(header.reserved, sizeof(header.reserved));
-            auto bytes = std::move(writer).take();
+            auto bytes = std::move(writer).takeOrThrow();
             std::array<std::byte, kHeaderBytes> output{};
             std::memcpy(output.data(), bytes.data(), bytes.size());
             return output;
@@ -506,6 +508,7 @@ namespace lux::asset::detail
         std::vector<PakWriteEntry> entries,
         std::string_view mount_hint,
         std::string* error_out)
+    try
     {
         if (!VirtualPath::isLegalRoot(mount_hint))
             return fail(error_out, lux::format("illegal mount hint '{}'", mount_hint));
@@ -695,6 +698,34 @@ namespace lux::asset::detail
             return fail(error_out, "cannot atomically publish Pak");
         }
         return true;
+    }
+    catch (const std::bad_alloc&)
+    {
+        if (error_out != nullptr)
+        {
+            try
+            {
+                *error_out = "Pak allocation failed";
+            }
+            catch (...)
+            {
+            }
+        }
+        return false;
+    }
+    catch (const std::length_error&)
+    {
+        if (error_out != nullptr)
+        {
+            try
+            {
+                *error_out = "Pak binary serialization limit exceeded";
+            }
+            catch (...)
+            {
+            }
+        }
+        return false;
     }
 
     bool readPakHeader(

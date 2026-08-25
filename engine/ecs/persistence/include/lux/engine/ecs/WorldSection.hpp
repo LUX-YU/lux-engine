@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/engine/ecs/ComponentSchemaSet.hpp>
-#include <lux/engine/ecs/TaggedPropertyArchive.hpp>
 #include <lux/engine/ecs/WorldSectionImage.hpp>
+#include <lux/engine/ecs/persistence/ComponentPersistenceBinding.hpp>
 #include <lux/engine/ecs/persistence/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -23,7 +23,9 @@ namespace lux::ecs
         DUPLICATE_PERSISTENT_ID,
         DUPLICATE_ENTITY,
         MISSING_SCHEMA,
-        MISSING_CODEC,
+        MISSING_BINDING,
+        BINDING_MISMATCH,
+        DUPLICATE_BINDING,
         COMPONENT_ENCODE_FAILED,
         COMPONENT_DECODE_FAILED,
         ENTITY_REFERENCE_OUTSIDE_SECTION,
@@ -33,12 +35,11 @@ namespace lux::ecs
         INVALID_INDEX,
         INVALID_HASH,
         INVALID_SECTION_ID,
-        INVALID_NAME_TABLE,
         INVALID_SCHEMA_VERSION,
         DUPLICATE_SCHEMA,
         INVALID_ARCHETYPE,
         DUPLICATE_COMPONENT,
-        INVALID_RELOCATION,
+        INVALID_COLUMN,
         INVALID_PAYLOAD,
         LIMIT_EXCEEDED,
         ALLOCATION_FAILURE,
@@ -59,13 +60,11 @@ namespace lux::ecs
 
     struct WorldSectionLimits final
     {
-        std::uint32_t max_names{65536};
         std::uint32_t max_schemas{4096};
         std::uint32_t max_archetypes{65536};
         std::uint32_t max_entities{16U * 1024U * 1024U};
         std::uint32_t max_columns{4096};
-        std::uint32_t max_cells{16U * 1024U * 1024U};
-        std::uint32_t max_relocations{16U * 1024U * 1024U};
+        std::uint32_t max_rows{16U * 1024U * 1024U};
         std::uint64_t max_name_bytes{64ULL * 1024ULL * 1024ULL};
         std::uint64_t max_payload_bytes{1ULL * 1024ULL * 1024ULL * 1024ULL};
         std::uint64_t max_image_bytes{2ULL * 1024ULL * 1024ULL * 1024ULL};
@@ -78,6 +77,7 @@ namespace lux::ecs
         build(
             const World& world,
             const ComponentSchemaSet& schemas,
+            std::span<const ComponentPersistenceContribution> contributions,
             WorldSectionId id,
             WorldSectionWriteSelection selection
         ) noexcept;
@@ -90,6 +90,7 @@ namespace lux::ecs
         materialize(
             const WorldSectionImage& image,
             const ComponentSchemaSet& schemas,
+            std::span<const ComponentPersistenceContribution> contributions,
             WorldConfig config = {}
         ) noexcept;
     };

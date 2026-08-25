@@ -91,6 +91,7 @@ namespace lux::classic_mesh
         UNSUPPORTED_VERSION,
         TRUNCATED,
         LIMIT_EXCEEDED,
+        ALLOCATION_FAILURE,
         INVALID_INSTANCE,
         TRAILING_BYTES
     };

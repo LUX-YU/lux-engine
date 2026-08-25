@@ -2,7 +2,7 @@
 // ============================================================================
 //  SpatialCullParams.hpp — live-tunable spatial coarse-cull parameters.
 //
-//  A reflected (LUX_CLASS + LUX_MEMBER) struct so the editor's
+//  A runtime-reflected struct so the editor's
 //  SceneSettingsPanel enumerates it generically (the feature-driven
 //  quality seam, same machinery as TonemapParams) — no per-feature UI code.
 //  These are a true image-quality-vs-performance trade-off (view distance / cell granularity), so
@@ -17,7 +17,7 @@
 
 namespace lux::render
 {
-    struct LUX_CLASS() SpatialCullParams
+    struct LUX_TYPE_INFO(runtime) SpatialCullParams
     {
         LUX_MEMBER(display_name=Cell Size, min=8.0, max=4096.0, tooltip=Spatial cell edge length in world units)
         float cell_size = 128.0f;

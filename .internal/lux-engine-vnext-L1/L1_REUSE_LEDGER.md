@@ -11,10 +11,11 @@
 | `ScheduleBuilder`, mutation batches | `ScheduleEdit` | RETIRE/REWRITE | transaction intent | duplicate/cycle/failure rollback tests |
 | `ISystem` | `System` | RETIRE | abstract update behavior | retired API compile probe |
 | `SceneServices` | 未来 L3 wiring | RETIRE FROM L1 | 无 | retired API/source gate |
-| component mutable catalog/global pending registrar | generated module span + `ComponentSchemaSet` | RETIRE/REWRITE | reflection descriptors | generated-schema/pin tests |
-| tagged property archive | schema codec port + persistence archive | REUSE algorithm | tagged field/unknown skip | reflected codec and persistence tests |
+| component mutable catalog/global pending registrar | generated module span + `ComponentSchemaSet` | RETIRE/REWRITE | stable identity and runtime clone operations only | generated-schema/pin tests |
+| `ComponentCodec` / reflected tagged property archive | no schema owner; retired | RETIRE | none; generic static Serializer replaces field codec tables | architecture gates and column persistence tests |
+| object/field-level erased serialization | `persistence_contract` column thunk | RETIRE/REWRITE | one type-erasure boundary per Component column | dispatch/storage-lookup counters and static/plugin binding tests |
 | `RegistrySnapshot` | `WorldSnapshot` | REWRITE | backend clone idea | 10k IDs/generation/free-list plus zero-journal cold construction |
-| `EntitySectionImage` | `WorldSectionImage` | REWRITE | name/schema/archetype/column/ordinal layout | LXWS deterministic/corruption and zero-journal materialize tests |
+| `EntitySectionImage` / LXWS | `WorldSectionImage` / LXWC v1 | REWRITE | schema/archetype/column/ordinal layout only | LXWC deterministic/corruption, unknown-column and zero-journal materialize tests |
 | Parent/Transform snapshot special cases | 无 | RETIRE | 无 | generic snapshot + rebuild pilot |
 | old hierarchy preorder/interval | 无 | RETIRE | Parent remains canonical; linear cold validation, O(1) mutation-order adjacency and embedded orphan repair replace interval authority | 1m real graph、deep-chain/star/resync counters, injected orphan command failure and stale-generation repair tests |
 | old transform dirty propagation | Transform Systems | REUSE algorithm | dirty subtree root reduction only; dense stamps/change cursors replace unordered/full scans | no-change zero-visit, leaf/root dirty and codec tests |

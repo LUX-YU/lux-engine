@@ -7,7 +7,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <string>
 #include <vector>
 
 namespace lux::ecs
@@ -35,32 +34,14 @@ namespace lux::ecs
         std::uint32_t archetype{};
     };
 
-    struct WorldComponentCell final
-    {
-        std::uint32_t entity_ordinal{};
-        std::vector<std::byte> payload;
-    };
-
     struct WorldComponentColumn final
     {
         std::uint32_t schema_index{};
-        std::vector<WorldComponentCell> cells;
-    };
-
-    struct EntityReferenceRelocation final
-    {
-        std::uint32_t column{};
-        std::uint32_t cell{};
-        std::uint32_t payload_offset{};
-        std::uint32_t target_ordinal{};
-    };
-
-    struct PersistentReferenceRelocation final
-    {
-        std::uint32_t column{};
-        std::uint32_t cell{};
-        std::uint32_t payload_offset{};
-        PersistentEntityId target;
+        bool fixed_width{};
+        std::uint64_t fixed_stride{};
+        std::vector<std::uint32_t> entity_ordinals;
+        std::vector<std::uint64_t> row_offsets;
+        std::vector<std::byte> payload;
     };
 
     struct WorldSectionManifest final
@@ -72,12 +53,9 @@ namespace lux::ecs
     struct WorldSectionImage final
     {
         WorldSectionId id;
-        std::vector<std::string> property_names;
         std::vector<WorldSchemaEntry> schemas;
         std::vector<WorldArchetype> archetypes;
         std::vector<WorldEntityRecord> entities;
         std::vector<WorldComponentColumn> columns;
-        std::vector<EntityReferenceRelocation> entity_relocations;
-        std::vector<PersistentReferenceRelocation> persistent_relocations;
     };
 } // namespace lux::ecs

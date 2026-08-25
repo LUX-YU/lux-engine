@@ -33,11 +33,25 @@ target_link_libraries(
         lux::engine::ecs::core
         lux::engine::ecs::schedule
         lux::engine::ecs::schema
+        lux::engine::ecs::persistence_contract
 )
-component_add_internal_dependencies(hierarchy core schedule schema)
+component_add_internal_dependencies(
+    hierarchy core schedule schema persistence_contract
+)
 component_add_transitive_commands(
     hierarchy
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema persistence_contract)"
+)
+
+include_component_cmake_scripts(meta)
+include(${PROJECT_SOURCE_DIR}/engine/ecs/schema/cmake/engine_ecs_codegen.cmake)
+engine_target_add_ecs_component_codegen(
+    NAME hierarchy_component_codegen
+    TARGET hierarchy
+    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/HierarchySchema.cpp
+    HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/Parent.hpp
+    LOGICAL_PATH lux/engine/ecs/Parent.hpp
+    SYMBOL hierarchy
 )
 
 lux_classify_target(

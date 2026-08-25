@@ -280,6 +280,8 @@ if(NOT _pass_parse_vulkan_inc)
 endif()
 message(STATUS "[pass-params] 解析用 Vulkan 头: ${_pass_parse_vulkan_inc}")
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/engine_render_codegen.cmake)
+
 engine_add_pass_params(
     NAME         render_highlight_pass_params
     TARGET       render_features
@@ -795,7 +797,7 @@ component_register_runtime_assets(
 # Reflection code generation — EDITOR-ONLY sidecar (mirrors gameplay_meta).
 #
 # Render features opt into the feature-driven quality/tier system by declaring
-# a reflectable LUX_CLASS param struct (e.g. TonemapParams). The editor
+# a runtime-reflectable parameter struct (e.g. TonemapParams). The editor
 # enumerates those structs via ReflectionRegistry::findClass to build a generic
 # settings panel. The generated .meta.cpp compile into a SEPARATE shared
 # library `render_meta` that ONLY the editor links, so shipped runtime render

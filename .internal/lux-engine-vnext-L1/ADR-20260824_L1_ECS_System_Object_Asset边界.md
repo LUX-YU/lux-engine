@@ -6,6 +6,9 @@
 - 替代范围：旧文档中的顶层 `ecs/`、`ISystem`、`SceneServices`、
   `ScheduleBuilder`、runtime `AssetManager` 方案
 
+> 本文中的 persistence wire/codec 陈述已由
+> `ADR-20260824_Foundation_TypeInfo_Serialization_LXWC.md` 覆盖。
+
 ## 裁决
 
 1. `World` 是 canonical ECS data owner。它私有持有 EnTT backend；runtime

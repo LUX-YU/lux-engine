@@ -28,8 +28,28 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
+
+struct BenchmarkDynamicPayload final
+{
+    std::uint64_t sequence{};
+    std::string label;
+};
+
+namespace lux::meta
+{
+    template <>
+    struct TypeStaticInfo<BenchmarkDynamicPayload>
+    {
+        static constexpr bool available = true;
+        static constexpr auto fields = std::make_tuple(
+            typeStaticField<&BenchmarkDynamicPayload::sequence>("sequence"),
+            typeStaticField<&BenchmarkDynamicPayload::label>("label")
+        );
+    };
+}
 
 namespace
 {
@@ -232,6 +252,7 @@ namespace
         edit.reserve<lux::ecs::PersistentId>(count);
         edit.reserve<lux::ecs::Transform2D>(count / 2U + 1U);
         edit.reserve<lux::ecs::Transform3D>(count / 2U + 1U);
+        edit.reserve<BenchmarkDynamicPayload>(count);
         for (std::size_t index{}; index < count; ++index)
         {
             const auto entity = edit.create();
@@ -266,6 +287,13 @@ namespace
                     }
                 );
             }
+            edit.emplace<BenchmarkDynamicPayload>(
+                entity,
+                index,
+                std::string((index % 9U) + 1U, static_cast<char>(
+                    'a' + (index % 26U)
+                ))
+            );
             entities.push_back(entity);
         }
         return {std::move(world), std::move(entities)};
@@ -918,8 +946,18 @@ int main(int argc, char** argv)
         }));
     }
 
+    const auto benchmark_dynamic_schema_id =
+        lux::ecs::componentSchemaId("benchmark.dynamic-payload");
+    const std::shared_ptr<const void> benchmark_code_lifetime =
+        std::make_shared<int>(0);
     std::vector<lux::ecs::ComponentSchema> persistence_schema_values{
         lux::ecs::persistentIdComponentSchema(),
+        lux::ecs::makeComponentSchema<BenchmarkDynamicPayload>(
+            benchmark_dynamic_schema_id,
+            1U,
+            lux::ecs::EComponentSnapshotPolicy::COPY,
+            benchmark_code_lifetime
+        ),
     };
     const auto transform_schemas = lux::ecs::transformComponentSchemas();
     persistence_schema_values.insert(
@@ -932,18 +970,38 @@ int main(int argc, char** argv)
     );
     if (!persistence_schemas)
         return 12;
+    const auto* benchmark_dynamic_schema = persistence_schemas->find(
+        benchmark_dynamic_schema_id
+    );
+    if (benchmark_dynamic_schema == nullptr)
+        return 13;
+    const std::array benchmark_bindings{
+        lux::ecs::bindComponentPersistence<BenchmarkDynamicPayload>(
+            *benchmark_dynamic_schema
+        ),
+    };
     const std::array selected_components{
         lux::ecs::componentSchemaId("lux.ecs.Transform2D"),
         lux::ecs::componentSchemaId("lux.ecs.Transform3D"),
+        benchmark_dynamic_schema_id,
+    };
+    const std::array persistence_contributions{
+        lux::ecs::persistenceComponentContribution(),
+        lux::ecs::transformPersistenceContribution(),
+        lux::ecs::ComponentPersistenceContribution{
+            benchmark_code_lifetime,
+            benchmark_bindings
+        },
     };
     for (const std::size_t entity_count : {10'000u, 100'000u, 1'000'000u})
     {
         auto [source, entities] = persistentWorld(entity_count);
-        append(samples, sample("lxws_world_build", entity_count, [&]
+        append(samples, sample("lxwc_world_build", entity_count, [&]
         {
             auto built = lux::ecs::WorldSectionWriter::build(
                 *source,
                 *persistence_schemas,
+                persistence_contributions,
                 lux::ecs::WorldSectionId{indexedUuid(0x1000u)},
                 lux::ecs::WorldSectionWriteSelection{
                     entities,
@@ -956,6 +1014,7 @@ int main(int argc, char** argv)
         auto image = lux::ecs::WorldSectionWriter::build(
             *source,
             *persistence_schemas,
+            persistence_contributions,
             lux::ecs::WorldSectionId{indexedUuid(0x1000u)},
             lux::ecs::WorldSectionWriteSelection{
                 entities,
@@ -963,25 +1022,26 @@ int main(int argc, char** argv)
             }
         );
         if (!image)
-            return 13;
-        append(samples, sample("lxws_encode", entity_count, [&]
+            return 14;
+        append(samples, sample("lxwc_encode", entity_count, [&]
         {
             auto bytes = lux::ecs::encodeWorldSection(*image);
             if (!bytes)
                 std::abort();
         }));
         auto bytes = lux::ecs::encodeWorldSection(*image);
-        append(samples, sample("lxws_decode", entity_count, [&]
+        append(samples, sample("lxwc_decode", entity_count, [&]
         {
             auto decoded = lux::ecs::decodeWorldSection(*bytes);
             if (!decoded)
                 std::abort();
         }));
-        append(samples, sample("lxws_materialize", entity_count, [&]
+        append(samples, sample("lxwc_materialize", entity_count, [&]
         {
             auto materialized = lux::ecs::WorldSectionReader::materialize(
                 *image,
-                *persistence_schemas
+                *persistence_schemas,
+                persistence_contributions
             );
             if (!materialized)
                 std::abort();
@@ -989,5 +1049,5 @@ int main(int argc, char** argv)
     }
 
     writeCsv(output, samples);
-    return checksum == 0u ? 14 : 0;
+    return checksum == 0u ? 15 : 0;
 }

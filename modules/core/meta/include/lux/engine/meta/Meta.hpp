@@ -317,7 +317,7 @@ namespace lux::meta
 
         /// Points to a static constexpr char[] emitted by the code generator
         /// (mirrors `RefField::annotation_str`). nullptr when the class
-        /// carries no `LUX_CLASS(key=value, ...)` annotation arguments.
+        /// carries no `LUX_TYPE_INFO(runtime, key=value, ...)` arguments.
         /// Format matches AnnotationView: marker prefix then `key=value`
         /// pairs separated by commas.
         const char*                 annotation_str{ nullptr };

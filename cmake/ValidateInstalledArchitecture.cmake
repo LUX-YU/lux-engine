@@ -20,7 +20,7 @@ foreach(entry IN LISTS installed_entries)
     endif()
     get_filename_component(name "${entry}" NAME)
     if(name MATCHES
-       "^(Registry|ISystem|SceneServices|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|AssetManager|AssetRef|AssetLoadPort|AssetServices)\\.(h|hpp)$")
+       "^(Registry|ISystem|SceneServices|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|AssetManager|AssetRef|AssetLoadPort|AssetServices|ComponentCodec|TaggedPropertyArchive|Archive|ByteIO|NameTable)\\.(h|hpp)$")
         message(FATAL_ERROR "Install surface exposes retired API: ${normalized}")
     endif()
 endforeach()
@@ -33,7 +33,7 @@ file(GLOB_RECURSE installed_text LIST_DIRECTORIES false
 foreach(entry IN LISTS installed_text)
     file(READ "${entry}" content)
     if(content MATCHES "[/\\\\]legacy[/\\\\]" OR
-       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|cooked_relocation|LXES" OR
+       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
        content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")
         message(FATAL_ERROR "Installed file contains a retired boundary: ${entry}")
     endif()
@@ -50,7 +50,7 @@ endif()
 foreach(required_component IN ITEMS
     core
     schedule
-    schema_reflection
+    persistence_contract
     persistence
 )
     set(component_targets
@@ -73,5 +73,23 @@ if(schedule_contract MATCHES
         "Installed core + schedule closure depends on Object/reflection"
     )
 endif()
+
+foreach(contract_file IN ITEMS
+    "${prefix}/share/lux-engine-core/serialization/lux-engine-core-serialization-config-targets.cmake"
+    "${prefix}/share/lux-engine-core/type_info/lux-engine-core-type_info-config-targets.cmake"
+    "${prefix}/share/lux-engine-ecs/persistence_contract/lux-engine-ecs-persistence_contract-config-targets.cmake"
+    "${prefix}/share/lux-engine-ecs/persistence/lux-engine-ecs-persistence-config-targets.cmake"
+)
+    if(NOT EXISTS "${contract_file}")
+        message(FATAL_ERROR "Installed foundation target is missing: ${contract_file}")
+    endif()
+    file(READ "${contract_file}" foundation_contract)
+    if(foundation_contract MATCHES
+       "lux::engine::core::meta|lux::cxx::reflection_runtime")
+        message(FATAL_ERROR
+            "Installed static serialization/persistence closure depends on runtime reflection: ${contract_file}"
+        )
+    endif()
+endforeach()
 
 message(STATUS "Installed architecture surface is clean: ${prefix}")

@@ -15,7 +15,7 @@
 //  约束(v0,模板 #error 强制):scalars 结构必须与本结构同头文件;一头一
 //  params 结构;标量白名单 float/uint/int;read 字段必须有配对 sampler 字段。
 //  不做:不接编辑器面板(模糊方向/半径由特性代码按 H/V 趟次写死,非用户
-//  可调项;若未来要调,给 scalars 结构补 LUX_CLASS() 并入 module meta 列表)。
+//  可调项；若未来要调，给 scalars 结构补 runtime TypeInfo 并入 module meta 列表）。
 // =============================================================================
 #include <lux/engine/meta/MetaAnnotations.hpp>
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>

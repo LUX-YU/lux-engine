@@ -38,14 +38,28 @@ target_link_libraries(
         lux::engine::ecs::schedule
         lux::engine::ecs::schema
         lux::engine::ecs::hierarchy
+        lux::engine::ecs::persistence_contract
         lux::engine::core::math
 )
-component_add_internal_dependencies(transform core schedule schema hierarchy)
+component_add_internal_dependencies(
+    transform core schedule schema hierarchy persistence_contract
+)
 component_add_transitive_commands(
     transform
     "find_package(Eigen3 CONFIG REQUIRED)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema hierarchy)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema hierarchy persistence_contract)"
+)
+
+include_component_cmake_scripts(meta)
+include(${PROJECT_SOURCE_DIR}/engine/ecs/schema/cmake/engine_ecs_codegen.cmake)
+engine_target_add_ecs_component_codegen(
+    NAME transform_component_codegen
+    TARGET transform
+    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/TransformSchema.cpp
+    HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/Transform.hpp
+    LOGICAL_PATH lux/engine/ecs/Transform.hpp
+    SYMBOL transform
 )
 
 lux_classify_target(

@@ -41,7 +41,7 @@ namespace lux::render
                   "the cascade limit cannot exceed the slots the split array carries");
 
     // ===== Per-type descriptors (GPU-ready fields, no alignment padding) =====
-    struct LUX_CLASS() DirectionalLightDesc {
+    struct LUX_TYPE_INFO(runtime) DirectionalLightDesc {
         Eigen::Vector3f LUX_MEMBER(display_name=Direction, tooltip=Light direction normalized) direction{0.f, -1.f, 0.f};
         Eigen::Vector3f LUX_MEMBER(display_name=Color, color=true, tooltip=Light color RGB) color{1.f, 1.f, 1.f};
         float           LUX_MEMBER(display_name=Intensity, min=0.0, max=50.0) intensity{1.f};
@@ -53,7 +53,7 @@ namespace lux::render
         std::array<float, kShadowCascadeSlots> cascade_splits{0.1f, 0.25f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     };
 
-    struct LUX_CLASS() PointLightDesc {
+    struct LUX_TYPE_INFO(runtime) PointLightDesc {
         RenderLargePosition3D spatial_position{};
         Eigen::Vector3f LUX_MEMBER(display_name=Color, color=true) color{1.f, 1.f, 1.f};
         float           LUX_MEMBER(display_name=Intensity, min=0.0, max=50.0) intensity{1.f};
@@ -67,7 +67,7 @@ namespace lux::render
         float           LUX_MEMBER(display_name=Normal Bias, min=0.0, max=0.5) shadow_normal_bias{0.01f};
     };
 
-    struct LUX_CLASS() SpotLightDesc {
+    struct LUX_TYPE_INFO(runtime) SpotLightDesc {
         RenderLargePosition3D spatial_position{};
         Eigen::Vector3f LUX_MEMBER(display_name=Direction, tooltip=Spot direction normalized) direction{0.f, -1.f, 0.f};
         Eigen::Vector3f LUX_MEMBER(display_name=Color, color=true) color{1.f, 1.f, 1.f};

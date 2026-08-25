@@ -1,12 +1,14 @@
 #pragma once
 
 #include <lux/engine/ecs/ComponentAnnotations.hpp>
+#include <lux/engine/meta/MetaAnnotations.hpp>
 
 #include <Eigen/Geometry>
 
 namespace lux::ecs
 {
-    struct LUX_COMPONENT_SCHEMA("lux.ecs.Transform2D", 1) Transform2D final
+    struct LUX_TYPE_INFO(static)
+        LUX_COMPONENT_SCHEMA("lux.ecs.Transform2D", 1) Transform2D final
     {
         Eigen::Vector2f translation{Eigen::Vector2f::Zero()};
         float rotation{};
@@ -21,7 +23,8 @@ namespace lux::ecs
         Eigen::Affine2f value{Eigen::Affine2f::Identity()};
     };
 
-    struct LUX_COMPONENT_SCHEMA("lux.ecs.Transform3D", 1) Transform3D final
+    struct LUX_TYPE_INFO(static)
+        LUX_COMPONENT_SCHEMA("lux.ecs.Transform3D", 1) Transform3D final
     {
         Eigen::Vector3f translation{Eigen::Vector3f::Zero()};
         Eigen::Quaternionf rotation{Eigen::Quaternionf::Identity()};
@@ -36,3 +39,7 @@ namespace lux::ecs
         Eigen::Affine3f value{Eigen::Affine3f::Identity()};
     };
 } // namespace lux::ecs
+
+#if !defined(__LUX_PARSE_TIME__)
+#    include <lux/engine/ecs/Transform.type_static_info.hpp>
+#endif

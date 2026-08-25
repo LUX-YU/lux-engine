@@ -1,6 +1,6 @@
 #include <lux/engine/function/render/standard/content/ClassicMeshBatch.hpp>
 
-#include <lux/engine/core/serialization/ByteIO.hpp>
+#include <lux/engine/serialization/CodecByteIO.hpp>
 
 #include <array>
 #include <cmath>
@@ -12,8 +12,8 @@ namespace lux::classic_mesh
 {
     namespace
     {
-        using lux::core::serialization::ByteReader;
-        using lux::core::serialization::ByteWriter;
+        using lux::serialization::ByteReader;
+        using lux::serialization::ByteWriter;
 
         constexpr std::uint64_t kHeaderBytes = 12u;
         constexpr std::uint64_t kInstanceBytes = 88u;
@@ -151,7 +151,18 @@ namespace lux::classic_mesh
             writer.u32(instance.rgba8);
             writer.u32(instance.flags);
         }
-        return std::move(writer).take();
+        auto encoded = std::move(writer).take();
+        if (!encoded)
+        {
+            return lux::cxx::unexpected(failure(
+                encoded.error().code ==
+                        lux::serialization::ESerializationError::LIMIT_EXCEEDED
+                    ? EClassicMeshBatchCodecError::LIMIT_EXCEEDED
+                    : EClassicMeshBatchCodecError::ALLOCATION_FAILURE,
+                "Classic Mesh batch binary serialization failed"
+            ));
+        }
+        return std::move(*encoded);
     }
 
     ClassicMeshBatchExp<ClassicMeshBatchBlobV1>
@@ -232,7 +243,17 @@ namespace lux::classic_mesh
         }
 
         ClassicMeshBatchBlobV1 result;
-        result.instances.resize(count);
+        try
+        {
+            result.instances.resize(count);
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(failure(
+                EClassicMeshBatchCodecError::ALLOCATION_FAILURE,
+                "Classic Mesh batch allocation failed"
+            ));
+        }
         for (auto& instance : result.instances)
         {
             for (auto& value : instance.translation)

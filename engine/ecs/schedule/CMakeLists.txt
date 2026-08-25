@@ -194,7 +194,7 @@ foreach(probe IN ITEMS
 endforeach()
 
 include_component_cmake_scripts(meta)
-engine_add_meta(
+engine_add_type_runtime_info(
     NAME ecs_object_boundary_meta
     TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/ObjectBoundaryProbe.hpp
     REGISTER_FUNC_NAME lux_ecs_object_boundary_probe
@@ -220,7 +220,7 @@ if(MSVC)
 else()
     target_compile_options(ecs_object_boundary_test PRIVATE -UNDEBUG)
 endif()
-engine_target_add_meta(
+engine_target_add_type_runtime_info(
     TARGET ecs_object_boundary_test
     METAS ecs_object_boundary_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/object_boundary_meta

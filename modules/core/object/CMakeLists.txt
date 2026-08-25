@@ -59,7 +59,7 @@ if(ENABLE_OBJECT_TEST)
     target_compile_definitions(object PRIVATE LUX_OBJECT_TEST_DIAGNOSTICS=1)
     include_component_cmake_scripts(meta)
 
-    engine_add_meta(
+    engine_add_type_runtime_info(
         NAME object_test_signals_meta
         TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/ObjectTestSignals.hpp
         REGISTER_FUNC_NAME lux_object_test_signals
@@ -81,7 +81,7 @@ if(ENABLE_OBJECT_TEST)
         PRODUCT TEST
         ROLE FOUNDATION
     )
-    engine_target_add_meta(
+    engine_target_add_type_runtime_info(
         TARGET object_test_signals
         METAS object_test_signals_meta
         OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/object_test_signals_meta
@@ -335,7 +335,7 @@ if(ENABLE_OBJECT_TEST)
         COMMAND object_release_benchmark
     )
 
-    engine_add_meta(
+    engine_add_type_runtime_info(
         NAME object_reflection_test_meta
         TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/object_reflection_fixture.hpp
         REGISTER_FUNC_NAME lux_object_reflection_test
@@ -355,14 +355,14 @@ if(ENABLE_OBJECT_TEST)
         object_reflection_test PRIVATE LUX_OBJECT_TEST_DIAGNOSTICS=1
     )
     target_link_libraries(object_reflection_test PRIVATE object)
-    engine_target_add_meta(
+    engine_target_add_type_runtime_info(
         TARGET object_reflection_test
         METAS object_reflection_test_meta
         OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen
     )
     add_test(NAME object_reflection_test COMMAND object_reflection_test)
 
-    engine_add_meta(
+    engine_add_type_runtime_info(
         NAME object_cross_dll_base_meta
         TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/cross_dll/BaseObject.hpp
         REGISTER_FUNC_NAME lux_object_cross_dll_base
@@ -380,13 +380,13 @@ if(ENABLE_OBJECT_TEST)
         PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/test/cross_dll
     )
     target_link_libraries(object_cross_dll_base_test_support PUBLIC object)
-    engine_target_add_meta(
+    engine_target_add_type_runtime_info(
         TARGET object_cross_dll_base_test_support
         METAS object_cross_dll_base_meta
         OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/cross_dll_base_meta
     )
 
-    engine_add_meta(
+    engine_add_type_runtime_info(
         NAME object_cross_dll_derived_meta
         TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/cross_dll/DerivedObject.hpp
         REGISTER_FUNC_NAME lux_object_cross_dll_derived
@@ -407,7 +407,7 @@ if(ENABLE_OBJECT_TEST)
         object_cross_dll_derived_test_support
         PUBLIC object_cross_dll_base_test_support
     )
-    engine_target_add_meta(
+    engine_target_add_type_runtime_info(
         TARGET object_cross_dll_derived_test_support
         METAS object_cross_dll_derived_meta
         OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/cross_dll_derived_meta

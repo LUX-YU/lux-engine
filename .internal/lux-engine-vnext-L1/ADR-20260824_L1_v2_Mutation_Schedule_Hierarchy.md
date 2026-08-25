@@ -1,9 +1,13 @@
 # ADR：L1 v2 Mutation、Schedule 与 Hierarchy 重稳定
 
 - 日期：2026-08-24
-- 状态：Architecture accepted；Correctness hardened；Performance contract passed；
-  public API freeze candidate；independent re-audit required
+- 状态：World/Schedule/Hierarchy decisions retained；persistence portions
+  superseded；L1 freeze candidate withdrawn during foundation restabilization
 - v2.1 基线：`cfa48cfc`
+
+> Schema codec/reflection composition、TaggedProperty 与 LXWS 的段落是历史记录，
+> 已由 `ADR-20260824_Foundation_TypeInfo_Serialization_LXWC.md` 覆盖。当前实现不再
+> 提供 ComponentCodec、schema_reflection、TaggedProperty 或 LXWS reader。
 
 ## 裁决
 

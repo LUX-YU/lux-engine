@@ -2,7 +2,31 @@
 
 This ledger tracks implementation state only. Decisions live in ADRs.
 
-## Active: L1 v2 restabilization (2026-08-24)
+## Active: Foundation and L1 persistence restabilization (2026-08-24)
+
+The v2.1 public API Freeze Candidate is withdrawn while generator ownership,
+Engine TypeStaticInfo/exact binary serialization and LXWC column persistence
+replace the previous reflected ComponentCodec/LXWS path.
+
+- [x] FND-1: Qualify lux-cxx parse-job/multi-projection codegen and remove the
+      legacy `add_meta/target_add_meta` install API.
+- [x] FND-2: Split Engine static/runtime TypeInfo projections and move Lua and
+      Render projections to their module owners.
+- [x] FND-3: Establish `lux::serialization` exact little-endian binary contract
+      and migrate Pak/standard-content binary consumers.
+- [x] L1P-1: Add the installed column-level `persistence_contract` component;
+      remove ComponentCodec, TaggedProperty and schema_reflection.
+- [x] L1P-2: Replace LXWS with LXWC v1 contiguous fixed/dynamic columns and
+      direct Entity ordinal encoding.
+- [ ] QUAL-1: Complete Debug, RelWithDebInfo, hardened, Android, fresh-install,
+      installed-consumer and representative performance evidence.
+- [ ] QUAL-2: Independent re-audit accepts the new foundation/L1 contract.
+
+Stop line: Domain migration remains blocked. Completion of QUAL-1 may restore
+only `Public API Freeze Candidate`; Frozen requires QUAL-2 in a separate state
+commit.
+
+## Retained baseline: L1 v2.1 targeted hardening
 
 Independent audit rejected the v2 Freeze Candidate. L1 v2.1 targeted hardening
 is active; the previous correctness/performance conclusion is withdrawn until

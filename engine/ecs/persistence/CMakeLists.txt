@@ -14,7 +14,6 @@ add_component(
     OUTPUT_NAME    lux_engine_ecs_persistence
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/PersistentEntity.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/TaggedPropertyArchive.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSection.cpp
 )
 
@@ -36,17 +35,29 @@ target_link_libraries(
     PUBLIC
         lux::engine::ecs::core
         lux::engine::ecs::schema
+        lux::engine::ecs::persistence_contract
         lux::engine::core::serialization
         lux::cxx::compile_time
         stduuid
 )
-component_add_internal_dependencies(persistence core schema)
+component_add_internal_dependencies(persistence core schema persistence_contract)
 component_add_transitive_commands(
     persistence
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schema)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schema persistence_contract)"
+)
+
+include_component_cmake_scripts(meta)
+include(${PROJECT_SOURCE_DIR}/engine/ecs/schema/cmake/engine_ecs_codegen.cmake)
+engine_target_add_ecs_component_codegen(
+    NAME persistence_component_codegen
+    TARGET persistence
+    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/PersistentEntity.cpp
+    HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ecs/PersistentEntity.hpp
+    LOGICAL_PATH lux/engine/ecs/PersistentEntity.hpp
+    SYMBOL persistence
 )
 
 lux_classify_target(
@@ -57,6 +68,10 @@ lux_classify_target(
 )
 
 add_executable(ecs_persistence_test test/persistence_test.cpp)
+target_compile_definitions(
+    ecs_persistence_test
+    PRIVATE LUX_ECS_PERSISTENCE_TESTING=1
+)
 target_link_libraries(ecs_persistence_test PRIVATE lux::engine::ecs::persistence)
 if(MSVC)
     target_compile_options(ecs_persistence_test PRIVATE /UNDEBUG)

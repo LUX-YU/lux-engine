@@ -2,7 +2,7 @@
 // ============================================================================
 //  ShadowQualityParams.hpp — live-tunable shadow quality parameters.
 //
-//  A reflected (LUX_CLASS + LUX_MEMBER) struct so the editor's
+//  A runtime-reflected struct so the editor's
 //  SceneSettingsPanel enumerates it generically (the feature-driven
 //  quality seam, same machinery as TonemapParams / SpatialCullParams) — no
 //  per-feature UI code, and quality tiers can pin its fields. Trivially
@@ -21,7 +21,7 @@
 
 namespace lux::render
 {
-    struct LUX_CLASS() ShadowQualityParams
+    struct LUX_TYPE_INFO(runtime) ShadowQualityParams
     {
         LUX_MEMBER(display_name=Atlas Page Resolution, min=256, max=8192, tooltip=Shadow atlas page edge in texels (atlas rebuild on change))
         std::uint32_t atlas_page_resolution = 4096u;   ///< kDefaultShadowAtlasPageResolution

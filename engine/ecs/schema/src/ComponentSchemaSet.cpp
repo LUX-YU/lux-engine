@@ -35,9 +35,6 @@ namespace lux::ecs
                 {
                     return lux::cxx::unexpected(SchemaFailure{ESchemaError::COPY_WITHOUT_CLONE, schema.id, schema.cpp_type});
                 }
-                if ((schema.codec.encode == nullptr) != (schema.codec.decode == nullptr))
-                    return lux::cxx::unexpected(SchemaFailure{ESchemaError::INVALID_CODEC, schema.id, schema.cpp_type});
-
                 for (std::size_t other = index + 1; other < schemas.size(); ++other)
                 {
                     const ComponentSchema& right = schemas[other];

@@ -1,0 +1,21 @@
+#pragma once
+// Generated TypeStaticInfo projection. No offsets, registrars, or runtime data.
+#include <lux/engine/meta/TypeStaticInfo.hpp>
+#include <tuple>
+{% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
+
+namespace lux::meta
+{
+{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "type_info") and annotation_get_for_or(decl, "luxref::class", "type_info", "both") != "runtime" %}
+    template <>
+    struct TypeStaticInfo<::{{ decl.fq_name }}>
+    {
+        static constexpr bool available = true;
+        using type = ::{{ decl.fq_name }};
+        static constexpr auto fields = std::make_tuple(
+{% set emitted = false %}{% for field_id in decl.field_decls %}{% set field = decl_from_id(field_id) %}{% if field.visibility == 1 and not annotation_get_for_or(field, "luxtype::member", "skip_static", false) %}{% if emitted %},
+{% endif %}            typeStaticField<&type::{{ field.name }}>("{{ cxx_str(field.name) }}"){% set emitted = true %}{% endif %}{% endfor %}
+        );
+    };
+{% endif %}{% endfor %}
+} // namespace lux::meta

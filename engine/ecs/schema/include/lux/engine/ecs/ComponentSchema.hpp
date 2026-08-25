@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/ecs/ComponentCodec.hpp>
 #include <lux/engine/ecs/ComponentOperations.hpp>
 #include <lux/engine/ecs/ComponentSchemaId.hpp>
 
@@ -24,7 +23,6 @@ namespace lux::ecs
         ComponentSchemaId id;
         std::uint32_t version{1};
         ComponentOperations operations;
-        ComponentCodec codec;
         EComponentSnapshotPolicy snapshot{EComponentSnapshotPolicy::COPY};
         std::shared_ptr<const void> code_lifetime;
     };
@@ -34,7 +32,6 @@ namespace lux::ecs
         ComponentSchemaId id,
         std::uint32_t version = 1,
         EComponentSnapshotPolicy snapshot = EComponentSnapshotPolicy::COPY,
-        ComponentCodec codec = {},
         std::shared_ptr<const void> code_lifetime = {})
     {
         return ComponentSchema{
@@ -42,7 +39,6 @@ namespace lux::ecs
             std::move(id),
             version,
             componentOperations<Component>(),
-            codec,
             snapshot,
             std::move(code_lifetime)};
     }

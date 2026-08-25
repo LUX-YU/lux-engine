@@ -8,9 +8,9 @@
 #include <lux/engine/ecs/WorldSection.hpp>
 #include <lux/engine/ecs/WorldSnapshot.hpp>
 #include <lux/engine/ecs/transform/detail/TransformSystemTestAccess.hpp>
+#include <lux/engine/serialization/external_support/Eigen.hpp>
 
 #include <array>
-#include <bit>
 #include <cassert>
 #include <cmath>
 #include <memory>
@@ -19,62 +19,6 @@
 
 namespace
 {
-    class RotationDecodePort final : public lux::ecs::ComponentDecodePort
-    {
-      public:
-        explicit RotationDecodePort(std::array<float, 4> values) noexcept
-        {
-            for (std::size_t value_index{};
-                 value_index < values.size(); ++value_index)
-            {
-                auto bits = std::bit_cast<std::uint32_t>(values[value_index]);
-                for (std::size_t byte_index{}; byte_index < sizeof(float);
-                     ++byte_index)
-                {
-                    bytes_[value_index * sizeof(float) + byte_index] =
-                        static_cast<std::byte>(bits & 0xffU);
-                    bits >>= 8U;
-                }
-            }
-        }
-
-        bool next(lux::ecs::EncodedPropertyView& property) noexcept override
-        {
-            if (read_)
-                return false;
-            read_ = true;
-            property = lux::ecs::EncodedPropertyView{
-                "rotation",
-                lux::ecs::EComponentWireType::FLOATING_POINT,
-                bytes_};
-            return true;
-        }
-
-        lux::cxx::expected<lux::ecs::Entity, lux::ecs::EComponentCodecError>
-        resolveEntity(std::span<const std::byte>) const noexcept override
-        {
-            return lux::cxx::unexpected(
-                lux::ecs::EComponentCodecError::INVALID_DATA
-            );
-        }
-
-        lux::cxx::expected<
-            std::array<std::byte, 16>,
-            lux::ecs::EComponentCodecError>
-        resolveStableReference(
-            std::span<const std::byte>
-        ) const noexcept override
-        {
-            return lux::cxx::unexpected(
-                lux::ecs::EComponentCodecError::INVALID_DATA
-            );
-        }
-
-      private:
-        std::array<std::byte, 16> bytes_{};
-        bool read_{};
-    };
-
     [[nodiscard]] uuids::uuid uuid(const char* text)
     {
         return uuids::uuid::from_string(text).value();
@@ -125,47 +69,30 @@ namespace
         schedule.run(1.0F / 60.0F, 1u);
     }
 
-    void testTransform3DCodec(const lux::ecs::ComponentSchemaSet& schema_set)
+    void testQuaternionSerialization()
     {
-        const auto* schema = schema_set.find(
-            lux::ecs::componentSchemaId("lux.ecs.Transform3D")
-        );
-        assert(schema != nullptr);
-        assert(schema->codec.decode != nullptr);
-
-        lux::ecs::World world;
-        auto edit_result = world.edit();
-        assert(edit_result);
-        auto edit = std::move(*edit_result);
-
-        const auto zero_entity = edit.create();
-        RotationDecodePort zero_rotation{{0.0F, 0.0F, 0.0F, 0.0F}};
-        const auto zero_result = schema->codec.decode(
-            *schema,
-            edit,
-            zero_entity,
-            schema->version,
-            zero_rotation
-        );
+        std::vector<std::byte> bytes;
+        lux::serialization::BinaryWriter writer(bytes);
+        for (int index{}; index < 4; ++index)
+        {
+            assert(writer.writeFloat(0.0F));
+        }
+        lux::serialization::BinaryReader zero_reader(bytes);
+        Eigen::Quaternionf zero;
+        const auto zero_result = lux::serialization::read(zero_reader, zero);
         assert(!zero_result);
-        assert(
-            zero_result.error() == lux::ecs::EComponentCodecError::INVALID_DATA
-        );
-        assert(world.find<lux::ecs::Transform3D>(zero_entity) == nullptr);
+        assert(zero_result.error().code ==
+            lux::serialization::ESerializationError::INVALID_VALUE);
 
-        const auto normalized_entity = edit.create();
-        RotationDecodePort non_unit_rotation{{0.0F, 0.0F, 0.0F, 2.0F}};
-        assert(schema->codec.decode(
-            *schema,
-            edit,
-            normalized_entity,
-            schema->version,
-            non_unit_rotation
-        ));
-        const auto& normalized = world.get<lux::ecs::Transform3D>(
-            normalized_entity
-        );
-        assert(near(normalized.rotation.squaredNorm(), 1.0F));
+        bytes.clear();
+        assert(writer.writeFloat(0.0F));
+        assert(writer.writeFloat(0.0F));
+        assert(writer.writeFloat(0.0F));
+        assert(writer.writeFloat(2.0F));
+        lux::serialization::BinaryReader non_unit_reader(bytes);
+        Eigen::Quaternionf normalized;
+        assert(lux::serialization::read(non_unit_reader, normalized));
+        assert(near(normalized.squaredNorm(), 1.0F));
     }
 }
 
@@ -398,9 +325,15 @@ int main()
             lux::ecs::componentSchemaId("lux.ecs.Transform2D"),
             lux::ecs::componentSchemaId("lux.ecs.Transform3D"),
         };
+        const std::array contributions{
+            lux::ecs::persistenceComponentContribution(),
+            lux::ecs::hierarchyPersistenceContribution(),
+            lux::ecs::transformPersistenceContribution(),
+        };
         auto image = lux::ecs::WorldSectionWriter::build(
             world,
             schema_set,
+            contributions,
             lux::ecs::WorldSectionId{
                 uuid("10000000-0000-4000-8000-000000000001")},
             lux::ecs::WorldSectionWriteSelection{entities, selected}
@@ -412,7 +345,8 @@ int main()
         assert(decoded);
         auto loaded = lux::ecs::WorldSectionReader::materialize(
             *decoded,
-            schema_set
+            schema_set,
+            contributions
         );
         assert(loaded);
         auto loaded_index = lux::ecs::PersistentEntityIndex::build(**loaded);
@@ -443,5 +377,5 @@ int main()
         assert(near(orphan.y(), 2.0F));
     }
 
-    testTransform3DCodec(schema_set);
+    testQuaternionSerialization();
 }

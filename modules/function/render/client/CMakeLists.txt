@@ -71,6 +71,7 @@ lux_classify_target(
 # pure TOOLCHAIN configure never borrows genops headers from a Developer install
 # and never needs to configure render_features/Vulkan.
 include_component_cmake_scripts(meta)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/engine_render_codegen.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/render_comm_operations.cmake)
 
 engine_add_comm_ops(

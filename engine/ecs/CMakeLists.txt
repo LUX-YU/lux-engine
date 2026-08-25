@@ -2,7 +2,7 @@ foreach(component IN ITEMS
     core
     schedule
     schema
-    schema_reflection
+    persistence_contract
     snapshot
     persistence
     hierarchy
@@ -18,7 +18,7 @@ foreach(component IN ITEMS
     core
     schedule
     schema
-    schema_reflection
+    persistence_contract
     snapshot
     persistence
     hierarchy

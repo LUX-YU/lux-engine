@@ -65,12 +65,12 @@ lux_classify_target(
 )
 
 include_component_cmake_scripts(meta)
-engine_add_meta(
+engine_add_type_runtime_info(
     NAME ui_pane_meta
     TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ui/Pane.hpp
     REGISTER_FUNC_NAME lux_ui_pane
 )
-engine_target_add_meta(
+engine_target_add_type_runtime_info(
     TARGET ui
     METAS ui_pane_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen

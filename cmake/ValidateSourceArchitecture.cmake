@@ -51,6 +51,13 @@ foreach(source IN LISTS production_sources)
         )
     endif()
 
+    if(content MATCHES
+       "#[ \t]*include[ \t]*[<\"]lux/cxx/serialization/|lux::cxx::ser")
+        message(FATAL_ERROR
+            "Architecture: Engine source '${normalized}' uses configuration serialization instead of lux::serialization."
+        )
+    endif()
+
     if(normalized MATCHES "/engine/ecs/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(scene|runtime|process|editor|authoring|toolchain|host|extensions)/")
@@ -65,7 +72,7 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
-           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
+           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|TaggedProperty|RefClass|RefField|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
             message(FATAL_ERROR
                 "Architecture: L1 source '${normalized}' restores retired ECS vocabulary."
             )
@@ -185,9 +192,10 @@ foreach(component_header IN ITEMS
 )
     if(EXISTS "${component_header}")
         file(READ "${component_header}" component_contract)
-        if(component_contract MATCHES "lux/engine/meta/MetaAnnotations.hpp")
+        if(component_contract MATCHES
+           "ComponentReflectionAdapter|RefClass|RefField|ComponentCodec")
             message(FATAL_ERROR
-                "Architecture: canonical ECS component header '${component_header}' acquired the optional reflection adapter closure."
+                "Architecture: canonical ECS component header '${component_header}' acquired runtime-reflection or codec persistence."
             )
         endif()
     endif()
@@ -196,7 +204,7 @@ endforeach()
 foreach(installed_consumer IN ITEMS
     core_schedule
     object_affinity
-    schema_reflection_persistence
+    column_persistence
 )
     if(NOT EXISTS
        "${source_root}/test/l1_installed_consumer/${installed_consumer}/CMakeLists.txt")
@@ -222,6 +230,12 @@ foreach(source IN LISTS active_cmake)
             "Architecture: active CMake '${source}' configures or links legacy/."
         )
     endif()
+    if(content MATCHES
+       "schema_reflection|(^|[^A-Za-z_])add_meta[ \t\r\n]*\\(|(^|[^A-Za-z_])target_add_meta[ \t\r\n]*\\(")
+        message(FATAL_ERROR
+            "Architecture: active CMake '${source}' restores retired reflection/persistence integration."
+        )
+    endif()
     if(source MATCHES "/modules/resource/asset/CMakeLists.txt")
         if(content MATCHES "async_port|AssetManager|AssetLoadPort")
             message(FATAL_ERROR
@@ -230,6 +244,19 @@ foreach(source IN LISTS active_cmake)
         endif()
     endif()
 endforeach()
+
+set(serialization_cmake
+    "${source_root}/modules/core/serialization/CMakeLists.txt"
+)
+if(EXISTS "${serialization_cmake}")
+    file(READ "${serialization_cmake}" serialization_target_contract)
+    if(serialization_target_contract MATCHES
+       "lux::engine::core::meta|component_add_internal_dependencies[ \t\r\n]*\\([ \t\r\n]*serialization[ \t\r\n]+meta")
+        message(FATAL_ERROR
+            "Architecture: exact binary serialization acquired runtime reflection."
+        )
+    endif()
+endif()
 
 # Preserve the most important L0 boundaries while the old upper layers are out
 # of the graph.
@@ -271,4 +298,7 @@ file(WRITE "${LUX_REPORT_PATH}"
     "retired L0 asset runtime vocabulary: 0\n"
     "transform full-scan/associative dirty paths: 0\n"
     "legacy entries in compile_commands: 0\n"
+    "configuration serialization includes in Engine/L1: 0\n"
+    "component codecs/runtime-reflection persistence: 0\n"
+    "binary serialization runtime-reflection closure: 0\n"
 )

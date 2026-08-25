@@ -189,6 +189,42 @@ set_tests_properties(
     PROPERTIES LABELS "vnext;l1;world-section;load;cpu"
 )
 
+foreach(probe IN ITEMS
+    staged_instance_move
+    active_instance_destroy
+)
+    add_executable(
+        ecs_world_section_${probe}_probe
+        test/WorldSectionFixtureBuilder.cpp
+        test/${probe}_probe.cpp
+    )
+    target_include_directories(
+        ecs_world_section_${probe}_probe
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+    )
+    target_link_libraries(
+        ecs_world_section_${probe}_probe
+        PRIVATE lux::engine::ecs::world_section
+    )
+    lux_classify_target(
+        TARGET  ecs_world_section_${probe}_probe
+        LAYER   ECS
+        PRODUCT TEST
+        ROLE    FOUNDATION
+    )
+    add_test(
+        NAME vnext_ecs_world_section_${probe}_rejected
+        COMMAND
+            ${CMAKE_COMMAND}
+            -DPROGRAM=$<TARGET_FILE:ecs_world_section_${probe}_probe>
+            -P ${PROJECT_SOURCE_DIR}/cmake/ExpectProcessFailure.cmake
+    )
+    set_tests_properties(
+        vnext_ecs_world_section_${probe}_rejected
+        PROPERTIES LABELS "vnext;l1;world-section;contract;negative"
+    )
+endforeach()
+
 add_executable(
     ecs_retired_world_section_v1_negative
     EXCLUDE_FROM_ALL

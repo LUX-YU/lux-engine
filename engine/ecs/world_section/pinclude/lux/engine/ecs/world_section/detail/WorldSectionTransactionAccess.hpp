@@ -3,7 +3,9 @@
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/core/detail/SectionMembershipDirectory.hpp>
 
+#include <iterator>
 #include <span>
+#include <vector>
 
 namespace lux::ecs::detail
 {
@@ -111,6 +113,27 @@ namespace lux::ecs::detail
             require(edit.world_ != nullptr);
             edit.world_->registry_.create(entities.begin(), entities.end());
         }
+
+#if defined(LUX_ECS_WORLD_SECTION_TESTING)
+        template <class Component>
+        static void insertPredecodedForBenchmark(
+            WorldEdit& edit,
+            std::span<const Entity> entities,
+            std::vector<Component>& values
+        )
+        {
+            require(edit.world_ != nullptr);
+            require(entities.size() == values.size());
+            auto& storage =
+                edit.world_->registry_.template storage<Component>();
+            storage.reserve(storage.size() + entities.size());
+            storage.insert(
+                entities.begin(),
+                entities.end(),
+                std::make_move_iterator(values.begin())
+            );
+        }
+#endif
 
         static void destroyEntities(
             WorldEdit& edit,

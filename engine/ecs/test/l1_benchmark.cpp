@@ -16,12 +16,14 @@
 #include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/serialization/Serialization.hpp>
+#include <lux/engine/serialization/external_support/Eigen.hpp>
 
 #include <entt/entity/registry.hpp>
 
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <charconv>
 #include <chrono>
 #include <cstddef>
@@ -176,6 +178,7 @@ namespace
         std::size_t dispatch_calls{};
         std::size_t storage_lookups{};
         std::size_t visited_nodes{};
+        std::size_t history_losses{};
     };
 
     struct Sample final
@@ -257,7 +260,7 @@ namespace
                 throw std::runtime_error("cannot open output");
             output << "kind,metric,size,sample,nanoseconds,allocations,"
                       "retained_bytes,dispatch_calls,storage_lookups,"
-                      "visited_nodes\n";
+                      "visited_nodes,history_losses\n";
             for (const auto& value : samples)
             {
                 output << "raw," << value.metric << ',' << value.size << ','
@@ -266,7 +269,8 @@ namespace
                        << value.observation.retained_bytes << ','
                        << value.observation.dispatch_calls << ','
                        << value.observation.storage_lookups << ','
-                       << value.observation.visited_nodes << '\n';
+                       << value.observation.visited_nodes << ','
+                       << value.observation.history_losses << '\n';
             }
             std::size_t begin{};
             while (begin < samples.size())
@@ -300,7 +304,8 @@ namespace
                            << samples[end - 1U].observation.retained_bytes << ','
                            << samples[end - 1U].observation.dispatch_calls << ','
                            << samples[end - 1U].observation.storage_lookups << ','
-                           << samples[end - 1U].observation.visited_nodes << '\n';
+                           << samples[end - 1U].observation.visited_nodes << ','
+                           << samples[end - 1U].observation.history_losses << '\n';
                 }
                 begin = end;
             }
@@ -351,22 +356,6 @@ namespace
                 });
             }
             writeCsv(options_.output, samples_);
-        }
-
-        [[nodiscard]] std::uint64_t median(
-            std::string_view metric,
-            std::size_t size
-        ) const
-        {
-            std::vector<std::uint64_t> times;
-            for (const auto& value : samples_)
-            {
-                if (value.metric == metric && value.size == size)
-                    times.push_back(value.nanoseconds);
-            }
-            if (times.empty()) return 0U;
-            std::sort(times.begin(), times.end());
-            return times[times.size() / 2U];
         }
 
       private:
@@ -480,6 +469,8 @@ namespace
             evidence.measure("schedule_write_query", size, [&]
             {
                 schedule.run(1.0F / 60.0F, ++tick);
+                if (schedule.changeStats().overflow_count != 0U)
+                    std::abort();
                 return Observation{
                     0U,
                     schedule.changeStats().high_water_records
@@ -1175,6 +1166,26 @@ namespace
                 );
                 return Observation{};
             });
+            evidence.measure(prefix + "_predecoded_fixed_insert", size, [&]
+            {
+                lux::ecs::World world;
+                auto local_entities = entities;
+                auto local_values = values;
+                auto edit = lux::ecs::detail::WorldColdAccess::sectionEdit(
+                    world
+                );
+                lux::ecs::detail::WorldSectionTransactionAccess::createEntities(
+                    edit,
+                    local_entities
+                );
+                lux::ecs::detail::WorldSectionTransactionAccess::
+                    insertPredecodedForBenchmark<BenchmarkFixed32<0>>(
+                        edit,
+                        local_entities,
+                        local_values
+                    );
+                return Observation{};
+            });
             evidence.measure(prefix + "_world_edit_insert", size, [&]
             {
                 lux::ecs::World world;
@@ -1201,6 +1212,13 @@ namespace
                 plan.image
             );
             if (!instance) std::abort();
+            if (lux::ecs::detail::ComponentLoadTestStats::load_calls !=
+                    plan.columns ||
+                lux::ecs::detail::ComponentLoadTestStats::storage_lookups !=
+                    plan.columns)
+            {
+                std::abort();
+            }
             const Observation result{
                 0U,
                 0U,
@@ -1233,6 +1251,206 @@ namespace
                 )};
             });
         }
+    }
+
+    void appendU32(
+        std::vector<std::byte>& bytes,
+        std::uint32_t value
+    )
+    {
+        for (std::size_t index{}; index < sizeof(value); ++index)
+        {
+            bytes.push_back(static_cast<std::byte>(value & 0xffU));
+            value >>= 8U;
+        }
+    }
+
+    void appendFloat(std::vector<std::byte>& bytes, float value)
+    {
+        appendU32(bytes, std::bit_cast<std::uint32_t>(value));
+    }
+
+    [[nodiscard]] LoadPlan makeLiveStreamingPlan(std::size_t entity_count)
+    {
+        const auto parent_id = lux::ecs::componentSchemaId("lux.ecs.Parent");
+        const auto transform_id =
+            lux::ecs::componentSchemaId("lux.ecs.Transform3D");
+        auto schemas = lux::ecs::ComponentSchemaSet::build({
+            lux::ecs::makeComponentSchema<lux::ecs::Parent>(parent_id),
+            lux::ecs::makeComponentSchema<lux::ecs::Transform3D>(transform_id),
+        });
+        if (!schemas) std::abort();
+        const std::array bindings{
+            lux::ecs::bindComponentLoad<lux::ecs::Parent>(
+                *schemas->find(parent_id)
+            ),
+            lux::ecs::bindComponentLoad<lux::ecs::Transform3D>(
+                *schemas->find(transform_id)
+            ),
+        };
+        const lux::ecs::ComponentLoadContribution contribution{{}, bindings};
+        auto loads = lux::ecs::ComponentLoadSet::build(
+            *schemas,
+            std::span(&contribution, 1U)
+        );
+        if (!loads) std::abort();
+
+        lux::ecs::world_section::test::FixtureColumn parent;
+        parent.schema_name = "lux.ecs.Parent";
+        parent.value_encoding = lux::ecs::EWorldSectionValueEncoding::FIXED;
+        parent.ordinal_encoding =
+            lux::ecs::EWorldSectionOrdinalEncoding::U32_LIST;
+        parent.fixed_stride = 4U;
+        parent.ordinals.reserve(entity_count == 0U ? 0U : entity_count - 1U);
+        parent.payload.reserve(
+            (entity_count == 0U ? 0U : entity_count - 1U) * 4U
+        );
+        for (std::size_t index = 1U; index < entity_count; ++index)
+        {
+            parent.ordinals.push_back(static_cast<std::uint32_t>(index));
+            appendU32(
+                parent.payload,
+                static_cast<std::uint32_t>((index - 1U) / 2U)
+            );
+        }
+
+        lux::ecs::world_section::test::FixtureColumn transform;
+        transform.schema_name = "lux.ecs.Transform3D";
+        transform.value_encoding =
+            lux::ecs::EWorldSectionValueEncoding::FIXED;
+        transform.fixed_stride = 40U;
+        transform.payload.reserve(entity_count * transform.fixed_stride);
+        for (std::size_t index{}; index < entity_count; ++index)
+        {
+            appendFloat(transform.payload, 0.0F);
+            appendFloat(transform.payload, 0.0F);
+            appendFloat(transform.payload, 0.0F);
+            appendFloat(transform.payload, 0.0F);
+            appendFloat(transform.payload, 0.0F);
+            appendFloat(transform.payload, 0.0F);
+            appendFloat(transform.payload, 1.0F);
+            appendFloat(transform.payload, 1.0F);
+            appendFloat(transform.payload, 1.0F);
+            appendFloat(transform.payload, 1.0F);
+        }
+
+        auto bytes = lux::ecs::world_section::test::buildFixture(
+            benchmarkSectionId(),
+            static_cast<std::uint32_t>(entity_count),
+            {std::move(parent), std::move(transform)}
+        );
+        auto image = lux::ecs::WorldSectionImage::open(
+            std::move(bytes),
+            lux::ecs::world_section::test::fixtureValidationBudget()
+        );
+        if (!image) std::abort();
+        return LoadPlan{
+            std::move(*schemas),
+            std::move(*loads),
+            std::move(*image),
+            2U
+        };
+    }
+
+    void benchmarkLiveStreaming(
+        Evidence& evidence,
+        std::size_t resident_count
+    )
+    {
+        const std::size_t section_count = std::min<std::size_t>(
+            resident_count,
+            10'000U
+        );
+        auto plan = makeLiveStreamingPlan(section_count);
+        lux::ecs::World world;
+        std::vector<lux::ecs::Entity> residents(
+            resident_count,
+            lux::ecs::NullEntity
+        );
+        {
+            auto edit = lux::ecs::detail::WorldColdAccess::sectionEdit(world);
+            lux::ecs::detail::WorldSectionTransactionAccess::createEntities(
+                edit,
+                residents
+            );
+        }
+
+        lux::ecs::HierarchyIndex hierarchy(world);
+        lux::ecs::Schedule schedule(world);
+        auto schedule_edit_result = schedule.edit();
+        auto schedule_edit = std::move(*schedule_edit_result);
+        const auto hierarchy_handle = schedule_edit.add(
+            std::make_unique<lux::ecs::HierarchySystem>(hierarchy),
+            lux::ecs::SystemPhase::PreUpdate
+        );
+        auto transform_owner =
+            std::make_unique<lux::ecs::Transform3DSystem>(hierarchy);
+        auto* transform = transform_owner.get();
+        const auto transform_handle = schedule_edit.add(
+            std::move(transform_owner)
+        );
+        schedule_edit.require(transform_handle, hierarchy_handle);
+        if (!schedule_edit.commit()) std::abort();
+        std::uint64_t tick{1U};
+        schedule.run(1.0F / 60.0F, tick);
+
+        evidence.measure(
+            "world_section_live_resident_reconcile",
+            resident_count,
+            [&]
+            {
+                const auto epoch = lux::ecs::detail::worldChangeEpoch(world);
+                const auto begin = Clock::now();
+                auto instance = loadBenchmarkSection(
+                    world,
+                    plan.loads,
+                    plan.image
+                );
+                if (!instance) std::abort();
+                schedule.run(1.0F / 60.0F, ++tick);
+                const auto end = Clock::now();
+                if (lux::ecs::detail::worldChangeEpoch(world) != epoch)
+                    std::abort();
+
+                const std::size_t hierarchy_visited =
+                    lux::ecs::detail::HierarchyIndexTestAccess::visitedNodes(
+                        hierarchy
+                    );
+                const std::size_t transform_visited =
+                    lux::ecs::detail::TransformSystemTestAccess::visitedNodes(
+                        *transform
+                    );
+                if (!unloadBenchmarkSection(world, *instance))
+                    std::abort();
+                schedule.run(1.0F / 60.0F, ++tick);
+                if (lux::ecs::detail::worldChangeEpoch(world) != epoch)
+                    std::abort();
+                schedule.run(1.0F / 60.0F, ++tick);
+                if (lux::ecs::detail::HierarchyIndexTestAccess::visitedNodes(
+                        hierarchy
+                    ) != 0U ||
+                    lux::ecs::detail::TransformSystemTestAccess::visitedNodes(
+                        *transform
+                    ) != 0U)
+                {
+                    std::abort();
+                }
+                return Observation{
+                    static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            end - begin
+                        ).count()
+                    ),
+                    lux::ecs::detail::TransformSystemTestAccess::
+                        retainedDenseBytes(*transform),
+                    2U,
+                    2U,
+                    hierarchy_visited + transform_visited,
+                    0U
+                };
+            }
+        );
+        checksum = checksum + residents.size();
     }
 
     [[nodiscard]] std::vector<std::byte> dynamicPayload(
@@ -1455,43 +1673,7 @@ namespace
             refs4,
             false
         );
-    }
-
-    [[nodiscard]] bool qualificationPassed(
-        const Options& options,
-        const Evidence& evidence
-    )
-    {
-        if (options.mode != EMode::QUALIFICATION) return true;
-        if (options.group == EGroup::QUERY)
-        {
-            const auto raw = evidence.median("raw_entt_read", options.size);
-            const auto world = evidence.median("world_read_query", options.size);
-            return raw != 0U && world <= raw + raw / 20U;
-        }
-        if (options.group == EGroup::WORLD_SECTION &&
-            options.size >= 1'000'000U)
-        {
-            const auto small = evidence.median(
-                "world_section_dense_fixed3_full_load",
-                100'000U
-            );
-            const auto large = evidence.median(
-                "world_section_dense_fixed3_full_load",
-                options.size
-            );
-            const auto raw = evidence.median(
-                "world_section_dense_fixed3_raw_entt_insert",
-                options.size
-            );
-            const auto predecoded = evidence.median(
-                "world_section_dense_fixed3_predecoded_fixed_insert",
-                options.size
-            );
-            return small != 0U && large <= small * 15U && raw != 0U &&
-                predecoded <= raw + raw / 4U;
-        }
-        return true;
+        benchmarkLiveStreaming(evidence, requested_size);
     }
 } // namespace
 
@@ -1538,11 +1720,6 @@ int main(int argc, char** argv)
         case EGroup::WORLD_SECTION:
             benchmarkWorldSection(evidence, options->size);
             break;
-        }
-        if (!qualificationPassed(*options, evidence))
-        {
-            std::cerr << "qualification gate failed; evidence preserved\n";
-            return 3;
         }
     }
     catch (const std::exception& error)

@@ -14,6 +14,7 @@ int main()
     lux::ecs::HierarchyIndex hierarchy(world);
     lux::ecs::SystemRegistry systems;
     const auto hierarchy_id = systems.emplace<lux::ecs::HierarchySystem>(
+        world,
         hierarchy
     );
     const auto transform_id = systems.emplace<lux::ecs::Transform3DSystem>(
@@ -22,23 +23,23 @@ int main()
     if (!hierarchy_id || !transform_id)
         return 1;
 
-    lux::ecs::SystemRelations relations(systems);
+    lux::ecs::SystemRelations relations;
     if (!relations.before(*hierarchy_id, *transform_id))
         return 2;
-    lux::ecs::SystemTaskGraphCompiler compiler;
-    auto compilation = compiler.compile(systems, relations);
+    auto compilation = lux::ecs::compileSystemTaskGraph(systems, relations);
     if (!compilation)
         return 3;
     lux::ecs::SystemExecutionScratch scratch;
     if (!scratch.prepare(*compilation))
         return 4;
-    lux::ecs::EcsExecutionContext context(
+    lux::ecs::EcsExecutionContext context{
         world,
         systems,
+        relations,
         scratch,
         1.0F / 60.0F,
         1U
-    );
+    };
     return lux::ecs::executeSystemTaskGraph(
         lux::task::referenceTaskExecutionBackend(),
         *compilation,

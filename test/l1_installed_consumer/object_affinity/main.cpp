@@ -2,6 +2,7 @@
 #include <lux/engine/ecs/SystemRegistry.hpp>
 #include <lux/engine/ecs/SystemRelations.hpp>
 #include <lux/engine/ecs/SystemTaskGraphCompiler.hpp>
+#include <lux/engine/ecs/World.hpp>
 #include <lux/engine/object/Object.hpp>
 
 #include <cstdint>
@@ -32,17 +33,16 @@ int main()
     std::uint32_t count{};
     if (!systems.emplace<ObjectSystem>(count))
         return 1;
-    lux::ecs::SystemRelations relations(systems);
-    lux::ecs::SystemTaskGraphCompiler compiler;
-    auto compilation = compiler.compile(systems, relations);
+    lux::ecs::SystemRelations relations;
+    auto compilation = lux::ecs::compileSystemTaskGraph(systems, relations);
     if (!compilation)
         return 2;
     lux::ecs::SystemExecutionScratch scratch;
     if (!scratch.prepare(*compilation))
         return 3;
-    lux::ecs::EcsExecutionContext context(
-        world, systems, scratch, 1.0F / 60.0F, 1U
-    );
+    lux::ecs::EcsExecutionContext context{
+        world, systems, relations, scratch, 1.0F / 60.0F, 1U
+    };
     if (!lux::ecs::executeSystemTaskGraph(
             lux::task::referenceTaskExecutionBackend(),
             *compilation,

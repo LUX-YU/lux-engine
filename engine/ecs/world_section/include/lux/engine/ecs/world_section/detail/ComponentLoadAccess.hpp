@@ -98,29 +98,62 @@ namespace lux::ecs::detail
 
     struct WorldSectionStorageAccess final
     {
-        template <class Component>
-        static void insertTag(
+        static void createEntities(
+            WorldEdit& edit,
+            std::span<Entity> entities
+        )
+        {
+            detail::require(edit.world_ != nullptr);
+            edit.world_->registry_.create(entities.begin(), entities.end());
+        }
+
+        static void destroyEntities(
             WorldEdit& edit,
             std::span<const Entity> entities
         )
         {
             detail::require(edit.world_ != nullptr);
-            edit.world_->registry_.template insert<Component>(
-                entities.begin(),
-                entities.end()
-            );
+            edit.world_->registry_.destroy(entities.begin(), entities.end());
+        }
+
+        static void destroyValidEntities(
+            WorldEdit& edit,
+            std::span<const Entity> entities
+        ) noexcept
+        {
+            detail::require(edit.world_ != nullptr);
+            for (const Entity entity : entities)
+            {
+                if (edit.world_->registry_.valid(entity))
+                    edit.world_->registry_.destroy(entity);
+            }
         }
 
         template <class Component>
+        [[nodiscard]] static auto& componentStorage(WorldEdit& edit)
+        {
+            detail::require(edit.world_ != nullptr);
+            return edit.world_->registry_.template storage<Component>();
+        }
+
+        template <class Component, class Storage>
+        static void insertTag(
+            Storage& storage,
+            std::span<const Entity> entities
+        )
+        {
+            storage.insert(entities.begin(), entities.end());
+        }
+
+        template <class Component, class Storage>
         static void insertValues(
-            WorldEdit& edit,
+            Storage& storage,
             std::span<const Entity> entities,
             std::vector<Component>& values
         )
         {
-            detail::require(edit.world_ != nullptr);
             detail::require(entities.size() == values.size());
-            edit.world_->registry_.template insert<Component>(
+            storage.insert(
                 entities.begin(),
                 entities.end(),
                 std::make_move_iterator(values.begin())

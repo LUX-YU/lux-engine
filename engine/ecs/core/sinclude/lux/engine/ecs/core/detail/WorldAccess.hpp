@@ -41,6 +41,17 @@ namespace lux::ecs::detail
                 WorldEdit::EChangeEmission::SUPPRESS
             );
         }
+
+        [[nodiscard]] static WorldEdit sectionEdit(World& world) noexcept
+        {
+            require(ownerIdle(world));
+            world.state_ = EWorldState::EDITING;
+            return WorldEdit(
+                world,
+                true,
+                WorldEdit::EChangeEmission::SUPPRESS
+            );
+        }
     };
 
     struct WorldEntityAccess final

@@ -15,6 +15,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ComponentLoadSet.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSectionImage.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSectionLoader.cpp
 )
 
 component_include_directories(
@@ -143,4 +144,43 @@ add_test(
 set_tests_properties(
     vnext_ecs_component_load_set
     PROPERTIES LABELS "vnext;l1;world-section;schema;cpu"
+)
+
+add_executable(
+    ecs_world_section_loader_test
+    test/WorldSectionFixtureBuilder.cpp
+    test/world_section_loader_test.cpp
+)
+target_include_directories(
+    ecs_world_section_loader_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+)
+target_compile_definitions(
+    ecs_world_section_loader_test
+    PRIVATE LUX_ECS_WORLD_SECTION_TESTING=1
+)
+target_link_libraries(
+    ecs_world_section_loader_test
+    PRIVATE
+        lux::engine::ecs::world_section
+        lux::engine::ecs::schedule
+)
+if(MSVC)
+    target_compile_options(ecs_world_section_loader_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(ecs_world_section_loader_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  ecs_world_section_loader_test
+    LAYER   ECS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(
+    NAME vnext_ecs_world_section_loader
+    COMMAND ecs_world_section_loader_test
+)
+set_tests_properties(
+    vnext_ecs_world_section_loader
+    PROPERTIES LABELS "vnext;l1;world-section;load;cpu"
 )

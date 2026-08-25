@@ -138,6 +138,19 @@ The configure-time checks and the `lux_architecture_check` build target share
 `cmake/ValidateSourceArchitecture.cmake`; no temporary source-debt allowlist
 remains.
 
+## Representation 与 capacity（2026-08-25）
+
+**Format defines widths; Product defines capacities.** Foundation 可以冻结
+wire representation，例如 LXWC 的 32-bit ordinal、32-bit row count、64-bit
+file offset、80-byte header/descriptor 与 format version。由 benchmark 证明的
+block/chunk layout 可以作为 private implementation tuning，但不得成为产品策略。
+
+最大 World/Section Entity 数、Component row 数、image bytes、decode/change
+scratch、active/streaming section 数等 capacity 必须由 Product/Profile 显式向下
+传入 L1 budget/policy。L1 不为 Mobile、Desktop、Editor、Server 或 large-world
+Player 选择一个共同的 magic default；allocation failure 必须保持 canonical state
+并走结构化失败或显式 history-loss/resync 降级。
+
 ## Object 与 UI foundation（2026-08-23）
 
 - `modules/core/meta` 是对象无关的反射查询层；它公开静态/实例字段、方法注解和

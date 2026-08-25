@@ -2,7 +2,7 @@
 
 This ledger tracks implementation state only. Decisions live in ADRs.
 
-## Active: L1 World data-path rebuild (2026-08-25)
+## Active: L1 World data-path second hardening (2026-08-25)
 
 The foundation generator, TypeInfo and exact binary serializer remain
 qualified. The LXWC v1 runtime Writer/Image contract is rejected after a
@@ -20,12 +20,34 @@ implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
       retire `persistence_contract` plus the remaining v1 codegen bindings.
 - [x] WDP-6: Clone WorldSnapshot by COPY component storage.
 - [x] WDP-7: Complete corruption, install and architecture gates.
-- [x] WDP-8: Complete 1M diagnostic/qualification evidence against raw EnTT.
+- [x] WDP-8: Complete the first 1M diagnostic pass against raw EnTT. The
+      resulting performance conclusion is rejected by the second independent
+      audit and retained only as historical evidence.
+- [ ] WDP2-1: Establish World identity, three-state section instances and a
+      non-installed privileged storage boundary.
+- [ ] WDP2-2: Separate LXWC representation constants from caller-provided
+      validation/load budgets and make wire shape serializer-aware.
+- [ ] WDP2-3: Replace byte-shaped Schedule scratch defaults with adaptive
+      record-count policy and complete/incomplete-access storage lanes.
+- [ ] WDP2-4: Add lexical multi-section load batches, exact Change Journal
+      publication and a section-local membership ledger with linear unload.
+- [ ] WDP2-5: Orthogonalize generated Component policies and pin only code
+      owners actually materialized by an active section.
+- [ ] WDP2-6: Qualify adversarial failure, live-resident reconciliation,
+      structural counters, scaling exponent and relative baselines.
 
-Qualification status: `Foundation Qualified / L1 Architecture Accepted /
-Correctness Hardened / Performance Contract Passed / Public API Freeze
-Candidate / Independent Re-audit Required / Domain Migration Blocked`.
+Qualification status: `L1 Architecture Accepted / Freeze Candidate Rejected
+by Independent Audit / Targeted Hardening Required / Performance Contract
+Rejected / Domain Migration Blocked`.
 L2/L3/L4/L5 remain design boundaries only in this phase.
+
+The hardening contract adopts **Format defines widths; Product defines
+capacities**. LXWC widths/version remain fixed representation facts. Entity,
+column, component-row, image and transient scratch capacities are explicit
+runtime policies with no L1 product defaults. Entity destruction is the
+complete end of the Entity and all Component lifetimes; `Component Removed`
+means explicit removal while the Entity survives. Batch unload must not use an
+Entity-by-all-World-storages scan.
 
 ## Retained foundation record (2026-08-24)
 

@@ -6,7 +6,13 @@ size of 1,000,000. The executable published the complete CSV through a
 temporary file after every completed metric, so a later failure could not
 erase earlier evidence.
 
-## Result
+## Historical result — qualification withdrawn
+
+The second independent audit rejected the Freeze Candidate. These samples are
+retained as diagnostic history, but they do not establish the current
+performance contract: live-resident reconciliation, TAG row-work budgets,
+adaptive Schedule scratch, physical unload complexity and scaling-exponent
+policy were not qualified.
 
 - 1M World read query median: 3.849 ms versus raw EnTT 4.217 ms; both paths
   allocate zero times in the measured loop.
@@ -43,6 +49,6 @@ After the fix, 1M deep propagation completed with a 107.439 ms median and
 - `snapshot-1m-qualification.csv`
 - `world-section-1m-qualification.csv`
 
-These results qualify the storage-driven L1 paths on the recorded Windows
-RelWithDebInfo environment. They do not mark L1 Frozen; independent re-audit
-is still required.
+These results describe the first storage-driven diagnostic pass on the
+recorded Windows RelWithDebInfo environment. They no longer qualify L1. The
+active stop line is recorded in `.internal/UNFINISHED-WORK.md`.

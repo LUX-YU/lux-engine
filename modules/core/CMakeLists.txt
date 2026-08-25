@@ -14,6 +14,7 @@ add_subdirectory(object)
 add_subdirectory(serialization)
 add_subdirectory(log)
 add_subdirectory(events)
+add_subdirectory(task)
 
 install_components(
 	PROJECT_NAME	lux-engine-core
@@ -27,4 +28,5 @@ install_components(
                     serialization
                     log
                     events
+					task
 )

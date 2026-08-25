@@ -1,5 +1,6 @@
 foreach(component IN ITEMS
     core
+    system
     schedule
     schema
     world_section
@@ -16,6 +17,7 @@ endforeach()
 set(_lux_ecs_components)
 foreach(component IN ITEMS
     core
+    system
     schedule
     schema
     world_section

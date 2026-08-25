@@ -21,6 +21,13 @@ namespace lux::ecs::detail
         std::vector<std::vector<std::uint32_t>> batches;
     };
 
+    struct ChangeBindingStats final
+    {
+        std::uint64_t lane_binds{};
+        std::uint64_t journal_stream_binds{};
+        std::uint64_t per_record_lookups{};
+    };
+
     struct LUX_ENGINE_ECS_SCHEDULE_PUBLIC ScheduleTestAccess final
     {
         [[nodiscard]] static ExecutionPlanSnapshot snapshot(
@@ -32,6 +39,10 @@ namespace lux::ecs::detail
         ) noexcept;
 
         [[nodiscard]] static std::size_t commandAllocationEvents(
+            const Schedule& schedule
+        ) noexcept;
+
+        [[nodiscard]] static ChangeBindingStats changeBindingStats(
             const Schedule& schedule
         ) noexcept;
 

@@ -5,7 +5,6 @@
 #include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
 
 #include <algorithm>
-#include <bit>
 #include <limits>
 #include <memory>
 #include <new>
@@ -14,377 +13,25 @@
 
 namespace lux::ecs
 {
-    namespace detail
+    void ComponentLoadBinding::trackMembership(
+        WorldEdit& edit,
+        std::uint64_t storage,
+        std::span<const Entity> entities
+    ) noexcept
     {
-        class SectionResidency final
-        {
-          public:
-            struct ResolvedColumn final
-            {
-                std::uint64_t storage{};
-                std::uint32_t image_column{};
-            };
-
-            WorldSectionImage image;
-            std::vector<ResolvedColumn> columns;
-            std::vector<std::uint32_t> overlay_heads;
-            std::vector<std::shared_ptr<const void>> pins;
-
-            void reserveOverlay(std::size_t entity_count)
-            {
-                overlay_heads.assign(entity_count, InvalidNode);
-            }
-
-            [[nodiscard]] ResidencyMutationToken prepareAdd(
-                std::uint32_t ordinal,
-                std::uint64_t storage
-            )
-            {
-                const NodeIndex existing = findOverlay(ordinal, storage);
-                if (existing != InvalidNode)
-                {
-                    return nodes_[existing].kind == EOverlayKind::REMOVED
-                        ? token(ETokenAction::UNLINK, existing)
-                        : 0U;
-                }
-                if (baseContains(ordinal, storage))
-                    return 0U;
-                return token(
-                    ETokenAction::LINK,
-                    allocateNode(storage, EOverlayKind::ADDED)
-                );
-            }
-
-            [[nodiscard]] ResidencyMutationToken prepareRemove(
-                std::uint32_t ordinal,
-                std::uint64_t storage
-            )
-            {
-                const NodeIndex existing = findOverlay(ordinal, storage);
-                if (existing != InvalidNode)
-                {
-                    return nodes_[existing].kind == EOverlayKind::ADDED
-                        ? token(ETokenAction::UNLINK, existing)
-                        : 0U;
-                }
-                if (!baseContains(ordinal, storage))
-                    return 0U;
-                return token(
-                    ETokenAction::LINK,
-                    allocateNode(storage, EOverlayKind::REMOVED)
-                );
-            }
-
-            void commitMutation(
-                std::uint32_t ordinal,
-                ResidencyMutationToken value
-            ) noexcept
-            {
-                const auto [action, node] = decode(value);
-                if (action == ETokenAction::LINK)
-                {
-                    nodes_[node].next = overlay_heads[ordinal];
-                    overlay_heads[ordinal] = node;
-                    return;
-                }
-                require(action == ETokenAction::UNLINK);
-                unlink(ordinal, node);
-            }
-
-            void cancelMutation(ResidencyMutationToken value) noexcept
-            {
-                const auto [action, node] = decode(value);
-                if (action == ETokenAction::LINK)
-                    releaseNode(node);
-            }
-
-            template <class Fn>
-            void forEachActual(std::uint32_t ordinal, Fn&& fn) const noexcept
-            {
-                for (const ResolvedColumn& resolved : columns)
-                {
-                    if (baseContains(ordinal, resolved.storage) &&
-                        !hasOverlay(
-                            ordinal,
-                            resolved.storage,
-                            EOverlayKind::REMOVED
-                        ))
-                    {
-                        fn(resolved.storage);
-                    }
-                }
-                for (NodeIndex node = overlay_heads[ordinal];
-                     node != InvalidNode;
-                     node = nodes_[node].next)
-                {
-                    if (nodes_[node].kind == EOverlayKind::ADDED)
-                        fn(nodes_[node].storage);
-                }
-            }
-
-            void deactivate(std::uint32_t ordinal) noexcept
-            {
-                NodeIndex node = overlay_heads[ordinal];
-                while (node != InvalidNode)
-                {
-                    const NodeIndex next = nodes_[node].next;
-                    releaseNode(node);
-                    node = next;
-                }
-                overlay_heads[ordinal] = InvalidNode;
-            }
-
-            [[nodiscard]] bool basePresent(
-                std::uint32_t ordinal,
-                std::uint64_t storage
-            ) const noexcept
-            {
-                return baseContains(ordinal, storage) &&
-                    !hasOverlay(
-                        ordinal,
-                        storage,
-                        EOverlayKind::REMOVED
-                    );
-            }
-
-            template <class Fn>
-            void forEachAdded(std::uint32_t ordinal, Fn&& fn) const noexcept
-            {
-                for (NodeIndex node = overlay_heads[ordinal];
-                     node != InvalidNode;
-                     node = nodes_[node].next)
-                {
-                    if (nodes_[node].kind == EOverlayKind::ADDED)
-                        fn(nodes_[node].storage);
-                }
-            }
-
-            [[nodiscard]] static const SectionResidencyPort& port() noexcept
-            {
-                static const SectionResidencyPort value{
-                    [](void* context, std::uint32_t ordinal,
-                       std::uint64_t storage) -> ResidencyMutationToken
-                    {
-                        return static_cast<SectionResidency*>(context)
-                            ->prepareAdd(ordinal, storage);
-                    },
-                    [](void* context, std::uint32_t ordinal,
-                       std::uint64_t storage) -> ResidencyMutationToken
-                    {
-                        return static_cast<SectionResidency*>(context)
-                            ->prepareRemove(ordinal, storage);
-                    },
-                    [](void* context, std::uint32_t ordinal,
-                       ResidencyMutationToken mutation) noexcept
-                    {
-                        static_cast<SectionResidency*>(context)
-                            ->commitMutation(ordinal, mutation);
-                    },
-                    [](void* context,
-                       ResidencyMutationToken mutation) noexcept
-                    {
-                        static_cast<SectionResidency*>(context)
-                            ->cancelMutation(mutation);
-                    },
-                    [](const void* context, std::uint32_t ordinal,
-                       void* visitor,
-                       void (*visit)(void*, std::uint64_t) noexcept) noexcept
-                    {
-                        static_cast<const SectionResidency*>(context)
-                            ->forEachActual(
-                                ordinal,
-                                [&](std::uint64_t storage) noexcept
-                                {
-                                    visit(visitor, storage);
-                                }
-                            );
-                    },
-                    [](void* context, std::uint32_t ordinal) noexcept
-                    {
-                        static_cast<SectionResidency*>(context)
-                            ->deactivate(ordinal);
-                    }
-                };
-                return value;
-            }
-
-          private:
-            using NodeIndex = std::uint32_t;
-            static constexpr NodeIndex InvalidNode =
-                std::numeric_limits<NodeIndex>::max();
-
-            enum class EOverlayKind : std::uint8_t
-            {
-                ADDED,
-                REMOVED,
-            };
-
-            enum class ETokenAction : std::uint32_t
-            {
-                LINK = 1U,
-                UNLINK = 2U,
-            };
-
-            struct Node final
-            {
-                std::uint64_t storage{};
-                NodeIndex next{InvalidNode};
-                EOverlayKind kind{EOverlayKind::ADDED};
-            };
-
-            [[nodiscard]] const ResolvedColumn* findColumn(
-                std::uint64_t storage
-            ) const noexcept
-            {
-                const auto found = std::lower_bound(
-                    columns.begin(),
-                    columns.end(),
-                    storage,
-                    [](const ResolvedColumn& column, std::uint64_t value)
-                    {
-                        return column.storage < value;
-                    }
-                );
-                return found != columns.end() && found->storage == storage
-                    ? std::addressof(*found)
-                    : nullptr;
-            }
-
-            [[nodiscard]] bool baseContains(
-                std::uint32_t ordinal,
-                std::uint64_t storage
-            ) const noexcept
-            {
-                const ResolvedColumn* resolved = findColumn(storage);
-                if (resolved == nullptr)
-                    return false;
-                const auto& column = image.columns()[resolved->image_column];
-                if (column.ordinalEncoding() ==
-                    EWorldSectionOrdinalEncoding::DENSE)
-                {
-                    return ordinal < image.entityCount();
-                }
-                std::size_t first{};
-                std::size_t count = column.rowCount();
-                while (count != 0U)
-                {
-                    const std::size_t step = count / 2U;
-                    const std::size_t current = first + step;
-                    const std::uint32_t value = readColumnU32(
-                        column.ordinalBytes(),
-                        current * sizeof(std::uint32_t)
-                    );
-                    if (value < ordinal)
-                    {
-                        first = current + 1U;
-                        count -= step + 1U;
-                    }
-                    else
-                    {
-                        count = step;
-                    }
-                }
-                return first < column.rowCount() &&
-                    readColumnU32(
-                        column.ordinalBytes(),
-                        first * sizeof(std::uint32_t)
-                    ) == ordinal;
-            }
-
-            [[nodiscard]] NodeIndex findOverlay(
-                std::uint32_t ordinal,
-                std::uint64_t storage
-            ) const noexcept
-            {
-                for (NodeIndex node = overlay_heads[ordinal];
-                     node != InvalidNode;
-                     node = nodes_[node].next)
-                {
-                    if (nodes_[node].storage == storage)
-                        return node;
-                }
-                return InvalidNode;
-            }
-
-            [[nodiscard]] bool hasOverlay(
-                std::uint32_t ordinal,
-                std::uint64_t storage,
-                EOverlayKind kind
-            ) const noexcept
-            {
-                const NodeIndex node = findOverlay(ordinal, storage);
-                return node != InvalidNode && nodes_[node].kind == kind;
-            }
-
-            [[nodiscard]] NodeIndex allocateNode(
-                std::uint64_t storage,
-                EOverlayKind kind
-            )
-            {
-                NodeIndex result{};
-                if (free_ != InvalidNode)
-                {
-                    result = free_;
-                    free_ = nodes_[result].next;
-                }
-                else
-                {
-                    if (nodes_.size() >= InvalidNode)
-                        throw std::bad_alloc{};
-                    result = static_cast<NodeIndex>(nodes_.size());
-                    nodes_.push_back(Node{});
-                }
-                nodes_[result] = Node{storage, InvalidNode, kind};
-                return result;
-            }
-
-            void releaseNode(NodeIndex node) noexcept
-            {
-                nodes_[node] = Node{0U, free_, EOverlayKind::ADDED};
-                free_ = node;
-            }
-
-            void unlink(std::uint32_t ordinal, NodeIndex target) noexcept
-            {
-                NodeIndex* link = &overlay_heads[ordinal];
-                while (*link != InvalidNode && *link != target)
-                    link = &nodes_[*link].next;
-                require(*link == target);
-                *link = nodes_[target].next;
-                releaseNode(target);
-            }
-
-            [[nodiscard]] static ResidencyMutationToken token(
-                ETokenAction action,
-                NodeIndex node
-            ) noexcept
-            {
-                return (static_cast<std::uint64_t>(action) << 32U) |
-                    (static_cast<std::uint64_t>(node) + 1U);
-            }
-
-            [[nodiscard]] static std::pair<ETokenAction, NodeIndex> decode(
-                ResidencyMutationToken value
-            ) noexcept
-            {
-                require(value != 0U);
-                return {
-                    static_cast<ETokenAction>(value >> 32U),
-                    static_cast<NodeIndex>(value - 1U)
-                };
-            }
-
-            std::vector<Node> nodes_;
-            NodeIndex free_{InvalidNode};
-        };
-    } // namespace detail
+        detail::WorldSectionTransactionAccess::addComponentMembership(
+            edit,
+            storage,
+            entities
+        );
+    }
 
     WorldSectionInstance::WorldSectionInstance(
         WorldSectionInstance&& other
     ) noexcept
         : id_(std::move(other.id_)),
           entities_(std::move(other.entities_)),
-          residency_(std::move(other.residency_)),
+          code_lifetimes_(std::move(other.code_lifetimes_)),
           world_identity_(std::exchange(other.world_identity_, 0U)),
           lease_(std::exchange(other.lease_, 0U)),
           state_(std::exchange(other.state_, EState::INACTIVE))
@@ -392,7 +39,7 @@ namespace lux::ecs
         detail::require(state_ != EState::STAGED);
         other.id_ = {};
         other.entities_.clear();
-        other.residency_.reset();
+        other.code_lifetimes_.clear();
     }
 
     WorldSectionInstance::~WorldSectionInstance() noexcept
@@ -483,10 +130,8 @@ namespace lux::ecs
             WorldSectionInstance* output{};
             std::vector<const ComponentLoadBinding*> plan;
             std::vector<std::shared_ptr<const void>> pins;
-            std::shared_ptr<detail::SectionResidency> residency;
             std::size_t component_rows{};
             std::size_t max_sparse_rows{};
-            bool activated{};
         };
 
         World* world{};
@@ -504,7 +149,7 @@ namespace lux::ecs
                 auto& output = *operation.output;
                 output.id_ = {};
                 output.entities_.clear();
-                output.residency_.reset();
+                output.code_lifetimes_.clear();
                 output.world_identity_ = 0U;
                 output.lease_ = 0U;
                 output.state_ = WorldSectionInstance::EState::INACTIVE;
@@ -518,46 +163,15 @@ namespace lux::ecs
             for (auto& operation : loads)
             {
                 auto& output = *operation.output;
-                for (std::size_t ordinal{};
-                     ordinal < output.entities_.size();
-                     ++ordinal)
-                {
-                    const Entity entity = output.entities_[ordinal];
-                    if (entity == NullEntity ||
-                        !detail::WorldSectionTransactionAccess::matches(
-                            edit,
-                            entity,
-                            output.lease_
-                        ))
-                        continue;
-                    operation.residency->forEachActual(
-                        static_cast<std::uint32_t>(ordinal),
-                        [&](std::uint64_t storage) noexcept
-                        {
-                            detail::WorldSectionTransactionAccess::removeComponent(
-                                edit,
-                                entity,
-                                storage
-                            );
-                        }
-                    );
-                    detail::WorldSectionTransactionAccess::deactivateEntity(
-                        edit,
-                        entity
-                    );
-                }
+                detail::WorldSectionTransactionAccess::rollbackEntities(
+                    edit,
+                    output.lease_,
+                    output.entities_
+                );
                 detail::WorldSectionTransactionAccess::destroyBareEntities(
                     edit,
                     output.entities_
                 );
-                if (operation.residency && operation.activated)
-                {
-                    detail::WorldSectionTransactionAccess::releaseResidency(
-                        edit,
-                        output.lease_
-                    );
-                    operation.activated = false;
-                }
             }
         }
     };
@@ -619,12 +233,7 @@ namespace lux::ecs
             operation.loads = loads;
             operation.image = image;
             operation.output = &inactive_output;
-            operation.residency =
-                std::make_shared<detail::SectionResidency>();
-            operation.residency->image = image;
-            operation.residency->reserveOverlay(image.entityCount());
             operation.plan.reserve(image.columns().size());
-            operation.residency->columns.reserve(image.columns().size());
 
             for (std::size_t index{}; index < image.columns().size(); ++index)
             {
@@ -663,12 +272,6 @@ namespace lux::ecs
                 }
                 operation.component_rows += column.rowCount();
                 operation.plan.push_back(binding);
-                operation.residency->columns.push_back(
-                    detail::SectionResidency::ResolvedColumn{
-                        binding->storage_,
-                        static_cast<std::uint32_t>(index)
-                    }
-                );
                 appendUniquePin(
                     operation.pins,
                     operation.loads.codeLifetime(*binding)
@@ -687,16 +290,6 @@ namespace lux::ecs
                 }
             }
 
-            std::sort(
-                operation.residency->columns.begin(),
-                operation.residency->columns.end(),
-                [](const auto& left, const auto& right) noexcept
-                {
-                    return left.storage < right.storage;
-                }
-            );
-            operation.residency->pins = operation.pins;
-
             inactive_output.id_ = image.id();
             inactive_output.entities_.resize(image.entityCount(), NullEntity);
             inactive_output.world_identity_ =
@@ -705,7 +298,6 @@ namespace lux::ecs
                 detail::WorldSectionTransactionAccess::allocateLease(
                     impl_->edit
                 );
-            inactive_output.residency_ = operation.residency;
             impl_->loads.push_back(std::move(operation));
             inactive_output.state_ = WorldSectionInstance::EState::STAGED;
             return {};
@@ -716,7 +308,6 @@ namespace lux::ecs
             inactive_output.entities_.clear();
             inactive_output.world_identity_ = 0U;
             inactive_output.lease_ = 0U;
-            inactive_output.residency_.reset();
             return lux::cxx::unexpected(
                 failure(EWorldSectionError::ALLOCATION_FAILURE)
             );
@@ -727,7 +318,6 @@ namespace lux::ecs
             inactive_output.entities_.clear();
             inactive_output.world_identity_ = 0U;
             inactive_output.lease_ = 0U;
-            inactive_output.residency_.reset();
             return lux::cxx::unexpected(
                 failure(EWorldSectionError::DECODE_FAILED)
             );
@@ -805,7 +395,7 @@ namespace lux::ecs
         try
         {
             std::size_t max_sparse_rows{};
-            for (auto& operation : impl_->loads)
+            for (const auto& operation : impl_->loads)
             {
                 max_sparse_rows = std::max(
                     max_sparse_rows,
@@ -815,20 +405,16 @@ namespace lux::ecs
                     impl_->edit,
                     operation.output->entities_
                 );
-                detail::WorldSectionTransactionAccess::reserveResidency(
+                detail::WorldSectionTransactionAccess::reserveMembership(
                     impl_->edit,
                     operation.output->entities_,
-                    impl_->loads.size()
+                    operation.component_rows
                 );
-                detail::WorldSectionTransactionAccess::activateResidency(
+                detail::WorldSectionTransactionAccess::activateMembership(
                     impl_->edit,
                     operation.output->lease_,
-                    operation.residency,
-                    operation.residency.get(),
-                    detail::SectionResidency::port(),
                     operation.output->entities_
                 );
-                operation.activated = true;
             }
             impl_->sparse_entities.reserve(max_sparse_rows);
 
@@ -924,68 +510,19 @@ namespace lux::ecs
         // removals, destructions, creations, additions.
         for (WorldSectionInstance* instance : impl_->unloads)
         {
-            detail::require(instance->residency_ != nullptr);
-            auto& residency = *instance->residency_;
-            for (const auto& resolved : residency.columns)
+            for (const Entity entity : instance->entities_)
             {
-                const auto& column =
-                    residency.image.columns()[resolved.image_column];
-                for (std::size_t row{}; row < column.rowCount(); ++row)
-                {
-                    const std::uint32_t ordinal =
-                        column.ordinalEncoding() ==
-                            EWorldSectionOrdinalEncoding::DENSE
-                        ? static_cast<std::uint32_t>(row)
-                        : detail::readColumnU32(
-                            column.ordinalBytes(),
-                            row * sizeof(std::uint32_t)
-                        );
-                    const Entity entity = instance->entities_[ordinal];
-                    if (!detail::WorldSectionTransactionAccess::matches(
-                            impl_->edit,
-                            entity,
-                            instance->lease_
-                        ) ||
-                        !residency.basePresent(ordinal, resolved.storage) ||
-                        !detail::WorldSectionTransactionAccess::hasComponent(
-                            impl_->edit,
-                            entity,
-                            resolved.storage
-                        ))
-                        continue;
-                    component_change(
-                        resolved.storage,
-                        entity,
-                        EComponentChangeKind::REMOVED
-                    );
-                    detail::WorldSectionTransactionAccess::removeComponent(
-                        impl_->edit,
-                        entity,
-                        resolved.storage
-                    );
-                }
-            }
-            for (std::size_t ordinal{};
-                 ordinal < instance->entities_.size();
-                 ++ordinal)
-            {
-                const Entity entity = instance->entities_[ordinal];
                 if (!detail::WorldSectionTransactionAccess::matches(
                         impl_->edit,
                         entity,
                         instance->lease_
                     ))
                     continue;
-                residency.forEachAdded(
-                    static_cast<std::uint32_t>(ordinal),
+                detail::WorldSectionTransactionAccess::forEachStorage(
+                    impl_->edit,
+                    entity,
                     [&](std::uint64_t storage) noexcept
                     {
-                        if (!detail::WorldSectionTransactionAccess::hasComponent(
-                                impl_->edit,
-                                entity,
-                                storage
-                            ))
-                            return;
                         component_change(
                             storage,
                             entity,
@@ -1062,7 +599,7 @@ namespace lux::ecs
         for (auto& operation : impl_->loads)
         {
             auto& output = *operation.output;
-            output.residency_ = operation.residency;
+            output.code_lifetimes_ = std::move(operation.pins);
             output.state_ = WorldSectionInstance::EState::ACTIVE;
             detail::WorldColdAccess::acquireSection(*impl_->world);
         }
@@ -1070,11 +607,7 @@ namespace lux::ecs
         {
             instance->id_ = {};
             instance->entities_.clear();
-            detail::WorldSectionTransactionAccess::releaseResidency(
-                impl_->edit,
-                instance->lease_
-            );
-            instance->residency_.reset();
+            instance->code_lifetimes_.clear();
             instance->world_identity_ = 0U;
             instance->lease_ = 0U;
             instance->state_ = WorldSectionInstance::EState::INACTIVE;

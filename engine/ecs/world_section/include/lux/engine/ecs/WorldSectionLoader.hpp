@@ -14,11 +14,6 @@
 
 namespace lux::ecs
 {
-    namespace detail
-    {
-        class SectionResidency;
-    }
-
     class LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC WorldSectionInstance final
     {
       public:
@@ -55,7 +50,7 @@ namespace lux::ecs
 
         WorldSectionId id_;
         std::vector<Entity> entities_;
-        std::shared_ptr<detail::SectionResidency> residency_;
+        std::vector<std::shared_ptr<const void>> code_lifetimes_;
         std::uint64_t world_identity_{};
         std::uint64_t lease_{};
         EState state_{EState::INACTIVE};

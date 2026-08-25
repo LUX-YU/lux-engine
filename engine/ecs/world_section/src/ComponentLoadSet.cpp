@@ -107,8 +107,6 @@ namespace lux::ecs
             impl->code_lifetimes.reserve(binding_count);
             for (auto& entry : pending)
             {
-                entry.binding.code_owner_index_ =
-                    impl->code_lifetimes.size();
                 impl->bindings.push_back(entry.binding);
                 impl->code_lifetimes.push_back(
                     std::move(entry.code_lifetime)
@@ -186,9 +184,19 @@ namespace lux::ecs
     ) const noexcept
     {
         static const std::shared_ptr<const void> empty;
-        if (!impl_ || binding.code_owner_index_ >=
-            impl_->code_lifetimes.size())
+        if (!impl_ || impl_->bindings.empty())
             return empty;
-        return impl_->code_lifetimes[binding.code_owner_index_];
+        const auto found = std::find_if(
+            impl_->bindings.begin(),
+            impl_->bindings.end(),
+            [&](const ComponentLoadBinding& candidate) noexcept
+            {
+                return std::addressof(candidate) == std::addressof(binding);
+            }
+        );
+        detail::require(found != impl_->bindings.end());
+        return impl_->code_lifetimes[static_cast<std::size_t>(
+            std::distance(impl_->bindings.begin(), found)
+        )];
     }
 } // namespace lux::ecs

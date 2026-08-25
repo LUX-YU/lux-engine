@@ -1,5 +1,3 @@
-include(${CMAKE_CURRENT_LIST_DIR}/validate_ecs_component_annotations.cmake)
-
 function(engine_target_add_ecs_component_codegen)
     set(one_value_args NAME TARGET HEADER LOGICAL_PATH SYMBOL SOURCE_FILE)
     cmake_parse_arguments(ARGS "" "${one_value_args}" "" ${ARGN})
@@ -10,8 +8,6 @@ function(engine_target_add_ecs_component_codegen)
         )
     endif()
 
-    engine_validate_ecs_component_annotations("${ARGS_HEADER}")
-
     lux_add_codegen_job(
         NAME ${ARGS_NAME}
         GENERATOR ${LUX_META_GENERATOR}
@@ -19,6 +15,11 @@ function(engine_target_add_ecs_component_codegen)
         SOURCE_FILE ${ARGS_SOURCE_FILE}
         TARGET_FILES ${ARGS_HEADER}
         LOGICAL_PATHS ${ARGS_LOGICAL_PATH}
+    )
+    lux_codegen_add_validation(
+        JOB ${ARGS_NAME}
+        NAME ecs_component_semantics
+        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/ecs/schema/template/ecs_component.validation.template
     )
     lux_codegen_add_projection(
         JOB ${ARGS_NAME}

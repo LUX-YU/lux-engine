@@ -31,10 +31,12 @@ namespace lux::ecs
         PersistentEntityId value;
     };
 
-    struct LUX_TYPE_INFO(static)
-        LUX_COMPONENT_SCHEMA("lux.ecs.PersistentId", 1)
-        LUX_COMPONENT_SNAPSHOT(COPY)
-        LUX_COMPONENT_WORLD_SECTION(LOAD) PersistentId final
+    struct LUX_COMPONENT(
+        schema = "lux.ecs.PersistentId",
+        version = 1,
+        snapshot = COPY,
+        section = LOAD
+    ) PersistentId final
     {
         PersistentEntityId value;
     };

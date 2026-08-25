@@ -10,21 +10,10 @@
 #    define LUX_ECS_SCHEMA_META(...)
 #endif
 
-// Component identity, snapshot behavior, and cooked-section capability are
-// separate declarations. Stable components must state both policies.
-#define LUX_COMPONENT() \
+// A stable Component declaration is one atomic schema contract. The generator
+// validates identity and both independent data-path policies before publishing
+// any projection.
+#define LUX_COMPONENT(...) \
     LUX_ECS_SCHEMA_META( \
-        luxref::class, component=true \
+        luxref::class, type_info=static, component=true, __VA_ARGS__ \
     )
-
-#define LUX_COMPONENT_SCHEMA(name, version) \
-    LUX_ECS_SCHEMA_META( \
-        luxref::class, component=true, schema_name=name, \
-        schema_version=version \
-    )
-
-#define LUX_COMPONENT_SNAPSHOT(policy) \
-    LUX_ECS_SCHEMA_META(snapshot=policy)
-
-#define LUX_COMPONENT_WORLD_SECTION(policy) \
-    LUX_ECS_SCHEMA_META(world_section=policy)

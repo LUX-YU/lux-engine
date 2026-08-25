@@ -13,8 +13,8 @@ namespace lux::ecs::generated
         static const std::array schemas{
 {% set emitted = false %}{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") %}{% if emitted %},
 {% endif %}            makeComponentSchema<::{{ decl.fq_name }}>(
-                componentSchemaId("{{ annotation_get_or(decl, "schema_name", decl.fq_name) }}"),
-                {{ annotation_get_or(decl, "schema_version", "1") }}u,
+                componentSchemaId("{{ annotation_get(decl, "schema") }}"),
+                {{ annotation_get(decl, "version") }}u,
                 {% if annotation_get(decl, "snapshot") == "REBUILD" %}EComponentSnapshotPolicy::REBUILD{% else %}EComponentSnapshotPolicy::COPY{% endif %}
             ){% set emitted = true %}{% endif %}{% endfor %}
         };

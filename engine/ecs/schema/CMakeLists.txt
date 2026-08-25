@@ -65,13 +65,43 @@ lux_classify_target(
 add_test(NAME vnext_ecs_schema COMMAND ecs_schema_test)
 set_tests_properties(vnext_ecs_schema PROPERTIES LABELS "vnext;l1;schema;cpu")
 
+include_component_cmake_scripts(meta)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_ecs_codegen.cmake)
+add_library(
+    ecs_missing_component_policy_negative
+    STATIC EXCLUDE_FROM_ALL
+    test/missing_component_policy_negative.cpp
+)
+target_include_directories(
+    ecs_missing_component_policy_negative
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+)
+target_link_libraries(
+    ecs_missing_component_policy_negative
+    PRIVATE lux::engine::ecs::schema
+)
+engine_target_add_ecs_component_codegen(
+    NAME missing_component_policy_codegen
+    TARGET ecs_missing_component_policy_negative
+    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/test/missing_component_policy_negative.cpp
+    HEADER ${CMAKE_CURRENT_SOURCE_DIR}/test/missing_component_policy.hpp
+    LOGICAL_PATH test/missing_component_policy.hpp
+    SYMBOL missing_component_policy
+)
+lux_classify_target(
+    TARGET  ecs_missing_component_policy_negative
+    LAYER   ECS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
 add_test(
     NAME vnext_ecs_missing_component_policy_rejected
     COMMAND
         ${CMAKE_COMMAND}
-        -DHEADER=${CMAKE_CURRENT_SOURCE_DIR}/test/missing_component_policy.hpp
-        -DVALIDATOR=${CMAKE_CURRENT_SOURCE_DIR}/cmake/validate_ecs_component_annotations.cmake
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/ExpectMissingPolicyFailure.cmake
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DTARGET=ecs_missing_component_policy_negative
+        -DEXPECTED_PATTERN=missing_component_policy
+        -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
 )
 set_tests_properties(
     vnext_ecs_missing_component_policy_rejected

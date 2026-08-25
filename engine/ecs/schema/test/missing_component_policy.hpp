@@ -2,8 +2,10 @@
 
 #include <lux/engine/ecs/ComponentAnnotations.hpp>
 
-struct LUX_COMPONENT_SCHEMA("test.missing-policy", 1)
-    missing_component_policy final
+struct LUX_COMPONENT(
+    schema = "test.missing-policy",
+    version = 1
+) missing_component_policy final
 {
     int value{};
 };

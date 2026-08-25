@@ -66,7 +66,6 @@ namespace lux::ecs
             state_ == detail::EWorldState::IDLE ||
             state_ == detail::EWorldState::DESTROYING
         );
-        detail::require(!behavior_owner_attached_);
         detail::require(!execution_lease_);
         detail::require(active_section_count_ == 0U);
         state_ = detail::EWorldState::DESTROYING;

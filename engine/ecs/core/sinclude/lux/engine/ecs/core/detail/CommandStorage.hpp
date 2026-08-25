@@ -95,7 +95,6 @@ namespace lux::ecs::detail
         bool fail_next_push_for_test_{};
 
         friend class ::lux::ecs::WorldCommands;
-        friend class ::lux::ecs::Schedule;
         friend struct CommandShardAccess;
     };
 

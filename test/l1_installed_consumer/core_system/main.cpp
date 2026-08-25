@@ -2,18 +2,15 @@
 #include <lux/engine/ecs/SystemRegistry.hpp>
 #include <lux/engine/ecs/SystemRelations.hpp>
 #include <lux/engine/ecs/SystemTaskGraphCompiler.hpp>
-#include <lux/engine/object/Object.hpp>
 
 #include <cstdint>
 
 namespace
 {
-    class ObjectSystem final
-        : public lux::object::Object<ObjectSystem>,
-          public lux::ecs::StaticSystemAccess<>
+    class CountSystem final : public lux::ecs::StaticSystemAccess<>
     {
       public:
-        explicit ObjectSystem(std::uint32_t& count) noexcept : count_(&count) {}
+        explicit CountSystem(std::uint32_t& count) noexcept : count_(&count) {}
 
         void update(lux::ecs::SystemContext&) noexcept
         {
@@ -30,8 +27,11 @@ int main()
     lux::ecs::World world;
     lux::ecs::SystemRegistry systems;
     std::uint32_t count{};
-    if (!systems.emplace<ObjectSystem>(count))
+    if (!systems.emplace<CountSystem>(count) ||
+        !systems.emplace<CountSystem>(count))
+    {
         return 1;
+    }
     lux::ecs::SystemRelations relations(systems);
     lux::ecs::SystemTaskGraphCompiler compiler;
     auto compilation = compiler.compile(systems, relations);
@@ -51,5 +51,5 @@ int main()
     {
         return 4;
     }
-    return count == 1U ? 0 : 5;
+    return count == 2U ? 0 : 5;
 }

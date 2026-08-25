@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/System.hpp>
+#include <lux/engine/ecs/SystemContext.hpp>
 #include <lux/engine/object/Object.hpp>
 #include <lux/engine/object/ObjectAnnotations.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
@@ -29,19 +29,19 @@ namespace lux::ecs::test
 
     class LUX_OBJECT() StreamingDemandSystem final
         : public lux::object::Object<StreamingDemandSystem>,
-          public System
+          public StaticSystemAccess<Write<SectionResident>>
     {
-      public:
+    public:
         using Object::Object;
 
         static const signal_type<SectionDemandChanged> demandChanged;
 
-        void update(SystemFrame& frame) noexcept override
+        void update(SystemContext& context) noexcept
         {
             if (!demand_published_)
             {
                 demand_published_ = true;
-                SectionDemandChanged demand{7u};
+                SectionDemandChanged demand{7U};
                 notify<demandChanged>(demand);
             }
 
@@ -52,14 +52,14 @@ namespace lux::ecs::test
                     Entity entity{NullEntity};
                     std::uint32_t section{};
 
-                    void apply(WorldMutation& edit) noexcept
+                    void apply(WorldMutation& mutation) noexcept
                     {
-                        edit.emplace<SectionResident>(entity, section);
+                        mutation.emplace<SectionResident>(entity, section);
                     }
                 };
-                if (frame.commands().push(
-                    MakeResident{ready.entity, ready.section}
-                ) != ECommandResult::ACCEPTED)
+                if (context.commands().push(
+                        MakeResident{ready.entity, ready.section}
+                    ) != ECommandResult::ACCEPTED)
                 {
                     ++discarded_completions_;
                 }
@@ -67,7 +67,7 @@ namespace lux::ecs::test
             inbox_.clear();
         }
 
-      protected:
+    protected:
         void event(lux::object::EventView& view) noexcept override
         {
             if (const auto* ready = view.getIf<SectionReady>())
@@ -84,9 +84,9 @@ namespace lux::ecs::test
             }
         }
 
-      private:
+    private:
         std::vector<SectionReady> inbox_;
         std::uint64_t discarded_completions_{};
         bool demand_published_{};
     };
-} // namespace lux::ecs::test
+}

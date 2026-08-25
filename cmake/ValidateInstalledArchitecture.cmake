@@ -20,7 +20,7 @@ foreach(entry IN LISTS installed_entries)
     endif()
     get_filename_component(name "${entry}" NAME)
     if(name MATCHES
-       "^(Registry|ISystem|SceneServices|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|AssetManager|AssetRef|AssetLoadPort|AssetServices|ComponentCodec|TaggedPropertyArchive|Archive|ByteIO|NameTable)\\.(h|hpp)$")
+       "^(Registry|ISystem|System|SystemFrame|SystemHandle|SystemPhase|SystemSetId|Schedule|ScheduleEdit|ScheduleError|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|SceneServices|AssetManager|AssetRef|AssetLoadPort|AssetServices|ComponentCodec|TaggedPropertyArchive|Archive|ByteIO|NameTable)\\.(h|hpp)$")
         message(FATAL_ERROR "Install surface exposes retired API: ${normalized}")
     endif()
 endforeach()
@@ -34,7 +34,7 @@ foreach(entry IN LISTS installed_text)
     file(TO_CMAKE_PATH "${entry}" normalized)
     file(READ "${entry}" content)
     if(content MATCHES "[/\\\\]legacy[/\\\\]" OR
-       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|[.]ecs_persistence[.]hpp|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|LUX_REBUILD_COMPONENT_SCHEMA|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
+       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|[.]ecs_persistence[.]hpp|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
        content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")
         message(FATAL_ERROR "Installed file contains a retired boundary: ${entry}")
     endif()
@@ -52,11 +52,28 @@ if(DEFINED INSTALL_MANIFEST AND EXISTS "${INSTALL_MANIFEST}")
        manifest MATCHES "[/\\\\](sinclude|pinclude)[/\\\\]")
         message(FATAL_ERROR "Install manifest contains quarantine/private paths")
     endif()
+    if(manifest MATCHES "lux-engine-ecs[/\\\\]schedule")
+        message(FATAL_ERROR "Install manifest contains retired schedule component")
+    endif()
+endif()
+
+set(task_targets
+    "${prefix}/share/lux-engine-core/task/lux-engine-core-task-config-targets.cmake"
+)
+if(NOT EXISTS "${task_targets}")
+    message(FATAL_ERROR "Installed L0 task component is missing: ${task_targets}")
+endif()
+file(READ "${task_targets}" task_contract)
+if(task_contract MATCHES
+   "lux::engine::ecs|lux::engine::object|lux::engine::process|lux::engine::scene")
+    message(FATAL_ERROR
+        "Installed core::task closure depends on an upper-layer subsystem"
+    )
 endif()
 
 foreach(required_component IN ITEMS
     core
-    schedule
+    system
     world_section
     persistence
 )
@@ -70,14 +87,14 @@ foreach(required_component IN ITEMS
     endif()
 endforeach()
 
-set(schedule_targets
-    "${prefix}/share/lux-engine-ecs/schedule/lux-engine-ecs-schedule-config-targets.cmake"
+set(system_targets
+    "${prefix}/share/lux-engine-ecs/system/lux-engine-ecs-system-config-targets.cmake"
 )
-file(READ "${schedule_targets}" schedule_contract)
-if(schedule_contract MATCHES
+file(READ "${system_targets}" system_contract)
+if(system_contract MATCHES
    "lux::engine::core::object|reflection_runtime|schema_reflection")
     message(FATAL_ERROR
-        "Installed core + schedule closure depends on Object/reflection"
+        "Installed core + system closure depends on Object/reflection"
     )
 endif()
 

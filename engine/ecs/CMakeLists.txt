@@ -1,7 +1,6 @@
 foreach(component IN ITEMS
     core
     system
-    schedule
     schema
     world_section
     snapshot
@@ -18,7 +17,6 @@ set(_lux_ecs_components)
 foreach(component IN ITEMS
     core
     system
-    schedule
     schema
     world_section
     snapshot
@@ -50,6 +48,7 @@ target_include_directories(
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core/pinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/hierarchy/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/system/pinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/transform/pinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/world_section/pinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/world_section/test
@@ -66,7 +65,7 @@ endif()
 target_link_libraries(
     ecs_l1_benchmark
     PRIVATE
-        lux::engine::ecs::schedule
+        lux::engine::ecs::system
         lux::engine::ecs::snapshot
         lux::engine::ecs::persistence
         lux::engine::ecs::world_section

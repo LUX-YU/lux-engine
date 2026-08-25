@@ -558,14 +558,14 @@ function(lux_validate_all_production_targets)
             )
         endif()
     endforeach()
-    if(TARGET schedule)
-        get_target_property(schedule_links schedule LINK_LIBRARIES)
-        get_target_property(schedule_interface_links schedule INTERFACE_LINK_LIBRARIES)
-        string(CONCAT schedule_closure
-            "${schedule_links};${schedule_interface_links}")
-        if(schedule_closure MATCHES "(^|;)lux::engine::core::object($|;)")
+    if(TARGET system)
+        get_target_property(system_links system LINK_LIBRARIES)
+        get_target_property(system_interface_links system INTERFACE_LINK_LIBRARIES)
+        string(CONCAT system_closure
+            "${system_links};${system_interface_links}")
+        if(system_closure MATCHES "(^|;)lux::engine::core::object($|;)")
             message(FATAL_ERROR
-                "Architecture: ecs::schedule must remain binary-independent of core/object."
+                "Architecture: ecs::system must remain binary-independent of core/object."
             )
         endif()
     endif()

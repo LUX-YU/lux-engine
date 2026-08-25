@@ -35,7 +35,6 @@ namespace lux::ecs::detail
         [[nodiscard]] static WorldMutation suppressingEdit(World& world) noexcept
         {
             require(ownerIdle(world));
-            require(!world.behavior_owner_attached_);
             world.state_ = EWorldState::EDITING;
             return WorldMutation(
                 world,

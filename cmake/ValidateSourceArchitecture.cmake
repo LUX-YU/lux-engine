@@ -14,6 +14,11 @@ if(EXISTS "${source_root}/ecs")
         "Architecture: the retired top-level ecs/ tree must remain quarantined."
     )
 endif()
+if(EXISTS "${source_root}/engine/ecs/schedule")
+    message(FATAL_ERROR
+        "Architecture: retired engine/ecs/schedule must not be restored."
+    )
+endif()
 if(NOT EXISTS "${source_root}/legacy/ecs" OR
    NOT EXISTS "${source_root}/legacy/engine" OR
    NOT EXISTS "${source_root}/legacy/modules/resource/asset-runtime")
@@ -72,9 +77,15 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
-           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|WorldSectionStorageAccess|ComponentSnapshotStorageAccess|ComponentLoadAccess[.]hpp|LUX_REBUILD_COMPONENT_SCHEMA|CloneFn|default_emplace|COPY_WITHOUT_CLONE|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
+           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|WorldSectionStorageAccess|ComponentSnapshotStorageAccess|ComponentLoadAccess[.]hpp|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
             message(FATAL_ERROR
                 "Architecture: L1 source '${normalized}' restores retired ECS vocabulary."
+            )
+        endif()
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/ecs/(Schedule|ScheduleEdit|ScheduleError|SystemFrame|SystemHandle|SystemPhase|SystemSetId)[.]hpp")
+            message(FATAL_ERROR
+                "Architecture: L1 source '${normalized}' includes retired Schedule execution API."
             )
         endif()
         if(content MATCHES
@@ -101,6 +112,15 @@ foreach(source IN LISTS production_sources)
         if(content MATCHES "lux/engine/core/async_port/")
             message(FATAL_ERROR
                 "Architecture: L0 asset mechanism '${normalized}' depends on async orchestration."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/modules/core/task/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(ecs|object|process|scene)/")
+            message(FATAL_ERROR
+                "Architecture: L0 core::task source '${normalized}' depends on an upper-layer subsystem."
             )
         endif()
     endif()
@@ -161,14 +181,14 @@ if(EXISTS "${world_header}")
     endif()
 endif()
 
-set(system_frame_header
-    "${source_root}/engine/ecs/schedule/include/lux/engine/ecs/SystemFrame.hpp"
+set(system_context_header
+    "${source_root}/engine/ecs/system/include/lux/engine/ecs/SystemContext.hpp"
 )
-if(EXISTS "${system_frame_header}")
-    file(READ "${system_frame_header}" system_frame_contract)
-    if(system_frame_contract MATCHES "World&[ \t\r\n]+world[ \t\r\n]*\\(")
+if(EXISTS "${system_context_header}")
+    file(READ "${system_context_header}" system_context_contract)
+    if(system_context_contract MATCHES "World&[ \t\r\n]+world[ \t\r\n]*\\(")
         message(FATAL_ERROR
-            "Architecture: SystemFrame restores raw mutable World access."
+            "Architecture: SystemContext exposes raw mutable World access."
         )
     endif()
 endif()
@@ -202,7 +222,7 @@ foreach(component_header IN ITEMS
 endforeach()
 
 foreach(installed_consumer IN ITEMS
-    core_schedule
+    core_system
     object_affinity
     world_section
 )

@@ -17,10 +17,9 @@
 
 namespace lux::ecs
 {
-    class Schedule;
     class ComponentLoadBinding;
     class ComponentSnapshotBinding;
-    class SystemFrame;
+    class SystemContext;
     class SystemStart;
     class WorldSnapshot;
     struct ComponentOperations;
@@ -142,7 +141,6 @@ namespace lux::ecs
         EChangeEmission change_emission_{EChangeEmission::RECORD};
 
         friend class World;
-        friend class Schedule;
         friend class WorldSnapshot;
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldMutationAccess;
@@ -208,14 +206,11 @@ namespace lux::ecs
             section_memberships_;
         std::thread::id owner_thread_;
         detail::EWorldState state_{detail::EWorldState::IDLE};
-        bool behavior_owner_attached_{};
         bool execution_lease_{};
         std::uint64_t identity_{};
         std::size_t active_section_count_{};
 
         friend class WorldMutation;
-        friend class Schedule;
-        friend class SystemFrame;
         friend class SystemContext;
         friend class SystemStart;
         friend class WorldSnapshot;

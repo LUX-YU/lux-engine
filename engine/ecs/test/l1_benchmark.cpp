@@ -753,7 +753,7 @@ namespace
                 if (!result)
                     std::abort();
                 auto mutation = std::move(*result);
-                auto query = mutation.query<
+                auto query = mutation.template query<
                     lux::ecs::Write<BenchmarkWrite<Index>>...
                 >();
                 for (auto values : query)

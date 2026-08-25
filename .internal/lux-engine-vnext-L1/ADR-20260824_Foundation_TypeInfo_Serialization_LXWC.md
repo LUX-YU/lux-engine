@@ -1,8 +1,8 @@
 # ADR: Foundation TypeInfo, exact binary serialization and LXWC columns
 
 - Date: 2026-08-24
-- Status: Foundation qualified candidate; L1 public freeze withdrawn pending
-  independent re-audit
+- Status: Foundation decisions retained; LXWC v1 portions superseded by
+  `ADR-20260825_World_Data_Path_LXWC_v2.md`
 - Supersedes: the codec/reflection and LXWS persistence portions of
   `ADR-20260824_L1_v2_Mutation_Schedule_Hierarchy.md`
 
@@ -51,7 +51,7 @@ local `Entity` ordinal semantics. Core serialization does not know ECS.
 tables and property tables are retired because Entity references are already
 encoded in their relocatable representation.
 
-## LXWC v1
+## LXWC v1 (historical, retired by the World data-path decision)
 
 The new wire magic is `LXWC`, version 1, fixed little-endian. `LXWS` is
 rejected as `INVALID_MAGIC`; there is no reader shim or migration callback.
@@ -89,4 +89,6 @@ Independent Re-audit Required
 Domain Migration Blocked
 ```
 
-Frozen status requires a separate independent-review acceptance commit.
+The TypeInfo and exact binary serialization decisions remain active. The
+column writer/image and freeze line in this document are superseded by the
+LXWC v2 runtime-load ADR.

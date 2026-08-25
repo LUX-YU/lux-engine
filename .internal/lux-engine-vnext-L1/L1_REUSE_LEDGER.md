@@ -13,9 +13,11 @@
 | `SceneServices` | 未来 L3 wiring | RETIRE FROM L1 | 无 | retired API/source gate |
 | component mutable catalog/global pending registrar | generated module span + `ComponentSchemaSet` | RETIRE/REWRITE | stable identity and runtime clone operations only | generated-schema/pin tests |
 | `ComponentCodec` / reflected tagged property archive | no schema owner; retired | RETIRE | none; generic static Serializer replaces field codec tables | architecture gates and column persistence tests |
-| object/field-level erased serialization | `persistence_contract` column thunk | RETIRE/REWRITE | one type-erasure boundary per Component column | dispatch/storage-lookup counters and static/plugin binding tests |
-| `RegistrySnapshot` | `WorldSnapshot` | REWRITE | backend clone idea | 10k IDs/generation/free-list plus zero-journal cold construction |
-| `EntitySectionImage` / LXWS | `WorldSectionImage` / LXWC v1 | REWRITE | schema/archetype/column/ordinal layout only | LXWC deterministic/corruption, unknown-column and zero-journal materialize tests |
+| object/field-level erased serialization | `world_section` load thunk | RETIRE/REWRITE | one type-erasure boundary per loaded Component column | dispatch/storage-lookup counters and static/plugin binding tests |
+| `RegistrySnapshot` | `WorldSnapshot` | REWRITE | entity allocator clone semantics | storage-call counters, zero `has()` hot loop, 10k/100k/1m allocator tests |
+| `EntitySectionImage` / LXWS / LXWC v1 | `world_section` / LXWC v2 | RETIRE/REWRITE | checked LE parsing and column/ordinal semantics only; archetype/entity DTOs retired | structural fuzz/corruption, transactional load/unload and 1m scaling tests |
+| `WorldSectionWriter::build(World, ...)` | future L4/L5 Cook | RETIRE FROM L1 | no production code; deterministic storage traversal intent only | L1 gate rejects World-to-bytes and Cook dependencies |
+| `ComponentPersistenceBinding` / `persistence_contract` | `ComponentLoadBinding` in `world_section` | RETIRE/REWRITE | automatic typed column thunk and code pin | immutable load-set, one-call-per-column and installed extension consumer tests |
 | Parent/Transform snapshot special cases | 无 | RETIRE | 无 | generic snapshot + rebuild pilot |
 | old hierarchy preorder/interval | 无 | RETIRE | Parent remains canonical; linear cold validation, O(1) mutation-order adjacency and embedded orphan repair replace interval authority | 1m real graph、deep-chain/star/resync counters, injected orphan command failure and stale-generation repair tests |
 | old transform dirty propagation | Transform Systems | REUSE algorithm | dirty subtree root reduction only; dense stamps/change cursors replace unordered/full scans | no-change zero-visit, leaf/root dirty and codec tests |

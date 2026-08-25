@@ -2,7 +2,29 @@
 
 This ledger tracks implementation state only. Decisions live in ADRs.
 
-## Active: Foundation and L1 persistence restabilization (2026-08-24)
+## Active: L1 World data-path rebuild (2026-08-25)
+
+The foundation generator, TypeInfo and exact binary serializer remain
+qualified. The LXWC v1 runtime Writer/Image contract is rejected after a
+confirmed quadratic selection path and a broader ownership review. L1 now
+implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
+
+- [x] WDP-0: Adopt the four-path split and withdraw LXWC v1 freeze evidence.
+- [ ] WDP-1: Add the installed `ecs::world_section` runtime boundary.
+- [ ] WDP-2: Add immutable structurally validated LXWC v2 images.
+- [ ] WDP-3: Add immutable component load bindings and code lifetime pins.
+- [ ] WDP-4: Bulk load/unload sections into an existing World transactionally.
+- [ ] WDP-5: Migrate PersistentId/Parent/Transform load contributions and
+      retire `persistence_contract`, v1 Writer/Image and v1 codegen.
+- [ ] WDP-6: Clone WorldSnapshot by COPY component storage.
+- [ ] WDP-7: Complete corruption, install and architecture gates.
+- [ ] WDP-8: Complete 1M diagnostic/qualification evidence against raw EnTT.
+
+Stop line: `Performance Contract Rejected / Public API Freeze Blocked / Domain
+Migration Blocked` until WDP-1 through WDP-8 pass. L2/L3/L4/L5 remain design
+boundaries only in this phase.
+
+## Retained foundation record (2026-08-24)
 
 The v2.1 public API Freeze Candidate is withdrawn while generator ownership,
 Engine TypeStaticInfo/exact binary serialization and LXWC column persistence
@@ -16,15 +38,12 @@ replace the previous reflected ComponentCodec/LXWS path.
       and migrate Pak/standard-content binary consumers.
 - [x] L1P-1: Add the installed column-level `persistence_contract` component;
       remove ComponentCodec, TaggedProperty and schema_reflection.
-- [x] L1P-2: Replace LXWS with LXWC v1 contiguous fixed/dynamic columns and
-      direct Entity ordinal encoding.
-- [ ] QUAL-1: Complete Debug, RelWithDebInfo, hardened, Android, fresh-install,
-      installed-consumer and representative performance evidence.
-- [ ] QUAL-2: Independent re-audit accepts the new foundation/L1 contract.
+- [x] L1P-2: Replace LXWS with the now-retired LXWC v1 experimental column
+      image; its evidence is historical only.
+- [ ] QUAL-1: Superseded by WDP-1 through WDP-8.
+- [ ] QUAL-2: Independent re-audit accepts the eventual v2 L1 contract.
 
-Stop line: Domain migration remains blocked. Completion of QUAL-1 may restore
-only `Public API Freeze Candidate`; Frozen requires QUAL-2 in a separate state
-commit.
+Stop line remains controlled by the active World data-path rebuild above.
 
 ## Retained baseline: L1 v2.1 targeted hardening
 

@@ -646,13 +646,6 @@ int main()
         assert(stats.high_water_records == 300U);
         assert(stats.overflow_count == 0U);
         assert(stats.forced_resync_count == 0U);
-        const auto bindings =
-            detail::ScheduleTestAccess::changeBindingStats(
-                incomplete_schedule
-            );
-        assert(bindings.lane_binds == 1U);
-        assert(bindings.journal_stream_binds == 1U);
-        assert(bindings.per_record_lookups == 0U);
     }
 
     {

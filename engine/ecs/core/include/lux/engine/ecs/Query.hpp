@@ -6,7 +6,6 @@
 #include <entt/core/type_info.hpp>
 
 #include <concepts>
-#include <array>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -61,13 +60,10 @@ namespace lux::ecs
             typename AccessTraits<Access>::ComponentType;
         };
 
-        struct BoundChangeRecorder final
+        struct ChangeRecorder final
         {
             void* context{};
-            void* target{};
-            std::uint64_t token{};
             void (*record)(
-                void*,
                 void*,
                 std::uint64_t,
                 Entity,
@@ -75,27 +71,13 @@ namespace lux::ecs
             ) noexcept{};
 
             void operator()(
+                std::uint64_t storage,
                 Entity entity,
                 EComponentChangeKind kind
             ) const noexcept
             {
                 if (record != nullptr)
-                    record(context, target, token, entity, kind);
-            }
-        };
-
-        struct ChangeRecorder final
-        {
-            void* context{};
-            BoundChangeRecorder (*bind)(void*, std::uint64_t) noexcept{};
-
-            [[nodiscard]] BoundChangeRecorder operator()(
-                std::uint64_t storage
-            ) const noexcept
-            {
-                return bind == nullptr
-                    ? BoundChangeRecorder{}
-                    : bind(context, storage);
+                    record(context, storage, entity, kind);
             }
         };
 
@@ -172,10 +154,7 @@ namespace lux::ecs
                     const Entity entity = std::get<0>(result);
                     if (!recorded_current_)
                     {
-                        recordWrites(
-                            entity,
-                            std::index_sequence_for<Access...>{}
-                        );
+                        (recordWrite<Access>(entity), ...);
                         recorded_current_ = true;
                     }
                     return result;
@@ -184,36 +163,28 @@ namespace lux::ecs
               private:
                 Iterator(
                     BaseIterator iterator,
-                    std::array<BoundChangeRecorder, sizeof...(Access)> recorders
+                    ChangeRecorder recorder
                 ) noexcept
                     : iterator_(iterator),
-                      recorders_(recorders)
+                      recorder_(recorder)
                 {
                 }
 
-                template <std::size_t Index, class Value>
+                template <class Value>
                 void recordWrite(Entity entity) const noexcept
                 {
                     if constexpr (AccessTraits<Value>::kWrite)
                     {
-                        recorders_[Index](
+                        recorder_(
+                            entt::type_hash<Component<Value>>::value(),
                             entity,
                             EComponentChangeKind::MODIFIED
                         );
                     }
                 }
 
-                template <std::size_t... Index>
-                void recordWrites(
-                    Entity entity,
-                    std::index_sequence<Index...>
-                ) const noexcept
-                {
-                    (recordWrite<Index, Access>(entity), ...);
-                }
-
                 BaseIterator iterator_{};
-                std::array<BoundChangeRecorder, sizeof...(Access)> recorders_{};
+                ChangeRecorder recorder_{};
                 mutable bool recorded_current_{};
 
                 friend class BasicQuery;
@@ -221,10 +192,7 @@ namespace lux::ecs
 
             BasicQuery(Registry& registry, ChangeRecorder recorder = {})
                 : view_(registry.template view<ViewComponent<Access>...>()),
-                  recorders_{
-                      (AccessTraits<Access>::kWrite
-                           ? recorder(entt::type_hash<Component<Access>>::value())
-                           : BoundChangeRecorder{})...}
+                  recorder_(recorder)
             {
                 static_assert(sizeof...(Access) != 0);
                 static_assert(uniqueComponents<Access...>());
@@ -234,17 +202,17 @@ namespace lux::ecs
 
             [[nodiscard]] Iterator begin()
             {
-                return Iterator(view_.each().begin(), recorders_);
+                return Iterator(view_.each().begin(), recorder_);
             }
 
             [[nodiscard]] Iterator end()
             {
-                return Iterator(view_.each().end(), recorders_);
+                return Iterator(view_.each().end(), recorder_);
             }
 
           private:
             View view_;
-            std::array<BoundChangeRecorder, sizeof...(Access)> recorders_{};
+            ChangeRecorder recorder_{};
         };
     } // namespace detail
 } // namespace lux::ecs

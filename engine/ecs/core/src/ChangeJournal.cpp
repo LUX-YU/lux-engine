@@ -61,28 +61,12 @@ namespace lux::ecs::detail
     {
         return ChangeRecorder{
             this,
-            [](void* context, std::uint64_t storage) noexcept
-                -> BoundChangeRecorder
+            [](void* context, std::uint64_t storage, Entity entity,
+               EComponentChangeKind kind) noexcept
             {
-                auto& journal = *static_cast<ChangeJournal*>(context);
-                ++journal.stream_bind_count_;
-                JournalStream* stream = journal.ensureStream(storage);
-                if (stream == nullptr)
-                    return {};
-                return BoundChangeRecorder{
-                    &journal,
-                    stream,
-                    0U,
-                    [](void* owner, void* target, std::uint64_t,
-                       Entity entity, EComponentChangeKind kind) noexcept
-                    {
-                        static_cast<ChangeJournal*>(owner)->append(
-                            *static_cast<JournalStream*>(target),
-                            entity,
-                            static_cast<std::uint8_t>(kind)
-                        );
-                    }
-                };
+                static_cast<ChangeJournal*>(context)->recordComponent(
+                    storage, entity, kind
+                );
             }};
     }
 

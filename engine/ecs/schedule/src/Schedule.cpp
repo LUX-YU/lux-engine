@@ -1,6 +1,5 @@
 #include <lux/engine/ecs/Schedule.hpp>
 
-#include <lux/engine/ecs/core/detail/ChangeJournal.hpp>
 #include <lux/engine/ecs/core/detail/CommandStorage.hpp>
 #include <lux/engine/ecs/schedule/detail/ScheduleTestAccess.hpp>
 
@@ -249,8 +248,6 @@ namespace lux::ecs::detail
         std::vector<ChangeLane> lanes;
         bool access_complete{};
         bool overflow{};
-        std::uint64_t lane_binds{};
-        std::uint64_t per_record_lookups{};
 
         void configure(
             std::span<const ComponentAccess> access,
@@ -264,14 +261,6 @@ namespace lux::ecs::detail
                 if (component.mode == EAccessMode::WRITE)
                     lanes.push_back(ChangeLane{component.storage});
             }
-            std::sort(
-                lanes.begin(),
-                lanes.end(),
-                [](const ChangeLane& left, const ChangeLane& right) noexcept
-                {
-                    return left.storage < right.storage;
-                }
-            );
         }
 
         void begin(ChangeScratchArena& value) noexcept
@@ -295,7 +284,7 @@ namespace lux::ecs::detail
         }
 
         void append(
-            std::size_t lane_index,
+            std::uint64_t storage,
             Entity entity,
             EComponentChangeKind kind
         ) noexcept
@@ -303,39 +292,6 @@ namespace lux::ecs::detail
             if (overflow)
                 return;
             detail::require(kind == EComponentChangeKind::MODIFIED);
-            detail::require(lane_index < lanes.size());
-            ChangeLane& lane = lanes[lane_index];
-
-            if (!arena->reserveRecord())
-            {
-                overflow = true;
-                return;
-            }
-            if (lane.last == nullptr ||
-                lane.last->count == kChangeScratchRecordsPerBlock)
-            {
-                ChangeScratchBlock* block = arena->acquire();
-                if (block == nullptr)
-                {
-                    arena->cancelRecord();
-                    overflow = true;
-                    return;
-                }
-                if (lane.last != nullptr)
-                    lane.last->next = block;
-                else
-                    lane.first = block;
-                lane.last = block;
-            }
-            lane.last->records[lane.last->count] = entity;
-            ++lane.last->count;
-        }
-
-        [[nodiscard]] BoundChangeRecorder bind(
-            std::uint64_t storage
-        ) noexcept
-        {
-            ++lane_binds;
             auto found = std::find_if(
                 lanes.begin(),
                 lanes.end(),
@@ -352,7 +308,7 @@ namespace lux::ecs::detail
                     detail::contractFailure();
 #else
                     overflow = true;
-                    return {};
+                    return;
 #endif
                 }
                 try
@@ -363,36 +319,44 @@ namespace lux::ecs::detail
                 catch (...)
                 {
                     overflow = true;
-                    return {};
+                    return;
                 }
             }
-            return BoundChangeRecorder{
-                this,
-                nullptr,
-                static_cast<std::uint64_t>(
-                    std::distance(lanes.begin(), found)
-                ),
-                [](void* context, void*, std::uint64_t lane,
-                   Entity entity, EComponentChangeKind kind) noexcept
+
+            if (!arena->reserveRecord())
+            {
+                overflow = true;
+                return;
+            }
+            if (found->last == nullptr ||
+                found->last->count == kChangeScratchRecordsPerBlock)
+            {
+                ChangeScratchBlock* block = arena->acquire();
+                if (block == nullptr)
                 {
-                    static_cast<ChangeShard*>(context)->append(
-                        static_cast<std::size_t>(lane),
-                        entity,
-                        kind
-                    );
+                    arena->cancelRecord();
+                    overflow = true;
+                    return;
                 }
-            };
+                if (found->last != nullptr)
+                    found->last->next = block;
+                else
+                    found->first = block;
+                found->last = block;
+            }
+            found->last->records[found->last->count] = entity;
+            ++found->last->count;
         }
 
         [[nodiscard]] ChangeRecorder recorder() noexcept
         {
             return ChangeRecorder{
                 this,
-                [](void* context, std::uint64_t storage) noexcept
-                    -> BoundChangeRecorder
+                [](void* context, std::uint64_t storage, Entity entity,
+                   EComponentChangeKind kind) noexcept
                 {
                     auto& shard = *static_cast<ChangeShard*>(context);
-                    return shard.bind(storage);
+                    shard.append(storage, entity, kind);
                 }};
         }
     };
@@ -1625,12 +1589,6 @@ namespace lux::ecs
                         const auto& shard = impl_->slots[index]->changes;
                         for (const detail::ChangeLane& lane : shard.lanes)
                         {
-                            if (lane.first == nullptr)
-                                continue;
-                            const detail::BoundChangeRecorder journal_lane =
-                                detail::worldChangeRecorder(
-                                    *impl_->world
-                                )(lane.storage);
                             for (const detail::ChangeScratchBlock* block =
                                      lane.first;
                                  block != nullptr;
@@ -1640,7 +1598,9 @@ namespace lux::ecs
                                      record_index < block->count;
                                      ++record_index)
                                 {
-                                    journal_lane(
+                                    detail::recordWorldComponentChange(
+                                        *impl_->world,
+                                        lane.storage,
                                         block->records[record_index],
                                         EComponentChangeKind::MODIFIED
                                     );
@@ -1794,25 +1754,6 @@ namespace lux::ecs
             if (slot)
                 result += slot->commands->allocationEvents();
         }
-        return result;
-    }
-
-    detail::ChangeBindingStats detail::ScheduleTestAccess::changeBindingStats(
-        const Schedule& schedule
-    ) noexcept
-    {
-        ChangeBindingStats result;
-        for (const auto& slot : schedule.impl_->slots)
-        {
-            if (!slot)
-                continue;
-            result.lane_binds += slot->changes.lane_binds;
-            result.per_record_lookups += slot->changes.per_record_lookups;
-        }
-        const auto& journal =
-            detail::WorldChangeAccess::journal(*schedule.impl_->world);
-        result.journal_stream_binds = journal.streamBindCountForTest();
-        result.per_record_lookups += journal.perRecordLookupCountForTest();
         return result;
     }
 

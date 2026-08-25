@@ -128,16 +128,6 @@ namespace lux::ecs::detail
             return dynamic_block_acquisition_count_;
         }
 
-        [[nodiscard]] std::uint64_t streamBindCountForTest() const noexcept
-        {
-            return stream_bind_count_;
-        }
-
-        [[nodiscard]] std::uint64_t perRecordLookupCountForTest() const noexcept
-        {
-            return per_record_lookup_count_;
-        }
-
         void failNextStreamDescriptorForTest() noexcept
         {
             fail_next_stream_descriptor_for_test_ = true;
@@ -180,8 +170,6 @@ namespace lux::ecs::detail
         std::uint64_t epoch_{1};
         std::uint64_t record_write_count_{};
         std::size_t dynamic_block_acquisition_count_{};
-        std::uint64_t stream_bind_count_{};
-        std::uint64_t per_record_lookup_count_{};
         bool fail_next_stream_descriptor_for_test_{};
         bool fail_next_block_acquisition_for_test_{};
         bool fail_next_block_attach_for_test_{};

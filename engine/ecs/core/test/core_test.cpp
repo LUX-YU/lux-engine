@@ -94,14 +94,10 @@ int main()
     );
     query_modified = {};
 
-    const auto binds_before_query = journal.streamBindCountForTest();
     auto repeated_query = next_edit.query<lux::ecs::Write<Position>>();
-    assert(journal.streamBindCountForTest() == binds_before_query + 1U);
     auto repeated_iterator = repeated_query.begin();
     assert(repeated_iterator != repeated_query.end());
     (void)*repeated_iterator;
-    assert(journal.streamBindCountForTest() == binds_before_query + 1U);
-    assert(journal.perRecordLookupCountForTest() == 0U);
     (void)*repeated_iterator;
     auto repeated_modified = journal.read(position_cursor);
     assert(repeated_modified.status() == lux::ecs::EChangeReadStatus::CURRENT);

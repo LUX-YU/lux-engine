@@ -66,7 +66,8 @@ namespace lux::ecs
                 entity,
                 std::forward<Fn>(fn)
             );
-            recorder_(entt::type_hash<Component>::value())(
+            recorder_(
+                entt::type_hash<Component>::value(),
                 entity,
                 EComponentChangeKind::MODIFIED
             );

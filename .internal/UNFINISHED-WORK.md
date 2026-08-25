@@ -2,7 +2,7 @@
 
 This ledger tracks implementation state only. Decisions live in ADRs.
 
-## Active: L1 World data-path second hardening (2026-08-25)
+## Active: L1 World data-path third hardening (2026-08-25)
 
 The foundation generator, TypeInfo and exact binary serializer remain
 qualified. The LXWC v1 runtime Writer/Image contract is rejected after a
@@ -35,19 +35,31 @@ implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
       owners actually materialized by an active section.
 - [x] WDP2-6: Qualify adversarial failure, live-resident reconciliation,
       structural counters, scaling exponent and relative baselines.
+- [ ] WDP3-1: Make deferred WorldSection images lifetime-safe and define
+      active-section Snapshot capture as a detached canonical clone.
+- [ ] WDP3-2: Replace the per-component-row membership ledger with
+      column-oriented residency plus a runtime mutation overlay.
+- [ ] WDP3-3: Make multi-load reserve/rollback and decode scratch strictly
+      recoverable without contract aborts.
+- [ ] WDP3-4: Bind Schedule change lanes and Change Journal streams once per
+      Write column instead of once per record.
+- [ ] WDP3-5: Move per-Component policy validation from CMake regex counts to
+      the parsed code-generation transaction.
+- [ ] WDP3-6: Qualify 3/16/64/128-column scaling, residency memory, multi-write
+      queries and a truly dense 1M-resident streaming reconciliation.
 
-Qualification status: `Foundation Qualified / L1 Architecture Accepted /
-Correctness Hardened / Performance Contract Passed / Public API Freeze
-Candidate / Independent Re-audit Required / Domain Migration Blocked`.
+The second independent audit accepts the foundation and L1 data-path direction,
+but rejects the row membership algorithm, deferred image lifetime and current
+performance evidence. Qualification status is therefore
+`Foundation Qualified / L1 Architecture Accepted / Correctness Hardened: NO /
+Performance Contract Passed: NO / Public API Freeze Candidate: BLOCKED /
+Independent Freeze Acceptance: REJECTED / Domain Migration Blocked`.
 L2/L3/L4/L5 remain design boundaries only in this phase.
 
-Evidence is retained in
-`.internal/benchmarks/20260825-l1-world-data-path-v2`; its external policy passes
-two relative, one scaling and four structural rules. Windows
-RelWithDebInfo/Hardened pass 79/79 CTest, Debug passes 66/66, Android arm64
-PLAYER compiles, and all configured trees report no work on the second Ninja
-invocation. A fresh configured prefix passes the installed architecture gate
-and all three independent consumers build and run.
+Evidence in `.internal/benchmarks/20260825-l1-world-data-path-v2` is retained as
+historical input only. Its narrow policy result does not qualify column-count
+scaling, residency metadata, multi-write Schedule scaling or a dense resident
+streaming World and must not be cited as a current performance pass.
 
 The hardening contract adopts **Format defines widths; Product defines
 capacities**. LXWC widths/version remain fixed representation facts. Entity,

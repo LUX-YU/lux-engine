@@ -151,6 +151,21 @@ scratch、active/streaming section 数等 capacity 必须由 Product/Profile 显
 Player 选择一个共同的 magic default；allocation failure 必须保持 canonical state
 并走结构化失败或显式 history-loss/resync 降级。
 
+## L1 World data-path third hardening（2026-08-25）
+
+第二轮独立审计接受 LXWC v2、lexical safe-point transaction、exact change
+publication 与 storage-driven Snapshot 的方向，但拒绝当前 per-component-row
+membership ledger。L1 在再次进入 Freeze Candidate 前必须使用 column-oriented
+section residency：cooked base membership 由 immutable image columns 表达，只有
+load 后的 gameplay add/remove 进入 runtime overlay。额外 metadata 必须为
+`O(N + C + delta-M)`，load/unload 不得出现 row-by-previous-membership 或
+Entity-by-all-World-storages 扫描。
+
+Deferred load 必须复制 immutable image handle；Snapshot 对 active-section World
+的 capture 定义为不保留 lease、instance 或 residency topology 的 detached
+canonical clone。当前状态保持 `Correctness Hardened: NO / Performance Contract
+Passed: NO / Public API Freeze Candidate: BLOCKED / Domain Migration Blocked`。
+
 ## Object 与 UI foundation（2026-08-23）
 
 - `modules/core/meta` 是对象无关的反射查询层；它公开静态/实例字段、方法注解和

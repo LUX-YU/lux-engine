@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+{% set emitted = false %}{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") %}{% if annotation_count(decl, "snapshot") != 1 %}{% if emitted %},{% endif %}
+    {
+      "severity": "error",
+      "declaration": {{ json_str(decl.fq_name) }},
+      "message": "Component must declare exactly one LUX_COMPONENT_SNAPSHOT policy"
+    }{% set emitted = true %}{% else %}{% if annotation_get(decl, "snapshot") != "COPY" and annotation_get(decl, "snapshot") != "REBUILD" %}{% if emitted %},{% endif %}
+    {
+      "severity": "error",
+      "declaration": {{ json_str(decl.fq_name) }},
+      "message": "LUX_COMPONENT_SNAPSHOT policy must be COPY or REBUILD"
+    }{% set emitted = true %}{% endif %}{% endif %}{% if annotation_count(decl, "world_section") != 1 %}{% if emitted %},{% endif %}
+    {
+      "severity": "error",
+      "declaration": {{ json_str(decl.fq_name) }},
+      "message": "Component must declare exactly one LUX_COMPONENT_WORLD_SECTION policy"
+    }{% set emitted = true %}{% else %}{% if annotation_get(decl, "world_section") != "LOAD" and annotation_get(decl, "world_section") != "OMIT" %}{% if emitted %},{% endif %}
+    {
+      "severity": "error",
+      "declaration": {{ json_str(decl.fq_name) }},
+      "message": "LUX_COMPONENT_WORLD_SECTION policy must be LOAD or OMIT"
+    }{% set emitted = true %}{% endif %}{% endif %}{% endif %}{% endfor %}
+  ]
+}

@@ -35,15 +35,15 @@ implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
       owners actually materialized by an active section.
 - [x] WDP2-6: Qualify adversarial failure, live-resident reconciliation,
       structural counters, scaling exponent and relative baselines.
-- [ ] WDP3-1: Make deferred WorldSection images lifetime-safe and define
+- [x] WDP3-1: Make deferred WorldSection images lifetime-safe and define
       active-section Snapshot capture as a detached canonical clone.
-- [ ] WDP3-2: Replace the per-component-row membership ledger with
+- [x] WDP3-2: Replace the per-component-row membership ledger with
       column-oriented residency plus a runtime mutation overlay.
-- [ ] WDP3-3: Make multi-load reserve/rollback and decode scratch strictly
+- [x] WDP3-3: Make multi-load reserve/rollback and decode scratch strictly
       recoverable without contract aborts.
-- [ ] WDP3-4: Bind Schedule change lanes and Change Journal streams once per
+- [x] WDP3-4: Bind Schedule change lanes and Change Journal streams once per
       Write column instead of once per record.
-- [ ] WDP3-5: Move per-Component policy validation from CMake regex counts to
+- [x] WDP3-5: Move per-Component policy validation from CMake regex counts to
       the parsed code-generation transaction.
 - [ ] WDP3-6: Qualify 3/16/64/128-column scaling, residency memory, multi-write
       queries and a truly dense 1M-resident streaming reconciliation.

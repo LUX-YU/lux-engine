@@ -118,8 +118,32 @@ namespace lux::serialization
     template <>
     struct Serializer<lux::ecs::Entity>
     {
+        static constexpr std::size_t fixed_wire_size = sizeof(std::uint32_t);
+
+        template <class Writer>
+            requires requires(Writer& writer, lux::ecs::Entity entity)
+            {
+                { writer.writeEntityReference(entity) } ->
+                    std::same_as<SerializationResult>;
+            }
+        [[nodiscard]] static SerializationResult write(
+            Writer& writer,
+            lux::ecs::Entity entity
+        ) noexcept
+        {
+            return writer.writeEntityReference(entity);
+        }
+
+        template <class Reader>
+            requires requires(Reader& reader)
+            {
+                { reader.readEntityReference() } -> std::same_as<
+                    lux::cxx::expected<
+                        lux::ecs::Entity,
+                        SerializationFailure>>;
+            }
         [[nodiscard]] static SerializationResult read(
-            lux::ecs::detail::ComponentLoadReader& reader,
+            Reader& reader,
             lux::ecs::Entity& entity
         ) noexcept
         {

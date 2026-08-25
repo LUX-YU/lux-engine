@@ -13,31 +13,15 @@
 namespace lux::serialization
 {
     template <class Scalar, int Rows, int Columns, int Options, int MaxRows, int MaxColumns>
-    struct FixedWireSize<
-        Eigen::Matrix<Scalar, Rows, Columns, Options, MaxRows, MaxColumns>>
-    {
-        static constexpr std::size_t scalar = FixedWireSize<Scalar>::value;
-        static constexpr std::size_t value =
-            Rows == Eigen::Dynamic || Columns == Eigen::Dynamic ||
-                scalar == DynamicWireSize
-            ? DynamicWireSize
-            : scalar * static_cast<std::size_t>(Rows) *
-                static_cast<std::size_t>(Columns);
-    };
-
-    template <class Scalar, int Options>
-    struct FixedWireSize<Eigen::Quaternion<Scalar, Options>>
-    {
-        static constexpr std::size_t scalar = FixedWireSize<Scalar>::value;
-        static constexpr std::size_t value = scalar == DynamicWireSize
-            ? DynamicWireSize
-            : scalar * 4U;
-    };
-
-    template <class Scalar, int Rows, int Columns, int Options, int MaxRows, int MaxColumns>
     struct Serializer<Eigen::Matrix<Scalar, Rows, Columns, Options, MaxRows, MaxColumns>>
     {
         using Matrix = Eigen::Matrix<Scalar, Rows, Columns, Options, MaxRows, MaxColumns>;
+        static constexpr std::size_t fixed_wire_size =
+            Rows == Eigen::Dynamic || Columns == Eigen::Dynamic ||
+                WireSizeV<Scalar> == DynamicWireSize
+            ? DynamicWireSize
+            : WireSizeV<Scalar> * static_cast<std::size_t>(Rows) *
+                static_cast<std::size_t>(Columns);
 
         template <class Writer>
         [[nodiscard]] static SerializationResult write(
@@ -134,6 +118,10 @@ namespace lux::serialization
     struct Serializer<Eigen::Quaternion<Scalar, Options>>
     {
         using Quaternion = Eigen::Quaternion<Scalar, Options>;
+        static constexpr std::size_t fixed_wire_size =
+            WireSizeV<Scalar> == DynamicWireSize
+            ? DynamicWireSize
+            : WireSizeV<Scalar> * 4U;
 
         template <class Writer>
         [[nodiscard]] static SerializationResult write(

@@ -58,7 +58,7 @@ namespace lux::ecs
             WorldSectionFailure>
         open(
             std::vector<std::byte> bytes,
-            WorldSectionLimits limits = {}
+            const WorldSectionValidationBudget& budget
         ) noexcept;
 
         [[nodiscard]] const WorldSectionId& id() const noexcept;

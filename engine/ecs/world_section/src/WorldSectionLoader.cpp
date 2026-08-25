@@ -81,6 +81,7 @@ namespace lux::ecs
         World& world,
         const ComponentLoadSet& loads,
         const WorldSectionImage& image,
+        WorldSectionLoadScratchBudget scratch,
         lux::serialization::SerializationLimits limits
     ) noexcept
     {
@@ -186,6 +187,7 @@ namespace lux::ecs
                         row_entities,
                         instance.entities_,
                         column,
+                        scratch,
                         limits
                     );
                     if (!loaded)

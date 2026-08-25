@@ -95,6 +95,8 @@ namespace lux::serialization
     template <>
     struct Serializer<test::AllocationFailure>
     {
+        static constexpr std::size_t fixed_wire_size = 4U;
+
         template <class Reader>
         [[nodiscard]] static SerializationResult read(
             Reader& reader,
@@ -264,9 +266,24 @@ namespace
             id,
             3U,
             {fixedColumn(), variableColumn(), tagColumn(), linkColumn(invalid_link)}
-        ));
+        ), fixtureValidationBudget());
         assert(opened);
         return std::move(*opened);
+    }
+
+    [[nodiscard]] auto loadSection(
+        World& world,
+        const ComponentLoadSet& loads,
+        const WorldSectionImage& image
+    ) noexcept
+    {
+        return WorldSectionLoader::load(
+            world,
+            loads,
+            image,
+            fixtureLoadScratchBudget(),
+            lux::serialization::SerializationLimits{}
+        );
     }
 
     [[nodiscard]] std::size_t fixedCount(const World& world)
@@ -341,7 +358,7 @@ namespace
 
         void update(SystemFrame&) noexcept override
         {
-            auto loaded = WorldSectionLoader::load(*world_, *loads_, *image_);
+            auto loaded = loadSection(*world_, *loads_, *image_);
             rejected_ = !loaded &&
                 loaded.error().code == EWorldSectionError::WORLD_BUSY;
         }
@@ -366,7 +383,7 @@ int main()
 
     detail::ComponentLoadTestStats::reset();
     auto first_image = validImage(sectionId(1U));
-    auto first = WorldSectionLoader::load(world, context.loads, first_image);
+    auto first = loadSection(world, context.loads, first_image);
     assert(first);
     assert(first->id() == sectionId(1U));
     assert(first->entities().size() == 3U);
@@ -389,7 +406,7 @@ int main()
     assert(world.get<test::Link>(first_entities[2]).target == first_entities[0]);
 
     auto second_image = validImage(sectionId(2U));
-    auto second = WorldSectionLoader::load(world, context.loads, second_image);
+    auto second = loadSection(world, context.loads, second_image);
     assert(second);
     assert(second->active());
     assert(fixedCount(world) == 6U);
@@ -407,9 +424,9 @@ int main()
             sectionId(3U),
             0U,
             {}
-        ));
+        ), fixtureValidationBudget());
         assert(empty_image);
-        auto empty_section = WorldSectionLoader::load(
+        auto empty_section = loadSection(
             world,
             context.loads,
             *empty_image
@@ -432,7 +449,7 @@ int main()
     {
         Schedule schedule(world);
         auto scheduled_image = validImage(sectionId(1U));
-        auto scheduled = WorldSectionLoader::load(
+        auto scheduled = loadSection(
             world,
             context.loads,
             scheduled_image
@@ -445,7 +462,7 @@ int main()
         auto edit = world.edit();
         assert(edit);
         auto busy_image = validImage(sectionId(1U));
-        auto busy = WorldSectionLoader::load(
+        auto busy = loadSection(
             world,
             context.loads,
             busy_image
@@ -456,7 +473,7 @@ int main()
 
     const std::size_t before_failure = fixedCount(world);
     auto bad_image = validImage(sectionId(1U), true);
-    auto bad = WorldSectionLoader::load(world, context.loads, bad_image);
+    auto bad = loadSection(world, context.loads, bad_image);
     assert(!bad);
     assert(bad.error().code == EWorldSectionError::DECODE_FAILED);
     assert(fixedCount(world) == before_failure);
@@ -465,9 +482,9 @@ int main()
         sectionId(1U),
         3U,
         {fixedColumn(), allocationFailureColumn()}
-    ));
+    ), fixtureValidationBudget());
     assert(allocation_image);
-    auto allocation = WorldSectionLoader::load(
+    auto allocation = loadSection(
         world,
         context.loads,
         *allocation_image
@@ -482,9 +499,9 @@ int main()
         sectionId(1U),
         3U,
         {missing_column}
-    ));
+    ), fixtureValidationBudget());
     assert(missing_image);
-    auto missing = WorldSectionLoader::load(
+    auto missing = loadSection(
         world,
         context.loads,
         *missing_image
@@ -499,9 +516,9 @@ int main()
         sectionId(1U),
         3U,
         {version_column}
-    ));
+    ), fixtureValidationBudget());
     assert(version_image);
-    auto version = WorldSectionLoader::load(
+    auto version = loadSection(
         world,
         context.loads,
         *version_image
@@ -548,7 +565,7 @@ int main()
         assert(retaining->retained().size() == 1U);
 
         auto history_image = validImage(sectionId(1U));
-        auto history_section = WorldSectionLoader::load(
+        auto history_section = loadSection(
             history_world,
             context.loads,
             history_image

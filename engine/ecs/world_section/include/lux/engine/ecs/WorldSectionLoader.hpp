@@ -66,7 +66,8 @@ namespace lux::ecs
             World& world,
             const ComponentLoadSet& loads,
             const WorldSectionImage& image,
-            lux::serialization::SerializationLimits limits = {}
+            WorldSectionLoadScratchBudget scratch,
+            lux::serialization::SerializationLimits limits
         ) noexcept;
 
         [[nodiscard]] static lux::cxx::expected<

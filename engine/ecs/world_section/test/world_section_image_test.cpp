@@ -38,7 +38,10 @@ int main()
     using namespace lux::ecs::world_section::test;
 
     auto empty_bytes = buildFixture(sectionId(), 0U, {});
-    auto empty = WorldSectionImage::open(std::move(empty_bytes));
+    auto empty = WorldSectionImage::open(
+        std::move(empty_bytes),
+        fixtureValidationBudget()
+    );
     assert(empty);
     assert(empty->id() == sectionId());
     assert(empty->entityCount() == 0U);
@@ -72,7 +75,10 @@ int main()
         {dense_fixed, sparse_variable, sparse_tag}
     );
     const auto original_size = bytes.size();
-    auto image = WorldSectionImage::open(std::move(bytes));
+    auto image = WorldSectionImage::open(
+        std::move(bytes),
+        fixtureValidationBudget()
+    );
     assert(image);
     assert(image->entityCount() == 3U);
     assert(image->columns().size() == 3U);
@@ -110,14 +116,18 @@ int main()
         std::byte{'L'}, std::byte{'X'}, std::byte{'W'}, std::byte{'C'},
         std::byte{1}, std::byte{}, std::byte{}, std::byte{}};
     auto v1 = WorldSectionImage::open(
-        std::vector<std::byte>(v1_magic.begin(), v1_magic.end())
+        std::vector<std::byte>(v1_magic.begin(), v1_magic.end()),
+        fixtureValidationBudget()
     );
     assert(!v1);
     assert(v1.error().code == EWorldSectionError::TRUNCATED);
 
     auto bad_version = buildFixture(sectionId(), 0U, {});
     patchU32(bad_version, 4U, 1U);
-    auto unsupported = WorldSectionImage::open(std::move(bad_version));
+    auto unsupported = WorldSectionImage::open(
+        std::move(bad_version),
+        fixtureValidationBudget()
+    );
     assert(!unsupported);
     assert(
         unsupported.error().code ==
@@ -127,7 +137,8 @@ int main()
     auto bad_contract = buildFixture(sectionId(), 0U, {});
     patchU32(bad_contract, 8U, 2U);
     auto unsupported_contract = WorldSectionImage::open(
-        std::move(bad_contract)
+        std::move(bad_contract),
+        fixtureValidationBudget()
     );
     assert(!unsupported_contract);
     assert(
@@ -135,7 +146,7 @@ int main()
         EWorldSectionError::UNSUPPORTED_LOADER_CONTRACT
     );
 
-    WorldSectionLimits small_limits;
+    auto small_limits = fixtureValidationBudget();
     small_limits.max_entities = 2U;
     auto over_limit = WorldSectionImage::open(
         buildFixture(sectionId(), 3U, {dense_fixed}),
@@ -144,9 +155,27 @@ int main()
     assert(!over_limit);
     assert(over_limit.error().code == EWorldSectionError::LIMIT_EXCEEDED);
 
+    auto row_limits = fixtureValidationBudget();
+    row_limits.max_component_rows = 3U;
+    auto row_work_limit = WorldSectionImage::open(
+        buildFixture(
+            sectionId(),
+            3U,
+            {dense_fixed, sparse_tag}
+        ),
+        row_limits
+    );
+    assert(!row_work_limit);
+    assert(
+        row_work_limit.error().code == EWorldSectionError::LIMIT_EXCEEDED
+    );
+
     auto truncated = buildFixture(sectionId(), 0U, {});
     truncated.pop_back();
-    auto truncated_result = WorldSectionImage::open(std::move(truncated));
+    auto truncated_result = WorldSectionImage::open(
+        std::move(truncated),
+        fixtureValidationBudget()
+    );
     assert(!truncated_result);
     assert(truncated_result.error().code == EWorldSectionError::TRUNCATED);
 
@@ -170,7 +199,10 @@ int main()
         static_cast<std::size_t>(ordinal_offset) + 4U,
         0U
     );
-    auto duplicate = WorldSectionImage::open(std::move(duplicate_ordinals));
+    auto duplicate = WorldSectionImage::open(
+        std::move(duplicate_ordinals),
+        fixtureValidationBudget()
+    );
     assert(!duplicate);
     assert(duplicate.error().code == EWorldSectionError::INVALID_ORDINAL);
 
@@ -190,7 +222,10 @@ int main()
         static_cast<std::size_t>(offsets_offset) + 4U,
         6U
     );
-    auto invalid_offsets = WorldSectionImage::open(std::move(bad_offsets));
+    auto invalid_offsets = WorldSectionImage::open(
+        std::move(bad_offsets),
+        fixtureValidationBudget()
+    );
     assert(!invalid_offsets);
     assert(
         invalid_offsets.error().code == EWorldSectionError::INVALID_OFFSETS
@@ -205,14 +240,18 @@ int main()
         dense_fixed.payload.size() - 1U
     );
     auto invalid_fixed = WorldSectionImage::open(
-        std::move(wrong_fixed_size)
+        std::move(wrong_fixed_size),
+        fixtureValidationBudget()
     );
     assert(!invalid_fixed);
     assert(invalid_fixed.error().code == EWorldSectionError::INVALID_PAYLOAD);
 
     auto overlap = buildFixture(sectionId(), 3U, {dense_fixed});
     patchU64(overlap, fixed_descriptor + 64U, 0U);
-    auto overlapping = WorldSectionImage::open(std::move(overlap));
+    auto overlapping = WorldSectionImage::open(
+        std::move(overlap),
+        fixtureValidationBudget()
+    );
     assert(!overlapping);
     assert(
         overlapping.error().code == EWorldSectionError::OVERLAPPING_REGION

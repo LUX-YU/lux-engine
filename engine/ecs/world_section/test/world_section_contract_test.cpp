@@ -17,11 +17,17 @@ int main()
             std::uint8_t>
     );
 
-    const lux::ecs::WorldSectionLimits limits;
+    const lux::ecs::WorldSectionValidationBudget limits{
+        1U,
+        1U,
+        1U,
+        1U,
+    };
     assert(lux::ecs::worldSectionFormatVersion() == 2U);
     assert(lux::ecs::worldSectionLoaderContractVersion() == 1U);
-    assert(limits.max_entities != 0U);
-    assert(limits.max_columns != 0U);
-    assert(limits.max_payload_bytes < (1ULL << 32U));
+    assert(limits.max_entities == 1U);
+    assert(limits.max_component_rows == 1U);
+    assert(limits.max_columns == 1U);
+    assert(limits.max_image_bytes == 1U);
     return 0;
 }

@@ -164,13 +164,13 @@ namespace lux::ecs
     lux::cxx::expected<WorldSectionImage, WorldSectionFailure>
     WorldSectionImage::open(
         std::vector<std::byte> bytes,
-        WorldSectionLimits limits
+        const WorldSectionValidationBudget& budget
     ) noexcept
     {
         try
         {
             const auto source = std::span<const std::byte>(bytes);
-            if (source.size() > limits.max_image_bytes)
+            if (source.size() > budget.max_image_bytes)
             {
                 return lux::cxx::unexpected(
                     failure(EWorldSectionError::LIMIT_EXCEEDED)
@@ -234,9 +234,8 @@ namespace lux::ecs
                     failure(EWorldSectionError::INVALID_HEADER, 12U)
                 );
             }
-            if (entity_count > limits.max_entities ||
-                column_count > limits.max_columns ||
-                name_bytes > limits.max_name_bytes)
+            if (entity_count > budget.max_entities ||
+                column_count > budget.max_columns)
             {
                 return lux::cxx::unexpected(
                     failure(EWorldSectionError::LIMIT_EXCEEDED)
@@ -286,9 +285,7 @@ namespace lux::ecs
             }
 
             result.columns_.reserve(column_count);
-            std::uint64_t total_ordinal_bytes{};
-            std::uint64_t total_offset_bytes{};
-            std::uint64_t total_payload_bytes{};
+            std::uint64_t total_component_rows{};
             std::uint64_t previous_hash{};
             std::string_view previous_name;
             bool has_previous{};
@@ -388,6 +385,21 @@ namespace lux::ecs
                     static_cast<EWorldSectionValueEncoding>(value_raw);
                 const auto ordinal_encoding =
                     static_cast<EWorldSectionOrdinalEncoding>(ordinal_raw);
+                if (row_count >
+                    std::numeric_limits<std::uint64_t>::max() -
+                        total_component_rows)
+                {
+                    return lux::cxx::unexpected(
+                        failure(EWorldSectionError::LIMIT_EXCEEDED)
+                    );
+                }
+                total_component_rows += row_count;
+                if (total_component_rows > budget.max_component_rows)
+                {
+                    return lux::cxx::unexpected(
+                        failure(EWorldSectionError::LIMIT_EXCEEDED)
+                    );
+                }
                 std::uint64_t expected_ordinal_bytes{};
                 if (ordinal_encoding == EWorldSectionOrdinalEncoding::DENSE)
                 {
@@ -526,18 +538,6 @@ namespace lux::ecs
                         }
                         previous_offset = current;
                     }
-                }
-
-                total_ordinal_bytes += ordinals_bytes;
-                total_offset_bytes += offsets_bytes;
-                total_payload_bytes += payload_bytes;
-                if (total_ordinal_bytes > limits.max_ordinal_bytes ||
-                    total_offset_bytes > limits.max_offset_bytes ||
-                    total_payload_bytes > limits.max_payload_bytes)
-                {
-                    return lux::cxx::unexpected(
-                        failure(EWorldSectionError::LIMIT_EXCEEDED, descriptor, index)
-                    );
                 }
 
                 WorldSectionColumnView view;

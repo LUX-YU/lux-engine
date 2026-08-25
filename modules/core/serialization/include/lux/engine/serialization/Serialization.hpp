@@ -2,6 +2,7 @@
 
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/serialization/BinaryReader.hpp>
+#include <lux/engine/serialization/Traits.hpp>
 #include <lux/engine/serialization/visibility.h>
 
 #include <array>
@@ -20,9 +21,6 @@ namespace lux::serialization
 {
     [[nodiscard]] LUX_CORE_SERIALIZATION_PUBLIC
     std::uint32_t binarySerializationContractVersion() noexcept;
-
-    template <class T>
-    struct Serializer;
 
     namespace detail
     {
@@ -69,6 +67,12 @@ namespace lux::serialization
         {
             { Serializer<T>::read(reader, value) } ->
                 std::same_as<SerializationResult>;
+        };
+
+        template <class T>
+        concept SemanticArchiveOnly = requires(T value)
+        {
+            luxBinarySemanticArchiveOnly(value);
         };
 
         template <class Writer, class T>
@@ -142,28 +146,38 @@ namespace lux::serialization
                     }
                 );
             }
-            if constexpr (HasCustomWrite<Writer, U>)
+            if constexpr (HasSerializerDefinition<U>)
             {
-                try
+                if constexpr (HasCustomWrite<Writer, U>)
                 {
-                    return Serializer<U>::write(writer, value);
+                    try
+                    {
+                        return Serializer<U>::write(writer, value);
+                    }
+                    catch (const std::bad_alloc&)
+                    {
+                        return lux::cxx::unexpected<SerializationFailure>(
+                            SerializationFailure{
+                                ESerializationError::ALLOCATION_FAILURE,
+                                writer.offset()
+                            }
+                        );
+                    }
+                    catch (...)
+                    {
+                        return lux::cxx::unexpected<SerializationFailure>(
+                            SerializationFailure{
+                                ESerializationError::INVALID_VALUE,
+                                writer.offset()
+                            }
+                        );
+                    }
                 }
-                catch (const std::bad_alloc&)
+                else
                 {
-                    return lux::cxx::unexpected<SerializationFailure>(
-                        SerializationFailure{
-                            ESerializationError::ALLOCATION_FAILURE,
-                            writer.offset()
-                        }
-                    );
-                }
-                catch (...)
-                {
-                    return lux::cxx::unexpected<SerializationFailure>(
-                        SerializationFailure{
-                            ESerializationError::INVALID_VALUE,
-                            writer.offset()
-                        }
+                    static_assert(
+                        HasCustomWrite<Writer, U>,
+                        "Serializer<T> exists but does not support this Writer"
                     );
                 }
             }
@@ -184,6 +198,13 @@ namespace lux::serialization
             else if constexpr (std::floating_point<U>)
             {
                 return writer.writeFloat(value);
+            }
+            else if constexpr (SemanticArchiveOnly<U>)
+            {
+                static_assert(
+                    !SemanticArchiveOnly<U>,
+                    "Type requires an ECS-aware semantic binary archive"
+                );
             }
             else if constexpr (std::is_enum_v<U>)
             {
@@ -298,28 +319,38 @@ namespace lux::serialization
                     reader.offset()
                 });
             }
-            if constexpr (HasCustomRead<Reader, U>)
+            if constexpr (HasSerializerDefinition<U>)
             {
-                try
+                if constexpr (HasCustomRead<Reader, U>)
                 {
-                    return Serializer<U>::read(reader, value);
+                    try
+                    {
+                        return Serializer<U>::read(reader, value);
+                    }
+                    catch (const std::bad_alloc&)
+                    {
+                        return lux::cxx::unexpected<SerializationFailure>(
+                            SerializationFailure{
+                                ESerializationError::ALLOCATION_FAILURE,
+                                reader.offset()
+                            }
+                        );
+                    }
+                    catch (...)
+                    {
+                        return lux::cxx::unexpected<SerializationFailure>(
+                            SerializationFailure{
+                                ESerializationError::INVALID_VALUE,
+                                reader.offset()
+                            }
+                        );
+                    }
                 }
-                catch (const std::bad_alloc&)
+                else
                 {
-                    return lux::cxx::unexpected<SerializationFailure>(
-                        SerializationFailure{
-                            ESerializationError::ALLOCATION_FAILURE,
-                            reader.offset()
-                        }
-                    );
-                }
-                catch (...)
-                {
-                    return lux::cxx::unexpected<SerializationFailure>(
-                        SerializationFailure{
-                            ESerializationError::INVALID_VALUE,
-                            reader.offset()
-                        }
+                    static_assert(
+                        HasCustomRead<Reader, U>,
+                        "Serializer<T> exists but does not support this Reader"
                     );
                 }
             }
@@ -369,6 +400,13 @@ namespace lux::serialization
                 }
                 value = *encoded;
                 return {};
+            }
+            else if constexpr (SemanticArchiveOnly<U>)
+            {
+                static_assert(
+                    !SemanticArchiveOnly<U>,
+                    "Type requires an ECS-aware semantic binary archive"
+                );
             }
             else if constexpr (std::is_enum_v<U>)
             {

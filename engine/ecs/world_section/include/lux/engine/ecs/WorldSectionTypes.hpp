@@ -55,14 +55,16 @@ namespace lux::ecs
         ComponentSchemaId schema;
     };
 
-    struct WorldSectionLimits final
+    struct WorldSectionValidationBudget final
     {
-        std::uint32_t max_entities{16U * 1024U * 1024U};
-        std::uint32_t max_columns{4096U};
-        std::uint64_t max_name_bytes{64ULL * 1024ULL * 1024ULL};
-        std::uint64_t max_ordinal_bytes{256ULL * 1024ULL * 1024ULL};
-        std::uint64_t max_offset_bytes{256ULL * 1024ULL * 1024ULL};
-        std::uint64_t max_payload_bytes{4ULL * 1024ULL * 1024ULL * 1024ULL - 1ULL};
-        std::uint64_t max_image_bytes{8ULL * 1024ULL * 1024ULL * 1024ULL};
+        std::uint64_t max_entities{};
+        std::uint64_t max_component_rows{};
+        std::uint32_t max_columns{};
+        std::size_t max_image_bytes{};
+    };
+
+    struct WorldSectionLoadScratchBudget final
+    {
+        std::size_t decode_bytes{};
     };
 } // namespace lux::ecs

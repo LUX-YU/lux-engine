@@ -217,3 +217,32 @@ set_tests_properties(
     vnext_ecs_retired_world_section_v1_negative
     PROPERTIES LABELS "vnext;l1;world-section;negative"
 )
+
+add_executable(
+    ecs_entity_generic_archive_negative
+    EXCLUDE_FROM_ALL
+    test/entity_generic_archive_negative.cpp
+)
+target_link_libraries(
+    ecs_entity_generic_archive_negative
+    PRIVATE lux::engine::ecs::world_section
+)
+lux_classify_target(
+    TARGET  ecs_entity_generic_archive_negative
+    LAYER   ECS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(
+    NAME vnext_ecs_entity_generic_archive_negative
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DBUILD_DIR=${CMAKE_BINARY_DIR}
+        -DTARGET=ecs_entity_generic_archive_negative
+        "-DEXPECTED_PATTERN=ECS-aware semantic binary archive"
+        -P ${PROJECT_SOURCE_DIR}/cmake/ExpectTargetCompileFailure.cmake
+)
+set_tests_properties(
+    vnext_ecs_entity_generic_archive_negative
+    PROPERTIES LABELS "vnext;l1;world-section;negative"
+)

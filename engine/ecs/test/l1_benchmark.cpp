@@ -972,7 +972,10 @@ namespace
             static_cast<std::uint32_t>(entity_count),
             std::move(columns)
         );
-        auto image = lux::ecs::WorldSectionImage::open(std::move(bytes));
+        auto image = lux::ecs::WorldSectionImage::open(
+            std::move(bytes),
+            lux::ecs::world_section::test::fixtureValidationBudget()
+        );
         if (!image) std::abort();
         return LoadPlan{
             std::move(*schemas),
@@ -1023,7 +1026,10 @@ namespace
             static_cast<std::uint32_t>(entity_count),
             {std::move(column)}
         );
-        auto image = lux::ecs::WorldSectionImage::open(std::move(bytes));
+        auto image = lux::ecs::WorldSectionImage::open(
+            std::move(bytes),
+            lux::ecs::world_section::test::fixtureValidationBudget()
+        );
         if (!image) std::abort();
         return LoadPlan{
             std::move(*schemas),
@@ -1049,7 +1055,8 @@ namespace
                 std::vector<std::byte> bytes(source.begin(), source.end());
                 const auto begin = Clock::now();
                 auto opened = lux::ecs::WorldSectionImage::open(
-                    std::move(bytes)
+                    std::move(bytes),
+                    lux::ecs::world_section::test::fixtureValidationBudget()
                 );
                 const auto end = Clock::now();
                 if (!opened) std::abort();
@@ -1155,7 +1162,9 @@ namespace
             auto instance = lux::ecs::WorldSectionLoader::load(
                 world,
                 plan.loads,
-                plan.image
+                plan.image,
+                lux::ecs::world_section::test::fixtureLoadScratchBudget(),
+                lux::serialization::SerializationLimits{}
             );
             if (!instance) std::abort();
             const Observation result{
@@ -1176,7 +1185,9 @@ namespace
                 auto instance = lux::ecs::WorldSectionLoader::load(
                     world,
                     plan.loads,
-                    plan.image
+                    plan.image,
+                    lux::ecs::world_section::test::fixtureLoadScratchBudget(),
+                    lux::serialization::SerializationLimits{}
                 );
                 if (!instance) std::abort();
                 const auto begin = Clock::now();

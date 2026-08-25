@@ -13,14 +13,9 @@
 namespace lux::serialization
 {
     template <>
-    struct FixedWireSize<uuids::uuid>
-    {
-        static constexpr std::size_t value = 16U;
-    };
-
-    template <>
     struct Serializer<uuids::uuid>
     {
+        static constexpr std::size_t fixed_wire_size = 16U;
         template <class Writer>
         [[nodiscard]] static SerializationResult write(
             Writer& writer,

@@ -5,11 +5,30 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
 namespace lux::ecs::world_section::test
 {
+    [[nodiscard]] constexpr WorldSectionValidationBudget
+    fixtureValidationBudget() noexcept
+    {
+        return WorldSectionValidationBudget{
+            std::numeric_limits<std::uint64_t>::max(),
+            std::numeric_limits<std::uint64_t>::max(),
+            std::numeric_limits<std::uint32_t>::max(),
+            std::numeric_limits<std::size_t>::max(),
+        };
+    }
+
+    [[nodiscard]] constexpr WorldSectionLoadScratchBudget
+    fixtureLoadScratchBudget() noexcept
+    {
+        // Test policy, deliberately outside the L1 runtime contract.
+        return WorldSectionLoadScratchBudget{256U * 1024U};
+    }
+
     struct FixtureColumn final
     {
         std::string schema_name;

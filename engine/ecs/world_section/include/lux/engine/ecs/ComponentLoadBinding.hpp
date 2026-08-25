@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <iterator>
 #include <memory>
 #include <span>
 #include <type_traits>
@@ -31,6 +32,7 @@ namespace lux::ecs
                 std::span<const Entity>,
                 std::span<const Entity>,
                 const WorldSectionColumnView&,
+                WorldSectionLoadScratchBudget,
                 lux::serialization::SerializationLimits
             ) noexcept;
 
@@ -89,6 +91,7 @@ namespace lux::ecs
             std::span<const Entity> row_entities,
             std::span<const Entity> ordinal_entities,
             const WorldSectionColumnView& column,
+            WorldSectionLoadScratchBudget scratch,
             lux::serialization::SerializationLimits limits
         ) noexcept
         {
@@ -113,16 +116,20 @@ namespace lux::ecs
                     return {};
                 }
 
-                constexpr std::size_t kBatchRows = 4096U;
+                const std::size_t batch_rows = std::max<std::size_t>(
+                    scratch.decode_bytes /
+                        std::max<std::size_t>(sizeof(Component), 1U),
+                    1U
+                );
                 storage.reserve(storage.size() + row_entities.size());
                 std::vector<Component> values;
-                values.reserve(std::min(row_entities.size(), kBatchRows));
+                values.reserve(std::min(row_entities.size(), batch_rows));
                 for (std::size_t batch_begin{};
                      batch_begin < row_entities.size();
-                     batch_begin += kBatchRows)
+                     batch_begin += batch_rows)
                 {
                     const std::size_t batch_size = std::min(
-                        kBatchRows,
+                        batch_rows,
                         row_entities.size() - batch_begin
                     );
                     values.clear();
@@ -256,9 +263,8 @@ namespace lux::ecs
         static_assert(lux::meta::HasTypeStaticInfo<Component>);
         static_assert(std::default_initializable<Component>);
         static_assert(std::is_nothrow_move_constructible_v<Component>);
-        constexpr std::size_t fixed =
-            lux::serialization::FixedWireSizeV<Component>;
-        constexpr auto encoding = std::is_empty_v<Component>
+        constexpr std::size_t fixed = lux::serialization::WireSizeV<Component>;
+        constexpr auto encoding = fixed == 0U
             ? EWorldSectionValueEncoding::TAG
             : fixed == lux::serialization::DynamicWireSize
                 ? EWorldSectionValueEncoding::VARIABLE

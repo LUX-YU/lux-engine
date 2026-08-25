@@ -107,6 +107,15 @@ namespace lux::ecs::detail
             world.state_ = EWorldState::APPLYING_COMMANDS;
         }
 
+        [[nodiscard]] static WorldMutation commandMutation(
+            World& world
+        ) noexcept
+        {
+            require(world.execution_lease_);
+            require(world.state_ == EWorldState::APPLYING_COMMANDS);
+            return WorldMutation(world, false);
+        }
+
         static void resume(World& world) noexcept
         {
             require(world.execution_lease_);

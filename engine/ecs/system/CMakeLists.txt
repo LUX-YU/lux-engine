@@ -18,8 +18,11 @@ add_component(
     NAMESPACE      lux::engine::ecs
     OUTPUT_NAME    lux_engine_ecs_system
     SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ChangeSet.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemExecution.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemRegistry.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemRelations.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemTaskGraphCompiler.cpp
 )
 
 component_include_directories(
@@ -77,6 +80,31 @@ add_test(NAME vnext_ecs_system_registry COMMAND ecs_system_registry_test)
 set_tests_properties(
     vnext_ecs_system_registry
     PROPERTIES LABELS "vnext;l1;system;cpu"
+)
+
+add_executable(
+    ecs_system_execution_test
+    test/system_execution_test.cpp
+)
+target_link_libraries(
+    ecs_system_execution_test
+    PRIVATE lux::engine::ecs::system
+)
+if(MSVC)
+    target_compile_options(ecs_system_execution_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(ecs_system_execution_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  ecs_system_execution_test
+    LAYER   ECS
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+add_test(NAME vnext_ecs_system_execution COMMAND ecs_system_execution_test)
+set_tests_properties(
+    vnext_ecs_system_execution
+    PROPERTIES LABELS "vnext;l1;system;taskgraph;cpu"
 )
 
 foreach(probe IN ITEMS

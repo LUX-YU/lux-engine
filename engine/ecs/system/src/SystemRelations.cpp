@@ -1,6 +1,7 @@
 #include <lux/engine/ecs/SystemRelations.hpp>
 
 #include <lux/engine/ecs/SystemRegistry.hpp>
+#include <lux/engine/ecs/system/detail/SystemRelationsAccess.hpp>
 
 #include <algorithm>
 #include <utility>
@@ -8,23 +9,10 @@
 
 namespace lux::ecs
 {
-    namespace
-    {
-        struct SystemRelation final
-        {
-            SystemId before{};
-            SystemId after{};
-
-            [[nodiscard]] bool operator==(
-                const SystemRelation&
-            ) const noexcept = default;
-        };
-    }
-
     struct SystemRelations::Impl final
     {
         const SystemRegistry* registry{};
-        std::vector<SystemRelation> relations;
+        std::vector<detail::SystemRelationEdge> relations;
         std::uint64_t revision{1};
     };
 
@@ -54,7 +42,7 @@ namespace lux::ecs
             });
         }
 
-        const SystemRelation relation{before, after};
+        const detail::SystemRelationEdge relation{before, after};
         if (std::find(
             impl_->relations.begin(),
             impl_->relations.end(),
@@ -100,5 +88,26 @@ namespace lux::ecs
     std::uint64_t SystemRelations::revision() const noexcept
     {
         return impl_ ? impl_->revision : 0U;
+    }
+
+    namespace detail
+    {
+        const SystemRegistry* SystemRelationsAccess::registry(
+            const SystemRelations& relations
+        ) noexcept
+        {
+            return relations.impl_ ? relations.impl_->registry : nullptr;
+        }
+
+        std::span<const SystemRelationEdge> SystemRelationsAccess::edges(
+            const SystemRelations& relations
+        ) noexcept
+        {
+            return relations.impl_ == nullptr
+                ? std::span<const SystemRelationEdge>{}
+                : std::span<const SystemRelationEdge>{
+                    relations.impl_->relations
+                };
+        }
     }
 }

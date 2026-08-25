@@ -9,6 +9,8 @@
 
 namespace lux::ecs::detail
 {
+    struct CommandShardAccess;
+
     struct LUX_ENGINE_ECS_CORE_PUBLIC CommandRecord final
     {
         void* payload{};
@@ -94,5 +96,27 @@ namespace lux::ecs::detail
 
         friend class ::lux::ecs::WorldCommands;
         friend class ::lux::ecs::Schedule;
+        friend struct CommandShardAccess;
+    };
+
+    struct CommandShardAccess final
+    {
+        [[nodiscard]] static WorldCommands begin(CommandShard& shard) noexcept
+        {
+            return shard.beginExecution();
+        }
+
+        static void end(CommandShard& shard) noexcept
+        {
+            shard.endExecution();
+        }
+
+        static void apply(
+            CommandShard& shard,
+            WorldMutation& mutation
+        ) noexcept
+        {
+            shard.applyPending(mutation);
+        }
     };
 } // namespace lux::ecs::detail

@@ -147,6 +147,7 @@ namespace lux::ecs
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldMutationAccess;
         friend struct detail::WorldColdAccess;
+        friend struct detail::WorldExecutionAccess;
         friend class ComponentLoadBinding;
         friend class ComponentSnapshotBinding;
         friend struct detail::WorldSectionTransactionAccess;
@@ -215,6 +216,7 @@ namespace lux::ecs
         friend class WorldMutation;
         friend class Schedule;
         friend class SystemFrame;
+        friend class SystemContext;
         friend class SystemStart;
         friend class WorldSnapshot;
         friend struct detail::WorldSnapshotAccess;

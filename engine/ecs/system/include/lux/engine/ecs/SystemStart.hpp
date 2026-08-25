@@ -8,6 +8,11 @@
 
 namespace lux::ecs
 {
+    namespace detail
+    {
+        struct SystemExecutionAccess;
+    }
+
     enum class ESystemStartError : std::uint8_t
     {
         REJECTED,
@@ -52,5 +57,6 @@ namespace lux::ecs
         const World* world_{};
 
         friend class EcsExecutionContext;
+        friend struct detail::SystemExecutionAccess;
     };
 }

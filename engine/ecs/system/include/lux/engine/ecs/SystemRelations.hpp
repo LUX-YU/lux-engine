@@ -13,6 +13,11 @@ namespace lux::ecs
 {
     class SystemRegistry;
 
+    namespace detail
+    {
+        struct SystemRelationsAccess;
+    }
+
     class LUX_ENGINE_ECS_SYSTEM_PUBLIC SystemRelations final
     {
     public:
@@ -43,5 +48,6 @@ namespace lux::ecs
         std::unique_ptr<Impl> impl_;
 
         friend class SystemTaskGraphCompiler;
+        friend struct detail::SystemRelationsAccess;
     };
 }

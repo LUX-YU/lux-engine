@@ -587,7 +587,6 @@ namespace
             EGraphShape shape,
             bool conflict
         )
-            : relations(systems)
         {
             ids.reserve(count);
             for (std::size_t index{}; index < count; ++index)
@@ -639,20 +638,19 @@ namespace
                  Case{"all_conflict", EGraphShape::NONE, true}})
         {
             SystemCompileFixture fixture(count, value.shape, value.conflict);
-            lux::ecs::SystemTaskGraphCompiler compiler;
             evidence.measure(
                 std::string{"system_compile_"} + std::string{value.name},
                 count,
                 [&]
                 {
-                    auto compilation = compiler.compile(
+                    auto compilation = lux::ecs::compileSystemTaskGraph(
                         fixture.systems,
                         fixture.relations
                     );
                     if (!compilation)
                         std::abort();
                     return Observation{
-                        .dispatch_calls = compilation->graph.taskCount()
+                        .dispatch_calls = compilation->taskCount()
                     };
                 }
             );
@@ -740,7 +738,7 @@ namespace
     )
     {
         auto world = multiWriteWorld(count, sequence);
-        auto& journal = lux::ecs::detail::WorldChangeAccess::journal(*world);
+        auto& journal = lux::ecs::detail::WorldChangeAccess::log(*world);
         evidence.measure(
             "world_change_log_write_" + std::to_string(sizeof...(Index)),
             count,
@@ -964,11 +962,12 @@ namespace
     }
 
     void installHierarchy(
+        lux::ecs::World& world,
         lux::ecs::detail::SystemTestRig& schedule,
         lux::ecs::HierarchyIndex& hierarchy
     )
     {
-        (void)schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+        (void)schedule.add<lux::ecs::HierarchySystem>(world, hierarchy);
         if (!schedule.compile()) std::abort();
     }
 
@@ -982,7 +981,7 @@ namespace
         {
             lux::ecs::HierarchyIndex hierarchy(*world);
             lux::ecs::detail::SystemTestRig schedule(*world);
-            installHierarchy(schedule, hierarchy);
+            installHierarchy(*world, schedule, hierarchy);
             if (!schedule.run(1.0F / 60.0F, 1U)) std::abort();
             if (!hierarchy.synchronized()) std::abort();
             return Observation{
@@ -994,7 +993,7 @@ namespace
         });
         lux::ecs::HierarchyIndex hierarchy(*world);
         lux::ecs::detail::SystemTestRig schedule(*world);
-        installHierarchy(schedule, hierarchy);
+        installHierarchy(*world, schedule, hierarchy);
         std::uint64_t tick{1U};
         if (!schedule.run(1.0F / 60.0F, tick)) std::abort();
         evidence.measure("hierarchy_real_no_change", requested_size, [&]
@@ -1023,7 +1022,7 @@ namespace
             {
                 lux::ecs::HierarchyIndex local(*stress_world);
                 lux::ecs::detail::SystemTestRig local_schedule(*stress_world);
-                installHierarchy(local_schedule, local);
+                installHierarchy(*stress_world, local_schedule, local);
                 if (!local_schedule.run(1.0F / 60.0F, 1U)) std::abort();
                 if (!local.synchronized()) std::abort();
                 return Observation{
@@ -1041,7 +1040,7 @@ namespace
         );
         lux::ecs::HierarchyIndex star_index(*star_world);
         lux::ecs::detail::SystemTestRig star_schedule(*star_world);
-        installHierarchy(star_schedule, star_index);
+        installHierarchy(*star_world, star_schedule, star_index);
         std::uint64_t star_tick{1U};
         if (!star_schedule.run(1.0F / 60.0F, star_tick)) std::abort();
         bool nested{};
@@ -1079,7 +1078,7 @@ namespace
         );
         lux::ecs::HierarchyIndex resync_index(*resync_world);
         lux::ecs::detail::SystemTestRig resync_schedule(*resync_world);
-        installHierarchy(resync_schedule, resync_index);
+        installHierarchy(*resync_world, resync_schedule, resync_index);
         std::uint64_t resync_tick{1U};
         if (!resync_schedule.run(1.0F / 60.0F, resync_tick)) std::abort();
         evidence.measure("hierarchy_cursor_overflow_resync", stress, [&]
@@ -1131,7 +1130,7 @@ namespace
             lux::ecs::HierarchyIndex hierarchy(*world);
             lux::ecs::detail::SystemTestRig schedule(*world);
             const auto hierarchy_handle =
-                schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+                schedule.add<lux::ecs::HierarchySystem>(*world, hierarchy);
             const auto transform_handle =
                 schedule.add<lux::ecs::Transform3DSystem>(hierarchy);
             schedule.before(hierarchy_handle, transform_handle);
@@ -1190,7 +1189,10 @@ namespace
         lux::ecs::HierarchyIndex sparse_hierarchy(*sparse_world);
         lux::ecs::detail::SystemTestRig sparse_schedule(*sparse_world);
         const auto hierarchy_handle =
-            sparse_schedule.add<lux::ecs::HierarchySystem>(sparse_hierarchy);
+            sparse_schedule.add<lux::ecs::HierarchySystem>(
+                *sparse_world,
+                sparse_hierarchy
+            );
         const auto transform_handle =
             sparse_schedule.add<lux::ecs::Transform3DSystem>(sparse_hierarchy);
         sparse_schedule.before(hierarchy_handle, transform_handle);
@@ -1548,7 +1550,9 @@ namespace
             {
                 lux::ecs::World world;
                 std::vector<lux::ecs::Entity> entities(size);
-                auto edit = lux::ecs::detail::WorldColdAccess::sectionEdit(world);
+                auto edit = lux::ecs::detail::WorldColdAccess::sectionMutation(
+                    world
+                );
                 lux::ecs::detail::WorldSectionTransactionAccess::createEntities(
                     edit,
                     entities
@@ -1602,7 +1606,7 @@ namespace
                 lux::ecs::World world;
                 auto local_entities = entities;
                 auto local_values = values;
-                auto edit = lux::ecs::detail::WorldColdAccess::sectionEdit(
+                auto edit = lux::ecs::detail::WorldColdAccess::sectionMutation(
                     world
                 );
                 lux::ecs::detail::WorldSectionTransactionAccess::createEntities(
@@ -1799,7 +1803,7 @@ namespace
             lux::ecs::NullEntity
         );
         {
-            auto edit = lux::ecs::detail::WorldColdAccess::sectionEdit(world);
+            auto edit = lux::ecs::detail::WorldColdAccess::sectionMutation(world);
             lux::ecs::detail::WorldSectionTransactionAccess::createEntities(
                 edit,
                 residents
@@ -1809,7 +1813,7 @@ namespace
         lux::ecs::HierarchyIndex hierarchy(world);
         lux::ecs::detail::SystemTestRig schedule(world);
         const auto hierarchy_handle =
-            schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+            schedule.add<lux::ecs::HierarchySystem>(world, hierarchy);
         const auto transform_handle =
             schedule.add<lux::ecs::Transform3DSystem>(hierarchy);
         schedule.before(hierarchy_handle, transform_handle);

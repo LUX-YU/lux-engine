@@ -4,14 +4,13 @@
 #include <lux/engine/ecs/SystemContext.hpp>
 #include <lux/engine/ecs/SystemRegistry.hpp>
 #include <lux/engine/ecs/SystemRelations.hpp>
-#include <lux/engine/ecs/SystemTaskGraphCompiler.hpp>
 #include <lux/engine/ecs/core/detail/CommandStorage.hpp>
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/system/detail/SystemCompilation.hpp>
 #include <lux/engine/ecs/system/detail/SystemContextAccess.hpp>
 #include <lux/engine/ecs/system/detail/SystemExecutionAccess.hpp>
 #include <lux/engine/ecs/system/detail/SystemExecutionTestAccess.hpp>
 
-#include <memory>
 #include <utility>
 #include <vector>
 
@@ -24,12 +23,41 @@ namespace lux::ecs
             ChangeSet changes;
             detail::CommandShard commands;
         };
+
+        class ExecutionLease final
+        {
+        public:
+            ExecutionLease(World& world, SystemRegistry& systems) noexcept
+                : world_(std::addressof(world)),
+                  systems_(std::addressof(systems))
+            {
+            }
+
+            ~ExecutionLease() noexcept
+            {
+                if (systems_ != nullptr)
+                    detail::SystemRegistryAccess::releaseExecution(*systems_);
+                if (world_ != nullptr)
+                    detail::WorldExecutionAccess::release(*world_);
+            }
+
+            ExecutionLease(const ExecutionLease&) = delete;
+            ExecutionLease& operator=(const ExecutionLease&) = delete;
+
+        private:
+            World* world_{};
+            SystemRegistry* systems_{};
+        };
     }
 
     struct SystemExecutionScratch::Impl final
     {
-        std::vector<std::unique_ptr<SystemTaskScratch>> systems;
+        std::vector<SystemTaskScratch> systems;
         lux::task::TaskExecutionScratch tasks;
+        SystemRegistryId registry_id{};
+        SystemRelationsId relations_id{};
+        std::uint64_t registry_revision{};
+        std::uint64_t relations_revision{};
         std::size_t prepared_task_count{};
     };
 
@@ -47,11 +75,11 @@ namespace lux::ecs
     ) noexcept = default;
 
     lux::cxx::expected<void, SystemFailure> SystemExecutionScratch::prepare(
-        const SystemTaskGraphCompilation& compilation,
+        const CompiledSystemTaskGraph& compilation,
         std::size_t reserve_change_records
     ) noexcept
     {
-        if (!impl_ || !compilation.state_)
+        if (!impl_ || !compilation.impl_)
         {
             return lux::cxx::unexpected<SystemFailure>(SystemFailure{
                 .code = ESystemError::INVALID_SYSTEM
@@ -60,21 +88,20 @@ namespace lux::ecs
 
         try
         {
-            impl_->systems.clear();
-            impl_->systems.reserve(compilation.scratch_layout.systems.size());
-            for (const auto& layout : compilation.scratch_layout.systems)
+            std::vector<SystemTaskScratch> prepared(
+                compilation.impl_->scratch_layout.systems.size()
+            );
+            for (std::size_t index{}; index < prepared.size(); ++index)
             {
-                auto scratch = std::make_unique<SystemTaskScratch>();
-                auto prepared = scratch->changes.prepare(
-                    layout.write_storages,
+                auto lanes = prepared[index].changes.prepare(
+                    compilation.impl_->scratch_layout
+                        .systems[index].write_storages,
                     reserve_change_records
                 );
-                if (!prepared)
-                    return lux::cxx::unexpected<SystemFailure>(prepared.error());
-                scratch->commands.reserve(8U);
-                impl_->systems.push_back(std::move(scratch));
+                if (!lanes)
+                    return lux::cxx::unexpected<SystemFailure>(lanes.error());
             }
-            auto task_prepared = impl_->tasks.prepare(compilation.graph);
+            auto task_prepared = impl_->tasks.prepare(compilation.impl_->graph);
             if (!task_prepared)
             {
                 return lux::cxx::unexpected<SystemFailure>(SystemFailure{
@@ -84,7 +111,12 @@ namespace lux::ecs
                         : ESystemError::INVALID_SYSTEM
                 });
             }
-            impl_->prepared_task_count = compilation.graph.taskCount();
+            impl_->systems = std::move(prepared);
+            impl_->registry_id = compilation.impl_->registry_id;
+            impl_->relations_id = compilation.impl_->relations_id;
+            impl_->registry_revision = compilation.impl_->registry_revision;
+            impl_->relations_revision = compilation.impl_->relations_revision;
+            impl_->prepared_task_count = compilation.impl_->graph.taskCount();
             return {};
         }
         catch (...)
@@ -102,48 +134,45 @@ namespace lux::ecs
 
     std::uint64_t SystemExecutionScratch::laneBindCount() const noexcept
     {
-        if (!impl_)
-            return 0U;
         std::uint64_t result{};
-        for (const auto& system : impl_->systems)
-            result += system->changes.laneBindCount();
+        if (impl_)
+            for (const auto& system : impl_->systems)
+                result += system.changes.laneBindCount();
         return result;
     }
 
-    std::uint64_t SystemExecutionScratch::perRecordLookupCount() const noexcept
+    std::uint64_t
+    SystemExecutionScratch::journalStreamBindCount() const noexcept
     {
-        if (!impl_)
-            return 0U;
         std::uint64_t result{};
-        for (const auto& system : impl_->systems)
-            result += system->changes.perRecordLookupCount();
+        if (impl_)
+            for (const auto& system : impl_->systems)
+                result += system.changes.journalStreamBindCount();
         return result;
     }
 
-    EcsExecutionContext::EcsExecutionContext(
-        World& world,
-        const SystemRegistry& systems,
-        SystemExecutionScratch& scratch,
-        float delta_seconds,
-        std::uint64_t tick_index
-    ) noexcept
-        : world_(std::addressof(world)),
-          systems_(std::addressof(systems)),
-          scratch_(std::addressof(scratch)),
-          delta_seconds_(delta_seconds),
-          tick_index_(tick_index)
+    std::uint64_t SystemExecutionScratch::recordAppendCount() const noexcept
     {
+        std::uint64_t result{};
+        if (impl_)
+            for (const auto& system : impl_->systems)
+                result += system.changes.recordAppendCount();
+        return result;
     }
 
-    EcsExecutionContext::~EcsExecutionContext() noexcept
+    std::uint64_t
+    SystemExecutionScratch::perRecordLookupCount() const noexcept
     {
-        if (executing_)
-            detail::WorldExecutionAccess::release(*world_);
+        std::uint64_t result{};
+        if (impl_)
+            for (const auto& system : impl_->systems)
+                result += system.changes.perRecordLookupCount();
+        return result;
     }
 
     lux::cxx::expected<void, SystemFailure> executeSystemTaskGraph(
         lux::task::TaskExecutionBackendRef backend,
-        const SystemTaskGraphCompilation& compilation,
+        const CompiledSystemTaskGraph& compilation,
         EcsExecutionContext& context
     ) noexcept
     {
@@ -158,63 +187,54 @@ namespace lux::ecs
     {
         lux::cxx::expected<void, SystemFailure> SystemExecutionAccess::execute(
             lux::task::TaskExecutionBackendRef backend,
-            const SystemTaskGraphCompilation& compilation,
+            const CompiledSystemTaskGraph& compilation,
             EcsExecutionContext& context
         ) noexcept
         {
-            if (!compilation.state_ || !context.world_ || !context.systems_ ||
-                !context.scratch_ || !context.scratch_->impl_ ||
-                compilation.state_->registry != context.systems_ ||
-                compilation.registry_revision != context.systems_->revision() ||
-                !compilation.state_->relations ||
-                compilation.relations_revision !=
-                    compilation.state_->relations->revision() ||
-                context.scratch_->impl_->systems.size() !=
-                    compilation.scratch_layout.systems.size() ||
-                context.scratch_->impl_->prepared_task_count !=
-                    compilation.graph.taskCount())
+            if (!compilation.impl_ || !context.scratch.impl_ ||
+                compilation.impl_->registry_id != context.systems.id() ||
+                compilation.impl_->registry_revision !=
+                    context.systems.revision() ||
+                compilation.impl_->relations_id != context.relations.id() ||
+                compilation.impl_->relations_revision !=
+                    context.relations.revision() ||
+                context.scratch.impl_->registry_id !=
+                    compilation.impl_->registry_id ||
+                context.scratch.impl_->relations_id !=
+                    compilation.impl_->relations_id ||
+                context.scratch.impl_->registry_revision !=
+                    compilation.impl_->registry_revision ||
+                context.scratch.impl_->relations_revision !=
+                    compilation.impl_->relations_revision ||
+                context.scratch.impl_->systems.size() !=
+                    compilation.impl_->scratch_layout.systems.size() ||
+                context.scratch.impl_->prepared_task_count !=
+                    compilation.impl_->graph.taskCount())
             {
                 return lux::cxx::unexpected<SystemFailure>(SystemFailure{
                     .code = ESystemError::STALE_COMPILATION
                 });
             }
-            if (!WorldExecutionAccess::acquire(*context.world_))
+            if (!WorldExecutionAccess::acquire(context.world))
             {
                 return lux::cxx::unexpected<SystemFailure>(SystemFailure{
                     .code = ESystemError::WORLD_BUSY
                 });
             }
-            context.executing_ = true;
-
-            SystemStart start = context.startContext();
-            for (const auto& task : compilation.state_->system_tasks)
+            if (!SystemRegistryAccess::acquireExecution(context.systems))
             {
-                if (!task.system->affinity_valid(task.system->object.get()))
-                    contractFailure();
-                if (task.system->started)
-                    continue;
-                auto started = task.system->start(
-                    task.system->object.get(),
-                    start
-                );
-                if (!started)
-                {
-                    WorldExecutionAccess::release(*context.world_);
-                    context.executing_ = false;
-                    return lux::cxx::unexpected<SystemFailure>(SystemFailure{
-                        .code = ESystemError::START_FAILED
-                    });
-                }
-                task.system->started = true;
+                WorldExecutionAccess::release(context.world);
+                return lux::cxx::unexpected<SystemFailure>(SystemFailure{
+                    .code = ESystemError::WORLD_BUSY
+                });
             }
-
+            ExecutionLease lease(context.world, context.systems);
             lux::task::executeTaskGraph(
                 backend,
-                compilation.graph,
+                compilation.impl_->graph,
                 std::addressof(context),
-                context.scratch_->impl_->tasks
+                context.scratch.impl_->tasks
             );
-            require(!context.executing_);
             return {};
         }
 
@@ -223,26 +243,40 @@ namespace lux::ecs
             void* execution_context
         ) noexcept
         {
-            auto& task = *static_cast<SystemTaskTarget*>(target);
+            const auto& task = *static_cast<const SystemTaskTarget*>(target);
             auto& execution = *static_cast<EcsExecutionContext*>(
                 execution_context
             );
-            require(execution.executing_);
-            require(task.scratch_index < execution.scratch_->impl_->systems.size());
-            auto& scratch = *execution.scratch_->impl_->systems[task.scratch_index];
+            require(
+                task.scratch_index < execution.scratch.impl_->systems.size()
+            );
+            auto* record = SystemRegistryAccess::record(
+                execution.systems,
+                task.slot
+            );
+            require(
+                record != nullptr && record->object != nullptr &&
+                record->update == task.update &&
+                record->affinity_valid == task.affinity_valid &&
+                record->affinity_valid(record->object)
+            );
+
+            auto& scratch = execution.scratch.impl_->systems[
+                task.scratch_index
+            ];
             scratch.changes.reset();
             const WorldCommands commands = CommandShardAccess::begin(
                 scratch.commands
             );
             auto context = SystemContextAccess::make(
-                *execution.world_,
+                execution.world,
                 scratch.changes,
                 commands,
-                execution.delta_seconds_,
-                execution.tick_index_,
-                task.system->access.components
+                execution.delta_seconds,
+                execution.tick_index,
+                task.allowed
             );
-            task.system->update(task.system->object.get(), context);
+            task.update(record->object, context);
             CommandShardAccess::end(scratch.commands);
         }
 
@@ -251,31 +285,25 @@ namespace lux::ecs
             void* execution_context
         ) noexcept
         {
-            auto& publish = *static_cast<SystemPublishTarget*>(target);
+            const auto& publish = *static_cast<const SystemPublishTarget*>(
+                target
+            );
             auto& execution = *static_cast<EcsExecutionContext*>(
                 execution_context
             );
-            require(execution.executing_);
-
-            bool overflow{};
-            for (const std::size_t index : publish.scratch_indices)
+            require(
+                publish.scratch_index <
+                execution.scratch.impl_->systems.size()
+            );
+            auto& changes = execution.scratch.impl_
+                ->systems[publish.scratch_index].changes;
+            if (changes.overflowed())
             {
-                require(index < execution.scratch_->impl_->systems.size());
-                overflow = overflow || execution.scratch_->impl_
-                    ->systems[index]->changes.overflowed();
-            }
-            if (overflow)
-            {
-                markWorldChangeHistoryLoss(*execution.world_);
-                for (const std::size_t index : publish.scratch_indices)
-                    execution.scratch_->impl_->systems[index]->changes.reset();
+                markWorldChangeHistoryLoss(execution.world);
+                changes.reset();
                 return;
             }
-            for (const std::size_t index : publish.scratch_indices)
-            {
-                (void)execution.scratch_->impl_
-                    ->systems[index]->changes.publish(*execution.world_);
-            }
+            (void)changes.publish(execution.world);
         }
 
         void SystemExecutionAccess::applyCommands(
@@ -286,32 +314,31 @@ namespace lux::ecs
             auto& execution = *static_cast<EcsExecutionContext*>(
                 execution_context
             );
-            require(execution.executing_);
-            WorldExecutionAccess::beginApplyingCommands(*execution.world_);
+            WorldExecutionAccess::beginApplyingCommands(execution.world);
             auto mutation = WorldExecutionAccess::commandMutation(
-                *execution.world_
+                execution.world
             );
-            for (auto& system : execution.scratch_->impl_->systems)
-                CommandShardAccess::apply(system->commands, mutation);
+            for (auto& system : execution.scratch.impl_->systems)
+                CommandShardAccess::apply(system.commands, mutation);
             mutation = {};
-            WorldExecutionAccess::release(*execution.world_);
-            execution.executing_ = false;
+            WorldExecutionAccess::resume(execution.world);
         }
 
         void SystemExecutionTestAccess::failNextCommandPush(
-            const SystemTaskGraphCompilation& compilation,
+            const CompiledSystemTaskGraph& compilation,
             SystemExecutionScratch& scratch,
             SystemId id
         ) noexcept
         {
-            require(compilation.state_ && scratch.impl_);
-            for (const auto& target : compilation.state_->system_tasks)
+            require(compilation.impl_ && scratch.impl_);
+            require(id.owner == compilation.impl_->registry_id);
+            for (const auto& target : compilation.impl_->system_tasks)
             {
-                if (target.id != id)
+                if (target.slot != id.slot)
                     continue;
                 require(target.scratch_index < scratch.impl_->systems.size());
                 scratch.impl_->systems[target.scratch_index]
-                    ->commands.failNextPushForTest();
+                    .commands.failNextPushForTest();
                 return;
             }
             contractFailure();

@@ -11,54 +11,58 @@
 
 namespace lux::ecs::test
 {
-    struct SectionDemandChanged final
+    struct MaterialTextureDemand final
     {
-        std::uint32_t section{};
+        std::uint32_t material{};
+        std::uint32_t texture{};
     };
 
-    struct SectionReady final
+    struct TextureReady final
     {
         Entity entity{NullEntity};
-        std::uint32_t section{};
+        std::uint32_t texture{};
     };
 
-    struct SectionResident final
+    struct MaterialTextureResident final
     {
-        std::uint32_t section{};
+        std::uint32_t texture{};
     };
 
-    class LUX_OBJECT() StreamingDemandSystem final
-        : public lux::object::Object<StreamingDemandSystem>,
-          public StaticSystemAccess<Write<SectionResident>>
+    class LUX_OBJECT() MaterialTextureSystem final
+        : public lux::object::Object<MaterialTextureSystem>,
+          public StaticSystemAccess<Write<MaterialTextureResident>>
     {
     public:
         using Object::Object;
 
-        static const signal_type<SectionDemandChanged> demandChanged;
+        static const signal_type<MaterialTextureDemand> textureDemand;
 
         void update(SystemContext& context) noexcept
         {
             if (!demand_published_)
             {
                 demand_published_ = true;
-                SectionDemandChanged demand{7U};
-                notify<demandChanged>(demand);
+                MaterialTextureDemand demand{3U, 7U};
+                notify<textureDemand>(demand);
             }
 
-            for (const SectionReady& ready : inbox_)
+            for (const TextureReady& ready : inbox_)
             {
                 struct MakeResident final
                 {
                     Entity entity{NullEntity};
-                    std::uint32_t section{};
+                    std::uint32_t texture{};
 
                     void apply(WorldMutation& mutation) noexcept
                     {
-                        mutation.emplace<SectionResident>(entity, section);
+                        mutation.emplace<MaterialTextureResident>(
+                            entity,
+                            texture
+                        );
                     }
                 };
                 if (context.commands().push(
-                        MakeResident{ready.entity, ready.section}
+                        MakeResident{ready.entity, ready.texture}
                     ) != ECommandResult::ACCEPTED)
                 {
                     ++discarded_completions_;
@@ -70,7 +74,7 @@ namespace lux::ecs::test
     protected:
         void event(lux::object::EventView& view) noexcept override
         {
-            if (const auto* ready = view.getIf<SectionReady>())
+            if (const auto* ready = view.getIf<TextureReady>())
             {
                 try
                 {
@@ -85,7 +89,7 @@ namespace lux::ecs::test
         }
 
     private:
-        std::vector<SectionReady> inbox_;
+        std::vector<TextureReady> inbox_;
         std::uint64_t discarded_completions_{};
         bool demand_published_{};
     };

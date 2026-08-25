@@ -49,7 +49,7 @@ namespace
     {
         lux::ecs::detail::SystemTestRig schedule{world};
         const auto hierarchy_system =
-            schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+            schedule.add<lux::ecs::HierarchySystem>(world, hierarchy);
         const auto transform3d =
             schedule.add<lux::ecs::Transform3DSystem>(hierarchy);
         const auto transform2d =
@@ -146,7 +146,7 @@ int main()
     {
         lux::ecs::detail::SystemTestRig schedule{world};
         const auto hierarchy_system =
-            schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+            schedule.add<lux::ecs::HierarchySystem>(world, hierarchy);
         const auto transform3d =
             schedule.add<lux::ecs::Transform3DSystem>(hierarchy);
         const auto transform2d =

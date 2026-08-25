@@ -11,7 +11,9 @@ namespace lux::ecs
     template <class Type>
     concept System = requires(Type& system, SystemContext& context)
     {
-        { Type::Access } -> std::convertible_to<SystemAccessSpec>;
+        requires detail::TrustedSystemAccessDescriptor<
+            decltype(Type::Access)
+        >;
         { system.update(context) } noexcept -> std::same_as<void>;
     };
 }

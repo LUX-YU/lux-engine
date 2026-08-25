@@ -15,7 +15,6 @@
 namespace lux::ecs
 {
     class SystemContext;
-    class SystemStart;
 
     namespace detail
     {
@@ -243,7 +242,6 @@ namespace lux::ecs
         ) const noexcept;
 
       private:
-        [[nodiscard]] bool canStart(const SystemStart& start) const noexcept;
         void synchronize(SystemContext& context) noexcept;
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] Entity firstChild(Entity parent) const noexcept;

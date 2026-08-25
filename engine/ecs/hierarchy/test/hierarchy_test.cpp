@@ -12,11 +12,15 @@
 namespace
 {
     [[nodiscard]] lux::ecs::SystemId installHierarchy(
+        lux::ecs::World& world,
         lux::ecs::detail::SystemTestRig& schedule,
         lux::ecs::HierarchyIndex& hierarchy
     )
     {
-        const auto handle = schedule.add<lux::ecs::HierarchySystem>(hierarchy);
+        const auto handle = schedule.add<lux::ecs::HierarchySystem>(
+            world,
+            hierarchy
+        );
         assert(schedule.compile());
         return handle;
     }
@@ -34,12 +38,6 @@ int main()
 
     lux::ecs::World world;
     lux::ecs::HierarchyIndex hierarchy{world};
-    {
-        lux::ecs::World wrong_world;
-        lux::ecs::detail::SystemTestRig wrong_schedule{wrong_world};
-        (void)installHierarchy(wrong_schedule, hierarchy);
-        assert(!wrong_schedule.run(1.0F / 60.0F, 1U));
-    }
     auto edit_result = world.mutate();
     assert(edit_result);
     auto edit = std::move(*edit_result);
@@ -56,7 +54,7 @@ int main()
 
     assert(!hierarchy.synchronized());
     lux::ecs::detail::SystemTestRig schedule{world};
-    const auto hierarchy_handle = installHierarchy(schedule, hierarchy);
+    const auto hierarchy_handle = installHierarchy(world, schedule, hierarchy);
     assert(schedule.run(1.0F / 60.0F, 1U));
     assert(hierarchy.synchronized());
     assert(hierarchy.lastError() == lux::ecs::EHierarchyError::NONE);
@@ -139,7 +137,7 @@ int main()
 
         lux::ecs::HierarchyIndex stale_hierarchy{stale_world};
         lux::ecs::detail::SystemTestRig stale_schedule{stale_world};
-        (void)installHierarchy(stale_schedule, stale_hierarchy);
+        (void)installHierarchy(stale_world, stale_schedule, stale_hierarchy);
         assert(stale_schedule.run(1.0F / 60.0F, 1U));
         assert(!stale_hierarchy.synchronized());
         assert(stale_schedule.run(1.0F / 60.0F, 2U));
@@ -160,7 +158,7 @@ int main()
         lux::ecs::HierarchyIndex repair_hierarchy{repair_world};
         lux::ecs::detail::SystemTestRig repair_schedule{repair_world};
         const auto repair_handle = installHierarchy(
-            repair_schedule, repair_hierarchy
+            repair_world, repair_schedule, repair_hierarchy
         );
         assert(repair_schedule.run(1.0F / 60.0F, 1U));
         auto destroy_result = repair_world.mutate();
@@ -197,7 +195,7 @@ int main()
         lux::ecs::HierarchyIndex cancel_hierarchy{cancel_world};
         lux::ecs::detail::SystemTestRig cancel_schedule{cancel_world};
         const auto cancel_handle = installHierarchy(
-            cancel_schedule, cancel_hierarchy
+            cancel_world, cancel_schedule, cancel_hierarchy
         );
         assert(cancel_schedule.run(1.0F / 60.0F, 1U));
         auto destroy_result = cancel_world.mutate();
@@ -226,7 +224,11 @@ int main()
         fabricated_edit = {};
         lux::ecs::HierarchyIndex fabricated_hierarchy{fabricated_world};
         lux::ecs::detail::SystemTestRig fabricated_schedule{fabricated_world};
-        (void)installHierarchy(fabricated_schedule, fabricated_hierarchy);
+        (void)installHierarchy(
+            fabricated_world,
+            fabricated_schedule,
+            fabricated_hierarchy
+        );
         assert(fabricated_schedule.run(1.0F / 60.0F, 1U));
         assert(!fabricated_hierarchy.synchronized());
         assert(
@@ -252,7 +254,7 @@ int main()
         deep_edit = {};
         lux::ecs::HierarchyIndex deep_hierarchy{deep_world};
         lux::ecs::detail::SystemTestRig deep_schedule{deep_world};
-        (void)installHierarchy(deep_schedule, deep_hierarchy);
+        (void)installHierarchy(deep_world, deep_schedule, deep_hierarchy);
         assert(deep_schedule.run(1.0F / 60.0F, 1U));
         assert(deep_hierarchy.synchronized());
         assert(
@@ -297,7 +299,11 @@ int main()
         invalid_edit.emplace<lux::ecs::Parent>(second, first);
         invalid_edit = {};
         lux::ecs::detail::SystemTestRig invalid_schedule{invalid_world};
-        (void)installHierarchy(invalid_schedule, invalid_hierarchy);
+        (void)installHierarchy(
+            invalid_world,
+            invalid_schedule,
+            invalid_hierarchy
+        );
         assert(invalid_schedule.run(1.0F / 60.0F, 1U));
         assert(!invalid_hierarchy.synchronized());
         assert(
@@ -315,7 +321,11 @@ int main()
         const auto overflow_root = root_edit.create();
         root_edit = {};
         lux::ecs::detail::SystemTestRig overflow_schedule{overflow_world};
-        (void)installHierarchy(overflow_schedule, overflow_hierarchy);
+        (void)installHierarchy(
+            overflow_world,
+            overflow_schedule,
+            overflow_hierarchy
+        );
         assert(overflow_schedule.run(1.0F / 60.0F, 1U));
         lux::ecs::HierarchyChangeCursor overflow_cursor;
         assert(

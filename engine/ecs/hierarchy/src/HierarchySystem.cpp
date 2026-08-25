@@ -4,38 +4,19 @@
 
 namespace lux::ecs
 {
-    struct HierarchySystem::Impl final
-    {
-        explicit Impl(HierarchyIndex& value) noexcept
-            : hierarchy(std::addressof(value))
-        {
-        }
-
-        HierarchyIndex* hierarchy{};
-    };
-
-    HierarchySystem::HierarchySystem(HierarchyIndex& hierarchy)
-        : impl_(std::make_unique<Impl>(hierarchy))
-    {
-    }
-
-    HierarchySystem::~HierarchySystem() = default;
-
-    lux::cxx::expected<void, SystemStartError> HierarchySystem::start(
-        SystemStart& start
+    HierarchySystem::HierarchySystem(
+        World& world,
+        HierarchyIndex& hierarchy
     ) noexcept
+        : world_(std::addressof(world)),
+          hierarchy_(std::addressof(hierarchy))
     {
-        if (!impl_->hierarchy->canStart(start))
-        {
-            return lux::cxx::unexpected(
-                SystemStartError{ESystemStartError::REJECTED}
-            );
-        }
-        return {};
+        detail::require(hierarchy.boundTo(world));
     }
 
     void HierarchySystem::update(SystemContext& context) noexcept
     {
-        impl_->hierarchy->synchronize(context);
+        detail::require(world_ != nullptr && hierarchy_ != nullptr);
+        hierarchy_->synchronize(context);
     }
 } // namespace lux::ecs

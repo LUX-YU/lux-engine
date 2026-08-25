@@ -14,7 +14,6 @@ namespace lux::ecs
         TYPE_COLLISION,
         INVALID_ACCESS,
         EXECUTION_AFFINITY_MISMATCH,
-        START_FAILED,
         STALE_COMPILATION,
         WORLD_BUSY,
         ALLOCATION_FAILURE

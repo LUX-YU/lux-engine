@@ -114,7 +114,7 @@ namespace lux::ecs
         {
             try
             {
-                auto edit = detail::WorldColdAccess::suppressingEdit(target);
+                auto edit = detail::WorldColdAccess::suppressingMutation(target);
                 cloneEntities(source, target);
                 const auto& registry =
                     detail::WorldSnapshotAccess::registry(source);

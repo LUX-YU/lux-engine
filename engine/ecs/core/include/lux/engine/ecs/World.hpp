@@ -20,7 +20,6 @@ namespace lux::ecs
     class ComponentLoadBinding;
     class ComponentSnapshotBinding;
     class SystemContext;
-    class SystemStart;
     class WorldSnapshot;
     struct ComponentOperations;
 
@@ -67,7 +66,7 @@ namespace lux::ecs
         enum class EWorldState : std::uint8_t
         {
             IDLE,
-            EDITING,
+            MUTATING,
             EXECUTING,
             APPLYING_COMMANDS,
             DESTROYING,
@@ -212,7 +211,6 @@ namespace lux::ecs
 
         friend class WorldMutation;
         friend class SystemContext;
-        friend class SystemStart;
         friend class WorldSnapshot;
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldChangeAccess;
@@ -260,12 +258,12 @@ namespace lux::ecs
 
         struct WorldChangeAccess final
         {
-            [[nodiscard]] static WorldChangeLog& journal(World& world) noexcept
+            [[nodiscard]] static WorldChangeLog& log(World& world) noexcept
             {
                 return *world.changes_;
             }
 
-            [[nodiscard]] static const WorldChangeLog& journal(
+            [[nodiscard]] static const WorldChangeLog& log(
                 const World& world
             ) noexcept
             {

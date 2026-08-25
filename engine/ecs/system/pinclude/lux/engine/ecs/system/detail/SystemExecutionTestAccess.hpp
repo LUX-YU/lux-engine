@@ -13,17 +13,17 @@ namespace lux::ecs::detail
     {
         template <class Type>
         [[nodiscard]] static Type& system(
-            const SystemRegistry& registry,
+            SystemRegistry& registry,
             SystemId id
         ) noexcept
         {
             const auto record = SystemRegistryAccess::record(registry, id);
             require(record && record->type == lux::cxx::typeToken<Type>());
-            return *static_cast<Type*>(record->object.get());
+            return *static_cast<Type*>(record->object);
         }
 
         static void failNextCommandPush(
-            const SystemTaskGraphCompilation& compilation,
+            const CompiledSystemTaskGraph& compilation,
             SystemExecutionScratch& scratch,
             SystemId id
         ) noexcept;

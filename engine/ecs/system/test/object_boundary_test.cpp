@@ -15,14 +15,16 @@ namespace
         using Object::Object;
 
         void receive(
-            const lux::ecs::test::SectionDemandChanged& demand
+            const lux::ecs::test::MaterialTextureDemand& demand
         ) noexcept
         {
-            observed_section = demand.section;
+            observed_material = demand.material;
+            observed_texture = demand.texture;
             ++calls;
         }
 
-        std::uint32_t observed_section{};
+        std::uint32_t observed_material{};
+        std::uint32_t observed_texture{};
         std::uint32_t calls{};
     };
 }
@@ -42,39 +44,41 @@ int main()
     mutation = {};
 
     detail::SystemTestRig execution{world};
-    const auto id = execution.add<StreamingDemandSystem>(
+    const auto id = execution.add<MaterialTextureSystem>(
         queue.dispatcherRef()
     );
-    auto& system = execution.system<StreamingDemandSystem>(id);
+    auto& system = execution.system<MaterialTextureSystem>(id);
     const auto weak = system.weakRef();
     auto observed = system.observe<
-        StreamingDemandSystem::demandChanged,
+        MaterialTextureSystem::textureDemand,
         &DemandObserver::receive,
         lux::object::EDelivery::DIRECT>(observer);
     assert(observed);
     assert(execution.compile());
 
     assert(execution.run(1.0F / 60.0F, 1U));
-    assert(observer.calls == 1U && observer.observed_section == 7U);
-    assert(world.find<SectionResident>(entity) == nullptr);
+    assert(observer.calls == 1U);
+    assert(observer.observed_material == 3U);
+    assert(observer.observed_texture == 7U);
+    assert(world.find<MaterialTextureResident>(entity) == nullptr);
 
     assert(lux::object::postEvent(
         weak,
-        SectionReady{entity, 7U}
+        TextureReady{entity, 7U}
     ) == lux::object::EEventPostStatus::POSTED);
-    assert(world.find<SectionResident>(entity) == nullptr);
+    assert(world.find<MaterialTextureResident>(entity) == nullptr);
     assert(queue.dispatchPending() == 1U);
-    assert(world.find<SectionResident>(entity) == nullptr);
+    assert(world.find<MaterialTextureResident>(entity) == nullptr);
 
     assert(execution.run(1.0F / 60.0F, 2U));
-    assert(world.get<SectionResident>(entity).section == 7U);
+    assert(world.get<MaterialTextureResident>(entity).texture == 7U);
 
     assert(lux::object::postEvent(
         weak,
-        SectionReady{entity, 9U}
+        TextureReady{entity, 9U}
     ) == lux::object::EEventPostStatus::POSTED);
     assert(execution.erase(id));
     assert(weak.expired());
     assert(queue.dispatchPending() == 1U);
-    assert(world.get<SectionResident>(entity).section == 7U);
+    assert(world.get<MaterialTextureResident>(entity).texture == 7U);
 }

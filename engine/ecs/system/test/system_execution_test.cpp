@@ -23,7 +23,6 @@ namespace
     {
         std::size_t current_changes{};
         std::size_t resyncs{};
-        bool started{};
     };
 
     struct AddApplied final
@@ -43,15 +42,6 @@ namespace
         WriterSystem(lux::ecs::Entity entity, Probe& probe) noexcept
             : entity_(entity), probe_(&probe)
         {
-        }
-
-        [[nodiscard]] lux::cxx::expected<
-            void,
-            lux::ecs::SystemStartError
-        > start(lux::ecs::SystemStart&) noexcept
-        {
-            probe_->started = true;
-            return {};
         }
 
         void update(lux::ecs::SystemContext& context) noexcept
@@ -116,21 +106,17 @@ namespace
         std::size_t owner_tasks{};
     };
 
-    void executeWave(
+    void submitTask(
         void* state,
-        std::span<const lux::task::TaskExecutionItem> items,
-        void* context
+        lux::task::TaskSubmission&& submission
     ) noexcept
     {
         auto& probe = *static_cast<AffinityProbe*>(state);
-        for (const auto& item : items)
-        {
-            if (item.affinity == lux::task::ETaskAffinity::OWNER_THREAD)
-                ++probe.owner_tasks;
-            else
-                ++probe.worker_tasks;
-            item.invocation.invoke(item.invocation.target, context);
-        }
+        if (submission.affinity() == lux::task::ETaskAffinity::OWNER_THREAD)
+            ++probe.owner_tasks;
+        else
+            ++probe.worker_tasks;
+        std::move(submission).run();
     }
 }
 
@@ -150,50 +136,44 @@ int main()
     const auto reader = systems.emplace<ReaderSystem>(probe);
     assert(writer && reader);
 
-    lux::ecs::SystemRelations relations(systems);
+    lux::ecs::SystemRelations relations;
     assert(relations.before(*writer, *reader));
 
-    lux::ecs::SystemTaskGraphCompiler compiler;
-    auto compilation_result = compiler.compile(systems, relations);
+    auto compilation_result = lux::ecs::compileSystemTaskGraph(
+        systems,
+        relations
+    );
     assert(compilation_result);
     auto compilation = std::move(*compilation_result);
-    assert(compilation.registry_revision == systems.revision());
-    assert(compilation.relations_revision == relations.revision());
-    assert(compilation.graph.taskCount() == 4U);
+    assert(compilation.sourceRegistryRevision() == systems.revision());
+    assert(compilation.sourceRelationsRevision() == relations.revision());
+    assert(compilation.taskCount() == 4U);
+    assert(compilation.dependencyCount() == 3U);
 
     lux::ecs::SystemExecutionScratch scratch;
     assert(scratch.prepare(compilation, 4U));
 
     AffinityProbe affinity;
     {
-        lux::ecs::EcsExecutionContext context(
-            world,
-            systems,
-            scratch,
-            1.0F / 60.0F,
-            1U
-        );
+        lux::ecs::EcsExecutionContext context{
+            world, systems, relations, scratch, 1.0F / 60.0F, 1U
+        };
         assert(lux::ecs::executeSystemTaskGraph(
-            lux::task::TaskExecutionBackendRef{&affinity, &executeWave},
+            lux::task::TaskExecutionBackendRef{&affinity, &submitTask},
             compilation,
             context
         ));
     }
     assert(affinity.worker_tasks == 2U);
     assert(affinity.owner_tasks == 2U);
-    assert(probe.started);
     assert(probe.resyncs == 1U);
     assert(world.get<Position>(entity).value == 1);
     assert(world.find<Applied>(entity) != nullptr);
 
     {
-        lux::ecs::EcsExecutionContext context(
-            world,
-            systems,
-            scratch,
-            1.0F / 60.0F,
-            2U
-        );
+        lux::ecs::EcsExecutionContext context{
+            world, systems, relations, scratch, 1.0F / 60.0F, 2U
+        };
         assert(lux::ecs::executeSystemTaskGraph(
             lux::task::referenceTaskExecutionBackend(),
             compilation,
@@ -203,17 +183,15 @@ int main()
     assert(world.get<Position>(entity).value == 2);
     assert(probe.current_changes == 1U);
     assert(scratch.laneBindCount() == 2U);
+    assert(scratch.journalStreamBindCount() == 2U);
+    assert(scratch.recordAppendCount() == 2U);
     assert(scratch.perRecordLookupCount() == 0U);
 
     assert(relations.after(*writer, *reader));
     {
-        lux::ecs::EcsExecutionContext context(
-            world,
-            systems,
-            scratch,
-            0.0F,
-            3U
-        );
+        lux::ecs::EcsExecutionContext context{
+            world, systems, relations, scratch, 0.0F, 3U
+        };
         const auto stale = lux::ecs::executeSystemTaskGraph(
             lux::task::referenceTaskExecutionBackend(),
             compilation,
@@ -226,13 +204,9 @@ int main()
     const auto added = systems.emplace<NoOpSystem>();
     assert(added);
     {
-        lux::ecs::EcsExecutionContext context(
-            world,
-            systems,
-            scratch,
-            0.0F,
-            4U
-        );
+        lux::ecs::EcsExecutionContext context{
+            world, systems, relations, scratch, 0.0F, 4U
+        };
         const auto stale = lux::ecs::executeSystemTaskGraph(
             lux::task::referenceTaskExecutionBackend(),
             compilation,
@@ -242,14 +216,32 @@ int main()
         assert(stale.error().code == lux::ecs::ESystemError::STALE_COMPILATION);
     }
 
+    {
+        lux::ecs::SystemRegistry independent_systems;
+        const auto first = independent_systems.emplace<NoOpSystem>();
+        const auto second = independent_systems.emplace<NoOpSystem>();
+        assert(first && second);
+        lux::ecs::SystemRelations independent_relations;
+        auto independent = lux::ecs::compileSystemTaskGraph(
+            independent_systems,
+            independent_relations
+        );
+        assert(independent);
+        assert(independent->taskCount() == 3U);
+        assert(independent->dependencyCount() == 2U);
+    }
+
     lux::ecs::SystemRegistry cyclic_systems;
     const auto first = cyclic_systems.emplace<NoOpSystem>();
     const auto second = cyclic_systems.emplace<NoOpSystem>();
     assert(first && second);
-    lux::ecs::SystemRelations cyclic_relations(cyclic_systems);
+    lux::ecs::SystemRelations cyclic_relations;
     assert(cyclic_relations.before(*first, *second));
     assert(cyclic_relations.before(*second, *first));
-    const auto cyclic = compiler.compile(cyclic_systems, cyclic_relations);
+    const auto cyclic = lux::ecs::compileSystemTaskGraph(
+        cyclic_systems,
+        cyclic_relations
+    );
     assert(!cyclic);
     assert(cyclic.error().code == lux::ecs::ESystemError::RELATION_CYCLE);
 }

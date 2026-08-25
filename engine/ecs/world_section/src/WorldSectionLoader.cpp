@@ -637,7 +637,7 @@ namespace lux::ecs
             impl->world = &world;
             impl->scratch = scratch;
             impl->limits = limits;
-            impl->edit = detail::WorldColdAccess::sectionEdit(world);
+            impl->edit = detail::WorldColdAccess::sectionMutation(world);
             return WorldSectionLoadBatch(std::move(impl));
         }
         catch (const std::bad_alloc&)

@@ -9,8 +9,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <span>
+#include <vector>
 
 namespace lux::ecs
 {
@@ -22,14 +22,15 @@ namespace lux::ecs
         struct SystemExecutionAccess;
     }
 
+    /** Per-System transient changes. Lanes are bound once, records append O(1). */
     class LUX_ENGINE_ECS_SYSTEM_PUBLIC ChangeSet final
     {
     public:
-        ChangeSet();
-        ~ChangeSet();
+        ChangeSet() = default;
+        ~ChangeSet() = default;
 
-        ChangeSet(ChangeSet&&) noexcept;
-        ChangeSet& operator=(ChangeSet&&) noexcept;
+        ChangeSet(ChangeSet&&) noexcept = default;
+        ChangeSet& operator=(ChangeSet&&) noexcept = default;
 
         ChangeSet(const ChangeSet&) = delete;
         ChangeSet& operator=(const ChangeSet&) = delete;
@@ -44,11 +45,24 @@ namespace lux::ecs
         [[nodiscard]] bool overflowed() const noexcept;
         [[nodiscard]] std::size_t recordCount() const noexcept;
         [[nodiscard]] std::uint64_t laneBindCount() const noexcept;
+        [[nodiscard]] std::uint64_t journalStreamBindCount() const noexcept;
+        [[nodiscard]] std::uint64_t recordAppendCount() const noexcept;
         [[nodiscard]] std::uint64_t perRecordLookupCount() const noexcept;
 
     private:
-        struct Impl;
-        std::unique_ptr<Impl> impl_;
+        struct Lane final
+        {
+            std::uint64_t storage{};
+            std::vector<Entity> records;
+        };
+
+        std::vector<Lane> lanes_;
+        std::vector<detail::BoundWorldChangeStream> publish_streams_;
+        std::uint64_t lane_bind_count_{};
+        std::uint64_t journal_stream_bind_count_{};
+        std::uint64_t record_append_count_{};
+        std::uint64_t per_record_lookup_count_{};
+        bool overflow_{};
 
         [[nodiscard]] detail::ChangeStreamBinder binder() noexcept;
         [[nodiscard]] bool publish(World& world) noexcept;

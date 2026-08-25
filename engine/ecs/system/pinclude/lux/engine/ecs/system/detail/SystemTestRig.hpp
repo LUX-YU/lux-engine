@@ -17,7 +17,7 @@ namespace lux::ecs::detail
     {
     public:
         explicit SystemTestRig(World& world)
-            : world_(std::addressof(world)), relations_(systems_)
+            : world_(std::addressof(world))
         {
         }
 
@@ -43,7 +43,7 @@ namespace lux::ecs::detail
 
         [[nodiscard]] bool compile(std::size_t reserve_records = 0U)
         {
-            auto result = compiler_.compile(systems_, relations_);
+            auto result = compileSystemTaskGraph(systems_, relations_);
             if (!result)
                 return false;
             compilation_.emplace(std::move(*result));
@@ -55,13 +55,9 @@ namespace lux::ecs::detail
         [[nodiscard]] bool run(float delta_seconds, std::uint64_t tick)
         {
             assert(compilation_);
-            EcsExecutionContext context(
-                *world_,
-                systems_,
-                scratch_,
-                delta_seconds,
-                tick
-            );
+            EcsExecutionContext context{
+                *world_, systems_, relations_, scratch_, delta_seconds, tick
+            };
             return static_cast<bool>(executeSystemTaskGraph(
                 lux::task::referenceTaskExecutionBackend(),
                 *compilation_,
@@ -87,7 +83,6 @@ namespace lux::ecs::detail
 
         [[nodiscard]] bool erase(SystemId id) noexcept
         {
-            compilation_.reset();
             return systems_.erase(id);
         }
 
@@ -110,8 +105,7 @@ namespace lux::ecs::detail
         World* world_{};
         SystemRegistry systems_;
         SystemRelations relations_;
-        SystemTaskGraphCompiler compiler_;
-        std::optional<SystemTaskGraphCompilation> compilation_;
+        std::optional<CompiledSystemTaskGraph> compilation_;
         SystemExecutionScratch scratch_;
     };
 }

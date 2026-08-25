@@ -7,7 +7,6 @@ int main()
 {
     lux::ecs::World world;
     lux::ecs::SystemRegistry systems;
-    lux::ecs::SystemRelations relations(systems);
-    lux::ecs::SystemTaskGraphCompiler compiler;
-    return compiler.compile(systems, relations) ? 0 : 1;
+    lux::ecs::SystemRelations relations;
+    return lux::ecs::compileSystemTaskGraph(systems, relations) ? 0 : 1;
 }

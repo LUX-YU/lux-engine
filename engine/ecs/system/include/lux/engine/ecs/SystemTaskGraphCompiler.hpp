@@ -1,10 +1,9 @@
 #pragma once
 
 #include <lux/engine/ecs/SystemError.hpp>
-#include <lux/engine/ecs/SystemExecution.hpp>
+#include <lux/engine/ecs/SystemRelations.hpp>
 #include <lux/engine/ecs/system/visibility.h>
 
-#include <lux/engine/task/TaskGraph.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <cstddef>
@@ -14,51 +13,63 @@
 namespace lux::ecs
 {
     class SystemRegistry;
-    class SystemRelations;
 
     namespace detail
     {
-        struct SystemCompilationState;
         struct SystemExecutionAccess;
         struct SystemExecutionTestAccess;
     }
 
-    struct SystemTaskGraphCompilation final
+    /** Immutable L1 compilation. Runtime System ownership remains in Registry. */
+    class LUX_ENGINE_ECS_SYSTEM_PUBLIC CompiledSystemTaskGraph final
     {
-        lux::task::TaskGraph graph;
-        std::uint64_t registry_revision{};
-        std::uint64_t relations_revision{};
-        SystemExecutionScratchLayout scratch_layout;
+    public:
+        CompiledSystemTaskGraph() noexcept;
+        ~CompiledSystemTaskGraph();
 
-        SystemTaskGraphCompilation() = default;
-        SystemTaskGraphCompilation(SystemTaskGraphCompilation&&) noexcept = default;
-        SystemTaskGraphCompilation& operator=(
-            SystemTaskGraphCompilation&&
-        ) noexcept = default;
+        CompiledSystemTaskGraph(CompiledSystemTaskGraph&&) noexcept;
+        CompiledSystemTaskGraph& operator=(
+            CompiledSystemTaskGraph&&
+        ) noexcept;
 
-        SystemTaskGraphCompilation(const SystemTaskGraphCompilation&) = delete;
-        SystemTaskGraphCompilation& operator=(
-            const SystemTaskGraphCompilation&
+        CompiledSystemTaskGraph(const CompiledSystemTaskGraph&) = delete;
+        CompiledSystemTaskGraph& operator=(
+            const CompiledSystemTaskGraph&
         ) = delete;
 
-    private:
-        std::shared_ptr<detail::SystemCompilationState> state_;
+        [[nodiscard]] std::size_t systemCount() const noexcept;
+        [[nodiscard]] std::size_t taskCount() const noexcept;
+        [[nodiscard]] std::size_t dependencyCount() const noexcept;
+        [[nodiscard]] SystemRegistryId sourceRegistry() const noexcept;
+        [[nodiscard]] std::uint64_t sourceRegistryRevision() const noexcept;
+        [[nodiscard]] SystemRelationsId sourceRelations() const noexcept;
+        [[nodiscard]] std::uint64_t sourceRelationsRevision() const noexcept;
 
-        friend class SystemTaskGraphCompiler;
+    private:
+        struct Impl;
+        explicit CompiledSystemTaskGraph(
+            std::unique_ptr<const Impl> impl
+        ) noexcept;
+
+        std::unique_ptr<const Impl> impl_;
+
+        friend LUX_ENGINE_ECS_SYSTEM_PUBLIC lux::cxx::expected<
+            CompiledSystemTaskGraph,
+            SystemFailure
+        > compileSystemTaskGraph(
+            const SystemRegistry&,
+            const SystemRelations&
+        ) noexcept;
         friend class SystemExecutionScratch;
         friend struct detail::SystemExecutionAccess;
         friend struct detail::SystemExecutionTestAccess;
     };
 
-    class LUX_ENGINE_ECS_SYSTEM_PUBLIC SystemTaskGraphCompiler final
-    {
-    public:
-        [[nodiscard]] lux::cxx::expected<
-            SystemTaskGraphCompilation,
-            SystemFailure
-        > compile(
-            const SystemRegistry& registry,
-            const SystemRelations& relations
-        ) const noexcept;
-    };
+    [[nodiscard]] LUX_ENGINE_ECS_SYSTEM_PUBLIC lux::cxx::expected<
+        CompiledSystemTaskGraph,
+        SystemFailure
+    > compileSystemTaskGraph(
+        const SystemRegistry& registry,
+        const SystemRelations& relations
+    ) noexcept;
 }

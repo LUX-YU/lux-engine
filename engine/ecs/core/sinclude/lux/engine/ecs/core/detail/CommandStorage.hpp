@@ -61,6 +61,8 @@ namespace lux::ecs::detail
 
         CommandShard(const CommandShard&) = delete;
         CommandShard& operator=(const CommandShard&) = delete;
+        CommandShard(CommandShard&& other) noexcept;
+        CommandShard& operator=(CommandShard&& other) noexcept;
 
         void reserve(std::size_t count);
         void invalidate() noexcept;

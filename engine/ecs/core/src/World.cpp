@@ -80,7 +80,7 @@ namespace lux::ecs
         if (state_ != detail::EWorldState::IDLE)
             return lux::cxx::unexpected(WorldMutationError{EWorldMutationError::NOT_IDLE});
 
-        state_ = detail::EWorldState::EDITING;
+        state_ = detail::EWorldState::MUTATING;
         return WorldMutation(*this, true);
     }
 
@@ -242,7 +242,7 @@ namespace lux::ecs
         if (world_ != nullptr && release_to_idle_)
         {
             detail::require(
-                world_->state_ == detail::EWorldState::EDITING ||
+                world_->state_ == detail::EWorldState::MUTATING ||
                 world_->state_ == detail::EWorldState::APPLYING_COMMANDS
             );
             world_->state_ = detail::EWorldState::IDLE;
@@ -254,7 +254,7 @@ namespace lux::ecs
 
     detail::ChangeRecorder detail::worldChangeRecorder(World& world) noexcept
     {
-        return WorldChangeAccess::journal(world).recorder();
+        return WorldChangeAccess::log(world).recorder();
     }
 
     detail::ChangeStreamBinder detail::worldChangeStreamBinder(
@@ -262,7 +262,7 @@ namespace lux::ecs
     ) noexcept
     {
         return ChangeStreamBinder{
-            .context = &WorldChangeAccess::journal(world),
+            .context = &WorldChangeAccess::log(world),
             .bind = [](void* context, std::uint64_t storage) noexcept
             {
                 return static_cast<WorldChangeLog*>(context)->bindComponent(
@@ -279,7 +279,7 @@ namespace lux::ecs
         EComponentChangeKind kind
     ) noexcept
     {
-        WorldChangeAccess::journal(world).recordComponent(storage, entity, kind);
+        WorldChangeAccess::log(world).recordComponent(storage, entity, kind);
     }
 
     void detail::recordWorldEntityChange(
@@ -288,22 +288,22 @@ namespace lux::ecs
         EEntityChangeKind kind
     ) noexcept
     {
-        WorldChangeAccess::journal(world).recordEntity(entity, kind);
+        WorldChangeAccess::log(world).recordEntity(entity, kind);
     }
 
     void detail::establishWorldChangeBaseline(World& world) noexcept
     {
-        WorldChangeAccess::journal(world).establishBaseline();
+        WorldChangeAccess::log(world).establishBaseline();
     }
 
     void detail::markWorldChangeHistoryLoss(World& world) noexcept
     {
-        WorldChangeAccess::journal(world).markHistoryLoss();
+        WorldChangeAccess::log(world).markHistoryLoss();
     }
 
     std::uint64_t detail::worldChangeEpoch(const World& world) noexcept
     {
-        return WorldChangeAccess::journal(world).epoch();
+        return WorldChangeAccess::log(world).epoch();
     }
 
     detail::ChangeRangeData detail::readWorldComponentChanges(
@@ -313,7 +313,7 @@ namespace lux::ecs
         std::uint64_t& cursor_sequence
     ) noexcept
     {
-        return WorldChangeAccess::journal(world).readComponentRaw(
+        return WorldChangeAccess::log(world).readComponentRaw(
             storage,
             cursor_epoch,
             cursor_sequence
@@ -326,7 +326,7 @@ namespace lux::ecs
         std::uint64_t& cursor_sequence
     ) noexcept
     {
-        return WorldChangeAccess::journal(world).readEntityRaw(
+        return WorldChangeAccess::log(world).readEntityRaw(
             cursor_epoch,
             cursor_sequence
         );

@@ -95,49 +95,6 @@ namespace lux::ecs
             }(std::index_sequence_for<Values...>{});
         }
 
-        template <class ComponentTuple, class ExternalTuple>
-        struct StaticSystemAccessStorage;
-
-        template <class... Component, class... External>
-        struct StaticSystemAccessStorage<
-            std::tuple<Component...>,
-            std::tuple<External...>
-        > final
-        {
-            static_assert((ComponentAccessSpec<Component> && ...));
-            static_assert((ExternalSystemAccess<External> && ...));
-            static_assert(uniqueComponents<Component...>());
-            static_assert(uniqueSystemTypes<
-                typename ExternalSystemAccessTraits<External>::ExternalType...
-            >());
-
-            inline static constexpr std::array<
-                SystemComponentAccess,
-                sizeof...(Component)
-            > components{
-                SystemComponentAccess{
-                    lux::cxx::typeToken<
-                        typename AccessTraits<Component>::ComponentType>(),
-                    entt::type_hash<
-                        typename AccessTraits<Component>::ComponentType>::value(),
-                    AccessTraits<Component>::kWrite
-                        ? ESystemAccessMode::WRITE
-                        : ESystemAccessMode::READ
-                }...
-            };
-
-            inline static constexpr std::array<
-                SystemExternalAccess,
-                sizeof...(External)
-            > external{
-                SystemExternalAccess{
-                    lux::cxx::typeToken<
-                        typename ExternalSystemAccessTraits<External>::ExternalType>(),
-                    ExternalSystemAccessTraits<External>::kMode
-                }...
-            };
-        };
-
         template <class Access>
         inline constexpr bool kSystemAccessElement =
             ComponentAccessSpec<Access> || ExternalSystemAccess<Access>;
@@ -215,37 +172,63 @@ namespace lux::ecs
         }
     }
 
+    template <class... Access>
+        requires (detail::kSystemAccessElement<Access> && ...)
+    class StaticSystemAccessDescriptor final
+    {
+    private:
+        inline static constexpr auto kComponents =
+            detail::systemComponentAccesses<Access...>();
+        inline static constexpr auto kExternal =
+            detail::systemExternalAccesses<Access...>();
+
+    public:
+        static_assert(detail::uniqueSystemAccesses(kComponents));
+        static_assert(detail::uniqueSystemAccesses(kExternal));
+
+        [[nodiscard]] constexpr SystemAccessSpec spec() const noexcept
+        {
+            return SystemAccessSpec{kComponents, kExternal};
+        }
+    };
+
+    namespace detail
+    {
+        template <class Type>
+        inline constexpr bool kTrustedSystemAccessDescriptor = false;
+
+        template <class... Access>
+        inline constexpr bool kTrustedSystemAccessDescriptor<
+            StaticSystemAccessDescriptor<Access...>
+        > = true;
+
+        template <class Type>
+        concept TrustedSystemAccessDescriptor =
+            kTrustedSystemAccessDescriptor<std::remove_cvref_t<Type>>;
+    }
+
+    template <class... Access>
+        requires (detail::kSystemAccessElement<Access> && ...)
+    [[nodiscard]] consteval auto makeSystemAccessSpec() noexcept
+    {
+        return StaticSystemAccessDescriptor<Access...>{};
+    }
+
     template <class... Component, class... External>
         requires (detail::ExternalSystemAccess<External> && ...)
-    [[nodiscard]] consteval SystemAccessSpec makeSystemAccessSpec(
+    [[nodiscard]] consteval auto makeSystemAccessSpec(
         QuerySpec<Component...>,
         External...
     ) noexcept
     {
-        using Storage = detail::StaticSystemAccessStorage<
-            std::tuple<Component...>,
-            std::tuple<External...>
-        >;
-        return SystemAccessSpec{Storage::components, Storage::external};
+        return StaticSystemAccessDescriptor<Component..., External...>{};
     }
 
     template <class... AccessValue>
         requires (detail::kSystemAccessElement<AccessValue> && ...)
     struct StaticSystemAccess
     {
-    private:
-        inline static constexpr auto kComponents =
-            detail::systemComponentAccesses<AccessValue...>();
-        inline static constexpr auto kExternal =
-            detail::systemExternalAccesses<AccessValue...>();
-
-    public:
-        static_assert(detail::uniqueSystemAccesses(kComponents));
-        static_assert(detail::uniqueSystemAccesses(kExternal));
-
-        inline static constexpr SystemAccessSpec Access{
-            kComponents,
-            kExternal
-        };
+        inline static constexpr auto Access =
+            makeSystemAccessSpec<AccessValue...>();
     };
 }

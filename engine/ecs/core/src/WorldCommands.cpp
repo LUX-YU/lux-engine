@@ -144,6 +144,39 @@ namespace lux::ecs::detail
     {
     }
 
+    CommandShard::CommandShard(CommandShard&& other) noexcept
+        : pending_(std::move(other.pending_)),
+          pending_arena_(std::move(other.pending_arena_)),
+          generation_(other.generation_),
+          discarded_(other.discarded_),
+          record_allocation_events_(other.record_allocation_events_),
+          fail_next_push_for_test_(other.fail_next_push_for_test_)
+    {
+        detail::require(!other.active_ && !other.applying_);
+        other.discarded_ = 0U;
+        other.record_allocation_events_ = 0U;
+        other.fail_next_push_for_test_ = false;
+    }
+
+    CommandShard& CommandShard::operator=(CommandShard&& other) noexcept
+    {
+        if (this == std::addressof(other))
+            return *this;
+        detail::require(
+            !active_ && !applying_ && !other.active_ && !other.applying_
+        );
+        pending_ = std::move(other.pending_);
+        pending_arena_ = std::move(other.pending_arena_);
+        generation_ = other.generation_;
+        discarded_ = other.discarded_;
+        record_allocation_events_ = other.record_allocation_events_;
+        fail_next_push_for_test_ = other.fail_next_push_for_test_;
+        other.discarded_ = 0U;
+        other.record_allocation_events_ = 0U;
+        other.fail_next_push_for_test_ = false;
+        return *this;
+    }
+
     void CommandShard::reserve(std::size_t count)
     {
         pending_.reserve(count);

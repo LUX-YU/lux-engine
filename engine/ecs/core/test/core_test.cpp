@@ -47,7 +47,7 @@ int main()
 
     next_edit.emplace<Position>(second, 3);
     lux::ecs::ChangeCursor<Position> position_cursor;
-    auto& journal = lux::ecs::detail::WorldChangeAccess::journal(world);
+    auto& journal = lux::ecs::detail::WorldChangeAccess::log(world);
     assert(
         journal.read(position_cursor).status() ==
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
@@ -140,7 +140,7 @@ int main()
     small_edit.emplace<Position>(small_entity);
     lux::ecs::ChangeCursor<Position> overflow_cursor;
     auto& small_journal =
-        lux::ecs::detail::WorldChangeAccess::journal(small_world);
+        lux::ecs::detail::WorldChangeAccess::log(small_world);
     assert(
         small_journal.read(overflow_cursor).status() ==
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
@@ -209,7 +209,7 @@ int main()
 
     lux::ecs::World failure_world;
     auto& failure_journal =
-        lux::ecs::detail::WorldChangeAccess::journal(failure_world);
+        lux::ecs::detail::WorldChangeAccess::log(failure_world);
     lux::ecs::ChangeCursor<FirstStream> first_stream_cursor;
     assert(
         failure_journal.read(first_stream_cursor).status() ==

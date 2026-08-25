@@ -8,6 +8,7 @@
 #include <entt/core/type_info.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <type_traits>
 #include <utility>
@@ -22,6 +23,42 @@ namespace lux::ecs
     class SystemContext final
     {
     public:
+        template <class Component>
+        class Writer final
+        {
+        public:
+            Writer(Writer&&) noexcept = default;
+            Writer& operator=(Writer&&) noexcept = default;
+
+            Writer(const Writer&) = delete;
+            Writer& operator=(const Writer&) = delete;
+
+            template <class Fn>
+                requires std::is_nothrow_invocable_v<Fn, Component&>
+            void update(Entity entity, Fn&& fn) noexcept
+            {
+                context_->template updateBound<Component>(
+                    entity,
+                    stream_,
+                    std::forward<Fn>(fn)
+                );
+            }
+
+        private:
+            Writer(
+                SystemContext& context,
+                detail::BoundWorldChangeStream stream
+            ) noexcept
+                : context_(std::addressof(context)), stream_(stream)
+            {
+            }
+
+            SystemContext* context_{};
+            detail::BoundWorldChangeStream stream_{};
+
+            friend class SystemContext;
+        };
+
         [[nodiscard]] bool valid(Entity entity) const noexcept
         {
             return world_->valid(entity);
@@ -61,23 +98,14 @@ namespace lux::ecs
             return query<Access...>();
         }
 
-        template <class Component, class Fn>
-            requires std::is_nothrow_invocable_v<Fn, Component&>
-        void update(Entity entity, Fn&& fn) noexcept
+        template <class Component>
+        [[nodiscard]] Writer<Component> write() noexcept
         {
             validate<Component>(ESystemAccessMode::WRITE);
-            detail::require(
-                world_->valid(entity) &&
-                world_->registry_.template all_of<Component>(entity)
+            return Writer<Component>(
+                *this,
+                changes_->binder()(entt::type_hash<Component>::value())
             );
-            world_->registry_.template patch<Component>(
-                entity,
-                std::forward<Fn>(fn)
-            );
-            const auto stream = changes_->binder()(
-                entt::type_hash<Component>::value()
-            );
-            stream(entity, EComponentChangeKind::MODIFIED);
         }
 
         template <class Component>
@@ -158,6 +186,25 @@ namespace lux::ecs
 #else
             (void)requested;
 #endif
+        }
+
+        template <class Component, class Fn>
+            requires std::is_nothrow_invocable_v<Fn, Component&>
+        void updateBound(
+            Entity entity,
+            detail::BoundWorldChangeStream stream,
+            Fn&& fn
+        ) noexcept
+        {
+            detail::require(
+                world_->valid(entity) &&
+                world_->registry_.template all_of<Component>(entity)
+            );
+            world_->registry_.template patch<Component>(
+                entity,
+                std::forward<Fn>(fn)
+            );
+            stream(entity, EComponentChangeKind::MODIFIED);
         }
 
         World* world_{};

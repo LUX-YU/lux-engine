@@ -1,7 +1,6 @@
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 
 #include <lux/engine/ecs/SystemContext.hpp>
-#include <lux/engine/ecs/SystemStart.hpp>
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 
 #include <entt/entity/entity.hpp>
@@ -821,11 +820,6 @@ namespace lux::ecs
             impl_->next_sequence,
             EChangeReadStatus::CURRENT
         );
-    }
-
-    bool HierarchyIndex::canStart(const SystemStart& start) const noexcept
-    {
-        return start.boundTo(*impl_->world);
     }
 
     void HierarchyIndex::synchronize(SystemContext& frame) noexcept

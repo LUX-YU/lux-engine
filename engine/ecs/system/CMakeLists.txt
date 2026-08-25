@@ -115,6 +115,13 @@ foreach(probe IN ITEMS
     retired_system_frame_header_negative
     retired_system_base_negative
     retired_system_set_header_negative
+    retired_system_start_header_negative
+    retired_system_compiler_class_negative
+    retired_system_compilation_fields_negative
+    retired_task_wave_backend_negative
+    retired_bare_system_id_negative
+    retired_context_update_negative
+    untrusted_system_access_negative
     world_schedule_backref_negative
 )
     add_executable(ecs_${probe} EXCLUDE_FROM_ALL test/${probe}.cpp)

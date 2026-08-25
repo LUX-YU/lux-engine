@@ -91,7 +91,7 @@ int main()
     );
     auto instance = snapshot->instantiate();
     assert(instance);
-    auto& instance_journal = lux::ecs::detail::WorldChangeAccess::journal(
+    auto& instance_journal = lux::ecs::detail::WorldChangeAccess::log(
         **instance
     );
     assert(instance_journal.recordWriteCountForTest() == 0U);
@@ -113,7 +113,7 @@ int main()
     auto bounded_instance = snapshot->instantiate(bounded_config);
     assert(bounded_instance);
     lux::ecs::ChangeCursor<Position> bounded_cursor;
-    auto& bounded_journal = lux::ecs::detail::WorldChangeAccess::journal(
+    auto& bounded_journal = lux::ecs::detail::WorldChangeAccess::log(
         **bounded_instance
     );
     assert(bounded_journal.recordWriteCountForTest() == 0U);
@@ -157,7 +157,7 @@ int main()
     lux::ecs::World restored{bounded_config};
     lux::ecs::ChangeCursor<Position> restore_cursor;
     auto& restore_journal =
-        lux::ecs::detail::WorldChangeAccess::journal(restored);
+        lux::ecs::detail::WorldChangeAccess::log(restored);
     assert(
         restore_journal.read(restore_cursor).status() ==
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED

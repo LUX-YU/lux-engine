@@ -18,7 +18,7 @@ namespace lux::ecs::detail
 
     struct SystemRelationsAccess final
     {
-        [[nodiscard]] static const SystemRegistry* registry(
+        [[nodiscard]] static SystemRelationsId scope(
             const SystemRelations& relations
         ) noexcept;
 

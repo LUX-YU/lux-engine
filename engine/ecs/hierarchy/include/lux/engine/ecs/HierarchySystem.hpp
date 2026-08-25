@@ -2,10 +2,7 @@
 
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 #include <lux/engine/ecs/SystemContext.hpp>
-#include <lux/engine/ecs/SystemStart.hpp>
 #include <lux/engine/ecs/hierarchy/visibility.h>
-
-#include <memory>
 
 namespace lux::ecs
 {
@@ -16,16 +13,12 @@ namespace lux::ecs
         >
     {
       public:
-        explicit HierarchySystem(HierarchyIndex& hierarchy);
-        ~HierarchySystem();
-
-        [[nodiscard]] lux::cxx::expected<void, SystemStartError>
-        start(SystemStart& start) noexcept;
+        HierarchySystem(World& world, HierarchyIndex& hierarchy) noexcept;
 
         void update(SystemContext& context) noexcept;
 
       private:
-        struct Impl;
-        std::unique_ptr<Impl> impl_;
+        World* world_{};
+        HierarchyIndex* hierarchy_{};
     };
 } // namespace lux::ecs

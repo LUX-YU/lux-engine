@@ -32,10 +32,12 @@ namespace lux::ecs::detail
                 world.owner_thread_ == std::this_thread::get_id();
         }
 
-        [[nodiscard]] static WorldMutation suppressingEdit(World& world) noexcept
+        [[nodiscard]] static WorldMutation suppressingMutation(
+            World& world
+        ) noexcept
         {
             require(ownerIdle(world));
-            world.state_ = EWorldState::EDITING;
+            world.state_ = EWorldState::MUTATING;
             return WorldMutation(
                 world,
                 true,
@@ -43,10 +45,12 @@ namespace lux::ecs::detail
             );
         }
 
-        [[nodiscard]] static WorldMutation sectionEdit(World& world) noexcept
+        [[nodiscard]] static WorldMutation sectionMutation(
+            World& world
+        ) noexcept
         {
             require(ownerIdle(world));
-            world.state_ = EWorldState::EDITING;
+            world.state_ = EWorldState::MUTATING;
             return WorldMutation(
                 world,
                 true,

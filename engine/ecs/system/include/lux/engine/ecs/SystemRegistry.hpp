@@ -2,7 +2,6 @@
 
 #include <lux/engine/ecs/SystemConcept.hpp>
 #include <lux/engine/ecs/SystemError.hpp>
-#include <lux/engine/ecs/SystemStart.hpp>
 #include <lux/engine/ecs/system/visibility.h>
 
 #include <lux/cxx/compile_time/TypeToken.hpp>
@@ -23,21 +22,63 @@ namespace lux::ecs
     {
         struct SystemRecord final
         {
+            SystemRecord() = default;
+
+            ~SystemRecord() noexcept
+            {
+                reset();
+            }
+
+            SystemRecord(SystemRecord&& other) noexcept
+                : type(other.type),
+                  access(other.access),
+                  code_lifetime(std::move(other.code_lifetime)),
+                  object(std::exchange(other.object, nullptr)),
+                  destroy(std::exchange(other.destroy, nullptr)),
+                  update(other.update),
+                  affinity_valid(other.affinity_valid),
+                  owner_thread_affine(other.owner_thread_affine),
+                  registration_order(other.registration_order)
+            {
+            }
+
+            SystemRecord& operator=(SystemRecord&& other) noexcept
+            {
+                if (this == std::addressof(other))
+                    return *this;
+                reset();
+                type = other.type;
+                access = other.access;
+                code_lifetime = std::move(other.code_lifetime);
+                object = std::exchange(other.object, nullptr);
+                destroy = std::exchange(other.destroy, nullptr);
+                update = other.update;
+                affinity_valid = other.affinity_valid;
+                owner_thread_affine = other.owner_thread_affine;
+                registration_order = other.registration_order;
+                return *this;
+            }
+
+            SystemRecord(const SystemRecord&) = delete;
+            SystemRecord& operator=(const SystemRecord&) = delete;
+
+            void reset() noexcept
+            {
+                if (object != nullptr)
+                    destroy(object);
+                object = nullptr;
+                destroy = nullptr;
+            }
+
             lux::cxx::TypeToken type;
             SystemAccessSpec access;
             std::shared_ptr<const void> code_lifetime;
-            std::shared_ptr<void> object;
+            void* object{};
+            void (*destroy)(void*) noexcept{};
             void (*update)(void*, SystemContext&) noexcept{};
-            lux::cxx::expected<void, SystemStartError> (*start)(
-                void*,
-                SystemStart&
-            ) noexcept{};
-            void (*request_stop)(void*) noexcept{};
-            bool (*stopped)(const void*) noexcept{};
             bool (*affinity_valid)(const void*) noexcept{};
             bool owner_thread_affine{};
             std::uint64_t registration_order{};
-            bool started{};
         };
 
         template <class Type>
@@ -55,59 +96,20 @@ namespace lux::ecs
         [[nodiscard]] SystemRecord eraseSystem(
             std::unique_ptr<Type> object,
             std::shared_ptr<const void> code_lifetime
-        )
+        ) noexcept
         {
             SystemRecord record;
             record.type = lux::cxx::typeToken<Type>();
-            record.access = Type::Access;
+            record.access = Type::Access.spec();
             record.code_lifetime = std::move(code_lifetime);
-            record.object = std::shared_ptr<void>(
-                object.release(),
-                [](void* value) noexcept
-                {
-                    delete static_cast<Type*>(value);
-                }
-            );
+            record.object = object.release();
+            record.destroy = [](void* value) noexcept
+            {
+                delete static_cast<Type*>(value);
+            };
             record.update = [](void* value, SystemContext& context) noexcept
             {
                 static_cast<Type*>(value)->update(context);
-            };
-            record.start = [](void* value, SystemStart& context) noexcept
-                -> lux::cxx::expected<void, SystemStartError>
-            {
-                if constexpr (requires(Type& system, SystemStart& start)
-                {
-                    { system.start(start) } noexcept -> std::same_as<
-                        lux::cxx::expected<void, SystemStartError>
-                    >;
-                })
-                {
-                    return static_cast<Type*>(value)->start(context);
-                }
-                else
-                    return {};
-            };
-            record.request_stop = [](void* value) noexcept
-            {
-                if constexpr (requires(Type& system)
-                {
-                    { system.requestStop() } noexcept -> std::same_as<void>;
-                })
-                {
-                    static_cast<Type*>(value)->requestStop();
-                }
-            };
-            record.stopped = [](const void* value) noexcept
-            {
-                if constexpr (requires(const Type& system)
-                {
-                    { system.stopped() } noexcept -> std::same_as<bool>;
-                })
-                {
-                    return static_cast<const Type*>(value)->stopped();
-                }
-                else
-                    return true;
             };
             record.affinity_valid = [](const void* value) noexcept
             {
@@ -129,8 +131,8 @@ namespace lux::ecs
         SystemRegistry();
         ~SystemRegistry();
 
-        SystemRegistry(SystemRegistry&&) noexcept;
-        SystemRegistry& operator=(SystemRegistry&&) noexcept;
+        SystemRegistry(SystemRegistry&& other) noexcept;
+        SystemRegistry& operator=(SystemRegistry&& other) noexcept;
 
         SystemRegistry(const SystemRegistry&) = delete;
         SystemRegistry& operator=(const SystemRegistry&) = delete;
@@ -162,12 +164,6 @@ namespace lux::ecs
                     std::move(object),
                     std::move(code_lifetime)
                 );
-                if (!record.affinity_valid(record.object.get()))
-                {
-                    return lux::cxx::unexpected<SystemFailure>(SystemFailure{
-                        .code = ESystemError::EXECUTION_AFFINITY_MISMATCH
-                    });
-                }
                 return add(std::move(record));
             }
             catch (...)
@@ -178,13 +174,13 @@ namespace lux::ecs
             }
         }
 
+        [[nodiscard]] SystemRegistryId id() const noexcept;
         [[nodiscard]] bool contains(SystemId id) const noexcept;
         [[nodiscard]] std::size_t size() const noexcept;
         [[nodiscard]] std::uint64_t revision() const noexcept;
 
+        /** Immediately destroys the uniquely-owned System at a safe point. */
         [[nodiscard]] bool erase(SystemId id) noexcept;
-        [[nodiscard]] bool requestStop(SystemId id) noexcept;
-        [[nodiscard]] bool stopped(SystemId id) const noexcept;
 
     private:
         struct Impl;

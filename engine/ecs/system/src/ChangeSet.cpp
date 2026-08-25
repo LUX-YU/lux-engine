@@ -4,66 +4,38 @@
 
 #include <algorithm>
 #include <utility>
-#include <vector>
 
 namespace lux::ecs
 {
-    struct ChangeSet::Impl final
-    {
-        struct Lane final
-        {
-            std::uint64_t storage{};
-            std::vector<Entity> records;
-        };
-
-        std::vector<Lane> lanes;
-        std::uint64_t lane_bind_count{};
-        bool overflow{};
-    };
-
-    ChangeSet::ChangeSet()
-        : impl_(std::make_unique<Impl>())
-    {
-    }
-
-    ChangeSet::~ChangeSet() = default;
-    ChangeSet::ChangeSet(ChangeSet&&) noexcept = default;
-    ChangeSet& ChangeSet::operator=(ChangeSet&&) noexcept = default;
-
     lux::cxx::expected<void, SystemFailure> ChangeSet::prepare(
         std::span<const std::uint64_t> write_storages,
         std::size_t reserve_records
     ) noexcept
     {
-        if (!impl_)
-        {
-            return lux::cxx::unexpected<SystemFailure>(SystemFailure{
-                .code = ESystemError::ALLOCATION_FAILURE
-            });
-        }
-
         try
         {
-            impl_->lanes.clear();
-            impl_->lanes.reserve(write_storages.size());
+            lanes_.clear();
+            lanes_.reserve(write_storages.size());
+            publish_streams_.clear();
+            publish_streams_.resize(write_storages.size());
             for (const std::uint64_t storage : write_storages)
             {
                 if (std::find(
                     write_storages.begin(),
-                    write_storages.begin() + impl_->lanes.size(),
+                    write_storages.begin() + lanes_.size(),
                     storage
-                ) != write_storages.begin() + impl_->lanes.size())
+                ) != write_storages.begin() + lanes_.size())
                 {
                     return lux::cxx::unexpected<SystemFailure>(SystemFailure{
                         .code = ESystemError::INVALID_ACCESS
                     });
                 }
-                Impl::Lane lane;
+                Lane lane;
                 lane.storage = storage;
                 lane.records.reserve(reserve_records);
-                impl_->lanes.push_back(std::move(lane));
+                lanes_.push_back(std::move(lane));
             }
-            impl_->overflow = false;
+            overflow_ = false;
             return {};
         }
         catch (...)
@@ -76,36 +48,42 @@ namespace lux::ecs
 
     void ChangeSet::reset() noexcept
     {
-        if (!impl_)
-            return;
-        for (auto& lane : impl_->lanes)
+        for (auto& lane : lanes_)
             lane.records.clear();
-        impl_->overflow = false;
+        overflow_ = false;
     }
 
     bool ChangeSet::overflowed() const noexcept
     {
-        return !impl_ || impl_->overflow;
+        return overflow_;
     }
 
     std::size_t ChangeSet::recordCount() const noexcept
     {
-        if (!impl_)
-            return 0U;
         std::size_t result{};
-        for (const auto& lane : impl_->lanes)
+        for (const auto& lane : lanes_)
             result += lane.records.size();
         return result;
     }
 
     std::uint64_t ChangeSet::laneBindCount() const noexcept
     {
-        return impl_ ? impl_->lane_bind_count : 0U;
+        return lane_bind_count_;
+    }
+
+    std::uint64_t ChangeSet::journalStreamBindCount() const noexcept
+    {
+        return journal_stream_bind_count_;
+    }
+
+    std::uint64_t ChangeSet::recordAppendCount() const noexcept
+    {
+        return record_append_count_;
     }
 
     std::uint64_t ChangeSet::perRecordLookupCount() const noexcept
     {
-        return 0U;
+        return per_record_lookup_count_;
     }
 
     detail::ChangeStreamBinder ChangeSet::binder() noexcept
@@ -115,10 +93,8 @@ namespace lux::ecs
             .bind = [](void* context, std::uint64_t storage) noexcept
             {
                 auto& self = *static_cast<ChangeSet*>(context);
-                if (!self.impl_)
-                    return detail::BoundWorldChangeStream{};
-                ++self.impl_->lane_bind_count;
-                for (auto& lane : self.impl_->lanes)
+                ++self.lane_bind_count_;
+                for (auto& lane : self.lanes_)
                 {
                     if (lane.storage != storage)
                         continue;
@@ -133,21 +109,22 @@ namespace lux::ecs
                         ) noexcept
                         {
                             auto& change_set = *static_cast<ChangeSet*>(owner);
-                            auto& target = *static_cast<Impl::Lane*>(stream);
-                            if (change_set.impl_->overflow)
+                            auto& target = *static_cast<Lane*>(stream);
+                            if (change_set.overflow_)
                                 return;
                             try
                             {
                                 target.records.push_back(entity);
+                                ++change_set.record_append_count_;
                             }
                             catch (...)
                             {
-                                change_set.impl_->overflow = true;
+                                change_set.overflow_ = true;
                             }
                         }
                     };
                 }
-                self.impl_->overflow = true;
+                self.overflow_ = true;
                 return detail::BoundWorldChangeStream{};
             }
         };
@@ -155,7 +132,7 @@ namespace lux::ecs
 
     bool ChangeSet::publish(World& world) noexcept
     {
-        if (!impl_ || impl_->overflow)
+        if (overflow_)
         {
             detail::markWorldChangeHistoryLoss(world);
             reset();
@@ -163,15 +140,24 @@ namespace lux::ecs
         }
 
         const auto world_binder = detail::worldChangeStreamBinder(world);
-        for (auto& lane : impl_->lanes)
+        for (std::size_t index{}; index < lanes_.size(); ++index)
         {
-            const auto stream = world_binder(lane.storage);
-            if (!stream)
-                continue;
-            for (const Entity entity : lane.records)
+            ++journal_stream_bind_count_;
+            publish_streams_[index] = world_binder(lanes_[index].storage);
+            if (!publish_streams_[index])
             {
-                stream(entity, EComponentChangeKind::MODIFIED);
+                detail::markWorldChangeHistoryLoss(world);
+                reset();
+                return false;
             }
+        }
+
+        for (std::size_t index{}; index < lanes_.size(); ++index)
+        {
+            const auto stream = publish_streams_[index];
+            const auto& lane = lanes_[index];
+            for (const Entity entity : lane.records)
+                stream(entity, EComponentChangeKind::MODIFIED);
         }
         reset();
         return true;

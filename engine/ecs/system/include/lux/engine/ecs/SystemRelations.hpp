@@ -4,6 +4,7 @@
 #include <lux/engine/ecs/system/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/container/ScopeId.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -11,21 +12,23 @@
 
 namespace lux::ecs
 {
-    class SystemRegistry;
+    struct SystemRelationsScopeTag;
+    using SystemRelationsId = lux::cxx::ScopeId<SystemRelationsScopeTag>;
 
     namespace detail
     {
         struct SystemRelationsAccess;
     }
 
+    /** Pure ordering data. Registry validity is intentionally checked at compile. */
     class LUX_ENGINE_ECS_SYSTEM_PUBLIC SystemRelations final
     {
     public:
-        explicit SystemRelations(const SystemRegistry& registry);
+        SystemRelations();
         ~SystemRelations();
 
-        SystemRelations(SystemRelations&&) noexcept;
-        SystemRelations& operator=(SystemRelations&&) noexcept;
+        SystemRelations(SystemRelations&& other) noexcept;
+        SystemRelations& operator=(SystemRelations&& other) noexcept;
 
         SystemRelations(const SystemRelations&) = delete;
         SystemRelations& operator=(const SystemRelations&) = delete;
@@ -40,6 +43,7 @@ namespace lux::ecs
             SystemId before
         ) noexcept;
 
+        [[nodiscard]] SystemRelationsId id() const noexcept;
         [[nodiscard]] std::size_t size() const noexcept;
         [[nodiscard]] std::uint64_t revision() const noexcept;
 
@@ -47,7 +51,6 @@ namespace lux::ecs
         struct Impl;
         std::unique_ptr<Impl> impl_;
 
-        friend class SystemTaskGraphCompiler;
         friend struct detail::SystemRelationsAccess;
     };
 }

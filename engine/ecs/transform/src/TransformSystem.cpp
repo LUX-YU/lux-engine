@@ -171,13 +171,14 @@ namespace lux::ecs
 
             void publish(
                 SystemContext& frame,
+                SystemContext::Writer<Derived>& writer,
                 Entity entity,
                 const Matrix& value
             ) noexcept
             {
                 if (frame.find<Derived>(entity) != nullptr)
                 {
-                    frame.update<Derived>(
+                    writer.update(
                         entity,
                         [&value](Derived& target) noexcept
                         {
@@ -197,6 +198,7 @@ namespace lux::ecs
 
             [[nodiscard]] TraversalEntry<Matrix> rootEntry(
                 SystemContext& frame,
+                SystemContext::Writer<Derived>& writer,
                 Entity root
             )
             {
@@ -239,7 +241,7 @@ namespace lux::ecs
                     const Matrix value = result.parent_contributes
                         ? result.parent_world * localMatrix(*local)
                         : localMatrix(*local);
-                    publish(frame, *iterator, value);
+                    publish(frame, writer, *iterator, value);
                     result.parent_world = value;
                     result.parent_contributes = true;
                     ++visited_nodes;
@@ -247,10 +249,14 @@ namespace lux::ecs
                 return result;
             }
 
-            void traverse(SystemContext& frame, Entity root)
+            void traverse(
+                SystemContext& frame,
+                SystemContext::Writer<Derived>& writer,
+                Entity root
+            )
             {
                 traversal.clear();
-                traversal.push_back(rootEntry(frame, root));
+                traversal.push_back(rootEntry(frame, writer, root));
                 while (!traversal.empty())
                 {
                     const TraversalEntry<Matrix> entry = traversal.back();
@@ -267,7 +273,7 @@ namespace lux::ecs
                             ? entry.parent_world * localMatrix(*local)
                             : localMatrix(*local);
                         child_contributes = true;
-                        publish(frame, entry.entity, child_world);
+                        publish(frame, writer, entry.entity, child_world);
                     }
                     else
                         queueRemove(frame, entry.entity);
@@ -361,10 +367,11 @@ namespace lux::ecs
                     }
 
                     collectRoots();
+                    auto writer = frame.template write<Derived>();
                     for (const Entity root : roots)
                     {
                         if (frame.valid(root))
-                            traverse(frame, root);
+                            traverse(frame, writer, root);
                     }
                 }
                 catch (...)

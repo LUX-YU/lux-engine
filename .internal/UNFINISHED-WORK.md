@@ -15,8 +15,8 @@ implements a cooked-runtime-only LXWC v2 loader and storage-driven Snapshot.
       the LXWC v1 mutable image/Writer/Reader public path.
 - [x] WDP-3: Add immutable component load bindings, allocation-free lookup,
       independent load annotations/codegen and code lifetime pins.
-- [ ] WDP-4: Bulk load/unload sections into an existing World transactionally.
-- [ ] WDP-5: Migrate PersistentId/Parent/Transform load contributions and
+- [x] WDP-4: Bulk load/unload sections into an existing World transactionally.
+- [x] WDP-5: Migrate PersistentId/Parent/Transform load contributions and
       retire `persistence_contract` plus the remaining v1 codegen bindings.
 - [ ] WDP-6: Clone WorldSnapshot by COPY component storage.
 - [ ] WDP-7: Complete corruption, install and architecture gates.

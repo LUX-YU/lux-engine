@@ -33,7 +33,7 @@ file(GLOB_RECURSE installed_text LIST_DIRECTORIES false
 foreach(entry IN LISTS installed_text)
     file(READ "${entry}" content)
     if(content MATCHES "[/\\\\]legacy[/\\\\]" OR
-       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
+       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
        content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")
         message(FATAL_ERROR "Installed file contains a retired boundary: ${entry}")
     endif()
@@ -51,7 +51,6 @@ foreach(required_component IN ITEMS
     core
     schedule
     world_section
-    persistence_contract
     persistence
 )
     set(component_targets
@@ -79,7 +78,6 @@ foreach(contract_file IN ITEMS
     "${prefix}/share/lux-engine-core/serialization/lux-engine-core-serialization-config-targets.cmake"
     "${prefix}/share/lux-engine-core/type_info/lux-engine-core-type_info-config-targets.cmake"
     "${prefix}/share/lux-engine-ecs/world_section/lux-engine-ecs-world_section-config-targets.cmake"
-    "${prefix}/share/lux-engine-ecs/persistence_contract/lux-engine-ecs-persistence_contract-config-targets.cmake"
     "${prefix}/share/lux-engine-ecs/persistence/lux-engine-ecs-persistence-config-targets.cmake"
 )
     if(NOT EXISTS "${contract_file}")

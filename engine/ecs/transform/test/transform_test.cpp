@@ -97,6 +97,10 @@ namespace
 
 int main()
 {
+    const auto load_contribution =
+        lux::ecs::transformComponentLoadContribution();
+    assert(load_contribution.bindings.size() == 2U);
+
     const auto schema_set = schemas();
     lux::ecs::World world;
     lux::ecs::HierarchyIndex hierarchy{world};

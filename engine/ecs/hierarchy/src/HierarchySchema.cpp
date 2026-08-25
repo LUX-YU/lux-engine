@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/Parent.hpp>
 #include <lux/engine/ecs/Parent.ecs_schema.hpp>
-#include <lux/engine/ecs/Parent.ecs_persistence.hpp>
+#include <lux/engine/ecs/Parent.ecs_load.hpp>
 
 namespace lux::ecs
 {
@@ -11,8 +11,8 @@ namespace lux::ecs
         return generated::hierarchyComponentSchemas();
     }
 
-    ComponentPersistenceContribution hierarchyPersistenceContribution() noexcept
+    ComponentLoadContribution hierarchyComponentLoadContribution() noexcept
     {
-        return generated::hierarchyPersistenceContribution();
+        return generated::hierarchyComponentLoadContribution();
     }
 } // namespace lux::ecs

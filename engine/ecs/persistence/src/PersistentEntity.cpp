@@ -1,9 +1,8 @@
 #include <lux/engine/ecs/PersistentEntity.hpp>
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
-#include <lux/engine/ecs/persistence/ComponentPersistenceBinding.hpp>
 #include <lux/engine/serialization/external_support/Uuid.hpp>
 #include <lux/engine/ecs/PersistentEntity.ecs_schema.hpp>
-#include <lux/engine/ecs/PersistentEntity.ecs_persistence.hpp>
+#include <lux/engine/ecs/PersistentEntity.ecs_load.hpp>
 #include <algorithm>
 #include <array>
 
@@ -92,8 +91,8 @@ namespace lux::ecs
         return generated::persistenceComponentSchemas().front();
     }
 
-    ComponentPersistenceContribution persistenceComponentContribution() noexcept
+    ComponentLoadContribution persistentEntityComponentLoadContribution() noexcept
     {
-        return generated::persistencePersistenceContribution();
+        return generated::persistenceComponentLoadContribution();
     }
 } // namespace lux::ecs

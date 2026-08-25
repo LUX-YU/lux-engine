@@ -18,6 +18,14 @@ namespace
 
 int main()
 {
+    const auto load_contribution =
+        lux::ecs::persistentEntityComponentLoadContribution();
+    assert(load_contribution.bindings.size() == 1U);
+    assert(
+        load_contribution.bindings.front().schema().id ==
+        lux::ecs::componentSchemaId("lux.ecs.PersistentId")
+    );
+
     lux::ecs::World world;
     auto edit_result = world.edit();
     assert(edit_result);

@@ -34,14 +34,13 @@ target_link_libraries(
         lux::engine::ecs::schedule
         lux::engine::ecs::schema
         lux::engine::ecs::world_section
-        lux::engine::ecs::persistence_contract
 )
 component_add_internal_dependencies(
-    hierarchy core schedule schema world_section persistence_contract
+    hierarchy core schedule schema world_section
 )
 component_add_transitive_commands(
     hierarchy
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema world_section persistence_contract)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core schedule schema world_section)"
 )
 
 include_component_cmake_scripts(meta)

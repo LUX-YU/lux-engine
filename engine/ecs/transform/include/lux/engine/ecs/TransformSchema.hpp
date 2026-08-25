@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/ecs/ComponentSchema.hpp>
-#include <lux/engine/ecs/persistence/ComponentPersistenceBinding.hpp>
+#include <lux/engine/ecs/ComponentLoadBinding.hpp>
 #include <lux/engine/ecs/transform/visibility.h>
 
 #include <span>
@@ -12,5 +12,5 @@ namespace lux::ecs
     std::span<const ComponentSchema> transformComponentSchemas() noexcept;
 
     [[nodiscard]] LUX_ENGINE_ECS_TRANSFORM_PUBLIC
-    ComponentPersistenceContribution transformPersistenceContribution() noexcept;
+    ComponentLoadContribution transformComponentLoadContribution() noexcept;
 } // namespace lux::ecs

@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
 #include <lux/engine/ecs/Transform.ecs_schema.hpp>
-#include <lux/engine/ecs/Transform.ecs_persistence.hpp>
+#include <lux/engine/ecs/Transform.ecs_load.hpp>
 
 namespace lux::ecs
 {
@@ -12,8 +12,8 @@ namespace lux::ecs
         return generated::transformComponentSchemas();
     }
 
-    ComponentPersistenceContribution transformPersistenceContribution() noexcept
+    ComponentLoadContribution transformComponentLoadContribution() noexcept
     {
-        return generated::transformPersistenceContribution();
+        return generated::transformComponentLoadContribution();
     }
 } // namespace lux::ecs

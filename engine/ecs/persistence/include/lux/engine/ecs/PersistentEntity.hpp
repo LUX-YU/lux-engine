@@ -2,6 +2,7 @@
 
 #include <lux/engine/ecs/ComponentSchema.hpp>
 #include <lux/engine/ecs/ComponentAnnotations.hpp>
+#include <lux/engine/ecs/ComponentLoadBinding.hpp>
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/persistence/visibility.h>
 #include <lux/engine/meta/MetaAnnotations.hpp>
@@ -15,8 +16,6 @@
 
 namespace lux::ecs
 {
-    struct ComponentPersistenceContribution;
-
     struct LUX_TYPE_INFO(static) PersistentEntityId final
     {
         uuids::uuid value;
@@ -64,7 +63,7 @@ namespace lux::ecs
     const ComponentSchema& persistentIdComponentSchema() noexcept;
 
     [[nodiscard]] LUX_ENGINE_ECS_PERSISTENCE_PUBLIC
-    ComponentPersistenceContribution persistenceComponentContribution() noexcept;
+    ComponentLoadContribution persistentEntityComponentLoadContribution() noexcept;
 } // namespace lux::ecs
 
 #if !defined(__LUX_PARSE_TIME__)

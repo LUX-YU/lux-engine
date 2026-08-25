@@ -3,7 +3,6 @@ foreach(component IN ITEMS
     schedule
     schema
     world_section
-    persistence_contract
     snapshot
     persistence
     hierarchy
@@ -20,7 +19,6 @@ foreach(component IN ITEMS
     schedule
     schema
     world_section
-    persistence_contract
     snapshot
     persistence
     hierarchy

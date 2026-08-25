@@ -1,4 +1,4 @@
-## core::task — immutable, domain-neutral task DAG and synchronous wave execution.
+## core::task — immutable domain-neutral DAG with completion-driven execution.
 
 find_package(lux-cxx REQUIRED COMPONENTS compile_time container)
 

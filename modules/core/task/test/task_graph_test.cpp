@@ -1,8 +1,14 @@
 #include <lux/engine/task/TaskGraph.hpp>
 
+#include <atomic>
 #include <cassert>
+#include <condition_variable>
 #include <cstddef>
+#include <cstdlib>
 #include <memory>
+#include <mutex>
+#include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -19,34 +25,87 @@ namespace
         probe.order->push_back(probe.value);
     }
 
-    struct WaveProbe final
+    struct AsyncBackend final
     {
-        std::vector<std::vector<int>> waves;
-        std::vector<lux::task::ETaskAffinity> affinities;
+        std::mutex mutex;
+        std::condition_variable allow_b_ready;
+        std::vector<std::thread> workers;
+        std::size_t submission_count{};
+        bool allow_b{};
+        std::atomic_bool b_completed{};
+        bool c_submitted_before_b_completed{};
     };
 
-    void executeWave(
+    void submitAsymmetric(
         void* state,
-        std::span<const lux::task::TaskExecutionItem> items,
-        void* context
+        lux::task::TaskSubmission&& submission
     ) noexcept
     {
-        auto& probe = *static_cast<WaveProbe*>(state);
-        probe.waves.emplace_back();
-        for (const auto& item : items)
+        auto& backend = *static_cast<AsyncBackend*>(state);
+        const auto sequence = backend.submission_count++;
+
+        try
         {
-            probe.affinities.push_back(item.affinity);
-            item.invocation.invoke(item.invocation.target, context);
-            probe.waves.back().push_back(
-                static_cast<Probe*>(item.invocation.target)->value
-            );
+            if (sequence == 0U)
+            {
+                backend.workers.emplace_back(
+                    [submission = std::move(submission)]() mutable noexcept
+                    {
+                        std::move(submission).run();
+                    }
+                );
+                return;
+            }
+            if (sequence == 1U)
+            {
+                backend.workers.emplace_back(
+                    [&backend, submission = std::move(submission)]() mutable noexcept
+                    {
+                        {
+                            std::unique_lock lock(backend.mutex);
+                            backend.allow_b_ready.wait(lock, [&backend]
+                            {
+                                return backend.allow_b;
+                            });
+                        }
+                        std::move(submission).run();
+                        backend.b_completed.store(
+                            true,
+                            std::memory_order_release
+                        );
+                    }
+                );
+                return;
+            }
+            if (sequence == 2U)
+            {
+                backend.c_submitted_before_b_completed =
+                    !backend.b_completed.load(std::memory_order_acquire);
+                {
+                    std::lock_guard lock(backend.mutex);
+                    backend.allow_b = true;
+                }
+                backend.allow_b_ready.notify_one();
+            }
+
+            std::move(submission).run();
         }
+        catch (...)
+        {
+            std::abort();
+        }
+    }
+
+    void invokeNoop(void*, void*) noexcept
+    {
     }
 }
 
 int main()
 {
     using namespace lux::task;
+
+    static_assert(sizeof(TaskId) == 16U);
 
     TaskGraphBuilder empty_builder;
     auto empty_graph = std::move(empty_builder).build();
@@ -82,7 +141,7 @@ int main()
 
     auto lifetime = std::make_shared<int>(42);
     std::weak_ptr<const void> lifetime_probe = lifetime;
-    assert(builder.pinCode(lifetime));
+    assert(builder.pinCodeLifetime(lifetime));
     auto graph_result = std::move(builder).build();
     assert(graph_result);
     auto graph = std::move(*graph_result);
@@ -96,22 +155,6 @@ int main()
     TaskExecutionScratch scratch;
     assert(scratch.prepare(graph));
     assert(scratch.taskCapacity() >= graph.taskCount());
-
-    WaveProbe wave_probe;
-    executeTaskGraph(
-        TaskExecutionBackendRef{&wave_probe, &executeWave},
-        graph,
-        nullptr,
-        scratch
-    );
-    assert((order == std::vector<int>{1, 2, 3, 4}));
-    assert(wave_probe.waves.size() == 3U);
-    assert((wave_probe.waves[0] == std::vector<int>{1, 2}));
-    assert((wave_probe.waves[1] == std::vector<int>{3}));
-    assert((wave_probe.waves[2] == std::vector<int>{4}));
-    assert(wave_probe.affinities.back() == ETaskAffinity::OWNER_THREAD);
-
-    order.clear();
     executeTaskGraph(
         referenceTaskExecutionBackend(),
         graph,
@@ -143,13 +186,45 @@ int main()
     assert(!cycle_result);
     assert(cycle_result.error().code == ETaskGraphError::DEPENDENCY_CYCLE);
 
-    // An id from a completed graph is rejected by a different empty builder.
-    // TaskId is deliberately only a slot/generation key; builders never infer
-    // ownership from integer bits alone.
-    TaskGraphBuilder foreign;
-    const auto foreign_edge = foreign.addDependency(*a_id, *b_id);
+    // Populated builders deliberately produce identical local slot keys. The
+    // graph scope still makes a foreign handle unambiguously invalid.
+    TaskGraphBuilder left;
+    TaskGraphBuilder right;
+    const auto left_task = left.addTask({nullptr, &invokeNoop});
+    const auto right_task = right.addTask({nullptr, &invokeNoop});
+    assert(left_task && right_task);
+    assert(left_task->slot == right_task->slot);
+    assert(left_task->owner != right_task->owner);
+    const auto foreign_edge = right.addDependency(*left_task, *right_task);
     assert(!foreign_edge);
     assert(foreign_edge.error().code == ETaskGraphError::INVALID_TASK);
+
+    // A completion releases C immediately. It does not wait for independent B
+    // (and therefore D) to complete an implicit ready-level wave.
+    TaskGraphBuilder asymmetric_builder;
+    const auto async_a = asymmetric_builder.addTask({nullptr, &invokeNoop});
+    const auto async_b = asymmetric_builder.addTask({nullptr, &invokeNoop});
+    const auto async_c = asymmetric_builder.addTask({nullptr, &invokeNoop});
+    const auto async_d = asymmetric_builder.addTask({nullptr, &invokeNoop});
+    assert(async_a && async_b && async_c && async_d);
+    assert(asymmetric_builder.addDependency(*async_a, *async_c));
+    assert(asymmetric_builder.addDependency(*async_b, *async_d));
+    auto asymmetric_graph = std::move(asymmetric_builder).build();
+    assert(asymmetric_graph);
+    TaskExecutionScratch asymmetric_scratch;
+    assert(asymmetric_scratch.prepare(*asymmetric_graph));
+
+    AsyncBackend async_backend;
+    executeTaskGraph(
+        TaskExecutionBackendRef{&async_backend, &submitAsymmetric},
+        *asymmetric_graph,
+        nullptr,
+        asymmetric_scratch
+    );
+    for (auto& worker : async_backend.workers)
+        worker.join();
+    assert(async_backend.submission_count == 4U);
+    assert(async_backend.c_submitted_before_b_completed);
 
     return 0;
 }

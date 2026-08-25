@@ -3,21 +3,44 @@
 #include <lux/engine/task/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/container/ScopeId.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <span>
 
 namespace lux::task
 {
-    struct TaskTag;
-    using TaskId = lux::cxx::SlotKey<
-        TaskTag,
+    struct TaskGraphScopeTag;
+    using TaskGraphId = lux::cxx::ScopeId<TaskGraphScopeTag>;
+
+    struct TaskSlotTag;
+    using TaskSlot = lux::cxx::SlotKey<
+        TaskSlotTag,
         std::uint32_t,
         std::uint32_t
     >;
+
+    struct TaskId final
+    {
+        TaskGraphId owner{};
+        TaskSlot slot{};
+
+        [[nodiscard]] constexpr bool isNull() const noexcept
+        {
+            return owner.isNull() || slot.isNull();
+        }
+
+        [[nodiscard]] constexpr bool isValid() const noexcept
+        {
+            return !isNull();
+        }
+
+        [[nodiscard]] constexpr bool operator==(
+            const TaskId&
+        ) const noexcept = default;
+    };
 
     enum class ETaskAffinity : std::uint8_t
     {
@@ -29,13 +52,6 @@ namespace lux::task
     {
         void* target{};
         void (*invoke)(void*, void*) noexcept{};
-    };
-
-    struct TaskExecutionItem final
-    {
-        TaskId          id{};
-        ETaskAffinity   affinity{ETaskAffinity::WORKER};
-        TaskInvocation  invocation{};
     };
 
     enum class ETaskGraphError : std::uint8_t
@@ -50,14 +66,67 @@ namespace lux::task
     struct TaskGraphFailure final
     {
         ETaskGraphError code{ETaskGraphError::INVALID_TASK};
-        TaskId          task{};
-        TaskId          related{};
+        TaskId task{};
+        TaskId related{};
     };
 
-    class TaskGraphBuilder;
     class TaskGraph;
+    class TaskGraphBuilder;
     class TaskExecutionScratch;
+    class TaskSubmission;
     struct TaskExecutionBackendRef;
+
+    class LUX_CORE_TASK_PUBLIC TaskSubmission final
+    {
+    public:
+        ~TaskSubmission() noexcept;
+
+        TaskSubmission(TaskSubmission&& other) noexcept;
+        TaskSubmission& operator=(TaskSubmission&& other) noexcept;
+
+        TaskSubmission(const TaskSubmission&) = delete;
+        TaskSubmission& operator=(const TaskSubmission&) = delete;
+
+        [[nodiscard]] ETaskAffinity affinity() const noexcept;
+
+        /** Execute the task and report completion exactly once. */
+        void run() && noexcept;
+
+    private:
+        TaskSubmission(
+            ETaskAffinity affinity,
+            TaskInvocation invocation,
+            void* execution_context,
+            void* completion_state,
+            std::uint32_t dense_index,
+            bool (*on_owner_thread)(void*) noexcept,
+            void (*complete)(void*, std::uint32_t) noexcept
+        ) noexcept;
+
+        void abandonMovedFrom() noexcept;
+
+        ETaskAffinity affinity_{ETaskAffinity::WORKER};
+        TaskInvocation invocation_{};
+        void* execution_context_{};
+        void* completion_state_{};
+        std::uint32_t dense_index_{};
+        bool (*on_owner_thread_)(void*) noexcept{};
+        void (*complete_)(void*, std::uint32_t) noexcept{};
+        bool active_{};
+
+        friend LUX_CORE_TASK_PUBLIC void executeTaskGraph(
+            TaskExecutionBackendRef,
+            const TaskGraph&,
+            void*,
+            TaskExecutionScratch&
+        ) noexcept;
+    };
+
+    struct TaskExecutionBackendRef final
+    {
+        void* state{};
+        void (*submit)(void*, TaskSubmission&&) noexcept{};
+    };
 
     LUX_CORE_TASK_PUBLIC void executeTaskGraph(
         TaskExecutionBackendRef backend,
@@ -78,6 +147,7 @@ namespace lux::task
         TaskGraph(const TaskGraph&) = delete;
         TaskGraph& operator=(const TaskGraph&) = delete;
 
+        [[nodiscard]] TaskGraphId id() const noexcept;
         [[nodiscard]] std::size_t taskCount() const noexcept;
         [[nodiscard]] std::size_t dependencyCount() const noexcept;
         [[nodiscard]] std::size_t codeLifetimeCount() const noexcept;
@@ -121,7 +191,7 @@ namespace lux::task
         addDependency(TaskId before, TaskId after) noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, TaskGraphFailure>
-        pinCode(std::shared_ptr<const void> lifetime) noexcept;
+        pinCodeLifetime(std::shared_ptr<const void> lifetime) noexcept;
 
         [[nodiscard]] lux::cxx::expected<TaskGraph, TaskGraphFailure>
         build() && noexcept;
@@ -129,16 +199,6 @@ namespace lux::task
     private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
-    };
-
-    struct TaskExecutionBackendRef final
-    {
-        void* state{};
-        void (*execute_wave)(
-            void*,
-            std::span<const TaskExecutionItem>,
-            void*
-        ) noexcept{};
     };
 
     class LUX_CORE_TASK_PUBLIC TaskExecutionScratch final
@@ -162,6 +222,7 @@ namespace lux::task
         struct Impl;
         std::unique_ptr<Impl> impl_;
 
+        friend class TaskSubmission;
         friend LUX_CORE_TASK_PUBLIC void executeTaskGraph(
             TaskExecutionBackendRef,
             const TaskGraph&,
@@ -172,5 +233,4 @@ namespace lux::task
 
     [[nodiscard]] LUX_CORE_TASK_PUBLIC TaskExecutionBackendRef
     referenceTaskExecutionBackend() noexcept;
-
 }

@@ -2,6 +2,7 @@
 
 #include <lux/engine/ecs/World.hpp>
 
+#include <limits>
 #include <thread>
 
 namespace lux::ecs::detail
@@ -51,6 +52,35 @@ namespace lux::ecs::detail
                 true,
                 WorldEdit::EChangeEmission::SUPPRESS
             );
+        }
+
+        [[nodiscard]] static std::uint64_t identity(
+            const World& world
+        ) noexcept
+        {
+            return world.identity_;
+        }
+
+        [[nodiscard]] static std::size_t activeSectionCount(
+            const World& world
+        ) noexcept
+        {
+            return world.active_section_count_;
+        }
+
+        static void acquireSection(World& world) noexcept
+        {
+            require(
+                world.active_section_count_ !=
+                std::numeric_limits<std::size_t>::max()
+            );
+            ++world.active_section_count_;
+        }
+
+        static void releaseSection(World& world) noexcept
+        {
+            require(world.active_section_count_ != 0U);
+            --world.active_section_count_;
         }
     };
 

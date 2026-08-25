@@ -25,6 +25,10 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
+target_include_directories(
+    world_section
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+)
 
 target_compile_definitions(
     world_section

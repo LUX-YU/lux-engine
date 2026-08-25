@@ -18,9 +18,9 @@ namespace lux::ecs
     {
       public:
         WorldSectionInstance() noexcept = default;
-        WorldSectionInstance(WorldSectionInstance&&) noexcept = default;
-        WorldSectionInstance& operator=(WorldSectionInstance&&) noexcept = default;
-        ~WorldSectionInstance() = default;
+        WorldSectionInstance(WorldSectionInstance&&) noexcept;
+        WorldSectionInstance& operator=(WorldSectionInstance&&) noexcept = delete;
+        ~WorldSectionInstance() noexcept;
 
         WorldSectionInstance(const WorldSectionInstance&) = delete;
         WorldSectionInstance& operator=(const WorldSectionInstance&) = delete;
@@ -35,14 +35,23 @@ namespace lux::ecs
             return entities_;
         }
 
-        [[nodiscard]] bool empty() const noexcept
+        [[nodiscard]] bool active() const noexcept
         {
-            return entities_.empty();
+            return state_ == EState::ACTIVE;
         }
 
       private:
+        enum class EState : std::uint8_t
+        {
+            INACTIVE,
+            STAGED,
+            ACTIVE,
+        };
+
         WorldSectionId id_;
         std::vector<Entity> entities_;
+        std::uint64_t world_identity_{};
+        EState state_{EState::INACTIVE};
 
         friend class WorldSectionLoader;
     };

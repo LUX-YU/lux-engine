@@ -72,7 +72,7 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
-           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
+           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|WorldSectionStorageAccess|ComponentSnapshotStorageAccess|ComponentLoadAccess[.]hpp|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
             message(FATAL_ERROR
                 "Architecture: L1 source '${normalized}' restores retired ECS vocabulary."
             )

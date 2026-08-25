@@ -2,7 +2,9 @@
 
 #include <lux/engine/ecs/core/detail/ChangeJournal.hpp>
 
+#include <atomic>
 #include <cstdlib>
+#include <limits>
 #include <thread>
 #include <utility>
 
@@ -12,6 +14,24 @@
 
 namespace lux::ecs
 {
+    namespace
+    {
+        std::atomic<std::uint64_t> next_world_identity{1U};
+
+        [[nodiscard]] std::uint64_t allocateWorldIdentity() noexcept
+        {
+            const std::uint64_t value = next_world_identity.fetch_add(
+                1U,
+                std::memory_order_relaxed
+            );
+            detail::require(
+                value != 0U &&
+                value != std::numeric_limits<std::uint64_t>::max()
+            );
+            return value;
+        }
+    } // namespace
+
     [[noreturn]] void detail::contractFailure() noexcept
     {
 #if defined(_MSC_VER)
@@ -27,7 +47,8 @@ namespace lux::ecs
               detail::ChangeJournalConfigValue{
                   config.changes.initial_bytes,
                   config.changes.max_bytes})),
-          owner_thread_(std::this_thread::get_id())
+          owner_thread_(std::this_thread::get_id()),
+          identity_(allocateWorldIdentity())
     {
         detail::require(
             config.changes.initial_bytes <= config.changes.max_bytes &&
@@ -42,6 +63,7 @@ namespace lux::ecs
             state_ == detail::EWorldState::DESTROYING
         );
         detail::require(schedule_ == nullptr);
+        detail::require(active_section_count_ == 0U);
         state_ = detail::EWorldState::DESTROYING;
     }
 

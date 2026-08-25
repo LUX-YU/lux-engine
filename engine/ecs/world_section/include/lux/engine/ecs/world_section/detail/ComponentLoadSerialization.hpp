@@ -1,13 +1,12 @@
 #pragma once
 
 #include <lux/engine/ecs/World.hpp>
-#include <lux/engine/ecs/WorldSectionImage.hpp>
 #include <lux/engine/serialization/Serialization.hpp>
 
-#include <iterator>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
 #include <span>
-#include <utility>
-#include <vector>
 
 namespace lux::ecs::detail
 {
@@ -96,78 +95,13 @@ namespace lux::ecs::detail
         std::span<const Entity> ordinal_entities_;
     };
 
-    struct WorldSectionStorageAccess final
-    {
-        static void createEntities(
-            WorldEdit& edit,
-            std::span<Entity> entities
-        )
-        {
-            detail::require(edit.world_ != nullptr);
-            edit.world_->registry_.create(entities.begin(), entities.end());
-        }
-
-        static void destroyEntities(
-            WorldEdit& edit,
-            std::span<const Entity> entities
-        )
-        {
-            detail::require(edit.world_ != nullptr);
-            edit.world_->registry_.destroy(entities.begin(), entities.end());
-        }
-
-        static void destroyValidEntities(
-            WorldEdit& edit,
-            std::span<const Entity> entities
-        ) noexcept
-        {
-            detail::require(edit.world_ != nullptr);
-            for (const Entity entity : entities)
-            {
-                if (edit.world_->registry_.valid(entity))
-                    edit.world_->registry_.destroy(entity);
-            }
-        }
-
-        template <class Component>
-        [[nodiscard]] static auto& componentStorage(WorldEdit& edit)
-        {
-            detail::require(edit.world_ != nullptr);
-            return edit.world_->registry_.template storage<Component>();
-        }
-
-        template <class Component, class Storage>
-        static void insertTag(
-            Storage& storage,
-            std::span<const Entity> entities
-        )
-        {
-            storage.insert(entities.begin(), entities.end());
-        }
-
-        template <class Component, class Storage>
-        static void insertValues(
-            Storage& storage,
-            std::span<const Entity> entities,
-            std::vector<Component>& values
-        )
-        {
-            detail::require(entities.size() == values.size());
-            storage.insert(
-                entities.begin(),
-                entities.end(),
-                std::make_move_iterator(values.begin())
-            );
-        }
-    };
-
     [[nodiscard]] inline std::uint32_t readColumnU32(
         std::span<const std::byte> bytes,
         std::size_t index
     ) noexcept
     {
-        detail::require(index <= bytes.size());
-        detail::require(sizeof(std::uint32_t) <= bytes.size() - index);
+        require(index <= bytes.size());
+        require(sizeof(std::uint32_t) <= bytes.size() - index);
         std::uint32_t result{};
         for (std::size_t byte{}; byte < sizeof(result); ++byte)
         {
@@ -191,11 +125,7 @@ namespace lux::serialization
         {
             auto result = reader.readEntityReference();
             if (!result)
-            {
-                return lux::cxx::unexpected<SerializationFailure>(
-                    result.error()
-                );
-            }
+                return lux::cxx::unexpected<SerializationFailure>(result.error());
             entity = *result;
             return {};
         }

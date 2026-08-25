@@ -54,21 +54,4 @@ namespace lux::ecs::detail
         Iterator iterator_;
     };
 
-    struct ComponentSnapshotStorageAccess final
-    {
-        template <class Component>
-        [[nodiscard]] static const auto* storage(
-            const World& world
-        ) noexcept
-        {
-            return world.registry_.template storage<Component>();
-        }
-
-        template <class Component>
-        [[nodiscard]] static auto& storage(WorldEdit& edit)
-        {
-            require(edit.world_ != nullptr);
-            return edit.world_->registry_.template storage<Component>();
-        }
-    };
 } // namespace lux::ecs::detail

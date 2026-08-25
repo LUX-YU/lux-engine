@@ -391,9 +391,38 @@ int main()
     auto second_image = validImage(sectionId(2U));
     auto second = WorldSectionLoader::load(world, context.loads, second_image);
     assert(second);
+    assert(second->active());
     assert(fixedCount(world) == 6U);
+
+    {
+        World wrong_world;
+        auto wrong = WorldSectionLoader::unload(wrong_world, *second);
+        assert(!wrong);
+        assert(wrong.error().code == EWorldSectionError::WRONG_WORLD);
+        assert(second->active());
+    }
+
+    {
+        auto empty_image = WorldSectionImage::open(buildFixture(
+            sectionId(3U),
+            0U,
+            {}
+        ));
+        assert(empty_image);
+        auto empty_section = WorldSectionLoader::load(
+            world,
+            context.loads,
+            *empty_image
+        );
+        assert(empty_section);
+        assert(empty_section->active());
+        assert(empty_section->entities().empty());
+        assert(WorldSectionLoader::unload(world, *empty_section));
+        assert(!empty_section->active());
+    }
+
     assert(WorldSectionLoader::unload(world, *first));
-    assert(first->empty());
+    assert(!first->active());
     assert(fixedCount(world) == 3U);
     for (const Entity entity : first_entities)
         assert(!world.valid(entity));
@@ -560,6 +589,6 @@ int main()
         edit->destroy(stale_entity);
     }
     assert(WorldSectionLoader::unload(world, *second));
-    assert(second->empty());
+    assert(!second->active());
     assert(fixedCount(world) == 0U);
 }

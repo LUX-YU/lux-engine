@@ -49,6 +49,7 @@ target_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/core/pinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/hierarchy/pinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/transform/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/world_section/pinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/world_section/test
 )
 target_compile_definitions(

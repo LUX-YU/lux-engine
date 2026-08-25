@@ -1,7 +1,8 @@
 #include <lux/engine/ecs/WorldSectionLoader.hpp>
 
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
-#include <lux/engine/ecs/world_section/detail/ComponentLoadAccess.hpp>
+#include <lux/engine/ecs/world_section/detail/ComponentLoadSerialization.hpp>
+#include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
 
 #include <algorithm>
 #include <new>
@@ -10,6 +11,24 @@
 
 namespace lux::ecs
 {
+    WorldSectionInstance::WorldSectionInstance(
+        WorldSectionInstance&& other
+    ) noexcept
+        : id_(std::move(other.id_)),
+          entities_(std::move(other.entities_)),
+          world_identity_(std::exchange(other.world_identity_, 0U)),
+          state_(std::exchange(other.state_, EState::INACTIVE))
+    {
+        detail::require(state_ != EState::STAGED);
+        other.id_ = {};
+        other.entities_.clear();
+    }
+
+    WorldSectionInstance::~WorldSectionInstance() noexcept
+    {
+        detail::require(state_ == EState::INACTIVE);
+    }
+
     namespace
     {
         [[nodiscard]] WorldSectionFailure failure(
@@ -127,7 +146,7 @@ namespace lux::ecs
             auto edit = detail::WorldColdAccess::sectionEdit(world);
             try
             {
-                detail::WorldSectionStorageAccess::createEntities(
+                detail::WorldSectionTransactionAccess::createEntities(
                     edit,
                     instance.entities_
                 );
@@ -171,7 +190,7 @@ namespace lux::ecs
                     );
                     if (!loaded)
                     {
-                        detail::WorldSectionStorageAccess::destroyValidEntities(
+                        detail::WorldSectionTransactionAccess::destroyValidEntities(
                             edit,
                             instance.entities_
                         );
@@ -186,7 +205,7 @@ namespace lux::ecs
             }
             catch (const std::bad_alloc&)
             {
-                detail::WorldSectionStorageAccess::destroyValidEntities(
+                detail::WorldSectionTransactionAccess::destroyValidEntities(
                     edit,
                     instance.entities_
                 );
@@ -197,7 +216,7 @@ namespace lux::ecs
             }
             catch (...)
             {
-                detail::WorldSectionStorageAccess::destroyValidEntities(
+                detail::WorldSectionTransactionAccess::destroyValidEntities(
                     edit,
                     instance.entities_
                 );
@@ -210,6 +229,9 @@ namespace lux::ecs
             edit = {};
             if (!instance.entities_.empty())
                 detail::markWorldChangeHistoryLoss(world);
+            instance.world_identity_ = detail::WorldColdAccess::identity(world);
+            instance.state_ = WorldSectionInstance::EState::ACTIVE;
+            detail::WorldColdAccess::acquireSection(world);
             return instance;
         }
         catch (const std::bad_alloc&)
@@ -238,10 +260,17 @@ namespace lux::ecs
                 failure(EWorldSectionError::WORLD_BUSY)
             );
         }
-        if (instance.entities_.empty())
+        if (instance.state_ != WorldSectionInstance::EState::ACTIVE)
         {
-            instance.id_ = {};
-            return {};
+            return lux::cxx::unexpected(
+                failure(EWorldSectionError::INVALID_INSTANCE_STATE)
+            );
+        }
+        if (instance.world_identity_ != detail::WorldColdAccess::identity(world))
+        {
+            return lux::cxx::unexpected(
+                failure(EWorldSectionError::WRONG_WORLD)
+            );
         }
 
         try
@@ -255,14 +284,18 @@ namespace lux::ecs
             }
 
             auto edit = detail::WorldColdAccess::sectionEdit(world);
-            detail::WorldSectionStorageAccess::destroyEntities(
+            detail::WorldSectionTransactionAccess::destroyEntities(
                 edit,
                 live_entities
             );
             edit = {};
             instance.entities_.clear();
             instance.id_ = {};
-            detail::markWorldChangeHistoryLoss(world);
+            instance.world_identity_ = 0U;
+            instance.state_ = WorldSectionInstance::EState::INACTIVE;
+            detail::WorldColdAccess::releaseSection(world);
+            if (!live_entities.empty())
+                detail::markWorldChangeHistoryLoss(world);
             return {};
         }
         catch (const std::bad_alloc&)

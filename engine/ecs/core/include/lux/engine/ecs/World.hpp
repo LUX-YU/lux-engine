@@ -18,6 +18,8 @@
 namespace lux::ecs
 {
     class Schedule;
+    class ComponentLoadBinding;
+    class ComponentSnapshotBinding;
     class SystemFrame;
     class SystemStart;
     class WorldSnapshot;
@@ -58,8 +60,7 @@ namespace lux::ecs
         struct WorldColdAccess;
         struct WorldEntityAccess;
         struct PersistenceStorageAccess;
-        struct WorldSectionStorageAccess;
-        struct ComponentSnapshotStorageAccess;
+        struct WorldSectionTransactionAccess;
 
         enum class EWorldState : std::uint8_t
         {
@@ -143,8 +144,9 @@ namespace lux::ecs
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldEditAccess;
         friend struct detail::WorldColdAccess;
-        friend struct detail::WorldSectionStorageAccess;
-        friend struct detail::ComponentSnapshotStorageAccess;
+        friend class ComponentLoadBinding;
+        friend class ComponentSnapshotBinding;
+        friend struct detail::WorldSectionTransactionAccess;
     };
 
     class LUX_ENGINE_ECS_CORE_PUBLIC World final
@@ -201,6 +203,8 @@ namespace lux::ecs
         std::thread::id owner_thread_;
         detail::EWorldState state_{detail::EWorldState::IDLE};
         Schedule* schedule_{};
+        std::uint64_t identity_{};
+        std::size_t active_section_count_{};
 
         friend class WorldEdit;
         friend class Schedule;
@@ -212,8 +216,9 @@ namespace lux::ecs
         friend struct detail::WorldColdAccess;
         friend struct detail::WorldEntityAccess;
         friend struct detail::PersistenceStorageAccess;
-        friend struct detail::WorldSectionStorageAccess;
-        friend struct detail::ComponentSnapshotStorageAccess;
+        friend class ComponentLoadBinding;
+        friend class ComponentSnapshotBinding;
+        friend struct detail::WorldSectionTransactionAccess;
 
         template <class Component>
         friend ComponentOperations componentOperations() noexcept;

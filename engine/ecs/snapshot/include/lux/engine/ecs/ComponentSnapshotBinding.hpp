@@ -40,25 +40,39 @@ namespace lux::ecs
         };
 #endif
 
+    } // namespace detail
+
+    class ComponentSnapshotBinding final
+    {
+      public:
+        [[nodiscard]] constexpr const ComponentSchema& schema() const noexcept
+        {
+            return *schema_;
+        }
+
+      private:
         template <class Component>
-        void cloneComponentStorage(const World& source, WorldEdit& target)
+        static void cloneStorage(const World& source, WorldEdit& target)
         {
 #if defined(LUX_ECS_SNAPSHOT_TESTING)
-            ++ComponentSnapshotTestStats::clone_calls;
-            ++ComponentSnapshotTestStats::storage_lookups;
+            ++detail::ComponentSnapshotTestStats::clone_calls;
+            ++detail::ComponentSnapshotTestStats::storage_lookups;
 #endif
             const auto* source_storage =
-                ComponentSnapshotStorageAccess::storage<Component>(source);
+                source.registry_.template storage<Component>();
             if (source_storage == nullptr || source_storage->empty())
                 return;
 
+            detail::require(target.world_ != nullptr);
             auto& target_storage =
-                ComponentSnapshotStorageAccess::storage<Component>(target);
+                target.world_->registry_.template storage<Component>();
             target_storage.reserve(source_storage->size());
             auto entities = source_storage->each();
             using Iterator = decltype(entities.begin());
-            const StorageEntityIterator<Iterator> first(entities.begin());
-            const StorageEntityIterator<Iterator> last(entities.end());
+            const detail::StorageEntityIterator<Iterator> first(
+                entities.begin()
+            );
+            const detail::StorageEntityIterator<Iterator> last(entities.end());
             if constexpr (std::is_empty_v<Component>)
             {
                 target_storage.insert(first, last);
@@ -72,17 +86,7 @@ namespace lux::ecs
                 );
             }
         }
-    } // namespace detail
 
-    class ComponentSnapshotBinding final
-    {
-      public:
-        [[nodiscard]] constexpr const ComponentSchema& schema() const noexcept
-        {
-            return *schema_;
-        }
-
-      private:
         constexpr ComponentSnapshotBinding(
             const ComponentSchema& schema,
             detail::CloneComponentStorageFn clone
@@ -132,7 +136,7 @@ namespace lux::ecs
         static_assert(std::copy_constructible<Component>);
         return ComponentSnapshotBinding{
             schema,
-            &detail::cloneComponentStorage<Component>
+            &ComponentSnapshotBinding::cloneStorage<Component>
         };
     }
 } // namespace lux::ecs

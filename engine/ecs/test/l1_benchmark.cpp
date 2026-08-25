@@ -12,7 +12,8 @@
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 #include <lux/engine/ecs/hierarchy/detail/HierarchyIndexTestAccess.hpp>
 #include <lux/engine/ecs/transform/detail/TransformSystemTestAccess.hpp>
-#include <lux/engine/ecs/world_section/detail/ComponentLoadAccess.hpp>
+#include <lux/engine/ecs/world_section/detail/ComponentLoadSerialization.hpp>
+#include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/serialization/Serialization.hpp>
 
@@ -1083,7 +1084,7 @@ namespace
                 lux::ecs::World world;
                 std::vector<lux::ecs::Entity> entities(size);
                 auto edit = lux::ecs::detail::WorldColdAccess::sectionEdit(world);
-                lux::ecs::detail::WorldSectionStorageAccess::createEntities(
+                lux::ecs::detail::WorldSectionTransactionAccess::createEntities(
                     edit,
                     entities
                 );
@@ -1131,25 +1132,18 @@ namespace
                 );
                 return Observation{};
             });
-            evidence.measure(prefix + "_predecoded_fixed_insert", size, [&]
+            evidence.measure(prefix + "_world_edit_insert", size, [&]
             {
                 lux::ecs::World world;
-                auto local_entities = entities;
-                auto local_values = values;
-                auto edit = lux::ecs::detail::WorldColdAccess::sectionEdit(world);
-                lux::ecs::detail::WorldSectionStorageAccess::createEntities(
-                    edit,
-                    local_entities
-                );
-                auto& storage = lux::ecs::detail::WorldSectionStorageAccess::
-                    componentStorage<BenchmarkFixed32<0>>(edit);
-                storage.reserve(local_entities.size());
-                lux::ecs::detail::WorldSectionStorageAccess::insertValues<
-                    BenchmarkFixed32<0>>(
-                        storage,
-                        local_entities,
-                        local_values
-                    );
+                auto edit_result = world.edit();
+                if (!edit_result) std::abort();
+                auto edit = std::move(*edit_result);
+                edit.reserve<BenchmarkFixed32<0>>(size);
+                for (std::size_t index{}; index < size; ++index)
+                {
+                    const auto entity = edit.create();
+                    edit.emplace<BenchmarkFixed32<0>>(entity, values[index]);
+                }
                 return Observation{};
             });
         }

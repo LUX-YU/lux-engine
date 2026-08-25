@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/ComponentSchema.hpp>
 #include <lux/engine/ecs/WorldSectionImage.hpp>
-#include <lux/engine/ecs/world_section/detail/ComponentLoadAccess.hpp>
+#include <lux/engine/ecs/world_section/detail/ComponentLoadSerialization.hpp>
 #include <lux/engine/serialization/Traits.hpp>
 
 #include <algorithm>
@@ -60,136 +60,6 @@ namespace lux::ecs
             );
         }
 
-        template <class Component>
-        [[nodiscard]] lux::serialization::SerializationResult loadColumn(
-            WorldEdit& edit,
-            std::span<const Entity> row_entities,
-            std::span<const Entity> ordinal_entities,
-            const WorldSectionColumnView& column,
-            lux::serialization::SerializationLimits limits
-        ) noexcept
-        {
-            if (row_entities.size() != column.rowCount())
-                return invalidColumnValue(0U);
-
-            try
-            {
-                auto& storage =
-                    WorldSectionStorageAccess::componentStorage<Component>(
-                        edit
-                    );
-#if defined(LUX_ECS_WORLD_SECTION_TESTING)
-                ++ComponentLoadTestStats::load_calls;
-                ++ComponentLoadTestStats::storage_lookups;
-#endif
-                if constexpr (std::is_empty_v<Component>)
-                {
-                    if (column.valueEncoding() !=
-                        EWorldSectionValueEncoding::TAG)
-                    {
-                        return invalidColumnValue(0U);
-                    }
-                    WorldSectionStorageAccess::insertTag<Component>(
-                        storage,
-                        row_entities
-                    );
-                    return {};
-                }
-                else
-                {
-                    constexpr std::size_t kBatchRows = 4096U;
-                    storage.reserve(storage.size() + row_entities.size());
-                    std::vector<Component> values;
-                    values.reserve(std::min(
-                        row_entities.size(),
-                        kBatchRows
-                    ));
-                    for (std::size_t batch_begin{};
-                         batch_begin < row_entities.size();
-                         batch_begin += kBatchRows)
-                    {
-                        const std::size_t batch_size = std::min(
-                            kBatchRows,
-                            row_entities.size() - batch_begin
-                        );
-                        values.clear();
-                        for (std::size_t local{}; local < batch_size; ++local)
-                        {
-                            const std::size_t row = batch_begin + local;
-                            std::span<const std::byte> row_bytes;
-                            if (column.valueEncoding() ==
-                                EWorldSectionValueEncoding::FIXED)
-                            {
-                                const std::size_t begin =
-                                    row * column.fixedStride();
-                                row_bytes = column.payload().subspan(
-                                    begin,
-                                    column.fixedStride()
-                                );
-                            }
-                            else if (column.valueEncoding() ==
-                                EWorldSectionValueEncoding::VARIABLE)
-                            {
-                                const auto offsets = column.offsetBytes();
-                                const std::uint32_t begin = readColumnU32(
-                                    offsets,
-                                    row * sizeof(std::uint32_t)
-                                );
-                                const std::uint32_t end = readColumnU32(
-                                    offsets,
-                                    (row + 1U) * sizeof(std::uint32_t)
-                                );
-                                row_bytes = column.payload().subspan(
-                                    begin,
-                                    end - begin
-                                );
-                            }
-                            else
-                            {
-                                return invalidColumnValue(0U);
-                            }
-
-                            values.emplace_back();
-                            ComponentLoadReader reader(
-                                row_bytes,
-                                ordinal_entities,
-                                limits
-                            );
-                            auto decoded = lux::serialization::read(
-                                reader,
-                                values.back()
-                            );
-                            if (!decoded)
-                                return decoded;
-                            if (reader.remaining() != 0U)
-                            {
-                                return invalidColumnValue(reader.offset());
-                            }
-                        }
-                        WorldSectionStorageAccess::insertValues<Component>(
-                            storage,
-                            row_entities.subspan(batch_begin, batch_size),
-                            values
-                        );
-                    }
-                    return {};
-                }
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected<
-                    lux::serialization::SerializationFailure>(
-                    lux::serialization::SerializationFailure{
-                        lux::serialization::ESerializationError::ALLOCATION_FAILURE,
-                        0U
-                    }
-                );
-            }
-            catch (...)
-            {
-                return invalidColumnValue(0U);
-            }
-        }
     } // namespace detail
 
     class ComponentLoadBinding final
@@ -212,6 +82,125 @@ namespace lux::ecs
         }
 
       private:
+        template <class Component>
+        [[nodiscard]] static lux::serialization::SerializationResult
+        loadColumn(
+            WorldEdit& edit,
+            std::span<const Entity> row_entities,
+            std::span<const Entity> ordinal_entities,
+            const WorldSectionColumnView& column,
+            lux::serialization::SerializationLimits limits
+        ) noexcept
+        {
+            if (row_entities.size() != column.rowCount())
+                return detail::invalidColumnValue(0U);
+
+            try
+            {
+                detail::require(edit.world_ != nullptr);
+                auto& storage =
+                    edit.world_->registry_.template storage<Component>();
+#if defined(LUX_ECS_WORLD_SECTION_TESTING)
+                ++detail::ComponentLoadTestStats::load_calls;
+                ++detail::ComponentLoadTestStats::storage_lookups;
+#endif
+                if constexpr (std::is_empty_v<Component>)
+                {
+                    if (column.valueEncoding() !=
+                        EWorldSectionValueEncoding::TAG)
+                        return detail::invalidColumnValue(0U);
+                    storage.insert(row_entities.begin(), row_entities.end());
+                    return {};
+                }
+
+                constexpr std::size_t kBatchRows = 4096U;
+                storage.reserve(storage.size() + row_entities.size());
+                std::vector<Component> values;
+                values.reserve(std::min(row_entities.size(), kBatchRows));
+                for (std::size_t batch_begin{};
+                     batch_begin < row_entities.size();
+                     batch_begin += kBatchRows)
+                {
+                    const std::size_t batch_size = std::min(
+                        kBatchRows,
+                        row_entities.size() - batch_begin
+                    );
+                    values.clear();
+                    for (std::size_t local{}; local < batch_size; ++local)
+                    {
+                        const std::size_t row = batch_begin + local;
+                        std::span<const std::byte> row_bytes;
+                        if (column.valueEncoding() ==
+                            EWorldSectionValueEncoding::FIXED)
+                        {
+                            const std::size_t begin =
+                                row * column.fixedStride();
+                            row_bytes = column.payload().subspan(
+                                begin,
+                                column.fixedStride()
+                            );
+                        }
+                        else if (column.valueEncoding() ==
+                            EWorldSectionValueEncoding::VARIABLE)
+                        {
+                            const auto offsets = column.offsetBytes();
+                            const std::uint32_t begin = detail::readColumnU32(
+                                offsets,
+                                row * sizeof(std::uint32_t)
+                            );
+                            const std::uint32_t end = detail::readColumnU32(
+                                offsets,
+                                (row + 1U) * sizeof(std::uint32_t)
+                            );
+                            row_bytes = column.payload().subspan(
+                                begin,
+                                end - begin
+                            );
+                        }
+                        else
+                        {
+                            return detail::invalidColumnValue(0U);
+                        }
+
+                        values.emplace_back();
+                        detail::ComponentLoadReader reader(
+                            row_bytes,
+                            ordinal_entities,
+                            limits
+                        );
+                        auto decoded = lux::serialization::read(
+                            reader,
+                            values.back()
+                        );
+                        if (!decoded)
+                            return decoded;
+                        if (reader.remaining() != 0U)
+                            return detail::invalidColumnValue(reader.offset());
+                    }
+                    storage.insert(
+                        row_entities.begin() + batch_begin,
+                        row_entities.begin() + batch_begin + batch_size,
+                        std::make_move_iterator(values.begin())
+                    );
+                }
+                return {};
+            }
+            catch (const std::bad_alloc&)
+            {
+                return lux::cxx::unexpected<
+                    lux::serialization::SerializationFailure>(
+                    lux::serialization::SerializationFailure{
+                        lux::serialization::ESerializationError::ALLOCATION_FAILURE,
+                        0U
+                    }
+                );
+            }
+            catch (...)
+            {
+                return detail::invalidColumnValue(0U);
+            }
+        }
+
         constexpr ComponentLoadBinding(
             const ComponentSchema& schema,
             EWorldSectionValueEncoding value_encoding,
@@ -286,7 +275,7 @@ namespace lux::ecs
             schema,
             encoding,
             stride,
-            &detail::loadColumn<Component>
+            &ComponentLoadBinding::loadColumn<Component>
         };
     }
 } // namespace lux::ecs

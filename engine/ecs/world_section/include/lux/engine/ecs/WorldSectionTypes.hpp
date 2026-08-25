@@ -43,6 +43,8 @@ namespace lux::ecs
         BINDING_MISMATCH,
         DECODE_FAILED,
         ALLOCATION_FAILURE,
+        WRONG_WORLD,
+        INVALID_INSTANCE_STATE,
     };
 
     struct WorldSectionFailure final

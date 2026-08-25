@@ -50,8 +50,47 @@ namespace lux::ecs
 
         WorldSectionId id_;
         std::vector<Entity> entities_;
+        std::vector<std::shared_ptr<const void>> code_lifetimes_;
         std::uint64_t world_identity_{};
+        std::uint64_t lease_{};
         EState state_{EState::INACTIVE};
+
+        friend class WorldSectionLoadBatch;
+    };
+
+    class LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC WorldSectionLoadBatch final
+    {
+      public:
+        WorldSectionLoadBatch(const WorldSectionLoadBatch&) = delete;
+        WorldSectionLoadBatch& operator=(const WorldSectionLoadBatch&) = delete;
+        WorldSectionLoadBatch(WorldSectionLoadBatch&&) noexcept;
+        WorldSectionLoadBatch& operator=(WorldSectionLoadBatch&&) noexcept;
+        ~WorldSectionLoadBatch() noexcept;
+
+        [[nodiscard]] lux::cxx::expected<
+            void,
+            WorldSectionFailure>
+        load(
+            const ComponentLoadSet& loads,
+            const WorldSectionImage& image,
+            WorldSectionInstance& inactive_output
+        ) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<
+            void,
+            WorldSectionFailure>
+        unload(
+            WorldSectionInstance& instance
+        ) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, WorldSectionFailure>
+        commit() noexcept;
+
+      private:
+        struct Impl;
+        explicit WorldSectionLoadBatch(std::unique_ptr<Impl> impl) noexcept;
+
+        std::unique_ptr<Impl> impl_;
 
         friend class WorldSectionLoader;
     };
@@ -60,22 +99,12 @@ namespace lux::ecs
     {
       public:
         [[nodiscard]] static lux::cxx::expected<
-            WorldSectionInstance,
+            WorldSectionLoadBatch,
             WorldSectionFailure>
-        load(
+        begin(
             World& world,
-            const ComponentLoadSet& loads,
-            const WorldSectionImage& image,
             WorldSectionLoadScratchBudget scratch,
             lux::serialization::SerializationLimits limits
-        ) noexcept;
-
-        [[nodiscard]] static lux::cxx::expected<
-            void,
-            WorldSectionFailure>
-        unload(
-            World& world,
-            WorldSectionInstance& instance
         ) noexcept;
     };
 } // namespace lux::ecs

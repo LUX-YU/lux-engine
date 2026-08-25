@@ -22,6 +22,7 @@ namespace lux::ecs
 {
     class ComponentLoadSet;
     class ComponentLoadBinding;
+    class WorldSectionLoadBatch;
     class WorldSectionLoader;
 
     namespace detail
@@ -112,6 +113,11 @@ namespace lux::ecs
                     if (column.valueEncoding() !=
                         EWorldSectionValueEncoding::TAG)
                         return detail::invalidColumnValue(0U);
+                    trackMembership(
+                        edit,
+                        entt::type_hash<Component>::value(),
+                        row_entities
+                    );
                     storage.insert(row_entities.begin(), row_entities.end());
                     return {};
                 }
@@ -184,6 +190,11 @@ namespace lux::ecs
                         if (reader.remaining() != 0U)
                             return detail::invalidColumnValue(reader.offset());
                     }
+                    trackMembership(
+                        edit,
+                        entt::type_hash<Component>::value(),
+                        row_entities.subspan(batch_begin, batch_size)
+                    );
                     storage.insert(
                         row_entities.begin() + batch_begin,
                         row_entities.begin() + batch_begin + batch_size,
@@ -210,25 +221,35 @@ namespace lux::ecs
 
         constexpr ComponentLoadBinding(
             const ComponentSchema& schema,
+            std::uint64_t storage,
             EWorldSectionValueEncoding value_encoding,
             std::uint32_t fixed_stride,
             detail::LoadComponentColumnFn load
         ) noexcept
             : schema_(&schema),
+              storage_(storage),
               value_encoding_(value_encoding),
               fixed_stride_(fixed_stride),
               load_(load)
         {
         }
 
+        LUX_ENGINE_ECS_WORLD_SECTION_PUBLIC static void trackMembership(
+            WorldEdit& edit,
+            std::uint64_t storage,
+            std::span<const Entity> entities
+        ) noexcept;
+
         template <class Component>
         friend constexpr ComponentLoadBinding bindComponentLoad(
             const ComponentSchema&
         ) noexcept;
         friend class ComponentLoadSet;
+        friend class WorldSectionLoadBatch;
         friend class WorldSectionLoader;
 
         const ComponentSchema* schema_{};
+        std::uint64_t storage_{};
         EWorldSectionValueEncoding value_encoding_{};
         std::uint32_t fixed_stride_{};
         detail::LoadComponentColumnFn load_{};
@@ -279,6 +300,7 @@ namespace lux::ecs
             : 0U;
         return ComponentLoadBinding{
             schema,
+            entt::type_hash<Component>::value(),
             encoding,
             stride,
             &ComponentLoadBinding::loadColumn<Component>

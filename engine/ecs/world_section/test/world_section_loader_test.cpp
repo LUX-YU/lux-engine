@@ -41,6 +41,11 @@ namespace test
     {
         std::uint32_t value{};
     };
+
+    struct GameplayAdded final
+    {
+        std::uint32_t value{};
+    };
 } // namespace test
 
 namespace lux::meta
@@ -271,19 +276,49 @@ namespace
         return std::move(*opened);
     }
 
-    [[nodiscard]] auto loadSection(
+    [[nodiscard]] lux::cxx::expected<
+        WorldSectionInstance,
+        WorldSectionFailure>
+    loadSection(
         World& world,
         const ComponentLoadSet& loads,
         const WorldSectionImage& image
     ) noexcept
     {
-        return WorldSectionLoader::load(
+        auto begun = WorldSectionLoader::begin(
             world,
-            loads,
-            image,
             fixtureLoadScratchBudget(),
             lux::serialization::SerializationLimits{}
         );
+        if (!begun)
+            return lux::cxx::unexpected(begun.error());
+        WorldSectionInstance instance;
+        auto staged = begun->load(loads, image, instance);
+        if (!staged)
+            return lux::cxx::unexpected(staged.error());
+        auto committed = begun->commit();
+        if (!committed)
+            return lux::cxx::unexpected(committed.error());
+        return std::move(instance);
+    }
+
+    [[nodiscard]] lux::cxx::expected<void, WorldSectionFailure>
+    unloadSection(
+        World& world,
+        WorldSectionInstance& instance
+    ) noexcept
+    {
+        auto begun = WorldSectionLoader::begin(
+            world,
+            fixtureLoadScratchBudget(),
+            lux::serialization::SerializationLimits{}
+        );
+        if (!begun)
+            return lux::cxx::unexpected(begun.error());
+        auto staged = begun->unload(instance);
+        if (!staged)
+            return staged;
+        return begun->commit();
     }
 
     [[nodiscard]] std::size_t fixedCount(const World& world)
@@ -309,6 +344,16 @@ namespace
         {
             auto current = frame.changes(cursor_);
             last_status_ = current.status();
+            last_size_ = current.size();
+            last_added_ = 0U;
+            last_removed_ = 0U;
+            for (const auto& change : current)
+            {
+                if (change.kind == EComponentChangeKind::ADDED)
+                    ++last_added_;
+                if (change.kind == EComponentChangeKind::REMOVED)
+                    ++last_removed_;
+            }
             if (retain_next_)
             {
                 retained_ = std::move(current);
@@ -337,10 +382,28 @@ namespace
             return last_status_;
         }
 
+        [[nodiscard]] std::size_t lastSize() const noexcept
+        {
+            return last_size_;
+        }
+
+        [[nodiscard]] std::size_t lastAdded() const noexcept
+        {
+            return last_added_;
+        }
+
+        [[nodiscard]] std::size_t lastRemoved() const noexcept
+        {
+            return last_removed_;
+        }
+
       private:
         ChangeCursor<test::Fixed> cursor_;
         ComponentChanges<test::Fixed> retained_;
         EChangeReadStatus last_status_{EChangeReadStatus::CURRENT};
+        std::size_t last_size_{};
+        std::size_t last_added_{};
+        std::size_t last_removed_{};
         bool retain_next_{};
     };
 
@@ -379,6 +442,54 @@ namespace
 int main()
 {
     auto context = fixtureContext();
+
+    {
+        World batch_world;
+        auto resident_image = validImage(sectionId(1U));
+        auto resident = loadSection(
+            batch_world,
+            context.loads,
+            resident_image
+        );
+        assert(resident);
+
+        WorldSectionInstance replacement;
+        auto replacement_image = validImage(sectionId(2U));
+        auto begun = WorldSectionLoader::begin(
+            batch_world,
+            fixtureLoadScratchBudget(),
+            lux::serialization::SerializationLimits{}
+        );
+        assert(begun);
+        assert(begun->unload(*resident));
+        assert(begun->load(context.loads, replacement_image, replacement));
+        assert(!resident->active());
+        assert(!replacement.active());
+        assert(begun->commit());
+        assert(!resident->active());
+        assert(replacement.active());
+        assert(fixedCount(batch_world) == 3U);
+        assert(unloadSection(batch_world, replacement));
+
+        WorldSectionInstance rolled_back;
+        {
+            auto rollback = WorldSectionLoader::begin(
+                batch_world,
+                fixtureLoadScratchBudget(),
+                lux::serialization::SerializationLimits{}
+            );
+            assert(rollback);
+            assert(rollback->load(
+                context.loads,
+                resident_image,
+                rolled_back
+            ));
+            assert(!rolled_back.active());
+        }
+        assert(!rolled_back.active());
+        assert(fixedCount(batch_world) == 0U);
+    }
+
     World world;
 
     detail::ComponentLoadTestStats::reset();
@@ -413,7 +524,7 @@ int main()
 
     {
         World wrong_world;
-        auto wrong = WorldSectionLoader::unload(wrong_world, *second);
+        auto wrong = unloadSection(wrong_world, *second);
         assert(!wrong);
         assert(wrong.error().code == EWorldSectionError::WRONG_WORLD);
         assert(second->active());
@@ -434,11 +545,11 @@ int main()
         assert(empty_section);
         assert(empty_section->active());
         assert(empty_section->entities().empty());
-        assert(WorldSectionLoader::unload(world, *empty_section));
+        assert(unloadSection(world, *empty_section));
         assert(!empty_section->active());
     }
 
-    assert(WorldSectionLoader::unload(world, *first));
+    assert(unloadSection(world, *first));
     assert(!first->active());
     assert(fixedCount(world) == 3U);
     for (const Entity entity : first_entities)
@@ -455,7 +566,7 @@ int main()
             scheduled_image
         );
         assert(scheduled);
-        assert(WorldSectionLoader::unload(world, *scheduled));
+        assert(unloadSection(world, *scheduled));
     }
 
     {
@@ -472,11 +583,14 @@ int main()
     }
 
     const std::size_t before_failure = fixedCount(world);
+    const std::uint64_t epoch_before_failure =
+        detail::worldChangeEpoch(world);
     auto bad_image = validImage(sectionId(1U), true);
     auto bad = loadSection(world, context.loads, bad_image);
     assert(!bad);
     assert(bad.error().code == EWorldSectionError::DECODE_FAILED);
     assert(fixedCount(world) == before_failure);
+    assert(detail::worldChangeEpoch(world) == epoch_before_failure);
 
     auto allocation_image = WorldSectionImage::open(buildFixture(
         sectionId(1U),
@@ -575,10 +689,14 @@ int main()
         assert((*retaining->retained().begin()).entity == history_entity);
         retaining->release();
         schedule.run(1.0F / 60.0F, 3U);
-        assert(
-            retaining->lastStatus() == EChangeReadStatus::RESYNC_REQUIRED
-        );
-        assert(WorldSectionLoader::unload(history_world, *history_section));
+        assert(retaining->lastStatus() == EChangeReadStatus::CURRENT);
+        assert(retaining->lastSize() == 3U);
+        assert(retaining->lastAdded() == 3U);
+        assert(unloadSection(history_world, *history_section));
+        schedule.run(1.0F / 60.0F, 4U);
+        assert(retaining->lastStatus() == EChangeReadStatus::CURRENT);
+        assert(retaining->lastSize() == 3U);
+        assert(retaining->lastRemoved() == 3U);
     }
 
     {
@@ -600,12 +718,15 @@ int main()
     }
 
     const auto stale_entity = second->entities().front();
+    const auto gameplay_entity = second->entities()[1U];
     {
         auto edit = world.edit();
         assert(edit);
+        edit->emplace<test::GameplayAdded>(gameplay_entity, 42U);
         edit->destroy(stale_entity);
     }
-    assert(WorldSectionLoader::unload(world, *second));
+    assert(world.find<test::GameplayAdded>(gameplay_entity) != nullptr);
+    assert(unloadSection(world, *second));
     assert(!second->active());
     assert(fixedCount(world) == 0U);
 }

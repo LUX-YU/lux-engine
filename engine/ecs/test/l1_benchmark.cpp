@@ -882,6 +882,45 @@ namespace
         std::size_t columns{};
     };
 
+    [[nodiscard]] lux::cxx::expected<
+        lux::ecs::WorldSectionInstance,
+        lux::ecs::WorldSectionFailure>
+    loadBenchmarkSection(
+        lux::ecs::World& world,
+        const lux::ecs::ComponentLoadSet& loads,
+        const lux::ecs::WorldSectionImage& image
+    ) noexcept
+    {
+        auto begun = lux::ecs::WorldSectionLoader::begin(
+            world,
+            lux::ecs::world_section::test::fixtureLoadScratchBudget(),
+            lux::serialization::SerializationLimits{}
+        );
+        if (!begun)
+            return lux::cxx::unexpected(begun.error());
+        lux::ecs::WorldSectionInstance instance;
+        auto staged = begun->load(loads, image, instance);
+        if (!staged)
+            return lux::cxx::unexpected(staged.error());
+        auto committed = begun->commit();
+        if (!committed)
+            return lux::cxx::unexpected(committed.error());
+        return std::move(instance);
+    }
+
+    [[nodiscard]] bool unloadBenchmarkSection(
+        lux::ecs::World& world,
+        lux::ecs::WorldSectionInstance& instance
+    ) noexcept
+    {
+        auto begun = lux::ecs::WorldSectionLoader::begin(
+            world,
+            lux::ecs::world_section::test::fixtureLoadScratchBudget(),
+            lux::serialization::SerializationLimits{}
+        );
+        return begun && begun->unload(instance) && begun->commit();
+    }
+
     template <std::size_t... Index>
     [[nodiscard]] LoadPlan makeFixedPlanImpl(
         std::size_t entity_count,
@@ -1156,12 +1195,10 @@ namespace
         {
             lux::ecs::World world;
             lux::ecs::detail::ComponentLoadTestStats::reset();
-            auto instance = lux::ecs::WorldSectionLoader::load(
+            auto instance = loadBenchmarkSection(
                 world,
                 plan.loads,
-                plan.image,
-                lux::ecs::world_section::test::fixtureLoadScratchBudget(),
-                lux::serialization::SerializationLimits{}
+                plan.image
             );
             if (!instance) std::abort();
             const Observation result{
@@ -1170,7 +1207,7 @@ namespace
                 lux::ecs::detail::ComponentLoadTestStats::load_calls,
                 lux::ecs::detail::ComponentLoadTestStats::storage_lookups
             };
-            if (!lux::ecs::WorldSectionLoader::unload(world, *instance))
+            if (!unloadBenchmarkSection(world, *instance))
                 std::abort();
             return result;
         });
@@ -1179,16 +1216,14 @@ namespace
             evidence.measure(prefix + "_unload", size, [&]
             {
                 lux::ecs::World world;
-                auto instance = lux::ecs::WorldSectionLoader::load(
+                auto instance = loadBenchmarkSection(
                     world,
                     plan.loads,
-                    plan.image,
-                    lux::ecs::world_section::test::fixtureLoadScratchBudget(),
-                    lux::serialization::SerializationLimits{}
+                    plan.image
                 );
                 if (!instance) std::abort();
                 const auto begin = Clock::now();
-                if (!lux::ecs::WorldSectionLoader::unload(world, *instance))
+                if (!unloadBenchmarkSection(world, *instance))
                     std::abort();
                 const auto end = Clock::now();
                 return Observation{static_cast<std::uint64_t>(

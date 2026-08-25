@@ -39,9 +39,15 @@ namespace lux::ecs
         [[nodiscard]] bool empty() const noexcept;
 
       private:
+        [[nodiscard]] const std::shared_ptr<const void>& codeLifetime(
+            const ComponentLoadBinding& binding
+        ) const noexcept;
+
         struct Impl;
         explicit ComponentLoadSet(std::shared_ptr<const Impl> impl) noexcept;
 
         std::shared_ptr<const Impl> impl_;
+
+        friend class WorldSectionLoadBatch;
     };
 } // namespace lux::ecs

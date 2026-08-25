@@ -1,6 +1,7 @@
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
 
 #include <algorithm>
+#include <iterator>
 #include <new>
 #include <utility>
 #include <vector>
@@ -59,12 +60,14 @@ namespace lux::ecs
             for (const auto& contribution : contributions)
             {
                 binding_count += contribution.bindings.size();
-                if (contribution.code_lifetime)
-                    impl->code_lifetimes.push_back(
-                        contribution.code_lifetime
-                    );
             }
-            impl->bindings.reserve(binding_count);
+            struct PendingBinding final
+            {
+                ComponentLoadBinding binding;
+                std::shared_ptr<const void> code_lifetime;
+            };
+            std::vector<PendingBinding> pending;
+            pending.reserve(binding_count);
             for (const auto& contribution : contributions)
             {
                 for (const auto& source : contribution.bindings)
@@ -86,14 +89,29 @@ namespace lux::ecs
                     }
                     ComponentLoadBinding binding = source;
                     binding.schema_ = schema;
-                    impl->bindings.push_back(binding);
+                    pending.push_back(PendingBinding{
+                        binding,
+                        contribution.code_lifetime
+                    });
                 }
             }
             std::sort(
-                impl->bindings.begin(),
-                impl->bindings.end(),
-                lessBinding
+                pending.begin(),
+                pending.end(),
+                [](const PendingBinding& left, const PendingBinding& right)
+                {
+                    return lessBinding(left.binding, right.binding);
+                }
             );
+            impl->bindings.reserve(binding_count);
+            impl->code_lifetimes.reserve(binding_count);
+            for (auto& entry : pending)
+            {
+                impl->bindings.push_back(entry.binding);
+                impl->code_lifetimes.push_back(
+                    std::move(entry.code_lifetime)
+                );
+            }
             for (std::size_t index = 1U;
                  index < impl->bindings.size();
                  ++index)
@@ -159,5 +177,26 @@ namespace lux::ecs
     bool ComponentLoadSet::empty() const noexcept
     {
         return all().empty();
+    }
+
+    const std::shared_ptr<const void>& ComponentLoadSet::codeLifetime(
+        const ComponentLoadBinding& binding
+    ) const noexcept
+    {
+        static const std::shared_ptr<const void> empty;
+        if (!impl_ || impl_->bindings.empty())
+            return empty;
+        const auto found = std::find_if(
+            impl_->bindings.begin(),
+            impl_->bindings.end(),
+            [&](const ComponentLoadBinding& candidate) noexcept
+            {
+                return std::addressof(candidate) == std::addressof(binding);
+            }
+        );
+        detail::require(found != impl_->bindings.end());
+        return impl_->code_lifetimes[static_cast<std::size_t>(
+            std::distance(impl_->bindings.begin(), found)
+        )];
     }
 } // namespace lux::ecs

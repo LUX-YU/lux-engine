@@ -1,6 +1,7 @@
 #include <lux/engine/ecs/World.hpp>
 
 #include <lux/engine/ecs/core/detail/ChangeJournal.hpp>
+#include <lux/engine/ecs/core/detail/SectionMembershipDirectory.hpp>
 
 #include <atomic>
 #include <cstdlib>
@@ -47,6 +48,9 @@ namespace lux::ecs
               detail::ChangeJournalConfigValue{
                   config.changes.initial_bytes,
                   config.changes.max_bytes})),
+          section_memberships_(
+              std::make_unique<detail::SectionMembershipDirectory>()
+          ),
           owner_thread_(std::this_thread::get_id()),
           identity_(allocateWorldIdentity())
     {
@@ -147,6 +151,34 @@ namespace lux::ecs
     void WorldEdit::destroy(Entity entity)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
+        if (world_->section_memberships_->tracked(entity))
+        {
+            world_->section_memberships_->forEachStorage(
+                entity,
+                [&](std::uint64_t storage_id) noexcept
+                {
+                    auto* storage = world_->registry_.storage(storage_id);
+                    detail::require(storage != nullptr);
+                    if (change_emission_ == EChangeEmission::RECORD)
+                    {
+                        detail::recordWorldComponentChange(
+                            *world_, storage_id, entity,
+                            EComponentChangeKind::REMOVED
+                        );
+                    }
+                    storage->remove(entity);
+                }
+            );
+            world_->section_memberships_->deactivate(entity);
+            world_->registry_.template storage<Entity>().erase(entity);
+            if (change_emission_ == EChangeEmission::RECORD)
+            {
+                detail::recordWorldEntityChange(
+                    *world_, entity, EEntityChangeKind::DESTROYED
+                );
+            }
+            return;
+        }
         if (change_emission_ == EChangeEmission::RECORD)
         {
             const auto entity_storage = entt::type_hash<Entity>::value();
@@ -168,6 +200,41 @@ namespace lux::ecs
                 *world_, entity, EEntityChangeKind::DESTROYED
             );
         }
+    }
+
+    std::uint32_t detail::WorldMembershipAccess::prepareAdd(
+        World& world,
+        Entity entity,
+        std::uint64_t storage
+    )
+    {
+        return world.section_memberships_->prepareAdd(entity, storage);
+    }
+
+    void detail::WorldMembershipAccess::commitAdd(
+        World& world,
+        Entity entity,
+        std::uint32_t token
+    ) noexcept
+    {
+        world.section_memberships_->commitAdd(entity, token);
+    }
+
+    void detail::WorldMembershipAccess::cancelAdd(
+        World& world,
+        std::uint32_t token
+    ) noexcept
+    {
+        world.section_memberships_->cancelAdd(token);
+    }
+
+    void detail::WorldMembershipAccess::remove(
+        World& world,
+        Entity entity,
+        std::uint64_t storage
+    ) noexcept
+    {
+        world.section_memberships_->remove(entity, storage);
     }
 
     void WorldEdit::release() noexcept
@@ -217,6 +284,11 @@ namespace lux::ecs
     void detail::markWorldChangeHistoryLoss(World& world) noexcept
     {
         WorldChangeAccess::journal(world).markHistoryLoss();
+    }
+
+    std::uint64_t detail::worldChangeEpoch(const World& world) noexcept
+    {
+        return WorldChangeAccess::journal(world).epoch();
     }
 
     detail::ChangeRangeData detail::readWorldComponentChanges(

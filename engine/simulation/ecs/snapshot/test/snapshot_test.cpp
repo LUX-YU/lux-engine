@@ -1,13 +1,7 @@
 #include <lux/engine/simulation/ecs/EcsSnapshot.hpp>
-#include <lux/engine/simulation/ecs/EcsChangeJournal.hpp>
-#include <lux/engine/simulation/ecs/SimulationEcsMutation.hpp>
-#include <lux/engine/simulation/ecs/core/detail/EcsStateAccess.hpp>
-
-#include <atomic>
 #include <array>
 #include <cassert>
 #include <span>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -57,28 +51,24 @@ int main()
     );
     assert(snapshot_components);
 
-    lux::simulation::ecs::EcsState source;
-    auto edit_result = source.mutate();
-    assert(edit_result);
-    auto edit = std::move(*edit_result);
-    const auto first = edit.create();
-    const auto removed = edit.create();
-    const auto third = edit.create();
-    edit.emplace<Position>(first, 7, third);
-    edit.emplace<Position>(third, 9, first);
-    edit.emplace<DerivedCache>(first, 99);
-    edit.destroy(removed);
+    lux::simulation::ecs::Registry source;
+    const auto first = source.create();
+    const auto removed = source.create();
+    const auto third = source.create();
+    source.emplace<Position>(first, 7, third);
+    source.emplace<Position>(third, 9, first);
+    source.emplace<DerivedCache>(first, 99);
+    source.destroy(removed);
     std::vector<lux::simulation::ecs::Entity> bulk;
     bulk.reserve(10'000);
     for (int index{}; index < 10'000; ++index)
     {
-        const auto entity = edit.create();
-        edit.emplace<Position>(entity, index, first);
+        const auto entity = source.create();
+        source.emplace<Position>(entity, index, first);
         bulk.push_back(entity);
     }
     for (std::size_t index{}; index < bulk.size(); index += 3)
-        edit.destroy(bulk[index]);
-    edit = {};
+        source.destroy(bulk[index]);
 
     lux::simulation::ecs::detail::ComponentSnapshotTestStats::reset();
     auto snapshot = lux::simulation::ecs::EcsSnapshot::capture(
@@ -96,7 +86,7 @@ int main()
     assert((*instance)->valid(third));
     assert(!(*instance)->valid(removed));
     assert((*instance)->get<Position>(first).target == third);
-    assert((*instance)->find<DerivedCache>(first) == nullptr);
+    assert((*instance)->try_get<DerivedCache>(first) == nullptr);
     for (std::size_t index{}; index < bulk.size(); ++index)
     {
         assert((*instance)->valid(bulk[index]) == (index % 3 != 0));
@@ -104,79 +94,25 @@ int main()
             assert((*instance)->get<Position>(bulk[index]).value == index);
     }
 
-    auto source_edit_result = source.mutate();
-    auto source_edit = std::move(*source_edit_result);
     std::vector<lux::simulation::ecs::Entity> source_next;
     source_next.reserve(100);
     for (int index{}; index < 100; ++index)
-        source_next.push_back(source_edit.create());
-    source_edit = {};
+        source_next.push_back(source.create());
 
-    auto instance_edit_result = (*instance)->mutate();
-    auto instance_edit = std::move(*instance_edit_result);
     for (int index{}; index < 100; ++index)
-        assert(source_next[index] == instance_edit.create());
-    instance_edit = {};
+        assert(source_next[index] == (*instance)->create());
 
-    lux::simulation::ecs::EcsState restored;
-    lux::simulation::ecs::EcsChangeJournal restore_journal(
-        lux::simulation::ecs::EcsChangeHistoryBudget{4096U, 4096U}
-    );
-    lux::simulation::ecs::ChangeCursor<Position> restore_cursor;
-    assert(
-        restore_journal.read(restore_cursor).status() ==
-        lux::simulation::ecs::EChangeReadStatus::RESYNC_REQUIRED
-    );
-    auto restored_edit_result = lux::simulation::ecs::beginSimulationEcsMutation(
-        restored,
-        restore_journal
-    );
-    auto restored_edit = std::move(*restored_edit_result);
-    const auto unrelated = restored_edit.create();
-    restored_edit.emplace<DerivedCache>(unrelated, 1);
-    restored_edit = {};
-    const auto restore_epoch = restore_journal.epoch();
+    lux::simulation::ecs::Registry restored;
+    const auto unrelated = restored.create();
+    restored.emplace<DerivedCache>(unrelated, 1);
     assert(snapshot->restore(restored));
-    assert(restore_journal.epoch() == restore_epoch);
     assert(restored.valid(first));
     assert(restored.get<Position>(third).target == first);
-    assert(restored.find<DerivedCache>(first) == nullptr);
+    assert(restored.try_get<DerivedCache>(first) == nullptr);
 
-    lux::simulation::ecs::EcsState busy;
-    {
-        auto busy_mutation = busy.mutate();
-        assert(busy_mutation);
-        const auto busy_restore = snapshot->restore(busy);
-        assert(!busy_restore);
-        assert(busy_restore.error().code == lux::simulation::ecs::ESnapshotError::STATE_BUSY);
-        *busy_mutation = {};
-    }
-    assert(snapshot->restore(busy));
-
-    std::atomic_bool wrong_thread_rejected{};
-    std::thread wrong_thread(
-        [&]
-        {
-            auto captured = lux::simulation::ecs::EcsSnapshot::capture(
-                source,
-                *snapshot_components
-            );
-            wrong_thread_rejected.store(
-                !captured &&
-                captured.error().code == lux::simulation::ecs::ESnapshotError::STATE_BUSY,
-                std::memory_order_relaxed
-            );
-        }
-    );
-    wrong_thread.join();
-    assert(wrong_thread_rejected.load(std::memory_order_relaxed));
-
-    lux::simulation::ecs::EcsState invalid;
-    auto invalid_edit_result = invalid.mutate();
-    auto invalid_edit = std::move(*invalid_edit_result);
-    const auto unknown = invalid_edit.create();
-    invalid_edit.emplace<UnknownStorage>(unknown, 3);
-    invalid_edit = {};
+    lux::simulation::ecs::Registry invalid;
+    const auto unknown = invalid.create();
+    invalid.emplace<UnknownStorage>(unknown, 3);
     const auto invalid_snapshot = lux::simulation::ecs::EcsSnapshot::capture(
         invalid,
         *snapshot_components

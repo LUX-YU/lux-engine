@@ -2,7 +2,7 @@
 
 #include <lux/engine/simulation/ecs/ComponentSnapshotSet.hpp>
 #include <lux/engine/simulation/ecs/SnapshotTypes.hpp>
-#include <lux/engine/simulation/ecs/EcsState.hpp>
+#include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/ecs/snapshot/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -24,15 +24,15 @@ namespace lux::simulation::ecs
 
         [[nodiscard]] static lux::cxx::expected<EcsSnapshot, SnapshotError>
         capture(
-            const EcsState& state,
+            const Registry& registry,
             const ComponentSnapshotSet& components
         ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<std::unique_ptr<EcsState>, SnapshotError>
+        [[nodiscard]] lux::cxx::expected<std::unique_ptr<Registry>, SnapshotError>
         instantiate() const noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SnapshotError>
-        restore(EcsState& state) const noexcept;
+        restore(Registry& registry) const noexcept;
 
         void clear() noexcept;
         [[nodiscard]] bool empty() const noexcept;

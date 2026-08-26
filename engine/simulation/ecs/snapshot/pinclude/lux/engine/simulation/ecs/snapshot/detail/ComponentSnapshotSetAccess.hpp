@@ -17,8 +17,8 @@ namespace lux::simulation::ecs::detail
 
         static void clone(
             const ComponentSnapshotBinding& binding,
-            const EcsState& source,
-            EcsMutation& target
+            const Registry& source,
+            Registry& target
         )
         {
             binding.clone_(source, target);

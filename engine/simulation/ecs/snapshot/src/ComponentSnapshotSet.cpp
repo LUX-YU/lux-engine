@@ -4,6 +4,7 @@
 #include <lux/engine/simulation/ecs/snapshot/detail/ComponentSnapshotSetAccess.hpp>
 
 #include <algorithm>
+#include <exception>
 #include <new>
 #include <utility>
 #include <vector>
@@ -138,7 +139,8 @@ namespace lux::simulation::ecs
         const ComponentSnapshotSet& set
     ) noexcept
     {
-        detail::require(set.impl_ != nullptr);
+        if (set.impl_ == nullptr)
+            std::terminate();
         return set.impl_->schemas;
     }
 

@@ -5,6 +5,7 @@
 #include <lux/engine/simulation/SystemConcept.hpp>
 #include <lux/engine/task/Task.hpp>
 
+#include <array>
 #include <cstdint>
 
 namespace lux::simulation::ecs
@@ -15,7 +16,13 @@ namespace lux::simulation::ecs
     )
     {
         task::TaskResources result;
-        result.values.reserve(access.components.size() + access.external.size());
+        result.values.reserve(
+            access.components.size() + access.external.size() +
+            (access.components.empty() ? 0U : 1U)
+        );
+
+        if (!access.components.empty())
+            result.values.push_back(task::read(ecsStructureTaskResource()));
 
         for (const auto& component : access.components)
         {
@@ -42,8 +49,14 @@ namespace lux::simulation::ecs
     [[nodiscard]] task::TaskResources systemTaskResources()
     {
         task::TaskResources result = systemTaskResources(Type::Access.spec());
-        if constexpr (requires { Type::EcsChangesAccess; })
-            result.values.push_back(Type::EcsChangesAccess);
         return result;
+    }
+
+    [[nodiscard]] inline task::TaskResources ecsCommandFlushTaskResources()
+    {
+        const std::array accesses{
+            task::write(ecsStructureTaskResource()),
+            task::write(ecsCommandsTaskResource())};
+        return task::resources(accesses);
     }
 }

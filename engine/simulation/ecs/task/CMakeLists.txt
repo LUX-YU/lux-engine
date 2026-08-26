@@ -10,8 +10,6 @@ component_include_directories(
     ecs_task
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-    BUILD_TIME_SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
     INSTALL_TIME include
 )
 target_link_libraries(

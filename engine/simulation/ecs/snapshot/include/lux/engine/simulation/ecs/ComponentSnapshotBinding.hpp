@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/ecs/ComponentSchema.hpp>
-#include <lux/engine/simulation/ecs/EcsState.hpp>
+#include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/ecs/snapshot/detail/ComponentSnapshotAccess.hpp>
 
 #include <array>
@@ -22,8 +22,8 @@ namespace lux::simulation::ecs
         struct ComponentSnapshotSetAccess;
 
         using CloneComponentStorageFn = void (*)(
-            const EcsState&,
-            EcsMutation&
+            const Registry&,
+            Registry&
         );
 
 #if defined(LUX_SIMULATION_ECS_SNAPSHOT_TESTING)
@@ -52,20 +52,19 @@ namespace lux::simulation::ecs
 
       private:
         template <class Component>
-        static void cloneStorage(const EcsState& source, EcsMutation& target)
+        static void cloneStorage(const Registry& source, Registry& target)
         {
 #if defined(LUX_SIMULATION_ECS_SNAPSHOT_TESTING)
             ++detail::ComponentSnapshotTestStats::clone_calls;
             ++detail::ComponentSnapshotTestStats::storage_lookups;
 #endif
             const auto* source_storage =
-                source.registry_.template storage<Component>();
+                source.template storage<Component>();
             if (source_storage == nullptr || source_storage->empty())
                 return;
 
-            detail::require(target.state_ != nullptr);
             auto& target_storage =
-                target.state_->registry_.template storage<Component>();
+                target.template storage<Component>();
             target_storage.reserve(source_storage->size());
             auto entities = source_storage->each();
             using Iterator = decltype(entities.begin());

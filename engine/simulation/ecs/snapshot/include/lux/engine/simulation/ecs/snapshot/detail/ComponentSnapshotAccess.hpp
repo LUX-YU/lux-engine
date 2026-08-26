@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/simulation/ecs/EcsState.hpp>
+#include <lux/engine/simulation/ecs/Registry.hpp>
 
 #include <iterator>
 #include <span>

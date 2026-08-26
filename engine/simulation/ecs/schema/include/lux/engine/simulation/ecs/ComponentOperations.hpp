@@ -1,11 +1,12 @@
 #pragma once
 
-#include <lux/engine/simulation/ecs/EcsState.hpp>
+#include <lux/engine/simulation/ecs/Registry.hpp>
 
 #include <entt/core/type_info.hpp>
 
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 
 namespace lux::simulation::ecs
 {
@@ -26,47 +27,52 @@ namespace lux::simulation::ecs
         }
 
         [[nodiscard]] bool has(
-            const EcsState& state,
+            const Registry& registry,
             Entity entity
         ) const noexcept
         {
-            detail::require(has_ != nullptr);
-            return has_(state, entity);
+            if (has_ == nullptr)
+                std::terminate();
+            return has_(registry, entity);
         }
 
         [[nodiscard]] const void* get(
-            const EcsState& state,
+            const Registry& registry,
             Entity entity
         ) const noexcept
         {
-            detail::require(get_ != nullptr);
-            return get_(state, entity);
+            if (get_ == nullptr)
+                std::terminate();
+            return get_(registry, entity);
         }
 
-        [[nodiscard]] std::size_t size(const EcsState& state) const noexcept
+        [[nodiscard]] std::size_t size(const Registry& registry) const noexcept
         {
-            detail::require(size_ != nullptr);
-            return size_(state);
+            if (size_ == nullptr)
+                std::terminate();
+            return size_(registry);
         }
 
-        void erase(EcsMutation& edit, Entity entity) const noexcept
+        void erase(Registry& registry, Entity entity) const noexcept
         {
-            detail::require(erase_ != nullptr);
-            erase_(edit, entity);
+            if (erase_ == nullptr)
+                std::terminate();
+            erase_(registry, entity);
         }
 
-        void reserve(EcsMutation& edit, std::size_t count) const
+        void reserve(Registry& registry, std::size_t count) const
         {
-            detail::require(reserve_ != nullptr);
-            reserve_(edit, count);
+            if (reserve_ == nullptr)
+                std::terminate();
+            reserve_(registry, count);
         }
 
       private:
-        using HasFn = bool (*)(const EcsState&, Entity) noexcept;
-        using GetFn = const void* (*)(const EcsState&, Entity) noexcept;
-        using SizeFn = std::size_t (*)(const EcsState&) noexcept;
-        using EraseFn = void (*)(EcsMutation&, Entity) noexcept;
-        using ReserveFn = void (*)(EcsMutation&, std::size_t);
+        using HasFn = bool (*)(const Registry&, Entity) noexcept;
+        using GetFn = const void* (*)(const Registry&, Entity) noexcept;
+        using SizeFn = std::size_t (*)(const Registry&) noexcept;
+        using EraseFn = void (*)(Registry&, Entity) noexcept;
+        using ReserveFn = void (*)(Registry&, std::size_t);
 
         std::uint64_t storage_key_{};
         HasFn has_{};
@@ -86,27 +92,27 @@ namespace lux::simulation::ecs
     {
         ComponentOperations result;
         result.storage_key_ = entt::type_hash<Component>::value();
-        result.has_ = [](const EcsState& state, Entity entity) noexcept
+        result.has_ = [](const Registry& registry, Entity entity) noexcept
         {
-            return state.find<Component>(entity) != nullptr;
+            return registry.template all_of<Component>(entity);
         };
-        result.get_ = [](const EcsState& state, Entity entity) noexcept -> const void*
+        result.get_ = [](const Registry& registry, Entity entity) noexcept -> const void*
         {
-            return state.find<Component>(entity);
+            return registry.template try_get<Component>(entity);
         };
-        result.size_ = [](const EcsState& state) noexcept
+        result.size_ = [](const Registry& registry) noexcept
         {
             const auto* storage =
-                state.registry_.template storage<Component>();
+                registry.template storage<Component>();
             return storage == nullptr ? 0U : storage->size();
         };
-        result.erase_ = [](EcsMutation& edit, Entity entity) noexcept
+        result.erase_ = [](Registry& registry, Entity entity) noexcept
         {
-            edit.erase<Component>(entity);
+            registry.template remove<Component>(entity);
         };
-        result.reserve_ = [](EcsMutation& edit, std::size_t count)
+        result.reserve_ = [](Registry& registry, std::size_t count)
         {
-            edit.reserve<Component>(count);
+            registry.template storage<Component>().reserve(count);
         };
         return result;
     }

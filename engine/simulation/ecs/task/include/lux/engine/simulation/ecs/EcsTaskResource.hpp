@@ -31,21 +31,15 @@ namespace lux::simulation::ecs
         detail::ecsTaskDomainHash("lux.ecs.external");
     inline constexpr std::uint64_t EcsStructureTaskDomain =
         detail::ecsTaskDomainHash("lux.ecs.structure");
-    inline constexpr std::uint64_t EcsChangesTaskDomain =
-        detail::ecsTaskDomainHash("lux.ecs.changes");
     inline constexpr std::uint64_t EcsCommandsTaskDomain =
         detail::ecsTaskDomainHash("lux.ecs.commands");
 
     static_assert(ComponentTaskDomain != ExternalTaskDomain);
     static_assert(ComponentTaskDomain != EcsStructureTaskDomain);
-    static_assert(ComponentTaskDomain != EcsChangesTaskDomain);
     static_assert(ComponentTaskDomain != EcsCommandsTaskDomain);
     static_assert(ExternalTaskDomain != EcsStructureTaskDomain);
-    static_assert(ExternalTaskDomain != EcsChangesTaskDomain);
     static_assert(ExternalTaskDomain != EcsCommandsTaskDomain);
-    static_assert(EcsStructureTaskDomain != EcsChangesTaskDomain);
     static_assert(EcsStructureTaskDomain != EcsCommandsTaskDomain);
-    static_assert(EcsChangesTaskDomain != EcsCommandsTaskDomain);
 
     [[nodiscard]] constexpr task::TaskResourceKey componentTaskResource(
         std::uint64_t storage
@@ -74,12 +68,6 @@ namespace lux::simulation::ecs
     ecsStructureTaskResource() noexcept
     {
         return {EcsStructureTaskDomain, 1U};
-    }
-
-    [[nodiscard]] constexpr task::TaskResourceKey
-    ecsChangesTaskResource() noexcept
-    {
-        return {EcsChangesTaskDomain, 1U};
     }
 
     [[nodiscard]] constexpr task::TaskResourceKey

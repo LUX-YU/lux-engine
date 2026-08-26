@@ -13,11 +13,7 @@ add_component(
     NAMESPACE      lux::engine::simulation::ecs
     OUTPUT_NAME    lux_engine_simulation_ecs_core
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsChangeLog.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsState.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsCommands.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationEcsMutation.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsTaskResources.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsCommandBuffer.cpp
 )
 
 component_include_directories(
@@ -66,10 +62,10 @@ add_test(NAME vnext_ecs_core COMMAND ecs_core_test)
 set_tests_properties(vnext_ecs_core PROPERTIES LABELS "vnext;l1;core;cpu")
 
 foreach(probe IN ITEMS
-    ecs_state_registry_negative
-    ecs_state_mutable_get_negative
-    ecs_state_mutable_query_negative
-    retired_registry_header_negative
+    retired_ecs_state_header_negative
+    retired_ecs_commands_header_negative
+    retired_ecs_query_header_negative
+    retired_ecs_change_journal_header_negative
     retired_scene_services_negative
     retired_world_edit_header_negative
     retired_world_edit_type_negative

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/simulation/ecs/EcsState.hpp>
+#include <lux/engine/simulation/ecs/SimulationEcsMutation.hpp>
 #include <lux/engine/simulation/ecs/core/visibility.h>
 
 #include <concepts>
@@ -33,9 +33,9 @@ namespace lux::simulation::ecs
         [[nodiscard]] explicit operator bool() const noexcept;
 
         template <class Command>
-            requires requires(Command& command, EcsMutation& edit)
+            requires requires(Command& command, SimulationEcsMutation& mutation)
             {
-                { command.apply(edit) } noexcept -> std::same_as<void>;
+                { command.apply(mutation) } noexcept -> std::same_as<void>;
             }
         [[nodiscard]] ECommandResult push(Command&& command) const noexcept
         {
@@ -53,9 +53,9 @@ namespace lux::simulation::ecs
                         std::move(*static_cast<Stored*>(source))
                     );
                 },
-                [](void* payload, EcsMutation& edit) noexcept
+                [](void* payload, SimulationEcsMutation& mutation) noexcept
                 {
-                    static_cast<Stored*>(payload)->apply(edit);
+                    static_cast<Stored*>(payload)->apply(mutation);
                 },
                 [](void* payload) noexcept
                 {
@@ -71,7 +71,7 @@ namespace lux::simulation::ecs
             std::size_t size{};
             std::size_t alignment{};
             void (*move_construct)(void*, void*) noexcept{};
-            void (*apply)(void*, EcsMutation&) noexcept{};
+            void (*apply)(void*, SimulationEcsMutation&) noexcept{};
             void (*destroy)(void*) noexcept{};
         };
 

@@ -11,12 +11,7 @@
 
 namespace
 {
-    [[nodiscard]] constexpr lux::simulation::ecs::EcsStateConfig worldConfig() noexcept
-    {
-        return {{256U * 1024U, 32U * 1024U * 1024U}};
-    }
-
-    [[nodiscard]] lux::simulation::SystemId installHierarchy(
+[[nodiscard]] lux::simulation::SystemId installHierarchy(
         lux::simulation::ecs::EcsState& world,
         lux::simulation::ecs::testing::EcsTaskTestRig& schedule,
         lux::simulation::ecs::HierarchyIndex& hierarchy
@@ -33,7 +28,7 @@ namespace
 
 int main()
 {
-    lux::simulation::ecs::EcsState world{worldConfig()};
+    lux::simulation::ecs::EcsState world;
     lux::simulation::ecs::HierarchyIndex hierarchy{world};
     auto edit_result = world.mutate();
     assert(edit_result);
@@ -68,7 +63,7 @@ int main()
         lux::simulation::ecs::EChangeReadStatus::RESYNC_REQUIRED
     );
 
-    auto reparent_result = world.mutate();
+    auto reparent_result = schedule.mutate();
     auto reparent_edit = std::move(*reparent_result);
     assert(lux::simulation::ecs::reparent(reparent_edit, child, second_root));
     assert(!lux::simulation::ecs::reparent(reparent_edit, second_root, grandchild));
@@ -87,7 +82,7 @@ int main()
         lux::simulation::ecs::EHierarchyChangeKind::REPARENTED
     );
 
-    auto destroy_parent_result = world.mutate();
+    auto destroy_parent_result = schedule.mutate();
     auto destroy_parent = std::move(*destroy_parent_result);
     destroy_parent.destroy(child);
     destroy_parent = {};
@@ -107,7 +102,7 @@ int main()
     assert(hierarchy.synchronized());
     assert(hierarchy.parent(grandchild) == lux::simulation::ecs::NullEntity);
 
-    auto generation_result = world.mutate();
+    auto generation_result = schedule.mutate();
     auto generation_edit = std::move(*generation_result);
     const auto replacement = generation_edit.create();
     assert(replacement != child);
@@ -121,7 +116,7 @@ int main()
         // A Parent can become stale while no HierarchySystem is installed.
         // The first cold rebuild must classify the old generation as a
         // retryable repair instead of permanently rejecting canonical data.
-        lux::simulation::ecs::EcsState stale_world{worldConfig()};
+        lux::simulation::ecs::EcsState stale_world;
         auto stale_result = stale_world.mutate();
         auto stale_edit = std::move(*stale_result);
         const auto stale_parent = stale_edit.create();
@@ -144,7 +139,7 @@ int main()
 
     {
         // An authored replacement wins over a pending orphan repair.
-        lux::simulation::ecs::EcsState repair_world{worldConfig()};
+        lux::simulation::ecs::EcsState repair_world;
         auto setup_result = repair_world.mutate();
         auto setup = std::move(*setup_result);
         const auto doomed_parent = setup.create();
@@ -158,13 +153,13 @@ int main()
             repair_world, repair_schedule, repair_hierarchy
         );
         assert(repair_schedule.run(1.0F / 60.0F, 1U));
-        auto destroy_result = repair_world.mutate();
+        auto destroy_result = repair_schedule.mutate();
         auto destroy = std::move(*destroy_result);
         destroy.destroy(doomed_parent);
         destroy = {};
         repair_schedule.failNextCommandPush(repair_handle);
         assert(repair_schedule.run(1.0F / 60.0F, 2U));
-        auto replace_result = repair_world.mutate();
+        auto replace_result = repair_schedule.mutate();
         auto replace = std::move(*replace_result);
         replace.update<lux::simulation::ecs::Parent>(
             repair_child,
@@ -182,7 +177,7 @@ int main()
     {
         // Destroying the child cancels its embedded repair without leaving a
         // dangling intrusive queue entry.
-        lux::simulation::ecs::EcsState cancel_world{worldConfig()};
+        lux::simulation::ecs::EcsState cancel_world;
         auto setup_result = cancel_world.mutate();
         auto setup = std::move(*setup_result);
         const auto doomed_parent = setup.create();
@@ -195,13 +190,13 @@ int main()
             cancel_world, cancel_schedule, cancel_hierarchy
         );
         assert(cancel_schedule.run(1.0F / 60.0F, 1U));
-        auto destroy_result = cancel_world.mutate();
+        auto destroy_result = cancel_schedule.mutate();
         auto destroy = std::move(*destroy_result);
         destroy.destroy(doomed_parent);
         destroy = {};
         cancel_schedule.failNextCommandPush(cancel_handle);
         assert(cancel_schedule.run(1.0F / 60.0F, 2U));
-        auto cancel_result = cancel_world.mutate();
+        auto cancel_result = cancel_schedule.mutate();
         auto cancel = std::move(*cancel_result);
         cancel.destroy(repair_child);
         cancel = {};
@@ -210,7 +205,7 @@ int main()
     }
 
     {
-        lux::simulation::ecs::EcsState fabricated_world{worldConfig()};
+        lux::simulation::ecs::EcsState fabricated_world;
         auto fabricated_result = fabricated_world.mutate();
         auto fabricated_edit = std::move(*fabricated_result);
         const auto child_entity = fabricated_edit.create();
@@ -238,7 +233,7 @@ int main()
         // Cold deep-chain construction validates each relation a fixed number
         // of times; it must not invoke the incremental ancestor validator.
         constexpr std::size_t kDepth = 10000U;
-        lux::simulation::ecs::EcsState deep_world{worldConfig()};
+        lux::simulation::ecs::EcsState deep_world;
         auto deep_result = deep_world.mutate();
         auto deep_edit = std::move(*deep_result);
         auto previous = deep_edit.create();
@@ -268,7 +263,7 @@ int main()
     }
 
     {
-        lux::simulation::ecs::EcsState subtree_world{worldConfig()};
+        lux::simulation::ecs::EcsState subtree_world;
         auto subtree_result = subtree_world.mutate();
         auto subtree_edit = std::move(*subtree_result);
         const auto subtree_root = subtree_edit.create();
@@ -286,7 +281,7 @@ int main()
     }
 
     {
-        lux::simulation::ecs::EcsState invalid_world{worldConfig()};
+        lux::simulation::ecs::EcsState invalid_world;
         lux::simulation::ecs::HierarchyIndex invalid_hierarchy{invalid_world};
         auto invalid_result = invalid_world.mutate();
         auto invalid_edit = std::move(*invalid_result);
@@ -311,7 +306,7 @@ int main()
     }
 
     {
-        lux::simulation::ecs::EcsState overflow_world{worldConfig()};
+        lux::simulation::ecs::EcsState overflow_world;
         lux::simulation::ecs::HierarchyIndex overflow_hierarchy{overflow_world};
         auto root_result = overflow_world.mutate();
         auto root_edit = std::move(*root_result);
@@ -330,7 +325,7 @@ int main()
             lux::simulation::ecs::EChangeReadStatus::RESYNC_REQUIRED
         );
 
-        auto children_result = overflow_world.mutate();
+        auto children_result = overflow_schedule.mutate();
         auto children_edit = std::move(*children_result);
         for (std::size_t index{}; index < 65537U; ++index)
         {

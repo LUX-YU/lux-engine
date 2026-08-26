@@ -114,7 +114,7 @@ namespace lux::simulation::ecs
         {
             try
             {
-                auto edit = detail::EcsColdAccess::suppressingMutation(target);
+                auto edit = detail::EcsColdAccess::mutation(target);
                 cloneEntities(source, target);
                 const auto& registry =
                     detail::EcsSnapshotAccess::registry(source);
@@ -175,14 +175,13 @@ namespace lux::simulation::ecs
         {
             auto impl = std::make_unique<Impl>();
             impl->components = components;
-            impl->shadow = std::make_unique<EcsState>(world.config_);
+            impl->shadow = std::make_unique<EcsState>();
             if (auto cloned = cloneWorld(
                     world,
                     *impl->shadow,
                     components
                 ); !cloned)
                 return lux::cxx::unexpected(cloned.error());
-            detail::establishEcsChangeBaseline(*impl->shadow);
             return EcsSnapshot(std::move(impl));
         }
         catch (...)
@@ -194,21 +193,20 @@ namespace lux::simulation::ecs
     }
 
     lux::cxx::expected<std::unique_ptr<EcsState>, SnapshotError>
-    EcsSnapshot::instantiate(EcsStateConfig config) const noexcept
+    EcsSnapshot::instantiate() const noexcept
     {
         if (!impl_ || !impl_->shadow)
             return lux::cxx::unexpected(SnapshotError{ESnapshotError::INVALID_COPY_SCHEMA});
 
         try
         {
-            auto result = std::make_unique<EcsState>(config);
+            auto result = std::make_unique<EcsState>();
             if (auto cloned = cloneWorld(
                     *impl_->shadow,
                     *result,
                     impl_->components
                 ); !cloned)
                 return lux::cxx::unexpected(cloned.error());
-            detail::establishEcsChangeBaseline(*result);
             return result;
         }
         catch (...)
@@ -224,12 +222,11 @@ namespace lux::simulation::ecs
         if (!detail::EcsColdAccess::ownerIdle(world))
             return lux::cxx::unexpected(SnapshotError{ESnapshotError::WORLD_BUSY});
 
-        auto replacement = instantiate(world.config_);
+        auto replacement = instantiate();
         if (!replacement)
             return lux::cxx::unexpected(replacement.error());
 
         world.registry_.swap((*replacement)->registry_);
-        detail::establishEcsChangeBaseline(world);
         return {};
     }
 

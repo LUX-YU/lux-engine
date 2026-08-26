@@ -33,11 +33,13 @@ namespace lux::simulation::ecs
 
         void update(
             const EcsState& world,
+            EcsChangeJournal& journal,
             TaskWriter<WorldTransform2D>& writer,
             EcsCommands commands
         ) noexcept;
         void invokeTask(
             EcsState& world,
+            EcsChangeJournal& journal,
             EcsChangeBatch& changes,
             EcsCommands commands
         ) noexcept
@@ -47,7 +49,7 @@ namespace lux::simulation::ecs
                 changes,
                 TaskAccess
             );
-            update(world, writer, commands);
+            update(world, journal, writer, commands);
         }
 
       private:
@@ -77,11 +79,13 @@ namespace lux::simulation::ecs
 
         void update(
             const EcsState& world,
+            EcsChangeJournal& journal,
             TaskWriter<WorldTransform3D>& writer,
             EcsCommands commands
         ) noexcept;
         void invokeTask(
             EcsState& world,
+            EcsChangeJournal& journal,
             EcsChangeBatch& changes,
             EcsCommands commands
         ) noexcept
@@ -91,7 +95,7 @@ namespace lux::simulation::ecs
                 changes,
                 TaskAccess
             );
-            update(world, writer, commands);
+            update(world, journal, writer, commands);
         }
 
       private:

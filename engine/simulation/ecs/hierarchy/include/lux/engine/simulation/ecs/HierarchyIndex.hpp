@@ -15,6 +15,8 @@
 namespace lux::simulation::ecs
 {
     class EcsState;
+    class EcsChangeJournal;
+    class SimulationEcsMutation;
     class EcsCommands;
 
     namespace detail
@@ -243,7 +245,10 @@ namespace lux::simulation::ecs
         ) const noexcept;
 
       private:
-        void synchronize(EcsCommands commands) noexcept;
+        void synchronize(
+            EcsChangeJournal& journal,
+            EcsCommands commands
+        ) noexcept;
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] Entity firstChild(Entity parent) const noexcept;
         [[nodiscard]] Entity nextSibling(Entity entity) const noexcept;
@@ -264,6 +269,13 @@ namespace lux::simulation::ecs
     [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC
     lux::cxx::expected<void, EHierarchyError> reparent(
         EcsMutation& edit,
+        Entity child,
+        Entity parent
+    ) noexcept;
+
+    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC
+    lux::cxx::expected<void, EHierarchyError> reparent(
+        SimulationEcsMutation& mutation,
         Entity child,
         Entity parent
     ) noexcept;

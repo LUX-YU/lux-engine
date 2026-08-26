@@ -14,7 +14,7 @@ namespace lux::simulation::ecs::detail
     struct LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC CommandRecord final
     {
         void* payload{};
-        void (*apply)(void*, EcsMutation&) noexcept{};
+        void (*apply)(void*, SimulationEcsMutation&) noexcept{};
         void (*destroy)(void*) noexcept{};
 
         CommandRecord() noexcept = default;
@@ -85,7 +85,7 @@ namespace lux::simulation::ecs::detail
 
         [[nodiscard]] EcsCommands beginExecution() noexcept;
         void endExecution() noexcept;
-        void applyPending(EcsMutation& edit) noexcept;
+        void applyPending(SimulationEcsMutation& mutation) noexcept;
 
         std::vector<CommandRecord> pending_;
         CommandArena pending_arena_;
@@ -114,7 +114,7 @@ namespace lux::simulation::ecs::detail
 
         static void apply(
             CommandShard& shard,
-            EcsMutation& mutation
+            SimulationEcsMutation& mutation
         ) noexcept
         {
             shard.applyPending(mutation);

@@ -20,14 +20,19 @@ namespace lux::simulation::ecs
 
         HierarchySystem(EcsState& world, HierarchyIndex& hierarchy) noexcept;
 
-        void update(EcsState& world, EcsCommands commands) noexcept;
+        void update(
+            EcsState& world,
+            EcsChangeJournal& journal,
+            EcsCommands commands
+        ) noexcept;
         void invokeTask(
             EcsState& world,
+            EcsChangeJournal& journal,
             EcsChangeBatch&,
             EcsCommands commands
         ) noexcept
         {
-            update(world, commands);
+            update(world, journal, commands);
         }
 
       private:

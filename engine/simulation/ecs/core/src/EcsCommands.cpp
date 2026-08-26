@@ -282,13 +282,13 @@ namespace lux::simulation::ecs::detail
             ++generation_;
     }
 
-    void CommandShard::applyPending(EcsMutation& edit) noexcept
+    void CommandShard::applyPending(SimulationEcsMutation& mutation) noexcept
     {
         detail::require(!active_ && !applying_);
         applying_ = true;
         for (CommandRecord& record : pending_)
         {
-            record.apply(record.payload, edit);
+            record.apply(record.payload, mutation);
             record.reset();
         }
         pending_.clear();

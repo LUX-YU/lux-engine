@@ -29,7 +29,7 @@ namespace lux::simulation::ecs
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<std::unique_ptr<EcsState>, SnapshotError>
-        instantiate(EcsStateConfig config) const noexcept;
+        instantiate() const noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SnapshotError>
         restore(EcsState& world) const noexcept;

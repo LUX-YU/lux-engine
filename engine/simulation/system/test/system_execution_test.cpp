@@ -25,7 +25,10 @@ namespace
 
 int main()
 {
-    lux::simulation::ecs::EcsState world{lux::simulation::ecs::EcsStateConfig{{4096U, 64U * 1024U}}};
+    lux::simulation::ecs::EcsState world;
+    lux::simulation::ecs::EcsChangeJournal journal(
+        lux::simulation::ecs::EcsChangeHistoryBudget{4096U, 64U * 1024U}
+    );
     auto mutation = world.mutate();
     assert(mutation);
     const auto entity = mutation->create();
@@ -54,22 +57,22 @@ int main()
     const auto publish = builder.add(
         lux::task::dependsOn(*movement),
         lux::simulation::ecs::ecsChangesWrite(),
-        [&]() noexcept { (void)changes.publish(world); }
+        [&]() noexcept { (void)changes.publish(journal); }
     );
     const auto apply = builder.add(
         lux::task::dependsOn(*publish),
         lux::task::on(lux::task::ETaskAffinity::CALLER_THREAD),
         lux::simulation::ecs::ecsCommandsWrite(),
-        [&]() noexcept { lux::simulation::ecs::applyEcsCommands(world, commands); }
+        [&]() noexcept
+        {
+            lux::simulation::ecs::applyEcsCommands(world, journal, commands);
+        }
     );
     assert(movement && publish && apply);
     auto graph = std::move(builder).build();
     assert(graph);
-    auto lease = world.beginTaskExecution();
-    assert(lease);
     lux::task::TaskExecutor executor({0U, graph->taskCount()});
     assert(executor.execute(*graph));
-    lease = {};
     assert(world.get<Position>(entity).value == 1);
     const auto stats = changes.stats();
     assert(stats.lane_binds == 1U);

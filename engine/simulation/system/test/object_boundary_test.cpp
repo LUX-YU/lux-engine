@@ -38,7 +38,8 @@ int main()
 
     lux::object::ObjectMessageQueue queue;
     DemandObserver observer{queue.dispatcherRef()};
-    EcsState world{EcsStateConfig{{4096U, 16U * 4096U}}};
+    EcsState world;
+    EcsChangeJournal journal(EcsChangeHistoryBudget{4096U, 16U * 4096U});
     auto mutation = world.mutate();
     assert(mutation);
     const Entity entity = mutation->create();
@@ -77,9 +78,9 @@ int main()
         lux::task::dependsOn(*update),
         lux::task::on(lux::task::ETaskAffinity::CALLER_THREAD),
         ecsCommandsWrite(),
-        [&world, &commands]() noexcept
+        [&world, &journal, &commands]() noexcept
         {
-            applyEcsCommands(world, commands);
+            applyEcsCommands(world, journal, commands);
         }
     );
     assert(update && apply);
@@ -88,8 +89,6 @@ int main()
     lux::task::TaskExecutor executor({0U, graph->taskCount()});
     const auto run_frame = [&]()
     {
-        auto lease = world.beginTaskExecution();
-        assert(lease);
         assert(executor.execute(*graph));
     };
 

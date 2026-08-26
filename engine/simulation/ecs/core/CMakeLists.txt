@@ -16,6 +16,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsChangeLog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsState.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsCommands.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationEcsMutation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsTaskResources.cpp
 )
 

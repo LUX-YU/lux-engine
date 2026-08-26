@@ -19,7 +19,22 @@ namespace lux::simulation::ecs::testing
     class EcsTaskTestRig final
     {
       public:
-        explicit EcsTaskTestRig(EcsState& world) : world_(&world) {}
+        explicit EcsTaskTestRig(EcsState& world)
+            : owned_journal_(std::make_unique<EcsChangeJournal>(
+                  EcsChangeHistoryBudget{256U * 1024U, 32U * 1024U * 1024U}
+              )),
+              world_(&world),
+              journal_(owned_journal_.get())
+        {
+        }
+
+        EcsTaskTestRig(
+            EcsState& world,
+            EcsChangeJournal& journal
+        ) noexcept
+            : world_(&world), journal_(&journal)
+        {
+        }
 
         template <class Type, class... Args>
         [[nodiscard]] SystemId add(Args&&... args)
@@ -47,6 +62,7 @@ namespace lux::simulation::ecs::testing
                         auto scope = std::move(*recording);
                         system->invokeTask(
                             *world_,
+                            *journal_,
                             *changes,
                             scope.commands()
                         );
@@ -62,6 +78,7 @@ namespace lux::simulation::ecs::testing
                         auto scope = std::move(*recording);
                         system->invokeTask(
                             *world_,
+                            *journal_,
                             *changes,
                             scope.commands()
                         );
@@ -73,7 +90,7 @@ namespace lux::simulation::ecs::testing
                 ecsChangesWrite(),
                 [this, changes]() noexcept
                 {
-                    (void)changes->publish(*world_);
+                    (void)changes->publish(*journal_);
                 }
             );
             assert(publish);
@@ -93,7 +110,7 @@ namespace lux::simulation::ecs::testing
                     ecsCommandsWrite(),
                     [this]() noexcept
                     {
-                        applyEcsCommands(*world_, commands_);
+                        applyEcsCommands(*world_, *journal_, commands_);
                     }
                 )
                 : builder_.add(
@@ -102,7 +119,7 @@ namespace lux::simulation::ecs::testing
                     ecsCommandsWrite(),
                     [this]() noexcept
                     {
-                        applyEcsCommands(*world_, commands_);
+                        applyEcsCommands(*world_, *journal_, commands_);
                     }
                 );
             if (!apply)
@@ -121,10 +138,17 @@ namespace lux::simulation::ecs::testing
         {
             if (!graph_ || !executor_)
                 return false;
-            auto lease = world_->beginTaskExecution();
-            if (!lease)
-                return false;
             return static_cast<bool>(executor_->execute(*graph_));
+        }
+
+        [[nodiscard]] auto mutate() noexcept
+        {
+            return beginSimulationEcsMutation(*world_, *journal_);
+        }
+
+        [[nodiscard]] EcsChangeJournal& journal() noexcept
+        {
+            return *journal_;
         }
 
         void failNextCommandPush(SystemId id) noexcept
@@ -165,7 +189,9 @@ namespace lux::simulation::ecs::testing
             return nullptr;
         }
 
+        std::unique_ptr<EcsChangeJournal> owned_journal_;
         EcsState* world_{};
+        EcsChangeJournal* journal_{};
         SystemRegistry systems_;
         task::TaskGraphBuilder builder_;
         std::vector<Entry> entries_;

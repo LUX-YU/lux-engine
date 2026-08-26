@@ -18,9 +18,9 @@ namespace lux::simulation::ecs
         {
             Entity entity{NullEntity};
 
-            void apply(EcsMutation& edit) noexcept
+            void apply(SimulationEcsMutation& edit) noexcept
             {
-                const EcsState& world = detail::EcsMutationAccess::world(edit);
+                const EcsState& world = edit.state();
                 if (world.valid(entity) &&
                     world.find<Derived>(entity) != nullptr)
                 {
@@ -35,9 +35,9 @@ namespace lux::simulation::ecs
             Entity entity{NullEntity};
             Derived value;
 
-            void apply(EcsMutation& edit) noexcept
+            void apply(SimulationEcsMutation& edit) noexcept
             {
-                const EcsState& world = detail::EcsMutationAccess::world(edit);
+                const EcsState& world = edit.state();
                 if (!world.valid(entity))
                     return;
                 if (world.find<Derived>(entity) == nullptr)
@@ -322,12 +322,13 @@ namespace lux::simulation::ecs
 
             void update(
                 const EcsState& world,
+                EcsChangeJournal& journal,
                 TaskWriter<Derived>& writer,
                 EcsCommands commands
             ) noexcept
             {
                 visited_nodes = 0U;
-                auto local_changes = componentChanges(world, local_cursor);
+                auto local_changes = componentChanges(journal, local_cursor);
                 auto hierarchy_changes = hierarchy->changes(hierarchy_cursor);
                 if (!hierarchy->synchronized())
                 {
@@ -449,11 +450,12 @@ namespace lux::simulation::ecs
 
     void Transform2DSystem::update(
         const EcsState& world,
+        EcsChangeJournal& journal,
         TaskWriter<WorldTransform2D>& writer,
         EcsCommands commands
     ) noexcept
     {
-        impl_->update(world, writer, commands);
+        impl_->update(world, journal, writer, commands);
     }
 
     std::size_t Transform2DSystem::visitedNodesLastUpdate() const noexcept
@@ -475,11 +477,12 @@ namespace lux::simulation::ecs
 
     void Transform3DSystem::update(
         const EcsState& world,
+        EcsChangeJournal& journal,
         TaskWriter<WorldTransform3D>& writer,
         EcsCommands commands
     ) noexcept
     {
-        impl_->update(world, writer, commands);
+        impl_->update(world, journal, writer, commands);
     }
 
     std::size_t Transform3DSystem::visitedNodesLastUpdate() const noexcept

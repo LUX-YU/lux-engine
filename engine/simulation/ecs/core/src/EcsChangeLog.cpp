@@ -1,5 +1,5 @@
 #include <lux/engine/simulation/ecs/core/detail/EcsChangeLog.hpp>
-
+#include <lux/engine/simulation/ecs/core/detail/EcsChangeJournalAccess.hpp>
 #include <lux/engine/simulation/ecs/EcsState.hpp>
 
 #include <algorithm>
@@ -515,3 +515,112 @@ namespace lux::simulation::ecs::detail
         --value.pins;
     }
 } // namespace lux::simulation::ecs::detail
+
+namespace lux::simulation::ecs
+{
+    struct EcsChangeJournal::Impl final
+    {
+        explicit Impl(EcsChangeHistoryBudget budget)
+            : log(detail::EcsChangeLogConfigValue{
+                  budget.initial_bytes,
+                  budget.max_bytes})
+        {
+        }
+
+        detail::EcsChangeLog log;
+    };
+
+    EcsChangeJournal::EcsChangeJournal(EcsChangeHistoryBudget budget)
+        : impl_(std::make_unique<Impl>(budget))
+    {
+        detail::require(
+            budget.initial_bytes <= budget.max_bytes &&
+            budget.max_bytes >= detail::kJournalBlockBytes
+        );
+    }
+
+    EcsChangeJournal::~EcsChangeJournal() noexcept = default;
+    EcsChangeJournal::EcsChangeJournal(EcsChangeJournal&&) noexcept = default;
+    EcsChangeJournal& EcsChangeJournal::operator=(
+        EcsChangeJournal&&
+    ) noexcept = default;
+
+    EntityChanges EcsChangeJournal::read(
+        EntityChangeCursor& cursor
+    ) const noexcept
+    {
+        return impl_->log.read(cursor);
+    }
+
+    detail::ChangeRangeData EcsChangeJournal::readComponentRaw(
+        std::uint64_t storage,
+        std::uint64_t& cursor_epoch,
+        std::uint64_t& cursor_sequence
+    ) const noexcept
+    {
+        return impl_->log.readComponentRaw(
+            storage,
+            cursor_epoch,
+            cursor_sequence
+        );
+    }
+
+    void EcsChangeJournal::invalidateHistory() noexcept
+    {
+        impl_->log.markHistoryLoss();
+    }
+
+    std::uint64_t EcsChangeJournal::epoch() const noexcept
+    {
+        return impl_->log.epoch();
+    }
+
+    std::uint64_t EcsChangeJournal::recordWriteCountForTest() const noexcept
+    {
+        return impl_->log.recordWriteCountForTest();
+    }
+
+    std::size_t EcsChangeJournal::dynamicBlockAcquisitionsForTest() const noexcept
+    {
+        return impl_->log.dynamicBlockAcquisitionsForTest();
+    }
+
+    std::uint64_t EcsChangeJournal::streamBindCountForTest() const noexcept
+    {
+        return impl_->log.streamBindCountForTest();
+    }
+
+    std::uint64_t EcsChangeJournal::perRecordLookupCountForTest() const noexcept
+    {
+        return impl_->log.perRecordLookupCountForTest();
+    }
+
+    void EcsChangeJournal::failNextStreamDescriptorForTest() noexcept
+    {
+        impl_->log.failNextStreamDescriptorForTest();
+    }
+
+    void EcsChangeJournal::failNextBlockAcquisitionForTest() noexcept
+    {
+        impl_->log.failNextBlockAcquisitionForTest();
+    }
+
+    void EcsChangeJournal::failNextBlockAttachForTest() noexcept
+    {
+        impl_->log.failNextBlockAttachForTest();
+    }
+
+    detail::EcsChangeLog& detail::EcsChangeJournalAccess::log(
+        EcsChangeJournal& journal
+    ) noexcept
+    {
+        return journal.impl_->log;
+    }
+
+    const detail::EcsChangeLog& detail::EcsChangeJournalAccess::log(
+        const EcsChangeJournal& journal
+    ) noexcept
+    {
+        return journal.impl_->log;
+    }
+} // namespace lux::simulation::ecs

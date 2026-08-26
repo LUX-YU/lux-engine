@@ -28,126 +28,18 @@ namespace lux::simulation::ecs::detail
         [[nodiscard]] static bool ownerIdle(const EcsState& world) noexcept
         {
             return world.state_ == EEcsState::IDLE &&
-                !world.execution_lease_ &&
                 world.owner_thread_ == std::this_thread::get_id();
         }
 
-        [[nodiscard]] static EcsMutation suppressingMutation(
+        [[nodiscard]] static EcsMutation mutation(
             EcsState& world
         ) noexcept
         {
             require(ownerIdle(world));
             world.state_ = EEcsState::MUTATING;
-            return EcsMutation(
-                world,
-                true,
-                EcsMutation::EChangeEmission::SUPPRESS
-            );
+            return EcsMutation(world, true);
         }
 
-    };
-
-    class EcsChangePublisher final
-    {
-      public:
-        explicit EcsChangePublisher(EcsState& world) noexcept
-            : log_(&EcsChangeAccess::log(world))
-        {
-        }
-
-        [[nodiscard]] BoundEcsChangeStream bindComponent(
-            std::uint64_t storage
-        ) noexcept
-        {
-            if (!exact_)
-                return {};
-            BoundEcsChangeStream result = log_->bindComponent(storage);
-            if (!result)
-                exact_ = false;
-            return result;
-        }
-
-        [[nodiscard]] bool append(
-            BoundEcsChangeStream stream,
-            Entity entity,
-            EComponentChangeKind kind
-        ) noexcept
-        {
-            if (!exact_)
-                return false;
-            exact_ = stream(entity, kind);
-            return exact_;
-        }
-
-        [[nodiscard]] bool appendEntity(
-            Entity entity,
-            EEntityChangeKind kind
-        ) noexcept
-        {
-            if (!exact_)
-                return false;
-            exact_ = log_->recordEntity(entity, kind);
-            return exact_;
-        }
-
-        [[nodiscard]] bool exact() const noexcept
-        {
-            return exact_;
-        }
-
-      private:
-        EcsChangeLog* log_{};
-        bool exact_{true};
-    };
-
-    struct EcsExecutionAccess final
-    {
-        [[nodiscard]] static bool acquire(EcsState& world) noexcept
-        {
-            if (world.owner_thread_ != std::this_thread::get_id() ||
-                world.state_ != EEcsState::IDLE ||
-                world.execution_lease_)
-            {
-                return false;
-            }
-            world.execution_lease_ = true;
-            world.state_ = EEcsState::EXECUTING;
-            return true;
-        }
-
-        static void beginApplyingCommands(EcsState& world) noexcept
-        {
-            require(world.execution_lease_);
-            require(world.state_ == EEcsState::EXECUTING);
-            world.state_ = EEcsState::APPLYING_COMMANDS;
-        }
-
-        [[nodiscard]] static EcsMutation commandMutation(
-            EcsState& world
-        ) noexcept
-        {
-            require(world.execution_lease_);
-            require(world.state_ == EEcsState::APPLYING_COMMANDS);
-            return EcsMutation(world, false);
-        }
-
-        static void resume(EcsState& world) noexcept
-        {
-            require(world.execution_lease_);
-            require(world.state_ == EEcsState::APPLYING_COMMANDS);
-            world.state_ = EEcsState::EXECUTING;
-        }
-
-        static void release(EcsState& world) noexcept
-        {
-            require(world.execution_lease_);
-            require(
-                world.state_ == EEcsState::EXECUTING ||
-                world.state_ == EEcsState::APPLYING_COMMANDS
-            );
-            world.state_ = EEcsState::IDLE;
-            world.execution_lease_ = false;
-        }
     };
 
     struct EcsEntityAccess final

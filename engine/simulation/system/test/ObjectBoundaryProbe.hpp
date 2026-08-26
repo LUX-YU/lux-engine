@@ -59,7 +59,7 @@ namespace lux::simulation::test
                     Entity entity{NullEntity};
                     std::uint32_t texture{};
 
-                    void apply(EcsMutation& mutation) noexcept
+                    void apply(SimulationEcsMutation& mutation) noexcept
                     {
                         mutation.emplace<MaterialTextureResident>(
                             entity,

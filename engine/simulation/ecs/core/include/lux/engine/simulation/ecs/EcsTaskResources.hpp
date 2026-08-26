@@ -2,6 +2,7 @@
 
 #include <lux/engine/simulation/ecs/Entity.hpp>
 #include <lux/engine/simulation/ecs/Query.hpp>
+#include <lux/engine/simulation/ecs/EcsChangeJournal.hpp>
 #include <lux/engine/simulation/ecs/EcsCommands.hpp>
 #include <lux/engine/simulation/ecs/EcsState.hpp>
 #include <lux/engine/simulation/ecs/core/visibility.h>
@@ -72,7 +73,7 @@ namespace lux::simulation::ecs
         ) noexcept;
 
         void reset() noexcept;
-        [[nodiscard]] bool publish(EcsState& world) noexcept;
+        [[nodiscard]] bool publish(EcsChangeJournal& journal) noexcept;
         [[nodiscard]] EcsChangeBatchStats stats() const noexcept;
 
         /** Internal typed-query seam; callers bind once, never per record. */
@@ -149,12 +150,14 @@ namespace lux::simulation::ecs
         friend struct detail::EcsTaskResourceTestAccess;
         friend LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC void applyEcsCommands(
             EcsState&,
+            EcsChangeJournal&,
             EcsCommandBatch&
         ) noexcept;
     };
 
     LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC void applyEcsCommands(
         EcsState& world,
+        EcsChangeJournal& journal,
         EcsCommandBatch& commands
     ) noexcept;
 
@@ -168,7 +171,6 @@ namespace lux::simulation::ecs
         void update(Entity entity, Fn&& fn) noexcept
         {
             detail::require(world_ != nullptr);
-            detail::require(world_->state_ == detail::EEcsState::EXECUTING);
             detail::require(world_->valid(entity));
             world_->registry_.template patch<Component>(
                 entity,
@@ -208,7 +210,6 @@ namespace lux::simulation::ecs
         QuerySpec<Access...> specification
     )
     {
-        detail::require(world.state_ == detail::EEcsState::EXECUTING);
         return detail::BasicQuery<EcsState::Registry, Access...>(
             world.registry_,
             changes.binder()
@@ -221,7 +222,6 @@ namespace lux::simulation::ecs
         EcsChangeBatch& changes
     ) noexcept
     {
-        detail::require(world.state_ == detail::EEcsState::EXECUTING);
         return TaskWriter<Component>(
             world,
             changes.binder()(entt::type_hash<Component>::value())
@@ -230,29 +230,18 @@ namespace lux::simulation::ecs
 
     template <class Component>
     [[nodiscard]] ComponentChanges<Component> componentChanges(
-        const EcsState& world,
+        const EcsChangeJournal& journal,
         ChangeCursor<Component>& cursor
     ) noexcept
     {
-        auto data = detail::readEcsComponentChanges(
-            world,
-            entt::type_hash<Component>::value(),
-            detail::ChangeCursorAccess::epoch(cursor),
-            detail::ChangeCursorAccess::sequence(cursor)
-        );
-        return ComponentChanges<Component>::fromDetail(data);
+        return journal.read(cursor);
     }
 
     [[nodiscard]] inline EntityChanges entityChanges(
-        const EcsState& world,
+        const EcsChangeJournal& journal,
         EntityChangeCursor& cursor
     ) noexcept
     {
-        auto data = detail::readEcsEntityChanges(
-            world,
-            detail::ChangeCursorAccess::epoch(cursor),
-            detail::ChangeCursorAccess::sequence(cursor)
-        );
-        return EntityChanges::fromDetail(data);
+        return journal.read(cursor);
     }
 }

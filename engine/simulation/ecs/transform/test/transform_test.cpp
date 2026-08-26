@@ -17,12 +17,7 @@
 
 namespace
 {
-    [[nodiscard]] constexpr lux::simulation::ecs::EcsStateConfig worldConfig() noexcept
-    {
-        return {{256U * 1024U, 32U * 1024U * 1024U}};
-    }
-
-    [[nodiscard]] bool near(float left, float right) noexcept
+[[nodiscard]] bool near(float left, float right) noexcept
     {
         return std::abs(left - right) < 0.0001F;
     }
@@ -86,7 +81,7 @@ namespace
 int main()
 {
     const auto schema_set = schemas();
-    lux::simulation::ecs::EcsState world{worldConfig()};
+    lux::simulation::ecs::EcsState world;
     lux::simulation::ecs::HierarchyIndex hierarchy{world};
     auto edit_result = world.mutate();
     assert(edit_result);
@@ -165,7 +160,7 @@ int main()
             ) == 0U
         );
 
-        auto update_result = world.mutate();
+        auto update_result = schedule.mutate();
         assert(update_result);
         auto update = std::move(*update_result);
         update.update<lux::simulation::ecs::Transform3D>(root, [](auto& value) noexcept
@@ -184,7 +179,7 @@ int main()
             ) == 2U
         );
 
-        auto leaf_update_result = world.mutate();
+        auto leaf_update_result = schedule.mutate();
         assert(leaf_update_result);
         auto leaf_update = std::move(*leaf_update_result);
         leaf_update.update<lux::simulation::ecs::Transform3D>(
@@ -206,7 +201,7 @@ int main()
             ) == 1U
         );
 
-        auto remove_local_result = world.mutate();
+        auto remove_local_result = schedule.mutate();
         assert(remove_local_result);
         auto remove_local = std::move(*remove_local_result);
         remove_local.erase<lux::simulation::ecs::Transform3D>(child);
@@ -214,7 +209,7 @@ int main()
         assert(schedule.run(1.0F / 60.0F, 5u));
         assert(world.find<lux::simulation::ecs::WorldTransform3D>(child) == nullptr);
 
-        auto restore_local_result = world.mutate();
+        auto restore_local_result = schedule.mutate();
         assert(restore_local_result);
         auto restore_local = std::move(*restore_local_result);
         restore_local.emplace<lux::simulation::ecs::Transform3D>(
@@ -232,7 +227,7 @@ int main()
             20.0F
         ));
 
-        auto reparent_result = world.mutate();
+        auto reparent_result = schedule.mutate();
         assert(reparent_result);
         auto reparent_edit = std::move(*reparent_result);
         const auto alternate_root = reparent_edit.create();
@@ -247,7 +242,7 @@ int main()
         reparent_edit = {};
         assert(schedule.run(1.0F / 60.0F, 7u));
 
-        auto move_branch_result = world.mutate();
+        auto move_branch_result = schedule.mutate();
         assert(move_branch_result);
         auto move_branch = std::move(*move_branch_result);
         assert(lux::simulation::ecs::reparent(move_branch, child, alternate_root));
@@ -263,7 +258,7 @@ int main()
             ) == 1U
         );
 
-        auto restore_branch_result = world.mutate();
+        auto restore_branch_result = schedule.mutate();
         assert(restore_branch_result);
         auto restore_branch = std::move(*restore_branch_result);
         assert(lux::simulation::ecs::reparent(restore_branch, child, root));
@@ -288,7 +283,7 @@ int main()
             *snapshot_components
         );
         assert(snapshot);
-        auto fork = snapshot->instantiate(worldConfig());
+        auto fork = snapshot->instantiate();
         assert(fork);
         assert((*fork)->find<lux::simulation::ecs::WorldTransform3D>(child) == nullptr);
         lux::simulation::ecs::HierarchyIndex fork_hierarchy{**fork};
@@ -298,7 +293,7 @@ int main()
         assert(near(forked.x(), 20.0F));
         assert(near(forked.y(), 2.0F));
 
-        auto destroy_result = world.mutate();
+        auto destroy_result = schedule.mutate();
         assert(destroy_result);
         auto destroy = std::move(*destroy_result);
         destroy.destroy(root);

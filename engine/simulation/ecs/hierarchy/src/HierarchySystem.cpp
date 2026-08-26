@@ -16,11 +16,12 @@ namespace lux::simulation::ecs
 
     void HierarchySystem::update(
         EcsState& world,
+        EcsChangeJournal& journal,
         EcsCommands commands
     ) noexcept
     {
         detail::require(world_ != nullptr && hierarchy_ != nullptr);
         detail::require(world_ == std::addressof(world));
-        hierarchy_->synchronize(commands);
+        hierarchy_->synchronize(journal, commands);
     }
 } // namespace lux::simulation::ecs

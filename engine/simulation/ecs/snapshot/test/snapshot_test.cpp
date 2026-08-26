@@ -1,5 +1,6 @@
 #include <lux/engine/simulation/ecs/EcsSnapshot.hpp>
-#include <lux/engine/simulation/ecs/core/detail/EcsChangeLog.hpp>
+#include <lux/engine/simulation/ecs/EcsChangeJournal.hpp>
+#include <lux/engine/simulation/ecs/SimulationEcsMutation.hpp>
 #include <lux/engine/simulation/ecs/core/detail/EcsStateAccess.hpp>
 
 #include <atomic>
@@ -12,11 +13,6 @@
 
 namespace
 {
-    [[nodiscard]] constexpr lux::simulation::ecs::EcsStateConfig worldConfig() noexcept
-    {
-        return {{256U * 1024U, 32U * 1024U * 1024U}};
-    }
-
     struct Position final
     {
         int value{};
@@ -61,7 +57,7 @@ int main()
     );
     assert(snapshot_components);
 
-    lux::simulation::ecs::EcsState source{worldConfig()};
+    lux::simulation::ecs::EcsState source;
     auto edit_result = source.mutate();
     assert(edit_result);
     auto edit = std::move(*edit_result);
@@ -94,13 +90,8 @@ int main()
     assert(
         lux::simulation::ecs::detail::ComponentSnapshotTestStats::storage_lookups == 1U
     );
-    auto instance = snapshot->instantiate(worldConfig());
+    auto instance = snapshot->instantiate();
     assert(instance);
-    auto& instance_journal = lux::simulation::ecs::detail::EcsChangeAccess::log(
-        **instance
-    );
-    assert(instance_journal.recordWriteCountForTest() == 0U);
-    assert(instance_journal.dynamicBlockAcquisitionsForTest() == 0U);
     assert((*instance)->valid(first));
     assert((*instance)->valid(third));
     assert(!(*instance)->valid(removed));
@@ -112,38 +103,6 @@ int main()
         if (index % 3 != 0)
             assert((*instance)->get<Position>(bulk[index]).value == index);
     }
-
-    const lux::simulation::ecs::EcsStateConfig bounded_config{
-        lux::simulation::ecs::EcsChangeHistoryBudget{4096U, 4096U}};
-    auto bounded_instance = snapshot->instantiate(bounded_config);
-    assert(bounded_instance);
-    lux::simulation::ecs::ChangeCursor<Position> bounded_cursor;
-    auto& bounded_journal = lux::simulation::ecs::detail::EcsChangeAccess::log(
-        **bounded_instance
-    );
-    assert(bounded_journal.recordWriteCountForTest() == 0U);
-    assert(bounded_journal.dynamicBlockAcquisitionsForTest() == 0U);
-    assert(
-        bounded_journal.read(bounded_cursor).status() ==
-        lux::simulation::ecs::EChangeReadStatus::RESYNC_REQUIRED
-    );
-    auto bounded_edit_result = (*bounded_instance)->mutate();
-    auto bounded_edit = std::move(*bounded_edit_result);
-    for (int index{}; index < 512; ++index)
-    {
-        bounded_edit.update<Position>(
-            first,
-            [](Position& value) noexcept
-            {
-                ++value.value;
-            }
-        );
-    }
-    bounded_edit = {};
-    assert(
-        bounded_journal.read(bounded_cursor).status() ==
-        lux::simulation::ecs::EChangeReadStatus::RESYNC_REQUIRED
-    );
 
     auto source_edit_result = source.mutate();
     auto source_edit = std::move(*source_edit_result);
@@ -159,35 +118,38 @@ int main()
         assert(source_next[index] == instance_edit.create());
     instance_edit = {};
 
-    lux::simulation::ecs::EcsState restored{bounded_config};
+    lux::simulation::ecs::EcsState restored;
+    lux::simulation::ecs::EcsChangeJournal restore_journal(
+        lux::simulation::ecs::EcsChangeHistoryBudget{4096U, 4096U}
+    );
     lux::simulation::ecs::ChangeCursor<Position> restore_cursor;
-    auto& restore_journal =
-        lux::simulation::ecs::detail::EcsChangeAccess::log(restored);
     assert(
         restore_journal.read(restore_cursor).status() ==
         lux::simulation::ecs::EChangeReadStatus::RESYNC_REQUIRED
     );
-    auto restored_edit_result = restored.mutate();
+    auto restored_edit_result = lux::simulation::ecs::beginSimulationEcsMutation(
+        restored,
+        restore_journal
+    );
     auto restored_edit = std::move(*restored_edit_result);
     const auto unrelated = restored_edit.create();
     restored_edit.emplace<DerivedCache>(unrelated, 1);
     restored_edit = {};
+    const auto restore_epoch = restore_journal.epoch();
     assert(snapshot->restore(restored));
-    assert(
-        restore_journal.read(restore_cursor).status() ==
-        lux::simulation::ecs::EChangeReadStatus::RESYNC_REQUIRED
-    );
+    assert(restore_journal.epoch() == restore_epoch);
     assert(restored.valid(first));
     assert(restored.get<Position>(third).target == first);
     assert(restored.find<DerivedCache>(first) == nullptr);
 
-    lux::simulation::ecs::EcsState busy{worldConfig()};
+    lux::simulation::ecs::EcsState busy;
     {
-        assert(lux::simulation::ecs::detail::EcsExecutionAccess::acquire(busy));
+        auto busy_mutation = busy.mutate();
+        assert(busy_mutation);
         const auto busy_restore = snapshot->restore(busy);
         assert(!busy_restore);
         assert(busy_restore.error().code == lux::simulation::ecs::ESnapshotError::WORLD_BUSY);
-        lux::simulation::ecs::detail::EcsExecutionAccess::release(busy);
+        *busy_mutation = {};
     }
     assert(snapshot->restore(busy));
 
@@ -209,7 +171,7 @@ int main()
     wrong_thread.join();
     assert(wrong_thread_rejected.load(std::memory_order_relaxed));
 
-    lux::simulation::ecs::EcsState invalid{worldConfig()};
+    lux::simulation::ecs::EcsState invalid;
     auto invalid_edit_result = invalid.mutate();
     auto invalid_edit = std::move(*invalid_edit_result);
     const auto unknown = invalid_edit.create();

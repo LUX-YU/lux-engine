@@ -13,7 +13,10 @@
 
 int main()
 {
-    lux::simulation::ecs::EcsState world({{4096U, 1024U * 1024U}});
+    lux::simulation::ecs::EcsState world;
+    lux::simulation::ecs::EcsChangeJournal journal(
+        lux::simulation::ecs::EcsChangeHistoryBudget{4096U, 1024U * 1024U}
+    );
     lux::simulation::ecs::HierarchyIndex hierarchy(world);
     lux::simulation::SystemRegistry systems;
     const auto hierarchy_id = systems.emplace<lux::simulation::ecs::HierarchySystem>(
@@ -59,7 +62,12 @@ int main()
             if (!recording)
                 std::terminate();
             auto scope = std::move(*recording);
-            system->invokeTask(world, *hierarchy_changes, scope.commands());
+            system->invokeTask(
+                world,
+                journal,
+                *hierarchy_changes,
+                scope.commands()
+            );
         }
     );
     if (!hierarchy_update)
@@ -69,7 +77,7 @@ int main()
         lux::simulation::ecs::ecsChangesWrite(),
         [&, hierarchy_changes]() noexcept
         {
-            (void)hierarchy_changes->publish(world);
+            (void)hierarchy_changes->publish(journal);
         }
     );
     if (!hierarchy_publish)
@@ -84,7 +92,12 @@ int main()
             if (!recording)
                 std::terminate();
             auto scope = std::move(*recording);
-            system->invokeTask(world, *transform_changes, scope.commands());
+            system->invokeTask(
+                world,
+                journal,
+                *transform_changes,
+                scope.commands()
+            );
         }
     );
     if (!transform_update)
@@ -94,7 +107,7 @@ int main()
         lux::simulation::ecs::ecsChangesWrite(),
         [&, transform_changes]() noexcept
         {
-            (void)transform_changes->publish(world);
+            (void)transform_changes->publish(journal);
         }
     );
     if (!transform_publish)
@@ -104,7 +117,14 @@ int main()
             lux::task::dependsOn(*transform_publish),
             lux::task::on(lux::task::ETaskAffinity::CALLER_THREAD),
             lux::simulation::ecs::ecsCommandsWrite(),
-            [&]() noexcept { lux::simulation::ecs::applyEcsCommands(world, commands); }
+            [&]() noexcept
+            {
+                lux::simulation::ecs::applyEcsCommands(
+                    world,
+                    journal,
+                    commands
+                );
+            }
         ))
     {
         return 9;
@@ -114,8 +134,7 @@ int main()
         return 10;
 
     lux::task::TaskExecutor executor({0U, graph->taskCount()});
-    auto execution = world.beginTaskExecution();
-    if (!execution || !executor.execute(*graph))
+    if (!executor.execute(*graph))
         return 11;
     return 0;
 }

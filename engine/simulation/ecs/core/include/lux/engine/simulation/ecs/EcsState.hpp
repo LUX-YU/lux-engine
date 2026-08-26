@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lux/engine/simulation/ecs/EntityChanges.hpp>
 #include <lux/engine/simulation/ecs/Query.hpp>
 #include <lux/engine/simulation/ecs/core/visibility.h>
 
@@ -10,7 +9,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -19,6 +17,7 @@ namespace lux::simulation::ecs
 {
     class ComponentSnapshotBinding;
     class EcsChangeBatch;
+    class SimulationEcsMutation;
     template <class Component>
     class TaskWriter;
     class EcsSnapshot;
@@ -27,22 +26,12 @@ namespace lux::simulation::ecs
     template <class Component>
     [[nodiscard]] ComponentOperations componentOperations() noexcept;
 
-    struct EcsChangeHistoryBudget final
-    {
-        std::size_t initial_bytes;
-        std::size_t max_bytes;
-    };
-
-    struct EcsStateConfig final
-    {
-        EcsChangeHistoryBudget changes;
-    };
-
     enum class EEcsMutationError : std::uint8_t
     {
         NOT_IDLE,
         WRONG_THREAD,
         DESTROYING,
+        ALLOCATION_FAILURE,
     };
 
     struct EcsMutationError final
@@ -52,20 +41,15 @@ namespace lux::simulation::ecs
 
     namespace detail
     {
-        class EcsChangeLog;
         struct EcsSnapshotAccess;
         struct EcsMutationAccess;
-        struct EcsChangeAccess;
         struct EcsColdAccess;
         struct EcsEntityAccess;
-        struct EcsExecutionAccess;
 
         enum class EEcsState : std::uint8_t
         {
             IDLE,
             MUTATING,
-            EXECUTING,
-            APPLYING_COMMANDS,
             DESTROYING,
         };
 
@@ -79,45 +63,6 @@ namespace lux::simulation::ecs
     } // namespace detail
 
     class EcsState;
-
-    enum class EEcsTaskExecutionError : std::uint8_t
-    {
-        WORLD_BUSY,
-        WRONG_THREAD,
-    };
-
-    struct EcsTaskExecutionError final
-    {
-        EEcsTaskExecutionError code{EEcsTaskExecutionError::WORLD_BUSY};
-    };
-
-    /** Pure lexical EcsState-state lease. It never owns or runs a TaskGraph. */
-    class LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC EcsTaskExecutionLease final
-    {
-      public:
-        EcsTaskExecutionLease() noexcept = default;
-        ~EcsTaskExecutionLease() noexcept;
-        EcsTaskExecutionLease(EcsTaskExecutionLease&& other) noexcept;
-        EcsTaskExecutionLease& operator=(
-            EcsTaskExecutionLease&& other
-        ) noexcept;
-        EcsTaskExecutionLease(const EcsTaskExecutionLease&) = delete;
-        EcsTaskExecutionLease& operator=(
-            const EcsTaskExecutionLease&
-        ) = delete;
-
-        [[nodiscard]] explicit operator bool() const noexcept
-        {
-            return world_ != nullptr;
-        }
-
-      private:
-        explicit EcsTaskExecutionLease(EcsState& world) noexcept;
-        void release() noexcept;
-        EcsState* world_{};
-
-        friend class EcsState;
-    };
 
     class LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC EcsMutation final
     {
@@ -157,37 +102,28 @@ namespace lux::simulation::ecs
         void reserve(std::size_t count);
 
       private:
-        enum class EChangeEmission : std::uint8_t
-        {
-            RECORD,
-            SUPPRESS,
-        };
-
         explicit EcsMutation(
             EcsState& world,
-            bool release_to_idle,
-            EChangeEmission change_emission = EChangeEmission::RECORD
+            bool release_to_idle
         ) noexcept;
         [[nodiscard]] Entity createAt(Entity entity);
         void release() noexcept;
 
         EcsState* world_{};
         bool release_to_idle_{};
-        EChangeEmission change_emission_{EChangeEmission::RECORD};
 
         friend class EcsState;
         friend class EcsSnapshot;
         friend struct detail::EcsSnapshotAccess;
         friend struct detail::EcsMutationAccess;
         friend struct detail::EcsColdAccess;
-        friend struct detail::EcsExecutionAccess;
         friend class ComponentSnapshotBinding;
     };
 
     class LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC EcsState final
     {
       public:
-        explicit EcsState(EcsStateConfig config);
+        EcsState() noexcept;
         ~EcsState() noexcept;
 
         EcsState(const EcsState&) = delete;
@@ -229,23 +165,15 @@ namespace lux::simulation::ecs
         [[nodiscard]] lux::cxx::expected<EcsMutation, EcsMutationError>
         mutate() noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            EcsTaskExecutionLease,
-            EcsTaskExecutionError>
-        beginTaskExecution() noexcept;
-
       private:
         using Registry = entt::basic_registry<Entity>;
 
         Registry registry_;
-        EcsStateConfig config_;
-        std::unique_ptr<detail::EcsChangeLog> changes_;
         std::thread::id owner_thread_;
         detail::EEcsState state_{detail::EEcsState::IDLE};
-        bool execution_lease_{};
 
         friend class EcsMutation;
-        friend class EcsTaskExecutionLease;
+        friend class SimulationEcsMutation;
         friend class EcsSnapshot;
         template <class Component>
         friend class TaskWriter;
@@ -261,10 +189,8 @@ namespace lux::simulation::ecs
             EcsChangeBatch&
         ) noexcept;
         friend struct detail::EcsSnapshotAccess;
-        friend struct detail::EcsChangeAccess;
         friend struct detail::EcsColdAccess;
         friend struct detail::EcsEntityAccess;
-        friend struct detail::EcsExecutionAccess;
         friend class ComponentSnapshotBinding;
 
         template <class Component>
@@ -273,83 +199,16 @@ namespace lux::simulation::ecs
 
     namespace detail
     {
-        struct EcsChangeAccess final
-        {
-            [[nodiscard]] static EcsChangeLog& log(EcsState& world) noexcept
-            {
-                return *world.changes_;
-            }
-
-            [[nodiscard]] static const EcsChangeLog& log(
-                const EcsState& world
-            ) noexcept
-            {
-                return *world.changes_;
-            }
-        };
-
-        [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC ChangeRecorder
-        ecsChangeRecorder(EcsState& world) noexcept;
-
-        [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC ChangeStreamBinder
-        ecsChangeStreamBinder(EcsState& world) noexcept;
-
-        [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC bool recordEcsComponentChange(
-            EcsState& world,
-            std::uint64_t storage,
-            Entity entity,
-            EComponentChangeKind kind
-        ) noexcept;
-
-        [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC bool recordEcsEntityChange(
-            EcsState& world,
-            Entity entity,
-            EEntityChangeKind kind
-        ) noexcept;
-
-        LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC void establishEcsChangeBaseline(
-            EcsState& world
-        ) noexcept;
-
-        LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC void markEcsChangeHistoryLoss(
-            EcsState& world
-        ) noexcept;
-
-        [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC std::uint64_t
-        ecsChangeEpoch(const EcsState& world) noexcept;
-
-        [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC ChangeRangeData
-        readEcsComponentChanges(
-            const EcsState& world,
-            std::uint64_t storage,
-            std::uint64_t& cursor_epoch,
-            std::uint64_t& cursor_sequence
-        ) noexcept;
-
-        [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC ChangeRangeData
-        readEcsEntityChanges(
-            const EcsState& world,
-            std::uint64_t& cursor_epoch,
-            std::uint64_t& cursor_sequence
-        ) noexcept;
     } // namespace detail
 
     template <class Component, class... Args>
     Component& EcsMutation::emplace(Entity entity, Args&&... args)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
-        const auto storage = entt::type_hash<Component>::value();
         Component& result = world_->registry_.template emplace<Component>(
             entity,
             std::forward<Args>(args)...
         );
-        if (change_emission_ == EChangeEmission::RECORD)
-        {
-            (void)detail::recordEcsComponentChange(
-                *world_, storage, entity,
-                EComponentChangeKind::ADDED
-            );
-        }
         return result;
     }
 
@@ -357,17 +216,7 @@ namespace lux::simulation::ecs
     void EcsMutation::erase(Entity entity)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
-        const auto storage = entt::type_hash<Component>::value();
-        if (world_->registry_.template remove<Component>(entity) != 0)
-        {
-            if (change_emission_ == EChangeEmission::RECORD)
-            {
-                (void)detail::recordEcsComponentChange(
-                    *world_, storage, entity,
-                    EComponentChangeKind::REMOVED
-                );
-            }
-        }
+        (void)world_->registry_.template remove<Component>(entity);
     }
 
     template <class Component, class Fn>
@@ -382,13 +231,6 @@ namespace lux::simulation::ecs
             entity,
             std::forward<Fn>(fn)
         );
-        if (change_emission_ == EChangeEmission::RECORD)
-        {
-            (void)detail::recordEcsComponentChange(
-                *world_, entt::type_hash<Component>::value(), entity,
-                EComponentChangeKind::MODIFIED
-            );
-        }
     }
 
     template <class... Access>
@@ -397,9 +239,7 @@ namespace lux::simulation::ecs
         detail::require(world_ != nullptr);
         return detail::BasicQuery<EcsState::Registry, Access...>(
             world_->registry_,
-            change_emission_ == EChangeEmission::RECORD
-                ? detail::ecsChangeStreamBinder(*world_)
-                : detail::ChangeStreamBinder{},
+            detail::ChangeStreamBinder{},
             {}
         );
     }

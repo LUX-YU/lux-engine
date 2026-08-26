@@ -1,8 +1,9 @@
 #include <lux/engine/simulation/ecs/EcsTaskResources.hpp>
 
 #include <lux/engine/simulation/ecs/EcsState.hpp>
+#include <lux/engine/simulation/ecs/SimulationEcsMutation.hpp>
 #include <lux/engine/simulation/ecs/core/detail/CommandStorage.hpp>
-#include <lux/engine/simulation/ecs/core/detail/EcsStateAccess.hpp>
+#include <lux/engine/simulation/ecs/core/detail/EcsChangeJournalAccess.hpp>
 #include <lux/engine/simulation/ecs/core/detail/EcsTaskResourceTestAccess.hpp>
 
 #include <algorithm>
@@ -139,17 +140,17 @@ namespace lux::simulation::ecs
         };
     }
 
-    bool EcsChangeBatch::publish(EcsState& world) noexcept
+    bool EcsChangeBatch::publish(EcsChangeJournal& journal) noexcept
     {
         if (impl_->overflow)
         {
-            detail::markEcsChangeHistoryLoss(world);
+            journal.invalidateHistory();
             ++impl_->history_losses;
             reset();
             return false;
         }
 
-        detail::EcsChangePublisher publisher(world);
+        detail::EcsChangePublisher publisher(journal);
         for (const auto& lane : impl_->lanes)
         {
             ++impl_->journal_stream_binds;
@@ -316,17 +317,18 @@ namespace lux::simulation::ecs
 
     void applyEcsCommands(
         EcsState& world,
+        EcsChangeJournal& journal,
         EcsCommandBatch& commands
     ) noexcept
     {
         for (const bool active : commands.impl_->active)
             detail::require(!active);
-        detail::EcsExecutionAccess::beginApplyingCommands(world);
-        auto mutation = detail::EcsExecutionAccess::commandMutation(world);
+        auto mutation_result = beginSimulationEcsMutation(world, journal);
+        detail::require(static_cast<bool>(mutation_result));
+        auto mutation = std::move(*mutation_result);
         for (auto& producer : commands.impl_->producers)
             detail::CommandShardAccess::apply(producer, mutation);
         mutation = {};
-        detail::EcsExecutionAccess::resume(world);
     }
 
     void detail::EcsTaskResourceTestAccess::failNextPush(

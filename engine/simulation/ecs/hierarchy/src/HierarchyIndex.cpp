@@ -73,9 +73,9 @@ namespace lux::simulation::ecs
             Entity child{NullEntity};
             Entity destroyed_parent{NullEntity};
 
-            void apply(EcsMutation& edit) noexcept
+            void apply(SimulationEcsMutation& edit) noexcept
             {
-                const EcsState& world = detail::EcsMutationAccess::world(edit);
+                const EcsState& world = edit.state();
                 const Parent* current = world.find<Parent>(child);
                 if (world.valid(child) && current != nullptr &&
                     current->entity == destroyed_parent)
@@ -641,7 +641,10 @@ namespace lux::simulation::ecs
             prune(old_parent);
         }
 
-        void synchronize(EcsCommands commands) noexcept
+        void synchronize(
+            EcsChangeJournal& journal,
+            EcsCommands commands
+        ) noexcept
         {
             visited_nodes_last_update = 0U;
             if (repair_head != NullEntity)
@@ -651,8 +654,11 @@ namespace lux::simulation::ecs
                 rebuild_required = true;
             }
 
-            auto parent_changes = componentChanges(*world, parent_cursor);
-            auto entity_changes = lux::simulation::ecs::entityChanges(*world, entity_cursor);
+            auto parent_changes = componentChanges(journal, parent_cursor);
+            auto entity_changes = lux::simulation::ecs::entityChanges(
+                journal,
+                entity_cursor
+            );
             if (parent_changes.status() == EChangeReadStatus::RESYNC_REQUIRED ||
                 entity_changes.status() == EChangeReadStatus::RESYNC_REQUIRED ||
                 rebuild_required || !synchronized)
@@ -821,9 +827,12 @@ namespace lux::simulation::ecs
         );
     }
 
-    void HierarchyIndex::synchronize(EcsCommands commands) noexcept
+    void HierarchyIndex::synchronize(
+        EcsChangeJournal& journal,
+        EcsCommands commands
+    ) noexcept
     {
-        impl_->synchronize(commands);
+        impl_->synchronize(journal, commands);
     }
 
     std::size_t HierarchyIndex::visitedNodesLastUpdate() const noexcept
@@ -937,6 +946,41 @@ namespace lux::simulation::ecs
         if (world.find<Parent>(child) != nullptr)
             edit.erase<Parent>(child);
         return {};
+    }
+
+    lux::cxx::expected<void, EHierarchyError> reparent(
+        SimulationEcsMutation& mutation,
+        Entity child,
+        Entity parent
+    ) noexcept
+    {
+        const EcsState& world = mutation.state();
+        if (auto valid = validateCanonicalParent(world, child, parent); !valid)
+            return valid;
+
+        const Parent* current = world.find<Parent>(child);
+        if (current != nullptr && current->entity == parent)
+            return {};
+        try
+        {
+            if (current == nullptr)
+                mutation.emplace<Parent>(child, parent);
+            else
+            {
+                mutation.update<Parent>(
+                    child,
+                    [parent](Parent& value) noexcept
+                    {
+                        value.entity = parent;
+                    }
+                );
+            }
+            return {};
+        }
+        catch (...)
+        {
+            return lux::cxx::unexpected(EHierarchyError::ALLOCATION_FAILURE);
+        }
     }
 
     lux::cxx::expected<void, EHierarchyError> destroySubtree(

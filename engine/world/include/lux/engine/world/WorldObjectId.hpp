@@ -28,11 +28,6 @@ namespace lux::world
             }
             return false;
         }
-
-        [[nodiscard]] inline std::size_t uuidHash(const uuids::uuid& value) noexcept
-        {
-            return std::hash<uuids::uuid>{}(value);
-        }
     }
 
     struct WorldObjectId final
@@ -65,7 +60,7 @@ namespace lux::world
     {
         [[nodiscard]] std::size_t operator()(const WorldObjectId& value) const noexcept
         {
-            return detail::uuidHash(value.value);
+            return std::hash<uuids::uuid>{}(value.value);
         }
     };
 }

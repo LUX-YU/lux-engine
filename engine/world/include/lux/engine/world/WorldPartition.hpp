@@ -49,7 +49,7 @@ namespace lux::world
             const WorldPartitionId& value
         ) const noexcept
         {
-            return detail::uuidHash(value.value);
+            return std::hash<uuids::uuid>{}(value.value);
         }
     };
 

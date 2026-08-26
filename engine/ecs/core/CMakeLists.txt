@@ -74,6 +74,13 @@ foreach(probe IN ITEMS
     retired_world_edit_type_negative
     retired_world_edit_method_negative
     retired_change_journal_negative
+    retired_ecs_world_header_negative
+    retired_ecs_world_type_negative
+    retired_world_change_type_negative
+    retired_world_command_type_negative
+    retired_world_snapshot_header_negative
+    retired_world_section_header_negative
+    retired_persistent_entity_header_negative
 )
     add_executable(
         ecs_${probe} EXCLUDE_FROM_ALL

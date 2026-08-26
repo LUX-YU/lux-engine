@@ -220,6 +220,8 @@ endforeach()
 
 foreach(installed_consumer IN ITEMS
     core_system
+    ecs_core
+    ecs_system
     object_affinity
     world
 )

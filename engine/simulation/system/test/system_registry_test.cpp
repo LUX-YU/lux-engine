@@ -114,7 +114,7 @@ int main()
     assert(!systems.retain<ProbeSystem>(*id));
     assert(destroyed->load() == 0);
 
-    task::TaskExecutor executor(task::TaskExecutorConfig{.worker_count = 1U});
+    task::TaskExecutor executor(task::TaskExecutorConfig{1U, 0U});
     assert(executor.execute(graph));
     assert(ticks.load() == 1);
 

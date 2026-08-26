@@ -14,6 +14,16 @@ namespace lux::simulation::ecs
 {
     struct EcsChangeHistoryBudget final
     {
+        EcsChangeHistoryBudget() = delete;
+
+        constexpr EcsChangeHistoryBudget(
+            std::size_t initial,
+            std::size_t maximum
+        ) noexcept
+            : initial_bytes(initial), max_bytes(maximum)
+        {
+        }
+
         std::size_t initial_bytes;
         std::size_t max_bytes;
     };

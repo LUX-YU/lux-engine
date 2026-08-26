@@ -20,8 +20,19 @@ namespace lux::task
      */
     struct TaskExecutorConfig final
     {
-        std::uint32_t worker_count{};
-        std::size_t initial_task_capacity{};
+        TaskExecutorConfig() = delete;
+
+        constexpr TaskExecutorConfig(
+            std::uint32_t workers,
+            std::size_t task_capacity
+        ) noexcept
+            : worker_count(workers),
+              initial_task_capacity(task_capacity)
+        {
+        }
+
+        std::uint32_t worker_count;
+        std::size_t initial_task_capacity;
     };
 
     enum class ETaskExecutorError : std::uint8_t

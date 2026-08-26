@@ -17,7 +17,7 @@ int main()
         TaskGraphBuilder builder;
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{.worker_count = 0U});
+        TaskExecutor executor(TaskExecutorConfig{0U, 0U});
         assert(executor.execute(*graph));
     }
 
@@ -41,7 +41,7 @@ int main()
         assert(b);
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{.worker_count = 2U});
+        TaskExecutor executor(TaskExecutorConfig{2U, 0U});
         assert(executor.execute(*graph));
         assert(value.load() == 2);
     }
@@ -66,7 +66,7 @@ int main()
         auto graph = std::move(builder).build();
         assert(graph);
         assert(graph->dependencyCount() == 1U);
-        TaskExecutor executor(TaskExecutorConfig{.worker_count = 2U});
+        TaskExecutor executor(TaskExecutorConfig{2U, 0U});
         assert(executor.execute(*graph));
     }
 
@@ -98,7 +98,7 @@ int main()
 
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{.worker_count = 2U});
+        TaskExecutor executor(TaskExecutorConfig{2U, 0U});
         assert(executor.execute(*graph));
         assert(c_ran.load(std::memory_order_acquire));
     }
@@ -121,7 +121,7 @@ int main()
         assert(task);
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{.worker_count = 2U});
+        TaskExecutor executor(TaskExecutorConfig{2U, 0U});
         assert(executor.execute(*graph));
         assert(correct_thread.load(std::memory_order_acquire));
     }
@@ -175,10 +175,7 @@ int main()
         }
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{
-            .worker_count = 4U,
-            .initial_task_capacity = kTasks
-        });
+        TaskExecutor executor(TaskExecutorConfig{4U, kTasks});
         for (std::size_t run{}; run < kRuns; ++run)
             assert(executor.execute(*graph));
         assert(calls.load(std::memory_order_relaxed) == kTasks * kRuns);
@@ -223,10 +220,7 @@ int main()
         assert(terminal);
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{
-            .worker_count = 8U,
-            .initial_task_capacity = kWidth + 2U
-        });
+        TaskExecutor executor(TaskExecutorConfig{8U, kWidth + 2U});
         for (std::size_t run{}; run < 100U; ++run)
         {
             fan_out_calls.store(0U, std::memory_order_relaxed);
@@ -260,10 +254,7 @@ int main()
         }
         auto graph = std::move(builder).build();
         assert(graph);
-        TaskExecutor executor(TaskExecutorConfig{
-            .worker_count = workers,
-            .initial_task_capacity = kChain
-        });
+        TaskExecutor executor(TaskExecutorConfig{workers, kChain});
         for (std::size_t run{}; run < 100U; ++run)
             assert(executor.execute(*graph));
         assert(calls.load(std::memory_order_relaxed) == kChain * 100U);

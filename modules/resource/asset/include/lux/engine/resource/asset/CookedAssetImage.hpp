@@ -45,7 +45,16 @@ namespace lux::asset
 
     struct CookedAssetImageLimits final
     {
-        std::size_t max_image_bytes{};
+        CookedAssetImageLimits() = delete;
+
+        explicit constexpr CookedAssetImageLimits(
+            std::size_t image_bytes
+        ) noexcept
+            : max_image_bytes(image_bytes)
+        {
+        }
+
+        std::size_t max_image_bytes;
     };
 
     [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<

@@ -36,18 +36,49 @@ namespace lux::asset
 
     struct AssetCodecLimits final
     {
-        std::size_t max_input_bytes{};
-        std::size_t max_decoded_bytes{};
-        std::size_t max_encoded_bytes{};
+        AssetCodecLimits() = delete;
+
+        constexpr AssetCodecLimits(
+            std::size_t input_bytes,
+            std::size_t decoded_bytes,
+            std::size_t encoded_bytes
+        ) noexcept
+            : max_input_bytes(input_bytes),
+              max_decoded_bytes(decoded_bytes),
+              max_encoded_bytes(encoded_bytes)
+        {
+        }
+
+        std::size_t max_input_bytes;
+        std::size_t max_decoded_bytes;
+        std::size_t max_encoded_bytes;
     };
 
     struct AssetDecodeContext final
     {
+        AssetDecodeContext() = delete;
+
+        explicit constexpr AssetDecodeContext(
+            AssetCodecLimits value
+        ) noexcept
+            : limits(value)
+        {
+        }
+
         AssetCodecLimits limits;
     };
 
     struct AssetEncodeContext final
     {
+        AssetEncodeContext() = delete;
+
+        explicit constexpr AssetEncodeContext(
+            AssetCodecLimits value
+        ) noexcept
+            : limits(value)
+        {
+        }
+
         AssetCodecLimits limits;
     };
 

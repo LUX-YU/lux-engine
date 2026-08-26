@@ -63,7 +63,7 @@ int main()
     auto graph = std::move(builder).build();
     assert(graph);
 
-    task::TaskExecutor executor({.worker_count = 1U});
+    task::TaskExecutor executor(task::TaskExecutorConfig{1U, 0U});
     auto step = simulation::executeSimulationStep(
         executor,
         *graph,

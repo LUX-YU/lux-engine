@@ -2,6 +2,7 @@
 #include <lux/engine/ecs/WorldTaskResources.hpp>
 #include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <utility>
@@ -304,6 +305,9 @@ int main()
     auto batch_stream = change_batch.binder()(position_storage);
     assert(batch_stream);
     assert(batch_stream(task_entity, lux::ecs::EComponentChangeKind::MODIFIED));
+    const auto pending_batch_stats = change_batch.stats();
+    assert(pending_batch_stats.current_records == 1U);
+    assert(pending_batch_stats.peak_records == 1U);
     lux::ecs::ChangeCursor<Position> task_cursor;
     auto& task_log = lux::ecs::detail::WorldChangeAccess::log(task_world);
     assert(
@@ -317,4 +321,22 @@ int main()
     assert(batch_stats.lane_binds == 1U);
     assert(batch_stats.journal_stream_binds == 1U);
     assert(batch_stats.per_record_lookups == 0U);
+    assert(batch_stats.current_records == 0U);
+    assert(batch_stats.peak_records == 1U);
+
+    const std::array<std::uint64_t, 4U> four_storages{11U, 12U, 13U, 14U};
+    lux::ecs::WorldChangeBatch four_lane_batch;
+    assert(four_lane_batch.prepare(four_storages, 2U));
+    for (const std::uint64_t storage : four_storages)
+    {
+        auto stream = four_lane_batch.binder()(storage);
+        assert(stream);
+        assert(stream(task_entity, lux::ecs::EComponentChangeKind::MODIFIED));
+        assert(stream(task_entity, lux::ecs::EComponentChangeKind::MODIFIED));
+    }
+    const auto four_lane_stats = four_lane_batch.stats();
+    assert(four_lane_stats.current_records == 8U);
+    assert(four_lane_stats.peak_records == 8U);
+    assert(four_lane_stats.record_appends == 8U);
+    assert(four_lane_stats.lane_binds == four_storages.size());
 }

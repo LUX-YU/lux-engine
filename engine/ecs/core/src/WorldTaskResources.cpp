@@ -20,6 +20,7 @@ namespace lux::ecs
         };
 
         std::vector<Lane> lanes;
+        std::size_t current_records{};
         std::size_t peak_records{};
         std::uint64_t lane_binds{};
         std::uint64_t journal_stream_binds{};
@@ -67,6 +68,7 @@ namespace lux::ecs
                 lane.records.reserve(reserve_records);
                 impl_->lanes.push_back(std::move(lane));
             }
+            impl_->current_records = 0U;
             impl_->overflow = false;
             return {};
         }
@@ -82,6 +84,7 @@ namespace lux::ecs
     {
         for (auto& lane : impl_->lanes)
             lane.records.clear();
+        impl_->current_records = 0U;
         impl_->overflow = false;
     }
 
@@ -115,12 +118,10 @@ namespace lux::ecs
                             {
                                 target.records.push_back(entity);
                                 ++batch.record_appends;
-                                std::size_t current{};
-                                for (const auto& item : batch.lanes)
-                                    current += item.records.size();
+                                ++batch.current_records;
                                 batch.peak_records = std::max(
                                     batch.peak_records,
-                                    current
+                                    batch.current_records
                                 );
                                 return true;
                             }
@@ -176,9 +177,9 @@ namespace lux::ecs
     WorldChangeBatchStats WorldChangeBatch::stats() const noexcept
     {
         WorldChangeBatchStats result;
+        result.current_records = impl_->current_records;
         for (const auto& lane : impl_->lanes)
         {
-            result.current_records += lane.records.size();
             result.retained_capacity += lane.records.capacity();
         }
         result.peak_records = impl_->peak_records;

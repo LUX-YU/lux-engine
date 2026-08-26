@@ -6,7 +6,7 @@
 #include <lux/engine/ecs/TransformSystem.hpp>
 #include <lux/engine/ecs/WorldSnapshot.hpp>
 #include <lux/engine/ecs/transform/detail/TransformSystemTestAccess.hpp>
-#include <lux/engine/ecs/system/detail/SystemTestRig.hpp>
+#include <EcsTaskTestRig.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
 
 #include <array>
@@ -52,7 +52,7 @@ namespace
         lux::ecs::HierarchyIndex& hierarchy
     )
     {
-        lux::ecs::detail::SystemTestRig schedule{world};
+        lux::ecs::testing::EcsTaskTestRig schedule{world};
         const auto hierarchy_system =
             schedule.add<lux::ecs::HierarchySystem>(world, hierarchy);
         const auto transform3d =
@@ -149,7 +149,7 @@ int main()
     edit = {};
 
     {
-        lux::ecs::detail::SystemTestRig schedule{world};
+        lux::ecs::testing::EcsTaskTestRig schedule{world};
         const auto hierarchy_system =
             schedule.add<lux::ecs::HierarchySystem>(world, hierarchy);
         const auto transform3d =

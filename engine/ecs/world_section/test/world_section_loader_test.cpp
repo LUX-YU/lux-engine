@@ -1,9 +1,9 @@
 #include "WorldSectionFixtureBuilder.hpp"
 
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
-#include <lux/engine/ecs/SystemContext.hpp>
+#include <lux/engine/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/ecs/WorldSectionLoader.hpp>
-#include <lux/engine/ecs/system/detail/SystemTestRig.hpp>
+#include <EcsTaskTestRig.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 
 #include <uuid.h>
@@ -333,12 +333,18 @@ namespace
         return count;
     }
 
-    class RetainingSystem final : public StaticSystemAccess<Read<test::Fixed>>
+    class RetainingSystem final
     {
       public:
-        void update(SystemContext& frame) noexcept
+        inline static constexpr auto Access = access<Read<test::Fixed>>;
+
+        void invokeTask(
+            World& world,
+            WorldChangeBatch&,
+            WorldCommands
+        ) noexcept
         {
-            auto current = frame.changes(cursor_);
+            auto current = componentChanges(world, cursor_);
             last_status_ = current.status();
             last_size_ = current.size();
             last_added_ = 0U;
@@ -403,7 +409,7 @@ namespace
         bool retain_next_{};
     };
 
-    class ExecutingLoadSystem final : public StaticSystemAccess<>
+    class ExecutingLoadSystem final
     {
       public:
         ExecutingLoadSystem(
@@ -415,7 +421,9 @@ namespace
         {
         }
 
-        void update(SystemContext&) noexcept
+        inline static constexpr auto Access = access<>;
+
+        void invokeTask(World&, WorldChangeBatch&, WorldCommands) noexcept
         {
             auto loaded = loadSection(*world_, *loads_, *image_);
             rejected_ = !loaded &&
@@ -554,7 +562,7 @@ int main()
         assert(world.valid(entity));
 
     {
-        detail::SystemTestRig schedule(world);
+        lux::ecs::testing::EcsTaskTestRig schedule(world);
         assert(schedule.compile());
         auto scheduled_image = validImage(sectionId(1U));
         auto scheduled = loadSection(
@@ -647,7 +655,7 @@ int main()
             history_entity = edit->create();
             edit->emplace<test::Fixed>(history_entity, 1U, 2U);
         }
-        detail::SystemTestRig schedule(history_world);
+        lux::ecs::testing::EcsTaskTestRig schedule(history_world);
         const auto handle = schedule.add<RetainingSystem>();
         assert(schedule.compile());
         auto* retaining = std::addressof(
@@ -697,7 +705,7 @@ int main()
     {
         World executing_world{WorldConfig{{4096U, 16U * 4096U}}};
         auto executing_image = validImage(sectionId(1U));
-        detail::SystemTestRig schedule(executing_world);
+        lux::ecs::testing::EcsTaskTestRig schedule(executing_world);
         const auto handle = schedule.add<ExecutingLoadSystem>(
             executing_world,
             context.loads,

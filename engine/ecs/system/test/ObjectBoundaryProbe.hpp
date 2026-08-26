@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/SystemContext.hpp>
+#include <lux/engine/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/object/Object.hpp>
 #include <lux/engine/object/ObjectAnnotations.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
@@ -29,15 +29,19 @@ namespace lux::ecs::test
     };
 
     class LUX_OBJECT() MaterialTextureSystem final
-        : public lux::object::Object<MaterialTextureSystem>,
-          public StaticSystemAccess<Write<MaterialTextureResident>>
+        : public lux::object::Object<MaterialTextureSystem>
     {
     public:
         using Object::Object;
 
         static const signal_type<MaterialTextureDemand> textureDemand;
+        inline static constexpr auto Access = access<>;
 
-        void update(SystemContext& context) noexcept
+        void invokeTask(
+            World&,
+            WorldChangeBatch&,
+            WorldCommands commands
+        ) noexcept
         {
             if (!demand_published_)
             {
@@ -61,7 +65,7 @@ namespace lux::ecs::test
                         );
                     }
                 };
-                if (context.commands().push(
+                if (commands.push(
                         MakeResident{ready.entity, ready.texture}
                     ) != ECommandResult::ACCEPTED)
                 {

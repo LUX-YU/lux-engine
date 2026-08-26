@@ -3,6 +3,7 @@
 #include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/core/detail/CommandStorage.hpp>
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/WorldTaskResourceTestAccess.hpp>
 
 #include <algorithm>
 #include <utility>
@@ -321,5 +322,14 @@ namespace lux::ecs
             detail::CommandShardAccess::apply(producer, mutation);
         mutation = {};
         detail::WorldExecutionAccess::resume(world);
+    }
+
+    void detail::WorldTaskResourceTestAccess::failNextPush(
+        WorldCommandBatch& batch,
+        std::size_t producer
+    ) noexcept
+    {
+        detail::require(producer < batch.impl_->producers.size());
+        batch.impl_->producers[producer].failNextPushForTest();
     }
 }

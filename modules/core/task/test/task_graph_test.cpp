@@ -3,8 +3,6 @@
 #include <atomic>
 #include <cassert>
 #include <condition_variable>
-#include <cstddef>
-#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -13,218 +11,170 @@
 
 namespace
 {
-    struct Probe final
-    {
-        int value{};
-        std::vector<int>* order{};
-    };
-
-    void invokeProbe(void* target, void*) noexcept
-    {
-        auto& probe = *static_cast<Probe*>(target);
-        probe.order->push_back(probe.value);
-    }
-
-    struct AsyncBackend final
+    struct AsyncExecutor final
     {
         std::mutex mutex;
-        std::condition_variable allow_b_ready;
+        std::condition_variable release_long;
         std::vector<std::thread> workers;
-        std::size_t submission_count{};
-        bool allow_b{};
-        std::atomic_bool b_completed{};
-        bool c_submitted_before_b_completed{};
-    };
+        std::size_t submissions{};
+        bool allow_long{};
+        std::atomic_bool long_completed{};
+        bool dependent_submitted_before_long_completed{};
 
-    void submitAsymmetric(
-        void* state,
-        lux::task::TaskSubmission&& submission
-    ) noexcept
-    {
-        auto& backend = *static_cast<AsyncBackend*>(state);
-        const auto sequence = backend.submission_count++;
-
-        try
+        void submit(lux::task::TaskWork&& work) noexcept
         {
-            if (sequence == 0U)
+            const std::size_t sequence = submissions++;
+            try
             {
-                backend.workers.emplace_back(
-                    [submission = std::move(submission)]() mutable noexcept
-                    {
-                        std::move(submission).run();
-                    }
-                );
-                return;
-            }
-            if (sequence == 1U)
-            {
-                backend.workers.emplace_back(
-                    [&backend, submission = std::move(submission)]() mutable noexcept
-                    {
-                        {
-                            std::unique_lock lock(backend.mutex);
-                            backend.allow_b_ready.wait(lock, [&backend]
-                            {
-                                return backend.allow_b;
-                            });
-                        }
-                        std::move(submission).run();
-                        backend.b_completed.store(
-                            true,
-                            std::memory_order_release
-                        );
-                    }
-                );
-                return;
-            }
-            if (sequence == 2U)
-            {
-                backend.c_submitted_before_b_completed =
-                    !backend.b_completed.load(std::memory_order_acquire);
+                if (sequence == 0U)
                 {
-                    std::lock_guard lock(backend.mutex);
-                    backend.allow_b = true;
+                    workers.emplace_back(
+                        [work = std::move(work)]() mutable noexcept
+                        {
+                            std::move(work).run();
+                        }
+                    );
+                    return;
                 }
-                backend.allow_b_ready.notify_one();
+                if (sequence == 1U)
+                {
+                    workers.emplace_back(
+                        [this, work = std::move(work)]() mutable noexcept
+                        {
+                            {
+                                std::unique_lock lock(mutex);
+                                release_long.wait(lock, [this]
+                                {
+                                    return allow_long;
+                                });
+                            }
+                            std::move(work).run();
+                            long_completed.store(true, std::memory_order_release);
+                        }
+                    );
+                    return;
+                }
+                if (sequence == 2U)
+                {
+                    dependent_submitted_before_long_completed =
+                        !long_completed.load(std::memory_order_acquire);
+                    {
+                        std::lock_guard lock(mutex);
+                        allow_long = true;
+                    }
+                    release_long.notify_one();
+                }
+                std::move(work).run();
             }
-
-            std::move(submission).run();
+            catch (...)
+            {
+                std::abort();
+            }
         }
-        catch (...)
-        {
-            std::abort();
-        }
-    }
-
-    void invokeNoop(void*, void*) noexcept
-    {
-    }
+    };
 }
 
 int main()
 {
     using namespace lux::task;
 
-    static_assert(sizeof(TaskId) == 16U);
+    static_assert(sizeof(TaskId) == sizeof(std::uint32_t));
 
     TaskGraphBuilder empty_builder;
-    auto empty_graph = std::move(empty_builder).build();
-    assert(empty_graph);
-    assert(empty_graph->taskCount() == 0U);
-    TaskExecutionScratch empty_scratch;
-    assert(empty_scratch.prepare(*empty_graph));
-    executeTaskGraph(
-        referenceTaskExecutionBackend(),
-        *empty_graph,
-        nullptr,
-        empty_scratch
-    );
+    auto empty = compile(std::move(empty_builder));
+    assert(empty);
+    TaskRunState empty_state;
+    assert(prepare(empty_state, *empty));
+    InlineTaskExecutor inline_executor;
+    assert(run(*empty, inline_executor, empty_state));
 
     std::vector<int> order;
-    Probe a{1, &order};
-    Probe b{2, &order};
-    Probe c{3, &order};
-    Probe d{4, &order};
-
     TaskGraphBuilder builder;
-    const auto a_id = builder.addTask({&a, &invokeProbe});
-    const auto b_id = builder.addTask({&b, &invokeProbe});
-    const auto c_id = builder.addTask({&c, &invokeProbe});
-    const auto d_id = builder.addTask(
-        {&d, &invokeProbe},
-        ETaskAffinity::OWNER_THREAD
+    const TaskResourceKey position{1U, 1U};
+    const auto a = builder.add(
+        write(position),
+        [&order]() noexcept { order.push_back(1); }
     );
-    assert(a_id && b_id && c_id && d_id);
-    assert(builder.addDependency(*a_id, *c_id));
-    assert(builder.addDependency(*b_id, *c_id));
-    assert(builder.addDependency(*c_id, *d_id));
+    const auto b = builder.add(
+        read(position),
+        [&order]() noexcept { order.push_back(2); }
+    );
+    const auto c = builder.add(
+        on(ETaskAffinity::CALLER_THREAD),
+        [&order]() noexcept { order.push_back(3); }
+    );
+    assert(a && b && c);
+    assert(builder.before(*b, *c));
 
     auto lifetime = std::make_shared<int>(42);
     std::weak_ptr<const void> lifetime_probe = lifetime;
-    assert(builder.pinCodeLifetime(lifetime));
-    auto graph_result = std::move(builder).build();
-    assert(graph_result);
-    auto graph = std::move(*graph_result);
-    assert(graph.taskCount() == 4U);
-    assert(graph.dependencyCount() == 3U);
-    assert(graph.codeLifetimeCount() == 1U);
-    assert(graph.contains(*a_id));
+    const auto pin_task = builder.add(
+        keepAlive(lifetime),
+        []() noexcept {}
+    );
+    assert(pin_task);
+    auto graph = compile(std::move(builder));
+    assert(graph);
+    assert(graph->taskCount() == 4U);
+    assert(graph->dependencyCount() == 2U);
+    assert(graph->lifetimePinCount() == 1U);
     lifetime.reset();
     assert(!lifetime_probe.expired());
 
-    TaskExecutionScratch scratch;
-    assert(scratch.prepare(graph));
-    assert(scratch.taskCapacity() >= graph.taskCount());
-    executeTaskGraph(
-        referenceTaskExecutionBackend(),
-        graph,
-        nullptr,
-        scratch
-    );
-    assert((order == std::vector<int>{1, 2, 3, 4}));
+    TaskRunState state;
+    assert(prepare(state, *graph));
+    assert(run(*graph, inline_executor, state));
+    assert((order == std::vector<int>{1, 2, 3}));
+    order.clear();
+    assert(run(*graph, inline_executor, state));
+    assert((order == std::vector<int>{1, 2, 3}));
 
-    TaskGraphBuilder invalid;
-    assert(!invalid.addTask({}));
+    TaskGraphBuilder duplicate_resource;
+    assert(!duplicate_resource.add(
+        read(position),
+        write(position),
+        []() noexcept {}
+    ));
 
-    TaskGraphBuilder duplicate;
-    const auto one = duplicate.addTask({&a, &invokeProbe});
-    const auto two = duplicate.addTask({&b, &invokeProbe});
+    TaskGraphBuilder duplicate_edge;
+    const auto one = duplicate_edge.add([]() noexcept {});
+    const auto two = duplicate_edge.add([]() noexcept {});
     assert(one && two);
-    assert(duplicate.addDependency(*one, *two));
-    assert(duplicate.addDependency(*one, *two));
-    const auto duplicate_result = std::move(duplicate).build();
-    assert(!duplicate_result);
-    assert(duplicate_result.error().code == ETaskGraphError::DUPLICATE_DEPENDENCY);
+    assert(duplicate_edge.before(*one, *two));
+    assert(!duplicate_edge.before(*one, *two));
 
     TaskGraphBuilder cycle;
-    const auto first = cycle.addTask({&a, &invokeProbe});
-    const auto second = cycle.addTask({&b, &invokeProbe});
+    const auto first = cycle.add([]() noexcept {});
+    const auto second = cycle.add([]() noexcept {});
     assert(first && second);
-    assert(cycle.addDependency(*first, *second));
-    assert(cycle.addDependency(*second, *first));
-    const auto cycle_result = std::move(cycle).build();
+    assert(cycle.before(*first, *second));
+    assert(cycle.before(*second, *first));
+    const auto cycle_result = compile(std::move(cycle));
     assert(!cycle_result);
     assert(cycle_result.error().code == ETaskGraphError::DEPENDENCY_CYCLE);
 
-    // Populated builders deliberately produce identical local slot keys. The
-    // graph scope still makes a foreign handle unambiguously invalid.
-    TaskGraphBuilder left;
-    TaskGraphBuilder right;
-    const auto left_task = left.addTask({nullptr, &invokeNoop});
-    const auto right_task = right.addTask({nullptr, &invokeNoop});
-    assert(left_task && right_task);
-    assert(left_task->slot == right_task->slot);
-    assert(left_task->owner != right_task->owner);
-    const auto foreign_edge = right.addDependency(*left_task, *right_task);
-    assert(!foreign_edge);
-    assert(foreign_edge.error().code == ETaskGraphError::INVALID_TASK);
+    TaskGraphBuilder invalid;
+    const auto only = invalid.add([]() noexcept {});
+    assert(only);
+    assert(!invalid.before(*only, TaskId{99U}));
 
-    // A completion releases C immediately. It does not wait for independent B
-    // (and therefore D) to complete an implicit ready-level wave.
-    TaskGraphBuilder asymmetric_builder;
-    const auto async_a = asymmetric_builder.addTask({nullptr, &invokeNoop});
-    const auto async_b = asymmetric_builder.addTask({nullptr, &invokeNoop});
-    const auto async_c = asymmetric_builder.addTask({nullptr, &invokeNoop});
-    const auto async_d = asymmetric_builder.addTask({nullptr, &invokeNoop});
-    assert(async_a && async_b && async_c && async_d);
-    assert(asymmetric_builder.addDependency(*async_a, *async_c));
-    assert(asymmetric_builder.addDependency(*async_b, *async_d));
-    auto asymmetric_graph = std::move(asymmetric_builder).build();
+    // A completion releases C without waiting for independent long B.
+    TaskGraphBuilder asymmetric;
+    const auto short_a = asymmetric.add([]() noexcept {});
+    const auto long_b = asymmetric.add([]() noexcept {});
+    const auto after_a = asymmetric.add([]() noexcept {});
+    const auto after_b = asymmetric.add([]() noexcept {});
+    assert(short_a && long_b && after_a && after_b);
+    assert(asymmetric.before(*short_a, *after_a));
+    assert(asymmetric.before(*long_b, *after_b));
+    auto asymmetric_graph = compile(std::move(asymmetric));
     assert(asymmetric_graph);
-    TaskExecutionScratch asymmetric_scratch;
-    assert(asymmetric_scratch.prepare(*asymmetric_graph));
-
-    AsyncBackend async_backend;
-    executeTaskGraph(
-        TaskExecutionBackendRef{&async_backend, &submitAsymmetric},
-        *asymmetric_graph,
-        nullptr,
-        asymmetric_scratch
-    );
-    for (auto& worker : async_backend.workers)
+    TaskRunState asymmetric_state;
+    assert(prepare(asymmetric_state, *asymmetric_graph));
+    AsyncExecutor async;
+    assert(run(*asymmetric_graph, async, asymmetric_state));
+    for (auto& worker : async.workers)
         worker.join();
-    assert(async_backend.submission_count == 4U);
-    assert(async_backend.c_submitted_before_b_completed);
-
-    return 0;
+    assert(async.submissions == 4U);
+    assert(async.dependent_submitted_before_long_completed);
 }

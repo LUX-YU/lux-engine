@@ -1,143 +1,54 @@
 #pragma once
 
-#include <lux/engine/ecs/SystemConcept.hpp>
 #include <lux/engine/ecs/SystemError.hpp>
 #include <lux/engine/ecs/system/visibility.h>
 
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 
-#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <type_traits>
 #include <utility>
 
 namespace lux::ecs
 {
-    class SystemContext;
-
     namespace detail
     {
-        struct SystemRecord final
+        template <class Type>
+        struct SystemControl final
         {
-            SystemRecord() = default;
-
-            ~SystemRecord() noexcept
-            {
-                reset();
-            }
-
-            SystemRecord(SystemRecord&& other) noexcept
-                : type(other.type),
-                  access(other.access),
-                  code_lifetime(std::move(other.code_lifetime)),
-                  object(std::exchange(other.object, nullptr)),
-                  destroy(std::exchange(other.destroy, nullptr)),
-                  update(other.update),
-                  affinity_valid(other.affinity_valid),
-                  owner_thread_affine(other.owner_thread_affine),
-                  registration_order(other.registration_order)
+            template <class... Args>
+            explicit SystemControl(
+                std::shared_ptr<const void> lifetime,
+                Args&&... args
+            )
+                : code_lifetime(std::move(lifetime)),
+                  object(std::forward<Args>(args)...)
             {
             }
 
-            SystemRecord& operator=(SystemRecord&& other) noexcept
-            {
-                if (this == std::addressof(other))
-                    return *this;
-                reset();
-                type = other.type;
-                access = other.access;
-                code_lifetime = std::move(other.code_lifetime);
-                object = std::exchange(other.object, nullptr);
-                destroy = std::exchange(other.destroy, nullptr);
-                update = other.update;
-                affinity_valid = other.affinity_valid;
-                owner_thread_affine = other.owner_thread_affine;
-                registration_order = other.registration_order;
-                return *this;
-            }
-
-            SystemRecord(const SystemRecord&) = delete;
-            SystemRecord& operator=(const SystemRecord&) = delete;
-
-            void reset() noexcept
-            {
-                if (object != nullptr)
-                    destroy(object);
-                object = nullptr;
-                destroy = nullptr;
-            }
-
-            lux::cxx::TypeToken type;
-            SystemAccessSpec access;
+            // Reverse member destruction keeps code loaded through ~Type().
             std::shared_ptr<const void> code_lifetime;
-            void* object{};
-            void (*destroy)(void*) noexcept{};
-            void (*update)(void*, SystemContext&) noexcept{};
-            bool (*affinity_valid)(const void*) noexcept{};
-            bool owner_thread_affine{};
-            std::uint64_t registration_order{};
+            Type object;
         };
-
-        template <class Type>
-        concept ThreadAffineSystem = requires(const Type& system)
-        {
-            typename Type::lux_thread_affine;
-            requires std::same_as<
-                typename Type::lux_thread_affine,
-                std::true_type
-            >;
-            { system.isOnAffinityThread() } noexcept -> std::same_as<bool>;
-        };
-
-        template <class Type>
-        [[nodiscard]] SystemRecord eraseSystem(
-            std::unique_ptr<Type> object,
-            std::shared_ptr<const void> code_lifetime
-        ) noexcept
-        {
-            SystemRecord record;
-            record.type = lux::cxx::typeToken<Type>();
-            record.access = Type::Access.spec();
-            record.code_lifetime = std::move(code_lifetime);
-            record.object = object.release();
-            record.destroy = [](void* value) noexcept
-            {
-                delete static_cast<Type*>(value);
-            };
-            record.update = [](void* value, SystemContext& context) noexcept
-            {
-                static_cast<Type*>(value)->update(context);
-            };
-            record.affinity_valid = [](const void* value) noexcept
-            {
-                if constexpr (ThreadAffineSystem<Type>)
-                    return static_cast<const Type*>(value)->isOnAffinityThread();
-                else
-                    return true;
-            };
-            record.owner_thread_affine = ThreadAffineSystem<Type>;
-            return record;
-        }
-
-        struct SystemRegistryAccess;
     }
 
+    /**
+     * Owner-thread composition container. Erase invalidates membership while
+     * retained typed leases keep the object and its code alive.
+     */
     class LUX_ENGINE_ECS_SYSTEM_PUBLIC SystemRegistry final
     {
-    public:
+      public:
         SystemRegistry();
         ~SystemRegistry();
-
         SystemRegistry(SystemRegistry&& other) noexcept;
         SystemRegistry& operator=(SystemRegistry&& other) noexcept;
-
         SystemRegistry(const SystemRegistry&) = delete;
         SystemRegistry& operator=(const SystemRegistry&) = delete;
 
-        template <System Type, class... Args>
+        template <class Type, class... Args>
         [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure> emplace(
             Args&&... args
         ) noexcept
@@ -148,7 +59,7 @@ namespace lux::ecs
             );
         }
 
-        template <System Type, class... Args>
+        template <class Type, class... Args>
         [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure>
         emplaceWithLifetime(
             std::shared_ptr<const void> code_lifetime,
@@ -157,39 +68,49 @@ namespace lux::ecs
         {
             try
             {
-                auto object = std::make_unique<Type>(
+                using Control = detail::SystemControl<Type>;
+                auto control = std::make_shared<Control>(
+                    std::move(code_lifetime),
                     std::forward<Args>(args)...
                 );
-                auto record = detail::eraseSystem(
-                    std::move(object),
-                    std::move(code_lifetime)
-                );
-                return add(std::move(record));
+                std::shared_ptr<void> object(control, &control->object);
+                return add(lux::cxx::typeToken<Type>(), std::move(object));
             }
             catch (...)
             {
-                return lux::cxx::unexpected<SystemFailure>(SystemFailure{
+                return lux::cxx::unexpected(SystemFailure{
                     .code = ESystemError::ALLOCATION_FAILURE
                 });
             }
+        }
+
+        template <class Type>
+        [[nodiscard]] std::shared_ptr<Type> retain(SystemId id) noexcept
+        {
+            auto object = retainErased(id, lux::cxx::typeToken<Type>());
+            if (!object)
+                return {};
+            auto* value = static_cast<Type*>(object.get());
+            return std::shared_ptr<Type>(std::move(object), value);
         }
 
         [[nodiscard]] SystemRegistryId id() const noexcept;
         [[nodiscard]] bool contains(SystemId id) const noexcept;
         [[nodiscard]] std::size_t size() const noexcept;
         [[nodiscard]] std::uint64_t revision() const noexcept;
-
-        /** Immediately destroys the uniquely-owned System at a safe point. */
         [[nodiscard]] bool erase(SystemId id) noexcept;
 
-    private:
+      private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
 
         [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure> add(
-            detail::SystemRecord record
+            lux::cxx::TypeToken type,
+            std::shared_ptr<void> object
         ) noexcept;
-
-        friend struct detail::SystemRegistryAccess;
+        [[nodiscard]] std::shared_ptr<void> retainErased(
+            SystemId id,
+            lux::cxx::TypeToken type
+        ) noexcept;
     };
 }

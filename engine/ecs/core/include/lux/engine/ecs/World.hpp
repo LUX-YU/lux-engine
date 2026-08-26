@@ -19,7 +19,9 @@ namespace lux::ecs
 {
     class ComponentLoadBinding;
     class ComponentSnapshotBinding;
-    class SystemContext;
+    class WorldChangeBatch;
+    template <class Component>
+    class TaskWriter;
     class WorldSnapshot;
     struct ComponentOperations;
 
@@ -255,8 +257,20 @@ namespace lux::ecs
 
         friend class WorldMutation;
         friend class WorldTaskExecutionLease;
-        friend class SystemContext;
         friend class WorldSnapshot;
+        template <class Component>
+        friend class TaskWriter;
+        template <class... Access>
+        friend auto taskQuery(
+            World&,
+            WorldChangeBatch&,
+            QuerySpec<Access...>
+        );
+        template <class Component>
+        friend TaskWriter<Component> taskWriter(
+            World&,
+            WorldChangeBatch&
+        ) noexcept;
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldChangeAccess;
         friend struct detail::WorldColdAccess;

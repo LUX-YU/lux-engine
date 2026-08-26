@@ -1,6 +1,6 @@
 ## core::task — immutable domain-neutral DAG with completion-driven execution.
 
-find_package(lux-cxx REQUIRED COMPONENTS compile_time container)
+find_package(lux-cxx REQUIRED COMPONENTS compile_time)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_CORE_TASK_LIBRARY
@@ -29,12 +29,11 @@ target_link_libraries(
     task
     PUBLIC
         lux::cxx::compile_time
-        lux::cxx::container
 )
 
 component_add_transitive_commands(
     task
-    "find_package(lux-cxx REQUIRED COMPONENTS compile_time container)"
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
 
 lux_classify_target(

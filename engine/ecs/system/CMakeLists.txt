@@ -18,11 +18,7 @@ add_component(
     NAMESPACE      lux::engine::ecs
     OUTPUT_NAME    lux_engine_ecs_system
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ChangeSet.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemExecution.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemRegistry.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemRelations.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemTaskGraphCompiler.cpp
 )
 
 component_include_directories(
@@ -109,7 +105,6 @@ set_tests_properties(
 
 foreach(probe IN ITEMS
     registry_wrong_thread
-    registry_execution_mutation
 )
     add_executable(
         ecs_${probe}_probe

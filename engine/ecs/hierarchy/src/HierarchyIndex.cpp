@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 
-#include <lux/engine/ecs/SystemContext.hpp>
+#include <lux/engine/ecs/WorldTaskResources.hpp>
 #include <lux/engine/ecs/core/detail/WorldAccess.hpp>
 
 #include <entt/entity/entity.hpp>
@@ -378,7 +378,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] lux::cxx::expected<void, EHierarchyError> rebuild(
-            SystemContext& frame
+            WorldCommands commands
         ) noexcept
         {
             try
@@ -386,7 +386,7 @@ namespace lux::ecs
                 std::vector<std::pair<Entity, Entity>> edges;
                 std::vector<std::pair<Entity, Entity>> repairs;
                 std::size_t maximum_index{};
-                for (auto [child, link] : frame.query<Read<Parent>>())
+                for (auto [child, link] : world->query<Read<Parent>>())
                 {
                     ++visited_nodes_last_update;
                     if (link.entity == NullEntity)
@@ -531,7 +531,7 @@ namespace lux::ecs
                 last_error = EHierarchyError::NONE;
                 establishBaseline();
                 if (!synchronized)
-                    (void)retryRepairs(frame.commands());
+                    (void)retryRepairs(commands);
                 return {};
             }
             catch (...)
@@ -641,23 +641,23 @@ namespace lux::ecs
             prune(old_parent);
         }
 
-        void synchronize(SystemContext& frame) noexcept
+        void synchronize(WorldCommands commands) noexcept
         {
             visited_nodes_last_update = 0U;
             if (repair_head != NullEntity)
             {
-                if (!retryRepairs(frame.commands()))
+                if (!retryRepairs(commands))
                     return;
                 rebuild_required = true;
             }
 
-            auto parent_changes = frame.changes(parent_cursor);
-            auto entity_changes = frame.entityChanges(entity_cursor);
+            auto parent_changes = componentChanges(*world, parent_cursor);
+            auto entity_changes = lux::ecs::entityChanges(*world, entity_cursor);
             if (parent_changes.status() == EChangeReadStatus::RESYNC_REQUIRED ||
                 entity_changes.status() == EChangeReadStatus::RESYNC_REQUIRED ||
                 rebuild_required || !synchronized)
             {
-                auto rebuilt = rebuild(frame);
+                auto rebuilt = rebuild(commands);
                 if (!rebuilt)
                     invalidate(rebuilt.error());
                 else
@@ -672,7 +672,7 @@ namespace lux::ecs
                 maximum_index = std::max(
                     maximum_index, entityIndex(change.entity)
                 );
-                const Parent* link = frame.find<Parent>(change.entity);
+                const Parent* link = world->find<Parent>(change.entity);
                 if (link == nullptr)
                     continue;
                 const auto reference_state =
@@ -695,7 +695,7 @@ namespace lux::ecs
                     maximum_index, entityIndex(link->entity)
                 );
                 if (auto valid = validateCanonicalParent(
-                        frame, change.entity, link->entity
+                        *world, change.entity, link->entity
                     ); !valid)
                 {
                     invalidate(valid.error());
@@ -704,7 +704,7 @@ namespace lux::ecs
             }
             if (rebuild_required)
             {
-                auto rebuilt = rebuild(frame);
+                auto rebuilt = rebuild(commands);
                 if (!rebuilt)
                     invalidate(rebuilt.error());
                 else
@@ -717,7 +717,6 @@ namespace lux::ecs
                 return;
             }
 
-            const WorldCommands commands = frame.commands();
             for (const EntityChange change : entity_changes)
             {
                 ++visited_nodes_last_update;
@@ -728,9 +727,9 @@ namespace lux::ecs
                 return;
             for (const ComponentChange change : parent_changes)
             {
-                if (!frame.valid(change.entity))
+                if (!world->valid(change.entity))
                     continue;
-                applyParent(change.entity, frame.find<Parent>(change.entity));
+                applyParent(change.entity, world->find<Parent>(change.entity));
                 if (!synchronized)
                     return;
             }
@@ -822,9 +821,9 @@ namespace lux::ecs
         );
     }
 
-    void HierarchyIndex::synchronize(SystemContext& frame) noexcept
+    void HierarchyIndex::synchronize(WorldCommands commands) noexcept
     {
-        impl_->synchronize(frame);
+        impl_->synchronize(commands);
     }
 
     std::size_t HierarchyIndex::visitedNodesLastUpdate() const noexcept

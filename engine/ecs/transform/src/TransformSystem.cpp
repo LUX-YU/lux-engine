@@ -157,11 +157,15 @@ namespace lux::ecs
                 return true;
             }
 
-            void queueRemove(SystemContext& frame, Entity entity) noexcept
+            void queueRemove(
+                const World& world,
+                WorldCommands commands,
+                Entity entity
+            ) noexcept
             {
-                if (frame.find<Derived>(entity) == nullptr)
+                if (world.find<Derived>(entity) == nullptr)
                     return;
-                if (frame.commands().push(RemoveDerived<Derived>{entity}) !=
+                if (commands.push(RemoveDerived<Derived>{entity}) !=
                     ECommandResult::ACCEPTED)
                 {
                     force_resync = true;
@@ -170,13 +174,14 @@ namespace lux::ecs
             }
 
             void publish(
-                SystemContext& frame,
-                SystemContext::Writer<Derived>& writer,
+                const World& world,
+                TaskWriter<Derived>& writer,
+                WorldCommands commands,
                 Entity entity,
                 const Matrix& value
             ) noexcept
             {
-                if (frame.find<Derived>(entity) != nullptr)
+                if (world.find<Derived>(entity) != nullptr)
                 {
                     writer.update(
                         entity,
@@ -187,7 +192,7 @@ namespace lux::ecs
                     );
                     return;
                 }
-                if (frame.commands().push(
+                if (commands.push(
                         SetDerived<Derived>{entity, Derived{value}}
                     ) != ECommandResult::ACCEPTED)
                 {
@@ -197,25 +202,26 @@ namespace lux::ecs
             }
 
             [[nodiscard]] TraversalEntry<Matrix> rootEntry(
-                SystemContext& frame,
-                SystemContext::Writer<Derived>& writer,
+                const World& world,
+                TaskWriter<Derived>& writer,
+                WorldCommands commands,
                 Entity root
             )
             {
                 TraversalEntry<Matrix> result;
                 result.entity = root;
                 Entity current = hierarchy->parent(root);
-                if (current == NullEntity || !frame.valid(current) ||
-                    frame.find<Local>(current) == nullptr)
+                if (current == NullEntity || !world.valid(current) ||
+                    world.find<Local>(current) == nullptr)
                 {
                     return result;
                 }
 
                 ancestors.clear();
-                while (current != NullEntity && frame.valid(current) &&
-                       frame.find<Local>(current) != nullptr)
+                while (current != NullEntity && world.valid(current) &&
+                       world.find<Local>(current) != nullptr)
                 {
-                    if (const Derived* derived = frame.find<Derived>(current);
+                    if (const Derived* derived = world.find<Derived>(current);
                         derived != nullptr)
                     {
                         result.parent_world = derived->value;
@@ -224,8 +230,8 @@ namespace lux::ecs
                     }
                     ancestors.push_back(current);
                     const Entity parent = hierarchy->parent(current);
-                    if (parent == NullEntity || !frame.valid(parent) ||
-                        frame.find<Local>(parent) == nullptr)
+                    if (parent == NullEntity || !world.valid(parent) ||
+                        world.find<Local>(parent) == nullptr)
                     {
                         current = NullEntity;
                         break;
@@ -236,12 +242,12 @@ namespace lux::ecs
                 for (auto iterator = ancestors.rbegin();
                      iterator != ancestors.rend(); ++iterator)
                 {
-                    const Local* local = frame.find<Local>(*iterator);
+                    const Local* local = world.find<Local>(*iterator);
                     detail::require(local != nullptr);
                     const Matrix value = result.parent_contributes
                         ? result.parent_world * localMatrix(*local)
                         : localMatrix(*local);
-                    publish(frame, writer, *iterator, value);
+                    publish(world, writer, commands, *iterator, value);
                     result.parent_world = value;
                     result.parent_contributes = true;
                     ++visited_nodes;
@@ -250,33 +256,40 @@ namespace lux::ecs
             }
 
             void traverse(
-                SystemContext& frame,
-                SystemContext::Writer<Derived>& writer,
+                const World& world,
+                TaskWriter<Derived>& writer,
+                WorldCommands commands,
                 Entity root
             )
             {
                 traversal.clear();
-                traversal.push_back(rootEntry(frame, writer, root));
+                traversal.push_back(rootEntry(world, writer, commands, root));
                 while (!traversal.empty())
                 {
                     const TraversalEntry<Matrix> entry = traversal.back();
                     traversal.pop_back();
-                    if (!frame.valid(entry.entity) || !visit(entry.entity))
+                    if (!world.valid(entry.entity) || !visit(entry.entity))
                         continue;
 
                     Matrix child_world = Matrix::Identity();
                     bool child_contributes{};
-                    if (const Local* local = frame.find<Local>(entry.entity);
+                    if (const Local* local = world.find<Local>(entry.entity);
                         local != nullptr)
                     {
                         child_world = entry.parent_contributes
                             ? entry.parent_world * localMatrix(*local)
                             : localMatrix(*local);
                         child_contributes = true;
-                        publish(frame, writer, entry.entity, child_world);
+                        publish(
+                            world,
+                            writer,
+                            commands,
+                            entry.entity,
+                            child_world
+                        );
                     }
                     else
-                        queueRemove(frame, entry.entity);
+                        queueRemove(world, commands, entry.entity);
 
                     for (const Entity child :
                          hierarchy->children(entry.entity))
@@ -307,10 +320,14 @@ namespace lux::ecs
                 }
             }
 
-            void update(SystemContext& frame) noexcept
+            void update(
+                const World& world,
+                TaskWriter<Derived>& writer,
+                WorldCommands commands
+            ) noexcept
             {
                 visited_nodes = 0U;
-                auto local_changes = frame.changes(local_cursor);
+                auto local_changes = componentChanges(world, local_cursor);
                 auto hierarchy_changes = hierarchy->changes(hierarchy_cursor);
                 if (!hierarchy->synchronized())
                 {
@@ -339,39 +356,38 @@ namespace lux::ecs
                     if (rebuild)
                     {
                         for (auto [entity, local] :
-                             frame.query<Read<Local>>())
+                             world.query<Read<Local>>())
                         {
                             (void)local;
                             mark(entity);
                         }
                         for (auto [entity, derived] :
-                             frame.query<Read<Derived>>())
+                             world.query<Read<Derived>>())
                         {
                             (void)derived;
-                            if (frame.find<Local>(entity) == nullptr)
-                                queueRemove(frame, entity);
+                            if (world.find<Local>(entity) == nullptr)
+                                queueRemove(world, commands, entity);
                         }
                     }
                     else
                     {
                         for (const ComponentChange change : local_changes)
                         {
-                            if (frame.valid(change.entity))
+                            if (world.valid(change.entity))
                                 mark(change.entity);
                         }
                         for (const HierarchyChange change : hierarchy_changes)
                         {
-                            if (frame.valid(change.entity))
+                            if (world.valid(change.entity))
                                 mark(change.entity);
                         }
                     }
 
                     collectRoots();
-                    auto writer = frame.template write<Derived>();
                     for (const Entity root : roots)
                     {
-                        if (frame.valid(root))
-                            traverse(frame, writer, root);
+                        if (world.valid(root))
+                            traverse(world, writer, commands, root);
                     }
                 }
                 catch (...)
@@ -431,9 +447,13 @@ namespace lux::ecs
 
     Transform2DSystem::~Transform2DSystem() = default;
 
-    void Transform2DSystem::update(SystemContext& frame) noexcept
+    void Transform2DSystem::update(
+        const World& world,
+        TaskWriter<WorldTransform2D>& writer,
+        WorldCommands commands
+    ) noexcept
     {
-        impl_->update(frame);
+        impl_->update(world, writer, commands);
     }
 
     std::size_t Transform2DSystem::visitedNodesLastUpdate() const noexcept
@@ -453,9 +473,13 @@ namespace lux::ecs
 
     Transform3DSystem::~Transform3DSystem() = default;
 
-    void Transform3DSystem::update(SystemContext& frame) noexcept
+    void Transform3DSystem::update(
+        const World& world,
+        TaskWriter<WorldTransform3D>& writer,
+        WorldCommands commands
+    ) noexcept
     {
-        impl_->update(frame);
+        impl_->update(world, writer, commands);
     }
 
     std::size_t Transform3DSystem::visitedNodesLastUpdate() const noexcept

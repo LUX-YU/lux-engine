@@ -1,21 +1,31 @@
 #pragma once
 
 #include <lux/engine/ecs/HierarchyIndex.hpp>
-#include <lux/engine/ecs/SystemContext.hpp>
+#include <lux/engine/ecs/EcsTaskAccess.hpp>
+#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/WorldCommands.hpp>
 #include <lux/engine/ecs/hierarchy/visibility.h>
 
 namespace lux::ecs
 {
     class LUX_ENGINE_ECS_HIERARCHY_PUBLIC HierarchySystem final
-        : public StaticSystemAccess<
-            Read<Parent>,
-            ExternalWrite<HierarchyIndex>
-        >
     {
       public:
+        inline static constexpr auto Access = access<
+            Read<Parent>,
+            ExternalWrite<HierarchyIndex>>;
+
         HierarchySystem(World& world, HierarchyIndex& hierarchy) noexcept;
 
-        void update(SystemContext& context) noexcept;
+        void update(World& world, WorldCommands commands) noexcept;
+        void invokeTask(
+            World& world,
+            WorldChangeBatch&,
+            WorldCommands commands
+        ) noexcept
+        {
+            update(world, commands);
+        }
 
       private:
         World* world_{};

@@ -14,9 +14,13 @@ namespace lux::ecs
         detail::require(hierarchy.boundTo(world));
     }
 
-    void HierarchySystem::update(SystemContext& context) noexcept
+    void HierarchySystem::update(
+        World& world,
+        WorldCommands commands
+    ) noexcept
     {
         detail::require(world_ != nullptr && hierarchy_ != nullptr);
-        hierarchy_->synchronize(context);
+        detail::require(world_ == std::addressof(world));
+        hierarchy_->synchronize(commands);
     }
 } // namespace lux::ecs

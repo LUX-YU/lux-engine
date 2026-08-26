@@ -14,7 +14,8 @@
 
 namespace lux::ecs
 {
-    class SystemContext;
+    class World;
+    class WorldCommands;
 
     namespace detail
     {
@@ -242,7 +243,7 @@ namespace lux::ecs
         ) const noexcept;
 
       private:
-        void synchronize(SystemContext& context) noexcept;
+        void synchronize(WorldCommands commands) noexcept;
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] Entity firstChild(Entity parent) const noexcept;
         [[nodiscard]] Entity nextSibling(Entity entity) const noexcept;

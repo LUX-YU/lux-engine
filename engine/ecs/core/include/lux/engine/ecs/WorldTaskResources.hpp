@@ -3,6 +3,7 @@
 #include <lux/engine/ecs/Entity.hpp>
 #include <lux/engine/ecs/Query.hpp>
 #include <lux/engine/ecs/WorldCommands.hpp>
+#include <lux/engine/ecs/World.hpp>
 #include <lux/engine/ecs/core/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -11,10 +12,16 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <type_traits>
+#include <utility>
 
 namespace lux::ecs
 {
     class World;
+    namespace detail
+    {
+        struct WorldTaskResourceTestAccess;
+    }
 
     enum class EWorldTaskResourceError : std::uint8_t
     {
@@ -139,6 +146,7 @@ namespace lux::ecs
 
         void end(std::size_t producer) noexcept;
         friend class WorldCommandRecordingScope;
+        friend struct detail::WorldTaskResourceTestAccess;
         friend LUX_ENGINE_ECS_CORE_PUBLIC void applyWorldCommands(
             World&,
             WorldCommandBatch&
@@ -149,4 +157,102 @@ namespace lux::ecs
         World& world,
         WorldCommandBatch& commands
     ) noexcept;
+
+    /** One-bound-lane point writer for a graph task. */
+    template <class Component>
+    class TaskWriter final
+    {
+      public:
+        template <class Fn>
+            requires std::is_nothrow_invocable_v<Fn, Component&>
+        void update(Entity entity, Fn&& fn) noexcept
+        {
+            detail::require(world_ != nullptr);
+            detail::require(world_->state_ == detail::EWorldState::EXECUTING);
+            detail::require(world_->valid(entity));
+            world_->registry_.template patch<Component>(
+                entity,
+                std::forward<Fn>(fn)
+            );
+            if (!history_lost_)
+                history_lost_ = !stream_(
+                    entity,
+                    EComponentChangeKind::MODIFIED
+                );
+        }
+
+      private:
+        TaskWriter(
+            World& world,
+            detail::BoundWorldChangeStream stream
+        ) noexcept
+            : world_(std::addressof(world)), stream_(stream)
+        {
+        }
+
+        World* world_{};
+        detail::BoundWorldChangeStream stream_{};
+        bool history_lost_{};
+
+        template <class Value>
+        friend TaskWriter<Value> taskWriter(
+            World&,
+            WorldChangeBatch&
+        ) noexcept;
+    };
+
+    template <class... Access>
+    [[nodiscard]] auto taskQuery(
+        World& world,
+        WorldChangeBatch& changes,
+        QuerySpec<Access...> specification
+    )
+    {
+        detail::require(world.state_ == detail::EWorldState::EXECUTING);
+        return detail::BasicQuery<World::Registry, Access...>(
+            world.registry_,
+            changes.binder()
+        );
+    }
+
+    template <class Component>
+    [[nodiscard]] TaskWriter<Component> taskWriter(
+        World& world,
+        WorldChangeBatch& changes
+    ) noexcept
+    {
+        detail::require(world.state_ == detail::EWorldState::EXECUTING);
+        return TaskWriter<Component>(
+            world,
+            changes.binder()(entt::type_hash<Component>::value())
+        );
+    }
+
+    template <class Component>
+    [[nodiscard]] ComponentChanges<Component> componentChanges(
+        const World& world,
+        ChangeCursor<Component>& cursor
+    ) noexcept
+    {
+        auto data = detail::readWorldComponentChanges(
+            world,
+            entt::type_hash<Component>::value(),
+            detail::ChangeCursorAccess::epoch(cursor),
+            detail::ChangeCursorAccess::sequence(cursor)
+        );
+        return ComponentChanges<Component>::fromDetail(data);
+    }
+
+    [[nodiscard]] inline EntityChanges entityChanges(
+        const World& world,
+        EntityChangeCursor& cursor
+    ) noexcept
+    {
+        auto data = detail::readWorldEntityChanges(
+            world,
+            detail::ChangeCursorAccess::epoch(cursor),
+            detail::ChangeCursorAccess::sequence(cursor)
+        );
+        return EntityChanges::fromDetail(data);
+    }
 }

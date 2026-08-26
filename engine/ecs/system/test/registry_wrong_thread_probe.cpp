@@ -1,15 +1,10 @@
-#include <lux/engine/ecs/SystemContext.hpp>
 #include <lux/engine/ecs/SystemRegistry.hpp>
 
 #include <thread>
 
 namespace
 {
-    class NoopSystem final : public lux::ecs::StaticSystemAccess<>
-    {
-    public:
-        void update(lux::ecs::SystemContext&) noexcept {}
-    };
+    class NoopSystem final {};
 }
 
 int main()

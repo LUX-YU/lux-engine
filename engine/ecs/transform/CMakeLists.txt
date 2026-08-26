@@ -75,7 +75,8 @@ target_include_directories(
     ecs_transform_test
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../system/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/../test
 )
 target_link_libraries(
     ecs_transform_test

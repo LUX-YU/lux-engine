@@ -40,6 +40,7 @@ target_link_libraries(
         lux::engine::ecs::hierarchy
         lux::engine::ecs::snapshot
         lux::engine::core::math
+        lux::engine::core::serialization
 )
 component_add_internal_dependencies(
     transform core system schema hierarchy snapshot
@@ -47,7 +48,7 @@ component_add_internal_dependencies(
 component_add_transitive_commands(
     transform
     "find_package(Eigen3 CONFIG REQUIRED)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS math)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS math serialization)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core system schema hierarchy snapshot)"
 )
 

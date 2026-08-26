@@ -10,6 +10,7 @@ namespace lux::simulation
     {
         INVALID_SYSTEM,
         TYPE_COLLISION,
+        CONSTRUCTION_FAILURE,
         ALLOCATION_FAILURE,
     };
 

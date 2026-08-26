@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SimulationDescription.hpp>
+#include <lux/engine/simulation/SystemDescription.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -8,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string_view>
 
 namespace lux::simulation
 {
@@ -18,6 +20,25 @@ namespace lux::simulation
         INVALID_SCHEMA_VERSION,
         DUPLICATE_DATA,
         DATA_NOT_FOUND,
+        INVALID_SYSTEM_INSTANCE_NAME,
+        INVALID_SYSTEM_TYPE,
+        SYSTEM_TYPE_HASH_COLLISION,
+        INVALID_SYSTEM_VERSION,
+        DUPLICATE_SYSTEM_INSTANCE,
+        INVALID_CONFIGURATION_SCHEMA,
+        INVALID_CAPABILITY,
+        DUPLICATE_CAPABILITY,
+        INVALID_EXECUTION_POINT,
+        DUPLICATE_EXECUTION_POINT,
+        INVALID_EVENT,
+        DUPLICATE_EVENT,
+        INVALID_EVENT_DISPATCH_POINT,
+        INVALID_EVENT_PAYLOAD_SCHEMA,
+        SYSTEM_NOT_FOUND,
+        EXECUTION_POINT_NOT_FOUND,
+        INVALID_DEPENDENCY,
+        DUPLICATE_DEPENDENCY,
+        DEPENDENCY_CYCLE,
         SIZE_OVERFLOW,
         ALLOCATION_FAILURE,
     };
@@ -27,6 +48,7 @@ namespace lux::simulation
         ESimulationDescriptionError code{
             ESimulationDescriptionError::ALLOCATION_FAILURE};
         SimulationDataSchemaId schema;
+        std::uint64_t subject_hash{};
     };
 
     class LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC
@@ -61,6 +83,46 @@ namespace lux::simulation
 
         [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
         eraseData(const SimulationDataSchemaId& schema) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
+        addSystem(
+            std::string_view instance_name,
+            const SystemDescription& system,
+            std::span<const std::byte> configuration = {}
+        ) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
+        eraseSystem(std::string_view instance_name) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
+        setSystemConfiguration(
+            std::string_view instance_name,
+            std::span<const std::byte> configuration
+        ) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
+        addDependency(
+            std::string_view before_system,
+            SystemExecutionPoint before_point,
+            std::string_view after_system,
+            SystemExecutionPoint after_point
+        ) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
+        addDependency(
+            std::string_view before_system,
+            std::string_view before_point,
+            std::string_view after_system,
+            std::string_view after_point
+        ) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
+        eraseDependency(
+            std::string_view before_system,
+            std::string_view before_point,
+            std::string_view after_system,
+            std::string_view after_point
+        ) noexcept;
 
         void clear() noexcept;
 

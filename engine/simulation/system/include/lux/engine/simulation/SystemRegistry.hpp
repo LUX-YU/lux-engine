@@ -128,10 +128,16 @@ namespace lux::simulation
                 };
                 return add(std::move(record));
             }
-            catch (...)
+            catch (const std::bad_alloc&)
             {
                 return lux::cxx::unexpected(SystemFailure{
                     .code = ESystemError::ALLOCATION_FAILURE
+                });
+            }
+            catch (...)
+            {
+                return lux::cxx::unexpected(SystemFailure{
+                    .code = ESystemError::CONSTRUCTION_FAILURE
                 });
             }
         }

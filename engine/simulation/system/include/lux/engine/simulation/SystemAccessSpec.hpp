@@ -1,8 +1,8 @@
 #pragma once
 
-#include <lux/engine/simulation/ecs/Query.hpp>
-
 #include <lux/cxx/compile_time/TypeToken.hpp>
+
+#include <entt/core/type_info.hpp>
 
 #include <array>
 #include <cstdint>
@@ -31,6 +31,18 @@ namespace lux::simulation
         ESystemAccessMode mode{ESystemAccessMode::READ};
     };
 
+    template <class Component>
+    struct ComponentRead final
+    {
+        using component_type = Component;
+    };
+
+    template <class Component>
+    struct ComponentWrite final
+    {
+        using component_type = Component;
+    };
+
     template <class External>
     struct ExternalRead final
     {
@@ -51,6 +63,29 @@ namespace lux::simulation
 
     namespace detail
     {
+        template <class Access>
+        struct ComponentSystemAccessTraits;
+
+        template <class Component>
+        struct ComponentSystemAccessTraits<ComponentRead<Component>> final
+        {
+            using ComponentType = Component;
+            static constexpr ESystemAccessMode kMode = ESystemAccessMode::READ;
+        };
+
+        template <class Component>
+        struct ComponentSystemAccessTraits<ComponentWrite<Component>> final
+        {
+            using ComponentType = Component;
+            static constexpr ESystemAccessMode kMode = ESystemAccessMode::WRITE;
+        };
+
+        template <class Access>
+        concept ComponentSystemAccess = requires
+        {
+            typename ComponentSystemAccessTraits<Access>::ComponentType;
+        };
+
         template <class Access>
         struct ExternalSystemAccessTraits;
 
@@ -76,12 +111,12 @@ namespace lux::simulation
 
         template <class Access>
         inline constexpr bool kSystemAccessElement =
-            ecs::detail::ComponentAccessSpec<Access> ||
+            ComponentSystemAccess<Access> ||
             ExternalSystemAccess<Access>;
 
         template <class... Access>
         inline constexpr std::size_t kComponentAccessCount =
-            (std::size_t{ecs::detail::ComponentAccessSpec<Access>} + ... + 0U);
+            (std::size_t{ComponentSystemAccess<Access>} + ... + 0U);
 
         template <class... Access>
         inline constexpr std::size_t kExternalAccessCount =
@@ -95,16 +130,14 @@ namespace lux::simulation
             std::size_t index{};
             ([&]
             {
-                if constexpr (ecs::detail::ComponentAccessSpec<Access>)
+                if constexpr (ComponentSystemAccess<Access>)
                 {
                     using Component =
-                        typename ecs::detail::AccessTraits<Access>::ComponentType;
+                        typename ComponentSystemAccessTraits<Access>::ComponentType;
                     result[index++] = SystemComponentAccess{
                         lux::cxx::typeToken<Component>(),
                         entt::type_hash<Component>::value(),
-                        ecs::detail::AccessTraits<Access>::kWrite
-                            ? ESystemAccessMode::WRITE
-                            : ESystemAccessMode::READ
+                        ComponentSystemAccessTraits<Access>::kMode
                     };
                 }
             }(), ...);
@@ -190,21 +223,4 @@ namespace lux::simulation
         return StaticSystemAccessDescriptor<Access...>{};
     }
 
-    template <class... Component, class... External>
-        requires (detail::ExternalSystemAccess<External> && ...)
-    [[nodiscard]] consteval auto makeSystemAccessSpec(
-        ecs::QuerySpec<Component...>,
-        External...
-    ) noexcept
-    {
-        return StaticSystemAccessDescriptor<Component..., External...>{};
-    }
-
-    template <class... AccessValue>
-        requires (detail::kSystemAccessElement<AccessValue> && ...)
-    struct StaticSystemAccess
-    {
-        inline static constexpr auto Access =
-            makeSystemAccessSpec<AccessValue...>();
-    };
 }

@@ -1,4 +1,5 @@
 find_package(lux-cxx REQUIRED COMPONENTS compile_time container)
+find_package(EnTT CONFIG REQUIRED)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_SIMULATION_SYSTEM_LIBRARY
@@ -20,8 +21,6 @@ component_include_directories(
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
-    BUILD_TIME_SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/../ecs/core/sinclude
     INSTALL_TIME include
 )
 
@@ -29,14 +28,16 @@ target_compile_definitions(system PRIVATE LUX_ENGINE_SIMULATION_SYSTEM_LIBRARY)
 target_link_libraries(
     system
     PUBLIC
-        lux::engine::simulation::ecs::core
+        lux::engine::simulation::description
+        EnTT::EnTT
         lux::cxx::compile_time
         lux::cxx::container
 )
 component_add_transitive_commands(
     system
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time container)"
-    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
+    "find_package(EnTT CONFIG REQUIRED)"
+    "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description)"
 )
 
 lux_classify_target(
@@ -66,6 +67,49 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 add_test(NAME vnext_ecs_system_registry COMMAND ecs_system_registry_test)
+
+include_component_cmake_scripts(meta)
+engine_add_type_runtime_info(
+    NAME simulation_object_boundary_meta
+    TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/ObjectBoundaryProbe.hpp
+    REGISTER_FUNC_NAME lux_simulation_object_boundary
+)
+add_executable(
+    simulation_object_boundary_test
+    test/object_boundary_test.cpp
+)
+target_include_directories(
+    simulation_object_boundary_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
+)
+target_link_libraries(
+    simulation_object_boundary_test
+    PRIVATE
+        lux::engine::simulation::system
+        lux::engine::simulation::ecs::task
+        lux::engine::core::object
+        lux::engine::core::task
+)
+engine_target_add_type_runtime_info(
+    TARGET simulation_object_boundary_test
+    METAS simulation_object_boundary_meta
+    OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/object_boundary_meta
+)
+if(MSVC)
+    target_compile_options(simulation_object_boundary_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_object_boundary_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(
+    TARGET  simulation_object_boundary_test
+    LAYER   SIMULATION
+    PRODUCT TEST
+    ROLE    INTEGRATION
+)
+add_test(
+    NAME simulation_object_boundary_test
+    COMMAND simulation_object_boundary_test
+)
 
 install_components(
     PROJECT_NAME lux-engine-simulation-system

@@ -1,4 +1,3 @@
-#include <lux/engine/simulation/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/simulation/SystemRegistry.hpp>
 #include <lux/engine/simulation/ecs/SystemTaskResources.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
@@ -7,6 +6,7 @@
 #include <atomic>
 #include <cassert>
 #include <memory>
+#include <stdexcept>
 
 namespace
 {
@@ -19,8 +19,14 @@ namespace
     {
     };
 
-    struct ProbeSystem final : lux::simulation::StaticSystemAccess<>
+    struct ProbeSystem final
     {
+        inline static constexpr auto Access =
+            lux::simulation::makeSystemAccessSpec<>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.test.probe",
+            .version = 1};
+
         explicit ProbeSystem(std::shared_ptr<std::atomic_int> destroyed)
             : destroyed_(std::move(destroyed))
         {
@@ -39,17 +45,80 @@ namespace
         std::shared_ptr<std::atomic_int> destroyed_;
     };
 
-    struct ComponentWriterSystem final :
-        lux::simulation::StaticSystemAccess<
-            lux::simulation::ecs::Write<Position>>
+    struct ComponentWriterSystem final
     {
+        inline static constexpr auto Access =
+            lux::simulation::makeSystemAccessSpec<
+                lux::simulation::ComponentWrite<Position>>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.test.component-writer",
+            .version = 1};
     };
 
-    struct ExternalWriterSystem final :
-        lux::simulation::StaticSystemAccess<
-            lux::simulation::ExternalWrite<ExternalState>>
+    struct ExternalWriterSystem final
     {
+        inline static constexpr auto Access =
+            lux::simulation::makeSystemAccessSpec<
+                lux::simulation::ExternalWrite<ExternalState>>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.test.external-writer",
+            .version = 1};
     };
+
+    struct ComponentReaderSystem final
+    {
+        inline static constexpr auto Access =
+            lux::simulation::makeSystemAccessSpec<
+                lux::simulation::ComponentRead<Position>>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.test.component-reader",
+            .version = 1};
+    };
+
+    struct ExternalReaderSystem final
+    {
+        inline static constexpr auto Access =
+            lux::simulation::makeSystemAccessSpec<
+                lux::simulation::ExternalRead<ExternalState>>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.test.external-reader",
+            .version = 1};
+    };
+
+    struct ThrowingConstructionSystem final
+    {
+        inline static constexpr auto Access =
+            lux::simulation::makeSystemAccessSpec<>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.test.throwing-construction",
+            .version = 1};
+
+        ThrowingConstructionSystem()
+        {
+            throw std::runtime_error("construction failure");
+        }
+        ~ThrowingConstructionSystem() noexcept = default;
+    };
+
+    struct InvalidDescriptionSystem final
+    {
+        inline static constexpr auto Access =
+            lux::simulation::makeSystemAccessSpec<>();
+        inline static constexpr lux::simulation::SystemDescription Description{};
+    };
+
+    struct ThrowingDestructorSystem final
+    {
+        inline static constexpr auto Access =
+            lux::simulation::makeSystemAccessSpec<>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.test.throwing-destructor",
+            .version = 1};
+        ~ThrowingDestructorSystem() noexcept(false) {}
+    };
+
+    static_assert(!lux::simulation::System<InvalidDescriptionSystem>);
+    static_assert(!lux::simulation::System<ThrowingDestructorSystem>);
 
     struct CodeLifetimeProbe final
     {
@@ -79,6 +148,13 @@ int main()
 
     auto destroyed = std::make_shared<std::atomic_int>(0);
     simulation::SystemRegistry systems;
+    const auto construction_failure =
+        systems.emplace<ThrowingConstructionSystem>();
+    assert(!construction_failure);
+    assert(
+        construction_failure.error().code ==
+        simulation::ESystemError::CONSTRUCTION_FAILURE
+    );
     auto id = systems.emplace<ProbeSystem>(destroyed);
     assert(id);
 
@@ -169,9 +245,7 @@ int main()
             []() noexcept {}
         );
         auto reader = builder.add(
-            task::resources(
-                simulation::ecs::access<simulation::ecs::Read<Position>>
-            ),
+            simulation::ecs::systemTaskResources<ComponentReaderSystem>(),
             []() noexcept {}
         );
         assert(writer && reader);
@@ -180,20 +254,19 @@ int main()
         assert(result->dependencyCount() == 1U);
     }
 
-    // Multiple Journal readers remain independent while a later writer is
-    // ordered after both by the canonical changes resource.
+    // The command flush owns both ECS structure and command-buffer mutation.
     {
         task::TaskGraphBuilder builder;
         auto first_reader = builder.add(
-            simulation::ecs::ecsChangesRead(),
+            simulation::ecs::systemTaskResources<ComponentReaderSystem>(),
             []() noexcept {}
         );
         auto second_reader = builder.add(
-            simulation::ecs::ecsChangesRead(),
+            simulation::ecs::systemTaskResources<ComponentReaderSystem>(),
             []() noexcept {}
         );
         auto writer = builder.add(
-            simulation::ecs::ecsChangesWrite(),
+            simulation::ecs::ecsCommandFlushTaskResources(),
             []() noexcept {}
         );
         assert(first_reader && second_reader && writer);
@@ -210,10 +283,7 @@ int main()
             []() noexcept {}
         );
         auto reader = builder.add(
-            task::resources(
-                simulation::ecs::access<
-                    simulation::ExternalRead<ExternalState>>
-            ),
+            simulation::ecs::systemTaskResources<ExternalReaderSystem>(),
             []() noexcept {}
         );
         assert(writer && reader);

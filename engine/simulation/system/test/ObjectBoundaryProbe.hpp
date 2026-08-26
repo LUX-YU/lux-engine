@@ -1,12 +1,16 @@
 #pragma once
 
-#include <lux/engine/simulation/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/object/Object.hpp>
 #include <lux/engine/object/ObjectAnnotations.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
+#include <lux/engine/simulation/SystemAccessSpec.hpp>
+#include <lux/engine/simulation/SystemDescription.hpp>
+#include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 
+#include <array>
 #include <cstdint>
-#include <utility>
+#include <new>
+#include <string_view>
 #include <vector>
 
 namespace lux::simulation::test
@@ -19,7 +23,7 @@ namespace lux::simulation::test
 
     struct TextureReady final
     {
-        Entity entity{NullEntity};
+        ecs::Entity entity{ecs::NullEntity};
         std::uint32_t texture{};
     };
 
@@ -31,45 +35,58 @@ namespace lux::simulation::test
     class LUX_OBJECT() MaterialTextureSystem final
         : public lux::object::Object<MaterialTextureSystem>
     {
-    public:
+      public:
         using Object::Object;
 
         static const signal_type<MaterialTextureDemand> textureDemand;
-        // Registry composition metadata; invocation remains domain-owned.
-        inline static constexpr auto Access = makeSystemAccessSpec<>();
-        inline static constexpr auto TaskAccess = access<>;
+        inline static constexpr std::array Capabilities{
+            std::string_view{"material.texture-residency"}};
+        inline static constexpr std::array ExecutionPoints{
+            SystemExecutionPoint{"update"}};
+        inline static constexpr std::array Events{
+            makeSystemEvent<MaterialTextureDemand>(
+                "texture-demand",
+                ExecutionPoints[0],
+                "lux.material.TextureDemand",
+                1U
+            )};
+        inline static constexpr auto Access = makeSystemAccessSpec<
+            ComponentWrite<MaterialTextureResident>>();
+        inline static constexpr SystemDescription Description{
+            .canonical_name = "lux.test.material-texture",
+            .version = 1U,
+            .capabilities = Capabilities,
+            .execution_points = ExecutionPoints,
+            .events = Events};
 
-        void invokeTask(
-            EcsState&,
-            EcsChangeBatch&,
-            EcsCommands commands
-        ) noexcept
+        [[nodiscard]] bool prepare(std::size_t completion_capacity) noexcept
+        {
+            try
+            {
+                inbox_.reserve(completion_capacity);
+                return true;
+            }
+            catch (const std::bad_alloc&)
+            {
+                return false;
+            }
+        }
+
+        void invokeTask(ecs::EcsCommandWriter& commands) noexcept
         {
             if (!demand_published_)
             {
                 demand_published_ = true;
-                MaterialTextureDemand demand{3U, 7U};
+                const MaterialTextureDemand demand{3U, 7U};
                 notify<textureDemand>(demand);
             }
 
             for (const TextureReady& ready : inbox_)
             {
-                struct MakeResident final
-                {
-                    Entity entity{NullEntity};
-                    std::uint32_t texture{};
-
-                    void apply(SimulationEcsMutation& mutation) noexcept
-                    {
-                        mutation.emplace<MaterialTextureResident>(
-                            entity,
-                            texture
-                        );
-                    }
-                };
-                if (commands.push(
-                        MakeResident{ready.entity, ready.texture}
-                    ) != ECommandResult::ACCEPTED)
+                if (!commands.emplace<MaterialTextureResident>(
+                        ready.entity,
+                        MaterialTextureResident{ready.texture}
+                    ))
                 {
                     ++discarded_completions_;
                 }
@@ -77,24 +94,20 @@ namespace lux::simulation::test
             inbox_.clear();
         }
 
-    protected:
+      protected:
         void event(lux::object::EventView& view) noexcept override
         {
             if (const auto* ready = view.getIf<TextureReady>())
             {
-                try
-                {
+                if (inbox_.size() < inbox_.capacity())
                     inbox_.push_back(*ready);
-                }
-                catch (...)
-                {
+                else
                     ++discarded_completions_;
-                }
                 view.accept();
             }
         }
 
-    private:
+      private:
         std::vector<TextureReady> inbox_;
         std::uint64_t discarded_completions_{};
         bool demand_published_{};

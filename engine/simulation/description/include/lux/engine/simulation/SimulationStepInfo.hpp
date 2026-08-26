@@ -4,9 +4,9 @@
 
 namespace lux::simulation
 {
-    struct FrameInfo final
+    struct SimulationStepInfo final
     {
         float delta_seconds{};
-        std::uint64_t tick_index{};
+        std::uint64_t step_index{};
     };
 }

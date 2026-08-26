@@ -5,11 +5,188 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace
 {
     using namespace lux::simulation;
+
+    struct CollisionEvent final
+    {
+        std::uint32_t body{};
+    };
+
+    inline constexpr std::array kPhysicsCapabilities{
+        std::string_view{"physics.simulate"},
+        std::string_view{"physics.contacts"}};
+    inline constexpr std::array kPhysicsPoints{
+        SystemExecutionPoint{"before"},
+        SystemExecutionPoint{"after"}};
+    inline constexpr std::array kPhysicsEvents{
+        makeSystemEvent<CollisionEvent>(
+            "collision",
+            kPhysicsPoints[1],
+            "lux.event.Collision",
+            1U
+        )};
+    inline constexpr SystemDescription kPhysicsDescription{
+        .canonical_name = "lux.physics",
+        .version = 2U,
+        .configuration_schema_name = "lux.physics.Config",
+        .configuration_schema_version = 1U,
+        .capabilities = kPhysicsCapabilities,
+        .execution_points = kPhysicsPoints,
+        .events = kPhysicsEvents};
+
+    inline constexpr std::array kAnimationCapabilities{
+        std::string_view{"animation.evaluate"}};
+    inline constexpr std::array kAnimationPoints{
+        SystemExecutionPoint{"before"},
+        SystemExecutionPoint{"after"}};
+    inline constexpr std::array kAnimationEvents{
+        makeSystemEvent<void>(
+            "finished",
+            kAnimationPoints[1],
+            "must.be.ignored",
+            42U
+        )};
+    inline constexpr SystemDescription kAnimationDescription{
+        .canonical_name = "lux.animation",
+        .version = 4U,
+        .capabilities = kAnimationCapabilities,
+        .execution_points = kAnimationPoints,
+        .events = kAnimationEvents};
+
+    static_assert(validSystemDescription(kPhysicsDescription));
+    static_assert(validSystemDescription(kAnimationDescription));
+    static_assert(kAnimationEvents[0].payload_schema_name.empty());
+    static_assert(kAnimationEvents[0].payload_schema_version == 0U);
+
+    struct OrderedEvent final
+    {
+        std::size_t producer{};
+        std::size_t local{};
+    };
+
+    void testTypedEventOrdering()
+    {
+        std::array<std::vector<OrderedEvent>, 3U> producers;
+        for (auto& producer : producers)
+            producer.reserve(4U);
+        producers[2].push_back({2U, 0U});
+        producers[0].push_back({0U, 0U});
+        producers[1].push_back({1U, 0U});
+        producers[0].push_back({0U, 1U});
+
+        std::vector<OrderedEvent> received;
+        received.reserve(4U);
+        bool callback_ran{};
+        for (std::size_t producer{}; producer < producers.size(); ++producer)
+        {
+            for (const auto event : producers[producer])
+                received.push_back(event);
+        }
+        callback_ran = true;
+        assert(callback_ran);
+        assert(received.size() == 4U);
+        assert(received[0].producer == 0U && received[0].local == 0U);
+        assert(received[1].producer == 0U && received[1].local == 1U);
+        assert(received[2].producer == 1U && received[2].local == 0U);
+        assert(received[3].producer == 2U && received[3].local == 0U);
+    }
+
+    void testSystemsAndDependencies()
+    {
+        SimulationDescriptionBuilder builder;
+        constexpr std::array physics_config{std::byte{1U}};
+        assert(builder.addSystem(
+            "physics.secondary",
+            kPhysicsDescription,
+            physics_config
+        ));
+        assert(builder.addSystem("animation", kAnimationDescription));
+        assert(builder.addSystem(
+            "physics.primary",
+            kPhysicsDescription,
+            physics_config
+        ));
+        assert(builder.addDependency(
+            "physics.primary",
+            kPhysicsPoints[1],
+            "animation",
+            kAnimationPoints[0]
+        ));
+        auto built = std::move(builder).build();
+        assert(built);
+        assert(built->systemCount() == 3U);
+        assert(built->systemAt(0U).instanceName() == "animation");
+        assert(built->systemAt(1U).instanceName() == "physics.primary");
+        assert(built->systemAt(2U).instanceName() == "physics.secondary");
+        assert(built->findSystem("physics.primary").hasCapability(
+            "physics.contacts"
+        ));
+        assert(
+            built->findEvent("physics.primary", "collision")
+                .payloadSchemaName() == "lux.event.Collision"
+        );
+        assert(built->dependencyCount() == 1U);
+        assert(built->dependencyAt(0U).before().name() == "after");
+        assert(built->dependencyAt(0U).after().name() == "before");
+
+        SimulationDescriptionBuilder invalid;
+        assert(invalid.addSystem("physics", kPhysicsDescription, physics_config));
+        assert(!invalid.addSystem("physics", kPhysicsDescription, physics_config));
+        assert(invalid.addSystem("animation", kAnimationDescription));
+        auto missing = invalid.addDependency(
+            "missing",
+            "after",
+            "animation",
+            "before"
+        );
+        assert(!missing);
+        assert(missing.error().code == ESimulationDescriptionError::SYSTEM_NOT_FOUND);
+        auto point = invalid.addDependency(
+            "physics",
+            "missing",
+            "animation",
+            "before"
+        );
+        assert(!point);
+        assert(
+            point.error().code ==
+            ESimulationDescriptionError::EXECUTION_POINT_NOT_FOUND
+        );
+        auto self = invalid.addDependency(
+            "physics",
+            "after",
+            "physics",
+            "before"
+        );
+        assert(!self);
+        assert(self.error().code == ESimulationDescriptionError::INVALID_DEPENDENCY);
+        assert(invalid.addDependency(
+            "physics",
+            "after",
+            "animation",
+            "before"
+        ));
+        assert(!invalid.addDependency(
+            "physics",
+            "after",
+            "animation",
+            "before"
+        ));
+        auto cycle = invalid.addDependency(
+            "animation",
+            "after",
+            "physics",
+            "before"
+        );
+        assert(!cycle);
+        assert(cycle.error().code == ESimulationDescriptionError::DEPENDENCY_CYCLE);
+    }
 
     [[nodiscard]] SimulationDescription buildDescription(bool reverse)
     {
@@ -121,6 +298,9 @@ int main()
     auto empty = std::move(erase).build();
     assert(empty);
     assert(empty->empty());
+
+    testSystemsAndDependencies();
+    testTypedEventOrdering();
 
     return 0;
 }

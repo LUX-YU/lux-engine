@@ -13,6 +13,7 @@ add_component(
     OUTPUT_NAME    lux_engine_simulation_description
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDataSchemaId.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemTypeId.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDescription.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDescriptionBuilder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SimulationDescriptionFailureInjection.cpp

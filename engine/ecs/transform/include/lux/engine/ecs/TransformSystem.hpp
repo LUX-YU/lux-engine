@@ -19,7 +19,11 @@ namespace lux::ecs
     class LUX_ENGINE_ECS_TRANSFORM_PUBLIC Transform2DSystem final
     {
       public:
-        inline static constexpr auto Access = access<
+        inline static constexpr auto Access = makeSystemAccessSpec<
+            Read<Transform2D>,
+            Write<WorldTransform2D>,
+            ExternalRead<HierarchyIndex>>();
+        inline static constexpr auto TaskAccess = access<
             Read<Transform2D>,
             Write<WorldTransform2D>,
             ExternalRead<HierarchyIndex>>;
@@ -41,7 +45,7 @@ namespace lux::ecs
             auto writer = taskWriter<WorldTransform2D>(
                 world,
                 changes,
-                Access
+                TaskAccess
             );
             update(world, writer, commands);
         }
@@ -59,7 +63,11 @@ namespace lux::ecs
     class LUX_ENGINE_ECS_TRANSFORM_PUBLIC Transform3DSystem final
     {
       public:
-        inline static constexpr auto Access = access<
+        inline static constexpr auto Access = makeSystemAccessSpec<
+            Read<Transform3D>,
+            Write<WorldTransform3D>,
+            ExternalRead<HierarchyIndex>>();
+        inline static constexpr auto TaskAccess = access<
             Read<Transform3D>,
             Write<WorldTransform3D>,
             ExternalRead<HierarchyIndex>>;
@@ -81,7 +89,7 @@ namespace lux::ecs
             auto writer = taskWriter<WorldTransform3D>(
                 world,
                 changes,
-                Access
+                TaskAccess
             );
             update(world, writer, commands);
         }

@@ -6,7 +6,7 @@
 #include <lux/engine/ecs/TransformSystem.hpp>
 #include <lux/engine/ecs/WorldSnapshot.hpp>
 #include <lux/engine/ecs/transform/detail/TransformSystemTestAccess.hpp>
-#include <EcsTaskTestRig.hpp>
+#include <lux/engine/ecs/system/support/EcsTaskTestRig.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
 
 #include <array>
@@ -59,8 +59,6 @@ namespace
             schedule.add<lux::ecs::Transform3DSystem>(hierarchy);
         const auto transform2d =
             schedule.add<lux::ecs::Transform2DSystem>(hierarchy);
-        schedule.before(hierarchy_system, transform3d);
-        schedule.before(hierarchy_system, transform2d);
         assert(schedule.compile());
         assert(schedule.run(1.0F / 60.0F, 1u));
     }
@@ -156,8 +154,6 @@ int main()
             schedule.add<lux::ecs::Transform3DSystem>(hierarchy);
         const auto transform2d =
             schedule.add<lux::ecs::Transform2DSystem>(hierarchy);
-        schedule.before(hierarchy_system, transform3d);
-        schedule.before(hierarchy_system, transform2d);
         assert(schedule.compile());
         auto* transform3d_system = std::addressof(
             schedule.system<lux::ecs::Transform3DSystem>(transform3d)

@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
 #include <lux/engine/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/ecs/WorldSectionLoader.hpp>
-#include <EcsTaskTestRig.hpp>
+#include <lux/engine/ecs/system/support/EcsTaskTestRig.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 
 #include <uuid.h>
@@ -340,7 +340,9 @@ namespace
     class RetainingSystem final
     {
       public:
-        inline static constexpr auto Access = access<Read<test::Fixed>>;
+        inline static constexpr auto Access =
+            makeSystemAccessSpec<Read<test::Fixed>>();
+        inline static constexpr auto TaskAccess = access<Read<test::Fixed>>;
 
         void invokeTask(
             World& world,
@@ -425,7 +427,8 @@ namespace
         {
         }
 
-        inline static constexpr auto Access = access<>;
+        inline static constexpr auto Access = makeSystemAccessSpec<>();
+        inline static constexpr auto TaskAccess = access<>;
 
         void invokeTask(World&, WorldChangeBatch&, WorldCommands) noexcept
         {

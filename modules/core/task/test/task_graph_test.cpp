@@ -1,180 +1,159 @@
-#include <lux/engine/task/TaskGraph.hpp>
+#include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <atomic>
 #include <cassert>
-#include <condition_variable>
+#include <cstdint>
 #include <memory>
-#include <mutex>
 #include <thread>
-#include <utility>
-#include <vector>
-
-namespace
-{
-    struct AsyncExecutor final
-    {
-        std::mutex mutex;
-        std::condition_variable release_long;
-        std::vector<std::thread> workers;
-        std::size_t submissions{};
-        bool allow_long{};
-        std::atomic_bool long_completed{};
-        bool dependent_submitted_before_long_completed{};
-
-        void submit(lux::task::TaskWork&& work) noexcept
-        {
-            const std::size_t sequence = submissions++;
-            try
-            {
-                if (sequence == 0U)
-                {
-                    workers.emplace_back(
-                        [work = std::move(work)]() mutable noexcept
-                        {
-                            std::move(work).run();
-                        }
-                    );
-                    return;
-                }
-                if (sequence == 1U)
-                {
-                    workers.emplace_back(
-                        [this, work = std::move(work)]() mutable noexcept
-                        {
-                            {
-                                std::unique_lock lock(mutex);
-                                release_long.wait(lock, [this]
-                                {
-                                    return allow_long;
-                                });
-                            }
-                            std::move(work).run();
-                            long_completed.store(true, std::memory_order_release);
-                        }
-                    );
-                    return;
-                }
-                if (sequence == 2U)
-                {
-                    dependent_submitted_before_long_completed =
-                        !long_completed.load(std::memory_order_acquire);
-                    {
-                        std::lock_guard lock(mutex);
-                        allow_long = true;
-                    }
-                    release_long.notify_one();
-                }
-                std::move(work).run();
-            }
-            catch (...)
-            {
-                std::abort();
-            }
-        }
-    };
-}
 
 int main()
 {
     using namespace lux::task;
 
-    static_assert(sizeof(TaskId) == sizeof(std::uint32_t));
+    // Empty graph + zero-worker debug mode.
+    {
+        TaskGraphBuilder builder;
+        auto graph = std::move(builder).build();
+        assert(graph);
+        TaskExecutor executor(TaskExecutorConfig{.worker_count = 0U});
+        assert(executor.execute(*graph));
+    }
 
-    TaskGraphBuilder empty_builder;
-    auto empty = compile(std::move(empty_builder));
-    assert(empty);
-    TaskRunState empty_state;
-    assert(prepare(empty_state, *empty));
-    InlineTaskExecutor inline_executor;
-    assert(run(*empty, inline_executor, empty_state));
+    // Explicit dependency is declared on the dependent task.
+    {
+        std::atomic_int value{};
+        TaskGraphBuilder builder;
+        auto a = builder.add([&]() noexcept
+        {
+            value.store(1, std::memory_order_release);
+        });
+        assert(a);
+        auto b = builder.add(
+            dependsOn(*a),
+            [&]() noexcept
+            {
+                assert(value.load(std::memory_order_acquire) == 1);
+                value.store(2, std::memory_order_release);
+            }
+        );
+        assert(b);
+        auto graph = std::move(builder).build();
+        assert(graph);
+        TaskExecutor executor(TaskExecutorConfig{.worker_count = 2U});
+        assert(executor.execute(*graph));
+        assert(value.load() == 2);
+    }
 
-    std::vector<int> order;
-    TaskGraphBuilder builder;
-    const TaskResourceKey position{1U, 1U};
-    const auto a = builder.add(
-        write(position),
-        [&order]() noexcept { order.push_back(1); }
-    );
-    const auto b = builder.add(
-        read(position),
-        [&order]() noexcept { order.push_back(2); }
-    );
-    const auto c = builder.add(
-        on(ETaskAffinity::CALLER_THREAD),
-        [&order]() noexcept { order.push_back(3); }
-    );
-    assert(a && b && c);
-    assert(builder.before(*b, *c));
+    // Resource hazards are inferred in L0: write -> read.
+    {
+        constexpr TaskResourceKey resource{0x1111U, 7U};
+        std::atomic_int value{};
+        TaskGraphBuilder builder;
+        auto writer = builder.add(
+            write(resource),
+            [&]() noexcept { value.store(42, std::memory_order_release); }
+        );
+        auto reader = builder.add(
+            read(resource),
+            [&]() noexcept
+            {
+                assert(value.load(std::memory_order_acquire) == 42);
+            }
+        );
+        assert(writer && reader);
+        auto graph = std::move(builder).build();
+        assert(graph);
+        assert(graph->dependencyCount() == 1U);
+        TaskExecutor executor(TaskExecutorConfig{.worker_count = 2U});
+        assert(executor.execute(*graph));
+    }
 
-    auto lifetime = std::make_shared<int>(42);
-    std::weak_ptr<const void> lifetime_probe = lifetime;
-    const auto pin_task = builder.add(
-        keepAlive(lifetime),
-        []() noexcept {}
-    );
-    assert(pin_task);
-    auto graph = compile(std::move(builder));
-    assert(graph);
-    assert(graph->taskCount() == 4U);
-    assert(graph->dependencyCount() == 2U);
-    assert(graph->lifetimePinCount() == 1U);
-    lifetime.reset();
-    assert(!lifetime_probe.expired());
+    // Completion-driven DAG: C may start immediately after B; it does not wait
+    // for independent long-running A as a level/barrier scheduler would.
+    {
+        std::atomic_bool release_a{};
+        std::atomic_bool c_ran{};
 
-    TaskRunState state;
-    assert(prepare(state, *graph));
-    assert(run(*graph, inline_executor, state));
-    assert((order == std::vector<int>{1, 2, 3}));
-    order.clear();
-    assert(run(*graph, inline_executor, state));
-    assert((order == std::vector<int>{1, 2, 3}));
+        TaskGraphBuilder builder;
+        auto a = builder.add([&]() noexcept
+        {
+            while (!release_a.load(std::memory_order_acquire))
+                std::this_thread::yield();
+        });
+        auto b = builder.add([]() noexcept {});
+        assert(a && b);
 
-    TaskGraphBuilder duplicate_resource;
-    assert(!duplicate_resource.add(
-        read(position),
-        write(position),
-        []() noexcept {}
-    ));
+        auto c = builder.add(
+            dependsOn(*b),
+            [&]() noexcept
+            {
+                c_ran.store(true, std::memory_order_release);
+                release_a.store(true, std::memory_order_release);
+            }
+        );
+        auto d = builder.add(dependsOn(*a), []() noexcept {});
+        assert(c && d);
 
-    TaskGraphBuilder duplicate_edge;
-    const auto one = duplicate_edge.add([]() noexcept {});
-    const auto two = duplicate_edge.add([]() noexcept {});
-    assert(one && two);
-    assert(duplicate_edge.before(*one, *two));
-    assert(!duplicate_edge.before(*one, *two));
+        auto graph = std::move(builder).build();
+        assert(graph);
+        TaskExecutor executor(TaskExecutorConfig{.worker_count = 2U});
+        assert(executor.execute(*graph));
+        assert(c_ran.load(std::memory_order_acquire));
+    }
 
-    TaskGraphBuilder cycle;
-    const auto first = cycle.add([]() noexcept {});
-    const auto second = cycle.add([]() noexcept {});
-    assert(first && second);
-    assert(cycle.before(*first, *second));
-    assert(cycle.before(*second, *first));
-    const auto cycle_result = compile(std::move(cycle));
-    assert(!cycle_result);
-    assert(cycle_result.error().code == ETaskGraphError::DEPENDENCY_CYCLE);
+    // Caller affinity is owned by execute() caller.
+    {
+        const auto caller = std::this_thread::get_id();
+        std::atomic_bool correct_thread{};
+        TaskGraphBuilder builder;
+        auto task = builder.add(
+            on(ETaskAffinity::CALLER_THREAD),
+            [&]() noexcept
+            {
+                correct_thread.store(
+                    std::this_thread::get_id() == caller,
+                    std::memory_order_release
+                );
+            }
+        );
+        assert(task);
+        auto graph = std::move(builder).build();
+        assert(graph);
+        TaskExecutor executor(TaskExecutorConfig{.worker_count = 2U});
+        assert(executor.execute(*graph));
+        assert(correct_thread.load(std::memory_order_acquire));
+    }
 
-    TaskGraphBuilder invalid;
-    const auto only = invalid.add([]() noexcept {});
-    assert(only);
-    assert(!invalid.before(*only, TaskId{99U}));
+    // Builder-local handles cannot cross builders.
+    {
+        TaskGraphBuilder left;
+        TaskGraphBuilder right;
+        auto foreign = left.add([]() noexcept {});
+        assert(foreign);
+        auto invalid = right.add(dependsOn(*foreign), []() noexcept {});
+        assert(!invalid);
+        assert(invalid.error().code == ETaskGraphError::INVALID_TASK);
+    }
 
-    // A completion releases C without waiting for independent long B.
-    TaskGraphBuilder asymmetric;
-    const auto short_a = asymmetric.add([]() noexcept {});
-    const auto long_b = asymmetric.add([]() noexcept {});
-    const auto after_a = asymmetric.add([]() noexcept {});
-    const auto after_b = asymmetric.add([]() noexcept {});
-    assert(short_a && long_b && after_a && after_b);
-    assert(asymmetric.before(*short_a, *after_a));
-    assert(asymmetric.before(*long_b, *after_b));
-    auto asymmetric_graph = compile(std::move(asymmetric));
-    assert(asymmetric_graph);
-    TaskRunState asymmetric_state;
-    assert(prepare(asymmetric_state, *asymmetric_graph));
-    AsyncExecutor async;
-    assert(run(*asymmetric_graph, async, asymmetric_state));
-    for (auto& worker : async.workers)
-        worker.join();
-    assert(async.submissions == 4U);
-    assert(async.dependent_submitted_before_long_completed);
+    // Graph owns code/data lifetime pins independently from the caller.
+    {
+        auto lifetime = std::make_shared<int>(7);
+        std::weak_ptr<const void> weak = lifetime;
+        TaskGraphBuilder builder;
+        auto task = builder.add(
+            keepAlive(lifetime),
+            []() noexcept {}
+        );
+        assert(task);
+        auto graph_result = std::move(builder).build();
+        assert(graph_result);
+        TaskGraph graph = std::move(*graph_result);
+        lifetime.reset();
+        assert(!weak.expired());
+        graph = TaskGraph{};
+        assert(weak.expired());
+    }
+
+    return 0;
 }

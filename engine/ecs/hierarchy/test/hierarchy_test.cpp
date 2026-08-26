@@ -2,7 +2,7 @@
 #include <lux/engine/ecs/HierarchySchema.hpp>
 #include <lux/engine/ecs/HierarchySystem.hpp>
 #include <lux/engine/ecs/hierarchy/detail/HierarchyIndexTestAccess.hpp>
-#include <EcsTaskTestRig.hpp>
+#include <lux/engine/ecs/system/support/EcsTaskTestRig.hpp>
 
 #include <cassert>
 #include <memory>

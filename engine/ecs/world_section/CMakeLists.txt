@@ -160,7 +160,7 @@ target_include_directories(
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/test
         ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../test
+        ${CMAKE_CURRENT_SOURCE_DIR}/../system/pinclude
 )
 target_compile_definitions(
     ecs_world_section_loader_test

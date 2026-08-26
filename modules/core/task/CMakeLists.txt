@@ -1,4 +1,4 @@
-## core::task — immutable domain-neutral DAG with completion-driven execution.
+## core::task — generic immutable task DAG + completion-driven worker executor.
 
 find_package(lux-cxx REQUIRED COMPONENTS compile_time)
 
@@ -13,14 +13,21 @@ add_component(
     COMPONENT_NAME  task
     NAMESPACE       lux::engine::core
     OUTPUT_NAME     lux_engine_core_task
-    SOURCE_FILES    ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskGraph.cpp
+    SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskCallable.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskGraphBuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskExecutor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TaskExecutorWorker.cpp
 )
 
 component_include_directories(
     task
-    BUILD_TIME_EXPORT   ${CMAKE_CURRENT_SOURCE_DIR}/include
-                        ${LUX_GENERATE_HEADER_DIR}
-    INSTALL_TIME        include
+    BUILD_TIME_EXPORT
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${LUX_GENERATE_HEADER_DIR}
+    BUILD_TIME_SHARED
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    INSTALL_TIME include
 )
 
 target_compile_definitions(task PRIVATE LUX_CORE_TASK_LIBRARY)

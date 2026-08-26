@@ -69,7 +69,7 @@ target_include_directories(
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../test
+        ${CMAKE_CURRENT_SOURCE_DIR}/../system/pinclude
 )
 if(MSVC)
     target_compile_options(ecs_hierarchy_test PRIVATE /UNDEBUG)

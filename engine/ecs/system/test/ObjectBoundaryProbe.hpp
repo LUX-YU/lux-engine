@@ -35,7 +35,9 @@ namespace lux::ecs::test
         using Object::Object;
 
         static const signal_type<MaterialTextureDemand> textureDemand;
-        inline static constexpr auto Access = access<>;
+        // Registry composition metadata; invocation remains domain-owned.
+        inline static constexpr auto Access = makeSystemAccessSpec<>();
+        inline static constexpr auto TaskAccess = access<>;
 
         void invokeTask(
             World&,

@@ -4,7 +4,12 @@
 
 namespace
 {
-    class NoopSystem final {};
+    class NoopSystem final
+    {
+      public:
+        inline static constexpr auto Access =
+            lux::ecs::makeSystemAccessSpec<>();
+    };
 }
 
 int main()

@@ -1,7 +1,8 @@
 #include <lux/engine/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/ecs/SystemRegistry.hpp>
 #include <lux/engine/ecs/WorldTaskResources.hpp>
-#include <lux/engine/task/TaskGraph.hpp>
+#include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -54,15 +55,12 @@ namespace
             if (!builder.add([&calls]() noexcept { ++calls; }))
                 return {};
         }
-        auto graph = lux::task::compile(std::move(builder));
+        auto graph = std::move(builder).build();
         if (!graph)
             return {};
-        lux::task::TaskRunState state;
-        if (!lux::task::prepare(state, *graph))
-            return {};
-        lux::task::InlineTaskExecutor executor;
+        lux::task::TaskExecutor executor({0U, graph->taskCount()});
         const auto begin = std::chrono::steady_clock::now();
-        if (!lux::task::run(*graph, executor, state))
+        if (!executor.execute(*graph))
             return {};
         const auto end = std::chrono::steady_clock::now();
         return {

@@ -1,87 +1,74 @@
 #include <lux/engine/ecs/SystemRegistry.hpp>
-#include <lux/engine/task/TaskGraph.hpp>
+#include <lux/engine/ecs/SystemTaskResources.hpp>
+#include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/task/TaskGraphBuilder.hpp>
 
+#include <atomic>
 #include <cassert>
 #include <memory>
 
 namespace
 {
-    struct Probe final
+    struct ProbeSystem final : lux::ecs::StaticSystemAccess<>
     {
-        explicit Probe(int& calls, int& destructions) noexcept
-            : calls(&calls), destructions(&destructions)
+        explicit ProbeSystem(std::shared_ptr<std::atomic_int> destroyed)
+            : destroyed_(std::move(destroyed))
         {
         }
-        ~Probe() { ++*destructions; }
-        void operator()() const noexcept { ++*calls; }
-        int* calls{};
-        int* destructions{};
-    };
 
-    struct Other final {};
+        ~ProbeSystem()
+        {
+            destroyed_->fetch_add(1);
+        }
+
+        void tick(std::atomic_int& value) noexcept
+        {
+            value.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        std::shared_ptr<std::atomic_int> destroyed_;
+    };
 }
 
 int main()
 {
-    int calls{};
-    int destructions{};
-    int pin_destructions{};
-    lux::ecs::SystemRegistry registry;
-    const auto first = registry.emplaceWithLifetime<Probe>(
-        std::shared_ptr<const void>(
-            new int{1},
-            [&pin_destructions](const void* value) noexcept
-            {
-                delete static_cast<const int*>(value);
-                ++pin_destructions;
-            }
-        ),
-        calls,
-        destructions
+    using namespace lux;
+
+    auto destroyed = std::make_shared<std::atomic_int>(0);
+    ecs::SystemRegistry systems;
+    auto id = systems.emplace<ProbeSystem>(destroyed);
+    assert(id);
+
+    auto lease_result = systems.retain<ProbeSystem>(*id);
+    assert(lease_result);
+    ecs::SystemLease<ProbeSystem> lease = std::move(*lease_result);
+
+    std::atomic_int ticks{};
+    task::TaskGraphBuilder builder;
+    auto task_id = builder.add(
+        ecs::systemTaskResources<ProbeSystem>(),
+        [system = lease, &ticks]() noexcept
+        {
+            system->tick(ticks);
+        }
     );
-    const auto second = registry.emplace<Probe>(calls, destructions);
-    assert(first && second && *first != *second);
-    assert(registry.size() == 2U);
-    assert(!registry.retain<Other>(*first));
+    assert(task_id);
+    auto graph_result = std::move(builder).build();
+    assert(graph_result);
+    task::TaskGraph graph = std::move(*graph_result);
 
-    auto retained = registry.retain<Probe>(*first);
-    assert(retained);
-    lux::task::TaskGraphBuilder builder;
-    const auto task = builder.add([retained]() noexcept { (*retained)(); });
-    assert(task);
-    auto graph = lux::task::compile(std::move(builder));
-    assert(graph);
-    lux::task::TaskRunState state;
-    assert(lux::task::prepare(state, *graph));
+    // erase() removes membership, but the compiled graph's captured lease keeps
+    // the concrete System and code alive.
+    lease = {};
+    assert(systems.erase(*id));
+    assert(!systems.contains(*id));
+    assert(destroyed->load() == 0);
 
-    const auto revision = registry.revision();
-    assert(registry.erase(*first));
-    assert(registry.revision() == revision + 1U);
-    assert(!registry.contains(*first));
-    assert(!registry.retain<Probe>(*first));
-    assert(destructions == 0);
+    task::TaskExecutor executor(task::TaskExecutorConfig{.worker_count = 1U});
+    assert(executor.execute(graph));
+    assert(ticks.load() == 1);
 
-    lux::task::InlineTaskExecutor executor;
-    assert(lux::task::run(*graph, executor, state));
-    assert(calls == 1);
-    retained.reset();
-    assert(destructions == 0);
-    graph = {};
-    assert(destructions == 1);
-    assert(pin_destructions == 1);
-
-    lux::ecs::SystemRegistry other;
-    const auto foreign = other.emplace<Other>();
-    assert(foreign);
-    assert(foreign->slot == first->slot);
-    assert(foreign->owner != first->owner);
-    assert(!other.contains(*first));
-    assert(!other.erase(*first));
-
-    const auto moved_id = *second;
-    lux::ecs::SystemRegistry moved(std::move(registry));
-    assert(moved.contains(moved_id));
-    assert(!registry.contains(moved_id));
-    const auto reused = registry.emplace<Other>();
-    assert(reused && reused->owner != moved_id.owner);
+    graph = task::TaskGraph{};
+    assert(destroyed->load() == 1);
+    return 0;
 }

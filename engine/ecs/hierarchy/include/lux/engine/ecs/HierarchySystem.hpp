@@ -11,7 +11,10 @@ namespace lux::ecs
     class LUX_ENGINE_ECS_HIERARCHY_PUBLIC HierarchySystem final
     {
       public:
-        inline static constexpr auto Access = access<
+        inline static constexpr auto Access = makeSystemAccessSpec<
+            Read<Parent>,
+            ExternalWrite<HierarchyIndex>>();
+        inline static constexpr auto TaskAccess = access<
             Read<Parent>,
             ExternalWrite<HierarchyIndex>>;
 

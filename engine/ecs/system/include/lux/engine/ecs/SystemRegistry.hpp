@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/ecs/SystemConcept.hpp>
 #include <lux/engine/ecs/SystemError.hpp>
 #include <lux/engine/ecs/system/visibility.h>
 
@@ -15,51 +16,99 @@ namespace lux::ecs
 {
     namespace detail
     {
-        template <class Type>
-        struct SystemControl final
+        struct SystemRecord final
         {
-            template <class... Args>
-            explicit SystemControl(
-                std::shared_ptr<const void> lifetime,
-                Args&&... args
-            )
-                : code_lifetime(std::move(lifetime)),
-                  object(std::forward<Args>(args)...)
+            ~SystemRecord() noexcept
             {
+                if (object != nullptr)
+                    destroy(object);
             }
 
-            // Reverse member destruction keeps code loaded through ~Type().
+            SystemRecord() = default;
+            SystemRecord(const SystemRecord&) = delete;
+            SystemRecord& operator=(const SystemRecord&) = delete;
+
+            lux::cxx::TypeToken type;
             std::shared_ptr<const void> code_lifetime;
-            Type object;
+            void* object{};
+            void (*destroy)(void*) noexcept{};
         };
     }
 
+    /** Strong lifetime lease suitable for capture by a TaskGraph callable. */
+    template <class Type>
+    class SystemLease final
+    {
+    public:
+        SystemLease() noexcept = default;
+
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return record_ != nullptr && object_ != nullptr;
+        }
+
+        [[nodiscard]] Type& get() const noexcept
+        {
+            return *object_;
+        }
+
+        [[nodiscard]] Type* operator->() const noexcept
+        {
+            return object_;
+        }
+
+        [[nodiscard]] Type& operator*() const noexcept
+        {
+            return *object_;
+        }
+
+        [[nodiscard]] SystemId id() const noexcept
+        {
+            return id_;
+        }
+
+    private:
+        SystemLease(
+            SystemId id,
+            std::shared_ptr<detail::SystemRecord> record,
+            Type* object
+        ) noexcept
+            : id_(id), record_(std::move(record)), object_(object)
+        {
+        }
+
+        SystemId id_{};
+        std::shared_ptr<detail::SystemRecord> record_;
+        Type* object_{};
+
+        friend class SystemRegistry;
+    };
+
     /**
-     * Owner-thread composition container. Erase invalidates membership while
-     * retained typed leases keep the object and its code alive.
+     * Heterogeneous System object owner only. It does not compile schedules and it
+     * does not execute systems. TaskGraph lambdas capture SystemLease<T> values.
      */
     class LUX_ENGINE_ECS_SYSTEM_PUBLIC SystemRegistry final
     {
-      public:
+    public:
         SystemRegistry();
         ~SystemRegistry();
+
         SystemRegistry(SystemRegistry&& other) noexcept;
         SystemRegistry& operator=(SystemRegistry&& other) noexcept;
+
         SystemRegistry(const SystemRegistry&) = delete;
         SystemRegistry& operator=(const SystemRegistry&) = delete;
 
-        template <class Type, class... Args>
+        template <System Type, class... Args>
         [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure> emplace(
             Args&&... args
         ) noexcept
         {
-            return emplaceWithLifetime<Type>(
-                {},
-                std::forward<Args>(args)...
-            );
+            return emplaceWithLifetime<Type>({}, std::forward<Args>(args)...);
         }
 
-        template <class Type, class... Args>
+        template <System Type, class... Args>
         [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure>
         emplaceWithLifetime(
             std::shared_ptr<const void> code_lifetime,
@@ -68,13 +117,16 @@ namespace lux::ecs
         {
             try
             {
-                using Control = detail::SystemControl<Type>;
-                auto control = std::make_shared<Control>(
-                    std::move(code_lifetime),
-                    std::forward<Args>(args)...
-                );
-                std::shared_ptr<void> object(control, &control->object);
-                return add(lux::cxx::typeToken<Type>(), std::move(object));
+                auto object = std::make_unique<Type>(std::forward<Args>(args)...);
+                auto record = std::make_shared<detail::SystemRecord>();
+                record->type = lux::cxx::typeToken<Type>();
+                record->code_lifetime = std::move(code_lifetime);
+                record->object = object.release();
+                record->destroy = [](void* value) noexcept
+                {
+                    delete static_cast<Type*>(value);
+                };
+                return add(std::move(record));
             }
             catch (...)
             {
@@ -84,33 +136,58 @@ namespace lux::ecs
             }
         }
 
-        template <class Type>
-        [[nodiscard]] std::shared_ptr<Type> retain(SystemId id) noexcept
+        template <System Type>
+        [[nodiscard]] lux::cxx::expected<SystemLease<Type>, SystemFailure>
+        retain(SystemId id) const noexcept
         {
-            auto object = retainErased(id, lux::cxx::typeToken<Type>());
-            if (!object)
-                return {};
-            auto* value = static_cast<Type*>(object.get());
-            return std::shared_ptr<Type>(std::move(object), value);
+            auto record = retainRecord(id);
+            if (!record)
+                return lux::cxx::unexpected(record.error());
+
+            const auto expected_type = lux::cxx::typeToken<Type>();
+            if ((*record)->type.hash() != expected_type.hash())
+            {
+                return lux::cxx::unexpected(SystemFailure{
+                    .code = ESystemError::INVALID_SYSTEM,
+                    .system = id
+                });
+            }
+            if ((*record)->type.name() != expected_type.name())
+            {
+                return lux::cxx::unexpected(SystemFailure{
+                    .code = ESystemError::TYPE_COLLISION,
+                    .system = id
+                });
+            }
+            return SystemLease<Type>(
+                id,
+                *record,
+                static_cast<Type*>((*record)->object)
+            );
         }
 
         [[nodiscard]] SystemRegistryId id() const noexcept;
         [[nodiscard]] bool contains(SystemId id) const noexcept;
         [[nodiscard]] std::size_t size() const noexcept;
         [[nodiscard]] std::uint64_t revision() const noexcept;
+
+        /**
+         * Remove registry membership immediately. Physical destruction is deferred
+         * until all SystemLease values (including compiled TaskGraph captures) die.
+         */
         [[nodiscard]] bool erase(SystemId id) noexcept;
 
-      private:
+    private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
 
         [[nodiscard]] lux::cxx::expected<SystemId, SystemFailure> add(
-            lux::cxx::TypeToken type,
-            std::shared_ptr<void> object
+            std::shared_ptr<detail::SystemRecord> record
         ) noexcept;
-        [[nodiscard]] std::shared_ptr<void> retainErased(
-            SystemId id,
-            lux::cxx::TypeToken type
-        ) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<
+            std::shared_ptr<detail::SystemRecord>,
+            SystemFailure
+        > retainRecord(SystemId id) const noexcept;
     };
 }

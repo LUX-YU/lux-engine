@@ -1,10 +1,12 @@
 #include "ObjectBoundaryProbe.hpp"
 
 #include <lux/engine/ecs/SystemRegistry.hpp>
+#include <lux/engine/ecs/SystemTaskResources.hpp>
 #include <lux/engine/ecs/WorldTaskResources.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
-#include <lux/engine/task/TaskGraph.hpp>
+#include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <cassert>
 #include <memory>
@@ -47,8 +49,9 @@ int main()
         queue.dispatcherRef()
     );
     assert(id);
-    auto system = registry.retain<MaterialTextureSystem>(*id);
-    assert(system);
+    auto retained = registry.retain<MaterialTextureSystem>(*id);
+    assert(retained);
+    auto system = std::move(*retained);
     const auto weak = system->weakRef();
     auto observed = system->observe<
         MaterialTextureSystem::textureDemand,
@@ -62,6 +65,7 @@ int main()
     assert(commands.prepare(1U));
     lux::task::TaskGraphBuilder builder;
     const auto update = builder.add(
+        systemTaskResources<MaterialTextureSystem>(),
         [&world, system, &changes, &commands]() noexcept
         {
             auto scope = commands.begin(0U);
@@ -70,6 +74,7 @@ int main()
         }
     );
     const auto apply = builder.add(
+        lux::task::dependsOn(*update),
         lux::task::on(lux::task::ETaskAffinity::CALLER_THREAD),
         worldCommandsWrite(),
         [&world, &commands]() noexcept
@@ -77,17 +82,15 @@ int main()
             applyWorldCommands(world, commands);
         }
     );
-    assert(update && apply && builder.before(*update, *apply));
-    auto graph = lux::task::compile(std::move(builder));
+    assert(update && apply);
+    auto graph = std::move(builder).build();
     assert(graph);
-    lux::task::TaskRunState state;
-    assert(lux::task::prepare(state, *graph));
-    lux::task::InlineTaskExecutor executor;
+    lux::task::TaskExecutor executor({0U, graph->taskCount()});
     const auto run_frame = [&]()
     {
         auto lease = world.beginTaskExecution();
         assert(lease);
-        assert(lux::task::run(*graph, executor, state));
+        assert(executor.execute(*graph));
     };
 
     run_frame();
@@ -102,8 +105,8 @@ int main()
     const auto old_revision = registry.revision();
     assert(registry.erase(*id));
     assert(registry.revision() == old_revision + 1U);
-    system.reset();
+    system = {};
     assert(!weak.expired());
-    graph = {};
+    *graph = lux::task::TaskGraph{};
     assert(weak.expired());
 }

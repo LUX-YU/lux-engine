@@ -1,6 +1,8 @@
 #include <lux/engine/ecs/EcsTaskAccess.hpp>
+#include <lux/engine/ecs/SystemTaskResources.hpp>
 #include <lux/engine/ecs/WorldTaskResources.hpp>
-#include <lux/engine/task/TaskGraph.hpp>
+#include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <cassert>
 #include <cstdint>
@@ -12,6 +14,13 @@ namespace
     inline constexpr auto MovementAccess = lux::ecs::access<
         lux::ecs::Write<Position>,
         lux::ecs::Read<Velocity>>;
+    struct MovementSystem final
+    {
+        inline static constexpr auto Access =
+            lux::ecs::makeSystemAccessSpec<
+                lux::ecs::Write<Position>,
+                lux::ecs::Read<Velocity>>();
+    };
 }
 
 int main()
@@ -31,7 +40,7 @@ int main()
 
     lux::task::TaskGraphBuilder builder;
     const auto movement = builder.add(
-        lux::task::resources(MovementAccess),
+        lux::ecs::systemTaskResources<MovementSystem>(),
         [&]() noexcept
         {
             for (auto [current, position, velocity] :
@@ -43,25 +52,23 @@ int main()
         }
     );
     const auto publish = builder.add(
+        lux::task::dependsOn(*movement),
         lux::ecs::worldChangesWrite(),
         [&]() noexcept { (void)changes.publish(world); }
     );
     const auto apply = builder.add(
+        lux::task::dependsOn(*publish),
         lux::task::on(lux::task::ETaskAffinity::CALLER_THREAD),
         lux::ecs::worldCommandsWrite(),
         [&]() noexcept { lux::ecs::applyWorldCommands(world, commands); }
     );
     assert(movement && publish && apply);
-    assert(builder.before(*movement, *publish));
-    assert(builder.before(*publish, *apply));
-    auto graph = lux::task::compile(std::move(builder));
+    auto graph = std::move(builder).build();
     assert(graph);
-    lux::task::TaskRunState state;
-    assert(lux::task::prepare(state, *graph));
     auto lease = world.beginTaskExecution();
     assert(lease);
-    lux::task::InlineTaskExecutor executor;
-    assert(lux::task::run(*graph, executor, state));
+    lux::task::TaskExecutor executor({0U, graph->taskCount()});
+    assert(executor.execute(*graph));
     lease = {};
     assert(world.get<Position>(entity).value == 1);
     const auto stats = changes.stats();

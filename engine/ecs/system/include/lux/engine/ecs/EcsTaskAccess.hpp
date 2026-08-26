@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/ecs/Query.hpp>
+#include <lux/engine/ecs/SystemAccessSpec.hpp>
 #include <lux/engine/ecs/WorldTaskResources.hpp>
 #include <lux/engine/task/TaskGraph.hpp>
 
@@ -14,18 +15,6 @@
 
 namespace lux::ecs
 {
-    template <class Resource>
-    struct ExternalRead final
-    {
-        using resource_type = Resource;
-    };
-
-    template <class Resource>
-    struct ExternalWrite final
-    {
-        using resource_type = Resource;
-    };
-
     namespace detail
     {
         inline constexpr std::uint64_t kComponentResourceDomain = 1U;
@@ -62,8 +51,9 @@ namespace lux::ecs
         };
 
         template <class Resource>
-        struct EcsTaskAccessTraits<ExternalRead<Resource>> final
-        {
+    struct EcsTaskAccessTraits<ExternalRead<Resource>> final
+    {
+        using ResourceType = Resource;
             static constexpr bool kComponent = false;
             static constexpr bool kWrite = false;
             [[nodiscard]] static constexpr task::TaskResourceKey key() noexcept
@@ -74,8 +64,9 @@ namespace lux::ecs
         };
 
         template <class Resource>
-        struct EcsTaskAccessTraits<ExternalWrite<Resource>> final
-        {
+    struct EcsTaskAccessTraits<ExternalWrite<Resource>> final
+    {
+        using ResourceType = Resource;
             static constexpr bool kComponent = false;
             static constexpr bool kWrite = true;
             [[nodiscard]] static constexpr task::TaskResourceKey key() noexcept

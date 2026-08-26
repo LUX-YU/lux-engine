@@ -40,6 +40,10 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/world/*/sinclude/*.hpp"
     "${source_root}/engine/world/*/pinclude/*.hpp"
     "${source_root}/engine/world/*/src/*.cpp"
+    "${source_root}/engine/simulation/*/include/*.hpp"
+    "${source_root}/engine/simulation/*/sinclude/*.hpp"
+    "${source_root}/engine/simulation/*/pinclude/*.hpp"
+    "${source_root}/engine/simulation/*/src/*.cpp"
 )
 
 foreach(source IN LISTS production_sources)
@@ -145,6 +149,15 @@ foreach(source IN LISTS production_sources)
         if(content MATCHES "namespace[ \t]+lux::ecs|entt::|lux::ecs::")
             message(FATAL_ERROR
                 "Architecture: descriptive World source '${normalized}' contains ECS semantics."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/engine/simulation/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(process|scene|authoring|toolchain|editor|host)/")
+            message(FATAL_ERROR
+                "Architecture: L1 Simulation source '${normalized}' includes an upper-layer API."
             )
         endif()
     endif()

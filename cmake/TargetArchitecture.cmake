@@ -1,8 +1,8 @@
 include_guard(GLOBAL)
 
 set(_LUX_ARCH_LAYERS
-    PLATFORM CORE RESOURCE FUNCTION WORLD ECS
-    RUNTIME AUTHORING TOOLCHAIN EDITOR HOST
+    PLATFORM CORE RESOURCE FUNCTION WORLD SIMULATION ECS
+    PROCESS SCENE RUNTIME AUTHORING TOOLCHAIN EDITOR HOST
 )
 set(_LUX_ARCH_PRODUCTS
     RUNTIME PLAYER EDITOR TOOLCHAIN BUILD_TOOL TEST
@@ -150,12 +150,24 @@ function(_lux_arch_dependency_allowed consumer_layer dependency_layer output)
         if(dependency_layer MATCHES "^(PLATFORM|CORE|WORLD)$")
             set(allowed TRUE)
         endif()
+    elseif(consumer_layer STREQUAL "SIMULATION")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|SIMULATION)$")
+            set(allowed TRUE)
+        endif()
     elseif(consumer_layer STREQUAL "ECS")
         if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|ECS)$")
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "RUNTIME")
         if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|ECS|RUNTIME)$")
+            set(allowed TRUE)
+        endif()
+    elseif(consumer_layer STREQUAL "PROCESS")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|SIMULATION|PROCESS)$")
+            set(allowed TRUE)
+        endif()
+    elseif(consumer_layer STREQUAL "SCENE")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|SIMULATION|PROCESS|SCENE)$")
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "AUTHORING")

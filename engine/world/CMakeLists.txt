@@ -14,6 +14,8 @@ add_component(
     OUTPUT_NAME    lux_engine_world
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldIdentity.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldDescription.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldDescriptionBuilder.cpp
 )
 
 component_include_directories(

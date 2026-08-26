@@ -1,5 +1,6 @@
 #include <lux/engine/world/WorldPartition.hpp>
 #include <lux/engine/world/WorldPartitioner.hpp>
+#include <lux/engine/world/detail/WorldFailureInjection.hpp>
 
 #include <algorithm>
 #include <new>
@@ -154,6 +155,16 @@ namespace lux::world
                 {},
                 id
             ));
+        if (detail::consumeWorldFailureForTest(
+                detail::EWorldFailurePoint::PARTITION_MUTATION_ALLOCATION
+            ))
+        {
+            return lux::cxx::unexpected(partitionFailure(
+                EWorldPartitionError::ALLOCATION_FAILURE,
+                {},
+                id
+            ));
+        }
 
         try
         {
@@ -259,6 +270,22 @@ namespace lux::world
             }
             return lux::cxx::unexpected(partitionFailure(
                 EWorldPartitionError::MISSING_OBJECT_ASSIGNMENT
+            ));
+        }
+        if (detail::consumeWorldFailureForTest(
+                detail::EWorldFailurePoint::PARTITION_BUILD_ALLOCATION
+            ))
+        {
+            return lux::cxx::unexpected(partitionFailure(
+                EWorldPartitionError::ALLOCATION_FAILURE
+            ));
+        }
+        if (detail::consumeWorldFailureForTest(
+                detail::EWorldFailurePoint::PARTITION_BUILD_SIZE_OVERFLOW
+            ))
+        {
+            return lux::cxx::unexpected(partitionFailure(
+                EWorldPartitionError::SIZE_OVERFLOW
             ));
         }
 

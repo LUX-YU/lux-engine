@@ -16,6 +16,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldIdentity.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldDescription.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldDescriptionBuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldFailureInjection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldPartition.cpp
 )
 
@@ -25,6 +26,11 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
+)
+
+target_include_directories(
+    world
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 
 target_compile_definitions(world PRIVATE LUX_ENGINE_WORLD_LIBRARY)
@@ -44,6 +50,10 @@ lux_classify_target(
 
 add_executable(world_contract_test test/world_contract_test.cpp)
 target_link_libraries(world_contract_test PRIVATE lux::engine::world)
+target_include_directories(
+    world_contract_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+)
 if(MSVC)
     target_compile_options(world_contract_test PRIVATE /UNDEBUG)
 else()

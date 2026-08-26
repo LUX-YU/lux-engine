@@ -1,4 +1,5 @@
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
+#include <lux/engine/world/detail/WorldFailureInjection.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -84,6 +85,15 @@ namespace lux::world
                 EWorldDescriptionError::DUPLICATE_OBJECT_ID,
                 id
             ));
+        if (detail::consumeWorldFailureForTest(
+                detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION
+            ))
+        {
+            return lux::cxx::unexpected(failure(
+                EWorldDescriptionError::ALLOCATION_FAILURE,
+                id
+            ));
+        }
         try
         {
             const std::size_t index = impl_->objects.size();
@@ -164,6 +174,16 @@ namespace lux::world
                 object,
                 std::move(schema)
             ));
+        if (detail::consumeWorldFailureForTest(
+                detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION
+            ))
+        {
+            return lux::cxx::unexpected(failure(
+                EWorldDescriptionError::ALLOCATION_FAILURE,
+                object,
+                std::move(schema)
+            ));
+        }
         try
         {
             target.data.push_back({
@@ -212,6 +232,16 @@ namespace lux::world
             ));
         auto& target = impl_->objects[object_it->second];
         auto data_it = findData(target, schema);
+        if (detail::consumeWorldFailureForTest(
+                detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION
+            ))
+        {
+            return lux::cxx::unexpected(failure(
+                EWorldDescriptionError::ALLOCATION_FAILURE,
+                object,
+                std::move(schema)
+            ));
+        }
         try
         {
             std::vector<std::byte> replacement(payload.begin(), payload.end());
@@ -274,6 +304,22 @@ namespace lux::world
     lux::cxx::expected<WorldDescription, WorldDescriptionFailure>
     WorldDescriptionBuilder::build() && noexcept
     {
+        if (detail::consumeWorldFailureForTest(
+                detail::EWorldFailurePoint::DESCRIPTION_BUILD_ALLOCATION
+            ))
+        {
+            return lux::cxx::unexpected(failure(
+                EWorldDescriptionError::ALLOCATION_FAILURE
+            ));
+        }
+        if (detail::consumeWorldFailureForTest(
+                detail::EWorldFailurePoint::DESCRIPTION_BUILD_SIZE_OVERFLOW
+            ))
+        {
+            return lux::cxx::unexpected(failure(
+                EWorldDescriptionError::SIZE_OVERFLOW
+            ));
+        }
         try
         {
             WorldDescription result;

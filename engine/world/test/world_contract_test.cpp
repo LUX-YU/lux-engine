@@ -1,5 +1,6 @@
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
 #include <lux/engine/world/WorldPartitioner.hpp>
+#include <lux/engine/world/detail/WorldFailureInjection.hpp>
 
 #include <array>
 #include <cassert>
@@ -319,6 +320,100 @@ int main()
         0U,
         {}
     ));
+
+    WorldDescriptionBuilder failure_builder;
+    detail::failNextWorldOperationForTest(
+        detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION
+    );
+    const auto failed_object = failure_builder.addObject(objectId(8U));
+    assert(!failed_object);
+    assert(
+        failed_object.error().code ==
+        EWorldDescriptionError::ALLOCATION_FAILURE
+    );
+    assert(failure_builder.addObject(objectId(8U)));
+
+    const std::array failure_payload{std::byte{8U}};
+    detail::failNextWorldOperationForTest(
+        detail::EWorldFailurePoint::DESCRIPTION_MUTATION_ALLOCATION
+    );
+    const auto failed_data = failure_builder.addData(
+        objectId(8U),
+        worldDataSchemaId("test.failure"),
+        1U,
+        failure_payload
+    );
+    assert(!failed_data);
+    assert(
+        failed_data.error().code ==
+        EWorldDescriptionError::ALLOCATION_FAILURE
+    );
+    assert(failure_builder.addData(
+        objectId(8U),
+        worldDataSchemaId("test.failure"),
+        1U,
+        failure_payload
+    ));
+
+    detail::failNextWorldOperationForTest(
+        detail::EWorldFailurePoint::DESCRIPTION_BUILD_ALLOCATION
+    );
+    const auto failed_description_build = std::move(failure_builder).build();
+    assert(!failed_description_build);
+    assert(
+        failed_description_build.error().code ==
+        EWorldDescriptionError::ALLOCATION_FAILURE
+    );
+    detail::failNextWorldOperationForTest(
+        detail::EWorldFailurePoint::DESCRIPTION_BUILD_SIZE_OVERFLOW
+    );
+    const auto overflow_description_build = std::move(failure_builder).build();
+    assert(!overflow_description_build);
+    assert(
+        overflow_description_build.error().code ==
+        EWorldDescriptionError::SIZE_OVERFLOW
+    );
+    auto failure_world = std::move(failure_builder).build();
+    assert(failure_world && failure_world->objectCount() == 1U);
+
+    WorldPartitionLayoutBuilder failure_layout_builder(*failure_world);
+    const std::array failure_objects{objectId(8U)};
+    detail::failNextWorldOperationForTest(
+        detail::EWorldFailurePoint::PARTITION_MUTATION_ALLOCATION
+    );
+    const auto failed_partition = failure_layout_builder.addPartition(
+        partitionId(8U),
+        failure_objects
+    );
+    assert(!failed_partition);
+    assert(
+        failed_partition.error().code ==
+        EWorldPartitionError::ALLOCATION_FAILURE
+    );
+    assert(failure_layout_builder.addPartition(
+        partitionId(8U),
+        failure_objects
+    ));
+    detail::failNextWorldOperationForTest(
+        detail::EWorldFailurePoint::PARTITION_BUILD_ALLOCATION
+    );
+    const auto failed_layout_build = std::move(failure_layout_builder).build();
+    assert(!failed_layout_build);
+    assert(
+        failed_layout_build.error().code ==
+        EWorldPartitionError::ALLOCATION_FAILURE
+    );
+    detail::failNextWorldOperationForTest(
+        detail::EWorldFailurePoint::PARTITION_BUILD_SIZE_OVERFLOW
+    );
+    const auto overflow_layout_build = std::move(failure_layout_builder).build();
+    assert(!overflow_layout_build);
+    assert(
+        overflow_layout_build.error().code ==
+        EWorldPartitionError::SIZE_OVERFLOW
+    );
+    const auto recovered_layout = std::move(failure_layout_builder).build();
+    assert(recovered_layout && recovered_layout->partitionCount() == 1U);
 
     WorldDescriptionBuilder empty_builder;
     auto empty = std::move(empty_builder).build();

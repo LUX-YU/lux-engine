@@ -215,7 +215,7 @@ namespace lux::simulation::ecs
         return lux::simulation::ecs::taskWriter<Component>(world, changes);
     }
 
-    [[nodiscard]] constexpr task::TaskResourceAccess worldStructureWrite()
+    [[nodiscard]] constexpr task::TaskResourceAccess ecsStructureWrite()
         noexcept
     {
         return task::write(ecsStructureTaskResource());
@@ -225,6 +225,12 @@ namespace lux::simulation::ecs
         noexcept
     {
         return task::write(ecsChangesTaskResource());
+    }
+
+    [[nodiscard]] constexpr task::TaskResourceAccess ecsChangesRead()
+        noexcept
+    {
+        return task::read(ecsChangesTaskResource());
     }
 
     [[nodiscard]] constexpr task::TaskResourceAccess ecsCommandsWrite()

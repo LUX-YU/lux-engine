@@ -227,7 +227,7 @@ namespace lux::simulation::ecs::detail
 
     void EcsChangeLog::discardStream(JournalStream& stream) noexcept
     {
-        require(stream.pins == 0U);
+        require(stream.pins.load(std::memory_order_acquire) == 0U);
         while (stream.first != nullptr)
             releaseBlock(*detachFrontBlock(stream));
         stream.count = 0U;
@@ -240,7 +240,8 @@ namespace lux::simulation::ecs::detail
         JournalStream* result{};
         const auto consider = [&result](JournalStream& candidate) noexcept
         {
-            if (candidate.pins != 0U || candidate.first == nullptr)
+            if (candidate.pins.load(std::memory_order_acquire) != 0U ||
+                candidate.first == nullptr)
                 return;
             if (result == nullptr ||
                 candidate.first->first_write < result->first->first_write)
@@ -382,7 +383,7 @@ namespace lux::simulation::ecs::detail
                 EChangeReadStatus::CURRENT};
         }
         const JournalPosition position = positionAt(*stream, begin);
-        ++stream->pins;
+        stream->pins.fetch_add(1U, std::memory_order_acq_rel);
         return ChangeRangeData{
             stream, position.block, position.offset, begin, next,
             EChangeReadStatus::CURRENT};
@@ -425,7 +426,7 @@ namespace lux::simulation::ecs::detail
                 EChangeReadStatus::CURRENT};
         }
         const JournalPosition position = positionAt(*stream, begin);
-        ++stream->pins;
+        stream->pins.fetch_add(1U, std::memory_order_acq_rel);
         return ChangeRangeData{
             stream, position.block, position.offset, begin, next,
             EChangeReadStatus::CURRENT};
@@ -436,7 +437,7 @@ namespace lux::simulation::ecs::detail
         advanceEpoch(epoch_);
         const auto reset = [this](JournalStream& stream) noexcept
         {
-            require(stream.pins == 0U);
+            require(stream.pins.load(std::memory_order_acquire) == 0U);
             discardStream(stream);
             stream.oldest_sequence = 1;
             stream.next_sequence = 1;
@@ -511,8 +512,11 @@ namespace lux::simulation::ecs::detail
         auto& value = *const_cast<JournalStream*>(
             static_cast<const JournalStream*>(stream)
         );
-        require(value.pins != 0);
-        --value.pins;
+        const std::size_t previous = value.pins.fetch_sub(
+            1U,
+            std::memory_order_acq_rel
+        );
+        require(previous != 0U);
     }
 } // namespace lux::simulation::ecs::detail
 
@@ -567,47 +571,12 @@ namespace lux::simulation::ecs
 
     void EcsChangeJournal::invalidateHistory() noexcept
     {
-        impl_->log.markHistoryLoss();
+        impl_->log.establishBaseline();
     }
 
     std::uint64_t EcsChangeJournal::epoch() const noexcept
     {
         return impl_->log.epoch();
-    }
-
-    std::uint64_t EcsChangeJournal::recordWriteCountForTest() const noexcept
-    {
-        return impl_->log.recordWriteCountForTest();
-    }
-
-    std::size_t EcsChangeJournal::dynamicBlockAcquisitionsForTest() const noexcept
-    {
-        return impl_->log.dynamicBlockAcquisitionsForTest();
-    }
-
-    std::uint64_t EcsChangeJournal::streamBindCountForTest() const noexcept
-    {
-        return impl_->log.streamBindCountForTest();
-    }
-
-    std::uint64_t EcsChangeJournal::perRecordLookupCountForTest() const noexcept
-    {
-        return impl_->log.perRecordLookupCountForTest();
-    }
-
-    void EcsChangeJournal::failNextStreamDescriptorForTest() noexcept
-    {
-        impl_->log.failNextStreamDescriptorForTest();
-    }
-
-    void EcsChangeJournal::failNextBlockAcquisitionForTest() noexcept
-    {
-        impl_->log.failNextBlockAcquisitionForTest();
-    }
-
-    void EcsChangeJournal::failNextBlockAttachForTest() noexcept
-    {
-        impl_->log.failNextBlockAttachForTest();
     }
 
     detail::EcsChangeLog& detail::EcsChangeJournalAccess::log(

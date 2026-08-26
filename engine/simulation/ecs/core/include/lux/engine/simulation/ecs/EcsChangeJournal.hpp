@@ -48,6 +48,14 @@ namespace lux::simulation::ecs
         EcsChangeJournal(const EcsChangeJournal&) = delete;
         EcsChangeJournal& operator=(const EcsChangeJournal&) = delete;
 
+        /**
+         * Borrow exact component changes using a consumer-owned cursor.
+         *
+         * Different cursors may read concurrently while the caller holds a
+         * shared ecsChanges READ resource. The returned range is lexical and
+         * must be destroyed before that resource lifetime ends. Journal writes
+         * and invalidation require exclusive ecsChanges WRITE ownership.
+         */
         template <class Component>
         [[nodiscard]] ComponentChanges<Component> read(
             ChangeCursor<Component>& cursor
@@ -62,6 +70,7 @@ namespace lux::simulation::ecs
             );
         }
 
+        /** Entity ranges have the same lexical MRSW contract as component ranges. */
         [[nodiscard]] EntityChanges read(
             EntityChangeCursor& cursor
         ) const noexcept;
@@ -69,13 +78,6 @@ namespace lux::simulation::ecs
         void invalidateHistory() noexcept;
 
         [[nodiscard]] std::uint64_t epoch() const noexcept;
-        [[nodiscard]] std::uint64_t recordWriteCountForTest() const noexcept;
-        [[nodiscard]] std::size_t dynamicBlockAcquisitionsForTest() const noexcept;
-        [[nodiscard]] std::uint64_t streamBindCountForTest() const noexcept;
-        [[nodiscard]] std::uint64_t perRecordLookupCountForTest() const noexcept;
-        void failNextStreamDescriptorForTest() noexcept;
-        void failNextBlockAcquisitionForTest() noexcept;
-        void failNextBlockAttachForTest() noexcept;
 
       private:
         struct Impl;

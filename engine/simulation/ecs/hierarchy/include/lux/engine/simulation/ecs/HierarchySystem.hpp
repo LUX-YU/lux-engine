@@ -17,6 +17,7 @@ namespace lux::simulation::ecs
         inline static constexpr auto TaskAccess = access<
             Read<Parent>,
             ExternalWrite<HierarchyIndex>>;
+        inline static constexpr auto EcsChangesAccess = ecsChangesRead();
 
         HierarchySystem(EcsState& world, HierarchyIndex& hierarchy) noexcept;
 

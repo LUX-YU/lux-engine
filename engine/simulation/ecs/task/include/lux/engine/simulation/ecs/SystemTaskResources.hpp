@@ -41,6 +41,9 @@ namespace lux::simulation::ecs
     template <System Type>
     [[nodiscard]] task::TaskResources systemTaskResources()
     {
-        return systemTaskResources(Type::Access.spec());
+        task::TaskResources result = systemTaskResources(Type::Access.spec());
+        if constexpr (requires { Type::EcsChangesAccess; })
+            result.values.push_back(Type::EcsChangesAccess);
+        return result;
     }
 }

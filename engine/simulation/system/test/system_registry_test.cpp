@@ -180,6 +180,29 @@ int main()
         assert(result->dependencyCount() == 1U);
     }
 
+    // Multiple Journal readers remain independent while a later writer is
+    // ordered after both by the canonical changes resource.
+    {
+        task::TaskGraphBuilder builder;
+        auto first_reader = builder.add(
+            simulation::ecs::ecsChangesRead(),
+            []() noexcept {}
+        );
+        auto second_reader = builder.add(
+            simulation::ecs::ecsChangesRead(),
+            []() noexcept {}
+        );
+        auto writer = builder.add(
+            simulation::ecs::ecsChangesWrite(),
+            []() noexcept {}
+        );
+        assert(first_reader && second_reader && writer);
+        auto result = std::move(builder).build();
+        assert(result);
+        assert(result->rootTaskCount() == 2U);
+        assert(result->dependencyCount() == 2U);
+    }
+
     {
         task::TaskGraphBuilder builder;
         auto writer = builder.add(

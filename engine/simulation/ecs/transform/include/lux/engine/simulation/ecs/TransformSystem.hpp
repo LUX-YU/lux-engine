@@ -27,6 +27,7 @@ namespace lux::simulation::ecs
             Read<Transform2D>,
             Write<WorldTransform2D>,
             ExternalRead<HierarchyIndex>>;
+        inline static constexpr auto EcsChangesAccess = ecsChangesRead();
 
         explicit Transform2DSystem(HierarchyIndex& hierarchy);
         ~Transform2DSystem();
@@ -73,6 +74,7 @@ namespace lux::simulation::ecs
             Read<Transform3D>,
             Write<WorldTransform3D>,
             ExternalRead<HierarchyIndex>>;
+        inline static constexpr auto EcsChangesAccess = ecsChangesRead();
 
         explicit Transform3DSystem(HierarchyIndex& hierarchy);
         ~Transform3DSystem();

@@ -3,10 +3,12 @@
 #include <lux/engine/simulation/ecs/EcsTaskResources.hpp>
 #include <lux/engine/simulation/ecs/SimulationEcsMutation.hpp>
 #include <lux/engine/simulation/ecs/core/detail/EcsChangeJournalAccess.hpp>
+#include <lux/engine/simulation/ecs/core/detail/EcsChangeJournalTestAccess.hpp>
 
 #include <cassert>
 #include <array>
 #include <cstdint>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -118,6 +120,7 @@ int main()
     assert(batch_stats.journal_stream_binds == 1U);
     assert(batch_stats.per_record_lookups == 0U);
     assert(batch_stats.current_records == 0U);
+    batch_change = {};
 
     for (const std::size_t lane_count : {1U, 4U, 16U, 32U})
     {
@@ -146,14 +149,18 @@ int main()
         16U * 4096U
     });
     const std::uint64_t initial_epoch = failure_journal.epoch();
-    failure_journal.failNextStreamDescriptorForTest();
+    detail::EcsChangeJournalTestAccess::failNextStreamDescriptor(
+        failure_journal
+    );
     detail::EcsChangePublisher publisher(failure_journal);
     assert(!publisher.bindComponent(901U));
     assert(!publisher.bindComponent(902U));
     assert(failure_journal.epoch() == initial_epoch + 1U);
 
     const std::uint64_t block_epoch = failure_journal.epoch();
-    failure_journal.failNextBlockAcquisitionForTest();
+    detail::EcsChangeJournalTestAccess::failNextBlockAcquisition(
+        failure_journal
+    );
     detail::EcsChangePublisher block_publisher(failure_journal);
     auto stream = block_publisher.bindComponent(903U);
     assert(stream);
@@ -175,8 +182,49 @@ int main()
     assert(destroy_result);
     destroy_result->destroy(entity);
     *destroy_result = {};
-    const auto destroyed = journal.read(entity_cursor);
-    assert(destroyed.size() == 1U);
-    assert((*destroyed.begin()).kind == EEntityChangeKind::DESTROYED);
+    {
+        const auto destroyed = journal.read(entity_cursor);
+        assert(destroyed.size() == 1U);
+        assert((*destroyed.begin()).kind == EEntityChangeKind::DESTROYED);
+    }
     assert(!state.valid(entity));
+
+    ChangeCursor<Position> first_reader;
+    ChangeCursor<Position> second_reader;
+    assert(journal.read(first_reader).status() == EChangeReadStatus::RESYNC_REQUIRED);
+    assert(journal.read(second_reader).status() == EChangeReadStatus::RESYNC_REQUIRED);
+    auto concurrent_mutation = beginSimulationEcsMutation(state, journal);
+    assert(concurrent_mutation);
+    const Entity concurrent_entity = concurrent_mutation->create();
+    concurrent_mutation->emplace<Position>(concurrent_entity, 9);
+    *concurrent_mutation = {};
+
+    std::size_t first_count{};
+    std::size_t second_count{};
+    std::thread first_thread([&]() noexcept
+    {
+        const auto range = journal.read(first_reader);
+        first_count = range.size();
+    });
+    std::thread second_thread([&]() noexcept
+    {
+        const auto range = journal.read(second_reader);
+        second_count = range.size();
+    });
+    first_thread.join();
+    second_thread.join();
+    assert(first_count == 1U);
+    assert(second_count == 1U);
+
+    assert(detail::EcsChangeJournalTestAccess::activeBlockCount(journal) != 0U);
+    const std::uint64_t pre_invalidation_epoch = journal.epoch();
+    journal.invalidateHistory();
+    assert(journal.epoch() == pre_invalidation_epoch + 1U);
+    assert(detail::EcsChangeJournalTestAccess::activeBlockCount(journal) == 0U);
+    assert(journal.read(first_reader).status() == EChangeReadStatus::RESYNC_REQUIRED);
+    ChangeCursor<Position> fresh_cursor;
+    assert(journal.read(fresh_cursor).status() == EChangeReadStatus::RESYNC_REQUIRED);
+    const auto fresh_baseline = journal.read(fresh_cursor);
+    assert(fresh_baseline.status() == EChangeReadStatus::CURRENT);
+    assert(fresh_baseline.empty());
 }

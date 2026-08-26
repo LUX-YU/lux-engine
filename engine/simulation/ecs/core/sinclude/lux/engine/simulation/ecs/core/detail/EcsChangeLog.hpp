@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -56,7 +57,7 @@ namespace lux::simulation::ecs::detail
         std::uint64_t next_sequence{1};
         std::uint64_t minimum_available{1};
         std::uint64_t last_write{};
-        mutable std::size_t pins{};
+        mutable std::atomic_size_t pins{};
     };
 
     struct JournalPosition final
@@ -142,6 +143,14 @@ namespace lux::simulation::ecs::detail
         [[nodiscard]] std::uint64_t perRecordLookupCountForTest() const noexcept
         {
             return per_record_lookup_count_;
+        }
+
+        [[nodiscard]] std::size_t activeBlockCountForTest() const noexcept
+        {
+            std::size_t result = entity_stream_.block_count;
+            for (const auto& [_, stream] : component_streams_)
+                result += stream->block_count;
+            return result;
         }
 
         void failNextStreamDescriptorForTest() noexcept

@@ -68,69 +68,45 @@ namespace lux::simulation::ecs::detail
     void* CommandArena::allocate(
         std::size_t size,
         std::size_t alignment
-    )
+    ) noexcept
     {
         detail::require(size != 0 && alignment != 0);
-        for (std::size_t index = cursor_; index < blocks_.size(); ++index)
-        {
-            Block& block = blocks_[index];
-            const auto address = reinterpret_cast<std::uintptr_t>(
-                block.data.get() + block.used
-            );
-            const std::size_t padding = static_cast<std::size_t>(
-                (alignment - address % alignment) % alignment
-            );
-            if (padding <= block.size - block.used &&
-                size <= block.size - block.used - padding)
-            {
-                block.used += padding;
-                void* result = block.data.get() + block.used;
-                block.used += size;
-                cursor_ = index;
-                return result;
-            }
-        }
-
-        const std::size_t block_size = std::max<std::size_t>(
-            4096,
-            size + alignment
+        if (used_ > storage_.size())
+            return nullptr;
+        const auto address = reinterpret_cast<std::uintptr_t>(
+            storage_.data() + used_
         );
-        Block block;
-        block.data = std::make_unique<std::byte[]>(block_size);
-        block.size = block_size;
-        blocks_.push_back(std::move(block));
-        ++allocation_events_;
-        cursor_ = blocks_.size() - 1;
-        return allocate(size, alignment);
+        const std::size_t padding = static_cast<std::size_t>(
+            (alignment - address % alignment) % alignment
+        );
+        if (padding > storage_.size() - used_ ||
+            size > storage_.size() - used_ - padding)
+        {
+            return nullptr;
+        }
+        used_ += padding;
+        void* result = storage_.data() + used_;
+        used_ += size;
+        return result;
     }
 
-    void CommandArena::reserve(std::size_t bytes)
+    void CommandArena::prepare(std::size_t bytes)
     {
-        if (bytes == 0)
-            return;
-        std::size_t capacity{};
-        for (const Block& block : blocks_)
-            capacity += block.size;
-        if (capacity >= bytes)
-            return;
-        Block block;
-        block.size = bytes - capacity;
-        block.data = std::make_unique<std::byte[]>(block.size);
-        blocks_.push_back(std::move(block));
-        ++allocation_events_;
+        if (storage_.capacity() < bytes)
+            ++allocation_events_;
+        storage_.resize(bytes);
+        used_ = 0U;
     }
 
     void CommandArena::reset() noexcept
     {
-        for (Block& block : blocks_)
-            block.used = 0;
-        cursor_ = 0;
+        used_ = 0U;
     }
 
     void CommandArena::swap(CommandArena& other) noexcept
     {
-        blocks_.swap(other.blocks_);
-        std::swap(cursor_, other.cursor_);
+        storage_.swap(other.storage_);
+        std::swap(used_, other.used_);
         std::swap(allocation_events_, other.allocation_events_);
     }
 
@@ -139,8 +115,12 @@ namespace lux::simulation::ecs::detail
         return allocation_events_;
     }
 
-    CommandShard::CommandShard(std::uint32_t generation) noexcept
-        : generation_(generation == 0 ? 1 : generation)
+    CommandShard::CommandShard(
+        std::uint32_t generation,
+        bool* batch_failed
+    ) noexcept
+        : generation_(generation == 0 ? 1 : generation),
+          batch_failed_(batch_failed)
     {
     }
 
@@ -150,11 +130,15 @@ namespace lux::simulation::ecs::detail
           generation_(other.generation_),
           discarded_(other.discarded_),
           record_allocation_events_(other.record_allocation_events_),
+          max_commands_(other.max_commands_),
+          batch_failed_(other.batch_failed_),
           fail_next_push_for_test_(other.fail_next_push_for_test_)
     {
         detail::require(!other.active_ && !other.applying_);
         other.discarded_ = 0U;
         other.record_allocation_events_ = 0U;
+        other.max_commands_ = 0U;
+        other.batch_failed_ = nullptr;
         other.fail_next_push_for_test_ = false;
     }
 
@@ -170,17 +154,31 @@ namespace lux::simulation::ecs::detail
         generation_ = other.generation_;
         discarded_ = other.discarded_;
         record_allocation_events_ = other.record_allocation_events_;
+        max_commands_ = other.max_commands_;
+        batch_failed_ = other.batch_failed_;
         fail_next_push_for_test_ = other.fail_next_push_for_test_;
         other.discarded_ = 0U;
         other.record_allocation_events_ = 0U;
+        other.max_commands_ = 0U;
+        other.batch_failed_ = nullptr;
         other.fail_next_push_for_test_ = false;
         return *this;
     }
 
-    void CommandShard::reserve(std::size_t count)
+    void CommandShard::prepare(
+        std::size_t command_capacity,
+        std::size_t payload_capacity,
+        bool& batch_failed
+    )
     {
-        pending_.reserve(count);
-        pending_arena_.reserve(count * 64U);
+        detail::require(!active_ && !applying_);
+        pending_.clear();
+        if (pending_.capacity() < command_capacity)
+            ++record_allocation_events_;
+        pending_.reserve(command_capacity);
+        pending_arena_.prepare(payload_capacity);
+        max_commands_ = command_capacity;
+        batch_failed_ = std::addressof(batch_failed);
     }
 
     void CommandShard::invalidate() noexcept
@@ -227,38 +225,40 @@ namespace lux::simulation::ecs::detail
             return ECommandResult::STALE_WRITER;
         }
 
+        if (batch_failed_ != nullptr && *batch_failed_)
+            return ECommandResult::BATCH_FAILED;
+
         if (fail_next_push_for_test_)
         {
             fail_next_push_for_test_ = false;
-            return ECommandResult::ALLOCATION_FAILURE;
+            if (batch_failed_ != nullptr)
+                *batch_failed_ = true;
+            return ECommandResult::CAPACITY_EXCEEDED;
         }
 
-        try
+        if (pending_.size() >= max_commands_)
         {
-            if (pending_.size() == pending_.capacity())
-            {
-                pending_.reserve(std::max<std::size_t>(
-                    8,
-                    pending_.capacity() * 2
-                ));
-                ++record_allocation_events_;
-            }
-            void* payload = pending_arena_.allocate(
-                table.size,
-                table.alignment
-            );
-            table.move_construct(payload, source);
+            if (batch_failed_ != nullptr)
+                *batch_failed_ = true;
+            return ECommandResult::CAPACITY_EXCEEDED;
+        }
+        void* payload = pending_arena_.allocate(
+            table.size,
+            table.alignment
+        );
+        if (payload == nullptr)
+        {
+            if (batch_failed_ != nullptr)
+                *batch_failed_ = true;
+            return ECommandResult::CAPACITY_EXCEEDED;
+        }
+        table.move_construct(payload, source);
 
-            CommandRecord record;
-            record.payload = payload;
-            record.apply = table.apply;
-            record.destroy = table.destroy;
-            pending_.push_back(std::move(record));
-        }
-        catch (...)
-        {
-            return ECommandResult::ALLOCATION_FAILURE;
-        }
+        CommandRecord record;
+        record.payload = payload;
+        record.apply = table.apply;
+        record.destroy = table.destroy;
+        pending_.push_back(std::move(record));
 
         return ECommandResult::ACCEPTED;
     }

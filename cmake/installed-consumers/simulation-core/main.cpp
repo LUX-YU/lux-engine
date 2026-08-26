@@ -14,7 +14,9 @@ int main()
     lux::simulation::ecs::EcsState state;
     lux::simulation::ecs::EcsChangeJournal journal({4096U, 65536U});
     lux::simulation::ecs::EcsCommandBatch commands;
-    if (!commands.prepare(0U))
+    if (!commands.prepare(
+            std::span<const lux::simulation::ecs::EcsCommandProducerCapacity>{}
+        ))
         return 2;
     return lux::simulation::executeSimulationStep(
         executor,

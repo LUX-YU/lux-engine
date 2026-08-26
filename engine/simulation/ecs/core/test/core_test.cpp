@@ -5,6 +5,7 @@
 #include <lux/engine/simulation/ecs/core/detail/EcsChangeJournalAccess.hpp>
 
 #include <cassert>
+#include <array>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -83,7 +84,10 @@ int main()
     modified = {};
 
     EcsCommandBatch commands;
-    assert(commands.prepare(1U, 1U));
+    constexpr std::array command_capacities{
+        EcsCommandProducerCapacity{1U, 64U}
+    };
+    assert(commands.prepare(command_capacities));
     {
         auto recording = commands.begin(0U);
         assert(recording);

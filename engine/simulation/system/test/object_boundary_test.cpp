@@ -9,6 +9,7 @@
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <cassert>
+#include <array>
 #include <memory>
 
 namespace
@@ -61,9 +62,12 @@ int main()
     assert(observed);
 
     EcsChangeBatch changes;
-    assert(changes.prepare({}));
+    assert(changes.prepare({}, 0U));
     EcsCommandBatch commands;
-    assert(commands.prepare(1U));
+    constexpr std::array command_capacities{
+        EcsCommandProducerCapacity{1U, 64U}
+    };
+    assert(commands.prepare(command_capacities));
     lux::task::TaskGraphBuilder builder;
     const auto update = builder.add(
         systemTaskResources<MaterialTextureSystem>(),

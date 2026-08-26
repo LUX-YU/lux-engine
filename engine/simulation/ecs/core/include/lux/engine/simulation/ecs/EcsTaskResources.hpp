@@ -29,7 +29,8 @@ namespace lux::simulation::ecs
         INVALID_STORAGE,
         INVALID_PRODUCER,
         ALLOCATION_FAILURE,
-        WORLD_BUSY,
+        BATCH_FAILED,
+        STATE_BUSY,
     };
 
     struct EcsTaskResourceFailure final
@@ -69,7 +70,7 @@ namespace lux::simulation::ecs
         [[nodiscard]] lux::cxx::expected<void, EcsTaskResourceFailure>
         prepare(
             std::span<const std::uint64_t> write_storages,
-            std::size_t reserve_records = 0U
+            std::size_t records_per_lane_capacity
         ) noexcept;
 
         void reset() noexcept;
@@ -85,6 +86,37 @@ namespace lux::simulation::ecs
     };
 
     class EcsCommandBatch;
+
+    struct EcsCommandProducerCapacity final
+    {
+        EcsCommandProducerCapacity() = delete;
+
+        constexpr EcsCommandProducerCapacity(
+            std::size_t command_count,
+            std::size_t payload_bytes
+        ) noexcept
+            : max_commands(command_count),
+              max_payload_bytes(payload_bytes)
+        {
+        }
+
+        std::size_t max_commands;
+        std::size_t max_payload_bytes;
+    };
+
+    enum class EEcsCommandApplyError : std::uint8_t
+    {
+        ACTIVE_RECORDING,
+        RECORDING_FAILED,
+        STATE_NOT_IDLE,
+        WRONG_THREAD,
+        STATE_DESTROYING,
+    };
+
+    struct EcsCommandApplyFailure final
+    {
+        EEcsCommandApplyError code{EEcsCommandApplyError::STATE_NOT_IDLE};
+    };
 
     class LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC EcsCommandRecordingScope final
     {
@@ -128,10 +160,8 @@ namespace lux::simulation::ecs
         EcsCommandBatch& operator=(const EcsCommandBatch&) = delete;
 
         [[nodiscard]] lux::cxx::expected<void, EcsTaskResourceFailure>
-        prepare(
-            std::size_t producer_count,
-            std::size_t reserve_commands_per_producer = 0U
-        ) noexcept;
+        prepare(std::span<const EcsCommandProducerCapacity> capacities)
+            noexcept;
 
         [[nodiscard]] lux::cxx::expected<
             EcsCommandRecordingScope,
@@ -140,6 +170,8 @@ namespace lux::simulation::ecs
 
         [[nodiscard]] std::size_t discarded() const noexcept;
         [[nodiscard]] std::size_t allocationEvents() const noexcept;
+        [[nodiscard]] bool failed() const noexcept;
+        void discardPending() noexcept;
 
       private:
         struct Impl;
@@ -148,15 +180,18 @@ namespace lux::simulation::ecs
         void end(std::size_t producer) noexcept;
         friend class EcsCommandRecordingScope;
         friend struct detail::EcsTaskResourceTestAccess;
-        friend LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC void applyEcsCommands(
-            EcsState&,
-            EcsChangeJournal&,
-            EcsCommandBatch&
-        ) noexcept;
+        friend LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<
+            void,
+            EcsCommandApplyFailure>
+        applyEcsCommands(EcsState&, EcsChangeJournal&, EcsCommandBatch&)
+            noexcept;
     };
 
-    LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC void applyEcsCommands(
-        EcsState& world,
+    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<
+        void,
+        EcsCommandApplyFailure>
+    applyEcsCommands(
+        EcsState& state,
         EcsChangeJournal& journal,
         EcsCommandBatch& commands
     ) noexcept;

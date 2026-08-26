@@ -22,7 +22,8 @@ namespace lux::simulation::ecs
     {
         ACCEPTED,
         STALE_WRITER,
-        ALLOCATION_FAILURE,
+        CAPACITY_EXCEEDED,
+        BATCH_FAILED,
     };
 
     class LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC EcsCommands final

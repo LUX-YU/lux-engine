@@ -31,7 +31,6 @@ namespace lux::simulation::ecs
         NOT_IDLE,
         WRONG_THREAD,
         DESTROYING,
-        ALLOCATION_FAILURE,
     };
 
     struct EcsMutationError final

@@ -2,6 +2,7 @@
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <cassert>
+#include <array>
 #include <cstdint>
 
 namespace
@@ -32,7 +33,10 @@ int main()
     simulation::ecs::EcsState state;
     simulation::ecs::EcsChangeJournal journal({4096U, 65536U});
     simulation::ecs::EcsCommandBatch commands;
-    assert(commands.prepare(1U));
+    constexpr std::array command_capacities{
+        simulation::ecs::EcsCommandProducerCapacity{1U, 64U}
+    };
+    assert(commands.prepare(command_capacities));
     simulation::ecs::ChangeCursor<Position> cursor;
     assert(
         journal.read(cursor).status() ==

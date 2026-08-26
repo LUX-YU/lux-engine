@@ -17,6 +17,19 @@
 
 namespace
 {
+    constexpr lux::simulation::ecs::EcsChangeHistoryBudget kHistoryBudget{
+        256U * 1024U,
+        32U * 1024U * 1024U
+    };
+    constexpr lux::simulation::ecs::testing::EcsTaskTestRigCapacity
+        kRigCapacity{
+            131072U,
+            lux::simulation::ecs::EcsCommandProducerCapacity{
+                131072U,
+                8U * 1024U * 1024U
+            }
+        };
+
 [[nodiscard]] bool near(float left, float right) noexcept
     {
         return std::abs(left - right) < 0.0001F;
@@ -40,7 +53,11 @@ namespace
         lux::simulation::ecs::HierarchyIndex& hierarchy
     )
     {
-        lux::simulation::ecs::testing::EcsTaskTestRig schedule{world};
+        lux::simulation::ecs::testing::EcsTaskTestRig schedule{
+            world,
+            kHistoryBudget,
+            kRigCapacity
+        };
         const auto hierarchy_system =
             schedule.add<lux::simulation::ecs::HierarchySystem>(world, hierarchy);
         const auto transform3d =
@@ -134,7 +151,11 @@ int main()
     edit = {};
 
     {
-        lux::simulation::ecs::testing::EcsTaskTestRig schedule{world};
+        lux::simulation::ecs::testing::EcsTaskTestRig schedule{
+            world,
+            kHistoryBudget,
+            kRigCapacity
+        };
         const auto hierarchy_system =
             schedule.add<lux::simulation::ecs::HierarchySystem>(world, hierarchy);
         const auto transform3d =

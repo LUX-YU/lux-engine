@@ -15,24 +15,47 @@
 
 namespace lux::simulation::ecs::testing
 {
+    struct EcsTaskTestRigCapacity final
+    {
+        EcsTaskTestRigCapacity() = delete;
+
+        constexpr EcsTaskTestRigCapacity(
+            std::size_t change_records_per_lane,
+            EcsCommandProducerCapacity command_producer
+        ) noexcept
+            : change_records_per_lane(change_records_per_lane),
+              command_producer(command_producer)
+        {
+        }
+
+        std::size_t change_records_per_lane;
+        EcsCommandProducerCapacity command_producer;
+    };
+
     /** Test-only explicit, registration-ordered TaskGraph composition. */
     class EcsTaskTestRig final
     {
       public:
-        explicit EcsTaskTestRig(EcsState& world)
+        EcsTaskTestRig(
+            EcsState& world,
+            EcsChangeHistoryBudget history_budget,
+            EcsTaskTestRigCapacity capacity
+        )
             : owned_journal_(std::make_unique<EcsChangeJournal>(
-                  EcsChangeHistoryBudget{256U * 1024U, 32U * 1024U * 1024U}
+                  history_budget
               )),
               world_(&world),
-              journal_(owned_journal_.get())
+              journal_(owned_journal_.get()),
+              capacity_(capacity)
         {
         }
 
         EcsTaskTestRig(
             EcsState& world,
-            EcsChangeJournal& journal
+            EcsChangeJournal& journal,
+            EcsTaskTestRigCapacity capacity
         ) noexcept
-            : world_(&world), journal_(&journal)
+            : world_(&world), journal_(&journal), capacity_(capacity)
         {
         }
 
@@ -48,7 +71,10 @@ namespace lux::simulation::ecs::testing
             auto system = std::move(*retained);
 
             auto changes = std::make_shared<EcsChangeBatch>();
-            assert(changes->prepare(Type::TaskAccess.writeStorages()));
+            assert(changes->prepare(
+                Type::TaskAccess.writeStorages(),
+                capacity_.change_records_per_lane
+            ));
             const std::size_t producer = entries_.size();
 
             lux::cxx::expected<task::TaskHandle, task::TaskGraphFailure> update =
@@ -100,7 +126,11 @@ namespace lux::simulation::ecs::testing
 
         [[nodiscard]] bool compile()
         {
-            if (!commands_.prepare(entries_.size()))
+            std::vector<EcsCommandProducerCapacity> capacities(
+                entries_.size(),
+                capacity_.command_producer
+            );
+            if (!commands_.prepare(capacities))
                 return false;
 
             lux::cxx::expected<task::TaskHandle, task::TaskGraphFailure> apply =
@@ -196,6 +226,7 @@ namespace lux::simulation::ecs::testing
         task::TaskGraphBuilder builder_;
         std::vector<Entry> entries_;
         EcsCommandBatch commands_;
+        EcsTaskTestRigCapacity capacity_;
         std::unique_ptr<task::TaskGraph> graph_;
         std::unique_ptr<task::TaskExecutor> executor_;
     };

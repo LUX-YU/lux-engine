@@ -4,7 +4,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 namespace lux::simulation::ecs::detail
@@ -34,29 +33,25 @@ namespace lux::simulation::ecs::detail
         [[nodiscard]] void* allocate(
             std::size_t size,
             std::size_t alignment
-        );
-        void reserve(std::size_t bytes);
+        ) noexcept;
+        void prepare(std::size_t bytes);
         void reset() noexcept;
         void swap(CommandArena& other) noexcept;
         [[nodiscard]] std::size_t allocationEvents() const noexcept;
 
       private:
-        struct Block final
-        {
-            std::unique_ptr<std::byte[]> data;
-            std::size_t size{};
-            std::size_t used{};
-        };
-
-        std::vector<Block> blocks_;
-        std::size_t cursor_{};
+        std::vector<std::byte> storage_;
+        std::size_t used_{};
         std::size_t allocation_events_{};
     };
 
     class LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC CommandShard final
     {
       public:
-        explicit CommandShard(std::uint32_t generation = 1) noexcept;
+        explicit CommandShard(
+            std::uint32_t generation = 1,
+            bool* batch_failed = nullptr
+        ) noexcept;
         ~CommandShard() noexcept = default;
 
         CommandShard(const CommandShard&) = delete;
@@ -64,7 +59,11 @@ namespace lux::simulation::ecs::detail
         CommandShard(CommandShard&& other) noexcept;
         CommandShard& operator=(CommandShard&& other) noexcept;
 
-        void reserve(std::size_t count);
+        void prepare(
+            std::size_t command_capacity,
+            std::size_t payload_capacity,
+            bool& batch_failed
+        );
         void invalidate() noexcept;
 
         [[nodiscard]] bool accepts(std::uint32_t generation) const noexcept;
@@ -92,6 +91,8 @@ namespace lux::simulation::ecs::detail
         std::uint32_t generation_{1};
         std::size_t discarded_{};
         std::size_t record_allocation_events_{};
+        std::size_t max_commands_{};
+        bool* batch_failed_{};
         bool active_{};
         bool applying_{};
         bool fail_next_push_for_test_{};

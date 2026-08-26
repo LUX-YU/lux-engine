@@ -11,6 +11,19 @@
 
 namespace
 {
+    constexpr lux::simulation::ecs::EcsChangeHistoryBudget kHistoryBudget{
+        256U * 1024U,
+        32U * 1024U * 1024U
+    };
+    constexpr lux::simulation::ecs::testing::EcsTaskTestRigCapacity
+        kRigCapacity{
+            131072U,
+            lux::simulation::ecs::EcsCommandProducerCapacity{
+                131072U,
+                8U * 1024U * 1024U
+            }
+        };
+
 [[nodiscard]] lux::simulation::SystemId installHierarchy(
         lux::simulation::ecs::EcsState& world,
         lux::simulation::ecs::testing::EcsTaskTestRig& schedule,
@@ -45,7 +58,11 @@ int main()
     edit = {};
 
     assert(!hierarchy.synchronized());
-    lux::simulation::ecs::testing::EcsTaskTestRig schedule{world};
+    lux::simulation::ecs::testing::EcsTaskTestRig schedule{
+        world,
+        kHistoryBudget,
+        kRigCapacity
+    };
     const auto hierarchy_handle = installHierarchy(world, schedule, hierarchy);
     assert(schedule.run(1.0F / 60.0F, 1U));
     assert(hierarchy.synchronized());
@@ -128,7 +145,11 @@ int main()
         stale_edit = {};
 
         lux::simulation::ecs::HierarchyIndex stale_hierarchy{stale_world};
-        lux::simulation::ecs::testing::EcsTaskTestRig stale_schedule{stale_world};
+        lux::simulation::ecs::testing::EcsTaskTestRig stale_schedule{
+            stale_world,
+            kHistoryBudget,
+            kRigCapacity
+        };
         (void)installHierarchy(stale_world, stale_schedule, stale_hierarchy);
         assert(stale_schedule.run(1.0F / 60.0F, 1U));
         assert(!stale_hierarchy.synchronized());
@@ -148,7 +169,11 @@ int main()
         setup.emplace<lux::simulation::ecs::Parent>(repair_child, doomed_parent);
         setup = {};
         lux::simulation::ecs::HierarchyIndex repair_hierarchy{repair_world};
-        lux::simulation::ecs::testing::EcsTaskTestRig repair_schedule{repair_world};
+        lux::simulation::ecs::testing::EcsTaskTestRig repair_schedule{
+            repair_world,
+            kHistoryBudget,
+            kRigCapacity
+        };
         const auto repair_handle = installHierarchy(
             repair_world, repair_schedule, repair_hierarchy
         );
@@ -185,7 +210,11 @@ int main()
         setup.emplace<lux::simulation::ecs::Parent>(repair_child, doomed_parent);
         setup = {};
         lux::simulation::ecs::HierarchyIndex cancel_hierarchy{cancel_world};
-        lux::simulation::ecs::testing::EcsTaskTestRig cancel_schedule{cancel_world};
+        lux::simulation::ecs::testing::EcsTaskTestRig cancel_schedule{
+            cancel_world,
+            kHistoryBudget,
+            kRigCapacity
+        };
         const auto cancel_handle = installHierarchy(
             cancel_world, cancel_schedule, cancel_hierarchy
         );
@@ -215,7 +244,11 @@ int main()
         );
         fabricated_edit = {};
         lux::simulation::ecs::HierarchyIndex fabricated_hierarchy{fabricated_world};
-        lux::simulation::ecs::testing::EcsTaskTestRig fabricated_schedule{fabricated_world};
+        lux::simulation::ecs::testing::EcsTaskTestRig fabricated_schedule{
+            fabricated_world,
+            kHistoryBudget,
+            kRigCapacity
+        };
         (void)installHierarchy(
             fabricated_world,
             fabricated_schedule,
@@ -245,7 +278,11 @@ int main()
         }
         deep_edit = {};
         lux::simulation::ecs::HierarchyIndex deep_hierarchy{deep_world};
-        lux::simulation::ecs::testing::EcsTaskTestRig deep_schedule{deep_world};
+        lux::simulation::ecs::testing::EcsTaskTestRig deep_schedule{
+            deep_world,
+            kHistoryBudget,
+            kRigCapacity
+        };
         (void)installHierarchy(deep_world, deep_schedule, deep_hierarchy);
         assert(deep_schedule.run(1.0F / 60.0F, 1U));
         assert(deep_hierarchy.synchronized());
@@ -290,7 +327,11 @@ int main()
         invalid_edit.emplace<lux::simulation::ecs::Parent>(first, second);
         invalid_edit.emplace<lux::simulation::ecs::Parent>(second, first);
         invalid_edit = {};
-        lux::simulation::ecs::testing::EcsTaskTestRig invalid_schedule{invalid_world};
+        lux::simulation::ecs::testing::EcsTaskTestRig invalid_schedule{
+            invalid_world,
+            kHistoryBudget,
+            kRigCapacity
+        };
         (void)installHierarchy(
             invalid_world,
             invalid_schedule,
@@ -312,7 +353,11 @@ int main()
         auto root_edit = std::move(*root_result);
         const auto overflow_root = root_edit.create();
         root_edit = {};
-        lux::simulation::ecs::testing::EcsTaskTestRig overflow_schedule{overflow_world};
+        lux::simulation::ecs::testing::EcsTaskTestRig overflow_schedule{
+            overflow_world,
+            kHistoryBudget,
+            kRigCapacity
+        };
         (void)installHierarchy(
             overflow_world,
             overflow_schedule,

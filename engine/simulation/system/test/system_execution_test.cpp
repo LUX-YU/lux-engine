@@ -5,6 +5,7 @@
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <cassert>
+#include <array>
 #include <cstdint>
 
 namespace
@@ -39,7 +40,10 @@ int main()
     lux::simulation::ecs::EcsChangeBatch changes;
     assert(changes.prepare(MovementAccess.writeStorages(), 1U));
     lux::simulation::ecs::EcsCommandBatch commands;
-    assert(commands.prepare(1U));
+    constexpr std::array command_capacities{
+        lux::simulation::ecs::EcsCommandProducerCapacity{0U, 0U}
+    };
+    assert(commands.prepare(command_capacities));
 
     lux::task::TaskGraphBuilder builder;
     const auto movement = builder.add(

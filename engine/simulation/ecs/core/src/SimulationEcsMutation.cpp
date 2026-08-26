@@ -8,24 +8,7 @@
 
 namespace lux::simulation::ecs
 {
-    struct SimulationEcsMutation::Impl final
-    {
-        Impl(
-            EcsState& value,
-            EcsMutation&& canonical,
-            EcsChangeJournal& journal
-        ) noexcept
-            : state(&value), mutation(std::move(canonical)), publisher(journal)
-        {
-        }
-
-        EcsState* state{};
-        EcsMutation mutation;
-        detail::EcsChangePublisher publisher;
-    };
-
     SimulationEcsMutation::SimulationEcsMutation() noexcept = default;
-    SimulationEcsMutation::~SimulationEcsMutation() noexcept = default;
     SimulationEcsMutation::SimulationEcsMutation(
         SimulationEcsMutation&&
     ) noexcept = default;
@@ -34,59 +17,72 @@ namespace lux::simulation::ecs
     ) noexcept = default;
 
     SimulationEcsMutation::SimulationEcsMutation(
-        std::unique_ptr<Impl> impl
+        EcsState& state,
+        EcsMutation&& mutation,
+        EcsChangeJournal& journal
     ) noexcept
-        : impl_(std::move(impl))
+        : state_(&state),
+          mutation_(std::move(mutation)),
+          publisher_log_(&detail::EcsChangeJournalAccess::log(journal))
     {
     }
 
     SimulationEcsMutation::operator bool() const noexcept
     {
-        return impl_ != nullptr && static_cast<bool>(impl_->mutation);
+        return state_ != nullptr && static_cast<bool>(mutation_);
     }
 
     const EcsState& SimulationEcsMutation::state() const noexcept
     {
-        detail::require(impl_ != nullptr && impl_->state != nullptr);
-        return *impl_->state;
+        detail::require(state_ != nullptr && mutation_);
+        return *state_;
     }
 
     EcsMutation& SimulationEcsMutation::mutation() noexcept
     {
-        detail::require(impl_ != nullptr && impl_->mutation);
-        return impl_->mutation;
+        detail::require(state_ != nullptr && mutation_);
+        return mutation_;
     }
 
     Entity SimulationEcsMutation::create()
     {
         const Entity entity = mutation().create();
-        (void)impl_->publisher.appendEntity(
-            entity,
-            EEntityChangeKind::ADDED
-        );
+        if (publisher_exact_)
+        {
+            auto& log = *static_cast<detail::EcsChangeLog*>(publisher_log_);
+            publisher_exact_ = log.recordEntity(
+                entity,
+                EEntityChangeKind::ADDED
+            );
+        }
         return entity;
     }
 
     void SimulationEcsMutation::destroy(Entity entity)
     {
-        detail::require(impl_ != nullptr && impl_->state->valid(entity));
+        detail::require(state_ != nullptr && state_->valid(entity));
         const auto entity_storage = entt::type_hash<Entity>::value();
-        for (auto&& [storage_id, storage] : impl_->state->registry_.storage())
+        auto& log = *static_cast<detail::EcsChangeLog*>(publisher_log_);
+        for (auto&& [storage_id, storage] : state_->registry_.storage())
         {
             if (storage_id == entity_storage || !storage.contains(entity))
                 continue;
-            auto stream = impl_->publisher.bindComponent(storage_id);
-            (void)impl_->publisher.append(
-                stream,
+            if (!publisher_exact_)
+                continue;
+            auto stream = log.bindComponent(storage_id);
+            publisher_exact_ = stream && stream(
                 entity,
                 EComponentChangeKind::REMOVED
             );
         }
         mutation().destroy(entity);
-        (void)impl_->publisher.appendEntity(
-            entity,
-            EEntityChangeKind::DESTROYED
-        );
+        if (publisher_exact_)
+        {
+            publisher_exact_ = log.recordEntity(
+                entity,
+                EEntityChangeKind::DESTROYED
+            );
+        }
     }
 
     void SimulationEcsMutation::recordComponent(
@@ -95,8 +91,11 @@ namespace lux::simulation::ecs
         EComponentChangeKind kind
     ) noexcept
     {
-        auto stream = impl_->publisher.bindComponent(storage);
-        (void)impl_->publisher.append(stream, entity, kind);
+        if (!publisher_exact_)
+            return;
+        auto& log = *static_cast<detail::EcsChangeLog*>(publisher_log_);
+        auto stream = log.bindComponent(storage);
+        publisher_exact_ = stream && stream(entity, kind);
     }
 
     lux::cxx::expected<SimulationEcsMutation, EcsMutationError>
@@ -108,20 +107,10 @@ namespace lux::simulation::ecs
         auto canonical = state.mutate();
         if (!canonical)
             return lux::cxx::unexpected(canonical.error());
-        try
-        {
-            return SimulationEcsMutation(std::make_unique<
-                SimulationEcsMutation::Impl>(
-                    state,
-                    std::move(*canonical),
-                    journal
-                ));
-        }
-        catch (...)
-        {
-            return lux::cxx::unexpected(EcsMutationError{
-                EEcsMutationError::ALLOCATION_FAILURE
-            });
-        }
+        return SimulationEcsMutation(
+            state,
+            std::move(*canonical),
+            journal
+        );
     }
 } // namespace lux::simulation::ecs

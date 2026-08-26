@@ -7,7 +7,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <type_traits>
 #include <utility>
 
@@ -22,7 +21,7 @@ namespace lux::simulation::ecs
     {
       public:
         SimulationEcsMutation() noexcept;
-        ~SimulationEcsMutation() noexcept;
+        ~SimulationEcsMutation() noexcept = default;
         SimulationEcsMutation(SimulationEcsMutation&&) noexcept;
         SimulationEcsMutation& operator=(SimulationEcsMutation&&) noexcept;
         SimulationEcsMutation(const SimulationEcsMutation&) = delete;
@@ -93,8 +92,11 @@ namespace lux::simulation::ecs
         }
 
       private:
-        struct Impl;
-        explicit SimulationEcsMutation(std::unique_ptr<Impl> impl) noexcept;
+        explicit SimulationEcsMutation(
+            EcsState& state,
+            EcsMutation&& mutation,
+            EcsChangeJournal& journal
+        ) noexcept;
         [[nodiscard]] EcsMutation& mutation() noexcept;
         void recordComponent(
             std::uint64_t storage,
@@ -102,7 +104,10 @@ namespace lux::simulation::ecs
             EComponentChangeKind kind
         ) noexcept;
 
-        std::unique_ptr<Impl> impl_;
+        EcsState* state_{};
+        EcsMutation mutation_;
+        void* publisher_log_{};
+        bool publisher_exact_{true};
 
         friend LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC
         lux::cxx::expected<SimulationEcsMutation, EcsMutationError>

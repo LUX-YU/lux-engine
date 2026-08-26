@@ -18,6 +18,7 @@ namespace lux::simulation::ecs
         {
             std::uint64_t storage{};
             std::vector<Entity> records;
+            std::size_t capacity{};
         };
 
         std::vector<Lane> lanes;
@@ -45,7 +46,7 @@ namespace lux::simulation::ecs
     lux::cxx::expected<void, EcsTaskResourceFailure>
     EcsChangeBatch::prepare(
         std::span<const std::uint64_t> write_storages,
-        std::size_t reserve_records
+        std::size_t records_per_lane_capacity
     ) noexcept
     {
         try
@@ -66,7 +67,8 @@ namespace lux::simulation::ecs
                 }
                 Impl::Lane lane;
                 lane.storage = storage;
-                lane.records.reserve(reserve_records);
+                lane.records.reserve(records_per_lane_capacity);
+                lane.capacity = records_per_lane_capacity;
                 impl_->lanes.push_back(std::move(lane));
             }
             impl_->current_records = 0U;
@@ -115,22 +117,19 @@ namespace lux::simulation::ecs
                             auto& target = *static_cast<Impl::Lane*>(stream);
                             if (batch.overflow)
                                 return false;
-                            try
-                            {
-                                target.records.push_back(entity);
-                                ++batch.record_appends;
-                                ++batch.current_records;
-                                batch.peak_records = std::max(
-                                    batch.peak_records,
-                                    batch.current_records
-                                );
-                                return true;
-                            }
-                            catch (...)
+                            if (target.records.size() >= target.capacity)
                             {
                                 batch.overflow = true;
                                 return false;
                             }
+                            target.records.push_back(entity);
+                            ++batch.record_appends;
+                            ++batch.current_records;
+                            batch.peak_records = std::max(
+                                batch.peak_records,
+                                batch.current_records
+                            );
+                            return true;
                         }
                     };
                 }
@@ -200,6 +199,7 @@ namespace lux::simulation::ecs
     {
         std::vector<detail::CommandShard> producers;
         std::vector<bool> active;
+        bool failed{};
     };
 
     EcsCommandBatch::EcsCommandBatch()
@@ -215,26 +215,31 @@ namespace lux::simulation::ecs
 
     lux::cxx::expected<void, EcsTaskResourceFailure>
     EcsCommandBatch::prepare(
-        std::size_t producer_count,
-        std::size_t reserve_commands_per_producer
+        std::span<const EcsCommandProducerCapacity> capacities
     ) noexcept
     {
         try
         {
             impl_->producers.clear();
-            impl_->producers.reserve(producer_count);
-            impl_->active.assign(producer_count, false);
-            for (std::size_t index{}; index < producer_count; ++index)
+            impl_->producers.reserve(capacities.size());
+            impl_->active.assign(capacities.size(), false);
+            impl_->failed = false;
+            for (const EcsCommandProducerCapacity capacity : capacities)
             {
-                impl_->producers.emplace_back();
-                impl_->producers.back().reserve(
-                    reserve_commands_per_producer
+                impl_->producers.emplace_back(1U, &impl_->failed);
+                impl_->producers.back().prepare(
+                    capacity.max_commands,
+                    capacity.max_payload_bytes,
+                    impl_->failed
                 );
             }
             return {};
         }
         catch (...)
         {
+            impl_->producers.clear();
+            impl_->active.clear();
+            impl_->failed = false;
             return lux::cxx::unexpected(EcsTaskResourceFailure{
                 EEcsTaskResourceError::ALLOCATION_FAILURE
             });
@@ -246,6 +251,12 @@ namespace lux::simulation::ecs
         EcsTaskResourceFailure>
     EcsCommandBatch::begin(std::size_t producer) noexcept
     {
+        if (impl_->failed)
+        {
+            return lux::cxx::unexpected(EcsTaskResourceFailure{
+                EEcsTaskResourceError::BATCH_FAILED
+            });
+        }
         if (producer >= impl_->producers.size() || impl_->active[producer])
         {
             return lux::cxx::unexpected(EcsTaskResourceFailure{
@@ -285,6 +296,20 @@ namespace lux::simulation::ecs
         return result;
     }
 
+    bool EcsCommandBatch::failed() const noexcept
+    {
+        return impl_->failed;
+    }
+
+    void EcsCommandBatch::discardPending() noexcept
+    {
+        for (const bool active : impl_->active)
+            detail::require(!active);
+        for (auto& producer : impl_->producers)
+            producer.invalidate();
+        impl_->failed = false;
+    }
+
     EcsCommandRecordingScope::EcsCommandRecordingScope(
         EcsCommandBatch& owner,
         std::size_t producer,
@@ -315,20 +340,52 @@ namespace lux::simulation::ecs
         return commands_;
     }
 
-    void applyEcsCommands(
-        EcsState& world,
+    lux::cxx::expected<void, EcsCommandApplyFailure> applyEcsCommands(
+        EcsState& state,
         EcsChangeJournal& journal,
         EcsCommandBatch& commands
     ) noexcept
     {
         for (const bool active : commands.impl_->active)
-            detail::require(!active);
-        auto mutation_result = beginSimulationEcsMutation(world, journal);
-        detail::require(static_cast<bool>(mutation_result));
+        {
+            if (active)
+            {
+                return lux::cxx::unexpected(EcsCommandApplyFailure{
+                    EEcsCommandApplyError::ACTIVE_RECORDING
+                });
+            }
+        }
+        if (commands.impl_->failed)
+        {
+            commands.discardPending();
+            return lux::cxx::unexpected(EcsCommandApplyFailure{
+                EEcsCommandApplyError::RECORDING_FAILED
+            });
+        }
+        auto mutation_result = beginSimulationEcsMutation(state, journal);
+        if (!mutation_result)
+        {
+            EEcsCommandApplyError error = EEcsCommandApplyError::STATE_NOT_IDLE;
+            switch (mutation_result.error().code)
+            {
+            case EEcsMutationError::NOT_IDLE:
+                error = EEcsCommandApplyError::STATE_NOT_IDLE;
+                break;
+            case EEcsMutationError::WRONG_THREAD:
+                error = EEcsCommandApplyError::WRONG_THREAD;
+                break;
+            case EEcsMutationError::DESTROYING:
+                error = EEcsCommandApplyError::STATE_DESTROYING;
+                break;
+            }
+            commands.discardPending();
+            return lux::cxx::unexpected(EcsCommandApplyFailure{error});
+        }
         auto mutation = std::move(*mutation_result);
         for (auto& producer : commands.impl_->producers)
             detail::CommandShardAccess::apply(producer, mutation);
         mutation = {};
+        return {};
     }
 
     void detail::EcsTaskResourceTestAccess::failNextPush(

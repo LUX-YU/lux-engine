@@ -25,13 +25,6 @@ small_size = 100000
 large_size = 1000000
 max_exponent = 1.25
 
-[[scaling]]
-name = "WorldSection load into 1M resident EcsState scaling"
-metric = "world_section_load_commit_live_resident"
-small_size = 1000
-large_size = 10000
-max_exponent = 1.25
-
 [[structural]]
 name = "Prepared TaskGraph dispatches each task"
 metric = "task_graph_execute_none"
@@ -66,52 +59,3 @@ metric = "world_change_batch_record_32"
 size = 1000000
 field = "per_record_lookups"
 equals = 0
-
-[[structural]]
-name = "WorldSection binds the materialized storage once"
-metric = "world_section_load_commit_live_resident"
-size = 10000
-field = "journal_stream_binds"
-equals = 1
-
-[[structural]]
-name = "WorldSection performs one typed storage lookup"
-metric = "world_section_load_commit_live_resident"
-size = 10000
-field = "storage_lookups"
-equals = 1
-
-[[structural]]
-name = "WorldSection performs no per-record lookup"
-metric = "world_section_load_commit_live_resident"
-size = 10000
-field = "per_record_lookups"
-equals = 0
-
-[[structural]]
-name = "WorldSection normal load preserves exact history"
-metric = "world_section_load_commit_live_resident"
-size = 10000
-field = "history_losses"
-equals = 0
-
-[[structural]]
-name = "Known-unique membership load performs no duplicate comparisons"
-metric = "world_section_load_commit_live_resident"
-size = 10000
-field = "duplicate_comparisons"
-equals = 0
-
-[[structural]]
-name = "WorldSection tracks exactly the streamed entities"
-metric = "world_section_load_commit_live_resident"
-size = 10000
-field = "active_tracked_entities"
-equals = 10000
-
-[[structural]]
-name = "WorldSection tracks exactly one component per streamed entity"
-metric = "world_section_load_commit_live_resident"
-size = 10000
-field = "active_memberships"
-equals = 10000

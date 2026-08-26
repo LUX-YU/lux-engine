@@ -41,7 +41,11 @@ template <>
 struct lux::serialization::Serializer<ThrowingCustom>
 {
     template <class Writer>
-    static SerializationResult write(Writer&, const ThrowingCustom&)
+    static SerializationResult write(
+        Writer&,
+        const ThrowingCustom&,
+        const SerializationContext&
+    )
     {
         throw std::runtime_error("custom serializer failure");
     }
@@ -51,7 +55,11 @@ template <>
 struct lux::serialization::Serializer<AllocatingCustom>
 {
     template <class Writer>
-    static SerializationResult write(Writer&, const AllocatingCustom&)
+    static SerializationResult write(
+        Writer&,
+        const AllocatingCustom&,
+        const SerializationContext&
+    )
     {
         throw std::bad_alloc{};
     }
@@ -64,16 +72,28 @@ struct lux::serialization::Serializer<EmptyCustom>
     static constexpr std::size_t fixed_wire_size = 4U;
 
     template <class Writer>
-    static SerializationResult write(Writer& writer, const EmptyCustom&)
+    static SerializationResult write(
+        Writer& writer,
+        const EmptyCustom&,
+        const SerializationContext& context
+    )
     {
-        return lux::serialization::write(writer, std::uint32_t{});
+        return lux::serialization::write(
+            writer,
+            std::uint32_t{},
+            context
+        );
     }
 
     template <class Reader>
-    static SerializationResult read(Reader& reader, EmptyCustom&)
+    static SerializationResult read(
+        Reader& reader,
+        EmptyCustom&,
+        const SerializationContext& context
+    )
     {
         std::uint32_t ignored{};
-        return lux::serialization::read(reader, ignored);
+        return lux::serialization::read(reader, ignored, context);
     }
 };
 
@@ -97,6 +117,7 @@ int main()
     static_assert(WireTraits<EmptyCustom>::extent == EWireExtent::FIXED);
     static_assert(WireTraits<EmptyCustom>::fixed_size == 4U);
     assert(binarySerializationContractVersion() == 1U);
+    const SerializationBudget budget(1024U, 1024U, 16U);
 
     Record source{
         0x11223344U,
@@ -108,7 +129,7 @@ int main()
     };
     std::vector<std::byte> bytes;
     BinaryWriter writer(bytes);
-    assert(write(writer, source));
+    assert(write(writer, source, budget));
 
     assert(bytes.size() > 7U);
     assert(bytes[0] == std::byte{0x44});
@@ -120,7 +141,7 @@ int main()
     assert(bytes[6] == std::byte{0x02});
 
     BinaryReader reader(bytes);
-    auto decoded = read<Record>(reader);
+    auto decoded = read<Record>(reader, budget);
     assert(decoded);
     assert(*decoded == source);
     assert(reader.remaining() == 0U);
@@ -129,13 +150,13 @@ int main()
     invalid_bool[4] = std::byte{0x02};
     BinaryReader invalid_reader(invalid_bool);
     Record invalid{};
-    auto invalid_result = read(invalid_reader, invalid);
+    auto invalid_result = read(invalid_reader, invalid, budget);
     assert(!invalid_result);
     assert(invalid_result.error().code == ESerializationError::INVALID_VALUE);
 
     BinaryReader truncated(std::span<const std::byte>(bytes).first(6U));
     Record partial{};
-    auto truncated_result = read(truncated, partial);
+    auto truncated_result = read(truncated, partial, budget);
     assert(!truncated_result);
     assert(truncated_result.error().code == ESerializationError::TRUNCATED);
 
@@ -143,18 +164,21 @@ int main()
     matrix << 1.0F, 2.0F, 3.0F, 4.0F;
     std::vector<std::byte> matrix_bytes;
     BinaryWriter matrix_writer(matrix_bytes);
-    assert(write(matrix_writer, matrix));
+    assert(write(matrix_writer, matrix, budget));
     BinaryReader matrix_reader(matrix_bytes);
-    auto decoded_matrix = read<decltype(matrix)>(matrix_reader);
+    auto decoded_matrix = read<decltype(matrix)>(matrix_reader, budget);
     assert(decoded_matrix);
     assert(decoded_matrix->isApprox(matrix));
 
     const Eigen::Quaternionf quaternion(4.0F, 1.0F, 2.0F, 3.0F);
     std::vector<std::byte> quaternion_bytes;
     BinaryWriter quaternion_writer(quaternion_bytes);
-    assert(write(quaternion_writer, quaternion));
+    assert(write(quaternion_writer, quaternion, budget));
     BinaryReader quaternion_reader(quaternion_bytes);
-    auto decoded_quaternion = read<Eigen::Quaternionf>(quaternion_reader);
+    auto decoded_quaternion = read<Eigen::Quaternionf>(
+        quaternion_reader,
+        budget
+    );
     assert(decoded_quaternion);
     assert(decoded_quaternion->coeffs().isApprox(
         quaternion.normalized().coeffs()
@@ -162,10 +186,18 @@ int main()
 
     std::vector<std::byte> failure_bytes;
     BinaryWriter failure_writer(failure_bytes);
-    auto throwing_custom = write(failure_writer, ThrowingCustom{});
+    auto throwing_custom = write(
+        failure_writer,
+        ThrowingCustom{},
+        budget
+    );
     assert(!throwing_custom);
     assert(throwing_custom.error().code == ESerializationError::INVALID_VALUE);
-    auto allocating_custom = write(failure_writer, AllocatingCustom{});
+    auto allocating_custom = write(
+        failure_writer,
+        AllocatingCustom{},
+        budget
+    );
     assert(!allocating_custom);
     assert(allocating_custom.error().code ==
         ESerializationError::ALLOCATION_FAILURE);

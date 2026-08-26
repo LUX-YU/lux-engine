@@ -20,17 +20,9 @@ namespace lux::serialization
     class BinaryWriter final
     {
     public:
-        explicit BinaryWriter(
-            std::vector<std::byte>& destination,
-            SerializationLimits limits = {}
-        ) noexcept
-            : destination_(&destination), limits_(limits)
+        explicit BinaryWriter(std::vector<std::byte>& destination) noexcept
+            : destination_(&destination)
         {
-        }
-
-        [[nodiscard]] const SerializationLimits& limits() const noexcept
-        {
-            return limits_;
         }
 
         [[nodiscard]] std::size_t offset() const noexcept
@@ -98,6 +90,5 @@ namespace lux::serialization
 
     private:
         std::vector<std::byte>* destination_{};
-        SerializationLimits limits_;
     };
 } // namespace lux::serialization

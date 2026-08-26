@@ -30,7 +30,8 @@ namespace lux::serialization
         template <class Writer>
         [[nodiscard]] static SerializationResult write(
             Writer& writer,
-            const Matrix& value
+            const Matrix& value,
+            const SerializationContext& context
         ) noexcept
         {
             SerializationResult result{};
@@ -49,7 +50,11 @@ namespace lux::serialization
             {
                 for (Eigen::Index column{}; result && column < value.cols(); ++column)
                 {
-                    result = serialization::write(writer, value(row, column));
+                    result = serialization::write(
+                        writer,
+                        value(row, column),
+                        context
+                    );
                 }
             }
             return result;
@@ -58,7 +63,8 @@ namespace lux::serialization
         template <class Reader>
         [[nodiscard]] static SerializationResult read(
             Reader& reader,
-            Matrix& value
+            Matrix& value,
+            const SerializationContext& context
         ) noexcept
         {
             std::uint64_t rows = Rows == Eigen::Dynamic ? 0U : static_cast<std::uint64_t>(Rows);
@@ -83,9 +89,10 @@ namespace lux::serialization
                 }
                 columns = *encoded;
             }
-            if (rows > reader.limits().max_container_elements ||
-                columns > reader.limits().max_container_elements ||
-                (columns != 0U && rows > reader.limits().max_container_elements / columns))
+            if (rows > context.budget().max_container_elements ||
+                columns > context.budget().max_container_elements ||
+                (columns != 0U &&
+                 rows > context.budget().max_container_elements / columns))
             {
                 return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{
                     ESerializationError::LIMIT_EXCEEDED,
@@ -111,7 +118,11 @@ namespace lux::serialization
             {
                 for (Eigen::Index column{}; result && column < value.cols(); ++column)
                 {
-                    result = serialization::read(reader, value(row, column));
+                    result = serialization::read(
+                        reader,
+                        value(row, column),
+                        context
+                    );
                 }
             }
             return result;
@@ -132,30 +143,42 @@ namespace lux::serialization
         template <class Writer>
         [[nodiscard]] static SerializationResult write(
             Writer& writer,
-            const Quaternion& value
+            const Quaternion& value,
+            const SerializationContext& context
         ) noexcept
         {
-            SerializationResult result = serialization::write(writer, value.x());
-            if (result) result = serialization::write(writer, value.y());
-            if (result) result = serialization::write(writer, value.z());
-            if (result) result = serialization::write(writer, value.w());
+            SerializationResult result = serialization::write(
+                writer, value.x(), context
+            );
+            if (result) result = serialization::write(
+                writer, value.y(), context
+            );
+            if (result) result = serialization::write(
+                writer, value.z(), context
+            );
+            if (result) result = serialization::write(
+                writer, value.w(), context
+            );
             return result;
         }
 
         template <class Reader>
         [[nodiscard]] static SerializationResult read(
             Reader& reader,
-            Quaternion& value
+            Quaternion& value,
+            const SerializationContext& context
         ) noexcept
         {
             Scalar x{};
             Scalar y{};
             Scalar z{};
             Scalar w{};
-            SerializationResult result = serialization::read(reader, x);
-            if (result) result = serialization::read(reader, y);
-            if (result) result = serialization::read(reader, z);
-            if (result) result = serialization::read(reader, w);
+            SerializationResult result = serialization::read(
+                reader, x, context
+            );
+            if (result) result = serialization::read(reader, y, context);
+            if (result) result = serialization::read(reader, z, context);
+            if (result) result = serialization::read(reader, w, context);
             if (result)
             {
                 value = Quaternion(w, x, y, z);

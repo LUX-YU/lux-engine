@@ -22,6 +22,41 @@ namespace lux::serialization
     [[nodiscard]] LUX_CORE_SERIALIZATION_PUBLIC
     std::uint32_t binarySerializationContractVersion() noexcept;
 
+    class SerializationContext final
+    {
+      public:
+        explicit constexpr SerializationContext(
+            const SerializationBudget& budget
+        ) noexcept
+            : budget_(std::addressof(budget))
+        {
+        }
+
+        [[nodiscard]] constexpr const SerializationBudget& budget()
+            const noexcept
+        {
+            return *budget_;
+        }
+
+        [[nodiscard]] constexpr std::uint32_t depth() const noexcept
+        {
+            return depth_;
+        }
+
+        [[nodiscard]] constexpr SerializationContext nested() const noexcept
+        {
+            SerializationContext result(*budget_);
+            result.depth_ = depth_ == std::numeric_limits<std::uint32_t>::max()
+                ? depth_
+                : depth_ + 1U;
+            return result;
+        }
+
+      private:
+        const SerializationBudget* budget_{};
+        std::uint32_t depth_{};
+    };
+
     namespace detail
     {
         template <class T>
@@ -56,16 +91,24 @@ namespace lux::serialization
             : std::true_type {};
 
         template <class Writer, class T>
-        concept HasCustomWrite = requires(Writer& writer, const T& value)
+        concept HasCustomWrite = requires(
+            Writer& writer,
+            const T& value,
+            const SerializationContext& context
+        )
         {
-            { Serializer<T>::write(writer, value) } ->
+            { Serializer<T>::write(writer, value, context) } ->
                 std::same_as<SerializationResult>;
         };
 
         template <class Reader, class T>
-        concept HasCustomRead = requires(Reader& reader, T& value)
+        concept HasCustomRead = requires(
+            Reader& reader,
+            T& value,
+            const SerializationContext& context
+        )
         {
-            { Serializer<T>::read(reader, value) } ->
+            { Serializer<T>::read(reader, value, context) } ->
                 std::same_as<SerializationResult>;
         };
 
@@ -79,21 +122,21 @@ namespace lux::serialization
         [[nodiscard]] SerializationResult writeValue(
             Writer& writer,
             const T& value,
-            std::uint32_t depth
+            const SerializationContext& context
         ) noexcept;
 
         template <class Reader, class T>
         [[nodiscard]] SerializationResult readValue(
             Reader& reader,
             T& value,
-            std::uint32_t depth
+            const SerializationContext& context
         ) noexcept;
 
         template <class Writer, class Tuple, std::size_t... Indices>
         [[nodiscard]] SerializationResult writeTuple(
             Writer& writer,
             const Tuple& tuple,
-            std::uint32_t depth,
+            const SerializationContext& context,
             std::index_sequence<Indices...>
         ) noexcept
         {
@@ -102,7 +145,7 @@ namespace lux::serialization
             {
                 if (result)
                 {
-                    result = writeValue(writer, item, depth + 1U);
+                    result = writeValue(writer, item, context.nested());
                 }
             };
             (write_one(std::get<Indices>(tuple)), ...);
@@ -113,7 +156,7 @@ namespace lux::serialization
         [[nodiscard]] SerializationResult readTuple(
             Reader& reader,
             Tuple& tuple,
-            std::uint32_t depth,
+            const SerializationContext& context,
             std::index_sequence<Indices...>
         ) noexcept
         {
@@ -122,7 +165,7 @@ namespace lux::serialization
             {
                 if (result)
                 {
-                    result = readValue(reader, item, depth + 1U);
+                    result = readValue(reader, item, context.nested());
                 }
             };
             (read_one(std::get<Indices>(tuple)), ...);
@@ -133,11 +176,11 @@ namespace lux::serialization
         [[nodiscard]] SerializationResult writeValue(
             Writer& writer,
             const T& value,
-            std::uint32_t depth
+            const SerializationContext& context
         ) noexcept
         {
             using U = std::remove_cvref_t<T>;
-            if (depth > writer.limits().max_nesting)
+            if (context.depth() > context.budget().max_nesting)
             {
                 return lux::cxx::unexpected<SerializationFailure>(
                     SerializationFailure{
@@ -152,7 +195,7 @@ namespace lux::serialization
                 {
                     try
                     {
-                        return Serializer<U>::write(writer, value);
+                        return Serializer<U>::write(writer, value, context);
                     }
                     catch (const std::bad_alloc&)
                     {
@@ -209,11 +252,15 @@ namespace lux::serialization
             else if constexpr (std::is_enum_v<U>)
             {
                 using Underlying = std::underlying_type_t<U>;
-                return writeValue(writer, static_cast<Underlying>(value), depth);
+                return writeValue(
+                    writer,
+                    static_cast<Underlying>(value),
+                    context
+                );
             }
             else if constexpr (std::same_as<U, std::string>)
             {
-                if (value.size() > writer.limits().max_string_bytes)
+                if (value.size() > context.budget().max_string_bytes)
                 {
                     return lux::cxx::unexpected<SerializationFailure>(
                         SerializationFailure{
@@ -233,7 +280,8 @@ namespace lux::serialization
             }
             else if constexpr (IsVector<U>::value)
             {
-                if (value.size() > writer.limits().max_container_elements)
+                if (value.size() >
+                    context.budget().max_container_elements)
                 {
                     return lux::cxx::unexpected<SerializationFailure>(
                         SerializationFailure{
@@ -251,7 +299,7 @@ namespace lux::serialization
                     {
                         return result;
                     }
-                    result = writeValue(writer, item, depth + 1U);
+                    result = writeValue(writer, item, context.nested());
                 }
                 return result;
             }
@@ -264,7 +312,7 @@ namespace lux::serialization
                 {
                     return result;
                 }
-                return writeValue(writer, *value, depth + 1U);
+                return writeValue(writer, *value, context.nested());
             }
             else if constexpr (lux::meta::HasTypeStaticInfo<U>)
             {
@@ -279,7 +327,7 @@ namespace lux::serialization
                                 result = writeValue(
                                     writer,
                                     value.*descriptor.pointer,
-                                    depth + 1U
+                                    context.nested()
                                 );
                             }
                         };
@@ -294,7 +342,7 @@ namespace lux::serialization
                 return writeTuple(
                     writer,
                     value,
-                    depth,
+                    context,
                     std::make_index_sequence<std::tuple_size_v<U>>{}
                 );
             }
@@ -308,11 +356,11 @@ namespace lux::serialization
         [[nodiscard]] SerializationResult readValue(
             Reader& reader,
             T& value,
-            std::uint32_t depth
+            const SerializationContext& context
         ) noexcept
         {
             using U = std::remove_cvref_t<T>;
-            if (depth > reader.limits().max_nesting)
+            if (context.depth() > context.budget().max_nesting)
             {
                 return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{
                     ESerializationError::LIMIT_EXCEEDED,
@@ -325,7 +373,7 @@ namespace lux::serialization
                 {
                     try
                     {
-                        return Serializer<U>::read(reader, value);
+                        return Serializer<U>::read(reader, value, context);
                     }
                     catch (const std::bad_alloc&)
                     {
@@ -411,7 +459,7 @@ namespace lux::serialization
             else if constexpr (std::is_enum_v<U>)
             {
                 std::underlying_type_t<U> encoded{};
-                auto result = readValue(reader, encoded, depth);
+                auto result = readValue(reader, encoded, context);
                 if (result)
                 {
                     value = static_cast<U>(encoded);
@@ -425,7 +473,7 @@ namespace lux::serialization
                 {
                     return lux::cxx::unexpected<SerializationFailure>(size.error());
                 }
-                if (*size > reader.limits().max_string_bytes ||
+                if (*size > context.budget().max_string_bytes ||
                     *size > std::numeric_limits<std::size_t>::max())
                 {
                     return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{
@@ -462,7 +510,7 @@ namespace lux::serialization
                 {
                     return lux::cxx::unexpected<SerializationFailure>(size.error());
                 }
-                if (*size > reader.limits().max_container_elements ||
+                if (*size > context.budget().max_container_elements ||
                     *size > std::numeric_limits<std::size_t>::max())
                 {
                     return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{
@@ -497,7 +545,7 @@ namespace lux::serialization
                     {
                         return result;
                     }
-                    result = readValue(reader, item, depth + 1U);
+                    result = readValue(reader, item, context.nested());
                 }
                 return result;
             }
@@ -521,7 +569,7 @@ namespace lux::serialization
                     return {};
                 }
                 value.emplace();
-                return readValue(reader, *value, depth + 1U);
+                return readValue(reader, *value, context.nested());
             }
             else if constexpr (lux::meta::HasTypeStaticInfo<U>)
             {
@@ -536,7 +584,7 @@ namespace lux::serialization
                                 result = readValue(
                                     reader,
                                     value.*descriptor.pointer,
-                                    depth + 1U
+                                    context.nested()
                                 );
                             }
                         };
@@ -551,7 +599,7 @@ namespace lux::serialization
                 return readTuple(
                     reader,
                     value,
-                    depth,
+                    context,
                     std::make_index_sequence<std::tuple_size_v<U>>{}
                 );
             }
@@ -565,27 +613,63 @@ namespace lux::serialization
     template <class Writer, class T>
     [[nodiscard]] SerializationResult write(
         Writer& writer,
-        const T& value
+        const T& value,
+        const SerializationBudget& budget
     ) noexcept
     {
-        return detail::writeValue(writer, value, 0U);
+        return detail::writeValue(
+            writer,
+            value,
+            SerializationContext(budget)
+        );
+    }
+
+    template <class Writer, class T>
+    [[nodiscard]] SerializationResult write(
+        Writer& writer,
+        const T& value,
+        const SerializationContext& parent
+    ) noexcept
+    {
+        return detail::writeValue(writer, value, parent.nested());
     }
 
     template <class Reader, class T>
-    [[nodiscard]] SerializationResult read(Reader& reader, T& value) noexcept
+    [[nodiscard]] SerializationResult read(
+        Reader& reader,
+        T& value,
+        const SerializationBudget& budget
+    ) noexcept
     {
-        return detail::readValue(reader, value, 0U);
+        return detail::readValue(
+            reader,
+            value,
+            SerializationContext(budget)
+        );
+    }
+
+    template <class Reader, class T>
+    [[nodiscard]] SerializationResult read(
+        Reader& reader,
+        T& value,
+        const SerializationContext& parent
+    ) noexcept
+    {
+        return detail::readValue(reader, value, parent.nested());
     }
 
     template <class T, class Reader>
         requires std::default_initializable<T>
     [[nodiscard]] lux::cxx::expected<T, SerializationFailure>
-    read(Reader& reader) noexcept
+    read(
+        Reader& reader,
+        const SerializationBudget& budget
+    ) noexcept
     {
         try
         {
             T value{};
-            auto result = read(reader, value);
+            auto result = read(reader, value, budget);
             if (!result)
             {
                 return lux::cxx::unexpected<SerializationFailure>(result.error());
@@ -613,9 +697,16 @@ namespace lux::serialization
     }
 
     template <class T>
-    concept Serializable = requires(BinaryWriter& writer, BinaryReader& reader, T& value)
+    concept Serializable = requires(
+        BinaryWriter& writer,
+        BinaryReader& reader,
+        T& value,
+        const SerializationBudget& budget
+    )
     {
-        { write(writer, std::as_const(value)) } -> std::same_as<SerializationResult>;
-        { read(reader, value) } -> std::same_as<SerializationResult>;
+        { write(writer, std::as_const(value), budget) } ->
+            std::same_as<SerializationResult>;
+        { read(reader, value, budget) } ->
+            std::same_as<SerializationResult>;
     };
 } // namespace lux::serialization

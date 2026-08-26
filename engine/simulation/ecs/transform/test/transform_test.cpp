@@ -53,6 +53,11 @@ namespace
 
     void testQuaternionSerialization()
     {
+        const lux::serialization::SerializationBudget budget(
+            1024U,
+            1024U,
+            16U
+        );
         std::vector<std::byte> bytes;
         lux::serialization::BinaryWriter writer(bytes);
         for (int index{}; index < 4; ++index)
@@ -61,7 +66,11 @@ namespace
         }
         lux::serialization::BinaryReader zero_reader(bytes);
         Eigen::Quaternionf zero;
-        const auto zero_result = lux::serialization::read(zero_reader, zero);
+        const auto zero_result = lux::serialization::read(
+            zero_reader,
+            zero,
+            budget
+        );
         assert(!zero_result);
         assert(zero_result.error().code ==
             lux::serialization::ESerializationError::INVALID_VALUE);
@@ -73,7 +82,11 @@ namespace
         assert(writer.writeFloat(2.0F));
         lux::serialization::BinaryReader non_unit_reader(bytes);
         Eigen::Quaternionf normalized;
-        assert(lux::serialization::read(non_unit_reader, normalized));
+        assert(lux::serialization::read(
+            non_unit_reader,
+            normalized,
+            budget
+        ));
         assert(near(normalized.squaredNorm(), 1.0F));
     }
 }

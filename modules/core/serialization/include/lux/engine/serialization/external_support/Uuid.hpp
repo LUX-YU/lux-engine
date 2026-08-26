@@ -20,7 +20,8 @@ namespace lux::serialization
         template <class Writer>
         [[nodiscard]] static SerializationResult write(
             Writer& writer,
-            const uuids::uuid& value
+            const uuids::uuid& value,
+            const SerializationContext&
         ) noexcept
         {
             const auto bytes = value.as_bytes();
@@ -30,7 +31,8 @@ namespace lux::serialization
         template <class Reader>
         [[nodiscard]] static SerializationResult read(
             Reader& reader,
-            uuids::uuid& value
+            uuids::uuid& value,
+            const SerializationContext&
         ) noexcept
         {
             std::array<std::uint8_t, 16> bytes{};

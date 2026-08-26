@@ -12,11 +12,8 @@ namespace lux::serialization
     class BinaryReader final
     {
     public:
-        explicit BinaryReader(
-            std::span<const std::byte> source,
-            SerializationLimits limits = {}
-        ) noexcept
-            : source_(source), limits_(limits)
+        explicit BinaryReader(std::span<const std::byte> source) noexcept
+            : source_(source)
         {
         }
 
@@ -28,11 +25,6 @@ namespace lux::serialization
         [[nodiscard]] std::size_t remaining() const noexcept
         {
             return source_.size() - offset_;
-        }
-
-        [[nodiscard]] const SerializationLimits& limits() const noexcept
-        {
-            return limits_;
         }
 
         [[nodiscard]] SerializationResult readBytes(
@@ -116,7 +108,6 @@ namespace lux::serialization
 
     private:
         std::span<const std::byte> source_;
-        SerializationLimits limits_;
         std::size_t offset_{};
     };
 } // namespace lux::serialization

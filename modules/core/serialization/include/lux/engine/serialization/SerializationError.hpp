@@ -21,10 +21,23 @@ namespace lux::serialization
         std::size_t offset{};
     };
 
-    struct SerializationLimits final
+    struct SerializationBudget final
     {
-        std::uint64_t max_string_bytes{64ULL * 1024ULL * 1024ULL};
-        std::uint64_t max_container_elements{16ULL * 1024ULL * 1024ULL};
-        std::uint32_t max_nesting{128U};
+        SerializationBudget() = delete;
+
+        constexpr SerializationBudget(
+            std::size_t string_bytes,
+            std::size_t container_elements,
+            std::uint32_t nesting
+        ) noexcept
+            : max_string_bytes(string_bytes),
+              max_container_elements(container_elements),
+              max_nesting(nesting)
+        {
+        }
+
+        std::size_t max_string_bytes;
+        std::size_t max_container_elements;
+        std::uint32_t max_nesting;
     };
 } // namespace lux::serialization

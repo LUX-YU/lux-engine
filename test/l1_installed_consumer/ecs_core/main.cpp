@@ -1,14 +1,14 @@
-#include <lux/engine/ecs/EcsState.hpp>
+#include <lux/engine/simulation/ecs/EcsState.hpp>
 
 int main()
 {
-    lux::ecs::EcsState state({
+    lux::simulation::ecs::EcsState state({
         .changes = {
             .initial_bytes = 4U * 1024U,
             .max_bytes = 64U * 1024U,
         },
     });
-    lux::ecs::Entity entity{};
+    lux::simulation::ecs::Entity entity{};
     {
         auto mutation = state.mutate();
         if (!mutation)

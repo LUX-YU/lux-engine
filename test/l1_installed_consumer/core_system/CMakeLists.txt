@@ -5,14 +5,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(
-    lux-engine-ecs
+    lux-engine-simulation-ecs
     CONFIG REQUIRED
     COMPONENTS core system
 )
 
 get_target_property(
     system_links
-    lux::engine::ecs::system
+    lux::engine::simulation::system
     INTERFACE_LINK_LIBRARIES
 )
 if("${system_links}" MATCHES "object|reflection")
@@ -24,5 +24,5 @@ endif()
 add_executable(lux_l1_core_system_consumer main.cpp)
 target_link_libraries(
     lux_l1_core_system_consumer
-    PRIVATE lux::engine::ecs::system
+    PRIVATE lux::engine::simulation::system
 )

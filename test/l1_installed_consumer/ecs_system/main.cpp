@@ -1,17 +1,17 @@
-#include <lux/engine/ecs/SystemRegistry.hpp>
+#include <lux/engine/simulation/SystemRegistry.hpp>
 
 namespace
 {
     struct ProbeSystem final
     {
         inline static constexpr auto Access =
-            lux::ecs::makeSystemAccessSpec<>();
+            lux::simulation::makeSystemAccessSpec<>();
     };
 }
 
 int main()
 {
-    lux::ecs::SystemRegistry systems;
+    lux::simulation::SystemRegistry systems;
     const auto system = systems.emplace<ProbeSystem>();
     if (!system)
         return 1;

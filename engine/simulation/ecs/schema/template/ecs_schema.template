@@ -1,0 +1,23 @@
+#pragma once
+// Generated module-local ECS schema projection. No registrar or persistence.
+#include <lux/engine/simulation/ecs/ComponentSchema.hpp>
+#include <array>
+#include <span>
+{% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
+
+namespace lux::simulation::ecs::generated
+{
+    [[nodiscard]] inline std::span<const ComponentSchema>
+    {{ projection_symbol }}ComponentSchemas() noexcept
+    {
+        static const std::array schemas{
+{% set emitted = false %}{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") %}{% if emitted %},
+{% endif %}            makeComponentSchema<::{{ decl.fq_name }}>(
+                componentSchemaId("{{ annotation_get(decl, "schema") }}"),
+                {{ annotation_get(decl, "version") }}u,
+                {% if annotation_get(decl, "snapshot") == "REBUILD" %}EComponentSnapshotPolicy::REBUILD{% else %}EComponentSnapshotPolicy::COPY{% endif %}
+            ){% set emitted = true %}{% endif %}{% endfor %}
+        };
+        return schemas;
+    }
+} // namespace lux::simulation::ecs::generated

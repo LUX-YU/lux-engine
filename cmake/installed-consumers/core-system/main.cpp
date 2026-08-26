@@ -1,4 +1,4 @@
-#include <lux/engine/ecs/SystemRegistry.hpp>
+#include <lux/engine/simulation/SystemRegistry.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
@@ -9,7 +9,7 @@ namespace
     struct System final
     {
         inline static constexpr auto Access =
-            lux::ecs::makeSystemAccessSpec<>();
+            lux::simulation::makeSystemAccessSpec<>();
         void update() noexcept { ++updates; }
         int updates{};
     };
@@ -17,7 +17,7 @@ namespace
 
 int main()
 {
-    lux::ecs::SystemRegistry systems;
+    lux::simulation::SystemRegistry systems;
     const auto id = systems.emplace<System>();
     if (!id)
         return 1;

@@ -1,4 +1,4 @@
-#include <lux/engine/ecs/SystemRegistry.hpp>
+#include <lux/engine/simulation/SystemRegistry.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
@@ -11,7 +11,7 @@ namespace
     {
       public:
         inline static constexpr auto Access =
-            lux::ecs::makeSystemAccessSpec<>();
+            lux::simulation::makeSystemAccessSpec<>();
 
         explicit CountSystem(std::uint32_t& count) noexcept : count_(&count) {}
         void update() noexcept { ++*count_; }
@@ -23,7 +23,7 @@ namespace
 
 int main()
 {
-    lux::ecs::SystemRegistry systems;
+    lux::simulation::SystemRegistry systems;
     std::uint32_t count{};
     const auto first = systems.emplace<CountSystem>(count);
     const auto second = systems.emplace<CountSystem>(count);

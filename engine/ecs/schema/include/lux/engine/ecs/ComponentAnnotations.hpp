@@ -11,8 +11,7 @@
 #endif
 
 // A stable Component declaration is one atomic schema contract. The generator
-// validates identity and both independent data-path policies before publishing
-// any projection.
+// validates identity and Snapshot policy before publishing any projection.
 #define LUX_COMPONENT(...) \
     LUX_ECS_SCHEMA_META( \
         luxref::class, type_info=static, component=true, __VA_ARGS__ \

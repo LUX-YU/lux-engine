@@ -9,8 +9,7 @@ namespace lux::ecs
     struct LUX_COMPONENT(
         schema = "lux.ecs.Parent",
         version = 1,
-        snapshot = COPY,
-        section = LOAD
+        snapshot = COPY
     ) Parent final
     {
         Entity entity{NullEntity};

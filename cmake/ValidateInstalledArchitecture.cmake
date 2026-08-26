@@ -20,7 +20,7 @@ foreach(entry IN LISTS installed_entries)
     endif()
     get_filename_component(name "${entry}" NAME)
     if(name MATCHES
-       "^(Registry|ISystem|System|SystemFrame|SystemHandle|SystemPhase|SystemSetId|Schedule|ScheduleEdit|ScheduleError|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|WorldSectionLoader|SceneServices|AssetManager|AssetRef|AssetLoadPort|AssetServices|ComponentCodec|TaggedPropertyArchive|Archive|ByteIO|NameTable)\\.(h|hpp)$")
+       "^(Registry|ISystem|System|SystemFrame|SystemHandle|SystemPhase|SystemSetId|Schedule|ScheduleEdit|ScheduleError|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|World|WorldMutation|WorldSnapshot|WorldSection.*|PersistentEntity|SceneServices|AssetManager|AssetRef|AssetLoadPort|AssetServices|ComponentCodec|TaggedPropertyArchive|Archive|ByteIO|NameTable)\\.(h|hpp)$")
         message(FATAL_ERROR "Install surface exposes retired API: ${normalized}")
     endif()
 endforeach()
@@ -34,7 +34,7 @@ foreach(entry IN LISTS installed_text)
     file(TO_CMAKE_PATH "${entry}" normalized)
     file(READ "${entry}" content)
     if(content MATCHES "[/\\\\]legacy[/\\\\]" OR
-       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|WorldSectionLoadBatch|WorldSectionLoader[.]hpp|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|[.]ecs_persistence[.]hpp|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
+       content MATCHES "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices|SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|WorldSection|PersistentEntity|PersistentId|ComponentLoadBinding|ComponentLoadSet|ecs_load|section[ \\t]*=[ \\t]*(LOAD|OMIT)|connectConstruct|connectUpdate|connectDestroy|observer_relations_|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|[.]ecs_persistence[.]hpp|TaggedProperty|schema_reflection|cooked_relocation|LXES|LXWS|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|lux/cxx/serialization/|lux::cxx::ser|LUX_CLASS[ \\t]*\\(|LUX_ENUM[ \\t]*\\(" OR
        content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")
         message(FATAL_ERROR "Installed file contains a retired boundary: ${entry}")
     endif()
@@ -74,8 +74,6 @@ endif()
 foreach(required_component IN ITEMS
     core
     system
-    world_section
-    persistence
 )
     set(component_targets
         "${prefix}/share/lux-engine-ecs/${required_component}/lux-engine-ecs-${required_component}-config-targets.cmake"
@@ -101,8 +99,7 @@ endif()
 foreach(contract_file IN ITEMS
     "${prefix}/share/lux-engine-core/serialization/lux-engine-core-serialization-config-targets.cmake"
     "${prefix}/share/lux-engine-core/type_info/lux-engine-core-type_info-config-targets.cmake"
-    "${prefix}/share/lux-engine-ecs/world_section/lux-engine-ecs-world_section-config-targets.cmake"
-    "${prefix}/share/lux-engine-ecs/persistence/lux-engine-ecs-persistence-config-targets.cmake"
+    "${prefix}/share/lux-engine-world/world/lux-engine-world-world-config-targets.cmake"
 )
     if(NOT EXISTS "${contract_file}")
         message(FATAL_ERROR "Installed foundation target is missing: ${contract_file}")
@@ -111,7 +108,7 @@ foreach(contract_file IN ITEMS
     if(foundation_contract MATCHES
        "lux::engine::core::meta|lux::cxx::reflection_runtime")
         message(FATAL_ERROR
-            "Installed static serialization/persistence closure depends on runtime reflection: ${contract_file}"
+            "Installed foundation closure depends on runtime reflection: ${contract_file}"
         )
     endif()
 endforeach()

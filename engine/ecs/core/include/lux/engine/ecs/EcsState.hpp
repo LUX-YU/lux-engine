@@ -17,7 +17,6 @@
 
 namespace lux::ecs
 {
-    class ComponentLoadBinding;
     class ComponentSnapshotBinding;
     class EcsChangeBatch;
     template <class Component>
@@ -54,18 +53,14 @@ namespace lux::ecs
     namespace detail
     {
         class EcsChangeLog;
-        class SectionMembershipDirectory;
         struct EcsSnapshotAccess;
-        struct WorldMutationAccess;
+        struct EcsMutationAccess;
         struct EcsChangeAccess;
-        struct WorldColdAccess;
-        struct WorldEntityAccess;
-        struct WorldExecutionAccess;
-        struct PersistenceStorageAccess;
-        struct WorldSectionTransactionAccess;
-        struct WorldMembershipAccess;
+        struct EcsColdAccess;
+        struct EcsEntityAccess;
+        struct EcsExecutionAccess;
 
-        enum class EWorldState : std::uint8_t
+        enum class EEcsState : std::uint8_t
         {
             IDLE,
             MUTATING,
@@ -183,12 +178,10 @@ namespace lux::ecs
         friend class EcsState;
         friend class EcsSnapshot;
         friend struct detail::EcsSnapshotAccess;
-        friend struct detail::WorldMutationAccess;
-        friend struct detail::WorldColdAccess;
-        friend struct detail::WorldExecutionAccess;
-        friend class ComponentLoadBinding;
+        friend struct detail::EcsMutationAccess;
+        friend struct detail::EcsColdAccess;
+        friend struct detail::EcsExecutionAccess;
         friend class ComponentSnapshotBinding;
-        friend struct detail::WorldSectionTransactionAccess;
     };
 
     class LUX_ENGINE_ECS_CORE_PUBLIC EcsState final
@@ -247,13 +240,9 @@ namespace lux::ecs
         Registry registry_;
         EcsStateConfig config_;
         std::unique_ptr<detail::EcsChangeLog> changes_;
-        std::unique_ptr<detail::SectionMembershipDirectory>
-            section_memberships_;
         std::thread::id owner_thread_;
-        detail::EWorldState state_{detail::EWorldState::IDLE};
+        detail::EEcsState state_{detail::EEcsState::IDLE};
         bool execution_lease_{};
-        std::uint64_t identity_{};
-        std::size_t active_section_count_{};
 
         friend class EcsMutation;
         friend class EcsTaskExecutionLease;
@@ -273,14 +262,10 @@ namespace lux::ecs
         ) noexcept;
         friend struct detail::EcsSnapshotAccess;
         friend struct detail::EcsChangeAccess;
-        friend struct detail::WorldColdAccess;
-        friend struct detail::WorldEntityAccess;
-        friend struct detail::WorldExecutionAccess;
-        friend struct detail::PersistenceStorageAccess;
-        friend class ComponentLoadBinding;
+        friend struct detail::EcsColdAccess;
+        friend struct detail::EcsEntityAccess;
+        friend struct detail::EcsExecutionAccess;
         friend class ComponentSnapshotBinding;
-        friend struct detail::WorldSectionTransactionAccess;
-        friend struct detail::WorldMembershipAccess;
 
         template <class Component>
         friend ComponentOperations componentOperations() noexcept;
@@ -288,33 +273,6 @@ namespace lux::ecs
 
     namespace detail
     {
-        struct WorldMembershipAccess final
-        {
-            [[nodiscard]] static LUX_ENGINE_ECS_CORE_PUBLIC std::uint32_t
-            prepareAdd(
-                EcsState& world,
-                Entity entity,
-                std::uint64_t storage
-            );
-
-            static LUX_ENGINE_ECS_CORE_PUBLIC void commitAdd(
-                EcsState& world,
-                Entity entity,
-                std::uint32_t token
-            ) noexcept;
-
-            static LUX_ENGINE_ECS_CORE_PUBLIC void cancelAdd(
-                EcsState& world,
-                std::uint32_t token
-            ) noexcept;
-
-            static LUX_ENGINE_ECS_CORE_PUBLIC void remove(
-                EcsState& world,
-                Entity entity,
-                std::uint64_t storage
-            ) noexcept;
-        };
-
         struct EcsChangeAccess final
         {
             [[nodiscard]] static EcsChangeLog& log(EcsState& world) noexcept
@@ -336,14 +294,14 @@ namespace lux::ecs
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeStreamBinder
         ecsChangeStreamBinder(EcsState& world) noexcept;
 
-        [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC bool recordWorldComponentChange(
+        [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC bool recordEcsComponentChange(
             EcsState& world,
             std::uint64_t storage,
             Entity entity,
             EComponentChangeKind kind
         ) noexcept;
 
-        [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC bool recordWorldEntityChange(
+        [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC bool recordEcsEntityChange(
             EcsState& world,
             Entity entity,
             EEntityChangeKind kind
@@ -361,7 +319,7 @@ namespace lux::ecs
         ecsChangeEpoch(const EcsState& world) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRangeData
-        readWorldComponentChanges(
+        readEcsComponentChanges(
             const EcsState& world,
             std::uint64_t storage,
             std::uint64_t& cursor_epoch,
@@ -369,7 +327,7 @@ namespace lux::ecs
         ) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRangeData
-        readWorldEntityChanges(
+        readEcsEntityChanges(
             const EcsState& world,
             std::uint64_t& cursor_epoch,
             std::uint64_t& cursor_sequence
@@ -381,36 +339,18 @@ namespace lux::ecs
     {
         detail::require(world_ != nullptr && world_->valid(entity));
         const auto storage = entt::type_hash<Component>::value();
-        const std::uint32_t membership = detail::WorldMembershipAccess::prepareAdd(
-            *world_,
+        Component& result = world_->registry_.template emplace<Component>(
             entity,
-            storage
+            std::forward<Args>(args)...
         );
-        try
+        if (change_emission_ == EChangeEmission::RECORD)
         {
-            Component& result = world_->registry_.template emplace<Component>(
-                entity,
-                std::forward<Args>(args)...
+            (void)detail::recordEcsComponentChange(
+                *world_, storage, entity,
+                EComponentChangeKind::ADDED
             );
-            detail::WorldMembershipAccess::commitAdd(
-                *world_,
-                entity,
-                membership
-            );
-            if (change_emission_ == EChangeEmission::RECORD)
-            {
-                (void)detail::recordWorldComponentChange(
-                    *world_, storage, entity,
-                    EComponentChangeKind::ADDED
-                );
-            }
-            return result;
         }
-        catch (...)
-        {
-            detail::WorldMembershipAccess::cancelAdd(*world_, membership);
-            throw;
-        }
+        return result;
     }
 
     template <class Component>
@@ -420,14 +360,9 @@ namespace lux::ecs
         const auto storage = entt::type_hash<Component>::value();
         if (world_->registry_.template remove<Component>(entity) != 0)
         {
-            detail::WorldMembershipAccess::remove(
-                *world_,
-                entity,
-                storage
-            );
             if (change_emission_ == EChangeEmission::RECORD)
             {
-                (void)detail::recordWorldComponentChange(
+                (void)detail::recordEcsComponentChange(
                     *world_, storage, entity,
                     EComponentChangeKind::REMOVED
                 );
@@ -449,7 +384,7 @@ namespace lux::ecs
         );
         if (change_emission_ == EChangeEmission::RECORD)
         {
-            (void)detail::recordWorldComponentChange(
+            (void)detail::recordEcsComponentChange(
                 *world_, entt::type_hash<Component>::value(), entity,
                 EComponentChangeKind::MODIFIED
             );

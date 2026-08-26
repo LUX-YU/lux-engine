@@ -20,7 +20,7 @@ namespace lux::ecs
 
             void apply(EcsMutation& edit) noexcept
             {
-                const EcsState& world = detail::WorldMutationAccess::world(edit);
+                const EcsState& world = detail::EcsMutationAccess::world(edit);
                 if (world.valid(entity) &&
                     world.find<Derived>(entity) != nullptr)
                 {
@@ -37,7 +37,7 @@ namespace lux::ecs
 
             void apply(EcsMutation& edit) noexcept
             {
-                const EcsState& world = detail::WorldMutationAccess::world(edit);
+                const EcsState& world = detail::EcsMutationAccess::world(edit);
                 if (!world.valid(entity))
                     return;
                 if (world.find<Derived>(entity) == nullptr)

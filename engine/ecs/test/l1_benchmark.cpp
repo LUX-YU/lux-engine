@@ -1,18 +1,9 @@
-#include "WorldSectionFixtureBuilder.hpp"
-
-#include <lux/engine/ecs/ComponentLoadSet.hpp>
-#include <lux/engine/ecs/WorldSectionTransaction.hpp>
 #include <lux/engine/ecs/EcsTaskResources.hpp>
 #include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
-#include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
-#include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
-#include <uuid.h>
-
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <charconv>
 #include <chrono>
@@ -24,12 +15,10 @@
 #include <limits>
 #include <memory>
 #include <new>
-#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -41,28 +30,10 @@
 #define LUX_BENCHMARK_BUILD_TYPE "unknown"
 #endif
 
-struct BenchmarkFixed32 final
-{
-    std::array<std::uint64_t, 4U> words{};
-};
-
-namespace lux::meta
-{
-    template <>
-    struct TypeStaticInfo<BenchmarkFixed32>
-    {
-        static constexpr bool available = true;
-        static constexpr auto fields = std::make_tuple(
-            typeStaticField<&BenchmarkFixed32::words>("words")
-        );
-    };
-} // namespace lux::meta
-
 namespace
 {
     using Clock = std::chrono::steady_clock;
     using namespace lux::ecs;
-    using namespace lux::ecs::world_section::test;
 
     std::atomic_size_t g_allocation_count{};
     std::atomic_bool g_count_allocations{};
@@ -156,8 +127,7 @@ namespace
             else return std::nullopt;
         }
         if (result.group != "task-graph" &&
-            result.group != "world-change-batch" &&
-            result.group != "world-section")
+            result.group != "world-change-batch")
             return std::nullopt;
         if (result.mode == "qualification")
         {
@@ -391,66 +361,6 @@ namespace
         }
     };
 
-    [[nodiscard]] WorldSectionId benchmarkSectionId()
-    {
-        return WorldSectionId{uuids::uuid::from_string(
-            "30000000-0000-4000-8000-000000000001"
-        ).value()};
-    }
-
-    struct WorldSectionState final
-    {
-        ComponentSchemaSet schemas;
-        std::optional<ComponentLoadBinding> binding;
-        ComponentLoadContribution contribution;
-        ComponentLoadSet loads;
-        std::optional<WorldSectionImage> image;
-        std::unique_ptr<EcsState> world;
-        WorldSectionInstance instance;
-
-        explicit WorldSectionState(std::size_t section_rows)
-        {
-            auto built_schemas = ComponentSchemaSet::build({
-                makeComponentSchema<BenchmarkFixed32>(
-                    componentSchemaId("benchmark.Fixed32")
-                ),
-            });
-            if (!built_schemas) throw std::runtime_error("schema build failed");
-            schemas = std::move(*built_schemas);
-            binding.emplace(bindComponentLoad<BenchmarkFixed32>(
-                *schemas.find(componentSchemaId("benchmark.Fixed32"))
-            ));
-            contribution.bindings = std::span(&*binding, 1U);
-            auto built_loads = ComponentLoadSet::build(
-                schemas, std::span(&contribution, 1U)
-            );
-            if (!built_loads) throw std::runtime_error("load set build failed");
-            loads = std::move(*built_loads);
-
-            FixtureColumn column;
-            column.schema_name = "benchmark.Fixed32";
-            column.value_encoding = EWorldSectionValueEncoding::FIXED;
-            column.fixed_stride = sizeof(BenchmarkFixed32);
-            column.payload.resize(section_rows * sizeof(BenchmarkFixed32));
-            auto opened = WorldSectionImage::open(
-                buildFixture(
-                    benchmarkSectionId(),
-                    static_cast<std::uint32_t>(section_rows),
-                    {std::move(column)}
-                ),
-                fixtureValidationBudget()
-            );
-            if (!opened) throw std::runtime_error("image build failed");
-            image.emplace(std::move(*opened));
-
-            world = std::make_unique<EcsState>(EcsStateConfig{{
-                4096U, 64U * 1024U * 1024U,
-            }});
-            auto mutation = detail::WorldColdAccess::suppressingMutation(*world);
-            for (std::size_t index{}; index < 1'000'000U; ++index)
-                (void)mutation.create();
-        }
-    };
 } // namespace
 
 int main(int argc, char** argv)
@@ -512,66 +422,6 @@ int main(int argc, char** argv)
                 [](ChangeBatchState& state) noexcept { state.batch.reset(); }
             );
         }
-    }
-    else
-    {
-        evidence.measure(
-            "world_section_load_commit_live_resident", parsed->size,
-            [&]() { return std::make_unique<WorldSectionState>(parsed->size); },
-            [](WorldSectionState& state)
-            {
-                auto& log = detail::EcsChangeAccess::log(*state.world);
-                const auto epoch = log.epoch();
-                const auto binds = log.streamBindCountForTest();
-                const auto lookups = log.perRecordLookupCountForTest();
-                detail::ComponentLoadTestStats::reset();
-                auto transaction = beginWorldSectionTransaction(
-                    *state.world,
-                    WorldSectionLoadScratchBudget{256U * 1024U},
-                    lux::serialization::SerializationLimits{}
-                );
-                if (!transaction || !transaction->load(
-                        state.loads, *state.image, state.instance
-                    ) || !transaction->commit())
-                    throw std::runtime_error("section load failed");
-                const auto membership =
-                    detail::WorldSectionTransactionAccess::membershipStats(
-                        *state.world
-                    );
-                Observation result;
-                result.dispatch_calls = detail::ComponentLoadTestStats::load_calls;
-                result.storage_lookups =
-                    detail::ComponentLoadTestStats::storage_lookups;
-                result.history_losses = log.epoch() - epoch;
-                result.journal_stream_binds =
-                    log.streamBindCountForTest() - binds;
-                result.per_record_lookups =
-                    log.perRecordLookupCountForTest() - lookups;
-                result.membership_entry_capacity_bytes =
-                    membership.entry_capacity_bytes;
-                result.membership_node_capacity_bytes =
-                    membership.node_capacity_bytes;
-                result.active_tracked_entities =
-                    membership.active_tracked_entities;
-                result.active_memberships = membership.active_memberships;
-                result.duplicate_comparisons = membership.duplicate_comparisons;
-                result.retained_bytes = membership.entry_capacity_bytes +
-                    membership.node_capacity_bytes;
-                return result;
-            },
-            [](WorldSectionState& state)
-            {
-                if (!state.instance.active()) return;
-                auto transaction = beginWorldSectionTransaction(
-                    *state.world,
-                    WorldSectionLoadScratchBudget{256U * 1024U},
-                    lux::serialization::SerializationLimits{}
-                );
-                if (!transaction || !transaction->unload(state.instance) ||
-                    !transaction->commit())
-                    throw std::runtime_error("section unload failed");
-            }
-        );
     }
     return 0;
 }

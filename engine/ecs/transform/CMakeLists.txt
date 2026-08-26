@@ -39,17 +39,16 @@ target_link_libraries(
         lux::engine::ecs::schema
         lux::engine::ecs::hierarchy
         lux::engine::ecs::snapshot
-        lux::engine::ecs::world_section
         lux::engine::core::math
 )
 component_add_internal_dependencies(
-    transform core system schema hierarchy snapshot world_section
+    transform core system schema hierarchy snapshot
 )
 component_add_transitive_commands(
     transform
     "find_package(Eigen3 CONFIG REQUIRED)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
-    "find_package(lux-engine-ecs REQUIRED COMPONENTS core system schema hierarchy snapshot world_section)"
+    "find_package(lux-engine-ecs REQUIRED COMPONENTS core system schema hierarchy snapshot)"
 )
 
 include_component_cmake_scripts(meta)
@@ -83,7 +82,6 @@ target_link_libraries(
     PRIVATE
         lux::engine::ecs::transform
         lux::engine::ecs::snapshot
-        lux::engine::ecs::persistence
 )
 if(MSVC)
     target_compile_options(ecs_transform_test PRIVATE /UNDEBUG)

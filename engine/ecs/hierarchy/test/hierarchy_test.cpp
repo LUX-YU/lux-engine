@@ -33,14 +33,6 @@ namespace
 
 int main()
 {
-    const auto load_contribution =
-        lux::ecs::hierarchyComponentLoadContribution();
-    assert(load_contribution.bindings.size() == 1U);
-    assert(
-        load_contribution.bindings.front().schema().id ==
-        lux::ecs::componentSchemaId("lux.ecs.Parent")
-    );
-
     lux::ecs::EcsState world{worldConfig()};
     lux::ecs::HierarchyIndex hierarchy{world};
     auto edit_result = world.mutate();

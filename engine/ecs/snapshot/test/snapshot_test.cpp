@@ -183,11 +183,11 @@ int main()
 
     lux::ecs::EcsState busy{worldConfig()};
     {
-        assert(lux::ecs::detail::WorldExecutionAccess::acquire(busy));
+        assert(lux::ecs::detail::EcsExecutionAccess::acquire(busy));
         const auto busy_restore = snapshot->restore(busy);
         assert(!busy_restore);
         assert(busy_restore.error().code == lux::ecs::ESnapshotError::WORLD_BUSY);
-        lux::ecs::detail::WorldExecutionAccess::release(busy);
+        lux::ecs::detail::EcsExecutionAccess::release(busy);
     }
     assert(snapshot->restore(busy));
 

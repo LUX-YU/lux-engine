@@ -75,7 +75,7 @@ namespace lux::ecs
 
             void apply(EcsMutation& edit) noexcept
             {
-                const EcsState& world = detail::WorldMutationAccess::world(edit);
+                const EcsState& world = detail::EcsMutationAccess::world(edit);
                 const Parent* current = world.find<Parent>(child);
                 if (world.valid(child) && current != nullptr &&
                     current->entity == destroyed_parent)
@@ -403,7 +403,7 @@ namespace lux::ecs
                     }
 
                     const auto state =
-                        detail::WorldEntityAccess::referenceState(
+                        detail::EcsEntityAccess::referenceState(
                             *world, link.entity
                         );
                     if (state == detail::EEntityReferenceState::UNKNOWN)
@@ -676,7 +676,7 @@ namespace lux::ecs
                 if (link == nullptr)
                     continue;
                 const auto reference_state =
-                    detail::WorldEntityAccess::referenceState(
+                    detail::EcsEntityAccess::referenceState(
                         *world, link->entity
                     );
                 if (reference_state ==
@@ -898,7 +898,7 @@ namespace lux::ecs
         Entity parent
     ) noexcept
     {
-        EcsState& world = detail::WorldMutationAccess::world(edit);
+        EcsState& world = detail::EcsMutationAccess::world(edit);
         if (auto valid = validateCanonicalParent(world, child, parent); !valid)
             return valid;
 
@@ -931,7 +931,7 @@ namespace lux::ecs
         Entity child
     ) noexcept
     {
-        EcsState& world = detail::WorldMutationAccess::world(edit);
+        EcsState& world = detail::EcsMutationAccess::world(edit);
         if (!world.valid(child))
             return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
         if (world.find<Parent>(child) != nullptr)
@@ -944,7 +944,7 @@ namespace lux::ecs
         Entity root
     ) noexcept
     {
-        EcsState& world = detail::WorldMutationAccess::world(edit);
+        EcsState& world = detail::EcsMutationAccess::world(edit);
         if (!world.valid(root))
             return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
 

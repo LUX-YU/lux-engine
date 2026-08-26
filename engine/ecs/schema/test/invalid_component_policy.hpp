@@ -5,8 +5,7 @@
 struct LUX_COMPONENT(
     schema = "test.invalid-policy",
     version = 1,
-    snapshot = NEVER,
-    section = LOAD
+    snapshot = NEVER
 ) invalid_component_policy final
 {
     int value{};

@@ -1,6 +1,5 @@
 #include <lux/engine/ecs/HierarchySchema.hpp>
 #include <lux/engine/ecs/HierarchySystem.hpp>
-#include <lux/engine/ecs/PersistentEntity.hpp>
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ecs/TransformSchema.hpp>
 #include <lux/engine/ecs/TransformSystem.hpp>
@@ -23,11 +22,6 @@ namespace
         return {{256U * 1024U, 32U * 1024U * 1024U}};
     }
 
-    [[nodiscard]] uuids::uuid uuid(const char* text)
-    {
-        return uuids::uuid::from_string(text).value();
-    }
-
     [[nodiscard]] bool near(float left, float right) noexcept
     {
         return std::abs(left - right) < 0.0001F;
@@ -36,7 +30,6 @@ namespace
     [[nodiscard]] lux::ecs::ComponentSchemaSet schemas()
     {
         std::vector<lux::ecs::ComponentSchema> values{
-            lux::ecs::persistentIdComponentSchema(),
         };
         const auto hierarchy = lux::ecs::hierarchyComponentSchemas();
         values.insert(values.end(), hierarchy.begin(), hierarchy.end());
@@ -92,10 +85,6 @@ namespace
 
 int main()
 {
-    const auto load_contribution =
-        lux::ecs::transformComponentLoadContribution();
-    assert(load_contribution.bindings.size() == 2U);
-
     const auto schema_set = schemas();
     lux::ecs::EcsState world{worldConfig()};
     lux::ecs::HierarchyIndex hierarchy{world};
@@ -104,16 +93,6 @@ int main()
     auto edit = std::move(*edit_result);
     const auto root = edit.create();
     const auto child = edit.create();
-    edit.emplace<lux::ecs::PersistentId>(
-        root,
-        lux::ecs::PersistentEntityId{
-            uuid("00000000-0000-4000-8000-000000000001")}
-    );
-    edit.emplace<lux::ecs::PersistentId>(
-        child,
-        lux::ecs::PersistentEntityId{
-            uuid("00000000-0000-4000-8000-000000000002")}
-    );
     edit.emplace<lux::ecs::Transform3D>(
         root,
         lux::ecs::Transform3D{
@@ -296,7 +275,6 @@ int main()
         ));
 
         const std::array snapshot_contributions{
-            lux::ecs::persistentEntityComponentSnapshotContribution(),
             lux::ecs::hierarchyComponentSnapshotContribution(),
             lux::ecs::transformComponentSnapshotContribution(),
         };

@@ -321,12 +321,12 @@ namespace lux::ecs
     {
         for (const bool active : commands.impl_->active)
             detail::require(!active);
-        detail::WorldExecutionAccess::beginApplyingCommands(world);
-        auto mutation = detail::WorldExecutionAccess::commandMutation(world);
+        detail::EcsExecutionAccess::beginApplyingCommands(world);
+        auto mutation = detail::EcsExecutionAccess::commandMutation(world);
         for (auto& producer : commands.impl_->producers)
             detail::CommandShardAccess::apply(producer, mutation);
         mutation = {};
-        detail::WorldExecutionAccess::resume(world);
+        detail::EcsExecutionAccess::resume(world);
     }
 
     void detail::EcsTaskResourceTestAccess::failNextPush(

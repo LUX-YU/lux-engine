@@ -114,7 +114,7 @@ namespace lux::ecs
         {
             try
             {
-                auto edit = detail::WorldColdAccess::suppressingMutation(target);
+                auto edit = detail::EcsColdAccess::suppressingMutation(target);
                 cloneEntities(source, target);
                 const auto& registry =
                     detail::EcsSnapshotAccess::registry(source);
@@ -162,7 +162,7 @@ namespace lux::ecs
         const ComponentSnapshotSet& components
     ) noexcept
     {
-        if (!detail::WorldColdAccess::ownerIdle(world))
+        if (!detail::EcsColdAccess::ownerIdle(world))
         {
             return lux::cxx::unexpected(
                 SnapshotError{ESnapshotError::WORLD_BUSY}
@@ -221,8 +221,7 @@ namespace lux::ecs
         EcsState& world
     ) const noexcept
     {
-        if (!detail::WorldColdAccess::ownerIdle(world) ||
-            detail::WorldColdAccess::activeSectionCount(world) != 0U)
+        if (!detail::EcsColdAccess::ownerIdle(world))
             return lux::cxx::unexpected(SnapshotError{ESnapshotError::WORLD_BUSY});
 
         auto replacement = instantiate(world.config_);

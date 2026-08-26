@@ -2,7 +2,6 @@
 
 #include <lux/engine/ecs/Parent.hpp>
 #include <lux/engine/ecs/Parent.ecs_schema.hpp>
-#include <lux/engine/ecs/Parent.ecs_load.hpp>
 #include <lux/engine/ecs/Parent.ecs_snapshot.hpp>
 
 namespace lux::ecs
@@ -10,11 +9,6 @@ namespace lux::ecs
     std::span<const ComponentSchema> hierarchyComponentSchemas()
     {
         return generated::hierarchyComponentSchemas();
-    }
-
-    ComponentLoadContribution hierarchyComponentLoadContribution() noexcept
-    {
-        return generated::hierarchyComponentLoadContribution();
     }
 
     ComponentSnapshotContribution

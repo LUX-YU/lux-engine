@@ -36,6 +36,8 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/ecs/*/sinclude/*.hpp"
     "${source_root}/engine/ecs/*/pinclude/*.hpp"
     "${source_root}/engine/ecs/*/src/*.cpp"
+    "${source_root}/engine/world/include/*.hpp"
+    "${source_root}/engine/world/src/*.cpp"
 )
 
 foreach(source IN LISTS production_sources)
@@ -65,6 +67,12 @@ foreach(source IN LISTS production_sources)
 
     if(normalized MATCHES "/engine/ecs/")
         if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"]lux/engine/world/")
+            message(FATAL_ERROR
+                "Architecture: ECS source '${normalized}' depends on the sibling World domain."
+            )
+        endif()
+        if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(scene|runtime|process|editor|authoring|toolchain|host|extensions)/")
             message(FATAL_ERROR
                 "Architecture: L1 source '${normalized}' includes an upper-layer API."
@@ -77,7 +85,7 @@ foreach(source IN LISTS production_sources)
             )
         endif()
         if(content MATCHES
-           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSectionWriter|WorldSectionReader|encodeWorldSection|decodeWorldSection|WorldArchetype|WorldEntityRecord|WorldComponentColumn|WorldSectionWriteSelection|WorldSectionStorageAccess|ComponentSnapshotStorageAccess|ComponentLoadAccess[.]hpp|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
+           "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|ComponentLoadBinding|ComponentLoadSet|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSection|PersistentEntity|PersistentId|ecs_load|section[ \t]*=[ \t]*(LOAD|OMIT)|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|ecs::World|WorldMutation|WorldChange|WorldCommand|WorldSnapshot|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
             message(FATAL_ERROR
                 "Architecture: L1 source '${normalized}' restores retired ECS vocabulary."
             )
@@ -121,6 +129,20 @@ foreach(source IN LISTS production_sources)
            "#[ \t]*include[ \t]*[<\"]lux/engine/(ecs|object|process|scene)/")
             message(FATAL_ERROR
                 "Architecture: L0 core::task source '${normalized}' depends on an upper-layer subsystem."
+            )
+        endif()
+    endif()
+
+    if(normalized MATCHES "/engine/world/")
+        if(content MATCHES
+           "#[ \t]*include[ \t]*[<\"](lux/engine/ecs/|entt/|lux/engine/(simulation|scene|asset)/|lux/engine/math/)")
+            message(FATAL_ERROR
+                "Architecture: descriptive World source '${normalized}' depends on ECS/runtime/domain math."
+            )
+        endif()
+        if(content MATCHES "namespace[ \t]+lux::ecs|entt::|lux::ecs::")
+            message(FATAL_ERROR
+                "Architecture: descriptive World source '${normalized}' contains ECS semantics."
             )
         endif()
     endif()
@@ -168,31 +190,6 @@ foreach(source IN LISTS ecs_public_headers)
     endif()
 endforeach()
 
-set(world_header
-    "${source_root}/engine/ecs/core/include/lux/engine/ecs/World.hpp"
-)
-if(EXISTS "${world_header}")
-    file(READ "${world_header}" world_contract)
-    if(world_contract MATCHES
-       "auto[ \t\r\n]+view[ \t\r\n]*\\(|void[ \t\r\n]+patch[ \t\r\n]*\\(")
-        message(FATAL_ERROR
-            "Architecture: World restores a retired mutable view/patch API."
-        )
-    endif()
-endif()
-
-set(system_context_header
-    "${source_root}/engine/ecs/system/include/lux/engine/ecs/SystemContext.hpp"
-)
-if(EXISTS "${system_context_header}")
-    file(READ "${system_context_header}" system_context_contract)
-    if(system_context_contract MATCHES "World&[ \t\r\n]+world[ \t\r\n]*\\(")
-        message(FATAL_ERROR
-            "Architecture: SystemContext exposes raw mutable World access."
-        )
-    endif()
-endif()
-
 set(transform_system_source
     "${source_root}/engine/ecs/transform/src/TransformSystem.cpp"
 )
@@ -225,7 +222,6 @@ foreach(installed_consumer IN ITEMS
     core_system
     object_affinity
     world
-    world_section
 )
     if(NOT EXISTS
        "${source_root}/test/l1_installed_consumer/${installed_consumer}/CMakeLists.txt")
@@ -240,6 +236,7 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/modules/CMakeLists.txt"
     "${source_root}/modules/*/CMakeLists.txt"
     "${source_root}/engine/CMakeLists.txt"
+    "${source_root}/engine/world/CMakeLists.txt"
     "${source_root}/engine/ecs/CMakeLists.txt"
     "${source_root}/engine/ecs/*/CMakeLists.txt"
 )

@@ -10,8 +10,7 @@ namespace lux::ecs
     struct LUX_COMPONENT(
         schema = "lux.ecs.Transform2D",
         version = 1,
-        snapshot = COPY,
-        section = LOAD
+        snapshot = COPY
     ) Transform2D final
     {
         Eigen::Vector2f translation{Eigen::Vector2f::Zero()};
@@ -22,8 +21,7 @@ namespace lux::ecs
     struct LUX_COMPONENT(
         schema = "lux.ecs.WorldTransform2D",
         version = 1,
-        snapshot = REBUILD,
-        section = OMIT
+        snapshot = REBUILD
     ) WorldTransform2D final
     {
         Eigen::Affine2f value{Eigen::Affine2f::Identity()};
@@ -32,8 +30,7 @@ namespace lux::ecs
     struct LUX_COMPONENT(
         schema = "lux.ecs.Transform3D",
         version = 1,
-        snapshot = COPY,
-        section = LOAD
+        snapshot = COPY
     ) Transform3D final
     {
         Eigen::Vector3f translation{Eigen::Vector3f::Zero()};
@@ -44,8 +41,7 @@ namespace lux::ecs
     struct LUX_COMPONENT(
         schema = "lux.ecs.WorldTransform3D",
         version = 1,
-        snapshot = REBUILD,
-        section = OMIT
+        snapshot = REBUILD
     ) WorldTransform3D final
     {
         Eigen::Affine3f value{Eigen::Affine3f::Identity()};

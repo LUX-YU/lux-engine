@@ -168,7 +168,7 @@ namespace lux::ecs
         void update(Entity entity, Fn&& fn) noexcept
         {
             detail::require(world_ != nullptr);
-            detail::require(world_->state_ == detail::EWorldState::EXECUTING);
+            detail::require(world_->state_ == detail::EEcsState::EXECUTING);
             detail::require(world_->valid(entity));
             world_->registry_.template patch<Component>(
                 entity,
@@ -208,7 +208,7 @@ namespace lux::ecs
         QuerySpec<Access...> specification
     )
     {
-        detail::require(world.state_ == detail::EWorldState::EXECUTING);
+        detail::require(world.state_ == detail::EEcsState::EXECUTING);
         return detail::BasicQuery<EcsState::Registry, Access...>(
             world.registry_,
             changes.binder()
@@ -221,7 +221,7 @@ namespace lux::ecs
         EcsChangeBatch& changes
     ) noexcept
     {
-        detail::require(world.state_ == detail::EWorldState::EXECUTING);
+        detail::require(world.state_ == detail::EEcsState::EXECUTING);
         return TaskWriter<Component>(
             world,
             changes.binder()(entt::type_hash<Component>::value())
@@ -234,7 +234,7 @@ namespace lux::ecs
         ChangeCursor<Component>& cursor
     ) noexcept
     {
-        auto data = detail::readWorldComponentChanges(
+        auto data = detail::readEcsComponentChanges(
             world,
             entt::type_hash<Component>::value(),
             detail::ChangeCursorAccess::epoch(cursor),
@@ -248,7 +248,7 @@ namespace lux::ecs
         EntityChangeCursor& cursor
     ) noexcept
     {
-        auto data = detail::readWorldEntityChanges(
+        auto data = detail::readEcsEntityChanges(
             world,
             detail::ChangeCursorAccess::epoch(cursor),
             detail::ChangeCursorAccess::sequence(cursor)

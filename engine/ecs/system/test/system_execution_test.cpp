@@ -25,7 +25,7 @@ namespace
 
 int main()
 {
-    lux::ecs::World world{lux::ecs::WorldConfig{{4096U, 64U * 1024U}}};
+    lux::ecs::EcsState world{lux::ecs::EcsStateConfig{{4096U, 64U * 1024U}}};
     auto mutation = world.mutate();
     assert(mutation);
     const auto entity = mutation->create();

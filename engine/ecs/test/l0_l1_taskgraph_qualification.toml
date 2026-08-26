@@ -26,7 +26,7 @@ large_size = 1000000
 max_exponent = 1.25
 
 [[scaling]]
-name = "WorldSection load into 1M resident World scaling"
+name = "WorldSection load into 1M resident EcsState scaling"
 metric = "world_section_load_commit_live_resident"
 small_size = 1000
 large_size = 10000

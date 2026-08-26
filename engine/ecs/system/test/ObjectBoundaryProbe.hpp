@@ -40,7 +40,7 @@ namespace lux::ecs::test
         inline static constexpr auto TaskAccess = access<>;
 
         void invokeTask(
-            World&,
+            EcsState&,
             WorldChangeBatch&,
             WorldCommands commands
         ) noexcept
@@ -59,7 +59,7 @@ namespace lux::ecs::test
                     Entity entity{NullEntity};
                     std::uint32_t texture{};
 
-                    void apply(WorldMutation& mutation) noexcept
+                    void apply(EcsMutation& mutation) noexcept
                     {
                         mutation.emplace<MaterialTextureResident>(
                             entity,

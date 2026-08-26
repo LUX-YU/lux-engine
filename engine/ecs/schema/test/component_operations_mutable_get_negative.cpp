@@ -7,7 +7,7 @@ struct component_operations_mutable_get_negative final
 
 int main()
 {
-    lux::ecs::World world;
+    lux::ecs::EcsState world;
     const auto operations =
         lux::ecs::componentOperations<component_operations_mutable_get_negative>();
     void* mutable_value = operations.get(world, lux::ecs::NullEntity);

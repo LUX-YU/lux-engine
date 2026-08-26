@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/serialization/Serialization.hpp>
 
 #include <concepts>

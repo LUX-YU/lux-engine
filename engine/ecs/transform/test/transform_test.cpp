@@ -18,7 +18,7 @@
 
 namespace
 {
-    [[nodiscard]] constexpr lux::ecs::WorldConfig worldConfig() noexcept
+    [[nodiscard]] constexpr lux::ecs::EcsStateConfig worldConfig() noexcept
     {
         return {{256U * 1024U, 32U * 1024U * 1024U}};
     }
@@ -48,7 +48,7 @@ namespace
     }
 
     void installAndResolve(
-        lux::ecs::World& world,
+        lux::ecs::EcsState& world,
         lux::ecs::HierarchyIndex& hierarchy
     )
     {
@@ -97,7 +97,7 @@ int main()
     assert(load_contribution.bindings.size() == 2U);
 
     const auto schema_set = schemas();
-    lux::ecs::World world{worldConfig()};
+    lux::ecs::EcsState world{worldConfig()};
     lux::ecs::HierarchyIndex hierarchy{world};
     auto edit_result = world.mutate();
     assert(edit_result);

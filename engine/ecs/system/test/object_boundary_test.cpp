@@ -38,7 +38,7 @@ int main()
 
     lux::object::ObjectMessageQueue queue;
     DemandObserver observer{queue.dispatcherRef()};
-    World world{WorldConfig{{4096U, 16U * 4096U}}};
+    EcsState world{EcsStateConfig{{4096U, 16U * 4096U}}};
     auto mutation = world.mutate();
     assert(mutation);
     const Entity entity = mutation->create();

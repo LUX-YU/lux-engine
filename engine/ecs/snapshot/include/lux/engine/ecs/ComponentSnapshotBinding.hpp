@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/ecs/ComponentSchema.hpp>
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/snapshot/detail/ComponentSnapshotAccess.hpp>
 
 #include <array>
@@ -22,8 +22,8 @@ namespace lux::ecs
         struct ComponentSnapshotSetAccess;
 
         using CloneComponentStorageFn = void (*)(
-            const World&,
-            WorldMutation&
+            const EcsState&,
+            EcsMutation&
         );
 
 #if defined(LUX_ECS_SNAPSHOT_TESTING)
@@ -52,7 +52,7 @@ namespace lux::ecs
 
       private:
         template <class Component>
-        static void cloneStorage(const World& source, WorldMutation& target)
+        static void cloneStorage(const EcsState& source, EcsMutation& target)
         {
 #if defined(LUX_ECS_SNAPSHOT_TESTING)
             ++detail::ComponentSnapshotTestStats::clone_calls;

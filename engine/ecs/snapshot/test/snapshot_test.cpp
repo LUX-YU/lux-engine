@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/WorldSnapshot.hpp>
 #include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
-#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 
 #include <atomic>
 #include <array>
@@ -12,7 +12,7 @@
 
 namespace
 {
-    [[nodiscard]] constexpr lux::ecs::WorldConfig worldConfig() noexcept
+    [[nodiscard]] constexpr lux::ecs::EcsStateConfig worldConfig() noexcept
     {
         return {{256U * 1024U, 32U * 1024U * 1024U}};
     }
@@ -61,7 +61,7 @@ int main()
     );
     assert(snapshot_components);
 
-    lux::ecs::World source{worldConfig()};
+    lux::ecs::EcsState source{worldConfig()};
     auto edit_result = source.mutate();
     assert(edit_result);
     auto edit = std::move(*edit_result);
@@ -113,8 +113,8 @@ int main()
             assert((*instance)->get<Position>(bulk[index]).value == index);
     }
 
-    const lux::ecs::WorldConfig bounded_config{
-        lux::ecs::WorldChangeHistoryBudget{4096U, 4096U}};
+    const lux::ecs::EcsStateConfig bounded_config{
+        lux::ecs::EcsChangeHistoryBudget{4096U, 4096U}};
     auto bounded_instance = snapshot->instantiate(bounded_config);
     assert(bounded_instance);
     lux::ecs::ChangeCursor<Position> bounded_cursor;
@@ -159,7 +159,7 @@ int main()
         assert(source_next[index] == instance_edit.create());
     instance_edit = {};
 
-    lux::ecs::World restored{bounded_config};
+    lux::ecs::EcsState restored{bounded_config};
     lux::ecs::ChangeCursor<Position> restore_cursor;
     auto& restore_journal =
         lux::ecs::detail::WorldChangeAccess::log(restored);
@@ -181,7 +181,7 @@ int main()
     assert(restored.get<Position>(third).target == first);
     assert(restored.find<DerivedCache>(first) == nullptr);
 
-    lux::ecs::World busy{worldConfig()};
+    lux::ecs::EcsState busy{worldConfig()};
     {
         assert(lux::ecs::detail::WorldExecutionAccess::acquire(busy));
         const auto busy_restore = snapshot->restore(busy);
@@ -209,7 +209,7 @@ int main()
     wrong_thread.join();
     assert(wrong_thread_rejected.load(std::memory_order_relaxed));
 
-    lux::ecs::World invalid{worldConfig()};
+    lux::ecs::EcsState invalid{worldConfig()};
     auto invalid_edit_result = invalid.mutate();
     auto invalid_edit = std::move(*invalid_edit_result);
     const auto unknown = invalid_edit.create();

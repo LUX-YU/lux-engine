@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/core/visibility.h>
 
 #include <concepts>
@@ -33,7 +33,7 @@ namespace lux::ecs
         [[nodiscard]] explicit operator bool() const noexcept;
 
         template <class Command>
-            requires requires(Command& command, WorldMutation& edit)
+            requires requires(Command& command, EcsMutation& edit)
             {
                 { command.apply(edit) } noexcept -> std::same_as<void>;
             }
@@ -53,7 +53,7 @@ namespace lux::ecs
                         std::move(*static_cast<Stored*>(source))
                     );
                 },
-                [](void* payload, WorldMutation& edit) noexcept
+                [](void* payload, EcsMutation& edit) noexcept
                 {
                     static_cast<Stored*>(payload)->apply(edit);
                 },
@@ -71,7 +71,7 @@ namespace lux::ecs
             std::size_t size{};
             std::size_t alignment{};
             void (*move_construct)(void*, void*) noexcept{};
-            void (*apply)(void*, WorldMutation&) noexcept{};
+            void (*apply)(void*, EcsMutation&) noexcept{};
             void (*destroy)(void*) noexcept{};
         };
 

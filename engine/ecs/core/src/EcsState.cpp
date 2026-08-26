@@ -1,4 +1,4 @@
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 
 #include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 #include <lux/engine/ecs/core/detail/SectionMembershipDirectory.hpp>
@@ -42,7 +42,7 @@ namespace lux::ecs
 #endif
     }
 
-    World::World(WorldConfig config)
+    EcsState::EcsState(EcsStateConfig config)
         : config_(config),
           changes_(std::make_unique<detail::WorldChangeLog>(
               detail::WorldChangeLogConfigValue{
@@ -60,7 +60,7 @@ namespace lux::ecs
         );
     }
 
-    World::~World() noexcept
+    EcsState::~EcsState() noexcept
     {
         detail::require(
             state_ == detail::EWorldState::IDLE ||
@@ -71,60 +71,60 @@ namespace lux::ecs
         state_ = detail::EWorldState::DESTROYING;
     }
 
-    lux::cxx::expected<WorldMutation, WorldMutationError> World::mutate() noexcept
+    lux::cxx::expected<EcsMutation, EcsMutationError> EcsState::mutate() noexcept
     {
         if (std::this_thread::get_id() != owner_thread_)
-            return lux::cxx::unexpected(WorldMutationError{EWorldMutationError::WRONG_THREAD});
+            return lux::cxx::unexpected(EcsMutationError{EEcsMutationError::WRONG_THREAD});
         if (state_ == detail::EWorldState::DESTROYING)
-            return lux::cxx::unexpected(WorldMutationError{EWorldMutationError::DESTROYING});
+            return lux::cxx::unexpected(EcsMutationError{EEcsMutationError::DESTROYING});
         if (state_ != detail::EWorldState::IDLE)
-            return lux::cxx::unexpected(WorldMutationError{EWorldMutationError::NOT_IDLE});
+            return lux::cxx::unexpected(EcsMutationError{EEcsMutationError::NOT_IDLE});
 
         state_ = detail::EWorldState::MUTATING;
-        return WorldMutation(*this, true);
+        return EcsMutation(*this, true);
     }
 
     lux::cxx::expected<
-        WorldTaskExecutionLease,
-        WorldTaskExecutionError>
-    World::beginTaskExecution() noexcept
+        EcsTaskExecutionLease,
+        EcsTaskExecutionError>
+    EcsState::beginTaskExecution() noexcept
     {
         if (std::this_thread::get_id() != owner_thread_)
         {
-            return lux::cxx::unexpected(WorldTaskExecutionError{
-                EWorldTaskExecutionError::WRONG_THREAD
+            return lux::cxx::unexpected(EcsTaskExecutionError{
+                EEcsTaskExecutionError::WRONG_THREAD
             });
         }
         if (state_ != detail::EWorldState::IDLE || execution_lease_)
         {
-            return lux::cxx::unexpected(WorldTaskExecutionError{
-                EWorldTaskExecutionError::WORLD_BUSY
+            return lux::cxx::unexpected(EcsTaskExecutionError{
+                EEcsTaskExecutionError::WORLD_BUSY
             });
         }
         execution_lease_ = true;
         state_ = detail::EWorldState::EXECUTING;
-        return WorldTaskExecutionLease(*this);
+        return EcsTaskExecutionLease(*this);
     }
 
-    WorldTaskExecutionLease::WorldTaskExecutionLease(World& world) noexcept
+    EcsTaskExecutionLease::EcsTaskExecutionLease(EcsState& world) noexcept
         : world_(&world)
     {
     }
 
-    WorldTaskExecutionLease::~WorldTaskExecutionLease() noexcept
+    EcsTaskExecutionLease::~EcsTaskExecutionLease() noexcept
     {
         release();
     }
 
-    WorldTaskExecutionLease::WorldTaskExecutionLease(
-        WorldTaskExecutionLease&& other
+    EcsTaskExecutionLease::EcsTaskExecutionLease(
+        EcsTaskExecutionLease&& other
     ) noexcept
         : world_(std::exchange(other.world_, nullptr))
     {
     }
 
-    WorldTaskExecutionLease& WorldTaskExecutionLease::operator=(
-        WorldTaskExecutionLease&& other
+    EcsTaskExecutionLease& EcsTaskExecutionLease::operator=(
+        EcsTaskExecutionLease&& other
     ) noexcept
     {
         if (this != std::addressof(other))
@@ -135,7 +135,7 @@ namespace lux::ecs
         return *this;
     }
 
-    void WorldTaskExecutionLease::release() noexcept
+    void EcsTaskExecutionLease::release() noexcept
     {
         if (world_ == nullptr)
             return;
@@ -146,8 +146,8 @@ namespace lux::ecs
         world_ = nullptr;
     }
 
-    WorldMutation::WorldMutation(
-        World& world,
+    EcsMutation::EcsMutation(
+        EcsState& world,
         bool release_to_idle,
         EChangeEmission change_emission
     ) noexcept
@@ -156,7 +156,7 @@ namespace lux::ecs
     {
     }
 
-    WorldMutation::WorldMutation(WorldMutation&& other) noexcept
+    EcsMutation::EcsMutation(EcsMutation&& other) noexcept
         : world_(std::exchange(other.world_, nullptr)),
           release_to_idle_(std::exchange(other.release_to_idle_, false)),
           change_emission_(std::exchange(
@@ -165,7 +165,7 @@ namespace lux::ecs
     {
     }
 
-    WorldMutation& WorldMutation::operator=(WorldMutation&& other) noexcept
+    EcsMutation& EcsMutation::operator=(EcsMutation&& other) noexcept
     {
         if (this != &other)
         {
@@ -179,12 +179,12 @@ namespace lux::ecs
         return *this;
     }
 
-    WorldMutation::~WorldMutation() noexcept
+    EcsMutation::~EcsMutation() noexcept
     {
         release();
     }
 
-    Entity WorldMutation::create()
+    Entity EcsMutation::create()
     {
         detail::require(world_ != nullptr);
         const Entity entity = world_->registry_.create();
@@ -197,7 +197,7 @@ namespace lux::ecs
         return entity;
     }
 
-    Entity WorldMutation::createAt(Entity entity)
+    Entity EcsMutation::createAt(Entity entity)
     {
         detail::require(world_ != nullptr && entity != NullEntity);
         const Entity created = world_->registry_.create(entity);
@@ -210,7 +210,7 @@ namespace lux::ecs
         return created;
     }
 
-    void WorldMutation::destroy(Entity entity)
+    void EcsMutation::destroy(Entity entity)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
         bool history_lost = false;
@@ -270,7 +270,7 @@ namespace lux::ecs
     }
 
     std::uint32_t detail::WorldMembershipAccess::prepareAdd(
-        World& world,
+        EcsState& world,
         Entity entity,
         std::uint64_t storage
     )
@@ -279,7 +279,7 @@ namespace lux::ecs
     }
 
     void detail::WorldMembershipAccess::commitAdd(
-        World& world,
+        EcsState& world,
         Entity entity,
         std::uint32_t token
     ) noexcept
@@ -288,7 +288,7 @@ namespace lux::ecs
     }
 
     void detail::WorldMembershipAccess::cancelAdd(
-        World& world,
+        EcsState& world,
         std::uint32_t token
     ) noexcept
     {
@@ -296,7 +296,7 @@ namespace lux::ecs
     }
 
     void detail::WorldMembershipAccess::remove(
-        World& world,
+        EcsState& world,
         Entity entity,
         std::uint64_t storage
     ) noexcept
@@ -304,7 +304,7 @@ namespace lux::ecs
         world.section_memberships_->remove(entity, storage);
     }
 
-    void WorldMutation::release() noexcept
+    void EcsMutation::release() noexcept
     {
         if (world_ != nullptr && release_to_idle_)
         {
@@ -319,13 +319,13 @@ namespace lux::ecs
         change_emission_ = EChangeEmission::RECORD;
     }
 
-    detail::ChangeRecorder detail::worldChangeRecorder(World& world) noexcept
+    detail::ChangeRecorder detail::worldChangeRecorder(EcsState& world) noexcept
     {
         return WorldChangeAccess::log(world).recorder();
     }
 
     detail::ChangeStreamBinder detail::worldChangeStreamBinder(
-        World& world
+        EcsState& world
     ) noexcept
     {
         return ChangeStreamBinder{
@@ -340,7 +340,7 @@ namespace lux::ecs
     }
 
     bool detail::recordWorldComponentChange(
-        World& world,
+        EcsState& world,
         std::uint64_t storage,
         Entity entity,
         EComponentChangeKind kind
@@ -354,7 +354,7 @@ namespace lux::ecs
     }
 
     bool detail::recordWorldEntityChange(
-        World& world,
+        EcsState& world,
         Entity entity,
         EEntityChangeKind kind
     ) noexcept
@@ -362,23 +362,23 @@ namespace lux::ecs
         return WorldChangeAccess::log(world).recordEntity(entity, kind);
     }
 
-    void detail::establishWorldChangeBaseline(World& world) noexcept
+    void detail::establishWorldChangeBaseline(EcsState& world) noexcept
     {
         WorldChangeAccess::log(world).establishBaseline();
     }
 
-    void detail::markWorldChangeHistoryLoss(World& world) noexcept
+    void detail::markWorldChangeHistoryLoss(EcsState& world) noexcept
     {
         WorldChangeAccess::log(world).markHistoryLoss();
     }
 
-    std::uint64_t detail::worldChangeEpoch(const World& world) noexcept
+    std::uint64_t detail::worldChangeEpoch(const EcsState& world) noexcept
     {
         return WorldChangeAccess::log(world).epoch();
     }
 
     detail::ChangeRangeData detail::readWorldComponentChanges(
-        const World& world,
+        const EcsState& world,
         std::uint64_t storage,
         std::uint64_t& cursor_epoch,
         std::uint64_t& cursor_sequence
@@ -392,7 +392,7 @@ namespace lux::ecs
     }
 
     detail::ChangeRangeData detail::readWorldEntityChanges(
-        const World& world,
+        const EcsState& world,
         std::uint64_t& cursor_epoch,
         std::uint64_t& cursor_sequence
     ) noexcept

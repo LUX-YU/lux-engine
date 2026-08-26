@@ -1,4 +1,4 @@
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 
 int main()
 {

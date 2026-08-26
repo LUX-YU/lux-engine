@@ -1,4 +1,4 @@
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 
 struct world_mutable_query_negative final
 {
@@ -7,6 +7,6 @@ struct world_mutable_query_negative final
 
 int main()
 {
-    const lux::ecs::World world;
+    const lux::ecs::EcsState world;
     (void)world.query<lux::ecs::Write<world_mutable_query_negative>>();
 }

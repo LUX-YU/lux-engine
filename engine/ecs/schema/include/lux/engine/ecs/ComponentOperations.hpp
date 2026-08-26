@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 
 #include <entt/core/type_info.hpp>
 
@@ -26,7 +26,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] bool has(
-            const World& world,
+            const EcsState& world,
             Entity entity
         ) const noexcept
         {
@@ -35,7 +35,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] const void* get(
-            const World& world,
+            const EcsState& world,
             Entity entity
         ) const noexcept
         {
@@ -43,30 +43,30 @@ namespace lux::ecs
             return get_(world, entity);
         }
 
-        [[nodiscard]] std::size_t size(const World& world) const noexcept
+        [[nodiscard]] std::size_t size(const EcsState& world) const noexcept
         {
             detail::require(size_ != nullptr);
             return size_(world);
         }
 
-        void erase(WorldMutation& edit, Entity entity) const noexcept
+        void erase(EcsMutation& edit, Entity entity) const noexcept
         {
             detail::require(erase_ != nullptr);
             erase_(edit, entity);
         }
 
-        void reserve(WorldMutation& edit, std::size_t count) const
+        void reserve(EcsMutation& edit, std::size_t count) const
         {
             detail::require(reserve_ != nullptr);
             reserve_(edit, count);
         }
 
       private:
-        using HasFn = bool (*)(const World&, Entity) noexcept;
-        using GetFn = const void* (*)(const World&, Entity) noexcept;
-        using SizeFn = std::size_t (*)(const World&) noexcept;
-        using EraseFn = void (*)(WorldMutation&, Entity) noexcept;
-        using ReserveFn = void (*)(WorldMutation&, std::size_t);
+        using HasFn = bool (*)(const EcsState&, Entity) noexcept;
+        using GetFn = const void* (*)(const EcsState&, Entity) noexcept;
+        using SizeFn = std::size_t (*)(const EcsState&) noexcept;
+        using EraseFn = void (*)(EcsMutation&, Entity) noexcept;
+        using ReserveFn = void (*)(EcsMutation&, std::size_t);
 
         std::uint64_t storage_key_{};
         HasFn has_{};
@@ -86,25 +86,25 @@ namespace lux::ecs
     {
         ComponentOperations result;
         result.storage_key_ = entt::type_hash<Component>::value();
-        result.has_ = [](const World& world, Entity entity) noexcept
+        result.has_ = [](const EcsState& world, Entity entity) noexcept
         {
             return world.find<Component>(entity) != nullptr;
         };
-        result.get_ = [](const World& world, Entity entity) noexcept -> const void*
+        result.get_ = [](const EcsState& world, Entity entity) noexcept -> const void*
         {
             return world.find<Component>(entity);
         };
-        result.size_ = [](const World& world) noexcept
+        result.size_ = [](const EcsState& world) noexcept
         {
             const auto* storage =
                 world.registry_.template storage<Component>();
             return storage == nullptr ? 0U : storage->size();
         };
-        result.erase_ = [](WorldMutation& edit, Entity entity) noexcept
+        result.erase_ = [](EcsMutation& edit, Entity entity) noexcept
         {
             edit.erase<Component>(entity);
         };
-        result.reserve_ = [](WorldMutation& edit, std::size_t count)
+        result.reserve_ = [](EcsMutation& edit, std::size_t count)
         {
             edit.reserve<Component>(count);
         };

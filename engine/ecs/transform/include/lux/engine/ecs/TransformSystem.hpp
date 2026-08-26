@@ -32,12 +32,12 @@ namespace lux::ecs
         ~Transform2DSystem();
 
         void update(
-            const World& world,
+            const EcsState& world,
             TaskWriter<WorldTransform2D>& writer,
             WorldCommands commands
         ) noexcept;
         void invokeTask(
-            World& world,
+            EcsState& world,
             WorldChangeBatch& changes,
             WorldCommands commands
         ) noexcept
@@ -76,12 +76,12 @@ namespace lux::ecs
         ~Transform3DSystem();
 
         void update(
-            const World& world,
+            const EcsState& world,
             TaskWriter<WorldTransform3D>& writer,
             WorldCommands commands
         ) noexcept;
         void invokeTask(
-            World& world,
+            EcsState& world,
             WorldChangeBatch& changes,
             WorldCommands commands
         ) noexcept

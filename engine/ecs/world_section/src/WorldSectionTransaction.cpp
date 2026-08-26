@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/WorldSectionTransaction.hpp>
 
-#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 #include <lux/engine/ecs/world_section/detail/ComponentLoadSerialization.hpp>
 #include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
 
@@ -14,7 +14,7 @@
 namespace lux::ecs
 {
     void ComponentLoadBinding::trackMembership(
-        WorldMutation& mutation,
+        EcsMutation& mutation,
         std::uint64_t storage,
         std::span<const Entity> entities
     ) noexcept
@@ -160,8 +160,8 @@ namespace lux::ecs
             std::vector<RemovalLane> removals;
         };
 
-        World* world{};
-        WorldMutation mutation;
+        EcsState* world{};
+        EcsMutation mutation;
         WorldSectionLoadScratchBudget scratch{};
         lux::serialization::SerializationLimits limits{};
         std::vector<LoadOperation> loads;
@@ -722,7 +722,7 @@ namespace lux::ecs
 
     lux::cxx::expected<WorldSectionTransaction, WorldSectionFailure>
     beginWorldSectionTransaction(
-        World& world,
+        EcsState& world,
         WorldSectionLoadScratchBudget scratch,
         lux::serialization::SerializationLimits limits
     ) noexcept

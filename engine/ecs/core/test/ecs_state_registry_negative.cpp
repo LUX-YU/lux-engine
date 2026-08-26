@@ -3,5 +3,5 @@
 int main()
 {
     lux::ecs::EcsState world;
-    (void)world.schedule();
+    (void)world.registry();
 }

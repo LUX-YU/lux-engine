@@ -10,7 +10,7 @@ int main()
         64U,
         1024U * 1024U,
     };
-    lux::ecs::World world({{4096U, 64U * 1024U}});
+    lux::ecs::EcsState world({{4096U, 64U * 1024U}});
     auto transaction = lux::ecs::beginWorldSectionTransaction(
         world,
         lux::ecs::WorldSectionLoadScratchBudget{64U * 1024U},

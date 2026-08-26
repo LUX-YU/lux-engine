@@ -1,7 +1,7 @@
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 
 #include <lux/engine/ecs/WorldTaskResources.hpp>
-#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 
 #include <entt/entity/entity.hpp>
 
@@ -73,9 +73,9 @@ namespace lux::ecs
             Entity child{NullEntity};
             Entity destroyed_parent{NullEntity};
 
-            void apply(WorldMutation& edit) noexcept
+            void apply(EcsMutation& edit) noexcept
             {
-                const World& world = detail::WorldMutationAccess::world(edit);
+                const EcsState& world = detail::WorldMutationAccess::world(edit);
                 const Parent* current = world.find<Parent>(child);
                 if (world.valid(child) && current != nullptr &&
                     current->entity == destroyed_parent)
@@ -108,7 +108,7 @@ namespace lux::ecs
             HierarchyChange value;
         };
 
-        explicit Impl(World& owner)
+        explicit Impl(EcsState& owner)
             : world(std::addressof(owner))
         {
         }
@@ -738,7 +738,7 @@ namespace lux::ecs
 
         std::vector<Node> nodes;
         std::vector<RecordedChange> changes;
-        World* world{};
+        EcsState* world{};
         std::size_t node_count{};
         std::size_t change_start{};
         std::size_t change_count{};
@@ -755,14 +755,14 @@ namespace lux::ecs
         bool rebuild_required{};
     };
 
-    HierarchyIndex::HierarchyIndex(World& world)
+    HierarchyIndex::HierarchyIndex(EcsState& world)
         : impl_(std::make_unique<Impl>(world))
     {
     }
 
     HierarchyIndex::~HierarchyIndex() noexcept = default;
 
-    bool HierarchyIndex::boundTo(const World& world) const noexcept
+    bool HierarchyIndex::boundTo(const EcsState& world) const noexcept
     {
         return impl_->world == std::addressof(world);
     }
@@ -893,12 +893,12 @@ namespace lux::ecs
     }
 
     lux::cxx::expected<void, EHierarchyError> reparent(
-        WorldMutation& edit,
+        EcsMutation& edit,
         Entity child,
         Entity parent
     ) noexcept
     {
-        World& world = detail::WorldMutationAccess::world(edit);
+        EcsState& world = detail::WorldMutationAccess::world(edit);
         if (auto valid = validateCanonicalParent(world, child, parent); !valid)
             return valid;
 
@@ -927,11 +927,11 @@ namespace lux::ecs
     }
 
     lux::cxx::expected<void, EHierarchyError> detach(
-        WorldMutation& edit,
+        EcsMutation& edit,
         Entity child
     ) noexcept
     {
-        World& world = detail::WorldMutationAccess::world(edit);
+        EcsState& world = detail::WorldMutationAccess::world(edit);
         if (!world.valid(child))
             return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
         if (world.find<Parent>(child) != nullptr)
@@ -940,11 +940,11 @@ namespace lux::ecs
     }
 
     lux::cxx::expected<void, EHierarchyError> destroySubtree(
-        WorldMutation& edit,
+        EcsMutation& edit,
         Entity root
     ) noexcept
     {
-        World& world = detail::WorldMutationAccess::world(edit);
+        EcsState& world = detail::WorldMutationAccess::world(edit);
         if (!world.valid(root))
             return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
 

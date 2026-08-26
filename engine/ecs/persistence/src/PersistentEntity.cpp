@@ -1,5 +1,5 @@
 #include <lux/engine/ecs/PersistentEntity.hpp>
-#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 #include <lux/engine/serialization/external_support/Uuid.hpp>
 #include <lux/engine/ecs/PersistentEntity.ecs_schema.hpp>
 #include <lux/engine/ecs/PersistentEntity.ecs_load.hpp>
@@ -31,7 +31,7 @@ namespace lux::ecs
     } // namespace
 
     lux::cxx::expected<PersistentEntityIndex, EPersistentEntityIndexError>
-    PersistentEntityIndex::build(const World& world) noexcept
+    PersistentEntityIndex::build(const EcsState& world) noexcept
     {
         if (!detail::WorldColdAccess::ownerIdle(world))
         {

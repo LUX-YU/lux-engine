@@ -28,27 +28,27 @@ namespace lux::ecs
     template <class Component>
     [[nodiscard]] ComponentOperations componentOperations() noexcept;
 
-    struct WorldChangeHistoryBudget final
+    struct EcsChangeHistoryBudget final
     {
         std::size_t initial_bytes;
         std::size_t max_bytes;
     };
 
-    struct WorldConfig final
+    struct EcsStateConfig final
     {
-        WorldChangeHistoryBudget changes;
+        EcsChangeHistoryBudget changes;
     };
 
-    enum class EWorldMutationError : std::uint8_t
+    enum class EEcsMutationError : std::uint8_t
     {
         NOT_IDLE,
         WRONG_THREAD,
         DESTROYING,
     };
 
-    struct WorldMutationError final
+    struct EcsMutationError final
     {
-        EWorldMutationError code{EWorldMutationError::NOT_IDLE};
+        EEcsMutationError code{EEcsMutationError::NOT_IDLE};
     };
 
     namespace detail
@@ -83,32 +83,32 @@ namespace lux::ecs
         }
     } // namespace detail
 
-    class World;
+    class EcsState;
 
-    enum class EWorldTaskExecutionError : std::uint8_t
+    enum class EEcsTaskExecutionError : std::uint8_t
     {
         WORLD_BUSY,
         WRONG_THREAD,
     };
 
-    struct WorldTaskExecutionError final
+    struct EcsTaskExecutionError final
     {
-        EWorldTaskExecutionError code{EWorldTaskExecutionError::WORLD_BUSY};
+        EEcsTaskExecutionError code{EEcsTaskExecutionError::WORLD_BUSY};
     };
 
-    /** Pure lexical World-state lease. It never owns or runs a TaskGraph. */
-    class LUX_ENGINE_ECS_CORE_PUBLIC WorldTaskExecutionLease final
+    /** Pure lexical EcsState-state lease. It never owns or runs a TaskGraph. */
+    class LUX_ENGINE_ECS_CORE_PUBLIC EcsTaskExecutionLease final
     {
       public:
-        WorldTaskExecutionLease() noexcept = default;
-        ~WorldTaskExecutionLease() noexcept;
-        WorldTaskExecutionLease(WorldTaskExecutionLease&& other) noexcept;
-        WorldTaskExecutionLease& operator=(
-            WorldTaskExecutionLease&& other
+        EcsTaskExecutionLease() noexcept = default;
+        ~EcsTaskExecutionLease() noexcept;
+        EcsTaskExecutionLease(EcsTaskExecutionLease&& other) noexcept;
+        EcsTaskExecutionLease& operator=(
+            EcsTaskExecutionLease&& other
         ) noexcept;
-        WorldTaskExecutionLease(const WorldTaskExecutionLease&) = delete;
-        WorldTaskExecutionLease& operator=(
-            const WorldTaskExecutionLease&
+        EcsTaskExecutionLease(const EcsTaskExecutionLease&) = delete;
+        EcsTaskExecutionLease& operator=(
+            const EcsTaskExecutionLease&
         ) = delete;
 
         [[nodiscard]] explicit operator bool() const noexcept
@@ -117,22 +117,22 @@ namespace lux::ecs
         }
 
       private:
-        explicit WorldTaskExecutionLease(World& world) noexcept;
+        explicit EcsTaskExecutionLease(EcsState& world) noexcept;
         void release() noexcept;
-        World* world_{};
+        EcsState* world_{};
 
-        friend class World;
+        friend class EcsState;
     };
 
-    class LUX_ENGINE_ECS_CORE_PUBLIC WorldMutation final
+    class LUX_ENGINE_ECS_CORE_PUBLIC EcsMutation final
     {
       public:
-        WorldMutation() noexcept = default;
-        WorldMutation(const WorldMutation&) = delete;
-        WorldMutation& operator=(const WorldMutation&) = delete;
-        WorldMutation(WorldMutation&& other) noexcept;
-        WorldMutation& operator=(WorldMutation&& other) noexcept;
-        ~WorldMutation() noexcept;
+        EcsMutation() noexcept = default;
+        EcsMutation(const EcsMutation&) = delete;
+        EcsMutation& operator=(const EcsMutation&) = delete;
+        EcsMutation(EcsMutation&& other) noexcept;
+        EcsMutation& operator=(EcsMutation&& other) noexcept;
+        ~EcsMutation() noexcept;
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
@@ -168,19 +168,19 @@ namespace lux::ecs
             SUPPRESS,
         };
 
-        explicit WorldMutation(
-            World& world,
+        explicit EcsMutation(
+            EcsState& world,
             bool release_to_idle,
             EChangeEmission change_emission = EChangeEmission::RECORD
         ) noexcept;
         [[nodiscard]] Entity createAt(Entity entity);
         void release() noexcept;
 
-        World* world_{};
+        EcsState* world_{};
         bool release_to_idle_{};
         EChangeEmission change_emission_{EChangeEmission::RECORD};
 
-        friend class World;
+        friend class EcsState;
         friend class WorldSnapshot;
         friend struct detail::WorldSnapshotAccess;
         friend struct detail::WorldMutationAccess;
@@ -191,16 +191,16 @@ namespace lux::ecs
         friend struct detail::WorldSectionTransactionAccess;
     };
 
-    class LUX_ENGINE_ECS_CORE_PUBLIC World final
+    class LUX_ENGINE_ECS_CORE_PUBLIC EcsState final
     {
       public:
-        explicit World(WorldConfig config);
-        ~World() noexcept;
+        explicit EcsState(EcsStateConfig config);
+        ~EcsState() noexcept;
 
-        World(const World&) = delete;
-        World& operator=(const World&) = delete;
-        World(World&&) = delete;
-        World& operator=(World&&) = delete;
+        EcsState(const EcsState&) = delete;
+        EcsState& operator=(const EcsState&) = delete;
+        EcsState(EcsState&&) = delete;
+        EcsState& operator=(EcsState&&) = delete;
 
         [[nodiscard]] bool valid(Entity entity) const noexcept
         {
@@ -233,19 +233,19 @@ namespace lux::ecs
             return query<Access...>();
         }
 
-        [[nodiscard]] lux::cxx::expected<WorldMutation, WorldMutationError>
+        [[nodiscard]] lux::cxx::expected<EcsMutation, EcsMutationError>
         mutate() noexcept;
 
         [[nodiscard]] lux::cxx::expected<
-            WorldTaskExecutionLease,
-            WorldTaskExecutionError>
+            EcsTaskExecutionLease,
+            EcsTaskExecutionError>
         beginTaskExecution() noexcept;
 
       private:
         using Registry = entt::basic_registry<Entity>;
 
         Registry registry_;
-        WorldConfig config_;
+        EcsStateConfig config_;
         std::unique_ptr<detail::WorldChangeLog> changes_;
         std::unique_ptr<detail::SectionMembershipDirectory>
             section_memberships_;
@@ -255,20 +255,20 @@ namespace lux::ecs
         std::uint64_t identity_{};
         std::size_t active_section_count_{};
 
-        friend class WorldMutation;
-        friend class WorldTaskExecutionLease;
+        friend class EcsMutation;
+        friend class EcsTaskExecutionLease;
         friend class WorldSnapshot;
         template <class Component>
         friend class TaskWriter;
         template <class... Access>
         friend auto taskQuery(
-            World&,
+            EcsState&,
             WorldChangeBatch&,
             QuerySpec<Access...>
         );
         template <class Component>
         friend TaskWriter<Component> taskWriter(
-            World&,
+            EcsState&,
             WorldChangeBatch&
         ) noexcept;
         friend struct detail::WorldSnapshotAccess;
@@ -292,24 +292,24 @@ namespace lux::ecs
         {
             [[nodiscard]] static LUX_ENGINE_ECS_CORE_PUBLIC std::uint32_t
             prepareAdd(
-                World& world,
+                EcsState& world,
                 Entity entity,
                 std::uint64_t storage
             );
 
             static LUX_ENGINE_ECS_CORE_PUBLIC void commitAdd(
-                World& world,
+                EcsState& world,
                 Entity entity,
                 std::uint32_t token
             ) noexcept;
 
             static LUX_ENGINE_ECS_CORE_PUBLIC void cancelAdd(
-                World& world,
+                EcsState& world,
                 std::uint32_t token
             ) noexcept;
 
             static LUX_ENGINE_ECS_CORE_PUBLIC void remove(
-                World& world,
+                EcsState& world,
                 Entity entity,
                 std::uint64_t storage
             ) noexcept;
@@ -317,13 +317,13 @@ namespace lux::ecs
 
         struct WorldChangeAccess final
         {
-            [[nodiscard]] static WorldChangeLog& log(World& world) noexcept
+            [[nodiscard]] static WorldChangeLog& log(EcsState& world) noexcept
             {
                 return *world.changes_;
             }
 
             [[nodiscard]] static const WorldChangeLog& log(
-                const World& world
+                const EcsState& world
             ) noexcept
             {
                 return *world.changes_;
@@ -331,38 +331,38 @@ namespace lux::ecs
         };
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRecorder
-        worldChangeRecorder(World& world) noexcept;
+        worldChangeRecorder(EcsState& world) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeStreamBinder
-        worldChangeStreamBinder(World& world) noexcept;
+        worldChangeStreamBinder(EcsState& world) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC bool recordWorldComponentChange(
-            World& world,
+            EcsState& world,
             std::uint64_t storage,
             Entity entity,
             EComponentChangeKind kind
         ) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC bool recordWorldEntityChange(
-            World& world,
+            EcsState& world,
             Entity entity,
             EEntityChangeKind kind
         ) noexcept;
 
         LUX_ENGINE_ECS_CORE_PUBLIC void establishWorldChangeBaseline(
-            World& world
+            EcsState& world
         ) noexcept;
 
         LUX_ENGINE_ECS_CORE_PUBLIC void markWorldChangeHistoryLoss(
-            World& world
+            EcsState& world
         ) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC std::uint64_t
-        worldChangeEpoch(const World& world) noexcept;
+        worldChangeEpoch(const EcsState& world) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRangeData
         readWorldComponentChanges(
-            const World& world,
+            const EcsState& world,
             std::uint64_t storage,
             std::uint64_t& cursor_epoch,
             std::uint64_t& cursor_sequence
@@ -370,14 +370,14 @@ namespace lux::ecs
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRangeData
         readWorldEntityChanges(
-            const World& world,
+            const EcsState& world,
             std::uint64_t& cursor_epoch,
             std::uint64_t& cursor_sequence
         ) noexcept;
     } // namespace detail
 
     template <class Component, class... Args>
-    Component& WorldMutation::emplace(Entity entity, Args&&... args)
+    Component& EcsMutation::emplace(Entity entity, Args&&... args)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
         const auto storage = entt::type_hash<Component>::value();
@@ -414,7 +414,7 @@ namespace lux::ecs
     }
 
     template <class Component>
-    void WorldMutation::erase(Entity entity)
+    void EcsMutation::erase(Entity entity)
     {
         detail::require(world_ != nullptr && world_->valid(entity));
         const auto storage = entt::type_hash<Component>::value();
@@ -437,7 +437,7 @@ namespace lux::ecs
 
     template <class Component, class Fn>
         requires std::is_nothrow_invocable_v<Fn, Component&>
-    void WorldMutation::update(Entity entity, Fn&& fn) noexcept
+    void EcsMutation::update(Entity entity, Fn&& fn) noexcept
     {
         detail::require(
             world_ != nullptr && world_->valid(entity) &&
@@ -457,10 +457,10 @@ namespace lux::ecs
     }
 
     template <class... Access>
-    auto WorldMutation::query()
+    auto EcsMutation::query()
     {
         detail::require(world_ != nullptr);
-        return detail::BasicQuery<World::Registry, Access...>(
+        return detail::BasicQuery<EcsState::Registry, Access...>(
             world_->registry_,
             change_emission_ == EChangeEmission::RECORD
                 ? detail::worldChangeStreamBinder(*world_)
@@ -470,13 +470,13 @@ namespace lux::ecs
     }
 
     template <class... Access>
-    auto WorldMutation::query(QuerySpec<Access...>)
+    auto EcsMutation::query(QuerySpec<Access...>)
     {
         return query<Access...>();
     }
 
     template <class Component>
-    void WorldMutation::reserve(std::size_t count)
+    void EcsMutation::reserve(std::size_t count)
     {
         detail::require(world_ != nullptr);
         world_->registry_.template storage<Component>().reserve(count);

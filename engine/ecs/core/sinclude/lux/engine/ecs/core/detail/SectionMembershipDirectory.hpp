@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 
 #include <entt/entity/entity.hpp>
 

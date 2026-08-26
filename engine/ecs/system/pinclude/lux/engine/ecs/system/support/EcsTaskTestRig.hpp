@@ -19,7 +19,7 @@ namespace lux::ecs::testing
     class EcsTaskTestRig final
     {
       public:
-        explicit EcsTaskTestRig(World& world) : world_(&world) {}
+        explicit EcsTaskTestRig(EcsState& world) : world_(&world) {}
 
         template <class Type, class... Args>
         [[nodiscard]] SystemId add(Args&&... args)
@@ -165,7 +165,7 @@ namespace lux::ecs::testing
             return nullptr;
         }
 
-        World* world_{};
+        EcsState* world_{};
         SystemRegistry systems_;
         task::TaskGraphBuilder builder_;
         std::vector<Entry> entries_;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 
 #include <limits>
@@ -17,7 +17,7 @@ namespace lux::ecs::detail
 
     struct WorldMutationAccess final
     {
-        [[nodiscard]] static World& world(WorldMutation& edit) noexcept
+        [[nodiscard]] static EcsState& world(EcsMutation& edit) noexcept
         {
             require(edit.world_ != nullptr);
             return *edit.world_;
@@ -26,54 +26,54 @@ namespace lux::ecs::detail
 
     struct WorldColdAccess final
     {
-        [[nodiscard]] static bool ownerIdle(const World& world) noexcept
+        [[nodiscard]] static bool ownerIdle(const EcsState& world) noexcept
         {
             return world.state_ == EWorldState::IDLE &&
                 !world.execution_lease_ &&
                 world.owner_thread_ == std::this_thread::get_id();
         }
 
-        [[nodiscard]] static WorldMutation suppressingMutation(
-            World& world
+        [[nodiscard]] static EcsMutation suppressingMutation(
+            EcsState& world
         ) noexcept
         {
             require(ownerIdle(world));
             world.state_ = EWorldState::MUTATING;
-            return WorldMutation(
+            return EcsMutation(
                 world,
                 true,
-                WorldMutation::EChangeEmission::SUPPRESS
+                EcsMutation::EChangeEmission::SUPPRESS
             );
         }
 
-        [[nodiscard]] static WorldMutation sectionMutation(
-            World& world
+        [[nodiscard]] static EcsMutation sectionMutation(
+            EcsState& world
         ) noexcept
         {
             require(ownerIdle(world));
             world.state_ = EWorldState::MUTATING;
-            return WorldMutation(
+            return EcsMutation(
                 world,
                 true,
-                WorldMutation::EChangeEmission::SUPPRESS
+                EcsMutation::EChangeEmission::SUPPRESS
             );
         }
 
         [[nodiscard]] static std::uint64_t identity(
-            const World& world
+            const EcsState& world
         ) noexcept
         {
             return world.identity_;
         }
 
         [[nodiscard]] static std::size_t activeSectionCount(
-            const World& world
+            const EcsState& world
         ) noexcept
         {
             return world.active_section_count_;
         }
 
-        static void acquireSection(World& world) noexcept
+        static void acquireSection(EcsState& world) noexcept
         {
             require(
                 world.active_section_count_ !=
@@ -82,7 +82,7 @@ namespace lux::ecs::detail
             ++world.active_section_count_;
         }
 
-        static void releaseSection(World& world) noexcept
+        static void releaseSection(EcsState& world) noexcept
         {
             require(world.active_section_count_ != 0U);
             --world.active_section_count_;
@@ -92,7 +92,7 @@ namespace lux::ecs::detail
     class WorldChangePublisher final
     {
       public:
-        explicit WorldChangePublisher(World& world) noexcept
+        explicit WorldChangePublisher(EcsState& world) noexcept
             : log_(&WorldChangeAccess::log(world))
         {
         }
@@ -144,7 +144,7 @@ namespace lux::ecs::detail
 
     struct WorldExecutionAccess final
     {
-        [[nodiscard]] static bool acquire(World& world) noexcept
+        [[nodiscard]] static bool acquire(EcsState& world) noexcept
         {
             if (world.owner_thread_ != std::this_thread::get_id() ||
                 world.state_ != EWorldState::IDLE ||
@@ -157,30 +157,30 @@ namespace lux::ecs::detail
             return true;
         }
 
-        static void beginApplyingCommands(World& world) noexcept
+        static void beginApplyingCommands(EcsState& world) noexcept
         {
             require(world.execution_lease_);
             require(world.state_ == EWorldState::EXECUTING);
             world.state_ = EWorldState::APPLYING_COMMANDS;
         }
 
-        [[nodiscard]] static WorldMutation commandMutation(
-            World& world
+        [[nodiscard]] static EcsMutation commandMutation(
+            EcsState& world
         ) noexcept
         {
             require(world.execution_lease_);
             require(world.state_ == EWorldState::APPLYING_COMMANDS);
-            return WorldMutation(world, false);
+            return EcsMutation(world, false);
         }
 
-        static void resume(World& world) noexcept
+        static void resume(EcsState& world) noexcept
         {
             require(world.execution_lease_);
             require(world.state_ == EWorldState::APPLYING_COMMANDS);
             world.state_ = EWorldState::EXECUTING;
         }
 
-        static void release(World& world) noexcept
+        static void release(EcsState& world) noexcept
         {
             require(world.execution_lease_);
             require(
@@ -195,7 +195,7 @@ namespace lux::ecs::detail
     struct WorldEntityAccess final
     {
         [[nodiscard]] static EEntityReferenceState referenceState(
-            const World& world,
+            const EcsState& world,
             Entity entity
         ) noexcept
         {

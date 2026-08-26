@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 #include <lux/engine/ecs/EcsTaskAccess.hpp>
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/WorldCommands.hpp>
 #include <lux/engine/ecs/hierarchy/visibility.h>
 
@@ -18,11 +18,11 @@ namespace lux::ecs
             Read<Parent>,
             ExternalWrite<HierarchyIndex>>;
 
-        HierarchySystem(World& world, HierarchyIndex& hierarchy) noexcept;
+        HierarchySystem(EcsState& world, HierarchyIndex& hierarchy) noexcept;
 
-        void update(World& world, WorldCommands commands) noexcept;
+        void update(EcsState& world, WorldCommands commands) noexcept;
         void invokeTask(
-            World& world,
+            EcsState& world,
             WorldChangeBatch&,
             WorldCommands commands
         ) noexcept
@@ -31,7 +31,7 @@ namespace lux::ecs
         }
 
       private:
-        World* world_{};
+        EcsState* world_{};
         HierarchyIndex* hierarchy_{};
     };
 } // namespace lux::ecs

@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/Entity.hpp>
 #include <lux/engine/ecs/Query.hpp>
 #include <lux/engine/ecs/WorldCommands.hpp>
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/core/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -17,7 +17,7 @@
 
 namespace lux::ecs
 {
-    class World;
+    class EcsState;
     namespace detail
     {
         struct WorldTaskResourceTestAccess;
@@ -52,7 +52,7 @@ namespace lux::ecs
 
     /**
      * Transient task-local canonical changes. Each component lane is resolved
-     * once before row processing; publishing binds each World history stream
+     * once before row processing; publishing binds each EcsState history stream
      * once and stops after the first loss of exact history.
      */
     class LUX_ENGINE_ECS_CORE_PUBLIC WorldChangeBatch final
@@ -72,7 +72,7 @@ namespace lux::ecs
         ) noexcept;
 
         void reset() noexcept;
-        [[nodiscard]] bool publish(World& world) noexcept;
+        [[nodiscard]] bool publish(EcsState& world) noexcept;
         [[nodiscard]] WorldChangeBatchStats stats() const noexcept;
 
         /** Internal typed-query seam; callers bind once, never per record. */
@@ -148,13 +148,13 @@ namespace lux::ecs
         friend class WorldCommandRecordingScope;
         friend struct detail::WorldTaskResourceTestAccess;
         friend LUX_ENGINE_ECS_CORE_PUBLIC void applyWorldCommands(
-            World&,
+            EcsState&,
             WorldCommandBatch&
         ) noexcept;
     };
 
     LUX_ENGINE_ECS_CORE_PUBLIC void applyWorldCommands(
-        World& world,
+        EcsState& world,
         WorldCommandBatch& commands
     ) noexcept;
 
@@ -183,33 +183,33 @@ namespace lux::ecs
 
       private:
         TaskWriter(
-            World& world,
+            EcsState& world,
             detail::BoundWorldChangeStream stream
         ) noexcept
             : world_(std::addressof(world)), stream_(stream)
         {
         }
 
-        World* world_{};
+        EcsState* world_{};
         detail::BoundWorldChangeStream stream_{};
         bool history_lost_{};
 
         template <class Value>
         friend TaskWriter<Value> taskWriter(
-            World&,
+            EcsState&,
             WorldChangeBatch&
         ) noexcept;
     };
 
     template <class... Access>
     [[nodiscard]] auto taskQuery(
-        World& world,
+        EcsState& world,
         WorldChangeBatch& changes,
         QuerySpec<Access...> specification
     )
     {
         detail::require(world.state_ == detail::EWorldState::EXECUTING);
-        return detail::BasicQuery<World::Registry, Access...>(
+        return detail::BasicQuery<EcsState::Registry, Access...>(
             world.registry_,
             changes.binder()
         );
@@ -217,7 +217,7 @@ namespace lux::ecs
 
     template <class Component>
     [[nodiscard]] TaskWriter<Component> taskWriter(
-        World& world,
+        EcsState& world,
         WorldChangeBatch& changes
     ) noexcept
     {
@@ -230,7 +230,7 @@ namespace lux::ecs
 
     template <class Component>
     [[nodiscard]] ComponentChanges<Component> componentChanges(
-        const World& world,
+        const EcsState& world,
         ChangeCursor<Component>& cursor
     ) noexcept
     {
@@ -244,7 +244,7 @@ namespace lux::ecs
     }
 
     [[nodiscard]] inline EntityChanges entityChanges(
-        const World& world,
+        const EcsState& world,
         EntityChangeCursor& cursor
     ) noexcept
     {

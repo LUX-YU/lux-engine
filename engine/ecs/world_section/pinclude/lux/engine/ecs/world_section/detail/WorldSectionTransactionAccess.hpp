@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/core/detail/SectionMembershipDirectory.hpp>
 
 #include <iterator>
@@ -18,7 +18,7 @@ namespace lux::ecs::detail
         };
 
         [[nodiscard]] static EntityAllocatorCheckpoint checkpointAllocator(
-            WorldMutation& mutation
+            EcsMutation& mutation
         ) noexcept
         {
             require(mutation.world_ != nullptr);
@@ -28,7 +28,7 @@ namespace lux::ecs::detail
         }
 
         [[nodiscard]] static std::uint64_t allocateLease(
-            WorldMutation& edit
+            EcsMutation& edit
         ) noexcept
         {
             require(edit.world_ != nullptr);
@@ -36,7 +36,7 @@ namespace lux::ecs::detail
         }
 
         static void reserveMembership(
-            WorldMutation& edit,
+            EcsMutation& edit,
             std::span<const Entity> entities,
             std::size_t additional_memberships
         )
@@ -49,7 +49,7 @@ namespace lux::ecs::detail
         }
 
         static void activateMembership(
-            WorldMutation& edit,
+            EcsMutation& edit,
             std::uint64_t lease,
             std::span<const Entity> entities
         ) noexcept
@@ -59,7 +59,7 @@ namespace lux::ecs::detail
         }
 
         static void addComponentMembership(
-            WorldMutation& mutation,
+            EcsMutation& mutation,
             std::uint64_t storage,
             std::span<const Entity> entities
         ) noexcept
@@ -75,7 +75,7 @@ namespace lux::ecs::detail
         }
 
         [[nodiscard]] static bool matches(
-            WorldMutation& edit,
+            EcsMutation& edit,
             Entity entity,
             std::uint64_t lease
         ) noexcept
@@ -87,7 +87,7 @@ namespace lux::ecs::detail
 
         template <class Fn>
         static void forEachStorage(
-            WorldMutation& edit,
+            EcsMutation& edit,
             Entity entity,
             Fn&& fn
         ) noexcept
@@ -100,7 +100,7 @@ namespace lux::ecs::detail
         }
 
         static void removeComponent(
-            WorldMutation& edit,
+            EcsMutation& edit,
             Entity entity,
             std::uint64_t storage
         ) noexcept
@@ -112,7 +112,7 @@ namespace lux::ecs::detail
         }
 
         static void destroyTrackedEntity(
-            WorldMutation& edit,
+            EcsMutation& edit,
             Entity entity
         ) noexcept
         {
@@ -122,7 +122,7 @@ namespace lux::ecs::detail
         }
 
         static void createEntities(
-            WorldMutation& edit,
+            EcsMutation& edit,
             std::span<Entity> entities
         )
         {
@@ -133,7 +133,7 @@ namespace lux::ecs::detail
 #if defined(LUX_ECS_WORLD_SECTION_TESTING)
         template <class Component>
         static void insertPredecodedForBenchmark(
-            WorldMutation& edit,
+            EcsMutation& edit,
             std::span<const Entity> entities,
             std::vector<Component>& values
         )
@@ -152,7 +152,7 @@ namespace lux::ecs::detail
 #endif
 
         static void destroyEntities(
-            WorldMutation& edit,
+            EcsMutation& edit,
             std::span<const Entity> entities
         )
         {
@@ -161,7 +161,7 @@ namespace lux::ecs::detail
         }
 
         static void destroyBareEntities(
-            WorldMutation& edit,
+            EcsMutation& edit,
             std::span<const Entity> entities
         ) noexcept
         {
@@ -176,7 +176,7 @@ namespace lux::ecs::detail
         }
 
         static void destroyValidEntities(
-            WorldMutation& edit,
+            EcsMutation& edit,
             std::span<const Entity> entities
         ) noexcept
         {
@@ -189,7 +189,7 @@ namespace lux::ecs::detail
         }
 
         static void rollbackEntities(
-            WorldMutation& mutation,
+            EcsMutation& mutation,
             std::uint64_t lease,
             std::span<const Entity> entities,
             EntityAllocatorCheckpoint checkpoint,
@@ -230,7 +230,7 @@ namespace lux::ecs::detail
         }
 
         [[nodiscard]] static SectionMembershipDirectory::Stats membershipStats(
-            const World& world
+            const EcsState& world
         ) noexcept
         {
             return world.section_memberships_->stats();

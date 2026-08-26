@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
 #include <lux/engine/ecs/Entity.hpp>
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/WorldSectionImage.hpp>
 #include <lux/engine/ecs/world_section/visibility.h>
 
@@ -95,7 +95,7 @@ namespace lux::ecs
             WorldSectionTransaction,
             WorldSectionFailure>
         beginWorldSectionTransaction(
-            World&,
+            EcsState&,
             WorldSectionLoadScratchBudget,
             lux::serialization::SerializationLimits
         ) noexcept;
@@ -105,7 +105,7 @@ namespace lux::ecs
         WorldSectionTransaction,
         WorldSectionFailure>
     beginWorldSectionTransaction(
-        World& world,
+        EcsState& world,
         WorldSectionLoadScratchBudget scratch,
         lux::serialization::SerializationLimits limits
     ) noexcept;

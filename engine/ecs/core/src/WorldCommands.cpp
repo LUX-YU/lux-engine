@@ -282,7 +282,7 @@ namespace lux::ecs::detail
             ++generation_;
     }
 
-    void CommandShard::applyPending(WorldMutation& edit) noexcept
+    void CommandShard::applyPending(EcsMutation& edit) noexcept
     {
         detail::require(!active_ && !applying_);
         applying_ = true;

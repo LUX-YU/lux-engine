@@ -177,13 +177,13 @@ namespace lux::ecs
 
         template <class... Value>
         friend auto taskQuery(
-            World&,
+            EcsState&,
             WorldChangeBatch&,
             EcsTaskAccess<Value...>
         );
         template <class Component, class... Value>
         friend TaskWriter<Component> taskWriter(
-            World&,
+            EcsState&,
             WorldChangeBatch&,
             EcsTaskAccess<Value...>
         ) noexcept;
@@ -194,7 +194,7 @@ namespace lux::ecs
 
     template <class... Access>
     [[nodiscard]] auto taskQuery(
-        World& world,
+        EcsState& world,
         WorldChangeBatch& changes,
         EcsTaskAccess<Access...>
     )
@@ -206,7 +206,7 @@ namespace lux::ecs
 
     template <class Component, class... Access>
     [[nodiscard]] TaskWriter<Component> taskWriter(
-        World& world,
+        EcsState& world,
         WorldChangeBatch& changes,
         EcsTaskAccess<Access...>
     ) noexcept

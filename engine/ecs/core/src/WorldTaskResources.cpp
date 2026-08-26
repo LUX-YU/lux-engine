@@ -1,8 +1,8 @@
 #include <lux/engine/ecs/WorldTaskResources.hpp>
 
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/core/detail/CommandStorage.hpp>
-#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 #include <lux/engine/ecs/core/detail/WorldTaskResourceTestAccess.hpp>
 
 #include <algorithm>
@@ -139,7 +139,7 @@ namespace lux::ecs
         };
     }
 
-    bool WorldChangeBatch::publish(World& world) noexcept
+    bool WorldChangeBatch::publish(EcsState& world) noexcept
     {
         if (impl_->overflow)
         {
@@ -315,7 +315,7 @@ namespace lux::ecs
     }
 
     void applyWorldCommands(
-        World& world,
+        EcsState& world,
         WorldCommandBatch& commands
     ) noexcept
     {

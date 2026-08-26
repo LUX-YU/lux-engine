@@ -1,7 +1,7 @@
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 
 int main()
 {
-    lux::ecs::World world;
+    lux::ecs::EcsState world;
     return world.edit() ? 0 : 1;
 }

@@ -5,7 +5,7 @@
 namespace lux::ecs
 {
     HierarchySystem::HierarchySystem(
-        World& world,
+        EcsState& world,
         HierarchyIndex& hierarchy
     ) noexcept
         : world_(std::addressof(world)),
@@ -15,7 +15,7 @@ namespace lux::ecs
     }
 
     void HierarchySystem::update(
-        World& world,
+        EcsState& world,
         WorldCommands commands
     ) noexcept
     {

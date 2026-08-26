@@ -4,7 +4,7 @@
 #include <lux/engine/ecs/ComponentAnnotations.hpp>
 #include <lux/engine/ecs/ComponentLoadBinding.hpp>
 #include <lux/engine/ecs/ComponentSnapshotBinding.hpp>
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/persistence/visibility.h>
 #include <lux/engine/meta/MetaAnnotations.hpp>
 
@@ -55,7 +55,7 @@ namespace lux::ecs
         [[nodiscard]] static lux::cxx::expected<
             PersistentEntityIndex,
             EPersistentEntityIndexError>
-        build(const World& world) noexcept;
+        build(const EcsState& world) noexcept;
 
         [[nodiscard]] Entity find(PersistentEntityId id) const noexcept;
         [[nodiscard]] std::size_t size() const noexcept;

@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/ComponentChanges.hpp>
 #include <lux/engine/ecs/Parent.hpp>
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/hierarchy/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -14,7 +14,7 @@
 
 namespace lux::ecs
 {
-    class World;
+    class EcsState;
     class WorldCommands;
 
     namespace detail
@@ -220,7 +220,7 @@ namespace lux::ecs
     class LUX_ENGINE_ECS_HIERARCHY_PUBLIC HierarchyIndex final
     {
       public:
-        explicit HierarchyIndex(World& world);
+        explicit HierarchyIndex(EcsState& world);
         ~HierarchyIndex() noexcept;
 
         HierarchyIndex(const HierarchyIndex&) = delete;
@@ -228,7 +228,7 @@ namespace lux::ecs
         HierarchyIndex(HierarchyIndex&&) = delete;
         HierarchyIndex& operator=(HierarchyIndex&&) = delete;
 
-        [[nodiscard]] bool boundTo(const World& world) const noexcept;
+        [[nodiscard]] bool boundTo(const EcsState& world) const noexcept;
         [[nodiscard]] bool synchronized() const noexcept;
         [[nodiscard]] EHierarchyError lastError() const noexcept;
         [[nodiscard]] Entity parent(Entity entity) const noexcept;
@@ -263,20 +263,20 @@ namespace lux::ecs
 
     [[nodiscard]] LUX_ENGINE_ECS_HIERARCHY_PUBLIC
     lux::cxx::expected<void, EHierarchyError> reparent(
-        WorldMutation& edit,
+        EcsMutation& edit,
         Entity child,
         Entity parent
     ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_ECS_HIERARCHY_PUBLIC
     lux::cxx::expected<void, EHierarchyError> detach(
-        WorldMutation& edit,
+        EcsMutation& edit,
         Entity child
     ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_ECS_HIERARCHY_PUBLIC
     lux::cxx::expected<void, EHierarchyError> destroySubtree(
-        WorldMutation& edit,
+        EcsMutation& edit,
         Entity root
     ) noexcept;
 } // namespace lux::ecs

@@ -1,5 +1,5 @@
 #include <lux/engine/ecs/WorldSnapshot.hpp>
-#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 #include <lux/engine/ecs/schema/ComponentOperationsAccess.hpp>
 #include <lux/engine/ecs/snapshot/detail/ComponentSnapshotSetAccess.hpp>
 
@@ -14,12 +14,12 @@ namespace lux::ecs
 {
     struct detail::WorldSnapshotAccess final
     {
-        [[nodiscard]] static auto& registry(World& world) noexcept
+        [[nodiscard]] static auto& registry(EcsState& world) noexcept
         {
             return world.registry_;
         }
 
-        [[nodiscard]] static const auto& registry(const World& world) noexcept
+        [[nodiscard]] static const auto& registry(const EcsState& world) noexcept
         {
             return world.registry_;
         }
@@ -28,7 +28,7 @@ namespace lux::ecs
     struct WorldSnapshot::Impl final
     {
         ComponentSnapshotSet components;
-        std::unique_ptr<World> shadow;
+        std::unique_ptr<EcsState> shadow;
     };
 
     WorldSnapshot::WorldSnapshot() noexcept = default;
@@ -37,7 +37,7 @@ namespace lux::ecs
     {
         [[nodiscard]] lux::cxx::expected<void, SnapshotError>
         validateStorages(
-            const World& source,
+            const EcsState& source,
             const ComponentSnapshotSet& components
         ) noexcept
         {
@@ -84,7 +84,7 @@ namespace lux::ecs
             return {};
         }
 
-        void cloneEntities(const World& source, World& target)
+        void cloneEntities(const EcsState& source, EcsState& target)
         {
             const auto* source_entities =
                 detail::WorldSnapshotAccess::registry(source).storage<Entity>();
@@ -107,8 +107,8 @@ namespace lux::ecs
 
         [[nodiscard]] lux::cxx::expected<void, SnapshotError>
         cloneWorld(
-            const World& source,
-            World& target,
+            const EcsState& source,
+            EcsState& target,
             const ComponentSnapshotSet& components
         ) noexcept
         {
@@ -158,7 +158,7 @@ namespace lux::ecs
     WorldSnapshot::~WorldSnapshot() noexcept = default;
 
     lux::cxx::expected<WorldSnapshot, SnapshotError> WorldSnapshot::capture(
-        const World& world,
+        const EcsState& world,
         const ComponentSnapshotSet& components
     ) noexcept
     {
@@ -175,7 +175,7 @@ namespace lux::ecs
         {
             auto impl = std::make_unique<Impl>();
             impl->components = components;
-            impl->shadow = std::make_unique<World>(world.config_);
+            impl->shadow = std::make_unique<EcsState>(world.config_);
             if (auto cloned = cloneWorld(
                     world,
                     *impl->shadow,
@@ -193,15 +193,15 @@ namespace lux::ecs
         }
     }
 
-    lux::cxx::expected<std::unique_ptr<World>, SnapshotError>
-    WorldSnapshot::instantiate(WorldConfig config) const noexcept
+    lux::cxx::expected<std::unique_ptr<EcsState>, SnapshotError>
+    WorldSnapshot::instantiate(EcsStateConfig config) const noexcept
     {
         if (!impl_ || !impl_->shadow)
             return lux::cxx::unexpected(SnapshotError{ESnapshotError::INVALID_COPY_SCHEMA});
 
         try
         {
-            auto result = std::make_unique<World>(config);
+            auto result = std::make_unique<EcsState>(config);
             if (auto cloned = cloneWorld(
                     *impl_->shadow,
                     *result,
@@ -218,7 +218,7 @@ namespace lux::ecs
     }
 
     lux::cxx::expected<void, SnapshotError> WorldSnapshot::restore(
-        World& world
+        EcsState& world
     ) const noexcept
     {
         if (!detail::WorldColdAccess::ownerIdle(world) ||

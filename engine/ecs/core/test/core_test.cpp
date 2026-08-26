@@ -1,6 +1,6 @@
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/WorldTaskResources.hpp>
-#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 #include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 
 #include <array>
@@ -24,15 +24,15 @@ namespace
 
 int main()
 {
-    lux::ecs::World world{
-        lux::ecs::WorldConfig{{256U * 1024U, 32U * 1024U * 1024U}}
+    lux::ecs::EcsState world{
+        lux::ecs::EcsStateConfig{{256U * 1024U, 32U * 1024U * 1024U}}
     };
 
     struct AddPosition final
     {
         lux::ecs::Entity entity{lux::ecs::NullEntity};
 
-        void apply(lux::ecs::WorldMutation& mutation) noexcept
+        void apply(lux::ecs::EcsMutation& mutation) noexcept
         {
             mutation.emplace<Position>(entity, 41);
         }
@@ -146,9 +146,9 @@ int main()
         lux::ecs::EEntityChangeKind::DESTROYED
     );
 
-    lux::ecs::World small_world{
-        lux::ecs::WorldConfig{
-            lux::ecs::WorldChangeHistoryBudget{4096U, 4096U}}};
+    lux::ecs::EcsState small_world{
+        lux::ecs::EcsStateConfig{
+            lux::ecs::EcsChangeHistoryBudget{4096U, 4096U}}};
     auto small_edit_result = small_world.mutate();
     assert(small_edit_result);
     auto small_edit = std::move(*small_edit_result);
@@ -223,8 +223,8 @@ int main()
     assert(recovered.status() == lux::ecs::EChangeReadStatus::CURRENT);
     assert(recovered.size() == 1U);
 
-    lux::ecs::World failure_world{
-        lux::ecs::WorldConfig{{4096U, 16U * 4096U}}
+    lux::ecs::EcsState failure_world{
+        lux::ecs::EcsStateConfig{{4096U, 16U * 4096U}}
     };
     auto& failure_journal =
         lux::ecs::detail::WorldChangeAccess::log(failure_world);
@@ -318,8 +318,8 @@ int main()
         assert(failure_journal.epoch() == epoch + 1U);
     }
 
-    lux::ecs::World task_world{
-        lux::ecs::WorldConfig{{4096U, 16U * 4096U}}
+    lux::ecs::EcsState task_world{
+        lux::ecs::EcsStateConfig{{4096U, 16U * 4096U}}
     };
     auto task_mutation_result = task_world.mutate();
     assert(task_mutation_result);

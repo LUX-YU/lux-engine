@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
 #include <lux/engine/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/ecs/WorldSectionTransaction.hpp>
-#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 #include <lux/engine/ecs/system/support/EcsTaskTestRig.hpp>
 #include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
@@ -287,7 +287,7 @@ namespace
         WorldSectionInstance,
         WorldSectionFailure>
     loadSection(
-        World& world,
+        EcsState& world,
         const ComponentLoadSet& loads,
         const WorldSectionImage& image
     ) noexcept
@@ -311,7 +311,7 @@ namespace
 
     [[nodiscard]] lux::cxx::expected<void, WorldSectionFailure>
     unloadSection(
-        World& world,
+        EcsState& world,
         WorldSectionInstance& instance
     ) noexcept
     {
@@ -328,7 +328,7 @@ namespace
         return begun->commit();
     }
 
-    [[nodiscard]] std::size_t fixedCount(const World& world)
+    [[nodiscard]] std::size_t fixedCount(const EcsState& world)
     {
         std::size_t count{};
         for ([[maybe_unused]] auto [entity, value] :
@@ -347,7 +347,7 @@ namespace
         inline static constexpr auto TaskAccess = access<Read<test::Fixed>>;
 
         void invokeTask(
-            World& world,
+            EcsState& world,
             WorldChangeBatch&,
             WorldCommands
         ) noexcept
@@ -421,7 +421,7 @@ namespace
     {
       public:
         ExecutingLoadSystem(
-            World& world,
+            EcsState& world,
             const ComponentLoadSet& loads,
             const WorldSectionImage& image
         ) noexcept
@@ -432,7 +432,7 @@ namespace
         inline static constexpr auto Access = makeSystemAccessSpec<>();
         inline static constexpr auto TaskAccess = access<>;
 
-        void invokeTask(World&, WorldChangeBatch&, WorldCommands) noexcept
+        void invokeTask(EcsState&, WorldChangeBatch&, WorldCommands) noexcept
         {
             auto loaded = loadSection(*world_, *loads_, *image_);
             rejected_ = !loaded &&
@@ -445,7 +445,7 @@ namespace
         }
 
       private:
-        World* world_{};
+        EcsState* world_{};
         const ComponentLoadSet* loads_{};
         const WorldSectionImage* image_{};
         bool rejected_{};
@@ -457,7 +457,7 @@ int main()
     auto context = fixtureContext();
 
     {
-        World eager_world{WorldConfig{{4096U, 16U * 4096U}}};
+        EcsState eager_world{EcsStateConfig{{4096U, 16U * 4096U}}};
         WorldSectionInstance eager_instance;
         auto transaction = beginWorldSectionTransaction(
             eager_world,
@@ -481,7 +481,7 @@ int main()
     }
 
     {
-        World poisoned_world{WorldConfig{{4096U, 16U * 4096U}}};
+        EcsState poisoned_world{EcsStateConfig{{4096U, 16U * 4096U}}};
         WorldSectionInstance staged;
         WorldSectionInstance rejected;
         auto good_image = validImage(sectionId(1U));
@@ -521,8 +521,8 @@ int main()
     }
 
     {
-        World rollback_world{WorldConfig{{4096U, 16U * 4096U}}};
-        World control_world{WorldConfig{{4096U, 16U * 4096U}}};
+        EcsState rollback_world{EcsStateConfig{{4096U, 16U * 4096U}}};
+        EcsState control_world{EcsStateConfig{{4096U, 16U * 4096U}}};
         WorldSectionInstance staged;
         {
             auto transaction = beginWorldSectionTransaction(
@@ -541,7 +541,7 @@ int main()
     }
 
     {
-        World failure_world{WorldConfig{{4096U, 16U * 4096U}}};
+        EcsState failure_world{EcsStateConfig{{4096U, 16U * 4096U}}};
         WorldSectionInstance instance;
         auto image = validImage(sectionId(1U));
         auto transaction = beginWorldSectionTransaction(
@@ -567,7 +567,7 @@ int main()
             {tagColumn()}
         ), fixtureValidationBudget());
         assert(tag_image);
-        World tag_world{WorldConfig{{4096U, 16U * 4096U}}};
+        EcsState tag_world{EcsStateConfig{{4096U, 16U * 4096U}}};
         WorldSectionInstance tag_instance;
         auto transaction = beginWorldSectionTransaction(
             tag_world,
@@ -587,7 +587,7 @@ int main()
             {fixedColumn()}
         ), fixtureValidationBudget());
         assert(fixed_image);
-        World limited_world{WorldConfig{{4096U, 16U * 4096U}}};
+        EcsState limited_world{EcsStateConfig{{4096U, 16U * 4096U}}};
         WorldSectionInstance rejected;
         {
             auto transaction = beginWorldSectionTransaction(
@@ -617,7 +617,7 @@ int main()
     }
 
     {
-        World batch_world{WorldConfig{{4096U, 16U * 4096U}}};
+        EcsState batch_world{EcsStateConfig{{4096U, 16U * 4096U}}};
         auto resident_image = validImage(sectionId(1U));
         auto resident = loadSection(
             batch_world,
@@ -663,7 +663,7 @@ int main()
         assert(fixedCount(batch_world) == 0U);
     }
 
-    World world{WorldConfig{{4096U, 16U * 4096U}}};
+    EcsState world{EcsStateConfig{{4096U, 16U * 4096U}}};
 
     detail::ComponentLoadTestStats::reset();
     const auto membership_before =
@@ -719,7 +719,7 @@ int main()
     assert(fixedCount(world) == 6U);
 
     {
-        World wrong_world{WorldConfig{{4096U, 16U * 4096U}}};
+        EcsState wrong_world{EcsStateConfig{{4096U, 16U * 4096U}}};
         auto wrong = unloadSection(wrong_world, *second);
         assert(!wrong);
         assert(wrong.error().code == EWorldSectionError::WRONG_WORLD);
@@ -839,7 +839,7 @@ int main()
     assert(fixedCount(world) == before_failure);
 
     {
-        World history_world{WorldConfig{{4096U, 16U * 4096U}}};
+        EcsState history_world{EcsStateConfig{{4096U, 16U * 4096U}}};
         Entity history_entity{NullEntity};
         {
             auto edit = history_world.mutate();
@@ -895,7 +895,7 @@ int main()
     }
 
     {
-        World executing_world{WorldConfig{{4096U, 16U * 4096U}}};
+        EcsState executing_world{EcsStateConfig{{4096U, 16U * 4096U}}};
         auto executing_image = validImage(sectionId(1U));
         lux::ecs::testing::EcsTaskTestRig schedule(executing_world);
         const auto handle = schedule.add<ExecutingLoadSystem>(

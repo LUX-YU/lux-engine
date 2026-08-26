@@ -1,7 +1,7 @@
 #include <lux/engine/ecs/TransformSystem.hpp>
 
 #include <lux/engine/ecs/Transform.hpp>
-#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 
 #include <entt/entity/entity.hpp>
 
@@ -18,9 +18,9 @@ namespace lux::ecs
         {
             Entity entity{NullEntity};
 
-            void apply(WorldMutation& edit) noexcept
+            void apply(EcsMutation& edit) noexcept
             {
-                const World& world = detail::WorldMutationAccess::world(edit);
+                const EcsState& world = detail::WorldMutationAccess::world(edit);
                 if (world.valid(entity) &&
                     world.find<Derived>(entity) != nullptr)
                 {
@@ -35,9 +35,9 @@ namespace lux::ecs
             Entity entity{NullEntity};
             Derived value;
 
-            void apply(WorldMutation& edit) noexcept
+            void apply(EcsMutation& edit) noexcept
             {
-                const World& world = detail::WorldMutationAccess::world(edit);
+                const EcsState& world = detail::WorldMutationAccess::world(edit);
                 if (!world.valid(entity))
                     return;
                 if (world.find<Derived>(entity) == nullptr)
@@ -158,7 +158,7 @@ namespace lux::ecs
             }
 
             void queueRemove(
-                const World& world,
+                const EcsState& world,
                 WorldCommands commands,
                 Entity entity
             ) noexcept
@@ -174,7 +174,7 @@ namespace lux::ecs
             }
 
             void publish(
-                const World& world,
+                const EcsState& world,
                 TaskWriter<Derived>& writer,
                 WorldCommands commands,
                 Entity entity,
@@ -202,7 +202,7 @@ namespace lux::ecs
             }
 
             [[nodiscard]] TraversalEntry<Matrix> rootEntry(
-                const World& world,
+                const EcsState& world,
                 TaskWriter<Derived>& writer,
                 WorldCommands commands,
                 Entity root
@@ -256,7 +256,7 @@ namespace lux::ecs
             }
 
             void traverse(
-                const World& world,
+                const EcsState& world,
                 TaskWriter<Derived>& writer,
                 WorldCommands commands,
                 Entity root
@@ -321,7 +321,7 @@ namespace lux::ecs
             }
 
             void update(
-                const World& world,
+                const EcsState& world,
                 TaskWriter<Derived>& writer,
                 WorldCommands commands
             ) noexcept
@@ -448,7 +448,7 @@ namespace lux::ecs
     Transform2DSystem::~Transform2DSystem() = default;
 
     void Transform2DSystem::update(
-        const World& world,
+        const EcsState& world,
         TaskWriter<WorldTransform2D>& writer,
         WorldCommands commands
     ) noexcept
@@ -474,7 +474,7 @@ namespace lux::ecs
     Transform3DSystem::~Transform3DSystem() = default;
 
     void Transform3DSystem::update(
-        const World& world,
+        const EcsState& world,
         TaskWriter<WorldTransform3D>& writer,
         WorldCommands commands
     ) noexcept

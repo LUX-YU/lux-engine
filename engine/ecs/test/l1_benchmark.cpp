@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
 #include <lux/engine/ecs/WorldSectionTransaction.hpp>
 #include <lux/engine/ecs/WorldTaskResources.hpp>
-#include <lux/engine/ecs/core/detail/WorldAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 #include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
@@ -405,7 +405,7 @@ namespace
         ComponentLoadContribution contribution;
         ComponentLoadSet loads;
         std::optional<WorldSectionImage> image;
-        std::unique_ptr<World> world;
+        std::unique_ptr<EcsState> world;
         WorldSectionInstance instance;
 
         explicit WorldSectionState(std::size_t section_rows)
@@ -443,7 +443,7 @@ namespace
             if (!opened) throw std::runtime_error("image build failed");
             image.emplace(std::move(*opened));
 
-            world = std::make_unique<World>(WorldConfig{{
+            world = std::make_unique<EcsState>(EcsStateConfig{{
                 4096U, 64U * 1024U * 1024U,
             }});
             auto mutation = detail::WorldColdAccess::suppressingMutation(*world);

@@ -13,7 +13,7 @@
 
 int main()
 {
-    lux::ecs::World world({{4096U, 1024U * 1024U}});
+    lux::ecs::EcsState world({{4096U, 1024U * 1024U}});
     lux::ecs::HierarchyIndex hierarchy(world);
     lux::ecs::SystemRegistry systems;
     const auto hierarchy_id = systems.emplace<lux::ecs::HierarchySystem>(

@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
 
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 
 #include <algorithm>
 #include <utility>

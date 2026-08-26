@@ -17,8 +17,8 @@ namespace lux::ecs::detail
 
         static void clone(
             const ComponentSnapshotBinding& binding,
-            const World& source,
-            WorldMutation& target
+            const EcsState& source,
+            EcsMutation& target
         )
         {
             binding.clone_(source, target);

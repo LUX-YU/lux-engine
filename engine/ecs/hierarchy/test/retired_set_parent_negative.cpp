@@ -2,7 +2,7 @@
 
 int main()
 {
-    lux::ecs::World world;
+    lux::ecs::EcsState world;
     lux::ecs::HierarchyIndex hierarchy(world);
     auto edit = world.mutate();
     return lux::ecs::setParent(

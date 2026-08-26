@@ -26,8 +26,8 @@ int main()
         lux::ecs::componentSchemaId("lux.ecs.PersistentId")
     );
 
-    lux::ecs::World world{
-        lux::ecs::WorldConfig{{4096U, 16U * 4096U}}
+    lux::ecs::EcsState world{
+        lux::ecs::EcsStateConfig{{4096U, 16U * 4096U}}
     };
     auto edit_result = world.mutate();
     assert(edit_result);

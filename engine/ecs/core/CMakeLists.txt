@@ -14,7 +14,7 @@ add_component(
     OUTPUT_NAME    lux_engine_ecs_core
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldChangeLog.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/World.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsState.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldCommands.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldTaskResources.cpp
 )
@@ -65,9 +65,9 @@ add_test(NAME vnext_ecs_core COMMAND ecs_core_test)
 set_tests_properties(vnext_ecs_core PROPERTIES LABELS "vnext;l1;core;cpu")
 
 foreach(probe IN ITEMS
-    world_registry_negative
-    world_mutable_get_negative
-    world_mutable_query_negative
+    ecs_state_registry_negative
+    ecs_state_mutable_get_negative
+    ecs_state_mutable_query_negative
     retired_registry_header_negative
     retired_scene_services_negative
     retired_world_edit_header_negative

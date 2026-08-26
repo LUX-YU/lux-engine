@@ -1,4 +1,4 @@
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/ecs/EcsState.hpp>
 
 struct world_mutable_get_negative final
 {
@@ -7,6 +7,6 @@ struct world_mutable_get_negative final
 
 int main()
 {
-    lux::ecs::World world;
+    lux::ecs::EcsState world;
     world.get<world_mutable_get_negative>(lux::ecs::NullEntity).value = 1;
 }

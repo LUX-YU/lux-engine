@@ -302,6 +302,17 @@ namespace
 
 int main()
 {
+    const auto hashed_object = objectId(17U);
+    assert(
+        WorldObjectIdHash{}(hashed_object) ==
+        std::hash<uuids::uuid>{}(hashed_object.value)
+    );
+    const auto hashed_partition = partitionId(17U);
+    assert(
+        WorldPartitionIdHash{}(hashed_partition) ==
+        std::hash<uuids::uuid>{}(hashed_partition.value)
+    );
+
     using namespace lux::world;
 
     WorldDescriptionBuilder invalid;

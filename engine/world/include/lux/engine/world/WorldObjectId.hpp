@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 namespace lux::world
 {
@@ -30,20 +31,7 @@ namespace lux::world
 
         [[nodiscard]] inline std::size_t uuidHash(const uuids::uuid& value) noexcept
         {
-            std::size_t result = sizeof(std::size_t) >= 8U
-                ? static_cast<std::size_t>(14695981039346656037ULL)
-                : static_cast<std::size_t>(2166136261U);
-            const std::size_t prime = sizeof(std::size_t) >= 8U
-                ? static_cast<std::size_t>(1099511628211ULL)
-                : static_cast<std::size_t>(16777619U);
-            for (const std::byte byte : value.as_bytes())
-            {
-                result ^= static_cast<std::size_t>(
-                    std::to_integer<std::uint8_t>(byte)
-                );
-                result *= prime;
-            }
-            return result;
+            return std::hash<uuids::uuid>{}(value);
         }
     }
 

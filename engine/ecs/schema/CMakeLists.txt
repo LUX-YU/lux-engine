@@ -32,6 +32,7 @@ target_link_libraries(
     schema
     PUBLIC
         lux::engine::ecs::core
+        lux::engine::core::type_info
         lux::cxx::core
         lux::cxx::compile_time
 )
@@ -39,6 +40,7 @@ component_add_internal_dependencies(schema core)
 component_add_transitive_commands(
     schema
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS type_info)"
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
 )
 

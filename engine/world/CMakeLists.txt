@@ -57,6 +57,15 @@ lux_classify_target(
 )
 add_test(NAME world_contract_test COMMAND world_contract_test)
 
+add_executable(world_diagnostic_benchmark test/world_diagnostic_benchmark.cpp)
+target_link_libraries(world_diagnostic_benchmark PRIVATE lux::engine::world)
+lux_classify_target(
+    TARGET  world_diagnostic_benchmark
+    LAYER   WORLD
+    PRODUCT TEST
+    ROLE    FOUNDATION
+)
+
 install_components(
     PROJECT_NAME lux-engine-world
     VERSION      ${PROJECT_VERSION}

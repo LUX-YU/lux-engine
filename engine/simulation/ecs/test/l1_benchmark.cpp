@@ -1,5 +1,8 @@
 #include <lux/engine/simulation/ecs/EcsTaskResources.hpp>
+#include <lux/engine/simulation/ecs/EcsSnapshot.hpp>
+#include <lux/engine/simulation/ecs/HierarchyIndex.hpp>
 #include <lux/engine/simulation/ecs/core/detail/EcsStateAccess.hpp>
+#include <lux/engine/simulation/SimulationExecution.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
@@ -19,6 +22,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -127,7 +131,12 @@ namespace
             else return std::nullopt;
         }
         if (result.group != "task-graph" &&
-            result.group != "world-change-batch")
+            result.group != "world-change-batch" &&
+            result.group != "simulation-step" &&
+            result.group != "command-batch" &&
+            result.group != "hierarchy-delta" &&
+            result.group != "journal-readers" &&
+            result.group != "ecs-snapshot")
             return std::nullopt;
         if (result.mode == "qualification")
         {
@@ -361,6 +370,213 @@ namespace
         }
     };
 
+    struct BenchmarkPosition final
+    {
+        std::uint32_t value{};
+    };
+
+    struct IncrementPosition final
+    {
+        Entity entity{NullEntity};
+
+        void apply(SimulationEcsMutation& mutation) noexcept
+        {
+            mutation.update<BenchmarkPosition>(
+                entity,
+                [](BenchmarkPosition& position) noexcept
+                {
+                    ++position.value;
+                }
+            );
+        }
+    };
+
+    struct StepState final
+    {
+        EcsState state;
+        EcsChangeJournal journal{EcsChangeHistoryBudget{4096U, 65536U}};
+        EcsCommandBatch commands;
+        lux::task::TaskGraph graph;
+        lux::task::TaskExecutor executor{
+            lux::task::TaskExecutorConfig{1U, 1U}};
+        Entity entity{NullEntity};
+
+        StepState()
+        {
+            auto mutation = state.mutate();
+            if (!mutation)
+                throw std::runtime_error("mutation failed");
+            entity = mutation->create();
+            mutation->emplace<BenchmarkPosition>(entity, 0U);
+            *mutation = {};
+
+            auto observed = beginSimulationEcsMutation(state, journal);
+            if (!observed)
+                throw std::runtime_error("observed mutation failed");
+            observed->update<BenchmarkPosition>(
+                entity,
+                [](BenchmarkPosition&) noexcept {}
+            );
+            *observed = {};
+
+            constexpr std::array capacities{
+                EcsCommandProducerCapacity{1U, 64U}
+            };
+            if (!commands.prepare(capacities))
+                throw std::bad_alloc{};
+
+            lux::task::TaskGraphBuilder builder;
+            auto task = builder.add([this]() noexcept
+            {
+                auto scope = commands.begin(0U);
+                if (!scope ||
+                    scope->commands().push(IncrementPosition{entity}) !=
+                        ECommandResult::ACCEPTED)
+                {
+                    std::abort();
+                }
+            });
+            if (!task)
+                throw std::bad_alloc{};
+            auto built = std::move(builder).build();
+            if (!built || !executor.reserve(1U))
+                throw std::bad_alloc{};
+            graph = std::move(*built);
+        }
+    };
+
+    struct NoopCommand final
+    {
+        std::uint64_t value{};
+
+        void apply(SimulationEcsMutation&) noexcept
+        {
+        }
+    };
+
+    struct CommandState final
+    {
+        EcsCommandBatch commands;
+        std::size_t count{};
+
+        explicit CommandState(std::size_t value) : count(value)
+        {
+            const std::array capacities{
+                EcsCommandProducerCapacity{
+                    count,
+                    count * (sizeof(NoopCommand) + alignof(NoopCommand) - 1U)
+                }
+            };
+            if (!commands.prepare(capacities))
+                throw std::bad_alloc{};
+        }
+    };
+
+    struct HierarchyState final
+    {
+        HierarchyIndex hierarchy;
+        HierarchyMutationBatch mutations;
+        HierarchyDeltaBatch deltas;
+        std::size_t count{};
+
+        explicit HierarchyState(std::size_t value) : count(value)
+        {
+            if (!mutations.prepare(count) || !deltas.prepare(count))
+                throw std::bad_alloc{};
+            for (std::size_t index{}; index < count; ++index)
+            {
+                const Entity child = static_cast<Entity>(
+                    static_cast<std::uint32_t>(index + 2U)
+                );
+                const Entity parent = static_cast<Entity>(
+                    static_cast<std::uint32_t>(index + 1U)
+                );
+                if (!mutations.append(HierarchyMutation{
+                        EHierarchyMutationKind::SET_PARENT,
+                        child,
+                        parent
+                    }))
+                {
+                    throw std::bad_alloc{};
+                }
+            }
+            if (!hierarchy.rebuild(mutations.values(), deltas))
+                throw std::runtime_error("hierarchy rebuild failed");
+            mutations.reset();
+            deltas.reset();
+        }
+    };
+
+    struct JournalReaderState final
+    {
+        EcsChangeJournal journal{EcsChangeHistoryBudget{4096U, 65536U}};
+        std::vector<ChangeCursor<BenchmarkPosition>> cursors;
+        std::vector<std::size_t> counts;
+
+        explicit JournalReaderState(std::size_t readers)
+            : cursors(readers), counts(readers)
+        {
+            for (auto& cursor : cursors)
+                (void)journal.read(cursor);
+            EcsChangeBatch batch;
+            const std::uint64_t storage =
+                entt::type_hash<BenchmarkPosition>::value();
+            if (!batch.prepare(std::span{&storage, 1U}, 1U))
+                throw std::bad_alloc{};
+            auto stream = batch.binder()(storage);
+            if (!stream ||
+                !stream(static_cast<Entity>(1U), EComponentChangeKind::MODIFIED) ||
+                !batch.publish(journal))
+            {
+                throw std::runtime_error("journal setup failed");
+            }
+        }
+    };
+
+    struct SnapshotState final
+    {
+        EcsState state;
+        ComponentSnapshotSet components;
+        std::size_t count{};
+
+        explicit SnapshotState(std::size_t value) : count(value)
+        {
+            const auto schema = makeComponentSchema<BenchmarkPosition>(
+                componentSchemaId("benchmark.position")
+            );
+            auto schemas = ComponentSchemaSet::build({schema});
+            if (!schemas)
+                throw std::runtime_error("schema build failed");
+            const std::array bindings{
+                bindComponentSnapshot<BenchmarkPosition>(schema)
+            };
+            const ComponentSnapshotContribution contribution{
+                {},
+                bindings
+            };
+            auto built = ComponentSnapshotSet::build(
+                *schemas,
+                std::span(&contribution, 1U)
+            );
+            if (!built)
+                throw std::runtime_error("snapshot binding failed");
+            components = *built;
+
+            auto mutation = state.mutate();
+            if (!mutation)
+                throw std::runtime_error("snapshot state mutation failed");
+            mutation->reserve<BenchmarkPosition>(count);
+            for (std::size_t index{}; index < count; ++index)
+            {
+                const Entity entity = mutation->create();
+                mutation->emplace<BenchmarkPosition>(
+                    entity,
+                    static_cast<std::uint32_t>(index)
+                );
+            }
+        }
+    };
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -422,6 +638,142 @@ int main(int argc, char** argv)
                 [](ChangeBatchState& state) noexcept { state.batch.reset(); }
             );
         }
+    }
+    else if (parsed->group == "simulation-step")
+    {
+        evidence.measure(
+            "simulation_step_execute", parsed->size,
+            []() { return std::make_unique<StepState>(); },
+            [](StepState& state)
+            {
+                if (!lux::simulation::executeSimulationStep(
+                        state.executor,
+                        state.graph,
+                        state.state,
+                        state.journal,
+                        state.commands
+                    ))
+                {
+                    throw std::runtime_error("simulation step failed");
+                }
+                Observation result;
+                result.dispatch_calls = 1U;
+                return result;
+            },
+            [](StepState&) noexcept {}
+        );
+    }
+    else if (parsed->group == "command-batch")
+    {
+        evidence.measure(
+            "command_batch_record", parsed->size,
+            [&]() { return std::make_unique<CommandState>(parsed->size); },
+            [](CommandState& state)
+            {
+                auto scope = state.commands.begin(0U);
+                if (!scope)
+                    throw std::runtime_error("command begin failed");
+                for (std::size_t index{}; index < state.count; ++index)
+                {
+                    if (scope->commands().push(NoopCommand{index}) !=
+                        ECommandResult::ACCEPTED)
+                    {
+                        throw std::runtime_error("command push failed");
+                    }
+                }
+                Observation result;
+                result.dispatch_calls = state.count;
+                return result;
+            },
+            [](CommandState& state) noexcept
+            {
+                state.commands.discardPending();
+            }
+        );
+    }
+    else if (parsed->group == "hierarchy-delta")
+    {
+        evidence.measure(
+            "hierarchy_delta_apply", parsed->size,
+            [&]() { return std::make_unique<HierarchyState>(parsed->size); },
+            [](HierarchyState& state)
+            {
+                const Entity root = static_cast<Entity>(1U);
+                for (std::size_t index{}; index < state.count; ++index)
+                {
+                    const Entity child = static_cast<Entity>(
+                        static_cast<std::uint32_t>(index + 2U)
+                    );
+                    if (!state.mutations.append(HierarchyMutation{
+                            EHierarchyMutationKind::SET_PARENT,
+                            child,
+                            root
+                        }))
+                    {
+                        throw std::runtime_error("hierarchy append failed");
+                    }
+                }
+                if (!state.hierarchy.apply(
+                        state.mutations.values(),
+                        state.deltas
+                    ))
+                {
+                    throw std::runtime_error("hierarchy apply failed");
+                }
+                Observation result;
+                result.dispatch_calls = state.deltas.values().size();
+                return result;
+            },
+            [](HierarchyState&) noexcept {}
+        );
+    }
+    else if (parsed->group == "journal-readers")
+    {
+        evidence.measure(
+            "journal_concurrent_readers", parsed->size,
+            [&]() { return std::make_unique<JournalReaderState>(parsed->size); },
+            [](JournalReaderState& state)
+            {
+                std::vector<std::thread> readers;
+                readers.reserve(state.cursors.size());
+                for (std::size_t index{}; index < state.cursors.size(); ++index)
+                {
+                    readers.emplace_back([&state, index]() noexcept
+                    {
+                        const auto changes = state.journal.read(
+                            state.cursors[index]
+                        );
+                        state.counts[index] = changes.size();
+                    });
+                }
+                for (auto& reader : readers)
+                    reader.join();
+                Observation result;
+                result.dispatch_calls = state.cursors.size();
+                return result;
+            },
+            [](JournalReaderState&) noexcept {}
+        );
+    }
+    else if (parsed->group == "ecs-snapshot")
+    {
+        evidence.measure(
+            "ecs_snapshot_capture", parsed->size,
+            [&]() { return std::make_unique<SnapshotState>(parsed->size); },
+            [](SnapshotState& state)
+            {
+                auto snapshot = EcsSnapshot::capture(
+                    state.state,
+                    state.components
+                );
+                if (!snapshot)
+                    throw std::runtime_error("snapshot capture failed");
+                Observation result;
+                result.dispatch_calls = state.count;
+                return result;
+            },
+            [](SnapshotState&) noexcept {}
+        );
     }
     return 0;
 }

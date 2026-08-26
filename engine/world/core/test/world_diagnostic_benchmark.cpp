@@ -19,6 +19,14 @@
 #include <utility>
 #include <vector>
 
+#ifndef LUX_BENCHMARK_GIT_COMMIT
+#define LUX_BENCHMARK_GIT_COMMIT "unknown"
+#endif
+
+#ifndef LUX_BENCHMARK_BUILD_TYPE
+#define LUX_BENCHMARK_BUILD_TYPE "unknown"
+#endif
+
 namespace
 {
     using Clock = std::chrono::steady_clock;
@@ -26,6 +34,59 @@ namespace
 
     std::atomic_bool g_count_allocations{};
     std::atomic_size_t g_allocations{};
+
+#define LUX_STRINGIFY_IMPL(value) #value
+#define LUX_STRINGIFY(value) LUX_STRINGIFY_IMPL(value)
+
+    [[nodiscard]] constexpr std::string_view compilerName() noexcept
+    {
+#if defined(_MSC_VER)
+        return "MSVC";
+#elif defined(__clang__)
+        return "Clang";
+#elif defined(__GNUC__)
+        return "GCC";
+#else
+        return "unknown";
+#endif
+    }
+
+    [[nodiscard]] constexpr std::string_view compilerVersion() noexcept
+    {
+#if defined(_MSC_FULL_VER)
+        return LUX_STRINGIFY(_MSC_FULL_VER);
+#elif defined(__clang_version__)
+        return __clang_version__;
+#elif defined(__VERSION__)
+        return __VERSION__;
+#else
+        return "unknown";
+#endif
+    }
+
+    [[nodiscard]] constexpr std::string_view platformName() noexcept
+    {
+#if defined(_WIN32)
+        return "Windows";
+#elif defined(__ANDROID__)
+        return "Android";
+#elif defined(__linux__)
+        return "Linux";
+#else
+        return "unknown";
+#endif
+    }
+
+    [[nodiscard]] constexpr std::string_view architectureName() noexcept
+    {
+#if defined(_M_X64) || defined(__x86_64__)
+        return "x86_64";
+#elif defined(_M_ARM64) || defined(__aarch64__)
+        return "arm64";
+#else
+        return "unknown";
+#endif
+    }
 
     struct Options final
     {
@@ -159,6 +220,13 @@ namespace
         std::uint64_t nanoseconds{};
         std::size_t allocations{};
         std::size_t operations{};
+        std::size_t retained_bytes{};
+    };
+
+    struct OperationResult final
+    {
+        std::size_t operations{};
+        std::size_t retained_bytes{};
     };
 
     template <class Operation>
@@ -167,7 +235,7 @@ namespace
         g_allocations.store(0U, std::memory_order_relaxed);
         g_count_allocations.store(true, std::memory_order_release);
         const auto begin = Clock::now();
-        const std::size_t operations = operation();
+        const OperationResult result = operation();
         const auto end = Clock::now();
         g_count_allocations.store(false, std::memory_order_release);
         return {
@@ -177,22 +245,74 @@ namespace
                 ).count()
             ),
             g_allocations.load(std::memory_order_relaxed),
-            operations,
+            result.operations,
+            result.retained_bytes,
         };
     }
 
     void writeRow(
         std::ostream& output,
+        std::string_view kind,
         std::string_view metric,
+        std::size_t size,
         const Options& options,
-        std::size_t sample,
+        std::string_view sample,
         const Measurement& value
     )
     {
-        output << metric << ',' << options.objects << ','
-               << options.data_records << ',' << options.partitions << ','
-               << sample << ',' << value.nanoseconds << ','
-               << value.allocations << ',' << value.operations << '\n';
+        output << "4," << LUX_BENCHMARK_GIT_COMMIT << ','
+               << compilerName() << ',' << compilerVersion() << ','
+               << LUX_BENCHMARK_BUILD_TYPE << ',' << platformName() << ','
+               << architectureName() << ',' << kind << ",world," << metric
+               << ',' << size << ',' << sample << ','
+               << value.nanoseconds << ',' << value.allocations << ','
+               << value.retained_bytes << ',' << value.operations
+               << ",0,0,0,0,0,0,0,0,0,0,0,0,0\n";
+    }
+
+    void writeSeries(
+        std::ostream& output,
+        std::string_view metric,
+        std::size_t size,
+        const Options& options,
+        const std::vector<Measurement>& values
+    )
+    {
+        for (std::size_t index{}; index < values.size(); ++index)
+        {
+            writeRow(
+                output,
+                "raw",
+                metric,
+                size,
+                options,
+                std::to_string(index),
+                values[index]
+            );
+        }
+        std::vector<std::uint64_t> times;
+        std::vector<std::size_t> allocations;
+        times.reserve(values.size());
+        allocations.reserve(values.size());
+        for (const auto& value : values)
+        {
+            times.push_back(value.nanoseconds);
+            allocations.push_back(value.allocations);
+        }
+        std::sort(times.begin(), times.end());
+        std::sort(allocations.begin(), allocations.end());
+        Measurement median = values.back();
+        median.nanoseconds = times[times.size() / 2U];
+        median.allocations = allocations[allocations.size() / 2U];
+        writeRow(
+            output,
+            "summary",
+            metric,
+            size,
+            options,
+            "median",
+            median
+        );
     }
 }
 
@@ -205,24 +325,43 @@ int main(int argc, char** argv)
     std::ofstream output(options->output, std::ios::trunc);
     if (!output)
         return 3;
-    output << "metric,objects,data_records,partitions,sample,nanoseconds,"
-              "allocations,operations\n";
+    output << "benchmark_schema_version,git_commit,compiler,"
+              "compiler_version,build_type,platform,architecture,kind,"
+              "group,metric,size,sample,nanoseconds,allocations,"
+              "retained_bytes,dispatch_calls,storage_lookups,"
+              "visited_nodes,history_losses,lane_binds,"
+              "journal_stream_binds,record_appends,per_record_lookups,"
+              "membership_entry_capacity_bytes,"
+              "membership_node_capacity_bytes,active_tracked_entities,"
+              "active_memberships,duplicate_comparisons\n";
 
     const auto schema_values = schemas(options->data_records);
     constexpr std::size_t warmups = 1U;
     constexpr std::size_t samples = 3U;
+    std::vector<Measurement> build_samples;
     for (std::size_t sample{}; sample < warmups + samples; ++sample)
     {
         const auto built = measure([&]()
         {
             auto world = makeWorld(options->objects, schema_values);
-            return world.objectCount() + world.dataCount();
+            return OperationResult{
+                world.objectCount() + world.dataCount(),
+                world.retainedBytes()
+            };
         });
         if (sample >= warmups)
-            writeRow(output, "description_build", *options, sample - warmups, built);
+            build_samples.push_back(built);
     }
+    writeSeries(
+        output,
+        "world_description_build",
+        options->objects,
+        *options,
+        build_samples
+    );
 
     const auto world = makeWorld(options->objects, schema_values);
+    std::vector<Measurement> lookup_samples;
     for (std::size_t sample{}; sample < warmups + samples; ++sample)
     {
         const auto lookup = measure([&]()
@@ -235,15 +374,23 @@ int main(int argc, char** argv)
                 for (const auto& schema : schema_values)
                     found += static_cast<bool>(object.findData(schema)) ? 1U : 0U;
             }
-            return found;
+            return OperationResult{found, world.retainedBytes()};
         });
         if (sample >= warmups)
-            writeRow(output, "binary_lookup", *options, sample - warmups, lookup);
+            lookup_samples.push_back(lookup);
     }
+    writeSeries(
+        output,
+        "world_binary_lookup",
+        options->objects,
+        *options,
+        lookup_samples
+    );
 
     std::vector<std::vector<WorldObjectId>> groups(options->partitions);
     for (std::size_t index{}; index < options->objects; ++index)
         groups[index % groups.size()].push_back(objectId(index));
+    std::vector<Measurement> freeze_samples;
     for (std::size_t sample{}; sample < warmups + samples; ++sample)
     {
         const auto frozen = measure([&]()
@@ -258,13 +405,24 @@ int main(int argc, char** argv)
             auto layout = std::move(builder).build();
             if (!layout)
                 std::abort();
-            return layout->partitionCount() + options->objects;
+            return OperationResult{
+                layout->partitionCount() + options->objects,
+                0U
+            };
         });
         if (sample >= warmups)
-            writeRow(output, "layout_freeze", *options, sample - warmups, frozen);
+            freeze_samples.push_back(frozen);
     }
+    writeSeries(
+        output,
+        "world_partition_freeze",
+        options->partitions,
+        *options,
+        freeze_samples
+    );
 
     std::vector<std::uint8_t> quadrants(options->objects);
+    std::vector<Measurement> rebuild_samples;
     for (std::size_t sample{}; sample < warmups + samples; ++sample)
     {
         const auto rebuilt = measure([&]()
@@ -278,23 +436,38 @@ int main(int argc, char** argv)
                     (x >= 128U ? 1U : 0U) | (y >= 128U ? 2U : 0U)
                 );
             }
-            return quadrants.size();
+            return OperationResult{quadrants.size(), quadrants.capacity()};
         });
         if (sample >= warmups)
-            writeRow(output, "quadtree_full_rebuild", *options, sample - warmups, rebuilt);
+            rebuild_samples.push_back(rebuilt);
     }
+    writeSeries(
+        output,
+        "world_quadtree_full_rebuild",
+        options->objects,
+        *options,
+        rebuild_samples
+    );
     const std::size_t edit_count = std::max<std::size_t>(1U, options->objects / 100U);
+    std::vector<Measurement> incremental_samples;
     for (std::size_t sample{}; sample < warmups + samples; ++sample)
     {
         const auto incremental = measure([&]()
         {
             for (std::size_t index{}; index < edit_count; ++index)
                 quadrants[index] = static_cast<std::uint8_t>((quadrants[index] + 1U) & 3U);
-            return edit_count;
+            return OperationResult{edit_count, quadrants.capacity()};
         });
         if (sample >= warmups)
-            writeRow(output, "quadtree_incremental_edit", *options, sample - warmups, incremental);
+            incremental_samples.push_back(incremental);
     }
+    writeSeries(
+        output,
+        "world_quadtree_incremental_edit",
+        options->objects,
+        *options,
+        incremental_samples
+    );
     return output ? 0 : 4;
 }
 

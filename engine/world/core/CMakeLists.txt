@@ -69,6 +69,22 @@ add_test(NAME world_contract_test COMMAND world_contract_test)
 
 add_executable(world_diagnostic_benchmark test/world_diagnostic_benchmark.cpp)
 target_link_libraries(world_diagnostic_benchmark PRIVATE lux::engine::world)
+execute_process(
+    COMMAND git rev-parse HEAD
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    OUTPUT_VARIABLE LUX_WORLD_BENCHMARK_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(LUX_WORLD_BENCHMARK_GIT_COMMIT STREQUAL "")
+    set(LUX_WORLD_BENCHMARK_GIT_COMMIT "unknown")
+endif()
+target_compile_definitions(
+    world_diagnostic_benchmark
+    PRIVATE
+        LUX_BENCHMARK_GIT_COMMIT="${LUX_WORLD_BENCHMARK_GIT_COMMIT}"
+        LUX_BENCHMARK_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
+)
 lux_classify_target(
     TARGET  world_diagnostic_benchmark
     LAYER   WORLD

@@ -267,7 +267,7 @@ namespace
                << ',' << size << ',' << sample << ','
                << value.nanoseconds << ',' << value.allocations << ','
                << value.retained_bytes << ',' << value.operations
-               << ",0,0,0,0,0,0,0,0,0,0,0,0,0\n";
+               << ",0,0,0,0,0,0,0,0,0,0,0,0\n";
     }
 
     void writeSeries(

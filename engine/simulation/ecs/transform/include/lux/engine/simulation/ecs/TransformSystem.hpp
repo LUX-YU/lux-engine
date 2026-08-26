@@ -1,13 +1,19 @@
 #pragma once
 
+#include <lux/engine/simulation/SystemAccessSpec.hpp>
+#include <lux/engine/simulation/SystemDescription.hpp>
+#include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/HierarchyIndex.hpp>
-#include <lux/engine/simulation/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
-#include <lux/engine/simulation/ecs/EcsTaskResources.hpp>
 #include <lux/engine/simulation/ecs/transform/visibility.h>
 
+#include <lux/cxx/compile_time/expected.hpp>
+
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <string_view>
 
 namespace lux::simulation::ecs
 {
@@ -16,107 +22,85 @@ namespace lux::simulation::ecs
         struct TransformSystemTestAccess;
     }
 
+    enum class ETransformUpdateError : std::uint8_t
+    {
+        INVALID_HIERARCHY,
+        CAPACITY_EXCEEDED,
+        COMMAND_RECORDING_FAILED,
+        ALLOCATION_FAILURE,
+    };
+
     class LUX_ENGINE_SIMULATION_ECS_TRANSFORM_PUBLIC Transform2DSystem final
     {
       public:
+        inline static constexpr std::array Capabilities{
+            std::string_view{"transform.2d"}};
         inline static constexpr auto Access = makeSystemAccessSpec<
-            Read<Transform2D>,
-            Write<WorldTransform2D>,
+            ComponentRead<Transform2D>,
+            ComponentWrite<WorldTransform2D>,
             ExternalRead<HierarchyIndex>,
             ExternalRead<HierarchyDeltaBatch>>();
-        inline static constexpr auto TaskAccess = access<
-            Read<Transform2D>,
-            Write<WorldTransform2D>,
-            ExternalRead<HierarchyIndex>,
-            ExternalRead<HierarchyDeltaBatch>>;
-        inline static constexpr auto EcsChangesAccess = ecsChangesRead();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.transform2d",
+            .version = 1,
+            .capabilities = Capabilities};
 
         Transform2DSystem(
+            Registry& registry,
             HierarchyIndex& hierarchy,
             const HierarchyDeltaBatch& hierarchy_deltas
         );
-        ~Transform2DSystem();
+        ~Transform2DSystem() noexcept;
 
-        void update(
-            const EcsState& state,
-            EcsChangeJournal& journal,
-            TaskWriter<WorldTransform2D>& writer,
-            EcsCommands commands
+        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> prepare(
+            std::size_t entity_capacity
         ) noexcept;
-        void invokeTask(
-            EcsState& state,
-            EcsChangeJournal& journal,
-            EcsChangeBatch& changes,
-            EcsCommands commands
-        ) noexcept
-        {
-            auto writer = taskWriter<WorldTransform2D>(
-                state,
-                changes,
-                TaskAccess
-            );
-            update(state, journal, writer, commands);
-        }
+        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> update(
+            EcsCommandWriter& commands
+        ) noexcept;
 
       private:
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] std::size_t retainedDenseBytes() const noexcept;
-
         struct Impl;
         std::unique_ptr<Impl> impl_;
-
         friend struct detail::TransformSystemTestAccess;
     };
 
     class LUX_ENGINE_SIMULATION_ECS_TRANSFORM_PUBLIC Transform3DSystem final
     {
       public:
+        inline static constexpr std::array Capabilities{
+            std::string_view{"transform.3d"}};
         inline static constexpr auto Access = makeSystemAccessSpec<
-            Read<Transform3D>,
-            Write<WorldTransform3D>,
+            ComponentRead<Transform3D>,
+            ComponentWrite<WorldTransform3D>,
             ExternalRead<HierarchyIndex>,
             ExternalRead<HierarchyDeltaBatch>>();
-        inline static constexpr auto TaskAccess = access<
-            Read<Transform3D>,
-            Write<WorldTransform3D>,
-            ExternalRead<HierarchyIndex>,
-            ExternalRead<HierarchyDeltaBatch>>;
-        inline static constexpr auto EcsChangesAccess = ecsChangesRead();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.transform3d",
+            .version = 1,
+            .capabilities = Capabilities};
 
         Transform3DSystem(
+            Registry& registry,
             HierarchyIndex& hierarchy,
             const HierarchyDeltaBatch& hierarchy_deltas
         );
-        ~Transform3DSystem();
+        ~Transform3DSystem() noexcept;
 
-        void update(
-            const EcsState& state,
-            EcsChangeJournal& journal,
-            TaskWriter<WorldTransform3D>& writer,
-            EcsCommands commands
+        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> prepare(
+            std::size_t entity_capacity
         ) noexcept;
-        void invokeTask(
-            EcsState& state,
-            EcsChangeJournal& journal,
-            EcsChangeBatch& changes,
-            EcsCommands commands
-        ) noexcept
-        {
-            auto writer = taskWriter<WorldTransform3D>(
-                state,
-                changes,
-                TaskAccess
-            );
-            update(state, journal, writer, commands);
-        }
+        [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> update(
+            EcsCommandWriter& commands
+        ) noexcept;
 
       private:
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] std::size_t retainedDenseBytes() const noexcept;
-
         struct Impl;
         std::unique_ptr<Impl> impl_;
-
         friend struct detail::TransformSystemTestAccess;
     };
-} // namespace lux::simulation::ecs
+}

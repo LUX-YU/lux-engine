@@ -23,7 +23,6 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 
@@ -36,21 +35,18 @@ target_link_libraries(
     PUBLIC
         lux::engine::simulation::ecs::core
         lux::engine::simulation::system
-        lux::engine::simulation::ecs::task
         lux::engine::simulation::ecs::schema
         lux::engine::simulation::ecs::hierarchy
         lux::engine::simulation::ecs::snapshot
         lux::engine::core::math
         lux::engine::core::serialization
 )
-component_add_internal_dependencies(
-    transform core schema hierarchy snapshot ecs_task
-)
+component_add_internal_dependencies(transform core schema hierarchy snapshot)
 component_add_transitive_commands(
     transform
     "find_package(Eigen3 CONFIG REQUIRED)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math serialization)"
-    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core schema hierarchy snapshot ecs_task)"
+    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core schema hierarchy snapshot)"
     "find_package(lux-engine-simulation-system REQUIRED COMPONENTS system)"
 )
 
@@ -77,15 +73,13 @@ target_include_directories(
     ecs_transform_test
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../task/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/../hierarchy/sinclude
 )
 target_link_libraries(
     ecs_transform_test
     PRIVATE
         lux::engine::simulation::ecs::transform
         lux::engine::simulation::ecs::snapshot
-        lux::engine::simulation::core
 )
 if(MSVC)
     target_compile_options(ecs_transform_test PRIVATE /UNDEBUG)

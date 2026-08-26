@@ -12,7 +12,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/HierarchyIndex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/HierarchySchema.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/HierarchySystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/HierarchyMaintenance.cpp
 )
 
 component_include_directories(
@@ -20,6 +20,8 @@ component_include_directories(
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
+    BUILD_TIME_SHARED
+        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
     INSTALL_TIME include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
@@ -31,18 +33,13 @@ target_link_libraries(
     hierarchy
     PUBLIC
         lux::engine::simulation::ecs::core
-        lux::engine::simulation::system
-        lux::engine::simulation::ecs::task
         lux::engine::simulation::ecs::schema
         lux::engine::simulation::ecs::snapshot
 )
-component_add_internal_dependencies(
-    hierarchy core schema snapshot ecs_task
-)
+component_add_internal_dependencies(hierarchy core schema snapshot)
 component_add_transitive_commands(
     hierarchy
-    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core schema snapshot ecs_task)"
-    "find_package(lux-engine-simulation-system REQUIRED COMPONENTS system)"
+    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core schema snapshot)"
 )
 
 include_component_cmake_scripts(meta)
@@ -68,14 +65,13 @@ target_link_libraries(
     ecs_hierarchy_test
     PRIVATE
         lux::engine::simulation::ecs::hierarchy
-        lux::engine::simulation::core
 )
 target_include_directories(
     ecs_hierarchy_test
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/../task/pinclude
 )
 if(MSVC)
     target_compile_options(ecs_hierarchy_test PRIVATE /UNDEBUG)

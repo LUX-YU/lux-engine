@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/ecs/Parent.hpp>
+#include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/ecs/hierarchy/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -14,11 +15,10 @@
 
 namespace lux::simulation::ecs
 {
-    class EcsMutation;
-    class SimulationEcsMutation;
-
     namespace detail
     {
+        struct HierarchyMutation;
+        class HierarchyMaintenance;
         struct HierarchyIndexTestAccess;
     }
 
@@ -32,38 +32,6 @@ namespace lux::simulation::ecs
         NOT_SYNCHRONIZED,
         CAPACITY_EXCEEDED,
         ALLOCATION_FAILURE,
-    };
-
-    enum class EHierarchyMutationKind : std::uint8_t
-    {
-        SET_PARENT,
-        REMOVE_PARENT,
-        ENTITY_DESTROYED,
-    };
-
-    struct HierarchyMutation final
-    {
-        EHierarchyMutationKind kind{EHierarchyMutationKind::REMOVE_PARENT};
-        Entity entity{NullEntity};
-        Entity parent{NullEntity};
-    };
-
-    class LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC
-        HierarchyMutationBatch final
-    {
-      public:
-        [[nodiscard]] lux::cxx::expected<void, EHierarchyError>
-        prepare(std::size_t capacity) noexcept;
-        void reset() noexcept;
-        [[nodiscard]] bool append(HierarchyMutation mutation) noexcept;
-        [[nodiscard]] bool exact() const noexcept;
-        [[nodiscard]] std::span<const HierarchyMutation> values() const noexcept;
-        [[nodiscard]] std::size_t capacity() const noexcept;
-
-      private:
-        std::vector<HierarchyMutation> values_;
-        std::size_t capacity_{};
-        bool exact_{true};
     };
 
     enum class EHierarchyDeltaKind : std::uint8_t
@@ -100,7 +68,7 @@ namespace lux::simulation::ecs
         bool exact_{true};
 
         friend class HierarchyIndex;
-        friend class HierarchySystem;
+        friend class detail::HierarchyMaintenance;
     };
 
     class HierarchyIndex;
@@ -124,10 +92,8 @@ namespace lux::simulation::ecs
 
           private:
             Iterator(const HierarchyIndex* hierarchy, Entity entity) noexcept;
-
             const HierarchyIndex* hierarchy_{};
             Entity entity_{NullEntity};
-
             friend class HierarchyChildren;
         };
 
@@ -140,33 +106,20 @@ namespace lux::simulation::ecs
             const HierarchyIndex& hierarchy,
             Entity parent
         ) noexcept;
-
         const HierarchyIndex* hierarchy_{};
         Entity parent_{NullEntity};
-
         friend class HierarchyIndex;
     };
 
-    /** Neutral topology index. It owns neither ECS state nor change history. */
     class LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC HierarchyIndex final
     {
       public:
         HierarchyIndex();
         ~HierarchyIndex() noexcept;
-
         HierarchyIndex(const HierarchyIndex&) = delete;
         HierarchyIndex& operator=(const HierarchyIndex&) = delete;
         HierarchyIndex(HierarchyIndex&&) = delete;
         HierarchyIndex& operator=(HierarchyIndex&&) = delete;
-
-        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> apply(
-            std::span<const HierarchyMutation> mutations,
-            HierarchyDeltaBatch& deltas
-        ) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> rebuild(
-            std::span<const HierarchyMutation> canonical_relations,
-            HierarchyDeltaBatch& deltas
-        ) noexcept;
 
         [[nodiscard]] bool synchronized() const noexcept;
         [[nodiscard]] EHierarchyError lastError() const noexcept;
@@ -175,6 +128,17 @@ namespace lux::simulation::ecs
         [[nodiscard]] std::size_t size() const noexcept;
 
       private:
+        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> prepare(
+            std::size_t relation_capacity
+        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> apply(
+            std::span<const detail::HierarchyMutation> mutations,
+            HierarchyDeltaBatch& deltas
+        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> rebuild(
+            std::span<const detail::HierarchyMutation> canonical_relations,
+            HierarchyDeltaBatch& deltas
+        ) noexcept;
         void invalidate(EHierarchyError error) noexcept;
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] Entity firstChild(Entity parent) const noexcept;
@@ -185,33 +149,20 @@ namespace lux::simulation::ecs
 
         friend class HierarchyChildren;
         friend class HierarchyChildren::Iterator;
-        friend class HierarchySystem;
+        friend class detail::HierarchyMaintenance;
         friend struct detail::HierarchyIndexTestAccess;
     };
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC
     lux::cxx::expected<void, EHierarchyError> reparent(
-        EcsMutation& mutation,
-        Entity child,
-        Entity parent
-    ) noexcept;
-
-    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC
-    lux::cxx::expected<void, EHierarchyError> reparent(
-        SimulationEcsMutation& mutation,
+        Registry& registry,
         Entity child,
         Entity parent
     ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC
     lux::cxx::expected<void, EHierarchyError> detach(
-        EcsMutation& mutation,
+        Registry& registry,
         Entity child
     ) noexcept;
-
-    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC
-    lux::cxx::expected<void, EHierarchyError> destroySubtree(
-        EcsMutation& mutation,
-        Entity root
-    ) noexcept;
-} // namespace lux::simulation::ecs
+}

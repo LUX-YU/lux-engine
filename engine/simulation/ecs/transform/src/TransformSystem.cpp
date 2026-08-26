@@ -1,65 +1,15 @@
 #include <lux/engine/simulation/ecs/TransformSystem.hpp>
 
-#include <lux/engine/simulation/ecs/Transform.hpp>
-#include <lux/engine/simulation/ecs/core/detail/EcsStateAccess.hpp>
-
-#include <entt/entity/entity.hpp>
+#include <entt/signal/sigh.hpp>
 
 #include <algorithm>
-#include <span>
+#include <new>
 #include <vector>
 
 namespace lux::simulation::ecs
 {
     namespace
     {
-        template <class Derived>
-        struct RemoveDerived final
-        {
-            Entity entity{NullEntity};
-
-            void apply(SimulationEcsMutation& edit) noexcept
-            {
-                const EcsState& state = edit.state();
-                if (state.valid(entity) &&
-                    state.find<Derived>(entity) != nullptr)
-                {
-                    edit.erase<Derived>(entity);
-                }
-            }
-        };
-
-        template <class Derived>
-        struct SetDerived final
-        {
-            Entity entity{NullEntity};
-            Derived value;
-
-            void apply(SimulationEcsMutation& edit) noexcept
-            {
-                const EcsState& state = edit.state();
-                if (!state.valid(entity))
-                    return;
-                if (state.find<Derived>(entity) == nullptr)
-                    edit.emplace<Derived>(entity, value);
-                else
-                {
-                    edit.update<Derived>(
-                        entity,
-                        [this](Derived& target) noexcept
-                        {
-                            target = value;
-                        }
-                    );
-                }
-            }
-        };
-
-        [[nodiscard]] std::size_t entityIndex(Entity entity) noexcept
-        {
-            return static_cast<std::size_t>(entt::to_entity(entity));
-        }
-
         [[nodiscard]] Eigen::Affine2f localMatrix(
             const Transform2D& value
         ) noexcept
@@ -91,346 +41,400 @@ namespace lux::simulation::ecs
         };
 
         template <class Local, class Derived, class Matrix>
-        struct TransformState
+        class TransformState
         {
+          public:
             TransformState(
-                HierarchyIndex& value,
-                const HierarchyDeltaBatch& deltas
-            ) noexcept
-                : hierarchy(std::addressof(value)),
-                  hierarchy_deltas(std::addressof(deltas))
+                Registry& registry,
+                HierarchyIndex& hierarchy,
+                const HierarchyDeltaBatch& hierarchy_deltas
+            )
+                : registry_(std::addressof(registry)),
+                  hierarchy_(std::addressof(hierarchy)),
+                  hierarchy_deltas_(std::addressof(hierarchy_deltas)),
+                  constructed_(registry.on_construct<Local>().template connect<
+                      &TransformState::onLocalChanged>(*this)),
+                  updated_(registry.on_update<Local>().template connect<
+                      &TransformState::onLocalChanged>(*this)),
+                  destroyed_(registry.on_destroy<Local>().template connect<
+                      &TransformState::onLocalDestroyed>(*this))
             {
             }
 
-            void beginStamp()
+            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError>
+            prepare(std::size_t entity_capacity) noexcept
             {
-                ++stamp;
-                if (stamp != 0)
-                    return;
-                std::fill(dirty_stamps.begin(), dirty_stamps.end(), 0U);
-                std::fill(root_stamps.begin(), root_stamps.end(), 0U);
-                std::fill(visited_stamps.begin(), visited_stamps.end(), 0U);
-                stamp = 1U;
-            }
-
-            void ensureStamps(Entity entity)
-            {
-                const std::size_t required = entityIndex(entity) + 1U;
-                if (dirty_stamps.size() >= required)
-                    return;
-                dirty_stamps.resize(required);
-                root_stamps.resize(required);
-                visited_stamps.resize(required);
-                dirty_identities.resize(required, NullEntity);
-                root_identities.resize(required, NullEntity);
-                visited_identities.resize(required, NullEntity);
-            }
-
-            void mark(Entity entity)
-            {
-                ensureStamps(entity);
-                const std::size_t index = entityIndex(entity);
-                if (dirty_stamps[index] == stamp &&
-                    dirty_identities[index] == entity)
-                    return;
-                dirty_stamps[index] = stamp;
-                dirty_identities[index] = entity;
-                dirty_candidates.push_back(entity);
-            }
-
-            [[nodiscard]] bool marked(Entity entity) const noexcept
-            {
-                if (entity == NullEntity)
-                    return false;
-                const std::size_t index = entityIndex(entity);
-                return index < dirty_stamps.size() &&
-                    dirty_stamps[index] == stamp &&
-                    dirty_identities[index] == entity;
-            }
-
-            [[nodiscard]] bool visit(Entity entity)
-            {
-                ensureStamps(entity);
-                const std::size_t index = entityIndex(entity);
-                if (visited_stamps[index] == stamp &&
-                    visited_identities[index] == entity)
-                    return false;
-                visited_stamps[index] = stamp;
-                visited_identities[index] = entity;
-                ++visited_nodes;
-                return true;
-            }
-
-            void queueRemove(
-                const EcsState& state,
-                EcsCommands commands,
-                Entity entity
-            ) noexcept
-            {
-                if (state.find<Derived>(entity) == nullptr)
-                    return;
-                if (commands.push(RemoveDerived<Derived>{entity}) !=
-                    ECommandResult::ACCEPTED)
+                try
                 {
-                    force_resync = true;
-                    ++discarded_commands;
+                    dirty_.clear();
+                    roots_.clear();
+                    ancestors_.clear();
+                    traversal_.clear();
+                    dirty_.reserve(entity_capacity);
+                    roots_.reserve(entity_capacity);
+                    ancestors_.reserve(entity_capacity);
+                    traversal_.reserve(entity_capacity);
+                    capacity_ = entity_capacity;
+                    prepared_ = true;
+                    force_resync_ = true;
+                    overflowed_ = false;
+                    return {};
+                }
+                catch (const std::bad_alloc&)
+                {
+                    return lux::cxx::unexpected(
+                        ETransformUpdateError::ALLOCATION_FAILURE
+                    );
                 }
             }
 
-            void publish(
-                const EcsState& state,
-                TaskWriter<Derived>& writer,
-                EcsCommands commands,
+            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError>
+            update(EcsCommandWriter& commands) noexcept
+            {
+                visited_nodes_ = 0U;
+                if (!prepared_)
+                {
+                    return lux::cxx::unexpected(
+                        ETransformUpdateError::CAPACITY_EXCEEDED
+                    );
+                }
+                if (!hierarchy_->synchronized())
+                {
+                    force_resync_ = true;
+                    return lux::cxx::unexpected(
+                        ETransformUpdateError::INVALID_HIERARCHY
+                    );
+                }
+                if (!commands)
+                {
+                    force_resync_ = true;
+                    return lux::cxx::unexpected(
+                        ETransformUpdateError::COMMAND_RECORDING_FAILED
+                    );
+                }
+
+                const bool rebuild = force_resync_ || overflowed_ ||
+                    !hierarchy_deltas_->exact();
+                force_resync_ = false;
+                overflowed_ = false;
+
+                if (rebuild)
+                {
+                    dirty_.clear();
+                    for (const Entity entity : registry_->view<const Local>())
+                    {
+                        if (!appendDirty(entity))
+                            return capacityFailure();
+                    }
+                    for (const Entity entity : registry_->view<const Derived>())
+                    {
+                        if (!registry_->all_of<Local>(entity) &&
+                            !commands.template remove<Derived>(entity))
+                        {
+                            force_resync_ = true;
+                            return lux::cxx::unexpected(
+                                ETransformUpdateError::COMMAND_RECORDING_FAILED
+                            );
+                        }
+                    }
+                }
+                else
+                {
+                    for (const HierarchyDelta delta :
+                         hierarchy_deltas_->values())
+                    {
+                        if (registry_->valid(delta.entity) &&
+                            !appendDirty(delta.entity))
+                        {
+                            return capacityFailure();
+                        }
+                    }
+                }
+
+                if (dirty_.empty())
+                    return {};
+
+                std::sort(
+                    dirty_.begin(),
+                    dirty_.end(),
+                    [](Entity left, Entity right) noexcept
+                    {
+                        return entityBits(left) < entityBits(right);
+                    }
+                );
+                dirty_.erase(
+                    std::unique(dirty_.begin(), dirty_.end()),
+                    dirty_.end()
+                );
+                collectRoots();
+                for (const Entity root : roots_)
+                {
+                    if (!registry_->valid(root))
+                        continue;
+                    auto traversed = traverse(commands, root);
+                    if (!traversed)
+                    {
+                        force_resync_ = true;
+                        return traversed;
+                    }
+                }
+                dirty_.clear();
+                return {};
+            }
+
+            [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept
+            {
+                return visited_nodes_;
+            }
+
+            [[nodiscard]] std::size_t retainedDenseBytes() const noexcept
+            {
+                return (dirty_.capacity() + roots_.capacity() +
+                        ancestors_.capacity()) * sizeof(Entity) +
+                    traversal_.capacity() * sizeof(TraversalEntry<Matrix>);
+            }
+
+          private:
+            void onLocalChanged(Registry&, Entity entity) noexcept
+            {
+                (void)appendDirty(entity);
+            }
+
+            void onLocalDestroyed(Registry&, Entity entity) noexcept
+            {
+                (void)appendDirty(entity);
+            }
+
+            [[nodiscard]] bool appendDirty(Entity entity) noexcept
+            {
+                if (!prepared_ || dirty_.size() >= capacity_)
+                {
+                    overflowed_ = true;
+                    force_resync_ = true;
+                    return false;
+                }
+                dirty_.push_back(entity);
+                return true;
+            }
+
+            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError>
+            capacityFailure() noexcept
+            {
+                force_resync_ = true;
+                overflowed_ = true;
+                dirty_.clear();
+                return lux::cxx::unexpected(
+                    ETransformUpdateError::CAPACITY_EXCEEDED
+                );
+            }
+
+            [[nodiscard]] bool isDirty(Entity entity) const noexcept
+            {
+                return std::binary_search(
+                    dirty_.begin(),
+                    dirty_.end(),
+                    entity,
+                    [](Entity left, Entity right) noexcept
+                    {
+                        return entityBits(left) < entityBits(right);
+                    }
+                );
+            }
+
+            void collectRoots() noexcept
+            {
+                roots_.clear();
+                for (const Entity candidate : dirty_)
+                {
+                    Entity parent = hierarchy_->parent(candidate);
+                    bool covered{};
+                    while (parent != NullEntity && registry_->valid(parent))
+                    {
+                        if (isDirty(parent))
+                        {
+                            covered = true;
+                            break;
+                        }
+                        parent = hierarchy_->parent(parent);
+                    }
+                    if (!covered)
+                        roots_.push_back(candidate);
+                }
+            }
+
+            [[nodiscard]] lux::cxx::expected<TraversalEntry<Matrix>,
+                                             ETransformUpdateError>
+            rootEntry(Entity root, EcsCommandWriter& commands) noexcept
+            {
+                TraversalEntry<Matrix> result;
+                result.entity = root;
+                Entity current = hierarchy_->parent(root);
+                if (current == NullEntity || !registry_->valid(current) ||
+                    !registry_->all_of<Local>(current))
+                {
+                    return result;
+                }
+
+                if (const auto* derived = registry_->try_get<Derived>(current))
+                {
+                    result.parent_world = derived->value;
+                    result.parent_contributes = true;
+                    return result;
+                }
+
+                ancestors_.clear();
+                while (current != NullEntity && registry_->valid(current) &&
+                       registry_->all_of<Local>(current))
+                {
+                    if (ancestors_.size() >= capacity_)
+                    {
+                        return lux::cxx::unexpected(
+                            ETransformUpdateError::CAPACITY_EXCEEDED
+                        );
+                    }
+                    ancestors_.push_back(current);
+                    const Entity parent = hierarchy_->parent(current);
+                    if (parent == NullEntity || !registry_->valid(parent) ||
+                        !registry_->all_of<Local>(parent))
+                    {
+                        break;
+                    }
+                    if (const auto* derived =
+                            registry_->try_get<Derived>(parent))
+                    {
+                        result.parent_world = derived->value;
+                        result.parent_contributes = true;
+                        break;
+                    }
+                    current = parent;
+                }
+
+                for (auto iterator = ancestors_.rbegin();
+                     iterator != ancestors_.rend(); ++iterator)
+                {
+                    const auto& local = registry_->get<const Local>(*iterator);
+                    const Matrix value = result.parent_contributes
+                        ? result.parent_world * localMatrix(local)
+                        : localMatrix(local);
+                    auto published = publish(commands, *iterator, value);
+                    if (!published)
+                        return lux::cxx::unexpected(published.error());
+                    result.parent_world = value;
+                    result.parent_contributes = true;
+                    ++visited_nodes_;
+                }
+                return result;
+            }
+
+            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError>
+            publish(
+                EcsCommandWriter& commands,
                 Entity entity,
                 const Matrix& value
             ) noexcept
             {
-                if (state.find<Derived>(entity) != nullptr)
+                if (registry_->all_of<Derived>(entity))
                 {
-                    writer.update(
+                    registry_->patch<Derived>(
                         entity,
                         [&value](Derived& target) noexcept
                         {
                             target.value = value;
                         }
                     );
-                    return;
+                    return {};
                 }
-                if (commands.push(
-                        SetDerived<Derived>{entity, Derived{value}}
-                    ) != ECommandResult::ACCEPTED)
+                if (!commands.template emplace<Derived>(
+                        entity,
+                        Derived{value}
+                    ))
                 {
-                    force_resync = true;
-                    ++discarded_commands;
+                    return lux::cxx::unexpected(
+                        ETransformUpdateError::COMMAND_RECORDING_FAILED
+                    );
                 }
+                return {};
             }
 
-            [[nodiscard]] TraversalEntry<Matrix> rootEntry(
-                const EcsState& state,
-                TaskWriter<Derived>& writer,
-                EcsCommands commands,
-                Entity root
-            )
+            [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError>
+            traverse(EcsCommandWriter& commands, Entity root) noexcept
             {
-                TraversalEntry<Matrix> result;
-                result.entity = root;
-                Entity current = hierarchy->parent(root);
-                if (current == NullEntity || !state.valid(current) ||
-                    state.find<Local>(current) == nullptr)
+                traversal_.clear();
+                auto entry = rootEntry(root, commands);
+                if (!entry)
+                    return lux::cxx::unexpected(entry.error());
+                traversal_.push_back(*entry);
+                while (!traversal_.empty())
                 {
-                    return result;
-                }
-
-                ancestors.clear();
-                while (current != NullEntity && state.valid(current) &&
-                       state.find<Local>(current) != nullptr)
-                {
-                    if (const Derived* derived = state.find<Derived>(current);
-                        derived != nullptr)
-                    {
-                        result.parent_world = derived->value;
-                        result.parent_contributes = true;
-                        break;
-                    }
-                    ancestors.push_back(current);
-                    const Entity parent = hierarchy->parent(current);
-                    if (parent == NullEntity || !state.valid(parent) ||
-                        state.find<Local>(parent) == nullptr)
-                    {
-                        current = NullEntity;
-                        break;
-                    }
-                    current = parent;
-                }
-
-                for (auto iterator = ancestors.rbegin();
-                     iterator != ancestors.rend(); ++iterator)
-                {
-                    const Local* local = state.find<Local>(*iterator);
-                    detail::require(local != nullptr);
-                    const Matrix value = result.parent_contributes
-                        ? result.parent_world * localMatrix(*local)
-                        : localMatrix(*local);
-                    publish(state, writer, commands, *iterator, value);
-                    result.parent_world = value;
-                    result.parent_contributes = true;
-                    ++visited_nodes;
-                }
-                return result;
-            }
-
-            void traverse(
-                const EcsState& state,
-                TaskWriter<Derived>& writer,
-                EcsCommands commands,
-                Entity root
-            )
-            {
-                traversal.clear();
-                traversal.push_back(rootEntry(state, writer, commands, root));
-                while (!traversal.empty())
-                {
-                    const TraversalEntry<Matrix> entry = traversal.back();
-                    traversal.pop_back();
-                    if (!state.valid(entry.entity) || !visit(entry.entity))
+                    const auto current = traversal_.back();
+                    traversal_.pop_back();
+                    if (!registry_->valid(current.entity))
                         continue;
 
-                    Matrix child_world = Matrix::Identity();
-                    bool child_contributes{};
-                    if (const Local* local = state.find<Local>(entry.entity);
-                        local != nullptr)
+                    Matrix world = Matrix::Identity();
+                    bool contributes{};
+                    if (const auto* local =
+                            registry_->try_get<const Local>(current.entity))
                     {
-                        child_world = entry.parent_contributes
-                            ? entry.parent_world * localMatrix(*local)
+                        world = current.parent_contributes
+                            ? current.parent_world * localMatrix(*local)
                             : localMatrix(*local);
-                        child_contributes = true;
-                        publish(
-                            state,
-                            writer,
+                        contributes = true;
+                        auto published = publish(
                             commands,
-                            entry.entity,
-                            child_world
+                            current.entity,
+                            world
+                        );
+                        if (!published)
+                            return published;
+                    }
+                    else if (registry_->all_of<Derived>(current.entity) &&
+                             !commands.template remove<Derived>(
+                                 current.entity
+                             ))
+                    {
+                        return lux::cxx::unexpected(
+                            ETransformUpdateError::COMMAND_RECORDING_FAILED
                         );
                     }
-                    else
-                        queueRemove(state, commands, entry.entity);
+                    ++visited_nodes_;
 
-                    for (const Entity child :
-                         hierarchy->children(entry.entity))
+                    for (const Entity child : hierarchy_->children(
+                             current.entity
+                         ))
                     {
-                        traversal.push_back(TraversalEntry<Matrix>{
+                        if (traversal_.size() >= capacity_)
+                        {
+                            return lux::cxx::unexpected(
+                                ETransformUpdateError::CAPACITY_EXCEEDED
+                            );
+                        }
+                        traversal_.push_back(TraversalEntry<Matrix>{
                             child,
-                            child_world,
-                            child_contributes});
+                            world,
+                            contributes});
                     }
                 }
+                return {};
             }
 
-            void collectRoots()
-            {
-                roots.clear();
-                for (const Entity candidate : dirty_candidates)
-                {
-                    if (marked(hierarchy->parent(candidate)))
-                        continue;
-                    ensureStamps(candidate);
-                    const std::size_t index = entityIndex(candidate);
-                    if (root_stamps[index] == stamp &&
-                        root_identities[index] == candidate)
-                        continue;
-                    root_stamps[index] = stamp;
-                    root_identities[index] = candidate;
-                    roots.push_back(candidate);
-                }
-            }
-
-            void update(
-                const EcsState& state,
-                EcsChangeJournal& journal,
-                TaskWriter<Derived>& writer,
-                EcsCommands commands
-            ) noexcept
-            {
-                visited_nodes = 0U;
-                auto local_changes = componentChanges(journal, local_cursor);
-                if (!hierarchy->synchronized())
-                {
-                    force_resync = true;
-                    ++invalid_hierarchy;
-                    return;
-                }
-
-                const bool rebuild = force_resync ||
-                    local_changes.status() ==
-                        EChangeReadStatus::RESYNC_REQUIRED ||
-                    !hierarchy_deltas->exact();
-                if (!rebuild && local_changes.empty() &&
-                    hierarchy_deltas->values().empty())
-                {
-                    return;
-                }
-
-                try
-                {
-                    force_resync = false;
-                    beginStamp();
-                    dirty_candidates.clear();
-                    roots.clear();
-                    if (rebuild)
-                    {
-                        for (auto [entity, local] :
-                             state.query<Read<Local>>())
-                        {
-                            (void)local;
-                            mark(entity);
-                        }
-                        for (auto [entity, derived] :
-                             state.query<Read<Derived>>())
-                        {
-                            (void)derived;
-                            if (state.find<Local>(entity) == nullptr)
-                                queueRemove(state, commands, entity);
-                        }
-                    }
-                    else
-                    {
-                        for (const ComponentChange change : local_changes)
-                        {
-                            if (state.valid(change.entity))
-                                mark(change.entity);
-                        }
-                        for (const HierarchyDelta change :
-                             hierarchy_deltas->values())
-                        {
-                            if (state.valid(change.entity))
-                                mark(change.entity);
-                        }
-                    }
-
-                    collectRoots();
-                    for (const Entity root : roots)
-                    {
-                        if (state.valid(root))
-                            traverse(state, writer, commands, root);
-                    }
-                }
-                catch (...)
-                {
-                    force_resync = true;
-                    ++allocation_failures;
-                }
-            }
-
-            [[nodiscard]] std::size_t retainedDenseBytes() const noexcept
-            {
-                return (dirty_stamps.capacity() + root_stamps.capacity() +
-                        visited_stamps.capacity()) * sizeof(std::uint32_t) +
-                    (dirty_identities.capacity() + root_identities.capacity() +
-                     visited_identities.capacity()) * sizeof(Entity);
-            }
-
-            HierarchyIndex* hierarchy{};
-            const HierarchyDeltaBatch* hierarchy_deltas{};
-            ChangeCursor<Local> local_cursor;
-            std::vector<std::uint32_t> dirty_stamps;
-            std::vector<std::uint32_t> root_stamps;
-            std::vector<std::uint32_t> visited_stamps;
-            std::vector<Entity> dirty_identities;
-            std::vector<Entity> root_identities;
-            std::vector<Entity> visited_identities;
-            std::vector<Entity> dirty_candidates;
-            std::vector<Entity> roots;
-            std::vector<Entity> ancestors;
-            std::vector<TraversalEntry<Matrix>> traversal;
-            std::uint32_t stamp{};
-            std::size_t visited_nodes{};
-            std::size_t discarded_commands{};
-            std::size_t allocation_failures{};
-            std::size_t invalid_hierarchy{};
-            bool force_resync{true};
+            Registry* registry_{};
+            HierarchyIndex* hierarchy_{};
+            const HierarchyDeltaBatch* hierarchy_deltas_{};
+            std::vector<Entity> dirty_;
+            std::vector<Entity> roots_;
+            std::vector<Entity> ancestors_;
+            std::vector<TraversalEntry<Matrix>> traversal_;
+            std::size_t capacity_{};
+            std::size_t visited_nodes_{};
+            bool prepared_{};
+            bool force_resync_{true};
+            bool overflowed_{};
+            entt::scoped_connection constructed_;
+            entt::scoped_connection updated_;
+            entt::scoped_connection destroyed_;
         };
-
-    } // namespace
+    }
 
     struct Transform2DSystem::Impl final
         : TransformState<Transform2D, WorldTransform2D, Eigen::Affine2f>
@@ -445,28 +449,37 @@ namespace lux::simulation::ecs
     };
 
     Transform2DSystem::Transform2DSystem(
+        Registry& registry,
         HierarchyIndex& hierarchy,
         const HierarchyDeltaBatch& hierarchy_deltas
     )
-        : impl_(std::make_unique<Impl>(hierarchy, hierarchy_deltas))
+        : impl_(std::make_unique<Impl>(
+              registry,
+              hierarchy,
+              hierarchy_deltas
+          ))
     {
     }
 
-    Transform2DSystem::~Transform2DSystem() = default;
+    Transform2DSystem::~Transform2DSystem() noexcept = default;
 
-    void Transform2DSystem::update(
-        const EcsState& state,
-        EcsChangeJournal& journal,
-        TaskWriter<WorldTransform2D>& writer,
-        EcsCommands commands
+    lux::cxx::expected<void, ETransformUpdateError> Transform2DSystem::prepare(
+        std::size_t entity_capacity
     ) noexcept
     {
-        impl_->update(state, journal, writer, commands);
+        return impl_->prepare(entity_capacity);
+    }
+
+    lux::cxx::expected<void, ETransformUpdateError> Transform2DSystem::update(
+        EcsCommandWriter& commands
+    ) noexcept
+    {
+        return impl_->update(commands);
     }
 
     std::size_t Transform2DSystem::visitedNodesLastUpdate() const noexcept
     {
-        return impl_->visited_nodes;
+        return impl_->visitedNodesLastUpdate();
     }
 
     std::size_t Transform2DSystem::retainedDenseBytes() const noexcept
@@ -475,32 +488,41 @@ namespace lux::simulation::ecs
     }
 
     Transform3DSystem::Transform3DSystem(
+        Registry& registry,
         HierarchyIndex& hierarchy,
         const HierarchyDeltaBatch& hierarchy_deltas
     )
-        : impl_(std::make_unique<Impl>(hierarchy, hierarchy_deltas))
+        : impl_(std::make_unique<Impl>(
+              registry,
+              hierarchy,
+              hierarchy_deltas
+          ))
     {
     }
 
-    Transform3DSystem::~Transform3DSystem() = default;
+    Transform3DSystem::~Transform3DSystem() noexcept = default;
 
-    void Transform3DSystem::update(
-        const EcsState& state,
-        EcsChangeJournal& journal,
-        TaskWriter<WorldTransform3D>& writer,
-        EcsCommands commands
+    lux::cxx::expected<void, ETransformUpdateError> Transform3DSystem::prepare(
+        std::size_t entity_capacity
     ) noexcept
     {
-        impl_->update(state, journal, writer, commands);
+        return impl_->prepare(entity_capacity);
+    }
+
+    lux::cxx::expected<void, ETransformUpdateError> Transform3DSystem::update(
+        EcsCommandWriter& commands
+    ) noexcept
+    {
+        return impl_->update(commands);
     }
 
     std::size_t Transform3DSystem::visitedNodesLastUpdate() const noexcept
     {
-        return impl_->visited_nodes;
+        return impl_->visitedNodesLastUpdate();
     }
 
     std::size_t Transform3DSystem::retainedDenseBytes() const noexcept
     {
         return impl_->retainedDenseBytes();
     }
-} // namespace lux::simulation::ecs
+}

@@ -37,7 +37,7 @@ target_include_directories(
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core/pinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/hierarchy/pinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/task/pinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/hierarchy/sinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/transform/pinclude
 )
 target_compile_definitions(
@@ -58,7 +58,6 @@ target_link_libraries(
         lux::engine::simulation::ecs::snapshot
         lux::engine::simulation::ecs::hierarchy
         lux::engine::simulation::ecs::transform
-        lux::engine::simulation::core
         lux::engine::core::object
 )
 lux_classify_target(

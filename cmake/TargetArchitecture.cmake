@@ -1,7 +1,7 @@
 include_guard(GLOBAL)
 
 set(_LUX_ARCH_LAYERS
-    PLATFORM CORE RESOURCE FUNCTION ECS
+    PLATFORM CORE RESOURCE FUNCTION WORLD ECS
     RUNTIME AUTHORING TOOLCHAIN EDITOR HOST
 )
 set(_LUX_ARCH_PRODUCTS
@@ -146,20 +146,24 @@ function(_lux_arch_dependency_allowed consumer_layer dependency_layer output)
         if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION)$")
             set(allowed TRUE)
         endif()
+    elseif(consumer_layer STREQUAL "WORLD")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|WORLD)$")
+            set(allowed TRUE)
+        endif()
     elseif(consumer_layer STREQUAL "ECS")
         if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|ECS)$")
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "RUNTIME")
-        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|ECS|RUNTIME)$")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|ECS|RUNTIME)$")
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "AUTHORING")
-        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|AUTHORING)$")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|AUTHORING)$")
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "TOOLCHAIN")
-        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|ECS|RUNTIME|AUTHORING|TOOLCHAIN)$")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|ECS|RUNTIME|AUTHORING|TOOLCHAIN)$")
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "EDITOR")

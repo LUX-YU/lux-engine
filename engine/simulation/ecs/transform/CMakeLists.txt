@@ -85,6 +85,7 @@ target_link_libraries(
     PRIVATE
         lux::engine::simulation::ecs::transform
         lux::engine::simulation::ecs::snapshot
+        lux::engine::simulation::core
 )
 if(MSVC)
     target_compile_options(ecs_transform_test PRIVATE /UNDEBUG)

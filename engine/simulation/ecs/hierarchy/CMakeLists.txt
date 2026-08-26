@@ -64,7 +64,12 @@ lux_classify_target(
 )
 
 add_executable(ecs_hierarchy_test test/hierarchy_test.cpp)
-target_link_libraries(ecs_hierarchy_test PRIVATE lux::engine::simulation::ecs::hierarchy)
+target_link_libraries(
+    ecs_hierarchy_test
+    PRIVATE
+        lux::engine::simulation::ecs::hierarchy
+        lux::engine::simulation::core
+)
 target_include_directories(
     ecs_hierarchy_test
     PRIVATE

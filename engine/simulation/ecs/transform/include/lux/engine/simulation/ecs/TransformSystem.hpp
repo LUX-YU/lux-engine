@@ -22,14 +22,19 @@ namespace lux::simulation::ecs
         inline static constexpr auto Access = makeSystemAccessSpec<
             Read<Transform2D>,
             Write<WorldTransform2D>,
-            ExternalRead<HierarchyIndex>>();
+            ExternalRead<HierarchyIndex>,
+            ExternalRead<HierarchyDeltaBatch>>();
         inline static constexpr auto TaskAccess = access<
             Read<Transform2D>,
             Write<WorldTransform2D>,
-            ExternalRead<HierarchyIndex>>;
+            ExternalRead<HierarchyIndex>,
+            ExternalRead<HierarchyDeltaBatch>>;
         inline static constexpr auto EcsChangesAccess = ecsChangesRead();
 
-        explicit Transform2DSystem(HierarchyIndex& hierarchy);
+        Transform2DSystem(
+            HierarchyIndex& hierarchy,
+            const HierarchyDeltaBatch& hierarchy_deltas
+        );
         ~Transform2DSystem();
 
         void update(
@@ -69,14 +74,19 @@ namespace lux::simulation::ecs
         inline static constexpr auto Access = makeSystemAccessSpec<
             Read<Transform3D>,
             Write<WorldTransform3D>,
-            ExternalRead<HierarchyIndex>>();
+            ExternalRead<HierarchyIndex>,
+            ExternalRead<HierarchyDeltaBatch>>();
         inline static constexpr auto TaskAccess = access<
             Read<Transform3D>,
             Write<WorldTransform3D>,
-            ExternalRead<HierarchyIndex>>;
+            ExternalRead<HierarchyIndex>,
+            ExternalRead<HierarchyDeltaBatch>>;
         inline static constexpr auto EcsChangesAccess = ecsChangesRead();
 
-        explicit Transform3DSystem(HierarchyIndex& hierarchy);
+        Transform3DSystem(
+            HierarchyIndex& hierarchy,
+            const HierarchyDeltaBatch& hierarchy_deltas
+        );
         ~Transform3DSystem();
 
         void update(

@@ -58,6 +58,7 @@ target_link_libraries(
         lux::engine::simulation::ecs::snapshot
         lux::engine::simulation::ecs::hierarchy
         lux::engine::simulation::ecs::transform
+        lux::engine::simulation::core
         lux::engine::core::object
 )
 lux_classify_target(

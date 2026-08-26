@@ -13,31 +13,45 @@ namespace lux::simulation::ecs
       public:
         inline static constexpr auto Access = makeSystemAccessSpec<
             Read<Parent>,
-            ExternalWrite<HierarchyIndex>>();
+            ExternalWrite<HierarchyIndex>,
+            ExternalWrite<HierarchyMutationBatch>,
+            ExternalWrite<HierarchyDeltaBatch>>();
         inline static constexpr auto TaskAccess = access<
             Read<Parent>,
-            ExternalWrite<HierarchyIndex>>;
+            ExternalWrite<HierarchyIndex>,
+            ExternalWrite<HierarchyMutationBatch>,
+            ExternalWrite<HierarchyDeltaBatch>>;
         inline static constexpr auto EcsChangesAccess = ecsChangesRead();
 
-        HierarchySystem(EcsState& world, HierarchyIndex& hierarchy) noexcept;
+        HierarchySystem(
+            EcsState& state,
+            HierarchyIndex& hierarchy,
+            HierarchyMutationBatch& mutations,
+            HierarchyDeltaBatch& deltas
+        ) noexcept;
 
         void update(
-            EcsState& world,
+            EcsState& state,
             EcsChangeJournal& journal,
             EcsCommands commands
         ) noexcept;
         void invokeTask(
-            EcsState& world,
+            EcsState& state,
             EcsChangeJournal& journal,
             EcsChangeBatch&,
             EcsCommands commands
         ) noexcept
         {
-            update(world, journal, commands);
+            update(state, journal, commands);
         }
 
       private:
-        EcsState* world_{};
+        EcsState* state_{};
         HierarchyIndex* hierarchy_{};
+        HierarchyMutationBatch* mutations_{};
+        HierarchyDeltaBatch* deltas_{};
+        ChangeCursor<Parent> parent_cursor_;
+        EntityChangeCursor entity_cursor_;
+        bool rebuild_required_{true};
     };
 } // namespace lux::simulation::ecs

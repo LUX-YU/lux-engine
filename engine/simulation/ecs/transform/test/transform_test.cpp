@@ -29,6 +29,7 @@ namespace
                 8U * 1024U * 1024U
             }
         };
+    constexpr std::size_t kHierarchyBatchCapacity = 131072U;
 
 [[nodiscard]] bool near(float left, float right) noexcept
     {
@@ -53,17 +54,32 @@ namespace
         lux::simulation::ecs::HierarchyIndex& hierarchy
     )
     {
+        lux::simulation::ecs::HierarchyMutationBatch mutations;
+        lux::simulation::ecs::HierarchyDeltaBatch deltas;
+        assert(mutations.prepare(kHierarchyBatchCapacity));
+        assert(deltas.prepare(kHierarchyBatchCapacity));
         lux::simulation::ecs::testing::EcsTaskTestRig schedule{
             world,
             kHistoryBudget,
             kRigCapacity
         };
         const auto hierarchy_system =
-            schedule.add<lux::simulation::ecs::HierarchySystem>(world, hierarchy);
+            schedule.add<lux::simulation::ecs::HierarchySystem>(
+                world,
+                hierarchy,
+                mutations,
+                deltas
+            );
         const auto transform3d =
-            schedule.add<lux::simulation::ecs::Transform3DSystem>(hierarchy);
+            schedule.add<lux::simulation::ecs::Transform3DSystem>(
+                hierarchy,
+                deltas
+            );
         const auto transform2d =
-            schedule.add<lux::simulation::ecs::Transform2DSystem>(hierarchy);
+            schedule.add<lux::simulation::ecs::Transform2DSystem>(
+                hierarchy,
+                deltas
+            );
         assert(schedule.compile());
         assert(schedule.run(1.0F / 60.0F, 1u));
     }
@@ -112,7 +128,7 @@ int main()
 {
     const auto schema_set = schemas();
     lux::simulation::ecs::EcsState world;
-    lux::simulation::ecs::HierarchyIndex hierarchy{world};
+    lux::simulation::ecs::HierarchyIndex hierarchy;
     auto edit_result = world.mutate();
     assert(edit_result);
     auto edit = std::move(*edit_result);
@@ -151,17 +167,32 @@ int main()
     edit = {};
 
     {
+        lux::simulation::ecs::HierarchyMutationBatch mutations;
+        lux::simulation::ecs::HierarchyDeltaBatch deltas;
+        assert(mutations.prepare(kHierarchyBatchCapacity));
+        assert(deltas.prepare(kHierarchyBatchCapacity));
         lux::simulation::ecs::testing::EcsTaskTestRig schedule{
             world,
             kHistoryBudget,
             kRigCapacity
         };
         const auto hierarchy_system =
-            schedule.add<lux::simulation::ecs::HierarchySystem>(world, hierarchy);
+            schedule.add<lux::simulation::ecs::HierarchySystem>(
+                world,
+                hierarchy,
+                mutations,
+                deltas
+            );
         const auto transform3d =
-            schedule.add<lux::simulation::ecs::Transform3DSystem>(hierarchy);
+            schedule.add<lux::simulation::ecs::Transform3DSystem>(
+                hierarchy,
+                deltas
+            );
         const auto transform2d =
-            schedule.add<lux::simulation::ecs::Transform2DSystem>(hierarchy);
+            schedule.add<lux::simulation::ecs::Transform2DSystem>(
+                hierarchy,
+                deltas
+            );
         assert(schedule.compile());
         auto* transform3d_system = std::addressof(
             schedule.system<lux::simulation::ecs::Transform3DSystem>(transform3d)
@@ -320,7 +351,7 @@ int main()
         auto fork = snapshot->instantiate();
         assert(fork);
         assert((*fork)->find<lux::simulation::ecs::WorldTransform3D>(child) == nullptr);
-        lux::simulation::ecs::HierarchyIndex fork_hierarchy{**fork};
+        lux::simulation::ecs::HierarchyIndex fork_hierarchy;
         installAndResolve(**fork, fork_hierarchy);
         const auto forked = (*fork)->get<lux::simulation::ecs::WorldTransform3D>(child)
             .value.translation();

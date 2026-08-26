@@ -4,6 +4,7 @@
 #include <lux/engine/simulation/ecs/SystemTaskResources.hpp>
 #include <lux/engine/simulation/ecs/EcsTaskResources.hpp>
 #include <lux/engine/simulation/ecs/core/detail/EcsTaskResourceTestAccess.hpp>
+#include <lux/engine/simulation/SimulationExecution.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
@@ -133,27 +134,6 @@ namespace lux::simulation::ecs::testing
             if (!commands_.prepare(capacities))
                 return false;
 
-            lux::cxx::expected<task::TaskHandle, task::TaskGraphFailure> apply =
-                entries_.empty()
-                ? builder_.add(
-                    task::on(task::ETaskAffinity::CALLER_THREAD),
-                    ecsCommandsWrite(),
-                    [this]() noexcept
-                    {
-                        applyEcsCommands(*world_, *journal_, commands_);
-                    }
-                )
-                : builder_.add(
-                    task::dependsOn(entries_.back().publish),
-                    task::on(task::ETaskAffinity::CALLER_THREAD),
-                    ecsCommandsWrite(),
-                    [this]() noexcept
-                    {
-                        applyEcsCommands(*world_, *journal_, commands_);
-                    }
-                );
-            if (!apply)
-                return false;
             auto built = std::move(builder_).build();
             if (!built)
                 return false;
@@ -168,7 +148,13 @@ namespace lux::simulation::ecs::testing
         {
             if (!graph_ || !executor_)
                 return false;
-            return static_cast<bool>(executor_->execute(*graph_));
+            return static_cast<bool>(executeSimulationStep(
+                *executor_,
+                *graph_,
+                *world_,
+                *journal_,
+                commands_
+            ));
         }
 
         [[nodiscard]] auto mutate() noexcept

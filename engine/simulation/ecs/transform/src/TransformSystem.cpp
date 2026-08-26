@@ -93,8 +93,12 @@ namespace lux::simulation::ecs
         template <class Local, class Derived, class Matrix>
         struct TransformState
         {
-            explicit TransformState(HierarchyIndex& value) noexcept
-                : hierarchy(std::addressof(value))
+            TransformState(
+                HierarchyIndex& value,
+                const HierarchyDeltaBatch& deltas
+            ) noexcept
+                : hierarchy(std::addressof(value)),
+                  hierarchy_deltas(std::addressof(deltas))
             {
             }
 
@@ -329,7 +333,6 @@ namespace lux::simulation::ecs
             {
                 visited_nodes = 0U;
                 auto local_changes = componentChanges(journal, local_cursor);
-                auto hierarchy_changes = hierarchy->changes(hierarchy_cursor);
                 if (!hierarchy->synchronized())
                 {
                     force_resync = true;
@@ -340,10 +343,9 @@ namespace lux::simulation::ecs
                 const bool rebuild = force_resync ||
                     local_changes.status() ==
                         EChangeReadStatus::RESYNC_REQUIRED ||
-                    hierarchy_changes.status() ==
-                        EChangeReadStatus::RESYNC_REQUIRED;
+                    !hierarchy_deltas->exact();
                 if (!rebuild && local_changes.empty() &&
-                    hierarchy_changes.empty())
+                    hierarchy_deltas->values().empty())
                 {
                     return;
                 }
@@ -377,7 +379,8 @@ namespace lux::simulation::ecs
                             if (world.valid(change.entity))
                                 mark(change.entity);
                         }
-                        for (const HierarchyChange change : hierarchy_changes)
+                        for (const HierarchyDelta change :
+                             hierarchy_deltas->values())
                         {
                             if (world.valid(change.entity))
                                 mark(change.entity);
@@ -407,8 +410,8 @@ namespace lux::simulation::ecs
             }
 
             HierarchyIndex* hierarchy{};
+            const HierarchyDeltaBatch* hierarchy_deltas{};
             ChangeCursor<Local> local_cursor;
-            HierarchyChangeCursor hierarchy_cursor;
             std::vector<std::uint32_t> dirty_stamps;
             std::vector<std::uint32_t> root_stamps;
             std::vector<std::uint32_t> visited_stamps;
@@ -441,8 +444,11 @@ namespace lux::simulation::ecs
         using TransformState::TransformState;
     };
 
-    Transform2DSystem::Transform2DSystem(HierarchyIndex& hierarchy)
-        : impl_(std::make_unique<Impl>(hierarchy))
+    Transform2DSystem::Transform2DSystem(
+        HierarchyIndex& hierarchy,
+        const HierarchyDeltaBatch& hierarchy_deltas
+    )
+        : impl_(std::make_unique<Impl>(hierarchy, hierarchy_deltas))
     {
     }
 
@@ -468,8 +474,11 @@ namespace lux::simulation::ecs
         return impl_->retainedDenseBytes();
     }
 
-    Transform3DSystem::Transform3DSystem(HierarchyIndex& hierarchy)
-        : impl_(std::make_unique<Impl>(hierarchy))
+    Transform3DSystem::Transform3DSystem(
+        HierarchyIndex& hierarchy,
+        const HierarchyDeltaBatch& hierarchy_deltas
+    )
+        : impl_(std::make_unique<Impl>(hierarchy, hierarchy_deltas))
     {
     }
 

@@ -11,6 +11,16 @@
 
 namespace lux::world
 {
+    enum class EWorldPartitionWorkspaceState : std::uint8_t
+    {
+        STALE,
+        SYNCHRONIZED,
+    };
+
+    /**
+     * Call-scoped borrowed data. Implementations may copy derived values, but
+     * must not retain schema pointers or payload spans after the call returns.
+     */
     struct WorldDataSnapshotView final
     {
         const WorldDataSchemaId* schema{};
@@ -49,22 +59,46 @@ namespace lux::world
         [[nodiscard]] virtual const WorldPartitionerDescriptor&
         descriptor() const noexcept = 0;
 
+        [[nodiscard]] EWorldPartitionWorkspaceState state() const noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure>
+        rebuild(const WorldDescription& world) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure>
+        objectAdded(WorldObjectSnapshotView object) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure>
+        objectChanged(WorldObjectSnapshotView object) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure>
+        objectRemoved(WorldObjectId object) noexcept;
+
+        [[nodiscard]] lux::cxx::expected<
+            WorldPartitionBuildProduct,
+            WorldPartitionFailure>
+        freeze(const WorldDescription& world) const noexcept;
+
+      protected:
         [[nodiscard]] virtual lux::cxx::expected<void, WorldPartitionFailure>
-        rebuild(const WorldDescription& world) noexcept = 0;
+        doRebuild(const WorldDescription& world) noexcept = 0;
 
         [[nodiscard]] virtual lux::cxx::expected<void, WorldPartitionFailure>
-        objectAdded(WorldObjectSnapshotView object) noexcept = 0;
+        doObjectAdded(WorldObjectSnapshotView object) noexcept = 0;
 
         [[nodiscard]] virtual lux::cxx::expected<void, WorldPartitionFailure>
-        objectChanged(WorldObjectSnapshotView object) noexcept = 0;
+        doObjectChanged(WorldObjectSnapshotView object) noexcept = 0;
 
         [[nodiscard]] virtual lux::cxx::expected<void, WorldPartitionFailure>
-        objectRemoved(WorldObjectId object) noexcept = 0;
+        doObjectRemoved(WorldObjectId object) noexcept = 0;
 
         [[nodiscard]] virtual lux::cxx::expected<
             WorldPartitionBuildProduct,
             WorldPartitionFailure>
-        freeze(const WorldDescription& world) const noexcept = 0;
+        doFreeze(const WorldDescription& world) const noexcept = 0;
+
+      private:
+        EWorldPartitionWorkspaceState state_{
+            EWorldPartitionWorkspaceState::STALE};
     };
 
     /** Cold-path policy/factory supplied by an upper-layer interpreter. */
@@ -77,9 +111,15 @@ namespace lux::world
         [[nodiscard]] virtual WorldPartitionerDescriptor
         descriptor() const noexcept = 0;
 
+        [[nodiscard]] lux::cxx::expected<
+            std::unique_ptr<WorldPartitionWorkspace>,
+            WorldPartitionFailure>
+        createWorkspace(const WorldDescription& world) const noexcept;
+
+      protected:
         [[nodiscard]] virtual lux::cxx::expected<
             std::unique_ptr<WorldPartitionWorkspace>,
             WorldPartitionFailure>
-        createWorkspace(const WorldDescription& world) const noexcept = 0;
+        createWorkspaceImplementation() const noexcept = 0;
     };
 } // namespace lux::world

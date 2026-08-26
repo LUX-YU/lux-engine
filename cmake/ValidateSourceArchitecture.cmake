@@ -36,8 +36,10 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/ecs/*/sinclude/*.hpp"
     "${source_root}/engine/ecs/*/pinclude/*.hpp"
     "${source_root}/engine/ecs/*/src/*.cpp"
-    "${source_root}/engine/world/include/*.hpp"
-    "${source_root}/engine/world/src/*.cpp"
+    "${source_root}/engine/world/*/include/*.hpp"
+    "${source_root}/engine/world/*/sinclude/*.hpp"
+    "${source_root}/engine/world/*/pinclude/*.hpp"
+    "${source_root}/engine/world/*/src/*.cpp"
 )
 
 foreach(source IN LISTS production_sources)

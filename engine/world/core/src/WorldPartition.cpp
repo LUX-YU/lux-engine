@@ -3,6 +3,7 @@
 #include <lux/engine/world/detail/WorldFailureInjection.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <new>
 #include <unordered_set>
 #include <utility>
@@ -14,6 +15,93 @@ namespace lux::world
     WorldPartitioner::WorldPartitioner() noexcept = default;
     WorldPartitioner::~WorldPartitioner() = default;
 
+    EWorldPartitionWorkspaceState WorldPartitionWorkspace::state() const noexcept
+    {
+        return state_;
+    }
+
+    lux::cxx::expected<void, WorldPartitionFailure>
+    WorldPartitionWorkspace::rebuild(const WorldDescription& world) noexcept
+    {
+        auto result = doRebuild(world);
+        state_ = result ? EWorldPartitionWorkspaceState::SYNCHRONIZED
+                        : EWorldPartitionWorkspaceState::STALE;
+        return result;
+    }
+
+    namespace
+    {
+        [[nodiscard]] WorldPartitionFailure staleWorkspaceFailure() noexcept
+        {
+            WorldPartitionFailure failure;
+            failure.code = EWorldPartitionError::WORKSPACE_STALE;
+            return failure;
+        }
+    }
+
+    lux::cxx::expected<void, WorldPartitionFailure>
+    WorldPartitionWorkspace::objectAdded(WorldObjectSnapshotView object) noexcept
+    {
+        if (state_ != EWorldPartitionWorkspaceState::SYNCHRONIZED)
+            return lux::cxx::unexpected(staleWorkspaceFailure());
+        auto result = doObjectAdded(object);
+        if (!result)
+            state_ = EWorldPartitionWorkspaceState::STALE;
+        return result;
+    }
+
+    lux::cxx::expected<void, WorldPartitionFailure>
+    WorldPartitionWorkspace::objectChanged(WorldObjectSnapshotView object) noexcept
+    {
+        if (state_ != EWorldPartitionWorkspaceState::SYNCHRONIZED)
+            return lux::cxx::unexpected(staleWorkspaceFailure());
+        auto result = doObjectChanged(object);
+        if (!result)
+            state_ = EWorldPartitionWorkspaceState::STALE;
+        return result;
+    }
+
+    lux::cxx::expected<void, WorldPartitionFailure>
+    WorldPartitionWorkspace::objectRemoved(WorldObjectId object) noexcept
+    {
+        if (state_ != EWorldPartitionWorkspaceState::SYNCHRONIZED)
+            return lux::cxx::unexpected(staleWorkspaceFailure());
+        auto result = doObjectRemoved(object);
+        if (!result)
+            state_ = EWorldPartitionWorkspaceState::STALE;
+        return result;
+    }
+
+    lux::cxx::expected<WorldPartitionBuildProduct, WorldPartitionFailure>
+    WorldPartitionWorkspace::freeze(const WorldDescription& world) const noexcept
+    {
+        if (state_ != EWorldPartitionWorkspaceState::SYNCHRONIZED)
+            return lux::cxx::unexpected(staleWorkspaceFailure());
+        return doFreeze(world);
+    }
+
+    lux::cxx::expected<
+        std::unique_ptr<WorldPartitionWorkspace>,
+        WorldPartitionFailure>
+    WorldPartitioner::createWorkspace(
+        const WorldDescription& world
+    ) const noexcept
+    {
+        auto workspace = createWorkspaceImplementation();
+        if (!workspace)
+            return lux::cxx::unexpected(workspace.error());
+        if (!*workspace)
+        {
+            WorldPartitionFailure failure;
+            failure.code = EWorldPartitionError::IMPLEMENTATION_FAILURE;
+            return lux::cxx::unexpected(std::move(failure));
+        }
+        auto rebuilt = (*workspace)->rebuild(world);
+        if (!rebuilt)
+            return lux::cxx::unexpected(rebuilt.error());
+        return std::move(*workspace);
+    }
+
     WorldPartitionView::WorldPartitionView(
         const WorldPartitionLayout& layout,
         std::size_t partition_index
@@ -24,7 +112,8 @@ namespace lux::world
 
     WorldPartitionOrdinal WorldPartitionView::ordinal() const noexcept
     {
-        return WorldPartitionOrdinal{partition_index_};
+        return WorldPartitionOrdinal{
+            static_cast<std::uint32_t>(partition_index_)};
     }
 
     WorldPartitionId WorldPartitionView::id() const noexcept
@@ -282,7 +371,9 @@ namespace lux::world
         }
         if (detail::consumeWorldFailureForTest(
                 detail::EWorldFailurePoint::PARTITION_BUILD_SIZE_OVERFLOW
-            ))
+            ) ||
+            impl_->partitions.size() >
+                std::numeric_limits<std::uint32_t>::max())
         {
             return lux::cxx::unexpected(partitionFailure(
                 EWorldPartitionError::SIZE_OVERFLOW
@@ -398,11 +489,11 @@ namespace lux::world
                 }
             }
 
-            WorldPartitionBuildProduct result;
-            result.partitioner_ = std::move(partitioner);
-            result.layout_ = std::move(layout);
-            result.indexes_ = std::move(indexes);
-            return result;
+            return WorldPartitionBuildProduct(
+                std::move(partitioner),
+                std::move(layout),
+                std::move(indexes)
+            );
         }
         catch (const std::bad_alloc&)
         {
@@ -410,6 +501,17 @@ namespace lux::world
                 EWorldPartitionError::ALLOCATION_FAILURE
             ));
         }
+    }
+
+    WorldPartitionBuildProduct::WorldPartitionBuildProduct(
+        WorldPartitionerDescriptor partitioner,
+        WorldPartitionLayout layout,
+        std::vector<WorldPartitionIndexArtifact> indexes
+    ) noexcept
+        : partitioner_(std::move(partitioner)),
+          layout_(std::move(layout)),
+          indexes_(std::move(indexes))
+    {
     }
 
     const WorldPartitionerDescriptor&

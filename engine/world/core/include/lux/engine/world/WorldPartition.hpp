@@ -56,7 +56,7 @@ namespace lux::world
     /** Dense, build-product-local index. It has no cross-cook identity. */
     struct WorldPartitionOrdinal final
     {
-        std::size_t value{};
+        std::uint32_t value{};
 
         friend bool operator==(
             const WorldPartitionOrdinal&,
@@ -109,6 +109,7 @@ namespace lux::world
         DUPLICATE_INDEX_TYPE,
         INVALID_PARTITIONER_ID,
         INVALID_PARTITIONER_VERSION,
+        WORKSPACE_STALE,
         SIZE_OVERFLOW,
         ALLOCATION_FAILURE,
         IMPLEMENTATION_FAILURE,
@@ -156,7 +157,6 @@ namespace lux::world
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitionLayout final
     {
       public:
-        WorldPartitionLayout() noexcept = default;
         WorldPartitionLayout(WorldPartitionLayout&&) noexcept = default;
         WorldPartitionLayout& operator=(WorldPartitionLayout&&) noexcept = default;
         ~WorldPartitionLayout() = default;
@@ -170,6 +170,8 @@ namespace lux::world
         [[nodiscard]] WorldPartitionView findPartition(WorldPartitionId id) const noexcept;
 
       private:
+        WorldPartitionLayout() noexcept = default;
+
         struct PartitionRecord final
         {
             WorldPartitionId id;
@@ -243,7 +245,6 @@ namespace lux::world
     class LUX_ENGINE_WORLD_PUBLIC WorldPartitionBuildProduct final
     {
       public:
-        WorldPartitionBuildProduct() noexcept = default;
         WorldPartitionBuildProduct(WorldPartitionBuildProduct&&) noexcept = default;
         WorldPartitionBuildProduct& operator=(WorldPartitionBuildProduct&&) noexcept = default;
         ~WorldPartitionBuildProduct() = default;
@@ -268,6 +269,12 @@ namespace lux::world
         ) const noexcept;
 
       private:
+        WorldPartitionBuildProduct(
+            WorldPartitionerDescriptor partitioner,
+            WorldPartitionLayout layout,
+            std::vector<WorldPartitionIndexArtifact> indexes
+        ) noexcept;
+
         WorldPartitionerDescriptor partitioner_;
         WorldPartitionLayout layout_;
         std::vector<WorldPartitionIndexArtifact> indexes_;

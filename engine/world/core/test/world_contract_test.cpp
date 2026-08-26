@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -44,31 +45,31 @@ namespace
         }
 
         lux::cxx::expected<void, WorldPartitionFailure>
-        rebuild(const WorldDescription&) noexcept override
+        doRebuild(const WorldDescription&) noexcept override
         {
             return {};
         }
 
         lux::cxx::expected<void, WorldPartitionFailure>
-        objectAdded(WorldObjectSnapshotView) noexcept override
+        doObjectAdded(WorldObjectSnapshotView) noexcept override
         {
             return {};
         }
 
         lux::cxx::expected<void, WorldPartitionFailure>
-        objectChanged(WorldObjectSnapshotView) noexcept override
+        doObjectChanged(WorldObjectSnapshotView) noexcept override
         {
             return {};
         }
 
         lux::cxx::expected<void, WorldPartitionFailure>
-        objectRemoved(WorldObjectId) noexcept override
+        doObjectRemoved(WorldObjectId) noexcept override
         {
             return {};
         }
 
         lux::cxx::expected<WorldPartitionBuildProduct, WorldPartitionFailure>
-        freeze(const WorldDescription& world) const noexcept override
+        doFreeze(const WorldDescription& world) const noexcept override
         {
             WorldPartitionLayoutBuilder builder(world);
             std::vector<WorldObjectId> objects;
@@ -115,7 +116,7 @@ namespace
         lux::cxx::expected<
             std::unique_ptr<WorldPartitionWorkspace>,
             WorldPartitionFailure>
-        createWorkspace(const WorldDescription&) const noexcept override
+        createWorkspaceImplementation() const noexcept override
         {
             try
             {
@@ -151,13 +152,18 @@ namespace
         {
         }
 
+        void failNextIncrementalForTest() noexcept
+        {
+            fail_next_incremental_ = true;
+        }
+
         const WorldPartitionerDescriptor& descriptor() const noexcept override
         {
             return descriptor_;
         }
 
         lux::cxx::expected<void, WorldPartitionFailure>
-        rebuild(const WorldDescription& world) noexcept override
+        doRebuild(const WorldDescription& world) noexcept override
         {
             try
             {
@@ -186,26 +192,33 @@ namespace
         }
 
         lux::cxx::expected<void, WorldPartitionFailure>
-        objectAdded(WorldObjectSnapshotView object) noexcept override
+        doObjectAdded(WorldObjectSnapshotView object) noexcept override
         {
             return assign(object);
         }
 
         lux::cxx::expected<void, WorldPartitionFailure>
-        objectChanged(WorldObjectSnapshotView object) noexcept override
+        doObjectChanged(WorldObjectSnapshotView object) noexcept override
         {
+            if (fail_next_incremental_)
+            {
+                fail_next_incremental_ = false;
+                WorldPartitionFailure failure;
+                failure.code = EWorldPartitionError::IMPLEMENTATION_FAILURE;
+                return lux::cxx::unexpected(std::move(failure));
+            }
             return assign(object);
         }
 
         lux::cxx::expected<void, WorldPartitionFailure>
-        objectRemoved(WorldObjectId object) noexcept override
+        doObjectRemoved(WorldObjectId object) noexcept override
         {
             objects_.erase(object);
             return {};
         }
 
         lux::cxx::expected<WorldPartitionBuildProduct, WorldPartitionFailure>
-        freeze(const WorldDescription& world) const noexcept override
+        doFreeze(const WorldDescription& world) const noexcept override
         {
             try
             {
@@ -279,6 +292,7 @@ namespace
 
         WorldPartitionerDescriptor descriptor_;
         std::unordered_map<WorldObjectId, std::uint8_t, WorldObjectIdHash> objects_;
+        bool fail_next_incremental_{};
     };
 
     [[nodiscard]] WorldDescription makeWorld()
@@ -302,6 +316,9 @@ namespace
 
 int main()
 {
+    static_assert(!std::is_default_constructible_v<WorldPartitionLayout>);
+    static_assert(!std::is_default_constructible_v<WorldPartitionBuildProduct>);
+
     const auto hashed_object = objectId(17U);
     assert(
         WorldObjectIdHash{}(hashed_object) ==
@@ -459,6 +476,10 @@ int main()
     SinglePartitioner single;
     auto single_workspace = single.createWorkspace(world);
     assert(single_workspace);
+    assert(
+        (*single_workspace)->state() ==
+        EWorldPartitionWorkspaceState::SYNCHRONIZED
+    );
     auto single_product = (*single_workspace)->freeze(world);
     assert(single_product);
     assert(single_product->layout().partitionCount() == 1U);
@@ -496,6 +517,29 @@ int main()
         after_incremental->layout().partitionCount() ==
         quadtree_product->layout().partitionCount()
     );
+
+    incremental.failNextIncrementalForTest();
+    const auto poisoned = incremental.objectChanged(snapshot);
+    assert(!poisoned);
+    assert(
+        incremental.state() == EWorldPartitionWorkspaceState::STALE
+    );
+    const auto stale_freeze = incremental.freeze(world);
+    assert(!stale_freeze);
+    assert(
+        stale_freeze.error().code == EWorldPartitionError::WORKSPACE_STALE
+    );
+    const auto stale_incremental = incremental.objectAdded(snapshot);
+    assert(!stale_incremental);
+    assert(
+        stale_incremental.error().code == EWorldPartitionError::WORKSPACE_STALE
+    );
+    assert(incremental.rebuild(world));
+    assert(
+        incremental.state() ==
+        EWorldPartitionWorkspaceState::SYNCHRONIZED
+    );
+    assert(incremental.freeze(world));
 
     return 0;
 }

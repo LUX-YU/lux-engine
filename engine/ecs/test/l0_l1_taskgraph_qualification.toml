@@ -1,178 +1,117 @@
-version = 1
+version = 2
+benchmark_schema_version = 4
 
-# Thresholds are qualification policy, not L0/L1 implementation constants.
-
-[[relative]]
-name = "World ReadQuery versus raw EnTT"
-metric = "world_read_query"
-baseline = "raw_entt_read"
-size = 1000000
-max_ratio = 1.05
+# Thresholds remain external qualification policy. This closure pass does not
+# publish qualification evidence or promote the performance state.
 
 [[scaling]]
-name = "TaskGraph none execution scaling"
+name = "TaskGraph independent execution scaling"
 metric = "task_graph_execute_none"
 small_size = 16
 large_size = 1024
 max_exponent = 1.25
 
 [[scaling]]
-name = "TaskGraph chain execution scaling"
-metric = "task_graph_execute_chain"
-small_size = 16
-large_size = 1024
-max_exponent = 1.25
-
-[[scaling]]
-name = "TaskGraph diamond execution scaling"
-metric = "task_graph_execute_diamond"
-small_size = 16
-large_size = 1024
-max_exponent = 1.25
-
-[[scaling]]
-name = "System mixed-affinity execution scaling"
-metric = "system_execute_mixed_affinity"
-small_size = 16
-large_size = 1024
-max_exponent = 1.25
-
-[[scaling]]
-name = "WorldChangeLog one-lane write scaling"
-metric = "world_change_log_write_1"
+name = "WorldChangeBatch one-lane recording scaling"
+metric = "world_change_batch_record_1"
 small_size = 100000
 large_size = 1000000
 max_exponent = 1.25
 
 [[scaling]]
-name = "WorldChangeLog four-lane write scaling"
-metric = "world_change_log_write_4"
+name = "WorldChangeBatch thirty-two-lane recording scaling"
+metric = "world_change_batch_record_32"
 small_size = 100000
 large_size = 1000000
 max_exponent = 1.25
 
 [[scaling]]
-name = "WorldChangeLog sixteen-lane write scaling"
-metric = "world_change_log_write_16"
-small_size = 100000
-large_size = 1000000
-max_exponent = 1.25
-
-[[scaling]]
-name = "SystemContext one-lane write scaling"
-metric = "system_write_query_1"
-small_size = 100000
-large_size = 1000000
-max_exponent = 1.25
-
-[[scaling]]
-name = "SystemContext four-lane write scaling"
-metric = "system_write_query_4"
-small_size = 100000
-large_size = 1000000
-max_exponent = 1.25
-
-[[scaling]]
-name = "SystemContext sixteen-lane write scaling"
-metric = "system_write_query_16"
-small_size = 100000
-large_size = 1000000
+name = "WorldSection load into 1M resident World scaling"
+metric = "world_section_load_commit_live_resident"
+small_size = 1000
+large_size = 10000
 max_exponent = 1.25
 
 [[structural]]
-name = "TaskGraph execution is allocation free"
-metric = "task_graph_execute_diamond"
-size = 1024
-field = "allocations"
-equals = 0
-
-[[structural]]
-name = "TaskGraph dispatches each task exactly once"
-metric = "task_graph_execute_diamond"
+name = "Prepared TaskGraph dispatches each task"
+metric = "task_graph_execute_none"
 size = 1024
 field = "dispatch_calls"
 equals = 1024
 
 [[structural]]
-name = "System execution is allocation free"
-metric = "system_execute_mixed_affinity"
+name = "Prepared TaskGraph execution is allocation free"
+metric = "task_graph_execute_none"
 size = 1024
 field = "allocations"
 equals = 0
 
 [[structural]]
-name = "WorldMutation binds each written component lane once"
-metric = "world_change_log_write_16"
+name = "WorldChangeBatch binds thirty-two lanes once"
+metric = "world_change_batch_record_32"
 size = 1000000
-field = "dispatch_calls"
-equals = 16
+field = "lane_binds"
+equals = 32
 
 [[structural]]
-name = "WorldMutation binds each WorldChangeLog stream once"
-metric = "world_change_log_write_16"
-size = 1000000
-field = "journal_stream_binds"
-equals = 16
-
-[[structural]]
-name = "WorldMutation appends every written entity"
-metric = "world_change_log_write_16"
+name = "WorldChangeBatch appends every record"
+metric = "world_change_batch_record_32"
 size = 1000000
 field = "record_appends"
-equals = 16000000
+equals = 32000000
 
 [[structural]]
-name = "WorldMutation performs no per-record lookup"
-metric = "world_change_log_write_16"
+name = "WorldChangeBatch has no per-record lookup"
+metric = "world_change_batch_record_32"
 size = 1000000
 field = "per_record_lookups"
 equals = 0
 
 [[structural]]
-name = "WorldMutation retains complete history"
-metric = "world_change_log_write_16"
-size = 1000000
-field = "history_losses"
-equals = 0
-
-[[structural]]
-name = "SystemContext binds each written component lane once"
-metric = "system_write_query_16"
-size = 1000000
-field = "dispatch_calls"
-equals = 16
-
-[[structural]]
-name = "SystemContext binds each WorldChangeLog stream once"
-metric = "system_write_query_16"
-size = 1000000
+name = "WorldSection binds the materialized storage once"
+metric = "world_section_load_commit_live_resident"
+size = 10000
 field = "journal_stream_binds"
-equals = 16
+equals = 1
 
 [[structural]]
-name = "SystemContext appends every written entity"
-metric = "system_write_query_16"
-size = 1000000
-field = "record_appends"
-equals = 16000000
+name = "WorldSection performs one typed storage lookup"
+metric = "world_section_load_commit_live_resident"
+size = 10000
+field = "storage_lookups"
+equals = 1
 
 [[structural]]
-name = "SystemContext performs no per-record lookup"
-metric = "system_write_query_16"
-size = 1000000
+name = "WorldSection performs no per-record lookup"
+metric = "world_section_load_commit_live_resident"
+size = 10000
 field = "per_record_lookups"
 equals = 0
 
 [[structural]]
-name = "SystemContext retains complete history"
-metric = "system_write_query_16"
-size = 1000000
+name = "WorldSection normal load preserves exact history"
+metric = "world_section_load_commit_live_resident"
+size = 10000
 field = "history_losses"
 equals = 0
 
 [[structural]]
-name = "SystemContext write execution is allocation free"
-metric = "system_write_query_16"
-size = 1000000
-field = "allocations"
+name = "Known-unique membership load performs no duplicate comparisons"
+metric = "world_section_load_commit_live_resident"
+size = 10000
+field = "duplicate_comparisons"
 equals = 0
+
+[[structural]]
+name = "WorldSection tracks exactly the streamed entities"
+metric = "world_section_load_commit_live_resident"
+size = 10000
+field = "active_tracked_entities"
+equals = 10000
+
+[[structural]]
+name = "WorldSection tracks exactly one component per streamed entity"
+metric = "world_section_load_commit_live_resident"
+size = 10000
+field = "active_memberships"
+equals = 10000

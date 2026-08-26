@@ -43,6 +43,16 @@ add_executable(
     test/l1_benchmark.cpp
     world_section/test/WorldSectionFixtureBuilder.cpp
 )
+execute_process(
+    COMMAND git rev-parse HEAD
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    OUTPUT_VARIABLE LUX_ECS_BENCHMARK_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(LUX_ECS_BENCHMARK_GIT_COMMIT STREQUAL "")
+    set(LUX_ECS_BENCHMARK_GIT_COMMIT "unknown")
+endif()
 target_include_directories(
     ecs_l1_benchmark
     PRIVATE
@@ -58,6 +68,8 @@ target_compile_definitions(
     PRIVATE
         LUX_ECS_SNAPSHOT_TESTING=1
         LUX_ECS_WORLD_SECTION_TESTING=1
+        LUX_BENCHMARK_GIT_COMMIT="${LUX_ECS_BENCHMARK_GIT_COMMIT}"
+        LUX_BENCHMARK_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
 )
 if(MSVC)
     target_compile_options(ecs_l1_benchmark PRIVATE /bigobj)

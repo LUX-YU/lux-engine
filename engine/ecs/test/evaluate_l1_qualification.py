@@ -15,6 +15,7 @@ import tomllib
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", required=True, type=Path)
+    parser.add_argument("--expected-commit", required=True)
     parser.add_argument(
         "--input",
         action="append",
@@ -47,17 +48,42 @@ def resolve_inputs(groups: list[list[str]]) -> list[Path]:
     return result
 
 
-def summaries(paths: list[Path]) -> dict[tuple[str, int], dict[str, float]]:
+def summaries(
+    paths: list[Path],
+    expected_commit: str,
+) -> dict[tuple[str, int], dict[str, float]]:
     result: dict[tuple[str, int], dict[str, float]] = {}
+    metadata_fields = {
+        "benchmark_schema_version",
+        "git_commit",
+        "compiler",
+        "compiler_version",
+        "build_type",
+        "platform",
+        "architecture",
+        "kind",
+        "group",
+        "metric",
+        "sample",
+    }
     for path in paths:
         with path.open(newline="", encoding="utf-8") as stream:
             for row in csv.DictReader(stream):
+                if row.get("benchmark_schema_version") != "4":
+                    raise RuntimeError(
+                        f"{path}: benchmark schema is not v4"
+                    )
+                if row.get("git_commit") != expected_commit:
+                    raise RuntimeError(
+                        f"{path}: commit {row.get('git_commit')} does not "
+                        f"match {expected_commit}"
+                    )
                 if row["kind"] != "summary" or row["sample"] != "median":
                     continue
                 result[(row["metric"], int(row["size"]))] = {
                     key: float(value)
                     for key, value in row.items()
-                    if key not in {"kind", "metric", "sample"} and value != ""
+                    if key not in metadata_fields and value != ""
                 }
     return result
 
@@ -77,9 +103,11 @@ def main() -> int:
     args = parse_args()
     with args.policy.open("rb") as stream:
         policy = tomllib.load(stream)
-    if policy.get("version") != 1:
+    if policy.get("version") != 2:
         raise RuntimeError("unsupported qualification policy version")
-    values = summaries(resolve_inputs(args.input))
+    if policy.get("benchmark_schema_version") != 4:
+        raise RuntimeError("policy does not require benchmark schema v4")
+    values = summaries(resolve_inputs(args.input), args.expected_commit)
     failures: list[str] = []
 
     for rule in policy.get("relative", []):

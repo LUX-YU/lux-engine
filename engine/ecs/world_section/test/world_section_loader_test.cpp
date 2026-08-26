@@ -348,8 +348,8 @@ namespace
 
         void invokeTask(
             EcsState& world,
-            WorldChangeBatch&,
-            WorldCommands
+            EcsChangeBatch&,
+            EcsCommands
         ) noexcept
         {
             auto current = componentChanges(world, cursor_);
@@ -432,7 +432,7 @@ namespace
         inline static constexpr auto Access = makeSystemAccessSpec<>();
         inline static constexpr auto TaskAccess = access<>;
 
-        void invokeTask(EcsState&, WorldChangeBatch&, WorldCommands) noexcept
+        void invokeTask(EcsState&, EcsChangeBatch&, EcsCommands) noexcept
         {
             auto loaded = loadSection(*world_, *loads_, *image_);
             rejected_ = !loaded &&
@@ -551,7 +551,7 @@ int main()
         );
         assert(transaction);
         assert(transaction->load(context.loads, image, instance));
-        auto& history = detail::WorldChangeAccess::log(failure_world);
+        auto& history = detail::EcsChangeAccess::log(failure_world);
         history.failNextStreamDescriptorForTest();
         const std::uint64_t epoch_before = history.epoch();
         assert(transaction->commit());
@@ -669,21 +669,21 @@ int main()
     const auto membership_before =
         detail::WorldSectionTransactionAccess::membershipStats(world);
     const std::uint64_t stream_binds_before =
-        detail::WorldChangeAccess::log(world).streamBindCountForTest();
+        detail::EcsChangeAccess::log(world).streamBindCountForTest();
     const std::uint64_t per_record_lookups_before =
-        detail::WorldChangeAccess::log(world).perRecordLookupCountForTest();
+        detail::EcsChangeAccess::log(world).perRecordLookupCountForTest();
     auto first_image = validImage(sectionId(1U));
     auto first = loadSection(world, context.loads, first_image);
     assert(first);
     const auto membership_after =
         detail::WorldSectionTransactionAccess::membershipStats(world);
     assert(
-        detail::WorldChangeAccess::log(world).streamBindCountForTest() -
+        detail::EcsChangeAccess::log(world).streamBindCountForTest() -
             stream_binds_before ==
         4U
     );
     assert(
-        detail::WorldChangeAccess::log(world).perRecordLookupCountForTest() ==
+        detail::EcsChangeAccess::log(world).perRecordLookupCountForTest() ==
         per_record_lookups_before
     );
     assert(
@@ -781,13 +781,13 @@ int main()
 
     const std::size_t before_failure = fixedCount(world);
     const std::uint64_t epoch_before_failure =
-        detail::worldChangeEpoch(world);
+        detail::ecsChangeEpoch(world);
     auto bad_image = validImage(sectionId(1U), true);
     auto bad = loadSection(world, context.loads, bad_image);
     assert(!bad);
     assert(bad.error().code == EWorldSectionError::DECODE_FAILED);
     assert(fixedCount(world) == before_failure);
-    assert(detail::worldChangeEpoch(world) == epoch_before_failure);
+    assert(detail::ecsChangeEpoch(world) == epoch_before_failure);
 
     auto allocation_image = WorldSectionImage::open(buildFixture(
         sectionId(1U),

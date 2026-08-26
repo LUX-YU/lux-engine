@@ -159,7 +159,7 @@ namespace lux::ecs
 
             void queueRemove(
                 const EcsState& world,
-                WorldCommands commands,
+                EcsCommands commands,
                 Entity entity
             ) noexcept
             {
@@ -176,7 +176,7 @@ namespace lux::ecs
             void publish(
                 const EcsState& world,
                 TaskWriter<Derived>& writer,
-                WorldCommands commands,
+                EcsCommands commands,
                 Entity entity,
                 const Matrix& value
             ) noexcept
@@ -204,7 +204,7 @@ namespace lux::ecs
             [[nodiscard]] TraversalEntry<Matrix> rootEntry(
                 const EcsState& world,
                 TaskWriter<Derived>& writer,
-                WorldCommands commands,
+                EcsCommands commands,
                 Entity root
             )
             {
@@ -258,7 +258,7 @@ namespace lux::ecs
             void traverse(
                 const EcsState& world,
                 TaskWriter<Derived>& writer,
-                WorldCommands commands,
+                EcsCommands commands,
                 Entity root
             )
             {
@@ -323,7 +323,7 @@ namespace lux::ecs
             void update(
                 const EcsState& world,
                 TaskWriter<Derived>& writer,
-                WorldCommands commands
+                EcsCommands commands
             ) noexcept
             {
                 visited_nodes = 0U;
@@ -450,7 +450,7 @@ namespace lux::ecs
     void Transform2DSystem::update(
         const EcsState& world,
         TaskWriter<WorldTransform2D>& writer,
-        WorldCommands commands
+        EcsCommands commands
     ) noexcept
     {
         impl_->update(world, writer, commands);
@@ -476,7 +476,7 @@ namespace lux::ecs
     void Transform3DSystem::update(
         const EcsState& world,
         TaskWriter<WorldTransform3D>& writer,
-        WorldCommands commands
+        EcsCommands commands
     ) noexcept
     {
         impl_->update(world, writer, commands);

@@ -4,7 +4,7 @@
 #include <lux/engine/ecs/Transform.hpp>
 #include <lux/engine/ecs/TransformSchema.hpp>
 #include <lux/engine/ecs/TransformSystem.hpp>
-#include <lux/engine/ecs/WorldSnapshot.hpp>
+#include <lux/engine/ecs/EcsSnapshot.hpp>
 #include <lux/engine/ecs/transform/detail/TransformSystemTestAccess.hpp>
 #include <lux/engine/ecs/system/support/EcsTaskTestRig.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
@@ -305,7 +305,7 @@ int main()
             snapshot_contributions
         );
         assert(snapshot_components);
-        auto snapshot = lux::ecs::WorldSnapshot::capture(
+        auto snapshot = lux::ecs::EcsSnapshot::capture(
             world,
             *snapshot_components
         );

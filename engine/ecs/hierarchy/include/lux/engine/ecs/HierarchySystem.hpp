@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 #include <lux/engine/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/ecs/EcsState.hpp>
-#include <lux/engine/ecs/WorldCommands.hpp>
+#include <lux/engine/ecs/EcsCommands.hpp>
 #include <lux/engine/ecs/hierarchy/visibility.h>
 
 namespace lux::ecs
@@ -20,11 +20,11 @@ namespace lux::ecs
 
         HierarchySystem(EcsState& world, HierarchyIndex& hierarchy) noexcept;
 
-        void update(EcsState& world, WorldCommands commands) noexcept;
+        void update(EcsState& world, EcsCommands commands) noexcept;
         void invokeTask(
             EcsState& world,
-            WorldChangeBatch&,
-            WorldCommands commands
+            EcsChangeBatch&,
+            EcsCommands commands
         ) noexcept
         {
             update(world, commands);

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ecs/WorldCommands.hpp>
+#include <lux/engine/ecs/EcsCommands.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -79,11 +79,11 @@ namespace lux::ecs::detail
       private:
         [[nodiscard]] ECommandResult push(
             std::uint32_t writer_generation,
-            const WorldCommands::CommandVTable& table,
+            const EcsCommands::CommandVTable& table,
             void* source
         ) noexcept;
 
-        [[nodiscard]] WorldCommands beginExecution() noexcept;
+        [[nodiscard]] EcsCommands beginExecution() noexcept;
         void endExecution() noexcept;
         void applyPending(EcsMutation& edit) noexcept;
 
@@ -96,13 +96,13 @@ namespace lux::ecs::detail
         bool applying_{};
         bool fail_next_push_for_test_{};
 
-        friend class ::lux::ecs::WorldCommands;
+        friend class ::lux::ecs::EcsCommands;
         friend struct CommandShardAccess;
     };
 
     struct CommandShardAccess final
     {
-        [[nodiscard]] static WorldCommands begin(CommandShard& shard) noexcept
+        [[nodiscard]] static EcsCommands begin(CommandShard& shard) noexcept
         {
             return shard.beginExecution();
         }

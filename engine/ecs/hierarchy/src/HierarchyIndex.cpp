@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 
-#include <lux/engine/ecs/WorldTaskResources.hpp>
+#include <lux/engine/ecs/EcsTaskResources.hpp>
 #include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 
 #include <entt/entity/entity.hpp>
@@ -339,7 +339,7 @@ namespace lux::ecs
                 unlinkRepair(*node);
         }
 
-        [[nodiscard]] bool retryRepairs(WorldCommands commands) noexcept
+        [[nodiscard]] bool retryRepairs(EcsCommands commands) noexcept
         {
             Entity current = repair_head;
             while (current != NullEntity)
@@ -378,7 +378,7 @@ namespace lux::ecs
         }
 
         [[nodiscard]] lux::cxx::expected<void, EHierarchyError> rebuild(
-            WorldCommands commands
+            EcsCommands commands
         ) noexcept
         {
             try
@@ -553,7 +553,7 @@ namespace lux::ecs
 
         void removeEntity(
             Entity entity,
-            WorldCommands commands
+            EcsCommands commands
         ) noexcept
         {
             Node* node = find(entity);
@@ -641,7 +641,7 @@ namespace lux::ecs
             prune(old_parent);
         }
 
-        void synchronize(WorldCommands commands) noexcept
+        void synchronize(EcsCommands commands) noexcept
         {
             visited_nodes_last_update = 0U;
             if (repair_head != NullEntity)
@@ -821,7 +821,7 @@ namespace lux::ecs
         );
     }
 
-    void HierarchyIndex::synchronize(WorldCommands commands) noexcept
+    void HierarchyIndex::synchronize(EcsCommands commands) noexcept
     {
         impl_->synchronize(commands);
     }

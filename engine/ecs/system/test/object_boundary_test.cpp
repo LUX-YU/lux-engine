@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/SystemRegistry.hpp>
 #include <lux/engine/ecs/SystemTaskResources.hpp>
-#include <lux/engine/ecs/WorldTaskResources.hpp>
+#include <lux/engine/ecs/EcsTaskResources.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
@@ -59,9 +59,9 @@ int main()
         lux::object::EDelivery::DIRECT>(observer);
     assert(observed);
 
-    WorldChangeBatch changes;
+    EcsChangeBatch changes;
     assert(changes.prepare({}));
-    WorldCommandBatch commands;
+    EcsCommandBatch commands;
     assert(commands.prepare(1U));
     lux::task::TaskGraphBuilder builder;
     const auto update = builder.add(
@@ -76,10 +76,10 @@ int main()
     const auto apply = builder.add(
         lux::task::dependsOn(*update),
         lux::task::on(lux::task::ETaskAffinity::CALLER_THREAD),
-        worldCommandsWrite(),
+        ecsCommandsWrite(),
         [&world, &commands]() noexcept
         {
-            applyWorldCommands(world, commands);
+            applyEcsCommands(world, commands);
         }
     );
     assert(update && apply);

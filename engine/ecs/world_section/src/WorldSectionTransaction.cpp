@@ -591,7 +591,7 @@ namespace lux::ecs
             );
         }
 
-        detail::WorldChangePublisher publisher(*impl_->world);
+        detail::EcsChangePublisher publisher(*impl_->world);
 
         // Canonical unload is deferred until commit. All load materialization
         // has already completed while load() held its input borrows.

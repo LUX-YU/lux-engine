@@ -1,9 +1,9 @@
-#include <lux/engine/ecs/WorldTaskResources.hpp>
+#include <lux/engine/ecs/EcsTaskResources.hpp>
 
 #include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/core/detail/CommandStorage.hpp>
 #include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
-#include <lux/engine/ecs/core/detail/WorldTaskResourceTestAccess.hpp>
+#include <lux/engine/ecs/core/detail/EcsTaskResourceTestAccess.hpp>
 
 #include <algorithm>
 #include <utility>
@@ -11,7 +11,7 @@
 
 namespace lux::ecs
 {
-    struct WorldChangeBatch::Impl final
+    struct EcsChangeBatch::Impl final
     {
         struct Lane final
         {
@@ -30,19 +30,19 @@ namespace lux::ecs
         bool overflow{};
     };
 
-    WorldChangeBatch::WorldChangeBatch()
+    EcsChangeBatch::EcsChangeBatch()
         : impl_(std::make_unique<Impl>())
     {
     }
 
-    WorldChangeBatch::~WorldChangeBatch() = default;
-    WorldChangeBatch::WorldChangeBatch(WorldChangeBatch&&) noexcept = default;
-    WorldChangeBatch& WorldChangeBatch::operator=(
-        WorldChangeBatch&&
+    EcsChangeBatch::~EcsChangeBatch() = default;
+    EcsChangeBatch::EcsChangeBatch(EcsChangeBatch&&) noexcept = default;
+    EcsChangeBatch& EcsChangeBatch::operator=(
+        EcsChangeBatch&&
     ) noexcept = default;
 
-    lux::cxx::expected<void, WorldTaskResourceFailure>
-    WorldChangeBatch::prepare(
+    lux::cxx::expected<void, EcsTaskResourceFailure>
+    EcsChangeBatch::prepare(
         std::span<const std::uint64_t> write_storages,
         std::size_t reserve_records
     ) noexcept
@@ -59,8 +59,8 @@ namespace lux::ecs
                         storage
                     ) != write_storages.begin() + impl_->lanes.size())
                 {
-                    return lux::cxx::unexpected(WorldTaskResourceFailure{
-                        EWorldTaskResourceError::INVALID_STORAGE
+                    return lux::cxx::unexpected(EcsTaskResourceFailure{
+                        EEcsTaskResourceError::INVALID_STORAGE
                     });
                 }
                 Impl::Lane lane;
@@ -74,13 +74,13 @@ namespace lux::ecs
         }
         catch (...)
         {
-            return lux::cxx::unexpected(WorldTaskResourceFailure{
-                EWorldTaskResourceError::ALLOCATION_FAILURE
+            return lux::cxx::unexpected(EcsTaskResourceFailure{
+                EEcsTaskResourceError::ALLOCATION_FAILURE
             });
         }
     }
 
-    void WorldChangeBatch::reset() noexcept
+    void EcsChangeBatch::reset() noexcept
     {
         for (auto& lane : impl_->lanes)
             lane.records.clear();
@@ -88,7 +88,7 @@ namespace lux::ecs
         impl_->overflow = false;
     }
 
-    detail::ChangeStreamBinder WorldChangeBatch::binder() noexcept
+    detail::ChangeStreamBinder EcsChangeBatch::binder() noexcept
     {
         return detail::ChangeStreamBinder{
             .context = impl_.get(),
@@ -100,7 +100,7 @@ namespace lux::ecs
                 {
                     if (lane.storage != storage)
                         continue;
-                    return detail::BoundWorldChangeStream{
+                    return detail::BoundEcsChangeStream{
                         .owner = &self,
                         .stream = &lane,
                         .append = [](
@@ -134,22 +134,22 @@ namespace lux::ecs
                     };
                 }
                 self.overflow = true;
-                return detail::BoundWorldChangeStream{};
+                return detail::BoundEcsChangeStream{};
             }
         };
     }
 
-    bool WorldChangeBatch::publish(EcsState& world) noexcept
+    bool EcsChangeBatch::publish(EcsState& world) noexcept
     {
         if (impl_->overflow)
         {
-            detail::markWorldChangeHistoryLoss(world);
+            detail::markEcsChangeHistoryLoss(world);
             ++impl_->history_losses;
             reset();
             return false;
         }
 
-        detail::WorldChangePublisher publisher(world);
+        detail::EcsChangePublisher publisher(world);
         for (const auto& lane : impl_->lanes)
         {
             ++impl_->journal_stream_binds;
@@ -178,9 +178,9 @@ namespace lux::ecs
         return true;
     }
 
-    WorldChangeBatchStats WorldChangeBatch::stats() const noexcept
+    EcsChangeBatchStats EcsChangeBatch::stats() const noexcept
     {
-        WorldChangeBatchStats result;
+        EcsChangeBatchStats result;
         result.current_records = impl_->current_records;
         for (const auto& lane : impl_->lanes)
         {
@@ -195,25 +195,25 @@ namespace lux::ecs
         return result;
     }
 
-    struct WorldCommandBatch::Impl final
+    struct EcsCommandBatch::Impl final
     {
         std::vector<detail::CommandShard> producers;
         std::vector<bool> active;
     };
 
-    WorldCommandBatch::WorldCommandBatch()
+    EcsCommandBatch::EcsCommandBatch()
         : impl_(std::make_unique<Impl>())
     {
     }
 
-    WorldCommandBatch::~WorldCommandBatch() = default;
-    WorldCommandBatch::WorldCommandBatch(WorldCommandBatch&&) noexcept = default;
-    WorldCommandBatch& WorldCommandBatch::operator=(
-        WorldCommandBatch&&
+    EcsCommandBatch::~EcsCommandBatch() = default;
+    EcsCommandBatch::EcsCommandBatch(EcsCommandBatch&&) noexcept = default;
+    EcsCommandBatch& EcsCommandBatch::operator=(
+        EcsCommandBatch&&
     ) noexcept = default;
 
-    lux::cxx::expected<void, WorldTaskResourceFailure>
-    WorldCommandBatch::prepare(
+    lux::cxx::expected<void, EcsTaskResourceFailure>
+    EcsCommandBatch::prepare(
         std::size_t producer_count,
         std::size_t reserve_commands_per_producer
     ) noexcept
@@ -234,32 +234,32 @@ namespace lux::ecs
         }
         catch (...)
         {
-            return lux::cxx::unexpected(WorldTaskResourceFailure{
-                EWorldTaskResourceError::ALLOCATION_FAILURE
+            return lux::cxx::unexpected(EcsTaskResourceFailure{
+                EEcsTaskResourceError::ALLOCATION_FAILURE
             });
         }
     }
 
     lux::cxx::expected<
-        WorldCommandRecordingScope,
-        WorldTaskResourceFailure>
-    WorldCommandBatch::begin(std::size_t producer) noexcept
+        EcsCommandRecordingScope,
+        EcsTaskResourceFailure>
+    EcsCommandBatch::begin(std::size_t producer) noexcept
     {
         if (producer >= impl_->producers.size() || impl_->active[producer])
         {
-            return lux::cxx::unexpected(WorldTaskResourceFailure{
-                EWorldTaskResourceError::INVALID_PRODUCER
+            return lux::cxx::unexpected(EcsTaskResourceFailure{
+                EEcsTaskResourceError::INVALID_PRODUCER
             });
         }
         impl_->active[producer] = true;
-        return WorldCommandRecordingScope(
+        return EcsCommandRecordingScope(
             *this,
             producer,
             detail::CommandShardAccess::begin(impl_->producers[producer])
         );
     }
 
-    void WorldCommandBatch::end(std::size_t producer) noexcept
+    void EcsCommandBatch::end(std::size_t producer) noexcept
     {
         detail::require(
             producer < impl_->producers.size() && impl_->active[producer]
@@ -268,7 +268,7 @@ namespace lux::ecs
         impl_->active[producer] = false;
     }
 
-    std::size_t WorldCommandBatch::discarded() const noexcept
+    std::size_t EcsCommandBatch::discarded() const noexcept
     {
         std::size_t result{};
         for (const auto& producer : impl_->producers)
@@ -276,7 +276,7 @@ namespace lux::ecs
         return result;
     }
 
-    std::size_t WorldCommandBatch::allocationEvents() const noexcept
+    std::size_t EcsCommandBatch::allocationEvents() const noexcept
     {
         std::size_t result{};
         for (const auto& producer : impl_->producers)
@@ -284,23 +284,23 @@ namespace lux::ecs
         return result;
     }
 
-    WorldCommandRecordingScope::WorldCommandRecordingScope(
-        WorldCommandBatch& owner,
+    EcsCommandRecordingScope::EcsCommandRecordingScope(
+        EcsCommandBatch& owner,
         std::size_t producer,
-        WorldCommands commands
+        EcsCommands commands
     ) noexcept
         : owner_(&owner), producer_(producer), commands_(commands)
     {
     }
 
-    WorldCommandRecordingScope::~WorldCommandRecordingScope() noexcept
+    EcsCommandRecordingScope::~EcsCommandRecordingScope() noexcept
     {
         if (owner_ != nullptr)
             owner_->end(producer_);
     }
 
-    WorldCommandRecordingScope::WorldCommandRecordingScope(
-        WorldCommandRecordingScope&& other
+    EcsCommandRecordingScope::EcsCommandRecordingScope(
+        EcsCommandRecordingScope&& other
     ) noexcept
         : owner_(std::exchange(other.owner_, nullptr)),
           producer_(other.producer_),
@@ -309,14 +309,14 @@ namespace lux::ecs
         other.commands_ = {};
     }
 
-    WorldCommands WorldCommandRecordingScope::commands() const noexcept
+    EcsCommands EcsCommandRecordingScope::commands() const noexcept
     {
         return commands_;
     }
 
-    void applyWorldCommands(
+    void applyEcsCommands(
         EcsState& world,
-        WorldCommandBatch& commands
+        EcsCommandBatch& commands
     ) noexcept
     {
         for (const bool active : commands.impl_->active)
@@ -329,8 +329,8 @@ namespace lux::ecs
         detail::WorldExecutionAccess::resume(world);
     }
 
-    void detail::WorldTaskResourceTestAccess::failNextPush(
-        WorldCommandBatch& batch,
+    void detail::EcsTaskResourceTestAccess::failNextPush(
+        EcsCommandBatch& batch,
         std::size_t producer
     ) noexcept
     {

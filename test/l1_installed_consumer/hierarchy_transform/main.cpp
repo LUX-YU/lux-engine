@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/SystemRegistry.hpp>
 #include <lux/engine/ecs/SystemTaskResources.hpp>
 #include <lux/engine/ecs/TransformSystem.hpp>
-#include <lux/engine/ecs/WorldTaskResources.hpp>
+#include <lux/engine/ecs/EcsTaskResources.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
@@ -35,8 +35,8 @@ int main()
     if (!hierarchy_system || !transform_system)
         return 2;
 
-    auto hierarchy_changes = std::make_shared<lux::ecs::WorldChangeBatch>();
-    auto transform_changes = std::make_shared<lux::ecs::WorldChangeBatch>();
+    auto hierarchy_changes = std::make_shared<lux::ecs::EcsChangeBatch>();
+    auto transform_changes = std::make_shared<lux::ecs::EcsChangeBatch>();
     if (!hierarchy_changes->prepare(
             lux::ecs::HierarchySystem::TaskAccess.writeStorages()
         ) ||
@@ -46,7 +46,7 @@ int main()
     {
         return 3;
     }
-    lux::ecs::WorldCommandBatch commands;
+    lux::ecs::EcsCommandBatch commands;
     if (!commands.prepare(2U))
         return 4;
 
@@ -66,7 +66,7 @@ int main()
         return 5;
     const auto hierarchy_publish = builder.add(
         lux::task::dependsOn(*hierarchy_update),
-        lux::ecs::worldChangesWrite(),
+        lux::ecs::ecsChangesWrite(),
         [&, hierarchy_changes]() noexcept
         {
             (void)hierarchy_changes->publish(world);
@@ -91,7 +91,7 @@ int main()
         return 7;
     const auto transform_publish = builder.add(
         lux::task::dependsOn(*transform_update),
-        lux::ecs::worldChangesWrite(),
+        lux::ecs::ecsChangesWrite(),
         [&, transform_changes]() noexcept
         {
             (void)transform_changes->publish(world);
@@ -103,8 +103,8 @@ int main()
     if (!builder.add(
             lux::task::dependsOn(*transform_publish),
             lux::task::on(lux::task::ETaskAffinity::CALLER_THREAD),
-            lux::ecs::worldCommandsWrite(),
-            [&]() noexcept { lux::ecs::applyWorldCommands(world, commands); }
+            lux::ecs::ecsCommandsWrite(),
+            [&]() noexcept { lux::ecs::applyEcsCommands(world, commands); }
         ))
     {
         return 9;

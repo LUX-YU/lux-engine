@@ -19,10 +19,10 @@ namespace lux::ecs
 {
     class ComponentLoadBinding;
     class ComponentSnapshotBinding;
-    class WorldChangeBatch;
+    class EcsChangeBatch;
     template <class Component>
     class TaskWriter;
-    class WorldSnapshot;
+    class EcsSnapshot;
     struct ComponentOperations;
 
     template <class Component>
@@ -53,11 +53,11 @@ namespace lux::ecs
 
     namespace detail
     {
-        class WorldChangeLog;
+        class EcsChangeLog;
         class SectionMembershipDirectory;
-        struct WorldSnapshotAccess;
+        struct EcsSnapshotAccess;
         struct WorldMutationAccess;
-        struct WorldChangeAccess;
+        struct EcsChangeAccess;
         struct WorldColdAccess;
         struct WorldEntityAccess;
         struct WorldExecutionAccess;
@@ -181,8 +181,8 @@ namespace lux::ecs
         EChangeEmission change_emission_{EChangeEmission::RECORD};
 
         friend class EcsState;
-        friend class WorldSnapshot;
-        friend struct detail::WorldSnapshotAccess;
+        friend class EcsSnapshot;
+        friend struct detail::EcsSnapshotAccess;
         friend struct detail::WorldMutationAccess;
         friend struct detail::WorldColdAccess;
         friend struct detail::WorldExecutionAccess;
@@ -246,7 +246,7 @@ namespace lux::ecs
 
         Registry registry_;
         EcsStateConfig config_;
-        std::unique_ptr<detail::WorldChangeLog> changes_;
+        std::unique_ptr<detail::EcsChangeLog> changes_;
         std::unique_ptr<detail::SectionMembershipDirectory>
             section_memberships_;
         std::thread::id owner_thread_;
@@ -257,22 +257,22 @@ namespace lux::ecs
 
         friend class EcsMutation;
         friend class EcsTaskExecutionLease;
-        friend class WorldSnapshot;
+        friend class EcsSnapshot;
         template <class Component>
         friend class TaskWriter;
         template <class... Access>
         friend auto taskQuery(
             EcsState&,
-            WorldChangeBatch&,
+            EcsChangeBatch&,
             QuerySpec<Access...>
         );
         template <class Component>
         friend TaskWriter<Component> taskWriter(
             EcsState&,
-            WorldChangeBatch&
+            EcsChangeBatch&
         ) noexcept;
-        friend struct detail::WorldSnapshotAccess;
-        friend struct detail::WorldChangeAccess;
+        friend struct detail::EcsSnapshotAccess;
+        friend struct detail::EcsChangeAccess;
         friend struct detail::WorldColdAccess;
         friend struct detail::WorldEntityAccess;
         friend struct detail::WorldExecutionAccess;
@@ -315,14 +315,14 @@ namespace lux::ecs
             ) noexcept;
         };
 
-        struct WorldChangeAccess final
+        struct EcsChangeAccess final
         {
-            [[nodiscard]] static WorldChangeLog& log(EcsState& world) noexcept
+            [[nodiscard]] static EcsChangeLog& log(EcsState& world) noexcept
             {
                 return *world.changes_;
             }
 
-            [[nodiscard]] static const WorldChangeLog& log(
+            [[nodiscard]] static const EcsChangeLog& log(
                 const EcsState& world
             ) noexcept
             {
@@ -331,10 +331,10 @@ namespace lux::ecs
         };
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRecorder
-        worldChangeRecorder(EcsState& world) noexcept;
+        ecsChangeRecorder(EcsState& world) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeStreamBinder
-        worldChangeStreamBinder(EcsState& world) noexcept;
+        ecsChangeStreamBinder(EcsState& world) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC bool recordWorldComponentChange(
             EcsState& world,
@@ -349,16 +349,16 @@ namespace lux::ecs
             EEntityChangeKind kind
         ) noexcept;
 
-        LUX_ENGINE_ECS_CORE_PUBLIC void establishWorldChangeBaseline(
+        LUX_ENGINE_ECS_CORE_PUBLIC void establishEcsChangeBaseline(
             EcsState& world
         ) noexcept;
 
-        LUX_ENGINE_ECS_CORE_PUBLIC void markWorldChangeHistoryLoss(
+        LUX_ENGINE_ECS_CORE_PUBLIC void markEcsChangeHistoryLoss(
             EcsState& world
         ) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC std::uint64_t
-        worldChangeEpoch(const EcsState& world) noexcept;
+        ecsChangeEpoch(const EcsState& world) noexcept;
 
         [[nodiscard]] LUX_ENGINE_ECS_CORE_PUBLIC ChangeRangeData
         readWorldComponentChanges(
@@ -463,7 +463,7 @@ namespace lux::ecs
         return detail::BasicQuery<EcsState::Registry, Access...>(
             world_->registry_,
             change_emission_ == EChangeEmission::RECORD
-                ? detail::worldChangeStreamBinder(*world_)
+                ? detail::ecsChangeStreamBinder(*world_)
                 : detail::ChangeStreamBinder{},
             {}
         );

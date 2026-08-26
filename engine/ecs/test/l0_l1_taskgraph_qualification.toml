@@ -12,14 +12,14 @@ large_size = 1024
 max_exponent = 1.25
 
 [[scaling]]
-name = "WorldChangeBatch one-lane recording scaling"
+name = "EcsChangeBatch one-lane recording scaling"
 metric = "world_change_batch_record_1"
 small_size = 100000
 large_size = 1000000
 max_exponent = 1.25
 
 [[scaling]]
-name = "WorldChangeBatch thirty-two-lane recording scaling"
+name = "EcsChangeBatch thirty-two-lane recording scaling"
 metric = "world_change_batch_record_32"
 small_size = 100000
 large_size = 1000000
@@ -47,21 +47,21 @@ field = "allocations"
 equals = 0
 
 [[structural]]
-name = "WorldChangeBatch binds thirty-two lanes once"
+name = "EcsChangeBatch binds thirty-two lanes once"
 metric = "world_change_batch_record_32"
 size = 1000000
 field = "lane_binds"
 equals = 32
 
 [[structural]]
-name = "WorldChangeBatch appends every record"
+name = "EcsChangeBatch appends every record"
 metric = "world_change_batch_record_32"
 size = 1000000
 field = "record_appends"
 equals = 32000000
 
 [[structural]]
-name = "WorldChangeBatch has no per-record lookup"
+name = "EcsChangeBatch has no per-record lookup"
 metric = "world_change_batch_record_32"
 size = 1000000
 field = "per_record_lookups"

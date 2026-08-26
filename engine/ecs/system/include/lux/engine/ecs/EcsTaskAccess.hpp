@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/EcsTaskResource.hpp>
 #include <lux/engine/ecs/Query.hpp>
 #include <lux/engine/ecs/SystemAccessSpec.hpp>
-#include <lux/engine/ecs/WorldTaskResources.hpp>
+#include <lux/engine/ecs/EcsTaskResources.hpp>
 #include <lux/engine/task/TaskGraph.hpp>
 
 #include <entt/core/type_info.hpp>
@@ -178,13 +178,13 @@ namespace lux::ecs
         template <class... Value>
         friend auto taskQuery(
             EcsState&,
-            WorldChangeBatch&,
+            EcsChangeBatch&,
             EcsTaskAccess<Value...>
         );
         template <class Component, class... Value>
         friend TaskWriter<Component> taskWriter(
             EcsState&,
-            WorldChangeBatch&,
+            EcsChangeBatch&,
             EcsTaskAccess<Value...>
         ) noexcept;
     };
@@ -195,7 +195,7 @@ namespace lux::ecs
     template <class... Access>
     [[nodiscard]] auto taskQuery(
         EcsState& world,
-        WorldChangeBatch& changes,
+        EcsChangeBatch& changes,
         EcsTaskAccess<Access...>
     )
     {
@@ -207,7 +207,7 @@ namespace lux::ecs
     template <class Component, class... Access>
     [[nodiscard]] TaskWriter<Component> taskWriter(
         EcsState& world,
-        WorldChangeBatch& changes,
+        EcsChangeBatch& changes,
         EcsTaskAccess<Access...>
     ) noexcept
     {
@@ -218,18 +218,18 @@ namespace lux::ecs
     [[nodiscard]] constexpr task::TaskResourceAccess worldStructureWrite()
         noexcept
     {
-        return task::write(worldStructureTaskResource());
+        return task::write(ecsStructureTaskResource());
     }
 
-    [[nodiscard]] constexpr task::TaskResourceAccess worldChangesWrite()
+    [[nodiscard]] constexpr task::TaskResourceAccess ecsChangesWrite()
         noexcept
     {
-        return task::write(worldChangesTaskResource());
+        return task::write(ecsChangesTaskResource());
     }
 
-    [[nodiscard]] constexpr task::TaskResourceAccess worldCommandsWrite()
+    [[nodiscard]] constexpr task::TaskResourceAccess ecsCommandsWrite()
         noexcept
     {
-        return task::write(worldCommandsTaskResource());
+        return task::write(ecsCommandsTaskResource());
     }
 }

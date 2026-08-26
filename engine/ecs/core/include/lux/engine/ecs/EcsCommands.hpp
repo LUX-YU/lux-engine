@@ -25,10 +25,10 @@ namespace lux::ecs
         ALLOCATION_FAILURE,
     };
 
-    class LUX_ENGINE_ECS_CORE_PUBLIC WorldCommands final
+    class LUX_ENGINE_ECS_CORE_PUBLIC EcsCommands final
     {
       public:
-        WorldCommands() noexcept = default;
+        EcsCommands() noexcept = default;
 
         [[nodiscard]] explicit operator bool() const noexcept;
 
@@ -75,7 +75,7 @@ namespace lux::ecs
             void (*destroy)(void*) noexcept{};
         };
 
-        WorldCommands(
+        EcsCommands(
             detail::CommandShard& shard,
             std::uint32_t generation
         ) noexcept;

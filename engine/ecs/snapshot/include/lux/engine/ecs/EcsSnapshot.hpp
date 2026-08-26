@@ -12,17 +12,17 @@
 
 namespace lux::ecs
 {
-    class LUX_ENGINE_ECS_SNAPSHOT_PUBLIC WorldSnapshot final
+    class LUX_ENGINE_ECS_SNAPSHOT_PUBLIC EcsSnapshot final
     {
       public:
-        WorldSnapshot() noexcept;
-        WorldSnapshot(const WorldSnapshot&) = delete;
-        WorldSnapshot& operator=(const WorldSnapshot&) = delete;
-        WorldSnapshot(WorldSnapshot&&) noexcept;
-        WorldSnapshot& operator=(WorldSnapshot&&) noexcept;
-        ~WorldSnapshot() noexcept;
+        EcsSnapshot() noexcept;
+        EcsSnapshot(const EcsSnapshot&) = delete;
+        EcsSnapshot& operator=(const EcsSnapshot&) = delete;
+        EcsSnapshot(EcsSnapshot&&) noexcept;
+        EcsSnapshot& operator=(EcsSnapshot&&) noexcept;
+        ~EcsSnapshot() noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<WorldSnapshot, SnapshotError>
+        [[nodiscard]] static lux::cxx::expected<EcsSnapshot, SnapshotError>
         capture(
             const EcsState& world,
             const ComponentSnapshotSet& components
@@ -39,7 +39,7 @@ namespace lux::ecs
 
       private:
         struct Impl;
-        explicit WorldSnapshot(std::unique_ptr<Impl> impl) noexcept;
+        explicit EcsSnapshot(std::unique_ptr<Impl> impl) noexcept;
 
         std::unique_ptr<Impl> impl_;
     };

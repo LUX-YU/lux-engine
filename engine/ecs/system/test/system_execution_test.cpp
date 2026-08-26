@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/ecs/SystemTaskResources.hpp>
-#include <lux/engine/ecs/WorldTaskResources.hpp>
+#include <lux/engine/ecs/EcsTaskResources.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
@@ -33,9 +33,9 @@ int main()
     mutation->emplace<Velocity>(entity);
     mutation = {};
 
-    lux::ecs::WorldChangeBatch changes;
+    lux::ecs::EcsChangeBatch changes;
     assert(changes.prepare(MovementAccess.writeStorages(), 1U));
-    lux::ecs::WorldCommandBatch commands;
+    lux::ecs::EcsCommandBatch commands;
     assert(commands.prepare(1U));
 
     lux::task::TaskGraphBuilder builder;
@@ -53,14 +53,14 @@ int main()
     );
     const auto publish = builder.add(
         lux::task::dependsOn(*movement),
-        lux::ecs::worldChangesWrite(),
+        lux::ecs::ecsChangesWrite(),
         [&]() noexcept { (void)changes.publish(world); }
     );
     const auto apply = builder.add(
         lux::task::dependsOn(*publish),
         lux::task::on(lux::task::ETaskAffinity::CALLER_THREAD),
-        lux::ecs::worldCommandsWrite(),
-        [&]() noexcept { lux::ecs::applyWorldCommands(world, commands); }
+        lux::ecs::ecsCommandsWrite(),
+        [&]() noexcept { lux::ecs::applyEcsCommands(world, commands); }
     );
     assert(movement && publish && apply);
     auto graph = std::move(builder).build();

@@ -1,5 +1,5 @@
-#include <lux/engine/ecs/WorldSnapshot.hpp>
-#include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
+#include <lux/engine/ecs/EcsSnapshot.hpp>
+#include <lux/engine/ecs/core/detail/EcsChangeLog.hpp>
 #include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 
 #include <atomic>
@@ -85,7 +85,7 @@ int main()
     edit = {};
 
     lux::ecs::detail::ComponentSnapshotTestStats::reset();
-    auto snapshot = lux::ecs::WorldSnapshot::capture(
+    auto snapshot = lux::ecs::EcsSnapshot::capture(
         source,
         *snapshot_components
     );
@@ -96,7 +96,7 @@ int main()
     );
     auto instance = snapshot->instantiate(worldConfig());
     assert(instance);
-    auto& instance_journal = lux::ecs::detail::WorldChangeAccess::log(
+    auto& instance_journal = lux::ecs::detail::EcsChangeAccess::log(
         **instance
     );
     assert(instance_journal.recordWriteCountForTest() == 0U);
@@ -118,7 +118,7 @@ int main()
     auto bounded_instance = snapshot->instantiate(bounded_config);
     assert(bounded_instance);
     lux::ecs::ChangeCursor<Position> bounded_cursor;
-    auto& bounded_journal = lux::ecs::detail::WorldChangeAccess::log(
+    auto& bounded_journal = lux::ecs::detail::EcsChangeAccess::log(
         **bounded_instance
     );
     assert(bounded_journal.recordWriteCountForTest() == 0U);
@@ -162,7 +162,7 @@ int main()
     lux::ecs::EcsState restored{bounded_config};
     lux::ecs::ChangeCursor<Position> restore_cursor;
     auto& restore_journal =
-        lux::ecs::detail::WorldChangeAccess::log(restored);
+        lux::ecs::detail::EcsChangeAccess::log(restored);
     assert(
         restore_journal.read(restore_cursor).status() ==
         lux::ecs::EChangeReadStatus::RESYNC_REQUIRED
@@ -195,7 +195,7 @@ int main()
     std::thread wrong_thread(
         [&]
         {
-            auto captured = lux::ecs::WorldSnapshot::capture(
+            auto captured = lux::ecs::EcsSnapshot::capture(
                 source,
                 *snapshot_components
             );
@@ -215,7 +215,7 @@ int main()
     const auto unknown = invalid_edit.create();
     invalid_edit.emplace<UnknownStorage>(unknown, 3);
     invalid_edit = {};
-    const auto invalid_snapshot = lux::ecs::WorldSnapshot::capture(
+    const auto invalid_snapshot = lux::ecs::EcsSnapshot::capture(
         invalid,
         *snapshot_components
     );

@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/Entity.hpp>
 #include <lux/engine/ecs/Query.hpp>
-#include <lux/engine/ecs/WorldCommands.hpp>
+#include <lux/engine/ecs/EcsCommands.hpp>
 #include <lux/engine/ecs/EcsState.hpp>
 #include <lux/engine/ecs/core/visibility.h>
 
@@ -20,10 +20,10 @@ namespace lux::ecs
     class EcsState;
     namespace detail
     {
-        struct WorldTaskResourceTestAccess;
+        struct EcsTaskResourceTestAccess;
     }
 
-    enum class EWorldTaskResourceError : std::uint8_t
+    enum class EEcsTaskResourceError : std::uint8_t
     {
         INVALID_STORAGE,
         INVALID_PRODUCER,
@@ -31,14 +31,14 @@ namespace lux::ecs
         WORLD_BUSY,
     };
 
-    struct WorldTaskResourceFailure final
+    struct EcsTaskResourceFailure final
     {
-        EWorldTaskResourceError code{
-            EWorldTaskResourceError::ALLOCATION_FAILURE
+        EEcsTaskResourceError code{
+            EEcsTaskResourceError::ALLOCATION_FAILURE
         };
     };
 
-    struct WorldChangeBatchStats final
+    struct EcsChangeBatchStats final
     {
         std::size_t current_records{};
         std::size_t peak_records{};
@@ -55,17 +55,17 @@ namespace lux::ecs
      * once before row processing; publishing binds each EcsState history stream
      * once and stops after the first loss of exact history.
      */
-    class LUX_ENGINE_ECS_CORE_PUBLIC WorldChangeBatch final
+    class LUX_ENGINE_ECS_CORE_PUBLIC EcsChangeBatch final
     {
       public:
-        WorldChangeBatch();
-        ~WorldChangeBatch();
-        WorldChangeBatch(WorldChangeBatch&&) noexcept;
-        WorldChangeBatch& operator=(WorldChangeBatch&&) noexcept;
-        WorldChangeBatch(const WorldChangeBatch&) = delete;
-        WorldChangeBatch& operator=(const WorldChangeBatch&) = delete;
+        EcsChangeBatch();
+        ~EcsChangeBatch();
+        EcsChangeBatch(EcsChangeBatch&&) noexcept;
+        EcsChangeBatch& operator=(EcsChangeBatch&&) noexcept;
+        EcsChangeBatch(const EcsChangeBatch&) = delete;
+        EcsChangeBatch& operator=(const EcsChangeBatch&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldTaskResourceFailure>
+        [[nodiscard]] lux::cxx::expected<void, EcsTaskResourceFailure>
         prepare(
             std::span<const std::uint64_t> write_storages,
             std::size_t reserve_records = 0U
@@ -73,7 +73,7 @@ namespace lux::ecs
 
         void reset() noexcept;
         [[nodiscard]] bool publish(EcsState& world) noexcept;
-        [[nodiscard]] WorldChangeBatchStats stats() const noexcept;
+        [[nodiscard]] EcsChangeBatchStats stats() const noexcept;
 
         /** Internal typed-query seam; callers bind once, never per record. */
         [[nodiscard]] detail::ChangeStreamBinder binder() noexcept;
@@ -83,58 +83,58 @@ namespace lux::ecs
         std::unique_ptr<Impl> impl_;
     };
 
-    class WorldCommandBatch;
+    class EcsCommandBatch;
 
-    class LUX_ENGINE_ECS_CORE_PUBLIC WorldCommandRecordingScope final
+    class LUX_ENGINE_ECS_CORE_PUBLIC EcsCommandRecordingScope final
     {
       public:
-        WorldCommandRecordingScope() noexcept = default;
-        ~WorldCommandRecordingScope() noexcept;
-        WorldCommandRecordingScope(WorldCommandRecordingScope&&) noexcept;
-        WorldCommandRecordingScope& operator=(
-            WorldCommandRecordingScope&&
+        EcsCommandRecordingScope() noexcept = default;
+        ~EcsCommandRecordingScope() noexcept;
+        EcsCommandRecordingScope(EcsCommandRecordingScope&&) noexcept;
+        EcsCommandRecordingScope& operator=(
+            EcsCommandRecordingScope&&
         ) noexcept = delete;
-        WorldCommandRecordingScope(const WorldCommandRecordingScope&) = delete;
-        WorldCommandRecordingScope& operator=(
-            const WorldCommandRecordingScope&
+        EcsCommandRecordingScope(const EcsCommandRecordingScope&) = delete;
+        EcsCommandRecordingScope& operator=(
+            const EcsCommandRecordingScope&
         ) = delete;
 
-        [[nodiscard]] WorldCommands commands() const noexcept;
+        [[nodiscard]] EcsCommands commands() const noexcept;
 
       private:
-        WorldCommandRecordingScope(
-            WorldCommandBatch& owner,
+        EcsCommandRecordingScope(
+            EcsCommandBatch& owner,
             std::size_t producer,
-            WorldCommands commands
+            EcsCommands commands
         ) noexcept;
 
-        WorldCommandBatch* owner_{};
+        EcsCommandBatch* owner_{};
         std::size_t producer_{};
-        WorldCommands commands_{};
+        EcsCommands commands_{};
 
-        friend class WorldCommandBatch;
+        friend class EcsCommandBatch;
     };
 
     /** Deterministic producer-ordered command resource for one graph run. */
-    class LUX_ENGINE_ECS_CORE_PUBLIC WorldCommandBatch final
+    class LUX_ENGINE_ECS_CORE_PUBLIC EcsCommandBatch final
     {
       public:
-        WorldCommandBatch();
-        ~WorldCommandBatch();
-        WorldCommandBatch(WorldCommandBatch&&) noexcept;
-        WorldCommandBatch& operator=(WorldCommandBatch&&) noexcept;
-        WorldCommandBatch(const WorldCommandBatch&) = delete;
-        WorldCommandBatch& operator=(const WorldCommandBatch&) = delete;
+        EcsCommandBatch();
+        ~EcsCommandBatch();
+        EcsCommandBatch(EcsCommandBatch&&) noexcept;
+        EcsCommandBatch& operator=(EcsCommandBatch&&) noexcept;
+        EcsCommandBatch(const EcsCommandBatch&) = delete;
+        EcsCommandBatch& operator=(const EcsCommandBatch&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldTaskResourceFailure>
+        [[nodiscard]] lux::cxx::expected<void, EcsTaskResourceFailure>
         prepare(
             std::size_t producer_count,
             std::size_t reserve_commands_per_producer = 0U
         ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<
-            WorldCommandRecordingScope,
-            WorldTaskResourceFailure>
+            EcsCommandRecordingScope,
+            EcsTaskResourceFailure>
         begin(std::size_t producer) noexcept;
 
         [[nodiscard]] std::size_t discarded() const noexcept;
@@ -145,17 +145,17 @@ namespace lux::ecs
         std::unique_ptr<Impl> impl_;
 
         void end(std::size_t producer) noexcept;
-        friend class WorldCommandRecordingScope;
-        friend struct detail::WorldTaskResourceTestAccess;
-        friend LUX_ENGINE_ECS_CORE_PUBLIC void applyWorldCommands(
+        friend class EcsCommandRecordingScope;
+        friend struct detail::EcsTaskResourceTestAccess;
+        friend LUX_ENGINE_ECS_CORE_PUBLIC void applyEcsCommands(
             EcsState&,
-            WorldCommandBatch&
+            EcsCommandBatch&
         ) noexcept;
     };
 
-    LUX_ENGINE_ECS_CORE_PUBLIC void applyWorldCommands(
+    LUX_ENGINE_ECS_CORE_PUBLIC void applyEcsCommands(
         EcsState& world,
-        WorldCommandBatch& commands
+        EcsCommandBatch& commands
     ) noexcept;
 
     /** One-bound-lane point writer for a graph task. */
@@ -184,27 +184,27 @@ namespace lux::ecs
       private:
         TaskWriter(
             EcsState& world,
-            detail::BoundWorldChangeStream stream
+            detail::BoundEcsChangeStream stream
         ) noexcept
             : world_(std::addressof(world)), stream_(stream)
         {
         }
 
         EcsState* world_{};
-        detail::BoundWorldChangeStream stream_{};
+        detail::BoundEcsChangeStream stream_{};
         bool history_lost_{};
 
         template <class Value>
         friend TaskWriter<Value> taskWriter(
             EcsState&,
-            WorldChangeBatch&
+            EcsChangeBatch&
         ) noexcept;
     };
 
     template <class... Access>
     [[nodiscard]] auto taskQuery(
         EcsState& world,
-        WorldChangeBatch& changes,
+        EcsChangeBatch& changes,
         QuerySpec<Access...> specification
     )
     {
@@ -218,7 +218,7 @@ namespace lux::ecs
     template <class Component>
     [[nodiscard]] TaskWriter<Component> taskWriter(
         EcsState& world,
-        WorldChangeBatch& changes
+        EcsChangeBatch& changes
     ) noexcept
     {
         detail::require(world.state_ == detail::EWorldState::EXECUTING);

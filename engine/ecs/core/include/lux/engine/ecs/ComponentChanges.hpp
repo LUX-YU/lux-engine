@@ -32,7 +32,7 @@ namespace lux::ecs
 
     namespace detail
     {
-        class WorldChangeLog;
+        class EcsChangeLog;
 
         struct ChangeRangeData final
         {
@@ -234,7 +234,7 @@ namespace lux::ecs
         std::uint64_t end_{};
         EChangeReadStatus status_{EChangeReadStatus::CURRENT};
 
-        friend class detail::WorldChangeLog;
+        friend class detail::EcsChangeLog;
 
     };
 } // namespace lux::ecs

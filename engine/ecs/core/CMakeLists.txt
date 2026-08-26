@@ -13,10 +13,10 @@ add_component(
     NAMESPACE      lux::engine::ecs
     OUTPUT_NAME    lux_engine_ecs_core
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldChangeLog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsChangeLog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsState.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldCommands.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldTaskResources.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsCommands.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsTaskResources.cpp
 )
 
 component_include_directories(

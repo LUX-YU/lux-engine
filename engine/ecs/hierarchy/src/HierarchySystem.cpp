@@ -16,7 +16,7 @@ namespace lux::ecs
 
     void HierarchySystem::update(
         EcsState& world,
-        WorldCommands commands
+        EcsCommands commands
     ) noexcept
     {
         detail::require(world_ != nullptr && hierarchy_ != nullptr);

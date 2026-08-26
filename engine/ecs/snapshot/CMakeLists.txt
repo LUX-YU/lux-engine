@@ -14,7 +14,7 @@ add_component(
     OUTPUT_NAME    lux_engine_ecs_snapshot
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ComponentSnapshotSet.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldSnapshot.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsSnapshot.cpp
 )
 
 component_include_directories(

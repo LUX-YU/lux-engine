@@ -1,4 +1,4 @@
-#include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
+#include <lux/engine/ecs/core/detail/EcsChangeLog.hpp>
 
 #include <lux/engine/ecs/EcsState.hpp>
 
@@ -29,7 +29,7 @@ namespace lux::ecs::detail
         }
     } // namespace
 
-    WorldChangeLog::WorldChangeLog(WorldChangeLogConfigValue config)
+    EcsChangeLog::EcsChangeLog(EcsChangeLogConfigValue config)
         : config_(config),
           max_blocks_(config.max_bytes / kJournalBlockBytes)
     {
@@ -55,22 +55,22 @@ namespace lux::ecs::detail
         }
     }
 
-    WorldChangeLog::~WorldChangeLog() noexcept = default;
+    EcsChangeLog::~EcsChangeLog() noexcept = default;
 
-    ChangeRecorder WorldChangeLog::recorder() noexcept
+    ChangeRecorder EcsChangeLog::recorder() noexcept
     {
         return ChangeRecorder{
             this,
             [](void* context, std::uint64_t storage, Entity entity,
                EComponentChangeKind kind) noexcept
             {
-                (void)static_cast<WorldChangeLog*>(context)->recordComponent(
+                (void)static_cast<EcsChangeLog*>(context)->recordComponent(
                     storage, entity, kind
                 );
             }};
     }
 
-    BoundWorldChangeStream WorldChangeLog::bindComponent(
+    BoundEcsChangeStream EcsChangeLog::bindComponent(
         std::uint64_t storage
     ) noexcept
     {
@@ -78,7 +78,7 @@ namespace lux::ecs::detail
         JournalStream* stream = ensureStream(storage);
         if (stream == nullptr)
             return {};
-        return BoundWorldChangeStream{
+        return BoundEcsChangeStream{
             .owner = this,
             .stream = stream,
             .append = [](
@@ -88,7 +88,7 @@ namespace lux::ecs::detail
                 EComponentChangeKind kind
             ) noexcept
             {
-                return static_cast<WorldChangeLog*>(owner)->append(
+                return static_cast<EcsChangeLog*>(owner)->append(
                     *static_cast<JournalStream*>(target_stream),
                     entity,
                     static_cast<std::uint8_t>(kind)
@@ -97,7 +97,7 @@ namespace lux::ecs::detail
         };
     }
 
-    JournalStream* WorldChangeLog::ensureStream(std::uint64_t storage) noexcept
+    JournalStream* EcsChangeLog::ensureStream(std::uint64_t storage) noexcept
     {
         if (const auto found = component_streams_.find(storage);
             found != component_streams_.end())
@@ -126,7 +126,7 @@ namespace lux::ecs::detail
         }
     }
 
-    JournalPosition WorldChangeLog::positionAt(
+    JournalPosition EcsChangeLog::positionAt(
         const JournalStream& stream,
         std::uint64_t sequence
     ) noexcept
@@ -165,7 +165,7 @@ namespace lux::ecs::detail
         return JournalPosition{block, within_block};
     }
 
-    void WorldChangeLog::attachBlock(
+    void EcsChangeLog::attachBlock(
         JournalStream& stream,
         JournalBlock& block
     ) noexcept
@@ -186,7 +186,7 @@ namespace lux::ecs::detail
         ++stream.block_count;
     }
 
-    JournalBlock* WorldChangeLog::detachFrontBlock(
+    JournalBlock* EcsChangeLog::detachFrontBlock(
         JournalStream& stream
     ) noexcept
     {
@@ -213,7 +213,7 @@ namespace lux::ecs::detail
         return block;
     }
 
-    void WorldChangeLog::releaseBlock(JournalBlock& block) noexcept
+    void EcsChangeLog::releaseBlock(JournalBlock& block) noexcept
     {
         require(
             block.stream_previous == nullptr &&
@@ -225,7 +225,7 @@ namespace lux::ecs::detail
         free_blocks_ = std::addressof(block);
     }
 
-    void WorldChangeLog::discardStream(JournalStream& stream) noexcept
+    void EcsChangeLog::discardStream(JournalStream& stream) noexcept
     {
         require(stream.pins == 0U);
         while (stream.first != nullptr)
@@ -235,7 +235,7 @@ namespace lux::ecs::detail
         stream.minimum_available = stream.next_sequence;
     }
 
-    JournalStream* WorldChangeLog::oldestEvictableStream() noexcept
+    JournalStream* EcsChangeLog::oldestEvictableStream() noexcept
     {
         JournalStream* result{};
         const auto consider = [&result](JournalStream& candidate) noexcept
@@ -254,7 +254,7 @@ namespace lux::ecs::detail
         return result;
     }
 
-    JournalBlock* WorldChangeLog::acquireBlock() noexcept
+    JournalBlock* EcsChangeLog::acquireBlock() noexcept
     {
         if (fail_next_block_acquisition_for_test_)
         {
@@ -288,7 +288,7 @@ namespace lux::ecs::detail
         return victim == nullptr ? nullptr : detachFrontBlock(*victim);
     }
 
-    bool WorldChangeLog::append(
+    bool EcsChangeLog::append(
         JournalStream& stream,
         Entity entity,
         std::uint8_t kind
@@ -329,7 +329,7 @@ namespace lux::ecs::detail
         return true;
     }
 
-    bool WorldChangeLog::recordComponent(
+    bool EcsChangeLog::recordComponent(
         std::uint64_t storage,
         Entity entity,
         EComponentChangeKind kind
@@ -341,7 +341,7 @@ namespace lux::ecs::detail
         return false;
     }
 
-    bool WorldChangeLog::recordEntity(
+    bool EcsChangeLog::recordEntity(
         Entity entity,
         EEntityChangeKind kind
     ) noexcept
@@ -349,7 +349,7 @@ namespace lux::ecs::detail
         return append(entity_stream_, entity, static_cast<std::uint8_t>(kind));
     }
 
-    ChangeRangeData WorldChangeLog::readComponentRaw(
+    ChangeRangeData EcsChangeLog::readComponentRaw(
         std::uint64_t storage,
         std::uint64_t& cursor_epoch,
         std::uint64_t& cursor_sequence
@@ -388,14 +388,14 @@ namespace lux::ecs::detail
             EChangeReadStatus::CURRENT};
     }
 
-    EntityChanges WorldChangeLog::read(EntityChangeCursor& cursor) const noexcept
+    EntityChanges EcsChangeLog::read(EntityChangeCursor& cursor) const noexcept
     {
         return EntityChanges::fromDetail(readEntityRaw(
             cursor.epoch_, cursor.sequence_
         ));
     }
 
-    ChangeRangeData WorldChangeLog::readEntityRaw(
+    ChangeRangeData EcsChangeLog::readEntityRaw(
         std::uint64_t& cursor_epoch,
         std::uint64_t& cursor_sequence
     ) const noexcept
@@ -431,7 +431,7 @@ namespace lux::ecs::detail
             EChangeReadStatus::CURRENT};
     }
 
-    void WorldChangeLog::establishBaseline() noexcept
+    void EcsChangeLog::establishBaseline() noexcept
     {
         advanceEpoch(epoch_);
         const auto reset = [this](JournalStream& stream) noexcept
@@ -448,7 +448,7 @@ namespace lux::ecs::detail
             reset(*stream);
     }
 
-    void WorldChangeLog::markHistoryLoss() noexcept
+    void EcsChangeLog::markHistoryLoss() noexcept
     {
         advanceEpoch(epoch_);
     }

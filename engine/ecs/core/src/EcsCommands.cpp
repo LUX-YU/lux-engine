@@ -7,7 +7,7 @@
 
 namespace lux::ecs
 {
-    WorldCommands::WorldCommands(
+    EcsCommands::EcsCommands(
         detail::CommandShard& shard,
         std::uint32_t generation
     ) noexcept
@@ -15,12 +15,12 @@ namespace lux::ecs
     {
     }
 
-    WorldCommands::operator bool() const noexcept
+    EcsCommands::operator bool() const noexcept
     {
         return shard_ != nullptr && shard_->accepts(generation_);
     }
 
-    ECommandResult WorldCommands::pushRaw(
+    ECommandResult EcsCommands::pushRaw(
         const CommandVTable& table,
         void* source
     ) const noexcept
@@ -217,7 +217,7 @@ namespace lux::ecs::detail
 
     ECommandResult CommandShard::push(
         std::uint32_t writer_generation,
-        const WorldCommands::CommandVTable& table,
+        const EcsCommands::CommandVTable& table,
         void* source
     ) noexcept
     {
@@ -263,14 +263,14 @@ namespace lux::ecs::detail
         return ECommandResult::ACCEPTED;
     }
 
-    WorldCommands CommandShard::beginExecution() noexcept
+    EcsCommands CommandShard::beginExecution() noexcept
     {
         detail::require(!active_ && !applying_);
         ++generation_;
         if (generation_ == 0)
             ++generation_;
         active_ = true;
-        return WorldCommands(*this, generation_);
+        return EcsCommands(*this, generation_);
     }
 
     void CommandShard::endExecution() noexcept

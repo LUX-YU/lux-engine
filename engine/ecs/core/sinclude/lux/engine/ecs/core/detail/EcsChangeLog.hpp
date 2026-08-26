@@ -14,7 +14,7 @@
 
 namespace lux::ecs::detail
 {
-    struct WorldChangeLogConfigValue final
+    struct EcsChangeLogConfigValue final
     {
         std::size_t initial_bytes{};
         std::size_t max_bytes{};
@@ -65,17 +65,17 @@ namespace lux::ecs::detail
         std::size_t offset{};
     };
 
-    class LUX_ENGINE_ECS_CORE_PUBLIC WorldChangeLog final
+    class LUX_ENGINE_ECS_CORE_PUBLIC EcsChangeLog final
     {
       public:
-        explicit WorldChangeLog(WorldChangeLogConfigValue config);
-        ~WorldChangeLog() noexcept;
+        explicit EcsChangeLog(EcsChangeLogConfigValue config);
+        ~EcsChangeLog() noexcept;
 
-        WorldChangeLog(const WorldChangeLog&) = delete;
-        WorldChangeLog& operator=(const WorldChangeLog&) = delete;
+        EcsChangeLog(const EcsChangeLog&) = delete;
+        EcsChangeLog& operator=(const EcsChangeLog&) = delete;
 
         [[nodiscard]] ChangeRecorder recorder() noexcept;
-        [[nodiscard]] BoundWorldChangeStream bindComponent(
+        [[nodiscard]] BoundEcsChangeStream bindComponent(
             std::uint64_t storage
         ) noexcept;
 
@@ -182,7 +182,7 @@ namespace lux::ecs::detail
         std::unordered_map<std::uint64_t, std::unique_ptr<JournalStream>>
             component_streams_;
         JournalStream entity_stream_;
-        WorldChangeLogConfigValue config_;
+        EcsChangeLogConfigValue config_;
         std::vector<std::unique_ptr<JournalBlock>> owned_blocks_;
         JournalBlock* free_blocks_{};
         std::size_t max_blocks_{};

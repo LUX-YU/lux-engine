@@ -3,7 +3,7 @@
 #include <lux/engine/ecs/HierarchyIndex.hpp>
 #include <lux/engine/ecs/EcsTaskAccess.hpp>
 #include <lux/engine/ecs/Transform.hpp>
-#include <lux/engine/ecs/WorldTaskResources.hpp>
+#include <lux/engine/ecs/EcsTaskResources.hpp>
 #include <lux/engine/ecs/transform/visibility.h>
 
 #include <cstddef>
@@ -34,12 +34,12 @@ namespace lux::ecs
         void update(
             const EcsState& world,
             TaskWriter<WorldTransform2D>& writer,
-            WorldCommands commands
+            EcsCommands commands
         ) noexcept;
         void invokeTask(
             EcsState& world,
-            WorldChangeBatch& changes,
-            WorldCommands commands
+            EcsChangeBatch& changes,
+            EcsCommands commands
         ) noexcept
         {
             auto writer = taskWriter<WorldTransform2D>(
@@ -78,12 +78,12 @@ namespace lux::ecs
         void update(
             const EcsState& world,
             TaskWriter<WorldTransform3D>& writer,
-            WorldCommands commands
+            EcsCommands commands
         ) noexcept;
         void invokeTask(
             EcsState& world,
-            WorldChangeBatch& changes,
-            WorldCommands commands
+            EcsChangeBatch& changes,
+            EcsCommands commands
         ) noexcept
         {
             auto writer = taskWriter<WorldTransform3D>(

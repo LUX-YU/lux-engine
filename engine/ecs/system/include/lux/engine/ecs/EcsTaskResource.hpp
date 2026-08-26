@@ -29,23 +29,23 @@ namespace lux::ecs
         detail::ecsTaskDomainHash("lux.ecs.component");
     inline constexpr std::uint64_t ExternalTaskDomain =
         detail::ecsTaskDomainHash("lux.ecs.external");
-    inline constexpr std::uint64_t WorldStructureTaskDomain =
-        detail::ecsTaskDomainHash("lux.ecs.world.structure");
-    inline constexpr std::uint64_t WorldChangesTaskDomain =
-        detail::ecsTaskDomainHash("lux.ecs.world.changes");
-    inline constexpr std::uint64_t WorldCommandsTaskDomain =
-        detail::ecsTaskDomainHash("lux.ecs.world.commands");
+    inline constexpr std::uint64_t EcsStructureTaskDomain =
+        detail::ecsTaskDomainHash("lux.ecs.structure");
+    inline constexpr std::uint64_t EcsChangesTaskDomain =
+        detail::ecsTaskDomainHash("lux.ecs.changes");
+    inline constexpr std::uint64_t EcsCommandsTaskDomain =
+        detail::ecsTaskDomainHash("lux.ecs.commands");
 
     static_assert(ComponentTaskDomain != ExternalTaskDomain);
-    static_assert(ComponentTaskDomain != WorldStructureTaskDomain);
-    static_assert(ComponentTaskDomain != WorldChangesTaskDomain);
-    static_assert(ComponentTaskDomain != WorldCommandsTaskDomain);
-    static_assert(ExternalTaskDomain != WorldStructureTaskDomain);
-    static_assert(ExternalTaskDomain != WorldChangesTaskDomain);
-    static_assert(ExternalTaskDomain != WorldCommandsTaskDomain);
-    static_assert(WorldStructureTaskDomain != WorldChangesTaskDomain);
-    static_assert(WorldStructureTaskDomain != WorldCommandsTaskDomain);
-    static_assert(WorldChangesTaskDomain != WorldCommandsTaskDomain);
+    static_assert(ComponentTaskDomain != EcsStructureTaskDomain);
+    static_assert(ComponentTaskDomain != EcsChangesTaskDomain);
+    static_assert(ComponentTaskDomain != EcsCommandsTaskDomain);
+    static_assert(ExternalTaskDomain != EcsStructureTaskDomain);
+    static_assert(ExternalTaskDomain != EcsChangesTaskDomain);
+    static_assert(ExternalTaskDomain != EcsCommandsTaskDomain);
+    static_assert(EcsStructureTaskDomain != EcsChangesTaskDomain);
+    static_assert(EcsStructureTaskDomain != EcsCommandsTaskDomain);
+    static_assert(EcsChangesTaskDomain != EcsCommandsTaskDomain);
 
     [[nodiscard]] constexpr task::TaskResourceKey componentTaskResource(
         std::uint64_t storage
@@ -71,20 +71,20 @@ namespace lux::ecs
     }
 
     [[nodiscard]] constexpr task::TaskResourceKey
-    worldStructureTaskResource() noexcept
+    ecsStructureTaskResource() noexcept
     {
-        return {WorldStructureTaskDomain, 1U};
+        return {EcsStructureTaskDomain, 1U};
     }
 
     [[nodiscard]] constexpr task::TaskResourceKey
-    worldChangesTaskResource() noexcept
+    ecsChangesTaskResource() noexcept
     {
-        return {WorldChangesTaskDomain, 1U};
+        return {EcsChangesTaskDomain, 1U};
     }
 
     [[nodiscard]] constexpr task::TaskResourceKey
-    worldCommandsTaskResource() noexcept
+    ecsCommandsTaskResource() noexcept
     {
-        return {WorldCommandsTaskDomain, 1U};
+        return {EcsCommandsTaskDomain, 1U};
     }
 }

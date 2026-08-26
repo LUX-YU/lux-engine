@@ -2,7 +2,7 @@
 
 #include <lux/engine/ecs/ComponentLoadSet.hpp>
 #include <lux/engine/ecs/WorldSectionTransaction.hpp>
-#include <lux/engine/ecs/WorldTaskResources.hpp>
+#include <lux/engine/ecs/EcsTaskResources.hpp>
 #include <lux/engine/ecs/core/detail/EcsStateAccess.hpp>
 #include <lux/engine/ecs/world_section/detail/WorldSectionTransactionAccess.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
@@ -378,7 +378,7 @@ namespace
 
     struct ChangeBatchState final
     {
-        WorldChangeBatch batch;
+        EcsChangeBatch batch;
         std::vector<std::uint64_t> storages;
         std::size_t rows{};
 
@@ -520,7 +520,7 @@ int main(int argc, char** argv)
             [&]() { return std::make_unique<WorldSectionState>(parsed->size); },
             [](WorldSectionState& state)
             {
-                auto& log = detail::WorldChangeAccess::log(*state.world);
+                auto& log = detail::EcsChangeAccess::log(*state.world);
                 const auto epoch = log.epoch();
                 const auto binds = log.streamBindCountForTest();
                 const auto lookups = log.perRecordLookupCountForTest();

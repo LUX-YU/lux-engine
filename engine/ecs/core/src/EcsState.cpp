@@ -1,6 +1,6 @@
 #include <lux/engine/ecs/EcsState.hpp>
 
-#include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
+#include <lux/engine/ecs/core/detail/EcsChangeLog.hpp>
 #include <lux/engine/ecs/core/detail/SectionMembershipDirectory.hpp>
 
 #include <atomic>
@@ -44,8 +44,8 @@ namespace lux::ecs
 
     EcsState::EcsState(EcsStateConfig config)
         : config_(config),
-          changes_(std::make_unique<detail::WorldChangeLog>(
-              detail::WorldChangeLogConfigValue{
+          changes_(std::make_unique<detail::EcsChangeLog>(
+              detail::EcsChangeLogConfigValue{
                   config.changes.initial_bytes,
                   config.changes.max_bytes})),
           section_memberships_(
@@ -319,20 +319,20 @@ namespace lux::ecs
         change_emission_ = EChangeEmission::RECORD;
     }
 
-    detail::ChangeRecorder detail::worldChangeRecorder(EcsState& world) noexcept
+    detail::ChangeRecorder detail::ecsChangeRecorder(EcsState& world) noexcept
     {
-        return WorldChangeAccess::log(world).recorder();
+        return EcsChangeAccess::log(world).recorder();
     }
 
-    detail::ChangeStreamBinder detail::worldChangeStreamBinder(
+    detail::ChangeStreamBinder detail::ecsChangeStreamBinder(
         EcsState& world
     ) noexcept
     {
         return ChangeStreamBinder{
-            .context = &WorldChangeAccess::log(world),
+            .context = &EcsChangeAccess::log(world),
             .bind = [](void* context, std::uint64_t storage) noexcept
             {
-                return static_cast<WorldChangeLog*>(context)->bindComponent(
+                return static_cast<EcsChangeLog*>(context)->bindComponent(
                     storage
                 );
             }
@@ -346,7 +346,7 @@ namespace lux::ecs
         EComponentChangeKind kind
     ) noexcept
     {
-        return WorldChangeAccess::log(world).recordComponent(
+        return EcsChangeAccess::log(world).recordComponent(
             storage,
             entity,
             kind
@@ -359,22 +359,22 @@ namespace lux::ecs
         EEntityChangeKind kind
     ) noexcept
     {
-        return WorldChangeAccess::log(world).recordEntity(entity, kind);
+        return EcsChangeAccess::log(world).recordEntity(entity, kind);
     }
 
-    void detail::establishWorldChangeBaseline(EcsState& world) noexcept
+    void detail::establishEcsChangeBaseline(EcsState& world) noexcept
     {
-        WorldChangeAccess::log(world).establishBaseline();
+        EcsChangeAccess::log(world).establishBaseline();
     }
 
-    void detail::markWorldChangeHistoryLoss(EcsState& world) noexcept
+    void detail::markEcsChangeHistoryLoss(EcsState& world) noexcept
     {
-        WorldChangeAccess::log(world).markHistoryLoss();
+        EcsChangeAccess::log(world).markHistoryLoss();
     }
 
-    std::uint64_t detail::worldChangeEpoch(const EcsState& world) noexcept
+    std::uint64_t detail::ecsChangeEpoch(const EcsState& world) noexcept
     {
-        return WorldChangeAccess::log(world).epoch();
+        return EcsChangeAccess::log(world).epoch();
     }
 
     detail::ChangeRangeData detail::readWorldComponentChanges(
@@ -384,7 +384,7 @@ namespace lux::ecs
         std::uint64_t& cursor_sequence
     ) noexcept
     {
-        return WorldChangeAccess::log(world).readComponentRaw(
+        return EcsChangeAccess::log(world).readComponentRaw(
             storage,
             cursor_epoch,
             cursor_sequence
@@ -397,7 +397,7 @@ namespace lux::ecs
         std::uint64_t& cursor_sequence
     ) noexcept
     {
-        return WorldChangeAccess::log(world).readEntityRaw(
+        return EcsChangeAccess::log(world).readEntityRaw(
             cursor_epoch,
             cursor_sequence
         );

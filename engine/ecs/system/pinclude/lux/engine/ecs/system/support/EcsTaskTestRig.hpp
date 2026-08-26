@@ -2,8 +2,8 @@
 
 #include <lux/engine/ecs/SystemRegistry.hpp>
 #include <lux/engine/ecs/SystemTaskResources.hpp>
-#include <lux/engine/ecs/WorldTaskResources.hpp>
-#include <lux/engine/ecs/core/detail/WorldTaskResourceTestAccess.hpp>
+#include <lux/engine/ecs/EcsTaskResources.hpp>
+#include <lux/engine/ecs/core/detail/EcsTaskResourceTestAccess.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
@@ -32,7 +32,7 @@ namespace lux::ecs::testing
             assert(retained);
             auto system = std::move(*retained);
 
-            auto changes = std::make_shared<WorldChangeBatch>();
+            auto changes = std::make_shared<EcsChangeBatch>();
             assert(changes->prepare(Type::TaskAccess.writeStorages()));
             const std::size_t producer = entries_.size();
 
@@ -70,7 +70,7 @@ namespace lux::ecs::testing
             assert(update);
             const auto publish = builder_.add(
                 task::dependsOn(*update),
-                worldChangesWrite(),
+                ecsChangesWrite(),
                 [this, changes]() noexcept
                 {
                     (void)changes->publish(*world_);
@@ -90,19 +90,19 @@ namespace lux::ecs::testing
                 entries_.empty()
                 ? builder_.add(
                     task::on(task::ETaskAffinity::CALLER_THREAD),
-                    worldCommandsWrite(),
+                    ecsCommandsWrite(),
                     [this]() noexcept
                     {
-                        applyWorldCommands(*world_, commands_);
+                        applyEcsCommands(*world_, commands_);
                     }
                 )
                 : builder_.add(
                     task::dependsOn(entries_.back().publish),
                     task::on(task::ETaskAffinity::CALLER_THREAD),
-                    worldCommandsWrite(),
+                    ecsCommandsWrite(),
                     [this]() noexcept
                     {
-                        applyWorldCommands(*world_, commands_);
+                        applyEcsCommands(*world_, commands_);
                     }
                 );
             if (!apply)
@@ -134,7 +134,7 @@ namespace lux::ecs::testing
             const auto index = static_cast<std::size_t>(
                 entry - entries_.data()
             );
-            detail::WorldTaskResourceTestAccess::failNextPush(
+            detail::EcsTaskResourceTestAccess::failNextPush(
                 commands_,
                 index
             );
@@ -169,7 +169,7 @@ namespace lux::ecs::testing
         SystemRegistry systems_;
         task::TaskGraphBuilder builder_;
         std::vector<Entry> entries_;
-        WorldCommandBatch commands_;
+        EcsCommandBatch commands_;
         std::unique_ptr<task::TaskGraph> graph_;
         std::unique_ptr<task::TaskExecutor> executor_;
     };

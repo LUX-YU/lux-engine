@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/ecs/EcsState.hpp>
-#include <lux/engine/ecs/core/detail/WorldChangeLog.hpp>
+#include <lux/engine/ecs/core/detail/EcsChangeLog.hpp>
 
 #include <limits>
 #include <thread>
@@ -89,28 +89,28 @@ namespace lux::ecs::detail
         }
     };
 
-    class WorldChangePublisher final
+    class EcsChangePublisher final
     {
       public:
-        explicit WorldChangePublisher(EcsState& world) noexcept
-            : log_(&WorldChangeAccess::log(world))
+        explicit EcsChangePublisher(EcsState& world) noexcept
+            : log_(&EcsChangeAccess::log(world))
         {
         }
 
-        [[nodiscard]] BoundWorldChangeStream bindComponent(
+        [[nodiscard]] BoundEcsChangeStream bindComponent(
             std::uint64_t storage
         ) noexcept
         {
             if (!exact_)
                 return {};
-            BoundWorldChangeStream result = log_->bindComponent(storage);
+            BoundEcsChangeStream result = log_->bindComponent(storage);
             if (!result)
                 exact_ = false;
             return result;
         }
 
         [[nodiscard]] bool append(
-            BoundWorldChangeStream stream,
+            BoundEcsChangeStream stream,
             Entity entity,
             EComponentChangeKind kind
         ) noexcept
@@ -138,7 +138,7 @@ namespace lux::ecs::detail
         }
 
       private:
-        WorldChangeLog* log_{};
+        EcsChangeLog* log_{};
         bool exact_{true};
     };
 

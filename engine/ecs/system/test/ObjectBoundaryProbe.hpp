@@ -41,8 +41,8 @@ namespace lux::ecs::test
 
         void invokeTask(
             EcsState&,
-            WorldChangeBatch&,
-            WorldCommands commands
+            EcsChangeBatch&,
+            EcsCommands commands
         ) noexcept
         {
             if (!demand_published_)

@@ -83,7 +83,7 @@ namespace lux::ecs
             }
         };
 
-        struct BoundWorldChangeStream final
+        struct BoundEcsChangeStream final
         {
             void* owner{};
             void* stream{};
@@ -112,9 +112,9 @@ namespace lux::ecs
         struct ChangeStreamBinder final
         {
             void* context{};
-            BoundWorldChangeStream (*bind)(void*, std::uint64_t) noexcept{};
+            BoundEcsChangeStream (*bind)(void*, std::uint64_t) noexcept{};
 
-            [[nodiscard]] BoundWorldChangeStream operator()(
+            [[nodiscard]] BoundEcsChangeStream operator()(
                 std::uint64_t storage
             ) const noexcept
             {
@@ -210,7 +210,7 @@ namespace lux::ecs
                 Iterator(
                     BaseIterator iterator,
                     const std::array<
-                        BoundWorldChangeStream,
+                        BoundEcsChangeStream,
                         sizeof...(Access)
                     >& streams,
                     ChangeRecorder recorder,
@@ -260,7 +260,7 @@ namespace lux::ecs
                 }
 
                 BaseIterator iterator_{};
-                std::array<BoundWorldChangeStream, sizeof...(Access)> streams_{};
+                std::array<BoundEcsChangeStream, sizeof...(Access)> streams_{};
                 ChangeRecorder recorder_{};
                 bool* history_lost_{};
                 mutable bool recorded_current_{};
@@ -308,7 +308,7 @@ namespace lux::ecs
 
           private:
             template <class Value>
-            [[nodiscard]] static BoundWorldChangeStream bindStream(
+            [[nodiscard]] static BoundEcsChangeStream bindStream(
                 ChangeStreamBinder binder
             ) noexcept
             {
@@ -331,7 +331,7 @@ namespace lux::ecs
             }
 
             View view_;
-            std::array<BoundWorldChangeStream, sizeof...(Access)> streams_{};
+            std::array<BoundEcsChangeStream, sizeof...(Access)> streams_{};
             ChangeRecorder recorder_{};
             bool history_lost_{};
         };

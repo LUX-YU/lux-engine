@@ -15,7 +15,7 @@ namespace lux::ecs
 {
     class ComponentSnapshotSet;
     class ComponentSnapshotBinding;
-    class WorldSnapshot;
+    class EcsSnapshot;
 
     namespace detail
     {
@@ -100,7 +100,7 @@ namespace lux::ecs
             const ComponentSchema&
         ) noexcept;
         friend class ComponentSnapshotSet;
-        friend class WorldSnapshot;
+        friend class EcsSnapshot;
         friend struct detail::ComponentSnapshotSetAccess;
 
         const ComponentSchema* schema_{};

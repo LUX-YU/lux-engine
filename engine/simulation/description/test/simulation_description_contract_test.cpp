@@ -73,6 +73,7 @@ int main()
     assert(validated->findData(gameplay));
     assert(validated->findData(gameplay).version() == 4U);
     assert(validated->findData(gameplay).payload().size() == 2U);
+    assert(validated->retainedBytes() >= validated->payloadBytes());
     assert(!validated->findData(simulationDataSchemaId("test.missing")));
     assert(!validated->dataAt(1U));
 

@@ -85,6 +85,7 @@ namespace lux::world
         [[nodiscard]] std::size_t objectCount() const noexcept;
         [[nodiscard]] std::size_t dataCount() const noexcept;
         [[nodiscard]] std::size_t payloadBytes() const noexcept;
+        [[nodiscard]] std::size_t retainedBytes() const noexcept;
         [[nodiscard]] std::span<const WorldDataSchemaId> schemas() const noexcept;
         [[nodiscard]] WorldObjectView objectAt(std::size_t index) const noexcept;
         [[nodiscard]] WorldObjectView findObject(WorldObjectId id) const noexcept;

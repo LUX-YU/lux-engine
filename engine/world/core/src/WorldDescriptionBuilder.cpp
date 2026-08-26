@@ -381,12 +381,21 @@ namespace lux::world
                     ));
                 }
             }
-            all_schemas.erase(
-                std::unique(all_schemas.begin(), all_schemas.end()),
+            const auto unique_end = std::unique(
+                all_schemas.begin(),
                 all_schemas.end()
             );
+            std::vector<WorldDataSchemaId> unique_schemas;
+            unique_schemas.reserve(static_cast<std::size_t>(
+                std::distance(all_schemas.begin(), unique_end)
+            ));
+            std::move(
+                all_schemas.begin(),
+                unique_end,
+                std::back_inserter(unique_schemas)
+            );
 
-            result.schemas_ = std::move(all_schemas);
+            result.schemas_ = std::move(unique_schemas);
             result.objects_.reserve(impl_->objects.size());
             result.data_.reserve(total_data);
             result.payload_.reserve(total_payload);

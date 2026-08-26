@@ -298,12 +298,15 @@ namespace lux::world
                 {
                     return codecFailure();
                 }
+                const std::size_t retained_bytes = description->retainedBytes();
+                if (retained_bytes > context.limits.max_decoded_bytes)
+                    return codecFailure();
                 auto payload = std::make_shared<const WorldDescription>(
                     std::move(*description)
                 );
                 return lux::asset::DecodedAsset{
                     std::move(payload),
-                    decoded_bytes};
+                    retained_bytes};
             }
             catch (const std::bad_alloc&)
             {

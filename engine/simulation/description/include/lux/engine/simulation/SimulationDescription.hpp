@@ -53,6 +53,7 @@ namespace lux::simulation
         [[nodiscard]] bool empty() const noexcept;
         [[nodiscard]] std::size_t dataCount() const noexcept;
         [[nodiscard]] std::size_t payloadBytes() const noexcept;
+        [[nodiscard]] std::size_t retainedBytes() const noexcept;
         [[nodiscard]] std::span<const SimulationDataSchemaId> schemas() const noexcept;
         [[nodiscard]] SimulationDataView dataAt(std::size_t index) const noexcept;
         [[nodiscard]] SimulationDataView findData(

@@ -1,9 +1,41 @@
 #include <lux/engine/simulation/SimulationDescription.hpp>
 
 #include <algorithm>
+#include <limits>
 
 namespace lux::simulation
 {
+    namespace
+    {
+        void addRetainedBytes(
+            std::size_t& total,
+            std::size_t value
+        ) noexcept
+        {
+            if (value > std::numeric_limits<std::size_t>::max() - total)
+            {
+                total = std::numeric_limits<std::size_t>::max();
+                return;
+            }
+            total += value;
+        }
+
+        void addRetainedArray(
+            std::size_t& total,
+            std::size_t count,
+            std::size_t element_size
+        ) noexcept
+        {
+            if (count != 0U &&
+                element_size > std::numeric_limits<std::size_t>::max() / count)
+            {
+                total = std::numeric_limits<std::size_t>::max();
+                return;
+            }
+            addRetainedBytes(total, count * element_size);
+        }
+    }
+
     SimulationDataView::SimulationDataView(
         const SimulationDescription& description,
         std::size_t data_index
@@ -45,6 +77,21 @@ namespace lux::simulation
     std::size_t SimulationDescription::payloadBytes() const noexcept
     {
         return payload_.size();
+    }
+
+    std::size_t SimulationDescription::retainedBytes() const noexcept
+    {
+        std::size_t result{sizeof(SimulationDescription)};
+        addRetainedArray(
+            result,
+            schemas_.capacity(),
+            sizeof(SimulationDataSchemaId)
+        );
+        addRetainedArray(result, data_.capacity(), sizeof(DataRecord));
+        addRetainedArray(result, payload_.capacity(), sizeof(std::byte));
+        for (const auto& schema : schemas_)
+            addRetainedArray(result, schema.name.capacity(), sizeof(char));
+        return result;
     }
 
     std::span<const SimulationDataSchemaId>

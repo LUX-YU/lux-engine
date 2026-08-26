@@ -16,10 +16,15 @@ namespace
 {
     using namespace lux::world;
 
-    [[nodiscard]] WorldObjectId objectId(std::uint8_t tail)
+    [[nodiscard]] WorldObjectId objectId(std::uint64_t value)
     {
         std::array<std::uint8_t, 16> bytes{};
-        bytes[15] = tail;
+        for (std::size_t index{}; index < sizeof(value); ++index)
+        {
+            bytes[15U - index] = static_cast<std::uint8_t>(
+                value >> (index * 8U)
+            );
+        }
         return WorldObjectId{uuids::uuid(bytes)};
     }
 
@@ -403,6 +408,23 @@ int main()
     );
     auto failure_world = std::move(failure_builder).build();
     assert(failure_world && failure_world->objectCount() == 1U);
+
+    constexpr std::size_t shared_schema_object_count = 10'000U;
+    WorldDescriptionBuilder shared_schema_builder;
+    const auto shared_schema = worldDataSchemaId("test.shared");
+    for (std::size_t index{}; index < shared_schema_object_count; ++index)
+    {
+        const auto object = objectId(index + 1U);
+        assert(shared_schema_builder.addObject(object));
+        assert(shared_schema_builder.addData(object, shared_schema, 1U, {}));
+    }
+    auto shared_schema_world = std::move(shared_schema_builder).build();
+    assert(shared_schema_world);
+    assert(shared_schema_world->schemas().size() == 1U);
+    assert(
+        shared_schema_world->retainedBytes() <
+        shared_schema_object_count * 80U
+    );
 
     WorldPartitionLayoutBuilder failure_layout_builder(*failure_world);
     const std::array failure_objects{objectId(8U)};

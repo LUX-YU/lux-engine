@@ -75,7 +75,7 @@ int main()
     assert(decoded_world);
     assert(decoded_world->objectCount() == world.objectCount());
     assert(decoded_world->dataCount() == world.dataCount());
-    assert(decoded->decoded_byte_count >= world.payloadBytes());
+    assert(decoded->decoded_byte_count == decoded_world->retainedBytes());
     assert(!descriptor.decode(
         *encoded,
         AssetDecodeContext{AssetCodecLimits{

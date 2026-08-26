@@ -62,7 +62,9 @@ int main()
     assert(decoded_description->dataCount() == 2U);
     assert(decoded_description->findData(schema_a));
     assert(decoded_description->findData(schema_b));
-    assert(decoded->decoded_byte_count >= description->payloadBytes());
+    assert(
+        decoded->decoded_byte_count == decoded_description->retainedBytes()
+    );
     assert(!descriptor.decode(
         *encoded,
         AssetDecodeContext{AssetCodecLimits{

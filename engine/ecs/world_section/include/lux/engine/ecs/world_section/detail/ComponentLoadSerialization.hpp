@@ -118,6 +118,7 @@ namespace lux::serialization
     template <>
     struct Serializer<lux::ecs::Entity>
     {
+        static constexpr EWireExtent wire_extent = EWireExtent::FIXED;
         static constexpr std::size_t fixed_wire_size = sizeof(std::uint32_t);
 
         template <class Writer>

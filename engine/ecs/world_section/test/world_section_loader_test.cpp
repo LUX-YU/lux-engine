@@ -20,6 +20,9 @@ namespace test
 {
     struct Tag final
     {
+        // Deliberately non-empty: wire TAG is a serialization semantic,
+        // never a proxy for the C++ object representation.
+        std::uint32_t runtime_only{};
     };
 
     struct Fixed final
@@ -101,6 +104,7 @@ namespace lux::serialization
     template <>
     struct Serializer<test::AllocationFailure>
     {
+        static constexpr EWireExtent wire_extent = EWireExtent::FIXED;
         static constexpr std::size_t fixed_wire_size = 4U;
 
         template <class Reader>

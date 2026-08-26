@@ -5,6 +5,7 @@
 #include <array>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <tuple>
 #include <type_traits>
@@ -12,8 +13,12 @@
 
 namespace lux::serialization
 {
-    inline constexpr std::size_t DynamicWireSize =
-        std::numeric_limits<std::size_t>::max();
+    enum class EWireExtent : std::uint8_t
+    {
+        TAG,
+        FIXED,
+        VARIABLE,
+    };
 
     template <class T>
     struct Serializer;
@@ -26,6 +31,12 @@ namespace lux::serialization
 
     namespace detail
     {
+        struct WireShape final
+        {
+            EWireExtent extent{EWireExtent::VARIABLE};
+            std::size_t fixed_size{};
+        };
+
         template <class T>
         struct WireIsArray : std::false_type {};
 
@@ -48,39 +59,58 @@ namespace lux::serialization
             : std::true_type {};
 
         template <class T>
-        consteval std::size_t wireSize();
+        consteval WireShape wireShape();
 
-        [[nodiscard]] constexpr std::size_t addWireSize(
-            std::size_t left,
-            std::size_t right
-        )
+        [[nodiscard]] consteval WireShape combine(
+            WireShape left,
+            WireShape right
+        ) noexcept
         {
-            return left == DynamicWireSize || right == DynamicWireSize ||
-                    left > DynamicWireSize - right
-                ? DynamicWireSize
-                : left + right;
+            if (left.extent == EWireExtent::VARIABLE ||
+                right.extent == EWireExtent::VARIABLE)
+            {
+                return {EWireExtent::VARIABLE, 0U};
+            }
+            if (left.fixed_size >
+                std::numeric_limits<std::size_t>::max() - right.fixed_size)
+            {
+                return {EWireExtent::VARIABLE, 0U};
+            }
+            const std::size_t size = left.fixed_size + right.fixed_size;
+            return {
+                size == 0U ? EWireExtent::TAG : EWireExtent::FIXED,
+                size
+            };
         }
 
-        [[nodiscard]] constexpr std::size_t multiplyWireSize(
-            std::size_t value,
+        [[nodiscard]] consteval WireShape repeat(
+            WireShape value,
             std::size_t count
-        )
+        ) noexcept
         {
-            return value == DynamicWireSize ||
-                    (count != 0U && value > DynamicWireSize / count)
-                ? DynamicWireSize
-                : value * count;
+            if (value.extent == EWireExtent::VARIABLE)
+                return value;
+            if (count != 0U && value.fixed_size >
+                std::numeric_limits<std::size_t>::max() / count)
+            {
+                return {EWireExtent::VARIABLE, 0U};
+            }
+            const std::size_t size = value.fixed_size * count;
+            return {
+                size == 0U ? EWireExtent::TAG : EWireExtent::FIXED,
+                size
+            };
         }
 
         template <class T, std::size_t Index = 0U>
-        consteval std::size_t typeStaticWireSize()
+        consteval WireShape typeStaticWireShape()
         {
             using Fields = std::remove_cvref_t<decltype(
                 lux::meta::TypeStaticInfo<T>::fields
             )>;
             if constexpr (Index == std::tuple_size_v<Fields>)
             {
-                return 0U;
+                return {EWireExtent::TAG, 0U};
             }
             else
             {
@@ -88,104 +118,87 @@ namespace lux::serialization
                 using Member = std::remove_cvref_t<decltype(
                     std::declval<T>().*Descriptor::pointer
                 )>;
-                return addWireSize(
-                    wireSize<Member>(),
-                    typeStaticWireSize<T, Index + 1U>()
+                return combine(
+                    wireShape<Member>(),
+                    typeStaticWireShape<T, Index + 1U>()
                 );
             }
         }
 
         template <class Tuple, std::size_t Index = 0U>
-        consteval std::size_t tupleWireSize()
+        consteval WireShape tupleWireShape()
         {
             if constexpr (Index == std::tuple_size_v<Tuple>)
             {
-                return 0U;
+                return {EWireExtent::TAG, 0U};
             }
             else
             {
-                return addWireSize(
-                    wireSize<std::tuple_element_t<Index, Tuple>>(),
-                    tupleWireSize<Tuple, Index + 1U>()
+                return combine(
+                    wireShape<std::tuple_element_t<Index, Tuple>>(),
+                    tupleWireShape<Tuple, Index + 1U>()
                 );
             }
         }
 
         template <class T>
-        consteval std::size_t wireSize()
+        consteval WireShape wireShape()
         {
             using U = std::remove_cvref_t<T>;
             if constexpr (HasSerializerDefinition<U>)
             {
-                if constexpr (requires { Serializer<U>::fixed_wire_size; })
-                    return Serializer<U>::fixed_wire_size;
+                if constexpr (requires { Serializer<U>::wire_extent; })
+                {
+                    constexpr auto extent = Serializer<U>::wire_extent;
+                    if constexpr (extent == EWireExtent::TAG)
+                        return {extent, 0U};
+                    else if constexpr (extent == EWireExtent::FIXED)
+                    {
+                        static_assert(requires {
+                            Serializer<U>::fixed_wire_size;
+                        });
+                        static_assert(Serializer<U>::fixed_wire_size != 0U);
+                        return {extent, Serializer<U>::fixed_wire_size};
+                    }
+                    else
+                        return {EWireExtent::VARIABLE, 0U};
+                }
                 else
-                    return DynamicWireSize;
+                    return {EWireExtent::VARIABLE, 0U};
             }
             else if constexpr (std::same_as<U, bool>)
-            {
-                return 1U;
-            }
+                return {EWireExtent::FIXED, 1U};
             else if constexpr (std::is_arithmetic_v<U>)
-            {
-                return sizeof(U);
-            }
+                return {EWireExtent::FIXED, sizeof(U)};
             else if constexpr (std::is_enum_v<U>)
-            {
-                return wireSize<std::underlying_type_t<U>>();
-            }
+                return wireShape<std::underlying_type_t<U>>();
             else if constexpr (WireIsArray<U>::value)
-            {
-                return multiplyWireSize(
-                    wireSize<typename U::value_type>(),
+                return repeat(
+                    wireShape<typename U::value_type>(),
                     std::tuple_size_v<U>
                 );
-            }
             else if constexpr (WireIsPair<U>::value)
-            {
-                return addWireSize(
-                    wireSize<typename U::first_type>(),
-                    wireSize<typename U::second_type>()
+                return combine(
+                    wireShape<typename U::first_type>(),
+                    wireShape<typename U::second_type>()
                 );
-            }
             else if constexpr (lux::meta::HasTypeStaticInfo<U>)
-            {
-                return typeStaticWireSize<U>();
-            }
+                return typeStaticWireShape<U>();
             else if constexpr (WireIsTupleLike<U>::value)
-            {
-                return tupleWireSize<U>();
-            }
+                return tupleWireShape<U>();
             else
-            {
-                return DynamicWireSize;
-            }
+                return {EWireExtent::VARIABLE, 0U};
         }
-    } // namespace detail
+    }
 
     template <class T>
     struct WireTraits
     {
-        static constexpr std::size_t fixed_size = detail::wireSize<T>();
-    };
+      private:
+        inline static constexpr auto kShape = detail::wireShape<T>();
 
-    template <class T, std::size_t Size>
-    struct WireTraits<std::array<T, Size>>
-    {
-        static constexpr std::size_t fixed_size =
-            detail::multiplyWireSize(WireTraits<T>::fixed_size, Size);
+      public:
+        inline static constexpr EWireExtent extent = kShape.extent;
+        inline static constexpr std::size_t fixed_size = kShape.fixed_size;
     };
-
-    template <class First, class Second>
-    struct WireTraits<std::pair<First, Second>>
-    {
-        static constexpr std::size_t fixed_size = detail::addWireSize(
-            WireTraits<First>::fixed_size,
-            WireTraits<Second>::fixed_size
-        );
-    };
-
-    template <class T>
-    inline constexpr std::size_t WireSizeV =
-        WireTraits<std::remove_cvref_t<T>>::fixed_size;
-} // namespace lux::serialization
+}

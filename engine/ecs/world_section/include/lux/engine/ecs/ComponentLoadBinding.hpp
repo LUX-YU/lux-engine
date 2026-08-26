@@ -108,7 +108,9 @@ namespace lux::ecs
                 ++detail::ComponentLoadTestStats::load_calls;
                 ++detail::ComponentLoadTestStats::storage_lookups;
 #endif
-                if constexpr (std::is_empty_v<Component>)
+                if constexpr (
+                    lux::serialization::WireTraits<Component>::extent ==
+                    lux::serialization::EWireExtent::TAG)
                 {
                     if (column.valueEncoding() !=
                         EWorldSectionValueEncoding::TAG)
@@ -284,14 +286,18 @@ namespace lux::ecs
         static_assert(lux::meta::HasTypeStaticInfo<Component>);
         static_assert(std::default_initializable<Component>);
         static_assert(std::is_nothrow_move_constructible_v<Component>);
-        constexpr std::size_t fixed = lux::serialization::WireSizeV<Component>;
-        constexpr auto encoding = fixed == 0U
+        constexpr auto extent =
+            lux::serialization::WireTraits<Component>::extent;
+        constexpr std::size_t fixed =
+            lux::serialization::WireTraits<Component>::fixed_size;
+        constexpr auto encoding =
+            extent == lux::serialization::EWireExtent::TAG
             ? EWorldSectionValueEncoding::TAG
-            : fixed == lux::serialization::DynamicWireSize
+            : extent == lux::serialization::EWireExtent::VARIABLE
                 ? EWorldSectionValueEncoding::VARIABLE
                 : EWorldSectionValueEncoding::FIXED;
         static_assert(
-            fixed == lux::serialization::DynamicWireSize ||
+            extent != lux::serialization::EWireExtent::FIXED ||
             fixed <= std::numeric_limits<std::uint32_t>::max()
         );
         constexpr std::uint32_t stride =

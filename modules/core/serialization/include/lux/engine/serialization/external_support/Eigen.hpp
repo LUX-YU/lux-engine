@@ -16,11 +16,15 @@ namespace lux::serialization
     struct Serializer<Eigen::Matrix<Scalar, Rows, Columns, Options, MaxRows, MaxColumns>>
     {
         using Matrix = Eigen::Matrix<Scalar, Rows, Columns, Options, MaxRows, MaxColumns>;
-        static constexpr std::size_t fixed_wire_size =
+        static constexpr EWireExtent wire_extent =
             Rows == Eigen::Dynamic || Columns == Eigen::Dynamic ||
-                WireSizeV<Scalar> == DynamicWireSize
-            ? DynamicWireSize
-            : WireSizeV<Scalar> * static_cast<std::size_t>(Rows) *
+                WireTraits<Scalar>::extent == EWireExtent::VARIABLE
+            ? EWireExtent::VARIABLE
+            : WireTraits<Scalar>::extent;
+        static constexpr std::size_t fixed_wire_size =
+            wire_extent != EWireExtent::FIXED
+            ? 0U
+            : WireTraits<Scalar>::fixed_size * static_cast<std::size_t>(Rows) *
                 static_cast<std::size_t>(Columns);
 
         template <class Writer>
@@ -118,10 +122,12 @@ namespace lux::serialization
     struct Serializer<Eigen::Quaternion<Scalar, Options>>
     {
         using Quaternion = Eigen::Quaternion<Scalar, Options>;
+        static constexpr EWireExtent wire_extent =
+            WireTraits<Scalar>::extent;
         static constexpr std::size_t fixed_wire_size =
-            WireSizeV<Scalar> == DynamicWireSize
-            ? DynamicWireSize
-            : WireSizeV<Scalar> * 4U;
+            wire_extent == EWireExtent::FIXED
+            ? WireTraits<Scalar>::fixed_size * 4U
+            : 0U;
 
         template <class Writer>
         [[nodiscard]] static SerializationResult write(

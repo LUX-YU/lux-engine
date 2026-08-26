@@ -13,6 +13,9 @@ namespace
       public:
         inline static constexpr auto Access =
             lux::simulation::makeSystemAccessSpec<>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.consumer.l1-object-affinity",
+            .version = 1};
 
         explicit ObjectSystem(std::uint32_t& count) noexcept : count_(&count) {}
         void update() noexcept { ++*count_; }

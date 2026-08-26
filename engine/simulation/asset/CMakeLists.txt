@@ -52,6 +52,10 @@ add_executable(
     simulation_asset_codec_test
     test/simulation_asset_codec_test.cpp
 )
+target_include_directories(
+    simulation_asset_codec_test
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+)
 target_link_libraries(
     simulation_asset_codec_test
     PRIVATE lux::engine::simulation::asset

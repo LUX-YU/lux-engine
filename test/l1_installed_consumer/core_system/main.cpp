@@ -12,6 +12,9 @@ namespace
       public:
         inline static constexpr auto Access =
             lux::simulation::makeSystemAccessSpec<>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.consumer.l1-core-system",
+            .version = 1};
 
         explicit CountSystem(std::uint32_t& count) noexcept : count_(&count) {}
         void update() noexcept { ++*count_; }

@@ -1,13 +1,14 @@
-#include <lux/engine/simulation/ecs/EcsTaskResources.hpp>
+#include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 #include <lux/engine/simulation/ecs/EcsSnapshot.hpp>
-#include <lux/engine/simulation/ecs/HierarchyIndex.hpp>
-#include <lux/engine/simulation/ecs/core/detail/EcsStateAccess.hpp>
-#include <lux/engine/simulation/SimulationExecution.hpp>
+#include <lux/engine/simulation/ecs/Transform.hpp>
+#include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
 #include <lux/engine/task/TaskGraphBuilder.hpp>
 
-#include <algorithm>
+#include <entt/signal/sigh.hpp>
+
 #include <atomic>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstddef>
@@ -18,11 +19,11 @@
 #include <limits>
 #include <memory>
 #include <new>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -41,59 +42,6 @@ namespace
 
     std::atomic_size_t g_allocation_count{};
     std::atomic_bool g_count_allocations{};
-
-#define LUX_STRINGIFY_IMPL(value) #value
-#define LUX_STRINGIFY(value) LUX_STRINGIFY_IMPL(value)
-
-    [[nodiscard]] constexpr std::string_view compilerName() noexcept
-    {
-#if defined(_MSC_VER)
-        return "MSVC";
-#elif defined(__clang__)
-        return "Clang";
-#elif defined(__GNUC__)
-        return "GCC";
-#else
-        return "unknown";
-#endif
-    }
-
-    [[nodiscard]] constexpr std::string_view compilerVersion() noexcept
-    {
-#if defined(_MSC_FULL_VER)
-        return LUX_STRINGIFY(_MSC_FULL_VER);
-#elif defined(__clang_version__)
-        return __clang_version__;
-#elif defined(__VERSION__)
-        return __VERSION__;
-#else
-        return "unknown";
-#endif
-    }
-
-    [[nodiscard]] constexpr std::string_view platformName() noexcept
-    {
-#if defined(_WIN32)
-        return "Windows";
-#elif defined(__ANDROID__)
-        return "Android";
-#elif defined(__linux__)
-        return "Linux";
-#else
-        return "unknown";
-#endif
-    }
-
-    [[nodiscard]] constexpr std::string_view architectureName() noexcept
-    {
-#if defined(_M_X64) || defined(__x86_64__)
-        return "x86_64";
-#elif defined(_M_ARM64) || defined(__aarch64__)
-        return "arm64";
-#else
-        return "unknown";
-#endif
-    }
 
     struct Options final
     {
@@ -114,576 +62,370 @@ namespace
                 return std::nullopt;
             const std::string_view key{argv[index++]};
             const std::string_view value{argv[index]};
-            if (key == "--group") result.group = value;
-            else if (key == "--mode") result.mode = value;
-            else if (key == "--output") result.output = value;
+            if (key == "--group")
+                result.group = value;
+            else if (key == "--mode")
+                result.mode = value;
+            else if (key == "--output")
+                result.output = value;
             else if (key == "--size")
             {
                 const auto parsed = std::from_chars(
-                    value.data(), value.data() + value.size(), result.size
+                    value.data(),
+                    value.data() + value.size(),
+                    result.size
                 );
                 if (parsed.ec != std::errc{} ||
                     parsed.ptr != value.data() + value.size() ||
                     result.size == 0U ||
                     result.size > std::numeric_limits<std::uint32_t>::max())
+                {
                     return std::nullopt;
+                }
             }
-            else return std::nullopt;
+            else
+                return std::nullopt;
         }
-        if (result.group != "task-graph" &&
-            result.group != "world-change-batch" &&
-            result.group != "simulation-step" &&
-            result.group != "command-batch" &&
-            result.group != "hierarchy-delta" &&
-            result.group != "journal-readers" &&
-            result.group != "ecs-snapshot")
-            return std::nullopt;
-        if (result.mode == "qualification")
+        if (result.mode == "performance")
         {
             result.warmups = 5U;
             result.samples = 30U;
         }
-        else if (result.mode != "diagnostic") return std::nullopt;
+        if (result.group != "task-graph" && result.group != "world" &&
+            result.group != "command-buffer" &&
+            result.group != "reactive-dirty" &&
+            result.group != "typed-event" &&
+            result.group != "ecs-snapshot")
+        {
+            return std::nullopt;
+        }
         return result;
     }
 
     struct Observation final
     {
-        std::size_t retained_bytes{};
-        std::size_t dispatch_calls{};
-        std::size_t storage_lookups{};
-        std::size_t visited_nodes{};
-        std::size_t history_losses{};
-        std::size_t lane_binds{};
-        std::size_t journal_stream_binds{};
-        std::size_t record_appends{};
-        std::size_t per_record_lookups{};
-        std::size_t membership_entry_capacity_bytes{};
-        std::size_t membership_node_capacity_bytes{};
-        std::size_t active_tracked_entities{};
-        std::size_t active_memberships{};
-        std::size_t duplicate_comparisons{};
+        std::size_t updates{};
+        std::size_t notifications{};
+        std::size_t callbacks{};
+        std::size_t reflection_lookups{};
+        std::size_t string_lookups{};
     };
 
     struct Sample final
     {
-        std::string group;
-        std::string metric;
-        std::size_t size{};
         std::size_t index{};
         std::uint64_t nanoseconds{};
         std::size_t allocations{};
         Observation observation;
     };
 
-    void writeRow(
-        std::ostream& output,
-        std::string_view kind,
-        std::string_view group,
-        std::string_view metric,
-        std::size_t size,
-        std::string_view sample,
-        std::uint64_t nanoseconds,
-        std::size_t allocations,
-        const Observation& observation
+    template <class Setup, class Operation, class Teardown>
+    [[nodiscard]] std::vector<Sample> measure(
+        const Options& options,
+        Setup&& setup,
+        Operation&& operation,
+        Teardown&& teardown
     )
     {
-        output << "4," << LUX_BENCHMARK_GIT_COMMIT << ','
-               << compilerName() << ',' << compilerVersion() << ','
-               << LUX_BENCHMARK_BUILD_TYPE << ',' << platformName() << ','
-               << architectureName() << ',' << kind << ',' << group << ','
-               << metric << ',' << size << ',' << sample << ','
-               << nanoseconds << ',' << allocations << ','
-               << observation.retained_bytes << ','
-               << observation.dispatch_calls << ','
-               << observation.storage_lookups << ','
-               << observation.visited_nodes << ','
-               << observation.history_losses << ','
-               << observation.lane_binds << ','
-               << observation.journal_stream_binds << ','
-               << observation.record_appends << ','
-               << observation.per_record_lookups << ','
-               << observation.membership_entry_capacity_bytes << ','
-               << observation.membership_node_capacity_bytes << ','
-               << observation.active_tracked_entities << ','
-               << observation.active_memberships << ','
-               << observation.duplicate_comparisons << '\n';
+        for (std::size_t index{}; index < options.warmups; ++index)
+        {
+            auto state = setup();
+            (void)operation(*state);
+            teardown(*state);
+        }
+
+        std::vector<Sample> result;
+        result.reserve(options.samples);
+        for (std::size_t index{}; index < options.samples; ++index)
+        {
+            auto state = setup();
+            g_allocation_count.store(0U, std::memory_order_relaxed);
+            g_count_allocations.store(true, std::memory_order_release);
+            const auto begin = Clock::now();
+            const Observation observation = operation(*state);
+            const auto end = Clock::now();
+            g_count_allocations.store(false, std::memory_order_release);
+            teardown(*state);
+            result.push_back(Sample{
+                index,
+                static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        end - begin
+                    ).count()
+                ),
+                g_allocation_count.load(std::memory_order_relaxed),
+                observation});
+        }
+        return result;
     }
 
     void writeCsv(
-        const std::filesystem::path& path,
+        const Options& options,
+        std::string_view metric,
         const std::vector<Sample>& samples
     )
     {
-        if (!path.parent_path().empty())
-            std::filesystem::create_directories(path.parent_path());
-        auto temporary = path;
+        if (!options.output.parent_path().empty())
+            std::filesystem::create_directories(options.output.parent_path());
+        auto temporary = options.output;
         temporary += ".tmp";
         {
             std::ofstream output(temporary, std::ios::trunc);
-            if (!output) throw std::runtime_error("cannot open output");
-            output << "benchmark_schema_version,git_commit,compiler,"
-                      "compiler_version,build_type,platform,architecture,kind,"
-                      "group,metric,size,sample,nanoseconds,allocations,"
-                      "retained_bytes,dispatch_calls,storage_lookups,"
-                      "visited_nodes,history_losses,lane_binds,"
-                      "journal_stream_binds,record_appends,per_record_lookups,"
-                      "membership_entry_capacity_bytes,"
-                      "membership_node_capacity_bytes,active_tracked_entities,"
-                      "active_memberships,duplicate_comparisons\n";
-            for (const auto& value : samples)
+            if (!output)
+                throw std::runtime_error("cannot open benchmark output");
+            output << "benchmark_schema_version,git_commit,build_type,group,"
+                      "metric,size,sample,nanoseconds,allocations,updates,"
+                      "notifications,callbacks,reflection_lookups,string_lookups\n";
+            for (const auto& sample : samples)
             {
-                writeRow(
-                    output, "raw", value.group, value.metric, value.size,
-                    std::to_string(value.index), value.nanoseconds,
-                    value.allocations, value.observation
-                );
+                output << "5," << LUX_BENCHMARK_GIT_COMMIT << ','
+                       << LUX_BENCHMARK_BUILD_TYPE << ',' << options.group
+                       << ',' << metric << ',' << options.size << ','
+                       << sample.index << ',' << sample.nanoseconds << ','
+                       << sample.allocations << ','
+                       << sample.observation.updates << ','
+                       << sample.observation.notifications << ','
+                       << sample.observation.callbacks << ','
+                       << sample.observation.reflection_lookups << ','
+                       << sample.observation.string_lookups << '\n';
             }
-            std::size_t begin{};
-            while (begin < samples.size())
-            {
-                std::size_t end = begin + 1U;
-                while (end < samples.size() &&
-                       samples[end].group == samples[begin].group &&
-                       samples[end].metric == samples[begin].metric &&
-                       samples[end].size == samples[begin].size)
-                    ++end;
-                std::vector<std::uint64_t> times;
-                std::vector<std::size_t> allocations;
-                for (std::size_t index = begin; index < end; ++index)
-                {
-                    times.push_back(samples[index].nanoseconds);
-                    allocations.push_back(samples[index].allocations);
-                }
-                std::sort(times.begin(), times.end());
-                std::sort(allocations.begin(), allocations.end());
-                const std::size_t median = times.size() / 2U;
-                const std::size_t p95 =
-                    (times.size() * 95U + 99U) / 100U - 1U;
-                writeRow(
-                    output, "summary", samples[begin].group,
-                    samples[begin].metric, samples[begin].size, "median",
-                    times[median], allocations[median],
-                    samples[end - 1U].observation
-                );
-                writeRow(
-                    output, "summary", samples[begin].group,
-                    samples[begin].metric, samples[begin].size, "p95",
-                    times[p95], allocations[p95],
-                    samples[end - 1U].observation
-                );
-                begin = end;
-            }
-            output.flush();
-            if (!output) throw std::runtime_error("cannot flush output");
         }
         std::error_code error;
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temporary, path, error);
-        if (error) throw std::runtime_error("cannot publish output");
+        std::filesystem::remove(options.output, error);
+        std::filesystem::rename(temporary, options.output);
     }
 
-    class Evidence final
-    {
-      public:
-        explicit Evidence(Options options) : options_(std::move(options)) {}
-
-        template <class Setup, class Operation, class Teardown>
-        void measure(
-            std::string metric,
-            std::size_t size,
-            Setup&& setup,
-            Operation&& operation,
-            Teardown&& teardown
-        )
-        {
-            for (std::size_t index{}; index < options_.warmups; ++index)
-            {
-                auto state = setup();
-                (void)operation(*state);
-                teardown(*state);
-            }
-            for (std::size_t index{}; index < options_.samples; ++index)
-            {
-                auto state = setup();
-                g_allocation_count.store(0U, std::memory_order_relaxed);
-                g_count_allocations.store(true, std::memory_order_release);
-                const auto begin = Clock::now();
-                const Observation observation = operation(*state);
-                const auto end = Clock::now();
-                g_count_allocations.store(false, std::memory_order_release);
-                teardown(*state);
-                samples_.push_back(Sample{
-                    options_.group, std::move(metric), size, index,
-                    static_cast<std::uint64_t>(
-                        std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            end - begin
-                        ).count()
-                    ),
-                    g_allocation_count.load(std::memory_order_relaxed),
-                    observation
-                });
-                metric = samples_.back().metric;
-                writeCsv(options_.output, samples_);
-            }
-        }
-
-      private:
-        Options options_;
-        std::vector<Sample> samples_;
-    };
-
-    struct TaskState final
-    {
-        std::atomic_size_t calls{};
-        lux::task::TaskGraph graph;
-        lux::task::TaskExecutor executor;
-
-        explicit TaskState(std::size_t count)
-            : executor(lux::task::TaskExecutorConfig{4U, count})
-        {
-            lux::task::TaskGraphBuilder builder;
-            for (std::size_t index{}; index < count; ++index)
-                if (!builder.add([this]() noexcept
-                    { calls.fetch_add(1U, std::memory_order_relaxed); }))
-                    throw std::bad_alloc{};
-            auto built = std::move(builder).build();
-            if (!built) throw std::bad_alloc{};
-            graph = std::move(*built);
-            if (!executor.reserve(count)) throw std::bad_alloc{};
-        }
-    };
-
-    struct ChangeBatchState final
-    {
-        EcsChangeBatch batch;
-        std::vector<std::uint64_t> storages;
-        std::size_t rows{};
-
-        ChangeBatchState(std::size_t lane_count, std::size_t row_count)
-            : storages(lane_count), rows(row_count)
-        {
-            for (std::size_t index{}; index < lane_count; ++index)
-                storages[index] = index + 1U;
-            if (!batch.prepare(storages, rows)) throw std::bad_alloc{};
-        }
-    };
-
-    struct BenchmarkPosition final
+    struct Position final
     {
         std::uint32_t value{};
     };
 
-    struct IncrementPosition final
+    struct WorldState final
     {
-        Entity entity{NullEntity};
-
-        void apply(SimulationEcsMutation& mutation) noexcept
+        explicit WorldState(std::size_t count)
         {
-            mutation.update<BenchmarkPosition>(
-                entity,
-                [](BenchmarkPosition& position) noexcept
-                {
-                    ++position.value;
-                }
-            );
-        }
-    };
-
-    struct StepState final
-    {
-        EcsState state;
-        EcsChangeJournal journal{EcsChangeHistoryBudget{4096U, 65536U}};
-        EcsCommandBatch commands;
-        lux::task::TaskGraph graph;
-        lux::task::TaskExecutor executor{
-            lux::task::TaskExecutorConfig{1U, 1U}};
-        Entity entity{NullEntity};
-
-        StepState()
-        {
-            auto mutation = state.mutate();
-            if (!mutation)
-                throw std::runtime_error("mutation failed");
-            entity = mutation->create();
-            mutation->emplace<BenchmarkPosition>(entity, 0U);
-            *mutation = {};
-
-            auto observed = beginSimulationEcsMutation(state, journal);
-            if (!observed)
-                throw std::runtime_error("observed mutation failed");
-            observed->update<BenchmarkPosition>(
-                entity,
-                [](BenchmarkPosition&) noexcept {}
-            );
-            *observed = {};
-
-            constexpr std::array capacities{
-                EcsCommandProducerCapacity{1U, 64U}
-            };
-            if (!commands.prepare(capacities))
-                throw std::bad_alloc{};
-
-            lux::task::TaskGraphBuilder builder;
-            auto task = builder.add([this]() noexcept
+            entities.reserve(count);
+            registry.storage<Position>().reserve(count);
+            for (std::size_t index{}; index < count; ++index)
             {
-                auto scope = commands.begin(0U);
-                if (!scope ||
-                    scope->commands().push(IncrementPosition{entity}) !=
-                        ECommandResult::ACCEPTED)
-                {
-                    std::abort();
-                }
-            });
-            if (!task)
-                throw std::bad_alloc{};
-            auto built = std::move(builder).build();
-            if (!built || !executor.reserve(1U))
-                throw std::bad_alloc{};
-            graph = std::move(*built);
+                const Entity entity = registry.create();
+                registry.emplace<Position>(
+                    entity,
+                    Position{static_cast<std::uint32_t>(index)}
+                );
+                entities.push_back(entity);
+            }
         }
+
+        Registry registry;
+        std::vector<Entity> entities;
     };
 
-    struct NoopCommand final
+    struct ReactiveDirtyState final
     {
-        std::uint64_t value{};
-
-        void apply(SimulationEcsMutation&) noexcept
+        explicit ReactiveDirtyState(std::size_t count)
         {
+            entities.reserve(count);
+            dirty.reserve(count);
+            registry.storage<Position>().reserve(count);
+            for (std::size_t index{}; index < count; ++index)
+            {
+                const Entity entity = registry.create();
+                registry.emplace<Position>(entity);
+                entities.push_back(entity);
+            }
+            connection = registry.on_update<Position>().connect<
+                &ReactiveDirtyState::onUpdate>(*this);
         }
+
+        void onUpdate(Registry&, Entity entity) noexcept
+        {
+            dirty.push_back(entity);
+        }
+
+        Registry registry;
+        std::vector<Entity> entities;
+        std::vector<Entity> dirty;
+        entt::scoped_connection connection;
     };
 
     struct CommandState final
     {
-        EcsCommandBatch commands;
-        std::size_t count{};
-
-        explicit CommandState(std::size_t value) : count(value)
+        explicit CommandState(std::size_t count)
         {
-            const std::array capacities{
-                EcsCommandProducerCapacity{
-                    count,
-                    count * (sizeof(NoopCommand) + alignof(NoopCommand) - 1U)
-                }
-            };
-            if (!commands.prepare(capacities))
-                throw std::bad_alloc{};
-        }
-    };
-
-    struct HierarchyState final
-    {
-        HierarchyIndex hierarchy;
-        HierarchyMutationBatch mutations;
-        HierarchyDeltaBatch deltas;
-        std::size_t count{};
-
-        explicit HierarchyState(std::size_t value) : count(value)
-        {
-            if (!mutations.prepare(count) || !deltas.prepare(count))
-                throw std::bad_alloc{};
+            entities.reserve(count);
+            registry.storage<Position>().reserve(count);
             for (std::size_t index{}; index < count; ++index)
             {
-                const Entity child = static_cast<Entity>(
-                    static_cast<std::uint32_t>(index + 2U)
-                );
-                const Entity parent = static_cast<Entity>(
-                    static_cast<std::uint32_t>(index + 1U)
-                );
-                if (!mutations.append(HierarchyMutation{
-                        EHierarchyMutationKind::SET_PARENT,
-                        child,
-                        parent
-                    }))
-                {
-                    throw std::bad_alloc{};
-                }
+                const Entity entity = registry.create();
+                registry.emplace<Position>(entity);
+                entities.push_back(entity);
             }
-            if (!hierarchy.rebuild(mutations.values(), deltas))
-                throw std::runtime_error("hierarchy rebuild failed");
-            mutations.reset();
-            deltas.reset();
+            const EcsCommandProducerCapacity capacity{count, 0U};
+            if (!commands.prepare(std::span{&capacity, 1U}))
+                throw std::runtime_error("command prepare failed");
         }
+
+        Registry registry;
+        std::vector<Entity> entities;
+        EcsCommandBuffer commands;
     };
 
-    struct JournalReaderState final
+    struct TypedEvent final
     {
-        EcsChangeJournal journal{EcsChangeHistoryBudget{4096U, 65536U}};
-        std::vector<ChangeCursor<BenchmarkPosition>> cursors;
-        std::vector<std::size_t> counts;
+        std::uint32_t producer{};
+        std::uint32_t local{};
+    };
 
-        explicit JournalReaderState(std::size_t readers)
-            : cursors(readers), counts(readers)
+    struct TypedEventState final
+    {
+        explicit TypedEventState(std::size_t count)
         {
-            for (auto& cursor : cursors)
-                (void)journal.read(cursor);
-            EcsChangeBatch batch;
-            const std::uint64_t storage =
-                entt::type_hash<BenchmarkPosition>::value();
-            if (!batch.prepare(std::span{&storage, 1U}, 1U))
-                throw std::bad_alloc{};
-            auto stream = batch.binder()(storage);
-            if (!stream ||
-                !stream(static_cast<Entity>(1U), EComponentChangeKind::MODIFIED) ||
-                !batch.publish(journal))
-            {
-                throw std::runtime_error("journal setup failed");
-            }
+            const std::size_t per_producer = (count + 3U) / 4U;
+            for (auto& values : producers)
+                values.reserve(per_producer);
         }
+
+        std::array<std::vector<TypedEvent>, 4U> producers;
+    };
+
+    struct TaskGraphState final
+    {
+        explicit TaskGraphState(std::size_t count)
+        {
+            lux::task::TaskGraphBuilder builder;
+            for (std::size_t index{}; index < count; ++index)
+            {
+                if (!builder.add([this]() noexcept { ++executed; }))
+                    throw std::runtime_error("task add failed");
+            }
+            auto built = std::move(builder).build();
+            if (!built)
+                throw std::runtime_error("task graph build failed");
+            graph = std::move(*built);
+            executor = std::make_unique<lux::task::TaskExecutor>(
+                lux::task::TaskExecutorConfig{0U, graph.taskCount()}
+            );
+        }
+
+        std::atomic_size_t executed{};
+        lux::task::TaskGraph graph;
+        std::unique_ptr<lux::task::TaskExecutor> executor;
     };
 
     struct SnapshotState final
     {
-        EcsState state;
-        ComponentSnapshotSet components;
-        std::size_t count{};
-
-        explicit SnapshotState(std::size_t value) : count(value)
+        explicit SnapshotState(std::size_t count)
         {
-            const auto schema = makeComponentSchema<BenchmarkPosition>(
-                componentSchemaId("benchmark.position")
+            std::vector<ComponentSchema> schemas_values;
+            const auto transform_schemas = transformComponentSchemas();
+            schemas_values.insert(
+                schemas_values.end(),
+                transform_schemas.begin(),
+                transform_schemas.end()
             );
-            auto schemas = ComponentSchemaSet::build({schema});
-            if (!schemas)
+            auto built_schemas = ComponentSchemaSet::build(
+                std::move(schemas_values)
+            );
+            if (!built_schemas)
                 throw std::runtime_error("schema build failed");
-            const std::array bindings{
-                bindComponentSnapshot<BenchmarkPosition>(schema)
-            };
-            const ComponentSnapshotContribution contribution{
-                {},
-                bindings
-            };
-            auto built = ComponentSnapshotSet::build(
-                *schemas,
-                std::span(&contribution, 1U)
+            schemas = std::move(*built_schemas);
+            const std::array contributions{
+                transformComponentSnapshotContribution()};
+            auto built_components = ComponentSnapshotSet::build(
+                schemas,
+                contributions
             );
-            if (!built)
-                throw std::runtime_error("snapshot binding failed");
-            components = *built;
-
-            auto mutation = state.mutate();
-            if (!mutation)
-                throw std::runtime_error("snapshot state mutation failed");
-            mutation->reserve<BenchmarkPosition>(count);
+            if (!built_components)
+                throw std::runtime_error("snapshot component build failed");
+            components = std::move(*built_components);
+            registry.storage<Transform3D>().reserve(count);
             for (std::size_t index{}; index < count; ++index)
-            {
-                const Entity entity = mutation->create();
-                mutation->emplace<BenchmarkPosition>(
-                    entity,
-                    static_cast<std::uint32_t>(index)
-                );
-            }
+                registry.emplace<Transform3D>(registry.create());
         }
-    };
 
-} // namespace
+        Registry registry;
+        ComponentSchemaSet schemas;
+        ComponentSnapshotSet components;
+    };
+}
 
 int main(int argc, char** argv)
 {
-    const auto parsed = parseOptions(argc, argv);
-    if (!parsed) return 2;
-    Evidence evidence(*parsed);
+    const auto options = parseOptions(argc, argv);
+    if (!options)
+        return 2;
 
-    if (parsed->group == "task-graph")
+    std::string_view metric;
+    std::vector<Sample> samples;
+    if (options->group == "world")
     {
-        evidence.measure(
-            "task_graph_execute_none", parsed->size,
-            [&]() { return std::make_unique<TaskState>(parsed->size); },
-            [](TaskState& state)
+        metric = "world_patch";
+        samples = measure(
+            *options,
+            [&] { return std::make_unique<WorldState>(options->size); },
+            [](WorldState& state)
             {
-                const std::size_t before = state.calls.load();
-                if (!state.executor.execute(state.graph))
-                    throw std::runtime_error("task execution failed");
-                Observation result;
-                result.dispatch_calls = state.calls.load() - before;
-                return result;
-            },
-            [](TaskState&) noexcept {}
-        );
-    }
-    else if (parsed->group == "world-change-batch")
-    {
-        for (const std::size_t lanes : {1U, 4U, 16U, 32U})
-        {
-            evidence.measure(
-                "world_change_batch_record_" + std::to_string(lanes),
-                parsed->size,
-                [&, lanes]()
-                { return std::make_unique<ChangeBatchState>(lanes, parsed->size); },
-                [](ChangeBatchState& state)
+                for (const Entity entity : state.entities)
                 {
-                    for (const std::uint64_t storage : state.storages)
-                    {
-                        auto stream = state.batch.binder()(storage);
-                        if (!stream) throw std::runtime_error("bind failed");
-                        for (std::size_t row{}; row < state.rows; ++row)
-                            if (!stream(
-                                    static_cast<Entity>(
-                                        static_cast<std::uint32_t>(row)
-                                    ),
-                                    EComponentChangeKind::MODIFIED
-                                ))
-                                throw std::runtime_error("append failed");
-                    }
-                    const auto stats = state.batch.stats();
-                    Observation result;
-                    result.retained_bytes =
-                        stats.retained_capacity * sizeof(Entity);
-                    result.lane_binds = stats.lane_binds;
-                    result.record_appends = stats.record_appends;
-                    result.per_record_lookups = stats.per_record_lookups;
-                    return result;
-                },
-                [](ChangeBatchState& state) noexcept { state.batch.reset(); }
-            );
-        }
-    }
-    else if (parsed->group == "simulation-step")
-    {
-        evidence.measure(
-            "simulation_step_execute", parsed->size,
-            []() { return std::make_unique<StepState>(); },
-            [](StepState& state)
-            {
-                if (!lux::simulation::executeSimulationStep(
-                        state.executor,
-                        state.graph,
-                        state.state,
-                        state.journal,
-                        state.commands
-                    ))
-                {
-                    throw std::runtime_error("simulation step failed");
+                    state.registry.patch<Position>(
+                        entity,
+                        [](Position& value) noexcept { ++value.value; }
+                    );
                 }
-                Observation result;
-                result.dispatch_calls = 1U;
-                return result;
+                return Observation{.updates = state.entities.size()};
             },
-            [](StepState&) noexcept {}
+            [](WorldState&) noexcept {}
         );
     }
-    else if (parsed->group == "command-batch")
+    else if (options->group == "reactive-dirty")
     {
-        evidence.measure(
-            "command_batch_record", parsed->size,
-            [&]() { return std::make_unique<CommandState>(parsed->size); },
+        metric = "reactive_dirty_patch";
+        samples = measure(
+            *options,
+            [&]
+            {
+                return std::make_unique<ReactiveDirtyState>(options->size);
+            },
+            [](ReactiveDirtyState& state)
+            {
+                state.dirty.clear();
+                for (const Entity entity : state.entities)
+                {
+                    state.registry.patch<Position>(
+                        entity,
+                        [](Position& value) noexcept { ++value.value; }
+                    );
+                }
+                if (state.dirty.size() != state.entities.size())
+                    throw std::runtime_error("dirty notification mismatch");
+                return Observation{
+                    .updates = state.entities.size(),
+                    .notifications = state.dirty.size()};
+            },
+            [](ReactiveDirtyState&) noexcept {}
+        );
+    }
+    else if (options->group == "command-buffer")
+    {
+        metric = "command_buffer_record";
+        samples = measure(
+            *options,
+            [&] { return std::make_unique<CommandState>(options->size); },
             [](CommandState& state)
             {
-                auto scope = state.commands.begin(0U);
-                if (!scope)
-                    throw std::runtime_error("command begin failed");
-                for (std::size_t index{}; index < state.count; ++index)
                 {
-                    if (scope->commands().push(NoopCommand{index}) !=
-                        ECommandResult::ACCEPTED)
+                    auto begun = state.commands.begin(0U);
+                    if (!begun)
+                        throw std::runtime_error("command begin failed");
+                    auto writer = std::move(*begun);
+                    for (const Entity entity : state.entities)
                     {
-                        throw std::runtime_error("command push failed");
+                        if (!writer.remove<Position>(entity))
+                            throw std::runtime_error("command record failed");
                     }
                 }
-                Observation result;
-                result.dispatch_calls = state.count;
-                return result;
+                return Observation{.updates = state.entities.size()};
             },
             [](CommandState& state) noexcept
             {
@@ -691,90 +433,89 @@ int main(int argc, char** argv)
             }
         );
     }
-    else if (parsed->group == "hierarchy-delta")
+    else if (options->group == "typed-event")
     {
-        evidence.measure(
-            "hierarchy_delta_apply", parsed->size,
-            [&]() { return std::make_unique<HierarchyState>(parsed->size); },
-            [](HierarchyState& state)
+        metric = "typed_event_dispatch";
+        samples = measure(
+            *options,
+            [&] { return std::make_unique<TypedEventState>(options->size); },
+            [&](TypedEventState& state)
             {
-                const Entity root = static_cast<Entity>(1U);
-                for (std::size_t index{}; index < state.count; ++index)
+                for (auto& values : state.producers)
+                    values.clear();
+                for (std::size_t index{}; index < options->size; ++index)
                 {
-                    const Entity child = static_cast<Entity>(
-                        static_cast<std::uint32_t>(index + 2U)
-                    );
-                    if (!state.mutations.append(HierarchyMutation{
-                            EHierarchyMutationKind::SET_PARENT,
-                            child,
-                            root
-                        }))
+                    const auto producer = static_cast<std::uint32_t>(index % 4U);
+                    auto& values = state.producers[producer];
+                    values.push_back(TypedEvent{
+                        producer,
+                        static_cast<std::uint32_t>(values.size())});
+                }
+                std::size_t callbacks{};
+                for (std::uint32_t producer{};
+                     producer < state.producers.size(); ++producer)
+                {
+                    std::uint32_t expected{};
+                    for (const auto event : state.producers[producer])
                     {
-                        throw std::runtime_error("hierarchy append failed");
+                        if (event.producer != producer ||
+                            event.local != expected++)
+                        {
+                            throw std::runtime_error("event order mismatch");
+                        }
+                        ++callbacks;
                     }
                 }
-                if (!state.hierarchy.apply(
-                        state.mutations.values(),
-                        state.deltas
-                    ))
-                {
-                    throw std::runtime_error("hierarchy apply failed");
-                }
-                Observation result;
-                result.dispatch_calls = state.deltas.values().size();
-                return result;
+                if (callbacks != options->size)
+                    throw std::runtime_error("event callback mismatch");
+                return Observation{
+                    .notifications = options->size,
+                    .callbacks = callbacks};
             },
-            [](HierarchyState&) noexcept {}
+            [](TypedEventState&) noexcept {}
         );
     }
-    else if (parsed->group == "journal-readers")
+    else if (options->group == "task-graph")
     {
-        evidence.measure(
-            "journal_concurrent_readers", parsed->size,
-            [&]() { return std::make_unique<JournalReaderState>(parsed->size); },
-            [](JournalReaderState& state)
+        metric = "task_graph_execute";
+        samples = measure(
+            *options,
+            [&] { return std::make_unique<TaskGraphState>(options->size); },
+            [](TaskGraphState& state)
             {
-                std::vector<std::thread> readers;
-                readers.reserve(state.cursors.size());
-                for (std::size_t index{}; index < state.cursors.size(); ++index)
-                {
-                    readers.emplace_back([&state, index]() noexcept
-                    {
-                        const auto changes = state.journal.read(
-                            state.cursors[index]
-                        );
-                        state.counts[index] = changes.size();
-                    });
-                }
-                for (auto& reader : readers)
-                    reader.join();
-                Observation result;
-                result.dispatch_calls = state.cursors.size();
-                return result;
+                state.executed.store(0U, std::memory_order_relaxed);
+                if (!state.executor->execute(state.graph))
+                    throw std::runtime_error("task graph execute failed");
+                const auto count = state.executed.load(std::memory_order_relaxed);
+                if (count != state.graph.taskCount())
+                    throw std::runtime_error("task callback mismatch");
+                return Observation{.callbacks = count};
             },
-            [](JournalReaderState&) noexcept {}
+            [](TaskGraphState&) noexcept {}
         );
     }
-    else if (parsed->group == "ecs-snapshot")
+    else
     {
-        evidence.measure(
-            "ecs_snapshot_capture", parsed->size,
-            [&]() { return std::make_unique<SnapshotState>(parsed->size); },
+        metric = "ecs_snapshot_capture";
+        samples = measure(
+            *options,
+            [&] { return std::make_unique<SnapshotState>(options->size); },
             [](SnapshotState& state)
             {
-                auto snapshot = EcsSnapshot::capture(
-                    state.state,
+                const auto snapshot = EcsSnapshot::capture(
+                    state.registry,
                     state.components
                 );
                 if (!snapshot)
                     throw std::runtime_error("snapshot capture failed");
-                Observation result;
-                result.dispatch_calls = state.count;
-                return result;
+                return Observation{
+                    .updates = state.registry.storage<Entity>().free_list()};
             },
             [](SnapshotState&) noexcept {}
         );
     }
+
+    writeCsv(*options, metric, samples);
     return 0;
 }
 
@@ -782,7 +523,8 @@ void* operator new(std::size_t size)
 {
     if (g_count_allocations.load(std::memory_order_relaxed))
         g_allocation_count.fetch_add(1U, std::memory_order_relaxed);
-    if (void* result = std::malloc(size == 0U ? 1U : size)) return result;
+    if (void* result = std::malloc(size == 0U ? 1U : size))
+        return result;
     throw std::bad_alloc{};
 }
 
@@ -791,4 +533,6 @@ void operator delete(void* value) noexcept { std::free(value); }
 void operator delete[](void* value) noexcept { ::operator delete(value); }
 void operator delete(void* value, std::size_t) noexcept { std::free(value); }
 void operator delete[](void* value, std::size_t) noexcept
-{ ::operator delete(value); }
+{
+    ::operator delete(value);
+}

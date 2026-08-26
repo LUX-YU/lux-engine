@@ -10,6 +10,9 @@ namespace
     {
         inline static constexpr auto Access =
             lux::simulation::makeSystemAccessSpec<>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.consumer.core-system",
+            .version = 1};
         void update() noexcept { ++updates; }
         int updates{};
     };

@@ -6,6 +6,9 @@ namespace
     {
         inline static constexpr auto Access =
             lux::simulation::makeSystemAccessSpec<>();
+        inline static constexpr lux::simulation::SystemDescription Description{
+            .canonical_name = "lux.consumer.l1-ecs-system",
+            .version = 1};
     };
 }
 

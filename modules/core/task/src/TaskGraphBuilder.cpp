@@ -248,6 +248,11 @@ namespace lux::task
             {
                 if (graph.initial_dependencies_[task] == 0U)
                     graph.roots_.push_back(task);
+                if (graph.successor_offsets_[task] ==
+                    graph.successor_offsets_[task + 1U])
+                {
+                    ++graph.terminal_task_count_;
+                }
 
                 graph.tasks_.push_back(TaskGraph::TaskRecord{
                     .callable = std::move(tasks_[task].callable),

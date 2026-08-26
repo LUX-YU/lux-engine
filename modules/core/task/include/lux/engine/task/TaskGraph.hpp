@@ -72,6 +72,7 @@ namespace lux::task
         std::vector<std::uint32_t> successor_offsets_;
         std::vector<std::uint32_t> successors_;
         std::vector<std::uint32_t> roots_;
+        std::uint32_t terminal_task_count_{};
 
         friend class TaskGraphBuilder;
         friend struct detail::TaskExecutorImpl;

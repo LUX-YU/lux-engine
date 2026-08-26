@@ -79,8 +79,16 @@ namespace lux::task::detail
         execute(const TaskGraph& graph) noexcept;
 
         void workerLoop(std::uint32_t worker) noexcept;
-        void executeTask(std::uint32_t task, std::uint32_t worker) noexcept;
-        void schedule(std::uint32_t task, std::uint32_t worker_hint) noexcept;
+        void executeTask(
+            const TaskGraph& graph,
+            std::uint32_t task,
+            std::uint32_t worker
+        ) noexcept;
+        void schedule(
+            const TaskGraph& graph,
+            std::uint32_t task,
+            std::uint32_t worker_hint
+        ) noexcept;
 
         [[nodiscard]] std::uint32_t popWorkerTask(
             std::uint32_t preferred_worker
@@ -99,12 +107,13 @@ namespace lux::task::detail
         ReadyStack caller_ready;
         std::vector<std::thread> workers;
         std::atomic<std::uint64_t> worker_event{};
+        std::atomic<std::uint32_t> sleeping_workers{};
 
         std::unique_ptr<std::atomic<std::uint32_t>[]> remaining;
         std::unique_ptr<std::uint32_t[]> next_ready;
 
         std::atomic<const TaskGraph*> active_graph{nullptr};
-        std::atomic<std::uint32_t> unfinished{};
+        std::atomic<std::uint32_t> remaining_terminals{};
         std::atomic<std::uint32_t> round_robin{};
         std::atomic<std::uint64_t> event{};
         std::atomic_bool stopping{};

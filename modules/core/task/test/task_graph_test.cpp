@@ -155,5 +155,33 @@ int main()
         assert(weak.expired());
     }
 
+    // Repeated tiny independent graphs exercise the sleeper registration and
+    // wakeup handshake. A lost wake manifests as a deterministic hang here.
+    {
+        constexpr std::size_t kTasks = 64U;
+        constexpr std::size_t kRuns = 200U;
+        std::atomic_size_t calls{};
+        TaskGraphBuilder builder;
+        for (std::size_t index{}; index < kTasks; ++index)
+        {
+            auto task = builder.add(
+                [&calls]() noexcept
+                {
+                    calls.fetch_add(1U, std::memory_order_relaxed);
+                }
+            );
+            assert(task);
+        }
+        auto graph = std::move(builder).build();
+        assert(graph);
+        TaskExecutor executor(TaskExecutorConfig{
+            .worker_count = 4U,
+            .initial_task_capacity = kTasks
+        });
+        for (std::size_t run{}; run < kRuns; ++run)
+            assert(executor.execute(*graph));
+        assert(calls.load(std::memory_order_relaxed) == kTasks * kRuns);
+    }
+
     return 0;
 }

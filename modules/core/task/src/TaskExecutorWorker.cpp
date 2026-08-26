@@ -157,29 +157,29 @@ namespace lux::task::detail
         caller_ready.reset();
 
         round_robin.store(0U, std::memory_order_relaxed);
-        unfinished.store(
-            static_cast<std::uint32_t>(graph.taskCount()),
+        remaining_terminals.store(
+            graph.terminal_task_count_,
             std::memory_order_relaxed
         );
         active_graph.store(std::addressof(graph), std::memory_order_release);
 
         // Precomputed roots avoid scanning dependency counters every execution.
         for (const std::uint32_t root : graph.roots_)
-            schedule(root, InvalidWorkerIndex);
+            schedule(graph, root, InvalidWorkerIndex);
 
         // The caller owns caller-affine tasks. Background WORKER tasks are not
         // stolen by the caller; product code chooses worker_count accordingly.
-        while (unfinished.load(std::memory_order_acquire) != 0U)
+        while (remaining_terminals.load(std::memory_order_acquire) != 0U)
         {
             const std::uint32_t caller_task = caller_ready.pop(next_ready.get());
             if (caller_task != InvalidTaskIndex)
             {
-                executeTask(caller_task, InvalidWorkerIndex);
+                executeTask(graph, caller_task, InvalidWorkerIndex);
                 continue;
             }
 
             const std::uint64_t observed = event.load(std::memory_order_acquire);
-            if (unfinished.load(std::memory_order_acquire) == 0U)
+            if (remaining_terminals.load(std::memory_order_acquire) == 0U)
                 break;
             if (caller_ready.head.load(std::memory_order_acquire) != InvalidTaskIndex)
                 continue;
@@ -197,32 +197,44 @@ namespace lux::task::detail
             if (stopping.load(std::memory_order_acquire))
                 return;
 
-            if (active_graph.load(std::memory_order_acquire) != nullptr)
+            if (const TaskGraph* graph =
+                    active_graph.load(std::memory_order_acquire))
             {
                 const std::uint32_t task = popWorkerTask(worker);
                 if (task != InvalidTaskIndex)
                 {
-                    executeTask(task, worker);
+                    executeTask(*graph, task, worker);
                     continue;
                 }
             }
 
-            // Idle path only. Observe the epoch, then recheck all queues before
-            // sleeping so a concurrent publish cannot be lost between check/wait.
+            // Register as a sleeper before the final queue check. A publisher
+            // either observes the sleeper and signals, or it published earlier
+            // and this recheck observes the work without requiring a wakeup.
+            sleeping_workers.fetch_add(1U, std::memory_order_acq_rel);
             const std::uint64_t observed =
                 worker_event.load(std::memory_order_acquire);
             if (stopping.load(std::memory_order_acquire))
+            {
+                sleeping_workers.fetch_sub(1U, std::memory_order_acq_rel);
                 return;
-            if (active_graph.load(std::memory_order_acquire) != nullptr)
+            }
+            if (const TaskGraph* graph =
+                    active_graph.load(std::memory_order_acquire))
             {
                 const std::uint32_t task = popWorkerTask(worker);
                 if (task != InvalidTaskIndex)
                 {
-                    executeTask(task, worker);
+                    sleeping_workers.fetch_sub(
+                        1U,
+                        std::memory_order_acq_rel
+                    );
+                    executeTask(*graph, task, worker);
                     continue;
                 }
             }
             worker_event.wait(observed, std::memory_order_acquire);
+            sleeping_workers.fetch_sub(1U, std::memory_order_acq_rel);
         }
     }
 
@@ -258,15 +270,15 @@ namespace lux::task::detail
     }
 
     void TaskExecutorImpl::schedule(
+        const TaskGraph& graph,
         std::uint32_t task,
         std::uint32_t worker_hint
     ) noexcept
     {
-        const TaskGraph* graph = active_graph.load(std::memory_order_acquire);
-        if (graph == nullptr || task >= graph->tasks_.size())
+        if (task >= graph.tasks_.size())
             contractFailure();
 
-        const auto affinity = graph->tasks_[task].affinity;
+        const auto affinity = graph.tasks_[task].affinity;
         if (affinity == ETaskAffinity::CALLER_THREAD || worker_count == 0U)
         {
             caller_ready.push(task, next_ready.get());
@@ -278,32 +290,35 @@ namespace lux::task::detail
             ? worker_hint
             : round_robin.fetch_add(1U, std::memory_order_relaxed) % worker_count;
         worker_ready[target].push(task, next_ready.get());
-        worker_event.fetch_add(1U, std::memory_order_release);
-        worker_event.notify_one();
+        if (sleeping_workers.load(std::memory_order_acquire) != 0U)
+        {
+            worker_event.fetch_add(1U, std::memory_order_release);
+            worker_event.notify_one();
+        }
     }
 
     void TaskExecutorImpl::executeTask(
+        const TaskGraph& graph,
         std::uint32_t task,
         std::uint32_t worker
     ) noexcept
     {
-        const TaskGraph* graph = active_graph.load(std::memory_order_acquire);
-        if (graph == nullptr || task >= graph->tasks_.size())
+        if (task >= graph.tasks_.size())
             contractFailure();
 
         if (worker != InvalidWorkerIndex &&
-            graph->tasks_[task].affinity == ETaskAffinity::CALLER_THREAD)
+            graph.tasks_[task].affinity == ETaskAffinity::CALLER_THREAD)
         {
             contractFailure();
         }
 
-        graph->tasks_[task].callable();
+        graph.tasks_[task].callable();
 
-        const std::uint32_t begin = graph->successor_offsets_[task];
-        const std::uint32_t end = graph->successor_offsets_[task + 1U];
+        const std::uint32_t begin = graph.successor_offsets_[task];
+        const std::uint32_t end = graph.successor_offsets_[task + 1U];
         for (std::uint32_t edge = begin; edge < end; ++edge)
         {
-            const std::uint32_t successor = graph->successors_[edge];
+            const std::uint32_t successor = graph.successors_[edge];
             // The final predecessor acquires the release sequence formed by all
             // predecessor RMWs, then publishes the successor into a ready stack.
             if (remaining[successor].fetch_sub(
@@ -311,11 +326,15 @@ namespace lux::task::detail
                     std::memory_order_acq_rel
                 ) == 1U)
             {
-                schedule(successor, worker);
+                schedule(graph, successor, worker);
             }
         }
 
-        if (unfinished.fetch_sub(1U, std::memory_order_acq_rel) == 1U)
+        if (begin == end &&
+            remaining_terminals.fetch_sub(
+                1U,
+                std::memory_order_acq_rel
+            ) == 1U)
         {
             event.fetch_add(1U, std::memory_order_release);
             event.notify_all();

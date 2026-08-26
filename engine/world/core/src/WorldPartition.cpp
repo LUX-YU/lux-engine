@@ -281,6 +281,21 @@ namespace lux::world
                 }
             }
 
+            if (impl_->partitions.size() ==
+                    std::numeric_limits<std::size_t>::max() ||
+                impl_->partition_ids.size() ==
+                    std::numeric_limits<std::size_t>::max() ||
+                copied.size() >
+                    std::numeric_limits<std::size_t>::max() -
+                        impl_->assigned_objects.size())
+            {
+                return lux::cxx::unexpected(partitionFailure(
+                    EWorldPartitionError::SIZE_OVERFLOW,
+                    {},
+                    id
+                ));
+            }
+
             impl_->partitions.reserve(impl_->partitions.size() + 1U);
             impl_->partition_ids.reserve(impl_->partition_ids.size() + 1U);
             impl_->assigned_objects.reserve(

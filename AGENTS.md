@@ -61,11 +61,14 @@ xxx::object.invoke(
 SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake target 和安装产品
 必须同时表达同一职责，禁止只搬文件而保留反向链接，或只改 target 名而让源码继续跨层 include。
 
-- 依赖骨干是 `PLATFORM -> CORE -> RESOURCE -> FUNCTION`；`WORLD` 与 `ECS` 是平级
-  L1 domain，彼此不得依赖，二者共同向上汇入 `RUNTIME -> HOST`。
-  `AUTHORING -> TOOLCHAIN -> EDITOR` 是上层产品支线。Runtime 不得 include/link
-  Authoring、Toolchain、Editor 或 Host。`WORLD` 只允许依赖 `PLATFORM/CORE/WORLD`
-  与 imported primitives，且不得拥有 ECS、Simulation、Scene、Asset 或空间数学语义。
+- Canonical ontology 固定为 `L0 Modules -> L1 World + Simulation -> L2 Process ->
+  L3 Scene -> L4 Authoring -> L5 Toolchain -> L6 Product`。World 描述事实；Simulation
+  同步解释和运行事实；ECS 只是 Simulation 内部机制；Process 负责异步、IO 与 residency；
+  Scene 只组合 World 与 Simulation。不得恢复顶层 `engine/ecs` 或 `ECS` classifier。
+- `WORLD` 与 `SIMULATION` 是 L1 sibling roots。纯 `world/core` 只能依赖 L0 primitives；
+  `world/asset` 才能增加 L0 Asset/Serialization closure。Simulation 可依赖 World 与 L0，
+  不得依赖 Process、Scene、Authoring、Toolchain、Editor 或 Host。旧 `RUNTIME` classifier
+  只对白名单存量 extension 暂留；新 L2/L3 target 必须分别使用 `PROCESS/SCENE`。
 - 所有 production target 必须调用 `lux_classify_target(TARGET ... LAYER ... PRODUCT ... ROLE ...)`。
   不得靠未分类 target、`INTERFACE_LINK_LIBRARIES` 或 generator expression 绕过 DAG 门禁。
 - `LUX_BUILD_PROFILE` 只有 `DEVELOPER/PLAYER/EDITOR/TOOLCHAIN`；Android 使用 `PLAYER`
@@ -73,10 +76,10 @@ SSOT 见 `.internal/directory-target-product-architecture.md`。目录、CMake t
   `LUX_BUILD_EDITOR`。同一 Developer 构建树里的 `lux_player` 也必须保持 runtime-clean。
 - BUILD_TOOL 关系只用 `lux_add_build_tool_dependency()`、custom command 与 generated file；
   shader compiler、asset packer、meta generator 不得作为 Runtime link dependency。
-- `engine/runtime/execution` 是领域盲基础设施，只链接 stdexec、standalone Asio、oneTBB、
+- 存量 `engine/runtime/execution` 是待迁移的领域盲基础设施，只链接 stdexec、standalone Asio、oneTBB、
   concurrentqueue 与 lux-cxx 基础组件；Asset/Render/Log 是它的 client，方向不得反转。
 - Render 固定为 `render_client/render_graph/render_vulkan/render_features` 四 target。
-  ECS extraction 与 FrameCoordinator 只依赖 client；无 render integration pack 的 Scene 必须 headless。
+  Simulation extraction 与 FrameCoordinator 只依赖 client；无 render integration pack 的 Scene 必须 headless。
 - Authoring 保存可编辑源数据，Toolchain 执行 authoring→cooked，Player 只读取 RuntimeLaunchManifest
   与 cooked pak。Assimp、shaderc、spirv-cross、MLIR/LLVM、Editor UI 不得进入 Player 闭包。
 - Extension 是叶节点。引擎 target 不链接 `extensions/*`；manifest 决定部署和运行期加载。

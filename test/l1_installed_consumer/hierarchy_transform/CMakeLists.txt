@@ -7,7 +7,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(
     lux-engine-simulation-ecs
     CONFIG REQUIRED
-    COMPONENTS core system schema snapshot hierarchy transform
+    COMPONENTS core schema snapshot hierarchy transform ecs_task
+)
+find_package(
+    lux-engine-simulation-system
+    CONFIG REQUIRED
+    COMPONENTS system
 )
 
 add_executable(lux_l1_hierarchy_transform_consumer main.cpp)

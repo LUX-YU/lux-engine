@@ -37,6 +37,10 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_description)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
+    "if(NOT TARGET lux::engine::simulation::asset)"
+    "add_library(lux::engine::simulation::asset INTERFACE IMPORTED GLOBAL)"
+    "set_property(TARGET lux::engine::simulation::asset PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::simulation::simulation_asset)"
+    "endif()"
 )
 lux_classify_target(
     TARGET  simulation_asset

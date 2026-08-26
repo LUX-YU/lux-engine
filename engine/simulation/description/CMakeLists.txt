@@ -45,6 +45,10 @@ target_link_libraries(
 component_add_transitive_commands(
     simulation_description
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+    "if(NOT TARGET lux::engine::simulation::description)"
+    "add_library(lux::engine::simulation::description INTERFACE IMPORTED GLOBAL)"
+    "set_property(TARGET lux::engine::simulation::description PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::simulation::simulation_description)"
+    "endif()"
 )
 lux_classify_target(
     TARGET  simulation_description

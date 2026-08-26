@@ -7,8 +7,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(
     lux-engine-simulation-ecs
     CONFIG REQUIRED
-    COMPONENTS core system
+    COMPONENTS core
 )
+find_package(
+    lux-engine-simulation-system
+    CONFIG REQUIRED
+    COMPONENTS system
+)
+find_package(lux-engine-core CONFIG REQUIRED COMPONENTS task)
 
 get_target_property(
     system_links
@@ -24,5 +30,7 @@ endif()
 add_executable(lux_l1_core_system_consumer main.cpp)
 target_link_libraries(
     lux_l1_core_system_consumer
-    PRIVATE lux::engine::simulation::system
+    PRIVATE
+        lux::engine::simulation::system
+        lux::engine::core::task
 )

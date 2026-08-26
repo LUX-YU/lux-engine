@@ -35,6 +35,10 @@ component_add_transitive_commands(
     simulation_core
     "find_package(lux-engine-core REQUIRED COMPONENTS task)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
+    "if(NOT TARGET lux::engine::simulation::core)"
+    "add_library(lux::engine::simulation::core INTERFACE IMPORTED GLOBAL)"
+    "set_property(TARGET lux::engine::simulation::core PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::simulation::simulation_core)"
+    "endif()"
 )
 lux_classify_target(
     TARGET  simulation_core

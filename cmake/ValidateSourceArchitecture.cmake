@@ -14,9 +14,9 @@ if(EXISTS "${source_root}/ecs")
         "Architecture: the retired top-level ecs/ tree must remain quarantined."
     )
 endif()
-if(EXISTS "${source_root}/engine/ecs/schedule")
+if(EXISTS "${source_root}/engine/ecs")
     message(FATAL_ERROR
-        "Architecture: retired engine/ecs/schedule must not be restored."
+        "Architecture: retired top-level engine/ecs domain must not be restored."
     )
 endif()
 if(NOT EXISTS "${source_root}/legacy/ecs" OR
@@ -32,10 +32,6 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/modules/*/sinclude/*.hpp"
     "${source_root}/modules/*/pinclude/*.hpp"
     "${source_root}/modules/*/src/*.cpp"
-    "${source_root}/engine/ecs/*/include/*.hpp"
-    "${source_root}/engine/ecs/*/sinclude/*.hpp"
-    "${source_root}/engine/ecs/*/pinclude/*.hpp"
-    "${source_root}/engine/ecs/*/src/*.cpp"
     "${source_root}/engine/world/*/include/*.hpp"
     "${source_root}/engine/world/*/sinclude/*.hpp"
     "${source_root}/engine/world/*/pinclude/*.hpp"
@@ -44,6 +40,10 @@ file(GLOB_RECURSE production_sources LIST_DIRECTORIES false
     "${source_root}/engine/simulation/*/sinclude/*.hpp"
     "${source_root}/engine/simulation/*/pinclude/*.hpp"
     "${source_root}/engine/simulation/*/src/*.cpp"
+    "${source_root}/engine/simulation/*/*/include/*.hpp"
+    "${source_root}/engine/simulation/*/*/sinclude/*.hpp"
+    "${source_root}/engine/simulation/*/*/pinclude/*.hpp"
+    "${source_root}/engine/simulation/*/*/src/*.cpp"
 )
 
 foreach(source IN LISTS production_sources)
@@ -71,53 +71,47 @@ foreach(source IN LISTS production_sources)
         )
     endif()
 
-    if(normalized MATCHES "/engine/ecs/")
-        if(content MATCHES
-           "#[ \t]*include[ \t]*[<\"]lux/engine/world/")
-            message(FATAL_ERROR
-                "Architecture: ECS source '${normalized}' depends on the sibling World domain."
-            )
-        endif()
+    if(normalized MATCHES "/engine/simulation/")
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/(scene|runtime|process|editor|authoring|toolchain|host|extensions)/")
             message(FATAL_ERROR
-                "Architecture: L1 source '${normalized}' includes an upper-layer API."
+                "Architecture: L1 Simulation source '${normalized}' includes an upper-layer API."
             )
         endif()
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/object/")
             message(FATAL_ERROR
-                "Architecture: L1 production source '${normalized}' depends on Object instead of the generic affinity protocol."
+                "Architecture: L1 Simulation source '${normalized}' depends on Object instead of the generic affinity protocol."
             )
         endif()
         if(content MATCHES
            "SceneServices|ISystem|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|cooked_relocation|LXES|LXWS|ComponentCodec|ComponentPersistence|ComponentLoadBinding|ComponentLoadSet|EcsBinaryWriter|EcsBinaryReader|persistence_contract|ecs_persistence|TaggedProperty|RefClass|RefField|WorldSection|PersistentEntity|PersistentId|ecs_load|section[ \t]*=[ \t]*(LOAD|OMIT)|LUX_REBUILD_COMPONENT_SCHEMA|LUX_COMPONENT_SCHEMA|LUX_COMPONENT_SNAPSHOT|LUX_COMPONENT_WORLD_SECTION|CloneFn|default_emplace|COPY_WITHOUT_CLONE|ecs::World|WorldMutation|WorldChange|WorldCommand|WorldSnapshot|World::registry[ \t\r\n]*\\(|setParent[ \t\r\n]*\\(|clearParent[ \t\r\n]*\\(")
             message(FATAL_ERROR
-                "Architecture: L1 source '${normalized}' restores retired ECS vocabulary."
+                "Architecture: L1 Simulation source '${normalized}' restores retired vocabulary."
             )
         endif()
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"]lux/engine/ecs/(Schedule|ScheduleEdit|ScheduleError|SystemFrame|SystemHandle|SystemPhase|SystemSetId)[.]hpp")
             message(FATAL_ERROR
-                "Architecture: L1 source '${normalized}' includes retired Schedule execution API."
+                "Architecture: L1 Simulation source '${normalized}' includes retired Schedule execution API."
             )
         endif()
         if(content MATCHES
            "connectConstruct|connectUpdate|connectDestroy|observer_relations_|on_construct[ \t\r\n]*<|on_update[ \t\r\n]*<|on_destroy[ \t\r\n]*<")
             message(FATAL_ERROR
-                "Architecture: L1 source '${normalized}' restores retired EnTT observer ownership."
+                "Architecture: L1 Simulation source '${normalized}' restores retired EnTT observer ownership."
             )
         endif()
         if(content MATCHES
            "AssetStore|AssetClient|AssetLease|AssetManager|AssetRef|AssetLoadPort|AssetServices")
             message(FATAL_ERROR
-                "Architecture: L1 source '${normalized}' depends on deferred asset ownership API."
+                "Architecture: L1 Simulation source '${normalized}' depends on deferred asset ownership API."
             )
         endif()
         if(content MATCHES
            "printf[ \t\r\n]*\\(|fprintf[ \t\r\n]*\\(|std::(cout|cerr)|MessageBox[AW]?[ \t\r\n]*\\(")
             message(FATAL_ERROR
-                "Architecture: L1 source '${normalized}' performs terminal I/O."
+                "Architecture: L1 Simulation source '${normalized}' performs terminal I/O."
             )
         endif()
     endif()
@@ -132,7 +126,7 @@ foreach(source IN LISTS production_sources)
 
     if(normalized MATCHES "/modules/core/task/")
         if(content MATCHES
-           "#[ \t]*include[ \t]*[<\"]lux/engine/(ecs|object|process|scene)/")
+           "#[ \t]*include[ \t]*[<\"]lux/engine/(ecs|simulation|object|process|scene)/")
             message(FATAL_ERROR
                 "Architecture: L0 core::task source '${normalized}' depends on an upper-layer subsystem."
             )
@@ -164,8 +158,18 @@ foreach(source IN LISTS production_sources)
 endforeach()
 
 foreach(source IN LISTS production_sources)
+    file(READ "${source}" content)
+    if(content MATCHES
+       "#[ \t]*include[ \t]*[<\"]lux/engine/ecs/|namespace[ \t]+lux::ecs|lux::ecs::")
+        message(FATAL_ERROR
+            "Architecture: active source '${source}' restores the retired top-level ECS namespace."
+        )
+    endif()
+endforeach()
+
+foreach(source IN LISTS production_sources)
     file(TO_CMAKE_PATH "${source}" normalized)
-    if(normalized MATCHES "/engine/ecs/schema/")
+    if(normalized MATCHES "/engine/simulation/ecs/schema/")
         file(READ "${source}" content)
         if(content MATCHES
            "lux/engine/meta/|lux/cxx/reflection/")
@@ -193,12 +197,12 @@ if(DEFINED LUX_BINARY_DIR AND
 endif()
 
 file(GLOB_RECURSE ecs_public_headers LIST_DIRECTORIES false
-    "${source_root}/engine/ecs/*/include/*.hpp"
+    "${source_root}/engine/simulation/ecs/*/include/*.hpp"
 )
 foreach(source IN LISTS ecs_public_headers)
     file(READ "${source}" content)
     if(content MATCHES
-       "#[ \t]*include[ \t]*[<\"]lux/engine/ecs/detail/")
+       "#[ \t]*include[ \t]*[<\"]lux/engine/simulation/ecs/detail/")
         message(FATAL_ERROR
             "Architecture: public ECS header '${source}' includes unsupported detail API."
         )
@@ -206,7 +210,7 @@ foreach(source IN LISTS ecs_public_headers)
 endforeach()
 
 set(transform_system_source
-    "${source_root}/engine/ecs/transform/src/TransformSystem.cpp"
+    "${source_root}/engine/simulation/ecs/transform/src/TransformSystem.cpp"
 )
 if(EXISTS "${transform_system_source}")
     file(READ "${transform_system_source}" transform_system_contract)
@@ -219,8 +223,8 @@ if(EXISTS "${transform_system_source}")
 endif()
 
 foreach(component_header IN ITEMS
-    "${source_root}/engine/ecs/hierarchy/include/lux/engine/ecs/Parent.hpp"
-    "${source_root}/engine/ecs/transform/include/lux/engine/ecs/Transform.hpp"
+    "${source_root}/engine/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/Parent.hpp"
+    "${source_root}/engine/simulation/ecs/transform/include/lux/engine/simulation/ecs/Transform.hpp"
 )
     if(EXISTS "${component_header}")
         file(READ "${component_header}" component_contract)
@@ -254,8 +258,10 @@ file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/modules/*/CMakeLists.txt"
     "${source_root}/engine/CMakeLists.txt"
     "${source_root}/engine/world/CMakeLists.txt"
-    "${source_root}/engine/ecs/CMakeLists.txt"
-    "${source_root}/engine/ecs/*/CMakeLists.txt"
+    "${source_root}/engine/world/*/CMakeLists.txt"
+    "${source_root}/engine/simulation/CMakeLists.txt"
+    "${source_root}/engine/simulation/*/CMakeLists.txt"
+    "${source_root}/engine/simulation/*/*/CMakeLists.txt"
 )
 foreach(source IN LISTS active_cmake)
     file(READ "${source}" content)
@@ -317,7 +323,7 @@ file(GLOB_RECURSE ui_sources LIST_DIRECTORIES false
 foreach(source IN LISTS ui_sources)
     file(READ "${source}" content)
     if(content MATCHES
-       "lux/engine/(ecs|runtime|editor|resource|function/render)/")
+       "lux/engine/(ecs|simulation|runtime|editor|resource|function/render)/")
         message(FATAL_ERROR
             "Architecture: UI foundation '${source}' crosses an L0 boundary."
         )
@@ -328,7 +334,7 @@ file(WRITE "${LUX_REPORT_PATH}"
     "vNext L1 semantic architecture debt: 0\n"
     "legacy roots configured: 0\n"
     "legacy includes from production: 0\n"
-    "retired ECS vocabulary in L1: 0\n"
+    "retired top-level ECS domain/namespace: 0\n"
     "L1 terminal I/O: 0\n"
     "retired L0 asset runtime vocabulary: 0\n"
     "transform full-scan/associative dirty paths: 0\n"

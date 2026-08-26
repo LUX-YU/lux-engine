@@ -1,7 +1,7 @@
 include_guard(GLOBAL)
 
 set(_LUX_ARCH_LAYERS
-    PLATFORM CORE RESOURCE FUNCTION WORLD SIMULATION ECS
+    PLATFORM CORE RESOURCE FUNCTION WORLD SIMULATION
     PROCESS SCENE RUNTIME AUTHORING TOOLCHAIN EDITOR HOST
 )
 set(_LUX_ARCH_PRODUCTS
@@ -36,6 +36,18 @@ function(lux_classify_target)
     _lux_arch_require_value("LAYER" "${ARG_LAYER}" _LUX_ARCH_LAYERS)
     _lux_arch_require_value("PRODUCT" "${ARG_PRODUCT}" _LUX_ARCH_PRODUCTS)
     _lux_arch_require_value("ROLE" "${ARG_ROLE}" _LUX_ARCH_ROLES)
+
+    if(ARG_LAYER STREQUAL "RUNTIME")
+        set(_lux_retained_runtime_targets
+            physics2d_extension
+            physics2d_extension_v5_test
+        )
+        if(NOT ARG_TARGET IN_LIST _lux_retained_runtime_targets)
+            message(FATAL_ERROR
+                "lux_classify_target: new RUNTIME target '${ARG_TARGET}' is forbidden; use PROCESS or SCENE"
+            )
+        endif()
+    endif()
 
     get_target_property(alias_target ${ARG_TARGET} ALIASED_TARGET)
     if(alias_target)
@@ -154,12 +166,8 @@ function(_lux_arch_dependency_allowed consumer_layer dependency_layer output)
         if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|SIMULATION)$")
             set(allowed TRUE)
         endif()
-    elseif(consumer_layer STREQUAL "ECS")
-        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|ECS)$")
-            set(allowed TRUE)
-        endif()
     elseif(consumer_layer STREQUAL "RUNTIME")
-        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|ECS|RUNTIME)$")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|SIMULATION|RUNTIME)$")
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "PROCESS")
@@ -171,11 +179,11 @@ function(_lux_arch_dependency_allowed consumer_layer dependency_layer output)
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "AUTHORING")
-        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|AUTHORING)$")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|SIMULATION|PROCESS|SCENE|AUTHORING)$")
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "TOOLCHAIN")
-        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|ECS|RUNTIME|AUTHORING|TOOLCHAIN)$")
+        if(dependency_layer MATCHES "^(PLATFORM|CORE|RESOURCE|FUNCTION|WORLD|SIMULATION|PROCESS|SCENE|RUNTIME|AUTHORING|TOOLCHAIN)$")
             set(allowed TRUE)
         endif()
     elseif(consumer_layer STREQUAL "EDITOR")

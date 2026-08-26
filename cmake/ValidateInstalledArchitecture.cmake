@@ -13,13 +13,15 @@ file(GLOB_RECURSE installed_entries LIST_DIRECTORIES true "${prefix}/*")
 foreach(entry IN LISTS installed_entries)
     file(TO_CMAKE_PATH "${entry}" normalized)
     if(normalized MATCHES "[/](legacy|sinclude|pinclude)([/]|$)" OR
-       normalized MATCHES "[/]ecs[/](detail|core/detail|schedule/detail)([/]|$)")
+       normalized MATCHES "[/]ecs[/](detail|core/detail|schedule/detail)([/]|$)" OR
+       normalized MATCHES "[/]include[/]lux[/]engine[/]ecs([/]|$)")
         message(FATAL_ERROR
             "Install surface exposes quarantine/private detail: ${normalized}"
         )
     endif()
     get_filename_component(name "${entry}" NAME)
-    if(name MATCHES
+    if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]ecs[/]" AND
+       name MATCHES
        "^(Registry|ISystem|System|SystemFrame|SystemHandle|SystemPhase|SystemSetId|Schedule|ScheduleEdit|ScheduleError|ScheduleBuilder|ScheduleMutationBatch|InstalledSystemBatch|World|WorldMutation|WorldSnapshot|WorldSection.*|PersistentEntity|SceneServices|AssetManager|AssetRef|AssetLoadPort|AssetServices|ComponentCodec|TaggedPropertyArchive|Archive|ByteIO|NameTable)\\.(h|hpp)$")
         message(FATAL_ERROR "Install surface exposes retired API: ${normalized}")
     endif()
@@ -38,7 +40,12 @@ foreach(entry IN LISTS installed_text)
        content MATCHES "#[ \t]*include[ \t]*[<\"]lux/engine/process/")
         message(FATAL_ERROR "Installed file contains a retired boundary: ${entry}")
     endif()
-    if(normalized MATCHES "[/]include[/]lux[/]engine[/]ecs[/]" AND
+    if(content MATCHES "lux/engine/ecs/|lux::engine::ecs|lux::ecs::")
+        message(FATAL_ERROR
+            "Installed file restores retired top-level ECS surface: ${entry}"
+        )
+    endif()
+    if(normalized MATCHES "[/]include[/]lux[/]engine[/]simulation[/]ecs[/]" AND
        content MATCHES "CloneFn|default_emplace|COPY_WITHOUT_CLONE")
         message(FATAL_ERROR
             "Installed ECS file contains retired component operations: ${entry}"
@@ -52,8 +59,9 @@ if(DEFINED INSTALL_MANIFEST AND EXISTS "${INSTALL_MANIFEST}")
        manifest MATCHES "[/\\\\](sinclude|pinclude)[/\\\\]")
         message(FATAL_ERROR "Install manifest contains quarantine/private paths")
     endif()
-    if(manifest MATCHES "lux-engine-ecs[/\\\\]schedule")
-        message(FATAL_ERROR "Install manifest contains retired schedule component")
+    if(manifest MATCHES "lux-engine-ecs" OR
+       manifest MATCHES "[/\\\\]include[/\\\\]lux[/\\\\]engine[/\\\\]ecs[/\\\\]")
+        message(FATAL_ERROR "Install manifest contains retired top-level ECS package")
     endif()
 endif()
 
@@ -65,29 +73,18 @@ if(NOT EXISTS "${task_targets}")
 endif()
 file(READ "${task_targets}" task_contract)
 if(task_contract MATCHES
-   "lux::engine::ecs|lux::engine::object|lux::engine::process|lux::engine::scene")
+   "lux::engine::simulation|lux::engine::ecs|lux::engine::object|lux::engine::process|lux::engine::scene")
     message(FATAL_ERROR
         "Installed core::task closure depends on an upper-layer subsystem"
     )
 endif()
 
-foreach(required_component IN ITEMS
-    core
-    system
-)
-    set(component_targets
-        "${prefix}/share/lux-engine-ecs/${required_component}/lux-engine-ecs-${required_component}-config-targets.cmake"
-    )
-    if(NOT EXISTS "${component_targets}")
-        message(FATAL_ERROR
-            "Installed ECS component is missing: ${required_component}"
-        )
-    endif()
-endforeach()
-
 set(system_targets
-    "${prefix}/share/lux-engine-ecs/system/lux-engine-ecs-system-config-targets.cmake"
+    "${prefix}/share/lux-engine-simulation-system/system/lux-engine-simulation-system-system-config-targets.cmake"
 )
+if(NOT EXISTS "${system_targets}")
+    message(FATAL_ERROR "Installed Simulation System component is missing")
+endif()
 file(READ "${system_targets}" system_contract)
 if(system_contract MATCHES
    "lux::engine::core::object|reflection_runtime|schema_reflection")
@@ -100,6 +97,11 @@ foreach(contract_file IN ITEMS
     "${prefix}/share/lux-engine-core/serialization/lux-engine-core-serialization-config-targets.cmake"
     "${prefix}/share/lux-engine-core/type_info/lux-engine-core-type_info-config-targets.cmake"
     "${prefix}/share/lux-engine-world/world/lux-engine-world-world-config-targets.cmake"
+    "${prefix}/share/lux-engine-world-asset/world_asset/lux-engine-world-asset-world_asset-config-targets.cmake"
+    "${prefix}/share/lux-engine-simulation/simulation_description/lux-engine-simulation-simulation_description-config-targets.cmake"
+    "${prefix}/share/lux-engine-simulation-asset/simulation_asset/lux-engine-simulation-asset-simulation_asset-config-targets.cmake"
+    "${prefix}/share/lux-engine-simulation-ecs/core/lux-engine-simulation-ecs-core-config-targets.cmake"
+    "${prefix}/share/lux-engine-simulation-core/simulation_core/lux-engine-simulation-core-simulation_core-config-targets.cmake"
 )
     if(NOT EXISTS "${contract_file}")
         message(FATAL_ERROR "Installed foundation target is missing: ${contract_file}")

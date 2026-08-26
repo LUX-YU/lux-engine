@@ -38,6 +38,10 @@ component_add_transitive_commands(
     "find_package(lux-engine-world REQUIRED COMPONENTS world)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
+    "if(NOT TARGET lux::engine::world::asset)"
+    "add_library(lux::engine::world::asset INTERFACE IMPORTED GLOBAL)"
+    "set_property(TARGET lux::engine::world::asset PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::world::world_asset)"
+    "endif()"
 )
 lux_classify_target(
     TARGET  world_asset

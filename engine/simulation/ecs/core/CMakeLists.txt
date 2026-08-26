@@ -82,6 +82,8 @@ foreach(probe IN ITEMS
     retired_world_snapshot_header_negative
     retired_world_section_header_negative
     retired_persistent_entity_header_negative
+    retired_top_level_ecs_header_negative
+    retired_top_level_ecs_namespace_negative
 )
     add_executable(
         ecs_${probe} EXCLUDE_FROM_ALL

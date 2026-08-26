@@ -148,7 +148,7 @@ int main()
         assert(busy_mutation);
         const auto busy_restore = snapshot->restore(busy);
         assert(!busy_restore);
-        assert(busy_restore.error().code == lux::simulation::ecs::ESnapshotError::WORLD_BUSY);
+        assert(busy_restore.error().code == lux::simulation::ecs::ESnapshotError::STATE_BUSY);
         *busy_mutation = {};
     }
     assert(snapshot->restore(busy));
@@ -163,7 +163,7 @@ int main()
             );
             wrong_thread_rejected.store(
                 !captured &&
-                captured.error().code == lux::simulation::ecs::ESnapshotError::WORLD_BUSY,
+                captured.error().code == lux::simulation::ecs::ESnapshotError::STATE_BUSY,
                 std::memory_order_relaxed
             );
         }

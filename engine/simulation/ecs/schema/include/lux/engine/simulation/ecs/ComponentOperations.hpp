@@ -26,27 +26,27 @@ namespace lux::simulation::ecs
         }
 
         [[nodiscard]] bool has(
-            const EcsState& world,
+            const EcsState& state,
             Entity entity
         ) const noexcept
         {
             detail::require(has_ != nullptr);
-            return has_(world, entity);
+            return has_(state, entity);
         }
 
         [[nodiscard]] const void* get(
-            const EcsState& world,
+            const EcsState& state,
             Entity entity
         ) const noexcept
         {
             detail::require(get_ != nullptr);
-            return get_(world, entity);
+            return get_(state, entity);
         }
 
-        [[nodiscard]] std::size_t size(const EcsState& world) const noexcept
+        [[nodiscard]] std::size_t size(const EcsState& state) const noexcept
         {
             detail::require(size_ != nullptr);
-            return size_(world);
+            return size_(state);
         }
 
         void erase(EcsMutation& edit, Entity entity) const noexcept
@@ -86,18 +86,18 @@ namespace lux::simulation::ecs
     {
         ComponentOperations result;
         result.storage_key_ = entt::type_hash<Component>::value();
-        result.has_ = [](const EcsState& world, Entity entity) noexcept
+        result.has_ = [](const EcsState& state, Entity entity) noexcept
         {
-            return world.find<Component>(entity) != nullptr;
+            return state.find<Component>(entity) != nullptr;
         };
-        result.get_ = [](const EcsState& world, Entity entity) noexcept -> const void*
+        result.get_ = [](const EcsState& state, Entity entity) noexcept -> const void*
         {
-            return world.find<Component>(entity);
+            return state.find<Component>(entity);
         };
-        result.size_ = [](const EcsState& world) noexcept
+        result.size_ = [](const EcsState& state) noexcept
         {
             const auto* storage =
-                world.registry_.template storage<Component>();
+                state.registry_.template storage<Component>();
             return storage == nullptr ? 0U : storage->size();
         };
         result.erase_ = [](EcsMutation& edit, Entity entity) noexcept

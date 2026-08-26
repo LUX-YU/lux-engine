@@ -38,24 +38,24 @@ namespace lux::simulation::ecs
         ~Transform2DSystem();
 
         void update(
-            const EcsState& world,
+            const EcsState& state,
             EcsChangeJournal& journal,
             TaskWriter<WorldTransform2D>& writer,
             EcsCommands commands
         ) noexcept;
         void invokeTask(
-            EcsState& world,
+            EcsState& state,
             EcsChangeJournal& journal,
             EcsChangeBatch& changes,
             EcsCommands commands
         ) noexcept
         {
             auto writer = taskWriter<WorldTransform2D>(
-                world,
+                state,
                 changes,
                 TaskAccess
             );
-            update(world, journal, writer, commands);
+            update(state, journal, writer, commands);
         }
 
       private:
@@ -90,24 +90,24 @@ namespace lux::simulation::ecs
         ~Transform3DSystem();
 
         void update(
-            const EcsState& world,
+            const EcsState& state,
             EcsChangeJournal& journal,
             TaskWriter<WorldTransform3D>& writer,
             EcsCommands commands
         ) noexcept;
         void invokeTask(
-            EcsState& world,
+            EcsState& state,
             EcsChangeJournal& journal,
             EcsChangeBatch& changes,
             EcsCommands commands
         ) noexcept
         {
             auto writer = taskWriter<WorldTransform3D>(
-                world,
+                state,
                 changes,
                 TaskAccess
             );
-            update(world, journal, writer, commands);
+            update(state, journal, writer, commands);
         }
 
       private:

@@ -63,9 +63,9 @@ namespace lux::simulation::ecs
             if (source_storage == nullptr || source_storage->empty())
                 return;
 
-            detail::require(target.world_ != nullptr);
+            detail::require(target.state_ != nullptr);
             auto& target_storage =
-                target.world_->registry_.template storage<Component>();
+                target.state_->registry_.template storage<Component>();
             target_storage.reserve(source_storage->size());
             auto entities = source_storage->each();
             using Iterator = decltype(entities.begin());

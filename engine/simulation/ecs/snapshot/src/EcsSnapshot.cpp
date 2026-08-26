@@ -14,14 +14,14 @@ namespace lux::simulation::ecs
 {
     struct detail::EcsSnapshotAccess final
     {
-        [[nodiscard]] static auto& registry(EcsState& world) noexcept
+        [[nodiscard]] static auto& registry(EcsState& state) noexcept
         {
-            return world.registry_;
+            return state.registry_;
         }
 
-        [[nodiscard]] static const auto& registry(const EcsState& world) noexcept
+        [[nodiscard]] static const auto& registry(const EcsState& state) noexcept
         {
-            return world.registry_;
+            return state.registry_;
         }
     };
 
@@ -158,17 +158,17 @@ namespace lux::simulation::ecs
     EcsSnapshot::~EcsSnapshot() noexcept = default;
 
     lux::cxx::expected<EcsSnapshot, SnapshotError> EcsSnapshot::capture(
-        const EcsState& world,
+        const EcsState& state,
         const ComponentSnapshotSet& components
     ) noexcept
     {
-        if (!detail::EcsColdAccess::ownerIdle(world))
+        if (!detail::EcsColdAccess::ownerIdle(state))
         {
             return lux::cxx::unexpected(
-                SnapshotError{ESnapshotError::WORLD_BUSY}
+                SnapshotError{ESnapshotError::STATE_BUSY}
             );
         }
-        if (auto validation = validateStorages(world, components); !validation)
+        if (auto validation = validateStorages(state, components); !validation)
             return lux::cxx::unexpected(validation.error());
 
         try
@@ -177,7 +177,7 @@ namespace lux::simulation::ecs
             impl->components = components;
             impl->shadow = std::make_unique<EcsState>();
             if (auto cloned = cloneWorld(
-                    world,
+                    state,
                     *impl->shadow,
                     components
                 ); !cloned)
@@ -216,17 +216,17 @@ namespace lux::simulation::ecs
     }
 
     lux::cxx::expected<void, SnapshotError> EcsSnapshot::restore(
-        EcsState& world
+        EcsState& state
     ) const noexcept
     {
-        if (!detail::EcsColdAccess::ownerIdle(world))
-            return lux::cxx::unexpected(SnapshotError{ESnapshotError::WORLD_BUSY});
+        if (!detail::EcsColdAccess::ownerIdle(state))
+            return lux::cxx::unexpected(SnapshotError{ESnapshotError::STATE_BUSY});
 
         auto replacement = instantiate();
         if (!replacement)
             return lux::cxx::unexpected(replacement.error());
 
-        world.registry_.swap((*replacement)->registry_);
+        state.registry_.swap((*replacement)->registry_);
         return {};
     }
 

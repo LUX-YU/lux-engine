@@ -576,7 +576,7 @@ namespace lux::simulation::ecs
         Entity parent
     ) noexcept
     {
-        EcsState& state = detail::EcsMutationAccess::world(mutation);
+        EcsState& state = detail::EcsMutationAccess::state(mutation);
         if (auto valid = validateCanonicalParent(state, child, parent); !valid)
             return valid;
         const Parent* current = state.find<Parent>(child);
@@ -640,7 +640,7 @@ namespace lux::simulation::ecs
         Entity child
     ) noexcept
     {
-        EcsState& state = detail::EcsMutationAccess::world(mutation);
+        EcsState& state = detail::EcsMutationAccess::state(mutation);
         if (!state.valid(child))
             return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
         if (state.find<Parent>(child) != nullptr)
@@ -653,7 +653,7 @@ namespace lux::simulation::ecs
         Entity root
     ) noexcept
     {
-        EcsState& state = detail::EcsMutationAccess::world(mutation);
+        EcsState& state = detail::EcsMutationAccess::state(mutation);
         if (!state.valid(root))
             return lux::cxx::unexpected(EHierarchyError::INVALID_ENTITY);
 

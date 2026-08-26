@@ -194,25 +194,25 @@ namespace lux::simulation::ecs
 
     template <class... Access>
     [[nodiscard]] auto taskQuery(
-        EcsState& world,
+        EcsState& state,
         EcsChangeBatch& changes,
         EcsTaskAccess<Access...>
     )
     {
         using Spec = typename detail::ComponentQuery<Access...>::Type;
         static_assert(!std::same_as<Spec, QuerySpec<>>);
-        return lux::simulation::ecs::taskQuery(world, changes, Spec{});
+        return lux::simulation::ecs::taskQuery(state, changes, Spec{});
     }
 
     template <class Component, class... Access>
     [[nodiscard]] TaskWriter<Component> taskWriter(
-        EcsState& world,
+        EcsState& state,
         EcsChangeBatch& changes,
         EcsTaskAccess<Access...>
     ) noexcept
     {
         static_assert(detail::kDeclaresWrite<Component, Access...>);
-        return lux::simulation::ecs::taskWriter<Component>(world, changes);
+        return lux::simulation::ecs::taskWriter<Component>(state, changes);
     }
 
     [[nodiscard]] constexpr task::TaskResourceAccess ecsStructureWrite()

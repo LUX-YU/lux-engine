@@ -47,15 +47,15 @@ namespace lux::simulation::ecs
     }
 
     EcsMutation::EcsMutation(
-        EcsState& world,
+        EcsState& state,
         bool release_to_idle
     ) noexcept
-        : world_(&world), release_to_idle_(release_to_idle)
+        : state_(&state), release_to_idle_(release_to_idle)
     {
     }
 
     EcsMutation::EcsMutation(EcsMutation&& other) noexcept
-        : world_(std::exchange(other.world_, nullptr)),
+        : state_(std::exchange(other.state_, nullptr)),
           release_to_idle_(std::exchange(other.release_to_idle_, false))
     {
     }
@@ -65,7 +65,7 @@ namespace lux::simulation::ecs
         if (this != &other)
         {
             release();
-            world_ = std::exchange(other.world_, nullptr);
+            state_ = std::exchange(other.state_, nullptr);
             release_to_idle_ = std::exchange(other.release_to_idle_, false);
         }
         return *this;
@@ -78,32 +78,32 @@ namespace lux::simulation::ecs
 
     Entity EcsMutation::create()
     {
-        detail::require(world_ != nullptr);
-        return world_->registry_.create();
+        detail::require(state_ != nullptr);
+        return state_->registry_.create();
     }
 
     Entity EcsMutation::createAt(Entity entity)
     {
-        detail::require(world_ != nullptr && entity != NullEntity);
-        return world_->registry_.create(entity);
+        detail::require(state_ != nullptr && entity != NullEntity);
+        return state_->registry_.create(entity);
     }
 
     void EcsMutation::destroy(Entity entity)
     {
-        detail::require(world_ != nullptr && world_->valid(entity));
-        world_->registry_.destroy(entity);
+        detail::require(state_ != nullptr && state_->valid(entity));
+        state_->registry_.destroy(entity);
     }
 
     void EcsMutation::release() noexcept
     {
-        if (world_ != nullptr && release_to_idle_)
+        if (state_ != nullptr && release_to_idle_)
         {
             detail::require(
-                world_->state_ == detail::EEcsState::MUTATING
+                state_->state_ == detail::EEcsState::MUTATING
             );
-            world_->state_ = detail::EEcsState::IDLE;
+            state_->state_ = detail::EEcsState::IDLE;
         }
-        world_ = nullptr;
+        state_ = nullptr;
         release_to_idle_ = false;
     }
 } // namespace lux::simulation::ecs

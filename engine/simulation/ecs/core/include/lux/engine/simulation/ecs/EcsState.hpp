@@ -75,7 +75,7 @@ namespace lux::simulation::ecs
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
-            return world_ != nullptr;
+            return state_ != nullptr;
         }
 
         [[nodiscard]] Entity create();
@@ -102,13 +102,13 @@ namespace lux::simulation::ecs
 
       private:
         explicit EcsMutation(
-            EcsState& world,
+            EcsState& state,
             bool release_to_idle
         ) noexcept;
         [[nodiscard]] Entity createAt(Entity entity);
         void release() noexcept;
 
-        EcsState* world_{};
+        EcsState* state_{};
         bool release_to_idle_{};
 
         friend class EcsState;
@@ -203,8 +203,8 @@ namespace lux::simulation::ecs
     template <class Component, class... Args>
     Component& EcsMutation::emplace(Entity entity, Args&&... args)
     {
-        detail::require(world_ != nullptr && world_->valid(entity));
-        Component& result = world_->registry_.template emplace<Component>(
+        detail::require(state_ != nullptr && state_->valid(entity));
+        Component& result = state_->registry_.template emplace<Component>(
             entity,
             std::forward<Args>(args)...
         );
@@ -214,8 +214,8 @@ namespace lux::simulation::ecs
     template <class Component>
     void EcsMutation::erase(Entity entity)
     {
-        detail::require(world_ != nullptr && world_->valid(entity));
-        (void)world_->registry_.template remove<Component>(entity);
+        detail::require(state_ != nullptr && state_->valid(entity));
+        (void)state_->registry_.template remove<Component>(entity);
     }
 
     template <class Component, class Fn>
@@ -223,10 +223,10 @@ namespace lux::simulation::ecs
     void EcsMutation::update(Entity entity, Fn&& fn) noexcept
     {
         detail::require(
-            world_ != nullptr && world_->valid(entity) &&
-            world_->registry_.template all_of<Component>(entity)
+            state_ != nullptr && state_->valid(entity) &&
+            state_->registry_.template all_of<Component>(entity)
         );
-        world_->registry_.template patch<Component>(
+        state_->registry_.template patch<Component>(
             entity,
             std::forward<Fn>(fn)
         );
@@ -235,9 +235,9 @@ namespace lux::simulation::ecs
     template <class... Access>
     auto EcsMutation::query()
     {
-        detail::require(world_ != nullptr);
+        detail::require(state_ != nullptr);
         return detail::BasicQuery<EcsState::Registry, Access...>(
-            world_->registry_,
+            state_->registry_,
             detail::ChangeStreamBinder{},
             {}
         );
@@ -252,7 +252,7 @@ namespace lux::simulation::ecs
     template <class Component>
     void EcsMutation::reserve(std::size_t count)
     {
-        detail::require(world_ != nullptr);
-        world_->registry_.template storage<Component>().reserve(count);
+        detail::require(state_ != nullptr);
+        state_->registry_.template storage<Component>().reserve(count);
     }
 } // namespace lux::simulation::ecs

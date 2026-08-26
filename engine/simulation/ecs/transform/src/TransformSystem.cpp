@@ -20,9 +20,9 @@ namespace lux::simulation::ecs
 
             void apply(SimulationEcsMutation& edit) noexcept
             {
-                const EcsState& world = edit.state();
-                if (world.valid(entity) &&
-                    world.find<Derived>(entity) != nullptr)
+                const EcsState& state = edit.state();
+                if (state.valid(entity) &&
+                    state.find<Derived>(entity) != nullptr)
                 {
                     edit.erase<Derived>(entity);
                 }
@@ -37,10 +37,10 @@ namespace lux::simulation::ecs
 
             void apply(SimulationEcsMutation& edit) noexcept
             {
-                const EcsState& world = edit.state();
-                if (!world.valid(entity))
+                const EcsState& state = edit.state();
+                if (!state.valid(entity))
                     return;
-                if (world.find<Derived>(entity) == nullptr)
+                if (state.find<Derived>(entity) == nullptr)
                     edit.emplace<Derived>(entity, value);
                 else
                 {
@@ -162,12 +162,12 @@ namespace lux::simulation::ecs
             }
 
             void queueRemove(
-                const EcsState& world,
+                const EcsState& state,
                 EcsCommands commands,
                 Entity entity
             ) noexcept
             {
-                if (world.find<Derived>(entity) == nullptr)
+                if (state.find<Derived>(entity) == nullptr)
                     return;
                 if (commands.push(RemoveDerived<Derived>{entity}) !=
                     ECommandResult::ACCEPTED)
@@ -178,14 +178,14 @@ namespace lux::simulation::ecs
             }
 
             void publish(
-                const EcsState& world,
+                const EcsState& state,
                 TaskWriter<Derived>& writer,
                 EcsCommands commands,
                 Entity entity,
                 const Matrix& value
             ) noexcept
             {
-                if (world.find<Derived>(entity) != nullptr)
+                if (state.find<Derived>(entity) != nullptr)
                 {
                     writer.update(
                         entity,
@@ -206,7 +206,7 @@ namespace lux::simulation::ecs
             }
 
             [[nodiscard]] TraversalEntry<Matrix> rootEntry(
-                const EcsState& world,
+                const EcsState& state,
                 TaskWriter<Derived>& writer,
                 EcsCommands commands,
                 Entity root
@@ -215,17 +215,17 @@ namespace lux::simulation::ecs
                 TraversalEntry<Matrix> result;
                 result.entity = root;
                 Entity current = hierarchy->parent(root);
-                if (current == NullEntity || !world.valid(current) ||
-                    world.find<Local>(current) == nullptr)
+                if (current == NullEntity || !state.valid(current) ||
+                    state.find<Local>(current) == nullptr)
                 {
                     return result;
                 }
 
                 ancestors.clear();
-                while (current != NullEntity && world.valid(current) &&
-                       world.find<Local>(current) != nullptr)
+                while (current != NullEntity && state.valid(current) &&
+                       state.find<Local>(current) != nullptr)
                 {
-                    if (const Derived* derived = world.find<Derived>(current);
+                    if (const Derived* derived = state.find<Derived>(current);
                         derived != nullptr)
                     {
                         result.parent_world = derived->value;
@@ -234,8 +234,8 @@ namespace lux::simulation::ecs
                     }
                     ancestors.push_back(current);
                     const Entity parent = hierarchy->parent(current);
-                    if (parent == NullEntity || !world.valid(parent) ||
-                        world.find<Local>(parent) == nullptr)
+                    if (parent == NullEntity || !state.valid(parent) ||
+                        state.find<Local>(parent) == nullptr)
                     {
                         current = NullEntity;
                         break;
@@ -246,12 +246,12 @@ namespace lux::simulation::ecs
                 for (auto iterator = ancestors.rbegin();
                      iterator != ancestors.rend(); ++iterator)
                 {
-                    const Local* local = world.find<Local>(*iterator);
+                    const Local* local = state.find<Local>(*iterator);
                     detail::require(local != nullptr);
                     const Matrix value = result.parent_contributes
                         ? result.parent_world * localMatrix(*local)
                         : localMatrix(*local);
-                    publish(world, writer, commands, *iterator, value);
+                    publish(state, writer, commands, *iterator, value);
                     result.parent_world = value;
                     result.parent_contributes = true;
                     ++visited_nodes;
@@ -260,24 +260,24 @@ namespace lux::simulation::ecs
             }
 
             void traverse(
-                const EcsState& world,
+                const EcsState& state,
                 TaskWriter<Derived>& writer,
                 EcsCommands commands,
                 Entity root
             )
             {
                 traversal.clear();
-                traversal.push_back(rootEntry(world, writer, commands, root));
+                traversal.push_back(rootEntry(state, writer, commands, root));
                 while (!traversal.empty())
                 {
                     const TraversalEntry<Matrix> entry = traversal.back();
                     traversal.pop_back();
-                    if (!world.valid(entry.entity) || !visit(entry.entity))
+                    if (!state.valid(entry.entity) || !visit(entry.entity))
                         continue;
 
                     Matrix child_world = Matrix::Identity();
                     bool child_contributes{};
-                    if (const Local* local = world.find<Local>(entry.entity);
+                    if (const Local* local = state.find<Local>(entry.entity);
                         local != nullptr)
                     {
                         child_world = entry.parent_contributes
@@ -285,7 +285,7 @@ namespace lux::simulation::ecs
                             : localMatrix(*local);
                         child_contributes = true;
                         publish(
-                            world,
+                            state,
                             writer,
                             commands,
                             entry.entity,
@@ -293,7 +293,7 @@ namespace lux::simulation::ecs
                         );
                     }
                     else
-                        queueRemove(world, commands, entry.entity);
+                        queueRemove(state, commands, entry.entity);
 
                     for (const Entity child :
                          hierarchy->children(entry.entity))
@@ -325,7 +325,7 @@ namespace lux::simulation::ecs
             }
 
             void update(
-                const EcsState& world,
+                const EcsState& state,
                 EcsChangeJournal& journal,
                 TaskWriter<Derived>& writer,
                 EcsCommands commands
@@ -359,30 +359,30 @@ namespace lux::simulation::ecs
                     if (rebuild)
                     {
                         for (auto [entity, local] :
-                             world.query<Read<Local>>())
+                             state.query<Read<Local>>())
                         {
                             (void)local;
                             mark(entity);
                         }
                         for (auto [entity, derived] :
-                             world.query<Read<Derived>>())
+                             state.query<Read<Derived>>())
                         {
                             (void)derived;
-                            if (world.find<Local>(entity) == nullptr)
-                                queueRemove(world, commands, entity);
+                            if (state.find<Local>(entity) == nullptr)
+                                queueRemove(state, commands, entity);
                         }
                     }
                     else
                     {
                         for (const ComponentChange change : local_changes)
                         {
-                            if (world.valid(change.entity))
+                            if (state.valid(change.entity))
                                 mark(change.entity);
                         }
                         for (const HierarchyDelta change :
                              hierarchy_deltas->values())
                         {
-                            if (world.valid(change.entity))
+                            if (state.valid(change.entity))
                                 mark(change.entity);
                         }
                     }
@@ -390,8 +390,8 @@ namespace lux::simulation::ecs
                     collectRoots();
                     for (const Entity root : roots)
                     {
-                        if (world.valid(root))
-                            traverse(world, writer, commands, root);
+                        if (state.valid(root))
+                            traverse(state, writer, commands, root);
                     }
                 }
                 catch (...)
@@ -455,13 +455,13 @@ namespace lux::simulation::ecs
     Transform2DSystem::~Transform2DSystem() = default;
 
     void Transform2DSystem::update(
-        const EcsState& world,
+        const EcsState& state,
         EcsChangeJournal& journal,
         TaskWriter<WorldTransform2D>& writer,
         EcsCommands commands
     ) noexcept
     {
-        impl_->update(world, journal, writer, commands);
+        impl_->update(state, journal, writer, commands);
     }
 
     std::size_t Transform2DSystem::visitedNodesLastUpdate() const noexcept
@@ -485,13 +485,13 @@ namespace lux::simulation::ecs
     Transform3DSystem::~Transform3DSystem() = default;
 
     void Transform3DSystem::update(
-        const EcsState& world,
+        const EcsState& state,
         EcsChangeJournal& journal,
         TaskWriter<WorldTransform3D>& writer,
         EcsCommands commands
     ) noexcept
     {
-        impl_->update(world, journal, writer, commands);
+        impl_->update(state, journal, writer, commands);
     }
 
     std::size_t Transform3DSystem::visitedNodesLastUpdate() const noexcept

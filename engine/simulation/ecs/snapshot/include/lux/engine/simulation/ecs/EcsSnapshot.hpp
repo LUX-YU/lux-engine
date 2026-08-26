@@ -24,7 +24,7 @@ namespace lux::simulation::ecs
 
         [[nodiscard]] static lux::cxx::expected<EcsSnapshot, SnapshotError>
         capture(
-            const EcsState& world,
+            const EcsState& state,
             const ComponentSnapshotSet& components
         ) noexcept;
 
@@ -32,7 +32,7 @@ namespace lux::simulation::ecs
         instantiate() const noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SnapshotError>
-        restore(EcsState& world) const noexcept;
+        restore(EcsState& state) const noexcept;
 
         void clear() noexcept;
         [[nodiscard]] bool empty() const noexcept;

@@ -16,28 +16,28 @@ namespace lux::simulation::ecs::detail
 
     struct EcsMutationAccess final
     {
-        [[nodiscard]] static EcsState& world(EcsMutation& edit) noexcept
+        [[nodiscard]] static EcsState& state(EcsMutation& mutation) noexcept
         {
-            require(edit.world_ != nullptr);
-            return *edit.world_;
+            require(mutation.state_ != nullptr);
+            return *mutation.state_;
         }
     };
 
     struct EcsColdAccess final
     {
-        [[nodiscard]] static bool ownerIdle(const EcsState& world) noexcept
+        [[nodiscard]] static bool ownerIdle(const EcsState& state) noexcept
         {
-            return world.state_ == EEcsState::IDLE &&
-                world.owner_thread_ == std::this_thread::get_id();
+            return state.state_ == EEcsState::IDLE &&
+                state.owner_thread_ == std::this_thread::get_id();
         }
 
         [[nodiscard]] static EcsMutation mutation(
-            EcsState& world
+            EcsState& state
         ) noexcept
         {
-            require(ownerIdle(world));
-            world.state_ = EEcsState::MUTATING;
-            return EcsMutation(world, true);
+            require(ownerIdle(state));
+            state.state_ = EEcsState::MUTATING;
+            return EcsMutation(state, true);
         }
 
     };
@@ -45,13 +45,13 @@ namespace lux::simulation::ecs::detail
     struct EcsEntityAccess final
     {
         [[nodiscard]] static EEntityReferenceState referenceState(
-            const EcsState& world,
+            const EcsState& state,
             Entity entity
         ) noexcept
         {
-            if (world.registry_.valid(entity))
+            if (state.registry_.valid(entity))
                 return EEntityReferenceState::CURRENT;
-            if (world.registry_.current(entity) !=
+            if (state.registry_.current(entity) !=
                 entt::entt_traits<Entity>::to_version(entt::tombstone))
             {
                 return EEntityReferenceState::STALE;

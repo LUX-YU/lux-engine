@@ -38,25 +38,25 @@ namespace lux::simulation::ecs::testing
     {
       public:
         EcsTaskTestRig(
-            EcsState& world,
+            EcsState& state,
             EcsChangeHistoryBudget history_budget,
             EcsTaskTestRigCapacity capacity
         )
             : owned_journal_(std::make_unique<EcsChangeJournal>(
                   history_budget
               )),
-              world_(&world),
+              state_(&state),
               journal_(owned_journal_.get()),
               capacity_(capacity)
         {
         }
 
         EcsTaskTestRig(
-            EcsState& world,
+            EcsState& state,
             EcsChangeJournal& journal,
             EcsTaskTestRigCapacity capacity
         ) noexcept
-            : world_(&world), journal_(&journal), capacity_(capacity)
+            : state_(&state), journal_(&journal), capacity_(capacity)
         {
         }
 
@@ -88,7 +88,7 @@ namespace lux::simulation::ecs::testing
                         detail::require(static_cast<bool>(recording));
                         auto scope = std::move(*recording);
                         system->invokeTask(
-                            *world_,
+                            *state_,
                             *journal_,
                             *changes,
                             scope.commands()
@@ -104,7 +104,7 @@ namespace lux::simulation::ecs::testing
                         detail::require(static_cast<bool>(recording));
                         auto scope = std::move(*recording);
                         system->invokeTask(
-                            *world_,
+                            *state_,
                             *journal_,
                             *changes,
                             scope.commands()
@@ -151,7 +151,7 @@ namespace lux::simulation::ecs::testing
             return static_cast<bool>(executeSimulationStep(
                 *executor_,
                 *graph_,
-                *world_,
+                *state_,
                 *journal_,
                 commands_
             ));
@@ -159,7 +159,7 @@ namespace lux::simulation::ecs::testing
 
         [[nodiscard]] auto mutate() noexcept
         {
-            return beginSimulationEcsMutation(*world_, *journal_);
+            return beginSimulationEcsMutation(*state_, *journal_);
         }
 
         [[nodiscard]] EcsChangeJournal& journal() noexcept
@@ -206,7 +206,7 @@ namespace lux::simulation::ecs::testing
         }
 
         std::unique_ptr<EcsChangeJournal> owned_journal_;
-        EcsState* world_{};
+        EcsState* state_{};
         EcsChangeJournal* journal_{};
         SystemRegistry systems_;
         task::TaskGraphBuilder builder_;

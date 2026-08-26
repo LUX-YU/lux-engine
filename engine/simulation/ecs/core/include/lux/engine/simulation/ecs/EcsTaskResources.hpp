@@ -205,9 +205,9 @@ namespace lux::simulation::ecs
             requires std::is_nothrow_invocable_v<Fn, Component&>
         void update(Entity entity, Fn&& fn) noexcept
         {
-            detail::require(world_ != nullptr);
-            detail::require(world_->valid(entity));
-            world_->registry_.template patch<Component>(
+            detail::require(state_ != nullptr);
+            detail::require(state_->valid(entity));
+            state_->registry_.template patch<Component>(
                 entity,
                 std::forward<Fn>(fn)
             );
@@ -220,14 +220,14 @@ namespace lux::simulation::ecs
 
       private:
         TaskWriter(
-            EcsState& world,
+            EcsState& state,
             detail::BoundEcsChangeStream stream
         ) noexcept
-            : world_(std::addressof(world)), stream_(stream)
+            : state_(std::addressof(state)), stream_(stream)
         {
         }
 
-        EcsState* world_{};
+        EcsState* state_{};
         detail::BoundEcsChangeStream stream_{};
         bool history_lost_{};
 
@@ -240,25 +240,25 @@ namespace lux::simulation::ecs
 
     template <class... Access>
     [[nodiscard]] auto taskQuery(
-        EcsState& world,
+        EcsState& state,
         EcsChangeBatch& changes,
         QuerySpec<Access...> specification
     )
     {
         return detail::BasicQuery<EcsState::Registry, Access...>(
-            world.registry_,
+            state.registry_,
             changes.binder()
         );
     }
 
     template <class Component>
     [[nodiscard]] TaskWriter<Component> taskWriter(
-        EcsState& world,
+        EcsState& state,
         EcsChangeBatch& changes
     ) noexcept
     {
         return TaskWriter<Component>(
-            world,
+            state,
             changes.binder()(entt::type_hash<Component>::value())
         );
     }

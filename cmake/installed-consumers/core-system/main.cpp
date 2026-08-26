@@ -1,12 +1,44 @@
 #include <lux/engine/ecs/SystemRegistry.hpp>
-#include <lux/engine/ecs/SystemRelations.hpp>
-#include <lux/engine/ecs/SystemTaskGraphCompiler.hpp>
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/task/TaskGraphBuilder.hpp>
+
+#include <utility>
+
+namespace
+{
+    struct System final
+    {
+        inline static constexpr auto Access =
+            lux::ecs::makeSystemAccessSpec<>();
+        void update() noexcept { ++updates; }
+        int updates{};
+    };
+}
 
 int main()
 {
-    lux::ecs::World world;
     lux::ecs::SystemRegistry systems;
-    lux::ecs::SystemRelations relations;
-    return lux::ecs::compileSystemTaskGraph(systems, relations) ? 0 : 1;
+    const auto id = systems.emplace<System>();
+    if (!id)
+        return 1;
+    auto retained = systems.retain<System>(*id);
+    if (!retained)
+        return 2;
+
+    lux::task::TaskGraphBuilder builder;
+    auto observation = *retained;
+    if (!builder.add(
+            [system = std::move(*retained)]() noexcept
+            {
+                system->update();
+            }
+        ))
+    {
+        return 3;
+    }
+    auto graph = std::move(builder).build();
+    if (!graph)
+        return 4;
+    lux::task::TaskExecutor executor({0U, graph->taskCount()});
+    return executor.execute(*graph) && observation->updates == 1 ? 0 : 5;
 }

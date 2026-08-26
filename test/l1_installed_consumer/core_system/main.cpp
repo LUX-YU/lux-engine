@@ -1,22 +1,20 @@
-#include <lux/engine/ecs/SystemExecution.hpp>
 #include <lux/engine/ecs/SystemRegistry.hpp>
-#include <lux/engine/ecs/SystemRelations.hpp>
-#include <lux/engine/ecs/SystemTaskGraphCompiler.hpp>
-#include <lux/engine/ecs/World.hpp>
+#include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <cstdint>
+#include <utility>
 
 namespace
 {
-    class CountSystem final : public lux::ecs::StaticSystemAccess<>
+    class CountSystem final
     {
       public:
-        explicit CountSystem(std::uint32_t& count) noexcept : count_(&count) {}
+        inline static constexpr auto Access =
+            lux::ecs::makeSystemAccessSpec<>();
 
-        void update(lux::ecs::SystemContext&) noexcept
-        {
-            ++*count_;
-        }
+        explicit CountSystem(std::uint32_t& count) noexcept : count_(&count) {}
+        void update() noexcept { ++*count_; }
 
       private:
         std::uint32_t* count_{};
@@ -25,31 +23,40 @@ namespace
 
 int main()
 {
-    lux::ecs::World world;
     lux::ecs::SystemRegistry systems;
     std::uint32_t count{};
-    if (!systems.emplace<CountSystem>(count) ||
-        !systems.emplace<CountSystem>(count))
-    {
+    const auto first = systems.emplace<CountSystem>(count);
+    const auto second = systems.emplace<CountSystem>(count);
+    if (!first || !second)
         return 1;
-    }
-    lux::ecs::SystemRelations relations;
-    auto compilation = lux::ecs::compileSystemTaskGraph(systems, relations);
-    if (!compilation)
+
+    auto first_system = systems.retain<CountSystem>(*first);
+    auto second_system = systems.retain<CountSystem>(*second);
+    if (!first_system || !second_system)
         return 2;
-    lux::ecs::SystemExecutionScratch scratch;
-    if (!scratch.prepare(*compilation))
-        return 3;
-    lux::ecs::EcsExecutionContext context{
-        world, systems, relations, scratch, 1.0F / 60.0F, 1U
-    };
-    if (!lux::ecs::executeSystemTaskGraph(
-            lux::task::referenceTaskExecutionBackend(),
-            *compilation,
-            context
+
+    lux::task::TaskGraphBuilder builder;
+    if (!builder.add(
+            [system = std::move(*first_system)]() noexcept
+            {
+                system->update();
+            }
+        ) ||
+        !builder.add(
+            [system = std::move(*second_system)]() noexcept
+            {
+                system->update();
+            }
         ))
     {
-        return 4;
+        return 3;
     }
-    return count == 2U ? 0 : 5;
+    auto graph = std::move(builder).build();
+    if (!graph)
+        return 4;
+
+    lux::task::TaskExecutor executor({0U, graph->taskCount()});
+    if (!executor.execute(*graph))
+        return 5;
+    return count == 2U ? 0 : 6;
 }

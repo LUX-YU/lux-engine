@@ -1,33 +1,21 @@
-#include <lux/engine/task/TaskGraph.hpp>
+#include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/task/TaskGraphBuilder.hpp>
 
 #include <utility>
-
-namespace
-{
-    void invoke(void* target, void*) noexcept
-    {
-        ++*static_cast<int*>(target);
-    }
-}
 
 int main()
 {
     int value{};
     lux::task::TaskGraphBuilder builder;
-    const auto task = builder.addTask({&value, &invoke});
+    const auto task = builder.add([&value]() noexcept { ++value; });
     if (!task)
         return 1;
     auto graph = std::move(builder).build();
     if (!graph)
         return 2;
-    lux::task::TaskExecutionScratch scratch;
-    if (!scratch.prepare(*graph))
+
+    lux::task::TaskExecutor executor({0U, graph->taskCount()});
+    if (!executor.execute(*graph))
         return 3;
-    lux::task::executeTaskGraph(
-        lux::task::referenceTaskExecutionBackend(),
-        *graph,
-        nullptr,
-        scratch
-    );
     return value == 1 ? 0 : 4;
 }
